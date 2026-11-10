@@ -42,13 +42,13 @@ it("gives every route error its own message", () => {
 });
 it.each(Object.entries(messages))("shows a specific sentence for the route's %s outcome", async (error, message) => {
   fetcher.mockResolvedValue(Response.json({ ok: false, error }, { status: 409 }));
-  await act(async () => root.render(createElement(StartPlan, { cardId: "card", child: "Leah" })));
+  await act(async () => root.render(createElement(StartPlan, { parentId: "family", cardId: "card", child: "Leah" })));
   await act(async () => container.querySelector("button")!.click());
   expect(container.querySelector('[role="alert"]')?.textContent).toBe(message);
 });
 it("does not display an unknown provider message", async () => {
   fetcher.mockResolvedValue(Response.json({ ok: false, error: "Raw provider failure sk_test_secret" }, { status: 502 }));
-  await act(async () => root.render(createElement(StartPlan, { cardId: "card", child: "Leah" })));
+  await act(async () => root.render(createElement(StartPlan, { parentId: "family", cardId: "card", child: "Leah" })));
   await act(async () => container.querySelector("button")!.click());
   expect(container.querySelector('[role="alert"]')?.textContent).toBe(messages.failed);
 });
@@ -60,7 +60,7 @@ it("main shows the generic failure for the old route's sibling refusal", async (
 });
 it("PR B shows plain words for a sibling upgrade stop", async () => {
   f.fetch.mockResolvedValue(Response.json({ ok: false, error: "family_plan_upgrade_required" }, { status: 409 }));
-  await act(async () => root.render(createElement(StartPlan, { cardId: "card", child: "Sibling" })));
+  await act(async () => root.render(createElement(StartPlan, { parentId: "family", cardId: "card", child: "Sibling" })));
   await clickStart();
   expect(container.querySelector('[role="alert"]')?.textContent).toBe("This child is a sibling. Their price (CAD 59.99) can start once the sibling update ships.");
   expect(container.textContent).not.toContain("family_plan_upgrade_required");
@@ -95,7 +95,7 @@ it("both warnings show together when both are true", () => {
 
 it("shows the admitted sibling price with both pending warnings after a successful start", async () => {
   f.fetch.mockResolvedValue(Response.json({ ok: true, firstChargeAt: "2026-12-08T20:00:00.000Z", monthlyPrice: 59.99, access: "pending", confirmation: "not_sent" }));
-  await act(async () => root.render(createElement(StartPlan, { cardId: "card", child: "Sibling" })));
+  await act(async () => root.render(createElement(StartPlan, { parentId: "family", cardId: "card", child: "Sibling" })));
   await clickStart();
   expect(container.textContent).toContain("CAD 59.99 a month.");
   expect(container.textContent).toContain("First charge");
@@ -106,7 +106,7 @@ it("shows the admitted sibling price with both pending warnings after a successf
 
 it("a refused request (403) says nothing reached Stripe and the admin can press again", async () => {
   fetcher.mockResolvedValue(new Response("Forbidden", { status: 403 }));
-  await act(async () => root.render(createElement(StartPlan, { cardId: "card", child: "Leah" })));
+  await act(async () => root.render(createElement(StartPlan, { parentId: "family", cardId: "card", child: "Leah" })));
   await clickStart();
   expect(container.querySelector('[role="alert"]')?.textContent).toBe(START_REFUSED);
   expect(START_REFUSED).toContain("Nothing started.");
@@ -115,7 +115,7 @@ it("a refused request (403) says nothing reached Stripe and the admin can press 
 });
 it("a 409 for a missing delivery receipt gives the receipt message", async () => {
   fetcher.mockResolvedValue(Response.json({ ok: false, error: "delivery_receipt_required" }, { status: 409 }));
-  await act(async () => root.render(createElement(StartPlan, { cardId: "card", child: "Leah" })));
+  await act(async () => root.render(createElement(StartPlan, { parentId: "family", cardId: "card", child: "Leah" })));
   await clickStart();
   expect(container.querySelector('[role="alert"]')?.textContent).toBe(messages.delivery_receipt_required);
 });
@@ -124,7 +124,7 @@ it.each([
   ["an unreadable 504", () => Promise.resolve(new Response("<html>timeout</html>", { status: 504 }))],
 ])("a real lost answer (%s) gives the lost message", async (_, answer) => {
   fetcher.mockImplementation(answer);
-  await act(async () => root.render(createElement(StartPlan, { cardId: "card", child: "Leah" })));
+  await act(async () => root.render(createElement(StartPlan, { parentId: "family", cardId: "card", child: "Leah" })));
   await clickStart();
   expect(container.querySelector('[role="alert"]')?.textContent).toBe(START_LOST);
   expect(START_LOST).toBe("The response was lost. Open the family in Stripe to check before trying again.");
@@ -133,7 +133,7 @@ it.each([
 const confirmText = async (familyWindow?: "new" | "open" | "ended" | "unknown" | null) => {
   const ask = vi.fn(() => false);
   vi.stubGlobal("confirm", ask);
-  await act(async () => root.render(createElement(StartPlan, { cardId: "card", child: "Leah", familyWindow })));
+  await act(async () => root.render(createElement(StartPlan, { parentId: "family", cardId: "card", child: "Leah", familyWindow })));
   await clickStart();
   expect(fetcher).not.toHaveBeenCalled();
   return String((ask.mock.calls[0] as unknown[])[0]);
@@ -153,7 +153,7 @@ it.each(["unknown", null] as const)("an unknown window (%s) keeps the approved w
 // #810: another 4xx with no JSON (the platform's rate limit) is refused before Stripe too, not a lost response.
 it("a 429 with no JSON says nothing reached Stripe", async () => {
   fetcher.mockResolvedValue(new Response("Too Many Requests", { status: 429 }));
-  await act(async () => root.render(createElement(StartPlan, { cardId: "card", child: "Leah" })));
+  await act(async () => root.render(createElement(StartPlan, { parentId: "family", cardId: "card", child: "Leah" })));
   await clickStart();
   expect(container.querySelector('[role="alert"]')?.textContent).toBe(START_REFUSED);
 });
@@ -163,13 +163,27 @@ it("a 429 with no JSON says nothing reached Stripe", async () => {
 it("after one start on the page, a sibling's confirm keeps the window sentences", async () => {
   fetcher.mockResolvedValue(Response.json({ ok: true, firstChargeAt: "2026-12-10T00:00:00Z", access: "open", confirmation: "sent", monthlyPrice: 59.99 }));
   await act(async () => root.render(createElement("div", null,
-    createElement(StartPlan, { cardId: "card-a", child: "Asha", familyWindow: "new" }),
-    createElement(StartPlan, { cardId: "card-b", child: "Ben", familyWindow: "new" }))));
-  const confirm = vi.fn((_message?: string) => true); vi.stubGlobal("confirm", confirm);
+    createElement(StartPlan, { parentId: "family", cardId: "card-a", child: "Asha", familyWindow: "new" }),
+    createElement(StartPlan, { parentId: "family", cardId: "card-b", child: "Ben", familyWindow: "new" }))));
+  const confirm = vi.fn<(message?: string) => boolean>(() => true); vi.stubGlobal("confirm", confirm);
   await act(async () => container.querySelectorAll("button")[0].click());
   fetcher.mockResolvedValue(Response.json({ ok: false, error: "family_plan_upgrade_required" }, { status: 409 }));
   const ben = [...container.querySelectorAll("button")].find((b) => b.textContent === "Workbook delivered: start plan")!;
   await act(async () => ben.click());
   expect(confirm.mock.calls[0][0]).not.toContain("existing free window");
   expect(confirm.mock.calls[1][0]).toContain("The family's existing free window applies.");
+});
+
+// A successful start in one family must not change an unrelated family's confirmation.
+it("keeps an unrelated family's new free window after another family starts", async () => {
+  fetcher.mockResolvedValue(Response.json({ ok: true, firstChargeAt: "2026-12-10T00:00:00Z", access: "open", confirmation: "sent" }));
+  await act(async () => root.render(createElement("div", null,
+    createElement(StartPlan, { parentId: "family-a", cardId: "card-a", child: "Asha", familyWindow: "new" }),
+    createElement(StartPlan, { parentId: "family-b", cardId: "card-b", child: "Ben", familyWindow: "new" }))));
+  const confirm = vi.fn<(message?: string) => boolean>(() => true); vi.stubGlobal("confirm", confirm);
+  await act(async () => container.querySelectorAll("button")[0].click());
+  confirm.mockReturnValue(false);
+  await act(async () => container.querySelector("button")!.click());
+  expect(confirm.mock.calls[1][0]).toBe("Has Ben's first workbook arrived at their home? Confirm only after delivery.");
+  expect(fetcher).toHaveBeenCalledTimes(1);
 });

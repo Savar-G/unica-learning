@@ -16,7 +16,7 @@ const ERRORS: Record<string, string> = {
  * #554: a plan start that Stripe never answered, 24 hours on, with no plan found. The record stays open, as the request may still
  * land. Only an admin, after their own check in Stripe, closes it. An initial start is offered only when none has completed.
  */
-export function PlanStartStuck({ cardId, child, generation, allowInitialStart, familyWindow = null }: { cardId: string; child: string; generation: number; allowInitialStart: boolean; familyWindow?: FamilyPlanOffer["window"] | null }) {
+export function PlanStartStuck({ cardId, parentId, child, generation, allowInitialStart, familyWindow = null }: { cardId: string; parentId: string; child: string; generation: number; allowInitialStart: boolean; familyWindow?: FamilyPlanOffer["window"] | null }) {
   const [busy, setBusy] = useState(false);
   const [closed, setClosed] = useState(false);
   const [error, setError] = useState("");
@@ -37,7 +37,7 @@ export function PlanStartStuck({ cardId, child, generation, allowInitialStart, f
   }
   if (closed) return <>
     <span className="adm-note">{allowInitialStart ? "Start closed. You can start the free month again." : "Start closed."}</span>
-    {allowInitialStart && <StartPlan cardId={cardId} child={child} familyWindow={familyWindow} />}
+    {allowInitialStart && <StartPlan parentId={parentId} cardId={cardId} child={child} familyWindow={familyWindow} />}
   </>;
   return <>
     <p role="alert" className="adm-note">This start needs the team. Stripe did not answer it, and after 24 hours we still find no plan. Do not start another one. Open this family in Stripe to check.</p>
