@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { DESK_COOKIE, DESK_HOME, readLock } from "@/lib/desk";
+import { DESK_COOKIE, DESK_HOME, deskAccess } from "@/lib/desk";
 import { openDesk, sameOrigin } from "@/lib/desk-server";
 import { mayaNoticeDue } from "@/lib/maya-notice-server";
 import { pinIsSet } from "@/lib/parent-pin-server";
@@ -18,13 +18,15 @@ export async function POST(request: Request) {
   const db = await sessionClient();
   const parent = await parentId(db);
   if (!parent) return to("/sign-in");
-  const open = readLock((await cookies()).get(DESK_COOKIE)?.value);
+  // Only this parent's desk counts as open: another parent's cookie on a shared device opens nothing (deskAccess).
+  const access = deskAccess((await cookies()).get(DESK_COOKIE)?.value, parent);
+  const open = access.state === "open" ? access.lock : null;
   const form = await request.formData().catch(() => null);
   const childId = form?.get("child");
   if (!isUuid(childId)) return to("/account");
   const { data: child } = await db.from("children").select("id, grade").eq("id", childId).maybeSingle();
   if (!child) return to("/account");
-  if (open?.parentId === parent && open.childId !== child.id) return to(DESK_HOME);
+  if (open && open.childId !== child.id) return to(DESK_HOME);
   const pinSet = await pinIsSet(parent);
   if (pinSet === null) return to("/account?desk=error");
   if (!pinSet) return to("/account/pin?desk=1");

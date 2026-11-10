@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { ParentSchedule } from "@/components/parent-schedule";
-import { DESK_COOKIE, DESK_HOME, deskGate } from "@/lib/desk";
+import { DESK_COOKIE, DESK_HOME, deskAccess } from "@/lib/desk";
 import { FAMILY_DELETED_PATH } from "@/lib/family-delete";
 import { pageMetadata } from "@/lib/metadata";
 import { parentDashboard } from "@/lib/parent-dashboard-server";
@@ -15,7 +15,7 @@ export const metadata = pageMetadata({ path: SCHEDULE_PATH, title: "Schedule", d
 export default async function SchedulePage({ searchParams }: PageProps<"/account/schedule">) {
   const parent = await parentId(await sessionClient());
   if (!parent) redirect(`/sign-in?next=${encodeURIComponent(SCHEDULE_PATH)}`);
-  if (deskGate(SCHEDULE_PATH, (await cookies()).get(DESK_COOKIE)?.value, parent) !== "pass") redirect(DESK_HOME);
+  if (deskAccess((await cookies()).get(DESK_COOKIE)?.value, parent).state === "open") redirect(DESK_HOME);
   const dashboard = await parentDashboard();
   if (!dashboard) notFound();
   if (dashboard.deletionRequested) redirect(FAMILY_DELETED_PATH);

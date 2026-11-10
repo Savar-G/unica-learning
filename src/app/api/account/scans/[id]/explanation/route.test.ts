@@ -1,14 +1,14 @@
 import { beforeEach, expect, it, vi } from "vitest";
-const seams = vi.hoisted(() => ({ planOpen: false, signedIn: true, active: true, released: true, cookie: undefined as string | undefined, result: { status: "ready", correctAnswer: "42", context: "hash", explanation: { steps: ["Add the ones."], say: "Start here." } }, run: vi.fn() }));
+const seams = vi.hoisted(() => ({ planClosed: false, who: true, planOpen: false, signedIn: true, active: true, released: true, cookie: undefined as string | undefined, result: { status: "ready", correctAnswer: "42", context: "hash", explanation: { steps: ["Add the ones."], say: "Start here." } }, run: vi.fn() }));
 const parent = "11111111-1111-4111-8111-111111111111", photo = "22222222-2222-4222-8222-222222222222";
 vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => seams.cookie ? { value: seams.cookie } : undefined }) }));
-vi.mock("@/lib/scan-photo-server", () => ({ scanSession: async () => { if (!seams.signedIn) throw Error("NEXT_NOT_FOUND"); return { parent, admin: {}, active: async () => seams.active }; }, scanJson: (v: unknown, status = 200) => Response.json(v, { status, headers: { "Cache-Control": "private, no-store", "Vary": "Cookie" } }) }));
+vi.mock("@/lib/scan-photo-server", () => ({ signedInParent: async () => (seams.who ? { parent, admin: {} } : null), scanSession: async () => { if (!seams.signedIn) throw Error("NEXT_NOT_FOUND"); return { parent, admin: {}, active: async () => seams.active }; }, scanJson: (v: unknown, status = 200) => Response.json(v, { status, headers: { "Cache-Control": "private, no-store", "Vary": "Cookie" } }) }));
 vi.mock("@/lib/scan-marking-server", () => ({ markingAccess: async () => seams.released }));
-vi.mock("@/lib/parent-problem-explanation-server", () => ({ explanationPlanOpen: async () => seams.planOpen, parentProblemExplanation: (...args: unknown[]) => seams.run(...args) }));
+vi.mock("@/lib/parent-problem-explanation-server", () => ({ explanationPlanClosed: async () => seams.planClosed, explanationPlanOpen: async () => seams.planOpen, parentProblemExplanation: (...args: unknown[]) => seams.run(...args) }));
 import { POST } from "./route";
 const request = (body: unknown = { itemId: "original", version: 2 }, origin = "https://synthetic.invalid", signal?: AbortSignal) => new Request(`https://synthetic.invalid/api/account/scans/${photo}/explanation`, { method: "POST", headers: { origin }, body: typeof body === "string" ? body : JSON.stringify(body), signal });
 const context = { params: Promise.resolve({ id: photo }) };
-beforeEach(() => { seams.planOpen = false; seams.signedIn = true; seams.active = true; seams.released = true; seams.cookie = undefined; seams.run.mockReset().mockImplementation(async () => seams.result); });
+beforeEach(() => { seams.planClosed = false; seams.who = true; seams.planOpen = false; seams.signedIn = true; seams.active = true; seams.released = true; seams.cookie = undefined; seams.run.mockReset().mockImplementation(async () => seams.result); });
 it("binds family identity to the session and uses private no-store responses", async () => {
   const r = await POST(request(), context); expect(r.status).toBe(200); expect(await r.json()).toEqual(seams.result);
   expect(r.headers.get("cache-control")).toContain("no-store"); expect(seams.run.mock.calls[0][1]).toEqual({ parent, photo, itemId: "original", version: 2 });
@@ -32,5 +32,44 @@ it("the open plan of the photo's child reaches the feature with marking closed; 
   expect(seams.run).toHaveBeenCalledTimes(1);
   seams.run.mockClear(); seams.planOpen = false;
   expect((await POST(request(), context)).status).toBe(404);
+  expect(seams.run).not.toHaveBeenCalled();
+});
+
+// #710: a results tab left open while the child's plan closed. The parent who owns the photo reads that the plan is
+// closed, not "try again later" or "this mark changed", and no AI call runs.
+it("a closed plan of the photo's own child gets its own answer, with no AI action", async () => {
+  seams.planClosed = true; seams.released = false; seams.active = false;
+  const r = await POST(request(), context);
+  expect(r.status).toBe(403); expect(await r.json()).toEqual({ status: "plan_closed" });
+  expect(seams.run).not.toHaveBeenCalled();
+});
+it("a family whose marking stays open (a marked family) is not told its plan is closed", async () => {
+  seams.planClosed = true; seams.released = true;
+  expect((await POST(request(), context)).status).toBe(200);
+});
+it("sign-out, Desk mode and an unknown or another family's photo keep their answers", async () => {
+  seams.planClosed = true; seams.released = false; seams.who = false; seams.signedIn = false;
+  await expect(POST(request(), context)).rejects.toThrow("NEXT_NOT_FOUND");
+  seams.who = true; seams.signedIn = true; seams.cookie = `${parent}.${photo}`;
+  expect((await POST(request(), context)).status).toBe(423);
+  seams.cookie = undefined; seams.planClosed = false;
+  expect((await POST(request(), context)).status).toBe(404);
+  expect(seams.run).not.toHaveBeenCalled();
+});
+
+it("another parent's desk cookie does not block an open-plan explanation", async () => {
+  seams.cookie = `33333333-3333-4333-8333-333333333333.${photo}`;
+  expect((await POST(request(), context)).status).toBe(200);
+  expect(seams.run).toHaveBeenCalledOnce();
+});
+
+it("a closed-plan response respects only the signed-in parent's desk cookie", async () => {
+  seams.planClosed = true; seams.released = false;
+  seams.cookie = `${parent}.${photo}`;
+  expect((await POST(request(), context)).status).toBe(423);
+  seams.cookie = `33333333-3333-4333-8333-333333333333.${photo}`;
+  const result = await POST(request(), context);
+  expect(result.status).toBe(403);
+  expect(await result.json()).toEqual({ status: "plan_closed" });
   expect(seams.run).not.toHaveBeenCalled();
 });

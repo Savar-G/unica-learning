@@ -91,7 +91,7 @@ export const STAGE_ACTION: Record<Stage, string> = {
   started: "The continue reminder goes out automatically.",
   finished: "Report sent. Waiting for the parent to choose a plan.",
   card_started: "The parent left the payment page. Consider a personal email.",
-  card_saved: `After you confirm the first workbook has arrived at the family's home, press "${familyPlanWords.adminAction}" under Cards and waitlist.`,
+  card_saved: `After you confirm the first workbook has arrived at the family's home, press "${familyPlanWords.adminAction}" under Plans and delivery.`,
   trial: `In the free first month. ${PLAN_REMINDER_ADMIN}.`,
   paying: "Nothing to do.",
   cancelled: "The Stripe subscription ended. Consider asking the parent why.",
@@ -230,8 +230,11 @@ export interface Family {
   expired: boolean;
   /** The newest card setup, for display. */
   card: { plan: string; price: number; savedAt: string | null; updatedAt: string; customerId: string | null } | null;
-  /** Every card setup (one per child), oldest first. */
-  cards: { childId: string; savedAt: string | null; createdAt: string; customerId: string | null }[];
+  /**
+   * Every card setup (one per child), oldest first. `foundInStripe`: the save is Stripe's alone (the site did not record
+   * it; see confirmCardsInStripe in admin-store).
+   */
+  cards: { childId: string; savedAt: string | null; createdAt: string; customerId: string | null; foundInStripe: boolean }[];
   /** The paying subscription, else the newest ended one; null when the family never subscribed. */
   subscription: { status: string; since: string; endedAt: string | null; monthly: number } | null;
   /** Every subscription that started, on any of the family's customers, oldest first. */
@@ -357,7 +360,7 @@ export function buildFamilies(rows: DashboardRows, now = new Date()): Family[] {
       tests: tests.map((t) => ({ id: t.id, childId: t.child_id, childName: childName.get(t.child_id) ?? "Child", status: t.status, startedAt: t.started_at, completedAt: t.completed_at, lastAnswerAt: t.last_answer_at, answered: t.answered, reportId: reportByTest.get(t.id) ?? null })),
       expired: tests.length > 0 && tests.every((t) => t.status === "expired"),
       card: card ? { plan: card.plan === "one" ? "Math" : "Math and reading", price: card.price, savedAt: card.card_saved_at, updatedAt: card.updated_at, customerId: card.stripe_customer_id } : null,
-      cards: [...cards].reverse().map((c) => ({ childId: c.child_id, savedAt: c.card_saved_at, createdAt: c.created_at, customerId: c.stripe_customer_id })),
+      cards: [...cards].reverse().map((c) => ({ childId: c.child_id, savedAt: c.card_saved_at, createdAt: c.created_at, customerId: c.stripe_customer_id, foundInStripe: !!c.saved_in_stripe_only })),
       subscription: shown ? { status: shown.status, since: shown.created, endedAt: shown.endedAt, monthly: (paying.length > 0 ? paying : trialing).reduce((n, s) => n + monthlyAmount(s), 0) } : null,
       subscriptions: subs,
       emails,
@@ -440,10 +443,15 @@ export interface Dashboard {
   now: string;
   range: RangeKey;
   days: string[];
-  /** Most recent activity first. */
+  /** The listed families (with the test families while "Show test families" is on), most recent activity first. */
   families: Family[];
   activity: Activity[];
   emails: EmailEvent[];
+  /**
+   * The same three lists for the real families only. Every count a page shows (tabs, pills, totals, charts) is taken
+   * from these, never from the listed ones above: test families are listed, never counted (D-313).
+   */
+  real: { families: Family[]; activity: Activity[]; emails: EmailEvent[] };
   kpis: Kpi[];
   series: DayCounts[];
   /** Families that reached each funnel stage: ever, and among those who signed up in the range. */
@@ -455,8 +463,8 @@ export interface Dashboard {
   stripeMode: "live" | "test" | null;
   /** Saved cards that only Stripe knew about (see confirmCardsInStripe in admin-store). */
   cardsFoundInStripe: number;
-  /** Team and test families: how many there are, and whether they are in the numbers. */
-  tests: { count: number; shown: boolean };
+  /** Team and test families: how many there are, whether they are listed (never counted), and their parent ids. */
+  tests: { count: number; shown: boolean; ids: string[] };
 }
 
 type Pick = (f: Family) => (string | null | undefined)[];
@@ -471,12 +479,18 @@ const pickSubscriptions: Pick = (f) => f.subscriptions.map((s) => s.created);
 const STUCK_DAYS = 2;
 const DAY_MS = 86_400_000;
 
-/** `withTests`: count the team and test families too. */
+/**
+ * `withTests`: list the team and test families too ("Show test families", D-313). They never count: every number, chart,
+ * funnel and to-do list is worked out from the real families only.
+ */
 export function buildDashboard(rows: DashboardRows, range: RangeKey, now: Date, { withTests = false } = {}): Dashboard {
   const everyone = buildFamilies(rows, now);
   const families = everyone.filter((f) => withTests || !f.test).sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt));
   const emails = families.flatMap((f) => f.emails).sort(newestFirst);
-  const first = earliest(families.map((f) => f.createdAt));
+  // the real families: the only ones any number counts
+  const counted = families.filter((f) => !f.test);
+  const countedEmails = counted.flatMap((f) => f.emails).sort(newestFirst);
+  const first = earliest(counted.map((f) => f.createdAt));
   const all = range === "all";
   const days = rangeDays(range, now, first);
   const sparkDays = range === "today" ? rangeDays("7d", now, first) : days;
@@ -488,7 +502,7 @@ export function buildDashboard(rows: DashboardRows, range: RangeKey, now: Date, 
   const inPrev = (iso: string | null | undefined) => !!iso && prev.has(dayKey(iso)) && new Date(iso).getTime() <= prevEnd;
   const onDay = (day: string) => (iso: string | null | undefined) => !!iso && dayKey(iso) === day;
 
-  const count = (pick: Pick, test: (iso: string | null | undefined) => boolean) => families.reduce((n, f) => n + pick(f).filter(test).length, 0);
+  const count = (pick: Pick, test: (iso: string | null | undefined) => boolean) => counted.reduce((n, f) => n + pick(f).filter(test).length, 0);
   const kpi = (key: string, label: string, pick: Pick, hint: string): Kpi => ({
     key, label, hint,
     value: all ? count(pick, Boolean) : count(pick, inCur),
@@ -497,12 +511,12 @@ export function buildDashboard(rows: DashboardRows, range: RangeKey, now: Date, 
   });
 
   // finish rate: of the tests started in the span, the share finished by now (bounded at 100%)
-  const tests = families.flatMap((f) => f.tests);
+  const tests = counted.flatMap((f) => f.tests);
   const rate = (inSpan: (iso: string) => boolean) => {
     const begun = tests.filter((t) => inSpan(t.startedAt));
     return begun.length === 0 ? 0 : Math.round((begun.filter((t) => t.completedAt).length / begun.length) * 100);
   };
-  const payingFamilies = families.filter((f) => f.stage === "paying");
+  const payingFamilies = counted.filter((f) => f.stage === "paying");
   const mrr = Math.round(payingFamilies.reduce((n, f) => n + (f.subscription?.monthly ?? 0), 0) * 100) / 100;
 
   const kpis: Kpi[] = [
@@ -515,7 +529,7 @@ export function buildDashboard(rows: DashboardRows, range: RangeKey, now: Date, 
     },
     kpi("saved", "Cards saved", PICK.cards, "Cards saved in Stripe, one per child. Nothing is charged."),
     kpi("subscribed", "Subscriptions started", pickSubscriptions, "Stripe subscriptions you started on a saved card"),
-    { key: "trial", label: "In free trial", hint: "Families in their free first month, before the first charge on day 30", value: families.filter((f) => f.stage === "trial").length, prev: null, spark: [] },
+    { key: "trial", label: "In free trial", hint: "Families in their free first month, before the first charge on day 30", value: counted.filter((f) => f.stage === "trial").length, prev: null, spark: [] },
     { key: "paying", label: "Paying now", hint: "Families with a Stripe subscription that is active or past due, right now (not in the free trial)", value: payingFamilies.length, prev: null, spark: [] },
     { key: "mrr", label: "Monthly revenue", format: "cad", hint: "The monthly price of every paying subscription", value: mrr, prev: null, spark: [] },
     kpi("emails", "Emails to parents", PICK.emails, "Reminder and report emails sent"),
@@ -529,29 +543,30 @@ export function buildDashboard(rows: DashboardRows, range: RangeKey, now: Date, 
   const reachedStage = (f: Family, s: FunnelStage) => !!f.reached[s] || (s === "finished" && !!f.reached.waitlist);
   const funnel = STAGES.map((stage) => ({
     stage,
-    ever: families.filter((f) => reachedStage(f, stage)).length,
-    inRange: families.filter((f) => (all || inCur(f.createdAt)) && reachedStage(f, stage)).length,
+    ever: counted.filter((f) => reachedStage(f, stage)).length,
+    inRange: counted.filter((f) => (all || inCur(f.createdAt)) && reachedStage(f, stage)).length,
   }));
-  const stageCounts = Object.fromEntries(ALL_STAGES.map((s) => [s, families.filter((f) => f.stage === s).length])) as Record<Stage, number>;
+  const stageCounts = Object.fromEntries(ALL_STAGES.map((s) => [s, counted.filter((f) => f.stage === s).length])) as Record<Stage, number>;
 
   const emailSummary = EMAIL_KINDS.map((k) => {
-    const list = emails.filter((e) => e.kind === k.kind);
+    const list = countedEmails.filter((e) => e.kind === k.kind);
     const sent = list.filter((e) => e.status === "sent");
     return { ...k, sent: sent.length, failed: list.filter(emailFailed).length, pending: list.filter((e) => e.status === "pending").length, sentInRange: sent.filter((e) => all || inCur(e.at)).length, last: sent[0]?.at ?? null, clicked: sent.filter((e) => e.clicks).length };
   });
 
   const ageDays = (iso: string) => (now.getTime() - new Date(iso).getTime()) / DAY_MS;
   const needs: Dashboard["needs"] = [
-    { title: "Payment failing", detail: "A Stripe subscription is past due: the last charge did not go through", tone: "bad" as const, families: families.filter((f) => f.subscriptions.some((s) => s.status === "past_due")) },
-    { title: "Start a subscription", detail: "Card saved, and no Stripe subscription yet", tone: "warn" as const, families: families.filter((f) => f.stage === "card_saved") },
-    { title: "Left the payment page", detail: "Opened the payment page but did not save a card", tone: "info" as const, families: families.filter((f) => f.stage === "card_started") },
-    { title: "Stuck in the test", detail: `Test started more than ${STUCK_DAYS} days ago and not finished`, tone: "info" as const, families: families.filter((f) => f.stage === "started" && ageDays(f.stageAt) > STUCK_DAYS) },
-    { title: "Email failed", detail: "An email to the parent did not send, bounced, or was marked as spam", tone: "bad" as const, families: families.filter((f) => f.emails.some((e) => emailFailed(e) && e.kind !== "alert")) },
+    { title: "Payment failing", detail: "A Stripe subscription is past due: the last charge did not go through", tone: "bad" as const, families: counted.filter((f) => f.subscriptions.some((s) => s.status === "past_due")) },
+    { title: "Start a subscription", detail: "Card saved, and no Stripe subscription yet", tone: "warn" as const, families: counted.filter((f) => f.stage === "card_saved") },
+    { title: "Left the payment page", detail: "Opened the payment page but did not save a card", tone: "info" as const, families: counted.filter((f) => f.stage === "card_started") },
+    { title: "Stuck in the test", detail: `Test started more than ${STUCK_DAYS} days ago and not finished`, tone: "info" as const, families: counted.filter((f) => f.stage === "started" && ageDays(f.stageAt) > STUCK_DAYS) },
+    { title: "Email failed", detail: "An email to the parent did not send, bounced, or was marked as spam", tone: "bad" as const, families: counted.filter((f) => f.emails.some((e) => emailFailed(e) && e.kind !== "alert")) },
   ].filter((n) => n.families.length > 0);
 
   return {
     now: now.toISOString(), range, days, families, activity: activities(families), emails, kpis, series, funnel, stageCounts, emailSummary, needs,
-    stripeNote: rows.stripeNote, stripeMode: rows.stripeMode, cardsFoundInStripe: rows.cards.filter((c) => c.saved_in_stripe_only && families.some((f) => f.id === c.parent_id)).length, tests: { count: everyone.filter((f) => f.test).length, shown: withTests },
+    real: { families: counted, activity: activities(counted), emails: countedEmails },
+    stripeNote: rows.stripeNote, stripeMode: rows.stripeMode, cardsFoundInStripe: rows.cards.filter((c) => c.saved_in_stripe_only && counted.some((f) => f.id === c.parent_id)).length, tests: { count: everyone.filter((f) => f.test).length, shown: withTests, ids: everyone.filter((f) => f.test).map((f) => f.id) },
   };
 }
 

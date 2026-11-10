@@ -163,7 +163,7 @@ Cross-area signals worth knowing (not deep-dived, other agents own them): `paren
 - Pure core already? No. Candidate: one module with `isTestFamily`, `isMarkedFamily`, `isTeam` and a single failure policy.
 - Value x risk: AX and DX value high (14 copies of the same read), UX value indirect. Risk medium (gates decide who sees unreleased features and who gets real emails: weekly Maya email and retention skip use it).
 
-### 12. Admin "Cards and waitlist" (`/admin/next-steps`): what it lists and by what state
+### 12. Admin "Plans and delivery" (`/admin/next-steps`, called "Cards and waitlist" until D-313): what it lists and by what state
 - Entity / storage: `card_setups` via RPC `admin_card_setups` (one row per child: `plan`, `price`, `stripe_customer_id` nullable, `card_saved_at` nullable, `report_id`), `waitlist_joins` via `admin_waitlist_joins` (one row per child, unique child_id), `workbook_emails`, open `plan_starts`. Page: src/app/(product)/admin/next-steps/page.tsx (17 lines), `listNextSteps` (src/lib/admin-store.ts:876-889), tables in src/components/admin-records.tsx:34-47.
 - States (as the page shows them): a card row is one of: not saved (`card_saved_at` null -> "Not saved" chip), saved with customer -> StartPlan button, saved with customer and an OPEN plan start older than `PLAN_KEY_MS` -> PlanStartStuck (admin-store.ts:468-471; the `stuck` map is built at :470 with `PLAN_KEY_MS` from card-reconcile.ts), saved without customer -> "-". Workbook emails column only when saved. Waitlist rows have no state, only a province.
 - Transitions: admin presses "Workbook delivered: start plan" -> POST /api/admin/cards/[id]/start (billing agent area); "I checked Stripe: close this start" -> POST /api/admin/cards/[id]/plan-start.

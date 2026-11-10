@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { DESK_COOKIE, deskGate } from "@/lib/desk";
+import { DESK_COOKIE, deskAccess } from "@/lib/desk";
 import { renderSlots } from "@/lib/monthly-summary";
 import { monthlySummaryResponse } from "@/lib/monthly-summary-server";
 import { summaryQuota } from "@/lib/monthly-summary-store";
@@ -24,7 +24,7 @@ export async function GET(request: Request, ctx: RouteContext<"/api/account/chil
   const session = await sessionClient();
   const parent = await parentId(session);
   const url = new URL(request.url);
-  const deskOpen = deskGate(url.pathname, (await cookies()).get(DESK_COOKIE)?.value, parent) !== "pass";
+  const deskOpen = deskAccess((await cookies()).get(DESK_COOKIE)?.value, parent).state === "open";
   return monthlySummaryResponse({
     deskOpen,
     parent,

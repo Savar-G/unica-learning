@@ -3,12 +3,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 vi.mock("next/navigation", () => ({ usePathname: () => "/account/plan", useRouter: () => ({}), redirect: vi.fn() }));
-const f = vi.hoisted(() => ({ closed: null as unknown }));
+const f = vi.hoisted(() => ({ closed: null as unknown, marked: false }));
 vi.mock("@/lib/plan-access", () => ({ familyClosedPlan: async () => f.closed }));
+vi.mock("@/lib/scan-pages-access", () => ({ markedFamily: async () => f.marked }));
+vi.mock("@/lib/supabase-auth", () => ({ adminClient: () => ({}) }));
 import { AccountBilling } from "@/components/account-billing";
 import { ParentPlanView } from "@/components/parent-plan-view";
 import type { ParentPlan } from "@/lib/parent-plan";
-import { PlanClosedNote, planClosedFamily, type ClosedPlan } from "./plan-closed-note";
+import { PlanClosedNote, closedNoteFor, planClosedFamily, type ClosedPlan } from "./plan-closed-note";
 import { noteGivesCardReason } from "./plan-closed-card";
 
 const words = (closed: ClosedPlan, on: "home" | "plan" | "account") => renderToStaticMarkup(createElement(PlanClosedNote, { closed, on }));
@@ -171,5 +173,30 @@ describe("planClosedFamily", () => {
     expect(await planClosedFamily("p1")).toEqual(leo("ended"));
     f.closed = null;
     expect(await planClosedFamily("p1")).toBeNull();
+  });
+});
+
+// #709: with PARENT_DASHBOARD_ENABLED on, a family whose plan stopped keeps the dashboard frame while Scan pages and Maya
+// close. It still reads why, in words that leave the dashboard out.
+describe("a stopped plan with the dashboard switch on (#709)", () => {
+  const open = (closed: ClosedPlan, on: "home" | "plan" | "account") => text(renderToStaticMarkup(createElement(PlanClosedNote, { closed, on, dashboardOpen: true })));
+  it("says Scan pages and Maya are closed, and never names the dashboard, on each page", () => {
+    for (const on of PAGES) {
+      expect(open(leo("payment_failed"), on)).toContain("Your last payment for Leo did not go through, so Scan pages and Maya are closed for now.");
+      for (const reason of REASONS) expect(open(leo(reason), on)).not.toMatch(/dashboard/i);
+    }
+    expect(open(leo("ended"), "plan")).toBe("Leo's plan has ended, so Scan pages and Maya are closed. To start again, use Restart plan below.");
+    expect(open(family("paused"), "home")).toBe("Your family's plan is paused, so Scan pages and Maya are closed until it resumes.");
+  });
+  it("shows the note with the switch on and with it unset, and only to a stopped family that is not marked", async () => {
+    f.closed = leo("payment_failed"); f.marked = false;
+    expect(await closedNoteFor("p", false)).toEqual({ closed: leo("payment_failed"), dashboardOpen: false });
+    expect(await closedNoteFor("p", true)).toEqual({ closed: leo("payment_failed"), dashboardOpen: true });
+    f.marked = true;
+    expect(await closedNoteFor("p", true)).toBeNull();
+    f.closed = null; f.marked = false;
+    // (An open plan or no plan: planClosedFamily answers null, so no note with the switch either way.)
+    expect(await closedNoteFor("p", true)).toBeNull();
+    expect(await closedNoteFor("p", false)).toBeNull();
   });
 });

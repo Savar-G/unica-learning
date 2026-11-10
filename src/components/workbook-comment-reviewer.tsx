@@ -146,11 +146,11 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
     page: selected, question: question.number, level: question.package.level, skills: question.package.skill.skills }) : null;
   const changed = new Set(detail.comments.filter((c) => c.page === selected && c.status === "done" && detail.edits.some(e => e.id === c.batchId && e.revision === version?.revision)).map((c) => c.question));
   const workingPages = [...new Set(detail.comments.filter((c) => c.status === "sent").map((c) => c.page))];
-  const phaseText: Record<EditProgress["phase"], string> = { waiting: "Waiting for your Mac", working: "Applying comments",
+  const phaseText: Record<EditProgress["phase"], string> = { waiting: "Waiting for the workbook computer", working: "Applying comments",
     retrying: "Retrying with saved work", stalled: "The edit stopped", saving: "Saving the new revision",
     done: "Changes saved. Loading the new revision", failed: "The edit stopped. Loading the comment results" };
   const state = active && currentProgress ? phaseText[currentProgress.phase]
-    : working ? detail.editBatch?.status === "queued" && detail.editBatch.runner === "mac" ? "Waiting for your Mac"
+    : working ? detail.editBatch?.status === "queued" && detail.editBatch.runner === "mac" ? "Waiting for the workbook computer"
       : `Applying comments to ${workingPages.length} ${workingPages.length === 1 ? "page" : "pages"}` : "Comment mode";
   return <section className="wbr" aria-label="Workbook review">
     <header className="wbr-bar"><div><strong>Review workbook</strong>

@@ -1,26 +1,26 @@
-import Link from "next/link";
-import { PLAN_REMINDER_ADMIN } from "@/lib/plan-reminder";
-import { ScanHold } from "@/components/admin-scan-progress";
 import { loadAdminScanHolds } from "@/lib/admin-scan-progress-server";
 import { LIST_MAX, listNextSteps, requireAdmin } from "@/lib/admin-store";
+import { loadTestFamilies } from "@/lib/admin-test-families-server";
 import { listOffset } from "@/lib/admin-view";
-import { AdminFrame, More } from "@/components/admin";
-import { CardsTable, WaitlistTable } from "@/components/admin-records";
+import { pageMetadata } from "@/lib/metadata";
+import { More } from "@/components/admin";
+import { AdminFrame } from "@/components/admin-frame";
+import { PlansView } from "@/components/admin-plans";
 
+export const metadata = pageMetadata({ path: "/admin/next-steps", title: "Admin: plans and delivery", description: "Admin area.", index: false });
+
+// Workbooks > Plans and delivery (D-313, D-315; it was "Cards and waitlist"): what needs the team first (free months to
+// start, plan starts to check, books on hold, workbook emails to check), the families by plan state, then every saved card
+// and the waitlist (src/components/admin-plans.tsx). Test families follow the "Show test families" switch and never count.
 export default async function NextStepsPage({ searchParams }: PageProps<"/admin/next-steps">) {
   const admin = await requireAdmin();
-  const offset = listOffset(await searchParams, LIST_MAX);
-  const [{ cards, waitlist }, holds] = await Promise.all([listNextSteps(admin, offset), loadAdminScanHolds(admin)]);
-  return <AdminFrame email={admin.email} section="next-steps" title="Cards and waitlist">
-    <p className="adm-note">For the shipping address, use &quot;Open in Stripe&quot; on the child&apos;s card setup and check Shipping details on the customer. If no shipping address is saved, ask the parent for it before mailing the workbook. A billing address is not a confirmed shipping address.</p>
-    <p className="adm-note">A saved card is not a payment. Open the child&apos;s workbook 1 and save its delivery confirmation. Then press &quot;Workbook delivered: start plan&quot;. The family&apos;s one 30-day free window begins with its first child&apos;s plan start. A sibling who starts inside it has the same trial end. A sibling who starts after it pays immediately. Adding a card, printing a workbook, and sending tracking details do not start it. Stripe charges the monthly price on day 30, then every month. {PLAN_REMINDER_ADMIN}, with a link to manage or cancel the plan. The dashboard shows who is paying.</p>
-    <h2>Books on hold</h2>
-    {holds.unavailable && <p role="status">Some scan holds are unavailable. Check again.</p>}
-    {!holds.rows.length && !holds.unavailable && <p>No books on hold.</p>}
-    {holds.rows.map(hold => <section key={hold.workbookId}><Link href={`/admin/children/${hold.childId}`}>Open child and workbook {hold.number}</Link>{hold.testFamily && " (test family)"}<ScanHold number={hold.number} /></section>)}
-    {holds.more && <p>More books may be on hold. Only the newest are shown here. Open each child to check the rest.</p>}
-    <h2>Card setups</h2><CardsTable cards={cards.rows} />
-    <h2>Waitlist</h2><WaitlistTable waitlist={waitlist.rows} />
+  const query = await searchParams;
+  const offset = listOffset(query, LIST_MAX);
+  const view = await loadTestFamilies(admin);
+  // Both reads leave the hidden test families out in the database, before their limits.
+  const [{ cards, waitlist }, holds] = await Promise.all([listNextSteps(admin, offset, view.hidden), loadAdminScanHolds(admin, view)]);
+  return <AdminFrame email={admin.email} title="Plans and delivery" lead="Start each free month after Book 1 arrives, and keep every saved card and the waitlist in view." testNote={view.show}>
+    <PlansView cards={cards.rows} waitlist={waitlist.rows} holds={holds} show={view.show} isTest={view.isTest} now={new Date()} cardsMore={cards.more} waitMore={waitlist.more} />
     <More more={cards.more || waitlist.more} max={LIST_MAX} offset={offset} action="/admin/next-steps" />
   </AdminFrame>;
 }

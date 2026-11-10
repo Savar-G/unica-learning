@@ -8,7 +8,10 @@ vi.mock("server-only", () => ({}));
 vi.mock("next/navigation", () => ({ usePathname: () => "/account/plan", useRouter: () => ({}), redirect: (path: string) => { throw new Error(`REDIRECT ${path}`); } }));
 const f = vi.hoisted(() => ({ dashboard: null as unknown, plans: [] as unknown[], pending: new Map<string, "pause" | "restart" | "cancel">(), manage: false, closed: null as null | { reason: string; child: string | null } }));
 vi.mock("@/lib/parent-dashboard-access", () => ({ planManagementAccess: async () => f.manage }));
-vi.mock("@/components/plan-closed-note", () => ({ planClosedFamily: async () => f.closed, PlanClosedNote: ({ on }: { on: string }) => `Your plan is closed, on ${on}` }));
+vi.mock("@/components/plan-closed-note", () => ({
+  closedNoteFor: async (_parent: string, dashboard: boolean) => (f.closed ? { closed: f.closed, dashboardOpen: dashboard } : null),
+  PlanClosedNote: ({ on, dashboardOpen }: { on: string; dashboardOpen?: boolean }) => `Your plan is closed, on ${on}${dashboardOpen ? ", dashboard open" : ""}`,
+}));
 vi.mock("@/lib/parent-dashboard-server", () => ({ parentDashboard: async () => f.dashboard }));
 vi.mock("@/lib/plan-controls-server", () => ({ familyPendingControls: async () => f.pending }));
 vi.mock("@/lib/parent-plan-server", () => ({ familyPlans: async () => f.plans }));
@@ -56,6 +59,11 @@ it("keeps the card's reason when the note does not give it", async () => {
   expect(await page()).toContain("Your last payment did not go through.");
   f.closed = { reason: "payment_failed", child: "Mia" };
   expect(await page()).toContain("Your last payment did not go through.");
+});
+
+it("a stopped family whose dashboard stays open (the switch on) still reads why on the plan page (#709)", async () => {
+  f.manage = true; f.dashboard = { children: [] }; f.closed = { reason: "payment_failed", child: "Leah" };
+  expect(await page()).toContain("Your plan is closed, on plan, dashboard open");
 });
 
 it("offers Restart to a closed family whose plan ended", async () => {

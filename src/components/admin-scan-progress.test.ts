@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { AdminScanProgress, ScanHold } from "@/components/admin-scan-progress";
+import { AdminScanProgress, ScanHold, scanTotals } from "@/components/admin-scan-progress";
 
 describe("admin scan display", () => {
   it("shows the delivery action even when the manifest is unavailable", () => {
@@ -29,5 +29,15 @@ describe("admin scan display", () => {
     expect(html).not.toContain("backstop");
     const none = renderToStaticMarkup(createElement(AdminScanProgress, { workbookId: "book", view: { ...view, claim: null } as never, missingDelivery: null }));
     expect(none).toContain("Day 7 snapshot: not taken yet");
+  });
+  it("counts accepted scans of the required pages for the bar, and keeps the day table in a fold", () => {
+    const days = [{ day: 1, required: [1, 2], accepted: [1], gaps: [2], pages: [] }, { day: 2, required: [3, 4], accepted: [3, 4, 9], gaps: [], pages: [] }];
+    expect(scanTotals({ days })).toEqual({ accepted: 3, required: 4, percent: 75 });
+    expect(scanTotals({ days: [] })).toEqual({ accepted: 0, required: 0, percent: 0 });
+    const view = { number: 2, delivery: "confirmed", backstop: null, claim: null, held: false, days };
+    const html = renderToStaticMarkup(createElement(AdminScanProgress, { workbookId: "book", view: view as never, missingDelivery: null }));
+    expect(html).toContain('aria-label="3 of 4 pages scanned"');
+    expect(html).toContain("<summary>Pages by day</summary>");
+    expect(html).toContain("Workbook 2 scanned pages");
   });
 });

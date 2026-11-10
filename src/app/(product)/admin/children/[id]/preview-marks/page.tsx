@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AdminFrame } from "@/components/admin";
+import { AdminFrame } from "@/components/admin-frame";
 import { getChild, requireAdmin } from "@/lib/admin-store";
 import { whenExact } from "@/lib/admin-view";
 import { localDay, PACIFIC_ZONE } from "@/lib/family-time";
@@ -45,7 +45,7 @@ export default async function PreviewMarks({ params, searchParams }: PageProps<"
     return item ? `Page ${item.question.page}, question ${item.question.question}` : "A mark outside this sample";
   };
   const stepName = (skill: string, step: number) => `${skill.replace(/^[0-9.]+-/, "").replaceAll("-", " ")}, step ${step}`;
-  return <AdminFrame email={admin.email} section="children" title={`Preview from marks for ${record.child.first_name}`}>
+  return <AdminFrame email={admin.email} title={`Preview from marks for ${record.child.first_name}`}>
     <p><Link href={`/admin/children/${id}`}>Back to the child</Link></p>
     <p>This preview uses marks from one skill. It saves the evidence and the plan. It does not start a workbook.</p>
     <h2>Make a preview</h2>

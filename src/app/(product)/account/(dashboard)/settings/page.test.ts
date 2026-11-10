@@ -6,7 +6,10 @@ vi.mock("next/navigation", () => ({ usePathname: () => "/account/settings", useR
 const f = vi.hoisted(() => ({ dashboard: null as unknown, manage: false, closed: null as null | { reason: string; child: string | null } }));
 vi.mock("@/lib/parent-dashboard-server", () => ({ parentDashboard: async () => f.dashboard }));
 vi.mock("@/lib/parent-dashboard-access", () => ({ planManagementAccess: async () => f.manage }));
-vi.mock("@/components/plan-closed-note", () => ({ planClosedFamily: async () => f.closed, PlanClosedNote: ({ on }: { on: string }) => `Your plan is closed, on ${on}` }));
+vi.mock("@/components/plan-closed-note", () => ({
+  closedNoteFor: async (_parent: string, dashboard: boolean) => (f.closed ? { closed: f.closed, dashboardOpen: dashboard } : null),
+  PlanClosedNote: ({ on, dashboardOpen }: { on: string; dashboardOpen?: boolean }) => `Your plan is closed, on ${on}${dashboardOpen ? ", dashboard open" : ""}`,
+}));
 vi.mock("@/components/account-billing-section", () => ({ BillingSection: ({ closed }: { closed?: { reason: string } | null }) => `Update card and invoices, note: ${closed?.reason ?? "none"}` }));
 vi.mock("@/components/account-child-details", () => ({ childDetails: async () => "Child details and delete" }));
 vi.mock("@/components/family-delete", () => ({ FamilyDelete: () => "Delete this family" }));
@@ -44,6 +47,11 @@ it("a dashboard family sees no closed note", async () => {
   const out = await page();
   expect(out).not.toContain("Your plan is closed");
   expect(out).toContain("Update card and invoices");
+});
+
+it("a stopped family whose dashboard stays open (the switch on) still reads why, without the dashboard named (#709)", async () => {
+  f.dashboard = { children: [] }; f.closed = { reason: "payment_failed", child: "Leah" };
+  expect(await page()).toContain("Your plan is closed, on account, dashboard open");
 });
 
 it("a paying family whose dashboard read failed gets the page with no closed note", async () => {

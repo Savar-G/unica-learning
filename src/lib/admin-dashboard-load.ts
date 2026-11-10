@@ -4,6 +4,7 @@ import { buildDashboard, pickRange, progressTestIds, type Dashboard } from "@/li
 import { demoProgress, demoRows } from "@/lib/admin-demo";
 import { progressSnapshot, type ProgressSnapshot } from "@/lib/admin-progress";
 import { PROGRESS_MAX, dashboardRows, progressRows, requireAdmin } from "@/lib/admin-store";
+import { showTestFamilies } from "@/lib/admin-test-families-server";
 
 // What the dashboard and activity pages (D-099) share: the admin gate, the rows and the query. ?demo=1 shows made-up
 // families, in local development only (`next dev`); every other build ignores it and asks for an admin.
@@ -18,13 +19,14 @@ export interface DashboardLoad {
   demo: boolean;
 }
 
-export async function loadDashboard(raw: Record<string, string | string[] | undefined>): Promise<DashboardLoad> {
+/** `withTests`: list the test families whatever the switch says; only for a detail page (one email), never a list. */
+export async function loadDashboard(raw: Record<string, string | string[] | undefined>, { withTests }: { withTests?: boolean } = {}): Promise<DashboardLoad> {
   await connection();
   const query = Object.fromEntries(Object.entries(raw).flatMap(([k, v]) => (typeof v === "string" && v ? [[k, v]] : []))) as Record<string, string>;
   const demo = query.demo === "1" && process.env.NODE_ENV === "development";
   const now = new Date();
-  // ?tests=1 counts the team and test families too
-  const options = { withTests: query.tests === "1" };
+  // "Show test families" lists the team and test families too; no number counts them
+  const options = { withTests: withTests ?? (await showTestFamilies()) };
   if (demo) {
     const rows = demoRows(now);
     return { who: "demo data", d: buildDashboard(rows, pickRange(query.range), now, options), progress: demoProgress(rows, now), query, demo };
