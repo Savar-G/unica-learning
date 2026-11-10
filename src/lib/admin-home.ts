@@ -344,7 +344,7 @@ export function productionPanel(books: readonly Book[], now: Date, o: { incomple
   const next = groupBooks(books, now).find((g) => g.key === "you")?.books[0] ?? null;
   return {
     needYou, review, none, total: real.length, line, running, otherRunning: Math.max(0, realMaking - (running && !running.test ? 1 : 0)), next,
-    offerPrepare: !o.incomplete, note: o.incomplete ? incompleteNote(books.length) : null,
+    offerPrepare: !o.incomplete, note: o.incomplete ? incompleteNote(real.length) : null,
   };
 }
 

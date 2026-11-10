@@ -291,6 +291,9 @@ describe("workbook production", () => {
     expect(productionPanel(books, NOW, { incomplete: true })).toMatchObject({ offerPrepare: false, note: incompleteNote(1) });
     expect(incompleteNote(1)).toBe("Some books could not be loaded. Showing the first 1.");
     expect(productionPanel(books, NOW)).toMatchObject({ offerPrepare: true, note: null });
+    // A test book shown with the switch on does not change the count in the note.
+    const withTest = [...books, book({ parentId: "t", childId: "9", stage: "none", test: true })];
+    expect(productionPanel(withTest, NOW, { incomplete: true }).note).toBe(incompleteNote(1));
   });
 });
 
