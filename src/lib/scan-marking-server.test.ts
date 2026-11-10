@@ -11,6 +11,7 @@ const profile = vi.hoisted(() => ({ failed: false, calls: 0 }));
 vi.mock("@/lib/child-profile", () => ({ rebuildChildProfile: async () => {
   profile.calls++;
   if (profile.failed) throw Error("synthetic profile interruption");
+  state.profilePending = false;
   return { built: false, reason: "nothing_to_build" };
 } }));
 
@@ -19,7 +20,7 @@ const otherParent = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const scopedEnv = (ids: string) => ({ SCAN_MARKING_ENABLED: "test-only", SCAN_MARKING_TEST_PARENT_IDS: ids });
 const expected = { ...expectedItems({ workbookId: "book", printedRevision: "print", pageId: "page", questions: [{ number: 1, package: null, teaching: null }] })[0], method: "parent" as const };
 const original = { ...firstObservation(expected, "expired-photo"), state: "parent-checked", method: "parent", result: "wrong", actor: "parent", resultVersion: 2 };
-const state = { test: false, admin: false, failed: false, wrongParent: false, photo: false, queries: [] as URL[], commands: [] as string[], mark: original, outbox: false };
+const state = { test: false, admin: false, failed: false, wrongParent: false, photo: false, queries: [] as URL[], commands: [] as string[], mark: original, outbox: false, profilePending: false, revisionFailed: false };
 function persisted() {
   return { id: "item-row", expected, observation: state.mark, original_event: null, event_id: null,
     evidence_at: "2026-11-01T00:00:00.000Z", model: null, prompt: null };
@@ -48,6 +49,12 @@ const db = createClient<Database>("https://marking-launch.example.test", "synthe
       expect(url.searchParams.get("parent_id")).toBe(`eq.${parent}`);
       return Response.json([{ id: "expired-photo", child_id: child, workbook_id: "book", page_id: "page", printed_revision: "print", state: "expired", expires_at: "2026-01-01T00:00:00.000Z" }]);
     }
+    if (url.pathname.endsWith("/scan_marking_revisions")) {
+      expect(url.searchParams.get("parent_id")).toBe(`eq.${parent}`);
+      expect(url.searchParams.get("child_id")).toBe(`eq.${child}`);
+      return state.revisionFailed ? Response.json({ message: "read failed" }, { status: 503 })
+        : Response.json([{ revision: state.profilePending ? 2 : 1, profile_revision: 1 }]);
+    }
     if (url.pathname.endsWith("/scan_marking_items")) {
       expect(url.searchParams.get("parent_id")).toBe(`eq.${parent}`); expect(url.searchParams.get("item_id")).toBe(`eq.${expected.identity.itemId}`);
       return Response.json([{ result_version: state.mark.resultVersion, observation: state.mark }]);
@@ -59,7 +66,7 @@ const db = createClient<Database>("https://marking-launch.example.test", "synthe
       if (body.p_action === "detail") return Response.json({ job: null });
       if (body.p_action === "effective") return Response.json(body.p_data.after ? [] : [persisted()]);
       if (body.p_action === "outbox") return Response.json(state.outbox && !body.p_data?.after ? [{ ...persisted(), original_event: outboxEvent }] : []);
-      if (body.p_action === "ack") { state.outbox = false; return Response.json(true); }
+      if (body.p_action === "ack") { state.outbox = false; state.profilePending = true; return Response.json(true); }
       if (body.p_action === "change") {
         state.mark = { ...state.mark, result: body.p_data.result, resultVersion: state.mark.resultVersion + 1 };
         return Response.json({ status: "saved", mark: persisted() });
@@ -70,7 +77,7 @@ const db = createClient<Database>("https://marking-launch.example.test", "synthe
   } },
 });
 beforeEach(() => {
-  Object.assign(state, { test: false, admin: false, failed: false, wrongParent: false, photo: false, queries: [], commands: [], mark: { ...original }, outbox: false });
+  Object.assign(state, { test: false, admin: false, failed: false, wrongParent: false, photo: false, queries: [], commands: [], mark: { ...original }, outbox: false, profilePending: false, revisionFailed: false });
   Object.assign(profile, { failed: false, calls: 0 });
   vi.stubEnv("SCAN_MARKING_ENABLED", "off");
 });
@@ -246,4 +253,33 @@ it("rebuilds the profile once when a closed-plan photo really publishes a commit
   // (The reader pages the outbox until an empty page, then the published mark is acknowledged.)
   expect(state.commands).toEqual(["outbox", "outbox", "ack"]);
   expect(profile.calls).toBe(1);
+});
+
+it("retries a failed closed-plan profile rebuild after its outbox was acknowledged", async () => {
+  state.photo = true; state.outbox = true; profile.failed = true;
+  const closed = async () => ({ open: false, reason: "ended" as const });
+  const retry = () => processScanMarking(db, parent, "33333333-3333-4333-8333-333333333333", { SCAN_MARKING_ENABLED: "families" }, closed as never);
+  await expect(retry()).rejects.toThrow("synthetic profile interruption");
+  expect(state.outbox).toBe(false);
+  profile.failed = false;
+  expect(await retry()).toBe("off");
+  expect(profile.calls).toBe(2);
+  expect(await retry()).toBe("off");
+  expect(profile.calls).toBe(2);
+});
+
+it("defers an outstanding closed-plan profile revision with an empty outbox", async () => {
+  state.photo = true; state.profilePending = true;
+  const deferRebuild = vi.fn();
+  const closed = async () => ({ open: false, reason: "ended" as const });
+  expect(await processScanMarking(db, parent, "33333333-3333-4333-8333-333333333333", { SCAN_MARKING_ENABLED: "families" }, closed as never, { deferRebuild })).toBe("off");
+  expect(deferRebuild).toHaveBeenCalledWith(child);
+  expect(profile.calls).toBe(0);
+});
+
+it("keeps an unavailable closed-plan profile revision retryable", async () => {
+  state.photo = true; state.revisionFailed = true;
+  const closed = async () => ({ open: false, reason: "ended" as const });
+  await expect(processScanMarking(db, parent, "33333333-3333-4333-8333-333333333333", { SCAN_MARKING_ENABLED: "families" }, closed as never)).rejects.toThrow("marking_profile_revision");
+  expect(profile.calls).toBe(0);
 });

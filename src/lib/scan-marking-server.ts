@@ -64,8 +64,15 @@ async function publishCommitted(db: SupabaseClient<Database>, parent: string, ph
   const row = await db.from("scan_photos").select("child_id").eq("id", photo).eq("parent_id", parent).maybeSingle();
   if (row.error || !row.data) return;
   const child = row.data.child_id;
-  // (Only when something was published: a closed-plan photo that stays saved is seen on every pass, #706.)
-  if (await scanMarkingStore(db).publish(parent, child) > 0) await rebuildOrDefer(db, child, options);
+  if (await scanMarkingStore(db).publish(parent, child) > 0) {
+    await rebuildOrDefer(db, child, options);
+    return;
+  }
+  // Publication can finish before a rebuild fails. Its durable revision stays ahead until a profile is saved.
+  const pending = await db.from("scan_marking_revisions").select("revision,profile_revision")
+    .eq("parent_id", parent).eq("child_id", child).maybeSingle();
+  if (pending.error) throw new Error("marking_profile_revision");
+  if (pending.data && pending.data.profile_revision < pending.data.revision) await rebuildOrDefer(db, child, options);
 }
 async function rebuildOrDefer(db: SupabaseClient<Database>, child: string, options: ProcessMarkingOptions) {
   if (options.deferRebuild) { options.deferRebuild(child); return; }

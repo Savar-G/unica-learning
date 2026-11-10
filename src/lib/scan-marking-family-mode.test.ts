@@ -30,6 +30,11 @@ const db = createClient<Database>("https://marking-families.example.test", "synt
     const url = new URL(String(input)); state.queries.push(url.pathname);
     if (url.pathname.endsWith("/test_accounts")) return Response.json(state.test ? [{ parent_id: parent }] : []);
     if (url.pathname.endsWith("/admin_users")) return Response.json(state.admin ? [{ user_id: parent }] : []);
+    if (url.pathname.endsWith("/scan_marking_revisions")) {
+      expect(url.searchParams.get("parent_id")).toBe(`eq.${parent}`);
+      expect([running, stopped]).toContain(url.searchParams.get("child_id")?.replace(/^eq\./, ""));
+      return Response.json([]);
+    }
     if (url.pathname.endsWith("/scan_photos")) {
       if (state.photoFails) return Response.json({ message: "read failed" }, { status: 503 });
       const id = url.searchParams.get("id")?.replace(/^eq\./, "") ?? "", owner = url.searchParams.get("parent_id")?.replace(/^eq\./, "");
