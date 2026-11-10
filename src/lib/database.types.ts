@@ -7200,6 +7200,15 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      admin_latest_draft_revisions: {
+        Args: { p_drafts: string[] }
+        Returns: {
+          counts: Json
+          draft_id: string
+          render_problems: Json
+          revision: number
+        }[]
+      }
       admin_open_plan_cancels: {
         Args: { p_parent: string }
         Returns: {
@@ -7223,6 +7232,69 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "parents"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      admin_production_books: {
+        Args: never
+        Returns: {
+          approved_at: string | null
+          child_id: string
+          created_at: string
+          id: string
+          levels: number[]
+          number: number
+          parent_id: string
+          pdf_path: string | null
+          pdf_sha256: string | null
+          print_manifest: Json | null
+          printed_at: string | null
+          printed_revision: string | null
+          profile_build: string | null
+          shipped_at: string | null
+          status: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "workbooks"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      admin_production_runs: {
+        Args: never
+        Returns: {
+          ai_off: Json
+          attempts: number
+          child_id: string
+          created_at: string
+          done_pages: number | null
+          draft_id: string | null
+          draft_key: string
+          error: string | null
+          errors: Json
+          finished_at: string | null
+          heartbeat_at: string | null
+          id: string
+          lease: string | null
+          max_attempts: number
+          number: number
+          parent_id: string
+          resumes: number
+          runner: string
+          snapshot_id: string | null
+          started_at: string | null
+          started_by: string | null
+          started_by_email: string | null
+          status: string
+          step: string | null
+          stopped_by_email: string | null
+          total_pages: number | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "workbook_runs"
           isOneToOne: false
           isSetofReturn: true
         }
@@ -7258,6 +7330,17 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      admin_run_activity: {
+        Args: { p_runs: string[] }
+        Returns: {
+          last_call_at: string
+          last_solve_at: string
+          page_times: string[]
+          plan_at: string
+          resumed_at: string
+          run_id: string
+        }[]
       }
       admin_scan_team_queue: {
         Args: { p_limit?: number }

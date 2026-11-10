@@ -5,7 +5,9 @@ import type { RunDetail } from "@/lib/admin-store";
 import type { RunSolve } from "@/lib/workbook-job";
 import { workedSteps, type QuestionPackage } from "@/lib/question-package";
 import { solveReason, toSolve } from "@/lib/workbook-solve-check";
-import { AdminWorkbookList, AdminWorkbookRun, ChildRunsTable } from "@/components/admin-workbook-runs";
+import { AdminWorkbookRun, ChildRunsTable } from "@/components/admin-workbook-runs";
+import { ProductionBoard } from "@/components/admin-production";
+import { buildBooks } from "@/lib/admin-production";
 import { buildQuestion } from "@/lib/workbook-generator-items";
 import { memoryDraftStore } from "@/lib/workbook-draft-memory";
 import { summarizeAiCalls } from "@/lib/workbook-ai";
@@ -209,12 +211,14 @@ describe("admin workbook run progress", () => {
   it.each([null, "another-run"])("makes no start-time promise with worker run %s on any page", (runId) => {
     const run = running({ status: "queued", step: null, donePages: null, totalPages: null, heartbeatAt: null });
     const worker = { id: "w", seenAt: ago(5), startedAt: ago(100), build: null, runId, primaryAi: "subscription" as const, online: true };
-    const list = visible(renderToStaticMarkup(createElement(AdminWorkbookList, { email: "admin@example.com", runs: [{ run, counts: null, notRendered: null, oldFormat: false }], now, worker, more: false, workbooks: [], childNames: new Map(), filter: "all" })));
-    for (const text of [onRunPage(run, worker), onChildPage(run, worker), list]) {
+    const books = buildBooks({ runs: [{ run }], workbooks: [], deliveries: [], cards: [], plans: [], tests: { show: false, isTest: () => false } }, now);
+    const board = visible(renderToStaticMarkup(createElement(ProductionBoard, { books, now, worker, runner: "mac" })));
+    for (const text of [onRunPage(run, worker), onChildPage(run, worker), board]) {
       expect(text).not.toMatch(/starts in a few seconds|starts this run in a few seconds/);
       expect(text).toContain(runId ? "It is making another workbook" : "workbook computer. It is online");
-      expect(text).toContain("Stop this run");
     }
+    // The Production card has one action (open the run); Stop stays on the run and child pages.
+    for (const text of [onRunPage(run, worker), onChildPage(run, worker)]) expect(text).toContain("Stop this run");
   });
 
   it("shows the Stop button only while the run can be stopped, also when it has gone quiet", () => {

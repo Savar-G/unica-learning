@@ -1,15 +1,15 @@
-// The admin Workbooks area (#312): the list of workbooks by child and status with their check results, and one run's
-// page: its progress or its error, then its draft for review, page by page, the page image beside each question's
-// data. Failed questions, pages that failed the fit check, pages that did not render and questions code could not
-// check are marked on the page and listed at the top, with the solve check's results (#380 round 7: the questions a
-// separate reader answered otherwise than the key, with both answers, and who wrote each printed text). Server components; the refresh while a run works and the
-// "Prepare next workbook" button are the only client parts.
+// The admin Workbooks area (#312): the child page's list of runs with their check results, and one run's page: its
+// progress or its error, then its draft for review, page by page, the page image beside each question's data. Failed
+// questions, pages that failed the fit check, pages that did not render and questions code could not check are marked
+// on the page and listed at the top, with the solve check's results (#380 round 7: the questions a separate reader
+// answered otherwise than the key, with both answers, and who wrote each printed text). Server components; the refresh
+// while a run works and the "Prepare next workbook" button are the only client parts. The Production list is
+// admin-production.tsx.
 import Link from "next/link";
 import { WorkbookCommentReviewer } from "@/components/workbook-comment-reviewer";
 import type { ReactNode } from "react";
-import type { ChildRow, DraftCounts, RunDetail, RunListRow, WorkerStatus } from "@/lib/admin-store";
-import { ADMIN_WORKBOOKS_PATH, adminWorkbookPath, adminWorkbookRunPath, draftPdfPath, when } from "@/lib/admin-view";
-import type { WorkbookStatus, WorkbookSummary } from "@/lib/workbook-content";
+import type { DraftCounts, RunDetail, RunListRow, WorkerStatus } from "@/lib/admin-store";
+import { adminWorkbookPath, adminWorkbookRunPath, draftPdfPath, when } from "@/lib/admin-view";
 import type { GeneratedPage, GeneratedQuestion } from "@/lib/workbook-generator";
 import { isCodeWorded } from "@/lib/workbook-generator-items";
 import { runState, STALE_SECONDS, type DraftRendering, type RunSolve, type RunState, type WorkbookRun } from "@/lib/workbook-job";
@@ -18,7 +18,7 @@ import type { RenderProblem } from "@/lib/workbook-render";
 import { plainProblem, plainReason } from "@/lib/workbook-reason";
 import { toSolve } from "@/lib/workbook-solve-check";
 import { failedBySolve, plainModel, QUESTION_SOLVE_TEXT, questionSolveState, solveCostLine, solveSummary, solveTableText, type SolveState, type SolveSummary } from "@/lib/workbook-solve-summary";
-import { Chip, Table, TestTag, type Tone } from "@/components/admin";
+import { Chip, Table, type Tone } from "@/components/admin";
 import { AdminFrame } from "@/components/admin-frame";
 import { RecordFacts, childPath } from "@/components/admin-records";
 import { PackageCells, WorkbookStatusChip } from "@/components/admin-workbook";
@@ -47,7 +47,7 @@ const activeRun = (run: WorkbookRun) => run.status === "queued" || run.status ==
 const levelsText = (levels: number[]) => levels.map((l) => `U${l}`).join(", ");
 
 /** The line for a run no one has taken yet. `worker`: undefined when this page does not know the workbook computer's state. */
-function waitingLine(run: WorkbookRun, worker: WorkerStatus | null | undefined) {
+export function waitingLine(run: WorkbookRun, worker: WorkerStatus | null | undefined) {
   if (run.runner !== "mac") return "Starting on the server.";
   if (worker === undefined) return "Waiting for the workbook computer.";
   if (!worker) return "Waiting for the workbook computer. It has never run.";
@@ -96,8 +96,6 @@ export function ChecksCell({ counts, notRendered, oldFormat = false }: { counts:
 /** Why a run with no error stopped: the rule in runState. */
 const STOPPED_TEXT = `It stopped without finishing: no signal from the job for ${STALE_SECONDS / 60} minutes.`;
 
-const childName = (children: Map<string, ChildRow>, id: string) => children.get(id)?.first_name ?? "Unknown child";
-
 /** The run's state cell: the chip, and the progress or the error. */
 function StateCell({ row, now, worker }: { row: RunListRow; now: Date; worker?: WorkerStatus | null }) {
   const { run, activity } = row;
@@ -110,83 +108,6 @@ function StateCell({ row, now, worker }: { row: RunListRow; now: Date; worker?: 
       : (state === "failed" || (state === "stopped" && !activeRun(run))) && <span className="adm-sub">{run.error ? plainRunError(run.error) : STOPPED_TEXT}</span>}
     <StopButton run={run} />
   </>;
-}
-
-export const LIST_FILTERS = ["all", "preparing", "attention", "ready", "failed", "approved", "printed", "shipped"] as const;
-export type ListFilter = (typeof LIST_FILTERS)[number];
-const FILTER_TEXT: Record<ListFilter, string> = {
-  all: "All", preparing: "Preparing", attention: "Draft needs attention", ready: "Draft with no failures", failed: "Failed or stopped",
-  approved: "Approved", printed: "Printed", shipped: "Shipped",
-};
-
-type Row =
-  | { kind: "run"; childId: string; at: string; row: RunListRow; state: RunState }
-  | { kind: "workbook"; childId: string; at: string; workbook: WorkbookSummary };
-
-const needsAttention = (r: RunListRow) => !!r.counts && (r.counts.failed > 0 || r.counts.failedPages > 0 || r.counts.notChecked > 0 || (r.notRendered ?? 0) > 0);
-
-function keep(row: Row, filter: ListFilter): boolean {
-  if (filter === "all") return true;
-  if (row.kind === "workbook") return row.workbook.status === filter;
-  if (filter === "preparing") return activeRun(row.row.run);
-  if (filter === "failed") return row.state === "failed" || (row.state === "stopped" && !activeRun(row.row.run));
-  if (filter === "attention") return row.state === "done" && needsAttention(row.row);
-  if (filter === "ready") return row.state === "done" && !needsAttention(row.row);
-  return false;
-}
-
-/**
- * The Production list: every run's draft and every stored workbook, by child, newest first in each child. `tests`: the
- * "Show test families" switch is on, and which parents are test families (their rows are tagged).
- */
-export function AdminWorkbookList({ email, runs, more, workbooks, childNames: children, filter, now, deliveredIds = [], worker, tests }: {
-  email: string; runs: RunListRow[]; more: boolean; workbooks: WorkbookSummary[]; childNames: Map<string, ChildRow>; filter: ListFilter; now: Date; deliveredIds?: string[]; worker?: WorkerStatus | null;
-  tests?: { show: boolean; isTest: (parentId: string) => boolean };
-}) {
-  const rows: Row[] = [
-    ...runs.map((row): Row => ({ kind: "run", childId: row.run.childId, at: row.run.createdAt, row, state: runState(row.run, now) })),
-    ...workbooks.map((workbook): Row => ({ kind: "workbook", childId: workbook.childId, at: workbook.createdAt, workbook })),
-  ].filter((r) => keep(r, filter));
-  rows.sort((a, b) => childName(children, a.childId).localeCompare(childName(children, b.childId)) || a.childId.localeCompare(b.childId) || b.at.localeCompare(a.at));
-  const preparing = runs.some((r) => activeRun(r.run));
-  return (
-    <AdminFrame email={email} title="Production" lead="Every workbook from draft to delivery. Open a draft to review its pages." testNote={tests?.show}>
-      <p className="adm-lead">Drafts made with &ldquo;Prepare next workbook&rdquo; on a child&apos;s page, and the workbooks stored for print.</p>
-      <form className="adm-filters" action={ADMIN_WORKBOOKS_PATH} method="get" aria-label="Filters">
-        <label>Status
-          <select name="status" defaultValue={filter}>
-            {LIST_FILTERS.map((f) => <option key={f} value={f}>{FILTER_TEXT[f]}</option>)}
-          </select>
-        </label>
-        <button type="submit" className="btn adm-btn">Show</button>
-      </form>
-      {preparing && <RunRefresh />}
-      <Table label="Workbooks" head={["Child", "Workbook", "Status", "Checks", "Started (Pacific)", "By"]} empty={filter === "all" ? "No workbooks yet. Open a child and press Prepare next workbook." : "No workbooks with this status."}>
-        {rows.map((r) => r.kind === "run" ? (
-          <tr key={r.row.run.id}>
-            <td><Link href={childPath(r.childId)}>{childName(children, r.childId)}</Link><TestTag test={tests?.show && tests.isTest(r.row.run.parentId)} /></td>
-            <td className="adm-nowrap"><Link href={adminWorkbookRunPath(r.row.run.id)}>Draft of workbook {r.row.run.number}</Link></td>
-            <td><StateCell row={r.row} now={now} worker={worker} /></td>
-            <td><ChecksCell counts={r.row.counts} notRendered={r.row.notRendered} oldFormat={r.row.oldFormat} /></td>
-            <td className="adm-nowrap">{when(r.row.run.createdAt)}</td>
-            <td className="adm-sub">{r.row.run.startedBy.email ?? "Unknown"}</td>
-          </tr>
-        ) : (
-          <tr key={r.workbook.id}>
-            <td><Link href={childPath(r.childId)}>{childName(children, r.childId)}</Link><TestTag test={tests?.show && tests.isTest(r.workbook.parentId)} /></td>
-            <td className="adm-nowrap"><Link href={adminWorkbookPath(r.workbook.id)}>Workbook {r.workbook.number}</Link><span className="adm-sub">{levelsText(r.workbook.levels)}</span></td>
-            <td><WorkbookStatusChip status={r.workbook.status as WorkbookStatus} />
-              {r.workbook.status === "shipped" && <span className="adm-sub">{deliveredIds.includes(r.workbook.id) ? "Delivery confirmed" : <Link href={adminWorkbookPath(r.workbook.id)}>Confirm workbook delivered</Link>}</span>}
-            </td>
-            <td><span className="adm-sub">Stored for print</span></td>
-            <td className="adm-nowrap">{when(r.workbook.createdAt)}</td>
-            <td className="adm-sub">-</td>
-          </tr>
-        ))}
-      </Table>
-      {more && <p className="adm-note">Showing the newest 500 runs and workbooks.</p>}
-    </AdminFrame>
-  );
 }
 
 /** The child page's list of runs. */

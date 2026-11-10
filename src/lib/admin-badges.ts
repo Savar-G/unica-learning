@@ -1,6 +1,7 @@
 import "server-only";
 import type { AdminBadges } from "@/lib/admin-nav";
-import { renderAdmin } from "@/lib/admin-store";
+import { buildBooks, needsYouCount } from "@/lib/admin-production";
+import { readProductionBase, renderAdmin } from "@/lib/admin-store";
 import { notIn } from "@/lib/admin-test-families";
 import { testIdsFor } from "@/lib/admin-test-families-server";
 import { readScanTeamQueue } from "@/lib/scan-team-marks";
@@ -11,8 +12,10 @@ import { readScanTeamQueue } from "@/lib/scan-team-marks";
 // both reads leave them out in the database, before any limit.
 //
 // Families: families whose card was saved in the last 7 days (the site's own record of the save). Marking: answers
-// waiting for the team to mark. Production and Plans and delivery have no badge yet: no existing reader defines
-// "ready to review" or "plan start waiting" cheaply (see the Production redesign).
+// waiting for the team to mark. Production: the books that need the team (no workbook yet, or a draft ready to
+// review), by the Production page's own stage rules (admin-production.ts) on the same light reads the page starts
+// from (readProductionBase: complete per child, no run details), with test families left out. Plans and delivery has
+// no badge yet: no existing reader defines "plan start waiting" cheaply.
 
 const DAY_MS = 86_400_000;
 const NEW_DAYS = 7;
@@ -23,13 +26,17 @@ export async function loadAdminBadges(now = Date.now()): Promise<AdminBadges> {
     if (!admin) return {};
     const since = new Date(now - NEW_DAYS * DAY_MS).toISOString();
     // Without the test family ids no count can leave them out, so no badge shows (the catch below).
-    const hidden = notIn(await testIdsFor(admin));
+    const testIds = await testIdsFor(admin);
+    const test = new Set(testIds);
+    const hidden = notIn(testIds);
     let cardRead = admin.db.rpc("admin_card_setups").select("parent_id").gte("card_saved_at", since);
     if (hidden) cardRead = cardRead.not("parent_id", "in", hidden);
-    const [cards, queue] = await Promise.allSettled([
+    const [cards, queue, production] = await Promise.allSettled([
       cardRead.limit(1000),
       // The switch off: the database leaves test and team families out before its limit, and counts the rest.
       readScanTeamQueue(admin.db, 1, { withTests: false }),
+      // The real families only: the same read as the page's real families, without the page's run details.
+      readProductionBase(admin, testIds),
     ]);
     const out: AdminBadges = {};
     if (cards.status === "fulfilled" && !cards.value.error) {
@@ -39,6 +46,14 @@ export async function loadAdminBadges(now = Date.now()): Promise<AdminBadges> {
     if (queue.status === "fulfilled") {
       const real = queue.value.realTotal;
       if (real > 0) out.marking = { text: `${real}`, label: `${real} ${real === 1 ? "answer waits" : "answers wait"} for the team`, hot: true };
+    }
+    if (production.status === "fulfilled") {
+      const base = production.value;
+      // Exact: "Needs you" (no workbook yet, or a draft to review) needs no delivery time and no run details.
+      const waiting = needsYouCount(buildBooks({ ...base, runs: base.runs.map((run) => ({ run })), deliveries: [], tests: { show: false, isTest: (p) => test.has(p) } }, new Date(now)));
+      // A cut read (far more rows than today) counts only the children it read whole: "at least".
+      const more = base.incomplete ? "+" : "";
+      if (waiting > 0) out.production = { text: `${waiting}${more} to do`, label: `${more ? "At least " : ""}${waiting} ${waiting === 1 ? "workbook needs" : "workbooks need"} the team`, hot: true };
     }
     return out;
   } catch (e) {

@@ -230,8 +230,11 @@ export interface Family {
   expired: boolean;
   /** The newest card setup, for display. */
   card: { plan: string; price: number; savedAt: string | null; updatedAt: string; customerId: string | null } | null;
-  /** Every card setup (one per child), oldest first. */
-  cards: { childId: string; savedAt: string | null; createdAt: string; customerId: string | null }[];
+  /**
+   * Every card setup (one per child), oldest first. `foundInStripe`: the save is Stripe's alone (the site did not record
+   * it; see confirmCardsInStripe in admin-store).
+   */
+  cards: { childId: string; savedAt: string | null; createdAt: string; customerId: string | null; foundInStripe: boolean }[];
   /** The paying subscription, else the newest ended one; null when the family never subscribed. */
   subscription: { status: string; since: string; endedAt: string | null; monthly: number } | null;
   /** Every subscription that started, on any of the family's customers, oldest first. */
@@ -357,7 +360,7 @@ export function buildFamilies(rows: DashboardRows, now = new Date()): Family[] {
       tests: tests.map((t) => ({ id: t.id, childId: t.child_id, childName: childName.get(t.child_id) ?? "Child", status: t.status, startedAt: t.started_at, completedAt: t.completed_at, lastAnswerAt: t.last_answer_at, answered: t.answered, reportId: reportByTest.get(t.id) ?? null })),
       expired: tests.length > 0 && tests.every((t) => t.status === "expired"),
       card: card ? { plan: card.plan === "one" ? "Math" : "Math and reading", price: card.price, savedAt: card.card_saved_at, updatedAt: card.updated_at, customerId: card.stripe_customer_id } : null,
-      cards: [...cards].reverse().map((c) => ({ childId: c.child_id, savedAt: c.card_saved_at, createdAt: c.created_at, customerId: c.stripe_customer_id })),
+      cards: [...cards].reverse().map((c) => ({ childId: c.child_id, savedAt: c.card_saved_at, createdAt: c.created_at, customerId: c.stripe_customer_id, foundInStripe: !!c.saved_in_stripe_only })),
       subscription: shown ? { status: shown.status, since: shown.created, endedAt: shown.endedAt, monthly: (paying.length > 0 ? paying : trialing).reduce((n, s) => n + monthlyAmount(s), 0) } : null,
       subscriptions: subs,
       emails,
