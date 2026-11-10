@@ -1580,7 +1580,7 @@ function coverPage(page: DraftPage, parts: PageParts, c: Extract<PageContent, { 
   const label = c.madeFrom === "assessment" ? `Made from ${name}'s assessment` : `Made from ${name}'s last workbook`;
   const plan = book.pages.find(p => p.content?.kind === "how-plan")?.content;
   const topics = plan?.kind === "how-plan" ? [...new Set(plan.rows.map(row => row.topic))].slice(0, 3) : [];
-  const path = topics.length ? `<section class="card cover-plan"><span class="lab" ${mark.slot("cover-plan-label")}>From ${escape(name)}'s plan</span><ul>${topics.map((topic, i) => `<li ${mark.slot(`cover-topic-${i}`)}><i></i><span>${escape(topic)}</span></li>`).join("")}</ul></section>` : "";
+  const path = topics.length ? `<section class="card cover-plan" ${mark.slot("cover-plan")}><span class="lab" ${mark.slot("cover-plan-label")}>From ${escape(name)}'s plan</span><ul>${topics.map((topic, i) => `<li ${mark.slot(`cover-topic-${i}`)}><i></i><span>${escape(topic)}</span></li>`).join("")}</ul></section>` : "";
   return `<div class="pg mid">${scanMarks}<div class="cv" ${mark.slot("page")}><div class="top">${wordmark}<span class="wn">Workbook ${c.workbook} · 10 days</span></div>${UNICA_MARK}`
     + `<div class="for" ${mark.slot("made-for")}>${escape(coverForLine(name, c.level))}</div>`
     + `<h1 ${mark.slot("cover-title")}>${escape(c.title[0])}<br><span class="hl">${escape(c.title[1])}</span></h1>`
