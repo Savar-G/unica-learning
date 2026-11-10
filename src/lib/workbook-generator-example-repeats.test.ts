@@ -15,16 +15,17 @@ const PANELS = new Set(["worked-example", "watch-one", "reminder"]);
 /** A question's words, for comparing two wordings of one question: no "to", brackets, case or spaces. */
 const asked = (line: string) => line.toLowerCase().replace(/[[\]]/g, "").replace(/\bto\b/g, "").replace(/[^a-z0-9?]+/g, "");
 
-/** The fake writer, but every worked example it builds itself is the same sum (Kai's book: page 77's repeated page 64's). */
-const sameExample = (r: Parameters<typeof fakeWorkbookItems>[0]) => {
-  const out = fakeWorkbookItems(r) as { items: Record<string, unknown>[] };
-  const asked = JSON.parse((r.content[0] as { text: string }).text) as { examples?: { slot: string; contract?: unknown }[] };
-  const own = new Set((asked.examples ?? []).filter((e) => !e.contract).map((e) => e.slot));
-  const first = out.items.find((i) => own.has(String(i.slot)));
-  if (first && !repeated) repeated = first;
-  return { ...out, items: out.items.map((i) => (own.has(String(i.slot)) && repeated ? { ...repeated, slot: i.slot } : i)) };
-};
-let repeated: Record<string, unknown> | null = null;
+/** The fake writer, but every worked example it builds itself is the first one it built (Kai's book: page 77's repeated page 64's). */
+function sameExample() {
+  let repeated: Record<string, unknown> | null = null;
+  return (r: Parameters<typeof fakeWorkbookItems>[0]) => {
+    const out = fakeWorkbookItems(r) as { items: Record<string, unknown>[] };
+    const request = JSON.parse((r.content[0] as { text: string }).text) as { examples?: { slot: string; contract?: unknown }[] };
+    const own = new Set((request.examples ?? []).filter((e) => !e.contract).map((e) => e.slot));
+    repeated ??= out.items.find((i) => own.has(String(i.slot))) ?? null;
+    return { ...out, items: out.items.map((i) => (own.has(String(i.slot)) && repeated ? { ...repeated, slot: i.slot } : i)) };
+  };
+}
 
 async function book(number: number, answer: (r: Parameters<typeof fakeWorkbookItems>[0]) => unknown = fakeWorkbookItems) {
   const curriculum = curriculumFor("bc")!;
@@ -55,8 +56,7 @@ describe.each([2, 3])("U10 book %i (#811)", (number) => {
   }, 120_000);
 
   it("chooses another worked example instead of repeating one from an earlier page", async () => {
-    repeated = null;
-    const draft = await book(number, sameExample);
+    const draft = await book(number, sameExample());
     expect((draft.quality?.issues ?? []).filter((i) => /worked example repeats/.test(i.reason))).toEqual([]);
   }, 120_000);
 });
