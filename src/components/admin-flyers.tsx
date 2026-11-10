@@ -28,8 +28,7 @@ export function FlyersView({ d }: { d: FlyerPage }) {
 
       {!d.ready && (
         <p className="adm-note" role="alert">
-          The flyer tables are not set up in the database yet, so scans are not being counted and the numbers below are zero. Apply
-          <code> supabase/migrations/20261016_add_flyer_tracking.sql</code>, then reload. Signups are still tagged by the QR address, so they appear here once the tables exist.
+          Flyer tracking is not set up. Scans are not counted yet, so the numbers below are zero. Signups are still tagged by the QR address, so they appear here once it is set up.
         </p>
       )}
 
@@ -77,10 +76,7 @@ export function FlyersView({ d }: { d: FlyerPage }) {
         <li>Hand out about the same number of each, and type the counts in above. Everything is shown per 100 flyers, so a few more of one is fine.</li>
         <li>Do not change a flyer, the price or the offer during the test. Start a new test if you do.</li>
         <li>Judge by signups per 100 flyers, not scans: scans include people who looked and left, and repeat scans. The page says nothing under {MIN_SIGNUPS} signups in total, and only calls a winner at {TARGET_SIGNUPS}. Decide the target before you start, and do not stop early because one flyer looks ahead.</li>
-        <li>
-          {d.withTests ? "Team and test families are counted." : "Team and test families are left out."}{" "}
-          <a href={d.withTests ? "?" : "?tests=1"}>{d.withTests ? "Leave them out" : "Count them too"}</a>
-        </li>
+        <li>{d.withTests ? "Test families are counted, because Show test families is on." : "Test families are left out. Show test families, at the bottom of the menu, counts them too."}</li>
       </ul>
     </>
   );

@@ -5,6 +5,8 @@ import { WORKBOOK_LEARNER_DERIVED_VERSION } from "@/lib/workbook-profile-freshne
 import { createSession, storedTest } from "@/lib/assessment";
 import { allRight, takeTest } from "@/lib/assessment/scripted-child";
 vi.mock("server-only", () => ({}));
+// The frame reads the request (the test families switch, the sidebar counts); this test checks the page inside it.
+vi.mock("@/components/admin-frame", () => ({ AdminFrame: ({ children }: { children: unknown }) => children }));
 const f = vi.hoisted(() => ({ child: vi.fn(), books: vi.fn(), events: vi.fn(), requireAdmin: vi.fn(), inputs: vi.fn() }));
 vi.mock("@/lib/admin-store", () => ({ getChild: f.child, getChildWorkbooks: f.books, requireAdmin: f.requireAdmin }));
 vi.mock("@/lib/learning-events-store", () => ({ learningEventStore: () => ({ range: f.events }) }));

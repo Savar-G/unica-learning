@@ -4,7 +4,7 @@ import { AppRouterContext, type AppRouterInstance } from "next/dist/shared/lib/a
 import { PathnameContext, SearchParamsContext } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
 import { renderToStaticMarkup } from "react-dom/server.browser";
 import { FeedbackFormView } from "@/components/feedback-form";
-import { AdminFrame } from "@/components/admin";
+import { AdminPage } from "@/components/admin";
 import { AdminFeedbackList } from "@/components/admin-feedback";
 import { FEEDBACK_MESSAGES, type FeedbackError } from "@/lib/feedback";
 import { ParentShell } from "@/components/parent-shell";
@@ -165,10 +165,10 @@ function previewContent(selection: PreviewSelection, child: ChildView | undefine
   if (!child && selection.view === "plan") return <ParentPlanView plans={[]} zone={zone} controls />;
   if (!child && selection.view === "scan") return <SupportPage label="Your account" title="Scan pages"><ScanPages childrenList={[]} parent="sample-parent" noticeAcknowledged initial={{ listing: scanListing("empty") }} /></SupportPage>;
   if (selection.view === "feedback") {
-    if (state === "admin_rows") return <AdminFrame email="admin@example.invalid" section="feedback" title="Feedback"><AdminFeedbackList product={null} rows={[
+    if (state === "admin_rows") return <div className="look-root adm-root" data-look="warm"><AdminPage title="Feedback"><AdminFeedbackList product={null} rows={[
       { id: "sample-1", parent_id: "sample-parent-1", child_id: null, product: "workbook", text: "The space for the written answer was helpful.\nCould you add more room for working?", source: "/account/workbooks", created_at: "2026-11-05T19:00:00Z", status: "new" },
       { id: "sample-2", parent_id: "sample-parent-2", child_id: null, product: "parent_dashboard", text: "I found the report quickly on my phone.", source: "/account", created_at: "2026-11-05T18:00:00Z", status: "read" },
-    ]} /></AdminFrame>;
+    ]} /></AdminPage></div>;
     const error = Object.hasOwn(FEEDBACK_MESSAGES, state) ? state as FeedbackError : null;
     return <SupportPage label="Your account" title="Feedback"><p className="lead">Tell us what worked well or what we can improve.</p>
       <FeedbackFormView product={state === "form" || state === "no_product" || state.startsWith("stage_") ? "" : "workbook"} text={state === "too_long" ? "Thank you for the workbook. ".repeat(193) : state === "unavailable" || state === "no_product" ? "Could you add more room for working?" : ""}

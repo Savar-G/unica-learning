@@ -7,7 +7,7 @@ import { deskGate } from "@/lib/desk";
 
 const auth = vi.hoisted(() => ({ requireAdmin: vi.fn() }));
 vi.mock("@/lib/admin-store", () => ({ requireAdmin: auth.requireAdmin }));
-vi.mock("@/components/admin", () => ({ AdminFrame: ({ children }: { children: ReactNode }) => createElement("main", null, children) }));
+vi.mock("@/components/admin-frame", () => ({ AdminFrame: ({ children }: { children: ReactNode }) => createElement("main", null, children) }));
 vi.mock("@/components/admin-parent-dashboard", () => ({ AdminParentDashboard: ({ selection }: { selection: { view: string } }) => createElement("div", null, `Synthetic ${selection.view}`) }));
 afterEach(() => { vi.resetAllMocks(); vi.unstubAllEnvs(); });
 

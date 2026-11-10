@@ -8,7 +8,8 @@ import { ADMIN_PATH, adminWorkbookRunPath, when, workbookPdfPath } from "@/lib/a
 import { checkQuestionPackage, hasOperation, packageItem, stepText, valueText, type AnswerRegion, type QuestionPackage } from "@/lib/question-package";
 import type { WorkbookPage, WorkbookQuestion, WorkbookStatus } from "@/lib/workbook-content";
 import { curriculumFor } from "@/lib/workbook-curriculum";
-import { AdminFrame, Chip, Table, type Tone } from "@/components/admin";
+import { Chip, Table, type Tone } from "@/components/admin";
+import { AdminFrame } from "@/components/admin-frame";
 import { RecordFacts, childPath } from "@/components/admin-records";
 import { AuditLog } from "@/components/admin-workbook-audit";
 import { MarkWorkbook } from "@/components/workbook-ship-actions";
@@ -155,7 +156,7 @@ export function AdminWorkbook({ email, detail, why, emails }: { email: string; d
   const { workbook: w, child, images, audit } = detail;
   const questions = w.pages.flatMap((p) => p.questions);
   return (
-    <AdminFrame email={email} section="workbooks" title={`${child?.first_name ?? "Child"}: workbook ${w.number}`}>
+    <AdminFrame email={email} title={`${child?.first_name ?? "Child"}: workbook ${w.number}`}>
       <RecordFacts facts={[
         ["Child", <Link key="child" href={childPath(w.childId)}>{child?.first_name ?? w.childId}</Link>],
         ["Status", <WorkbookStatusChip key="status" status={w.status} />],
@@ -167,8 +168,6 @@ export function AdminWorkbook({ email, detail, why, emails }: { email: string; d
         ["Made (Pacific)", when(w.createdAt)],
         ["PDF", w.pdfPath ? <a key="pdf" href={workbookPdfPath(w.id)} target="_blank" rel="noopener">Open workbook PDF</a> : "No PDF yet"],
         ...(detail.runId ? [["Draft review", <Link key="run" href={adminWorkbookRunPath(detail.runId)}>Open the draft&apos;s checks</Link>] as [string, ReactNode]] : []),
-        ["Profile build", w.profileBuild ?? "None"],
-        ["Workbook id", <span key="id" className="adm-mono">{w.id}</span>],
       ]} />
       <PrintAndShip detail={detail} />
       {emails}
@@ -179,7 +178,7 @@ export function AdminWorkbook({ email, detail, why, emails }: { email: string; d
       {w.pages.map((p) => (
         <section key={p.number} className="adm-wb-section" aria-labelledby={`page-${p.number}`}>
           <h2 id={`page-${p.number}`}>{pageTitle(p)}</h2>
-          <p className="adm-note adm-mono">QR token {p.qrToken}{p.image && ` · ${p.image.width} × ${p.image.height} px · ${p.image.path}`}</p>
+          <p className="adm-note adm-mono" title={p.image?.path}>QR token {p.qrToken}{p.image && ` · ${p.image.width} × ${p.image.height} px`}</p>
           <div className="adm-wb-grid">
             <PageImage page={p} url={p.image ? images[p.image.path] : undefined} workbookId={w.id} printed={w.status === "printed" || w.status === "shipped"} />
             <Table label={`Questions on page ${p.number}`} empty="No questions on this page."
@@ -191,6 +190,10 @@ export function AdminWorkbook({ email, detail, why, emails }: { email: string; d
       ))}
       <h2>Audit log</h2>
       <AuditLog entries={audit} />
+      <details className="adm-tech">
+        <summary>Technical details</summary>
+        <RecordFacts facts={[["Workbook id", <span key="id" className="adm-mono">{w.id}</span>], ["Profile build", <span key="build" className="adm-mono">{w.profileBuild ?? "None"}</span>]]} />
+      </details>
     </AdminFrame>
   );
 }

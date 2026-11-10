@@ -11,8 +11,19 @@ import type { ProgressSnapshot } from "@/lib/admin-progress";
 
 export function FamilyDrawer({ ctx, d, id, progress }: { ctx: Ctx; d: Dashboard; id: string; progress: ProgressSnapshot }) {
   const f = d.families.find((x) => x.id === id);
-  if (!f) return null;
   const close = href(ctx, { family: null });
+  // A test family opened here (from its own page) while "Show test families" is off: say why it is not shown.
+  if (!f) return d.tests.ids.includes(id) ? (
+    <>
+      <Link href={close} className="dash-scrim" aria-label="Close family" />
+      <aside className="dash-drawer" aria-label="Test family">
+        <header>
+          <div><p className="dash-kicker">Family</p><p role="status">This is a test family. Turn on Show test families to see it.</p></div>
+          <Link href={close} className="dash-x" aria-label="Close">×</Link>
+        </header>
+      </aside>
+    </>
+  ) : null;
   const full = ctx.demo ? null : adminParentPath(f.id);
   const path: Stage[] = f.reached.waitlist && !f.reached.card_started ? ["account", "started", "finished", "waitlist"] : [...STAGES, ...(f.reached.cancelled ? ["cancelled" as const] : [])];
   return (

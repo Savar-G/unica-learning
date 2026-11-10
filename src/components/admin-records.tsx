@@ -6,7 +6,7 @@ import { DELIVERY_WORDS, logDeliveryState } from "@/lib/delivery-state";
 import { stripeCustomerUrl } from "@/lib/stripe";
 import { adminParentPath, adminReportPath, adminTestPath, adminWorkbookPath, when, type AnswerLine } from "@/lib/admin-view";
 import { DELIVERY_RECEIPT_TEXT } from "@/lib/plan-start-errors";
-import { Chip, Table, TestsTable, gradeAndPlace } from "@/components/admin";
+import { Chip, Table, TestTag, TestsTable, gradeAndPlace } from "@/components/admin";
 import { PlanStartStuck } from "@/components/plan-start-stuck";
 import { StartPlan } from "@/components/start-plan";
 import { WorkbookEmails } from "@/components/workbook-emails";
@@ -31,11 +31,12 @@ export function EmailTable({ emails }: { emails: EmailRow[] }) {
 
 type People = { parent?: ParentRow | null; child?: ChildRow | null };
 
-export function CardsTable({ cards }: { cards: (CardSetupRow & People)[] }) {
+/** `isTest`: tag a test family's row (only while "Show test families" is on). */
+export function CardsTable({ cards, isTest }: { cards: (CardSetupRow & People)[]; isTest?: (parentId: string) => boolean }) {
   return <Table label="Cards" head={["Updated (Pacific)", "Family", "Child", "Plan", "Monthly price", "Card saved (Pacific)", "Stripe", "Report", "Plan start", "Workbook emails"]} empty="No card setups.">
     {cards.map((c) => {
       const stripe = c.stripe_customer_id ? stripeCustomerUrl(c.stripe_customer_id) : null;
-      return <tr key={c.id}><td className="adm-nowrap">{when(c.updated_at)}</td><td><Link href={adminParentPath(c.parent_id)}>{c.parent?.name ?? "Family"}</Link></td><td><Link href={childPath(c.child_id)}>{c.child?.first_name ?? "Child"}</Link></td><td>{c.plan === "one" ? "Math" : "Math and reading"}</td><td>{c.planPriceUnread ? `up to CAD ${c.price} (price not read)` : `CAD ${c.planMonthly ?? c.price}`}{c.planFirstCharge && <p className="adm-note">First charge {when(c.planFirstCharge)}</p>}</td><td>{c.card_saved_at ? when(c.card_saved_at) : <Chip tone="warn">Not saved</Chip>}</td><td>{stripe ? <a href={stripe} target="_blank" rel="noopener noreferrer">Open in Stripe</a> : "-"}</td><td>{c.report_id ? <Link href={adminReportPath(c.report_id)}>Report</Link> : "-"}</td><td>
+      return <tr key={c.id}><td className="adm-nowrap">{when(c.updated_at)}</td><td><Link href={adminParentPath(c.parent_id)}>{c.parent?.name ?? "Family"}</Link><TestTag test={isTest?.(c.parent_id)} /></td><td><Link href={childPath(c.child_id)}>{c.child?.first_name ?? "Child"}</Link></td><td>{c.plan === "one" ? "Math" : "Math and reading"}</td><td>{c.planPriceUnread ? `up to CAD ${c.price} (price not read)` : `CAD ${c.planMonthly ?? c.price}`}{c.planFirstCharge && <p className="adm-note">First charge {when(c.planFirstCharge)}</p>}</td><td>{c.card_saved_at ? when(c.card_saved_at) : <Chip tone="warn">Not saved</Chip>}</td><td>{stripe ? <a href={stripe} target="_blank" rel="noopener noreferrer">Open in Stripe</a> : "-"}</td><td>{c.report_id ? <Link href={adminReportPath(c.report_id)}>Report</Link> : "-"}</td><td>
         {c.planStarted === true ? <span className="adm-note">Plan started.</span> : c.planStarted !== false ? <span className="adm-note">Check the plan in Stripe before starting a free month.</span> : null}
         {c.stuckPlanStart ? <PlanStartStuck cardId={c.id} child={c.child?.first_name ?? "this child"} generation={c.stuckPlanStart} allowInitialStart={c.planStarted === false && !!c.firstWorkbook?.delivered} familyWindow={c.familyWindow} />
           : c.planStarted === false ? c.card_saved_at && c.stripe_customer_id ? <StartGate card={c} /> : "-" : null}
@@ -56,9 +57,9 @@ function StartGate({ card: c }: { card: CardSetupRow & People }) {
   return <p className="adm-note">{DELIVERY_RECEIPT_TEXT} <Link href={book ? adminWorkbookPath(book) : childPath(c.child_id)}>{book ? "Open workbook 1" : "Open this child"}</Link></p>;
 }
 
-export function WaitlistTable({ waitlist }: { waitlist: (WaitlistRow & People)[] }) {
+export function WaitlistTable({ waitlist, isTest }: { waitlist: (WaitlistRow & People)[]; isTest?: (parentId: string) => boolean }) {
   return <Table label="Waitlist" head={["Joined (Pacific)", "Family", "Child", "Curriculum", "Report"]} empty="No waitlist entries.">
-    {waitlist.map((w) => <tr key={w.id}><td className="adm-nowrap">{when(w.created_at)}</td><td><Link href={adminParentPath(w.parent_id)}>{w.parent?.name ?? "Family"}</Link></td><td><Link href={childPath(w.child_id)}>{w.child?.first_name ?? "Child"}</Link></td><td>{w.province}</td><td>{w.report_id ? <Link href={adminReportPath(w.report_id)}>Report</Link> : "-"}</td></tr>)}
+    {waitlist.map((w) => <tr key={w.id}><td className="adm-nowrap">{when(w.created_at)}</td><td><Link href={adminParentPath(w.parent_id)}>{w.parent?.name ?? "Family"}</Link><TestTag test={isTest?.(w.parent_id)} /></td><td><Link href={childPath(w.child_id)}>{w.child?.first_name ?? "Child"}</Link></td><td>{w.province}</td><td>{w.report_id ? <Link href={adminReportPath(w.report_id)}>Report</Link> : "-"}</td></tr>)}
   </Table>;
 }
 
@@ -70,7 +71,6 @@ export function FamilyRecords({ family }: { family: ParentDetail }) {
     <h2>Card setups</h2><CardsTable cards={family.cards.map(people)} />
     <h2>Waitlist</h2><WaitlistTable waitlist={family.waitlist.map(people)} />
     <h2>Emails and unsubscribes</h2><EmailTable emails={family.emails} />
-    {/* #78: put the family deletion action here. It must require adminSession again in its server route. */}
   </>;
 }
 

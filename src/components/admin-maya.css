@@ -48,7 +48,7 @@
 }
 @media (min-width: 960px) {
   .mc-grid { grid-template-columns: minmax(340px, 5fr) 7fr; align-items: start; }
-  .mc-maya { position: sticky; top: 76px; max-height: calc(100dvh - 96px); }
+  .mc-maya { position: sticky; top: calc(var(--adm-top, 0px) + 16px); max-height: calc(100dvh - var(--adm-top, 0px) - 32px); }
 }
 /* A tablet and a phone: the board first, then the conversation (capped, so the box to type in stays in reach), so
    Maya's writing is in view as soon as she draws. */

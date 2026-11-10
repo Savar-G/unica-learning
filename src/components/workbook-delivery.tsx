@@ -73,7 +73,7 @@ export function WorkbookDelivery({ workbookId, childId, number, timeZone, receip
       </form>
       <p id="delivery-zone" className="adm-note">Use {familyZoneName(timeZone)}. {correcting ? "The audit log will keep the previous time and your reason." : "You can correct a saved time with a reason."}</p>
     </>}
-    <p className="adm-note">To start the first free month, use <Link href="/admin/next-steps">Cards and waitlist</Link>. Saving a delivery time does not start or restart billing.</p>
+    <p className="adm-note">To start the first free month, use <Link href="/admin/next-steps">Plans and delivery</Link>. Saving a delivery time does not start or restart billing.</p>
     {error && <p className="adm-note" role="alert">{error}</p>}
   </section>;
 }
