@@ -1212,8 +1212,14 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
         }).join("") + `</div>`;
     }
 
-    case "watch-one":
-      return chipHtml(PRACTICE, b.note) + `<div class="panel p-pr" data-measure="panel-${i}" style="display:flex;flex-direction:column;gap:8px"><div class="lab">Read the example${b.label && !/^example$/i.test(b.label) ? ` · ${escape(b.label)}` : ""}</div><div class="wk">${(b.lines ?? []).map(worked).join("<br>")}</div>${b.explain ? `<span class="${/^Watch out:/.test(b.explain) ? "wo" : ""}">${escape(b.explain)}</span>` : ""}</div>`;
+    case "watch-one": {
+      // The chip above already says "Read the example, then try it.": the box does not say it again (Cedric and Savar,
+      // 2026-11-09); a box label of its own ("Increasing rule") stays.
+      const own = b.label && !/^example$/i.test(b.label) ? escape(b.label) : "";
+      const said = /^read the example/i.test(b.note ?? "");
+      const exampleLabel = said ? (own ? `<div class="lab">${own}</div>` : "") : `<div class="lab">Read the example${own ? ` · ${own}` : ""}</div>`;
+      return chipHtml(PRACTICE, b.note) + `<div class="panel p-pr" data-measure="panel-${i}" style="display:flex;flex-direction:column;gap:8px">${exampleLabel}<div class="wk">${(b.lines ?? []).map(worked).join("<br>")}</div>${b.explain ? `<span class="${/^Watch out:/.test(b.explain) ? "wo" : ""}">${escape(b.explain)}</span>` : ""}</div>`;
+    }
     case "finish-these":
       // (A block of review only prints "Remember these" alone, never under "Getting started" as the page's skill.)
       return (allReview && !!ctx.review[i]?.open ? "" : `<div class="lab" data-measure="heading-${i}">Getting started</div>`) + items(c.consistentLayout || ctx.six ? "two" : "list");
@@ -1592,15 +1598,14 @@ function howPlanPage(page: DraftPage, parts: PageParts, c: Extract<PageContent, 
   const extra = [...times.values()].some(t => t.hasExtra);
   // Match the gate's tolerance: floating-point noise at 20 minutes must not print 21.
   const roundedMinutes = (minutes: number) => Math.ceil(minutes - 1e-9);
-  const timeText = (minutes: number, hasExtra: boolean) => `about ${roundedMinutes(minutes)} minutes${hasExtra ? ", plus Extra if there's time" : ""}`;
   const rows = c.rows.map((r) => {
     const time = times.get(r.day);
     return `<tr><td class="d">Day ${r.day}</td><td><span class="tp" ${mark.slot(`day-${r.day}`)}><b>${escape(r.topic)}</b><span class="t2">${escape(reviewTopic(r.second))}</span></span></td>`
     + `<td class="pp">${r.pages[0]}–${r.pages[1]}${time ? `<span class="plan-time" ${mark.slot(`required-time-${r.day}`)}>${roundedMinutes(time.requiredMinutes)} min</span>` : ""}</td><td class="dn"><i class="tb"></i></td></tr>`;
   }).join("");
   const how = [
-    { chip: { label: "5 days a week", cls: "c-pr", icon: ICONS.target }, text: times.size ? `One day of the book on 5 days of the week, for example Monday to Friday. Do the days in order. ${c.pagesADay} pages a day, ${timeText(Math.max(...[...times.values()].map(t => t.requiredMinutes)), extra)}.` : `One day of the book on 5 days of the week, for example Monday to Friday. Do the days in order. ${c.pagesADay} pages a day, ${c.minutes.min === c.minutes.max ? `about ${c.minutes.max}` : `${c.minutes.min} to ${c.minutes.max}`} minutes.` },
-    { chip: { label: "Scan", cls: "c-mx", icon: ICONS.search }, text: "Open unicalearning.com/account in your browser. Sign in, select your child, then Scan pages." },
+    { chip: { label: "5 days a week", cls: "c-pr", icon: ICONS.target }, text: times.size ? `Do the days in order, 5 days a week. About ${roundedMinutes(Math.max(...[...times.values()].map(t => t.requiredMinutes)))} minutes a day${extra ? ", plus Extra if there's time" : ""}.` : `Do the days in order, 5 days a week. ${c.minutes.min === c.minutes.max ? `About ${c.minutes.max}` : `${c.minutes.min} to ${c.minutes.max}`} minutes a day.` },
+    { chip: { label: "Scan", cls: "c-mx", icon: ICONS.search }, text: "Sign in at unicalearning.com/account, then choose Scan pages." },
     { chip: { label: "Stuck?", cls: "c-ni", icon: ICONS.book }, text: "Ask for help using Maya, the AI Teaching Assistant." },
     { chip: { label: "Fix it", cls: "c-fx", icon: ICONS.wrench }, text: c.workbook === 1 ? "Scan finished pages. Questions your child needs to practise can return in the next workbook." : "Anything your child got wrong in the previous workbook comes back as new questions." },
   ];

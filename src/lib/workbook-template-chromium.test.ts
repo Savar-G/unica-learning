@@ -133,7 +133,7 @@ describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
     expect(coverText).not.toMatch(/This fortnight|How this works and your plan are next/);
     const planText=measured.filter(m=>m.sheet===1).map(m=>m.text).join(" ");
     expect(planText).toContain("Ask for help using Maya, the AI Teaching Assistant.");
-    expect(planText).toContain("browser");
+    expect(planText).toContain("then choose Scan pages");
     await mkdir("/tmp/ui-review/479-layout",{recursive:true});
     for (const [i,p] of pages.entries()) await writeFile(`/tmp/ui-review/479-layout/p${p.number}.png`,printed[0].images[i].png);
   }, 60_000);

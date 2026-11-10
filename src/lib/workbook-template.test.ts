@@ -102,6 +102,15 @@ describe("the workbook templates", () => {
       expect(remember.querySelector(".panel.p-ni .lab")).toBeNull();
       expect(page("Likelihood")?.querySelector(".panel.p-ni .lab")?.textContent).toBe("Likelihood");
     });
+    it("says Read the example once: the box under the Read the example chip keeps only its own label", () => {
+      const draft = book("U16"), p = first(draft, "practice");
+      if (p.content?.kind !== "day") throw new Error("not a day");
+      const page = (label: string | undefined, note: string) => parsedPage(workbookTemplate().page({ ...p, content: { ...p.content!, blocks: [{ slot: "watch-one", items: [], label, note, lines: ["Work it out: 32 + 3 × 6 = [50]."] }] } } as DraftPage, { qr: "", qrUrl: "" }, draft)!);
+      const plain = page(undefined, "Read the example, then try it.");
+      expect(plain.querySelector(".panel.p-pr .lab")).toBeNull();
+      expect(page("Increasing rule", "Read the example, then try it.").querySelector(".panel.p-pr .lab")?.textContent).toBe("Increasing rule");
+      expect(page(undefined, "Try these.").querySelector(".panel.p-pr .lab")?.textContent).toBe("Read the example");
+    });
   });
 
   it.each(["Which is greater?", "Which is greater: 8 × 7 or 6 × 6?", "WHICH IS GREATER?"])("prints no repeated choice label for %s", (question) => {
@@ -188,9 +197,10 @@ describe("the workbook templates", () => {
     plan.content.minutes = { min: 99, max: 99 };
     const html = workbookTemplate().page(plan, { qr: "", qrUrl: "" }, draft)!;
     const minutes = plan.content.rows.map(r => generatedDayTime(draft.pages.filter(p => p.content?.kind === "day" && p.content.day === r.day)).requiredMinutes);
-    expect(html).toContain(`about ${Math.ceil(Math.max(...minutes))} minutes, plus Extra if there's time`);
+    expect(html).toContain(`About ${Math.ceil(Math.max(...minutes))} minutes a day, plus Extra if there's time.`);
     // Page 2 says Extra once: the line ends at "plus Extra if there's time." (Savar, 2026-11-09: 5 days a week).
-    expect(html).toContain("One day of the book on 5 days of the week, for example Monday to Friday. Do the days in order.");
+    expect(html).toContain("Do the days in order, 5 days a week.");
+    expect(html).toContain(", then choose Scan pages.");
     expect(html).toContain("<span>5 days a week</span>");
     expect(html).not.toContain("Extra blocks are optional.");
     expect(html).not.toContain("99 minutes");
@@ -202,7 +212,7 @@ describe("the workbook templates", () => {
     if (plan.content?.kind !== "how-plan") throw new Error("not the plan");
     plan.content.minutes = { min: 17, max: 17 };
     const html = workbookTemplate().page(plan, { qr: "", qrUrl: "" }, draft)!;
-    expect(html).toContain("Do the days in order. 8 pages a day, about 17 minutes.");
+    expect(html).toContain("Do the days in order, 5 days a week. About 17 minutes a day.");
     expect(html).not.toMatch(/REQUIRED TIME|Extra|plan-time|slot-required-time/);
   });
 
@@ -211,7 +221,7 @@ describe("the workbook templates", () => {
     if (plan.content?.kind !== "how-plan") throw new Error("not the plan");
     plan.content.rows = plan.content.rows.map(row => ({ ...row, requiredMinutes: row.day + 7.2, extra: true }));
     const html = workbookTemplate().page(plan, { qr: "", qrUrl: "" }, only(draft, plan))!;
-    expect(html).toContain("about 18 minutes, plus Extra if there's time");
+    expect(html).toContain("About 18 minutes a day, plus Extra if there's time.");
     expect(html).toContain('data-measure="slot-required-time-1">9 min');
     expect(html).toContain('data-measure="slot-required-time-10">18 min');
   });
@@ -221,7 +231,7 @@ describe("the workbook templates", () => {
     if (plan.content?.kind !== "how-plan") throw new Error("not the plan");
     plan.content.rows = plan.content.rows.map(row => ({ ...row, requiredMinutes: 20.000000000000004, extra: true }));
     const html = workbookTemplate().page(plan, { qr: "", qrUrl: "" }, only(draft, plan))!;
-    expect(html).toContain("about 20 minutes, plus Extra if there's time");
+    expect(html).toContain("About 20 minutes a day, plus Extra if there's time.");
     expect(html).toContain('data-measure="slot-required-time-1">20 min');
     expect(html).not.toContain("21 min");
   });
