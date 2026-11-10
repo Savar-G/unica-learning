@@ -101,7 +101,7 @@
 .adm-root .adm-eyebrow::before { width: 8px; height: 8px; }
 [data-look="warm"] .adm-main h1 { margin: 0; font: 300 32px/1.1 var(--sans); letter-spacing: -0.03em; overflow-wrap: anywhere; }
 @media (max-width: 859.98px) { [data-look="warm"] .adm-main h1 { font-size: 26px; } }
-.adm-head-lead { max-width: 60ch; margin: var(--s2) 0 0; color: var(--ink-2); }
+.adm-main .adm-head-lead, .adm-head-lead { max-width: 60ch; margin: var(--s2) 0 0; color: var(--ink-2); }
 .adm-head-actions { display: flex; flex-wrap: wrap; gap: var(--s2); margin-left: auto; }
 .adm-testbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin: 0 0 var(--s4); padding: var(--s2) var(--s3); border-radius: 6px; background: var(--adm-warn); font-size: 13.5px; }
 .adm-main-wide .adm-testbar { max-width: 1320px; margin: var(--s4) auto 0; }
