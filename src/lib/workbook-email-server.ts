@@ -185,12 +185,36 @@ export async function planStartEmailClaim(db: SupabaseClient<Database>, cardId: 
   return state(data?.status, data?.claimed_at);
 }
 
+/**
+ * Families marked as a test (public.test_accounts) get no automatic welcome (#804): a seeded card on a test family would
+ * otherwise send to its made-up address. The row stays queued, untouched. An admin's explicit send (sendWorkbookNotice) is not affected.
+ */
+async function testFamilies(db: SupabaseClient<Database>): Promise<string[]> {
+  // Page by page: Supabase returns at most 1,000 rows to one request, and a cut list would email a test family.
+  const out: string[] = [];
+  for (let from = 0; ; from += TEST_PAGE) {
+    const { data, error } = await db.from("test_accounts").select("parent_id").order("parent_id").range(from, from + TEST_PAGE - 1);
+    if (error) throw Error("store_failed");
+    out.push(...(data ?? []).map((r) => r.parent_id));
+    if ((data?.length ?? 0) < TEST_PAGE) return out;
+  }
+}
+const TEST_PAGE = 1000;
+
+async function isTestFamily(db: SupabaseClient<Database>, parentId: string): Promise<boolean> {
+  const { data, error } = await db.from("test_accounts").select("parent_id").eq("parent_id", parentId).maybeSingle();
+  if (error) throw Error("store_failed");
+  return !!data;
+}
+
+/** Sends a card's queued welcome, unless its family is a test family; then it claims nothing and returns null. */
 export async function sendQueuedWorkbookWelcome(db: SupabaseClient<Database>, cardId: string, transport?: MailTransport) {
-  const { data, error } = await db.from("workbook_emails").select("id").eq("card_setup_id", cardId).eq("kind", "welcome")
+  const { data, error } = await db.from("workbook_emails").select("id, parent_id").eq("card_setup_id", cardId).eq("kind", "welcome")
     .in("status", ["pending", "failed"]).lt("attempts", 3).maybeSingle();
   if (error) throw Error("store_failed");
-  if (data) return sendWorkbookNotice(db, { cardId, kind: "welcome", workbookNumber: 0, delivery: null }, transport);
-  return null;
+  // The card-saved step (next-step-server) calls this directly, without the cron queue's filter, so it checks again here.
+  if (!data || await isTestFamily(db, data.parent_id)) return null;
+  return sendWorkbookNotice(db, { cardId, kind: "welcome", workbookNumber: 0, delivery: null }, transport);
 }
 
 /** A bounded Stripe read. A late read cannot record a card or send an email after this returns unknown. */
@@ -203,9 +227,14 @@ async function boundedCheck(work: Promise<StripeAnswer>): Promise<StripeAnswer> 
 
 /** Recovers a closed Checkout tab and pending welcomes. Old signups are excluded until an admin acts explicitly. */
 export async function runWorkbookWelcomes(db: SupabaseClient<Database>, { transport, dry = false, cards: suppliedCards }: { transport?: MailTransport; dry?: boolean; cards?: SavedCards } = {}) {
-  const eligible = (head = false) => db.from("workbook_emails")
-    .select("card_setup_id, parent:parents!inner(deletion_requested_at)", { count: "exact", head })
-    .eq("kind", "welcome").in("status", ["pending", "failed"]).lt("attempts", 3).is("parent.deletion_requested_at", null);
+  // Test families are left out before the batch limit, so their rows cannot hold up a real family's welcome.
+  const tests = await testFamilies(db);
+  const eligible = (head = false) => {
+    const q = db.from("workbook_emails")
+      .select("card_setup_id, parent:parents!inner(deletion_requested_at)", { count: "exact", head })
+      .eq("kind", "welcome").in("status", ["pending", "failed"]).lt("attempts", 3).is("parent.deletion_requested_at", null);
+    return tests.length ? q.not("parent_id", "in", `(${tests.join(",")})`) : q;
+  };
   const pending = await eligible(true);
   if (pending.error) throw Error("store_failed");
   if (dry) return { pending: pending.count ?? 0, checked: 0, sent: 0 };
@@ -214,8 +243,10 @@ export async function runWorkbookWelcomes(db: SupabaseClient<Database>, { transp
   const cards = suppliedCards ?? (s ? savedCards(db, s) : null);
   let checked = 0;
   if (cards) {
-    const candidates = await db.from("card_setups").select("id, stripe_customer_id, parent:parents!inner(deletion_requested_at)").eq("workbook_welcome_enabled", true)
-      .is("card_saved_at", null).not("stripe_customer_id", "is", null).is("parent.deletion_requested_at", null)
+    const scan = db.from("card_setups").select("id, stripe_customer_id, parent:parents!inner(deletion_requested_at)").eq("workbook_welcome_enabled", true)
+      .is("card_saved_at", null).not("stripe_customer_id", "is", null).is("parent.deletion_requested_at", null);
+    // (Test families' cards are not checked either, so they cannot take this run's two Stripe reads.)
+    const candidates = await (tests.length ? scan.not("parent_id", "in", `(${tests.join(",")})`) : scan)
       .order("workbook_email_checked_at", { nullsFirst: true }).order("id").limit(2);
     if (candidates.error) throw Error("store_failed");
     for (const row of candidates.data ?? []) {
