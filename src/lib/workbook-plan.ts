@@ -291,6 +291,8 @@ export interface PlannedPage {
   /** Planned questions the measured page had no room for, before writing: reported, never silent (#489). */
   capacityOmissions?: import("./workbook-page").Omission[];
   itemContracts?: Record<string, import("./workbook-item-plan").ItemPlan | null>;
+  /** The attempt each worked-example panel's task was measured with (#746), so the written page prints the example the capacity pass measured. */
+  panelAttempts?: Record<string, number>;
   existingSlots?: string[];
   /** The page of the day, from 1. */
   number: number;
