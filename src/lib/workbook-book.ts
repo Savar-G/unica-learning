@@ -406,12 +406,13 @@ export function templateMethod(src: TemplateSource, text: string): string | null
     if ("answer" in result) return `Work it out: ${expr.replace(/\/\//g, "÷").replace(/\*/g, "×").replace(/-/g, "−").replace(/\d{5,}/g, (x) => groupedNumber(Number(x)))} = ${groupedNumber(Number(result.answer))}.`;
   }
   if (direct) return `Work it out: ${direct}.`;
-  // A true or false: the sum it checks, from the derived values.
-  // (A sum whose two numbers the question prints.)
-  const printed = new Set((text.replace(/(\d)[\s\u00a0\u202f](?=\d{3}\b)/g, "$1").match(/\d+/g) ?? []).map(Number));
+  // A true-or-false example can work a calculation the question prints. Two matching numbers alone can be a distractor.
+  const plain = text.replace(/(\d)[\s\u00a0\u202f](?=\d{3}\b)/g, "$1").replace(/−/g, "-").replace(/×/g, "*").replace(/÷/g, "//");
+  const printed = new Set([...plain.matchAll(/(?:^|[^\d.-])(-?\d+)\s*(\+|-|\*|\/\/)\s*(-?\d+)(?![\d.])/g)]
+    .map(m => `${Number(m[1])}:${m[2]}:${Number(m[3])}`));
   if (/'true'|'false'|'yes'|'no'/.test(src.answer)) for (const [, e] of src.derived) {
     const m = e.trim().match(/^(\w+) (\+|-|\*|\/\/) (\w+)$/);
-    if (m && printed.has(n(m[1])) && printed.has(n(m[3]))) return `Work it out: ${binary(e)}.`;
+    if (m && printed.has(`${n(m[1])}:${m[2]}:${n(m[3])}`)) return `Work it out: ${binary(e)}.`;
   }
   return null;
 }
