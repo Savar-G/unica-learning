@@ -23,6 +23,7 @@ import type { CallInput, CallView } from "@/lib/maya-call";
 import { ALERT_TEXT, FLAG_TEXT, alertNote, modelName, noAlertNote, safetyText } from "@/lib/maya-flag-text";
 import type { CallListRow, DemoChild } from "@/lib/maya-call-server";
 import { ADMIN_PATH, adminChildProfilePath, adminTestPath } from "@/lib/admin-view";
+import { Empty } from "@/components/admin-blocks";
 import "./admin-maya.css";
 import "./stroke-replay.css";
 
@@ -115,12 +116,12 @@ export function MayaPicker({ children, model, voice }: { children: DemoChild[]; 
   }
 
   if (children.length === 0) {
-    return <p className="adm-empty">No test family has a test with a question Maya can work on yet. Mark a family as a test family, and have its child take a Grade 2 test.</p>;
+    return <Empty>No test family has a test with a question Maya can work on yet. Mark a family as a test family, and have its child take a Grade 2 test.</Empty>;
   }
   return (
     <section className="mc-pick" aria-labelledby="mc-pick-title">
       <div className="mc-pick-head">
-        <h2 id="mc-pick-title">Start a test call</h2>
+        <h3 id="mc-pick-title">Start a test call</h3>
         <p className="adm-note">Model for a new call: <ModelChip model={model} /></p>
       </div>
       <fieldset className="mc-mode">
@@ -186,31 +187,34 @@ function CallPages({ older, newer }: { older?: string | null; newer?: string | n
 export function MayaCallList({ calls, older, newer, testParents = [] }: { calls: CallListRow[]; older?: string | null; newer?: string | null; testParents?: string[] }) {
   return (
     <>
-    <CallPages older={older} newer={newer} />
-    {calls.length === 0 ? <p className="adm-empty">No calls on this page.</p> :
-    <div className="adm-scroll mc-calls">
+    {calls.length === 0 ? <Empty>No calls on this page. A call shows here when a child chats with Maya or the team tries her.</Empty> :
+    <div className="adm-scroll mc-calls" role="region" aria-label="Maya calls" tabIndex={0}>
       <table className="adm-table">
         <thead>
-          <tr><th>Started and flag</th><th>Child and question</th><th>How</th><th>Outcome and help</th><th className="adm-num">Call time</th><th className="adm-num">Minutes used</th><th>Numbers Maya checked</th></tr>
+          <tr><th scope="col">Started</th><th scope="col">Child and question</th><th scope="col">Outcome</th><th scope="col">How</th><th scope="col" className="adm-num">Call time</th></tr>
         </thead>
         <tbody>
-          {calls.map((c) => (
-            <tr key={c.id}>
-              <td data-label="Started and flag">
-                <Link href={`${ADMIN_PATH}/maya/${c.id}`}>{when(c.createdAt)}</Link>
-                {(() => { const t = safetyText(c.flag, c.safetySeverity, c.safetyFlag); return t && <span className="adm-chip is-bad mc-list-flag">{t}</span>; })()}
-              </td>
-              <td data-label="Child and question">{c.childName ?? "Child"}{c.parentId && testParents.includes(c.parentId) && <> <span className="adm-chip is-test">test</span></>}<span className="adm-sub">{c.questionText}</span></td>
-              <td data-label="How">{c.kind === "chat" ? "Chat" : c.mode === "voice" ? "Spoken" : "Typed"}</td>
-              <td data-label="Outcome and help">
-                {c.status === "live" ? <span className="adm-chip is-info">Live</span> : c.outcome ? <span className={`adm-chip ${c.outcome === "solved" ? "is-ok" : "is-muted"}`}>{REASON_TEXT[c.outcome]}</span> : "-"}
-                {c.assistance && <span className="adm-sub">{ASSISTANCE_TEXT[c.assistance]}</span>}
-              </td>
-              <td data-label="Call time" className="adm-num">{c.seconds === null ? "-" : clock(c.seconds)}</td>
-              <td data-label="Minutes used" className="adm-num" title="Chat and test calls do not use voice minutes">0</td>
-              <td data-label="Numbers Maya checked" title="Numbers Maya asked to confirm, and times the child said she heard wrong">{c.mishearing ? `${c.mishearing.confirmations} checked, ${c.mishearing.corrections} fixed` : "Not recorded"}</td>
-            </tr>
-          ))}
+          {calls.map((c) => {
+            const flag = safetyText(c.flag, c.safetySeverity, c.safetyFlag);
+            return (
+              <tr key={c.id} className={flag ? "is-flagged" : undefined}>
+                <td data-label="Started" className="adm-nowrap">
+                  <Link href={`${ADMIN_PATH}/maya/${c.id}`}>{when(c.createdAt)}</Link>
+                  {flag && <span className="adm-chip is-bad mc-list-flag">{flag}</span>}
+                </td>
+                <td data-label="Child and question"><b className="mc-child">{c.childName ?? "Child"}</b>{c.parentId && testParents.includes(c.parentId) && <> <span className="adm-chip is-test">test</span></>}<span className="adm-sub">{c.questionText}</span></td>
+                <td data-label="Outcome">
+                  {c.status === "live" ? <span className="adm-chip is-info">Live</span> : c.outcome ? <span className={`adm-chip ${c.outcome === "solved" ? "is-ok" : c.outcome === "safety" ? "is-bad" : "is-muted"}`}>{REASON_TEXT[c.outcome]}</span> : <span className="adm-chip is-muted">No outcome</span>}
+                  {c.assistance && <span className="adm-sub">{ASSISTANCE_TEXT[c.assistance]}</span>}
+                </td>
+                <td data-label="How">
+                  {c.kind === "chat" ? "Chat" : c.mode === "voice" ? "Spoken" : "Typed"}
+                  {c.mishearing && <span className="adm-sub" title="Numbers Maya asked to confirm, and times the child said she heard wrong">Numbers Maya checked: {c.mishearing.confirmations} checked, {c.mishearing.corrections} fixed</span>}
+                </td>
+                <td data-label="Call time" className="adm-num">{c.seconds === null ? "-" : clock(c.seconds)}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>}
@@ -323,18 +327,15 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
   const boardLabel = `Our board: ${view.questionText ?? "the question"}, as Maya wrote it`;
   return (
     <div className="mc-call">
-      <header className="mc-head">
-        <div className="mc-head-q">
-          <p className="adm-crumb"><Link href={`${ADMIN_PATH}/maya`}>Maya calls</Link> · {view.kind === "chat" ? "Chat" : "Test call"} · {childName ?? "Child"}</p>
-          <h1>{view.questionText}</h1>
-        </div>
+      <div className="mc-status">
         <div className="mc-chips">
           {live ? <span className="adm-chip is-info">Live</span> : <span className="adm-chip is-muted">Finished</span>}
           {voice && <span className="adm-chip is-muted">Spoken call</span>}
           <ModelChip model={view.model} />
           <span className="adm-chip is-muted">{view.kind === "chat" ? "Chat: no voice minutes used" : "Test family: no minutes used, no parent emails"}</span>
         </div>
-      </header>
+        {!live && view.outcome && <OutcomeStrip view={view} />}
+      </div>
 
       {view.flag && <FlagStrip view={view} live={live} onRetry={() => send({ type: "end" })} busy={busy} />}
 
@@ -458,7 +459,7 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
         </section>
       </div>
 
-      <section aria-label="Workbook scope refusals">
+      <section className="mc-scope" aria-label="Workbook scope refusals">
         <p>Workbook scope refusals in this session: {view.scopeRefusals?.length ?? 0}</p>
         {!!view.scopeRefusals?.length && <ul>{view.scopeRefusals.map((r, i) => <li key={i}>{SCOPE_LABELS[r.reason]}</li>)}</ul>}
       </section>
@@ -529,20 +530,30 @@ function FlagStrip({ view, live, onRetry, busy }: { view: CallView; live: boolea
   );
 }
 
+/** The ended call's outcome at the top of the page: what happened, how much help, the strongest hint and the time. */
+function OutcomeStrip({ view }: { view: CallView }) {
+  const o = view.outcome!;
+  return (
+    <dl className="mc-outcome" aria-label="Outcome">
+      <div><dt>Outcome</dt><dd><span className={`adm-chip ${o.reason === "solved" ? "is-ok" : o.reason === "safety" ? "is-bad" : "is-muted"}`}>{REASON_TEXT[o.reason]}</span></dd></div>
+      <div><dt>Help</dt><dd>{ASSISTANCE_TEXT[o.assistance]}</dd></div>
+      <div><dt>Strongest hint</dt><dd>{o.highestHint === null ? "None" : HINT_TEXT[o.highestHint]}</dd></div>
+      <div><dt>Call time</dt><dd>{clock(Math.round(o.seconds))}</dd></div>
+    </dl>
+  );
+}
+
 function CallRecordFacts({ view, childName, onRetry, busy, error }: { view: CallView; childName: string | null; onRetry: () => void; busy: boolean; error: string | null }) {
   const o = view.outcome;
   const question = view.question;
   return (
     <section className="mc-record" aria-labelledby="mc-record-title">
       <h2 id="mc-record-title">What was saved</h2>
+      <p className="adm-note">What the call left in the child&apos;s record, and the checks behind it.</p>
       {o && (
         <dl className="adm-facts">
-          <div><dt>Outcome</dt><dd><span className={`adm-chip ${o.reason === "solved" ? "is-ok" : "is-muted"}`}>{REASON_TEXT[o.reason]}</span></dd></div>
-          <div><dt>Help</dt><dd>{ASSISTANCE_TEXT[o.assistance]}</dd></div>
-          <div><dt>Strongest hint</dt><dd>{o.highestHint === null ? "None" : HINT_TEXT[o.highestHint]}</dd></div>
           <div><dt>On paper</dt><dd>{PAPER_TEXT[o.paperStatus]}</dd></div>
           <div><dt>Understanding</dt><dd>{UNDERSTANDING_TEXT[o.understanding]}</dd></div>
-          <div><dt>Call time</dt><dd>{clock(Math.round(o.seconds))}</dd></div>
           <div><dt>Turns</dt><dd>{view.counts ? `${view.counts.childTurns} from ${childName ?? "the child"}, ${view.counts.mayaTurns} from Maya` : "-"}</dd></div>
           <div><dt>Backup lines used</dt><dd title="Times the AI's answer could not be used, so Maya said a line from the backup script">{view.counts?.fallbacks ?? "-"}</dd></div>
           <div><dt>Safety</dt><dd>{(() => { const t = safetyText(view.flag?.level ?? null, o.safetySeverity, o.safetyFlag); return t ? <span className="adm-chip is-bad">{t}</span> : "No concern"; })()}</dd></div>
@@ -569,7 +580,7 @@ function CallRecordFacts({ view, childName, onRetry, busy, error }: { view: Call
         </p>
       )}
 
-      <details className="mc-tech">
+      <details className="adm-tech mc-tech">
         <summary>Technical details</summary>
         <h3 className="mc-sub">Generated speech checks</h3>
         <FreeTalkChecks freeTalk={view.freeTalk} />

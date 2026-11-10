@@ -56,6 +56,8 @@ it("counts real families only, with test families tagged while shown", () => {
   expect(html).toContain("Family Tested");
   expect(html).toContain("is-test");
   expect(html).toContain('aria-label="6 families with a card: Card saved 4, Free month 1, Paying 1, Cancelled 0. 0 families on the waitlist."');
+  // The section count leaves the test family's card out too (7 cards listed, 6 real).
+  expect(html).toMatch(/id="pl-cards">All saved cards<\/h2><span class="adm-pl-count">6</);
 });
 
 it("names the child of a book on hold and links to it", () => {

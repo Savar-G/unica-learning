@@ -1,0 +1,69 @@
+/* The small parts of the remaining admin pages (admin-blocks.tsx), on the admin's tokens (admin.css): the spacing scale
+   4 8 12 16 24 32 48, 1 px lines and 8 px corners, the look's colours as tints. */
+
+/* ---------- number tiles ---------- */
+.ab-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: var(--s3); margin: 0 0 var(--s5); }
+.ab-tile { display: grid; align-content: start; gap: var(--s2); min-width: 0; padding: var(--s4); border: 1px solid var(--line); border-radius: var(--r); background: #fff; }
+.ab-tile dt { font: 400 11px/1.3 var(--mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-2); }
+.ab-tile dd { display: grid; gap: var(--s1); margin: 0; }
+.ab-tile b { font: 300 34px/1 var(--sans); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.ab-tile dd > span { font-size: 13px; color: var(--ink-2); }
+.ab-tile.is-bad { border-color: color-mix(in srgb, var(--tang) 45%, var(--line)); box-shadow: inset 3px 0 0 var(--tang); }
+.ab-tile.is-bad b { color: #a8380f; }
+.ab-tile.is-warn { box-shadow: inset 3px 0 0 var(--sun); }
+.ab-tile.is-ok { box-shadow: inset 3px 0 0 var(--leaf); }
+.ab-tile.is-info { box-shadow: inset 3px 0 0 var(--sky); }
+
+/* ---------- a section's head ---------- */
+.ab-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s1) var(--s3); margin: var(--s6) 0 var(--s3); padding-bottom: var(--s2); border-bottom: 1px solid var(--line); }
+[data-look="warm"] .adm-main .ab-head h2 { margin: 0; font: 400 20px/1.2 var(--sans); letter-spacing: -0.02em; }
+.ab-count { font: 400 12px/1 var(--mono); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.ab-head-actions { display: flex; flex-wrap: wrap; gap: var(--s2); margin-left: auto; }
+.adm-main .ab-head p { flex-basis: 100%; margin: 0; font-size: 13.5px; color: var(--ink-3); }
+.ab-head:first-child { margin-top: 0; }
+
+/* ---------- ranked bars ---------- */
+.ab-bars { display: grid; gap: var(--s2); margin: 0; padding: 0; list-style: none; }
+.ab-bars li { display: grid; grid-template-columns: minmax(0, 15em) minmax(0, 1fr) auto; align-items: center; gap: var(--s2) var(--s3); min-height: 32px; font-size: 14px; }
+.ab-bar-label { min-width: 0; overflow-wrap: anywhere; }
+.ab-bar-sub { display: block; font-size: 12.5px; color: var(--ink-2); }
+.ab-bar-track { display: block; height: 12px; overflow: hidden; border-radius: 4px; background: var(--soft); }
+.ab-bar-track i { display: block; height: 100%; border-radius: 4px; background: color-mix(in srgb, var(--sky) 60%, #fff); }
+.ab-bars li.is-bad .ab-bar-track i { background: var(--tang); }
+.ab-bars li.is-warn .ab-bar-track i { background: var(--sun); }
+.ab-bars li.is-ok .ab-bar-track i { background: var(--leaf); }
+.ab-bar-n { min-width: 2.5em; text-align: right; font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
+@media (max-width: 599.98px) {
+  .ab-bars li { grid-template-columns: minmax(0, 1fr) auto; }
+  .ab-bar-track { grid-column: 1 / -1; grid-row: 2; }
+}
+
+/* ---------- a percent bar ---------- */
+.ab-pct { display: inline-flex; align-items: center; gap: var(--s2); white-space: nowrap; }
+.ab-pct-track { display: block; width: 64px; height: 8px; overflow: hidden; border-radius: 999px; background: var(--soft); box-shadow: inset 0 0 0 1px var(--line-soft); }
+.ab-pct-track i { display: block; height: 100%; border-radius: 999px; }
+.ab-pct.is-ok i { background: var(--leaf); }
+.ab-pct.is-mid i { background: var(--sun); }
+.ab-pct.is-low i { background: var(--tang); }
+.ab-pct-n { min-width: 3ch; font-variant-numeric: tabular-nums; }
+.ab-pct.is-none { color: var(--ink-3); }
+
+/* ---------- filter pills ---------- */
+.ab-pills { display: flex; flex-wrap: wrap; gap: var(--s2); margin: 0 0 var(--s4); }
+.adm-main .ab-pills a { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 var(--s3); border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--ink-2); font: 500 13px/1 var(--sans); text-decoration: none; }
+.adm-main .ab-pills a:hover { border-color: #c9c9cf; color: var(--ink); }
+.adm-main .ab-pills a[aria-current="true"] { border-color: var(--ink); background: var(--ink); color: #fff; }
+.ab-pills span { font-variant-numeric: tabular-nums; opacity: 0.7; }
+
+/* ---------- a calm empty state ---------- */
+.adm-main .ab-empty { margin: 0; padding: var(--s4); border: 1px dashed var(--line); border-radius: var(--r); color: var(--ink-2); font-size: 14px; }
+
+@media (max-width: 859.98px) {
+  .adm-main .ab-pills a { min-height: 40px; }
+  .ab-tile b { font-size: 30px; }
+}
+
+/* ---------- a "Needs you" strip: what the team must do on this page ---------- */
+.adm-main .ab-needs { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); margin: 0 0 var(--s4); padding: var(--s3) var(--s4); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); border-radius: var(--r); background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); font-size: 14px; }
+.ab-needs b { font-weight: 500; color: #a8380f; }
+.ab-needs .adm-btn { margin-left: auto; }

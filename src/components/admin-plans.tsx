@@ -190,11 +190,11 @@ export function PlansView({ cards, waitlist, holds, show, isTest, now, cardsMore
     </section>
     <Summary cards={cards} waitlist={waitlist} waitMore={waitMore} cardsMore={cardsMore} isTest={isTest} />
     <section aria-labelledby="pl-cards">
-      <GroupHead id="pl-cards" title="All saved cards" count={cards.length} hint="Newest change first. A card that is not saved yet shows Not saved." />
+      <GroupHead id="pl-cards" title="All saved cards" count={cards.filter((c) => !isTest(c.parent_id)).length} hint="Newest change first. A card that is not saved yet shows Not saved." />
       <CardsList cards={cards} needs={needs} tag={tag} />
     </section>
     <section aria-labelledby="pl-wait">
-      <GroupHead id="pl-wait" title="Waitlist" count={waitlist.length} hint="Families who joined the waitlist from their child's report. Newest first." />
+      <GroupHead id="pl-wait" title="Waitlist" count={waitlist.filter((w) => !isTest(w.parent_id)).length} hint="Families who joined the waitlist from their child's report. Newest first." />
       <WaitList waitlist={waitlist} tag={tag} />
     </section>
     <details className="adm-pl-how">
