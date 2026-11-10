@@ -150,5 +150,7 @@ it.each(["override", "extra", "calculated", "global"])("matches actual page-2 HT
     }));
   // Page 2 says the same time as the schedule page, in its own words (Savar, 2026-11-09): "About 20 minutes a day, plus
   // Extra if there's time." for the saved "about 20 minutes, plus Extra if there's time".
-  expect(root.textContent!.toLowerCase().replace(" minutes a day", " minutes")).toContain(projection.dailyTime.toLowerCase());
+  const line = root.querySelector('[data-measure="slot-how-0"]')!.textContent!.toLowerCase();
+  expect(line.startsWith("do the days in order, 5 days a week. ")).toBe(true);
+  expect(line.slice("do the days in order, 5 days a week. ".length).replace(" minutes a day", " minutes").replace(/\.$/, "")).toBe(projection.dailyTime.toLowerCase());
 });
