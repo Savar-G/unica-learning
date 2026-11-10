@@ -165,7 +165,7 @@ it("after one start on the page, a sibling's confirm keeps the window sentences"
   await act(async () => root.render(createElement("div", null,
     createElement(StartPlan, { cardId: "card-a", child: "Asha", familyWindow: "new" }),
     createElement(StartPlan, { cardId: "card-b", child: "Ben", familyWindow: "new" }))));
-  const confirm = vi.fn(() => true); vi.stubGlobal("confirm", confirm);
+  const confirm = vi.fn((_message?: string) => true); vi.stubGlobal("confirm", confirm);
   await act(async () => container.querySelectorAll("button")[0].click());
   fetcher.mockResolvedValue(Response.json({ ok: false, error: "family_plan_upgrade_required" }, { status: 409 }));
   const ben = [...container.querySelectorAll("button")].find((b) => b.textContent === "Workbook delivered: start plan")!;
