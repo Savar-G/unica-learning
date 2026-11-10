@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Table } from "@/components/admin";
 import { AdminFrame } from "@/components/admin-frame";
-import { CountedNote, TemplateFilterForm, WrongList, demoHref, templateQuery } from "@/components/admin-templates";
+import { BarList, Empty, PercentBar, SectionHead, Tiles } from "@/components/admin-blocks";
+import { CountedNote, TemplateFilterForm, demoHref, templateQuery } from "@/components/admin-templates";
 import { RecordFacts } from "@/components/admin-records";
 import { BANKS, BC_SKILL_MAP, MISCONCEPTIONS, STRAND_NAMES, fillTemplate, type MisconceptionId } from "@/lib/assessment";
 import { requireAdmin, templateStats } from "@/lib/admin-store";
@@ -21,8 +21,9 @@ import { duration, levelText } from "@/lib/admin-view";
 /** Sample questions drawn from the template, with fixed seeds, so the page shows the same ones each time. */
 const SAMPLE_SEEDS = [1, 2, 3];
 
-// One question template (#199): what it asks, its BC standard, sample questions with their coded wrong answers, and
-// its numbers across children with every wrong answer chosen. Admins only; ?demo=1 in local development as the table.
+// One question template (#199; restyled for D-313, D-315): its BC standard, its numbers across children as tiles, every
+// wrong answer chosen as a ranked bar list, and sample questions as cards with their coded wrong answers. The template's
+// own facts sit in a closed section. Admins only; ?demo=1 in local development as the table.
 export default async function TemplatePage({ params, searchParams }: PageProps<"/admin/templates/[id]">) {
   const id = decodeURIComponent((await params).id);
   const query = await searchParams;
@@ -43,55 +44,76 @@ export default async function TemplatePage({ params, searchParams }: PageProps<"
   }));
   const otherLevels = template ? Object.entries(template.grades).filter(([p]) => p !== "BC").map(([p, l]) => `${p} ${levelText(l)}`).join(", ") : "";
 
+  const wrongTotal = allWrong.reduce((n, w) => n + w.count, 0);
   return (
-    <AdminFrame email={admin?.email ?? "demo data"} title={<>Template <span className="adm-mono">{id}</span></>} testNote={filters.withTests && "Test families are showing, and on this page they are counted in the numbers."}>
-      <p><Link href={`${ADMIN_TEMPLATES_PATH}${templateQuery(filters, demo)}`}>All templates</Link></p>
-      {template ? (
-        <RecordFacts facts={[
-          ["Strand", STRAND_NAMES[template.strand]],
-          ["BC standard", <Link key="standard" href={demoHref(skillMapStandardPath(template.standard), demo)}>{template.standard}</Link>],
-          ["BC grade", levelText(template.grades.BC)],
-          ["Other curricula", otherLevels || "-"],
-          ["Answer", template.format === "choice" ? "Choose one" : "Type a number"],
-          ["Whiteboard", template.whiteboard ? "May require shown work" : "No"],
-          ["Question banks", bands.map((b) => `Grades ${b}`).join(", ")],
-        ]} />
-      ) : <p className="adm-note">This template is no longer in the question bank. Only its numbers are left.</p>}
-      {standard && <p className="adm-lead"><strong>{standard.code}</strong> {standard.text}</p>}
+    <AdminFrame email={admin?.email ?? "demo data"} title={<>Template <span className="adm-mono">{id}</span></>}
+      lead={template ? `${STRAND_NAMES[template.strand]}, BC grade ${levelText(template.grades.BC)}: how children answer it.` : "No longer in the question bank. Only its numbers are left."}
+      actions={<Link className="btn ghost adm-btn" href={`${ADMIN_TEMPLATES_PATH}${templateQuery(filters, demo)}`} prefetch={false}>All templates</Link>}
+      testNote={filters.withTests && "Test families are showing, and on this page they are counted in the numbers."}>
+      {standard && <p className="ap-standard"><strong>{standard.code}</strong> {standard.text}</p>}
 
-      <h2>Across children</h2>
+      <SectionHead id="tpl-numbers" title="Across children" line="How often it was shown and how children answered it." />
       <TemplateFilterForm action={adminTemplatePath(id)} filters={filters} demo={demo} />
-      <CountedNote filters={filters} />
-      <RecordFacts facts={[
-        ["Shown", line?.shown ?? 0],
-        ["Answered", line?.answered ?? 0],
-        ["Correct", line?.percentCorrect == null ? "-" : `${line.percentCorrect}%`],
-        ["Median time", line?.medianMs == null ? "-" : duration(line.medianMs)],
-        ["Wrong answers", allWrong.reduce((n, w) => n + w.count, 0)],
+      <Tiles label="Across children" tiles={[
+        { key: "shown", label: "Shown", value: line?.shown ?? 0, sub: `${line?.answered ?? 0} answered` },
+        { key: "correct", label: "Correct", value: line?.percentCorrect == null ? "-" : `${line.percentCorrect}%`, sub: <PercentBar percent={line?.percentCorrect ?? null} label="Percent correct" /> },
+        { key: "time", label: "Median time", value: line?.medianMs == null ? "-" : duration(line.medianMs), sub: "Thinking time the browser measured" },
+        { key: "wrong", label: "Wrong answers", value: wrongTotal, sub: `${allWrong.length} different ${allWrong.length === 1 ? "answer" : "answers"}` },
       ]} />
-      <h3>Every wrong answer chosen</h3>
-      <WrongList wrong={allWrong} />
+      <CountedNote filters={filters} />
+
+      <section className="ap-card" aria-labelledby="tpl-wrong">
+        <SectionHead id="tpl-wrong" title="Wrong answers, most chosen first" count={wrongTotal ? `${wrongTotal} in all` : undefined} line="Each answer with the mistake it is coded as, when it has one." />
+        {allWrong.length === 0 ? <Empty>No wrong answers yet.</Empty> : (
+          <BarList label="Wrong answers chosen" bars={allWrong.map((w) => ({
+            key: `${w.response}\u0000${w.misconception ?? ""}`,
+            label: <b className="adm-mono">{w.response || "Skipped"}</b>,
+            sub: w.misconception ? `${w.misconception}${w.meaning ? `: ${w.meaning}` : ""}` : "Not coded",
+            value: w.count,
+            text: `${w.count}x`,
+            tone: w.misconception ? null : "warn",
+          }))} />
+        )}
+      </section>
 
       {template && <>
-        <h2>Sample questions</h2>
-        <p className="adm-note">Drawn from the template with fixed seeds. A child gets other numbers.</p>
-        <ul className="adm-samples">
+        <SectionHead id="tpl-samples" title="Sample questions" line="Drawn from the template with fixed seeds. A child gets other numbers." />
+        <ul className="ap-samples">
           {SAMPLE_SEEDS.map((seed) => {
             const q = fillTemplate(template, seed);
             return (
               <li key={seed}>
-                <p>{q.prompt}</p>
+                <p className="ap-sample-q">{q.prompt}</p>
                 {q.figure && <p className="adm-note">With a bar graph: {q.figure.bars.map((b) => `${b.label} ${b.value}`).join(", ")}</p>}
-                {q.choices && <p className="adm-note">Choices: {q.choices.join(" | ")}</p>}
+                {q.choices
+                  ? <ul className="ap-choices" aria-label="Choices">{q.choices.map((c) => <li key={c} className={String(c) === String(q.answer) ? "is-right" : undefined}>{c}</li>)}</ul>
+                  : null}
                 <p>Right answer: <strong>{q.answer}</strong></p>
-                <Table label={`Coded wrong answers, sample ${seed}`} head={["Wrong answer", "Mistake"]} empty="No coded wrong answers.">
-                  {q.wrong.map((w) => <tr key={w.value}><td>{w.value}</td><td>{w.misconception}: {MISCONCEPTIONS[w.misconception]?.description ?? ""}</td></tr>)}
-                </Table>
+                {q.wrong.length === 0 ? <p className="adm-note">No coded wrong answers.</p> : (
+                  <ul className="ap-coded" aria-label={`Coded wrong answers, sample ${seed}`}>
+                    {q.wrong.map((w) => <li key={w.value}><b>{w.value}</b><span>{w.misconception}: {MISCONCEPTIONS[w.misconception]?.description ?? ""}</span></li>)}
+                  </ul>
+                )}
               </li>
             );
           })}
         </ul>
       </>}
+
+      {template && (
+        <details className="adm-tech">
+          <summary>Template details</summary>
+          <RecordFacts facts={[
+            ["Strand", STRAND_NAMES[template.strand]],
+            ["BC standard", <Link key="standard" href={demoHref(skillMapStandardPath(template.standard), demo)}>{template.standard}</Link>],
+            ["BC grade", levelText(template.grades.BC)],
+            ["Other curricula", otherLevels || "-"],
+            ["Answer", template.format === "choice" ? "Choose one" : "Type a number"],
+            ["Whiteboard", template.whiteboard ? "May require shown work" : "No"],
+            ["Question banks", bands.map((b) => `Grades ${b}`).join(", ")],
+          ]} />
+        </details>
+      )}
     </AdminFrame>
   );
 }

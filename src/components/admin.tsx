@@ -129,28 +129,41 @@ export function FilterForm({ action, filters, fields }: { action: string; filter
 /** "Grade 3, BC" for a child or a test. */
 export const gradeAndPlace = (grade: number, province: keyof typeof CURRICULA) => `${gradeLabel(grade)}, ${province === "other" ? "other" : province}`;
 
-/** The tests table of the main list and of a family. `family`: leave out the parent column. `isTest`: tag a test family. */
+/** A test's flags, help answer and AI reviews as chips, for the tests tables. */
+export function TestFlags({ t }: { t: Pick<TestRow, "flags" | "status" | "help" | "reviews"> }) {
+  const likely = t.flags !== null && helpLikely(t.flags);
+  const chips = [
+    likely ? <Chip key="help" tone="warn">Help likely</Chip> : t.flags && t.flags.length > 0 ? <Chip key="flags" tone="muted">{t.flags.length} flag{t.flags.length === 1 ? "" : "s"}</Chip> : null,
+    t.reviews.low > 0 ? <Chip key="ai" tone="bad">{t.reviews.low} low AI of {t.reviews.total}</Chip> : t.reviews.total > 0 ? <Chip key="ai" tone="ok">{t.reviews.total} AI sure</Chip> : null,
+  ].filter(Boolean);
+  return <>
+    {chips.length > 0 ? <span className="adm-row">{chips}</span> : <span className="adm-note">{t.flags === null ? "-" : "None"}</span>}
+    {t.status === "completed" && <span className="adm-sub">Did anyone help? {helpAnswerText(t.help)}</span>}
+  </>;
+}
+
+/**
+ * The tests table of the main list and of a family. `family`: leave out the parent column. `isTest`: tag a test family.
+ * The result (status, answers, level and route) is one cell; flags, the help answer and AI reviews another.
+ */
 export function TestsTable({ tests, family = false, isTest }: { tests: TestRow[]; family?: boolean; isTest?: (parentId: string) => boolean }) {
-  const head = ["Started (Pacific)", "Child", ...(family ? [] : ["Parent"]), "Status", "Answered", "Level", "Flags", "Help?", "AI reviews", "Report"];
+  const head = ["Started (Pacific)", "Child", ...(family ? [] : ["Parent"]), "Result", "Flags and AI", "Report"];
   return (
     <Table label="Tests" head={head} empty="No tests match.">
-      {tests.map((t) => {
-        const likely = t.flags !== null && helpLikely(t.flags);
-        return (
-          <tr key={t.id}>
-            <td className="adm-nowrap"><Link href={adminTestPath(t.id)}>{when(t.started_at)}</Link></td>
-            <td><Link href={`${ADMIN_PATH}/children/${t.child_id}`}>{t.child?.first_name ?? "Child"}</Link><span className="adm-sub">{gradeAndPlace(t.grade, t.province)}</span></td>
-            {!family && <td>{t.parent ? <Link href={adminParentPath(t.parent.id)}>{t.parent.name}</Link> : "?"}<TestTag test={isTest?.(t.parent_id)} /><span className="adm-sub">{t.parent?.email}</span></td>}
-            <td><StatusChip status={t.status} /></td>
-            <td className="adm-num">{t.answered}</td>
-            <td className="adm-nowrap">{t.placement ? <>{levelText(t.placement.workingLevel)}<span className="adm-sub">route {t.placement.route}</span></> : "-"}</td>
-            <td>{t.flags === null ? "-" : likely ? <Chip tone="warn">Help likely</Chip> : t.flags.length > 0 ? `${t.flags.length} flag${t.flags.length === 1 ? "" : "s"}` : "None"}</td>
-            <td>{t.status === "completed" ? helpAnswerText(t.help) : "-"}</td>
-            <td className="adm-nowrap">{t.reviews.total === 0 ? "-" : t.reviews.low > 0 ? <Chip tone="bad">{t.reviews.low} low of {t.reviews.total}</Chip> : `${t.reviews.total} sure`}</td>
-            <td>{t.reportId ? <Link href={adminReportPath(t.reportId)}>Report</Link> : "-"}</td>
-          </tr>
-        );
-      })}
+      {tests.map((t) => (
+        <tr key={t.id}>
+          <td className="adm-nowrap"><Link href={adminTestPath(t.id)}>{when(t.started_at)}</Link></td>
+          <td><Link href={`${ADMIN_PATH}/children/${t.child_id}`}>{t.child?.first_name ?? "Child"}</Link><span className="adm-sub">{gradeAndPlace(t.grade, t.province)}</span></td>
+          {!family && <td>{t.parent ? <Link href={adminParentPath(t.parent.id)}>{t.parent.name}</Link> : "?"}<TestTag test={isTest?.(t.parent_id)} /><span className="adm-sub">{t.parent?.email}</span></td>}
+          <td className="adm-nowrap">
+            <StatusChip status={t.status} />
+            <span className="adm-sub">{t.answered} answered</span>
+            {t.placement && <span className="adm-sub">Level {levelText(t.placement.workingLevel)} · route {t.placement.route}</span>}
+          </td>
+          <td><TestFlags t={t} /></td>
+          <td>{t.reportId ? <Link href={adminReportPath(t.reportId)}>Report</Link> : "-"}</td>
+        </tr>
+      ))}
     </Table>
   );
 }

@@ -15,6 +15,7 @@ import type { Database } from "@/lib/database";
 import { adminClient } from "@/lib/supabase-auth";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
 import { notIn } from "@/lib/admin-test-families";
+import type { CallStatRow } from "@/lib/admin-pages";
 
 // Maya's admin test calls on the server (#323): the call module (src/lib/maya-call.ts) with its seams
 // (src/lib/maya-call-seams.ts, shared with the voice worker). Writes use the secret key; the admin pages read with the
@@ -243,6 +244,20 @@ export async function listCalls(a: AdminSession, limit = 50, token?: string, hid
 }
 
 /** One call for the admin call page, with the child's first name. */
+/** The most calls the summary tiles read for one window; more is said as "or more". */
+export const CALL_STATS_MAX = 5000;
+
+/**
+ * The calls since `from`, for the summary tiles of the calls page: one read, without the families in `leaveOut` (the
+ * test and team families, never counted), left out in the query so the cap holds real calls only.
+ */
+export async function callStats(a: AdminSession, from: Date, leaveOut: readonly string[]): Promise<{ rows: CallStatRow[]; capped: boolean }> {
+  const out = notIn(leaveOut);
+  const read = a.db.from("maya_calls").select("created_at, parent_id, call_seconds, flag, safety_severity, safety_flag").gte("created_at", from.toISOString());
+  const rows = must<CallStatRow[]>(await (out ? read.not("parent_id", "in", out) : read).order("created_at", { ascending: false }).limit(CALL_STATS_MAX + 1), "maya call stats");
+  return { rows: rows.slice(0, CALL_STATS_MAX), capped: rows.length > CALL_STATS_MAX };
+}
+
 export async function readCall(a: AdminSession, id: string): Promise<{ view: CallView; childName: string | null } | null> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return null;
   const row = must<Database["public"]["Tables"]["maya_calls"]["Row"] | null>(await a.db.from("maya_calls").select("*").eq("id", id.toLowerCase()).maybeSingle(), "maya call");
