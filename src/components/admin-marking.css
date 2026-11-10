@@ -1,0 +1,123 @@
+/* Workbooks > Marking (D-315), in the look of Production (admin-production.css): the waiting answers as cards, the
+   pages per book as bars, then the table; one marked page as the photo beside the answers to mark. The admin's spacing
+   scale (4 8 12 16 24 32 48) and 8 px corners. One column on a phone; the tables scroll inside their own box. */
+.adm-mk + .adm-mk, .adm-mk-page + .adm-mk { margin-top: var(--s6); }
+.adm-mk-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s1) var(--s3); margin-bottom: var(--s3); padding-bottom: var(--s2); border-bottom: 1px solid var(--line); }
+[data-look="warm"] .adm-main .adm-mk-head h2 { margin: 0; font: 400 20px/1.2 var(--sans); letter-spacing: -0.02em; }
+.adm-mk-count { font: 400 12px/1 var(--mono); color: var(--ink-3); }
+.adm-main .adm-mk-head p { flex-basis: 100%; margin: 0; font-size: 13.5px; color: var(--ink-3); }
+.adm-mk-empty { margin: 0; padding: var(--s4); border: 1px dashed var(--line); border-radius: var(--r); color: var(--ink-3); font-size: 13.5px; }
+.adm-mk-face { display: inline-grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: 50%; color: var(--ink); font: 500 14px/1 var(--sans); }
+.adm-mk-face.is-test { outline: 1px dashed #b9b9c0; outline-offset: 1px; }
+.adm-mk-why { font-size: 13px; color: var(--ink-3); }
+.adm-main .adm-mk q, .adm-main .adm-mk-page q { quotes: "\201C" "\201D"; font-family: var(--mono); font-size: 13px; }
+
+/* the waiting count */
+.adm-mk-sum { display: flex; align-items: center; gap: var(--s4); margin-bottom: var(--s4); padding: var(--s4) var(--s5); border: 1px solid var(--line); border-radius: var(--r); background: var(--soft); }
+.adm-mk-sum strong { font: 300 40px/1 var(--sans); letter-spacing: -0.03em; color: #b23d14; font-variant-numeric: tabular-nums; }
+.adm-mk-sum > span { display: grid; gap: 2px; }
+.adm-mk-sum b { font-weight: 500; }
+.adm-mk-sum > span > span { font-size: 13.5px; color: var(--ink-2); }
+.adm-mk-calm { display: flex; align-items: flex-start; gap: var(--s3); padding: var(--s4); border: 1px solid var(--line); border-radius: var(--r); background: var(--soft); }
+.adm-mk-calm svg { flex: none; width: 20px; height: 20px; margin-top: 2px; fill: none; stroke: var(--leaf); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.adm-main .adm-mk-calm p { margin: 0; color: var(--ink-2); }
+.adm-mk-calm b { color: var(--ink); font-weight: 500; }
+
+/* the waiting cards */
+.adm-mk-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--s4); }
+.adm-mk-card { display: flex; flex-direction: column; gap: var(--s3); min-width: 0; padding: var(--s4); border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); border-radius: var(--r); background: #fff; box-shadow: inset 3px 0 0 var(--accent); }
+.adm-mk-card.is-test { border-style: dashed; background: var(--soft); }
+.adm-mk-top { display: flex; align-items: center; gap: var(--s3); }
+.adm-mk-who { display: grid; flex: 1; gap: 2px; min-width: 0; }
+.adm-mk-who b { font-weight: 500; overflow-wrap: anywhere; }
+.adm-mk-who > span { font-size: 13px; color: var(--ink-2); }
+.adm-mk-answers { display: grid; gap: var(--s2); margin: 0; padding: 0; list-style: none; font-size: 13.5px; }
+.adm-mk-answers li { display: grid; gap: 2px; padding: var(--s2) var(--s3); border-radius: 6px; background: var(--soft); overflow-wrap: anywhere; }
+.adm-mk-answers b { font-weight: 500; }
+.adm-mk-act { display: grid; justify-items: start; gap: var(--s2); margin-top: auto; padding-top: var(--s3); border-top: 1px solid var(--line-soft); }
+.adm-main .adm-mk-act p { margin: 0; }
+
+/* the mark buttons (AdminTeamMark): three plain buttons and the answer */
+.adm-mk .adm-row[role="group"] button, .adm-mk-page .adm-row[role="group"] button { min-width: 72px; min-height: 40px; padding: 0 var(--s4); border: 1px solid #d4d4d8; border-radius: 6px; background: #fff; color: var(--ink); font: 500 14px/1 var(--sans); cursor: pointer; }
+.adm-mk .adm-row[role="group"] button:hover:not(:disabled), .adm-mk-page .adm-row[role="group"] button:hover:not(:disabled) { border-color: var(--ink); }
+.adm-mk .adm-row[role="group"] button:disabled, .adm-mk-page .adm-row[role="group"] button:disabled { opacity: 0.5; cursor: default; }
+.adm-mk .adm-row[role="group"] [role="status"], .adm-mk-page .adm-row[role="group"] [role="status"] { flex-basis: 100%; font-size: 13.5px; color: var(--ink-2); }
+
+/* the scanned pages */
+.adm-mk-filters { align-items: end; }
+.adm-mk-ids { align-self: center; font-size: 14px; }
+.adm-mk-ids summary { min-height: 36px; display: flex; align-items: center; color: var(--ink-2); cursor: pointer; }
+.adm-mk-ids-fields { display: flex; flex-wrap: wrap; gap: var(--s3) var(--s4); margin-top: var(--s2); }
+.adm-mk-ids input { min-width: 22em; }
+.adm-mk-bars { margin: 0 0 var(--s4); padding: var(--s4) var(--s5); border: 1px solid var(--line); border-radius: var(--r); background: var(--soft); }
+.adm-mk-bars-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s2) var(--s3); margin-bottom: var(--s3); }
+.adm-main .adm-mk-bars-head h3 { margin: 0; font: 400 11.5px/1.2 var(--mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink); }
+.adm-mk-hint { font-size: 13px; color: var(--ink-3); }
+.adm-mk-bar-list { display: grid; gap: var(--s2); margin: 0 0 var(--s3); padding: 0; list-style: none; }
+.adm-mk-bar-list li { display: grid; grid-template-columns: minmax(8em, 14em) minmax(0, 1fr) auto; align-items: center; gap: var(--s3); font-size: 13.5px; }
+.adm-main .adm-mk-bar-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-decoration: none; }
+.adm-main .adm-mk-bar-name:hover { text-decoration: underline; }
+.adm-mk-bar { display: flex; gap: 2px; height: 10px; overflow: hidden; border-radius: 999px; background: #fff; }
+.adm-mk-bar i { display: block; min-width: 4px; height: 100%; }
+.adm-mk-bar-n { font: 400 12px/1 var(--mono); color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.adm-mk-legend { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s4); margin: 0; padding: 0; list-style: none; font-size: 12.5px; color: var(--ink-2); }
+.adm-mk-legend li { display: flex; align-items: center; gap: 6px; }
+.adm-mk-sw { width: 10px; height: 10px; border-radius: 3px; }
+.adm-mk-bar .is-marked, .adm-mk-sw.is-marked { background: var(--leaf); }
+.adm-mk-bar .is-checking, .adm-mk-sw.is-checking { background: var(--sun); }
+.adm-mk-bar .is-waiting, .adm-mk-sw.is-waiting { background: var(--sky); }
+.adm-mk-bar .is-failed, .adm-mk-sw.is-failed { background: var(--tang); }
+.adm-mk-bar .is-none, .adm-mk-sw.is-none { background: color-mix(in srgb, var(--ink) 14%, #fff); }
+.adm-main .adm-mk-more { margin: var(--s3) 0 0; font-size: 14px; }
+
+/* ---------- one marked page ---------- */
+.adm-mk-page { display: grid; grid-template-columns: minmax(0, 3fr) minmax(320px, 2fr); align-items: start; gap: var(--s5); }
+.adm-mk-photo { position: sticky; top: calc(var(--adm-top) + var(--s4)); padding: var(--s3); border: 1px solid var(--line); border-radius: var(--r); background: var(--soft); }
+.adm-mk-photo .scan-preview-layout { display: block; }
+.adm-mk-photo figure { margin: 0; }
+.adm-mk-photo img { display: block; width: 100%; max-width: 100% !important; border-radius: 6px; background: #fff; }
+.adm-mk-photo figcaption { margin-top: var(--s2); font: 400 12px/1.2 var(--mono); color: var(--ink-3); }
+.adm-mk-side { min-width: 0; }
+.adm-mk-marks { display: grid; gap: var(--s3); margin: 0; padding: 0; list-style: none; }
+.adm-mk-marks > li { display: grid; gap: var(--s3); padding: var(--s4); border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); border-radius: var(--r); background: #fff; box-shadow: inset 3px 0 0 var(--accent); }
+.adm-mk-marks .scan-preview-layout { display: flex; }
+.adm-mk-marks figure { margin: 0; }
+.adm-mk-marks img { display: block; max-width: 100%; border-radius: 6px; background: var(--soft); }
+.adm-mk-marks figcaption { display: none; }
+.adm-mk-mark-text { display: grid; gap: 2px; font-size: 14px; overflow-wrap: anywhere; }
+.adm-mk-mark-text b { font-weight: 500; }
+.adm-main .adm-mk-mark-act p { margin: 0; }
+
+.adm-mk-items { margin: 0; padding: 0; list-style: none; border: 1px solid var(--line); border-radius: var(--r); }
+.adm-mk-items li { display: grid; grid-template-columns: 3em minmax(0, 1fr) auto auto; align-items: center; gap: var(--s3); padding: var(--s2) var(--s3); border-top: 1px solid var(--line-soft); font-size: 14px; }
+.adm-mk-items li:first-child { border-top: 0; }
+.adm-mk-items b { font: 500 13px/1 var(--mono); }
+.adm-mk-read { font: 400 13px/1.35 var(--mono); overflow-wrap: anywhere; }
+.adm-mk-by { font-size: 12.5px; color: var(--ink-3); }
+.adm-mk-crops { margin-top: var(--s3); font-size: 14px; }
+.adm-mk-crops summary { min-height: 32px; display: flex; align-items: center; color: var(--ink-2); cursor: pointer; }
+.adm-mk-crops .scan-preview-layout { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--s3); margin-top: var(--s2); }
+.adm-mk-crops figure { margin: 0; }
+.adm-mk-crops figcaption { font: 400 12px/1.2 var(--mono); color: var(--ink-3); }
+
+.adm-mk-timeline { position: relative; display: grid; gap: var(--s3); margin: 0 0 var(--s3); padding: 0; list-style: none; }
+.adm-mk-timeline::before { content: ""; position: absolute; left: 5px; top: 8px; bottom: 8px; width: 2px; background: var(--line); }
+.adm-mk-timeline li { position: relative; display: grid; grid-template-columns: 12px minmax(0, 1fr); gap: var(--s3); }
+.adm-mk-dot { width: 12px; height: 12px; margin-top: 5px; border: 2px solid #fff; border-radius: 50%; background: var(--ink-3); box-shadow: 0 0 0 1px var(--line); }
+.adm-main .adm-mk-timeline p { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.adm-main .adm-mk-timeline p.adm-mk-by { margin-top: 2px; font-size: 12.5px; }
+
+@media (max-width: 859.98px) {
+  .adm-mk-cards { grid-template-columns: minmax(0, 1fr); }
+  .adm-mk-sum { padding: var(--s3) var(--s4); }
+  .adm-mk-ids input { min-width: 0; width: 100%; }
+  .adm-mk-ids-fields label { flex: 1 1 100%; }
+  .adm-mk-bar-list li { grid-template-columns: minmax(0, 1fr) auto; }
+  .adm-mk-bar { grid-column: 1 / -1; grid-row: 2; }
+  .adm-mk-page { grid-template-columns: minmax(0, 1fr); }
+  .adm-mk-photo { position: static; }
+  .adm-mk-items li { grid-template-columns: 3em minmax(0, 1fr); }
+  .adm-mk-items li > :nth-child(n+3) { grid-column: 2; justify-self: start; }
+  [data-look="warm"] .adm-mk .adm-btn, [data-look="warm"] .adm-mk-page .adm-btn { min-height: 40px; }
+  .adm-mk-crops summary, .adm-mk-ids summary { min-height: 40px; }
+}

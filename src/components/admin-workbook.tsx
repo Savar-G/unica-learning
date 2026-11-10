@@ -1,6 +1,8 @@
-// One workbook as data in the admin area (#299): its facts, then each page with its image, the measured question
-// boxes drawn over it, and each question's package (its item's format and answer keys, whether code checked it,
-// worked steps, skill, wrong answers, easier example). A server component with no JavaScript.
+// One workbook as data in the admin area (#299): D-315: a header with the child, the book number and this book's place
+// on Production's stage track; the print and ship steps (the anchors #print-and-ship and #workbook-delivery, which
+// Production links to); the pages as thumbnails with the measured question boxes drawn over them; each page's
+// question packages (format and answer keys, whether code checked it, worked steps, skill, wrong answers, easier
+// example) in a closed section; the audit log closed. A server component; the action buttons are client parts.
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { WorkbookDetail } from "@/lib/admin-store";
@@ -14,7 +16,11 @@ import { RecordFacts, childPath } from "@/components/admin-records";
 import { AuditLog } from "@/components/admin-workbook-audit";
 import { MarkWorkbook } from "@/components/workbook-ship-actions";
 import { WorkbookDelivery } from "@/components/workbook-delivery";
+import { Fold } from "@/components/admin-fold";
+import { STAGE_TEXT, type Stage } from "@/lib/admin-production";
+import { printSteps, stageTrack, workbookStage, type PrintStep, type StepState } from "@/lib/admin-book";
 import "./admin-workbook.css";
+import "./admin-book.css";
 
 const STATUS: Record<WorkbookStatus, [string, Tone]> = {
   draft: ["Draft", "muted"], approved: ["Approved", "info"], printed: ["Printed", "info"], shipped: ["Shipped", "ok"],
@@ -134,62 +140,126 @@ function doneText(at: string | null, action: string, audit: WorkbookDetail["audi
   return `${when(at)}${by ? ` by ${by}` : ""}`;
 }
 
+const ICON_OK = <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>;
+const STEP_WORD: Record<StepState, string> = { done: "Done", now: "To do now", later: "Later" };
+
+/** This book's place on Production's stage track: the stages before it done, its own marked. */
+export function BookStageTrack({ stage }: { stage: Stage }) {
+  const track = stageTrack(stage);
+  return <ol className="bk-track" aria-label={`Stage: ${STAGE_TEXT[stage]}`}>
+    {track.map((s, i) => <li key={s.stage} className={`is-${s.state}`} aria-current={s.stage === stage ? "step" : undefined}>
+      <span className="bk-node" aria-hidden="true">{s.state === "done" ? ICON_OK : i + 1}</span>
+      <span className="bk-track-text">{STAGE_TEXT[s.stage]}<span className="adm-sr"> ({STEP_WORD[s.state]})</span></span>
+    </li>)}
+  </ol>;
+}
+
+/** One print and ship step: its number or a check mark, its title and state, and its action. */
+function Step({ state, n, title, children }: { state: StepState; n: number; title: ReactNode; children?: ReactNode }) {
+  return <li className={`bk-step is-${state}`} aria-current={state === "now" ? "step" : undefined}>
+    <span className="bk-node" aria-hidden="true">{state === "done" ? ICON_OK : n}</span>
+    <div className="bk-step-body">
+      {title !== null && <div className="bk-step-head"><h3>{title}</h3><span className={`bk-step-state is-${state}`}>{STEP_WORD[state]}</span></div>}
+      {children}
+    </div>
+  </li>;
+}
+
 /**
- * #314: print and ship. Download the PDF for the print partner, then "Mark printed" (approved), then "Mark shipped"
- * (printed). The child's first shipped workbook leads to "Workbook shipped: start plan" (D-140); no plan starts here.
+ * #314: print and ship, as steps. Approve (on the draft's page), then download the PDF for the print partner and "Mark
+ * printed" (approved), then "Mark shipped" (printed), then confirm the delivery (shipped). The child's first shipped
+ * workbook leads to "Workbook shipped: start plan" (D-140); no plan starts here.
  */
 function PrintAndShip({ detail }: { detail: WorkbookDetail }) {
-  const { workbook: w } = detail;
-  return <section className="adm-wb-section" aria-labelledby="print-and-ship">
+  const { workbook: w, audit } = detail;
+  const steps = printSteps(w.status, !!detail.delivery);
+  const state = (k: PrintStep) => steps.find((s) => s.step === k)!.state;
+  return <section className="bk-ship" aria-labelledby="print-and-ship">
     <h2 id="print-and-ship">Print and ship</h2>
-    <div className="adm-row">
-      {w.pdfPath && <a className="btn adm-btn" href={`${workbookPdfPath(w.id)}?download=1`}>Download PDF for print</a>}
-      {w.status === "approved" && <MarkWorkbook workbookId={w.id} to="printed" number={w.number} />}
-      {w.status === "printed" && <MarkWorkbook workbookId={w.id} to="shipped" number={w.number} />}
-    </div>
-    {w.status === "draft" && <p className="adm-note">This workbook is not approved. Approve its draft first.</p>}
-    {(w.status === "printed" || w.status === "shipped") && <p className="adm-note">A printed workbook cannot change.</p>}
+    <ol className="bk-steps">
+      <Step state={state("approve")} n={1} title="Approve the draft">
+        <p className="adm-note">{w.status === "draft"
+          ? <>This workbook is not approved. Approve its draft first.{detail.runId && <> <Link href={adminWorkbookRunPath(detail.runId)}>Open the draft</Link></>}</>
+          : `Approved: ${doneText(w.approvedAt, "workbook-approved", audit)}.`}</p>
+      </Step>
+      <Step state={state("print")} n={2} title="Print">
+        <div className="adm-row">
+          {w.pdfPath && <a className={`btn adm-btn${state("print") === "now" ? "" : " ghost"}`} href={`${workbookPdfPath(w.id)}?download=1`}>Download PDF for print</a>}
+          {w.status === "approved" && <MarkWorkbook workbookId={w.id} to="printed" number={w.number} />}
+        </div>
+        {!w.pdfPath && <p className="adm-note">No PDF yet.</p>}
+        {w.printedAt && <p className="adm-note">Printed: {doneText(w.printedAt, "workbook-printed", audit)}. A printed workbook cannot change.</p>}
+      </Step>
+      <Step state={state("ship")} n={3} title="Ship">
+        {w.status === "printed" ? <div className="adm-row"><MarkWorkbook workbookId={w.id} to="shipped" number={w.number} /></div>
+          : <p className="adm-note">{w.shippedAt ? `Shipped: ${doneText(w.shippedAt, "workbook-shipped", audit)}.` : "Mark it shipped after it is printed."}</p>}
+      </Step>
+      {w.status === "shipped"
+        ? <Step state={state("deliver")} n={4} title={null}>
+          <WorkbookDelivery workbookId={w.id} childId={w.childId} number={w.number} heading="h3"
+            timeZone={detail.deliveryZone} receipt={detail.delivery} actor={audit.find((e) => e.id === (detail.delivery?.correction?.auditId ?? detail.delivery?.auditId))?.actor_email} />
+        </Step>
+        : <Step state="later" n={4} title="Workbook delivery"><p className="adm-note">Confirm when the workbook arrives at the family&apos;s home, after it is shipped.</p></Step>}
+    </ol>
+    <p className="adm-sub">Times are Pacific.</p>
   </section>;
+}
+
+/** A page as a thumbnail: its image with the question boxes, its title and its question count. */
+function PageThumb({ page, url, workbookId, printed }: { page: WorkbookPage; url: string | undefined; workbookId: string; printed: boolean }) {
+  return <li className="bk-thumb">
+    <PageImage page={page} url={url} workbookId={workbookId} printed={printed} />
+    <a className="bk-thumb-cap" href={`#page-${page.number}`}>
+      <b>Page {page.number}</b>
+      <span>{[page.dayLabel, page.type].filter(Boolean).join(" · ") || "Page"}</span>
+      <span className="adm-sub">{page.questions.length ? `${page.questions.length} ${page.questions.length === 1 ? "question" : "questions"}` : "No questions"}</span>
+    </a>
+  </li>;
 }
 
 export function AdminWorkbook({ email, detail, why, emails }: { email: string; detail: WorkbookDetail; why?: ReactNode; emails?: ReactNode }) {
   const { workbook: w, child, images, audit } = detail;
   const questions = w.pages.flatMap((p) => p.questions);
+  const printed = w.status === "printed" || w.status === "shipped";
+  const name = child?.first_name ?? "Child";
+  const stage = workbookStage(w.status, !!detail.delivery);
   return (
-    <AdminFrame email={email} title={`${child?.first_name ?? "Child"}: workbook ${w.number}`}>
-      <RecordFacts facts={[
-        ["Child", <Link key="child" href={childPath(w.childId)}>{child?.first_name ?? w.childId}</Link>],
-        ["Status", <WorkbookStatusChip key="status" status={w.status} />],
-        ["Levels", w.levels.map((l) => `U${l}`).join(", ")],
-        ["Pages and questions", `${w.pages.length} pages · ${questions.length} questions`],
-        ["Approved (Pacific)", doneText(w.approvedAt, "workbook-approved", audit)],
-        ["Printed (Pacific)", doneText(w.printedAt, "workbook-printed", audit)],
-        ["Shipped (Pacific)", doneText(w.shippedAt, "workbook-shipped", audit)],
-        ["Made (Pacific)", when(w.createdAt)],
-        ["PDF", w.pdfPath ? <a key="pdf" href={workbookPdfPath(w.id)} target="_blank" rel="noopener">Open workbook PDF</a> : "No PDF yet"],
-        ...(detail.runId ? [["Draft review", <Link key="run" href={adminWorkbookRunPath(detail.runId)}>Open the draft&apos;s checks</Link>] as [string, ReactNode]] : []),
-      ]} />
+    <AdminFrame email={email} title={`${name}: workbook ${w.number}`} lead="Print it, ship it and confirm it reached the family."
+      actions={<>
+        {w.pdfPath && <a className="btn adm-btn ghost" href={workbookPdfPath(w.id)} target="_blank" rel="noopener">Open workbook PDF</a>}
+        {detail.runId && <Link className="btn adm-btn ghost" href={adminWorkbookRunPath(detail.runId)}>Open the draft&apos;s checks</Link>}
+      </>}>
+      <section className="bk-head" aria-label={`${name}, workbook ${w.number}`}>
+        <div className="bk-head-top">
+          <span className="bk-who"><b><Link href={childPath(w.childId)}>{child?.first_name ?? w.childId}</Link> · Book {w.number}</b>
+            <span>{w.levels.map((l) => `U${l}`).join(", ")} · {w.pages.length} pages · {questions.length} questions · made {when(w.createdAt)} (Pacific)</span></span>
+          <WorkbookStatusChip status={w.status} />
+        </div>
+        <BookStageTrack stage={stage} />
+      </section>
       <PrintAndShip detail={detail} />
       {emails}
-      {why}
       <p className="adm-note"><Link href={`${ADMIN_PATH}/maya?workbook=${w.id}`}>Try Maya on a workbook question</Link>. Only printed workbooks from test families can start a session.</p>
-      {w.status === "shipped" && <WorkbookDelivery workbookId={w.id} childId={w.childId} number={w.number}
-        timeZone={detail.deliveryZone} receipt={detail.delivery} actor={audit.find((e) => e.id === (detail.delivery?.correction?.auditId ?? detail.delivery?.auditId))?.actor_email} />}
-      {w.pages.map((p) => (
-        <section key={p.number} className="adm-wb-section" aria-labelledby={`page-${p.number}`}>
-          <h2 id={`page-${p.number}`}>{pageTitle(p)}</h2>
-          <p className="adm-note adm-mono" title={p.image?.path}>QR token {p.qrToken}{p.image && ` · ${p.image.width} × ${p.image.height} px`}</p>
-          <div className="adm-wb-grid">
-            <PageImage page={p} url={p.image ? images[p.image.path] : undefined} workbookId={w.id} printed={w.status === "printed" || w.status === "shipped"} />
+      <section className="bk-pages" aria-labelledby="bk-pages-h">
+        <div className="bk-section-head"><h2 id="bk-pages-h">Pages</h2><span className="bk-count">{w.pages.length}</span>
+          <p>{printed ? "A number on a page opens that question in Maya." : "The boxes show where each question is measured."}</p></div>
+        {w.pages.length ? <ul className="bk-thumbs">{w.pages.map((p) => <PageThumb key={p.number} page={p} url={p.image ? images[p.image.path] : undefined} workbookId={w.id} printed={printed} />)}</ul>
+          : <p className="adm-empty">This workbook has no pages.</p>}
+        <h3 className="bk-mini">Questions on each page</h3>
+        {w.pages.map((p) => (
+          <Fold key={p.number} id={`page-${p.number}`} title={pageTitle(p)} hint={`${p.questions.length} ${p.questions.length === 1 ? "question" : "questions"}`}>
+            <p className="adm-note adm-mono" title={p.image?.path}>QR token {p.qrToken}{p.image && ` · ${p.image.width} × ${p.image.height} px`}</p>
             <Table label={`Questions on page ${p.number}`} empty="No questions on this page."
               head={["#", "Box (x, y · w × h)", "Question", "Answer", "Check", "Worked steps", "Skill", "Level · difficulty", "Wrong answers", "Easier example"]}>
               {p.questions.map((q) => <QuestionRow key={q.number} q={q} />)}
             </Table>
-          </div>
-        </section>
-      ))}
-      <h2>Audit log</h2>
-      <AuditLog entries={audit} />
+          </Fold>
+        ))}
+      </section>
+      {why && <Fold title="Why this book" hint="The plan's inputs, page choices, warnings and book instructions">{why}</Fold>}
+      <Fold title="Audit log" hint={`${audit.length} ${audit.length === 1 ? "entry" : "entries"}: approval, printing, shipping and delivery, with who and when`}>
+        <AuditLog entries={audit} />
+      </Fold>
       <details className="adm-tech">
         <summary>Technical details</summary>
         <RecordFacts facts={[["Workbook id", <span key="id" className="adm-mono">{w.id}</span>], ["Profile build", <span key="build" className="adm-mono">{w.profileBuild ?? "None"}</span>]]} />

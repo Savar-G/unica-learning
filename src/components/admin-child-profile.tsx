@@ -13,6 +13,8 @@ import { STATUS_LABEL } from "@/lib/report-view";
 import { Chip, Table, gradeAndPlace } from "@/components/admin";
 import { AdminFrame } from "@/components/admin-frame";
 import { RecordFacts, childPath } from "@/components/admin-records";
+import { SectionHead } from "@/components/admin-family-page";
+import "./admin-record.css";
 
 const STANDARD_TEXT = new Map(BC_SKILL_MAP.standards.map((s) => [s.code, s.text]));
 const SOURCE: Record<LearningEventRow["source"], string> = { call: "Call", marking: "Marked page", assessment: "Test" };
@@ -27,23 +29,28 @@ export function AdminChildProfile({ email, detail }: { email: string; detail: Ch
   const numbers = new Map(events.map((e, i) => [e.id, i + 1]));
   // The events the stored build counted: an event stored after it shows as not in this build.
   const counted = new Set(profile?.standards.flatMap((s) => s.evidence.events) ?? []);
-  return <AdminFrame email={email} title={`${c.first_name}'s profile`}>
-    <RecordFacts facts={[
-      ["Child", <Link key="child" href={childPath(c.id)}>{c.first_name}</Link>], ["Grade and curriculum", gradeAndPlace(c.grade, c.province)],
-      ["Built (Pacific)", when(stored?.built_at ?? null)], ["First built (Pacific)", when(stored?.created_at ?? null)],
-      ["Revision", stored?.revision ?? "-"], ["Schema version", stored?.schema_version ?? "-"],
-      ["Test profile", stored?.assessment_id ? <Link key="base" href={adminProfilePath(stored.assessment_id)}>Open the test&apos;s profile</Link> : "None"],
-      ["Learning events", `${events.length} stored`],
-    ]} />
-    {!stored ? <p className="adm-note">No profile is stored for this child. It is built after a finished test&apos;s report and after the parent changes the learning card.</p>
+  return <AdminFrame email={email} title={`${c.first_name}'s profile`}
+    lead={<>What is secure and not yet secure for {c.first_name}, from the latest test and every learning event since. {gradeAndPlace(c.grade, c.province)}.</>}
+    actions={<>
+      <Link className="btn ghost adm-btn" href={childPath(c.id)} prefetch={false}>Open {c.first_name}</Link>
+      {stored?.assessment_id && <Link className="btn ghost adm-btn" href={adminProfilePath(stored.assessment_id)} prefetch={false}>Open the test&apos;s profile</Link>}
+    </>}>
+    <div className="rec-summary">
+      <p className="rec-tile is-warn"><span>Not yet secure</span><b>{profile ? profile.notYetSecure.length : "-"}</b><small>standards</small></p>
+      <p className="rec-tile is-ok"><span>Secure</span><b>{profile ? profile.secure.length : "-"}</b><small>standards</small></p>
+      <p className="rec-tile"><span>Learning events</span><b>{events.length}</b><small>stored</small></p>
+      <p className="rec-tile"><span>Built (Pacific)</span><small>{when(stored?.built_at ?? null)}</small><small>First built {when(stored?.created_at ?? null)}</small></p>
+    </div>
+    {!stored ? <p className="adm-empty">No profile is stored for this child. It is built after a finished test&apos;s report and after the parent changes the learning card.</p>
       : !profile ? <>
         <p className="adm-note">This profile was built in an older format, which this page does not read. The next build replaces it.</p>
         <details className="adm-tech"><summary>Technical details</summary><p>Schema version {stored.schema_version}.</p><pre>{JSON.stringify(stored.profile, null, 2)}</pre></details>
       </>
       : <ProfileFacts profile={profile} numbers={numbers} />}
 
-    <h2>Learning events</h2>
-    <p className="adm-note">Every event of the child, oldest first. Events of the test the profile starts from are already in that test&apos;s profile, so the build does not count them again. An event stored after the last build is not in it yet.</p>
+    <section className="rec-sec" aria-labelledby="rec-events">
+    <SectionHead id="rec-events" title="Learning events" count={events.length} hint="Every event of the child, oldest first." />
+    <p className="adm-note">Events of the test the profile starts from are already in that test&apos;s profile, so the build does not count them again. An event stored after the last build is not in it yet.</p>
     <Table label="Learning events" head={["#", "When (Pacific)", "Source", "Question", "BC", "Result", "Hints", "Stuck step", "Mistake", "Time", "Evidence", "Counted"]} empty="No learning event is stored for this child.">
       {events.map((e, i) => {
         const inTest = e.source === "assessment" && e.assessment_id !== null && e.assessment_id === profile?.assessment?.assessmentId;
@@ -65,6 +72,7 @@ export function AdminChildProfile({ email, detail }: { email: string; detail: Ch
         </tr>;
       })}
     </Table>
+    </section>
 
     {profile && <details className="adm-tech"><summary>Technical details</summary><p>The stored profile, schema version {stored!.schema_version}, revision {stored!.revision}.</p><pre>{JSON.stringify(profile, null, 2)}</pre></details>}
   </AdminFrame>;
@@ -73,8 +81,8 @@ export function AdminChildProfile({ email, detail }: { email: string; detail: Ch
 function ProfileFacts({ profile, numbers }: { profile: ChildLearnerProfile; numbers: ReadonlyMap<string, number> }) {
   const a = profile.assessment;
   const list = (codes: string[], empty: string) => codes.length
-    ? <ul className="adm-list">{codes.map((code) => <li key={code}><span className="adm-mono">{code}</span> {STANDARD_TEXT.get(code) ?? ""}</li>)}</ul>
-    : <p className="adm-note">{empty}</p>;
+    ? <ul className="rec-codes">{codes.map((code) => <li key={code}><span className="adm-mono">{code}</span> <span>{STANDARD_TEXT.get(code) ?? ""}</span></li>)}</ul>
+    : <p className="adm-empty">{empty}</p>;
   return <>
     <p className="adm-note">Written by code. Each standard adds the events to the test profile&apos;s tally: a right answer with help is not a right answer, so a standard solved only with help is not yet secure.</p>
     <RecordFacts facts={[
@@ -83,15 +91,24 @@ function ProfileFacts({ profile, numbers }: { profile: ChildLearnerProfile; numb
       ["Newest counted event (Pacific)", when(profile.events.lastAt)],
     ]} />
 
-    <h2>Not yet secure</h2>
-    {list(profile.notYetSecure, "No standard at or below the school grade is not yet secure.")}
-    <h2>Secure</h2>
-    {list(profile.secure, "No secure standard.")}
+    <section className="rec-sec rec-cols" aria-label="Standards">
+      <div>
+        <h2>Not yet secure <span className="rec-count">{profile.notYetSecure.length}</span></h2>
+        {list(profile.notYetSecure, "No standard at or below the school grade is not yet secure.")}
+      </div>
+      <div>
+        <h2>Secure <span className="rec-count">{profile.secure.length}</span></h2>
+        {list(profile.secure, "No secure standard.")}
+      </div>
+    </section>
 
-    <h2>AI findings</h2>
+    <section className="rec-sec" aria-labelledby="rec-findings">
+    <SectionHead id="rec-findings" title="AI findings" count={profile.ai?.findings.length ?? 0} hint="Hypotheses for the workbook planner and Maya." />
     <Findings profile={profile} numbers={numbers} />
+    </section>
 
-    <h2>By BC standard</h2>
+    <section className="rec-sec" aria-labelledby="rec-standards">
+    <SectionHead id="rec-standards" title="By BC standard" count={profile.standards.length} />
     <Table label="BC standards" head={["BC", "Standard", "Status", "Right", "Test", "Events", "Evidence"]} empty="No standard.">
       {profile.standards.map((s) => <tr key={s.code}>
         <td className="adm-mono">{s.code}</td>
@@ -103,8 +120,10 @@ function ProfileFacts({ profile, numbers }: { profile: ChildLearnerProfile; numb
         <td><Evidence s={s} numbers={numbers} /></td>
       </tr>)}
     </Table>
+    </section>
 
-    <h2>The parent&apos;s answers</h2>
+    <section className="rec-sec" aria-labelledby="rec-answers">
+    <SectionHead id="rec-answers" title="The parent's answers" />
     <RecordFacts facts={[
       ["Learns best from", profile.preferences.styles.length ? profile.preferences.styles.map(styleLabel).join("; ") : "No answer"],
       ["Interests", profile.preferences.interests.length ? profile.preferences.interests.map(interestLabel).join(", ") : "No answer"],
@@ -112,6 +131,7 @@ function ProfileFacts({ profile, numbers }: { profile: ChildLearnerProfile; numb
       ["Feeling about math", profile.parent.feeling ? feelingLabel(profile.parent.feeling) : "No answer"],
       ["Time each week", profile.parent.weeklyTime ? weeklyTimeLabel(profile.parent.weeklyTime) : "No answer"],
     ]} />
+    </section>
   </>;
 }
 
