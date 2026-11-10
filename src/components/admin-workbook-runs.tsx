@@ -1,5 +1,6 @@
-// The admin Workbooks area (#312): the child page's list of runs with their check results, and one run's page: its
-// progress or its error, then its draft for review, page by page, the page image beside each question's data. Failed
+// The admin Workbooks area (#312): the child page's list of runs with their check results, and one run's page (D-315):
+// its header and progress or its error, the check results with the approval, the draft's pages as thumbnails, then
+// its draft for review, page by page, the page image beside each question's data. Failed
 // questions, pages that failed the fit check, pages that did not render and questions code could not check are marked
 // on the page and listed at the top, with the solve check's results (#380 round 7: the questions a separate reader
 // answered otherwise than the key, with both answers, and who wrote each printed text). Server components; the refresh
@@ -21,7 +22,7 @@ import { failedBySolve, plainModel, QUESTION_SOLVE_TEXT, questionSolveState, sol
 import { Chip, Table, type Tone } from "@/components/admin";
 import { AdminFrame } from "@/components/admin-frame";
 import { RecordFacts, childPath } from "@/components/admin-records";
-import { PackageCells, WorkbookStatusChip } from "@/components/admin-workbook";
+import { BookStageTrack, PackageCells, WorkbookStatusChip } from "@/components/admin-workbook";
 import { RunRefresh } from "@/components/admin-run-refresh";
 import { RunOnServer } from "@/components/run-on-server";
 import { StopWorkbookRun } from "@/components/stop-workbook-run";
@@ -29,7 +30,11 @@ import { AuditLog } from "@/components/admin-workbook-audit";
 import { ApproveDraft } from "@/components/workbook-ship-actions";
 import { approvalProblems } from "@/lib/workbook-ship";
 import type { AiCallSummary } from "@/lib/workbook-ai";
+import { Fold } from "@/components/admin-fold";
+import { workbookStage } from "@/lib/admin-book";
+import type { Stage } from "@/lib/admin-production";
 import "./admin-workbook.css";
+import "./admin-book.css";
 
 const STATE: Record<RunState, [string, Tone]> = {
   waiting: ["Waiting to start", "info"], preparing: ["Preparing", "info"], stopped: ["Stopped", "warn"], failed: ["Failed", "bad"], done: ["Draft ready", "ok"],
@@ -427,7 +432,41 @@ function Approval({ detail, name }: { detail: RunDetail; name: string }) {
   return <ApproveDraft runId={run.id} revision={draft.revision} workbookPath={adminWorkbookPath(draft.workbook.id)} child={name} pending={detail.comments.filter(c => ["pending", "failed", "stale"].includes(c.status)).length} />;
 }
 
-/** One run: its state, then its draft page by page, then the audit log. `only`: only the pages that need attention. */
+const ICON_OK = <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>;
+const ICON_WARN = <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M12 8v4.5M12 16h.01" /></svg>;
+const many = (n: number, one: string, more: string) => `${n} ${n === 1 ? one : more}`;
+
+/** A draft page as a thumbnail: its image (or why there is none), its title and its check marks. */
+function DraftThumb({ page, detail }: { page: GeneratedPage; detail: NonNullable<RunDetail["draft"]> & { images: Record<string, string> } }) {
+  const image = detail.rendering?.pages.find((p) => p.number === page.number);
+  const problems = detail.problems.filter((p) => p.page === page.number);
+  const i = pageIssues(page, problems);
+  const noLayout = problems.length > 0 && problems.every((p) => NO_LAYOUT.test(p.reason));
+  const marks: { tone: "ok" | "warn" | "bad"; text: string }[] = [
+    ...(i.failed.length ? [{ tone: "bad" as const, text: `${i.failed.length} to fix` }] : []),
+    ...(i.fit.length ? [{ tone: "bad" as const, text: "Does not fit" }] : []),
+    ...(problems.length ? [{ tone: "bad" as const, text: noLayout ? "No layout" : "Not in the PDF" }] : []),
+    ...(i.notChecked.length ? [{ tone: "warn" as const, text: `${i.notChecked.length} by hand` }] : []),
+    ...(!i.bad && !i.notChecked.length && i.warn ? [{ tone: "warn" as const, text: "Items left out" }] : []),
+  ];
+  if (!marks.length) marks.push({ tone: "ok", text: page.questions.length ? "Checks passed" : "Fits" });
+  return <li className={`bk-thumb${i.bad ? " is-bad" : i.warn ? " is-warn" : ""}`}>
+    {image ? <DraftPageImage page={page} image={image} url={detail.images[image.image.path]} />
+      : <div className="adm-wb-missing" role="note"><b>{noLayout ? "No page layout" : "Not drawn"}</b></div>}
+    <a className="bk-thumb-cap" href={`#page-${page.number}`}>
+      <b>Page {page.number}</b>
+      <span>{[page.dayLabel, typeText(page.type)].filter(Boolean).join(" · ")}</span>
+    </a>
+    <span className="bk-marks">{marks.map((m) => <span key={m.text} className={`bk-mark is-${m.tone}`}>{m.tone === "ok" ? ICON_OK : ICON_WARN}{m.text}</span>)}</span>
+  </li>;
+}
+
+/**
+ * One run (D-315): the header with the child, the book, the run's state, its place on the stage track and its
+ * progress, with Stop on the right; the check results as chips with the PDF and "Approve for print" on the right; the
+ * draft's pages as thumbnails with their check marks; then the comment reviewer and the question data; AI calls and
+ * costs and the audit log closed. `only`: only the pages that need attention in the question data.
+ */
 export function AdminWorkbookRun({ email, detail, now, only, worker, why }: { email: string; detail: RunDetail; now: Date; only: boolean; worker: WorkerStatus | null; why?: ReactNode }) {
   const { run, child, draft } = detail;
   const state = runState(run, now);
@@ -451,34 +490,29 @@ export function AdminWorkbookRun({ email, detail, now, only, worker, why }: { em
   const history = detail.audit.filter((e) => e.action === "workbook-comments-sent").map((e) => ({ id: e.id,
     text: `${e.actor_email ?? "An admin"} applied ${String(e.detail.comments)} comments on pages ${Array.isArray(e.detail.pages) ? e.detail.pages.join(", ") : ""} · ${when(e.at)} Pacific · Version ${String(e.detail.revision)}`,
   }));
+  const active = activeRun(run);
+  // This run's place on Production's track: being made, ready to review, or the stored workbook's status.
+  const stage: Stage | null = active || state === "waiting" || state === "preparing" ? "making"
+    : state === "done" && draft ? detail.approved && detail.approved.status !== "draft" ? workbookStage(detail.approved.status, false) : "review" : null;
   return (
-    <AdminFrame email={email} title={`${name}: draft of workbook ${run.number}`}>
-      {why}
-      {activeRun(run) && <RunRefresh />}
-      <RecordFacts facts={[
-        ["Child", <Link key="child" href={childPath(run.childId)}>{name}</Link>],
-        ["Status", <span key="state" className="adm-wb-state"><RunStateChip state={state} run={run} />{(state === "preparing" || state === "waiting") && <RunProgress run={run} activity={detail.activity} now={now} worker={worker} />}<StopButton run={run} /></span>],
-        ["Started (Pacific)", `${when(run.createdAt)} by ${run.startedBy.email ?? "unknown"}`],
-        ["Finished (Pacific)", run.finishedAt ? when(run.finishedAt) : "Not yet"],
-        ["Tries", `${run.attempts} of ${run.maxAttempts} allowed${run.resumes > 0 ? ` · taken up again ${run.resumes} ${run.resumes === 1 ? "time" : "times"}` : ""}`],
-        ["Made on", run.runner === "mac" ? <span key="runner" className="adm-wb-state">{runnerText(run)}<WorkerLine worker={worker} /></span> : runnerText(run)],
-        ["AI calls", aiCallsFact(detail.aiCalls)],
-        ["Checking AI", <SolveFact key="solve" solves={detail.solves} summary={solveResult} />],
-        ...(draft ? [
-          ["Levels", levelsText(draft.workbook.levels)] as [string, ReactNode],
-          ["Pages", `${draft.workbook.pages.length} pages${draft.revision > 1 ? ` · version ${draft.revision}` : ""}`] as [string, ReactNode],
-          ["Writing AI", <span key="model" title={draft.workbook.model}>{plainModel(draft.workbook.model, "Scripted writer")}</span>] as [string, ReactNode],
-        ] : []),
-      ]} />
-      {detail.oldFormat === null && <div className="adm-row adm-wb-pdf">
-        <DraftPdfLink runId={run.id} draft={!!draft} rendering={draft?.rendering ?? null} pages={pages.length} />
-        <Approval detail={detail} name={name} />
-      </div>}
+    <AdminFrame email={email} title={`${name}: draft of workbook ${run.number}`}
+      lead={draft ? "Check the draft page by page, comment where it needs a change, then approve it for print." : "The draft is made here, page by page. This page shows how far it is."}>
+      {active && <RunRefresh />}
+      <section className="bk-head" aria-label={`${name}, draft of workbook ${run.number}`}>
+        <div className="bk-head-top">
+          <span className="bk-who"><b><Link href={childPath(run.childId)}>{name}</Link> · Book {run.number}</b>
+            <span>Started {when(run.createdAt)} (Pacific) by {run.startedBy.email ?? "unknown"}{run.finishedAt ? ` · finished ${when(run.finishedAt)}` : ""}</span>
+            <span>Tries: {run.attempts} of {run.maxAttempts} allowed{run.resumes > 0 ? ` · taken up again ${run.resumes} ${run.resumes === 1 ? "time" : "times"}` : ""}{draft ? ` · ${draft.workbook.pages.length} pages, ${levelsText(draft.workbook.levels)}${draft.revision > 1 ? `, version ${draft.revision}` : ""}` : ""}</span></span>
+          <span className="bk-head-end"><RunStateChip state={state} run={run} /><StopButton run={run} /></span>
+        </div>
+        {(state === "preparing" || state === "waiting") && <div className="bk-progress"><RunProgress run={run} activity={detail.activity} now={now} worker={worker} /></div>}
+        {stage && <BookStageTrack stage={stage} />}
+      </section>
 
       {run.stoppedBy && (
         <p className="adm-note" role="status"><b>{stoppedLine(run)}</b> Its finished pages are not used. To make this workbook, press Prepare next workbook on <Link href={childPath(run.childId)}>{name}&apos;s page</Link>: it starts a new run.</p>
       )}
-      {(state === "failed" || (state === "stopped" && !activeRun(run))) && !run.stoppedBy && (
+      {(state === "failed" || (state === "stopped" && !active)) && !run.stoppedBy && (
         <div className="adm-wb-alert" role="alert">
           <b>{state === "failed" ? "This run failed." : "This run stopped without finishing."}</b>
           <p>{run.error ?? `${STOPPED_TEXT} Its writes are no longer used.`}</p>
@@ -487,31 +521,65 @@ export function AdminWorkbookRun({ email, detail, now, only, worker, why }: { em
         </div>
       )}
       <MacWait run={run} state={state} worker={worker} />
-      {activeRun(run) && <p className="adm-note">This page updates every few seconds. You can leave it: the draft is made in the background.</p>}
+      {active && <p className="adm-note">This page updates every few seconds. You can leave it: the draft is made in the background.</p>}
 
       {detail.oldFormat !== null && (
         <p className="adm-note" role="note"><Chip tone="muted">Old draft format</Chip> This draft was stored in an older format (version {detail.oldFormat}), so its pages are not shown here. Prepare a new draft to review the pages.</p>
       )}
+      {draft && counts && <section className="bk-checks" aria-labelledby="bk-checks-h">
+        <div className="bk-checks-text">
+          <h2 id="bk-checks-h">Check results</h2>
+          <ChecksCell counts={{ pages: counts.pages, questions: counts.questions, failed: counts.failed, notChecked: counts.notChecked, failedPages: counts.failedPages }} notRendered={notRendered} />
+          <span className="adm-wb-checks">
+            {solveResult && <Chip tone={solveResult.tone}>{solveResult.line}</Chip>}
+            <span className="adm-sub">{[byAi > 0 && `${byAi} questions written by the AI`, byCode > 0 && `${byCode} made from a fixed pattern`].filter(Boolean).join(", ")}</span>
+          </span>
+          {attention.length > 0
+            ? <p className="adm-note">Pages that need attention: {attention.map((p, i) => <span key={p.number}>{i > 0 && ", "}<a href={`#page-${p.number}`} className={failedPages.includes(p) ? "adm-wb-bad-link" : undefined}>{p.number}</a></span>)}</p>
+            : <p className="adm-note">Every question passed its checks, and every page fits and is in the PDF.</p>}
+        </div>
+        {detail.oldFormat === null && <div className="bk-act">
+          <DraftPdfLink runId={run.id} draft={!!draft} rendering={draft.rendering} pages={pages.length} />
+          <Approval detail={detail} name={name} />
+        </div>}
+      </section>}
+      {!draft && detail.oldFormat === null && state === "done" && <div className="adm-row adm-wb-pdf"><DraftPdfLink runId={run.id} draft={false} rendering={null} pages={0} /></div>}
+
       {draft && counts && <>
-        <WorkbookCommentReviewer detail={detail} history={history} />
-        <h2>Check results</h2>
-        <p><ChecksCell counts={{ pages: counts.pages, questions: counts.questions, failed: counts.failed, notChecked: counts.notChecked, failedPages: counts.failedPages }} notRendered={notRendered} /></p>
-        <p className="adm-wb-checks">
-          {solveResult && <Chip tone={solveResult.tone}>{solveResult.line}</Chip>}
-          <span className="adm-sub">{[byAi > 0 && `${byAi} questions written by the AI`, byCode > 0 && `${byCode} made from a fixed pattern`].filter(Boolean).join(", ")}</span>
-        </p>
         {solveResult && <SolveFailures pages={pages} solves={solves} summary={solveResult} />}
-        {attention.length > 0 ? <>
-          <p className="adm-note">Pages that need attention: {attention.map((p, i) => <span key={p.number}>{i > 0 && ", "}<a href={`#page-${p.number}`} className={failedPages.includes(p) ? "adm-wb-bad-link" : undefined}>{p.number}</a></span>)}</p>
-          <nav className="adm-row" aria-label="Pages shown">
+        <section className="bk-pages" aria-labelledby="bk-pages-h">
+          <div className="bk-section-head"><h2 id="bk-pages-h">Pages</h2><span className="bk-count">{pages.length}</span>
+            <p>{attention.length ? `${many(attention.length, "page needs", "pages need")} attention.` : "Every page passed its checks."} A page opens its question data below.</p></div>
+          <ul className="bk-thumbs">{pages.map((p) => <DraftThumb key={p.number} page={p} detail={{ ...draft, images: detail.images }} />)}</ul>
+        </section>
+        <WorkbookCommentReviewer detail={detail} history={history} />
+        <Fold title="Question data and check details" hint={only ? `Only the ${attention.length} pages that need attention` : `Every page: ${many(questions.length, "question", "questions")} with answers, steps, skills and checks`}>
+          {attention.length > 0 && <nav className="adm-row" aria-label="Pages shown">
             {only ? <Link href={adminWorkbookRunPath(run.id)}>Show every page</Link> : <Link href={`${adminWorkbookRunPath(run.id)}?only=attention`}>Show only the {attention.length} pages that need attention</Link>}
-          </nav>
-        </> : <p className="adm-note">Every question passed its checks, and every page fits and is in the PDF.</p>}
-        <details><summary>Question data and check details</summary>{shown.map((p) => <DraftPageSection key={p.number} page={p} detail={{ ...draft, images: detail.images }} solves={solves} />)}</details>
+          </nav>}
+          {shown.map((p) => <DraftPageSection key={p.number} page={p} detail={{ ...draft, images: detail.images }} solves={solves} />)}
+        </Fold>
       </>}
 
-      <h2>Audit log</h2>
-      <AuditLog entries={detail.audit} />
+      {why && <Fold title="Why this book" hint="The plan's inputs, page choices, warnings and book instructions">{why}</Fold>}
+      <Fold title="AI calls and costs" hint={aiCallsHint(detail.aiCalls)}>
+        <RecordFacts facts={[
+          ["Made on", run.runner === "mac" ? <span key="runner" className="adm-wb-state">{runnerText(run)}<WorkerLine worker={worker} /></span> : runnerText(run)],
+          ["AI calls", aiCallsFact(detail.aiCalls)],
+          ["Checking AI", <SolveFact key="solve" solves={detail.solves} summary={solveResult} />],
+          ...(draft ? [["Writing AI", <span key="model" title={draft.workbook.model}>{plainModel(draft.workbook.model, "Scripted writer")}</span>] as [string, ReactNode]] : []),
+        ]} />
+      </Fold>
+      <Fold title="Audit log" hint={many(detail.audit.length, "entry", "entries")}>
+        <AuditLog entries={detail.audit} />
+      </Fold>
     </AdminFrame>
   );
+}
+
+/** The closed AI section's one line: how many calls, and the API's cost. */
+function aiCallsHint(s: AiCallSummary): string {
+  const total = s.subscription.calls + s.api.calls;
+  if (total === 0) return "No AI calls logged yet";
+  return `${many(total, "call", "calls")} · API ${usd(s.api.usd)}${s.api.noCost > 0 || s.incomplete > 0 ? " (some costs unknown)" : ""}`;
 }
