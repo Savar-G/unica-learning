@@ -4046,7 +4046,7 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
       const content = contentOf(input, w, finalQuestions, examples);
       // Older checkpoints keep the checked teaching blocks, even if their
       // separate example packages predate panelExamples. (Not a panel whose example was just swapped: it prints the new one.)
-      const swappedPlaces = new Set([...swapped].map((k) => w.panels[k].place));
+      const swappedPlaces = new Set([...swapped].map((k) => w.page.compactPanel && w.panels[k].place === "watch-one" ? "reminder" : w.panels[k].place));
       if (content?.kind === "day" && page.content?.kind === "day") {
         const old = page.content.blocks.filter(b=>PANEL_SLOTS.includes(b.slot) && !swappedPlaces.has(b.slot));
         for (const block of content.blocks.filter(b=>PANEL_SLOTS.includes(b.slot) && !swappedPlaces.has(b.slot))) {

@@ -27,7 +27,7 @@ function sameExample() {
   };
 }
 
-async function book(number: number, answer: (r: Parameters<typeof fakeWorkbookItems>[0]) => unknown = fakeWorkbookItems) {
+async function book(number: number, answer: (r: Parameters<typeof fakeWorkbookItems>[0]) => unknown = fakeWorkbookItems, compact = false) {
   const curriculum = curriculumFor("bc")!;
   const placed = planNextWorkbook({ curriculum, grade: 3, profile: null, number,
     workbooks: Array.from({ length: number - 1 }, (_, i) => ({ number: i + 1, levels: [10] })) });
@@ -35,6 +35,7 @@ async function book(number: number, answer: (r: Parameters<typeof fakeWorkbookIt
   const fit: FitCheck = { fits: async () => ({ ok: true }) };
   const base = { workbookId: "00000000-0000-4000-8000-000000000811", childId: "00000000-0000-4000-8000-000000000001", number, profileBuild: null, curriculum, itemPolicy: "approved-v1" as const, book: { child: "Kai" } };
   const plan = await prepareWorkbookCapacity({ ...base, plan: workbookCapacityPlan(curriculum, placed.plan) }, fit);
+  if (compact) for (const day of plan.days) for (const page of day.pages) page.compactPanel = true;
   let token = 1;
   const generated = await generateWorkbook({ ...base, plan }, {
     ai: fakeAiClient({ answer }), solver: keySolver(), fit, qrToken: () => `token-${String(++token).padStart(12, "0")}`,
@@ -60,3 +61,19 @@ describe.each([2, 3])("U10 book %i (#811)", (number) => {
     expect((draft.quality?.issues ?? []).filter((i) => /worked example repeats/.test(i.reason))).toEqual([]);
   }, 120_000);
 });
+
+it("prints the replacement example after a repeated Watch one panel becomes a compact reminder", async () => {
+  const draft = await book(3, sameExample(), true);
+  const checked: number[] = [], mismatches: number[] = [];
+  for (const page of draft.pages) {
+    const op = page.panelExamples?.[0]?.operation;
+    const sign = op?.kind === "add" ? "+" : op?.kind === "subtract" ? "−" : op?.kind === "multiply" ? "×" : null;
+    const reminder = page.content?.kind === "day" ? page.content.blocks.find(b => b.slot === "reminder") : null;
+    if (!op || !sign || !reminder || typeof op.operands[0] !== "number" || typeof op.operands[1] !== "number") continue;
+    checked.push(page.number);
+    const printed = (reminder.lines ?? []).join(" ").replace(/[\s[\]]/g, "");
+    if (!printed.includes(`${op.operands[0]}${sign}${op.operands[1]}`)) mismatches.push(page.number);
+  }
+  expect(checked.length).toBeGreaterThan(0);
+  expect(mismatches).toEqual([]);
+}, 120_000);
