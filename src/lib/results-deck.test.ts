@@ -41,6 +41,9 @@ describe("the results deck", () => {
     expect(child.book!.rows.map((r) => [r.title, r.questions, r.share])).toEqual([["Adding and subtracting", 60, 60], ["Earlier skills", 30, 30], ["Harder problems", 10, 10]]);
     expect(child.book!.questions).toBe(100);
     expect(wholePercents([1, 1, 1])).toEqual([34, 33, 33]);
+    expect(wholePercents([1, 1, 4])).toEqual([17, 17, 66]);
+    expect(wholePercents([1, 1, 1, 1, 1, 1])).toEqual([17, 17, 17, 17, 16, 16]);
+    for (const v of [[1, 1, 4], [1, 1, 1, 1, 1, 1], [3, 3, 3, 3, 3, 3, 3], [5, 0, 2]]) expect(wholePercents(v).reduce((a, b) => a + b, 0)).toBe(100);
     expect(child.book!.path.some((s) => s.title === "Workbook 1")).toBe(false);
   });
 

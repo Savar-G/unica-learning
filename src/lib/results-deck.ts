@@ -90,7 +90,8 @@ export function wholePercents(values: number[]): number[] {
   const exact = values.map((v) => (v / total) * 100);
   const out = exact.map(Math.floor);
   const order = exact.map((v, i) => [v - Math.floor(v), i]).sort((a, b) => b[0] - a[0] || a[1] - b[1]);
-  for (let k = 0; k < 100 - out.reduce((a, b) => a + b, 0); ) { out[order[k][1]] += 1; k += 1; if (k >= order.length) break; }
+  const missing = 100 - out.reduce((a, b) => a + b, 0);
+  for (let k = 0; k < missing; k += 1) out[order[k % order.length][1]] += 1;
   return out;
 }
 
