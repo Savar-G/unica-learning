@@ -148,5 +148,7 @@ it.each(["override", "extra", "calculated", "global"])("matches actual page-2 HT
       return [Number(cells[0].textContent!.replace("Day ", "")), cells[1].querySelector("b")!.textContent, cells[1].querySelector(".t2")!.textContent,
         cells[2].firstChild!.textContent, cells[2].querySelector(".plan-time")?.textContent ?? null];
     }));
-  expect(root.textContent).toContain(projection.dailyTime);
+  // Page 2 says the same time as the schedule page, in its own words (Savar, 2026-11-09): "About 20 minutes a day, plus
+  // Extra if there's time." for the saved "about 20 minutes, plus Extra if there's time".
+  expect(root.textContent!.toLowerCase().replace(" minutes a day", " minutes")).toContain(projection.dailyTime.toLowerCase());
 });

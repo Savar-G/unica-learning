@@ -30,7 +30,7 @@ describe("stored workbook comment corrections", () => {
     const page=first.pages.find(p=>p.content?.kind==="how-plan")!;
     const saved=structuredClone(page.content);
     const root=parsed(html(page,first));
-    expect(root.textContent).toContain("select your child, then Scan pages.");
+    expect(root.textContent).toContain("Sign in at unicalearning.com/account, then choose Scan pages.");
     expect(root.textContent).toContain("unicalearning.com/account");
     expect(root.textContent).toContain("Ask for help using Maya, the AI Teaching Assistant.");
     expect(root.textContent).not.toContain("previous workbook");
