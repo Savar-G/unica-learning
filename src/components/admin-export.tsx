@@ -4,15 +4,18 @@
 import Link from "next/link";
 import { Fragment } from "react";
 import { Table } from "@/components/admin";
+import { SectionHead } from "@/components/admin-blocks";
 import { EXPORT_DATASETS, EXPORT_FORMATS, exportHref } from "@/lib/admin-export";
 import { anonymousCopiesHref } from "@/lib/anonymous-copy-export";
 import { ADMIN_PATH } from "@/lib/admin-view";
+import "./admin-pages.css";
 
 export function ExportView({ withTests, demo }: { withTests: boolean; demo: boolean }) {
   return (
     <>
-      <p className="adm-lead">The raw test data, one file per dataset. The CSV opens in a spreadsheet; the JSON keeps every value as stored. Each file joins to the others by the test id (assessment_id) and the place in the test (position).</p>
-      <p className="adm-note">{withTests ? "Every family, with the test families: Show test families is on." : "Real families only: the test families are left out. Turn on Show test families, at the bottom of the menu, to include them."}</p>
+      <SectionHead id="ap-export" title="Datasets" count={`${EXPORT_DATASETS.length + 1} files`}
+        line={withTests ? "Every family, with the test families: Show test families is on." : "Real families only: the test families are left out. Turn on Show test families, at the bottom of the menu, to include them."} />
+      <p className="adm-note">The CSV opens in a spreadsheet; the JSON keeps every value as stored. Each file joins to the others by the test id (assessment_id) and the place in the test (position).</p>
       <Table label="Datasets" head={["Dataset", "One row is", "Download"]} empty="No datasets.">
         {EXPORT_DATASETS.map((d) => (
           <tr key={d.id}>
@@ -21,8 +24,8 @@ export function ExportView({ withTests, demo }: { withTests: boolean; demo: bool
             <td className="adm-nowrap">
               {EXPORT_FORMATS.map((format, i) => (
                 <Fragment key={format}>
-                  {i > 0 && " · "}
-                  <a href={exportHref({ dataset: d.id, format, withTests }, demo)} download>{format.toUpperCase()}</a>
+                  {i > 0 && " "}
+                  <a className="ap-dl" href={exportHref({ dataset: d.id, format, withTests }, demo)} download>{format.toUpperCase()}</a>
                 </Fragment>
               ))}
             </td>
@@ -35,19 +38,22 @@ export function ExportView({ withTests, demo }: { withTests: boolean; demo: bool
           <td className="adm-nowrap">
             {EXPORT_FORMATS.map((format, i) => (
               <Fragment key={format}>
-                {i > 0 && " · "}
-                <a href={anonymousCopiesHref({ format, withTests })} download>{format.toUpperCase()}</a>
+                {i > 0 && " "}
+                <a className="ap-dl" href={anonymousCopiesHref({ format, withTests })} download>{format.toUpperCase()}</a>
               </Fragment>
             ))}
           </td>
         </tr>
       </Table>
+      <details className="adm-tech">
+        <summary>About the files</summary>
       <ul className="adm-list adm-note">
         <li>No names, emails or postal codes. Each row has the parent and child ids instead: open a family from <Link href={`${ADMIN_PATH}/parents`}>Families</Link>.</li>
         <li>Drawings and whiteboard strokes are their paths in the private storage bucket, not the files.</li>
         <li>CSV: UTF-8 with a byte order mark, so Excel reads accents. Nested values are JSON text in one cell, and an empty cell is no value. A text cell that a spreadsheet would run as a formula starts with an apostrophe. A spreadsheet cell holds up to 32,767 characters, so the learner profile has one column per part. A spreadsheet may show a number its own way (137.00 as 137); the JSON has the stored text.</li>
         <li>Each file is read a page at a time. Every file but the copies without names is also sent a page at a time, so a large dataset takes a while. A download that stops early ends with an error, never as a shorter file.</li>
       </ul>
+      </details>
     </>
   );
 }
