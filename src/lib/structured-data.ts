@@ -1,6 +1,6 @@
 // schema.org JSON-LD for the home page (see node_modules/next/dist/docs/01-app/02-guides/json-ld.md).
 // Only facts the page states: no ratings, reviews or counts (DESIGN.md: no proof we do not have).
-import { FAQ } from "@/lib/faq";
+// No FAQPage or HowTo markup (D-319): the FAQ stays on the page as text.
 import { SITE_DESCRIPTION, SITE_URL } from "@/lib/metadata";
 import { BRAND, PLANS, SOCIAL_LINKS } from "@/lib/site";
 import { BUSINESS_NAME, SUPPORT_EMAIL } from "@/lib/contact";
@@ -46,10 +46,6 @@ export function homeJsonLd() {
         audience: { "@type": "PeopleAudience", suggestedMinAge: 5, suggestedMaxAge: 14 },
         offers: [offer(PLANS.one)],
       },
-      {
-        "@type": "FAQPage",
-        mainEntity: FAQ.map(({ question, answer }) => ({ "@type": "Question", name: question, acceptedAnswer: { "@type": "Answer", text: answer } })),
-      },
     ],
   };
 }
@@ -89,7 +85,7 @@ export function hubJsonLd(section: ArticleSection, name: string, articles: { tit
   };
 }
 
-export function articleJsonLd(a: { section: ArticleSection; path: string; title: string; description: string; published?: string; updated: string; faqs?: { q: string; a: string }[] }) {
+export function articleJsonLd(a: { section: ArticleSection; path: string; title: string; description: string; published?: string; updated: string }) {
   const sec = ARTICLE_SECTIONS[a.section];
   const url = `${SITE_URL}${a.path}`;
   return {
@@ -109,9 +105,19 @@ export function articleJsonLd(a: { section: ArticleSection; path: string; title:
         author: { "@id": ORG_ID },
         publisher: { "@id": ORG_ID },
       },
-      ...(a.faqs?.length
-        ? [{ "@type": "FAQPage", mainEntity: a.faqs.map(({ q, a: ans }) => ({ "@type": "Question", name: q, acceptedAnswer: { "@type": "Answer", text: ans } })) }]
-        : []),
+    ],
+  };
+}
+
+/** A site page outside Resources and Blog (D-319): its page type, a breadcrumb from Home, and the publisher. */
+export function pageJsonLd(p: { path: string; title: string; description: string }, type: "WebPage" | "AboutPage" | "ContactPage" = "WebPage") {
+  const url = `${SITE_URL}${p.path}`;
+  return {
+    "@context": "https://schema.org",
+    "@graph": [
+      ORGANIZATION,
+      breadcrumbs([{ name: "Home", path: "/" }, { name: p.title, path: p.path }]),
+      { "@type": type, name: p.title, description: p.description, url, inLanguage: "en-CA", isPartOf: { "@id": `${SITE_URL}/#website` }, publisher: { "@id": ORG_ID } },
     ],
   };
 }
