@@ -6,6 +6,8 @@ import { stateFor } from "@/lib/test-attempt";
 import { parentStartStates } from "@/lib/test-attempt-server";
 import { pageMetadata } from "@/lib/metadata";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
+import { goalsPath } from "@/lib/child-goals";
+import { childNeedsGoals } from "@/lib/child-goals-server";
 import { TakeTest } from "@/components/test";
 
 export const metadata = pageMetadata({
@@ -29,6 +31,8 @@ export default async function TestPage(props: PageProps<"/account/test/[childId]
     parentStartStates(parent, childId),
   ]);
   if (!child) notFound();
+  // D-323: a child with no test yet starts only after the parent's goals, then comes back here.
+  if (await childNeedsGoals(db, parent, child.id)) redirect(goalsPath(`/account/test/${child.id}`, child.id));
   // #72: an open test continues where it stopped; after one ran out of time the next has new questions.
   const state = stateFor(states, child.id);
   const mode = state.kind === "resume" || state.kind === "finish" ? state.kind : state.kind === "expired" ? "restart" : "new";

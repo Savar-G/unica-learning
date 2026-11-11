@@ -1,4 +1,5 @@
 import { bookOneDraft, frameAssessmentId, samplePageIndexes } from "@/lib/results-deck";
+import { GOAL_COLUMNS, type GoalColumns } from "@/lib/child-goals";
 import { commentFromRow, editFromRow } from "@/lib/workbook-edit-store";
 import { vancouverTime } from "@/lib/workbook-review-display";
 import type { ReviewComment, WorkbookEdit, EditCheckpoint } from "@/lib/workbook-edit";
@@ -575,7 +576,8 @@ export interface WaitlistRow {
 
 export interface ParentDetail {
   parent: ParentRow;
-  children: ChildRow[];
+  /** With the parent goals (D-323), which the family page shows on each child. */
+  children: (ChildRow & GoalColumns)[];
   tests: TestRow[];
   cards: CardSetupRow[];
   waitlist: WaitlistRow[];
@@ -588,7 +590,7 @@ export async function getParent(a: AdminSession, id: string): Promise<ParentDeta
   // the family's records are read with the parent row, not after it. The parent decides first: with no such parent
   // the answer is null (a 404), even when another read failed; their errors count only for a family that exists.
   const related = Promise.all([
-    allRows<ChildRow>(a.db.rpc("admin_children").select(CHILD_COLUMNS).eq("parent_id", id).order("id"), "children"),
+    allRows<ChildRow & GoalColumns>(a.db.rpc("admin_children").select(`${CHILD_COLUMNS}, ${GOAL_COLUMNS}`).eq("parent_id", id).order("id"), "children"),
     allRows<TestQueryRow>(a.db.rpc("admin_assessments").select(TEST_COLUMNS).eq("parent_id", id).order("created_at", { ascending: false }).order("id"), "tests")
       .then((rows) => withPeople(a, rows)),
     allRows<CardSetupRow>(a.db.rpc("admin_card_setups").select("*").eq("parent_id", id).order("id"), "card setups").then((cards) => withWorkbookEmails(a, cards)),
@@ -632,12 +634,12 @@ export async function listChildren(a: AdminSession, f: Pick<AdminFilters, "grade
 }
 
 /** One child with how they learn (#126), which the book plan reads. */
-export type ChildDetail = ChildRow & LearningRow & { learning_updated_at: string | null };
+export type ChildDetail = ChildRow & LearningRow & GoalColumns & { learning_updated_at: string | null };
 
 /** One child and their family records. #78 can use the parent id for the future deletion action. */
 export async function getChild(a: AdminSession, id: string): Promise<{ child: ChildDetail; family: ParentDetail } | null> {
   if (!isUuid(id)) return null;
-  const child = await a.db.rpc("admin_children").select(`${CHILD_COLUMNS}, ${LEARNING_COLUMNS}, learning_updated_at`).eq("id", id).maybeSingle()
+  const child = await a.db.rpc("admin_children").select(`${CHILD_COLUMNS}, ${LEARNING_COLUMNS}, math_help, learning_updated_at`).eq("id", id).maybeSingle()
     .then((r) => must<ChildDetail | null>(r, "child"));
   if (!child) return null;
   const family = await getParent(a, child.parent_id);

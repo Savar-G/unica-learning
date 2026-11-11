@@ -805,6 +805,7 @@ export type Database = {
           learning_styles: string[] | null
           learning_updated_at: string | null
           math_feeling: string | null
+          math_help: string | null
           parent_id: string
           province: string
           weekly_time: string | null
@@ -821,6 +822,7 @@ export type Database = {
           learning_styles?: string[] | null
           learning_updated_at?: string | null
           math_feeling?: string | null
+          math_help?: string | null
           parent_id: string
           province: string
           weekly_time?: string | null
@@ -837,6 +839,7 @@ export type Database = {
           learning_styles?: string[] | null
           learning_updated_at?: string | null
           math_feeling?: string | null
+          math_help?: string | null
           parent_id?: string
           province?: string
           weekly_time?: string | null
@@ -7323,6 +7326,7 @@ export type Database = {
           learning_styles: string[] | null
           learning_updated_at: string | null
           math_feeling: string | null
+          math_help: string | null
           parent_id: string
           province: string
           weekly_time: string | null

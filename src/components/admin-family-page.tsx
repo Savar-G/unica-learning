@@ -105,6 +105,8 @@ export interface ChildCardData {
   plan: { tone: "ok" | "warn" | "muted"; text: string };
   book: Book | null;
   chat: string;
+  /** The parent goals as label and value rows (D-323). */
+  goals: [string, string][];
 }
 
 /** One child: the latest test, the current workbook with its action, the plan and Maya chat. */
@@ -121,6 +123,8 @@ export function ChildCard({ c, runner, now, isTest }: { c: ChildCardData; runner
       <div><dt>Latest test</dt><dd><TestLine test={c.test} now={now} />{c.tests > 1 && <span className="rec-quiet">{pl(c.tests, "test", "tests")} in all</span>}</dd></div>
       <div><dt>Workbook</dt><dd><BookLine book={c.book} runner={runner} childId={c.id} /></dd></div>
       <div><dt>Card and plan</dt><dd><Chip tone={c.plan.tone}>{c.plan.text}</Chip></dd></div>
+      {/* D-323: the parent's goals from signup, for the results call. */}
+      <div><dt>Parent goals</dt><dd className="rec-goals">{c.goals.map(([k, v]) => <span key={k}><span className="rec-quiet">{k}:</span> {v}</span>)}</dd></div>
       <div><dt>Maya chat</dt><dd className="rec-quiet">{c.chat}</dd></div>
     </dl>
   </article>;

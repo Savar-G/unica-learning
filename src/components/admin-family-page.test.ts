@@ -36,11 +36,15 @@ describe("a child's card", () => {
   it("shows the book's stage with its action, and sends a child with no workbook to the child page", () => {
     const base = { childId: "kid", parentId: "fam", child: "Mira", family: "Rivera", test: false, number: 1, at: null, tries: [] };
     const review = { ...base, stage: "review", run: { run: { id: "run-1", createdAt: "2026-11-09T00:00:00Z" } } } as unknown as Book;
-    const c = { id: "kid", parentId: "fam", name: "Mira", grade: 3, place: "BC", addedAt: "2026-11-01T17:00:00Z", test: null, tests: 0, plan: { tone: "ok" as const, text: "Card saved. Plan started." }, chat: "Not on the chat list." };
+    const c = { id: "kid", parentId: "fam", name: "Mira", grade: 3, place: "BC", addedAt: "2026-11-01T17:00:00Z", test: null, tests: 0, plan: { tone: "ok" as const, text: "Card saved. Plan started." }, chat: "Not on the chat list.", goals: [["Main goal", "Catch up to grade level"], ["Feeling about math", "Finds it hard"], ["Math help now", "No answer"]] as [string, string][] };
     const html = renderToStaticMarkup(createElement(ChildCard, { c: { ...c, book: review }, runner: "mac", now, isTest: false }));
     expect(html).toContain("Ready to review");
     expect(html).toContain("Review draft");
     expect(html).toContain("No test yet.");
+    // D-323: the parent goals, one answer a line, for the results call.
+    expect(html).toContain("Parent goals");
+    expect(html).toContain("Catch up to grade level");
+    expect(html).toContain("Math help now:</span> No answer");
     const none = renderToStaticMarkup(createElement(ChildCard, { c: { ...c, book: { ...base, stage: "none" } as Book }, runner: "mac", now, isTest: false }));
     expect(none).toContain('href="/admin/children/kid"');
     expect(none).not.toContain("<button");

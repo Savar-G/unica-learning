@@ -1,0 +1,19 @@
+/* Parent goals (D-323): the same choice chips as the learning card (learning.css), one question after another. */
+.goals { display: grid; gap: 26px; max-width: 640px; margin-top: 28px; }
+.goals-q { margin: 0; padding: 0; border: 0; min-width: 0; }
+.goals-q legend { display: flex; gap: 10px; align-items: baseline; margin-bottom: 12px; padding: 0; font: 600 16px/1.4 var(--sans); color: var(--ink); }
+.goals-n { flex: none; font: 400 12px/1 var(--mono); color: var(--ink-2); }
+.goals-picks { display: flex; flex-wrap: wrap; gap: 8px; }
+.goals-pick { position: relative; border: 1px solid #d4d4d8; border-radius: 8px; background: #fff; padding: 11px 14px; cursor: pointer; font: 500 15px/1.2 var(--sans); }
+.goals-pick input { position: absolute; opacity: 0; pointer-events: none; }
+.goals-pick:hover { border-color: var(--ink); }
+.goals-pick:has(input:checked) { border-color: var(--ink); background: var(--ink); color: #fff; }
+.goals-pick:has(input:focus-visible) { outline: 2px solid var(--sky); outline-offset: 2px; }
+.goals-q.bad .goals-pick { border-color: var(--red, #c0392b); }
+.goals-err { margin: 8px 0 0; font: 500 14px/1.3 var(--sans); color: var(--red, #c0392b); }
+.goals .btn { justify-self: start; justify-content: center; }
+@media (max-width: 560px) {
+  .goals-picks { flex-direction: column; }
+  .goals-pick { padding: 13px 14px; }
+  .goals .btn { justify-self: stretch; }
+}
