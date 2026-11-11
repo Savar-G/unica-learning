@@ -1066,7 +1066,7 @@ function parentItem(q: DraftQuestion, band: Band, figure: Figure | null | undefi
 /** Extra U16 lesson questions keep their work space by using less padding in the example. */
 function expandedLesson(page: DraftPage): boolean {
   const c = page.content;
-  return c?.kind === "day" && c.level === 16 && page.type === "new-idea"
+  return c?.kind === "day" && !!c.consistentLayout && c.level === 16 && page.type === "new-idea"
     && c.blocks.some(b => b.slot === "now-you" && b.items.length >= 3);
 }
 

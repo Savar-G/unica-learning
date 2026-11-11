@@ -129,6 +129,11 @@ set: a 20 px black circle with a white Geist Mono 13 digit (① ②).
 inner cards ("METHOD 1 · ...", "METHOD 2 · ...", radius 12; the samples say "WAY 1", "WAY 2") side by side, or the worked figure at the left and "WHAT'S GOING ON"
 text at the right (gap 26).
 
+**U16 New idea with three or four questions (#759)**: the measured layout uses 8 by 22 px outer example padding,
+6 by 14 px inner method padding, and 8 px between the panel's sections. This makes room for practice without reducing
+text size, answer boxes or calculation-space minimums. A three-question lesson gives the last question a full row.
+Two-question lessons keep the normal example panel. Add a fourth only when the strict page and day checks pass.
+
 **Try this first card** and **Now you card**: white, 1.5 px `#3366F0`, radius 12, padding 16 20 18 20, gap 12 to 14.
 Labels in `#1B3FA6`.
 
