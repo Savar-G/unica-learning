@@ -8,7 +8,7 @@ import { ResultsDeckView } from "@/components/results-deck";
 import type { TestRow } from "@/lib/admin-store";
 
 // The deck for a results call: this report's child first, then each sibling's latest finished report, read with the
-// admin's session. Real pages show when a workbook was prepared for that child.
+// admin's session. Real pages show only from a Workbook 1 draft planned from that report's test.
 async function deckInputs(admin: AdminSession, id: string) {
   const reader = adminReportReader(admin);
   const first = await loadReportView(reader, id);
@@ -21,7 +21,7 @@ async function deckInputs(admin: AdminSession, id: string) {
   }
   const siblings = await Promise.all([...latest.values()].map((t) => loadReportView(reader, t.reportId!)));
   const loaded = [first, ...siblings.flatMap((s) => (s ? [s] : []))];
-  const children: DeckInput[] = await Promise.all(loaded.map(async (r) => ({ view: r.view, pages: await draftSamplePages(admin, r.childId).catch(() => []) })));
+  const children: DeckInput[] = await Promise.all(loaded.map(async (r) => ({ view: r.view, pages: (await draftSamplePages(admin, r.childId, r.assessmentId).catch(() => null))?.urls ?? [] })));
   return { parentName: family?.parent.name ?? "", children };
 }
 

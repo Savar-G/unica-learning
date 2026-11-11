@@ -1,4 +1,4 @@
-import { samplePageIndexes } from "@/lib/results-deck";
+import { bookOneDraft, frameAssessmentId, samplePageIndexes } from "@/lib/results-deck";
 import { commentFromRow, editFromRow } from "@/lib/workbook-edit-store";
 import { vancouverTime } from "@/lib/workbook-review-display";
 import type { ReviewComment, WorkbookEdit, EditCheckpoint } from "@/lib/workbook-edit";
@@ -730,18 +730,35 @@ export async function draftPdfUrl(a: AdminSession, runId: string): Promise<strin
 }
 
 /** Up to three real pages of a child's newest prepared workbook, as fresh signed URLs, for the results call deck. Empty when none is prepared. */
-export async function draftSamplePages(a: AdminSession, childId: string): Promise<string[]> {
-  if (!isUuid(childId)) return [];
-  const [run] = must<{ draft_id: string | null }[]>(await a.db.from("workbook_runs").select("draft_id").eq("child_id", childId).not("draft_id", "is", null).order("created_at", { ascending: false }).limit(1), "workbook run");
-  if (!run?.draft_id) return [];
-  const revision = await a.db.from("workbook_draft_revisions").select("rendering").eq("draft_id", run.draft_id).order("revision", { ascending: false }).limit(1).maybeSingle()
+/**
+ * Signed images of sample pages from the child's Workbook 1, for the results deck of one report: only a draft numbered 1
+ * whose run plan was made from that report's test (`bookOneDraft`). Empty when no such draft exists, so a later book's
+ * pages never show on the Workbook 1 slide; the draft id travels with the pages.
+ */
+export async function draftSamplePages(a: AdminSession, childId: string, assessmentId: string): Promise<{ draftId: string | null; urls: string[] }> {
+  const none = { draftId: null, urls: [] };
+  if (!isUuid(childId) || !isUuid(assessmentId)) return none;
+  const runs = must<{ id: string; draft_id: string | null }[]>(await a.db.from("workbook_runs").select("id, draft_id").eq("child_id", childId).eq("number", 1).not("draft_id", "is", null).order("created_at", { ascending: false }).limit(10), "workbook 1 runs");
+  const withDraft = runs.filter((r): r is { id: string; draft_id: string } => !!r.draft_id);
+  if (!withDraft.length) return none;
+  const [frames, drafts] = await Promise.all([
+    a.db.from("workbook_run_frames").select("run_id, frame").in("run_id", withDraft.map((r) => r.id)).then((r) => must<{ run_id: string; frame: unknown }[]>(r, "workbook 1 frames")),
+    a.db.from("workbook_drafts").select("id, number").in("id", withDraft.map((r) => r.draft_id)).then((r) => must<{ id: string; number: number }[]>(r, "workbook 1 drafts")),
+  ]);
+  const draftId = bookOneDraft(withDraft.map((r) => ({
+    draftId: r.draft_id,
+    draftNumber: drafts.find((d) => d.id === r.draft_id)?.number ?? null,
+    assessmentId: frameAssessmentId(frames.find((f) => f.run_id === r.id)?.frame ?? null),
+  })), assessmentId);
+  if (!draftId) return none;
+  const revision = await a.db.from("workbook_draft_revisions").select("rendering").eq("draft_id", draftId).order("revision", { ascending: false }).limit(1).maybeSingle()
     .then((r) => must<{ rendering: DraftRendering | null } | null>(r, "draft revision"));
   const pages = (revision?.rendering?.pages ?? []).filter((p) => !p.proof);
   const paths = samplePageIndexes(pages.length).map((i) => pages[i].image.path);
-  if (!paths.length) return [];
+  if (!paths.length) return { draftId, urls: [] };
   const signed = await a.db.storage.from(WORKBOOK_FILES_BUCKET).createSignedUrls(paths, WORKBOOK_URL_SECONDS);
-  if (signed.error) return [];
-  return (signed.data ?? []).flatMap((item) => (item.signedUrl && !item.error ? [item.signedUrl] : []));
+  if (signed.error) return { draftId, urls: [] };
+  return { draftId, urls: (signed.data ?? []).flatMap((item) => (item.signedUrl && !item.error ? [item.signedUrl] : [])) };
 }
 
 // Workbook runs and drafts (#312)

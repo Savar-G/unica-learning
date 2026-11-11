@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-import { joinNames, resultsDeck, samplePageIndexes, wholePercents } from "@/lib/results-deck";
+import { bookLevelNote, bookOneDraft, frameAssessmentId, joinNames, resultsDeck, samplePageIndexes, wholePercents } from "@/lib/results-deck";
 import { sampleReportView } from "@/lib/sample-children";
 import { gapsView, nextView, type ReportView } from "@/lib/report-view";
 import { sampleReportWithBook } from "@/lib/sample-book-one";
@@ -76,5 +76,44 @@ describe("the results deck", () => {
     expect(samplePageIndexes(0)).toEqual([]);
     expect(samplePageIndexes(2)).toEqual([0, 1]);
     expect(samplePageIndexes(30)).toEqual([0, 10, 20]);
+  });
+});
+
+describe("which draft's pages show on the Workbook 1 slide", () => {
+  const frame = (assessmentId: string) => ({ planning: { placement: { profile: { assessment: { assessmentId } } } } });
+
+  it("reads the test from a run frame's plan, and nothing from an older frame", () => {
+    expect(frameAssessmentId(frame("t1"))).toBe("t1");
+    expect(frameAssessmentId({ plan: {} })).toBeNull();
+    expect(frameAssessmentId({ planning: { placement: { profile: null } } })).toBeNull();
+    expect(frameAssessmentId(null)).toBeNull();
+  });
+
+  it("takes Workbook 1 for this report even when Workbook 2 is newer", () => {
+    const runs = [
+      { draftId: "book2", draftNumber: 2, assessmentId: "t1" },
+      { draftId: "book1", draftNumber: 1, assessmentId: "t1" },
+    ];
+    expect(bookOneDraft(runs, "t1")).toBe("book1");
+  });
+
+  it("shows no pages when no Workbook 1 draft was planned from this report's test", () => {
+    expect(bookOneDraft([{ draftId: "book1", draftNumber: 1, assessmentId: "older-test" }], "t1")).toBeNull();
+    expect(bookOneDraft([{ draftId: "book1", draftNumber: 1, assessmentId: null }], "t1")).toBeNull();
+    expect(bookOneDraft([{ draftId: "book2", draftNumber: 2, assessmentId: "t1" }], "t1")).toBeNull();
+    expect(bookOneDraft([], "t1")).toBeNull();
+  });
+});
+
+describe("the working level note", () => {
+  it("names the planned grade when Workbook 1 starts below the working level", () => {
+    const note = bookLevelNote("Leah", 4, 2);
+    expect(note).toContain("Grade 4");
+    expect(note).toContain("Workbook 1 starts at Grade 2");
+    expect(note).not.toContain("made at this level");
+  });
+
+  it("says the book is at the same level only when it is", () => {
+    expect(bookLevelNote("Leah", 2, 2)).toContain("Workbook 1 is planned at Grade 2, the same level");
   });
 });

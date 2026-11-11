@@ -68,6 +68,29 @@ export interface DeckInput {
   pages?: string[];
 }
 
+/** A child's Workbook 1 run with a draft, as the admin store reads it: the draft's own number and the test its plan read. */
+export interface BookOneRun {
+  draftId: string;
+  draftNumber: number | null;
+  /** The test whose profile the run's stored plan was made from; null when the frame has no planning capture. */
+  assessmentId: string | null;
+}
+
+/** The test a run frame's plan read (frame.planning.placement.profile.assessment), or null on a frame without it. */
+export function frameAssessmentId(frame: unknown): string | null {
+  const id = (frame as { planning?: { placement?: { profile?: { assessment?: { assessmentId?: unknown } | null } | null } } } | null)
+    ?.planning?.placement?.profile?.assessment?.assessmentId;
+  return typeof id === "string" ? id : null;
+}
+
+/**
+ * The draft whose pages may show on this report's Workbook 1 slide: newest first, only a draft numbered 1 whose plan was
+ * made from this report's test. Null when none matches, so the slide shows no pages rather than another book's.
+ */
+export function bookOneDraft(runs: BookOneRun[], assessmentId: string): string | null {
+  return runs.find((r) => r.draftNumber === 1 && r.assessmentId === assessmentId)?.draftId ?? null;
+}
+
 const SKILLS_SHOWN = 5;
 const LIST_SHOWN = 3;
 const ANSWERS_SHOWN = 4;
@@ -127,6 +150,14 @@ function bookOf(v: ReportView): DeckBook | null {
   };
 }
 
+/** The working level, then the grade Workbook 1 is actually planned at, which can be lower when earlier gaps come first. */
+export function bookLevelNote(name: string, working: number, bookGrade: number): string {
+  const measured = `Working level is the grade where ${name}'s answers show secure skills today: ${gradeName(working)}.`;
+  if (bookGrade < working) return `${measured} Workbook 1 starts at ${gradeName(bookGrade)} to fill earlier gaps first, and ${name} moves up once those skills are mastered.`;
+  if (bookGrade > working) return `${measured} Workbook 1 is planned at ${gradeName(bookGrade)}.`;
+  return `${measured} Workbook 1 is planned at ${gradeName(bookGrade)}, the same level, and ${name} moves up once these skills are mastered.`;
+}
+
 function childOf({ view: v, pages = [] }: DeckInput): DeckChild {
   const name = v.childName;
   const { working, grade } = v.model.level;
@@ -158,9 +189,7 @@ function childOf({ view: v, pages = [] }: DeckInput): DeckChild {
     // "First" has to be true: with a plan, only what workbook 1 takes up.
     fill: missed.filter((t) => !book || (t.cover !== null && t.cover !== "In a later book")).slice(0, LIST_SHOWN).map((t) => `${t.title} (${t.count})`),
     answers: answers.map((s) => ({ label: `${s.grade} · ${s.title}`, question: s.question, answer: s.answer, rightAnswer: s.rightAnswer, cause: s.cause })),
-    levelNote: book
-      ? `Working level is the grade where ${name}'s answers show secure skills today. Workbook 1 is made at this level, and ${name} moves up once these skills are mastered.`
-      : workingLevelNote(v),
+    levelNote: book ? bookLevelNote(name, working, start) : workingLevelNote(v),
     book,
     chat: grade >= 3,
     pages,
