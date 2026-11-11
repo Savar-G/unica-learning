@@ -191,6 +191,7 @@
 /* ---------- pricing ---------- */
 [data-look="warm"] .plan { border: 1px solid var(--line); border-radius: 6px; }
 [data-look="warm"] .plan .price { font-weight: 300; letter-spacing: -0.04em; }
+[data-look="warm"] .plan-family { border-radius: 6px; }
 /* Featured plan stays white; a grainy colour wash rises from the bottom (D-037). */
 [data-look="warm"] .plan.hl {
   color: var(--ink);
