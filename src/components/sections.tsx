@@ -184,7 +184,7 @@ export function Pricing() {
                 <path d="M16 30c.5-5 3.5-8 7-8s6.5 3 7 8" fill="var(--sky)" />
               </svg>
               <span>
-                <b>More than one child?</b> Each sibling is CAD {cad(ADDITIONAL_CHILD_PRICE)} a month.
+                <b>More than one child?</b> Each sibling is CAD {cad(ADDITIONAL_CHILD_PRICE)} a month.{" "}
                 <span className="plan-family-save">CAD {cad(SIBLING_SAVING)} less a month for each additional child.</span>
               </span>
             </span>
