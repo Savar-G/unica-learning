@@ -6,14 +6,14 @@
 // Email-safe: tables and inline styles only, no web fonts, no forms; the band's one image is an absolute URL, with the
 // band's base colour behind it for mail apps that block images.
 import { PAUSE_WINDOW, STRAND_DEVELOPING_PERCENT, STRAND_SECURE_PERCENT, TOO_FAST_MS, comparedGrade, type Flag, type HelpAnswer, type StrandStatus } from "@/lib/assessment";
-import { BOOKING_URL } from "@/lib/contact";
+import { BOOKING_URL, safeBookingUrl } from "@/lib/contact";
+import { resultsDeck } from "@/lib/results-deck";
 import { emailEndHtml, emailFooterText, emailHeaderHtml, emailSignatureText } from "@/lib/email-brand";
 import type { AiOutcome } from "@/lib/work-review";
 import {
   NEXT_STEP_ANCHOR,
   STATUS_LABEL,
   bookOneView,
-  resultsCall,
   certaintyText,
   comparisonView,
   earlySignNote,
@@ -52,6 +52,7 @@ import {
 export interface ParentContact {
   name: string;
   email: string;
+  phone?: string | null;
 }
 
 const ENTITY: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
@@ -181,7 +182,9 @@ export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = 
   const name = v.childName;
   const first = firstName(parentName);
   const subject = `${name}'s math report is ready`;
-  const intro = `${name} finished the math placement test: ${questionsAndMinutes(v)}.`;
+  const weakest = [...(v.findings?.struggles ?? [])].filter((item) => item.certainty === "clear" && item.total > 0 && item.status === "needs-attention").sort((a, b) => a.correct / a.total - b.correct / b.total)[0];
+  const topic = weakest ? gapsView({ ...v, findings: { ...v.findings!, struggles: [weakest] } })?.[0]?.title ?? nextView({ ...v, findings: { ...v.findings!, struggles: [weakest] } })?.[0]?.title : null;
+  const intro = offer && topic ? `${name} found ${topic.toLowerCase()} hard. Would you like us to explain how we can help ${name} with ${topic.toLowerCase()}?` : offer ? `${name}'s math report is ready. Would you like us to go through the results with you and answer your questions?` : `${name}'s math report is ready.`;
   const notes = levelNotes(v);
   // #68: the AI paragraph, when the report has one, follows the level as on the report page.
   const summary = summaryText(v);
@@ -233,18 +236,20 @@ export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = 
   const unsubscribe = offer
     ? `Unsubscribe to stop reminders and emails about our plans. ${name}'s report stays in your account.`
     : `You unsubscribed from reminders and emails about our plans, so this email has only the report.`;
-  const footer = { why, note: unsubscribe, signer: "founders" as const, ...(offer ? { unsubscribe: { url: unsubscribeUrl, label: "Unsubscribe" } } : {}) };
+  const footer = { why, note: unsubscribe, signer: "results-founders" as const, ...(offer ? { unsubscribe: { url: unsubscribeUrl, label: "Unsubscribe" } } : {}) };
   const origin = new URL(url).origin;
-  const call = resultsCall(v);
+  const callLabel = "Book your 15-minute results call";
+  const booking = safeBookingUrl(BOOKING_URL);
 
   const text = [
     `Hi ${first},`,
     intro,
+    ...(offer && booking ? [`${callLabel}: ${booking}`] : []),
+    `${name} finished the math placement test: ${questionsAndMinutes(v)}.`,
     [levelSentence(v), verdictSentence(v), ...(levelSure ? [`How sure: ${levelSure}`] : []), definition, ...notes, ...(summary ? [summary] : [])].join("\n"),
     ...(reliability ? [`${reliability.title}\n${reliability.text}\n${reliability.offer}`] : []),
     ...(fsa ? [`For context: ${fsa.text}\nSource: ${fsa.source.name}, ${fsa.source.url}`] : []),
     ...(comparison ? [`${comparison.title}\n${comparison.text}\n${comparison.note}`] : []),
-    ...(offer && BOOKING_URL ? [`${call.title}\n${call.text}\n${call.button}: ${BOOKING_URL}`] : []),
     ...(whereText ? [whereText] : []),
     ...(bookText ? [bookText] : offer ? [`How we help: ${help.title}\n${help.text}`] : []),
     ...(step && stepUrl ? [`${step.title}\n${step.text}\n${step.email.label}: ${stepUrl}`] : []),
@@ -261,7 +266,7 @@ export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = 
     ...(facts ? [[`Number facts: ${factsLine(facts)}`, ...(facts.accuracy && facts.note ? [facts.note] : []), `${facts.scope} ${facts.round}`].join("\n")] : []),
     ...(work ? [work] : []),
     `See ${name}'s full report: ${url}`,
-    emailSignatureText(undefined, "founders"),
+    emailSignatureText(undefined, "results-founders"),
     emailFooterText(footer),
   ].join("\n\n");
 
@@ -302,6 +307,8 @@ ${emailHeaderHtml(20)}
 <tr><td style="padding:0 20px 6px">
 ${p(`Hi ${esc(first)},`)}
 ${p(esc(intro))}
+${offer && booking ? button(booking, callLabel) : ""}
+${p(esc(`${name} finished the math placement test: ${questionsAndMinutes(v)}.`))}
 </td></tr>
 <tr><td style="padding:0 20px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${BAND_BASE}" background="${esc(origin + BAND_IMAGE)}" style="background-color:${BAND_BASE};background-image:url('${esc(origin + BAND_IMAGE)}');background-size:cover;background-position:center;border-radius:14px">
@@ -337,11 +344,6 @@ ${reliability ? `<tr><td style="padding:16px 20px 0">
 ${p(esc(reliability.text), "margin:0 0 6px;font-size:15px")}
 ${p(esc(reliability.offer), "margin:0;font-size:15px")}
 </td></tr></table>
-</td></tr>` : ""}
-${offer && BOOKING_URL ? `<tr><td style="padding:30px 20px 0">
-${heading(esc(call.title))}
-${p(esc(call.text), "margin:0 0 20px;font-size:15px")}
-${button(BOOKING_URL, call.button)}
 </td></tr>` : ""}
 ${where ? `<tr><td style="padding:30px 20px 0">
 ${heading(`Where ${esc(name)} is`)}
@@ -530,6 +532,7 @@ export function reportAlert({
   const comparison = comparisonView(v);
   const measuredCount = m.comparison.stage === "scale" || comparison ? m.comparison.n : undefined;
   const subject = `Test finished: ${v.childName}, ${levelName(m.level.grade)}, working at ${levelName(m.level.working)}`;
+  const deck = resultsDeck({ parentName: parent.name, month: "", children: [{ view: v }] }).children[0];
   const lines = [
     `Child: ${v.childName}`,
     `School grade: ${m.level.grade === 0 ? "Kindergarten" : m.level.grade} (${v.province})${m.level.grade > comparedGrade(m.level) ? `, tested up to grade ${comparedGrade(m.level)}` : ""}`,
@@ -549,11 +552,15 @@ export function reportAlert({
     `FSA line: ${m.fsa ? "shown" : "not shown"}`,
     `Next step: ${m.callToAction}`,
     `Parent: ${parent.name} <${parent.email}>`,
+    `Phone: ${parent.phone ?? "Not provided"}`,
+    `Call strategy: Start with ${deck.strong.join(", ") || "the child’s strengths"}. Discuss ${deck.fill.join(", ") || "the results and the family’s questions"}. ${deck.book ? `Explain ${deck.book.title}.` : "Discuss the next steps."}`,
     parentEmail.sent ? `Parent email: sent to ${parent.email}` : parentEmail.uncertain
       ? `Parent email: delivery UNKNOWN (${parentEmail.reason}). Check delivery before sending again.`
       : `Parent email: NOT SENT (${parentEmail.reason}). Send the report link by hand.`,
     `Report: ${url}`,
     `Report id: ${v.id}`,
   ];
-  return { subject, text: lines.join("\n") };
+  const text = lines.join("\n");
+  const html = `<div style="white-space:pre-wrap;font-family:sans-serif">${esc(text).replace(parent.phone ? esc(parent.phone) : "\0", parent.phone ? `<a href="tel:${esc(parent.phone)}">${esc(parent.phone)}</a>` : "").replace(esc(url), `<a href="${esc(url)}">${esc(url)}</a>`)}</div>`;
+  return { subject, text, html };
 }

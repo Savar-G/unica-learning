@@ -143,8 +143,8 @@ describe("the report email to the parent", () => {
   it("is signed by the founders in both report variants (D-225)", () => {
     for (const offer of [true, false]) {
       const e = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3)), parentName: "Priya", url: URL, offer });
-      expect(e.text).toContain("Thank you,\nSavar & Cedric\nCo-founders, Unica Learning");
-      expect(e.html).toContain("Savar &amp; Cedric");
+      expect(e.text).toContain("Thank you,\nCedric and Savar\nCo-founders, Unica Learning");
+      expect(e.html).toContain("Cedric and Savar");
       for (const body of [e.text, e.html]) expect(body).not.toContain("The Unica Learning team");
       expect(e.html.indexOf("Co-founders, Unica Learning")).toBeLessThan(e.html.indexOf("16557 87A Ave"));
     }
@@ -164,17 +164,13 @@ describe("the report email to the parent", () => {
       expect(quiet.text).toContain("Unica Learning, 16557 87A Ave, Surrey, BC V4N 5B2");
     }
   });
-  it("offers the results call before the findings, about workbook 1 only for families who get workbooks", () => {
-    const bc = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3)), parentName: "Priya", url: URL });
-    const call = "A free 15-minute video call with Savar or Cedric, Unica's founders.";
-    expect(bc.text).toContain(call);
-    for (const body of [bc.text, bc.html]) expect(body).toContain("first workbook will cover and why, and answer any questions you have.");
-    expect(bc.text.match(/Book your results call/g)).toHaveLength(1);
-    expect(bc.html.match(/Book your results call/g)).toHaveLength(1);
-    expect(bc.text.indexOf(call)).toBeLessThan(bc.text.indexOf("By area"));
-    const on = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3), { province: "ON" }), parentName: "Priya", url: URL });
-    expect(on.text).toContain(call);
-    expect(on.text).not.toContain("first workbook");
+  it("offers the results call after the neutral opening and before the findings", () => {
+    const result = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3)), parentName: "Priya", url: URL });
+    for (const body of [result.text, result.html]) {
+      expect(body).toContain("Would you like us to go through the results with you");
+      expect(body).toContain("Book your 15-minute results call");
+      expect(body.indexOf("Book your 15-minute results call")).toBeLessThan(body.indexOf("By area"));
+    }
   });
 
   it("escapes names in the HTML (parent email)", () => {
@@ -333,5 +329,26 @@ describe("the alert to Savar for each finished test", () => {
     const text = alert({ parentEmail: { sent: false, reason: "response lost", uncertain: true } }).text;
     expect(text).toContain("Parent email: delivery UNKNOWN (response lost). Check delivery before sending again.");
     expect(text).not.toContain("NOT SENT");
+  });
+});
+
+describe("results call invitation", () => {
+  it("uses the weakest clear topic and falls back when evidence is not clear", () => {
+    const v = view(knowsUpTo(3));
+    const finding = { code: "4.4", text: "addition and subtraction to 10 000", grade: 4 as const, correct: 0, total: 3, certainty: "clear" as const, status: "needs-attention" as const, answer: { prompt: "1+1", response: "3", rightAnswer: "2" }, cause: null };
+    const withFindings = { ...v, findings: { strengths: [], struggles: [finding], preview: null } };
+    const email = reportEmail({ view: withFindings, parentName: "Priya", url: URL, unsubscribeUrl: UNSUB });
+    expect(email.text).toContain("Maya found adding and subtracting hard.");
+    expect(email.text).toContain("Would you like us to explain how we can help Maya with adding and subtracting?");
+    const neutral = reportEmail({ view: { ...withFindings, findings: { ...withFindings.findings, struggles: [{ ...finding, certainty: "early-sign" }] } }, parentName: "Priya", url: URL, unsubscribeUrl: UNSUB });
+    expect(neutral.text).toContain("Maya's math report is ready. Would you like us");
+  });
+  it("includes a telephone link and the deck strategy in the team alert", () => {
+    const v = view(knowsUpTo(3));
+    const alert = reportAlert({ view: v, parent: { name: "Priya", email: "p@example.test", phone: "+16045550123" }, url: "https://example.test/admin/reports/r-1/deck", flags: [], parentEmail: { sent: true } });
+    expect(alert.text).toContain("Phone: +16045550123");
+    expect(alert.text).toContain("Call strategy:");
+    expect(alert.html).toContain('href="tel:+16045550123"');
+    expect(alert.html).toContain('href="https://example.test/admin/reports/r-1/deck"');
   });
 });

@@ -59,6 +59,7 @@ export default async function ParentPage({ params }: PageProps<"/admin/parents/[
     </>}>
     <FamilyHead f={f} journey={f ? familyJourney(f) : null} next={f ? familyNextSteps(f, d.needs) : null} now={d.now} contact={[
       ["Email", <a key="email" href={`mailto:${p.email}`}>{p.email}</a>],
+      ["Phone", p.phone ? <a key="phone" href={`tel:${p.phone}`}>{p.phone}</a> : "Not provided"],
       ["Postal code", p.postal ?? "-"],
       ["Joined (Pacific)", when(p.created_at)],
       ["Came from", source || "-"],

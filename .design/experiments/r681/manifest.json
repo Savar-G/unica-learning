@@ -1,0 +1,71 @@
+{
+  "round": 681,
+  "date": "2026-11-11",
+  "route": "focused",
+  "phase": "build",
+  "decision": "Approve the required phone field, personal report email opening, sender name, and consent-aware inline calendar.",
+  "primary_axis": "The report email leads with the weak topic or with an invitation.",
+  "invariants": [
+    "Existing signup and report styles",
+    "Required phone without a hint",
+    "Topic-only email opening",
+    "No calendar request before optional cookie consent",
+    "Existing report unsubscribe behavior",
+    "Sample data only"
+  ],
+  "options": [
+    {
+      "id": "A",
+      "artifact": "preview.html",
+      "bet": "Name the weak topic first.",
+      "benefit": "The parent sees the reason for the call at once.",
+      "cost": "Repeats the topic in the invitation.",
+      "risk": "Requires clear evidence of a weak topic."
+    },
+    {
+      "id": "B",
+      "artifact": "preview.html",
+      "bet": "Start with the invitation.",
+      "benefit": "The opening is a direct question.",
+      "cost": "The topic follows the invitation.",
+      "risk": "The invitation can seem general."
+    }
+  ],
+  "recommendation": "A",
+  "approval": "approved by Savar, 2026-11-11",
+  "sender_name": "Cedric and Savar, co-founders of Unica Learning",
+  "calendar": "Illustration only. No live embed or booking.",
+  "source_head": "3b1e1290db8e7838297fa0513db5a642d3b18f62",
+  "sources": [
+    "DESIGN.md",
+    ".design/decisions.md",
+    "src/components/account.tsx",
+    "src/components/report-next.tsx",
+    "src/lib/report-email.ts",
+    "src/lib/results-deck.ts",
+    "src/lib/contact.ts",
+    "src/lib/consent.ts",
+    "src/lib/ad-tags.ts",
+    "src/components/site-analytics.tsx",
+    "https://calendly.com/help/calendly-cookie-management-and-banner"
+  ],
+  "implementation": "UI and copy approved. Hosted migration parents_phone 20261111180531 applied and rollback probes passed. Product implementation pending.",
+  "render_checks": [
+    {
+      "width": 728,
+      "content_height": 2169,
+      "console_errors": 0,
+      "result": "Default A opening and accepted-cookie calendar show no visible clipping."
+    },
+    {
+      "width": 390,
+      "content_height": 3010,
+      "console_errors": 0,
+      "result": "Default A opening and accepted-cookie calendar show no visible clipping."
+    }
+  ],
+  "verification_limits": "HTML mockup only. Live Calendly, alternate-state interactions, actual signup, migration, report emails and product tests remain unverified.",
+  "vault_record": "Pending. An active vault sweep holds the write lock.",
+  "selected_option": "A",
+  "handoff_marker": "FAST_RESULTS_CALL_BUILD_PENDING"
+}

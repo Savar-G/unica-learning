@@ -25,15 +25,15 @@ export type Admission = { status: "created"; child: string } | { status: "exists
 export async function createFamily(
   admin: SupabaseClient<Database>,
   id: string,
-  parent: { name: string; email: string; source: Record<string, string> },
+  parent: { name: string; email: string; phone: string; source: Record<string, string> },
   child: ChildInput,
 ): Promise<Admission> {
   const { data, error } = await admin.rpc("create_family", {
     p_parent: id, p_name: parent.name, p_email: parent.email, p_postal: null, p_source: parent.source,
-    p_child_name: child.firstName, p_child_grade: child.grade, p_child_province: child.province,
+    p_child_name: child.firstName, p_child_grade: child.grade, p_child_province: child.province, p_phone: parent.phone,
   });
   if (error) {
-    console.error("[account] create_family failed", error.code, error.message);
+    console.error("[account] create_family failed", error.code);
     return { status: "failed" };
   }
   const result = (data ?? {}) as { status?: unknown; child?: unknown };

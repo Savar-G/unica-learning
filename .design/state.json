@@ -119,5 +119,21 @@
       "direction": "specified by parent",
       "ship": "pending"
     }
+  },
+  "fast_results_call": {
+    "route": "focused",
+    "job_kind": "improve",
+    "surface": "product",
+    "constraint_mode": "existing-system",
+    "phase": "build",
+    "contract": "DESIGN.md",
+    "manifest": ".design/experiments/r681/manifest.json",
+    "selected_experiment": ".design/experiments/r681/preview.html",
+    "gates": {
+      "direction": "approved by Savar, 2026-11-11",
+      "ship": "pending"
+    },
+    "sender": "Cedric and Savar, co-founders of Unica Learning",
+    "database": "parents_phone 20261111180531 applied; hosted rollback probes passed"
   }
 }

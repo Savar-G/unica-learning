@@ -2811,6 +2811,7 @@ export type Database = {
           email: string
           id: string
           name: string
+          phone: string | null
           postal: string | null
           source: Json
           time_zone: string | null
@@ -2821,6 +2822,7 @@ export type Database = {
           email: string
           id: string
           name: string
+          phone?: string | null
           postal?: string | null
           source?: Json
           time_zone?: string | null
@@ -2831,6 +2833,7 @@ export type Database = {
           email?: string
           id?: string
           name?: string
+          phone?: string | null
           postal?: string | null
           source?: Json
           time_zone?: string | null
@@ -7356,6 +7359,7 @@ export type Database = {
           email: string
           id: string
           name: string
+          phone: string | null
           postal: string | null
           source: Json
           time_zone: string | null
@@ -8268,19 +8272,34 @@ export type Database = {
         }
         Returns: Json
       }
-      create_family: {
-        Args: {
-          p_child_grade: number
-          p_child_name: string
-          p_child_province: string
-          p_email: string
-          p_name: string
-          p_parent: string
-          p_postal: string
-          p_source: Json
-        }
-        Returns: Json
-      }
+      create_family:
+        | {
+            Args: {
+              p_child_grade: number
+              p_child_name: string
+              p_child_province: string
+              p_email: string
+              p_name: string
+              p_parent: string
+              p_postal: string
+              p_source: Json
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_child_grade: number
+              p_child_name: string
+              p_child_province: string
+              p_email: string
+              p_name: string
+              p_parent: string
+              p_phone: string
+              p_postal: string
+              p_source: Json
+            }
+            Returns: Json
+          }
       decide_family_deletion: {
         Args: { keep_family: boolean; p: string; token: string }
         Returns: boolean

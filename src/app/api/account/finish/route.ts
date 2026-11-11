@@ -1,3 +1,4 @@
+import { normalizePhone } from "@/lib/phone-number";
 import { randomBytes, randomUUID } from "node:crypto";
 import { after } from "next/server";
 import { isAuthSessionMissingError, type AuthError } from "@supabase/supabase-js";
@@ -111,7 +112,8 @@ async function finishClaimed(
   }
   const details = cleanDetails(body);
   const child = cleanChild(body.child);
-  if (!details || !child || (body.password !== undefined && !validPassword(body.password))) return fail("invalid", 400);
+  const telephone = normalizePhone(body.phone);
+  if (!details || !child || !telephone || (body.password !== undefined && !validPassword(body.password))) return fail("invalid", 400);
 
   if (body.password !== undefined) {
     const { error } = await session.auth.updateUser({ password: body.password });
@@ -127,7 +129,7 @@ async function finishClaimed(
   }
   if (currentUser?.id !== user.id) return fail("signed_out", 401);
 
-  const family = await createFamily(admin, user.id, { ...details, email: user.email.toLowerCase() }, child);
+  const family = await createFamily(admin, user.id, { ...details, phone: telephone, email: user.email.toLowerCase() }, child);
   if (family.status === "exists") return Response.json({ ok: true, existing: true } satisfies AccountResult);
   if (family.status === "busy") return fail("busy", 429);
   if (family.status === "unavailable") return fail("unavailable", 409);
