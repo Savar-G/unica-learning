@@ -42,12 +42,24 @@ export interface BookOne {
   covers: Record<string, BookCover>;
   /** The units of the start level the book does not teach yet: a later book of the same level. */
   later: string[];
+  /** What the book is made of, counted by the planned items of every part: teaching by unit, then review, challenge and warm-up. */
+  mix: BookMixPart[];
+}
+
+/** One slice of the book's composition. `code` is the unit, for teaching slices. */
+export interface BookMixPart {
+  kind: "main" | "review" | "challenge" | "warm-up";
+  code: string | null;
+  items: number;
 }
 
 const MAIN_KINDS: ReadonlySet<PartKind> = new Set(["new-idea", "practice", "spot-the-error", "try-first", "word-problems", "picture-stories", "solve-it-two-ways", "challenge", "show-what-you-know", "math-in-the-world"]);
 const REVIEW_KINDS: ReadonlySet<PartKind> = new Set(["remember-these", "friday-5", "fix-it", "mixed-set", "mini-test", "unit-check", "already-know-it"]);
 const WARM_KINDS: ReadonlySet<PartKind> = new Set(["warm-up", "in-your-head"]);
 const THEN_TITLES = 3;
+const CHALLENGE_KINDS: ReadonlySet<PartKind> = new Set(["challenge", "solve-it-two-ways"]);
+// The plan counts Show what you know, level tests and Fix it as review (the review share, 4.3).
+const MIX_REVIEW_KINDS: ReadonlySet<PartKind> = new Set([...REVIEW_KINDS, "show-what-you-know", "level-test"]);
 
 export interface BookOneInput {
   profile: LearnerProfile;
@@ -97,6 +109,7 @@ function describe(plan: WorkbookPlan, c: Curriculum, profile: LearnerProfile): B
       else if (!mainUnits.has(unit) && REVIEW_KINDS.has(part.kind)) add(reviewSkills, unit, skill);
     }
   }
+  const mix = bookMix(plan, teaching, unitOf);
   // Teaching order: the level's skill order; review units lowest grade first, then curriculum order.
   const order = new Map((c.levelSkills(level.id) ?? []).map((s, i) => [s.id, i]));
   const unitList = (map: Map<string, Set<string>>): BookUnit[] =>
@@ -125,7 +138,34 @@ function describe(plan: WorkbookPlan, c: Curriculum, profile: LearnerProfile): B
     then: following ? { grade: following.schoolGrade as Level, titles: following.units.slice(0, THEN_TITLES).map((u) => UNIT_TITLES[u] ?? u) } : null,
     covers,
     later,
+    mix,
   };
+}
+
+/** The book's composition by planned items. The plan's items are "at most", so this is what the book aims for. */
+function bookMix(plan: WorkbookPlan, teaching: string[], unitOf: (skill: string) => string | null): BookMixPart[] {
+  const main = new Map(teaching.map((u) => [u, 0]));
+  let review = 0;
+  let challenge = 0;
+  let warm = 0;
+  for (const day of plan.days) for (const page of day.pages) for (const part of page.parts) {
+    const items = "items" in part && typeof part.items === "number" ? part.items : 0;
+    if (WARM_KINDS.has(part.kind)) warm += items;
+    else if (CHALLENGE_KINDS.has(part.kind)) challenge += items;
+    else if (MIX_REVIEW_KINDS.has(part.kind)) review += items;
+    else {
+      const skills = "skills" in part && Array.isArray(part.skills) ? (part.skills as string[]) : [];
+      const unit = skills.map(unitOf).find((u) => u !== null && main.has(u)) ?? teaching[0];
+      main.set(unit, (main.get(unit) ?? 0) + items);
+    }
+  }
+  const parts: BookMixPart[] = [
+    ...[...main].map(([code, items]) => ({ kind: "main" as const, code, items })),
+    { kind: "review", code: null, items: review },
+    { kind: "challenge", code: null, items: challenge },
+    { kind: "warm-up", code: null, items: warm },
+  ];
+  return parts.filter((p) => p.items > 0);
 }
 
 function add(map: Map<string, Set<string>>, unit: string, skill: string) {

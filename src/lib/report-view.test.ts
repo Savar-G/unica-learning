@@ -417,7 +417,7 @@ describe("strengths, gaps, next topics and workbook 1 (#198, D-305)", () => {
     next: { grade: 3, titles: ["Fractions", "Time"] },
     then: { grade: 4, titles: ["Numbers to 10 000", "Decimals"] },
     covers: { "3.3": "main", "2.3": "review" },
-    later: ["3.2", "3.10"],
+    later: ["3.2", "3.10"], mix: [],
   };
   // A gap at grade 3 (the working level) that workbook 1 teaches.
   const GAP = { ...FINDINGS.struggles[0], code: "3.3", text: "addition and subtraction to 1000", grade: 3 as const, correct: 0, total: 2, certainty: "clear" as const };
