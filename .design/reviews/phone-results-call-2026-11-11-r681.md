@@ -41,3 +41,11 @@ Recommendation: complete the final full gate and the corrected-head review befor
 ## Type correction after recheck
 
 The independent recheck accepted both functional fixes but found TS2367: StruggleFinding already excludes secure status. The redundant status comparison was removed. `npx tsc --noEmit` failed before this one-line correction and passed after it. No other supported P1/P2 finding was reported. The obsolete full gate on e2766243 was stopped before this correction. A new final gate will check the corrected candidate.
+
+## Final verification
+
+Source candidate `4285ebf3268ca82f5aae5551e0f7b47b98bd10d7` passed the final Sol high source recheck and the Mac gate: `npm test && npx eslint src && npm run build`. Results: 649 test files passed, 20,595 tests passed, one skipped; lint and build passed. The worktree stayed clean during the checks. The final gate worker did not save the requested full log and discarded build stdout through a redirection error. The root checked the T3 command record and the completed build artifact. No gate was repeated solely to recreate this log.
+
+The Happy DOM iframe loading warning is a test-environment limitation. The actual Calendly frame was checked in Aside on the owned test family. No live email was sent. Hosted delivery, mailbox retention, and provider deletion remain unverified.
+
+All settled source findings are resolved. The recommendation is to open the PR for Savar's review. Do not merge automatically. Later evidence-only commits do not change the checked production source.

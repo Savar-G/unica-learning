@@ -30,3 +30,11 @@ The tests cover invalid and normalized phone input, existing-family preservation
 - Root will perform the Aside browser checks. The test browser does not load external frames. It reports that iframe loading is disabled, while the consent test passes. Calendly rendering, responsive layout, failure state, and its own cookie controls remain unverified in a real browser.
 - The migration and hosted deletion probes are reported in the build brief. This implementation did not re-run them or access live data. The local deletion path uses a de-identified assessment copy; the phone is stored on the parent row. The local alert copy removes the number. A delivered team email necessarily contains the number, and this task did not verify retention or deletion in the team's mailbox or email provider.
 - The full gate does not prove hosted email delivery, database behavior, or a real results call.
+
+## Final verification
+
+Source candidate `4285ebf3268ca82f5aae5551e0f7b47b98bd10d7` passed the final Sol high source recheck and the Mac gate: `npm test && npx eslint src && npm run build`. Results: 649 test files passed, 20,595 tests passed, one skipped; lint and build passed. The worktree stayed clean during the checks. The final gate worker did not save the requested full log and discarded build stdout through a redirection error. The root checked the T3 command record and the completed build artifact. No gate was repeated solely to recreate this log.
+
+The Happy DOM iframe loading warning is a test-environment limitation. The actual Calendly frame was checked in Aside on the owned test family. No live email was sent. Hosted delivery, mailbox retention, and provider deletion remain unverified.
+
+All settled source findings are resolved. The recommendation is to open the PR for Savar's review. Do not merge automatically. Later evidence-only commits do not change the checked production source.

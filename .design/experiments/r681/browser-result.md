@@ -14,3 +14,5 @@ The report belonged to an existing Savar-owned family marked in `public.test_acc
 
 Evidence: `.design/evidence/phone-results-call/calendar-desktop.png` and `calendar-phone.png`.
 The full test gate passed before the final privacy disclosure and sitemap date corrections. A final gate and independent reviews are pending at this checkpoint.
+
+Final status: the full gate and final source recheck passed on `4285ebf3`. See `build-result.md` for counts and the lost-log limit. No production source changed after that check.
