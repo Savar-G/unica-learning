@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { DecisionError, decisionClient, type DecisionQuestion, type DecisionRequest } from "@/lib/decision-client";
+import { DecisionError, decisionClient, requestCostBound, type DecisionQuestion, type DecisionRequest } from "@/lib/decision-client";
 import { openRouterDecisionClient } from "@/lib/decision-openrouter";
 
 // The OpenRouter decision adapter with fetch faked: no network. Checks what goes to OpenRouter and what comes back.
@@ -173,17 +173,21 @@ describe("the OpenRouter decision client (#851), fetch faked", () => {
     expect(await kindOf(client(fakeFetch(decided(ALL)).fetch).decide(request({ signal: AbortSignal.abort() })))).toBe("timeout");
   });
 
-  it("is on only with DECISIONS_OPENROUTER_API_KEY, takes DECISION_MODEL, and refuses a model with no pinned provider", async () => {
+  it("is on only with DECISIONS_OPENROUTER_API_KEY, takes DECISION_MODEL, refuses a model that is not in the pinned table, and bounds a request by its pinned prices", async () => {
     expect(decisionClient({})).toBeNull();
     expect(decisionClient({ OPENROUTER_API_KEY: "sk-or-other", SCAN_MARKING_OPENROUTER_API_KEY: "sk-or-scan" })).toBeNull();
     expect(decisionClient({ DECISIONS_OPENROUTER_API_KEY: "sk-or-d" })?.model).toBe("typesafe/jev-1.14");
+    // One retry: two attempts, each at most the whole context of 262,144 tokens at the prompt price.
+    expect(decisionClient({ DECISIONS_OPENROUTER_API_KEY: "sk-or-d" })!.maxAttempts).toBe(2);
+    expect(requestCostBound(decisionClient({ DECISIONS_OPENROUTER_API_KEY: "sk-or-d" })!)).toBeCloseTo(2 * 262_144 * 0.042 / 1e6, 12);
+    expect(requestCostBound(decisionClient({ DECISIONS_OPENROUTER_API_KEY: "sk-or-d", DECISION_MODEL: "google/gemini-decision-1" })!)).toBeCloseTo(2 * 262_144 * 0.1 / 1e6, 12);
     const { fetch, sent } = fakeFetch(decided(ALL));
     const gemini = decisionClient({ DECISIONS_OPENROUTER_API_KEY: "sk-or-d", DECISION_MODEL: "google/gemini-decision-1" }, undefined, { fetch });
     await gemini!.decide(request());
     expect(sent[0].body.model).toBe("google/gemini-decision-1");
     expect(sent[0].body.provider).toEqual({ only: ["google-ai-studio"], order: ["google-ai-studio"], allow_fallbacks: false });
     expect(sent[0].headers.get("authorization")).toBe("Bearer sk-or-d");
-    expect(() => decisionClient({ DECISIONS_OPENROUTER_API_KEY: "sk-or-d", DECISION_MODEL: "someone/other-model" })).toThrow(/no pinned provider/);
+    expect(() => decisionClient({ DECISIONS_OPENROUTER_API_KEY: "sk-or-d", DECISION_MODEL: "someone/other-model" })).toThrow(/not in the pinned model table/);
   });
 
   it("malformed: a choice or score answer without a probability from 0 to 1 for every option or level, or a yes/no answer without one; nothing is filled in (review finding 2)", async () => {
@@ -222,8 +226,18 @@ describe("the OpenRouter decision client (#851), fetch faked", () => {
     expect((refusal as DecisionError).kind).toBe("refused");
     expect((refusal as DecisionError).usd).toBeCloseTo(0.05, 12);
 
-    // A failed attempt with no cost adds nothing.
-    const free = fakeFetch({ status: 503, body: {} }, decided(ALL, 0.03));
-    expect((await client(free.fetch).decide(request())).usd).toBe(0.03);
+    // Re-check B: an HTTP 503 with no usage.cost, then a success at USD 0.03. The first charge is unknown, not 0: the result
+    // keeps the known USD 0.03 and is marked incomplete.
+    const unknownFirst = fakeFetch({ status: 503, body: {} }, decided(ALL, 0.03));
+    const partial = await client(unknownFirst.fetch).decide(request());
+    expect(partial).toMatchObject({ usd: 0.03, unpricedAttempts: 1, costKnown: false });
+    // A known charge, then a last attempt with no cost: also incomplete.
+    const unknownLast = fakeFetch({ status: 503, body: { usage: { cost: 0.04 } } }, decided(ALL, null));
+    expect(await client(unknownLast.fetch).decide(request())).toMatchObject({ usd: 0.04, unpricedAttempts: 1, costKnown: false });
+    // Two time-outs: both attempts were sent and neither gave a cost.
+    const hung = await client(fakeFetch("hang").fetch, { timeout: 20 }).decide(request()).catch((e: unknown) => e);
+    expect(hung).toMatchObject({ kind: "timeout", usd: null, unpricedAttempts: 2, costKnown: false });
+    // Every attempt priced: complete.
+    expect(await client(fakeFetch(decided(ALL)).fetch).decide(request())).toMatchObject({ unpricedAttempts: 0, costKnown: true });
   });
 });

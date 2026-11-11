@@ -10,15 +10,52 @@ import { openRouterDecisionClient } from "@/lib/decision-openrouter";
 /** The model when DECISION_MODEL is not set, until the comparison (#851) picks one. */
 export const DECISION_DEFAULT_MODEL = "typesafe/jev-1.14";
 
+/** One decision model's pinned route, prices and limits. Prices are US dollars per million tokens. */
+export interface DecisionModelTerms {
+  /** The one OpenRouter provider slug the model is pinned to (no fallbacks). */
+  provider: string;
+  promptUsdPerM: number;
+  completionUsdPerM: number;
+  /** The most input tokens one request can hold. */
+  contextTokens: number;
+  /** The most output tokens one request can bill. */
+  maxOutputTokens: number;
+  /** When these terms were read from OpenRouter. */
+  read: string;
+}
+
 /**
- * The one provider each decision model is pinned to (no fallbacks), by OpenRouter provider slug. Jev reads images only on
- * TypeSafe's own endpoint, and Gemini Decision 1 has only Google AI Studio (OpenRouter endpoints, read 2026-11-11). A
- * model that is not listed has no client.
+ * The decision models this code may call. Each is pinned to one provider: Jev reads images only on TypeSafe's own
+ * endpoint, and Gemini Decision 1 has only Google AI Studio. Prices and limits are from OpenRouter's model and endpoint
+ * API (/api/v1/models/<id>/endpoints), read 2026-11-11. A model that is not in this table has no client. Change a row only
+ * after reading the endpoint again: the cost bound below depends on it. Gemini Decision 1 also lists a web search price
+ * (USD 0.014 a search); no request here asks for web search, so the bound leaves it out.
  */
-export const DECISION_PROVIDERS: Readonly<Record<string, string>> = {
-  "typesafe/jev-1.14": "typesafe",
-  "google/gemini-decision-1": "google-ai-studio",
+export const DECISION_MODELS: Readonly<Record<string, DecisionModelTerms>> = {
+  "typesafe/jev-1.14": { provider: "typesafe", promptUsdPerM: 0.042, completionUsdPerM: 0, contextTokens: 262_144, maxOutputTokens: 235_929, read: "2026-11-11" },
+  "google/gemini-decision-1": { provider: "google-ai-studio", promptUsdPerM: 0.1, completionUsdPerM: 0, contextTokens: 262_144, maxOutputTokens: 235_929, read: "2026-11-11" },
 };
+
+/** The terms of a model in DECISION_MODELS; throws for any other model. */
+export function decisionModelTerms(model: string): DecisionModelTerms {
+  const terms = Object.hasOwn(DECISION_MODELS, model) ? DECISION_MODELS[model] : undefined;
+  if (!terms) throw new Error(`the decision model ${model} is not in the pinned model table`);
+  return terms;
+}
+
+/**
+ * The most one attempt of a request to `model` can cost, in US dollars: its whole context at the prompt price, plus its
+ * most output tokens at the completion price when that price is above 0. A decision request bills input tokens only today.
+ */
+export function attemptCostBound(model: string): number {
+  const t = decisionModelTerms(model);
+  return (t.contextTokens * t.promptUsdPerM) / 1e6 + (t.completionUsdPerM > 0 ? (t.maxOutputTokens * t.completionUsdPerM) / 1e6 : 0);
+}
+
+/** The most one request can cost: the attempt bound times the client's most attempts. */
+export function requestCostBound(client: Pick<DecisionClient, "model" | "maxAttempts">): number {
+  return attemptCostBound(client.model) * client.maxAttempts;
+}
 
 /** One part of what the model reads: text, or an image as bytes (PNG or JPEG). */
 export type DecisionPart =
@@ -53,10 +90,14 @@ export interface DecisionResult {
   /** One answer per question key. */
   answers: Record<string, DecisionAnswer>;
   /**
-   * What OpenRouter charged for the request, in US dollars, from the HTTP answers' usage: the sum over every attempt, a
-   * charged failed attempt before a retry included; null when no attempt gave a cost.
+   * The known part of what OpenRouter charged for the request, in US dollars, from the HTTP answers' usage: the sum over
+   * every attempt that gave a cost, a charged failed attempt before a retry included; null when no attempt gave a cost.
    */
   usd: number | null;
+  /** Attempts sent with no cost in their answer (a lost connection, a time-out, an answer without usage.cost). */
+  unpricedAttempts: number;
+  /** True only when every attempt gave its cost, so `usd` is the whole charge. */
+  costKnown: boolean;
   /** The provider that answered, and OpenRouter's generation id. */
   provider: string | null;
   id: string | null;
@@ -71,26 +112,36 @@ export type DecisionErrorKind = "refused" | "blocked" | "timeout" | "malformed" 
 
 export class DecisionError extends Error {
   readonly kind: DecisionErrorKind;
-  /** What OpenRouter charged for the failed request, summed over its attempts, in US dollars; null when none gave a cost. */
+  /** The known part of what OpenRouter charged for the failed request, summed over its attempts; null when none gave a cost. */
   readonly usd: number | null;
-  constructor(kind: DecisionErrorKind, message: string, usd: number | null = null) {
+  /** Attempts sent with no cost in their answer. */
+  readonly unpricedAttempts: number;
+  constructor(kind: DecisionErrorKind, message: string, usd: number | null = null, unpricedAttempts = 0) {
     super(message);
     this.name = "DecisionError";
     this.kind = kind;
     this.usd = usd;
+    this.unpricedAttempts = unpricedAttempts;
+  }
+  /** True only when every attempt sent gave its cost. */
+  get costKnown(): boolean {
+    return this.unpricedAttempts === 0;
   }
 }
 
 export interface DecisionClient {
-  /** The model id ("fake" for the fake). */
+  /** The model id: a model in DECISION_MODELS. */
   readonly model: string;
+  /** The most HTTP attempts one request can make (the first try and its retries). */
+  readonly maxAttempts: number;
   /** One typed answer per question, or a DecisionError. */
   decide(request: DecisionRequest): Promise<DecisionResult>;
 }
 
 /**
  * The client, or null when decisions are off (no DECISIONS_OPENROUTER_API_KEY). The model comes from `model`, else
- * DECISION_MODEL, else the default. A model with no pinned provider throws: it is never sent on an open route.
+ * DECISION_MODEL, else the default. A model that is not in DECISION_MODELS throws: it is never sent on an open route
+ * or without a cost bound.
  */
 export function decisionClient(
   env: Readonly<Record<string, string | undefined>> = process.env,
@@ -100,7 +151,6 @@ export function decisionClient(
   const apiKey = env.DECISIONS_OPENROUTER_API_KEY?.trim();
   if (!apiKey) return null;
   const id = model?.trim() || env.DECISION_MODEL?.trim() || DECISION_DEFAULT_MODEL;
-  const provider = DECISION_PROVIDERS[id];
-  if (!provider) throw new Error(`no pinned provider for the decision model ${id}`);
+  const { provider } = decisionModelTerms(id);
   return openRouterDecisionClient({ apiKey, model: id, provider, ...hooks });
 }

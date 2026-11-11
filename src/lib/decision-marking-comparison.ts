@@ -10,13 +10,11 @@ import { cropPlan } from "@/lib/scan-calibration";
 import { markingRegions, type MarkingRegion } from "@/lib/scan-marking-regions";
 import { packageItem, valueText, type QuestionPackage } from "@/lib/question-package";
 import type { Box, PrintedRegion } from "@/lib/workbook-print-contract";
-import { DecisionError, type DecisionClient, type DecisionErrorKind, type DecisionQuestion } from "@/lib/decision-client";
+import { DecisionError, attemptCostBound, requestCostBound, type DecisionClient, type DecisionErrorKind, type DecisionQuestion } from "@/lib/decision-client";
 
 export const COMPARISON_VERSION = 1;
 /** The two models this comparison runs, in report order. */
 export const COMPARISON_MODELS = ["typesafe/jev-1.14", "google/gemini-decision-1"] as const;
-/** Input price in US dollars per million tokens (OpenRouter, 2026-11-11). Output is free on both. */
-export const INPUT_USD_PER_M: Readonly<Record<string, number>> = { "typesafe/jev-1.14": 0.042, "google/gemini-decision-1": 0.1 };
 /**
  * Jev's image limits. The Multimodal Decisions guide says 256 to 1,568 px a side and 78,400 to 2,458,624 px in total, but
  * Jev refused every image with a side under 280 px ("Invalid image dimensions": 300x279, 279x400, 1568x279 refused;
@@ -162,56 +160,57 @@ export interface AskResult {
   /** The error's message (codes and OpenRouter's words, never the key or the image). */
   message?: string;
   ms: number | null;
+  /** The known part of the request's cost; null when no attempt gave a cost. */
   usd: number | null;
+  /** False when an attempt of the request came back with no cost: `usd` is then only part of the charge. */
+  costKnown: boolean;
   provider: string | null;
 }
 
 /**
- * The money cap of one run, shared by every model in it. Before a request, `reserve` holds max(its estimate, 2 x the
- * highest actual cost seen so far) and admits it only when the money spent plus every reservation in flight plus this one
- * is at most the cap; `settle` replaces the reservation with the actual cost (a missing cost counts as its reservation).
- * When one request costs more than its reservation, the run is stopped at the cost cap: no new request is admitted.
- * A request that does not fit waits while others are in flight, as their settlements can free money.
+ * The money cap of one run, shared by every model in it. A request is admitted only when the money spent, plus the
+ * reservations of the requests in flight, plus its own reservation, is at most the cap. Its reservation is the most the
+ * request can cost (requestCostBound: the model's whole context at its pinned prices, times the client's most attempts),
+ * so no admitted request can take the spend past the cap. When the request ends, its reservation is replaced by its
+ * known cost plus, for each attempt that came back with no cost, the attempt's bound. A request that does not fit waits
+ * while others are in flight, as their settlements can free money. If a settled cost is still above its reservation (the
+ * pinned prices are out of date), the run stops at the cost cap: no new request is admitted.
  */
 export interface CostCap {
   readonly maxUsd: number;
-  /** Money spent: actual costs, or the reservation of a request whose cost is missing. */
+  /** Money spent: known costs, and the bound of each attempt whose cost is unknown. */
   readonly spentUsd: number;
   /** Reservations of the requests in flight. */
   readonly reservedUsd: number;
-  /** The highest actual cost of one request so far. */
-  readonly highestUsd: number;
-  /** True after a request cost more than its reservation. */
+  /** True after a settled cost was above its reservation. */
   readonly stopped: boolean;
-  /** The reservation, or null when the request is not admitted (the cap is full or the run is stopped). */
-  reserve(estimateUsd: number): Promise<number | null>;
-  settle(reservationUsd: number, actualUsd: number | null): void;
+  /** Admits a request that can cost at most `boundUsd`: the reservation, or null when it is not admitted. */
+  reserve(boundUsd: number): Promise<number | null>;
+  /** Ends a request: its reservation is replaced by `settledUsd`. */
+  settle(reservationUsd: number, settledUsd: number): void;
 }
 
 export function costCap(maxUsd: number): CostCap {
   let waiting: (() => void)[] = [];
   const cap = {
-    maxUsd, spentUsd: 0, reservedUsd: 0, highestUsd: 0, stopped: false,
-    async reserve(estimateUsd: number) {
+    maxUsd, spentUsd: 0, reservedUsd: 0, stopped: false,
+    async reserve(boundUsd: number) {
+      if (!Number.isFinite(boundUsd) || boundUsd <= 0) throw new Error("a request needs a positive cost bound");
       for (;;) {
         if (cap.stopped) return null;
-        const reservation = Math.max(estimateUsd, 2 * cap.highestUsd);
-        if (cap.spentUsd + cap.reservedUsd + reservation <= cap.maxUsd) {
-          cap.reservedUsd += reservation;
-          return reservation;
+        if (cap.spentUsd + cap.reservedUsd + boundUsd <= cap.maxUsd) {
+          cap.reservedUsd += boundUsd;
+          return boundUsd;
         }
         // Nothing in flight: no settlement can free money, so this request is never admitted.
         if (cap.reservedUsd <= 0) return null;
         await new Promise<void>((resolve) => waiting.push(resolve));
       }
     },
-    settle(reservationUsd: number, actualUsd: number | null) {
+    settle(reservationUsd: number, settledUsd: number) {
       cap.reservedUsd = Math.max(0, cap.reservedUsd - reservationUsd);
-      cap.spentUsd += actualUsd ?? reservationUsd;
-      if (actualUsd !== null) {
-        cap.highestUsd = Math.max(cap.highestUsd, actualUsd);
-        if (actualUsd > reservationUsd) cap.stopped = true;
-      }
+      cap.spentUsd += settledUsd;
+      if (settledUsd > reservationUsd) cap.stopped = true;
       const wake = waiting;
       waiting = [];
       for (const w of wake) w();
@@ -222,12 +221,13 @@ export function costCap(maxUsd: number): CostCap {
 
 /**
  * Asks every region of every item, one request each, with `concurrency` requests in flight. Each request is admitted
- * through the run's cost cap; a request the cap does not admit is not sent and is recorded as "budget" (not confirmed).
+ * through the run's cost cap with the request bound of the client's model (a model outside the pinned table throws); a
+ * request the cap does not admit is not sent and is recorded as "budget" (not confirmed).
  */
 export async function askAll(o: {
   items: readonly ComparisonItem[];
   client: DecisionClient;
-  image: (item: ComparisonItem, region: RegionAsk) => Promise<{ data: Uint8Array; estimateUsd: number }>;
+  image: (item: ComparisonItem, region: RegionAsk) => Promise<Uint8Array>;
   cap: CostCap;
   concurrency?: number;
   timeLimitMs?: number;
@@ -235,6 +235,10 @@ export async function askAll(o: {
   onResult?: (r: AskResult) => void;
 }): Promise<AskResult[]> {
   const now = o.now ?? (() => performance.now());
+  const bound = requestCostBound(o.client);
+  const attemptBound = attemptCostBound(o.client.model);
+  // What a request is settled at: its known cost plus the bound of each attempt with no cost.
+  const settled = (usd: number | null, unpriced: number) => (usd ?? 0) + unpriced * attemptBound;
   const jobs = o.items.flatMap((item) => item.regions.map((region) => ({ item, region })));
   const results: AskResult[] = new Array(jobs.length);
   let next = 0;
@@ -242,10 +246,10 @@ export async function askAll(o: {
     for (let n = next++; n < jobs.length; n = next++) {
       const { item, region } = jobs[n];
       const base = { photo: item.photo, itemId: item.itemId, regionId: region.regionId };
-      const { data, estimateUsd } = await o.image(item, region);
-      const reservation = await o.cap.reserve(estimateUsd);
+      const data = await o.image(item, region);
+      const reservation = await o.cap.reserve(bound);
       if (reservation === null) {
-        results[n] = { ...base, yes: null, error: "budget", message: o.cap.stopped ? "stopped at the cost cap" : "not admitted: the cost cap is full", ms: null, usd: null, provider: null };
+        results[n] = { ...base, yes: null, error: "budget", message: o.cap.stopped ? "stopped at the cost cap" : "not admitted: the cost cap is full", ms: null, usd: null, costKnown: true, provider: null };
       } else {
         const started = now();
         try {
@@ -254,13 +258,14 @@ export async function askAll(o: {
             questions: { shows: region.question },
             signal: AbortSignal.timeout(o.timeLimitMs ?? 60_000),
           });
-          o.cap.settle(reservation, out.usd);
+          o.cap.settle(reservation, settled(out.usd, out.unpricedAttempts));
           const answer = out.answers.shows;
-          results[n] = { ...base, yes: answer.type === "noul" ? answer.yes : null, error: answer.type === "noul" ? null : "malformed", ms: now() - started, usd: out.usd, provider: out.provider };
+          results[n] = { ...base, yes: answer.type === "noul" ? answer.yes : null, error: answer.type === "noul" ? null : "malformed", ms: now() - started, usd: out.usd, costKnown: out.costKnown, provider: out.provider };
         } catch (e) {
-          const usd = e instanceof DecisionError ? e.usd : null;
-          o.cap.settle(reservation, usd);
-          results[n] = { ...base, yes: null, error: e instanceof DecisionError ? e.kind : "unavailable", message: String(e instanceof Error ? e.message : e).slice(0, 300), ms: now() - started, usd, provider: null };
+          const known = e instanceof DecisionError;
+          // An error that is not a DecisionError says nothing of its attempts: it is settled at its whole reservation.
+          o.cap.settle(reservation, known ? settled(e.usd, e.unpricedAttempts) : reservation);
+          results[n] = { ...base, yes: null, error: known ? e.kind : "unavailable", message: String(e instanceof Error ? e.message : e).slice(0, 300), ms: now() - started, usd: known ? e.usd : null, costKnown: known && e.costKnown, provider: null };
         }
       }
       o.onResult?.(results[n]);
@@ -292,8 +297,9 @@ export interface ModelReport {
   /** Requests with no answer (an error, or not sent under the cost cap), by the truth group of their item. */
   failedRequests: { right: number; wrong: number; blank: number; uncertain: number };
   /**
-   * "incomplete: <n> non-right requests failed" when a wrong, blank or uncertain row has a request with no answer: then
-   * 0 false Right is not shown, and the model does not pass. null when every non-right request has an answer.
+   * "incomplete: <n> non-right requests failed" when a wrong, blank or uncertain row has a request with no answer: the
+   * threshold table still counts only answered rows, so its 0 false Right is not proven, and the model does not pass. null
+   * when every non-right request has an answer.
    */
   incomplete: string | null;
   /** The pass bar is met: 0 false Right with every non-right request answered, and at least 80% of right items confirmed. */
@@ -301,7 +307,7 @@ export interface ModelReport {
   /** Items by their P(yes) (the lowest of their regions) in bands of 0.1, with the share that is right. */
   reliability: { band: string; items: number; right: number; rightRate: number | null }[];
   costUsd: number;
-  /** Requests whose answer gave no cost (counted at 0 in costUsd). */
+  /** Requests sent with an attempt that gave no cost: costUsd holds only their known part (the cap counted the bound). */
   costMissing: number;
   costPerPhotoUsd: number;
   latencyMs: { p50: number | null; p95: number | null };
@@ -352,7 +358,7 @@ export function modelReport(model: string, items: readonly ComparisonItem[], res
     thresholds, lowestZeroFalseRight: lowest?.threshold ?? null, confirmRateAtLowest: lowest?.confirmRate ?? null,
     failedRequests, incomplete,
     passes: !incomplete && !!lowest && lowest.confirmRate >= PASS_CONFIRM_RATE, reliability,
-    costUsd: round(cost, 8), costMissing: sent.filter((r) => r.usd === null).length, costPerPhotoUsd: photos ? round(cost / photos, 8) : 0,
+    costUsd: round(cost, 8), costMissing: sent.filter((r) => !r.costKnown).length, costPerPhotoUsd: photos ? round(cost / photos, 8) : 0,
     latencyMs: { p50: p50 === null ? null : Math.round(p50), p95: p95 === null ? null : Math.round(p95) },
   };
 }
@@ -392,11 +398,11 @@ export function reportMarkdown(r: ComparisonReport): string {
     "",
     `Synthetic fixed set: ${r.photos} photos; items asked: ${r.items.right} right, ${r.items.wrong} wrong, ${r.items.blank} blank, ${r.items.uncertain} uncertain; ${r.requestsPerModel} requests per model. Parent rows left out: ${r.leftOut.length}.`,
     `Pass bar: 0 false Right, with every wrong, blank and uncertain request answered, and at least ${PASS_CONFIRM_RATE * 100}% of right items confirmed at the same threshold. Synthetic ink does not prove real handwriting.`,
-    ...(r.cap ? [`Cost cap: USD ${r.cap.maxUsd}; spent USD ${r.cap.spentUsd.toFixed(6)}.${r.cap.stopped ? " The run stopped at the cost cap: a request cost more than its reservation, and no new request was sent." : ""}`] : []),
+    ...(r.cap ? [`Cost cap: USD ${r.cap.maxUsd}; spent USD ${r.cap.spentUsd.toFixed(6)} (known costs, and the bound of each attempt with a missing cost).${r.cap.stopped ? " The run stopped at the cost cap: a cost was above its bound, so the pinned prices are out of date, and no new request was sent." : ""}`] : []),
     "",
     "| Model | Lowest 0-false-Right threshold | Confirm rate there | Passes | Cost | Cost per photo | p50 latency | p95 latency | Errors |",
     "|---|---|---|---|---|---|---|---|---|",
-    ...r.models.map((m) => `| ${m.model} | ${m.lowestZeroFalseRight?.toFixed(2) ?? "none"} | ${pct(m.confirmRateAtLowest)} | ${m.passes ? "yes" : m.incomplete ? `no (${m.incomplete})` : "no"} | ${usd(m.costUsd)}${m.costMissing ? ` (${m.costMissing} without cost)` : ""} | ${usd(m.costPerPhotoUsd)} | ${m.latencyMs.p50 ?? "-"} ms | ${m.latencyMs.p95 ?? "-"} ms | ${Object.entries(m.errors).map(([k, v]) => `${k} ${v}`).join(", ") || "0"} |`),
+    ...r.models.map((m) => `| ${m.model} | ${m.lowestZeroFalseRight?.toFixed(2) ?? "none"} | ${pct(m.confirmRateAtLowest)} | ${m.passes ? "yes" : m.incomplete ? `no (${m.incomplete})` : "no"} | ${usd(m.costUsd)}${m.costMissing ? ` known part; ${m.costMissing} requests with a missing cost` : ""} | ${usd(m.costPerPhotoUsd)} | ${m.latencyMs.p50 ?? "-"} ms | ${m.latencyMs.p95 ?? "-"} ms | ${Object.entries(m.errors).map(([k, v]) => `${k} ${v}`).join(", ") || "0"} |`),
   ];
   for (const m of r.models) {
     lines.push("", `## ${m.model}`, "", `Providers: ${Object.entries(m.providers).map(([k, v]) => `${k} ${v}`).join(", ") || "none"}.`, "", "| Threshold | Right confirmed | Confirm rate | False Right | wrong | blank | uncertain |", "|---|---|---|---|---|---|---|");

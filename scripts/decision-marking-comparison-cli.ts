@@ -7,11 +7,10 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import sharp from "sharp";
-import { decisionClient, type DecisionClient } from "../src/lib/decision-client";
+import { DECISION_MODELS, decisionClient, decisionModelTerms, requestCostBound, type DecisionClient } from "../src/lib/decision-client";
 import { openRouterDecisionClient } from "../src/lib/decision-openrouter";
 import {
   COMPARISON_MODELS,
-  INPUT_USD_PER_M,
   askAll,
   comparisonItems,
   costCap,
@@ -30,8 +29,9 @@ const HELP = `node scripts/decision-marking-comparison.mjs --set DIR [--estimate
 --set DIR: the fixed 40 folder (manifest.json and photos/). Read only.
 --estimate: print the cost estimate and stop. No key is read and nothing is sent.
 --fake-http: run the real adapter against a fake fetch. No key; the report is marked fake.
---max-usd: the cost cap of the run (default 2). A run whose estimate is above it does not start; each request is
-  admitted only when its reservation fits under the cap, and the run stops when a request costs more than its reservation.
+--max-usd: the cost cap of the run (default 2). A run whose estimate is above it does not start. Each request reserves
+  the most it can cost (the model's whole context at its pinned price, times its most attempts) and is sent only when
+  the money spent plus every reservation in flight plus its own is at most the cap, so the spend cannot pass the cap.
 --out: the output folder (default .workbook-sample/decision-comparison/<time>).
 --save-crops: also write each crop as it is sent, to check the crops by eye.`;
 
@@ -43,7 +43,7 @@ function fakeFetch(): typeof globalThis.fetch {
     const parsed = JSON.parse(body) as { model: string; questions: Record<string, unknown> };
     const answers = Object.fromEntries(Object.keys(parsed.questions).map((k, n) => [k, { type: "noul", noul: hash[n % hash.length] / 255 }]));
     const tokens = Math.ceil(body.length / 4);
-    return new Response(JSON.stringify({ model: parsed.model, answers, usage: { input_tokens: tokens, output_tokens: 0, cost: (tokens * (INPUT_USD_PER_M[parsed.model] ?? 0.1)) / 1e6 }, id: "gen-dec-fake", provider: "fake" }), { status: 200, headers: { "content-type": "application/json" } });
+    return new Response(JSON.stringify({ model: parsed.model, answers, usage: { input_tokens: tokens, output_tokens: 0, cost: (tokens * decisionModelTerms(parsed.model).promptUsdPerM) / 1e6 }, id: "gen-dec-fake", provider: "fake" }), { status: 200, headers: { "content-type": "application/json" } });
   };
 }
 
@@ -63,7 +63,7 @@ async function main() {
   const maxUsd = Number(v["max-usd"]);
   if (!Number.isFinite(maxUsd) || maxUsd <= 0) throw new Error("--max-usd must be a positive number");
   const models = v.models ? v.models.split(",").map((m) => m.trim()).filter(Boolean) : [...COMPARISON_MODELS];
-  for (const m of models) if (!(m in INPUT_USD_PER_M)) throw new Error(`not a comparison model: ${m}`);
+  for (const m of models) if (!Object.hasOwn(DECISION_MODELS, m)) throw new Error(`not in the pinned decision model table: ${m}`);
   const set = resolve(v.set);
   const fake = !!v["fake-http"];
   const out = resolve(v.out ?? `.workbook-sample/decision-comparison/${new Date().toISOString().replace(/[:.]/g, "-")}${fake ? "-fake" : ""}`);
@@ -85,7 +85,7 @@ async function main() {
   const tokens = [...sizes.values()].reduce((n, s) => n + s.tokens, 0);
   const estimate = {
     requestsPerModel: sizes.size, inputTokensPerModel: tokens,
-    models: Object.fromEntries(models.map((m) => [m, Math.round(((2 * tokens * INPUT_USD_PER_M[m]) / 1e6) * 1e6) / 1e6])),
+    models: Object.fromEntries(models.map((m) => [m, Math.round(((2 * tokens * decisionModelTerms(m).promptUsdPerM) / 1e6) * 1e6) / 1e6])),
     totalUsd: 0, maxUsd,
   };
   estimate.totalUsd = Math.round(Object.values(estimate.models).reduce((a, b) => a + b, 0) * 1e6) / 1e6;
@@ -133,11 +133,11 @@ async function main() {
   const cap = costCap(maxUsd);
   const results: Record<string, AskResult[]> = {};
   for (const client of clients) {
-    const price = INPUT_USD_PER_M[client.model];
+    console.log(`${client.model}: each request reserves USD ${requestCostBound(client).toFixed(6)} (its most cost) under the cap.`);
     let done = 0;
     results[client.model] = await askAll({
       items, client, cap, concurrency: Number(v.concurrency) || 4,
-      image: async (item, region) => ({ data: await crop(item, region), estimateUsd: (2 * sizes.get(keyOf(item, region))!.tokens * price) / 1e6 }),
+      image: crop,
       onResult: () => {
         if (++done % 50 === 0) console.log(`${client.model}: ${done}/${sizes.size}, spent about USD ${cap.spentUsd.toFixed(5)}`);
       },
@@ -145,7 +145,7 @@ async function main() {
     await writeFile(resolve(out, `results-${client.model.replace("/", "_")}.json`), JSON.stringify(results[client.model], null, 2) + "\n");
   }
 
-  if (cap.stopped) console.log("The run stopped at the cost cap: a request cost more than its reservation.");
+  if (cap.stopped) console.log("The run stopped at the cost cap: a cost was above its bound, so the pinned prices are out of date.");
   const report = comparisonReport({ items, leftOut, photos: manifest.photos.length, fake, results, cap });
   await writeFile(resolve(out, "report.json"), JSON.stringify(report, null, 2) + "\n");
   const md = reportMarkdown(report);

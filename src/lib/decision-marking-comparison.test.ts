@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import fixtures from "./scan-marking-comparison.test-fixtures.json";
 import type { QuestionPackage } from "@/lib/question-package";
 import type { PrintedRegion } from "@/lib/workbook-print-contract";
-import { DecisionError, type DecisionClient } from "@/lib/decision-client";
+import { DecisionError, attemptCostBound, type DecisionClient, type DecisionResult } from "@/lib/decision-client";
 import { fakeDecisionClient, noul } from "@/lib/decision-client-fake";
 import { openRouterDecisionClient } from "@/lib/decision-openrouter";
 import { markingRegions } from "@/lib/scan-marking-regions";
@@ -25,6 +25,7 @@ import {
 
 // The synthetic second-opinion comparison (#851) through its public interface: made-up Robin packages, fake decisions.
 
+const JEV = "typesafe/jev-1.14", GEMINI = "google/gemini-decision-1";
 const pkg = (name: keyof typeof fixtures.packages) => structuredClone(fixtures.packages[name]) as unknown as QuestionPackage;
 const box = (id: string, kind: PrintedRegion["kind"], x: number): PrintedRegion => ({ id, kind, box: { x, y: 100, width: 100, height: 80 } }) as PrintedRegion;
 const question = (number: number, name: keyof typeof fixtures.packages) => {
@@ -109,7 +110,7 @@ describe("the comparison report (#851)", () => {
   const results = (yes: (itemResult: string, regionId: string) => number | null): AskResult[] =>
     items.flatMap((i) => i.regions.map((r) => {
       const y = yes(i.result, r.regionId);
-      return { photo: i.photo, itemId: i.itemId, regionId: r.regionId, yes: y, error: y === null ? "timeout" as const : null, ms: 100, usd: 0.00001, provider: "TypeSafe" };
+      return { photo: i.photo, itemId: i.itemId, regionId: r.regionId, yes: y, error: y === null ? "timeout" as const : null, ms: 100, usd: 0.00001, costKnown: true, provider: "TypeSafe" };
     }));
 
   it("confirms an item only when every region is at or above the threshold; the lowest 0-false-Right threshold and its confirm rate", () => {
@@ -144,16 +145,16 @@ describe("the comparison report (#851)", () => {
     const fetchFor = (model: string): typeof globalThis.fetch => async (_url, init) => {
       const body = JSON.parse(String(init?.body)) as { state: [string, { image_url: { url: string } }] };
       const result = byImage.get(body.state[1].image_url.url)!;
-      return new Response(JSON.stringify({ model, answers: { shows: { type: "noul", noul: replies.get(result) } }, usage: { input_tokens: 900, output_tokens: 0, cost: 0.00004 }, id: "gen-dec-x", provider: model === "a" ? "TypeSafe" : "Google AI Studio" }), { status: 200 });
+      return new Response(JSON.stringify({ model, answers: { shows: { type: "noul", noul: replies.get(result) } }, usage: { input_tokens: 900, output_tokens: 0, cost: 0.00004 }, id: "gen-dec-x", provider: model === JEV ? "TypeSafe" : "Google AI Studio" }), { status: 200 });
     };
     const image = async (item: (typeof items)[number], region: (typeof items)[number]["regions"][number]) => {
       const data = new TextEncoder().encode(`${item.photo}/${item.itemId}/${region.regionId}`);
       byImage.set(`data:image/jpeg;base64,${Buffer.from(data).toString("base64")}`, item.result);
-      return { data, estimateUsd: 0.0001 };
+      return data;
     };
     const cap = costCap(1);
     const all: Record<string, AskResult[]> = {};
-    for (const model of ["a", "b"]) all[model] = await askAll({ items, client: openRouterDecisionClient({ apiKey: "fake", model, provider: "fake", fetch: fetchFor(model) }), image, cap });
+    for (const model of [JEV, GEMINI]) all[model] = await askAll({ items, client: openRouterDecisionClient({ apiKey: "fake", model, provider: "fake", fetch: fetchFor(model) }), image, cap });
     const report = comparisonReport({ items, leftOut: comparisonItems(manifest()).leftOut, photos: 3, fake: true, results: all, cap });
 
     expect(report.requestsPerModel).toBe(12);
@@ -172,11 +173,11 @@ describe("the comparison report (#851)", () => {
     expect(report.models.map((m) => Object.keys(m.providers))).toEqual([["TypeSafe"], ["Google AI Studio"]]);
     const md = reportMarkdown(report);
     expect(md).toContain("fake HTTP");
-    expect(md).toContain("| a | 0.50 | 100.0% | yes |");
+    expect(md).toContain("| typesafe/jev-1.14 | 0.50 | 100.0% | yes |");
     expect(md).toContain("## Parent rows left out");
     expect(report.cap).toMatchObject({ maxUsd: 1, stopped: false });
     expect(report.cap!.spentUsd).toBeCloseTo(24 * 0.00004, 10);
-    expect(md).toContain("Cost cap: USD 1; spent USD 0.000960.");
+    expect(md).toContain("Cost cap: USD 1; spent USD 0.000960 (known costs");
     expect(md).not.toContain("stopped at the cost cap");
   });
 
@@ -190,7 +191,7 @@ describe("the comparison report (#851)", () => {
         return { shows: noul(0.9) };
       },
     });
-    const out = await askAll({ items, client, image: async () => ({ data: new Uint8Array([1]), estimateUsd: 0 }), cap: costCap(1), concurrency: 1 });
+    const out = await askAll({ items, client, image: async () => new Uint8Array([1]), cap: costCap(1), concurrency: 1 });
     expect(out.slice(0, 5).map((r) => r.error)).toEqual(["refused", "blocked", "malformed", "unavailable", null]);
     expect(client.requests.every((r) => r.input.some((p) => p.type === "image") && Object.keys(r.questions).join() === "shows")).toBe(true);
     expect(client.requests.some((r) => JSON.stringify(r.questions).includes("49"))).toBe(false);
@@ -203,8 +204,8 @@ describe("an incomplete comparison (#851 review, finding 1)", () => {
     const right = all.find((i) => i.photo === "synthetic-right" && i.format === "whole")!;
     const wrong = all.find((i) => i.photo === "synthetic-wrong" && i.format === "whole")!;
     const results: AskResult[] = [
-      { photo: right.photo, itemId: right.itemId, regionId: "answer", yes: 0.9, error: null, ms: 100, usd: 0.00001, provider: "TypeSafe" },
-      { photo: wrong.photo, itemId: wrong.itemId, regionId: "answer", yes: null, error: "timeout", message: "time is up", ms: 20_000, usd: null, provider: null },
+      { photo: right.photo, itemId: right.itemId, regionId: "answer", yes: 0.9, error: null, ms: 100, usd: 0.00001, costKnown: true, provider: "TypeSafe" },
+      { photo: wrong.photo, itemId: wrong.itemId, regionId: "answer", yes: null, error: "timeout", message: "time is up", ms: 20_000, usd: null, costKnown: false, provider: null },
     ];
     const r = modelReport("m", [right, wrong], results, 2);
     // The numbers alone look perfect: 0 false Right and 100% confirmed at 0.50.
@@ -222,91 +223,108 @@ describe("an incomplete comparison (#851 review, finding 1)", () => {
   });
 });
 
-describe("the cost cap (#851 review, finding 3)", () => {
+describe("the cost cap (#851 review, finding 3 and re-check A and B)", () => {
   const { items } = comparisonItems(manifest());
+  /** The most one Jev attempt can cost: 262,144 tokens at USD 0.042 per million. */
+  const B = 262_144 * 0.042 / 1e6;
+  const image = async () => new Uint8Array([1]);
 
-  /** A client whose request number n costs costs[n] (null: no cost) and answers after `delayMs`; it records the cap at each call. */
-  function costedClient(costs: (number | null)[], cap: ReturnType<typeof costCap>, delayMs = 0) {
+  /**
+   * A Jev client with `maxAttempts` attempts whose request number n reports cost costs[n] and `unpriced` attempts with no
+   * cost, and answers after `delayMs`; it records the cap at each call and the most requests in flight.
+   */
+  function costedClient(cap: ReturnType<typeof costCap>, o: { costs: (number | null)[]; unpriced?: number; maxAttempts?: number; delayMs?: number; model?: string }) {
     const calls: { spent: number; reserved: number }[] = [];
     let inFlight = 0;
     const seen = { peak: 0 };
     const client: DecisionClient & { calls: typeof calls; seen: typeof seen } = {
-      model: "m", calls, seen,
-      async decide() {
+      model: o.model ?? JEV, maxAttempts: o.maxAttempts ?? 1, calls, seen,
+      async decide(): Promise<DecisionResult> {
         const n = calls.length;
         calls.push({ spent: cap.spentUsd, reserved: cap.reservedUsd });
         seen.peak = Math.max(seen.peak, ++inFlight);
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        await new Promise((resolve) => setTimeout(resolve, o.delayMs ?? 0));
         inFlight--;
-        return { answers: { shows: noul(0.9) }, usd: costs[Math.min(n, costs.length - 1)], provider: "fake", id: null };
+        const unpriced = o.unpriced ?? 0;
+        return { answers: { shows: noul(0.9) }, usd: o.costs[Math.min(n, o.costs.length - 1)], unpricedAttempts: unpriced, costKnown: unpriced === 0, provider: "fake", id: null };
       },
     };
     return client;
   }
-  const image = (estimates: number[]) => {
-    let n = 0;
-    return async () => ({ data: new Uint8Array([1]), estimateUsd: estimates[Math.min(n++, estimates.length - 1)] });
-  };
 
-  it("stops at the cost cap: a USD 0.10 cap, a request estimated at USD 0.05 that costs USD 0.20", async () => {
-    const cap = costCap(0.1);
-    const client = costedClient([0.2], cap);
-    const out = await askAll({ items, client, image: image([0.05]), cap, concurrency: 1 });
-    expect(client.calls).toHaveLength(1);
-    expect(out[0]).toMatchObject({ error: null, usd: 0.2 });
-    expect(out.slice(1).every((r) => r.error === "budget" && r.message === "stopped at the cost cap")).toBe(true);
-    expect(cap).toMatchObject({ spentUsd: 0.2, reservedUsd: 0, stopped: true });
-    const md = reportMarkdown(comparisonReport({ items, leftOut: [], photos: 3, fake: false, results: { m: out }, cap }));
-    expect(md).toContain("The run stopped at the cost cap");
+  it("bounds a request by the pinned prices: the whole context at the prompt price, times the most attempts", () => {
+    expect(attemptCostBound(JEV)).toBeCloseTo(B, 12);
+    expect(attemptCostBound(GEMINI)).toBeCloseTo(262_144 * 0.1 / 1e6, 12);
+    expect(() => attemptCostBound("someone/other-model")).toThrow(/not in the pinned model table/);
   });
 
-  it("with concurrent requests, admits no request whose reservation does not fit beside the ones in flight, and stops when a cost passes its reservation", async () => {
+  it("never spends past a USD 0.10 cap at concurrency 1, even when every request is charged the most it can cost", async () => {
     const cap = costCap(0.1);
-    const client = costedClient([0.2], cap, 20);
-    const out = await askAll({ items, client, image: image([0.05]), cap, concurrency: 3 });
-    // Two reservations of USD 0.05 fit under USD 0.10 together and are both in flight before any cost arrives; the third
-    // waits, then the run stops.
-    expect(client.calls).toEqual([{ spent: 0, reserved: 0.1 }, { spent: 0, reserved: 0.1 }]);
-    expect(client.seen.peak).toBe(2);
-    expect(out.filter((r) => r.error === "budget")).toHaveLength(out.length - 2);
-    expect(cap).toMatchObject({ spentUsd: 0.4, reservedUsd: 0, stopped: true });
-  });
-
-  it("with costs within their reservations and 4 requests in flight, never admits past the cap and spends at most the cap", async () => {
-    const cap = costCap(1);
-    const client = costedClient([0.125], cap, 10);
-    const out = await askAll({ items, client, image: image([0.25]), cap, concurrency: 4 });
-    expect(client.seen.peak).toBe(4);
-    for (const c of client.calls) expect(c.spent + c.reserved).toBeLessThanOrEqual(1);
+    const client = costedClient(cap, { costs: [B] });
+    const out = await askAll({ items, client, image, cap, concurrency: 1 });
+    // 9 bounds fit under USD 0.10 (9 x 0.011010048 = 0.0991); the 10th does not, so it is never sent.
+    expect(client.calls).toHaveLength(9);
+    for (const c of client.calls) expect(c.spent + c.reserved).toBeLessThanOrEqual(0.1);
+    expect(cap.spentUsd).toBeLessThanOrEqual(0.1);
+    expect(cap.spentUsd).toBeCloseTo(9 * B, 12);
     expect(cap.stopped).toBe(false);
-    expect(cap.spentUsd).toBeLessThanOrEqual(1);
-    expect(out.reduce((sum, r) => sum + (r.usd ?? 0), 0)).toBe(cap.spentUsd);
-    expect(out.some((r) => r.error === "budget" && r.message === "not admitted: the cost cap is full")).toBe(true);
+    expect(out.filter((r) => r.error === "budget").every((r) => r.message === "not admitted: the cost cap is full")).toBe(true);
   });
 
-  it("reserves 2 x the highest cost seen when that is above the estimate", async () => {
-    // Request 1: estimate and cost USD 0.25. Then estimates of USD 0.0625 each reserve USD 0.50: 6 requests fit under USD 1.
-    const cap = costCap(1);
-    const client = costedClient([0.25, 0.0625], cap);
-    const out = await askAll({ items, client, image: image([0.25, 0.0625]), cap, concurrency: 1 });
-    expect(client.calls).toHaveLength(6);
-    expect(out.filter((r) => r.error === "budget")).toHaveLength(out.length - 6);
-    expect(cap).toMatchObject({ spentUsd: 0.5625, stopped: false });
+  it("never spends past a USD 0.10 cap at concurrency 4, with requests in flight before any cost arrives", async () => {
+    const cap = costCap(0.1);
+    const client = costedClient(cap, { costs: [B], delayMs: 10 });
+    await askAll({ items, client, image, cap, concurrency: 4 });
+    expect(client.seen.peak).toBe(4);
+    // At each call, the money spent plus every reservation in flight (this one included) is at most the cap.
+    for (const c of client.calls) expect(c.spent + c.reserved).toBeLessThanOrEqual(0.1);
+    expect(client.calls).toHaveLength(9);
+    expect(cap.spentUsd).toBeLessThanOrEqual(0.1);
+    expect(cap.reservedUsd).toBe(0);
   });
 
-  it("counts a missing cost as its reservation", async () => {
+  it("reserves the bound times the most attempts, so a client with a retry takes two bounds", async () => {
+    const cap = costCap(0.1);
+    const client = costedClient(cap, { costs: [0.001], maxAttempts: 2, delayMs: 10 });
+    await askAll({ items, client, image, cap, concurrency: 8 });
+    // 4 reservations of 2 x 0.011010048 fit under USD 0.10 at once (0.0881); a 5th does not.
+    expect(client.seen.peak).toBe(4);
+    for (const c of client.calls) expect(c.spent + c.reserved).toBeLessThanOrEqual(0.1);
+  });
+
+  it("refuses a model that is not in the pinned table", async () => {
     const cap = costCap(1);
-    const client = costedClient([null], cap);
-    await askAll({ items, client, image: image([0.25]), cap, concurrency: 1 });
-    expect(client.calls).toHaveLength(4);
-    expect(cap).toMatchObject({ spentUsd: 1, reservedUsd: 0, stopped: false });
+    await expect(askAll({ items, client: costedClient(cap, { costs: [0.001], model: "someone/other-model" }), image, cap })).rejects.toThrow(/not in the pinned model table/);
+  });
+
+  it("stops the run when a cost is above its bound (the pinned prices are out of date), as a safety check", async () => {
+    const cap = costCap(0.1);
+    const client = costedClient(cap, { costs: [0.02] });
+    const out = await askAll({ items, client, image, cap, concurrency: 1 });
+    expect(client.calls).toHaveLength(1);
+    expect(out.slice(1).every((r) => r.error === "budget" && r.message === "stopped at the cost cap")).toBe(true);
+    expect(cap).toMatchObject({ spentUsd: 0.02, reservedUsd: 0, stopped: true });
+    expect(reportMarkdown(comparisonReport({ items, leftOut: [], photos: 3, fake: false, results: { [JEV]: out }, cap }))).toContain("The run stopped at the cost cap");
+  });
+
+  it("settles an attempt with no cost at its whole bound, and the report counts the request under missing cost", async () => {
+    const cap = costCap(0.1);
+    // One request of two attempts: one gave USD 0.003, one gave no cost.
+    const client = costedClient(cap, { costs: [0.003], unpriced: 1, maxAttempts: 2 });
+    const out = await askAll({ items: items.slice(0, 1), client, image, cap, concurrency: 1 });
+    expect(out[0]).toMatchObject({ usd: 0.003, costKnown: false });
+    expect(cap.spentUsd).toBeCloseTo(0.003 + B, 12);
+    const report = modelReport(JEV, items.slice(0, 1), out, 1);
+    expect(report.costMissing).toBe(1);
+    expect(report.costUsd).toBeCloseTo(0.003, 12);
+    expect(reportMarkdown(comparisonReport({ items: items.slice(0, 1), leftOut: [], photos: 1, fake: false, results: { [JEV]: out }, cap }))).toContain("1 requests with a missing cost");
   });
 
   it("counts the cost of a failed request that OpenRouter charged", async () => {
     const cap = costCap(1);
-    const client = fakeDecisionClient({ answer: () => { throw new DecisionError("unavailable", "503", 0.125); } });
-    const out = await askAll({ items: items.slice(0, 2), client, image: image([0.25]), cap, concurrency: 1 });
-    expect(out.map((r) => [r.error, r.usd])).toEqual([["unavailable", 0.125], ["unavailable", 0.125]]);
-    expect(cap.spentUsd).toBe(0.25);
+    const client = fakeDecisionClient({ answer: () => { throw new DecisionError("unavailable", "503", 0.004); } });
+    const out = await askAll({ items: items.slice(0, 2), client, image, cap, concurrency: 1 });
+    expect(out.map((r) => [r.error, r.usd, r.costKnown])).toEqual([["unavailable", 0.004, true], ["unavailable", 0.004, true]]);
+    expect(cap.spentUsd).toBe(0.008);
   });
 });

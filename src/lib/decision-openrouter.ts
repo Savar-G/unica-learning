@@ -102,7 +102,7 @@ function failure(status: number, message: string, usd: number | null): DecisionE
 }
 
 /** One try. Error messages hold codes and OpenRouter's words, never the input. */
-async function once(fetch: typeof globalThis.fetch, init: RequestInit, request: DecisionRequest, timeout: number): Promise<DecisionResult> {
+async function once(fetch: typeof globalThis.fetch, init: RequestInit, request: DecisionRequest, timeout: number): Promise<Omit<DecisionResult, "unpricedAttempts" | "costKnown">> {
   let res: Response;
   try {
     res = await fetch(DECISIONS_URL, { ...init, signal: AbortSignal.any([request.signal, AbortSignal.timeout(timeout)]) });
@@ -158,6 +158,7 @@ export function openRouterDecisionClient({
 }): DecisionClient {
   return {
     model,
+    maxAttempts: maxRetries + 1,
     async decide(request) {
       if (!Object.keys(request.questions).length) throw new DecisionError("malformed", "a decision needs at least one question");
       const init: RequestInit = {
@@ -165,19 +166,28 @@ export function openRouterDecisionClient({
         headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json", "x-openrouter-title": "Unica Learning" },
         body: JSON.stringify(decisionBody(model, provider, request)),
       };
-      // The cost of every attempt, a charged failed one included: the result and a final error report the sum.
+      // The cost of every attempt, a charged failed one included: the result and a final error report the known sum and
+      // how many attempts were sent with no cost (their charge is unknown, never taken as 0).
       let charged: number | null = null;
-      const add = (usd: number | null) => (usd === null ? charged : (charged ?? 0) + usd);
+      let unpriced = 0;
+      const count = (usd: number | null) => {
+        if (usd === null) unpriced++;
+        else charged = (charged ?? 0) + usd;
+      };
       for (let attempt = 0; ; attempt++) {
-        if (request.signal.aborted) throw new DecisionError("timeout", "time is up", charged);
+        if (request.signal.aborted) throw new DecisionError("timeout", "time is up", charged, unpriced);
         try {
           const result = await once(fetch, init, request, timeout);
-          return { ...result, usd: add(result.usd) };
+          count(result.usd);
+          return { ...result, usd: charged, unpricedAttempts: unpriced, costKnown: unpriced === 0 };
         } catch (e) {
-          if (e instanceof DecisionError) throw new DecisionError(e.kind, e.message, add(e.usd));
-          if (!(e instanceof Retryable)) throw e;
-          charged = add(e.usd);
-          if (attempt >= maxRetries || request.signal.aborted) throw new DecisionError(request.signal.aborted ? "timeout" : e.kind, e.message, charged);
+          if (!(e instanceof DecisionError) && !(e instanceof Retryable)) {
+            count(null);
+            throw new DecisionError("unavailable", String(e instanceof Error ? e.message : e).slice(0, 160), charged, unpriced);
+          }
+          count(e.usd);
+          if (e instanceof DecisionError) throw new DecisionError(e.kind, e.message, charged, unpriced);
+          if (attempt >= maxRetries || request.signal.aborted) throw new DecisionError(request.signal.aborted ? "timeout" : e.kind, e.message, charged, unpriced);
         }
       }
     },
