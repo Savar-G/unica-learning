@@ -489,8 +489,8 @@ export function ReportProgress({ preview: p }: { preview: ProgressPreview | null
             <span>{step.text}</span>
             {i === 0 && (
               <>
-                <span className="rpt-goal-books" aria-hidden="true">{p.stages.map((s) => <i key={s.grade} className={`is-g${s.grade % 4}`} style={{ flexGrow: s.books }} />)}</span>
-                <span className="rpt-goal-legend">{p.stages.map((s) => <span key={s.grade}><i className={`is-g${s.grade % 4}`} />{s.label}{s.months ? `: ${s.months}` : `: ${s.books} workbooks`}</span>)}</span>
+                <span className="rpt-goal-books" aria-hidden="true">{p.stages.map((s) => <i key={s.grade} className={`is-g${s.grade % 8}`} style={{ flexGrow: s.books }} />)}</span>
+                <span className="rpt-goal-legend">{p.stages.map((s) => <span key={s.grade}><i className={`is-g${s.grade % 8}`} />{s.label}{s.months ? `: ${s.months}` : `: ${s.books} workbooks`}</span>)}</span>
               </>
             )}
           </li>

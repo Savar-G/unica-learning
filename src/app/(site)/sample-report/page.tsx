@@ -20,6 +20,9 @@ const PAGE = {
 };
 export const metadata = pageMetadata(PAGE);
 
+// The sample's goal date counts from the day the page is built, so it never promises a month that has passed: rebuilt daily.
+export const revalidate = 86400;
+
 export default function SampleReportPage() {
   const view = sampleReportWithBook();
   const name = SAMPLE_CHILDREN.a.name;
@@ -42,7 +45,7 @@ export default function SampleReportPage() {
       <ReportCard
         view={view}
         readOnly
-        progress={progressPreview(view)}
+        progress={progressPreview({ ...view, completedAt: new Date().toISOString() })}
         nextSlot={<div><StartLink src="sample-report-end">{START_LABEL} <span className="arr" aria-hidden="true">→</span></StartLink><StartNote /></div>}
       />
     </SupportPage>

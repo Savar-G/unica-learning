@@ -10,6 +10,10 @@
 // - Book 1 starts at the start level the real planner chose (BookOne.level). The goal is reached when the child starts
 //   the first level of the goal grade, so the books are every planned workbook (CurriculumLevel.workbooks) of the
 //   levels from the start level up to that one.
+// - The count is the program's own budget, not a promise of the exact number: a level ends when every step is passed, or
+//   after its workbooks plus 2 (workbook-plan.ts testWorkbook, CONTEXT 4.9), so the real path can be shorter or a little
+//   longer. The page says so ("the real date can be earlier or later"). Levels from the planner's start level are counted,
+//   so a child the planner starts below the working grade (rules P2 and P3) is counted from there, as the books will go.
 // - Pace: every child works 5 days a week (Savar, 2026-11-11). A book is 10 days, so a new book every 2 weeks.
 // - Book 1 starts START_LEAD_DAYS after the test (the book is made and mailed). Open decision for Savar: the real
 //   delivery date, once one exists, can replace it.

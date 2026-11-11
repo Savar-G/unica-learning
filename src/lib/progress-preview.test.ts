@@ -111,6 +111,24 @@ describe("progressPreview", () => {
   });
 });
 
+describe("the book budget the count rests on", () => {
+  it("adds up to the program's 120 workbooks (CONTEXT: K 8, grades 1 and 2: 10, grades 3 to 5: 12, grades 6 to 9: 14)", () => {
+    expect(BC.levels.reduce((n, l) => n + l.workbooks, 0)).toBe(120);
+  });
+  it("counts a book for every planned workbook of a child the planner starts below the working grade", () => {
+    // Working at grade 3 but started at the first grade 1 level (rules P2 and P3): grades 1 to 4 are counted, 10 + 10 + 12 + 12.
+    expect(progressPreview(view(3, 3, firstLevel(1)))!.books).toHaveLength(44);
+  });
+});
+
+describe("grade colours", () => {
+  it("never repeat across the longest path (kindergarten to grade 9)", () => {
+    const stages = progressPreview(view(0, 0, firstLevel(0)), BC)?.stages ?? [];
+    const seen = new Set(stages.map((s) => s.grade % 8));
+    expect(seen.size).toBe(stages.length);
+  });
+});
+
 describe("skill table", () => {
   it("lines today up with the goal row by row, with 'not started' areas as null", () => {
     expect(skillRows(1, 3)).toEqual([

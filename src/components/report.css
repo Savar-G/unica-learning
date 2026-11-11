@@ -280,6 +280,11 @@
 .rpt-goal i.is-g1 { background: var(--sun); }
 .rpt-goal i.is-g2 { background: var(--leaf); }
 .rpt-goal i.is-g3 { background: var(--sky); }
+/* grades 4 to 7 (and 8, 9): the same four colours, lighter, so a path over 4 grades never repeats one */
+.rpt-goal i.is-g4 { background: #ffb59e; }
+.rpt-goal i.is-g5 { background: #ffe29a; }
+.rpt-goal i.is-g6 { background: #8ad9b9; }
+.rpt-goal i.is-g7 { background: #a9c6f6; }
 @media (max-width: 860px) {
   .rpt .rpt-goal-how { grid-template-columns: 1fr; }
 }

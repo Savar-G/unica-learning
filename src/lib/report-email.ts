@@ -90,7 +90,7 @@ const WB_STRETCH = "#e5edfc";
 /** The progress preview: the goal column's tints, and each book's colour by grade (report.css, .rpt-goal). */
 const PROGRESS_GOAL = "#fff8dc";
 const PROGRESS_GOAL_HEAD = "#ffe999";
-const GRADE_BOOK = ["#ff6a3d", "#ffc93c", "#2fb37a", "#5b8def"] as const;
+const GRADE_BOOK = ["#ff6a3d", "#ffc93c", "#2fb37a", "#5b8def", "#ffb59e", "#ffe29a", "#8ad9b9", "#a9c6f6"] as const;
 /** The meter's three zones, as on the report page. */
 const ZONE = { attention: "#ffd9cb", developing: "#ffe9a6", secure: "#cdeedc" } as const;
 const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
@@ -406,8 +406,8 @@ ${progress.rows.map((r) => `<tr><td colspan="2" style="padding:12px 14px 0;borde
 <p style="margin:22px 0 8px;font-family:${MONO};font-size:12px;letter-spacing:0.05em;text-transform:uppercase;color:${INK_2}">How we get ${esc(name)} there</p>
 ${progress.steps.map((s, i) => `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 8px"><tr><td style="background:${CARD};border-radius:10px;padding:14px 16px">
 ${p(`<b>${i + 1}. ${esc(s.title)}</b><br>${esc(s.text)}`, "margin:0;font-size:15px;line-height:1.5")}
-${i === 0 ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:10px 0 6px"><tr>${progress.stages.map((st) => `<td width="${Math.max(1, Math.round(st.books / progress.books.length * 100))}%" height="14" bgcolor="${GRADE_BOOK[st.grade % 4]}" style="background:${GRADE_BOOK[st.grade % 4]};font-size:1px;line-height:14px;border-right:2px solid ${CARD}">&nbsp;</td>`).join("")}</tr></table>
-${p(progress.stages.map((st) => `<span style="color:${GRADE_BOOK[st.grade % 4]}">&#9632;</span> ${esc(st.label)}${st.months ? `: ${esc(st.months)}` : `: ${st.books} workbooks`}`).join("<br>"), `margin:0;font-family:${MONO};font-size:12px;line-height:1.6;color:${INK_2}`)}` : ""}
+${i === 0 ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:10px 0 6px"><tr>${progress.stages.map((st) => `<td width="${Math.max(1, Math.round(st.books / progress.books.length * 100))}%" height="14" bgcolor="${GRADE_BOOK[st.grade % 8]}" style="background:${GRADE_BOOK[st.grade % 8]};font-size:1px;line-height:14px;border-right:2px solid ${CARD}">&nbsp;</td>`).join("")}</tr></table>
+${p(progress.stages.map((st) => `<span style="color:${GRADE_BOOK[st.grade % 8]}">&#9632;</span> ${esc(st.label)}${st.months ? `: ${esc(st.months)}` : `: ${st.books} workbooks`}`).join("<br>"), `margin:0;font-family:${MONO};font-size:12px;line-height:1.6;color:${INK_2}`)}` : ""}
 </td></tr></table>`).join("\n")}
 ${p(esc(progress.basis), `margin:6px 0 0;font-size:13px;color:${INK_2}`)}
 </td></tr>` : ""}
