@@ -249,15 +249,24 @@ export async function runFirstPagesJob(id: string, deps: FirstPagesJobDeps): Pro
   const stored: string[] = [];
   // The finish's answer can be lost after the database stored it: then the files may be the ready set's own.
   let finishing: string | null = null;
-  /** Removes this call's files, unless the set may be ready with them (a lost finish answer). */
+  /** Removes this call's files (no finish was asked, or it is settled as not stored). */
   const removeFiles = async () => {
-    if (!stored.length) return;
-    if (finishing) {
-      const now = await store.get(id).catch(() => undefined);
-      // Unknown, or ready with these files: keep them. The family's and the child's deletion remove the folder.
-      if (now === undefined || (now?.status === "ready" && now.result?.files.pdf.path === finishing)) return;
+    if (stored.length) await deps.files.remove(stored).catch(() => undefined);
+  };
+  /**
+   * The finish's answer was lost: it may be stored, or still on its way. First retire this lease (queued again for a
+   * retry), which a finish still on its way can then no longer pass; only then are the files this call's alone. When
+   * the lease cannot be retired, the set says: ready with these files keeps them, and anything unknown keeps them too
+   * (the family's and the child's deletion remove the folder).
+   */
+  const settleFinish = async (): Promise<FirstPagesOutcome> => {
+    const retired = await store.end(id, lease, { outcome: "retry", error: "The answer to the ready write was lost.", calls: [] }).catch(() => null);
+    if (retired === true) {
+      await removeFiles();
+      return (await store.get(id).catch(() => null))?.status === "queued" ? "retry" : "failed";
     }
-    await deps.files.remove(stored).catch(() => undefined);
+    const now = await store.get(id).catch(() => undefined);
+    return now?.status === "ready" && now.result?.files.pdf.path === finishing ? "ready" : "stale";
   };
   try {
     if (!deps.ai || !deps.solver) return await end("retry", "The AI is off here: no Claude subscription and no OPENROUTER_API_KEY.");
@@ -382,12 +391,8 @@ export async function runFirstPagesJob(id: string, deps: FirstPagesJobDeps): Pro
     }
     return "ready";
   } catch (e) {
+    if (finishing) return await settleFinish();
     await removeFiles();
-    if (finishing) {
-      // The finish may have been stored: the set says.
-      const now = await store.get(id).catch(() => null);
-      if (now?.status === "ready") return "ready";
-    }
     if (e instanceof Lost || lost) return "stale";
     if (e instanceof WorkbookRefusal) return await end("unavailable", e.message);
     // The plan's capacity check gives the same answer for the same plan and id: a new id, once more within the attempts.

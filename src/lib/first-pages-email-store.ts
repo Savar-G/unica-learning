@@ -84,11 +84,15 @@ export function firstPagesEmailStore(admin: SupabaseClient<Database>, stripe: St
           ]);
           const p = must(parent, "parent load"), c = must(child, "child load"), r = must(report, "report load");
           if (!p || !c || !r) continue;
-          out.push({
+          const d: DueFirstPagesEmail = {
             firstPagesId: s.id, assessmentId: s.assessment_id, reportId: r.id, parentId: s.parent_id, childId: s.child_id,
             parentName: p.name, parentEmail: p.email, childName: c.first_name, pdfPath: result.files.pdf.path,
             retry: log ? { logId: log.id, attempts: log.attempts } : null,
-          });
+          };
+          // A set the database already stops (unsubscribed, a stored card, an old test, a deletion) takes no place in
+          // the list, so it never keeps a later set out.
+          if (await databaseBlocked(admin, d).catch(() => "unreadable")) continue;
+          out.push(d);
         }
         if (sets.length < DUE_PAGE) break;
       }
@@ -96,28 +100,18 @@ export function firstPagesEmailStore(admin: SupabaseClient<Database>, stripe: St
     },
     async blocked(d) {
       try {
-        const set = must(await admin.from("workbook_first_pages").select("status, decision, kept_by, parent_id").eq("id", d.firstPagesId).maybeSingle(), "set load");
-        if (!set || set.status !== "ready" || set.decision === "drop" || set.kept_by) return "the first pages are not ready to send";
-        if (set.parent_id !== d.parentId) return "the first pages are another family's";
-        const test = must(await admin.from("assessments").select("completed_at").eq("id", d.assessmentId).maybeSingle(), "test load");
-        if (!test?.completed_at || Date.parse(test.completed_at) < Date.now() - FIRST_PAGES_EMAIL_DAYS * 86_400_000) return "the test finished too long ago";
-        const [parent, removing] = await Promise.all([
-          admin.from("parents").select("deletion_requested_at").eq("id", d.parentId).maybeSingle(),
-          admin.from("child_deletions").select("child_id").eq("child_id", d.childId).maybeSingle(),
-        ]);
-        if (!must(parent, "parent load") || must(parent, "parent load")!.deletion_requested_at || must(removing, "child deletion load")) return "the family or the child is being deleted";
-        if (await parentUnsubscribed(admin, d.parentId)) return "the parent unsubscribed";
-        // Every card setup of the family: a stored saved card stops it; each one not marked saved is asked of Stripe
-        // (a sibling's card may be saved there before the row says so), and an answer that is not known stops it too.
+        // Stripe first (its reads can take seconds), then the database checks, the last thing before the claim.
         const setups = must(await admin.from("card_setups").select("child_id, card_saved_at").eq("parent_id", d.parentId), "card load") ?? [];
         if (setups.some((c) => c.card_saved_at)) return "the family saved a card";
+        // Every card setup of the family (a sibling's card may be saved in Stripe before the row says so); an answer
+        // that is not known stops the email too.
         const cards = savedCards(admin, stripe);
         for (const childId of new Set([d.childId, ...setups.map((c) => c.child_id)])) {
           const card = await checkCard({ parentId: d.parentId, childId }, cards);
           if (card.state === "saved") return "the family saved a card";
           if (card.state === "unknown") return "the card could not be checked";
         }
-        return null;
+        return await databaseBlocked(admin, d);
       } catch (e) {
         return `the checks could not be read: ${e instanceof Error ? e.message : String(e)}`;
       }
@@ -129,4 +123,29 @@ export function firstPagesEmailStore(admin: SupabaseClient<Database>, stripe: St
     },
     ledger: firstPagesEmailLedger(admin),
   };
+}
+
+/**
+ * The database's reasons an email may not go now, or null: the set is no longer ready (hidden, kept by a run, another
+ * family's), the test finished too long ago, the family or the child is being deleted, the parent unsubscribed, or a
+ * card of the family is stored as saved. Throws when a read fails.
+ */
+async function databaseBlocked(admin: SupabaseClient<Database>, d: DueFirstPagesEmail): Promise<string | null> {
+  const [set, test, parent, removing, cards] = await Promise.all([
+    admin.from("workbook_first_pages").select("status, decision, kept_by, parent_id").eq("id", d.firstPagesId).maybeSingle(),
+    admin.from("assessments").select("completed_at").eq("id", d.assessmentId).maybeSingle(),
+    admin.from("parents").select("deletion_requested_at").eq("id", d.parentId).maybeSingle(),
+    admin.from("child_deletions").select("child_id").eq("child_id", d.childId).maybeSingle(),
+    admin.from("card_setups").select("child_id").eq("parent_id", d.parentId).not("card_saved_at", "is", null).limit(1),
+  ]);
+  const s = must(set, "set load");
+  if (!s || s.status !== "ready" || s.decision === "drop" || s.kept_by) return "the first pages are not ready to send";
+  if (s.parent_id !== d.parentId) return "the first pages are another family's";
+  const t = must(test, "test load");
+  if (!t?.completed_at || Date.parse(t.completed_at) < Date.now() - FIRST_PAGES_EMAIL_DAYS * 86_400_000) return "the test finished too long ago";
+  const p = must(parent, "parent load");
+  if (!p || p.deletion_requested_at || must(removing, "child deletion load")) return "the family or the child is being deleted";
+  if ((must(cards, "card load") ?? []).length) return "the family saved a card";
+  if (await parentUnsubscribed(admin, d.parentId)) return "the parent unsubscribed";
+  return null;
 }

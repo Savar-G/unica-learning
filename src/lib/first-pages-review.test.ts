@@ -125,11 +125,62 @@ describe("review regressions", () => {
               const assessment = filters.find(([k]) => k === "assessment_id")?.[1];
               return { data: assessment === "test-3" ? null : { id: `log-${assessment}`, status: "sent", attempts: 1 }, error: null };
             }
-            const data = table === "parents" ? { name: "Ana", email: "ana@example.com" }
-              : table === "children" ? { first_name: "Leah" } : { id: "report" };
+            const data = table === "parents" ? { name: "Ana", email: "ana@example.com", deletion_requested_at: null }
+              : table === "children" ? { first_name: "Leah" } : table === "child_deletions" ? null
+              : table === "assessments" ? { completed_at: new Date().toISOString() }
+              : table === "workbook_first_pages" ? { status: "ready", decision: null, kept_by: null, parent_id: "parent" } : { id: "report" };
             return { data, error: null };
           },
+          not() { return query; },
           then(resolve: (value: unknown) => unknown) {
+            if (table !== "workbook_first_pages") return Promise.resolve({ data: [], error: null, count: 0 }).then(resolve);
+            const data = sets.filter(s => filters.every(([k,v]) => (s as unknown as Record<string, unknown>)[k] === v)).slice(start, start + count);
+            return Promise.resolve({ data, error: null }).then(resolve);
+          },
+        };
+        return query;
+      },
+    } as unknown as SupabaseClient<Database>;
+    const store = firstPagesEmailStore(admin, null);
+    expect((await store.due(1)).map(d => d.firstPagesId)).toEqual(["fp-3"]);
+  });
+
+  it("finds an eligible set behind older sets whose family saved a card", async () => {
+    const sets = Array.from({ length: 4 }, (_, i) => ({
+      id: `fp-${i}`, assessment_id: `test-${i}`, parent_id: `parent-${i}`, child_id: "child", status: "ready", kept_by: null,
+      decision: null, ready_at: String(i), result: { files: { pdf: { path: `parent/wb-${i}/first.pdf` } } },
+    }));
+    const admin = {
+      from(table: string) {
+        const filters: [string, unknown][] = [];
+        let count = Infinity;
+        let start = 0;
+        const query = {
+          select() { return query; },
+          eq(key: string, value: unknown) { filters.push([key, value]); return query; },
+          is(key: string, value: unknown) { filters.push([key, value]); return query; },
+          order() { return query; },
+          gte() { return query; },
+          range(from: number, to: number) { start = from; count = to - from + 1; return query; },
+          limit(value: number) { count = value; return query; },
+          async maybeSingle() {
+            if (table === "email_log") {
+              const assessment = filters.find(([k]) => k === "assessment_id")?.[1];
+              return { data: null, error: null };
+            }
+            const data = table === "parents" ? { name: "Ana", email: "ana@example.com", deletion_requested_at: null }
+              : table === "children" ? { first_name: "Leah" } : table === "child_deletions" ? null
+              : table === "assessments" ? { completed_at: new Date().toISOString() }
+              : table === "workbook_first_pages" ? { status: "ready", decision: null, kept_by: null, parent_id: `parent-${String(filters.find(([k]) => k === "id")?.[1]).slice(3)}` } : { id: "report" };
+            return { data, error: null };
+          },
+          not() { return query; },
+          then(resolve: (value: unknown) => unknown) {
+            if (table === "card_setups") {
+              const parent = filters.find(([k]) => k === "parent_id")?.[1];
+              return Promise.resolve({ data: parent === "parent-3" ? [] : [{ child_id: "child" }], error: null }).then(resolve);
+            }
+            if (table !== "workbook_first_pages") return Promise.resolve({ data: [], error: null, count: 0 }).then(resolve);
             const data = sets.filter(s => filters.every(([k,v]) => (s as unknown as Record<string, unknown>)[k] === v)).slice(start, start + count);
             return Promise.resolve({ data, error: null }).then(resolve);
           },
@@ -223,6 +274,23 @@ it("keeps files when finish commits but its response is lost", async () => {
   expect(await runFirstPagesJob(set.id, s.deps)).toBe("not-claimed");
   const paths = [ready.result!.files.pdf.path, ...ready.result!.files.images.map(i => i.path)];
   expect(paths.filter(path => s.files.files.has(path)), "ready set lost its files").toHaveLength(5);
+}, 240_000);
+
+it("removes the files of a finish whose answer was lost before it was stored, and the old finish can no longer publish", async () => {
+  const s = setup();
+  const set = s.first.queue({ assessmentId: TEST, parentId: PARENT, childId: CHILD });
+  let late: (() => Promise<boolean>) | null = null;
+  const finish = s.first.store.finish;
+  s.deps.store = { ...s.first.store, finish: async (...args) => {
+    // Still on its way when the connection drops.
+    late = () => finish(...args);
+    throw new Error("finish connection lost before commit");
+  } };
+  expect(await runFirstPagesJob(set.id, s.deps)).toBe("retry");
+  expect(await s.first.store.get(set.id)).toMatchObject({ status: "queued", result: null });
+  expect([...s.files.files.keys()].some((p) => p.startsWith(`${PARENT}/${set.workbookId}/`))).toBe(false);
+  expect(await late!()).toBe(false);
+  expect((await s.first.store.get(set.id))?.status).toBe("queued");
 }, 240_000);
 
 it("offers an admin choice after the run that kept the sample has failed", async () => {
