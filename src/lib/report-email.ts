@@ -183,7 +183,7 @@ export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = 
   const first = firstName(parentName);
   const subject = `${name}'s math report is ready`;
   const weakest = [...(v.findings?.struggles ?? [])]
-    .filter((item) => item.certainty === "clear" && item.total > 0 && item.status !== "secure")
+    .filter((item) => item.certainty === "clear" && item.total > 0)
     .sort((a, b) => a.correct / a.total - b.correct / b.total)[0];
   const topic = weakest ? gapsView({ ...v, findings: { ...v.findings!, struggles: [weakest] } })?.[0]?.title ?? nextView({ ...v, findings: { ...v.findings!, struggles: [weakest] } })?.[0]?.title : null;
   const intro = offer && topic ? `${name} found ${topic.toLowerCase()} hard. Would you like us to explain how we can help ${name} with ${topic.toLowerCase()}?` : offer ? `${name}'s math report is ready. Would you like us to go through the results with you and answer your questions?` : `${name}'s math report is ready.`;

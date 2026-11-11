@@ -37,3 +37,7 @@ Weighted visual score: 75.5/100. The weakest limits are live failure coverage an
 The earlier full gate passed before the last privacy and sitemap corrections. The obsolete gate on `91d32cbe` was cancelled after the review findings were settled. Do not treat that interrupted run as a pass.
 
 Recommendation: complete the final full gate and the corrected-head review before opening the PR. Hosted email delivery, mailbox retention, and email-provider deletion remain unverified. No merge is authorized.
+
+## Type correction after recheck
+
+The independent recheck accepted both functional fixes but found TS2367: StruggleFinding already excludes secure status. The redundant status comparison was removed. `npx tsc --noEmit` failed before this one-line correction and passed after it. No other supported P1/P2 finding was reported. The obsolete full gate on e2766243 was stopped before this correction. A new final gate will check the corrected candidate.
