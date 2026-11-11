@@ -31,7 +31,7 @@ A test qualifies when all of these hold, read by the database when the job is qu
 ## Flow
 
 1. Queue: `queue_first_pages` adds one row per test (`public.workbook_first_pages`) with a reserved Workbook 1 id. Queuing twice changes nothing.
-2. Plan: the job claims the row under a lease, reads the child as the workbook job does, plans Workbook 1 with the real placement and planner, runs the capacity check with the reserved id, and stores the plan (the frame) once.
+2. Plan: the job claims the row under a lease, reads the child as the workbook job does, plans Workbook 1 with the real placement and planner, runs the capacity check with the reserved id, and stores the plan (the frame) once. The capacity check measures the whole book with Chromium (code only, no AI): 1.5 to 10 minutes on the Mac in the probes of 2026-11-10. When it fails before anything is stored, the set takes a new id (the id seeds the code's choices) and is queued again within its attempts; past the last it is "unavailable".
 3. Pick: `firstPagesOf` takes the book's first lesson page and the two pages after it on the same day and topic. Without such pages the set is "unavailable" and nothing is written.
 4. Write: `generateWorkbookPages` writes only those three day pages, with the same AI, solve check, fit check and per-slot attempt limit as a whole book. Each AI call, solve check and finished page is stored under the lease, so a retry pays for nothing twice.
 5. Check and render: every question must be checked and every page must fit. The strict renderer prints the cover and the three pages, with the whole book's How + Plan page as context for the cover. The PDF and page images go to the private bucket at `<parent>/<workbook id>/`.
@@ -41,6 +41,9 @@ A test qualifies when all of these hold, read by the database when the job is qu
 9. Workbook 1: the run's first job call finds the ready set. When the new plan makes the same pages (the same page outline and cover), the run takes the reserved id, copies the pages in, keeps the cover's QR code, and the whole-book check never changes those pages. When it does not (the profile, the admin's instructions or the code changed), the run stops before any AI call and the admin chooses on the child page: "Use the sample's plan" or "Make it without the sample pages". The second hides the pages on the report.
 
 ## Limits
+
+- The whole-book capacity check is the existing generator's. On 2026-11-10 it failed for some plans with every id tried (Nora, grade 4, three ids; fake fit for kindergarten and grades 6 to 8 with no profile) and passed for others (Theo, grade 5, one of two ids). A Workbook 1 run of the same plan meets the same check. Those children get no first pages; their report is unchanged.
+- The server runner (Vercel, 300 s per call) cannot finish a capacity check that takes several minutes; keep `WORKBOOK_RUNNER` on `mac` for first pages.
 
 - The final book renders the pages again with the template of its own code. A template change between the sample and the print can move ink on the page; the questions, keys and content stay the same, and the fit check runs again.
 - The first pages pay for three AI-written day pages and their solve checks. See the cost note in the pull request for the estimate.

@@ -32,7 +32,12 @@ const queued = await queueFirstPages(admin, values.test, { runner: values.subscr
 console.log("queue:", JSON.stringify(queued));
 if (queued.status === "refused") process.exit(1);
 const started = Date.now();
-const outcome = await runFirstPagesWith(admin, queued.id, { subscription: !!values.subscription, timeLimitMs: 10 * 60_000, build: `example-${process.env.GIT_SHA ?? "local"}` });
+// A set queued again (a retry, or a new Workbook 1 id after a capacity failure) is taken again, within its attempts.
+let outcome: Awaited<ReturnType<typeof runFirstPagesWith>>;
+do {
+  outcome = await runFirstPagesWith(admin, queued.id, { subscription: !!values.subscription, timeLimitMs: 10 * 60_000, build: `example-${process.env.GIT_SHA ?? "local"}` });
+  console.log("job call:", outcome);
+} while (outcome === "retry");
 const row = await firstPagesOfTest(admin, values.test);
 console.log("outcome:", outcome, "status:", row?.status, row?.error ?? "");
 if (!row?.result) process.exit(1);

@@ -93,6 +93,9 @@ export function firstPagesStore(admin: SupabaseClient<Database>): FirstPagesStor
     async finish(id, lease, result, calls) {
       return must(await admin.rpc("finish_workbook_first_pages", { p_id: id, p_lease: lease, p_result: toJson(result), p_ai_calls: toJson(calls) }), "finish") === true;
     },
+    async reseed(id, lease, o) {
+      return must(await admin.rpc("reseed_workbook_first_pages", { p_id: id, p_lease: lease, p_error: o.error, p_ai_calls: toJson(o.calls) }), "reseed") === true;
+    },
     async end(id, lease, o) {
       return must(await admin.rpc("end_workbook_first_pages", { p_id: id, p_lease: lease, p_outcome: o.outcome, p_error: o.error, p_ai_calls: toJson(o.calls) }), "end") === true;
     },

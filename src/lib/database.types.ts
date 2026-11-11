@@ -9037,6 +9037,15 @@ export type Database = {
         Args: { hold: string; p: string }
         Returns: string
       }
+      reseed_workbook_first_pages: {
+        Args: {
+          p_ai_calls: Json
+          p_error: string
+          p_id: string
+          p_lease: string
+        }
+        Returns: boolean
+      }
       reserve_maya_spend: {
         Args: {
           p_call: string

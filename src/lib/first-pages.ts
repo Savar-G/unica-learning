@@ -148,6 +148,12 @@ export interface FirstPagesStore {
    * it when no attempt is left. Keeps this call's AI costs.
    */
   end(id: string, lease: string, o: { outcome: "failed" | "unavailable" | "retry"; error: string; calls: AiCallCost[] }): Promise<boolean>;
+  /**
+   * The plan's capacity check failed for the reserved Workbook 1 id, which seeds the code's choices: before anything is
+   * stored for the set, it takes a new id and is queued again (unavailable past its last attempt). False when the lease
+   * does not hold it or something is stored.
+   */
+  reseed(id: string, lease: string, o: { error: string; calls: AiCallCost[] }): Promise<boolean>;
 }
 
 export interface FirstPagesJobDeps {
@@ -366,8 +372,17 @@ export async function runFirstPagesJob(id: string, deps: FirstPagesJobDeps): Pro
     if (stored.length) await deps.files.remove(stored).catch(() => undefined);
     if (e instanceof Lost || lost) return "stale";
     if (e instanceof WorkbookRefusal) return await end("unavailable", e.message);
-    // The plan's capacity check gives the same answer for the same plan and id: no retry.
-    if (e instanceof CapacityProblem) return await end("unavailable", `Workbook 1's pages could not be planned: ${e.message}.`);
+    // The plan's capacity check gives the same answer for the same plan and id: a new id, once more within the attempts.
+    if (e instanceof CapacityProblem) {
+      const error = `Workbook 1's pages could not be planned: ${e.message}.`;
+      if (lost) return "stale";
+      try {
+        if (await store.reseed(id, lease, { error, calls: costs() })) return (await store.get(id))?.status === "queued" ? "retry" : "unavailable";
+      } catch (e2) {
+        console.error("[first pages] could not take a new id", id, message(e2));
+      }
+      return await end("unavailable", error);
+    }
     if (e instanceof ResumeMismatch) return await end("failed", `What was stored does not fit the plan: ${e.message}.`);
     console.error("[first pages] attempt failed", id, message(e));
     return await end("retry", message(e));

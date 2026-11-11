@@ -118,6 +118,14 @@ export function memoryFirstPagesStore(o: { now: () => Date; newId: () => string 
       Object.assign(r, { status: "ready", lease: null, result: json(result), readyAt: iso(), heartbeatAt: iso(), error: null });
       return true;
     },
+    async reseed(id, lease, { error, calls }) {
+      const r = holding(id, lease);
+      if (!r || r.frame || r.pagesMap.size || r.callsMap.size || r.attemptsMap.size || r.solvesMap.size) return false;
+      r.aiCalls.push(...json(calls));
+      r.errors.push({ attempt: r.attempts, at: iso(), error });
+      Object.assign(r, { workbookId: o.newId(), error, lease: null, status: r.attempts < r.maxAttempts ? "queued" : "unavailable" });
+      return true;
+    },
     async end(id, lease, { outcome, error, calls }) {
       const r = holding(id, lease);
       if (!r) return false;

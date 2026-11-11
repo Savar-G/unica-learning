@@ -217,6 +217,22 @@ describe("first pages", () => {
     expect(await s.first.store.get(set.id)).toMatchObject({ status: "ready", attempts: 2 });
   }, 240_000);
 
+  it("takes a new Workbook 1 id once when the plan's capacity check fails for its id, then is unavailable; no AI call", async () => {
+    const s = setup();
+    // No page ever fits: the capacity check of the whole book fails before anything is stored.
+    s.deps.fit = () => ({ fits: async () => ({ ok: false, problems: [{ question: null, slot: null, reason: "the content does not fit its space" }] }) });
+    const set = s.first.queue({ assessmentId: TEST, parentId: PARENT, childId: CHILD });
+    expect(await runFirstPagesJob(set.id, s.deps)).toBe("retry");
+    const again = (await s.first.store.get(set.id))!;
+    expect(again).toMatchObject({ status: "queued", attempts: 1, frame: null });
+    expect(again.workbookId).not.toBe(set.workbookId);
+    expect(again.error).toMatch(/could not be planned/);
+    expect(await runFirstPagesJob(set.id, s.deps)).toBe("unavailable");
+    expect(await s.first.store.get(set.id)).toMatchObject({ status: "unavailable", attempts: 2 });
+    expect(s.ai.requests).toEqual([]);
+    expect(s.files.files.size).toBe(0);
+  }, 240_000);
+
   it("fails after its last attempt, and a second claim while one holds it takes nothing", async () => {
     const s = setup({ fail: () => true, itemPolicy: "legacy" });
     const set = s.first.queue({ assessmentId: TEST, parentId: PARENT, childId: CHILD });
