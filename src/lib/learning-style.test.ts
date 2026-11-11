@@ -11,6 +11,7 @@ import {
   type LearningAnswers,
   type LearningRow,
   answerFacts,
+  cardAnswered,
 } from "@/lib/learning-style";
 
 const answers = (a: Partial<LearningAnswers> = {}): LearningAnswers => ({ styles: [], interests: [], note: "", feeling: null, goal: null, weeklyTime: null, ...a });
@@ -72,14 +73,24 @@ describe("parseLearning", () => {
 });
 
 describe("toRow and fromRow", () => {
-  it("round-trips the answers through the children row", () => {
+  it("round-trips the card's answers through the children row, and never writes the feeling or the goal (D-325)", () => {
     const a = answers({ styles: ["hands_on"], interests: ["cooking"], note: "Word problems.", feeling: "okay", goal: "keep_up", weeklyTime: "2_to_3h" });
-    expect(fromRow(toRow(a))).toEqual(a);
-    expect(toRow(a)).toMatchObject({ math_feeling: "okay", learning_goal: "keep_up", weekly_time: "2_to_3h" });
+    const row = toRow(a);
+    expect(row).not.toHaveProperty("math_feeling");
+    expect(row).not.toHaveProperty("learning_goal");
+    expect(fromRow({ ...row, math_feeling: "okay", learning_goal: "keep_up" })).toEqual(a);
+    expect(row).toMatchObject({ weekly_time: "2_to_3h" });
+  });
+
+  it("counts only the card's own answers as answered (D-325)", () => {
+    expect(cardAnswered(answers({ feeling: "finds_hard", goal: "next_grade" }))).toBe(false);
+    expect(cardAnswered(null)).toBe(false);
+    expect(cardAnswered(answers({ weeklyTime: "1_to_2h" }))).toBe(true);
+    expect(cardAnswered(answers({ note: "Fractions." }))).toBe(true);
   });
 
   it("stores no answer as nulls, and reads nulls as no answer", () => {
-    expect(toRow(answers())).toEqual(NO_ANSWER);
+    expect(toRow(answers())).toEqual({ learning_styles: null, interests: null, learning_note: null, weekly_time: null });
     expect(fromRow(NO_ANSWER)).toBeNull();
     expect(fromRow({ ...NO_ANSWER, learning_styles: [], interests: [], learning_note: "" })).toBeNull();
   });
@@ -132,10 +143,10 @@ describe("bookMix", () => {
 });
 
 describe("answerFacts (the admin child page)", () => {
-  it("shows the feeling about math, the main goal and the time each week beside the other answers", () => {
+  it("shows the card's answers; the feeling and the goal show with the parent goals (D-325)", () => {
     const facts = new Map(answerFacts(answers({ styles: ["worked"], note: "Carrying.", feeling: "avoids", goal: "catch_up", weeklyTime: "under_1h" })));
-    expect(facts.get("Feeling about math")).toBe("Avoids it");
-    expect(facts.get("Main goal")).toBe("Catch up");
+    expect(facts.has("Feeling about math")).toBe(false);
+    expect(facts.has("Main goal")).toBe(false);
     expect(facts.get("Time each week")).toBe("Under 1 hour");
     expect(facts.get("Finds hard in math")).toBe("Carrying.");
     expect(facts.get("Learns best from")).toBe("Step-by-step worked examples");
@@ -143,9 +154,8 @@ describe("answerFacts (the admin child page)", () => {
 
   it("says no answer for each question the parent skipped", () => {
     const facts = new Map(answerFacts(answers({ goal: "get_ahead" })));
-    expect(facts.get("Main goal")).toBe("Get ahead");
-    expect(facts.get("Feeling about math")).toBe("No answer");
+    expect(facts.get("Learns best from")).toBe("No answer");
     expect(facts.get("Time each week")).toBe("No answer");
-    expect(new Map(answerFacts(null)).get("Main goal")).toBe("No answer");
+    expect(new Map(answerFacts(null)).get("Interests")).toBe("No answer");
   });
 });

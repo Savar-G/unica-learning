@@ -1,5 +1,6 @@
 import type { Database as Generated, Json } from "@/lib/database.types";
 import type { AdStep } from "@/lib/ad-visit-steps";
+import type { MathHelp } from "@/lib/learning-style";
 import type { AnswerChange } from "@/lib/answer-events";
 import type { EventResult, EventSource, EvidenceKind } from "@/lib/learning-events";
 import type { QuestionRef } from "@/lib/question-package";
@@ -45,7 +46,7 @@ type ColumnTypes = KnownColumns<{
   assessments: { status: AttemptStatus; province: Province; route: Route | null; stage3_route: Stage3Route | null; help: HelpAnswer | null; test: StoredTest; placement: Placement | null; device: TestDevice | null };
   card_setups: { plan: PlanId };
   child_plan_states: { kind: KnownPlan["kind"] };
-  children: { province: Province };
+  children: { province: Province; math_help: MathHelp | null };
   email_log: { kind: LogKind; status: LogStatus | null };
   learning_events: { source: EventSource; question_source: QuestionRef["source"]; result: EventResult; evidence_kind: EvidenceKind | null };
   maya_calls: {

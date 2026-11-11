@@ -16,6 +16,8 @@ import { recordReminderClick } from "@/lib/email-clicks";
 import { isPhone } from "@/lib/account-server";
 import { isReminderKind } from "@/lib/reminders";
 import { startPath } from "@/lib/sign-in-link";
+import { goalsPath } from "@/lib/child-goals";
+import { childNeedsGoals } from "@/lib/child-goals-server";
 import { StartTest, TrackOnce } from "@/components/account";
 import { SupportPage } from "@/components/support-page";
 
@@ -46,6 +48,11 @@ export default async function StartScreen({ params, searchParams }: PageProps<"/
     db.from("parents").select("postal, time_zone").maybeSingle(),
   ]);
   if (!child) notFound();
+  // D-325: a child with no test yet starts only after the parent's goals; then back to this screen with its query.
+  if (await childNeedsGoals(db, parent, child.id)) {
+    const query = new URLSearchParams(Object.entries(await searchParams).flatMap(([k, v]) => (typeof v === "string" ? [[k, v]] : []))).toString();
+    redirect(goalsPath(`${startPath(child.id)}${query ? `?${query}` : ""}`, child.id));
+  }
   // The click on the reminder's button (D-105), counted after the page is sent, so it never slows or stops the page.
   if (fromReminder) {
     after(async () => {

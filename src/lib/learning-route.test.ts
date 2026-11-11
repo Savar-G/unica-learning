@@ -51,7 +51,8 @@ describe("the learning route and the learner profile", () => {
   it("builds the profile of the child's latest finished test again after the answers are saved, after the response", async () => {
     const response = await save({ child: CHILD, ...ANSWERS });
     expect(await response.json()).toEqual({ ok: true });
-    expect(updates.map((u) => [u.id, u.row.math_feeling, u.row.learning_goal])).toEqual([[CHILD, "avoids", "catch_up"]]);
+    // D-325: the card never writes the feeling or the goal; they come from the goals step after signup.
+    expect(updates.map((u) => [u.id, u.row.math_feeling, u.row.learning_goal, u.row.weekly_time])).toEqual([[CHILD, undefined, undefined, "1_to_2h"]]);
     expect(rebuilt).toEqual([]);
     await Promise.all(afterResponse.map((task) => task()));
     expect(rebuilt).toEqual([CHILD, `child profile ${CHILD}`]);

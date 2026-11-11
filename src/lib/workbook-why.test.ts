@@ -96,6 +96,18 @@ describe("Why this book and read-only preview", () => {
     expect(workbookWhy(result.plan)!.warnings).toContain("Day 1: 22 required minutes exceed the 20-minute target by 2 minutes.");
   });
 
+  it("keeps the old words for answers from before D-325 and uses the signup labels for the new ones", () => {
+    const parentAnswers = (parent: Record<string, string>) => {
+      const profile = structuredClone(bookPersona("catch-up").profile);
+      profile.parent = { ...profile.parent, ...parent } as typeof profile.parent;
+      const result = planNextWorkbook({ curriculum, grade: 4, profile, workbooks: [], number: 1 });
+      if (!result.ok) throw Error("no plan");
+      return workbookWhy(result.plan)!.inputs.find(i => i.label === "Parent's answers")?.value;
+    };
+    expect(parentAnswers({ feeling: "avoids", goal: "catch_up" })).toContain("Feeling: Avoids it. Goal: Catch up.");
+    expect(parentAnswers({ feeling: "finds_hard", goal: "next_grade" })).toContain("Feeling: Finds it hard. Goal: Get ready for the next grade.");
+  });
+
   it("shows a report mismatch without changing placement", () => {
     const result = planNextWorkbook({ curriculum, grade: 4, profile: firstCustomerProfile(), workbooks: [], number: 1, report: { howWeHelp: "behind", minutes: 55 } });
     expect(result.ok).toBe(true);
