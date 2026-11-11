@@ -52,7 +52,10 @@ export interface DecisionRequest {
 export interface DecisionResult {
   /** One answer per question key. */
   answers: Record<string, DecisionAnswer>;
-  /** What OpenRouter charged, in US dollars, from the HTTP answer's usage; null when it gave none. */
+  /**
+   * What OpenRouter charged for the request, in US dollars, from the HTTP answers' usage: the sum over every attempt, a
+   * charged failed attempt before a retry included; null when no attempt gave a cost.
+   */
   usd: number | null;
   /** The provider that answered, and OpenRouter's generation id. */
   provider: string | null;
@@ -68,7 +71,7 @@ export type DecisionErrorKind = "refused" | "blocked" | "timeout" | "malformed" 
 
 export class DecisionError extends Error {
   readonly kind: DecisionErrorKind;
-  /** The cost of a failed answer that OpenRouter charged, in US dollars; null when it gave none. */
+  /** What OpenRouter charged for the failed request, summed over its attempts, in US dollars; null when none gave a cost. */
   readonly usd: number | null;
   constructor(kind: DecisionErrorKind, message: string, usd: number | null = null) {
     super(message);

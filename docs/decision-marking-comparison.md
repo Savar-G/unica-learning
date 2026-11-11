@@ -17,7 +17,7 @@ For each item, the tool takes the scored regions from `markingRegions` and keeps
 - A choice: "Is option <key> the one circled (or ticked)?".
 - Yes means that the box holds exactly that answer. No means anything else: a blank box, a different answer, a crossed-out answer, two answers, or writing that cannot be read.
 
-The tool never shows the model a known wrong answer. An item is confirmed at a threshold only when each of its scored regions has P(yes) at or above that threshold. An error, refusal, block or time-out is never a pass: that item is not confirmed at any threshold.
+The tool never shows the model a known wrong answer. An item is confirmed at a threshold only when each of its scored regions has P(yes) at or above that threshold. An error, refusal, block or time-out is never a pass: that item is not confirmed at any threshold. The adapter refuses a choice or score answer that does not give a probability from 0 to 1 for each option or level, and a yes/no answer without a probability from 0 to 1, as `malformed`. It never fills in a missing value.
 
 The truth groups are:
 
@@ -45,7 +45,7 @@ DECISIONS_OPENROUTER_API_KEY="$(security find-generic-password -s decisions-open
   node scripts/decision-marking-comparison.mjs --set "$SET" --max-usd 2
 ```
 
-`--max-usd` (default 2) caps the run. If the estimate is above the cap, the run does not start. During the run, the tool does not send a request when the money spent plus the request's estimate would go above the cap. It records that request as `budget`, which is not confirmed. The estimate assumes one retry for each request, so a real run costs less. `--models` runs only the models you name. `--save-crops` writes each crop as it is sent, so you can check the crops by eye.
+`--max-usd` (default 2) is the cost cap of the run, for both models together. If the estimate is above the cap, the run does not start. Before each request, the tool reserves the larger of the request's estimate and 2 times the highest cost of one request so far. It sends the request only when the money spent, plus the reservations of the requests in flight, plus this reservation, is at most the cap. When the cost comes, it replaces the reservation. A missing cost counts as its reservation. When one request costs more than its reservation, the tool sends no new request, and the report says that the run stopped at the cost cap. A request that is not sent is recorded as `budget`, which is not confirmed. The cost of a request is the sum of all its attempts, a charged failed attempt included. The estimate assumes one retry for each request, so a real run costs less. `--models` runs only the models you name. `--save-crops` writes each crop as it is sent, so you can check the crops by eye.
 
 ## The report
 
@@ -56,6 +56,6 @@ DECISIONS_OPENROUTER_API_KEY="$(security find-generic-password -s decisions-open
 - A reliability table: items by P(yes) in bands of 0.1, against the share of those items that are right.
 - The errors by kind and the providers that answered.
 
-The pass bar is 0 false Right and at least 80% of right items confirmed at the same threshold. "High confidence" means P(yes) at or above the lowest 0-false-Right threshold. Synthetic ink does not prove real handwriting. Production use also needs the bar on real phone photos (slice B) and decision #849.
+The pass bar is 0 false Right and at least 80% of right items confirmed at the same threshold. A request with no answer (an error, or not sent under the cap) is not confirmed. If a wrong, blank or uncertain row has a request with no answer, 0 false Right is not shown: the model does not pass, and the report says "incomplete: <n> non-right requests failed". "High confidence" means P(yes) at or above the lowest 0-false-Right threshold. Synthetic ink does not prove real handwriting. Production use also needs the bar on real phone photos (slice B) and decision #849.
 
 Each `results-<model>.json` file keeps each request's P(yes), error kind and message, latency, cost and provider. Latency is measured on this Mac, from the start to the end of each request, retries included.

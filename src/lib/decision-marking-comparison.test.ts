@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import fixtures from "./scan-marking-comparison.test-fixtures.json";
 import type { QuestionPackage } from "@/lib/question-package";
 import type { PrintedRegion } from "@/lib/workbook-print-contract";
-import { DecisionError } from "@/lib/decision-client";
+import { DecisionError, type DecisionClient } from "@/lib/decision-client";
 import { fakeDecisionClient, noul } from "@/lib/decision-client-fake";
 import { openRouterDecisionClient } from "@/lib/decision-openrouter";
 import { markingRegions } from "@/lib/scan-marking-regions";
@@ -11,6 +11,7 @@ import {
   askAll,
   comparisonItems,
   comparisonReport,
+  costCap,
   cropRect,
   imageSize,
   modelReport,
@@ -137,7 +138,7 @@ describe("the comparison report (#851)", () => {
     expect(ok).toMatchObject({ lowestZeroFalseRight: 0.5, confirmRateAtLowest: 1, passes: true });
   });
 
-  it("a fake HTTP run of both models needs no key, stops at the money cap, and gives a complete report", async () => {
+  it("a fake HTTP run of both models needs no key and gives a complete report", async () => {
     const replies = new Map<string, number>([["right", 0.98], ["wrong", 0.3], ["blank", 0.05], ["uncertain", 0.4]]);
     const byImage = new Map<string, string>();
     const fetchFor = (model: string): typeof globalThis.fetch => async (_url, init) => {
@@ -150,10 +151,10 @@ describe("the comparison report (#851)", () => {
       byImage.set(`data:image/jpeg;base64,${Buffer.from(data).toString("base64")}`, item.result);
       return { data, estimateUsd: 0.0001 };
     };
-    const spent = { usd: 0 };
+    const cap = costCap(1);
     const all: Record<string, AskResult[]> = {};
-    for (const model of ["a", "b"]) all[model] = await askAll({ items, client: openRouterDecisionClient({ apiKey: "fake", model, provider: "fake", fetch: fetchFor(model) }), image, maxUsd: 1, spent });
-    const report = comparisonReport({ items, leftOut: comparisonItems(manifest()).leftOut, photos: 3, fake: true, results: all });
+    for (const model of ["a", "b"]) all[model] = await askAll({ items, client: openRouterDecisionClient({ apiKey: "fake", model, provider: "fake", fetch: fetchFor(model) }), image, cap });
+    const report = comparisonReport({ items, leftOut: comparisonItems(manifest()).leftOut, photos: 3, fake: true, results: all, cap });
 
     expect(report.requestsPerModel).toBe(12);
     expect(report.items).toEqual({ right: 3, wrong: 3, blank: 2, uncertain: 1 });
@@ -173,15 +174,10 @@ describe("the comparison report (#851)", () => {
     expect(md).toContain("fake HTTP");
     expect(md).toContain("| a | 0.50 | 100.0% | yes |");
     expect(md).toContain("## Parent rows left out");
-
-    // The cap: each request costs its estimate (USD 0.00004); with room for 5 requests, the rest are not sent and count as not confirmed.
-    const exact = async (...a: Parameters<typeof image>) => ({ ...(await image(...a)), estimateUsd: 0.00004 });
-    const capped = await askAll({ items, client: openRouterDecisionClient({ apiKey: "fake", model: "a", provider: "fake", fetch: fetchFor("a") }), image: exact, maxUsd: 0.00021, spent: { usd: 0 }, concurrency: 1 });
-    expect(capped.filter((r) => r.error === "budget")).toHaveLength(7);
-    expect(capped.slice(0, 5).every((r) => r.error === null)).toBe(true);
-    const cappedReport = modelReport("a", items, capped, 3);
-    expect(cappedReport.errors).toEqual({ budget: 7 });
-    expect(cappedReport.costUsd).toBeCloseTo(5 * 0.00004, 10);
+    expect(report.cap).toMatchObject({ maxUsd: 1, stopped: false });
+    expect(report.cap!.spentUsd).toBeCloseTo(24 * 0.00004, 10);
+    expect(md).toContain("Cost cap: USD 1; spent USD 0.000960.");
+    expect(md).not.toContain("stopped at the cost cap");
   });
 
   it("records each error kind from the client and never sends the request text a wrong answer", async () => {
@@ -194,9 +190,123 @@ describe("the comparison report (#851)", () => {
         return { shows: noul(0.9) };
       },
     });
-    const out = await askAll({ items, client, image: async () => ({ data: new Uint8Array([1]), estimateUsd: 0 }), maxUsd: 1, spent: { usd: 0 }, concurrency: 1 });
+    const out = await askAll({ items, client, image: async () => ({ data: new Uint8Array([1]), estimateUsd: 0 }), cap: costCap(1), concurrency: 1 });
     expect(out.slice(0, 5).map((r) => r.error)).toEqual(["refused", "blocked", "malformed", "unavailable", null]);
     expect(client.requests.every((r) => r.input.some((p) => p.type === "image") && Object.keys(r.questions).join() === "shows")).toBe(true);
     expect(client.requests.some((r) => JSON.stringify(r.questions).includes("49"))).toBe(false);
+  });
+});
+
+describe("an incomplete comparison (#851 review, finding 1)", () => {
+  it("does not pass when a non-right request failed: one right item at 0.9, one wrong item that timed out", () => {
+    const { items: all } = comparisonItems(manifest());
+    const right = all.find((i) => i.photo === "synthetic-right" && i.format === "whole")!;
+    const wrong = all.find((i) => i.photo === "synthetic-wrong" && i.format === "whole")!;
+    const results: AskResult[] = [
+      { photo: right.photo, itemId: right.itemId, regionId: "answer", yes: 0.9, error: null, ms: 100, usd: 0.00001, provider: "TypeSafe" },
+      { photo: wrong.photo, itemId: wrong.itemId, regionId: "answer", yes: null, error: "timeout", message: "time is up", ms: 20_000, usd: null, provider: null },
+    ];
+    const r = modelReport("m", [right, wrong], results, 2);
+    // The numbers alone look perfect: 0 false Right and 100% confirmed at 0.50.
+    expect(r.lowestZeroFalseRight).toBe(0.5);
+    expect(r.confirmRateAtLowest).toBe(1);
+    expect(r.failedRequests).toEqual({ right: 0, wrong: 1, blank: 0, uncertain: 0 });
+    expect(r.incomplete).toBe("incomplete: 1 non-right requests failed");
+    expect(r.passes).toBe(false);
+    const md = reportMarkdown(comparisonReport({ items: [right, wrong], leftOut: [], photos: 2, fake: false, results: { m: results } }));
+    expect(md).toContain("| m | 0.50 | 100.0% | no (incomplete: 1 non-right requests failed) |");
+
+    // An errored right row is not confirmed and does not make the comparison incomplete.
+    const rightFailed = modelReport("m", [right, wrong], [{ ...results[0], yes: null, error: "timeout" }, { ...results[1], yes: 0.1, error: null }], 2);
+    expect(rightFailed).toMatchObject({ failedRequests: { right: 1, wrong: 0, blank: 0, uncertain: 0 }, incomplete: null, confirmRateAtLowest: 0, passes: false });
+  });
+});
+
+describe("the cost cap (#851 review, finding 3)", () => {
+  const { items } = comparisonItems(manifest());
+
+  /** A client whose request number n costs costs[n] (null: no cost) and answers after `delayMs`; it records the cap at each call. */
+  function costedClient(costs: (number | null)[], cap: ReturnType<typeof costCap>, delayMs = 0) {
+    const calls: { spent: number; reserved: number }[] = [];
+    let inFlight = 0;
+    const seen = { peak: 0 };
+    const client: DecisionClient & { calls: typeof calls; seen: typeof seen } = {
+      model: "m", calls, seen,
+      async decide() {
+        const n = calls.length;
+        calls.push({ spent: cap.spentUsd, reserved: cap.reservedUsd });
+        seen.peak = Math.max(seen.peak, ++inFlight);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        inFlight--;
+        return { answers: { shows: noul(0.9) }, usd: costs[Math.min(n, costs.length - 1)], provider: "fake", id: null };
+      },
+    };
+    return client;
+  }
+  const image = (estimates: number[]) => {
+    let n = 0;
+    return async () => ({ data: new Uint8Array([1]), estimateUsd: estimates[Math.min(n++, estimates.length - 1)] });
+  };
+
+  it("stops at the cost cap: a USD 0.10 cap, a request estimated at USD 0.05 that costs USD 0.20", async () => {
+    const cap = costCap(0.1);
+    const client = costedClient([0.2], cap);
+    const out = await askAll({ items, client, image: image([0.05]), cap, concurrency: 1 });
+    expect(client.calls).toHaveLength(1);
+    expect(out[0]).toMatchObject({ error: null, usd: 0.2 });
+    expect(out.slice(1).every((r) => r.error === "budget" && r.message === "stopped at the cost cap")).toBe(true);
+    expect(cap).toMatchObject({ spentUsd: 0.2, reservedUsd: 0, stopped: true });
+    const md = reportMarkdown(comparisonReport({ items, leftOut: [], photos: 3, fake: false, results: { m: out }, cap }));
+    expect(md).toContain("The run stopped at the cost cap");
+  });
+
+  it("with concurrent requests, admits no request whose reservation does not fit beside the ones in flight, and stops when a cost passes its reservation", async () => {
+    const cap = costCap(0.1);
+    const client = costedClient([0.2], cap, 20);
+    const out = await askAll({ items, client, image: image([0.05]), cap, concurrency: 3 });
+    // Two reservations of USD 0.05 fit under USD 0.10 together and are both in flight before any cost arrives; the third
+    // waits, then the run stops.
+    expect(client.calls).toEqual([{ spent: 0, reserved: 0.1 }, { spent: 0, reserved: 0.1 }]);
+    expect(client.seen.peak).toBe(2);
+    expect(out.filter((r) => r.error === "budget")).toHaveLength(out.length - 2);
+    expect(cap).toMatchObject({ spentUsd: 0.4, reservedUsd: 0, stopped: true });
+  });
+
+  it("with costs within their reservations and 4 requests in flight, never admits past the cap and spends at most the cap", async () => {
+    const cap = costCap(1);
+    const client = costedClient([0.125], cap, 10);
+    const out = await askAll({ items, client, image: image([0.25]), cap, concurrency: 4 });
+    expect(client.seen.peak).toBe(4);
+    for (const c of client.calls) expect(c.spent + c.reserved).toBeLessThanOrEqual(1);
+    expect(cap.stopped).toBe(false);
+    expect(cap.spentUsd).toBeLessThanOrEqual(1);
+    expect(out.reduce((sum, r) => sum + (r.usd ?? 0), 0)).toBe(cap.spentUsd);
+    expect(out.some((r) => r.error === "budget" && r.message === "not admitted: the cost cap is full")).toBe(true);
+  });
+
+  it("reserves 2 x the highest cost seen when that is above the estimate", async () => {
+    // Request 1: estimate and cost USD 0.25. Then estimates of USD 0.0625 each reserve USD 0.50: 6 requests fit under USD 1.
+    const cap = costCap(1);
+    const client = costedClient([0.25, 0.0625], cap);
+    const out = await askAll({ items, client, image: image([0.25, 0.0625]), cap, concurrency: 1 });
+    expect(client.calls).toHaveLength(6);
+    expect(out.filter((r) => r.error === "budget")).toHaveLength(out.length - 6);
+    expect(cap).toMatchObject({ spentUsd: 0.5625, stopped: false });
+  });
+
+  it("counts a missing cost as its reservation", async () => {
+    const cap = costCap(1);
+    const client = costedClient([null], cap);
+    await askAll({ items, client, image: image([0.25]), cap, concurrency: 1 });
+    expect(client.calls).toHaveLength(4);
+    expect(cap).toMatchObject({ spentUsd: 1, reservedUsd: 0, stopped: false });
+  });
+
+  it("counts the cost of a failed request that OpenRouter charged", async () => {
+    const cap = costCap(1);
+    const client = fakeDecisionClient({ answer: () => { throw new DecisionError("unavailable", "503", 0.125); } });
+    const out = await askAll({ items: items.slice(0, 2), client, image: image([0.25]), cap, concurrency: 1 });
+    expect(out.map((r) => [r.error, r.usd])).toEqual([["unavailable", 0.125], ["unavailable", 0.125]]);
+    expect(cap.spentUsd).toBe(0.25);
   });
 });

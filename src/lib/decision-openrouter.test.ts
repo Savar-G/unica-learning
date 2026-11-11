@@ -185,4 +185,45 @@ describe("the OpenRouter decision client (#851), fetch faked", () => {
     expect(sent[0].headers.get("authorization")).toBe("Bearer sk-or-d");
     expect(() => decisionClient({ DECISIONS_OPENROUTER_API_KEY: "sk-or-d", DECISION_MODEL: "someone/other-model" })).toThrow(/no pinned provider/);
   });
+
+  it("malformed: a choice or score answer without a probability from 0 to 1 for every option or level, or a yes/no answer without one; nothing is filled in (review finding 2)", async () => {
+    // The reviewers' input: a two-level score answer with a score and no probability map (was read as [0, 0]).
+    const twoLevels = request({ questions: { level: { type: "score", instructions: "How hard?", levels: ["easy", "hard"] } } });
+    expect(await kindOf(client(fakeFetch(decided({ level: { type: "score", score: 1 } })).fetch).decide(twoLevels))).toBe("malformed");
+    const cases = [
+      { ...ALL, level: { type: "score", score: 1, probabilities: { "0": 0.4, "1": 0.6 } } },
+      { ...ALL, level: { type: "score", score: 1, probabilities: { "0": 0.1, "1": 0.6, "2": "0.3" } } },
+      { ...ALL, team: { type: "choice", choice: "b" } },
+      { ...ALL, team: { type: "choice", choice: "b", probabilities: { b: 0.8 } } },
+      { ...ALL, team: { type: "choice", choice: "b", probabilities: { a: 0.2, b: 1.2 } } },
+      { ...ALL, team: { type: "choice", choice: "b", probabilities: [0.2, 0.8] } },
+      { ...ALL, shows: { type: "noul", noul: "0.97" } },
+      { ...ALL, shows: { type: "noul", noul: null } },
+    ];
+    for (const answers of cases) expect(await kindOf(client(fakeFetch(decided(answers)).fetch).decide(request()))).toBe("malformed");
+  });
+
+  it("reports the cost of every attempt: a charged failed attempt and the retry, summed (review finding 4)", async () => {
+    // The reviewers' input: a failed attempt costing USD 0.04, then a success costing USD 0.03.
+    const retried = fakeFetch({ status: 503, body: { error: { code: 503, message: "Provider returned error" }, usage: { cost: 0.04 } } }, decided(ALL, 0.03));
+    const out = await client(retried.fetch).decide(request());
+    expect(retried.sent).toHaveLength(2);
+    expect(out.usd).toBeCloseTo(0.07, 12);
+
+    // Both attempts fail: the error carries both costs.
+    const failed = fakeFetch({ status: 503, body: { usage: { cost: 0.04 } } }, { status: 503, body: { usage: { cost: 0.02 } } });
+    const error = await client(failed.fetch).decide(request()).catch((e: unknown) => e);
+    expect((error as DecisionError).kind).toBe("unavailable");
+    expect((error as DecisionError).usd).toBeCloseTo(0.06, 12);
+
+    // A charged failed attempt, then a refused answer: the error carries both costs.
+    const refused = fakeFetch({ status: 502, body: { usage: { cost: 0.04 } } }, decided({ ...ALL, team: { type: "refusal" } }, 0.01));
+    const refusal = await client(refused.fetch).decide(request()).catch((e: unknown) => e);
+    expect((refusal as DecisionError).kind).toBe("refused");
+    expect((refusal as DecisionError).usd).toBeCloseTo(0.05, 12);
+
+    // A failed attempt with no cost adds nothing.
+    const free = fakeFetch({ status: 503, body: {} }, decided(ALL, 0.03));
+    expect((await client(free.fetch).decide(request())).usd).toBe(0.03);
+  });
 });

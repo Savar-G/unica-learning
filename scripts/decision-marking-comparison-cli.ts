@@ -14,6 +14,7 @@ import {
   INPUT_USD_PER_M,
   askAll,
   comparisonItems,
+  costCap,
   comparisonReport,
   cropRect,
   estimateTokens,
@@ -29,7 +30,8 @@ const HELP = `node scripts/decision-marking-comparison.mjs --set DIR [--estimate
 --set DIR: the fixed 40 folder (manifest.json and photos/). Read only.
 --estimate: print the cost estimate and stop. No key is read and nothing is sent.
 --fake-http: run the real adapter against a fake fetch. No key; the report is marked fake.
---max-usd: the most this run can spend (default 2). A run whose estimate is above it does not start.
+--max-usd: the cost cap of the run (default 2). A run whose estimate is above it does not start; each request is
+  admitted only when its reservation fits under the cap, and the run stops when a request costs more than its reservation.
 --out: the output folder (default .workbook-sample/decision-comparison/<time>).
 --save-crops: also write each crop as it is sent, to check the crops by eye.`;
 
@@ -127,22 +129,24 @@ async function main() {
     return data;
   };
 
-  const spent = { usd: 0 };
+  // One cost cap for the whole run, both models: see costCap.
+  const cap = costCap(maxUsd);
   const results: Record<string, AskResult[]> = {};
   for (const client of clients) {
     const price = INPUT_USD_PER_M[client.model];
     let done = 0;
     results[client.model] = await askAll({
-      items, client, maxUsd, spent, concurrency: Number(v.concurrency) || 4,
+      items, client, cap, concurrency: Number(v.concurrency) || 4,
       image: async (item, region) => ({ data: await crop(item, region), estimateUsd: (2 * sizes.get(keyOf(item, region))!.tokens * price) / 1e6 }),
       onResult: () => {
-        if (++done % 50 === 0) console.log(`${client.model}: ${done}/${sizes.size}, spent about USD ${spent.usd.toFixed(5)}`);
+        if (++done % 50 === 0) console.log(`${client.model}: ${done}/${sizes.size}, spent about USD ${cap.spentUsd.toFixed(5)}`);
       },
     });
     await writeFile(resolve(out, `results-${client.model.replace("/", "_")}.json`), JSON.stringify(results[client.model], null, 2) + "\n");
   }
 
-  const report = comparisonReport({ items, leftOut, photos: manifest.photos.length, fake, results });
+  if (cap.stopped) console.log("The run stopped at the cost cap: a request cost more than its reservation.");
+  const report = comparisonReport({ items, leftOut, photos: manifest.photos.length, fake, results, cap });
   await writeFile(resolve(out, "report.json"), JSON.stringify(report, null, 2) + "\n");
   const md = reportMarkdown(report);
   await writeFile(resolve(out, "report.md"), md);

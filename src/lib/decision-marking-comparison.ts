@@ -167,15 +167,68 @@ export interface AskResult {
 }
 
 /**
- * Asks every region of every item, one request each, with `concurrency` requests in flight per model. A request is not
- * sent when the money spent so far plus its estimate would pass `maxUsd`: it is recorded as "budget" (not confirmed).
+ * The money cap of one run, shared by every model in it. Before a request, `reserve` holds max(its estimate, 2 x the
+ * highest actual cost seen so far) and admits it only when the money spent plus every reservation in flight plus this one
+ * is at most the cap; `settle` replaces the reservation with the actual cost (a missing cost counts as its reservation).
+ * When one request costs more than its reservation, the run is stopped at the cost cap: no new request is admitted.
+ * A request that does not fit waits while others are in flight, as their settlements can free money.
+ */
+export interface CostCap {
+  readonly maxUsd: number;
+  /** Money spent: actual costs, or the reservation of a request whose cost is missing. */
+  readonly spentUsd: number;
+  /** Reservations of the requests in flight. */
+  readonly reservedUsd: number;
+  /** The highest actual cost of one request so far. */
+  readonly highestUsd: number;
+  /** True after a request cost more than its reservation. */
+  readonly stopped: boolean;
+  /** The reservation, or null when the request is not admitted (the cap is full or the run is stopped). */
+  reserve(estimateUsd: number): Promise<number | null>;
+  settle(reservationUsd: number, actualUsd: number | null): void;
+}
+
+export function costCap(maxUsd: number): CostCap {
+  let waiting: (() => void)[] = [];
+  const cap = {
+    maxUsd, spentUsd: 0, reservedUsd: 0, highestUsd: 0, stopped: false,
+    async reserve(estimateUsd: number) {
+      for (;;) {
+        if (cap.stopped) return null;
+        const reservation = Math.max(estimateUsd, 2 * cap.highestUsd);
+        if (cap.spentUsd + cap.reservedUsd + reservation <= cap.maxUsd) {
+          cap.reservedUsd += reservation;
+          return reservation;
+        }
+        // Nothing in flight: no settlement can free money, so this request is never admitted.
+        if (cap.reservedUsd <= 0) return null;
+        await new Promise<void>((resolve) => waiting.push(resolve));
+      }
+    },
+    settle(reservationUsd: number, actualUsd: number | null) {
+      cap.reservedUsd = Math.max(0, cap.reservedUsd - reservationUsd);
+      cap.spentUsd += actualUsd ?? reservationUsd;
+      if (actualUsd !== null) {
+        cap.highestUsd = Math.max(cap.highestUsd, actualUsd);
+        if (actualUsd > reservationUsd) cap.stopped = true;
+      }
+      const wake = waiting;
+      waiting = [];
+      for (const w of wake) w();
+    },
+  };
+  return cap;
+}
+
+/**
+ * Asks every region of every item, one request each, with `concurrency` requests in flight. Each request is admitted
+ * through the run's cost cap; a request the cap does not admit is not sent and is recorded as "budget" (not confirmed).
  */
 export async function askAll(o: {
   items: readonly ComparisonItem[];
   client: DecisionClient;
   image: (item: ComparisonItem, region: RegionAsk) => Promise<{ data: Uint8Array; estimateUsd: number }>;
-  maxUsd: number;
-  spent: { usd: number };
+  cap: CostCap;
   concurrency?: number;
   timeLimitMs?: number;
   now?: () => number;
@@ -190,10 +243,10 @@ export async function askAll(o: {
       const { item, region } = jobs[n];
       const base = { photo: item.photo, itemId: item.itemId, regionId: region.regionId };
       const { data, estimateUsd } = await o.image(item, region);
-      if (o.spent.usd + estimateUsd > o.maxUsd) {
-        results[n] = { ...base, yes: null, error: "budget", ms: null, usd: null, provider: null };
+      const reservation = await o.cap.reserve(estimateUsd);
+      if (reservation === null) {
+        results[n] = { ...base, yes: null, error: "budget", message: o.cap.stopped ? "stopped at the cost cap" : "not admitted: the cost cap is full", ms: null, usd: null, provider: null };
       } else {
-        o.spent.usd += estimateUsd;
         const started = now();
         try {
           const out = await o.client.decide({
@@ -201,13 +254,12 @@ export async function askAll(o: {
             questions: { shows: region.question },
             signal: AbortSignal.timeout(o.timeLimitMs ?? 60_000),
           });
+          o.cap.settle(reservation, out.usd);
           const answer = out.answers.shows;
-          o.spent.usd += (out.usd ?? estimateUsd) - estimateUsd;
           results[n] = { ...base, yes: answer.type === "noul" ? answer.yes : null, error: answer.type === "noul" ? null : "malformed", ms: now() - started, usd: out.usd, provider: out.provider };
         } catch (e) {
           const usd = e instanceof DecisionError ? e.usd : null;
-          // A failed request keeps its estimate as spent unless OpenRouter gave its cost.
-          if (usd !== null) o.spent.usd += usd - estimateUsd;
+          o.cap.settle(reservation, usd);
           results[n] = { ...base, yes: null, error: e instanceof DecisionError ? e.kind : "unavailable", message: String(e instanceof Error ? e.message : e).slice(0, 300), ms: now() - started, usd, provider: null };
         }
       }
@@ -237,6 +289,14 @@ export interface ModelReport {
   /** The lowest threshold with 0 false Right, and the confirm rate there; null when no threshold gives 0. */
   lowestZeroFalseRight: number | null;
   confirmRateAtLowest: number | null;
+  /** Requests with no answer (an error, or not sent under the cost cap), by the truth group of their item. */
+  failedRequests: { right: number; wrong: number; blank: number; uncertain: number };
+  /**
+   * "incomplete: <n> non-right requests failed" when a wrong, blank or uncertain row has a request with no answer: then
+   * 0 false Right is not shown, and the model does not pass. null when every non-right request has an answer.
+   */
+  incomplete: string | null;
+  /** The pass bar is met: 0 false Right with every non-right request answered, and at least 80% of right items confirmed. */
   passes: boolean;
   /** Items by their P(yes) (the lowest of their regions) in bands of 0.1, with the share that is right. */
   reliability: { band: string; items: number; right: number; rightRate: number | null }[];
@@ -275,6 +335,13 @@ export function modelReport(model: string, items: readonly ComparisonItem[], res
     if (r.error) errors[r.error] = (errors[r.error] ?? 0) + 1;
     if (r.provider) providers[r.provider] = (providers[r.provider] ?? 0) + 1;
   }
+  // A right row with no answer is not confirmed; a non-right row with no answer leaves the comparison incomplete.
+  const failedRequests = { right: 0, wrong: 0, blank: 0, uncertain: 0 };
+  for (const item of items) for (const r of item.regions) {
+    if ((byRegion.get(`${item.photo}\u0000${item.itemId}\u0000${r.regionId}`)?.yes ?? null) === null) failedRequests[item.result]++;
+  }
+  const failedNonRight = failedRequests.wrong + failedRequests.blank + failedRequests.uncertain;
+  const incomplete = failedNonRight ? `incomplete: ${failedNonRight} non-right requests failed` : null;
   const sent = results.filter((r) => r.error !== "budget");
   const cost = results.reduce((sum, r) => sum + (r.usd ?? 0), 0);
   const ms = sent.flatMap((r) => (r.ms === null ? [] : [r.ms]));
@@ -283,7 +350,8 @@ export function modelReport(model: string, items: readonly ComparisonItem[], res
     model, requests: results.length, errors, providers, rightItems: right.length,
     falseRightCandidates: { wrong: count("wrong"), blank: count("blank"), uncertain: count("uncertain") },
     thresholds, lowestZeroFalseRight: lowest?.threshold ?? null, confirmRateAtLowest: lowest?.confirmRate ?? null,
-    passes: !!lowest && lowest.confirmRate >= PASS_CONFIRM_RATE, reliability,
+    failedRequests, incomplete,
+    passes: !incomplete && !!lowest && lowest.confirmRate >= PASS_CONFIRM_RATE, reliability,
     costUsd: round(cost, 8), costMissing: sent.filter((r) => r.usd === null).length, costPerPhotoUsd: photos ? round(cost / photos, 8) : 0,
     latencyMs: { p50: p50 === null ? null : Math.round(p50), p95: p95 === null ? null : Math.round(p95) },
   };
@@ -297,16 +365,19 @@ export interface ComparisonReport {
   items: { right: number; wrong: number; blank: number; uncertain: number };
   requestsPerModel: number;
   leftOut: LeftOut[];
+  /** The run's cost cap: the cap, the money spent, and whether the run stopped at the cap. */
+  cap: { maxUsd: number; spentUsd: number; stopped: boolean } | null;
   models: ModelReport[];
 }
 
-export function comparisonReport(o: { items: readonly ComparisonItem[]; leftOut: readonly LeftOut[]; photos: number; fake: boolean; results: Readonly<Record<string, readonly AskResult[]>> }): ComparisonReport {
+export function comparisonReport(o: { items: readonly ComparisonItem[]; leftOut: readonly LeftOut[]; photos: number; fake: boolean; results: Readonly<Record<string, readonly AskResult[]>>; cap?: CostCap }): ComparisonReport {
   const count = (result: string) => o.items.filter((i) => i.result === result).length;
   return {
     version: COMPARISON_VERSION, synthetic: true, fake: o.fake, photos: o.photos,
     items: { right: count("right"), wrong: count("wrong"), blank: count("blank"), uncertain: count("uncertain") },
     requestsPerModel: o.items.reduce((n, i) => n + i.regions.length, 0),
     leftOut: [...o.leftOut],
+    cap: o.cap ? { maxUsd: o.cap.maxUsd, spentUsd: round(o.cap.spentUsd, 8), stopped: o.cap.stopped } : null,
     models: Object.entries(o.results).map(([model, results]) => modelReport(model, o.items, results, o.photos)),
   };
 }
@@ -320,11 +391,12 @@ export function reportMarkdown(r: ComparisonReport): string {
     `# Decision second-opinion comparison${r.fake ? " (fake HTTP: not a model result)" : ""}`,
     "",
     `Synthetic fixed set: ${r.photos} photos; items asked: ${r.items.right} right, ${r.items.wrong} wrong, ${r.items.blank} blank, ${r.items.uncertain} uncertain; ${r.requestsPerModel} requests per model. Parent rows left out: ${r.leftOut.length}.`,
-    `Pass bar: 0 false Right and at least ${PASS_CONFIRM_RATE * 100}% of right items confirmed at the same threshold. Synthetic ink does not prove real handwriting.`,
+    `Pass bar: 0 false Right, with every wrong, blank and uncertain request answered, and at least ${PASS_CONFIRM_RATE * 100}% of right items confirmed at the same threshold. Synthetic ink does not prove real handwriting.`,
+    ...(r.cap ? [`Cost cap: USD ${r.cap.maxUsd}; spent USD ${r.cap.spentUsd.toFixed(6)}.${r.cap.stopped ? " The run stopped at the cost cap: a request cost more than its reservation, and no new request was sent." : ""}`] : []),
     "",
     "| Model | Lowest 0-false-Right threshold | Confirm rate there | Passes | Cost | Cost per photo | p50 latency | p95 latency | Errors |",
     "|---|---|---|---|---|---|---|---|---|",
-    ...r.models.map((m) => `| ${m.model} | ${m.lowestZeroFalseRight?.toFixed(2) ?? "none"} | ${pct(m.confirmRateAtLowest)} | ${m.passes ? "yes" : "no"} | ${usd(m.costUsd)}${m.costMissing ? ` (${m.costMissing} without cost)` : ""} | ${usd(m.costPerPhotoUsd)} | ${m.latencyMs.p50 ?? "-"} ms | ${m.latencyMs.p95 ?? "-"} ms | ${Object.entries(m.errors).map(([k, v]) => `${k} ${v}`).join(", ") || "0"} |`),
+    ...r.models.map((m) => `| ${m.model} | ${m.lowestZeroFalseRight?.toFixed(2) ?? "none"} | ${pct(m.confirmRateAtLowest)} | ${m.passes ? "yes" : m.incomplete ? `no (${m.incomplete})` : "no"} | ${usd(m.costUsd)}${m.costMissing ? ` (${m.costMissing} without cost)` : ""} | ${usd(m.costPerPhotoUsd)} | ${m.latencyMs.p50 ?? "-"} ms | ${m.latencyMs.p95 ?? "-"} ms | ${Object.entries(m.errors).map(([k, v]) => `${k} ${v}`).join(", ") || "0"} |`),
   ];
   for (const m of r.models) {
     lines.push("", `## ${m.model}`, "", `Providers: ${Object.entries(m.providers).map(([k, v]) => `${k} ${v}`).join(", ") || "none"}.`, "", "| Threshold | Right confirmed | Confirm rate | False Right | wrong | blank | uncertain |", "|---|---|---|---|---|---|---|");

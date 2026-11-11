@@ -76,20 +76,21 @@ function readAnswer(key: string, q: DecisionQuestion, raw: unknown, usd: number 
     if (!probability(a.noul)) throw bad("has no probability from 0 to 1");
     return { type: "noul", yes: a.noul, confidence: (a.confidence as number | undefined) ?? Math.max(a.noul, 1 - a.noul) };
   }
+  // A choice or score answer needs a probability for every option or level, each from 0 to 1, and no other key. A missing
+  // value is never filled in: an unknown answer must not read as a probability of 0.
   const given = a.probabilities;
-  if (given !== undefined && (!given || typeof given !== "object" || !Object.values(given).every(probability))) throw bad("has probabilities that are not from 0 to 1");
-  const probs = (given ?? {}) as Record<string, number>;
+  if (!given || typeof given !== "object" || Array.isArray(given)) throw bad("has no probabilities");
+  const probs = given as Record<string, unknown>;
+  const keys = q.type === "choice" ? Object.keys(q.options) : q.levels.map((_, n) => String(n));
+  if (Object.keys(probs).some((k) => !keys.includes(k))) throw bad(`has a probability for ${q.type === "choice" ? "an option" : "a level"} that was not asked`);
+  if (!keys.every((k) => probability(probs[k]))) throw bad(`has no probability from 0 to 1 for each ${q.type === "choice" ? "option" : "level"}`);
+  const p = probs as Record<string, number>;
   if (q.type === "choice") {
-    const options = Object.keys(q.options);
-    if (typeof a.choice !== "string" || !options.includes(a.choice)) throw bad("names an option that was not asked");
-    if (Object.keys(probs).some((k) => !options.includes(k))) throw bad("has a probability for an option that was not asked");
-    const probabilities = Object.fromEntries(options.map((o) => [o, probs[o] ?? 0]));
-    return { type: "choice", choice: a.choice, probabilities, confidence: (a.confidence as number | undefined) ?? (probs[a.choice] ?? 0) };
+    if (typeof a.choice !== "string" || !keys.includes(a.choice)) throw bad("names an option that was not asked");
+    return { type: "choice", choice: a.choice, probabilities: Object.fromEntries(keys.map((k) => [k, p[k]])), confidence: (a.confidence as number | undefined) ?? p[a.choice] };
   }
-  const levels = q.levels.length;
-  if (typeof a.score !== "number" || !Number.isFinite(a.score) || a.score < 0 || a.score > levels - 1) throw bad("has a score outside the levels");
-  if (Object.keys(probs).some((k) => !/^\d+$/.test(k) || Number(k) >= levels)) throw bad("has a probability for a level that was not asked");
-  const probabilities = Array.from({ length: levels }, (_, n) => probs[String(n)] ?? 0);
+  if (typeof a.score !== "number" || !Number.isFinite(a.score) || a.score < 0 || a.score > keys.length - 1) throw bad("has a score outside the levels");
+  const probabilities = keys.map((k) => p[k]);
   return { type: "score", score: a.score, probabilities, confidence: (a.confidence as number | undefined) ?? Math.max(...probabilities) };
 }
 
@@ -164,13 +165,19 @@ export function openRouterDecisionClient({
         headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json", "x-openrouter-title": "Unica Learning" },
         body: JSON.stringify(decisionBody(model, provider, request)),
       };
+      // The cost of every attempt, a charged failed one included: the result and a final error report the sum.
+      let charged: number | null = null;
+      const add = (usd: number | null) => (usd === null ? charged : (charged ?? 0) + usd);
       for (let attempt = 0; ; attempt++) {
-        if (request.signal.aborted) throw new DecisionError("timeout", "time is up");
+        if (request.signal.aborted) throw new DecisionError("timeout", "time is up", charged);
         try {
-          return await once(fetch, init, request, timeout);
+          const result = await once(fetch, init, request, timeout);
+          return { ...result, usd: add(result.usd) };
         } catch (e) {
+          if (e instanceof DecisionError) throw new DecisionError(e.kind, e.message, add(e.usd));
           if (!(e instanceof Retryable)) throw e;
-          if (attempt >= maxRetries || request.signal.aborted) throw new DecisionError(request.signal.aborted ? "timeout" : e.kind, e.message, e.usd);
+          charged = add(e.usd);
+          if (attempt >= maxRetries || request.signal.aborted) throw new DecisionError(request.signal.aborted ? "timeout" : e.kind, e.message, charged);
         }
       }
     },
