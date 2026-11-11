@@ -11,22 +11,63 @@
   ],
   "baseline": "current.html",
   "options": [
-    {"id": "A", "artifact": "a-in-workbook-1.html", "shots": ["shots/a-in-workbook-1-desktop.png", "shots/a-in-workbook-1-phone.png"],
-     "bet": "The pages lead the 'What's in workbook 1' row, above the plan summary",
-     "benefit": "One row answers 'what will my child get' with the plan and the proof together",
-     "cost": "The row becomes very long; the plan summary falls below the fold",
-     "risk": "A second button inside a summary row competes with the Next step row"},
-    {"id": "B", "artifact": "b-own-row.html", "shots": ["shots/b-own-row-desktop.png", "shots/b-own-row-phone.png"],
-     "bet": "A row of its own, '{child}'s first pages', right after 'What's in workbook 1' and right before Next step",
-     "benefit": "The real pages sit between the plan and the ask; the cover is larger, so the child's name reads first; on a phone one swipe strip keeps it to one screen",
-     "cost": "One more row on a long page",
-     "risk": "A parent who stops after the plan summary never scrolls to it (it is still above the next step)"},
-    {"id": "C", "artifact": "c-next-step.html", "shots": ["shots/c-next-step-desktop.png", "shots/c-next-step-phone.png"],
-     "bet": "The pages sit inside the Next step row, above the plan button",
-     "benefit": "Proof directly beside the ask",
-     "cost": "The next step row changes for every state (saved card, waitlist, dashboard rail) and becomes heavy",
-     "risk": "On the dashboard the next step lives in the side rail, where four pages do not fit"}
+    {
+      "id": "A",
+      "artifact": "a-in-workbook-1.html",
+      "shots": [
+        "shots/a-in-workbook-1-desktop.png",
+        "shots/a-in-workbook-1-phone.png"
+      ],
+      "bet": "The pages lead the 'What's in workbook 1' row, above the plan summary",
+      "benefit": "One row answers 'what will my child get' with the plan and the proof together",
+      "cost": "The row becomes very long; the plan summary falls below the fold",
+      "risk": "A second button inside a summary row competes with the Next step row"
+    },
+    {
+      "id": "B",
+      "artifact": "b-own-row.html",
+      "shots": [
+        "shots/b-own-row-desktop.png",
+        "shots/b-own-row-phone.png"
+      ],
+      "bet": "A row of its own, '{child}'s first pages', right after 'What's in workbook 1' and right before Next step",
+      "benefit": "The real pages sit between the plan and the ask; the cover is larger, so the child's name reads first; on a phone one swipe strip keeps it to one screen",
+      "cost": "One more row on a long page",
+      "risk": "A parent who stops after the plan summary never scrolls to it (it is still above the next step)"
+    },
+    {
+      "id": "C",
+      "artifact": "c-next-step.html",
+      "shots": [
+        "shots/c-next-step-desktop.png",
+        "shots/c-next-step-phone.png"
+      ],
+      "bet": "The pages sit inside the Next step row, above the plan button",
+      "benefit": "Proof directly beside the ask",
+      "cost": "The next step row changes for every state (saved card, waitlist, dashboard rail) and becomes heavy",
+      "risk": "On the dashboard the next step lives in the side rail, where four pages do not fit"
+    }
   ],
   "recommendation": "B",
-  "selection": {"status": "agent-recommended; Savar approves the UI on the pull request before merge", "chosen": "B"}
+  "selection": {
+    "status": "agent-recommended; Savar approves the UI on the pull request before merge",
+    "chosen": "B"
+  },
+  "built": {
+    "option": "B",
+    "evidence": [
+      "evidence/report-desktop.png",
+      "evidence/report-phone.png",
+      "evidence/report-phone-cta.png",
+      "evidence/report-dialog.png",
+      "evidence/email-desktop.png",
+      "evidence/email-phone.png"
+    ],
+    "source": "the owned report of a test family (Testkid, school grade 3, Workbook 1 at level U4) on npm run dev against the hosted database, 2026-11-10; the email from scripts/first-pages-example.ts",
+    "checks": [
+      "the row sits after What's in workbook 1 and before the details; the plan action is in the side rail on the dashboard layout",
+      "each page opens larger in a dialog; Escape closes it and focus returns to the page button",
+      "phone: one swipe strip, then the action"
+    ]
+  }
 }
