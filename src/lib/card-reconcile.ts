@@ -14,7 +14,7 @@ import { rereadPlan, type PlanRead, type PlanStates } from "@/lib/plan-state";
 // its card changed, as a late write comes after the flag was cleared.
 //
 // A plan creation has the same problem. Each start is one durable record (public.plan_starts), one key per card setup and generation,
-// and the record is never cleared. admit_plan_start is the one way to a create call, so a press that read before another press
+// and the record is never cleared. admit_family_plan_start is the one way to a create call, so a press that read before another press
 // finished gets the first press's key, or finds that it finished. Time closes nothing: Stripe forgets a key after 24 hours, but that
 // does not prove that the first request ended. So an open record past 24 hours stays open, the sweep goes on looking, the team gets one
 // alert and a press answers that the start needs the team. Only an admin, after their own check, closes it (endStuckPlanStart).
