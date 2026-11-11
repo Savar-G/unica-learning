@@ -1,4 +1,4 @@
-// Parent goals (D-323): right after signup, before the child's first test, the parent answers three select-one
+// Parent goals (D-325): right after signup, before the child's first test, the parent answers three select-one
 // questions about the child (main goal, how the child feels about math, the math help the child gets now). The team
 // reads them before the results call (admin child and family pages). Stored on public.children: learning_goal and
 // math_feeling (the same columns the planner and the profiles read, src/lib/learning-style.ts) and math_help.
@@ -70,8 +70,8 @@ export function goalFacts(row: { learning_goal: string | null; math_feeling: str
 }
 
 /**
- * Whether a child must answer before the test (D-323): a child with any of the three answers missing and no test yet.
- * A child who already has a test (any status) is never asked, so a family from before D-323 and a test in progress are
+ * Whether a child must answer before the test (D-325): a child with any of the three answers missing and no test yet.
+ * A child who already has a test (any status) is never asked, so a family from before D-325 and a test in progress are
  * not stopped.
  */
 export function needsGoals(child: { learning_goal: string | null; math_feeling: string | null; math_help: string | null }, hasTest: boolean): boolean {

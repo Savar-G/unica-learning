@@ -1,6 +1,6 @@
 {
   "round": "r682",
-  "decision": "D-323: parent goals before the test (three select-one questions per child on /account/goals; shown on the admin child and family pages)",
+  "decision": "D-325: parent goals before the test (three select-one questions per child on /account/goals; shown on the admin child and family pages)",
   "route": "direct: Savar settled the content and the placement in the interview (2026-11-11). The step reuses the learning card's choice chips and the support page frame, so no variants.",
   "picked": null,
   "picked_by": "waiting for Savar",

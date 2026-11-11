@@ -1,4 +1,4 @@
-/* Parent goals (D-323): the same choice chips as the learning card (learning.css), one question after another. */
+/* Parent goals (D-325): the same choice chips as the learning card (learning.css), one question after another. */
 .goals { display: grid; gap: 26px; max-width: 640px; margin-top: 28px; }
 .goals-q { margin: 0; padding: 0; border: 0; min-width: 0; }
 .goals-q legend { display: flex; gap: 10px; align-items: baseline; margin-bottom: 12px; padding: 0; font: 600 16px/1.4 var(--sans); color: var(--ink); }

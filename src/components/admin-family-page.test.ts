@@ -41,7 +41,7 @@ describe("a child's card", () => {
     expect(html).toContain("Ready to review");
     expect(html).toContain("Review draft");
     expect(html).toContain("No test yet.");
-    // D-323: the parent goals, one answer a line, for the results call.
+    // D-325: the parent goals, one answer a line, for the results call.
     expect(html).toContain("Parent goals");
     expect(html).toContain("Catch up to grade level");
     expect(html).toContain("Math help now:</span> No answer");

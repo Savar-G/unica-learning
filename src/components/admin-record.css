@@ -163,5 +163,5 @@
 .adm-fp-set p { margin: 0; }
 .adm-fp-pages { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
 .adm-fp-pages img { display: block; width: 120px; height: auto; border: 1px solid var(--line); border-radius: 4px; background: #fff; }
-/* D-323: the parent goals on a family child card, one answer a line. */
+/* D-325: the parent goals on a family child card, one answer a line. */
 .rec-goals { display: grid; gap: 2px; }

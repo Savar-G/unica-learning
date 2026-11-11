@@ -48,7 +48,7 @@ export default async function StartScreen({ params, searchParams }: PageProps<"/
     db.from("parents").select("postal, time_zone").maybeSingle(),
   ]);
   if (!child) notFound();
-  // D-323: a child with no test yet starts only after the parent's goals; then back to this screen with its query.
+  // D-325: a child with no test yet starts only after the parent's goals; then back to this screen with its query.
   if (await childNeedsGoals(db, parent, child.id)) {
     const query = new URLSearchParams(Object.entries(await searchParams).flatMap(([k, v]) => (typeof v === "string" ? [[k, v]] : []))).toString();
     redirect(goalsPath(`${startPath(child.id)}${query ? `?${query}` : ""}`, child.id));

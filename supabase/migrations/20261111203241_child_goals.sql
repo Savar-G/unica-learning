@@ -1,4 +1,4 @@
--- Parent goals, first version (D-323, 2026-11-11): one row per child in a new table. Applied, then replaced the same day
+-- Parent goals, first version (D-325, 2026-11-11): one row per child in a new table. Applied, then replaced the same day
 -- by migration child_goals_on_children, which drops this table before any code used it (Savar chose one set of answers
 -- on public.children). Kept here because the database history holds it.
 create table public.child_goals (

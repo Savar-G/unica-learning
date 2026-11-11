@@ -3,7 +3,7 @@
 // through bookMix; a child with no answer gets the default mix. #195 (D-107) adds how the child feels about math, the
 // parent's main goal and the time each week, for the learner profile; they do not change the mix. Shared by the form
 // (client), the route and the admin pages (server). Never sent to analytics: no answer travels with an event.
-// D-323: the feeling and the goal are now asked right after signup, before the first test (src/lib/child-goals.ts,
+// D-325: the feeling and the goal are now asked right after signup, before the first test (src/lib/child-goals.ts,
 // /account/goals), with the math help the child gets now; the learning card no longer asks or writes them (toRow).
 // The ids are also in the check constraints of supabase/migrations/20261012_add_learning_style.sql,
 // 20261016_add_learning_questions.sql and 20261111204124_child_goals_on_children.sql; change both
@@ -45,7 +45,7 @@ export const MATH_FEELINGS = [
 export type MathFeeling = (typeof MATH_FEELINGS)[number]["id"];
 
 /**
- * "What is your main goal for {child} in math?" One answer. keep_up is only in older answers (the card before D-323):
+ * "What is your main goal for {child} in math?" One answer. keep_up is only in older answers (the card before D-325):
  * the signup does not offer it (SIGNUP_GOALS). catch_up and get_ahead keep their meaning for the planner.
  */
 export const LEARNING_GOALS = [
@@ -60,7 +60,7 @@ export type LearningGoal = (typeof LEARNING_GOALS)[number]["id"];
 /** The goals the signup offers, in order. */
 export const SIGNUP_GOALS = LEARNING_GOALS.filter((g) => g.id !== "keep_up");
 
-/** "What math help does {child} get now, other than school?" One answer (D-323). Column children.math_help. */
+/** "What math help does {child} get now, other than school?" One answer (D-325). Column children.math_help. */
 export const MATH_HELPS = [
   { id: "school_only", label: "Only school" },
   { id: "parent", label: "A parent or family member" },
@@ -150,7 +150,7 @@ export function parseLearning(body: unknown): LearningAnswers | null {
   return { styles, interests, note, feeling, goal, weeklyTime };
 }
 
-/** The card's own columns. The feeling and the goal belong to the signup questions (D-323): the card never writes them. */
+/** The card's own columns. The feeling and the goal belong to the signup questions (D-325): the card never writes them. */
 export function toRow(a: LearningAnswers): Omit<LearningRow, "math_feeling" | "learning_goal"> {
   return {
     learning_styles: a.styles.length ? a.styles : null,
@@ -160,7 +160,7 @@ export function toRow(a: LearningAnswers): Omit<LearningRow, "math_feeling" | "l
   };
 }
 
-/** Whether the parent answered the learning card itself: the signup's feeling and goal do not count (D-323). */
+/** Whether the parent answered the learning card itself: the signup's feeling and goal do not count (D-325). */
 export function cardAnswered(a: LearningAnswers | null): boolean {
   return !!a && (a.styles.length > 0 || a.interests.length > 0 || !!a.note || !!a.weeklyTime);
 }
@@ -189,7 +189,7 @@ const NO_ANSWER = "No answer";
 
 /**
  * The learning card's answers as label and value rows for the admin child page, in the card's order. The feeling and
- * the goal show with the parent goals (D-323, goalFacts in src/lib/child-goals.ts).
+ * the goal show with the parent goals (D-325, goalFacts in src/lib/child-goals.ts).
  */
 export function answerFacts(a: LearningAnswers | null): [string, string][] {
   return [

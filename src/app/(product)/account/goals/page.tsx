@@ -13,7 +13,7 @@ export const metadata = pageMetadata({
   index: false,
 });
 
-// Parent goals (D-323): right after signup (and after "Add another child"), before the test, the parent answers three
+// Parent goals (D-325): right after signup (and after "Add another child"), before the test, the parent answers three
 // select-one questions about each child that has no test yet. `child` picks one child (the start screen and the test
 // page send the parent here for that child); without it, the oldest child still to answer. When no child needs the
 // answers, the page goes on to `next` (a path on this site; default Parent home). The team reads the answers before

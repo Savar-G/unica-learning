@@ -1,4 +1,4 @@
--- Parent goals (D-323, 2026-11-11): right after signup, before the child's first test, the parent answers three
+-- Parent goals (D-325, 2026-11-11): right after signup, before the child's first test, the parent answers three
 -- select-one questions about the child: the main goal, how the child feels about math, and the math help the child
 -- gets now. Savar chose one set of answers: the goal and the feeling go into the columns the report's learning card
 -- used (#195), and that card no longer asks them. The planner's rules stay: catch_up, get_ahead and avoids keep their

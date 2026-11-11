@@ -249,7 +249,7 @@ export function AccountSignup({ phone = false }: { phone?: boolean }) {
       router.replace("/account?existing=1");
     } else {
       track("account_created", { curriculum: child.province });
-      // D-323: the goals step comes first, then Parent home.
+      // D-325: the goals step comes first, then Parent home.
       router.replace(goalsPath(res.linkSent ? "/account?sent=1" : "/account"));
     }
     router.refresh();
@@ -663,7 +663,7 @@ export function AddChild({ province }: { province: CurriculumId }) {
     track("child_added", { curriculum: child.province });
     setChild({ firstName: "", grade: 4, province: child.province });
     setOpen(false);
-    // D-323: the new child's goals step, then back to Parent home.
+    // D-325: the new child's goals step, then back to Parent home.
     router.push(goalsPath("/account"));
   };
 
@@ -858,7 +858,7 @@ export function FinishAccount({ name: googleName, email, needsPassword }: { name
       return;
     }
     if (!res.existing) track("account_created", { curriculum: child.province, channel });
-    // D-323: the goals step comes first, then Parent home.
+    // D-325: the goals step comes first, then Parent home.
     router.replace(goalsPath(res.linkSent ? "/account?sent=1" : "/account"));
     router.refresh();
   };

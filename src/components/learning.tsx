@@ -6,7 +6,7 @@
 // #195 (D-107): two groups. "About {child}" holds the questions to answer with the child (feeling about math, how they
 // like to learn, interests, what is hard); "Your goal and time" holds the parent's two. Every question is optional, and
 // a second tap on a chosen single answer clears it.
-// D-323: the feeling about math and the main goal moved to the goals step right after signup (/account/goals). The card
+// D-325: the feeling about math and the main goal moved to the goals step right after signup (/account/goals). The card
 // no longer asks them and the route no longer writes them; the summary still shows them, and only the card's own answers
 // count as answered (cardAnswered).
 import { useRouter } from "next/navigation";

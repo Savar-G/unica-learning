@@ -4,7 +4,7 @@ import { cleanGoals, goalFacts, goalsNext, goalsPath, GOAL_QUESTIONS, needsGoals
 const row = (r: Partial<{ learning_goal: string | null; math_feeling: string | null; math_help: string | null }> = {}) =>
   ({ learning_goal: null, math_feeling: null, math_help: null, ...r });
 
-describe("the goal questions (D-323)", () => {
+describe("the goal questions (D-325)", () => {
   it("asks three select-one questions with Savar's options, and no keep_up at signup", () => {
     expect(GOAL_QUESTIONS.map((q) => q.question.replace("{name}", "Ava"))).toEqual([
       "What is your main goal for Ava in math?",

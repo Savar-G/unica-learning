@@ -9,7 +9,7 @@ type GoalsError = "forbidden" | "bad_json" | "too_large" | "signed_out" | "not_f
 const reply = (status: number, body: { ok: boolean; error?: GoalsError }) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 const fail = (error: GoalsError, status: number) => reply(status, { ok: false, error });
 
-// A parent saves the three goal answers for one child (D-323), on /account/goals right after signup. JSON and the
+// A parent saves the three goal answers for one child (D-325), on /account/goals right after signup. JSON and the
 // site's origin only. The desk lock (423) is in src/proxy.ts. The parent comes from the session; the child must be one
 // the parent's session can read. The server's key writes the row (public.child_goals: parents have no write right).
 export async function POST(request: Request, { params }: RouteContext<"/api/account/children/[id]/goals">) {

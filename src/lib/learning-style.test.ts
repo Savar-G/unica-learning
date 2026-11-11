@@ -73,7 +73,7 @@ describe("parseLearning", () => {
 });
 
 describe("toRow and fromRow", () => {
-  it("round-trips the card's answers through the children row, and never writes the feeling or the goal (D-323)", () => {
+  it("round-trips the card's answers through the children row, and never writes the feeling or the goal (D-325)", () => {
     const a = answers({ styles: ["hands_on"], interests: ["cooking"], note: "Word problems.", feeling: "okay", goal: "keep_up", weeklyTime: "2_to_3h" });
     const row = toRow(a);
     expect(row).not.toHaveProperty("math_feeling");
@@ -82,7 +82,7 @@ describe("toRow and fromRow", () => {
     expect(row).toMatchObject({ weekly_time: "2_to_3h" });
   });
 
-  it("counts only the card's own answers as answered (D-323)", () => {
+  it("counts only the card's own answers as answered (D-325)", () => {
     expect(cardAnswered(answers({ feeling: "finds_hard", goal: "next_grade" }))).toBe(false);
     expect(cardAnswered(null)).toBe(false);
     expect(cardAnswered(answers({ weeklyTime: "1_to_2h" }))).toBe(true);
@@ -143,7 +143,7 @@ describe("bookMix", () => {
 });
 
 describe("answerFacts (the admin child page)", () => {
-  it("shows the card's answers; the feeling and the goal show with the parent goals (D-323)", () => {
+  it("shows the card's answers; the feeling and the goal show with the parent goals (D-325)", () => {
     const facts = new Map(answerFacts(answers({ styles: ["worked"], note: "Carrying.", feeling: "avoids", goal: "catch_up", weeklyTime: "under_1h" })));
     expect(facts.has("Feeling about math")).toBe(false);
     expect(facts.has("Main goal")).toBe(false);

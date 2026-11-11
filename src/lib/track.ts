@@ -37,7 +37,7 @@
 // reminder email), unsubscribe (status done or failed: the unsubscribe page turned reminders off), unsubscribe_page
 // (status unsubscribed = already off, unknown = a link that does not work, failed).
 // Contact page (D-130): contact_sent (status sent, failed or unknown). No name, email or message.
-// Parent goals (D-323): goals_saved (the goals step after signup was saved). No answer travels with it.
+// Parent goals (D-325): goals_saved (the goals step after signup was saved). No answer travels with it.
 // Analytics run only after the visitor accepts (see consent.ts). Without consent an event is dropped, not queued.
 // Only src, plan, subject, curriculum, price, status, code, card and channel travel with an event (see analytics.ts).
 // posthog-js is imported on demand so it stays out of the first-load bundle.

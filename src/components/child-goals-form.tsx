@@ -1,6 +1,6 @@
 "use client";
 
-// Parent goals (D-323): three select-one questions about one child, right after signup and before the test. Every
+// Parent goals (D-325): three select-one questions about one child, right after signup and before the test. Every
 // question needs an answer (Savar's choice: required, no skip). Analytics get only that the step was saved, never an
 // answer. The server checks the answers again (src/app/api/account/children/[id]/goals/route.ts).
 import { useRouter } from "next/navigation";

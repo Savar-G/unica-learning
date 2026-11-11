@@ -82,7 +82,7 @@ export default async function ChildPage({ params }: PageProps<"/admin/children/[
       ["Grade and curriculum", gradeAndPlace(c.grade, c.province)],
       ["Parent", <Link key="parent" href={adminParentPath(c.parent_id)}>{family.parent.name}</Link>],
       ["Added (Pacific)", when(c.created_at)],
-      // D-323: the parent's goals from signup, for the results call.
+      // D-325: the parent's goals from signup, for the results call.
       ...goalFacts(c),
       ["Workbook computer", runner === "mac" ? <WorkerLine key="worker" worker={worker} /> : "Made on the server"],
     ]} />

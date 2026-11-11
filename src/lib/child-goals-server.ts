@@ -12,7 +12,7 @@ export interface GoalsChild {
 }
 
 /**
- * The parent's children that must answer the goals before the test (D-323), oldest first, read with the parent's own
+ * The parent's children that must answer the goals before the test (D-325), oldest first, read with the parent's own
  * session. A failed read returns an empty list: the goals never stop a test because the database did not answer.
  */
 export async function childrenNeedingGoals(db: Db, parent: string, onlyChild?: string): Promise<GoalsChild[]> {

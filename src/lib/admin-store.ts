@@ -576,7 +576,7 @@ export interface WaitlistRow {
 
 export interface ParentDetail {
   parent: ParentRow;
-  /** With the parent goals (D-323), which the family page shows on each child. */
+  /** With the parent goals (D-325), which the family page shows on each child. */
   children: (ChildRow & GoalColumns)[];
   tests: TestRow[];
   cards: CardSetupRow[];

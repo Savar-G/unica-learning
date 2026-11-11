@@ -27,7 +27,7 @@ const LISTS: { name: string; list: readonly string[]; table: string; column: str
   { name: "SCAN_JOB_STATES", list: SCAN_JOB_STATES, table: "scan_marking_jobs", column: "state" },
   { name: "SCAN_BLOCKED_REASONS", list: SCAN_BLOCKED_REASONS, table: "scan_marking_jobs", column: "blocked_reason" },
   { name: "SCAN_CALIBRATION_STATES", list: SCAN_CALIBRATION_STATES, table: "scan_calibrations", column: "state" },
-  // D-323: the parent goals asked after signup.
+  // D-325: the parent goals asked after signup.
   { name: "LEARNING_GOALS", list: LEARNING_GOALS.map((g) => g.id), table: "children", column: "learning_goal" },
   { name: "MATH_FEELINGS", list: MATH_FEELINGS.map((f) => f.id), table: "children", column: "math_feeling" },
   { name: "MATH_HELPS", list: MATH_HELPS.map((h) => h.id), table: "children", column: "math_help" },
