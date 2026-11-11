@@ -1,16 +1,19 @@
 import { pageMetadata } from "@/lib/metadata";
+import { JsonLd } from "@/components/json-ld";
+import { pageJsonLd } from "@/lib/structured-data";
 import { SupportPage } from "@/components/support-page";
 import { BUSINESS_NAME, SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 
-export const metadata = pageMetadata({
+const PAGE = {
   path: "/privacy",
   title: "Privacy policy",
   description: `How ${BUSINESS_NAME} uses your information and cookies, and how to contact us about your privacy.`,
-  index: false,
-});
+};
+export const metadata = pageMetadata(PAGE);
 
 export default function Privacy() {
   return <SupportPage label="Updated 9 November 2026" title="Privacy policy">
+    <JsonLd data={pageJsonLd(PAGE)} />
     <p className="lead">{BUSINESS_NAME} is responsible for the information you share through this website. This policy explains what we collect, why we use it, and the choices you have.</p>
     <h2>What you share with us</h2>
     <p>Before the online assessment, families booked through a reservation form. For those bookings, we keep the name, email address, Canadian postal code, chosen plan and subject, the child&apos;s grade, and their school curriculum.</p>

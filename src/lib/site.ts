@@ -39,10 +39,11 @@ export const priceWithOffer = (price: number) => `CAD ${cad(price)}/month, first
 
 // Plain words first (Oct 2026): a parent reading in her second language took the "same box" headline for an online
 // program. The headline says what Unica does; the lead names the struggle and says how (D-215: plain lead, no topic chip).
+// D-318: the headline names the product and the subject ("personalized math program"), the words parents search for;
+// the kicker gives the ages and grades instead.
 export const HERO = {
-  kicker: "A personalized math program for ages 5 to 14.",
-  title: "Unica meets your child",
-  highlight: "at their level,",
-  after: "and takes them further.",
+  kicker: "For ages 5 to 14, Kindergarten to Grade 9.",
+  title: "A personalized math program that meets your child",
+  highlight: "at their level.",
   lead: "Miss one topic and every lesson after it gets harder. Unica gives your child a workbook built for where they are.",
 };
