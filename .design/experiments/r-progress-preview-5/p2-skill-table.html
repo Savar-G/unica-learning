@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en-CA">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>P2. Skill table</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shell.css"><link rel="stylesheet" href="p.css">
+<style>
+
+.tbl { border-radius: 16px; background: #fff; box-shadow: 0 0 0 1px var(--line), 0 24px 40px -30px rgba(0,0,0,.35); overflow: hidden; }
+.tr { display: grid; grid-template-columns: 210px minmax(0, 1fr) 44px minmax(0, 1fr); align-items: center; border-top: 1px solid var(--line-soft); }
+.tr:first-child { border-top: 0; }
+.tr > * { padding: 16px 20px; }
+.th { background: var(--soft); }
+.th .when { display: block; }
+.th b { display: block; margin-top: 2px; font-size: 20px; font-weight: 400; letter-spacing: -.02em; }
+.area { font: 400 12px/1.3 var(--mono); text-transform: uppercase; letter-spacing: .04em; color: var(--ink-2); }
+.arrow { padding: 0; color: var(--ink-3); text-align: center; }
+.goalc { height: 100%; display: flex; align-items: center; background: #fff8dc; font-weight: 500; }
+.th .goalc { background: #ffe999; }
+@media (max-width: 760px) { .tr { grid-template-columns: 1fr 1fr; } .tr > .area { grid-column: 1 / -1; padding-bottom: 0; } .arrow, .th > :first-child { display: none; } .tr > * { padding: 10px 14px; } }
+</style>
+</head>
+<body>
+<div class="chrome"><span class="v">P2. Skill table</span><div class="cases" data-cases></div><a href="board.html">All options</a></div>
+<main class="page">
+  <div class="stub">Report: "Where Leah is", "What's in workbook 1" (unchanged)</div>
+  <section class="section" id="out"></section>
+  <div class="stub">Next step: card and plan button (unchanged)</div>
+</main>
+<script src="levels.js"></script><script src="covers.js"></script><script src="plan.js"></script><script src="skills.js"></script><script src="p.js"></script>
+<script>
+
+mount((p) => {
+  const rows = skillRows(p.c.working, p.goal);
+  renderP(p, `<div class="tbl">
+    <div class="tr th"><span></span><span><span class="when">Today</span><b>${gradeName(p.c.working)} level</b></span><span class="arrow"></span><span class="goalc"><span><span class="when">By ${monthYear(p.goalDate)}</span><b>${gradeName(p.goal)} level</b></span></span></div>
+    ${rows.map((r) => `<div class="tr"><span class="area">${r.area}</span><span>${r.today ?? `<span class="notyet">Not started yet</span>`}</span><span class="arrow" aria-hidden="true">→</span><span class="goalc">${r.goal}</span></div>`).join("")}
+  </div>`);
+});
+</script>
+</body>
+</html>
