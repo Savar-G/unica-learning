@@ -11,6 +11,7 @@ import { reportReturnPath } from "@/lib/report-view";
 import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 import { recordReportEmailClick } from "@/lib/email-clicks";
 import { firstPagesForReport } from "@/lib/first-pages-server";
+import { progressPreview } from "@/lib/progress-preview";
 import { TrackOnce } from "@/components/account";
 import { ParentReport } from "@/components/parent-assessment";
 import { ReportCard, type NewTestOffer, type ReportNextContext } from "@/components/report";
@@ -79,13 +80,13 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
   };
   if (shown) {
     const alerts = { password: query.password === "1", pin: query.pin === "1", deskError: query.desk === "error", existing: query.existing === "1" };
-    return <ParentReport view={view} child={shown} next={next} newTest={newTest} learning={learning} alerts={alerts} tracked={!cancelled} src={src} firstPages={firstPages} />;
+    return <ParentReport view={view} child={shown} next={next} newTest={newTest} learning={learning} alerts={alerts} tracked={!cancelled} src={src} firstPages={firstPages} progress={progressPreview(view)} />;
   }
   return (
     <SupportPage label="" title="" wide>
       {!cancelled && <TrackOnce event="report_open" props={{ src }} />}
       <p className="small rpt-back"><Link href="/account">← Your account</Link></p>
-      <ReportCard view={view} next={next} newTest={newTest} firstPages={firstPages} />
+      <ReportCard view={view} next={next} newTest={newTest} firstPages={firstPages} progress={progressPreview(view)} />
     </SupportPage>
   );
 }

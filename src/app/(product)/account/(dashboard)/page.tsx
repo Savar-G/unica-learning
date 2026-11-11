@@ -78,12 +78,13 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
   const timeZone = familyZone({ timeZone: parent.time_zone, postal: parent.postal, province: familyProvince(children) });
   // Parent home (#301): each child's current workbook (the newest shipped one) and the desk, which needs the PIN.
   // D-293: show only existing gated chat usage and saved notes. Voice follows later.
-  // The prediction from each child's newest report (round r-progress-preview-5).
-  const [current, pinSet, chats, scansEnabled, notes, noticeDue, planClosed, progress] = await Promise.all([
+  const [current, pinSet, chats, scansEnabled, notes, noticeDue, planClosed] = await Promise.all([
     currentWorkbooks(db, children.map((c) => c.id)), pinIsSet(parentUser),
     parentChatUsage(db, parentUser, children, timeZone), scanPagesAccess(parentUser), latestParentMayaNotes(db, parentUser, children.map((c) => c.id)), mayaNoticeDueForFamily(parentUser, children), closedNoteFor(parentUser, !!dashboard),
-    homeProgress(db, parentUser, reports ?? []),
   ]);
+  // The goal sentence from the newest report (round r-progress-preview-5): only for the child shown (the dashboard shows
+  // one) and only until the first workbook has shipped, when the real books take over.
+  const progress = await homeProgress(db, parentUser, (reports ?? []).filter((r) => !current.has(r.child_id) && (!dashboard || !opening || r.child_id === opening.id)));
   // Everyone else gets today's Parent home below.
   if (dashboard) {
     const overview = await dashboardOverview(dashboard, addressed);

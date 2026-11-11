@@ -240,7 +240,7 @@ export function reportEmail({ view: v, parentName, url, unsubscribeUrl, offer = 
         `${progress.sentence.lead}${progress.sentence.goal}${progress.sentence.by ? ` by ${progress.sentence.by}` : ""}.`,
         [`Today: ${progress.todayLabel}. ${progress.goalMonth ? `By ${progress.goalMonth}` : "The goal"}: ${progress.goalLabel}.`,
           ...progress.rows.map((r) => `- ${r.area}: ${r.today ?? "not started yet"} -> ${r.goal}`)].join("\n"),
-        [`How we get ${name} there`, ...progress.steps.map((s, i) => `${i + 1}. ${s.title}: ${s.text}`), progress.basis].join("\n"),
+        [`How we get ${name} there`, ...progress.steps.map((s, i) => `${i + 1}. ${s.title}: ${s.text}`), ...progress.stages.map((st) => `- ${st.label}: ${st.months ?? `${st.books} workbooks`}`), progress.basis].join("\n"),
       ].join("\n\n")
     : null;
   const moreStrengths = (strengths?.length ?? 0) - shownStrengths.length;
@@ -400,13 +400,13 @@ ${progress ? `<tr><td style="padding:34px 20px 0">
 <tr><td width="50%" style="padding:12px 14px;background:#faf9f7"><span style="font-family:${MONO};font-size:11px;letter-spacing:0.05em;text-transform:uppercase;color:${INK_2}">Today</span><br><span style="font-size:17px">${esc(progress.todayLabel)}</span></td>
 <td width="50%" style="padding:12px 14px;background:${PROGRESS_GOAL_HEAD}"><span style="font-family:${MONO};font-size:11px;letter-spacing:0.05em;text-transform:uppercase;color:${INK_2}">${esc(progress.goalMonth ? `By ${progress.goalMonth}` : "The goal")}</span><br><span style="font-size:17px">${esc(progress.goalLabel)}</span></td></tr>
 ${progress.rows.map((r) => `<tr><td colspan="2" style="padding:12px 14px 0;border-top:1px solid ${LINE_SOFT};font-family:${MONO};font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:${INK_2}">${esc(r.area)}</td></tr>
-<tr><td style="padding:6px 14px 12px;font-size:15px;line-height:1.4;vertical-align:top">${r.today ? esc(r.today) : `<i style="color:#8a8a93">Not started yet</i>`}</td>
+<tr><td style="padding:6px 14px 12px;font-size:15px;line-height:1.4;vertical-align:top">${r.today ? esc(r.today) : `<i style="color:${INK_2}">Not started yet</i>`}</td>
 <td style="padding:6px 14px 12px;font-size:15px;line-height:1.4;font-weight:600;vertical-align:top;background:${PROGRESS_GOAL}"><span style="color:${INK_2};font-weight:400">&rarr;</span>&nbsp; ${esc(r.goal)}</td></tr>`).join("\n")}
 </table>
 <p style="margin:22px 0 8px;font-family:${MONO};font-size:12px;letter-spacing:0.05em;text-transform:uppercase;color:${INK_2}">How we get ${esc(name)} there</p>
 ${progress.steps.map((s, i) => `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 8px"><tr><td style="background:${CARD};border-radius:10px;padding:14px 16px">
 ${p(`<b>${i + 1}. ${esc(s.title)}</b><br>${esc(s.text)}`, "margin:0;font-size:15px;line-height:1.5")}
-${i === 0 ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:10px 0 6px"><tr>${progress.books.map((g) => `<td style="padding:0 2px 0 0"><div style="width:12px;height:14px;border-radius:2px;background:${GRADE_BOOK[g % 4]}"></div></td>`).join("")}</tr></table>
+${i === 0 ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:10px 0 6px"><tr>${progress.stages.map((st) => `<td width="${Math.max(1, Math.round(st.books / progress.books.length * 100))}%" height="14" bgcolor="${GRADE_BOOK[st.grade % 4]}" style="background:${GRADE_BOOK[st.grade % 4]};font-size:1px;line-height:14px;border-right:2px solid ${CARD}">&nbsp;</td>`).join("")}</tr></table>
 ${p(progress.stages.map((st) => `<span style="color:${GRADE_BOOK[st.grade % 4]}">&#9632;</span> ${esc(st.label)}${st.months ? `: ${esc(st.months)}` : `: ${st.books} workbooks`}`).join("<br>"), `margin:0;font-family:${MONO};font-size:12px;line-height:1.6;color:${INK_2}`)}` : ""}
 </td></tr></table>`).join("\n")}
 ${p(esc(progress.basis), `margin:6px 0 0;font-size:13px;color:${INK_2}`)}

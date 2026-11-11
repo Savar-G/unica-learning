@@ -377,6 +377,9 @@ describe("progress preview (round r-progress-preview-5)", () => {
     expect(email.html).toContain(`We can help ${p.name} reach a <b style="font-weight:600">${p.sentence.goal}</b>`);
     expect(email.html).toContain(p.rows[1].goal);
     expect(email.html).toContain("How we get");
+    expect(email.text).toContain(`- ${p.stages[0].label}: ${p.stages[0].months}`);
+    // One cell per grade, never one per book: a long path would be wider than the 600 px column.
+    expect(email.html.match(/bgcolor="#2fb37a"/g)?.length ?? 0).toBe(1);
     const quiet = reportEmail({ unsubscribeUrl: UNSUB, view: v, parentName: "Priya", url: URL, offer: false });
     expect(quiet.text).not.toContain("We can help");
     expect(quiet.html).not.toContain("We can help");

@@ -45,7 +45,7 @@ describe("progressPreview", () => {
     expect(p.goalMonth).toBe("September 2027");
     expect(p.sentence).toEqual({ lead: "We can help Leah reach a ", goal: "grade 3 level", by: "September 2027" });
     expect(p.stages).toEqual([
-      { grade: 1, label: "Grade 1", books: 10, months: "Dec to May 2027" },
+      { grade: 1, label: "Grade 1", books: 10, months: "Dec 2026 to May 2027" },
       { grade: 2, label: "Grade 2", books: 10, months: "May to Sep 2027" },
     ]);
     expect(p.basis).toContain("from workbook 1 in December 2026");
@@ -78,6 +78,24 @@ describe("progressPreview", () => {
     expect(p.sentence.by).toBeNull();
     expect(p.stages.every((s) => s.months === null)).toBe(true);
     expect(p.basis).not.toContain("December");
+  });
+
+  it("puts the start year on a grade's first month when the grade crosses a new year", () => {
+    // Tested 2026-08-20: Book 1 on 2026-09-24; grade 1 runs 10 books, to mid-February 2027.
+    const p = progressPreview(view(1, 3, firstLevel(1), { completedAt: "2026-08-20T20:00:00Z" }))!;
+    expect(p.stages[0].months).toBe("Sep 2026 to Feb 2027");
+    expect(p.stages[1].months).toMatch(/^Feb to \w{3} 2027$/);
+  });
+
+  it("shows nothing once the goal date is past, only when the caller passes the time", () => {
+    const v = view(1, 3);
+    expect(progressPreview(v, undefined, Date.parse("2027-09-01T00:00:00Z"))).not.toBeNull();
+    expect(progressPreview(v, undefined, Date.parse("2027-10-01T00:00:00Z"))).toBeNull();
+    expect(progressPreview(v)).not.toBeNull();
+  });
+
+  it("does not say which grade the books start from, so it never disagrees with today's level", () => {
+    expect(progressPreview(view(3, 3, firstLevel(1)))!.steps[0].text).toMatch(/take Leah to a grade 5 level\.$/);
   });
 
   it("says the plan's pages a day and minutes", () => {

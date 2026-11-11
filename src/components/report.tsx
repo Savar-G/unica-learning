@@ -60,7 +60,7 @@ import {
   workingLevelNote,
 } from "@/lib/report-view";
 import { ReportFirstPages, type FirstPagesView } from "@/components/report-first-pages";
-import { progressPreview, type ProgressPreview } from "@/lib/progress-preview";
+import type { ProgressPreview } from "@/lib/progress-preview";
 import "./report.css";
 
 const NO_NEXT: ReportNextContext = { src: "account", asked: false, start: { saved: null, joined: false, cancelled: false } };
@@ -79,9 +79,11 @@ export interface NewTestOffer {
  * `nextSlot` replaces the next-step row: the public sample report shows its own button there. `newTest` (#189): when the
  * next test opens, and the button under the reliability note; without it the note names no time (the admin's copy).
  * `actionBeside` (#552): the dashboard shows the next step beside the report, so the report has no next-step row.
+ * `progress`: the progress preview (src/lib/progress-preview.ts), computed on the server by the page: it reads the whole BC
+ * curriculum, which must not reach a browser bundle, and this file is imported by client previews.
  * The results call sits after the working level for parents and on the sample report, not on the admin's copy.
  */
-export function ReportCard({ view, next = NO_NEXT, readOnly = false, nextSlot, newTest = null, actionBeside = false, firstPages = null }: { view: ReportView; next?: ReportNextContext; readOnly?: boolean; nextSlot?: ReactNode; newTest?: NewTestOffer | null; actionBeside?: boolean; firstPages?: FirstPagesView | null }) {
+export function ReportCard({ view, next = NO_NEXT, readOnly = false, nextSlot, newTest = null, actionBeside = false, firstPages = null, progress = null }: { view: ReportView; next?: ReportNextContext; readOnly?: boolean; nextSlot?: ReactNode; newTest?: NewTestOffer | null; actionBeside?: boolean; firstPages?: FirstPagesView | null; progress?: ProgressPreview | null }) {
   return (
     <article className="rpt" aria-labelledby="rpt-title">
       <ReportHeader view={view} />
@@ -92,7 +94,7 @@ export function ReportCard({ view, next = NO_NEXT, readOnly = false, nextSlot, n
       {bookOneView(view) ? <ReportBookOne view={view} /> : <ReportHelp view={view} />}
       {/* The first pages of workbook 1 (docs/first-pages.md), when ready: the action only while no card is saved. */}
       {firstPages && <ReportFirstPages name={view.childName} view={firstPages} offer={!readOnly && view.model.callToAction === "card" && !next.start.saved} />}
-      <ReportProgress preview={progressPreview(view)} />
+      <ReportProgress preview={progress} />
       {actionBeside ? null : nextSlot ? <Row id={NEXT_STEP_ANCHOR} title="Next step">{nextSlot}</Row> : readOnly ? <Row id={NEXT_STEP_ANCHOR} title="Next step"><p>{nextStep(view).title}</p></Row> : <ReportNextStep view={view} next={next} />}
       <div className="rpt-details-h" id={DETAILS_ID}>
         <p className="eyebrow">The details</p>
@@ -487,7 +489,7 @@ export function ReportProgress({ preview: p }: { preview: ProgressPreview | null
             <span>{step.text}</span>
             {i === 0 && (
               <>
-                <span className="rpt-goal-books" aria-hidden="true">{p.books.map((g, n) => <i key={n} className={`is-g${g % 4}`} />)}</span>
+                <span className="rpt-goal-books" aria-hidden="true">{p.stages.map((s) => <i key={s.grade} className={`is-g${s.grade % 4}`} style={{ flexGrow: s.books }} />)}</span>
                 <span className="rpt-goal-legend">{p.stages.map((s) => <span key={s.grade}><i className={`is-g${s.grade % 4}`} />{s.label}{s.months ? `: ${s.months}` : `: ${s.books} workbooks`}</span>)}</span>
               </>
             )}

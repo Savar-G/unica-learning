@@ -1,7 +1,8 @@
 // The progress preview on the parent's report, the report email and Parent home (round r-progress-preview-5, option P2,
 // Savar 2026-11-11): "We can help Leah reach a grade 3 level by September 2027", the skills today beside the skills
 // at that level, and how the books get there. Every date is computed here from the real plan pace; nothing is typed in.
-// Pure: no network, database, clock or AI. It reads the BC curriculum (server only: never import it into a browser file).
+// Pure: no network, database or AI; the clock only when a caller passes `now`. It reads the whole BC curriculum, so it is
+// server only (the import above fails a browser build): pages compute it and pass the result to the report as a prop.
 //
 // The rules:
 // - The goal: a child below the school grade aims for the school grade; a child at the school grade aims two grades up;
@@ -13,6 +14,7 @@
 // - Book 1 starts START_LEAD_DAYS after the test (the book is made and mailed). Open decision for Savar: the real
 //   delivery date, once one exists, can replace it.
 // - When a level has no planned book count the pace cannot be computed: the preview shows the path without dates.
+import "server-only";
 import type { Level } from "@/lib/assessment";
 import { formatInZone, zoneForProvince } from "@/lib/family-time";
 import type { ReportView } from "@/lib/report-view";
@@ -98,7 +100,11 @@ export function skillRows(today: Level, goal: Level): ProgressPreview["rows"] {
  * The preview for one report, or null: no workbook 1 (a family on the waitlist, a failed plan), a start level the
  * curriculum does not hold, or a goal the start level already reaches.
  */
-export function progressPreview(v: ReportView, curriculum: Curriculum | null = curriculumFor("bc")): ProgressPreview | null {
+/**
+ * `now` (a time in ms): Parent home passes it, so a goal date already past shows nothing instead of a stale promise. The
+ * report page and the email pass none: they are about the day of the test.
+ */
+export function progressPreview(v: ReportView, curriculum: Curriculum | null = curriculumFor("bc"), now?: number): ProgressPreview | null {
   const book = v.bookOne;
   if (!book || !curriculum || v.model.callToAction !== "card") return null;
   const start = curriculum.levels.find((l) => l.number === book.level);
@@ -116,6 +122,8 @@ export function progressPreview(v: ReportView, curriculum: Curriculum | null = c
   const month = (n: number) => formatInZone(startAt + n * BOOK_MS, zone, { month: "long", year: "numeric" });
   const short = (n: number) => formatInZone(startAt + n * BOOK_MS, zone, { month: "short" });
   const shortYear = (n: number) => formatInZone(startAt + n * BOOK_MS, zone, { month: "short", year: "numeric" });
+  const yearOf = (n: number) => formatInZone(startAt + n * BOOK_MS, zone, { year: "numeric" });
+  if (paced && now !== undefined && startAt + books.length * BOOK_MS < now) return null;
   const goalMonth = paced ? month(books.length) : null;
   const name = v.childName;
   const stages: ProgressPreview["stages"] = [];
@@ -124,7 +132,7 @@ export function progressPreview(v: ReportView, curriculum: Curriculum | null = c
     if (first < 0) continue;
     const count = books.filter((b) => b === g).length;
     const end = first + count;
-    stages.push({ grade: g as Level, label: gradeWord(g as Level), books: count, months: paced ? `${short(first)} to ${shortYear(end)}` : null });
+    stages.push({ grade: g as Level, label: gradeWord(g as Level), books: count, months: paced ? `${yearOf(first) === yearOf(end) ? short(first) : shortYear(first)} to ${shortYear(end)}` : null });
   }
   const pages = span(book.pagesADay);
   const minutes = book.minutes ? `About ${book.minutes} minutes a day` : `About ${span(start.dailyMinutes)} minutes a day`;
@@ -142,7 +150,7 @@ export function progressPreview(v: ReportView, curriculum: Curriculum | null = c
     books,
     stages,
     steps: [
-      { title: "A new workbook every 2 weeks", text: `Printed for ${name} and mailed home. ${books.length} workbooks take ${name} from ${gradeLower(startGrade)} to ${gradeLower(goal)}.` },
+      { title: "A new workbook every 2 weeks", text: `Printed for ${name} and mailed home. ${books.length} workbooks take ${name} to a ${gradeLower(goal)} level.` },
       { title: `${pages} pages a day, ${DAYS_A_WEEK} days a week`, text: `${minutes}, in pencil. Each day mixes new work, practice, review and a challenge problem.` },
       { title: "We mark the finished pages", text: `You scan the pages with your phone. We mark them, and the next workbook adds what ${name} needs and moves on where ${name} is secure.` },
     ],
