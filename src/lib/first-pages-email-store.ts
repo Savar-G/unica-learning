@@ -18,6 +18,9 @@ import { WORKBOOK_FILES_BUCKET } from "@/lib/workbook-content";
 
 /** A sample email goes only this long after its test finished; later it would be about an old test. */
 export const FIRST_PAGES_EMAIL_DAYS = 7;
+/** Ready sets read at a time, and the most one run looks through. */
+const DUE_PAGE = 100;
+const DUE_SCAN_MOST = 2000;
 
 function must<T>(r: { data: T; error: { message: string } | null }, what: string): T {
   if (r.error) throw new Error(`first pages email ${what}: ${r.error.message}`);
@@ -60,28 +63,34 @@ export function firstPagesEmailLedger(admin: SupabaseClient<Database>): SendLedg
 export function firstPagesEmailStore(admin: SupabaseClient<Database>, stripe: Stripe | null): FirstPagesEmailStore {
   return {
     async due(limit) {
-      const sets = must(await admin.from("workbook_first_pages").select("id, assessment_id, parent_id, child_id, result, decision, kept_by")
-        .eq("status", "ready").is("kept_by", null).order("ready_at").limit(limit * 3), "due load") ?? [];
       const out: DueFirstPagesEmail[] = [];
-      for (const s of sets) {
-        if (out.length >= limit) break;
-        if (s.decision === "drop") continue;
-        const result = s.result as unknown as FirstPagesResult | null;
-        if (!result?.files?.pdf?.path) continue;
-        const log = must(await admin.from("email_log").select("id, status, attempts").eq("assessment_id", s.assessment_id).eq("kind", "first_pages").maybeSingle(), "log load");
-        if (log && (log.status !== "failed" || log.attempts >= MAX_SEND_ATTEMPTS)) continue;
-        const [parent, child, report] = await Promise.all([
-          admin.from("parents").select("name, email").eq("id", s.parent_id).maybeSingle(),
-          admin.from("children").select("first_name").eq("id", s.child_id).maybeSingle(),
-          admin.from("reports").select("id").eq("assessment_id", s.assessment_id).maybeSingle(),
-        ]);
-        const p = must(parent, "parent load"), c = must(child, "child load"), r = must(report, "report load");
-        if (!p || !c || !r) continue;
-        out.push({
-          firstPagesId: s.id, assessmentId: s.assessment_id, reportId: r.id, parentId: s.parent_id, childId: s.child_id,
-          parentName: p.name, parentEmail: p.email, childName: c.first_name, pdfPath: result.files.pdf.path,
-          retry: log ? { logId: log.id, attempts: log.attempts } : null,
-        });
+      // Page through the ready sets, oldest first, past those whose email went: a long tail of sent ones never hides a
+      // newer set. Only sets of tests that finished within FIRST_PAGES_EMAIL_DAYS can still be sent.
+      const since = new Date(Date.now() - FIRST_PAGES_EMAIL_DAYS * 86_400_000).toISOString();
+      for (let from = 0; out.length < limit && from < DUE_SCAN_MOST; from += DUE_PAGE) {
+        const sets = must(await admin.from("workbook_first_pages").select("id, assessment_id, parent_id, child_id, result, decision, kept_by")
+          .eq("status", "ready").is("kept_by", null).gte("ready_at", since).order("ready_at").order("id").range(from, from + DUE_PAGE - 1), "due load") ?? [];
+        for (const s of sets) {
+          if (out.length >= limit) break;
+          if (s.decision === "drop") continue;
+          const result = s.result as unknown as FirstPagesResult | null;
+          if (!result?.files?.pdf?.path) continue;
+          const log = must(await admin.from("email_log").select("id, status, attempts").eq("assessment_id", s.assessment_id).eq("kind", "first_pages").maybeSingle(), "log load");
+          if (log && (log.status !== "failed" || log.attempts >= MAX_SEND_ATTEMPTS)) continue;
+          const [parent, child, report] = await Promise.all([
+            admin.from("parents").select("name, email").eq("id", s.parent_id).maybeSingle(),
+            admin.from("children").select("first_name").eq("id", s.child_id).maybeSingle(),
+            admin.from("reports").select("id").eq("assessment_id", s.assessment_id).maybeSingle(),
+          ]);
+          const p = must(parent, "parent load"), c = must(child, "child load"), r = must(report, "report load");
+          if (!p || !c || !r) continue;
+          out.push({
+            firstPagesId: s.id, assessmentId: s.assessment_id, reportId: r.id, parentId: s.parent_id, childId: s.child_id,
+            parentName: p.name, parentEmail: p.email, childName: c.first_name, pdfPath: result.files.pdf.path,
+            retry: log ? { logId: log.id, attempts: log.attempts } : null,
+          });
+        }
+        if (sets.length < DUE_PAGE) break;
       }
       return out;
     },
@@ -98,11 +107,16 @@ export function firstPagesEmailStore(admin: SupabaseClient<Database>, stripe: St
         ]);
         if (!must(parent, "parent load") || must(parent, "parent load")!.deletion_requested_at || must(removing, "child deletion load")) return "the family or the child is being deleted";
         if (await parentUnsubscribed(admin, d.parentId)) return "the parent unsubscribed";
-        const cards = must(await admin.from("card_setups").select("child_id").eq("parent_id", d.parentId).not("card_saved_at", "is", null).limit(1), "card load") ?? [];
-        if (cards.length) return "the family saved a card";
-        const card = await checkCard({ parentId: d.parentId, childId: d.childId }, savedCards(admin, stripe));
-        if (card.state === "saved") return "the family saved a card";
-        if (card.state === "unknown") return "the card could not be checked";
+        // Every card setup of the family: a stored saved card stops it; each one not marked saved is asked of Stripe
+        // (a sibling's card may be saved there before the row says so), and an answer that is not known stops it too.
+        const setups = must(await admin.from("card_setups").select("child_id, card_saved_at").eq("parent_id", d.parentId), "card load") ?? [];
+        if (setups.some((c) => c.card_saved_at)) return "the family saved a card";
+        const cards = savedCards(admin, stripe);
+        for (const childId of new Set([d.childId, ...setups.map((c) => c.child_id)])) {
+          const card = await checkCard({ parentId: d.parentId, childId }, cards);
+          if (card.state === "saved") return "the family saved a card";
+          if (card.state === "unknown") return "the card could not be checked";
+        }
         return null;
       } catch (e) {
         return `the checks could not be read: ${e instanceof Error ? e.message : String(e)}`;

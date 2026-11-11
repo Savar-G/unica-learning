@@ -136,6 +136,9 @@ export async function loadAdminFirstPages(childId: string): Promise<{ sets: Admi
     firstPagesOfChild(admin, childId),
     admin.from("assessments").select("id").eq("child_id", childId).eq("status", "completed").order("completed_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
+  const holders = sets.flatMap((s) => (s.keptBy ? [s.keptBy] : []));
+  const active = new Set(holders.length ? ((await admin.from("workbook_runs").select("id, status").in("id", holders)).data ?? [])
+    .filter((r) => r.status === "queued" || r.status === "running" || r.status === "done").map((r) => r.id) : []);
   const out: AdminFirstPagesSet[] = [];
   for (const s of sets) {
     const r = s.result;
@@ -144,7 +147,7 @@ export async function loadAdminFirstPages(childId: string): Promise<{ sets: Admi
     const url = new Map(signed.map((x) => [x.path, x.signedUrl]));
     out.push({
       id: s.id, assessmentId: s.assessmentId, status: s.status, attempts: s.attempts, error: s.error, createdAt: s.createdAt, readyAt: s.readyAt,
-      keptBy: s.keptBy, decision: s.decision,
+      keptBy: s.keptBy, keptActive: !!s.keptBy && active.has(s.keptBy), decision: s.decision,
       counts: r ? { dayPages: r.counts.dayPages, writerCalls: r.counts.writerCalls, solveChecks: r.counts.solveChecks, usd: r.counts.usd } : null,
       images: r ? r.files.images.flatMap((i) => (url.get(i.path) ? [{ number: i.number, url: url.get(i.path)! }] : [])) : [],
       pdfUrl: r ? url.get(r.files.pdf.path) ?? null : null,

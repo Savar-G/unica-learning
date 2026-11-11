@@ -19,7 +19,11 @@ interface Held extends FirstPagesRow {
 
 const json = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
 
-export function memoryFirstPagesStore(o: { now: () => Date; newId: () => string }) {
+export function memoryFirstPagesStore(o: {
+  now: () => Date; newId: () => string;
+  /** Whether the child has a Workbook 1 run that is waiting, working or done (finish_workbook_first_pages refuses then). */
+  runActive?: (childId: string) => Promise<boolean>;
+}) {
   const sets = new Map<string, Held>();
   const iso = () => o.now().toISOString();
   const holding = (id: string, lease: string) => {
@@ -115,6 +119,10 @@ export function memoryFirstPagesStore(o: { now: () => Date; newId: () => string 
       const r = holding(id, lease);
       if (!r) return false;
       r.aiCalls.push(...json(calls));
+      if (await o.runActive?.(r.childId)) {
+        Object.assign(r, { status: "unavailable", lease: null, error: "Workbook 1 started before the first pages were ready." });
+        return false;
+      }
       Object.assign(r, { status: "ready", lease: null, result: json(result), readyAt: iso(), heartbeatAt: iso(), error: null });
       return true;
     },

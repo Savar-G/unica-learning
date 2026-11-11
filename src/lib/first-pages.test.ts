@@ -43,7 +43,9 @@ function setup(o: { inputs?: ChildInputs; itemPolicy?: "approved-v1" | "legacy";
   const newId = () => `00000000-0000-4000-8000-${String(++ids).padStart(12, "0")}`;
   let tokens = 0;
   const qrToken = () => `token-${String(++tokens).padStart(12, "0")}`;
-  const first = memoryFirstPagesStore({ now: () => clock, newId });
+  // (Late bound: the runs are made below.)
+  const first = memoryFirstPagesStore({ now: () => clock, newId,
+    runActive: async (childId) => (await allRuns()).some((r) => r.childId === childId && (r.status === "queued" || r.status === "running" || r.status === "done")) });
   const files = memoryWorkbookFiles();
   const ai = fakeAiClient({ answer: (r) => { if (o.fail?.()) throw new Error("the AI provider answered 500"); return fakeWorkbookItems(r); } });
   const inputs: Record<string, ChildInputs> = { [CHILD]: o.inputs ?? child(), [OTHER_CHILD]: child({ parentId: OTHER_PARENT, name: "Kai" }) };

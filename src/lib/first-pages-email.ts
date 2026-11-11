@@ -114,13 +114,15 @@ export async function runFirstPagesEmails(store: FirstPagesEmailStore, o: {
   for (const d of due) {
     if (o.inTime && !o.inTime()) break;
     try {
+      // The PDF first: the checks are the last thing before the claim, so a card saved or an unsubscribe during the
+      // download still stops the email.
+      const pdf = await store.pdf(d.pdfPath);
       const reason = await store.blocked(d);
       if (reason) {
         counts.blocked++;
         console.info("[first pages email] not sent", d.firstPagesId, reason);
         continue;
       }
-      const pdf = await store.pdf(d.pdfPath);
       const { token, hash } = o.newToken();
       const email = firstPagesEmail({ parentName: d.parentName, childName: d.childName, url: firstPagesActionUrl(o.origin, d.reportId), unsubscribeUrl: `${o.origin}/unsubscribe?t=${token}` });
       const message: EmailMessage = {

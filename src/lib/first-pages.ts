@@ -247,6 +247,18 @@ export async function runFirstPagesJob(id: string, deps: FirstPagesJobDeps): Pro
     }
   };
   const stored: string[] = [];
+  // The finish's answer can be lost after the database stored it: then the files may be the ready set's own.
+  let finishing: string | null = null;
+  /** Removes this call's files, unless the set may be ready with them (a lost finish answer). */
+  const removeFiles = async () => {
+    if (!stored.length) return;
+    if (finishing) {
+      const now = await store.get(id).catch(() => undefined);
+      // Unknown, or ready with these files: keep them. The family's and the child's deletion remove the folder.
+      if (now === undefined || (now?.status === "ready" && now.result?.files.pdf.path === finishing)) return;
+    }
+    await deps.files.remove(stored).catch(() => undefined);
+  };
   try {
     if (!deps.ai || !deps.solver) return await end("retry", "The AI is off here: no Claude subscription and no OPENROUTER_API_KEY.");
     const inputs = await deps.source.inputs(set.childId);
@@ -363,13 +375,19 @@ export async function runFirstPagesJob(id: string, deps: FirstPagesJobDeps): Pro
       },
       counts: { dayPages: written.pages.length, writerCalls, solveChecks: solves.count, usd: known.length ? known.reduce((a, b) => a + b, 0) : null, calls: calls_ },
     };
+    finishing = pdf.path;
     if (!(await store.finish(id, lease, result, calls_))) {
-      await deps.files.remove(stored).catch(() => undefined);
+      await removeFiles();
       return "stale";
     }
     return "ready";
   } catch (e) {
-    if (stored.length) await deps.files.remove(stored).catch(() => undefined);
+    await removeFiles();
+    if (finishing) {
+      // The finish may have been stored: the set says.
+      const now = await store.get(id).catch(() => null);
+      if (now?.status === "ready") return "ready";
+    }
     if (e instanceof Lost || lost) return "stale";
     if (e instanceof WorkbookRefusal) return await end("unavailable", e.message);
     // The plan's capacity check gives the same answer for the same plan and id: a new id, once more within the attempts.
