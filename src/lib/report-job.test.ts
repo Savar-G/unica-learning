@@ -72,7 +72,7 @@ const cohort: ComparisonTest[] = [
  * (#126, #195). `comparison` counts the comparison reads.
  */
 function database({
-  unsubscribed = false, parent = PRIYA as typeof PRIYA | null, child = true, helped = false, rushed = false, learning = null as ProfileLearning | null,
+  unsubscribed = false, parent = PRIYA as (typeof PRIYA & { phone?: string | null }) | null, child = true, helped = false, rushed = false, learning = null as ProfileLearning | null,
 } = {}) {
   const tables: MemoryReportTables = {
     reports: [],
@@ -222,6 +222,17 @@ describe("the stored report", () => {
 });
 
 describe("the report emails", () => {
+  it.each(["Priya Shah", "Priya\nPhone: +12125550123\nShah"])("sends the stored phone but removes it from the saved copy for name %j", async (name) => {
+    const db = database({ parent: { ...PRIYA, name, phone: "+16045550123" } });
+    const mail = memoryTransport();
+    const book = memoryReportLedger();
+    await run(db, mail, book);
+    expect(mail.delivered[1].text).toContain("+16045550123");
+    expect(mail.delivered[1].html).toContain('href="tel:+16045550123"');
+    const copy = book.keptCopy({ report: "report-1", email: "alert" });
+    expect(copy?.message.text).toContain("[phone removed]");
+    expect(JSON.stringify(copy)).not.toContain("+16045550123");
+  });
   it("sends the parent email and the alert once each through the delivery module; a second run sends nothing", async () => {
     const db = database();
     const mail = memoryTransport();
@@ -234,7 +245,7 @@ describe("the report emails", () => {
     expect(report.text).toContain(`See Asha's full report: ${ORIGIN}/account/report/report-1?src=email`);
     expect(alert).toMatchObject({ sender: { to: "savar" }, replyTo: "priya@family.ca" });
     expect(alert.text).toContain("Parent email: sent to priya@family.ca");
-    expect(alert.text).toContain(`Report: ${ORIGIN}/admin/assessments/${TEST}`);
+    expect(alert.text).toContain(`Report: ${ORIGIN}/admin/reports/report-1/deck`);
 
     // CASL (#80): the email offers a plan, so it carries the unsubscribe link and the one-click headers. The claim
     // stored the hash of the link's token, so the link works.

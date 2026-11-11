@@ -163,6 +163,7 @@ export interface ParentRow {
   name: string;
   email: string;
   postal: string | null;
+  phone?: string | null;
   source: Record<string, string>;
 }
 
@@ -175,7 +176,7 @@ export interface ChildRow {
   province: Province;
 }
 
-const PARENT_COLUMNS = "id, created_at, name, email, postal, source";
+const PARENT_COLUMNS = "id, created_at, name, email, phone, postal, source";
 const CHILD_COLUMNS = "id, created_at, parent_id, first_name, grade, province";
 
 const parentsById = (a: AdminSession, ids: Iterable<string>) =>

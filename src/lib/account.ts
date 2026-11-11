@@ -34,6 +34,7 @@ export interface ChildInput {
  */
 export interface FinishPayload {
   name: string;
+  phone: string;
   child: ChildInput;
   /** Referrer and UTM tags, so we know which channel brought each parent. */
   source: Record<string, string>;
