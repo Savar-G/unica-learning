@@ -437,7 +437,7 @@ describe("every email log kind (B1)", () => {
   it("has admin words for each kind the email log allows, in the admin's order", () => {
     expect(EMAIL_KINDS.map((k) => k.kind)).toEqual([
       "start", "start_followup", "continue", "come_back", "report", "alert", "unsubscribe", "maya_daily", "maya_weekly",
-      "maya_unsubscribe", "monthly_summary", "monthly_summary_unsubscribe", "scan_inactivity",
+      "maya_unsubscribe", "monthly_summary", "monthly_summary_unsubscribe", "scan_inactivity", "first_pages",
     ]);
     for (const kind of LOG_KINDS) expect(EMAIL_KINDS.some((k) => k.kind === kind)).toBe(true);
   });

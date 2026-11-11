@@ -64,6 +64,9 @@ export function resendTransport({ fetch: request = (input, init) => fetch(input,
             html: message.html,
             reply_to: message.replyTo,
             headers: message.headers,
+            ...(message.attachments?.length ? {
+              attachments: message.attachments.map((a) => ({ filename: a.filename, content: Buffer.from(a.content).toString("base64"), content_type: a.contentType })),
+            } : {}),
           }),
           signal: options?.signal ? AbortSignal.any([controller.signal, options.signal]) : controller.signal,
         });

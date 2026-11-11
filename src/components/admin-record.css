@@ -156,3 +156,10 @@
   .rec-danger { padding: var(--s4); }
   .rec-bars li { grid-template-columns: minmax(0, 1fr) 72px 3.2em; }
 }
+
+/* The first pages of Workbook 1 on the child page (docs/first-pages.md). */
+.adm-fp { display: grid; gap: 12px; }
+.adm-fp-set { display: grid; gap: 6px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
+.adm-fp-set p { margin: 0; }
+.adm-fp-pages { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.adm-fp-pages img { display: block; width: 120px; height: auto; border: 1px solid var(--line); border-radius: 4px; background: #fff; }

@@ -60,6 +60,7 @@ import {
   resultsCall,
   workingLevelNote,
 } from "@/lib/report-view";
+import { ReportFirstPages, type FirstPagesView } from "@/components/report-first-pages";
 import "./report.css";
 
 const NO_NEXT: ReportNextContext = { src: "account", asked: false, start: { saved: null, joined: false, cancelled: false } };
@@ -80,7 +81,7 @@ export interface NewTestOffer {
  * `actionBeside` (#552): the dashboard shows the next step beside the report, so the report has no next-step row.
  * The results call sits after the working level for parents and on the sample report, not on the admin's copy.
  */
-export function ReportCard({ view, next = NO_NEXT, readOnly = false, nextSlot, newTest = null, actionBeside = false }: { view: ReportView; next?: ReportNextContext; readOnly?: boolean; nextSlot?: ReactNode; newTest?: NewTestOffer | null; actionBeside?: boolean }) {
+export function ReportCard({ view, next = NO_NEXT, readOnly = false, nextSlot, newTest = null, actionBeside = false, firstPages = null }: { view: ReportView; next?: ReportNextContext; readOnly?: boolean; nextSlot?: ReactNode; newTest?: NewTestOffer | null; actionBeside?: boolean; firstPages?: FirstPagesView | null }) {
   return (
     <article className="rpt" aria-labelledby="rpt-title">
       <ReportHeader view={view} />
@@ -89,6 +90,8 @@ export function ReportCard({ view, next = NO_NEXT, readOnly = false, nextSlot, n
       {BOOKING_URL && (!readOnly || nextSlot) && <Row id="rpt-call" title="Results call"><BookCall call={resultsCall(view)} /></Row>}
       <ReportWhere view={view} />
       {bookOneView(view) ? <ReportBookOne view={view} /> : <ReportHelp view={view} />}
+      {/* The first pages of workbook 1 (docs/first-pages.md), when ready: the action only while no card is saved. */}
+      {firstPages && <ReportFirstPages name={view.childName} view={firstPages} offer={!readOnly && view.model.callToAction === "card" && !next.start.saved} />}
       {actionBeside ? null : nextSlot ? <Row id={NEXT_STEP_ANCHOR} title="Next step">{nextSlot}</Row> : readOnly ? <Row id={NEXT_STEP_ANCHOR} title="Next step"><p>{nextStep(view).title}</p></Row> : <ReportNextStep view={view} next={next} />}
       <div className="rpt-details-h" id={DETAILS_ID}>
         <p className="eyebrow">The details</p>

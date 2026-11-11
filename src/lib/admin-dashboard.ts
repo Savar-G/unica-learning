@@ -136,6 +136,7 @@ const EMAIL_KIND_INFO: { readonly [K in EmailKind]: Omit<EmailKindInfo, "kind"> 
   monthly_summary: { label: "Monthly summary email", subject: "{month} summary: {child}", to: "Parent", trigger: "The 1st of the month at 7 a.m. family time, when a summary is offered" },
   monthly_summary_unsubscribe: { label: "Monthly summary unsubscribe", subject: "No email: the parent turned monthly summary emails off", to: "-", trigger: "Parent clicked unsubscribe in a monthly summary email" },
   scan_inactivity: { label: "Scan reminder", subject: "Ready to scan your next page?", to: "Parent", trigger: "Workbook delivered, then 4 days with no pages scanned" },
+  first_pages: { label: "First pages email", subject: "The first pages of {child}'s Workbook 1", to: "Parent", trigger: "Test finished, first pages ready, no card saved (switched off until approved)" },
 };
 /** Every email the site logs, in the admin's order. */
 export const EMAIL_KINDS: readonly EmailKindInfo[] = (Object.keys(EMAIL_KIND_INFO) as EmailKind[]).map((kind) => ({ kind, ...EMAIL_KIND_INFO[kind] }));
@@ -160,8 +161,8 @@ export function deliveryLine(e: EmailEvent): { text: string; bad: boolean } | nu
 }
 /** "Clicked 2 times" for an email the parent clicked (D-105), else null. */
 export const clicksText = (e: EmailEvent) => (e.clicks ? `Clicked ${e.clicks.count === 1 ? "once" : `${e.clicks.count} times`}` : null);
-/** The kinds whose clicks are counted: every email to the parent with a counted button (not the alert to Savar, not an unsubscribe, not the Maya recap, which has no button, not the monthly summary or the scan reminder, whose links count no click). */
-export const countsClicks = (kind: EmailKind) => kind !== "alert" && kind !== "maya_daily" && kind !== "maya_weekly" && kind !== "monthly_summary" && kind !== "scan_inactivity" && !isUnsubscribe(kind);
+/** The kinds whose clicks are counted: every email to the parent with a counted button (not the alert to Savar, not an unsubscribe, not the Maya recap, which has no button, not the monthly summary, the scan reminder or the first pages email, whose links count no click). */
+export const countsClicks = (kind: EmailKind) => kind !== "alert" && kind !== "maya_daily" && kind !== "maya_weekly" && kind !== "monthly_summary" && kind !== "scan_inactivity" && kind !== "first_pages" && !isUnsubscribe(kind);
 /** The emails whose clicks are counted. */
 export const clickable = (e: EmailEvent) => countsClicks(e.kind);
 /** The dot of an email in the lists: failed when it did not reach the parent. */

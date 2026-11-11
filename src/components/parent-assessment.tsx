@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { SendLink, StartTest, TrackOnce } from "@/components/account";
 import { ReportCard, type NewTestOffer, type ReportNextContext } from "@/components/report";
+import type { FirstPagesView } from "@/components/report-first-pages";
 import { ReportNextActions } from "@/components/report-next";
 import type { StartState } from "@/lib/assessment";
 import { familyWhen, formatInZone, zoneForProvince } from "@/lib/family-time";
@@ -38,7 +39,7 @@ function LearnLink({ path, answered, name, forWorkbook }: { path: string; answer
   return <p className="small"><Link href={path}>{answered ? `How ${name} learns: change answers` : `Tell us how ${name} learns`}</Link>{forWorkbook && " (optional, for Workbook 1)"}</p>;
 }
 
-export function ParentReport({ view, child, next, newTest, learning, alerts, tracked, src, nextActions }: {
+export function ParentReport({ view, child, next, newTest, learning, alerts, tracked, src, nextActions, firstPages = null }: {
   view: ReportView;
   child: ChildView;
   next: ReportNextContext;
@@ -49,6 +50,8 @@ export function ParentReport({ view, child, next, newTest, learning, alerts, tra
   tracked: boolean;
   src: ReportSrc;
   nextActions?: ReactNode;
+  /** The first pages of workbook 1, when ready (docs/first-pages.md). */
+  firstPages?: FirstPagesView | null;
 }) {
   const name = view.childName;
   const zone = view.timeZone ?? zoneForProvince(view.province);
@@ -65,7 +68,7 @@ export function ParentReport({ view, child, next, newTest, learning, alerts, tra
       <p className="pd-sub">Finished on {reportDate(view)}.{opens !== null && !child.readOnly && ` The next test opens at ${familyWhen(opens, zone)}.`}</p>
       <div className="pd-split">
         <div className="pd-split-main">
-          <ReportCard view={view} next={next} newTest={view.model.reliability && !child.readOnly ? newTest : null} actionBeside />
+          <ReportCard view={view} next={next} newTest={view.model.reliability && !child.readOnly ? newTest : null} actionBeside firstPages={child.readOnly ? null : firstPages} />
         </div>
         <aside className="pd-split-rail" aria-label="Next step">
           {action && (

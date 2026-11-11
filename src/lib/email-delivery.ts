@@ -25,6 +25,15 @@ export interface EmailMessage {
   replyTo?: string;
   /** Extra mail headers, for example the RFC 8058 one-click unsubscribe headers. */
   headers?: Record<string, string>;
+  /** Files sent with the email (the first pages' PDF, docs/first-pages.md). The stored copy keeps only their description. */
+  attachments?: EmailAttachment[];
+}
+
+/** A file sent with an email. */
+export interface EmailAttachment {
+  filename: string;
+  contentType: "application/pdf";
+  content: Uint8Array;
 }
 
 /** What one send through the transport did. */

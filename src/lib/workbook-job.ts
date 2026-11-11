@@ -49,6 +49,7 @@ import {
   workbookCapacityPlan,
   prepareWorkbookCapacity,
   generateWorkbook,
+  pagesDigest,
   ResumeMismatch,
   type AttemptLedger,
   type CallStore,
@@ -208,6 +209,13 @@ export interface WorkbookRunStore {
   hasStoredWork(runId: string): Promise<boolean>;
   /** Stores the run's plan, with a heartbeat, only while `lease` holds the run (false: nothing stored); the first stays. */
   saveFrame(runId: string, lease: string, frame: RunFrame): Promise<boolean>;
+  /**
+   * Workbook 1 keeps the first pages (docs/first-pages.md), in one step under the lease, before the run has a plan or
+   * stored work: the run's draft key becomes the first pages' Workbook 1 id, their day pages and attempts become the
+   * run's, the plan is stored, and the first pages name the run. Refused when they are not ready, are hidden, another
+   * working or finished run keeps them, or a draft with that id exists.
+   */
+  adoptFirstPages?(runId: string, lease: string, firstPagesId: string, frame: RunFrame): Promise<AdoptResult>;
   /** Stores a finished day page (the first stored wins), with a heartbeat. */
   savePage(runId: string, lease: string, page: GeneratedPage): Promise<boolean>;
   /** Keeps the attempt's error and starts the next attempt; false too when no attempt is left. */
@@ -272,6 +280,11 @@ export interface RunFrame {
   planning?: RunPlanningCapture;
   workbooks: { number: number; levels: number[] }[];
   plan: WorkbookPlan;
+  /**
+   * Workbook 1 keeps the first pages its parent saw (docs/first-pages.md): their row, the day pages kept exactly, the
+   * cover's QR code, and "keep-plan" when the admin chose their plan after a refusal. Absent on other runs.
+   */
+  firstPages?: { id: string; pages: number[]; coverToken: string; decision?: "keep-plan" };
   versions: {
     /** curriculumVersion of the curriculum. */
     curriculum: string;
@@ -309,6 +322,11 @@ export interface WorkbookJobSource {
   inputs(childId: string): Promise<ChildInputs | null>;
   /** Refreshes the profiles only before the run has a frame. False refuses a book from incomplete assessment facts. */
   prepareProfile(childId: string): Promise<{ ok: true; profile: ChildInputs["profile"] } | { ok: false }>;
+  /**
+   * The child's ready first pages that Workbook 1 may keep (docs/first-pages.md): not hidden, not kept by another run
+   * that is still working or finished. None: no first pages.
+   */
+  firstPages?(childId: string): Promise<ReadyFirstPages | null>;
 }
 
 /**
@@ -423,6 +441,8 @@ export function runState(run: Pick<WorkbookRun, "status" | "heartbeatAt" | "crea
 
 /** A refusal: the run fails at once, with no retry. */
 class Refusal extends Error {}
+/** A refusal of a run or of the first pages: trying again gives the same answer. */
+export { Refusal as WorkbookRefusal };
 
 /** The lease was lost: the run was taken up by another call, and this one must write nothing more. */
 class Stopped extends Error {}
@@ -636,12 +656,79 @@ export async function runWorkbookJob(runId: string, deps: WorkbookJobDeps, o: { 
   }
 }
 
-/** The generator's input from a run's plan and the child's name (printed only: the plan never reads it). */
-const generateInput = (run: WorkbookRun, frame: RunFrame, name: string): GenerateInput => ({
-  workbookId: run.draftKey, childId: run.childId, book: { child: name }, number: run.number,
+/** What a plan is made for: the child, the family, the workbook number and the draft id that seeds the code's choices. */
+export interface FrameTarget {
+  childId: string;
+  parentId: string;
+  number: number;
+  /** The draft id: the run's draft key, or the id the first pages reserved for Workbook 1 (docs/first-pages.md). */
+  workbookId: string;
+}
+
+const targetOf = (run: WorkbookRun): FrameTarget => ({ childId: run.childId, parentId: run.parentId, number: run.number, workbookId: run.draftKey });
+
+/** The generator's input from a plan and the child's name (printed only: the plan never reads it). */
+export const frameInput = (t: FrameTarget, frame: RunFrame, name: string): GenerateInput => ({
+  workbookId: t.workbookId, childId: t.childId, book: { child: name }, number: t.number,
   profileBuild: frame.profileRevision !== null ? `child profile revision ${frame.profileRevision}` : null,
   plan: frame.plan, curriculum: curriculumFor(frame.curriculum)!, itemPolicy: frame.itemPolicy,
 });
+
+/** The deps a plan is made and checked with. */
+export type FrameDeps = Pick<WorkbookJobDeps, "source" | "fit" | "build" | "itemPolicy"> & { ai: Pick<AiClient, "model">; solver: Pick<Solver, "model"> };
+
+/**
+ * Plans a workbook from the child's inputs read now (R379-8-2): the profile refreshed, the report's signals, the admin's
+ * instructions, placed and planned, and (approved items) its capacity measured with the fit check. Not stored. Throws
+ * a refusal (WorkbookRefusal) when there is no curriculum, profile or plan.
+ */
+export async function makeRunFrame(t: FrameTarget, deps: FrameDeps, name: string, inputs: ChildInputs): Promise<RunFrame> {
+  const key = CURRICULUM_KEYS[inputs.province];
+  const curriculum = key ? curriculumFor(key) : null;
+  if (!key || !curriculum) throw new Refusal(`There is no workbook curriculum for ${inputs.province} yet. Only BC has one.`);
+  const prepared = await deps.source.prepareProfile(t.childId);
+  if (!prepared.ok) throw new Refusal(`We couldn't build ${name}'s profile from the assessment. Try again, or check the admin profile page.`);
+  inputs = { ...inputs, profile: prepared.profile };
+  const assessmentId = inputs.profile?.profile.assessment?.assessmentId;
+  const metadata = assessmentId ? await deps.source.planningMetadata?.(assessmentId) : undefined;
+  const instructions = instructionsEmpty(inputs.instructions) ? undefined : inputs.instructions!;
+  const placement: RunPlanningCapture["placement"] = structuredClone({ ...metadata, curriculum: { key, version: curriculumVersion(key)! },
+    grade: inputs.grade, profile: inputs.profile?.profile ?? null, workbooks: inputs.workbooks, number: t.number, ...(instructions ? { instructions } : {}) });
+  let input: PlanInput | undefined;
+  // The capture is a copy taken at the public boundary: it cannot change the plan.
+  const planned = planNextWorkbook({ ...metadata, curriculum, grade: inputs.grade, profile: inputs.profile?.profile ?? null, workbooks: inputs.workbooks, number: t.number, instructions }, captured => { input = captured; });
+  if (!planned.ok) throw new Refusal(`The plan could not be made: ${planned.reason}.`);
+  const made: RunFrame = {
+    version: RUN_FRAME_VERSION, ...(deps.itemPolicy === "legacy" ? {} : { itemPolicy: "approved-v1" as const }), curriculum: key, units: skillUnits(curriculum), grade: inputs.grade, profileRevision: inputs.profile?.revision ?? null, countsCallEvents: WORKBOOK_COUNTS_CALL_EVENTS, workbooks: inputs.workbooks,
+    ...(input ? { planning: { version: 1 as const, input, placement } } : {}),
+    plan: deps.itemPolicy === "legacy" ? planned.plan : workbookCapacityPlan(curriculum, planned.plan), versions: { curriculum: "", outline: "", model: deps.ai.model, solveModel: deps.solver.model, build: deps.build ?? null },
+  };
+  if (made.itemPolicy === "approved-v1") made.plan = await prepareWorkbookCapacity(frameInput(t, made, name), deps.fit(t.parentId));
+  made.versions.curriculum = curriculumVersion(key)!;
+  made.versions.outline = bookOutline(frameInput(t, made, name));
+  return made;
+}
+
+/**
+ * Why a stored plan cannot be used by this call (R379-8-2), or null: its shape, the call event policy, the curriculum,
+ * the deployed code, the AI or solve model, or the planned book changed since it was made.
+ */
+export function frameProblem(t: FrameTarget, frame: RunFrame, deps: FrameDeps, name: string): string | null {
+  const refusal = (() => {
+    if (frame.version !== RUN_FRAME_VERSION || !isGrade(frame.grade) || !frame.plan) return new Refusal("The run's stored plan is of another shape. Start a new run.");
+    if ((frame.countsCallEvents ?? true) !== WORKBOOK_COUNTS_CALL_EVENTS) return new Refusal("The workbook call event policy changed. Start a new run.");
+    const now = curriculumVersion(frame.curriculum);
+    if (!now) return new Refusal(`There is no workbook curriculum ${frame.curriculum} any more. Start a new run.`);
+    if (now !== frame.versions.curriculum) return changed("the curriculum", frame.versions.curriculum, now);
+    if ((deps.build ?? null) !== frame.versions.build) return changed("the site's code", frame.versions.build, deps.build ?? null);
+    if (deps.ai.model !== frame.versions.model) return changed("the AI model", frame.versions.model, deps.ai.model);
+    if (deps.solver.model !== frame.versions.solveModel) return changed("the solve check's model", frame.versions.solveModel, deps.solver.model);
+    const outline = bookOutline(frameInput(t, frame, name));
+    if (outline !== frame.versions.outline) return changed("the planned book (its pages, layouts or rooms)", frame.versions.outline, outline);
+    return null;
+  })();
+  return refusal?.message ?? null;
+}
 
 /**
  * The run's plan (R379-8-2): the one its first job call stored; else (this is the first call) the child's inputs read
@@ -649,6 +736,8 @@ const generateInput = (run: WorkbookRun, frame: RunFrame, name: string): Generat
  * what the plan was made from changed: the curriculum, the planned book, the models or the deployed code. A run with
  * stored work but no plan was started before plans were stored: refused (it cannot be resumed safely). A resumed run
  * with no stored work can still make its first plan.
+ * Workbook 1 with ready first pages (docs/first-pages.md): the first call plans with the id the first pages reserved and
+ * keeps them when the plan makes the same pages, else it is refused before any AI call, and the admin chooses.
  */
 async function runFrame(run: WorkbookRun, deps: WorkbookJobDeps & { ai: AiClient; solver: Solver }, lease: string, name: string, inputs: ChildInputs): Promise<RunFrame> {
   let frame = await deps.runs.frame(run.id);
@@ -656,45 +745,64 @@ async function runFrame(run: WorkbookRun, deps: WorkbookJobDeps & { ai: AiClient
     if (await deps.runs.hasStoredWork(run.id)) {
       throw new Refusal("This run has no stored plan, so it cannot resume safely. Start a new run.");
     }
-    const key = CURRICULUM_KEYS[inputs.province];
-    const curriculum = key ? curriculumFor(key) : null;
-    if (!key || !curriculum) throw new Refusal(`There is no workbook curriculum for ${inputs.province} yet. Only BC has one.`);
-    const prepared = await deps.source.prepareProfile(run.childId);
-    if (!prepared.ok) throw new Refusal(`We couldn't build ${name}'s profile from the assessment. Try again, or check the admin profile page.`);
-    inputs = { ...inputs, profile: prepared.profile };
-    const assessmentId = inputs.profile?.profile.assessment?.assessmentId;
-    const metadata = assessmentId ? await deps.source.planningMetadata?.(assessmentId) : undefined;
-    const instructions = instructionsEmpty(inputs.instructions) ? undefined : inputs.instructions!;
-    const placement: RunPlanningCapture["placement"] = structuredClone({ ...metadata, curriculum: { key, version: curriculumVersion(key)! },
-      grade: inputs.grade, profile: inputs.profile?.profile ?? null, workbooks: inputs.workbooks, number: run.number, ...(instructions ? { instructions } : {}) });
-    let input: PlanInput | undefined;
-    // The capture is a copy taken at the public boundary: it cannot change the plan.
-    const planned = planNextWorkbook({ ...metadata, curriculum, grade: inputs.grade, profile: inputs.profile?.profile ?? null, workbooks: inputs.workbooks, number: run.number, instructions }, captured => { input = captured; });
-    if (!planned.ok) throw new Refusal(`The plan could not be made: ${planned.reason}.`);
-    const made: RunFrame = {
-      version: RUN_FRAME_VERSION, ...(deps.itemPolicy === "legacy" ? {} : { itemPolicy: "approved-v1" as const }), curriculum: key, units: skillUnits(curriculum), grade: inputs.grade, profileRevision: inputs.profile?.revision ?? null, countsCallEvents: WORKBOOK_COUNTS_CALL_EVENTS, workbooks: inputs.workbooks,
-      ...(input ? { planning: { version: 1 as const, input, placement } } : {}),
-      plan: deps.itemPolicy === "legacy" ? planned.plan : workbookCapacityPlan(curriculum, planned.plan), versions: { curriculum: "", outline: "", model: deps.ai.model, solveModel: deps.solver.model, build: deps.build ?? null },
-    };
-    if (made.itemPolicy === "approved-v1") made.plan = await prepareWorkbookCapacity(generateInput(run, made, name), deps.fit(run.parentId));
-    made.versions.curriculum = curriculumVersion(key)!;
-    made.versions.outline = bookOutline(generateInput(run, made, name));
-    if (!(await deps.runs.saveFrame(run.id, lease, made))) throw new Stopped("the run was taken up by another call");
+    const sample = run.number === 1 ? await deps.source.firstPages?.(run.childId) ?? null : null;
+    if (sample && sample.decision !== "drop") {
+      await adoptFirstPages(run, deps, lease, name, inputs, sample);
+    } else {
+      const made = await makeRunFrame(targetOf(run), deps, name, inputs);
+      if (!(await deps.runs.saveFrame(run.id, lease, made))) throw new Stopped("the run was taken up by another call");
+    }
     frame = await deps.runs.frame(run.id);
     if (!frame) throw new Error("the run's plan was not stored");
   }
   // Every call, the first included, checks the stored plan against what this call would make it from.
-  if (frame.version !== RUN_FRAME_VERSION || !isGrade(frame.grade) || !frame.plan) throw new Refusal("The run's stored plan is of another shape. Start a new run.");
-  if ((frame.countsCallEvents ?? true) !== WORKBOOK_COUNTS_CALL_EVENTS) throw new Refusal("The workbook call event policy changed. Start a new run.");
-  const now = curriculumVersion(frame.curriculum);
-  if (!now) throw new Refusal(`There is no workbook curriculum ${frame.curriculum} any more. Start a new run.`);
-  if (now !== frame.versions.curriculum) throw changed("the curriculum", frame.versions.curriculum, now);
-  if ((deps.build ?? null) !== frame.versions.build) throw changed("the site's code", frame.versions.build, deps.build ?? null);
-  if (deps.ai.model !== frame.versions.model) throw changed("the AI model", frame.versions.model, deps.ai.model);
-  if (deps.solver.model !== frame.versions.solveModel) throw changed("the solve check's model", frame.versions.solveModel, deps.solver.model);
-  const outline = bookOutline(generateInput(run, frame, name));
-  if (outline !== frame.versions.outline) throw changed("the planned book (its pages, layouts or rooms)", frame.versions.outline, outline);
+  const problem = frameProblem(targetOf(run), frame, deps, name);
+  if (problem) throw new Refusal(problem);
   return frame;
+}
+
+/** The first pages a Workbook 1 run may keep (docs/first-pages.md), as the run's source reads them. */
+export interface ReadyFirstPages {
+  id: string;
+  /** The Workbook 1 id the first pages were written with: the draft id and the seed of the code's choices. */
+  workbookId: string;
+  /** The plan they were written from. */
+  frame: RunFrame;
+  /** The cover's QR code. */
+  coverToken: string;
+  /** The day pages, in book order. */
+  pages: number[];
+  /** pagesDigest of what they were made from. */
+  digest: string;
+  /** The admin's choice after a refusal: use the first pages' plan, or make the book without them. */
+  decision: "keep-plan" | "drop" | null;
+}
+
+/** What the adoption answers: kept, the lease was lost, or why it could not keep them. */
+export type AdoptResult = "adopted" | "lost" | { refused: string };
+
+/** The refusal of a Workbook 1 run whose new plan no longer makes the first pages the parent saw. */
+export const FIRST_PAGES_CHANGED = "The first pages we showed the parent are not in this plan any more: the child's profile, the book instructions or the code changed since they were made. On the child's page, choose \"Use the first pages' plan\" or \"Make it without the first pages\", then start the run again.";
+
+async function adoptFirstPages(run: WorkbookRun, deps: WorkbookJobDeps & { ai: AiClient; solver: Solver }, lease: string, name: string, inputs: ChildInputs, sample: ReadyFirstPages) {
+  if (!deps.runs.adoptFirstPages) throw new Refusal("This store cannot keep the first pages. Make the book without them.");
+  const t: FrameTarget = { ...targetOf(run), workbookId: sample.workbookId };
+  let made: RunFrame;
+  if (sample.decision === "keep-plan") {
+    // The admin chose the first pages' plan: the same plan, checked against this call's code and models.
+    made = structuredClone(sample.frame);
+    made.versions = { ...made.versions, model: deps.ai.model, solveModel: deps.solver.model, build: deps.build ?? null, curriculum: curriculumVersion(made.curriculum) ?? "", outline: "" };
+    made.versions.outline = bookOutline(frameInput(t, made, name));
+  } else {
+    made = await makeRunFrame(t, deps, name, inputs);
+  }
+  if (pagesDigest(frameInput(t, made, name), sample.pages) !== sample.digest) throw new Refusal(FIRST_PAGES_CHANGED);
+  made.firstPages = { id: sample.id, pages: [...sample.pages], coverToken: sample.coverToken, ...(sample.decision === "keep-plan" ? { decision: "keep-plan" as const } : {}) };
+  const adopted = await deps.runs.adoptFirstPages(run.id, lease, sample.id, made);
+  if (adopted === "lost") throw new Stopped("the run was taken up by another call");
+  if (typeof adopted === "object") throw new Refusal(`The first pages could not be kept: ${adopted.refused}. On the child's page, choose "Make it without the first pages", then start the run again.`);
+  // The run now writes the draft the first pages reserved.
+  run.draftKey = sample.workbookId;
 }
 
 /** Steps 1 and 2: the plan, then the day pages (the stored ones kept), then the draft, stored. "paused": out of time. */
@@ -782,7 +890,8 @@ async function write(
       if (isLost() || !(await deps.runs.savePage(run.id, lease, page))) lose();
     },
   };
-  const result = await generateWorkbook(generateInput(run, frame, inputs.name), {
+  const result = await generateWorkbook(frameInput(targetOf(run), frame, inputs.name), {
+    ...(frame.firstPages ? { sample: { coverToken: frame.firstPages.coverToken, pages: frame.firstPages.pages } } : {}),
     ai: guardedAi, fit: deps.fit(run.parentId), store: guardedDrafts, qrToken: deps.qrToken, pages, attempts, calls,
     concurrency: deps.concurrency ?? PAGE_CONCURRENCY, stop: () => isLost() || outOfTime(), timeLimitMs: deps.timeLimitMs,
     progress: (done, total) => { void progress({ step: "write", done, total }); },

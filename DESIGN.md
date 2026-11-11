@@ -146,6 +146,10 @@ The email is one 600 px column in the same order as the page (D-305): greeting, 
 
 On Page results, put Explain this problem beside each eligible wrong answer. Keep the result beside that question. Show the stored correct answer, up to four short steps, and one way the parent can say them to the child. Use the existing scan controls and semantic tokens. Show loading, retry, limit, changed-mark and unavailable states with accessible announcements. Render all AI output as text. A corrected right mark hides the control. The first successful explanation is reused only for the same current question and mark context. The Desk has no explanation control. D236 and D249 still restrict family release. The state matrix is in `.design/experiments/r675/contract.md`. Browser evidence remains with root.
 
+## First pages of Workbook 1 (D-318)
+
+On the parent's own report, when all four pages are ready: a row "{child}'s first pages" after "What's in workbook 1" and before the next step. It shows the cover (larger), the first lesson and two practice pages as real page images, each opening larger in a dialog, then "Start your plan today" (to the plan choice and card step) with the approved free-month line. A saved card or a read-only copy hides the action. Nothing shows while the pages are being made or when they fail. On a phone the pages are one swipe strip. The sample email has the same action and the four-page PDF attached. Round: `.design/experiments/r-first-pages/` (option B). Savar approves the row and the email words before the switches go on.
+
 ## Admin area (D-313, D-315)
 
 The admin (`/admin`) is for the team, but it uses the warm look with the same care as the site. Picked prototype: `.design/experiments/r-admin-nav/b-pulse.html`.
