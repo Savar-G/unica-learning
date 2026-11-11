@@ -2,7 +2,7 @@
   "round": 681,
   "date": "2026-11-11",
   "route": "focused",
-  "phase": "build",
+  "phase": "review",
   "decision": "Approve the required phone field, personal report email opening, sender name, and consent-aware inline calendar.",
   "primary_axis": "The report email leads with the weak topic or with an invitation.",
   "invariants": [
@@ -49,7 +49,7 @@
     "src/components/site-analytics.tsx",
     "https://calendly.com/help/calendly-cookie-management-and-banner"
   ],
-  "implementation": "UI and copy approved. Hosted migration parents_phone 20261111180531 applied and rollback probes passed. Product implementation pending.",
+  "implementation": "Implemented. Migration and owned-family Aside checks passed. Two independent reviews and settlement completed on 91d32cbe. Both P2 findings reproduced and fixed; 89 report tests pass. Final gate and corrected-head review pending.",
   "render_checks": [
     {
       "width": 728,
@@ -65,7 +65,11 @@
     }
   ],
   "verification_limits": "HTML mockup only. Live Calendly, alternate-state interactions, actual signup, migration, report emails and product tests remain unverified.",
-  "vault_record": "Pending. An active vault sweep holds the write lock.",
+  "vault_record": "Approval and current proof limits recorded in the Unica Learning GTM Fast Results Call note.",
   "selected_option": "A",
-  "handoff_marker": "FAST_RESULTS_CALL_BUILD_PENDING"
+  "handoff_marker": "FAST_RESULTS_CALL_BUILD_PENDING",
+  "review_findings": [
+    "Clear developing topic excluded from opening: fixed, regression failed before and passes after.",
+    "Injected Phone line caused wrong redaction: fixed by passing stored phone directly, regression failed before and passes after."
+  ]
 }

@@ -125,7 +125,7 @@
     "job_kind": "improve",
     "surface": "product",
     "constraint_mode": "existing-system",
-    "phase": "build",
+    "phase": "review",
     "contract": "DESIGN.md",
     "manifest": ".design/experiments/r681/manifest.json",
     "selected_experiment": ".design/experiments/r681/preview.html",
@@ -134,6 +134,12 @@
       "ship": "pending"
     },
     "sender": "Cedric and Savar, co-founders of Unica Learning",
-    "database": "parents_phone 20261111180531 applied; hosted rollback probes passed"
+    "database": "parents_phone 20261111180531 applied; hosted rollback probes passed",
+    "latest_evidence": [
+      ".design/evidence/phone-results-call/calendar-desktop.png",
+      ".design/evidence/phone-results-call/calendar-phone.png",
+      ".design/experiments/r681/browser-result.md"
+    ],
+    "latest_review": ".design/reviews/phone-results-call-2026-11-11-r681.md"
   }
 }

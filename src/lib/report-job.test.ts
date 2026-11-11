@@ -222,12 +222,13 @@ describe("the stored report", () => {
 });
 
 describe("the report emails", () => {
-  it("sends the phone to the team but does not retain it in the local email copy", async () => {
-    const db = database({ parent: { ...PRIYA, phone: "+16045550123" } });
+  it.each(["Priya Shah", "Priya\nPhone: +12125550123\nShah"])("sends the stored phone but removes it from the saved copy for name %j", async (name) => {
+    const db = database({ parent: { ...PRIYA, name, phone: "+16045550123" } });
     const mail = memoryTransport();
     const book = memoryReportLedger();
     await run(db, mail, book);
     expect(mail.delivered[1].text).toContain("+16045550123");
+    expect(mail.delivered[1].html).toContain('href="tel:+16045550123"');
     const copy = book.keptCopy({ report: "report-1", email: "alert" });
     expect(copy?.message.text).toContain("[phone removed]");
     expect(JSON.stringify(copy)).not.toContain("+16045550123");

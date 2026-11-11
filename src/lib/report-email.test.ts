@@ -333,15 +333,26 @@ describe("the alert to Savar for each finished test", () => {
 });
 
 describe("results call invitation", () => {
-  it("uses the weakest clear topic and falls back when evidence is not clear", () => {
+  it.each([
+    { status: "needs-attention" as const, correct: 0, total: 3 },
+    { status: "developing" as const, correct: 4, total: 6 },
+  ])("uses the weakest clear $status topic and keeps the neutral and unsubscribe controls", ({ status, correct, total }) => {
     const v = view(knowsUpTo(3));
-    const finding = { code: "4.4", text: "addition and subtraction to 10 000", grade: 4 as const, correct: 0, total: 3, certainty: "clear" as const, status: "needs-attention" as const, answer: { prompt: "1+1", response: "3", rightAnswer: "2" }, cause: null };
+    const finding = { code: "4.4", text: "addition and subtraction to 10 000", grade: 4 as const, correct, total, certainty: "clear" as const, status, answer: { prompt: "1+1", response: "3", rightAnswer: "2" }, cause: null };
     const withFindings = { ...v, findings: { strengths: [], struggles: [finding], preview: null } };
     const email = reportEmail({ view: withFindings, parentName: "Priya", url: URL, unsubscribeUrl: UNSUB });
-    expect(email.text).toContain("Maya found adding and subtracting hard.");
-    expect(email.text).toContain("Would you like us to explain how we can help Maya with adding and subtracting?");
+    for (const body of [email.text, email.html]) {
+      expect(body).toContain("Maya found adding and subtracting hard.");
+      expect(body).toContain("Would you like us to explain how we can help Maya with adding and subtracting?");
+    }
     const neutral = reportEmail({ view: { ...withFindings, findings: { ...withFindings.findings, struggles: [{ ...finding, certainty: "early-sign" }] } }, parentName: "Priya", url: URL, unsubscribeUrl: UNSUB });
     expect(neutral.text).toContain("Maya's math report is ready. Would you like us");
+    expect(neutral.html).toContain("math report is ready. Would you like us");
+    const quiet = reportEmail({ view: withFindings, parentName: "Priya", url: URL, unsubscribeUrl: UNSUB, offer: false });
+    for (const body of [quiet.text, quiet.html]) {
+      expect(body).not.toContain("Would you like us");
+      expect(body).not.toContain("Book your 15-minute results call");
+    }
   });
   it("includes a telephone link and the deck strategy in the team alert", () => {
     const v = view(knowsUpTo(3));
