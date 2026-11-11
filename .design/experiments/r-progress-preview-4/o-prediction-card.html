@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en-CA">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>O. Prediction card</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shell.css">
+<style>
+.card { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: clamp(20px, 4vw, 48px); padding: clamp(24px, 4.5vw, 56px); align-items: center; }
+@media (max-width: 820px) { .card { grid-template-columns: 1fr; } }
+.say { margin-top: 12px; font-size: clamp(30px, 3.8vw, 46px); font-weight: 300; line-height: 1.08; letter-spacing: -.035em; }
+.say b { font-weight: 500; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+.chips span { padding: 8px 12px; border-radius: 99px; background: rgba(255,255,255,.75); font-size: 14px; }
+.chips b { font-weight: 600; }
+.chart { padding: 20px 18px 12px; border-radius: 16px; background: #fff; box-shadow: 0 30px 60px -36px rgba(0,0,0,.55); }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart text { font-family: "Geist Mono", monospace; }
+.grow { stroke-dasharray: 1200; stroke-dashoffset: 1200; animation: draw 1.4s cubic-bezier(.4,0,.2,1) .2s forwards; }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+.how { margin-top: clamp(28px, 4vw, 44px); }
+.how h3 { margin: 0; font-size: 24px; font-weight: 400; letter-spacing: -.02em; }
+.steps { margin: 18px 0 0; padding: 0; list-style: none; counter-reset: s; }
+.steps li { position: relative; display: grid; grid-template-columns: 180px 1fr auto; gap: 8px 24px; padding: 18px 0 18px 52px; border-top: 1px solid var(--line); counter-increment: s; }
+@media (max-width: 700px) { .steps li { grid-template-columns: 1fr; } }
+.steps li::before { content: counter(s); position: absolute; left: 0; top: 16px; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--c); color: #0c0c0e; font: 600 14px/1 var(--mono); }
+.steps .when { font: 500 13px/1.4 var(--mono); color: var(--ink-2); }
+.steps b { display: block; font-weight: 500; font-size: 18px; }
+.steps span.t { color: var(--ink-2); }
+.steps .n { font: 400 13px/1.4 var(--mono); color: var(--ink-2); white-space: nowrap; }
+.steps li.goal::before { content: "★"; background: var(--ink); color: #fff; }
+.steps li.goal b { font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="chrome"><span class="v">O. Prediction card</span><div class="cases" data-cases></div><a href="board.html">All options</a></div>
+<main class="page">
+  <div class="stub">Report: "Where Leah is", "What's in workbook 1" (unchanged)</div>
+  <section class="section" id="out"></section>
+  <div class="stub">Next step: card and plan button (unchanged)</div>
+</main>
+<script src="levels.js"></script><script src="covers.js"></script><script src="plan.js"></script>
+<script>
+// Noom's pattern without the question: one prediction card (sentence, plan chips, a clean curve), then numbered steps.
+mount((p) => {
+  const n = p.c.name;
+  const W = 520, H = 300, L = 70, R = 24, T = 34, B = 40;
+  const t0 = REPORT_DATE.getTime(), t1 = p.goalDate.getTime() + 20 * 864e5;
+  const x = (d) => L + (d.getTime() - t0) / (t1 - t0) * (W - L - R);
+  const y = (g) => T + (p.goal - g) / (p.goal - p.c.working) * (H - T - B);
+  const pts = [[x(REPORT_DATE), y(p.c.working)], [x(p.stages[0].from), y(p.c.working)], ...p.stages.map((s) => [x(s.to), y(s.grade + 1)])];
+  let d = `M${pts[0][0]} ${pts[0][1]}`;
+  for (let i = 1; i < pts.length; i++) { const [x0, y0] = pts[i - 1], [x1, y1] = pts[i]; const cx = (x0 + x1) / 2; d += ` C${cx} ${y0}, ${cx} ${y1}, ${x1} ${y1}`; }
+  const area = d + ` L${pts.at(-1)[0]} ${H - B} L${pts[0][0]} ${H - B} Z`;
+  let grid = "";
+  for (let g = p.c.working; g <= p.goal; g++) grid += `<line x1="${L}" x2="${W - R}" y1="${y(g)}" y2="${y(g)}" stroke="#efeff2"/><text x="${L - 10}" y="${y(g) + 4}" text-anchor="end" font-size="11" fill="#44444c">${gradeName(g)}</text>`;
+  const mids = p.stages.slice(0, -1).map((s) => `<circle cx="${x(s.to)}" cy="${y(s.grade + 1)}" r="5" fill="#fff" stroke="#0c0c0e" stroke-width="2"/><text x="${x(s.to)}" y="${H - B + 20}" text-anchor="middle" font-size="11" fill="#44444c">${monthShort(s.to)}</text>`).join("");
+  const [gx, gy] = pts.at(-1);
+  const svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${prediction(p)}">
+    <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff6430" stop-opacity=".2"/><stop offset="1" stop-color="#ff6430" stop-opacity="0"/></linearGradient></defs>
+    ${grid}<path d="${area}" fill="url(#g)"/><path class="grow" d="${d}" fill="none" stroke="#0c0c0e" stroke-width="3" stroke-linecap="round"/>${mids}
+    <circle cx="${pts[0][0]}" cy="${pts[0][1]}" r="7" fill="#16a06a"/><text x="${pts[0][0]}" y="${H - B + 20}" font-size="11" fill="#0c0c0e">Today</text>
+    <g transform="translate(${gx - 3} ${gy - 44})"><path d="M3 44V2" stroke="#0c0c0e" stroke-width="2.5" stroke-linecap="round"/><path d="M4 3h24l-6 8 6 8H4z" fill="#ff6430"/></g>
+    <rect x="${gx - 120}" y="${gy - 32}" width="108" height="26" rx="13" fill="#0c0c0e"/><text x="${gx - 66}" y="${gy - 15}" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">${monthShort(p.goalDate)} ${p.goalDate.getFullYear()}</text>
+    <text x="${gx}" y="${H - B + 20}" text-anchor="end" font-size="11" fill="#0c0c0e"></text></svg>`;
+  const steps = [
+    `<li style="--c:#d7f0e4"><p class="when">${monthShort(START_DATE)} ${START_DATE.getFullYear()}</p><div><b>Workbook 1 arrives</b><span class="t">Made from ${n}'s test, at a ${gradeName(p.c.working)} level.</span></div><p class="n"></p></li>`,
+    ...p.stages.map((s) => `<li style="--c:${gradeColor(s.grade)}"><p class="when">${monthShort(s.from)} ${s.from.getFullYear()} to ${monthShort(s.to)} ${s.to.getFullYear()}</p><div><b>${gradeName(s.grade)} math</b><span class="t">${s.levels.map((l) => l.title).join(". ")}.</span></div><p class="n">${s.books.length} workbooks</p></li>`),
+    `<li class="goal"><p class="when">${monthYear(p.goalDate)}</p><div><b>${n} reaches a ${gradeName(p.goal)} level</b><span class="t">Ready to start ${gradeName(p.goal)} work.</span></div><p class="n"></p></li>`,
+  ].join("");
+  document.getElementById("out").innerHTML = `
+    <div class="card field">
+      <div>
+        <p class="k">Our prediction for ${n}</p>
+        <p class="say">We predict ${n} can reach a <b>${gradeName(p.goal)} level</b> by <b>${monthYear(p.goalDate)}</b>.</p>
+        <div class="chips"><span><b>5 days</b> a week</span><span><b>${p.day.pages} pages</b> a day</span><span><b>${p.day.min}</b> minutes</span><span><b>${p.books.length}</b> workbooks</span></div>
+      </div>
+      <div class="chart">${svg}</div>
+    </div>
+    <div class="how">
+      <h3>How ${n} gets there</h3>
+      <ol class="steps">${steps}</ol>
+      <p class="basis">${basis(p)}</p>
+    </div>`;
+});
+</script>
+</body>
+</html>
