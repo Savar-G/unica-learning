@@ -32,7 +32,7 @@ export function decisionBody(model: string, provider: string, request: Pick<Deci
     model,
     state: request.input.map(statePart),
     questions: Object.fromEntries(Object.entries(request.questions).map(([key, q]) => [key, question(q)])),
-    provider: { only: [provider], order: [provider], allow_fallbacks: false },
+    provider: { only: [provider], order: [provider], allow_fallbacks: false, data_collection: "deny", zdr: true },
   };
 }
 

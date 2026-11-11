@@ -78,7 +78,7 @@ describe("the OpenRouter decision client (#851), fetch faked", () => {
     expect(req.method).toBe("POST");
     expect(req.headers.get("authorization")).toBe("Bearer sk-or-test");
     expect(req.body.model).toBe("typesafe/jev-1.14");
-    expect(req.body.provider).toEqual({ only: ["typesafe"], order: ["typesafe"], allow_fallbacks: false });
+    expect(req.body.provider).toEqual({ only: ["typesafe"], order: ["typesafe"], allow_fallbacks: false, data_collection: "deny", zdr: true });
     expect(req.body.state).toEqual(["One answer box.", { type: "image_url", image_url: { url: `data:image/jpeg;base64,${Buffer.from(JPEG).toString("base64")}` } }]);
     expect(req.body.questions).toEqual({
       shows: { type: "noul", instructions: "Does this box show 48?", criteria: { true: "The box holds exactly 48.", false: "Anything else." } },
@@ -185,7 +185,7 @@ describe("the OpenRouter decision client (#851), fetch faked", () => {
     const gemini = decisionClient({ DECISIONS_OPENROUTER_API_KEY: "sk-or-d", DECISION_MODEL: "google/gemini-decision-1" }, undefined, { fetch });
     await gemini!.decide(request());
     expect(sent[0].body.model).toBe("google/gemini-decision-1");
-    expect(sent[0].body.provider).toEqual({ only: ["google-ai-studio"], order: ["google-ai-studio"], allow_fallbacks: false });
+    expect(sent[0].body.provider).toEqual({ only: ["google-ai-studio"], order: ["google-ai-studio"], allow_fallbacks: false, data_collection: "deny", zdr: true });
     expect(sent[0].headers.get("authorization")).toBe("Bearer sk-or-d");
     expect(() => decisionClient({ DECISIONS_OPENROUTER_API_KEY: "sk-or-d", DECISION_MODEL: "someone/other-model" })).toThrow(/not in the pinned model table/);
   });
