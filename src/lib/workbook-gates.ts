@@ -5,18 +5,18 @@ import type { PrintedQuestion } from "@/lib/workbook-solve-check";
 export const QUESTION_GATES = ["reading_level", "one_right_answer", "picture_matches", "uses_interest"] as const;
 export type QuestionGate = (typeof QUESTION_GATES)[number];
 
-/** Version 1 uses the labelled-set results in docs/workbook-gate-set-report.md. */
-export const GATE_THRESHOLD_VERSION = 1;
+/** Version 2 uses the held-out labelled-set results in docs/workbook-gate-set-report.md. */
+export const GATE_THRESHOLD_VERSION = 2;
 export const GATE_THRESHOLDS = {
   "typesafe/jev-1.14": {
-    reading_level: { enabled: false, threshold: 0.02, reason: "caught fewer than 90% of changed questions" },
+    reading_level: { enabled: false, threshold: null, reason: "a held-out fold missed the pass bar" },
     one_right_answer: { enabled: true, threshold: 0.03 },
     picture_matches: { enabled: false, threshold: null, reason: "no real picture questions in the samples" },
     uses_interest: { enabled: false, threshold: null, reason: "no real interest questions in the samples" },
   },
   "google/gemini-decision-1": {
-    reading_level: { enabled: true, threshold: 0.05 },
-    one_right_answer: { enabled: true, threshold: 0.08 },
+    reading_level: { enabled: false, threshold: null, reason: "a held-out fold missed the pass bar" },
+    one_right_answer: { enabled: false, threshold: null, reason: "a held-out fold missed the pass bar" },
     picture_matches: { enabled: false, threshold: null, reason: "no real picture questions in the samples" },
     uses_interest: { enabled: false, threshold: null, reason: "no real interest questions in the samples" },
   },
@@ -58,13 +58,14 @@ export function calibrateGate(gate: "reading_level" | "one_right_answer", unchan
   if (!unchanged.length || !changed.length || [...unchanged, ...changed].some((p) => !Number.isFinite(p) || p < 0 || p > 1)) throw new Error("invalid gate probabilities");
   const choices = Array.from({ length: 101 }, (_, n) => {
     const cutoff = n / 100;
-    const flags = (p: number) => gate === "reading_level" ? p >= cutoff : p > cutoff;
+    const threshold = gate === "reading_level" ? cutoff : Number((1 - cutoff).toFixed(2));
+    const flags = (p: number) => gate === "reading_level" ? p >= threshold : 1 - p < threshold;
     return { cutoff, caught: changed.filter(flags).length, falseFlags: unchanged.filter(flags).length };
   }).filter((x) => x.falseFlags / unchanged.length <= 0.05)
     .sort((a, b) => b.caught - a.caught || a.falseFlags - b.falseFlags || b.cutoff - a.cutoff);
   const best = choices[0];
   if (!best) return null;
-  return { threshold: gate === "reading_level" ? best.cutoff : 1 - best.cutoff, caught: best.caught, falseFlags: best.falseFlags, enabled: best.caught / changed.length >= 0.9 };
+  return { threshold: gate === "reading_level" ? best.cutoff : Number((1 - best.cutoff).toFixed(2)), caught: best.caught, falseFlags: best.falseFlags, enabled: best.caught / changed.length >= 0.9 };
 }
 
 /** Apply only enabled gates. A missing probability is an error, not a passing result. */
