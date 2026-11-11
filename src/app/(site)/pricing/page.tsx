@@ -2,18 +2,17 @@ import Link from "next/link";
 import { DataTable, ResourcesShell, Section } from "@/components/article";
 import { StartLink, StartNote } from "@/components/start-link";
 import { Eyebrow } from "@/ds";
-import { pageMetadata, SITE_URL } from "@/lib/metadata";
+import { pageMetadata } from "@/lib/metadata";
+import { pageJsonLd } from "@/lib/structured-data";
 import { ADDITIONAL_CHILD_PRICE, BRAND, OFFER_ENDS, PLANS, TRIAL_DAYS, cad } from "@/lib/site";
 
 const title = "Math program pricing and free first month";
-export const metadata = pageMetadata({
-  path: "/pricing", title,
-  description: `Math is CAD ${cad(PLANS.one.price)}/month. Additional children: CAD ${cad(ADDITIONAL_CHILD_PRICE)} each. Delivery included. See the free first month, payment and cancellation terms.`,
-});
+const PAGE = { path: "/pricing", title, description: `Math is CAD ${cad(PLANS.one.price)}/month. Additional children: CAD ${cad(ADDITIONAL_CHILD_PRICE)} each. Delivery included. See the free first month, payment and cancellation terms.` };
+export const metadata = pageMetadata(PAGE);
 
 export default function PricingPage() {
   return (
-    <ResourcesShell navSrc="pricing-nav" jsonLd={{ "@context": "https://schema.org", "@type": "WebPage", name: title, url: `${SITE_URL}/pricing` }}>
+    <ResourcesShell navSrc="pricing-nav" jsonLd={pageJsonLd(PAGE)}>
       <main id="main" className="res res-article">
         <header className="res-head">
           <Eyebrow>Pricing</Eyebrow>

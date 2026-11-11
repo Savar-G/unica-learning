@@ -1,4 +1,4 @@
-// FAQ copy, shared by the FAQ section (sections.tsx), the FAQPage structured data and /llms.txt.
+// FAQ copy, shared by the FAQ section (sections.tsx) and /llms.txt.
 import { ADDITIONAL_CHILD_PRICE, BRAND, PLANS, cad } from "@/lib/site";
 
 export const FAQ = [

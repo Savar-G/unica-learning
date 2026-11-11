@@ -6,21 +6,25 @@ import { StartLink, StartNote } from "@/components/start-link";
 import { START_LABEL } from "@/components/sections";
 import { SupportPage } from "@/components/support-page";
 import { pageMetadata } from "@/lib/metadata";
+import { JsonLd } from "@/components/json-ld";
+import { pageJsonLd } from "@/lib/structured-data";
 import { SAMPLE_CHILDREN } from "@/lib/sample-children";
 import { sampleReportWithBook } from "@/lib/sample-book-one";
 import "@/ds/styles/personalization.css";
 
-export const metadata = pageMetadata({
+const PAGE = {
   path: "/sample-report",
   title: "Sample math report",
   description: "See the report from the free online math assessment, for a sample Grade 3 child.",
-});
+};
+export const metadata = pageMetadata(PAGE);
 
 export default function SampleReportPage() {
   const view = sampleReportWithBook();
   const name = SAMPLE_CHILDREN.a.name;
   return (
     <SupportPage label="" title="" wide>
+      <JsonLd data={pageJsonLd(PAGE)} />
       <aside className="sample-note" aria-label="About this sample">
         <div>
           <p className="eyebrow">Sample report</p>

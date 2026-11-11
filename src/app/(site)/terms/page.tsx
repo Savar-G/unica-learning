@@ -1,17 +1,20 @@
 import { pageMetadata } from "@/lib/metadata";
+import { JsonLd } from "@/components/json-ld";
+import { pageJsonLd } from "@/lib/structured-data";
 import { SupportPage } from "@/components/support-page";
 import { PLANS, cad } from "@/lib/site";
 import { BUSINESS_NAME, SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 
-export const metadata = pageMetadata({
+const PAGE = {
   path: "/terms",
   title: "Terms",
   description: `${BUSINESS_NAME} prices, free assessments, payments, cancellations, and refunds.`,
-  index: false,
-});
+};
+export const metadata = pageMetadata(PAGE);
 
 export default function Terms() {
   return <SupportPage label="Updated 9 November 2026" title="Terms">
+    <JsonLd data={pageJsonLd(PAGE)} />
     <p className="lead">These terms apply to the free math assessment and the learning program offered by {BUSINESS_NAME}. A parent or guardian must create the account and choose the plan.</p>
     <h2>The offer</h2>
     <p>{BUSINESS_NAME} offers a personalized math learning program for ages 5 to 14, Kindergarten to Grade 9. The program includes paper workbooks made for your child. Math is CAD {cad(PLANS.one.price)} per month. Your first month is free. Prices are in Canadian dollars. Delivery across Canada is included.</p>

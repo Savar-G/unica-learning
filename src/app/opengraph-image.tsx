@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { BRAND } from "@/lib/site";
 
-export const alt = `${BRAND}: Unica meets your child at their level, and takes them further.`;
+export const alt = `${BRAND}: A personalized math program that meets your child at their level.`;
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -22,13 +22,14 @@ export default async function Image() {
             <div style={{ width: 13, height: 13, background: "#FF6430", marginLeft: 3 }} />
           </div>
           <div style={{ display: "flex", flexDirection: "column" }}>
-            <div style={{ fontSize: 22, letterSpacing: 3, textTransform: "uppercase", marginBottom: 22 }}>Math learning program, ages 5 to 14</div>
+            <div style={{ fontSize: 22, letterSpacing: 3, textTransform: "uppercase", marginBottom: 22 }}>Ages 5 to 14, Kindergarten to Grade 9</div>
             <div style={{ display: "flex", flexDirection: "column", fontFamily: "Zodiak", fontSize: 64, lineHeight: 1.05, letterSpacing: -1.5 }}>
-              <span>{BRAND.split(" ")[0]} meets your child</span>
+              <span>A personalized math</span>
+              <span>program that meets</span>
+              <span>your child</span>
               <div style={{ display: "flex" }}>
-                <span style={{ background: "#FFD23F", padding: "0 8px", marginLeft: -8 }}>at their level,</span>
+                <span style={{ background: "#FFD23F", padding: "0 8px", marginLeft: -8 }}>at their level.</span>
               </div>
-              <span>and takes them further.</span>
             </div>
           </div>
           <div style={{ fontSize: 24, color: "#4b4b4b" }}>Made for one child. Adapted after every book.</div>
