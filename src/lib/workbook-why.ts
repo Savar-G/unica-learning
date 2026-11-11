@@ -2,6 +2,14 @@
 import { BC_SKILL_MAP, MISCONCEPTIONS, type FactFamilyId } from "@/lib/assessment";
 import { UNIT_TITLES } from "@/lib/workbook-titles";
 import { feelingLabel, goalLabel, interestLabel, styleLabel, weeklyTimeLabel } from "@/lib/learning-style";
+
+// The plan stores this text, and stored plans and run fingerprints must not change when a label on a parent screen
+// changes (D-325 renamed the goal and feeling answers on the signup step). The values the learning card used before
+// D-325 keep their old short words here; a value added by D-325 uses its label from the signup step.
+const PLAN_FEELING_WORDS: Partial<Record<Parameters<typeof feelingLabel>[0], string>> = { enjoys: "Enjoys it", okay: "It's okay", avoids: "Avoids it" };
+const PLAN_GOAL_WORDS: Partial<Record<Parameters<typeof goalLabel>[0], string>> = { catch_up: "Catch up", keep_up: "Keep up", get_ahead: "Get ahead" };
+const planFeelingLabel = (id: Parameters<typeof feelingLabel>[0]) => PLAN_FEELING_WORDS[id] ?? feelingLabel(id);
+const planGoalLabel = (id: Parameters<typeof goalLabel>[0]) => PLAN_GOAL_WORDS[id] ?? goalLabel(id);
 import type { WorkbookPlan } from "@/lib/workbook-plan";
 import type { BookSignals, BookSoftSource, SignalId, SignalTrace } from "@/lib/workbook-signals";
 import { bookSignals } from "@/lib/workbook-signals";
@@ -119,7 +127,7 @@ function values(s: BookSignals): Record<SignalId, string> {
     S15: b ? `${b.helpLikely ? "Help likely" : "Help not likely"}; ${b.helpFlags} warning signs` : "No help information",
     S16: "Excluded from planning",
     S17: `Interests: ${list(s.preferences.interests.map(interestLabel), "not answered")}. Learns from: ${list(s.preferences.styles.map(styleLabel), "not answered")}`,
-    S18: `Feeling: ${s.parent.feeling ? feelingLabel(s.parent.feeling) : "not answered"}. Goal: ${s.parent.goal ? goalLabel(s.parent.goal) : "not answered"}. Weekly time: ${s.parent.weeklyTime ? weeklyTimeLabel(s.parent.weeklyTime) : "not answered"}`,
+    S18: `Feeling: ${s.parent.feeling ? planFeelingLabel(s.parent.feeling) : "not answered"}. Goal: ${s.parent.goal ? planGoalLabel(s.parent.goal) : "not answered"}. Weekly time: ${s.parent.weeklyTime ? weeklyTimeLabel(s.parent.weeklyTime) : "not answered"}`,
     S19: aiSource(s.soft.sources?.test),
     S20: aiSource(s.soft.sources?.learning),
     S21: s.report.howWeHelp ? ({ ahead: "Move ahead", behind: "Catch up", "on-grade": "Work at school grade" })[s.report.howWeHelp] : "No report recommendation supplied",
