@@ -124,6 +124,17 @@ export function workbookStore(db: SupabaseClient<Database>): WorkbookStore {
       return page(workbookId, p, questions.data);
     },
 
+    async pageIndex(workbookId) {
+      if (!isUuid(workbookId)) return [];
+      const [pages, questions] = await Promise.all([
+        db.from("workbook_pages").select("id, page_number").eq("workbook_id", workbookId).order("page_number", { ascending: true }),
+        db.from("workbook_questions").select("page_id").eq("workbook_id", workbookId),
+      ]);
+      const error = pages.error ?? questions.error;
+      if (error) throw new Error(`workbook page index load: ${error.message}`);
+      return (pages.data ?? []).map((p) => ({ number: p.page_number, questions: (questions.data ?? []).filter((q) => q.page_id === p.id).length }));
+    },
+
     async question(ref) {
       if (!isUuid(ref.workbookId) || !Number.isInteger(ref.page) || !Number.isInteger(ref.question)) return { status: "not-found" };
       const { data: p, error } = await db.from("workbook_pages").select("id").eq("workbook_id", ref.workbookId).eq("page_number", ref.page).maybeSingle();

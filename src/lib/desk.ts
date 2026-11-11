@@ -156,8 +156,10 @@ const deskPage = (p: WorkbookPage): DeskPage => ({
 });
 
 /**
- * The desk for one child: their shipped workbooks, the one asked for (else the newest), and the page asked for (else
- * the first page with questions, else the first page). Without confirmed delivery, no package is read.
+ * The desk for one child: their shipped workbooks, the one asked for (else the newest with a confirmed delivery), and the
+ * page asked for (else the first page with questions, else the first page). Only that one page is read. Without
+ * confirmed delivery of the workbook shown, no package is read: a workbook asked for that is not delivered, or no
+ * delivered workbook at all, answers `awaiting-delivery`.
  */
 export async function deskView(
   store: WorkbookStore,
@@ -168,24 +170,29 @@ export async function deskView(
   const workbooks = (await store.childWorkbooks(o.childId)).filter((w) => w.parentId === o.parentId && w.childId === o.childId && w.status === "shipped");
   if (workbooks.length === 0) return { status: "no-workbook" };
   const asked = o.workbookId === undefined ? undefined : workbooks.find((w) => w.id === o.workbookId);
-  const summary = asked ?? workbooks[0];
-  const delivered = async () => {
-    const receipt = await delivery.receipt(summary.id);
+  const delivered = async (w: WorkbookSummary) => {
+    const receipt = await delivery.receipt(w.id);
     return !!receipt && receipt.parentId === o.parentId && receipt.childId === o.childId
-      && receipt.workbookId === summary.id && receipt.number === summary.number
-      && confirmedWorkbookDelivery([receipt], [], o.childId, summary.id, now) !== null;
+      && receipt.workbookId === w.id && receipt.number === w.number
+      && confirmedWorkbookDelivery([receipt], [], o.childId, w.id, now) !== null;
   };
-  if (!await delivered()) return { status: "awaiting-delivery" };
-  const book = await store.workbook(summary.id);
+  // A workbook asked for opens only when it is delivered. Else the newest delivered one: a shipped workbook still on its
+  // way must not hide the one the child works in.
+  let summary: WorkbookSummary | undefined;
+  if (asked) summary = await delivered(asked) ? asked : undefined;
+  else for (const w of workbooks) if (await delivered(w)) { summary = w; break; }
+  if (!summary) return { status: "awaiting-delivery" };
+  const index = await store.pageIndex(summary.id);
+  const shown = index.find((p) => p.number === o.page) ?? index.find((p) => p.questions > 0) ?? index[0];
+  const page = shown ? await store.page(summary.id, shown.number) : null;
   // A retraction during the package read must not show a page with no tappable questions.
-  if (!await delivered()) return { status: "awaiting-delivery" };
-  if (!book || book.pages.length === 0) return { status: "no-workbook" };
-  const page = book.pages.find((p) => p.number === o.page) ?? book.pages.find((p) => p.questions.length > 0) ?? book.pages[0];
+  if (!await delivered(summary)) return { status: "awaiting-delivery" };
+  if (!page) return { status: "no-workbook" };
   return {
     status: "ready",
     workbooks,
     workbook: summary,
-    pages: book.pages.map((p) => p.number),
+    pages: index.map((p) => p.number),
     page: deskPage(page),
     notice: o.workbookId !== undefined && !asked ? "not-this-child" : null,
     picked: page.questions.some((q) => q.number === o.question) ? (o.question ?? null) : null,
