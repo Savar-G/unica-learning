@@ -37,6 +37,7 @@ Personalized, mailed math and reading workbooks for ages 5 to 14 (Kindergarten t
 - Copy rules in `DESIGN.md` are binding: no proof we do not have (performance and outcome claims are allowed since D-323; a prediction about one child comes from code and says its basis), and no competitor brand names outside `/resources` and `/blog` (compare with categories such as learning centres, D-064; `/resources` guides and `/blog` posts may name them with cited, dated facts, D-074, D-152).
 - Blog (`/blog`, D-152): one post per file in `src/content/blog/<slug>.tsx`, registered in `src/lib/blog.ts`; writing rules in `docs/blog-style.md` (checked by `src/lib/blog.test.ts`); topic queue in `docs/blog-topics.md`. The cloud routine "Unica weekly blog" runs `docs/blog-automation.md` every Sunday and pushes one post on a `claude/blog-<slug>` branch. The GitHub Actions workflow `Blog publish` (`.github/workflows/blog-publish.yml`) checks with `scripts/blog-publish-guard.mjs` that the branch only adds or fixes a post, merges it into `main`, runs the done gate and pushes `main`. Never name a branch `claude/blog-*` for any other work; a name ending in `-dryrun` runs the checks without the push.
 - Use plain language in all customer text. Keep development notes and draft labels out of public pages. Give provider names only in the privacy disclosure, with a plain explanation.
+- In marketing copy (social posts, ads, share images, headlines, kickers), call the product "a personalized math learning program". Do not call it "workbooks".
 
 ## Tools and services
 

@@ -64,3 +64,6 @@ supabase/.temp/
 /traces/
 /worker/maya-voice/dist/
 /.first-pages-example/
+
+# gstack browse tool logs
+.gstack/
