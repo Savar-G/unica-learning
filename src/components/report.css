@@ -254,7 +254,6 @@
 
 /* progress preview (round r-progress-preview-5, P2): the prediction, the skill table, how. Book colours by grade. */
 .rpt-goal { padding: var(--row-pad) 0; border-top: 1px solid var(--line); }
-.rpt-goal > .rpt-k:first-child { text-align: center; }
 [data-look="warm"] .rpt .rpt-goal h2 { max-width: 17em; margin: 12px auto 0; text-align: center; font-size: clamp(30px, 4.4vw, 52px); font-weight: 300; line-height: 1.06; letter-spacing: -0.04em; }
 [data-look="warm"] .rpt .rpt-goal h2 b { font-weight: 500; }
 .rpt-goal-t { width: 100%; margin-top: clamp(24px, 4vw, 40px); border-collapse: separate; border-spacing: 0; border-radius: 16px; background: #fff; box-shadow: 0 0 0 1px var(--line), 0 24px 40px -30px rgba(0, 0, 0, 0.35); overflow: hidden; }

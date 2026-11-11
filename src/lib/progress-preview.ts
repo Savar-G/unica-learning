@@ -1,5 +1,5 @@
 // The progress preview on the parent's report, the report email and Parent home (round r-progress-preview-5, option P2,
-// Savar 2026-11-11): "We predict Leah can reach a grade 3 level by September 2027", the skills today beside the skills
+// Savar 2026-11-11): "We can help Leah reach a grade 3 level by September 2027", the skills today beside the skills
 // at that level, and how the books get there. Every date is computed here from the real plan pace; nothing is typed in.
 // Pure: no network, database, clock or AI. It reads the BC curriculum (server only: never import it into a browser file).
 //
@@ -136,8 +136,8 @@ export function progressPreview(v: ReportView, curriculum: Curriculum | null = c
     goalLabel: `${gradeWord(goal)} level`,
     goalMonth,
     sentence: goalMonth
-      ? { lead: `We predict ${name} can reach a `, goal: `${gradeLower(goal)} level`, by: goalMonth }
-      : { lead: `We predict ${name} can reach a `, goal: `${gradeLower(goal)} level`, by: null },
+      ? { lead: `We can help ${name} reach a `, goal: `${gradeLower(goal)} level`, by: goalMonth }
+      : { lead: `We can help ${name} reach a `, goal: `${gradeLower(goal)} level`, by: null },
     rows: skillRows(today, goal),
     books,
     stages,

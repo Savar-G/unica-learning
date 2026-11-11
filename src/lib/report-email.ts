@@ -395,7 +395,6 @@ ${heading(`How we help: ${esc(help.title)}`)}
 ${p(esc(help.text), "margin:0")}
 </td></tr>` : ""}
 ${progress ? `<tr><td style="padding:34px 20px 0">
-<p style="margin:0 0 8px;font-family:${MONO};font-size:12px;letter-spacing:0.05em;text-transform:uppercase;color:${INK_2}">Our prediction for ${esc(name)}</p>
 <p style="margin:0 0 18px;font-size:26px;line-height:1.15;font-weight:300;letter-spacing:-0.02em;color:${INK}">${esc(progress.sentence.lead)}<b style="font-weight:600">${esc(progress.sentence.goal)}</b>${progress.sentence.by ? ` by <b style="font-weight:600">${esc(progress.sentence.by)}</b>` : ""}.</p>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid ${LINE};border-radius:12px;border-collapse:separate;overflow:hidden">
 <tr><td width="50%" style="padding:12px 14px;background:#faf9f7"><span style="font-family:${MONO};font-size:11px;letter-spacing:0.05em;text-transform:uppercase;color:${INK_2}">Today</span><br><span style="font-size:17px">${esc(progress.todayLabel)}</span></td>

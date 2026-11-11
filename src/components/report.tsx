@@ -452,14 +452,13 @@ function ReportBookOne({ view }: { view: ReportView }) {
 }
 
 /**
- * The progress preview (round r-progress-preview-5, option P2): the prediction, the skills today beside the skills at
+ * The progress preview (round r-progress-preview-5, option P2): "We can help [Name] reach ...", the skills today beside the skills at
  * the goal (a round arrow on the goal column's edge), then how the books get there. Nothing without workbook 1.
  */
 export function ReportProgress({ preview: p }: { preview: ProgressPreview | null }) {
   if (!p) return null;
   return (
     <section className="rpt-goal" id="rpt-progress" aria-labelledby="rpt-goal-h">
-      <p className="rpt-k">Our prediction for {p.name}</p>
       <h2 id="rpt-goal-h">{p.sentence.lead}<b>{p.sentence.goal}</b>{p.sentence.by && <> by <b>{p.sentence.by}</b></>}.</h2>
       <table className="rpt-goal-t" aria-labelledby="rpt-goal-h">
         <thead>

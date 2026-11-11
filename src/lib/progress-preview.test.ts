@@ -43,7 +43,7 @@ describe("progressPreview", () => {
     expect(p.books).toHaveLength(20);
     expect(p.goal).toBe(3);
     expect(p.goalMonth).toBe("September 2027");
-    expect(p.sentence).toEqual({ lead: "We predict Leah can reach a ", goal: "grade 3 level", by: "September 2027" });
+    expect(p.sentence).toEqual({ lead: "We can help Leah reach a ", goal: "grade 3 level", by: "September 2027" });
     expect(p.stages).toEqual([
       { grade: 1, label: "Grade 1", books: 10, months: "Dec to May 2027" },
       { grade: 2, label: "Grade 2", books: 10, months: "May to Sep 2027" },

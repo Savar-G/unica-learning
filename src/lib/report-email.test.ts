@@ -372,13 +372,13 @@ describe("progress preview (round r-progress-preview-5)", () => {
     const v = sampleReportWithBook();
     const p = progressPreview(v)!;
     const email = reportEmail({ unsubscribeUrl: UNSUB, view: v, parentName: "Priya", url: URL });
-    expect(email.text).toContain(`We predict ${p.name} can reach a ${p.sentence.goal} by ${p.goalMonth}.`);
+    expect(email.text).toContain(`We can help ${p.name} reach a ${p.sentence.goal} by ${p.goalMonth}.`);
     expect(email.text).toContain(`- Adding and subtracting: ${p.rows[1].today} -> ${p.rows[1].goal}`);
-    expect(email.html).toContain(`Our prediction for ${p.name}`);
+    expect(email.html).toContain(`We can help ${p.name} reach a <b style="font-weight:600">${p.sentence.goal}</b>`);
     expect(email.html).toContain(p.rows[1].goal);
     expect(email.html).toContain("How we get");
     const quiet = reportEmail({ unsubscribeUrl: UNSUB, view: v, parentName: "Priya", url: URL, offer: false });
-    expect(quiet.text).not.toContain("We predict");
-    expect(quiet.html).not.toContain("Our prediction");
+    expect(quiet.text).not.toContain("We can help");
+    expect(quiet.html).not.toContain("We can help");
   });
 });

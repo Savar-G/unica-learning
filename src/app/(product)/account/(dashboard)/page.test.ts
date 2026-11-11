@@ -161,16 +161,16 @@ it("R425M-3: account and a younger child's start use the oldest sibling's provin
   }
 });
 
-it("shows the prediction from the child's newest report, with a link to the report's plan", async () => {
+it("shows the goal sentence from the child's newest report, with a link to the report's plan", async () => {
   const render = async () => renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) })));
-  expect(await render()).not.toContain("Our prediction for");
+  expect(await render()).not.toContain("We can help");
   progress.value = new Map([["c1", { href: "/account/report/r1#rpt-progress", preview: {
     name: "Asha", today: 1, goal: 3, todayLabel: "Grade 1 level", goalLabel: "Grade 3 level", goalMonth: "September 2027",
-    sentence: { lead: "We predict Asha can reach a ", goal: "grade 3 level", by: "September 2027" }, rows: [], books: [1, 1, 2], stages: [],
+    sentence: { lead: "We can help Asha reach a ", goal: "grade 3 level", by: "September 2027" }, rows: [], books: [1, 1, 2], stages: [],
     steps: [{ title: "A new workbook every 2 weeks", text: "" }, { title: "8 pages a day, 5 days a week", text: "" }, { title: "We mark the finished pages", text: "" }], basis: "",
   } }]]);
   const out = await render();
-  expect(out).toContain("We predict Asha can reach a <b>grade 3 level</b> by <b>September 2027</b>.");
+  expect(out).toContain("We can help Asha reach a <b>grade 3 level</b> by <b>September 2027</b>.");
   expect(out).toContain("3 workbooks, 8 pages a day, 5 days a week.");
   expect(out).toContain('href="/account/report/r1#rpt-progress"');
 });
