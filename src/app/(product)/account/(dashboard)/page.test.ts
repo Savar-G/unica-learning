@@ -25,6 +25,8 @@ vi.mock("@/components/plan-closed-note", () => ({
 }));
 const scanning = vi.hoisted(() => ({ enabled: false }));
 vi.mock("@/lib/scan-pages-access", () => ({ scanPagesAccess: async () => scanning.enabled }));
+const progress = vi.hoisted(() => ({ value: new Map<string, import("@/lib/progress-preview-server").HomeProgress>(), reads: null as string[][] | null }));
+vi.mock("@/lib/progress-preview-server", () => ({ homeProgress: async (_db: unknown, _parent: string, reports: { child_id: string }[]) => { progress.reads?.push(reports.map((r) => r.child_id)); return new Map([...progress.value].filter(([id]) => reports.some((r) => r.child_id === id))); } }));
 const notes = vi.hoisted(() => ({ latest: new Map<string, ParentNote>() }));
 vi.mock("@/lib/parent-maya-notes", async (original) => ({ ...await original<typeof import("@/lib/parent-maya-notes")>(), latestParentMayaNotes: async () => notes.latest }));
 
@@ -34,7 +36,7 @@ vi.mock("@/lib/parent-dashboard-server", () => ({
   parentDashboard: async () => dashboard.value,
   dashboardOverview: async () => { overview.reads++; return overview.value; },
 }));
-const family = vi.hoisted(() => ({ postal: "V3S 1A1" as string | null, timeZone: null as string | null, olderChild: false, card: false, signedOut: false }));
+const family = vi.hoisted(() => ({ postal: "V3S 1A1" as string | null, timeZone: null as string | null, olderChild: false, card: false, signedOut: false, report: false }));
 const opensAt = Date.parse("2026-11-18T04:29:00Z");
 vi.mock("@/lib/test-attempt-server", () => ({
   parentStartStates: async () => new Map([["c1", { kind: "wait", completedAt: Date.parse("2026-10-19T04:29:00Z"), opensAt: Date.parse("2026-11-18T04:29:00Z") }]]),
@@ -48,7 +50,7 @@ vi.mock("@/lib/supabase-auth", () => ({
         const rows: Record<string, Record<string, unknown>[]> = {
           parents: [{ name: "Alex Family", email: "alex@example.com", postal: family.postal, time_zone: family.timeZone }],
           children: [{ id: "c1", parent_id: "p1", created_at: "2021-01-01", first_name: "Asha", grade: 3, province: "BC" }, ...(family.olderChild ? [{ id: "z-old", parent_id: "p1", created_at: "2020-01-01", first_name: "Sam", grade: 4, province: "ON" }] : [])],
-          reports: [],
+          reports: family.report ? [{ id: "r1", child_id: "c1" }] : [],
           card_setups: family.card ? [{ card_saved_at: "2026-11-01T00:00:00Z" }] : [{ card_saved_at: null }],
         };
         let data = (rows[table] ?? []).map((row) => Object.fromEntries(Object.entries(row).filter(([key]) => columns.split(/,\s*/).includes(key))));
@@ -65,7 +67,7 @@ vi.mock("@/lib/supabase-auth", () => ({
   }),
 }));
 
-beforeEach(() => { minutes.value = new Map(); chats.value = new Map(); dashboard.value = null; overview.value = null; overview.reads = 0; family.postal = "V3S 1A1"; family.timeZone = null; family.olderChild = false; family.card = false; family.signedOut = false; scanning.enabled = false; notes.latest = new Map(); });
+beforeEach(() => { minutes.value = new Map(); chats.value = new Map(); dashboard.value = null; overview.value = null; overview.reads = 0; family.postal = "V3S 1A1"; family.timeZone = null; family.olderChild = false; family.card = false; family.report = false; family.signedOut = false; scanning.enabled = false; notes.latest = new Map(); progress.value = new Map(); progress.reads = null; });
 
 it("a signed-out parent signs in and comes back to the child the link named (#563)", async () => {
   family.signedOut = true;
@@ -157,6 +159,41 @@ it("R425M-3: account and a younger child's start use the oldest sibling's provin
   ]) {
     expect(renderToStaticMarkup(createElement("div", null, page))).toContain("11:29 p.m. on Tuesday, November 17");
   }
+});
+
+it("shows the goal sentence from the child's newest report, with a link to the report's plan", async () => {
+  family.report = true;
+  const render = async () => renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) })));
+  expect(await render()).not.toContain("We can help");
+  progress.value = new Map([["c1", { href: "/account/report/r1#rpt-progress", preview: {
+    name: "Asha", today: 1, goal: 3, todayLabel: "Grade 1 level", goalLabel: "Grade 3 level", goalMonth: "September 2027",
+    sentence: { lead: "We can help Asha reach a ", goal: "grade 3 level", by: "September 2027" }, rows: [], books: [1, 1, 2], stages: [],
+    steps: [{ title: "A new workbook every 2 weeks", text: "" }, { title: "8 pages a day, 5 days a week", text: "" }, { title: "We mark the finished pages", text: "" }], basis: "",
+  } }]]);
+  const out = await render();
+  expect(out).toContain("We can help Asha reach a <b>grade 3 level</b> by <b>September 2027</b>.");
+  expect(out).toContain("3 workbooks, 8 pages a day, 5 days a week.");
+  expect(out).toContain('href="/account/report/r1#rpt-progress"');
+});
+
+it("shows no goal sentence once the child has a shipped workbook, and reads only the shown child's report on the dashboard", async () => {
+  family.report = true;
+  const asked: string[][] = [];
+  progress.reads = asked;
+  progress.value = new Map([["c1", { href: "/account/report/r1#rpt-progress", preview: {
+    name: "Asha", today: 1, goal: 3, todayLabel: "", goalLabel: "", goalMonth: "September 2027", sentence: { lead: "We can help Asha reach a ", goal: "grade 3 level", by: "September 2027" },
+    rows: [], books: [1], stages: [], steps: [{ title: "", text: "" }, { title: "8 pages a day, 5 days a week", text: "" }, { title: "", text: "" }], basis: "",
+  } }]]);
+  mayaNotice.books = [{ id: "w1", childId: "c1", number: 1, status: "shipped" }];
+  let out: string;
+  try {
+    out = renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) })));
+  } finally {
+    mayaNotice.books = [];
+  }
+  // The loader is told to skip a child with a shipped workbook (the real one is never called for it).
+  expect(asked.at(-1)).toEqual([]);
+  expect(out).not.toContain("We can help");
 });
 
 it("links to the plan page only for a family with a saved card", async () => {

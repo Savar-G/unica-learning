@@ -1,0 +1,18 @@
+/* Option P (round 4), shared by P1 to P3: the prediction, the skills today and at the goal, then how. */
+.head { text-align: center; padding-top: clamp(16px, 3vw, 32px); }
+.say { max-width: 17em; margin: 12px auto 0; font-size: clamp(32px, 4.6vw, 56px); font-weight: 300; line-height: 1.05; letter-spacing: -.04em; }
+.say b { font-weight: 500; }
+.skills { margin-top: clamp(24px, 4vw, 40px); }
+.how { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: clamp(28px, 4vw, 44px); }
+@media (max-width: 760px) { .how { grid-template-columns: 1fr; } }
+.how > p.k { grid-column: 1 / -1; }
+.do { padding: 20px 20px 22px; border-radius: 14px; background: var(--card); }
+.do .num { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--ink); color: #fff; font: 600 13px/1 var(--mono); }
+.do b { display: block; margin-top: 14px; font-size: 19px; font-weight: 500; letter-spacing: -.01em; }
+.do span { display: block; margin-top: 6px; color: var(--ink-2); font-size: 15px; }
+.bar { display: flex; gap: 3px; margin-top: 14px; }
+.bar i { flex: 1 1 0; height: 18px; border-radius: 3px; background: var(--c); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 8px; font: 400 12px/1.3 var(--mono); color: var(--ink-2); }
+.legend i { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 2px; background: var(--c); vertical-align: -1px; }
+.when { font: 500 12px/1.3 var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--ink-2); }
+.notyet { color: var(--ink-3); font-style: italic; }
