@@ -31,7 +31,8 @@ const HELP = `node scripts/decision-marking-comparison.mjs --set DIR [--estimate
 --fake-http: run the real adapter against a fake fetch. No key; the report is marked fake.
 --max-usd: the cost cap of the run (default 2). A run whose estimate is above it does not start. Each request reserves
   the most it can cost (the model's whole context at its pinned price, times its most attempts) and is sent only when
-  the money spent plus every reservation in flight plus its own is at most the cap, so the spend cannot pass the cap.
+  the money spent plus every reservation in flight plus its own is at most the cap. The cap holds while the provider
+  bills at the pinned prices; the OpenRouter key's credit limit is the hard limit.
 --out: the output folder (default .workbook-sample/decision-comparison/<time>).
 --save-crops: also write each crop as it is sent, to check the crops by eye.`;
 
