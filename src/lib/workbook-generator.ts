@@ -3246,20 +3246,9 @@ async function restoreOwnPractice(input: GenerateInput, w: PageWork, work: PageW
 async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: PageWork[], filling = true, reserved = false): Promise<string | null> {
   if (input.itemPolicy === "approved-v1" && input.book && input.plan.level >= 4 && filling && !reserved && work.some(w => !w.page.capacityChecked)) {
     // Reserve complete required rows across the small task pool before optional fill consumes the spare tasks.
-    // The U16 lesson reserves its two-question floor, not the optional third or fourth question, before practice.
-    for (const w of work) if (input.plan.level === 16 && w.page.type === "new-idea" && !w.page.capacityChecked && w.layout) {
-      const optional = w.slots.filter(s => s.place === "now-you").slice(2);
-      for (const slot of optional) {
-        w.slots = w.slots.filter(s => s !== slot);
-        w.layout.slots[slot.layoutSlot].items--;
-      }
-    }
     const required = await fitWorkBudget(input, fitCheck, work, false, true);
     if (required) return required;
-    // Fill other practice before optional lesson questions consume the spare tasks.
-    const lessonPage = (w: PageWork) => input.plan.level === 16 && w.page.type === "new-idea";
-    const fillingOrder = [...work].sort((a, b) => Number(lessonPage(a)) - Number(lessonPage(b)));
-    for (const w of fillingOrder) {
+    for (const w of work) {
       // #759: the minimum U16 lesson can fit two questions while stretching hides room for a second pair.
       // Revisit it without stretched rows before keeping that measured minimum.
       const lesson = input.plan.level === 16 && w.page.type === "new-idea";
