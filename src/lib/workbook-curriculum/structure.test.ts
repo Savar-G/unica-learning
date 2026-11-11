@@ -68,15 +68,31 @@ describe("curriculum structure", () => {
     expect(structureDifference(before, curriculumStructureOf(moved))).toBe("skill 4.1-expanded-form has position U16.9.9, not U13.1.3");
   });
 
+  it("refuses a school grade change that would alter next-book placement", () => {
+    const changed = structuredClone(BC_CURRICULUM);
+    const level = changed.levels.find(l => l.id === "U10")! as { schoolGrade: number };
+    level.schoolGrade = 4;
+    const before = curriculumStructureOf(BC_CURRICULUM);
+    const after = curriculumStructureOf(changed);
+    expect(structureDifference(before, after)).toBe("level U10 has school grade 4, not 3");
+    const compat = nextBookCurriculumCompat("bc", DIGEST, {
+      version: curriculumVersion, structure: () => after, frozen: () => before,
+    });
+    expect(compat).toEqual({ ok: false, reason: "curriculum-incompatible", difference: "level U10 has school grade 4, not 3" });
+  });
+
   it("refuses a malformed archive file", () => {
     const good = () => JSON.parse(JSON.stringify(recordOf()));
     expect(readCurriculumStructureRecord(good(), "bc", DIGEST)).not.toBeNull();
     const bad: [string, (r: ReturnType<typeof good>) => unknown][] = [
       ["another digest", r => { r.digest = "d".repeat(28); }],
       ["another key", r => { r.key = "on"; }],
-      ["another format", r => { r.format = "curriculum-structure/2"; }],
+      ["another format", r => { r.format = "curriculum-structure/1"; }],
       ["an extra field", r => { r.templates = []; }],
       ["no source commit", r => { r.source.commit = "abc"; }],
+      ["missing school grade", r => { delete r.levels[0].schoolGrade; }],
+      ["invalid school grade", r => { r.levels[0].schoolGrade = 10; }],
+      ["fractional school grade", r => { r.levels[0].schoolGrade = 1.5; }],
       ["no levels", r => { r.levels = []; }],
       ["levels out of order", r => { r.levels.reverse(); }],
       ["a unit twice", r => { r.levels[1].units.push(r.levels[0].units[0]); }],
