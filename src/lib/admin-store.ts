@@ -21,7 +21,6 @@ import { PLAN_KEY_MS } from "@/lib/card-reconcile";
 import { findSavedCard } from "@/lib/saved-card";
 import { stripeCardProvider } from "@/lib/saved-card-server";
 import { stripe } from "@/lib/stripe";
-import { keptCardAnswer, keptSubscriptions } from "@/lib/admin-stripe-kept";
 import type { DashboardRows, Delivery, EmailCopyView, RawCard, RawDelivery, RawChild, RawEmail, RawParent, RawReport, RawTest, RawWaitlist } from "@/lib/admin-dashboard";
 import type { TemplateFilters, TemplateStat } from "@/lib/admin-templates";
 import type { ExportReader, ExportRow, PagedTable } from "@/lib/admin-export";
@@ -1391,7 +1390,7 @@ async function cardSubscriptions(cardRows: Promise<RawCard[]>): Promise<StripeRe
   if (!s) return { subscriptions: [], stripeMode: null, stripeNote: "No Stripe key here, so the page cannot tell who is paying." };
   const key = process.env.STRIPE_SECRET_KEY ?? "";
   const stripeMode = key.startsWith("sk_live_") || key.startsWith("rk_live_") ? "live" : "test";
-  const listed = keptSubscriptions(() => s.subscriptions.list({ status: "all", limit: 100 }).autoPagingToArray({ limit: SUBSCRIPTIONS_MAX }))
+  const listed = s.subscriptions.list({ status: "all", limit: 100 }).autoPagingToArray({ limit: SUBSCRIPTIONS_MAX })
     .then((all) => ({ all }), (e: unknown) => ({ failed: e }));
   const customers = new Set((await cardRows).flatMap((c) => (c.stripe_customer_id ? [c.stripe_customer_id] : [])));
   try {
@@ -1436,7 +1435,7 @@ async function confirmCardsInStripe(cards: RawCard[]): Promise<void> {
   if (!s || open.length === 0) return;
   const provider = stripeCardProvider(s);
   await Promise.all(open.map(async (c) => {
-    const answer = await keptCardAnswer(c.id, () => findSavedCard(c, provider));
+    const answer = await findSavedCard(c, provider);
     if (answer.state === "saved") Object.assign(c, { card_saved_at: answer.evidence.savedAt, saved_in_stripe_only: true });
     else if (answer.state === "unknown") console.error("[admin] stripe saved card check failed", c.id);
   }));

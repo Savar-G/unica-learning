@@ -14,7 +14,6 @@ import { stripePlanProvider, supabasePlanStore } from "@/lib/plan-state-server";
 import { endCardOperation, holdPlanStart } from "@/lib/family-deletion-store";
 import { supabaseCardRows } from "@/lib/card-reconcile-server";
 import { startPlan, stripe } from "@/lib/stripe";
-import { forgetAdminStripeReads } from "@/lib/admin-stripe-kept";
 import { adminClient } from "@/lib/supabase-auth";
 
 const record = (value: unknown): Record<string, unknown> => {
@@ -87,7 +86,6 @@ export function livePauses(): PauseSeams | null {
   return db && client ? supabasePauses(db, client) : null;
 }
 export async function finishControl(db: SupabaseClient<Database>, id: string, state: "applied" | "refused") {
-  forgetAdminStripeReads();
   const { error } = await db.rpc("finish_plan_control", { p_id: id, p_state: state });
   if (error) throw new Error(`plan control finish: ${error.message}`);
 }
@@ -127,7 +125,6 @@ export async function restartFamilyPlan(parent: string, card: string, token?: st
   try {
     const startedAt = Date.now();
     const result = await startPlan(client, { cardSetup: card, customer: data.stripe_customer_id, price, deliveryConfirmed: false, purpose: "restart", restartRevision: revision }, undefined, rows);
-    forgetAdminStripeReads();
     // Before anything else that can throw: the plan is running, so access reopens now, with no webhook wait.
     const access = result.ok ? await openRestartedPlan(db, client, { customer: data.stripe_customer_id, cardSetup: card, generation: result.generation, startedAt }) : null;
     return result.ok ? { ok: true as const, state: "started" as const, price: result.monthlyPrice ?? price, access: access ?? "pending" } : result;
