@@ -8,7 +8,7 @@ Savar approved opening A and the signup and calendar layouts in `preview.html` o
 Sender: Cedric and Savar, co-founders of Unica Learning.
 Use plural pronouns: "Gerald found multiplication hard. Would you like us to explain how we can help Gerald with multiplication?"
 Use a neutral opening when the existing data has no clear weak topic. Do not put scores or counts in the opening.
-Read AGENTS.md, DESIGN.md, and the relevant decisions first. D-321 records this approval.
+Read AGENTS.md, DESIGN.md, and the relevant decisions first. D-322 records this approval.
 
 ## Ownership
 
