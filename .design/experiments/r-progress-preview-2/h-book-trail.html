@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en-CA">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>H. Book trail</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shell.css">
+<style>
+.trail { position: relative; margin-top: 28px; border-radius: 20px; overflow: hidden; background: #fffdf7; box-shadow: 0 0 0 1px var(--line); }
+.trail-top { position: absolute; z-index: 2; top: clamp(16px, 3vw, 32px); left: clamp(16px, 3vw, 32px); right: clamp(16px, 3vw, 32px); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; align-items: start; }
+.trail-top .k { padding: 6px 10px; border-radius: 6px; background: #fff; box-shadow: 0 0 0 1px var(--line); }
+.trail svg { display: block; width: 100%; height: auto; }
+.trail text { font-family: "Geist Mono", monospace; }
+.stone { opacity: 0; animation: pop .4s var(--d) cubic-bezier(.34,1.56,.64,1) forwards; transform-box: fill-box; transform-origin: center; }
+@keyframes pop { from { opacity: 0; transform: scale(.4); } to { opacity: 1; transform: scale(1); } }
+.walk { stroke-dasharray: 3 7; }
+.below { display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: 16px; margin-top: 18px; }
+.below div { padding-left: 14px; border-left: 3px solid var(--c); }
+.below b { font-weight: 500; }
+.below p { margin-top: 4px; font-size: 14px; line-height: 1.45; color: var(--ink-2); }
+.below .when { font: 400 12px/1.3 var(--mono); color: var(--ink-3); margin-top: 2px; }
+@media (max-width: 700px) { .below { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="chrome"><span class="v">H. Book trail</span><div class="cases" data-cases></div><a href="board.html">All options</a></div>
+<main class="page">
+  <div class="stub">Report: "Where Leah is", "What's in workbook 1" (unchanged)</div>
+  <section class="section" id="out"></section>
+  <div class="stub">Next step: card and plan button (unchanged)</div>
+</main>
+<script src="levels.js"></script><script src="pace.js"></script><script src="covers.js"></script>
+<script>
+const tint = (hex, a) => { const n = parseInt(hex.slice(1), 16); const m = (c) => Math.round(255 - (255 - c) * a); return `rgb(${m(n >> 16)},${m((n >> 8) & 255)},${m(n & 255)})`; };
+mount((p, setPace) => {
+  const W = 1000, H = 520;
+  const trailD = "M70 470 C 260 470, 300 380, 420 360 S 560 330, 600 270 S 700 190, 780 170 S 860 120, 900 96";
+  const out = document.getElementById("out");
+  out.innerHTML = `
+    <div class="section-head"><p class="k">Where ${p.c.name} can go</p><h2>${headline(p)}</h2></div>
+    <div class="trail"><div class="trail-top"><p class="k">${p.books.length} books · ${p.months} months</p></div>
+      <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${headline(p)}"><path id="probe" d="${trailD}" fill="none"/></svg></div>
+    <div style="margin-top:14px">${paceSwitch(p)}</div><div class="below" style="--n:${p.grades.length - 1}"></div>
+    <p class="basis">${basis(p)}</p>`;
+  const svg = out.querySelector("svg"), probe = svg.querySelector("#probe");
+  const total = probe.getTotalLength();
+  const t0 = START_DATE.getTime(), t1 = p.goalDate.getTime();
+  const at = (d) => probe.getPointAtLength(total * Math.min(1, (d.getTime() - t0) / (t1 - t0)));
+  // Hill bands: the ground under each grade's part of the trail. Higher grades sit higher; above the last boundary is the goal.
+  const starts = p.grades.map((s) => at(s.date));
+  let hills = `<rect width="${W}" height="${H}" fill="#fffdf7"/>`;
+  for (let i = p.grades.length - 1; i >= 1; i--) {
+    const yy = starts[i].y + 26, k = i * 37;
+    hills += `<path d="M0 ${yy + 34} C ${180 + k} ${yy + 6}, ${400 - k} ${yy + 46}, 600 ${yy + 14} S ${880 - k / 2} ${yy - 10}, ${W} ${yy + 2} V ${H} H 0 Z" fill="${tint(gradeColor(p.grades[i - 1].grade), 0.18 + (p.grades.length - 1 - i) * 0.1)}"/>`;
+  }
+  // Trail, stones (books), signposts, child, summit.
+  const stones = p.books.map((b) => { const q = at(b.start); const w = 18, h = w * 11 / 8.5;
+    return `<g class="stone" style="--d:${(0.3 + b.n * 0.05).toFixed(2)}s"><title>Book ${b.n}: ${b.title}</title>
+      <g transform="translate(${q.x - w / 2} ${q.y - h - 4}) rotate(${(b.n % 3) - 1} ${w / 2} ${h})">
+      <rect width="${w}" height="${h}" fill="#fff" stroke="#0c0c0e" stroke-width="${b.n === 1 ? 1.6 : 0.8}" rx="1"/>${gridSvg(b.grade, w * 0.5, w * 0.14, h * 0.12)}
+      <rect x="${w * 0.14}" y="${h * 0.68}" width="${w * 0.6}" height="2.2" fill="${BRAND.sun}"/></g></g>`; }).join("");
+  const signs = p.grades.slice(1, -1).map((s) => { const q = at(s.date); return `<g transform="translate(${q.x - 6} ${q.y + 14})"><rect x="0" y="0" width="${92}" height="38" rx="6" fill="#0c0c0e"/><text x="10" y="16" font-size="11" fill="#fff" font-weight="600">${gradeName(s.grade).toUpperCase()}</text><text x="10" y="30" font-size="11" fill="#d6d6dc">${monthShort(s.date)} ${s.date.getFullYear()}</text></g>`; }).join("");
+  const s0 = at(START_DATE), sum = probe.getPointAtLength(total);
+  const kid = `<g transform="translate(${s0.x - 40} ${s0.y - 10})"><circle r="18" fill="${BRAND.leaf}"/><text y="5" text-anchor="middle" font-size="15" font-family="Geist" font-weight="600" fill="#fff">${p.c.name[0]}</text></g><text x="${s0.x - 62}" y="${s0.y + 26}" font-size="11" fill="#0c0c0e" font-weight="600">TODAY · ${gradeName(p.c.working).toUpperCase()}</text>`;
+  const flag = `<g transform="translate(${sum.x - 3} ${sum.y - 62})"><path d="M3 62V2" stroke="#0c0c0e" stroke-width="3" stroke-linecap="round"/><path d="M4 3h34l-9 10 9 10H4z" fill="#0c0c0e"/></g>
+    <text x="${sum.x - 14}" y="${sum.y - 72}" text-anchor="end" font-size="15" font-family="Geist" font-weight="600" fill="#0c0c0e">${gradeName(p.goal)} level</text>
+    <text x="${sum.x - 14}" y="${sum.y - 56}" text-anchor="end" font-size="12" fill="#44444c">about ${monthShort(p.goalDate)} ${p.goalDate.getFullYear()}</text>`;
+  const school = p.c.grade > p.c.working && p.c.grade < p.goal ? (() => { const q = at(p.grades.find((s) => s.grade === p.c.grade).date); return `<line x1="0" x2="${W}" y1="${q.y}" y2="${q.y}" stroke="${BRAND.tang}" stroke-dasharray="5 6" stroke-width="1.5"/><text x="${W - 16}" y="${q.y - 8}" text-anchor="end" font-size="11" fill="#a8360f">${p.c.name}'s school grade today</text>`; })() : "";
+  svg.innerHTML = hills + school + `<path d="${trailD}" fill="none" stroke="#fff" stroke-width="16" stroke-linecap="round"/><path class="walk" d="${trailD}" fill="none" stroke="#0c0c0e" stroke-width="2" stroke-linecap="round"/>` + stones + signs + kid + flag;
+  out.querySelector(".below").innerHTML = p.grades.slice(0, -1).map((s) => `<div style="--c:${gradeColor(s.grade)}"><b>${gradeName(s.grade)} work</b><p class="when">Books ${s.books[0].n} to ${s.books.at(-1).n} · from ${monthYear(s.date)}</p><p>${s.levels.map((l) => l.title).join("; ")}</p></div>`).join("");
+  wirePace(out, setPace);
+});
+</script>
+</body>
+</html>

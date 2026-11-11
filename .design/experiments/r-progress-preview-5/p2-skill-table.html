@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en-CA">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>P2. Skill table</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shell.css"><link rel="stylesheet" href="p.css">
+<style>
+
+.tbl { border-radius: 16px; background: #fff; box-shadow: 0 0 0 1px var(--line), 0 24px 40px -30px rgba(0,0,0,.35); overflow: hidden; }
+.tr { display: grid; grid-template-columns: 210px minmax(0, 1fr) 44px minmax(0, 1fr); align-items: center; border-top: 1px solid var(--line-soft); }
+.tr:first-child { border-top: 0; }
+.tr > * { padding: 16px 20px; }
+.th { background: var(--soft); }
+.th .when { display: block; }
+.th b { display: block; margin-top: 2px; font-size: 20px; font-weight: 400; letter-spacing: -.02em; }
+.area { font: 400 12px/1.3 var(--mono); text-transform: uppercase; letter-spacing: .04em; color: var(--ink-2); }
+.arrow { position: relative; align-self: stretch; padding: 0; }
+.arrow i { position: absolute; top: 50%; display: grid; place-items: center; }
+.arrow svg { display: block; }
+/* badge: a round chevron on the edge of the goal column, in every row */
+[data-arrow="badge"] .tr { grid-template-columns: 210px minmax(0, 1fr) 0 minmax(0, 1fr); }
+[data-arrow="badge"] .arrow i { left: 0; z-index: 1; width: 30px; height: 30px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px #e8dca6, 0 2px 6px rgba(0,0,0,.08); transform: translate(-50%, -50%); }
+[data-arrow="badge"] .th .arrow i { display: none; }
+/* header: no arrow in the rows, one ink badge between the two column heads */
+[data-arrow="header"] .tr { grid-template-columns: 210px minmax(0, 1fr) 0 minmax(0, 1fr); }
+[data-arrow="header"] .arrow i { display: none; }
+[data-arrow="header"] .th .arrow i { display: grid; left: 0; z-index: 1; width: 40px; height: 40px; border-radius: 50%; background: var(--ink); color: #fff; transform: translate(-50%, -50%); }
+[data-arrow="badge"] .goalc { padding-left: 34px; }
+[data-arrow="header"] .goalc { padding-left: 40px; }
+/* line: a drawn arrow that runs from today's text to the goal column */
+[data-arrow="line"] .tr { grid-template-columns: 210px minmax(0, 1fr) 72px minmax(0, 1fr); }
+[data-arrow="line"] .arrow i { left: 0; right: 12px; transform: translateY(-50%); }
+[data-arrow="line"] .th .arrow i { display: none; }
+.goalc { height: 100%; display: flex; align-items: center; background: #fff8dc; font-weight: 500; }
+.th .goalc { background: #ffe999; }
+@media (max-width: 760px) { .tr { grid-template-columns: 1fr 1fr; } .tr > .area { grid-column: 1 / -1; padding-bottom: 0; } .arrow, .th > :first-child { display: none; } .tr > * { padding: 10px 14px; } }
+</style>
+</head>
+<body>
+<div class="chrome"><span class="v">P2. Skill table</span><div class="cases" data-cases></div><a href="board.html">All options</a></div>
+<main class="page">
+  <div class="stub">Report: "Where Leah is", "What's in workbook 1" (unchanged)</div>
+  <section class="section" id="out"></section>
+  <div class="stub">Next step: card and plan button (unchanged)</div>
+</main>
+<script src="levels.js"></script><script src="covers.js"></script><script src="plan.js"></script><script src="skills.js"></script><script src="p.js"></script>
+<script>
+
+document.body.dataset.arrow = new URLSearchParams(location.search).get("arrow") || document.body.dataset.arrow || "badge";
+const CHEV = (n, c) => `<svg width="${n}" height="${n}" viewBox="0 0 16 16"><path d="M3 8h10M9 4l4 4-4 4" fill="none" stroke="${c}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const LINE = `<svg width="100%" height="14" viewBox="0 0 60 14" preserveAspectRatio="none" style="overflow:visible"><path d="M0 7h58" stroke="#c9c9cf" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg><svg width="10" height="14" viewBox="0 0 10 14" style="position:absolute;right:-2px"><path d="M2 2l6 5-6 5" fill="none" stroke="#0c0c0e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+mount((p) => {
+  const rows = skillRows(p.c.working, p.goal);
+  renderP(p, `<div class="tbl">
+    <div class="tr th"><span></span><span><span class="when">Today</span><b>${gradeName(p.c.working)} level</b></span><span class="arrow" aria-hidden="true"><i>${CHEV(18, "#fff")}</i></span><span class="goalc"><span><span class="when">By ${monthYear(p.goalDate)}</span><b>${gradeName(p.goal)} level</b></span></span></div>
+    ${rows.map((r) => `<div class="tr"><span class="area">${r.area}</span><span>${r.today ?? `<span class="notyet">Not started yet</span>`}</span><span class="arrow" aria-hidden="true"><i>${document.body.dataset.arrow === "line" ? LINE : CHEV(14, "#0c0c0e")}</i></span><span class="goalc">${r.goal}</span></div>`).join("")}
+  </div>`);
+});
+</script>
+</body>
+</html>

@@ -58,6 +58,10 @@
 .support-page .plan-closed-note + .acct-alert:not(.acct-saved) { margin-top: 12px; }
 .acct-card { padding: 22px; border: 1px solid var(--line); border-radius: 10px; }
 .support-page .acct-card h2 { margin: 0 0 8px; font-size: 21px; }
+/* Parent home: the prediction from the newest report (src/lib/progress-preview.ts). */
+.acct-goal { display: grid; gap: 6px; margin-top: 12px; background: #fff8dc; border-color: #f0e2a8; }
+.support-page .acct-goal .acct-goal-say { margin: 0; font-size: 21px; font-weight: 300; line-height: 1.25; letter-spacing: -0.02em; }
+.support-page .acct-goal .acct-goal-say b { font-weight: 500; }
 .acct-phone { margin: 24px 0; background: var(--card, #f6f4ef); border: 0; }
 .acct-phone p { margin: 0; }
 .support-page .acct-kids { list-style: none; padding: 0; margin: 24px 0; display: grid; gap: 12px; }

@@ -110,7 +110,7 @@ if (!today.readCurriculumStructureRecord(JSON.parse(JSON.stringify(record)), key
 // One skill per line, so a later diff between two entries reads skill by skill.
 const line = (v) => JSON.stringify(v);
 const text = `{\n  "format": ${line(record.format)},\n  "key": ${line(key)},\n  "digest": ${line(digest)},\n  "source": ${line(record.source)},\n  "levels": [\n`
-  + record.levels.map((l) => `    {"id": ${line(l.id)}, "number": ${l.number}, "units": [\n`
+  + record.levels.map((l) => `    {"id": ${line(l.id)}, "number": ${l.number}, "schoolGrade": ${line(l.schoolGrade)}, "units": [\n`
     + l.units.map((u) => `      {"code": ${line(u.code)}, "skills": [\n${u.skills.map((s) => `        ${line(s)}`).join(",\n")}\n      ]}`).join(",\n")
     + "\n    ]}").join(",\n") + "\n  ]\n}\n";
 if (JSON.stringify(JSON.parse(text)) !== JSON.stringify(record)) fail("The archive text does not read back as the record. No file written.");

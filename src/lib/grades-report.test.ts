@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+vi.mock("server-only", () => ({}));
 import { reportModel, type Grade } from "@/lib/assessment";
 import { allRight, allWrong, knowsUpTo, takeTest, type Script } from "@/lib/assessment/scripted-child";
 import { GRADES, cleanChild, gradeHint } from "@/lib/account";
