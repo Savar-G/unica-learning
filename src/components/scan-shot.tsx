@@ -16,7 +16,7 @@ export function ScanShot({ sizes }: { sizes: string }) {
   return (
     <div className="scan-frame">
       <Image src={scanPhoto} alt="" sizes={sizes} placeholder="blur" />
-      <div className="scan-screen" role="img" aria-label="A phone shows Leah's marked page: 27 + 39 = 66 and 408 + 168 = 576 are right; 54 − 37 = 23 is wrong, and the app shows how to borrow a ten to get 17.">
+      <div className="scan-screen" role="img" aria-label="A phone shows Leah's marked page: 27 + 39 = 66 and 408 + 168 = 576 are right; 54 − 37 = 23 is wrong, and the website shows how to borrow a ten to get 17.">
         <p className="scan-bar"><b>2 of 3 right</b><span>Gap: borrowing</span></p>
         <div className="scan-sheet" aria-hidden>
           <p className="scan-tt">Regrouping in stories</p>
