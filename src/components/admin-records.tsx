@@ -51,7 +51,7 @@ export function PlanStartNote({ card: c }: { card: CardSetupRow }) {
 
 /** The card's plan start control: the stuck start's recovery, else the start (or why it cannot start yet). Plans and delivery shows it too. */
 export function PlanStartAction({ card: c }: { card: CardSetupRow & People }) {
-  return c.stuckPlanStart ? <PlanStartStuck cardId={c.id} child={c.child?.first_name ?? "this child"} generation={c.stuckPlanStart} allowInitialStart={c.planStarted === false && !!c.firstWorkbook?.delivered} familyWindow={c.familyWindow} />
+  return c.stuckPlanStart ? <PlanStartStuck parentId={c.parent_id} cardId={c.id} child={c.child?.first_name ?? "this child"} generation={c.stuckPlanStart} allowInitialStart={c.planStarted === false && !!c.firstWorkbook?.delivered} familyWindow={c.familyWindow} />
     : c.planStarted === false ? c.card_saved_at && c.stripe_customer_id ? <StartGate card={c} /> : "-" : null;
 }
 
@@ -66,7 +66,7 @@ export function CardEmails({ card: c }: { card: CardSetupRow & People }) {
  */
 function StartGate({ card: c }: { card: CardSetupRow & People }) {
   const child = c.child?.first_name ?? "this child";
-  if (c.firstWorkbook?.delivered) return <StartPlan cardId={c.id} child={child} familyWindow={c.familyWindow} />;
+  if (c.firstWorkbook?.delivered) return <StartPlan parentId={c.parent_id} cardId={c.id} child={child} familyWindow={c.familyWindow} />;
   if (!c.firstWorkbook) return <span className="adm-note">We could not read the delivery of workbook 1. Reload this page.</span>;
   const book = c.firstWorkbook.id;
   return <p className="adm-note">{DELIVERY_RECEIPT_TEXT} <Link href={book ? adminWorkbookPath(book) : childPath(c.child_id)}>{book ? "Open workbook 1" : "Open this child"}</Link></p>;
