@@ -148,10 +148,12 @@ describe("a family the switch opens to", () => {
       expect(out).not.toContain("rpt-back");
     });
 
-    it("keeps the free call at the end of the report, once", async () => {
+    it("puts the results call once, after the working level and before where the child is", async () => {
       const out = await open();
-      expect(count(out, "Book a call")).toBe(1);
-      expect(main(out)).toContain("Book a call");
+      expect(count(out, "Book your results call")).toBe(1);
+      expect(main(out)).toContain("Go over Leah&#x27;s results with us");
+      expect(out.indexOf('id="rpt-call"')).toBeLessThan(out.indexOf('id="rpt-where"'));
+      expect(out.indexOf('id="rpt-call"')).toBeGreaterThan(out.indexOf('id="rpt-level"'));
     });
 
     it("shows the saved messages that came through /account", async () => {

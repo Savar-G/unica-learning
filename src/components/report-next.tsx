@@ -224,17 +224,18 @@ export function ReportNextView({ step, childName, province, asked, start, words,
 }
 
 /**
- * A free 15-minute call with a founder about the results, next to the plan choice and quieter than it. Opens Calendly
- * in a new tab; nothing about the child goes in the link. Hidden when no booking page is set (BOOKING_URL).
+ * The free 15-minute results call with a founder, high on the report: right after the working level, before workbook 1,
+ * because the call is where most families decide. Opens Calendly in a new tab; nothing about the child goes in the
+ * link. The words come from resultsCall (report-view), shared with the report email. Hidden when no booking page is set.
  */
-export function BookCall({ childName }: { childName: string }) {
+export function BookCall({ call }: { call: { title: string; text: string; button: string } }) {
   if (!BOOKING_URL) return null;
   return (
     <div className="rpt-next rpt-call">
-      <h3>Questions about {childName}&apos;s results?</h3>
-      <p>Book a free 15-minute call with Savar or Cedric, Unica&apos;s founders. We go through the report with you, explain where {childName} starts, and answer your questions.</p>
-      <a className="btn ghost" href={BOOKING_URL} target="_blank" rel="noopener" onClick={() => track("book_call", { src: "report" })}>
-        Book a call <span className="arr">→</span>
+      <h3>{call.title}</h3>
+      <p>{call.text}</p>
+      <a className="btn" href={BOOKING_URL} target="_blank" rel="noopener" onClick={() => track("book_call", { src: "report" })}>
+        {call.button} <span className="arr">→</span>
       </a>
     </div>
   );

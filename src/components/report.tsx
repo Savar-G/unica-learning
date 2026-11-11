@@ -57,6 +57,7 @@ import {
   strengthsView,
   whereNotes,
   whereView,
+  resultsCall,
   workingLevelNote,
 } from "@/lib/report-view";
 import "./report.css";
@@ -76,7 +77,8 @@ export interface NewTestOffer {
 /**
  * `nextSlot` replaces the next-step row: the public sample report shows its own button there. `newTest` (#189): when the
  * next test opens, and the button under the reliability note; without it the note names no time (the admin's copy).
- * `actionBeside` (#552): the dashboard shows the next step beside the report, so the report ends with the call only.
+ * `actionBeside` (#552): the dashboard shows the next step beside the report, so the report has no next-step row.
+ * The results call sits after the working level for parents and on the sample report, not on the admin's copy.
  */
 export function ReportCard({ view, next = NO_NEXT, readOnly = false, nextSlot, newTest = null, actionBeside = false }: { view: ReportView; next?: ReportNextContext; readOnly?: boolean; nextSlot?: ReactNode; newTest?: NewTestOffer | null; actionBeside?: boolean }) {
   return (
@@ -84,9 +86,10 @@ export function ReportCard({ view, next = NO_NEXT, readOnly = false, nextSlot, n
       <ReportHeader view={view} />
       <ReportOverall view={view} />
       <ReportContext view={view} newTest={newTest} />
+      {BOOKING_URL && (!readOnly || nextSlot) && <Row id="rpt-call" title="Results call"><BookCall call={resultsCall(view)} /></Row>}
       <ReportWhere view={view} />
       {bookOneView(view) ? <ReportBookOne view={view} /> : <ReportHelp view={view} />}
-      {actionBeside ? BOOKING_URL && <Row id="rpt-call" title="Questions"><BookCall childName={view.childName} /></Row> : nextSlot ? <Row id={NEXT_STEP_ANCHOR} title="Next step">{nextSlot}</Row> : readOnly ? <Row id={NEXT_STEP_ANCHOR} title="Next step"><p>{nextStep(view).title}</p></Row> : <ReportNextStep view={view} next={next} />}
+      {actionBeside ? null : nextSlot ? <Row id={NEXT_STEP_ANCHOR} title="Next step">{nextSlot}</Row> : readOnly ? <Row id={NEXT_STEP_ANCHOR} title="Next step"><p>{nextStep(view).title}</p></Row> : <ReportNextStep view={view} next={next} />}
       <div className="rpt-details-h" id={DETAILS_ID}>
         <p className="eyebrow">The details</p>
         <p>How we measured, and {view.childName}&apos;s own answers.</p>
@@ -544,7 +547,6 @@ function ReportNextStep({ view, next }: { view: ReportView; next: ReportNextCont
     <Row id={NEXT_STEP_ANCHOR} title="Next step">
       {learning && <LearningStep childId={learning.childId} name={view.childName} start={learning.start} place="report" />}
       <ReportNextActions reportId={view.id} step={step} childName={view.childName} province={view.province} {...actions} />
-      <BookCall childName={view.childName} />
     </Row>
   );
 }

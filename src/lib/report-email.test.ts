@@ -156,7 +156,7 @@ describe("the report email to the parent", () => {
     for (const province of ["BC", "ON"] as const) {
       const quiet = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3), { province }), parentName: "Priya", url: URL, offer: false });
       for (const body of [quiet.text, quiet.html]) {
-        expect(body).not.toMatch(/Choose a plan|Join the waitlist|step=|CAD \d+|Unsubscribe:|unsubscribe\?t=|How we help|first book|books keep|The books/);
+        expect(body).not.toMatch(/Book your results call|first workbook|calendly\.com|Choose a plan|Join the waitlist|step=|CAD \d+|Unsubscribe:|unsubscribe\?t=|How we help|first book|books keep|The books/);
         expect(body).toContain("You unsubscribed from reminders and emails about our plans, so this email has only the report.");
       }
       expect(quiet.html).toMatch(new RegExp(`<a href="${URL.replace(/[?.]/g, "\\$&")}"[^>]*>See Maya&#39;s full report</a>`));
@@ -164,6 +164,19 @@ describe("the report email to the parent", () => {
       expect(quiet.text).toContain("Unica Learning, 16557 87A Ave, Surrey, BC V4N 5B2");
     }
   });
+  it("offers the results call before the findings, about workbook 1 only for families who get workbooks", () => {
+    const bc = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3)), parentName: "Priya", url: URL });
+    const call = "A free 15-minute video call with Savar or Cedric, Unica's founders.";
+    expect(bc.text).toContain(call);
+    for (const body of [bc.text, bc.html]) expect(body).toContain("first workbook will cover and why, and answer any questions you have.");
+    expect(bc.text.match(/Book your results call/g)).toHaveLength(1);
+    expect(bc.html.match(/Book your results call/g)).toHaveLength(1);
+    expect(bc.text.indexOf(call)).toBeLessThan(bc.text.indexOf("By area"));
+    const on = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3), { province: "ON" }), parentName: "Priya", url: URL });
+    expect(on.text).toContain(call);
+    expect(on.text).not.toContain("first workbook");
+  });
+
   it("escapes names in the HTML (parent email)", () => {
     const html = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3), { name: "Jo & <i>" }), parentName: "<b>A</b>", url: "https://x.test/?a=1&b=2" }).html;
     expect(html).not.toMatch(/<b>A<\/b>|<i>/);
