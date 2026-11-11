@@ -12,3 +12,14 @@ export const SUPPORT_HREF = `mailto:${SUPPORT_EMAIL}`;
  * set it to an empty value to stop offering the call.
  */
 export const BOOKING_URL = process.env.NEXT_PUBLIC_BOOKING_URL ?? "https://calendly.com/contact-unicalearning/15min";
+
+/** A booking link without prefilled data. */
+export function safeBookingUrl(raw: string): string {
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:" || url.hostname !== "calendly.com" || url.username || url.password) return "";
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch { return ""; }
+}

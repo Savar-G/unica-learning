@@ -277,6 +277,7 @@ export const DATABASE_CHECKS: readonly { table: string; name: string; definition
   {"table":"parent_pins","name":"parent_pins_reset_failed_attempts_check","definition":"CHECK ((reset_failed_attempts >= 0))"},
   {"table":"parents","name":"parents_email_check","definition":"CHECK (((char_length(email) <= 200) AND (email ~ '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$'::text)))"},
   {"table":"parents","name":"parents_name_check","definition":"CHECK (((char_length(name) >= 2) AND (char_length(name) <= 120)))"},
+  {"table":"parents","name":"parents_phone_check","definition":"CHECK (((phone IS NULL) OR (phone ~ '^\\+1[2-9][0-9]{2}[2-9][0-9]{6}$'::text)))"},
   {"table":"parents","name":"parents_postal_check","definition":"CHECK ((postal ~ '^[ABCEGHJ-NPRSTVXY][0-9][A-Z] ?[0-9][A-Z][0-9]$'::text))"},
   {"table":"parents","name":"parents_source_check","definition":"CHECK ((pg_column_size(source) < 4000))"},
   {"table":"parents","name":"parents_time_zone_check","definition":"CHECK (((time_zone IS NULL) OR (((char_length(time_zone) >= 1) AND (char_length(time_zone) <= 64)) AND (time_zone ~ '^[A-Za-z][A-Za-z0-9_+/-]*$'::text))))"},

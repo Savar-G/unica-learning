@@ -64,7 +64,7 @@ export function reportJobStore(admin: SupabaseClient<Database>): ReportJobStore 
     },
     reviews: (assessment) => reviewStore(admin, { id: assessment.id, parent_id: assessment.parentId }),
     async parent(parentId) {
-      const { data, error } = await admin.from("parents").select("name, email").eq("id", parentId).maybeSingle();
+      const { data, error } = await admin.from("parents").select("name, email, phone").eq("id", parentId).maybeSingle();
       if (error) throw new Error(`parent load: ${error.message}`);
       return data;
     },

@@ -13,7 +13,6 @@ import { CURRICULA } from "@/lib/signup";
 import { BRAND } from "@/lib/site";
 import type { ReportSrc } from "@/lib/next-step";
 import { BookCall, ReportNextActions, type NextStepStart } from "@/components/report-next";
-import { BOOKING_URL } from "@/lib/contact";
 import { LearningStep } from "@/components/learning";
 import type { LearningAnswers } from "@/lib/learning-style";
 import Link from "next/link";
@@ -87,7 +86,7 @@ export function ReportCard({ view, next = NO_NEXT, readOnly = false, nextSlot, n
       <ReportHeader view={view} />
       <ReportOverall view={view} />
       <ReportContext view={view} newTest={newTest} />
-      {BOOKING_URL && (!readOnly || nextSlot) && <Row id="rpt-call" title="Results call"><BookCall call={resultsCall(view)} /></Row>}
+      {(!readOnly || nextSlot) && <Row id="rpt-call" title="Results call"><BookCall call={resultsCall(view)} /></Row>}
       <ReportWhere view={view} />
       {bookOneView(view) ? <ReportBookOne view={view} /> : <ReportHelp view={view} />}
       {/* The first pages of workbook 1 (docs/first-pages.md), when ready: the action only while no card is saved. */}
