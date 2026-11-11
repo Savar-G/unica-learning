@@ -6,6 +6,7 @@ import { adminTestPath } from "@/lib/admin-view";
 import { loadComparisonInput } from "@/lib/comparison-store";
 import { sendEmail, sendEmailOnce, type MailTransport, type Sender } from "@/lib/email-delivery";
 import { rebuildChildProfileNow } from "@/lib/child-profile-server";
+import { queueFirstPagesNow } from "@/lib/first-pages-server";
 import { addProfileAi, storeProfileFacts, type LearnerProfileStore, type ProfileBuild } from "@/lib/learner-profile";
 import { profileAiClient } from "@/lib/learner-profile-ai";
 import { learnerProfileStore } from "@/lib/learner-profile-store";
@@ -40,6 +41,9 @@ import { aiReport, aiReviewer, type AiOutcome, type WorkReviewer } from "@/lib/w
 //   7. Last, the child's profile (#303, src/lib/child-profile.ts) is built again from the test's stored profile and
 //      the child's learning events, then, with the AI on and events to link, its AI findings (#304), which stop after at
 //      most CHILD_PROFILE_AI_MS (20 s). A failure is logged; the facts stay stored.
+//   8. Very last, only with FIRST_PAGES_ENABLED "on" and an email this run may send: the first pages of Workbook 1 are
+//      queued (docs/first-pages.md). One database call; the pages are made elsewhere and never hold up the report, its
+//      emails or this job. The database refuses a test that does not qualify. A failure is logged.
 // #771: the /api/reminders run retries a test that still has no report, or whose parent email was refused
 // (src/lib/report-retry.ts), through the retry route, with `failureAlert` off and, past 48 hours or for a test family or
 // a team account, `email` off.
@@ -89,6 +93,12 @@ export interface ReportJobOptions {
   email?: boolean;
   /** #771: false sends no "Report FAILED" alert (a retry: the retries send one alert after the last). Default true. */
   failureAlert?: boolean;
+  /**
+   * Queues the first pages of Workbook 1 (docs/first-pages.md). By default queueFirstPagesNow (off unless
+   * FIRST_PAGES_ENABLED is "on") when the learner profiles are Supabase too; none when `profiles` is given (in memory).
+   * Not called when `email` is false.
+   */
+  firstPages?: ((assessmentId: string, origin: string) => Promise<unknown>) | null;
   /**
    * #771: asked right before the parent email is claimed (a retry: report_retry_may_email, by the database's clock).
    * False, or a throw: no parent email and no report alert; the report stays stored. None (the finish route): no check.
@@ -168,6 +178,9 @@ export async function runReportJob(assessmentId: string, origin: string, options
   if (profile) await profileStep(assessmentId, () => addProfileAi(db.profiles, profile, { ai: profileAi === undefined ? profileAiClient() : profileAi }));
   // Step 7: the child's profile, from what is stored now.
   if (childId && rebuildChild) await profileStep(assessmentId, () => rebuildChild(childId!));
+  // Step 8: the first pages, queued only; made elsewhere.
+  const firstPages = options.firstPages === undefined ? (options.profiles ? null : (id: string, o: string) => queueFirstPagesNow(id, o, "report")) : options.firstPages;
+  if (childId && email && firstPages) await profileStep(assessmentId, () => firstPages(assessmentId, origin));
 }
 
 /**

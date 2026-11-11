@@ -13,6 +13,10 @@ import { reminderMessage, reminderStore } from "@/lib/reminder-store";
 import { retryReportsNow } from "@/lib/report-retry-server";
 import { REMINDER_KINDS, dueReminders, runReminders, type DueReminder } from "@/lib/reminders";
 import { newToken } from "@/lib/sign-in-link";
+import { runFirstPagesEmails } from "@/lib/first-pages-email";
+import { firstPagesEmailStore } from "@/lib/first-pages-email-store";
+import { firstPagesEmailEnabled, restartFirstPagesNow } from "@/lib/first-pages-server";
+import { stripe } from "@/lib/stripe";
 import { adminClient } from "@/lib/supabase-auth";
 import { createWorkbookScanMaintenanceServer, scanMaintenanceRelease } from "@/lib/workbook-scan-maintenance-server";
 
@@ -28,6 +32,8 @@ import { createWorkbookScanMaintenanceServer, scanMaintenanceRelease } from "@/l
 // Also beside the emails, it retries the report job of each finished test that still has no report, or whose report
 // email was refused (#771, src/lib/report-retry.ts): bounded retries, each started through the retry route, under one
 // signal that ends 40 seconds after the run began (REPORT_RETRY_END_MS in src/lib/report-retry-server.ts).
+// Last, the first pages' sample email (docs/first-pages.md), only with FIRST_PAGES_EMAIL_ENABLED "on", and (with
+// WORKBOOK_RUNNER "server") a restart of the first pages that stopped on the server; both end 52 seconds after the run began.
 // ?dry=1 counts what is due and sends and ends nothing.
 // The answer holds counts only, never a parent's details.
 
@@ -37,6 +43,8 @@ export const maxDuration = 60;
 const SEND_GAP_MS = 600;
 /** The monthly emails' work has ended this long after the run began, which leaves time to answer inside the 60-second limit; the next run does the rest. */
 const MONTHLY_END_MS = 50_000;
+/** No first pages email starts this long after the run began. */
+const FIRST_PAGES_END_MS = 52_000;
 
 function authorized(header: string | null, secret: string): boolean {
   const given = Buffer.from(header ?? "");
@@ -129,6 +137,19 @@ export async function POST(request: Request) {
       console.error("[monthly summary] run failed", e instanceof Error ? e.message : e);
       monthly = { error: "run_failed" };
     }
+    // The first pages: off unless switched on; a failure never hides the other results.
+    let firstPages: unknown;
+    try {
+      const restarted = await restartFirstPagesNow(origin);
+      const emails = await runFirstPagesEmails(firstPagesEmailStore(admin, stripe()), {
+        enabled: firstPagesEmailEnabled(), origin, transport, newToken, inTime: () => Date.now() < now + FIRST_PAGES_END_MS,
+      });
+      firstPages = { restarted, emails };
+      if (!("off" in emails) && emails.due > 0) console.info("[first pages email] run", JSON.stringify(emails));
+    } catch (e) {
+      console.error("[first pages] run failed", e instanceof Error ? e.message : e);
+      firstPages = { error: "run_failed" };
+    }
     let scans: Awaited<ReturnType<NonNullable<typeof scan>["run"]>> | { error: "run_failed" } | undefined;
     if (scan) {
       try { scans = await scan.run({ now: () => Date.now(), endAt: now + 55_000 }); }
@@ -137,7 +158,7 @@ export async function POST(request: Request) {
         scans = { error: "run_failed" };
       }
     }
-    return Response.json({ ok: true, ...result, maya, monthly, sweep: await sweep, cards: await cards, cancels: await cancels, reports: await reports,
+    return Response.json({ ok: true, ...result, maya, monthly, firstPages, sweep: await sweep, cards: await cards, cancels: await cancels, reports: await reports,
       ...(scans ? { scans } : {}) });
   } catch (e) {
     console.error("[reminders] run failed", e instanceof Error ? e.message : e);

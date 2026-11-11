@@ -297,14 +297,21 @@ export function renderedPages(result: Extract<RenderResult, { status: "rendered"
  */
 export async function renderWorkbook(o: {
   draft: WorkbookDraft; parentId: string; template: WorkbookTemplate; engine: PrintEngine; fileKey?: string;
+  /**
+   * The whole book the pages are from, when `draft` holds only some of its pages (the first pages of Workbook 1,
+   * docs/first-pages.md): the template reads other pages from it (the cover prints the topics of How + Plan). Only
+   * `draft`'s pages print. Absent: the draft is the whole book.
+   */
+  book?: WorkbookDraft;
 }): Promise<RenderResult> {
   const { draft, template } = o;
+  const book = o.book ?? draft;
   const answerMin = template.answerMin ?? ANSWER_MIN;
   const problems: RenderProblem[] = [];
   const sheets: string[] = [];
   for (const page of draft.pages) {
     const qrUrl = pageUrl(page.qrToken);
-    const html = template.page(page, { qr: qrElement(qrUrl), qrUrl }, draft);
+    const html = template.page(page, { qr: qrElement(qrUrl), qrUrl }, book);
     if (html === null) problems.push({ page: page.number, question: null, reason: `the template has no layout for a ${page.type} page` });
     sheets.push(html ?? "");
   }
@@ -355,7 +362,7 @@ export async function renderWorkbook(o: {
         fail(q.number, `question ${q.number} has no answer space`);
       } else questions.push({ ...q, box: pixelBox(m, image), regions: printedRegions(q, measured, image) });
     }
-    for (const p of template.fit?.(page, measured, draft) ?? []) fail(p.question, p.reason, p.slot ?? undefined, p.kind);
+    for (const p of template.fit?.(page, measured, book) ?? []) fail(p.question, p.reason, p.slot ?? undefined, p.kind);
     pages.push({ number: page.number, dayLabel: page.dayLabel, type: page.type, qrToken: page.qrToken, image: { path, width: image.width, height: image.height }, questions });
   });
   if (problems.length) return { status: "failed", problems };

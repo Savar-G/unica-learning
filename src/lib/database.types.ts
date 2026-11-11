@@ -853,6 +853,7 @@ export type Database = {
       }
       email_copies: {
         Row: {
+          attachments: Json | null
           created_at: string
           email_id: string | null
           email_log_id: string | null
@@ -870,6 +871,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          attachments?: Json | null
           created_at?: string
           email_id?: string | null
           email_log_id?: string | null
@@ -887,6 +889,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          attachments?: Json | null
           created_at?: string
           email_id?: string | null
           email_log_id?: string | null
@@ -5274,6 +5277,134 @@ export type Database = {
           },
         ]
       }
+      workbook_first_pages: {
+        Row: {
+          ai_calls: Json
+          assessment_id: string
+          attempts: number
+          calls: Json
+          child_id: string
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          decided_by_email: string | null
+          decision: string | null
+          error: string | null
+          errors: Json
+          finished_at: string | null
+          frame: Json | null
+          heartbeat_at: string | null
+          id: string
+          kept_at: string | null
+          kept_by: string | null
+          lease: string | null
+          max_attempts: number
+          pages: Json
+          parent_id: string
+          queued_by: string
+          ready_at: string | null
+          result: Json | null
+          runner: string
+          slot_attempts: Json
+          solves: Json
+          status: string
+          workbook_id: string
+        }
+        Insert: {
+          ai_calls?: Json
+          assessment_id: string
+          attempts?: number
+          calls?: Json
+          child_id: string
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decided_by_email?: string | null
+          decision?: string | null
+          error?: string | null
+          errors?: Json
+          finished_at?: string | null
+          frame?: Json | null
+          heartbeat_at?: string | null
+          id?: string
+          kept_at?: string | null
+          kept_by?: string | null
+          lease?: string | null
+          max_attempts?: number
+          pages?: Json
+          parent_id: string
+          queued_by: string
+          ready_at?: string | null
+          result?: Json | null
+          runner?: string
+          slot_attempts?: Json
+          solves?: Json
+          status?: string
+          workbook_id?: string
+        }
+        Update: {
+          ai_calls?: Json
+          assessment_id?: string
+          attempts?: number
+          calls?: Json
+          child_id?: string
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decided_by_email?: string | null
+          decision?: string | null
+          error?: string | null
+          errors?: Json
+          finished_at?: string | null
+          frame?: Json | null
+          heartbeat_at?: string | null
+          id?: string
+          kept_at?: string | null
+          kept_by?: string | null
+          lease?: string | null
+          max_attempts?: number
+          pages?: Json
+          parent_id?: string
+          queued_by?: string
+          ready_at?: string | null
+          result?: Json | null
+          runner?: string
+          slot_attempts?: Json
+          solves?: Json
+          status?: string
+          workbook_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_first_pages_assessment_id_fkey"
+            columns: ["assessment_id"]
+            isOneToOne: true
+            referencedRelation: "assessments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_first_pages_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_first_pages_kept_by_fkey"
+            columns: ["kept_by"]
+            isOneToOne: false
+            referencedRelation: "workbook_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_first_pages_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workbook_instructions: {
         Row: {
           child_id: string
@@ -7579,6 +7710,15 @@ export type Database = {
         Args: { p_attempt: string; p_message: string }
         Returns: Json
       }
+      adopt_workbook_first_pages: {
+        Args: {
+          p_first_pages: string
+          p_frame: Json
+          p_lease: string
+          p_run: string
+        }
+        Returns: Json
+      }
       advance_family_deletion_cursor: {
         Args: { p: string }
         Returns: undefined
@@ -8003,6 +8143,15 @@ export type Database = {
           id: string
         }[]
       }
+      claim_workbook_first_pages: {
+        Args: {
+          p_id: string
+          p_lease: string
+          p_runner: string
+          p_stale_seconds: number
+        }
+        Returns: boolean
+      }
       claim_workbook_layout_edit: {
         Args: { p_id: string; p_lease: string }
         Returns: boolean
@@ -8099,6 +8248,16 @@ export type Database = {
         }
         Returns: Json
       }
+      count_workbook_first_pages_attempts: {
+        Args: {
+          p_id: string
+          p_lease: string
+          p_max: number
+          p_page: number
+          p_slots: string[]
+        }
+        Returns: Json
+      }
       count_workbook_run_attempts: {
         Args: {
           p_lease: string
@@ -8125,6 +8284,15 @@ export type Database = {
       decide_family_deletion: {
         Args: { keep_family: boolean; p: string; token: string }
         Returns: boolean
+      }
+      decide_workbook_first_pages: {
+        Args: {
+          p_by: string
+          p_by_email: string
+          p_decision: string
+          p_id: string
+        }
+        Returns: Json
       }
       defer_scan_marking_evaluation: {
         Args: {
@@ -8175,6 +8343,16 @@ export type Database = {
       }
       end_plan_start: {
         Args: { p_card: string; p_key: string }
+        Returns: boolean
+      }
+      end_workbook_first_pages: {
+        Args: {
+          p_ai_calls: Json
+          p_error: string
+          p_id: string
+          p_lease: string
+          p_outcome: string
+        }
         Returns: boolean
       }
       exclude_workbook_run_ai: {
@@ -8310,6 +8488,15 @@ export type Database = {
           p_rendering: Json
         }
         Returns: Json
+      }
+      finish_workbook_first_pages: {
+        Args: {
+          p_ai_calls: Json
+          p_id: string
+          p_lease: string
+          p_result: Json
+        }
+        Returns: boolean
       }
       finish_workbook_layout_edit: {
         Args: {
@@ -8616,6 +8803,10 @@ export type Database = {
         }
         Returns: Json
       }
+      queue_workbook_first_pages: {
+        Args: { p_assessment: string; p_by: string; p_runner: string }
+        Returns: Json
+      }
       queue_workbook_layout_edit: {
         Args: {
           p_by: string
@@ -8788,6 +8979,10 @@ export type Database = {
         Args: { p: string; token: string }
         Returns: boolean
       }
+      renew_workbook_first_pages: {
+        Args: { p_id: string; p_lease: string }
+        Returns: boolean
+      }
       renew_workbook_run: {
         Args: { p_lease: string; p_run: string }
         Returns: boolean
@@ -8841,6 +9036,15 @@ export type Database = {
       request_parent_family_deletion_held: {
         Args: { hold: string; p: string }
         Returns: string
+      }
+      reseed_workbook_first_pages: {
+        Args: {
+          p_ai_calls: Json
+          p_error: string
+          p_id: string
+          p_lease: string
+        }
+        Returns: boolean
       }
       reserve_maya_spend: {
         Args: {
@@ -9071,6 +9275,16 @@ export type Database = {
           p_revision: number
         }
         Returns: Json
+      }
+      save_workbook_first_pages_part: {
+        Args: {
+          p_id: string
+          p_key: string
+          p_lease: string
+          p_part: string
+          p_value: Json
+        }
+        Returns: boolean
       }
       save_workbook_rendering: { Args: { p_rendering: Json }; Returns: Json }
       save_workbook_run_ai_calls: {

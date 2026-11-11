@@ -655,6 +655,39 @@ describe("the learner profile", () => {
   });
 });
 
+// The first pages of Workbook 1 (docs/first-pages.md): queued last, after both emails; never on a run with no email,
+// and a failure to queue changes nothing the job did.
+describe("the first pages", () => {
+  it("are queued last, after the emails and the profile rebuild; not when the run sends no email; a failure is only logged", async () => {
+    const db = database();
+    const mail = memoryTransport();
+    const order: string[] = [];
+    const rebuildChild = async () => void order.push("rebuild");
+    const firstPages = vi.fn(async (id: string, origin: string) => { order.push(`first pages ${id} ${origin} after ${mail.delivered.length} emails`); });
+    const options = { reader: db.readers.key(), comparison: db.comparison, store: db.job.store, profiles: db.profiles.store, reviewer: null, transport: mail.transport, ledger: memoryReportLedger().ledger, rebuildChild, firstPages };
+    await runReportJob(TEST, ORIGIN, options);
+    expect(order).toEqual(["rebuild", `first pages ${TEST} ${ORIGIN} after 2 emails`]);
+
+    const quiet = database();
+    firstPages.mockClear();
+    await runReportJob(TEST, ORIGIN, { ...options, reader: quiet.readers.key(), store: quiet.job.store, profiles: quiet.profiles.store, email: false });
+    expect(firstPages).not.toHaveBeenCalled();
+
+    const failing = database();
+    const mail2 = memoryTransport();
+    await runReportJob(TEST, ORIGIN, { ...options, reader: failing.readers.key(), store: failing.job.store, profiles: failing.profiles.store, transport: mail2.transport, ledger: memoryReportLedger().ledger,
+      firstPages: async () => { throw new Error("queue down"); } });
+    expect(mail2.delivered).toHaveLength(2);
+  });
+
+  it("are not queued by the in-memory job unless given", async () => {
+    const db = database();
+    const mail = memoryTransport();
+    await run(db, mail, memoryReportLedger());
+    expect(network).toEqual([]);
+  });
+});
+
 // The learner profile's AI parts (#197, spec #181): written through the AI client from the profile facts, the skill-map
 // neighbours and the misconception descriptions, checked, and stored with the facts. Here with the fake client.
 describe("the learner profile's AI parts", () => {

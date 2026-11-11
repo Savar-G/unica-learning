@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, TablesInsert } from "@/lib/database";
+import { createHash } from "node:crypto";
 import type { EmailCopy } from "@/lib/email-delivery";
 
 // The email copies (D-103): what each logged email looked like when the site sent it, in public.email_copies, for the
@@ -30,6 +31,9 @@ export function copyRow(target: CopyTarget, parentId: string, copy: EmailCopy): 
     subject: m.subject.slice(0, 500),
     text_body: hideTokens(m.text).slice(0, 200_000),
     html_body: m.html ? hideTokens(m.html).slice(0, 500_000) : null,
+    // Each attached file as it was sent, described: never its bytes.
+    attachments: m.attachments?.length ? m.attachments.map((a) => ({ filename: a.filename.slice(0, 200), contentType: a.contentType, bytes: a.content.length,
+      sha256: createHash("sha256").update(a.content).digest("hex") })) : null,
     updated_at: new Date().toISOString(),
   };
 }

@@ -14,6 +14,8 @@ import { SectionHead } from "@/components/admin-family-page";
 import { ChildRunsTable, WorkerLine } from "@/components/admin-workbook-runs";
 import { adminClient } from "@/lib/supabase-auth";
 import { PrepareWorkbook } from "@/components/prepare-workbook";
+import { AdminFirstPages } from "@/components/admin-first-pages";
+import { loadAdminFirstPages } from "@/lib/first-pages-server";
 import { PrepareFromSnapshot } from "@/components/prepare-from-snapshot";
 import { nextBookButtonState } from "@/lib/next-book-button";
 import { nextBookWiring } from "@/lib/next-book-planner";
@@ -40,7 +42,7 @@ export default async function ChildPage({ params }: PageProps<"/admin/children/[
   const mix = bookMix(learning);
   const shipped = workbooks.filter(w => w.status === "shipped");
   // Every read below needs only the child and its workbooks, so they run at once (2026-11-10: one after another).
-  const [requests, production, tests, instructions, nextBook, scanViews] = await Promise.all([
+  const [requests, production, tests, instructions, nextBook, scanViews, firstPages] = await Promise.all([
     adminClient()?.from("workbook_restart_requests").select("generation,requested_at").eq("child_id", c.id).is("run_id", null),
     familyProduction(admin, c.parent_id, now),
     loadTestFamilies(admin),
@@ -57,6 +59,8 @@ export default async function ChildPage({ params }: PageProps<"/admin/children/[
       },
     }),
     Promise.all(shipped.map(w => loadAdminScanProgress(admin, { parentId: c.parent_id, childId: c.id, workbookId: w.id }))),
+    // The first pages of Workbook 1 (docs/first-pages.md); a failed read shows none and never breaks this page.
+    loadAdminFirstPages(c.id).catch(() => ({ sets: [], newestTest: null })),
   ]);
   if (requests?.error) throw new Error(`Restart requests: ${requests.error.message}`);
   const scans = new Map<string, ReactNode>(shipped.map((w, i) => [w.id, <AdminScanProgress key={w.id} workbookId={w.id} view={scanViews[i].view} missingDelivery={scanViews[i].missingDelivery} />]));
@@ -103,6 +107,8 @@ export default async function ChildPage({ params }: PageProps<"/admin/children/[
         <Link className="btn ghost adm-btn" href={`/admin/children/${c.id}/preview-marks`} prefetch={false}>Preview from marks</Link>
       </div>
       <BookInstructions child={c} note={learning?.note ?? ""} data={instructions} />
+      <h3>First pages of Workbook 1</h3>
+      <AdminFirstPages sets={firstPages.sets} newestTest={workbooks.length === 0 ? firstPages.newestTest : null} child={c.first_name} />
       <h3>Make the next workbook</h3>
       {!prepareInHead && restart}
       {!prepareInHead ? <PrepareWorkbook childId={c.id} child={c.first_name} runner={runner} /> : <p className="adm-note">Use the button at the top of the page to prepare the first workbook.</p>}

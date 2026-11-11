@@ -4,7 +4,9 @@ import { toJson, type Database, type Tables } from "@/lib/database";
 import { draftProblem, GENERATED_DRAFT_VERSION } from "@/lib/workbook-generator";
 import { newGate, type ProviderGate, type AiCallRecord, type AiProvider } from "@/lib/ai-fallback";
 import type { AiCallKind } from "@/lib/workbook-ai";
-import { readPaged, SLOT_ATTEMPTS, STALE_SECONDS, type RunRunner, type WorkbookJobSource, type WorkbookRun, type WorkbookRunStore } from "@/lib/workbook-job";
+import type { FirstPagesResult } from "@/lib/first-pages";
+import { firstPagesCandidates } from "@/lib/first-pages-store";
+import { readPaged, SLOT_ATTEMPTS, STALE_SECONDS, type ReadyFirstPages, type RunFrame, type RunRunner, type WorkbookJobSource, type WorkbookRun, type WorkbookRunStore } from "@/lib/workbook-job";
 import type { WorkerCandidate, WorkerQueue } from "@/lib/workbook-worker";
 import type { SolveVerdict } from "@/lib/workbook-solve-check";
 import { workbookInstructions } from "@/lib/workbook-instructions";
@@ -127,6 +129,12 @@ export function workbookRunStore(admin: SupabaseClient<Database>): WorkbookRunSt
     async saveFrame(id, lease, frame) {
       return must(await admin.rpc("save_workbook_run_frame", { p_run: id, p_lease: lease, p_frame: toJson(frame) }), "plan save") === true;
     },
+    async adoptFirstPages(id, lease, firstPagesId, frame) {
+      const answer = must(await admin.rpc("adopt_workbook_first_pages", { p_run: id, p_lease: lease, p_first_pages: firstPagesId, p_frame: toJson(frame) }), "first pages keep") as { status?: string; reason?: string } | null;
+      if (answer?.status === "adopted") return "adopted";
+      if (answer?.status === "lost") return "lost";
+      return { refused: answer?.reason ?? "the database gave no answer" };
+    },
     async savePage(id, lease, page) {
       return must(await admin.rpc("save_workbook_run_page", { p_run: id, p_lease: lease, p_number: page.number, p_page: toJson(page) }), "page save") === true;
     },
@@ -178,6 +186,7 @@ export function workbookRunStore(admin: SupabaseClient<Database>): WorkbookRunSt
 export function workbookJobSource(admin: SupabaseClient<Database>, prepareProfile: WorkbookJobSource["prepareProfile"]): WorkbookJobSource {
   return {
     prepareProfile,
+    firstPages: (childId) => readyFirstPages(admin, childId),
     async planningMetadata(assessmentId) {
       const [test, report] = await Promise.all([
         admin.from("assessments").select("device").eq("id", assessmentId).maybeSingle(),
@@ -230,12 +239,14 @@ export function workbookWorkerQueue(admin: SupabaseClient<Database>, worker: { i
       const cutoff = Date.now() - staleSeconds * 1000;
       const edits = must(await admin.from("workbook_edits").select("id,status,heartbeat_at").eq("runner", "mac")
         .in("status", ["queued", "running"]).order("created_at").limit(50), "worker edit queue") ?? [];
+      // The first pages of Workbook 1 (docs/first-pages.md) come after the runs: a family's book goes first.
+      const first = await firstPagesCandidates(admin, "mac", staleSeconds);
       return [...edits.filter((e) => e.status === "queued" || Date.parse(e.heartbeat_at) < cutoff)
         .map((e) => ({ id: e.id, resume: e.status === "running" })), ...rows.flatMap((r): WorkerCandidate[] => {
         if (r.status === "queued") return [{ id: r.id, resume: false }];
         const quiet = r.lease === null || !r.heartbeat_at || Date.parse(r.heartbeat_at) < cutoff;
         return quiet ? [{ id: r.id, resume: true }] : [];
-      })];
+      }), ...first.map((id) => ({ id, resume: false }))];
     },
     async beat({ runId, started, note }) {
       // The heartbeat's foreign key names a generation run. A review batch keeps that run as its owner.
@@ -243,6 +254,8 @@ export function workbookWorkerQueue(admin: SupabaseClient<Database>, worker: { i
       if (runId) {
         const edit = must(await admin.from("workbook_edits").select("draft_id").eq("id", runId).maybeSingle(), "worker edit owner");
         if (edit) ownerRun = must(await admin.from("workbook_runs").select("id").eq("draft_id", edit.draft_id).maybeSingle(), "worker generation owner")?.id ?? null;
+        // First pages are no run: the heartbeat names none.
+        else if (must(await admin.from("workbook_first_pages").select("id").eq("id", runId).maybeSingle(), "worker first pages owner")) ownerRun = null;
       }
       must(await admin.rpc("beat_workbook_worker", {
         p_id: worker.id, p_build: worker.build, p_run: ownerRun, p_primary_ai: worker.primary, p_note: note, p_started: started,
@@ -307,3 +320,26 @@ export const saveRunAiCalls = (admin: SupabaseClient<Database>, runId: string) =
     if (saved !== chunk.length) throw new Error("workbook run AI calls were not saved");
   }
 };
+
+/**
+ * The child's ready first pages a Workbook 1 run may keep (docs/first-pages.md), newest first: ready, or ready and
+ * chosen to "keep-plan"; not kept by a run that is waiting, working or done. Hidden sets ("drop") are not ready.
+ */
+export async function readyFirstPages(admin: SupabaseClient<Database>, childId: string): Promise<ReadyFirstPages | null> {
+  const rows = must(await admin.from("workbook_first_pages").select("id, workbook_id, frame, result, decision, kept_by")
+    .eq("child_id", childId).eq("status", "ready").order("ready_at", { ascending: false }).limit(5), "first pages load") ?? [];
+  for (const row of rows) {
+    if (row.kept_by) {
+      const holder = must(await admin.from("workbook_runs").select("status").eq("id", row.kept_by).maybeSingle(), "first pages holder load");
+      if (holder && holder.status !== "failed" && holder.status !== "stale") continue;
+    }
+    const result = row.result as unknown as FirstPagesResult | null;
+    const frame = row.frame as unknown as RunFrame | null;
+    if (!result || !frame || result.version !== 1) continue;
+    return {
+      id: row.id, workbookId: row.workbook_id, frame, coverToken: result.cover.qrToken, pages: result.pages.map((p) => p.number), digest: result.digest,
+      decision: row.decision === "keep-plan" ? "keep-plan" : row.decision === "drop" ? "drop" : null,
+    };
+  }
+  return null;
+}

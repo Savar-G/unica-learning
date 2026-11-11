@@ -280,3 +280,30 @@
 /* The free results call (BookCall): its own row after the working level. */
 .rpt-next.rpt-call { background: #fff; border: 1px solid var(--line); }
 .rpt-next.rpt-call a.btn { color: #fff; }
+
+/* The first pages of workbook 1 (docs/first-pages.md, round r-first-pages option B): four real pages, the cover larger. */
+.rpt-fp { display: grid; gap: 16px; }
+.support-page .rpt .rpt-fp-lead, .rpt .rpt-fp-lead { margin: 0; max-width: 62ch; font-size: 15px; line-height: 1.5; color: var(--ink-2); }
+.rpt-fp-pages { display: grid; grid-template-columns: 1.35fr 1fr 1fr 1fr; align-items: end; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.rpt-fp-pages li { min-width: 0; }
+.rpt-fp-pages figure { display: grid; gap: 6px; margin: 0; }
+.rpt-fp-pages button { display: block; width: 100%; padding: 0; border: 0; background: none; border-radius: 6px; cursor: zoom-in; }
+.rpt-fp-pages button:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+.rpt-fp-pages img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 6px; background: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / 0.06); transition: transform 0.15s ease, box-shadow 0.15s ease; }
+.rpt-fp-pages button:hover img { transform: translateY(-2px); box-shadow: 0 6px 16px rgb(0 0 0 / 0.08); }
+.rpt-fp-pages figcaption { font-size: 12.5px; line-height: 1.35; color: var(--ink-2); }
+.rpt-fp-pages figcaption b { display: block; font-weight: 600; color: var(--ink); }
+.rpt-fp-cta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.support-page .rpt .rpt-fp-cta p, .rpt .rpt-fp-cta p { margin: 0; font-size: 13.5px; color: var(--ink-2); }
+.rpt-fp-dialog { width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--paper, #fff); }
+.rpt-fp-dialog::backdrop { background: rgb(12 12 14 / 0.55); }
+.rpt-fp-dialog-in { display: grid; gap: 8px; padding: 12px; }
+.rpt-fp-dialog-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.rpt-fp-dialog-bar p { margin: 0; font-size: 14px; }
+.rpt-fp-dialog-bar div { display: flex; gap: 6px; }
+.rpt-fp-dialog img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 4px; }
+@media (max-width: 699px) {
+  .rpt-fp-pages { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 12px; padding-bottom: 6px; }
+  .rpt-fp-pages li { flex: 0 0 72%; scroll-snap-align: start; }
+}
+@media (prefers-reduced-motion: reduce) { .rpt-fp-pages img { transition: none; } .rpt-fp-pages button:hover img { transform: none; } }
