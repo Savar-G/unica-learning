@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en-CA">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>K. With her class</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shell.css">
+<style>
+.card { margin-top: 24px; padding: clamp(18px, 3vw, 36px); border-radius: 18px; background: #fff; box-shadow: 0 0 0 1px var(--line), 0 30px 60px -40px rgba(0,0,0,.35); }
+.top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
+.keys { display: flex; flex-wrap: wrap; gap: 6px 18px; font: 400 13px/1.3 var(--mono); }
+.keys span { display: inline-flex; align-items: center; gap: 8px; }
+.keys i { width: 22px; height: 0; border-top: 3px solid var(--c); }
+.keys i.dash { border-top-style: dashed; border-top-width: 2px; }
+.chart { margin-top: 16px; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart text { font-family: "Geist Mono", monospace; }
+.grow { stroke-dasharray: 2400; stroke-dashoffset: 2400; animation: draw 1.6s cubic-bezier(.4,0,.2,1) forwards; }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+.calls { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 12px; margin-top: 14px; }
+.call { padding: 14px 16px; border-radius: 12px; background: var(--soft); }
+.call b { display: block; font-weight: 500; }
+.call span { font: 400 12px/1.3 var(--mono); color: var(--ink-2); }
+.call.is-key { background: var(--ink); color: #fff; }
+.call.is-key span { color: #d6d6dc; }
+</style>
+</head>
+<body>
+<div class="chrome"><span class="v">K. With her class</span><div class="cases" data-cases></div><a href="board.html">All options</a></div>
+<main class="page">
+  <div class="stub">Report: "Where Leah is", "What's in workbook 1" (unchanged)</div>
+  <section class="section" id="out"></section>
+  <div class="stub">Next step: card and plan button (unchanged)</div>
+</main>
+<script src="levels.js"></script><script src="pace.js"></script><script src="covers.js"></script>
+<script>
+// The child's level over time (books done in each grade) beside the class's grade, which goes up each September.
+// Like Kumon's progress graph (grade-level line) and i-Ready's growth report (on-grade band).
+const levelAt = (c, d, until) => {
+  const levels = LEVELS.filter((l) => l.grade >= c.working && l.grade < until);
+  const wk = 10 / d * 7 * 864e5;
+  const pts = [[START_DATE.getTime(), c.working]];
+  let t = START_DATE.getTime();
+  for (let g = c.working; g < until; g++) {
+    const n = levels.filter((l) => l.grade === g).reduce((a, l) => a + l.books, 0);
+    t += n * wk; pts.push([t, g + 1]);
+  }
+  return pts;
+};
+const classAt = (c, t) => { const d = new Date(t); const y0 = REPORT_DATE.getFullYear(); const sept = (y) => new Date(y, 8, 1).getTime(); let g = c.grade; for (let y = y0; sept(y) <= t; y++) if (sept(y) > REPORT_DATE.getTime()) g++; return g; };
+const kidGrade = (pts, t) => { if (t <= pts[0][0]) return pts[0][1]; for (let i = 1; i < pts.length; i++) if (t <= pts[i][0]) { const [t0, g0] = pts[i - 1], [t1, g1] = pts[i]; return g0 + (t - t0) / (t1 - t0) * (g1 - g0); } return pts.at(-1)[1]; };
+mount((p, setPace) => {
+  const c = p.c, until = Math.min(9, Math.max(p.goal, c.grade + 2) + 1);
+  const kid = levelAt(c, p.daysPerWeek, until);
+  // When does the child's level reach the class's grade (or 2 above it)?
+  const target = c.working < c.grade ? 0 : 2;
+  let meet = null;
+  for (let t = START_DATE.getTime(); t <= kid.at(-1)[0]; t += 7 * 864e5) if (kidGrade(kid, t) >= classAt(c, t) + target) { meet = t; break; }
+  const end = Math.max(p.goalDate.getTime(), meet ?? 0) + 120 * 864e5;
+  const W = 1000, H = 380, L = 96, R = 30, T = 24, B = 46;
+  const t0 = REPORT_DATE.getTime();
+  const x = (t) => L + (t - t0) / (end - t0) * (W - L - R);
+  const lo = c.working, hi = Math.max(p.goal, classAt(c, end)) + 0.4;
+  const y = (g) => T + (hi - g) / (hi - lo) * (H - T - B);
+  // class staircase
+  let cls = `M${x(t0)} ${y(c.grade)}`;
+  for (let yy = REPORT_DATE.getFullYear(); new Date(yy, 8, 1).getTime() < end; yy++) { const s = new Date(yy, 8, 1).getTime(); if (s <= t0) continue; const g = classAt(c, s); cls += ` H${x(s)} V${y(g)}`; }
+  cls += ` H${x(end)}`;
+  const kidPts = [[t0, c.working], ...kid.filter(([t]) => t <= end)];
+  const kidD = "M" + kidPts.map(([t, g]) => `${x(t)} ${y(g)}`).join(" L");
+  const grid = []; for (let g = lo; g <= Math.floor(hi); g++) grid.push(`<line x1="${L}" x2="${W - R}" y1="${y(g)}" y2="${y(g)}" stroke="#ececef"/><text x="${L - 12}" y="${y(g) + 4}" text-anchor="end" font-size="12" fill="#0c0c0e">${gradeName(g)}</text>`);
+  const months = []; for (let m = new Date(REPORT_DATE.getFullYear(), REPORT_DATE.getMonth() + 1, 1); m.getTime() < end; m = new Date(m.getFullYear(), m.getMonth() + 3, 1)) months.push(`<text x="${x(m.getTime())}" y="${H - 16}" text-anchor="middle" font-size="11" fill="#44444c">${monthShort(m)}${m.getMonth() < 3 ? " " + m.getFullYear() : ""}</text>`);
+  const sept = []; for (let yy = REPORT_DATE.getFullYear() + 1; new Date(yy, 8, 1).getTime() < end; yy++) { const s = new Date(yy, 8, 1).getTime(); sept.push(`<text x="${x(s) + 6}" y="${y(classAt(c, s)) - 8}" font-size="11" fill="#a8360f">school year ${yy}</text>`); }
+  const gx = x(p.goalDate.getTime()), gy = y(p.goal);
+  const meetMark = meet ? `<circle cx="${x(meet)}" cy="${y(kidGrade(kid, meet))}" r="9" fill="none" stroke="#0c0c0e" stroke-width="2"/><circle cx="${x(meet)}" cy="${y(kidGrade(kid, meet))}" r="4" fill="#0c0c0e"/>` : "";
+  const svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${headline(p)}">${grid.join("")}${months.join("")}
+    <path d="${cls}" fill="none" stroke="${BRAND.tang}" stroke-width="2.5" stroke-dasharray="7 6"/>${sept.join("")}
+    <path class="grow" d="${kidD}" fill="none" stroke="#0c0c0e" stroke-width="3.5" stroke-linejoin="round"/>
+    <circle cx="${x(t0)}" cy="${y(c.working)}" r="7" fill="${BRAND.leaf}"/><text x="${x(t0) + 12}" y="${y(c.working) + 18}" font-size="12" font-weight="600" fill="#0c0c0e">${c.name} today</text>
+    <g transform="translate(${gx - 3} ${gy - 44})"><path d="M3 44V2" stroke="#0c0c0e" stroke-width="2.5" stroke-linecap="round"/><path d="M4 3h26l-7 8 7 8H4z" fill="#0c0c0e"/></g>
+    <text x="${gx + 32}" y="${gy - 28}" font-size="12" font-weight="600" fill="#0c0c0e">Goal · ${monthShort(p.goalDate)} ${p.goalDate.getFullYear()}</text>${meetMark}</svg>`;
+  const meetText = meet ? (target === 0 ? `${c.name} catches up with the class` : `${c.name} is two grades ahead of the class`) : "";
+  const calls = `
+    <div class="call"><b>Today</b><span>${c.name} works at ${gradeName(c.working)}; the class is in ${gradeName(c.grade)}</span></div>
+    <div class="call"><b>${gradeName(p.goal)} level</b><span>about ${monthYear(p.goalDate)}</span></div>
+    ${meet ? `<div class="call is-key"><b>${meetText}</b><span>about ${monthYear(new Date(meet))}</span></div>` : ""}`;
+  const out = document.getElementById("out");
+  out.innerHTML = `
+    <div class="section-head"><p class="k">Where ${c.name} can go</p><h2>${headline(p)}</h2></div>
+    <div class="card">
+      <div class="top"><div class="keys"><span><i style="--c:#0c0c0e"></i>${c.name}, at ${p.daysPerWeek} days a week</span><span><i class="dash" style="--c:${BRAND.tang}"></i>${c.name}'s class (goes up each September)</span></div>${paceSwitch(p)}</div>
+      <div class="chart">${svg}</div>
+      <div class="calls">${calls}</div>
+      <p class="basis">${basis(p)}</p>
+    </div>`;
+  wirePace(out, setPace);
+});
+</script>
+</body>
+</html>
