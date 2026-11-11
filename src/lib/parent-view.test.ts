@@ -584,8 +584,8 @@ describe("the monthly summary (#562)", () => {
       pages,
       scans: [scan("d1a", "2026-10-20T18:00:00Z"), scan("d1b", "2026-10-21T18:00:00Z"), scan("d2a", "2026-10-25T18:00:00Z")],
       maya: [
-        { ...own, kind: "child", createdAt: "2026-10-02T18:00:00Z", usedSeconds: 300 },
-        { ...own, kind: "child", createdAt: "2026-10-30T18:00:00Z", usedSeconds: 60 },
+        { ...own, kind: "chat", status: "ended", endedAt: "2026-10-02T18:00:00Z", childTurns: 5 },
+        { ...own, kind: "chat", status: "ended", endedAt: "2026-10-30T18:00:00Z", childTurns: 1 },
       ],
     });
     expect(view).toEqual({
@@ -617,7 +617,7 @@ describe("the monthly summary (#562)", () => {
     const view = await summary({
       workbooks: [{ ...delivered.workbooks[0], shippedAt: "2026-10-01T03:00:00Z" }],
       pages, scans: [{ ...own, workbookId: "wb-1", pageId: "p", state: "saved", expiresAt: "2027-01-01T00:00:00Z", takenAt: late }],
-      maya: [{ ...own, kind: "child", createdAt: late, usedSeconds: 30 }, { ...own, kind: "child", createdAt: "2026-10-01T06:30:00Z", usedSeconds: 30 }],
+      maya: [{ ...own, kind: "chat", status: "ended", endedAt: late, childTurns: 2 }, { ...own, kind: "chat", status: "ended", endedAt: "2026-10-01T06:30:00Z", childTurns: 2 }],
     });
     // Shipped on September 30 in Vancouver, so not in October; the late scan and call are October's; the early call is September's.
     expect(view).toMatchObject({ mailed: [], daysScanned: 1, mayaCalls: 1 });
@@ -638,15 +638,17 @@ describe("the monthly summary (#562)", () => {
     expect((await summary({ pages, scans: [scan("a", "2026-09-29T18:00:00Z"), scan("b", "2026-09-30T18:00:00Z")] }))?.daysScanned).toBe(0);
   });
 
-  it("counts only the child's own calls that used time, never a parent's demo call or another child's", async () => {
+  it("counts only the child's own ended chats with a message from the child, never an admin test call, a live chat or another child's", async () => {
+    const ended = { status: "ended" as const, endedAt: "2026-10-02T18:00:00Z" };
     const maya = [
-      { ...own, kind: "child" as const, createdAt: "2026-10-02T18:00:00Z", usedSeconds: 0 },
-      { ...own, kind: "child" as const, createdAt: "2026-10-02T18:00:00Z", usedSeconds: null },
-      { ...own, kind: "parent_demo" as const, createdAt: "2026-10-02T18:00:00Z", usedSeconds: 200 },
-      { parentId: "parent-1", childId: "child-3", kind: "child" as const, createdAt: "2026-10-02T18:00:00Z", usedSeconds: 200 },
-      { parentId: "parent-2", childId: "child-1", kind: "child" as const, createdAt: "2026-10-02T18:00:00Z", usedSeconds: 200 },
+      { ...own, kind: "chat" as const, ...ended, childTurns: 0 },
+      { ...own, kind: "chat" as const, status: "live" as const, endedAt: null, childTurns: null },
+      { ...own, kind: "admin_test" as const, ...ended, childTurns: 4 },
+      { parentId: "parent-1", childId: "child-3", kind: "chat" as const, ...ended, childTurns: 4 },
+      { parentId: "parent-2", childId: "child-1", kind: "chat" as const, ...ended, childTurns: 4 },
     ];
     expect((await summary({ maya }))?.mayaCalls).toBe(0);
+    expect((await summary({ maya: [...maya, { ...own, kind: "chat" as const, ...ended, childTurns: 1 }] }))?.mayaCalls).toBe(1);
   });
 
   it("copies only the fields it names, whatever a row holds", async () => {
@@ -654,7 +656,7 @@ describe("the monthly summary (#562)", () => {
     const raw = { learner_profile: SECRET, transcript: SECRET, ai: { findings: [SECRET] }, model: { summary: SECRET } };
     const view = await summary({
       results: [{ ...result("t", { answers: answers("number", 3, 4) }), level: { ...level(), ...raw } as never, ...raw }],
-      maya: [{ ...own, kind: "child", createdAt: "2026-10-02T18:00:00Z", usedSeconds: 60, ...raw } as never],
+      maya: [{ ...own, kind: "chat", status: "ended", endedAt: "2026-10-02T18:00:00Z", childTurns: 2, ...raw } as never],
       children: [{ ...leah, ...raw }, omar],
     });
     expect(JSON.stringify(view)).not.toContain(SECRET);

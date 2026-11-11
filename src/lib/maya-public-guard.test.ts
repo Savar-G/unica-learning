@@ -4,7 +4,6 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { SHOW_VOICE_DEMO as SHOW_HOME_VOICE_DEMO } from "@/components/guidance-demo";
-import { SHOW_OLD_SAMPLE_PLANS } from "@/lib/maya-public-images";
 import Home from "@/app/(site)/page";
 
 vi.mock("@/components/card-return", () => ({ CardReturn: () => null }));
@@ -77,8 +76,8 @@ describe("first ship public Maya copy", () => {
     expect(html).toContain('aria-label="What happens in the demo"');
   });
 
-  it("shows the home demo while keeping other old sample plans off", () => {
-    expect([SHOW_OLD_SAMPLE_PLANS, SHOW_HOME_VOICE_DEMO]).toEqual([false, true]);
+  it("shows the home demo", () => {
+    expect(SHOW_HOME_VOICE_DEMO).toBe(true);
   });
 
   it("does not render unrelated hidden images on the home page", () => {

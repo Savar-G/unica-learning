@@ -5,13 +5,10 @@ import Account from "./page";
 import StartScreen from "../start/[child]/page";
 import type { ParentNote } from "@/lib/parent-maya-notes";
 import type { ChildView } from "@/lib/parent-view";
-import { parentMinutes } from "@/lib/maya-minutes-server";
 
 vi.mock("server-only", () => ({}));
 vi.mock("next/navigation", () => ({ usePathname: () => "/account", useRouter: () => ({}), redirect: (path: string) => { throw new Error(`REDIRECT ${path}`); } }));
 vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
-const minutes = vi.hoisted(() => ({ value: new Map<string, import("@/lib/maya-minutes-server").ChildMinutes>() }));
-vi.mock("@/lib/maya-minutes-server", () => ({ parentMinutes: vi.fn(async () => minutes.value) }));
 const chats = vi.hoisted(() => ({ value: new Map<string, import("@/lib/maya-chat").ChatUsage>() }));
 vi.mock("@/lib/maya-chat-server", () => ({ parentChatUsage: async () => chats.value }));
 vi.mock("@/lib/parent-pin-server", () => ({ pinIsSet: async () => false }));
@@ -67,7 +64,7 @@ vi.mock("@/lib/supabase-auth", () => ({
   }),
 }));
 
-beforeEach(() => { minutes.value = new Map(); chats.value = new Map(); dashboard.value = null; overview.value = null; overview.reads = 0; family.postal = "V3S 1A1"; family.timeZone = null; family.olderChild = false; family.card = false; family.report = false; family.signedOut = false; scanning.enabled = false; notes.latest = new Map(); progress.value = new Map(); progress.reads = null; });
+beforeEach(() => { chats.value = new Map(); dashboard.value = null; overview.value = null; overview.reads = 0; family.postal = "V3S 1A1"; family.timeZone = null; family.olderChild = false; family.card = false; family.report = false; family.signedOut = false; scanning.enabled = false; notes.latest = new Map(); progress.value = new Map(); progress.reads = null; });
 
 it("a signed-out parent signs in and comes back to the child the link named (#563)", async () => {
   family.signedOut = true;
@@ -77,8 +74,6 @@ it("a signed-out parent signs in and comes back to the child the link named (#56
 
 it("shows only the latest note and its links on the matching child's card, without an empty notes section", async () => {
   family.olderChild = true;
-  minutes.value.set("c1", { used: 12, left: 18, backOn: "Monday, November 9" });
-  minutes.value.set("z-old", { used: 30, left: 0, backOn: "Monday, November 9" });
   chats.value.set("c1", { used: 7, left: 53, backAt: "midnight on November 9", resetsAt: Date.parse("2026-11-09T07:00:00Z") });
   notes.latest.set("c1", {
     child_id: "c1", call_id: "latest-chat", channel: "chat", startedAt: "2026-11-08T01:00:00Z", call_ended_at: "2026-11-08T01:06:00Z",
@@ -97,7 +92,6 @@ it("shows only the latest note and its links on the matching child's card, witho
   expect(out).toContain("Asha used 7 of 60 chat messages today.");
   expect(out).not.toContain("Sam used");
   expect(out).not.toMatch(/of 30 minutes|minutes left|minutes start again|Try Maya|Start (?:a )?call/i);
-  expect(parentMinutes).not.toHaveBeenCalled();
 });
 
 it("adds no note heading or links when no session has a note", async () => {
@@ -315,7 +309,6 @@ describe("a family the switch opens to", () => {
       facts: { question: { source: "workbook", page: 23, number: 4, text: "27 + 39" }, minutes: 6, finished: "with_help", reason: "solved", help: "hint", stuckOn: null, paper: "unknown", safety: false },
       sentences: ["{child} called Maya about page 23, question 4.", "{child} finished it after a small hint."], warm: null,
     });
-    minutes.value = new Map([["c1", { used: 12, left: 18, backOn: "Monday, November 9" }]]);
     chats.value.set("c1", { used: 7, left: 53, backAt: "midnight on November 9", resetsAt: Date.parse("2026-11-09T07:00:00Z") });
     const tabs = ["overview", "workbooks", "maya", "assessment", "account"] as const;
     const asha = { ...view("c1", "Asha"), stage: "active" as const, opensOn: "overview" as const, tabs: [...tabs] };
@@ -421,7 +414,6 @@ describe("a family the switch opens to", () => {
     };
 
     it("shows the tiles, the area bars and one thing to do, naming the child", async () => {
-      minutes.value = new Map([["c1", { used: 12, left: 18, backOn: "Monday, November 9" }]]);
       const out = await render(full());
       expect(out).toContain("Working at Grade 4");
       expect(out).toContain("In Grade 3 at school.");
@@ -457,7 +449,6 @@ describe("a family the switch opens to", () => {
       expect(await render(full())).toContain('id="po-maya"');
       const withoutMaya = tabs.filter((t) => t !== "maya");
       expect(await render(full(withoutMaya), withoutMaya)).not.toContain('id="po-maya"');
-      expect(parentMinutes).not.toHaveBeenCalled();
     });
 
     it.each(["active", "first_book_coming", "ended"] as const)("keeps %s notes access independent of voice usage and chat release", async (stage) => {
@@ -466,14 +457,12 @@ describe("a family the switch opens to", () => {
       const child = { ...asha(t), stage, readOnly: stage === "ended", currentWorkbook: hasMaya ? { number: 2 } : null };
       dashboard.value = { children: [view("z-old", "Sam"), child], remembered: null, pinSet: true, timeZoneSaved: true };
       overview.value = { ...full(t), child, workbook: null, level: null, areas: [], resultPreparing: stage === "active" };
-      minutes.value.set("c1", { used: 30, left: 0, backOn: "Monday, November 9" });
       const out = renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({ child: "c1" }) })));
       expect(out.includes('href="/account/notes/c1"')).toBe(hasMaya);
       expect(out).not.toMatch(/of 30 minutes|minutes left|minutes start again|Try Maya|Start (?:a )?call|chat messages today/i);
       expect(out).not.toContain("Sam");
       expect(out).not.toContain("/account/notes/z-old");
       if (stage === "active") expect(out).toContain("Asha&#x27;s new result is being prepared.");
-      expect(parentMinutes).not.toHaveBeenCalled();
     });
 
     // #771 review: the Overview says the result is late, so the test's line under it does not say it again.

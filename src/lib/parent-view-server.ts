@@ -30,8 +30,9 @@ import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 // compared with the stored score with the same check, and the stored score with the stored report: a replay that differs
 // from either gives no answers, so no bars. A test scored again after its report was made keeps the report's level and
 // shows no bars, as the bars would rest on the new score.
-// The monthly summary (#562) counts Maya calls in the minutes ledger (maya_minute_grants, which a parent reads): the
-// database counts one child's calls that used time in the month, so no row leaves it and no page of rows can hide one.
+// The monthly summary (#562) counts the child's Maya chats with the secret key, filtered on the parent and the child
+// (maya_calls stays closed to parents, #295): a chat counts when it ended in the month and the child sent Maya at least
+// one message. The database counts them, so no row leaves it and no page of rows can hide one.
 // The Progress tab (#561): the skill states read each finished test's stored learner profile with the secret key, filtered
 // on the parent and the child; only each standard's tally leaves this read (profileSkillResults), with whether the test's
 // stored report calls it unreliable (only the report's reliability note is read, not its model). A test with no report
@@ -141,11 +142,12 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
       return pinIsSet(parent);
     },
     async mayaCalls(childId, from, to) {
-      // The minutes ledger, which a parent reads: one grant per child call, settled with the seconds it used. Only the
-      // count leaves this read; maya_calls itself stays closed to parents (#295).
-      const { count, error } = await session.from("maya_minute_grants").select("child_id", { count: "exact", head: true })
-        .eq("kind", "child").eq("child_id", childId).gt("used_seconds", 0)
-        .gte("created_at", new Date(from).toISOString()).lt("created_at", new Date(to).toISOString());
+      if (!admin) throw new Error("maya calls read: no secret key");
+      // A family chat (never an admin test call) that ended in the window, with at least one message from the child.
+      // child_turns is written when the call ends. Only the count leaves this read.
+      const { count, error } = await admin.from("maya_calls").select("id", { count: "exact", head: true })
+        .eq("parent_id", parent).eq("child_id", childId).eq("kind", "chat").eq("status", "ended").gt("child_turns", 0)
+        .gte("ended_at", new Date(from).toISOString()).lt("ended_at", new Date(to).toISOString());
       if (error) throw new Error(`maya calls read: ${error.message}`);
       if (count === null) throw new Error("maya calls read: no count");
       return count;
