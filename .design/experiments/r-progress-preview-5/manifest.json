@@ -8,5 +8,5 @@
     { "id": "P2", "artifact": "p2-skill-table.html", "bet": "One table: area, today, arrow, the goal column in yellow", "benefit": "The clearest comparison; works on a phone and as an email image", "cost": "Looks more like a report than a picture", "risk": "Low" },
     { "id": "P3", "artifact": "p3-headline-skill.html", "bet": "One big skill per side (1-digit to 3-digit), the others small", "benefit": "The most striking jump for the below and at cases", "cost": "Needs a headline pair per grade", "risk": "From Grade 6 up the adding row changes kind ('Mixed operations in order'), so the pair stops matching" }
   ],
-  "recommendation": "P2"
+  "recommendation": "P2", "chosen": "P2 (Savar, 2026-11-11); arrows to fix: the small grey arrow looked bad. Arrow styles: badge in each row (recommended), one badge in the header, drawn line"
 }
