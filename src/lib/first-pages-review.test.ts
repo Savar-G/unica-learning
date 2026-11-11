@@ -92,6 +92,7 @@ describe("review regressions", () => {
         due: async () => [emailDue],
         blocked: async () => admitted ? null : condition,
         pdf: async () => { admitted = false; return new Uint8Array([37, 80, 68, 70]); },
+        admit: async () => admitted,
         ledger: ledger.ledger,
       };
       await runFirstPagesEmails(store, {

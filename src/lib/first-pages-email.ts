@@ -34,6 +34,11 @@ export interface FirstPagesEmailStore {
   blocked(d: DueFirstPagesEmail): Promise<string | null>;
   /** The four-page PDF. */
   pdf(path: string): Promise<Uint8Array>;
+  /**
+   * The database checks again, awaited by the transport right before the request (after any wait behind other emails):
+   * true when the email may still go. A failed read is a no.
+   */
+  admit(d: DueFirstPagesEmail): Promise<boolean>;
   ledger: SendLedger<DueFirstPagesEmail, string>;
 }
 
@@ -130,7 +135,7 @@ export async function runFirstPagesEmails(store: FirstPagesEmailStore, o: {
         headers: { "List-Unsubscribe": `<${o.origin}/api/unsubscribe?t=${token}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
         attachments: [{ filename: firstPagesFilename(d.childName), contentType: "application/pdf", content: pdf }],
       };
-      const outcome = await sendEmailOnce(store.ledger, d, message, { transport: o.transport, claimFields: { unsubscribe_hash: hash } });
+      const outcome = await sendEmailOnce(store.ledger, d, message, { transport: o.transport, claimFields: { unsubscribe_hash: hash }, admit: () => store.admit(d) });
       counts[outcome.status === "busy" ? "busy" : outcome.status]++;
       if (outcome.status !== "sent" && outcome.status !== "busy") console.error("[first pages email]", outcome.status, d.firstPagesId, outcome.error);
     } catch (e) {

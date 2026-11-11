@@ -1,4 +1,5 @@
 import "server-only";
+import { admitted, NOT_ADMITTED } from "@/lib/email-admit";
 import { resendConfigProblem, resendFrom, resendTransport } from "@/lib/email-resend";
 
 // The parent email delivery module (#149, spec #143): every email the site sends goes through here. A caller gives a
@@ -56,6 +57,12 @@ export interface SendOptions {
    * A transport with no wait of its own may leave it unasked, as its caller has just checked.
    */
   mayStart?(): boolean;
+  /**
+   * Asked and awaited last, after any wait of the transport and `mayStart`, right before the request starts: whether the
+   * email may still go (the first pages' sample email reads the parent's state again here). False or a throw: nothing
+   * goes, and the answer is "refused". Every transport asks it.
+   */
+  admit?(): Promise<boolean>;
 }
 
 /** The mail transport seam: Resend in production (src/lib/email-resend.ts), in memory in tests. */
@@ -100,6 +107,8 @@ export function pacedTransport(transport: MailTransport, gapMs: number): MailTra
           if (signal?.aborted) return;
           signal?.removeEventListener("abort", stop);
           if (options?.mayStart && !options.mayStart()) return resolve(OUT_OF_TIME);
+          // Asked after the wait, so a change during it still stops the send.
+          if (!(await admitted(options))) return resolve(NOT_ADMITTED);
           lastStart = performance.now();
           // A throw goes to this send's own caller, and the queue goes on.
           try { resolve(await transport.send(message, options)); } catch (e) { reject(e); }
@@ -166,11 +175,12 @@ export async function sendEmailOnce<K, H>(
   ledger: SendLedger<K, H>,
   key: K,
   message: EmailMessage,
-  { transport = resendTransport(), claimFields = {} }: { transport?: MailTransport; claimFields?: Record<string, string> } = {},
+  { transport = resendTransport(), claimFields = {}, admit }: { transport?: MailTransport; claimFields?: Record<string, string>; admit?: () => Promise<boolean> } = {},
 ): Promise<DeliveryOutcome> {
   const handle = await ledger.claim(key, claimFields);
   if (handle === null) return { status: "busy" };
-  return deliverClaimed(ledger, handle, key, message, transport);
+  // `admit`: asked by the transport right before the request; a no releases the claim (refused), so a later run may try.
+  return recordOutcome(ledger, handle, key, message, await sendThrough(transport, message, admit ? { admit } : undefined));
 }
 
 /**
@@ -197,11 +207,6 @@ export async function sendEmailOnceInTime<K, H>(
     console.error("[email] release failed; the claim stays held", e instanceof Error ? e.message : e);
     return { status: "not_sent", released: false };
   }
-}
-
-/** Sends a claimed email, then records the outcome and the copy. */
-async function deliverClaimed<K, H>(ledger: SendLedger<K, H>, handle: H, key: K, message: EmailMessage, transport: MailTransport): Promise<SendResult> {
-  return recordOutcome(ledger, handle, key, message, await sendThrough(transport, message));
 }
 
 /** Records a claimed email's outcome and its copy. */

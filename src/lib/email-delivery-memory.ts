@@ -1,4 +1,5 @@
 import type { EmailCopy, EmailMessage, MailTransport, SendLedger } from "@/lib/email-delivery";
+import { admitted, NOT_ADMITTED } from "@/lib/email-admit";
 
 // In-memory adapters of the delivery module's seams, for tests (#149). Each step waits a tick, so two sends at once
 // really interleave, as two requests do against Resend and the database.
@@ -18,8 +19,9 @@ export function memoryTransport() {
   const delivered: (EmailMessage & { emailId: string })[] = [];
   const answers: MemoryAnswer[] = [];
   const transport: MailTransport = {
-    async send(message) {
+    async send(message, options) {
       await tick();
+      if (!(await admitted(options))) return NOT_ADMITTED;
       const answer = answers.shift() ?? "deliver";
       if (answer === "refuse") return { status: "refused", error: "Resend answered 422: refused in the test" };
       if (answer === "no_answer") return { status: "unknown", error: unknownError("no answer in the test") };

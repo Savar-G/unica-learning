@@ -5,6 +5,7 @@ vi.mock("server-only", () => ({}));
 import { createHash } from "node:crypto";
 import { copyRow } from "@/lib/email-copies";
 import { memoryLedger, memoryTransport } from "@/lib/email-delivery-memory";
+import { pacedTransport } from "@/lib/email-delivery";
 import { resendTransport } from "@/lib/email-resend";
 import { firstPagesActionUrl, firstPagesFilename, runFirstPagesEmails, type DueFirstPagesEmail, type FirstPagesEmailStore } from "@/lib/first-pages-email";
 import { START_PLAN_TODAY } from "@/lib/first-pages-words";
@@ -34,6 +35,7 @@ function setup(o: { sets?: DueFirstPagesEmail[] } = {}) {
       return null;
     },
     pdf: async (path) => { if (path !== due().pdfPath) throw new Error("no file"); return PDF; },
+    admit: async () => !state.failRead && state.ready && !state.unsubscribed && !state.cardSaved,
     ledger: mem.ledger,
   };
   const run = (enabled = true) => runFirstPagesEmails(store, { enabled, origin: ORIGIN, transport: mail.transport, newToken: () => ({ token: `tok${++tokens}`, hash: "a".repeat(64) }) });
@@ -105,6 +107,29 @@ describe("the first pages' sample email", () => {
   it("names the PDF with the child's name in plain letters", () => {
     expect(firstPagesFilename("Zoë Ann")).toBe("zoe-ann-workbook-1-first-pages.pdf");
     expect(firstPagesFilename("李")).toBe("workbook-1-first-pages.pdf");
+  });
+});
+
+describe("the last check", () => {
+  it("stops a claimed email that waited behind another email when the parent unsubscribed during the wait", async () => {
+    const s = setup();
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    let order = 0;
+    // A slow earlier email holds the shared paced transport.
+    const paced = pacedTransport({ send: async (m, opts) => { if (order++ === 0) await held; return s.mail.transport.send(m, opts); } }, 0);
+    const earlier = paced.send({ sender: { to: "parent" }, to: "x@example.com", subject: "earlier", text: "t" });
+    const run = runFirstPagesEmails(s.store, { enabled: true, origin: ORIGIN, transport: paced, newToken: () => ({ token: "t", hash: "a".repeat(64) }) });
+    await new Promise((r) => setTimeout(r, 20));
+    // Claimed and queued; now the parent unsubscribes.
+    expect(s.mem.entry(due())?.state).toBe("claimed");
+    s.state.unsubscribed = true;
+    release();
+    await earlier;
+    expect(await run).toMatchObject({ sent: 0, refused: 1 });
+    expect(s.mail.delivered.map((m) => m.subject)).toEqual(["earlier"]);
+    // The claim is released: the next run checks again (and is blocked).
+    expect(s.mem.entry(due())?.state).toBe("refused");
   });
 });
 

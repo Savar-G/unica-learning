@@ -116,6 +116,7 @@ export function firstPagesEmailStore(admin: SupabaseClient<Database>, stripe: St
         return `the checks could not be read: ${e instanceof Error ? e.message : String(e)}`;
       }
     },
+    admit: async (d) => (await databaseBlocked(admin, d).catch(() => "unreadable")) === null,
     async pdf(path) {
       const { data, error } = await admin.storage.from(WORKBOOK_FILES_BUCKET).download(path);
       if (error || !data) throw new Error(`first pages PDF: ${error?.message ?? "no file"}`);
