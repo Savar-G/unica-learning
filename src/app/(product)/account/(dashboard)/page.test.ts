@@ -25,6 +25,8 @@ vi.mock("@/components/plan-closed-note", () => ({
 }));
 const scanning = vi.hoisted(() => ({ enabled: false }));
 vi.mock("@/lib/scan-pages-access", () => ({ scanPagesAccess: async () => scanning.enabled }));
+const progress = vi.hoisted(() => ({ value: new Map<string, import("@/lib/progress-preview-server").HomeProgress>() }));
+vi.mock("@/lib/progress-preview-server", () => ({ homeProgress: async () => progress.value }));
 const notes = vi.hoisted(() => ({ latest: new Map<string, ParentNote>() }));
 vi.mock("@/lib/parent-maya-notes", async (original) => ({ ...await original<typeof import("@/lib/parent-maya-notes")>(), latestParentMayaNotes: async () => notes.latest }));
 
@@ -65,7 +67,7 @@ vi.mock("@/lib/supabase-auth", () => ({
   }),
 }));
 
-beforeEach(() => { minutes.value = new Map(); chats.value = new Map(); dashboard.value = null; overview.value = null; overview.reads = 0; family.postal = "V3S 1A1"; family.timeZone = null; family.olderChild = false; family.card = false; family.signedOut = false; scanning.enabled = false; notes.latest = new Map(); });
+beforeEach(() => { minutes.value = new Map(); chats.value = new Map(); dashboard.value = null; overview.value = null; overview.reads = 0; family.postal = "V3S 1A1"; family.timeZone = null; family.olderChild = false; family.card = false; family.signedOut = false; scanning.enabled = false; notes.latest = new Map(); progress.value = new Map(); });
 
 it("a signed-out parent signs in and comes back to the child the link named (#563)", async () => {
   family.signedOut = true;
@@ -157,6 +159,20 @@ it("R425M-3: account and a younger child's start use the oldest sibling's provin
   ]) {
     expect(renderToStaticMarkup(createElement("div", null, page))).toContain("11:29 p.m. on Tuesday, November 17");
   }
+});
+
+it("shows the prediction from the child's newest report, with a link to the report's plan", async () => {
+  const render = async () => renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) })));
+  expect(await render()).not.toContain("Our prediction for");
+  progress.value = new Map([["c1", { href: "/account/report/r1#rpt-progress", preview: {
+    name: "Asha", today: 1, goal: 3, todayLabel: "Grade 1 level", goalLabel: "Grade 3 level", goalMonth: "September 2027",
+    sentence: { lead: "We predict Asha can reach a ", goal: "grade 3 level", by: "September 2027" }, rows: [], books: [1, 1, 2], stages: [],
+    steps: [{ title: "A new workbook every 2 weeks", text: "" }, { title: "8 pages a day, 5 days a week", text: "" }, { title: "We mark the finished pages", text: "" }], basis: "",
+  } }]]);
+  const out = await render();
+  expect(out).toContain("We predict Asha can reach a <b>grade 3 level</b> by <b>September 2027</b>.");
+  expect(out).toContain("3 workbooks, 8 pages a day, 5 days a week.");
+  expect(out).toContain('href="/account/report/r1#rpt-progress"');
 });
 
 it("links to the plan page only for a family with a saved card", async () => {
