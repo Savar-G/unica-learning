@@ -3,6 +3,7 @@ import type Stripe from "stripe";
 import { sendEmail } from "@/lib/email-delivery";
 import { parentPlan, type KnownPlan, type ParentPlan, type PlanSubscription } from "@/lib/parent-plan";
 import { cancelPlan, stripe, type CancelPlanOutcome } from "@/lib/stripe";
+import { forgetAdminStripeReads } from "@/lib/admin-stripe-kept";
 import { customerSubscriptions } from "@/lib/stripe-subscriptions";
 import { adminClient } from "@/lib/supabase-auth";
 import { alertOpenCancel } from "@/lib/plan-cancel-recovery-server";
@@ -91,6 +92,7 @@ export async function cancelFamilyPlan(parent: string, cardId: string): Promise<
   let result: CancelPlanOutcome;
   try {
     result = await cancelPlan(s, data.stripe_customer_id, () => { attemptedWrite = true; });
+    forgetAdminStripeReads();
   } catch (e) {
     // No command went to Stripe: nothing can still change the plan, so the operation closes and the parent can retry.
     // After a command, the open operation and its family hold stay until the team proves every command ended.

@@ -34,30 +34,31 @@ export default async function ChildPage({ params }: PageProps<"/admin/children/[
   if (!record) notFound();
   const { child: c, family } = record;
   const now = new Date();
-  const [requests, production, tests] = await Promise.all([
-    adminClient()?.from("workbook_restart_requests").select("generation,requested_at").eq("child_id", c.id).is("run_id", null),
-    familyProduction(admin, c.parent_id, now),
-    loadTestFamilies(admin),
-  ]);
-  if (requests?.error) throw new Error(`Restart requests: ${requests.error.message}`);
   // #126: the parent's answers and the book mix they give. A child with no answer gets the default mix. #195 (D-107):
   // the feeling about math, the main goal and the time each week; they do not change the mix.
   const learning = fromRow(c);
   const mix = bookMix(learning);
-  const instructions = await loadBookInstructions(admin, c, workbooks);
-  // #476: "Prepare from snapshot" for the child's delivered book 1. With no planner nothing is read for it; a failed read
-  // shows a note and never breaks this page.
-  const nextBook = await nextBookButtonState({
-    ready: nextBookWiring() !== null,
-    book1Id: workbooks.find((w) => w.number === 1)?.id ?? null,
-    delivered: async (bookId) => {
-      const { data, error } = await admin.db.from("workbook_delivery_receipts").select("workbook_id").eq("workbook_id", bookId).maybeSingle();
-      if (error) throw new Error("book 1 delivery read");
-      return data?.workbook_id === bookId;
-    },
-  });
   const shipped = workbooks.filter(w => w.status === "shipped");
-  const scanViews = await Promise.all(shipped.map(w => loadAdminScanProgress(admin, { parentId: c.parent_id, childId: c.id, workbookId: w.id })));
+  // Every read below needs only the child and its workbooks, so they run at once (2026-11-10: one after another).
+  const [requests, production, tests, instructions, nextBook, scanViews] = await Promise.all([
+    adminClient()?.from("workbook_restart_requests").select("generation,requested_at").eq("child_id", c.id).is("run_id", null),
+    familyProduction(admin, c.parent_id, now),
+    loadTestFamilies(admin),
+    loadBookInstructions(admin, c, workbooks),
+    // #476: "Prepare from snapshot" for the child's delivered book 1. With no planner nothing is read for it; a failed read
+    // shows a note and never breaks this page.
+    nextBookButtonState({
+      ready: nextBookWiring() !== null,
+      book1Id: workbooks.find((w) => w.number === 1)?.id ?? null,
+      delivered: async (bookId) => {
+        const { data, error } = await admin.db.from("workbook_delivery_receipts").select("workbook_id").eq("workbook_id", bookId).maybeSingle();
+        if (error) throw new Error("book 1 delivery read");
+        return data?.workbook_id === bookId;
+      },
+    }),
+    Promise.all(shipped.map(w => loadAdminScanProgress(admin, { parentId: c.parent_id, childId: c.id, workbookId: w.id }))),
+  ]);
+  if (requests?.error) throw new Error(`Restart requests: ${requests.error.message}`);
   const scans = new Map<string, ReactNode>(shipped.map((w, i) => [w.id, <AdminScanProgress key={w.id} workbookId={w.id} view={scanViews[i].view} missingDelivery={scanViews[i].missingDelivery} />]));
   const isTest = tests.isTest(c.parent_id);
   const book = buildBooks({ ...production, tests: { show: true, isTest: () => isTest }, children: [{ id: c.id, parentId: c.parent_id, firstName: c.first_name }], parents: [{ id: family.parent.id, name: family.parent.name }] }, now)

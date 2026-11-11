@@ -5,6 +5,7 @@ import { endCardOperation, holdPlanStart } from "@/lib/family-deletion-store";
 import { applyPlanStart } from "@/lib/plan-state";
 import { livePlanStates } from "@/lib/plan-state-server";
 import { startPlan, stripe } from "@/lib/stripe";
+import { forgetAdminStripeReads } from "@/lib/admin-stripe-kept";
 import { planPrice } from "@/lib/subscription-plan";
 import type { StartPlanError } from "@/lib/plan-start-errors";
 import { firstDelivery } from "@/lib/workbook-delivery";
@@ -53,6 +54,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/cards
       const price = planPrice(Number(card.price), card.plan);
       const startedAt = Date.now();
       const result = await startPlan(s, { cardSetup: card.id, customer: card.stripe_customer_id, price, deliveryConfirmed: true });
+      forgetAdminStripeReads();
       if (!result.ok) return Response.json(result, { status: 409 });
       const access = await openAccess({ customer: card.stripe_customer_id, cardSetup: card.id, generation: result.generation, startedAt });
       return Response.json({ ...result, access, confirmation: await confirm(card.id, result.generation, result.monthlyPrice ?? price, result.firstChargeAt, new URL(request.url).origin) });

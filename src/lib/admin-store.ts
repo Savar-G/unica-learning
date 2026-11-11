@@ -21,6 +21,7 @@ import { PLAN_KEY_MS } from "@/lib/card-reconcile";
 import { findSavedCard } from "@/lib/saved-card";
 import { stripeCardProvider } from "@/lib/saved-card-server";
 import { stripe } from "@/lib/stripe";
+import { keptCardAnswer, keptSubscriptions } from "@/lib/admin-stripe-kept";
 import type { DashboardRows, Delivery, EmailCopyView, RawCard, RawDelivery, RawChild, RawEmail, RawParent, RawReport, RawTest, RawWaitlist } from "@/lib/admin-dashboard";
 import type { TemplateFilters, TemplateStat } from "@/lib/admin-templates";
 import type { ExportReader, ExportRow, PagedTable } from "@/lib/admin-export";
@@ -485,13 +486,27 @@ export interface CardSetupRow {
 
 async function withWorkbookEmails(a: AdminSession, cards: CardSetupRow[]): Promise<CardSetupRow[]> {
   if (!cards.length) return cards;
-  const emails = await allRows(a.db.from("workbook_emails")
-    .select("id, card_setup_id, kind, workbook_number, status, claimed_at, sent_at, delivery, subject, text_body")
-    .in("card_setup_id", cards.map((c) => c.id)).order("created_at").order("id"), "workbook emails").catch(() => null);
-  const priceStarts = await allRows(a.db.from("plan_starts").select("card_setup_id,generation,state,monthly_cents,first_charge_at")
-    .in("card_setup_id", cards.map(c => c.id)).in("state", ["open", "started"]).order("card_setup_id").order("generation"), "plan price terms").catch(() => null);
-  const priceStates = await allRows(a.db.from("child_plan_states").select("child_id,kind,monthly_cents,next_charge_at")
-    .in("child_id", cards.map(c => c.child_id)).order("child_id"), "plan price states").catch(() => null);
+  const ids = cards.map((c) => c.id), childIds = cards.map((c) => c.child_id);
+  // Six reads that need only the cards, at once (2026-11-10: one after another they were six round trips on every
+  // family, child and plans page). A failed read is null, as before.
+  const [emails, priceStarts, priceStates, starts, plans, planEmails] = await Promise.all([
+    allRows(a.db.from("workbook_emails")
+      .select("id, card_setup_id, kind, workbook_number, status, claimed_at, sent_at, delivery, subject, text_body")
+      .in("card_setup_id", ids).order("created_at").order("id"), "workbook emails").catch(() => null),
+    allRows(a.db.from("plan_starts").select("card_setup_id,generation,state,monthly_cents,first_charge_at")
+      .in("card_setup_id", ids).in("state", ["open", "started"]).order("card_setup_id").order("generation"), "plan price terms").catch(() => null),
+    allRows(a.db.from("child_plan_states").select("child_id,kind,monthly_cents,next_charge_at")
+      .in("child_id", childIds).order("child_id"), "plan price states").catch(() => null),
+    allRows(a.db.from("plan_starts").select("card_setup_id, generation, started_at, state")
+      .in("card_setup_id", ids).order("card_setup_id").order("generation"), "plan starts").catch(() => null),
+    allRows(a.db.from("child_plan_states").select("child_id, parent_id, kind")
+      .in("child_id", childIds).order("child_id"), "child plan states").catch(() => null),
+    // The plan start emails: one per generation, on the start's record. They read as ledger rows, with the generation as the number.
+    allRows(a.db.from("plan_starts").select("card_setup_id, generation, email_send_status, email_claimed_at, email_sent_at, email_subject, email_text")
+      .in("card_setup_id", ids).not("email_send_status", "is", null).order("card_setup_id").order("generation"), "plan start emails").catch(() => null),
+  ]);
+  // After every read, as before after the emails read: an email claimed after this time is not yet in the list.
+  const workbookEmailsReadAt = Date.now();
   cards = cards.map(card => {
     const start = priceStarts?.filter(s => s.card_setup_id === card.id).at(-1), state = priceStates?.find(s => s.child_id === card.child_id);
     const cents = start?.state === "open" ? start.monthly_cents : state?.monthly_cents ?? start?.monthly_cents;
@@ -499,14 +514,6 @@ async function withWorkbookEmails(a: AdminSession, cards: CardSetupRow[]): Promi
     return { ...card, planMonthly: cents == null ? null : cents / 100, planPriceUnread: cents == null && (priceStarts === null || priceStates === null),
       planFirstCharge: start?.state === "open" ? null : state?.kind === "free_month" ? state.next_charge_at : start?.first_charge_at ?? null };
   });
-  const workbookEmailsReadAt = Date.now();
-  const starts = await allRows(a.db.from("plan_starts").select("card_setup_id, generation, started_at, state")
-    .in("card_setup_id", cards.map((c) => c.id)).order("card_setup_id").order("generation"), "plan starts").catch(() => null);
-  const plans = await allRows(a.db.from("child_plan_states").select("child_id, parent_id, kind")
-    .in("child_id", cards.map((c) => c.child_id)).order("child_id"), "child plan states").catch(() => null);
-  // The plan start emails: one per generation, on the start's record. They read as ledger rows, with the generation as the number.
-  const planEmails = await allRows(a.db.from("plan_starts").select("card_setup_id, generation, email_send_status, email_claimed_at, email_sent_at, email_subject, email_text")
-    .in("card_setup_id", cards.map((c) => c.id)).not("email_send_status", "is", null).order("card_setup_id").order("generation"), "plan start emails").catch(() => null);
   const planEmailRecords = (planEmails ?? []).map((e) => ({
     id: `plan-${e.card_setup_id}-${e.generation}`, card_setup_id: e.card_setup_id, kind: "plan_start" as const, workbook_number: e.generation,
     status: e.email_send_status as WorkbookEmailStatus, claimed_at: e.email_claimed_at, sent_at: e.email_sent_at, delivery: {}, subject: e.email_subject, text_body: e.email_text,
@@ -906,7 +913,15 @@ async function byChild<T extends { child_id: string }>(read: (from: number, to: 
  * (only the rows the stage rules read), every saved card and every started plan. When a source is cut, the children
  * from the cut on are left out of every source.
  */
-async function readProductionSet(a: AdminSession, f: { out?: string | null; only?: string[] }): Promise<Omit<ProductionBase, "incomplete"> & { cut: boolean }> {
+function readProductionSet(a: AdminSession, f: { out?: string | null; only?: string[] }): Promise<Omit<ProductionBase, "incomplete"> & { cut: boolean }> {
+  return productionSetOnce(a, f.only ? `only:${JSON.stringify(f.only)}` : `out:${f.out ?? ""}`);
+}
+// Once per request for the same families (React cache: the session object and the filter as text, so equal filters
+// match): Home and the sidebar's Production count read the same real families' set (2026-11-10).
+const productionSetOnce = cache((a: AdminSession, key: string) =>
+  readProductionSetNow(a, key.startsWith("only:") ? { only: JSON.parse(key.slice(5)) as string[] } : { out: key.slice(4) || null }));
+
+async function readProductionSetNow(a: AdminSession, f: { out?: string | null; only?: string[] }): Promise<Omit<ProductionBase, "incomplete"> & { cut: boolean }> {
   type CardRow = { id: string; child_id: string; parent_id: string; card_saved_at: string | null };
   type PlanRow = { child_id: string; parent_id: string; kind: string };
   type RunRow = Parameters<typeof runFromRow>[0];
@@ -1026,6 +1041,8 @@ export interface RunDetail {
   editBatch: WorkbookEdit | null;
   edits: ReviewSend[];
   versions: ReviewVersion[];
+  /** The older saved version on screen (`?version=`), or null for the newest. */
+  shownRevision: number | null;
   adminNames: Record<string, string>;
   run: WorkbookRun;
   child: ChildRow | null;
@@ -1047,24 +1064,52 @@ export interface RunDetail {
 }
 
 export interface ReviewSend { id: string; createdAt: string; finishedAt: string | null; displayAt?: string; displayFinishedAt?: string; revision: number | null; baseRevision: number; status: string }
-export interface ReviewVersion { revision: number; createdAt: string; displayAt?: string; byUser: string | null; byEmail: string | null; workbook: GeneratedWorkbook; rendering: DraftRendering | null }
+/**
+ * One saved version of the draft. A version is about 2 MB of question data, so only the version on screen carries it
+ * (`workbook`; the newest version's is `draft.workbook`), and only the newest, the shown and the one before the shown
+ * carry their `rendering` (the page images and the "Show before" picture); every other version is its line in the
+ * version list. Choosing another version loads the page again with `?version=` (2026-11-10: sending all seven
+ * versions of one book made the run page 12 MB, 16 to 34 seconds, and sometimes an error).
+ */
+export interface ReviewVersion { revision: number; createdAt: string; displayAt?: string; byUser: string | null; byEmail: string | null; workbook?: GeneratedWorkbook; rendering: DraftRendering | null }
 
-/** One run with its draft, page images and audit log, or null. */
-export async function getWorkbookRun(a: AdminSession, id: string): Promise<RunDetail | null> {
+type RevisionRow = { revision: number; content: GeneratedWorkbook | null; rendering: DraftRendering | null; render_problems: RenderProblem[] };
+
+/** One run with its draft, page images and audit log, or null. `version`: the saved version to show (default the newest). */
+export async function getWorkbookRun(a: AdminSession, id: string, { version }: { version?: number } = {}): Promise<RunDetail | null> {
   if (!isUuid(id)) return null;
   const [row] = must<Parameters<typeof runFromRow>[0][]>(await a.db.from("workbook_runs").select(RUN_COLUMNS).eq("id", id).limit(1), "workbook run");
   if (!row) return null;
   const run = runFromRow(row);
   const activity = run.status === "running" ? await runActivity(a, run.id) : undefined;
-  const [children, draftRow, revisions, audit, solveRows, callRows, approved, comments, edits, editSolves, adminNames] = await Promise.all([
+  const draftId = run.draftId;
+  // The saved versions' list, then at once the parts of the versions the page shows (below).
+  const revisionList = draftId
+    ? a.db.from("workbook_draft_revisions").select("revision, created_at, by_user, by_email").eq("draft_id", draftId).order("revision", { ascending: false })
+      .then((r) => must<{ revision: number; created_at: string; by_user: string | null; by_email: string | null }[]>(r, "draft revisions"))
+    : Promise.resolve([]);
+  // The newest version, the one shown (a version the draft has, else the newest) and the one before it; question data
+  // only for the newest and the shown, the rest of a version (its page images) for all three.
+  const picked = revisionList.then(async (revisions) => {
+    const newest = revisions[0]?.revision;
+    const shown = revisions.some((r) => r.revision === version) ? version! : newest;
+    const withContent = [...new Set([newest, shown].filter((n): n is number => n !== undefined))];
+    const withRendering = [...new Set([...withContent, ...(shown !== undefined ? [shown - 1] : [])])];
+    const [contents, renderings] = draftId && withContent.length ? await Promise.all([
+      a.db.from("workbook_draft_revisions").select("revision, content").eq("draft_id", draftId).in("revision", withContent)
+        .then((r) => must<Pick<RevisionRow, "revision" | "content">[]>(r, "draft revision content")),
+      a.db.from("workbook_draft_revisions").select("revision, rendering, render_problems").eq("draft_id", draftId).in("revision", withRendering)
+        .then((r) => must<Omit<RevisionRow, "content">[]>(r, "draft revision pages")),
+    ]) : [[], []];
+    return { revisions, newest, shown, content: new Map(contents.map((r) => [r.revision, r.content])), rendered: new Map(renderings.map((r) => [r.revision, r])) };
+  });
+  const [children, draftHead, { revisions, newest, shown, content, rendered }, audit, solveRows, callRows, approved, comments, edits, editSolves, adminNames] = await Promise.all([
     childrenById(a, [run.childId]),
-    run.draftId
-      ? a.db.from("workbook_drafts").select("schema_version, draft").eq("id", run.draftId).maybeSingle().then((r) => must<{ schema_version: number; draft: GeneratedWorkbook } | null>(r, "workbook draft"))
+    // The draft's shape only: its whole question data is read below only when no saved version holds it.
+    draftId
+      ? a.db.from("workbook_drafts").select("schema_version, cover:draft->pages->0->content").eq("id", draftId).maybeSingle().then((r) => must<{ schema_version: number; cover: unknown } | null>(r, "workbook draft"))
       : null,
-    run.draftId
-      ? a.db.from("workbook_draft_revisions").select("revision, content, rendering, render_problems, created_at, by_user, by_email").eq("draft_id", run.draftId).order("revision", { ascending: false })
-        .then((r) => must<{ revision: number; content: GeneratedWorkbook | null; rendering: DraftRendering | null; render_problems: RenderProblem[]; created_at: string; by_user: string | null; by_email: string | null }[]>(r, "draft revisions"))
-      : [],
+    picked,
     a.db.from("workbook_audit").select("id, at, actor_email, action, detail")
       .or(run.draftId ? `run_id.eq.${run.id},draft_id.eq.${run.draftId}` : `run_id.eq.${run.id}`).order("at").order("id").range(0, 199)
       .then((r) => must<AuditEntry[]>(r, "workbook audit")),
@@ -1082,10 +1127,20 @@ export async function getWorkbookRun(a: AdminSession, id: string): Promise<RunDe
     a.db.rpc("admin_team_names").then(r => must(r, "admin names")),
   ]);
   // A draft of an older shape (before the page layouts) is shown as "old draft format", not read as this shape.
-  const oldFormat = draftRow && oldDraft(draftRow.schema_version, draftRow.draft.pages[0]?.content) ? draftRow.schema_version : null;
-  const current = oldFormat === null ? draftRow : null;
-  const revision = revisions[0];
-  const versions: ReviewVersion[] = current ? revisions.map(r => ({ revision: r.revision, createdAt: r.created_at, displayAt: vancouverTime(r.created_at), byUser: r.by_user, byEmail: r.by_email, workbook: r.content ?? current.draft, rendering: r.rendering })) : [];
+  const oldFormat = draftHead && oldDraft(draftHead.schema_version, draftHead.cover) ? draftHead.schema_version : null;
+  // The generated draft's question data: only for a version that holds none (revision 1 of older drafts) or no version.
+  const needDraft = !!draftHead && oldFormat === null && (newest === undefined || !content.get(newest) || (shown !== undefined && !content.get(shown)));
+  const draftRow = needDraft && draftId
+    ? await a.db.from("workbook_drafts").select("draft").eq("id", draftId).maybeSingle().then((r) => must<{ draft: GeneratedWorkbook } | null>(r, "workbook draft"))
+    : null;
+  const current = draftHead && oldFormat === null ? { draft: draftRow?.draft } : null;
+  const revision = newest === undefined ? undefined : { revision: newest, content: content.get(newest) ?? null, rendering: rendered.get(newest)?.rendering ?? null, render_problems: rendered.get(newest)?.render_problems ?? [] };
+  const versions: ReviewVersion[] = current ? revisions.map(r => ({
+    revision: r.revision, createdAt: r.created_at, displayAt: vancouverTime(r.created_at), byUser: r.by_user, byEmail: r.by_email,
+    // The newest version's question data is the draft's (below); an older shown version carries its own.
+    ...(r.revision === shown && shown !== newest ? { workbook: content.get(r.revision) ?? current.draft! } : {}),
+    rendering: rendered.get(r.revision)?.rendering ?? null,
+  })) : [];
   const paths = [...new Set(versions.flatMap(v => [...(v.rendering?.pages.map(p => p.image.path) ?? []), ...(v.rendering?.pdfPath ? [v.rendering.pdfPath] : [])]))];
   const signed = paths.length ? await a.db.storage.from(WORKBOOK_FILES_BUCKET).createSignedUrls(paths, WORKBOOK_URL_SECONDS) : { data: [], error: null };
   if (signed.error) console.error("[admin] draft images sign failed", signed.error.message);
@@ -1096,11 +1151,11 @@ export async function getWorkbookRun(a: AdminSession, id: string): Promise<RunDe
     comments: comments.map(commentFromRow),
     editBatch: edits[0] ? editFromRow(edits[0]) : null,
     edits: edits.map(e => ({ id: e.id, createdAt: e.created_at, finishedAt: e.finished_at, displayAt: vancouverTime(e.created_at), displayFinishedAt: vancouverTime(e.finished_at ?? e.created_at), revision: e.revision, baseRevision: e.base_revision, status: e.status })),
-    versions, adminNames: Object.fromEntries(adminNames.filter(n => n.name).map(n => [n.user_id, n.name!])),
+    versions, shownRevision: current && shown !== newest ? shown ?? null : null, adminNames: Object.fromEntries(adminNames.filter(n => n.name).map(n => [n.user_id, n.name!])),
     aiCalls: summarizeAiCalls(callRows.map((r) => ({ ...r, usd: r.usd === null ? null : Number(r.usd) }))),
     solves: [...solveRows.map((r) => ({ questionId: r.question_id, model: r.model, verdict: r.verdict, ms: r.ms, usd: r.usd === null ? null : Number(r.usd), log: r.log })),
       ...editSolves.flatMap((e) => Object.values(e.checkpoints as unknown as Record<string, EditCheckpoint>).flatMap((p) => p.solves ?? []))],
-    draft: current ? { workbook: revision?.content ?? current.draft, rendering: revision?.rendering ?? null, problems: revision?.render_problems ?? [], revision: revision?.revision ?? 1 } : null,
+    draft: current ? { workbook: revision?.content ?? current.draft!, rendering: revision?.rendering ?? null, problems: revision?.render_problems ?? [], revision: revision?.revision ?? 1 } : null,
   };
 }
 
@@ -1336,7 +1391,7 @@ async function cardSubscriptions(cardRows: Promise<RawCard[]>): Promise<StripeRe
   if (!s) return { subscriptions: [], stripeMode: null, stripeNote: "No Stripe key here, so the page cannot tell who is paying." };
   const key = process.env.STRIPE_SECRET_KEY ?? "";
   const stripeMode = key.startsWith("sk_live_") || key.startsWith("rk_live_") ? "live" : "test";
-  const listed = s.subscriptions.list({ status: "all", limit: 100 }).autoPagingToArray({ limit: SUBSCRIPTIONS_MAX })
+  const listed = keptSubscriptions(() => s.subscriptions.list({ status: "all", limit: 100 }).autoPagingToArray({ limit: SUBSCRIPTIONS_MAX }))
     .then((all) => ({ all }), (e: unknown) => ({ failed: e }));
   const customers = new Set((await cardRows).flatMap((c) => (c.stripe_customer_id ? [c.stripe_customer_id] : [])));
   try {
@@ -1381,26 +1436,27 @@ async function confirmCardsInStripe(cards: RawCard[]): Promise<void> {
   if (!s || open.length === 0) return;
   const provider = stripeCardProvider(s);
   await Promise.all(open.map(async (c) => {
-    const answer = await findSavedCard(c, provider);
+    const answer = await keptCardAnswer(c.id, () => findSavedCard(c, provider));
     if (answer.state === "saved") Object.assign(c, { card_saved_at: answer.evidence.savedAt, saved_in_stripe_only: true });
     else if (answer.state === "unknown") console.error("[admin] stripe saved card check failed", c.id);
   }));
 }
 
 /** The admins' user ids. PostgREST returns a set of scalars as plain values; an object row is read too, to be safe. */
-async function teamIds(a: AdminSession): Promise<string[]> {
+// Read once per request (React cache): the frame's badges, the page and the dashboard rows all need them.
+const teamIds = cache(async (a: AdminSession): Promise<string[]> => {
   const rows = must<(string | Record<string, string>)[]>(await a.db.rpc("admin_team_ids"), "team ids");
   return rows.map((r) => (typeof r === "string" ? r : Object.values(r)[0]));
-}
+});
 
-/** Admin accounts and families marked as a test (migration add_test_accounts): left out of the dashboard's numbers. */
-export async function testAccountIds(a: AdminSession): Promise<string[]> {
+/** Admin accounts and families marked as a test (migration add_test_accounts): left out of the dashboard's numbers. Once per request. */
+export const testAccountIds = cache(async (a: AdminSession): Promise<string[]> => {
   const [team, marked] = await Promise.all([
     teamIds(a),
     allRows<{ parent_id: string }>(a.db.from("test_accounts").select("parent_id").order("parent_id"), "test accounts"),
   ]);
   return [...new Set([...team, ...marked.map((m) => m.parent_id)])];
-}
+});
 
 /** Whether a family is marked as a test, and whether it is an admin's own (always left out; it cannot be unmarked). */
 export async function testAccountState(a: AdminSession, parentId: string): Promise<{ marked: boolean; admin: boolean }> {

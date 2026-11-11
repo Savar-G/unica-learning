@@ -58,7 +58,7 @@ export function runDetail(state: "agreed" | "disagreed" | "failed" | "not-checke
     audit: [{ id: 1, at, actor_email: null, action: "draft-stored", detail: { pages: 1, rendered: false, renderProblems: 1, ignored_private_key: "private-value" } }],
     solves: state === "not-checked" ? [] : [solve],
     aiCalls: summarizeAiCalls([]),
-    approved: null, comments: [], editBatch: null, edits: [], versions: [], adminNames: {},
+    approved: null, comments: [], editBatch: null, edits: [], versions: [], shownRevision: null, adminNames: {},
   };
 }
 // FIXTURE_END
