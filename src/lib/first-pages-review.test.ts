@@ -165,7 +165,6 @@ describe("review regressions", () => {
           limit(value: number) { count = value; return query; },
           async maybeSingle() {
             if (table === "email_log") {
-              const assessment = filters.find(([k]) => k === "assessment_id")?.[1];
               return { data: null, error: null };
             }
             const data = table === "parents" ? { name: "Ana", email: "ana@example.com", deletion_requested_at: null }
