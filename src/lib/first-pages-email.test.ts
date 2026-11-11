@@ -133,6 +133,31 @@ describe("the last check", () => {
   });
 });
 
+describe("the paced transport and the last check", () => {
+  it("asks the check once, before the gap's timestamp, so a slow check never shortens the gap to the next email", async () => {
+    const starts: number[] = [];
+    let innerAsked = 0;
+    const inner = { send: async (_m: unknown, o?: { admit?(): Promise<boolean> }) => { if (o?.admit) innerAsked++; starts.push(performance.now()); return { status: "sent" as const, emailId: "e" }; } };
+    const paced = pacedTransport(inner, 150);
+    const slow = paced.send({ sender: { to: "parent" }, to: "a@example.com", subject: "sample", text: "t" }, { admit: () => new Promise((r) => setTimeout(() => r(true), 200)) });
+    const next = paced.send({ sender: { to: "parent" }, to: "b@example.com", subject: "next", text: "t" });
+    await Promise.all([slow, next]);
+    expect(innerAsked).toBe(0);
+    expect(starts).toHaveLength(2);
+    expect(starts[1] - starts[0]).toBeGreaterThanOrEqual(145);
+  });
+
+  it("refuses a send whose check throws at once, and the queue goes on", async () => {
+    const mail = memoryTransport();
+    const paced = pacedTransport(mail.transport, 0);
+    const first = paced.send({ sender: { to: "parent" }, to: "a@example.com", subject: "a", text: "t" }, { admit: (() => { throw new Error("read failed"); }) as () => Promise<boolean> });
+    const second = paced.send({ sender: { to: "parent" }, to: "b@example.com", subject: "b", text: "t" });
+    expect(await first).toMatchObject({ status: "refused" });
+    expect(await second).toMatchObject({ status: "sent" });
+    expect(mail.delivered.map((m) => m.subject)).toEqual(["b"]);
+  });
+});
+
 describe("attachments", () => {
   it("go to Resend as base64 with their name and type", async () => {
     const env = { ...process.env };

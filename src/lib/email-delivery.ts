@@ -107,11 +107,13 @@ export function pacedTransport(transport: MailTransport, gapMs: number): MailTra
           if (signal?.aborted) return;
           signal?.removeEventListener("abort", stop);
           if (options?.mayStart && !options.mayStart()) return resolve(OUT_OF_TIME);
-          // Asked after the wait, so a change during it still stops the send.
+          // Asked after the wait, so a change during it still stops the send; asked here only, before the timestamp the
+          // next gap is measured from, so no wait sits between that timestamp and the request.
           if (!(await admitted(options))) return resolve(NOT_ADMITTED);
           lastStart = performance.now();
+          const inner = options ? { ...options, admit: undefined } : options;
           // A throw goes to this send's own caller, and the queue goes on.
-          try { resolve(await transport.send(message, options)); } catch (e) { reject(e); }
+          try { resolve(await transport.send(message, inner)); } catch (e) { reject(e); }
         });
       });
     },
