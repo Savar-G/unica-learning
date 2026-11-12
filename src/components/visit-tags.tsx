@@ -9,11 +9,16 @@ import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 import { getAdTags } from "@/lib/ad-tags";
 import { markAdStep } from "@/lib/ad-visit-steps";
+import { trackHit, type SiteHitPost } from "@/lib/site-hits";
 import { keepVisit, type AdVisitPost } from "@/lib/visit-source";
 
 function send(visit: AdVisitPost) {
   // keepalive: the visitor may leave the page at once; the count must still arrive.
   fetch("/api/visit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(visit), keepalive: true }).catch(() => {});
+}
+
+function sendHit(hit: SiteHitPost) {
+  fetch("/api/hit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(hit), keepalive: true }).catch(() => {});
 }
 
 const newId = () => (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : null);
@@ -34,6 +39,15 @@ export function VisitTags() {
     // The ad test's first step (src/lib/ad-visit-steps.ts): sent only from a tab with an ad visit ID, once per tab.
     if (pathname === "/start") markAdStep("start_open");
     getAdTags()?.page();
+  }, [pathname]);
+
+  // The traffic counter (src/lib/site-hits.ts): one count per page view of a public page, no cookie, no consent.
+  useEffect(() => {
+    if (isParentPreviewPath(pathname)) return;
+    let store: Storage | null = null;
+    try { store = window.sessionStorage; } catch { /* storage off: nothing is counted */ }
+    if (!store) return;
+    trackHit({ pathname, search: window.location.search, referrer: document.referrer, ownHost: window.location.hostname, store, newId, send: sendHit });
   }, [pathname]);
 
   return null;

@@ -4506,6 +4506,54 @@ export type Database = {
         }
         Relationships: []
       }
+      site_hits: {
+        Row: {
+          browser: string | null
+          country: string | null
+          device: string | null
+          hit_at: string
+          id: number
+          is_landing: boolean
+          path: string
+          referrer_host: string | null
+          region: string | null
+          utm_campaign: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          visit_id: string
+        }
+        Insert: {
+          browser?: string | null
+          country?: string | null
+          device?: string | null
+          hit_at?: string
+          id?: never
+          is_landing?: boolean
+          path: string
+          referrer_host?: string | null
+          region?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          visit_id: string
+        }
+        Update: {
+          browser?: string | null
+          country?: string | null
+          device?: string | null
+          hit_at?: string
+          id?: never
+          is_landing?: boolean
+          path?: string
+          referrer_host?: string | null
+          region?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          visit_id?: string
+        }
+        Relationships: []
+      }
       skill_state_history: {
         Row: {
           changed_at: string
@@ -8021,6 +8069,10 @@ export type Database = {
         Args: { p_parent: string; p_test: boolean }
         Returns: undefined
       }
+      admin_site_traffic: {
+        Args: { p_days?: number; p_with_tests?: boolean }
+        Returns: Json
+      }
       admin_team_ids: { Args: never; Returns: string[] }
       admin_team_names: {
         Args: never
@@ -9261,6 +9313,8 @@ export type Database = {
         Args: { p_draft: string; p_revision: number }
         Returns: Json
       }
+      pacific_day: { Args: { ts: string }; Returns: string }
+      pacific_day_start: { Args: { d: string }; Returns: string }
       parent_explanation_command: {
         Args: {
           p_action: string
