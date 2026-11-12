@@ -952,6 +952,26 @@ describe("#589: the safety guidance does not wait for the close", () => {
   }
   const count = (said: readonly string[], text: string) => said.filter((t) => t === text).length;
 
+  /** When the voice session closed (the call hung up), on the test's clock; null while it is open. */
+  function watchClose(session: voice.AgentSession) {
+    let at: number | null = null;
+    const close = session.close.bind(session);
+    vi.spyOn(session, "close").mockImplementation(() => { at ??= Date.now(); return close(); });
+    return () => at;
+  }
+
+  /**
+   * The close after the guidance adds no words (e00cf1f8: no model words, no bank phrase). So the guidance is the last
+   * thing the child hears, and the call hangs up when the close is known: the session closes with no wait on the
+   * test's clock, and the stored call ends. The child is never left in an open, silent call.
+   */
+  async function endsAfterGuidance(c: { said: () => readonly string[]; id: string; store: Awaited<ReturnType<typeof voiceCall>>["store"] }, o: { closedAt: () => number | null; knownAt: number; before: number; last?: string }) {
+    expect(c.said().slice(o.before)).toEqual([]);
+    expect(c.said().at(-1)).toBe(o.last ?? LAST.immediate);
+    expect(o.closedAt()).toBe(o.knownAt);
+    expect((await c.store.get(c.id))!.status).toBe("ended");
+  }
+
   it.each(["immediate", "concern"] as const)("%s: guidance is queued at once, and heard while the close call hangs", async (severity) => {
     const m = closeHangs(severity);
     const c = await voiceCall({ model: m.model });
@@ -970,14 +990,14 @@ describe("#589: the safety guidance does not wait for the close", () => {
     const line = () => c.calls.view(c.id).then((v) => v!.transcript.map((t) => t.text).join(" "));
     expect(await line()).toContain(WORDS[severity]);
 
-    // The close comes after it, once, and the call ends as a safety call.
+    // The close comes after it, with no words, and the call ends as a safety call.
     const before = c.said().length;
+    const closedAt = watchClose(c.session);
     m.releaseClose();
-    await c.run.done;
+    const knownAt = Date.now();
     await waitFor(() => c.run.done !== null, "the call's end");
     await c.run.done;
-    expect(c.said().slice(before).join(" ")).not.toContain(WORDS[severity]);
-    expect(c.said().length).toBeGreaterThan(before);
+    await endsAfterGuidance(c, { closedAt, knownAt, before, last: LAST[severity] });
     expect(count(c.said(), WORDS[severity])).toBe(1);
     expect((await c.calls.view(c.id))!.outcome).toMatchObject({ reason: "safety" });
     expect(c.samples[0]).toMatchObject({ outcome: "answered" });
@@ -993,10 +1013,15 @@ describe("#589: the safety guidance does not wait for the close", () => {
     await waitFor(() => m.asked === 1, "the child turn's model call");
     expect(await measure()).toBe(0);
     await waitFor(() => m.hanging === 1, "the close call");
+    await waitFor(() => c.said().includes(LAST.immediate), "the whole guidance in the voice");
+    const before = c.said().length;
+    const closedAt = watchClose(c.session);
     await c.clock.advance(MODEL_LIMIT_MS);
+    const knownAt = Date.now();
     await waitFor(() => c.run.done !== null, "the call's end");
     await c.run.done;
     expect(m.closesFailed).toBe(1);
+    await endsAfterGuidance(c, { closedAt, knownAt, before });
     expect(count(c.said(), WORDS.immediate)).toBe(1);
     expect((await c.calls.view(c.id))!.outcome).toMatchObject({ reason: "safety" });
   });
@@ -1074,7 +1099,7 @@ describe("#589: the safety guidance does not wait for the close", () => {
   });
 
   // Item 3. The start of the child's speech retires the board plan, and a retired plan's frames never reach the output.
-  it("a noise during the guidance cuts it, so it plays once more, whole, and the close comes after that", async () => {
+  it("a noise during the guidance cuts it, so it plays once more, whole, and the call ends after that", async () => {
     const m = closeHangs();
     const speech = new ProbeSTT();
     const c = await voiceCall({ model: m.model, speech });
@@ -1095,13 +1120,16 @@ describe("#589: the safety guidance does not wait for the close", () => {
     // What the noise cut: one playback that did not carry it whole, which nothing but the repeat makes up for.
     expect(c.speaker.plays.at(-2)).toBeLessThan(WHOLE_GUIDANCE_S);
     expect(count(c.said(), WORDS.immediate)).toBe(2);
-    const said = c.said().length;
+    await waitFor(() => c.said().at(-1) === LAST.immediate, "the whole repeat in the voice");
+    const before = c.said().length;
     await waitFor(() => m.hanging === 1, "the close call");
+    const closedAt = watchClose(c.session);
     m.releaseClose();
+    const knownAt = Date.now();
     await waitFor(() => c.run.done !== null, "the call's end");
     await c.run.done;
-    expect(c.said().slice(said).join(" ")).not.toContain(WORDS.immediate);
-    expect(c.said().length).toBeGreaterThan(said);
+    await endsAfterGuidance(c, { closedAt, knownAt, before });
+    expect(count(c.said(), WORDS.immediate)).toBe(2);
   });
 
   it("a second noise during the repeat does not start a third", async () => {
@@ -1196,7 +1224,7 @@ describe("#589: the safety guidance does not wait for the close", () => {
     expect((await c.store.get(c.id))!.status).toBe("ended");
   });
 
-  it("all at once: the child's words cut the guidance with the close call out, and the repeat comes before the close", async () => {
+  it("all at once: the child's words cut the guidance with the close call out, and the repeat comes before the call ends", async () => {
     const m = closeHangs();
     const speech = new ProbeSTT();
     const c = await voiceCall({ model: m.model, speech });
@@ -1216,11 +1244,16 @@ describe("#589: the safety guidance does not wait for the close", () => {
     expect(m.hanging).toBeGreaterThan(0);
     expect(count(c.said(), WORDS.immediate)).toBe(2);
     expect(says.mock.calls.map(([text]) => text)).toEqual([SAFETY_GUIDANCE.immediate, SAFETY_GUIDANCE.immediate]);
+    await waitFor(() => c.said().at(-1) === LAST.immediate, "the whole repeat in the voice");
+    const before = c.said().length;
+    const closedAt = watchClose(c.session);
     m.releaseClose();
+    const knownAt = Date.now();
     await waitFor(() => c.run.done !== null, "the call's end");
     await c.run.done;
-    expect(says.mock.calls.length).toBe(3);
-    expect(says.mock.calls[2][0]).not.toContain(WORDS.immediate);
+    // Both close calls answer with no words: nothing is queued after the repeat.
+    expect(says.mock.calls.map(([text]) => text)).toEqual([SAFETY_GUIDANCE.immediate, SAFETY_GUIDANCE.immediate]);
+    await endsAfterGuidance(c, { closedAt, knownAt, before });
     expect(count(c.said(), WORDS.immediate)).toBe(2);
     expect((await c.calls.view(c.id))!.outcome).toMatchObject({ reason: "safety" });
   });
@@ -1239,12 +1272,15 @@ describe("#589: the safety guidance does not wait for the close", () => {
     const c = await voiceCall({ model });
     armed = true;
     const says = vi.spyOn(c.session, "say");
+    const closedAt = watchClose(c.session);
     c.say("Someone is hurting me.");
     await waitFor(() => c.run.done !== null, "the call's end");
     await c.run.done;
-    expect(says.mock.calls[0][0]).toBe(SAFETY_GUIDANCE.concern);
-    expect(says.mock.calls[1][0]).toBe(SAFETY_GUIDANCE.immediate);
-    expect(says.mock.calls).toHaveLength(3);
+    // The close that read the worse danger adds no words of its own: the new guidance is the last thing said.
+    expect(says.mock.calls.map(([text]) => text)).toEqual([SAFETY_GUIDANCE.concern, SAFETY_GUIDANCE.immediate]);
+    expect(c.said().at(-1)).toBe(LAST.immediate);
+    expect(closedAt()).not.toBeNull();
+    expect((await c.store.get(c.id))!.status).toBe("ended");
     expect((await c.calls.view(c.id))!.outcome).toMatchObject({ reason: "safety", safetySeverity: "immediate" });
   });
 
@@ -1332,22 +1368,27 @@ describe("#589: the safety guidance does not wait for the close", () => {
     await waitFor(() => asks === 4 && speaker.waitingToPlay && spoken().includes(WORDS.immediate), "the immediate guidance's first frame, with the last close call out");
 
     // The close comes back with the guidance still playing.
+    const closedAt = watchClose(session);
     releaseFinal();
     await pause();
     expect(says.mock.calls.map(([text]) => text)).toEqual([SAFETY_GUIDANCE.immediate]);
+    // The guidance still plays, so nothing has closed the session under it.
+    expect(closedAt()).toBeNull();
     speaker.play();
     await waitFor(() => run.done !== null, "the new worker's end of the call");
     await run.done;
     expect(speaker.plays.filter((seconds) => seconds >= WHOLE_GUIDANCE_S).length).toBeGreaterThan(0);
-    expect(says.mock.calls).toHaveLength(2);
-    expect(says.mock.calls[1][0]).not.toContain(WORDS.immediate);
+    // The close adds no words, so it cannot take the guidance's audio: the guidance is the last speech, and the call hangs up.
+    expect(says.mock.calls.map(([text]) => text)).toEqual([SAFETY_GUIDANCE.immediate]);
+    expect(spoken().at(-1)).toBe(LAST.immediate);
+    expect(closedAt()).not.toBeNull();
     expect(count(spoken(), WORDS.immediate)).toBe(1);
     expect((await c.store.get(c.id))!.status).toBe("ended");
     expect((await c.calls.view(c.id))!.outcome).toMatchObject({ reason: "safety", safetySeverity: "immediate" });
   });
 
   // P2 of the review of PR #616: with the close dropped and no guidance owed, nothing ended the stored call.
-  it("the child hears the guidance, leaves during the close call and comes back after it: the close plays and the call ends", async () => {
+  it("the child hears the guidance, leaves during the close call and comes back after it: the call ends with no more words", async () => {
     const m = closeHangs();
     const c = await voiceCall({ model: m.model });
     m.arm(c.clock.timers);
@@ -1366,11 +1407,15 @@ describe("#589: the safety guidance does not wait for the close", () => {
     expect((await c.store.get(c.id))!.status).toBe("live");
     expect(c.call.pendingFinal).toBeNull();
 
+    const before = c.said().length;
+    const closedAt = watchClose(c.session);
     await c.run.childJoined();
+    const knownAt = Date.now();
     await waitFor(() => c.run.done !== null, "the call's end, long before the deadline");
     await c.run.done;
-    expect(says).toHaveBeenCalledTimes(2);
-    expect(says.mock.calls[1][0]).not.toContain(WORDS.immediate);
+    // The owed close has no words: the child is back to a call that hangs up at once, not an open, silent one.
+    expect(says).toHaveBeenCalledTimes(1);
+    await endsAfterGuidance(c, { closedAt, knownAt, before });
     expect(count(c.said(), WORDS.immediate)).toBe(1);
     const stored = (await c.store.get(c.id))!;
     expect(stored.status).toBe("ended");
@@ -1528,17 +1573,22 @@ describe("#589: the safety guidance does not wait for the close", () => {
     m.releaseDanger();
     await waitFor(() => c.speaker.waitingToPlay && c.said().includes(WORDS.immediate), "the guidance's first frame");
     await waitFor(() => m.hanging === 1, "the close call");
+    const closedAt = watchClose(c.session);
     m.releaseClose();
     await pause();
-    // The close is back, and has not been queued: its plan would retire this one.
+    // The close is back, and nothing is queued: a queued plan would retire this one. The guidance still plays, so the
+    // session stays open under it.
     expect(says.mock.calls).toHaveLength(1);
+    expect(closedAt()).toBeNull();
+    await waitFor(() => c.said().at(-1) === LAST.immediate, "the whole guidance in the voice");
+    const before = c.said().length;
     c.speaker.play();
     await waitFor(() => c.run.done !== null, "the call's end");
     await c.run.done;
     expect(c.speaker.plays.filter((seconds) => seconds >= WHOLE_GUIDANCE_S).length).toBeGreaterThan(0);
     expect(count(c.said(), WORDS.immediate)).toBe(1);
-    expect(says.mock.calls).toHaveLength(2);
-    expect(says.mock.calls[1][0]).not.toContain(WORDS.immediate);
+    expect(says.mock.calls).toHaveLength(1);
+    await endsAfterGuidance(c, { closedAt, knownAt: Date.now(), before });
   });
 
   it.each([["with words", false], ["with no words", true]] as const)("the call's end waits for guidance that is still playing, the close %s", async (_name, silent) => {
