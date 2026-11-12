@@ -448,7 +448,7 @@ const CSS = `
 .cv .wn{font-family:"Unica Mono",ui-monospace,Menlo,monospace;font-size:13px;letter-spacing:.04em;color:#44444C}
 .mk{display:grid;grid-template-columns:repeat(3,36px);margin-top:56px}
 .mk i{display:block;width:36px;height:36px;border:1.2px solid #0C0C0E;margin:0 -1.2px -1.2px 0;background:#fff}
-.mk .y{background:#FFD23F}.mk .b{background:#3366F0}.mk .o{background:#FF6A3D}.mk .g{background:#16A06A}.mk .k{background:#B8B3AA}
+.mk .y{background:#FFD23F}.mk .b{background:#3366F0}.mk .o{background:#FF6A3D}.mk .g{background:#16A06A}
 .cv .for{margin-top:32px;font-weight:500;font-size:22px;line-height:1.4;color:#44444C;max-height:62px;overflow:hidden}
 .cv h1{margin:20px 0 0;font-weight:300;font-size:66px;line-height:1.18;letter-spacing:-.03em;height:164px;overflow:hidden}
 .cv h1 .hl{display:inline-block;background:#FFD23F;padding:0 10px;margin-left:-10px;line-height:1.12}
@@ -1554,7 +1554,7 @@ const FRAME = /<div class="(outl|panel p-hd|panel p-fx)"/g;
 const missingHtml = (b: Block) => (b.missing ?? []).map((m) =>
   `<div class="qfail" data-failed-question="${m.number}" style="border:2px dashed #B42318;background:#FDECEA;color:#B42318;border-radius:8px;padding:8px 12px;font:600 13px/1.4 Helvetica,Arial,sans-serif;margin-top:8px">Question ${m.number} failed: ${escape(m.reason)}</div>`).join("");
 
-const UNICA_MARK = `<div class="mk"><i class="y"></i><i></i><i class="b"></i><i></i><i class="o"></i><i></i><i class="g"></i><i></i><i class="k"></i></div>`;
+const UNICA_MARK = `<div class="mk"><i class="y"></i><i></i><i class="b"></i><i></i><i class="o"></i><i></i><i class="g"></i><i></i><i></i></div>`;
 
 /**
  * The level's plain name from the curriculum data ("Big numbers and multiplication facts" for U16), printed on the cover
