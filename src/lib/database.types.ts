@@ -805,6 +805,7 @@ export type Database = {
           learning_styles: string[] | null
           learning_updated_at: string | null
           math_feeling: string | null
+          math_help: string | null
           parent_id: string
           province: string
           weekly_time: string | null
@@ -821,6 +822,7 @@ export type Database = {
           learning_styles?: string[] | null
           learning_updated_at?: string | null
           math_feeling?: string | null
+          math_help?: string | null
           parent_id: string
           province: string
           weekly_time?: string | null
@@ -837,6 +839,7 @@ export type Database = {
           learning_styles?: string[] | null
           learning_updated_at?: string | null
           math_feeling?: string | null
+          math_help?: string | null
           parent_id?: string
           province?: string
           weekly_time?: string | null
@@ -4059,6 +4062,7 @@ export type Database = {
           lease_until: string
           page_id: string | null
           parent_id: string
+          photo_check: Json | null
           printed_revision: string | null
           reserved_bytes: number
           sent_at: string | null
@@ -4077,6 +4081,7 @@ export type Database = {
           lease_until?: string
           page_id?: string | null
           parent_id: string
+          photo_check?: Json | null
           printed_revision?: string | null
           reserved_bytes: number
           sent_at?: string | null
@@ -4095,6 +4100,7 @@ export type Database = {
           lease_until?: string
           page_id?: string | null
           parent_id?: string
+          photo_check?: Json | null
           printed_revision?: string | null
           reserved_bytes?: number
           sent_at?: string | null
@@ -7323,6 +7329,7 @@ export type Database = {
           learning_styles: string[] | null
           learning_updated_at: string | null
           math_feeling: string | null
+          math_help: string | null
           parent_id: string
           province: string
           weekly_time: string | null
@@ -8057,6 +8064,15 @@ export type Database = {
         }
         Returns: Json
       }
+      claim_photo_check: {
+        Args: {
+          p_id: string
+          p_parent: string
+          p_stale_seconds: number
+          p_token: string
+        }
+        Returns: boolean
+      }
       claim_pin_attempt: {
         Args: {
           p_lock_seconds: number
@@ -8464,6 +8480,15 @@ export type Database = {
           p_generation: number
           p_state: string
           p_subscription: string
+        }
+        Returns: boolean
+      }
+      finish_photo_check: {
+        Args: {
+          p_id: string
+          p_parent: string
+          p_result: Json
+          p_token: string
         }
         Returns: boolean
       }

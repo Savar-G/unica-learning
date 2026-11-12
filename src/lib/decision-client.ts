@@ -6,6 +6,7 @@
 // An error, a time-out or a safety block is never a pass. Each caller states what it does instead (spec #850).
 // For the server and local scripts only. No "server-only" import so that its tests can run, as src/lib/ai-client.ts.
 import { openRouterDecisionClient } from "@/lib/decision-openrouter";
+import { livePriceGuard, withPriceGuard, type PriceGuard } from "@/lib/decision-price";
 
 /** The model when DECISION_MODEL is not set, until the comparison (#851) picks one. */
 export const DECISION_DEFAULT_MODEL = "typesafe/jev-1.14";
@@ -106,9 +107,10 @@ export interface DecisionResult {
 /**
  * Why a decision failed. refused: the model declined a question. blocked: a provider safety block. timeout: no answer in
  * time, or the caller's signal stopped it. malformed: an answer that is not the typed answer asked for. unavailable: the
- * model or provider could not take or serve the request (an HTTP error, no connection).
+ * model or provider could not take or serve the request (an HTTP error, no connection). price: the live price of the
+ * model was not shown to be at or below its pinned price (src/lib/decision-price.ts), so nothing was sent.
  */
-export type DecisionErrorKind = "refused" | "blocked" | "timeout" | "malformed" | "unavailable";
+export type DecisionErrorKind = "refused" | "blocked" | "timeout" | "malformed" | "unavailable" | "price";
 
 export class DecisionError extends Error {
   readonly kind: DecisionErrorKind;
@@ -141,16 +143,18 @@ export interface DecisionClient {
 /**
  * The client, or null when decisions are off (no DECISIONS_OPENROUTER_API_KEY). The model comes from `model`, else
  * DECISION_MODEL, else the default. A model that is not in DECISION_MODELS throws: it is never sent on an open route
- * or without a cost bound.
+ * or without a cost bound. Each request first passes the live price check (src/lib/decision-price.ts): once per process
+ * and model, and again once a day. `priceGuard` replaces that check (tests).
  */
 export function decisionClient(
   env: Readonly<Record<string, string | undefined>> = process.env,
   model?: string,
-  hooks?: { fetch?: typeof globalThis.fetch; timeout?: number; maxRetries?: number },
+  hooks?: { fetch?: typeof globalThis.fetch; timeout?: number; maxRetries?: number; priceGuard?: PriceGuard },
 ): DecisionClient | null {
   const apiKey = env.DECISIONS_OPENROUTER_API_KEY?.trim();
   if (!apiKey) return null;
   const id = model?.trim() || env.DECISION_MODEL?.trim() || DECISION_DEFAULT_MODEL;
   const { provider } = decisionModelTerms(id);
-  return openRouterDecisionClient({ apiKey, model: id, provider, ...hooks });
+  const { priceGuard, ...rest } = hooks ?? {};
+  return withPriceGuard(openRouterDecisionClient({ apiKey, model: id, provider, ...rest }), priceGuard ?? livePriceGuard);
 }

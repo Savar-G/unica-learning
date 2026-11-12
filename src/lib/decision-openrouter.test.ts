@@ -182,7 +182,7 @@ describe("the OpenRouter decision client (#851), fetch faked", () => {
     expect(requestCostBound(decisionClient({ DECISIONS_OPENROUTER_API_KEY: "sk-or-d" })!)).toBeCloseTo(2 * 262_144 * 0.042 / 1e6, 12);
     expect(requestCostBound(decisionClient({ DECISIONS_OPENROUTER_API_KEY: "sk-or-d", DECISION_MODEL: "google/gemini-decision-1" })!)).toBeCloseTo(2 * 262_144 * 0.1 / 1e6, 12);
     const { fetch, sent } = fakeFetch(decided(ALL));
-    const gemini = decisionClient({ DECISIONS_OPENROUTER_API_KEY: "sk-or-d", DECISION_MODEL: "google/gemini-decision-1" }, undefined, { fetch });
+    const gemini = decisionClient({ DECISIONS_OPENROUTER_API_KEY: "sk-or-d", DECISION_MODEL: "google/gemini-decision-1" }, undefined, { fetch, priceGuard: async () => {} });
     await gemini!.decide(request());
     expect(sent[0].body.model).toBe("google/gemini-decision-1");
     expect(sent[0].body.provider).toEqual({ only: ["google-ai-studio"], order: ["google-ai-studio"], allow_fallbacks: false });
