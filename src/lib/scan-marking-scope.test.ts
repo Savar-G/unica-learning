@@ -24,5 +24,6 @@ it.each(callers)("%s passes its scope to %s", (file, rule, scope, calls) => {
   const source = readFileSync(join(process.cwd(), file), "utf8");
   const found = [...source.matchAll(new RegExp(`\\b${rule}\\(([^\\n]*)`, "g"))].map((m) => m[1]);
   expect(found).toHaveLength(calls);
-  for (const args of found) expect(args).toMatch(new RegExp(`^[^)]*process\\.env, ${scope.source}\\)`));
+  // The scan stack poll also passes its request's shared reads (scanAccessReads) after the scope.
+  for (const args of found) expect(args).toMatch(new RegExp(`^[^)]*process\\.env, ${scope.source}(, undefined, session\\.reads)?\\)`));
 });

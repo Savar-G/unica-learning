@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { isUuid } from "@/lib/assessment-store";
-import { dashboardRows, familyProduction, getParent, requireAdmin, testAccountState } from "@/lib/admin-store";
+import { familyDashboardRows, familyProduction, getParent, requireAdmin, testAccountState } from "@/lib/admin-store";
 import { ADMIN_PATH, when } from "@/lib/admin-view";
 import { buildDashboard } from "@/lib/admin-dashboard";
 import { buildBooks } from "@/lib/admin-production";
@@ -29,11 +29,12 @@ const CHAT_GRADE = 3;
 export default async function ParentPage({ params }: PageProps<"/admin/parents/[id]">) {
   const admin = await requireAdmin();
   const id = (await params).id;
-  // the family's stage and payment, the same way the dashboard works them out (D-099). The related reads run at once,
-  // but the family decides first: an unknown family is a 404 even when another read failed.
+  // the family's stage and payment, the same way the dashboard works them out (D-099), from this family's rows only
+  // (familyDashboardRows: the dashboard's rows for one family, and Stripe asked about its cards only). The related reads
+  // run at once, but the family decides first: an unknown family is a 404 even when another read failed.
   if (!isUuid(id)) notFound();
   const now = new Date();
-  const others = Promise.all([dashboardRows(admin), testAccountState(admin, id), chatFamilyState(admin, id), openFamilyCancels(admin, id), familyProduction(admin, id, now)]);
+  const others = Promise.all([familyDashboardRows(admin, [id]), testAccountState(admin, id), chatFamilyState(admin, id), openFamilyCancels(admin, id), familyProduction(admin, id, now)]);
   others.catch(() => {});
   const family = await getParent(admin, id);
   if (!family) notFound();

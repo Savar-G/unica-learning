@@ -23,6 +23,7 @@ import { PLAN_KEY_MS } from "@/lib/card-reconcile";
 import { findSavedCard } from "@/lib/saved-card";
 import { stripeCardProvider } from "@/lib/saved-card-server";
 import { stripe } from "@/lib/stripe";
+import type Stripe from "stripe";
 import type { DashboardRows, Delivery, EmailCopyView, RawCard, RawDelivery, RawChild, RawEmail, RawParent, RawReport, RawTest, RawWaitlist } from "@/lib/admin-dashboard";
 import type { TemplateFilters, TemplateStat } from "@/lib/admin-templates";
 import type { ExportReader, ExportRow, PagedTable } from "@/lib/admin-export";
@@ -143,12 +144,17 @@ async function allRows<T>(query: RangeRead<T>, what: string): Promise<T[]> {
   return (await allRead(query, what)) as T[];
 }
 
-/** Rows of T for the ids, read CHUNK ids at a time. */
-async function byIds<T>(ids: Iterable<string>, what: string, read: (chunk: string[]) => RangeRead<T>): Promise<T[]> {
+/** The rows of `read` for the ids, CHUNK ids at a time, one chunk after another. Each id's rows come from one chunk. */
+async function inChunks<T>(ids: Iterable<string>, read: (chunk: string[]) => Promise<T[]>): Promise<T[]> {
   const list = [...new Set(ids)];
   const out: T[] = [];
-  for (let i = 0; i < list.length; i += CHUNK) out.push(...await allRows<T>(read(list.slice(i, i + CHUNK)).order("id"), what));
+  for (let i = 0; i < list.length; i += CHUNK) out.push(...await read(list.slice(i, i + CHUNK)));
   return out;
+}
+
+/** Rows of T for the ids, read CHUNK ids at a time. */
+function byIds<T>(ids: Iterable<string>, what: string, read: (chunk: string[]) => RangeRead<T>): Promise<T[]> {
+  return inChunks(ids, (chunk) => allRows<T>(read(chunk).order("id"), what));
 }
 
 /** A list cut at LIST_MAX: `more` when older rows were left out. */
@@ -239,12 +245,16 @@ async function withPeople(a: AdminSession, tests: TestQueryRow[]): Promise<TestR
   }));
 }
 
+/** With the help, flagged or low-AI filter, at most this many database pages of tests are checked, newest first. */
+export const TEST_SCAN_PAGES = 20;
+
 /**
  * The newest tests that pass the filters. Grade, province and status filter in the database; help likely and low AI
- * confidence filter each database page before pagination (the assessment core decides help likely). `hide`: the parent
- * ids left out (the test families, while "Show test families" is off).
+ * confidence filter each database page before pagination (the assessment core decides help likely), over at most
+ * TEST_SCAN_PAGES pages: `cut` says older tests were not checked. `hide`: the parent ids left out (the test families,
+ * while "Show test families" is off).
  */
-export async function listTests(a: AdminSession, f: AdminFilters, offset = 0, hide: readonly string[] = []): Promise<Page<TestRow>> {
+export async function listTests(a: AdminSession, f: AdminFilters, offset = 0, hide: readonly string[] = []): Promise<Page<TestRow> & { cut: boolean }> {
   let q = a.db.rpc("admin_assessments").select(TEST_COLUMNS);
   const out = notIn(hide);
   if (out) q = q.not("parent_id", "in", out);
@@ -254,11 +264,15 @@ export async function listTests(a: AdminSession, f: AdminFilters, offset = 0, hi
   q = q.order("created_at", { ascending: false }).order("id", { ascending: false });
   if (!f.help && !f.flagged && !f.lowAi) {
     const { rows, more } = page(must<TestQueryRow[]>(await q.range(offset, offset + LIST_MAX), "tests"));
-    return { rows: await withPeople(a, rows), more };
+    return { rows: await withPeople(a, rows), more, cut: false };
   }
   const kept: TestQueryRow[] = [];
-  let skipped = 0;
-  for (let start = 0; ; start += LIST_MAX) {
+  let skipped = 0, cut = false;
+  for (let pageNo = 0, start = 0; ; pageNo++, start += LIST_MAX) {
+    if (pageNo === TEST_SCAN_PAGES) {
+      cut = true;
+      break;
+    }
     const rows = must<TestQueryRow[]>(await q.range(start, start + LIST_MAX - 1), "tests");
     const low = new Set(rows.filter((t) => t.work_reviews.some((r) => r.confidence === "low")).map((t) => t.id));
     const matches = filterTests(rows.map((t) => ({ ...t, flags: t.placement?.flags ?? null })), f, low);
@@ -270,7 +284,7 @@ export async function listTests(a: AdminSession, f: AdminFilters, offset = 0, hi
     if (kept.length > LIST_MAX || rows.length < LIST_MAX) break;
   }
   const { rows, more } = page(kept);
-  return { rows: await withPeople(a, rows), more };
+  return { rows: await withPeople(a, rows), more, cut };
 }
 
 // One test
@@ -488,22 +502,25 @@ async function withWorkbookEmails(a: AdminSession, cards: CardSetupRow[]): Promi
   if (!cards.length) return cards;
   const ids = cards.map((c) => c.id), childIds = cards.map((c) => c.child_id);
   // Six reads that need only the cards, at once (2026-11-10: one after another they were six round trips on every
-  // family, child and plans page). A failed read is null, as before.
+  // family, child and plans page). A failed read is null, as before. Each sends CHUNK ids at a time (a plans page can
+  // hold LIST_MAX + 1 cards, too long for one request URL); every card's or child's rows come from one chunk, and each
+  // use below reads them per card or per child, so the result is the same as one read. The price reads stay apart from
+  // the start reads: a failed price read leaves the start evidence known (PR #803).
   const [emails, priceStarts, priceStates, starts, plans, planEmails] = await Promise.all([
-    allRows(a.db.from("workbook_emails")
+    inChunks(ids, (chunk) => allRows(a.db.from("workbook_emails")
       .select("id, card_setup_id, kind, workbook_number, status, claimed_at, sent_at, delivery, subject, text_body")
-      .in("card_setup_id", ids).order("created_at").order("id"), "workbook emails").catch(() => null),
-    allRows(a.db.from("plan_starts").select("card_setup_id,generation,state,monthly_cents,first_charge_at")
-      .in("card_setup_id", ids).in("state", ["open", "started"]).order("card_setup_id").order("generation"), "plan price terms").catch(() => null),
-    allRows(a.db.from("child_plan_states").select("child_id,kind,monthly_cents,next_charge_at")
-      .in("child_id", childIds).order("child_id"), "plan price states").catch(() => null),
-    allRows(a.db.from("plan_starts").select("card_setup_id, generation, started_at, state")
-      .in("card_setup_id", ids).order("card_setup_id").order("generation"), "plan starts").catch(() => null),
-    allRows(a.db.from("child_plan_states").select("child_id, parent_id, kind")
-      .in("child_id", childIds).order("child_id"), "child plan states").catch(() => null),
+      .in("card_setup_id", chunk).order("created_at").order("id"), "workbook emails")).catch(() => null),
+    inChunks(ids, (chunk) => allRows(a.db.from("plan_starts").select("card_setup_id,generation,state,monthly_cents,first_charge_at")
+      .in("card_setup_id", chunk).in("state", ["open", "started"]).order("card_setup_id").order("generation"), "plan price terms")).catch(() => null),
+    inChunks(childIds, (chunk) => allRows(a.db.from("child_plan_states").select("child_id,kind,monthly_cents,next_charge_at")
+      .in("child_id", chunk).order("child_id"), "plan price states")).catch(() => null),
+    inChunks(ids, (chunk) => allRows(a.db.from("plan_starts").select("card_setup_id, generation, started_at, state")
+      .in("card_setup_id", chunk).order("card_setup_id").order("generation"), "plan starts")).catch(() => null),
+    inChunks(childIds, (chunk) => allRows(a.db.from("child_plan_states").select("child_id, parent_id, kind")
+      .in("child_id", chunk).order("child_id"), "child plan states")).catch(() => null),
     // The plan start emails: one per generation, on the start's record. They read as ledger rows, with the generation as the number.
-    allRows(a.db.from("plan_starts").select("card_setup_id, generation, email_send_status, email_claimed_at, email_sent_at, email_subject, email_text")
-      .in("card_setup_id", ids).not("email_send_status", "is", null).order("card_setup_id").order("generation"), "plan start emails").catch(() => null),
+    inChunks(ids, (chunk) => allRows(a.db.from("plan_starts").select("card_setup_id, generation, email_send_status, email_claimed_at, email_sent_at, email_subject, email_text")
+      .in("card_setup_id", chunk).not("email_send_status", "is", null).order("card_setup_id").order("generation"), "plan start emails")).catch(() => null),
   ]);
   // After every read, as before after the emails read: an email claimed after this time is not yet in the list.
   const workbookEmailsReadAt = Date.now();
@@ -1387,16 +1404,16 @@ export function exportReader(a: AdminSession): ExportReader {
  * wait only for the card setups, so a page load is about as long as its slowest read, not the sum of two rounds.
  */
 export async function dashboardRows(a: AdminSession): Promise<DashboardRows> {
-  const cardRows = allRows<RawCard>(a.db.rpc("admin_card_setups").select("id, created_at, updated_at, parent_id, child_id, plan, price, stripe_customer_id, card_saved_at").order("id"), "card setups");
+  const cardRows = allRows<RawCard>(a.db.rpc("admin_card_setups").select(DASH_CARD_COLUMNS).order("id"), "card setups");
   const [parents, children, tests, reports, cards, waitlist, emails, stripeRead, testIds, deliveries] = await Promise.all([
     allRows<RawParent>(a.db.rpc("admin_parents").select(PARENT_COLUMNS).order("id"), "parents"),
     allRows<RawChild>(a.db.rpc("admin_children").select(CHILD_COLUMNS).order("id"), "children"),
-    allRows<Omit<RawTest, "answered"> & { answers: { count: number }[] }>(a.db.rpc("admin_assessments").select("id, created_at, status, parent_id, child_id, grade, province, started_at, completed_at, last_answer_at, answers(count)").order("id"), "tests"),
-    allRows<RawReport>(a.db.rpc("admin_reports").select("id, created_at, assessment_id, parent_id, child_id, emailed_at, email_id, email_error, alerted_at, alert_error, email_clicks, email_first_clicked_at").order("id"), "reports"),
+    allRows<DashTestRow>(a.db.rpc("admin_assessments").select(DASH_TEST_COLUMNS).order("id"), "tests"),
+    allRows<RawReport>(a.db.rpc("admin_reports").select(DASH_REPORT_COLUMNS).order("id"), "reports"),
     // the cards come back once Stripe has filled in the saved cards the site never recorded
     cardRows.then(async (rows) => (await confirmCardsInStripe(rows), rows)),
-    allRows<RawWaitlist>(a.db.rpc("admin_waitlist_joins").select("id, created_at, parent_id, child_id, province").order("id"), "waitlist"),
-    allRows<RawEmail>(a.db.from("email_log").select("id, created_at, parent_id, child_id, assessment_id, kind, status, attempts, sent_at, error, clicks, first_clicked_at").order("id"), "email log"),
+    allRows<RawWaitlist>(a.db.rpc("admin_waitlist_joins").select(DASH_WAITLIST_COLUMNS).order("id"), "waitlist"),
+    allRows<RawEmail>(a.db.from("email_log").select(DASH_EMAIL_COLUMNS).order("id"), "email log"),
     cardSubscriptions(cardRows),
     testAccountIds(a),
     deliveryRows(a),
@@ -1404,6 +1421,66 @@ export async function dashboardRows(a: AdminSession): Promise<DashboardRows> {
   return {
     parents, children, reports, cards, waitlist, emails, deliveries, testIds, ...stripeRead,
     tests: tests.map(({ answers, ...t }) => ({ ...t, answered: answers[0]?.count ?? 0 })),
+  };
+}
+
+/** The dashboard rows' columns, shared by the whole read (dashboardRows) and the read of a few families (familyDashboardRows). */
+const DASH_CARD_COLUMNS = "id, created_at, updated_at, parent_id, child_id, plan, price, stripe_customer_id, card_saved_at";
+const DASH_TEST_COLUMNS = "id, created_at, status, parent_id, child_id, grade, province, started_at, completed_at, last_answer_at, answers(count)";
+const DASH_REPORT_COLUMNS = "id, created_at, assessment_id, parent_id, child_id, emailed_at, email_id, email_error, alerted_at, alert_error, email_clicks, email_first_clicked_at";
+const DASH_WAITLIST_COLUMNS = "id, created_at, parent_id, child_id, province";
+const DASH_EMAIL_COLUMNS = "id, created_at, parent_id, child_id, assessment_id, kind, status, attempts, sent_at, error, clicks, first_clicked_at";
+type DashTestRow = Omit<RawTest, "answered"> & { answers: { count: number }[] };
+
+/** Rows in the database's id order (a uuid's text sorts as its bytes do), so rows read in chunks keep the whole read's order. */
+const byIdOrder = <T extends { id: string }>(rows: T[]) => rows.sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
+const missing = (want: Iterable<string | null>, have: Iterable<string>) => {
+  const held = new Set(have);
+  return [...new Set([...want].filter((x): x is string => !!x && !held.has(x)))];
+};
+
+/**
+ * The dashboard rows for a page about one or two families (a family page, an email page): the same rows dashboardRows
+ * gives those families, so buildDashboard works out the same family, but read only for them. Every read filters by the
+ * parent ids; then the few rows a family's lines look up by id outside the family (a child's name, a test's grade, a
+ * test's report: no constraint ties those to the same parent) are read by id, only when the family's rows name one the
+ * first reads did not return. Stripe is asked only about the family's own cards: the saved card check for each unsaved
+ * card, and the subscriptions of each card's customer. The admin dashboard itself keeps the whole read.
+ */
+export async function familyDashboardRows(a: AdminSession, parentIds: readonly string[]): Promise<DashboardRows> {
+  const ids = [...new Set(parentIds.filter(isUuid))];
+  const ofFamilies = <T extends { id: string }>(what: string, read: (chunk: string[]) => RangeRead<T>) => byIds<T>(ids, what, read).then(byIdOrder);
+  const cardRows = ofFamilies<RawCard>("card setups", (chunk) => a.db.rpc("admin_card_setups").select(DASH_CARD_COLUMNS).in("parent_id", chunk));
+  const childRows = ofFamilies<RawChild>("children", (chunk) => a.db.rpc("admin_children").select(CHILD_COLUMNS).in("parent_id", chunk));
+  const testRows = ofFamilies<DashTestRow>("tests", (chunk) => a.db.rpc("admin_assessments").select(DASH_TEST_COLUMNS).in("parent_id", chunk));
+  const reportRows = ofFamilies<RawReport>("reports", (chunk) => a.db.rpc("admin_reports").select(DASH_REPORT_COLUMNS).in("parent_id", chunk));
+  const emailRows = ofFamilies<RawEmail>("email log", (chunk) => a.db.from("email_log").select(DASH_EMAIL_COLUMNS).in("parent_id", chunk));
+  // The lookups by id outside the families, read only when a family row names one the reads above did not return.
+  const outside = Promise.all([childRows, testRows, reportRows, emailRows]).then(([children, tests, reports, emails]) => Promise.all([
+    byIds<RawChild>(missing([...emails.map((e) => e.child_id), ...reports.map((r) => r.child_id), ...tests.map((t) => t.child_id)], children.map((c) => c.id)), "children",
+      (chunk) => a.db.rpc("admin_children").select(CHILD_COLUMNS).in("id", chunk)),
+    byIds<DashTestRow>(missing([...emails.map((e) => e.assessment_id), ...reports.map((r) => r.assessment_id)], tests.map((t) => t.id)), "tests",
+      (chunk) => a.db.rpc("admin_assessments").select(DASH_TEST_COLUMNS).in("id", chunk)),
+    byIds<RawReport>(missing(tests.map((t) => t.id), reports.map((r) => r.assessment_id)), "reports",
+      (chunk) => a.db.rpc("admin_reports").select(DASH_REPORT_COLUMNS).in("assessment_id", chunk)),
+  ]));
+  const [parents, children, tests, reports, cards, waitlist, emails, stripeRead, testIds, deliveries, [otherChildren, otherTests, otherReports]] = await Promise.all([
+    ofFamilies<RawParent>("parents", (chunk) => a.db.rpc("admin_parents").select(PARENT_COLUMNS).in("id", chunk)),
+    childRows,
+    testRows,
+    reportRows,
+    cardRows.then(async (rows) => (await confirmCardsInStripe(rows), rows)),
+    ofFamilies<RawWaitlist>("waitlist", (chunk) => a.db.rpc("admin_waitlist_joins").select(DASH_WAITLIST_COLUMNS).in("parent_id", chunk)),
+    emailRows,
+    customerSubscriptions(cardRows),
+    testAccountIds(a),
+    Promise.all([emailRows, reportRows]).then(([e, r]) => familyDeliveryRows(a, e.map((x) => x.id), r.map((x) => x.id))),
+    outside,
+  ]);
+  return {
+    parents, cards, waitlist, emails, deliveries, testIds, ...stripeRead,
+    children: [...children, ...otherChildren], reports: [...reports, ...otherReports],
+    tests: [...tests, ...otherTests].map(({ answers, ...t }) => ({ ...t, answered: answers[0]?.count ?? 0 })),
   };
 }
 
@@ -1422,8 +1499,7 @@ type StripeRead = Pick<DashboardRows, "subscriptions" | "stripeNote" | "stripeMo
 async function cardSubscriptions(cardRows: Promise<RawCard[]>): Promise<StripeRead> {
   const s = stripe();
   if (!s) return { subscriptions: [], stripeMode: null, stripeNote: "No Stripe key here, so the page cannot tell who is paying." };
-  const key = process.env.STRIPE_SECRET_KEY ?? "";
-  const stripeMode = key.startsWith("sk_live_") || key.startsWith("rk_live_") ? "live" : "test";
+  const stripeMode = stripeKeyMode();
   const listed = s.subscriptions.list({ status: "all", limit: 100 }).autoPagingToArray({ limit: SUBSCRIPTIONS_MAX })
     .then((all) => ({ all }), (e: unknown) => ({ failed: e }));
   const customers = new Set((await cardRows).flatMap((c) => (c.stripe_customer_id ? [c.stripe_customer_id] : [])));
@@ -1434,27 +1510,55 @@ async function cardSubscriptions(cardRows: Promise<RawCard[]>): Promise<StripeRe
     return {
       stripeMode,
       stripeNote: all.length >= SUBSCRIPTIONS_MAX ? `Stripe has more than ${SUBSCRIPTIONS_MAX} subscriptions; only the newest ${SUBSCRIPTIONS_MAX} were read.` : null,
-      subscriptions: all.flatMap((sub) => {
-        const customer = typeof sub.customer === "string" ? sub.customer : sub.customer.id;
-        if (!customers.has(customer)) return [];
-        const item = sub.items.data[0];
-        const ended = sub.ended_at ?? sub.canceled_at;
-        return [{
-          id: sub.id, customer, status: sub.status,
-          created: new Date((sub.start_date ?? sub.created) * 1000).toISOString(),
-          endedAt: ended ? new Date(ended * 1000).toISOString() : null,
-          trialEnd: sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : null,
-          amount: item?.price.unit_amount ?? null, quantity: item?.quantity ?? 1,
-          interval: INTERVALS.find((i) => i === item?.price.recurring?.interval) ?? null, intervalCount: item?.price.recurring?.interval_count ?? 1,
-          currency: item?.price.currency ?? null,
-        }];
-      }),
+      subscriptions: all.flatMap((sub) => (customers.has(subscriptionCustomer(sub)) ? [subscriptionRow(sub)] : [])),
     };
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    console.error("[admin] stripe subscriptions failed", message);
-    return { subscriptions: [], stripeMode: null, stripeNote: `Stripe did not answer, so the page cannot tell who is paying. Stripe said: ${message.slice(0, 200)}` };
+    return stripeFailed(e);
   }
+}
+
+/**
+ * The Stripe subscriptions of the customers of a few families' cards, one list per customer (newest first, as the whole
+ * list is), so a family page does not page through the whole account. Read only. With no customer, Stripe is not asked.
+ */
+async function customerSubscriptions(cardRows: Promise<RawCard[]>): Promise<StripeRead> {
+  const s = stripe();
+  if (!s) return { subscriptions: [], stripeMode: null, stripeNote: "No Stripe key here, so the page cannot tell who is paying." };
+  const customers = [...new Set((await cardRows).flatMap((c) => (c.stripe_customer_id ? [c.stripe_customer_id] : [])))];
+  try {
+    const lists = await Promise.all(customers.map((customer) =>
+      s.subscriptions.list({ customer, status: "all", limit: 100 }).autoPagingToArray({ limit: SUBSCRIPTIONS_MAX })));
+    return { stripeMode: stripeKeyMode(), stripeNote: null, subscriptions: lists.flat().map(subscriptionRow) };
+  } catch (e) {
+    return stripeFailed(e);
+  }
+}
+
+const stripeKeyMode = () => {
+  const key = process.env.STRIPE_SECRET_KEY ?? "";
+  return key.startsWith("sk_live_") || key.startsWith("rk_live_") ? "live" : "test";
+};
+
+function stripeFailed(e: unknown): StripeRead {
+  const message = e instanceof Error ? e.message : String(e);
+  console.error("[admin] stripe subscriptions failed", message);
+  return { subscriptions: [], stripeMode: null, stripeNote: `Stripe did not answer, so the page cannot tell who is paying. Stripe said: ${message.slice(0, 200)}` };
+}
+
+const subscriptionCustomer = (sub: Stripe.Subscription) => (typeof sub.customer === "string" ? sub.customer : sub.customer.id);
+
+function subscriptionRow(sub: Stripe.Subscription): DashboardRows["subscriptions"][number] {
+  const item = sub.items.data[0];
+  const ended = sub.ended_at ?? sub.canceled_at;
+  return {
+    id: sub.id, customer: subscriptionCustomer(sub), status: sub.status,
+    created: new Date((sub.start_date ?? sub.created) * 1000).toISOString(),
+    endedAt: ended ? new Date(ended * 1000).toISOString() : null,
+    trialEnd: sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : null,
+    amount: item?.price.unit_amount ?? null, quantity: item?.quantity ?? 1,
+    interval: INTERVALS.find((i) => i === item?.price.recurring?.interval) ?? null, intervalCount: item?.price.recurring?.interval_count ?? 1,
+    currency: item?.price.currency ?? null,
+  };
 }
 
 /**
@@ -1507,6 +1611,19 @@ export async function setTestAccount(a: AdminSession, parentId: string, test: bo
 }
 
 /**
+ * The family of an email in the email list (a reminder's log id, or "<report id>:report" or "<report id>:alert"), so its
+ * page reads only that family's rows. Null when no such email exists.
+ */
+export async function emailParent(a: AdminSession, emailId: string): Promise<string | null> {
+  const [id, which, ...rest] = emailId.split(":");
+  if (!isUuid(id) || rest.length > 0 || (which !== undefined && which !== "report" && which !== "alert")) return null;
+  const row = which
+    ? await a.db.rpc("admin_reports").select("parent_id").eq("id", id).maybeSingle().then((r) => must<{ parent_id: string } | null>(r, "email report"))
+    : await a.db.from("email_log").select("parent_id").eq("id", id).maybeSingle().then((r) => must<{ parent_id: string } | null>(r, "email log row"));
+  return row?.parent_id ?? null;
+}
+
+/**
  * The kept copy of a logged email (D-103), by its id in the email list: a reminder's log id, or "<report id>:report" or
  * "<report id>:alert". Null when there is no copy: the email went before copies were kept, or its copy failed.
  */
@@ -1533,16 +1650,39 @@ type EmailCopyRow = { outcome: EmailCopyView["outcome"]; email_id: string | null
  */
 async function deliveryRows(a: AdminSession): Promise<RawDelivery[]> {
   const [copies, events] = await Promise.all([
-    allRows<{ email_id: string; email_log_id: string | null; report_id: string | null; report_email: "parent" | "alert" | null }>(
-      a.db.from("email_copies").select("email_id, email_log_id, report_id, report_email").not("email_id", "is", null).order("id"), "email copies"),
-    allRows<{ email_id: string; type: RawDelivery["type"]; occurred_at: string; detail: string | null }>(
-      a.db.from("email_events").select("email_id, type, occurred_at, detail").order("id"), "email events"),
+    allRows<DeliveryCopy>(a.db.from("email_copies").select("email_id, email_log_id, report_id, report_email").not("email_id", "is", null).order("id"), "email copies"),
+    allRows<DeliveryEvent>(a.db.from("email_events").select("email_id, type, occurred_at, detail").order("id"), "email events"),
   ]);
+  return deliveriesOf(copies, events);
+}
+
+type DeliveryCopy = { email_id: string | null; email_log_id: string | null; report_id: string | null; report_email: "parent" | "alert" | null };
+type DeliveryEvent = { email_id: string; type: RawDelivery["type"]; occurred_at: string; detail: string | null };
+
+/** Each event joined to its email through the kept copy with its Resend id (the last copy, in id order, when two share one). */
+function deliveriesOf(copies: DeliveryCopy[], events: DeliveryEvent[]): RawDelivery[] {
   const byEmail = new Map(copies.map((c) => [c.email_id, c]));
   return events.flatMap((e) => {
     const c = byEmail.get(e.email_id);
     return c ? [{ email_log_id: c.email_log_id, report_id: c.report_id, report_email: c.report_email, type: e.type, occurred_at: e.occurred_at, detail: e.detail }] : [];
   });
+}
+
+/**
+ * deliveryRows for the emails of a few families: their copies give the Resend ids, then every copy and event with those
+ * ids is read, in id order, so each event joins the same copy as in the whole read.
+ */
+async function familyDeliveryRows(a: AdminSession, emailIds: string[], reportIds: string[]): Promise<RawDelivery[]> {
+  const [ofEmails, ofReports] = await Promise.all([
+    inChunks(emailIds, (chunk) => allRows<{ id: string; email_id: string | null }>(a.db.from("email_copies").select("id, email_id").in("email_log_id", chunk).order("id"), "email copies")),
+    inChunks(reportIds, (chunk) => allRows<{ id: string; email_id: string | null }>(a.db.from("email_copies").select("id, email_id").in("report_id", chunk).order("id"), "email copies")),
+  ]);
+  const resendIds = [...new Set([...ofEmails, ...ofReports].flatMap((c) => (c.email_id ? [c.email_id] : [])))];
+  const [copies, events] = await Promise.all([
+    byIds<DeliveryCopy & { id: string }>(resendIds, "email copies", (chunk) => a.db.from("email_copies").select("id, email_id, email_log_id, report_id, report_email").in("email_id", chunk)),
+    byIds<DeliveryEvent & { id: string }>(resendIds, "email events", (chunk) => a.db.from("email_events").select("id, email_id, type, occurred_at, detail").in("email_id", chunk)),
+  ]);
+  return deliveriesOf(byIdOrder(copies), byIdOrder(events));
 }
 
 /**
