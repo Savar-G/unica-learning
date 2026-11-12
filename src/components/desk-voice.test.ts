@@ -114,6 +114,16 @@ it("counts the live call once: the week before the call minus the call's own tim
   expect(host.textContent).toContain("On the call");
   expect(host.textContent).toContain("20 minutes left this week");
   expect(host.textContent).not.toContain("10 minutes left this week");
+
+  // Hang up while the server has not saved the end yet: it still counts the call at its whole limit.
+  await f.click("Hang up");
+  await act(async () => { await new Promise((r) => setTimeout(r, 4700)); });
+  expect(host.textContent).toContain("The call is over.");
+  expect(host.textContent).toContain("20 minutes left this week");
+  await f.click("Back to my page");
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  expect(host.textContent).toContain("Calls20 minutes left this week");
+  expect(host.textContent).not.toContain("10 minutes left this week");
 });
 
 it("goes from the microphone check to a live call and back to the page", async () => {

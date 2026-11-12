@@ -175,10 +175,12 @@ export function useDeskVoice(initial: { usage: VoiceUsage } | null, at: { book: 
   /** Back to the page after a call. */
   const done = () => {
     const id = live.current.id;
+    // Until the server has saved the call's end, it counts the call at its whole limit: show the week before the call
+    // minus the call's own time, and take the server's count only once it says the call ended.
+    if (base) setUsage({ ...base, usedSeconds: base.usedSeconds + room.seconds, leftSeconds: leftWhileLive(base, room.seconds) });
     forget();
     setFlow("idle");
-    // The call has ended by now: read the week again, so the page shows its real time left.
-    if (id) void post({ type: "read", id }).then((r) => { if (r?.usage) setUsage(r.usage); });
+    if (id) void post({ type: "read", id }).then((r) => { if (r?.usage && r.call?.ended) setUsage(r.usage); });
   };
 
   // Also on the after-call screen: a read made as the call ended can still count it at its whole limit.
@@ -245,7 +247,7 @@ export function VoiceControls({ state, beforeOpen }: { state: DeskVoiceState; be
   const { screen, usage, mic, room, call } = state;
   const [said, setSaid] = useState("");
   if (!state.enabled) return null;
-  const used = voiceWeekUsed(usage);
+  const used = voiceWeekUsed(usage && state.liveLeft !== null ? { leftSeconds: state.liveLeft } : usage);
   const left = usage ? voiceLeftLine(state.liveLeft ?? usage.leftSeconds) ?? "Less than a minute left this week" : null;
   const error = roomErrorLine(room.error);
 
@@ -313,7 +315,7 @@ export function VoiceControls({ state, beforeOpen }: { state: DeskVoiceState; be
 
       {screen === "after" && <>
         <p className="desk-bubble" role="status">{afterCallLine(call)}</p>
-        {usage && <p className="desk-event">{used ? voiceWeekUsedLine(usage) : voiceLeftLine(usage.leftSeconds)}</p>}
+        {usage && <p className="desk-event">{used ? voiceWeekUsedLine(usage) : left}</p>}
         <button type="button" className="desk-pick" onClick={state.done}><Icon name="page" />Back to my page</button>
       </>}
     </div>
