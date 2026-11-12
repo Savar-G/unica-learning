@@ -57,4 +57,9 @@ describe("review of 9884b94e (#760)", () => {
     "P2: %j on the ten thousands digit of 785243 is a miss: %s", (text, counts) => {
       expect(miss("PVV", text, 5)).toBe(counts);
     });
+
+  it.each([["5.7.", true], ["It's 5.7.", true], ["Help, 5.7.", false], ["I copied 5.7.", false], ["I'm copying 5.7.", false], ["Maybe 5.7.", false]] as const)(
+    "P2: %j on 5 wholes and 8 tenths is a miss: %s", (text, counts) => {
+      expect(miss("PVB", text, 5.7)).toBe(counts);
+    });
 });

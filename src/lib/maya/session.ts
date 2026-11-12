@@ -597,7 +597,7 @@ function committedTurn(s: Session, step = "result"): boolean {
   if (!isMissingNumber(s.package) && !claim && !place && !topic) return true;
   if (!s.turn) return false;
   const text = s.turn.text;
-  if (wholeTurn(text) === null || sentenceCount(text) !== 1 || helpInWords(text) || hedgedTurn(s)) return false;
+  if (wholeTurn(text) === null || sentenceCount(text) !== 1 || helpInWords(text) || hedgedTurn(s) || saysCopied(text)) return false;
   if (claim && !((place || topic) && step !== "result")) return claimCommitted(claimTurn(s));
   if (copiesShownTry(s) || ((place || topic) && copiesShown(s))) return false;
   const opts = readOptionsIn(s);
@@ -617,6 +617,9 @@ function placeTemplate(s: Session, step: string, body: string): boolean {
   if (at?.kind === "place-worth") return worthTemplate(body, at) !== null;
   return false;
 }
+
+/** The child says the number is a copy ("I copied 5.7.", "I'm copying it"): never their committed answer (review of 9884b94e, P2). */
+const saysCopied = (text: string) => /\bcop(?:y|ied|ies|ying)\b/i.test(text);
 
 /** The sentences of a turn: an end mark not inside a decimal ("3.45 plus 2.38 is 5.83." is one). */
 const sentenceCount = (text: string) => text.split(/[.!?]+(?!\d)/).filter((x) => x.trim() !== "").length;
