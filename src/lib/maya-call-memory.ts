@@ -29,6 +29,7 @@ export function memoryCallStore(options: { testFamilies: readonly string[]; cloc
     async insert(c) {
       if (rows.has(c.id)) throw new Error("maya call insert: duplicate id");
       if (c.kind === "admin_test" && !options.testFamilies.includes(c.parentId)) throw new Error("maya call insert: maya_call_not_test_family");
+      if (c.kind === "family" && (c.mode !== "voice" || c.question.source !== "workbook")) throw new Error("maya call insert: maya_family_voice");
       if (c.status === "live" && !c.live) throw new Error("maya call insert: a live call needs its saved state");
       rows.set(c.id, copy(c));
       wrote(c.id);

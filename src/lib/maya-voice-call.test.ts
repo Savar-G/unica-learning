@@ -8,7 +8,7 @@ import { callReplay } from "@/lib/maya-call-review";
 import { templateSkills } from "@/lib/assessment";
 import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
-import { memoryWordingHistoryStore, TIME_LIMITS } from "@/lib/maya";
+import { limitsOf, memoryWordingHistoryStore, TIME_LIMITS } from "@/lib/maya";
 import { mayaCalls, recordView, boardHistoryOf, type CallResult, type CallSeams } from "@/lib/maya-call";
 import { memoryCallStore, memoryConnectionLog } from "@/lib/maya-call-memory";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
@@ -430,4 +430,68 @@ it.each(["saved", "trace", "empty delivery"] as const)("R450-6 preserves the his
   expect(callReplay(saved).maya.strokes).toEqual(source === "empty delivery" ? [] : expected);
   expect(saved.batches).toHaveLength(source === "empty delivery" ? 0 : row.trace!.board.length);
   if (source === "saved") expect(saved.boardHistory).toEqual(history);
+});
+
+// A child's own voice call from the family desk (kind "family"): voice only, a workbook question, authorized by the
+// server's canCallVoice seam, no free talk and no chat channel, and a time limit the server may shorten.
+describe("a family voice call from the desk", () => {
+  const BOOK_PKG: QuestionPackage = { ...SAMPLE_PACKAGES["add-27-39"], ref: { source: "workbook", workbookId: "44444444-4444-4444-8444-444444444444", page: 1, question: 1 } };
+  const familyInput = (over: Partial<Parameters<ReturnType<typeof mayaCalls>["startVoice"]>[0]> = {}) =>
+    ({ kind: "family" as const, parentId: PARENT, childId: CHILD, childName: "Leah", package: BOOK_PKG, startedBy: PARENT, ...over });
+
+  it("is refused unless the server says this child may call, and nothing is stored", async () => {
+    const s = setup();
+    expect(await s.calls.startVoice(familyInput())).toEqual({ ok: false, error: "not_test_family" });
+    const no = mayaCalls({ ...s.seams, canCallVoice: async () => false });
+    expect(await no.startVoice(familyInput())).toEqual({ ok: false, error: "not_test_family" });
+    expect(s.store.rows()).toHaveLength(0);
+  });
+
+  it("is voice only and a workbook question only", async () => {
+    const s = setup();
+    const calls = mayaCalls({ ...s.seams, canCallVoice: async () => true });
+    expect(await calls.start(familyInput())).toEqual({ ok: false, error: "not_test_family" });
+    expect(await calls.startVoice(familyInput({ package: PKG }))).toEqual({ ok: false, error: "invalid_question" });
+    expect(s.store.rows()).toHaveLength(0);
+    const made = ok(await calls.startVoice(familyInput())).view;
+    expect(made).toMatchObject({ kind: "family", mode: "voice", status: "live", startedAt: null });
+  });
+
+  it("keeps free talk off, sets no chat channel and the normal limits, and asks no test-family check", async () => {
+    const s = setup();
+    const asked = vi.fn(async () => false);
+    const calls = mayaCalls({ ...s.seams, isTestFamily: asked, canCallVoice: async () => true });
+    ok(await calls.startVoice(familyInput()));
+    const session = s.store.rows()[0].live!.text.session;
+    expect(session.freeTalk).toBe(false);
+    expect(session.channel).toBeUndefined();
+    expect(session.limits).toBeUndefined();
+    expect(asked).not.toHaveBeenCalled();
+  });
+
+  it("a shorter limit shortens the closing and the end that the worker and the session use", async () => {
+    const s = setup();
+    const calls = mayaCalls({ ...s.seams, canCallVoice: async () => true });
+    const view = ok(await calls.startVoice(familyInput({ limitMs: 150_000 }))).view;
+    expect(s.store.rows()[0].live!.text.session.limits).toEqual({ closingAtMs: 90_000, endAtMs: 150_000 });
+    // The worker restores the saved session, so it reads the same limits (agent.ts: limitsOf(call.session)).
+    const opened = await calls.openVoice(view.id, PROVIDERS, "Leah");
+    if (!opened.ok) throw new Error(opened.error);
+    expect(limitsOf(opened.call.session)).toEqual({ closingAtMs: 90_000, endAtMs: 150_000 });
+    await opened.call.end({ reason: "child_stopped" });
+  });
+
+  it("is run by the worker like any voice call and ends as a family row", async () => {
+    const s = setup();
+    const calls = mayaCalls({ ...s.seams, canCallVoice: async () => true });
+    const view = ok(await calls.startVoice(familyInput())).view;
+    const opened = await calls.openVoice(view.id, PROVIDERS, "Leah");
+    if (!opened.ok) throw new Error(opened.error);
+    await opened.call.start();
+    await opened.call.end({ reason: "child_stopped" });
+    const row = s.store.rows()[0];
+    expect(row).toMatchObject({ kind: "family", mode: "voice", status: "ended" });
+    expect(row.trace && checkTrace(row.trace).ok).toBe(true);
+    expect(row.trace?.freeTalk).toBe(false);
+  });
 });

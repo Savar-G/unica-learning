@@ -1,0 +1,356 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createClient } from "@supabase/supabase-js";
+import { TokenVerifier } from "livekit-server-sdk";
+import type { Database } from "@/lib/database";
+import { familyZone, localDateTime } from "@/lib/family-time";
+import { learningEvents } from "@/lib/learning-events";
+import { memoryLearningEventStore } from "@/lib/learning-events-memory";
+import { memoryWordingHistoryStore } from "@/lib/maya";
+import { mayaCalls } from "@/lib/maya-call";
+import { memoryCallStore } from "@/lib/maya-call-memory";
+import { ruleMayaModel } from "@/lib/maya-model-fake";
+import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
+import { voiceRoom } from "@/lib/maya-voice";
+import type { QuestionPackage } from "@/lib/question-package";
+import type { ChatContext } from "@/lib/maya-chat-server";
+
+vi.mock("server-only", () => ({}));
+const state = vi.hoisted(() => ({ statuses: [] as string[], customers: [] as string[], db: null as unknown }));
+vi.mock("@/lib/stripe", () => ({ stripe: () => ({ subscriptions: { list: ({ customer }: { customer: string }) => (async function* () {
+  state.customers.push(customer);
+  for (const status of state.statuses) yield { status, customer };
+})() } }) }));
+vi.mock("@/lib/supabase-auth", async (original) => ({ ...(await original<typeof import("@/lib/supabase-auth")>()), adminClient: () => state.db }));
+const { deskVoice, readVoiceUsedSeconds, runVoice, voiceGate } = await import("@/lib/maya-voice-desk-server");
+
+const LIVEKIT = { LIVEKIT_URL: "wss://unica-test.livekit.cloud", LIVEKIT_API_KEY: "APItest", LIVEKIT_API_SECRET: "a-test-secret-that-is-long-enough-for-hs256-0123456789" };
+const PROJECT = { url: LIVEKIT.LIVEKIT_URL, apiKey: LIVEKIT.LIVEKIT_API_KEY, apiSecret: LIVEKIT.LIVEKIT_API_SECRET };
+
+type Row = Record<string, unknown>;
+/** PostgREST in memory: eq, gte and lt filters, one object for maybeSingle, and a failure for a table named in `broken`. */
+const planRow = (child_id: string, kind: string) => ({ parent_id: "parent", child_id, kind, next_charge_at: kind === "free_month" ? "2099-01-01T00:00:00Z" : null, ends_at: null, monthly_cents: 7999, ending_free: false });
+function fakeDb({ test = false, listed = false, broken = "", plans = [] as Row[], calls = [] as Row[] } = {}) {
+  const requests: URL[] = [];
+  const tables: Record<string, Row[]> = { child_plan_states: plans, test_accounts: test ? [{ parent_id: "parent" }] : [], maya_chat_families: listed ? [{ parent_id: "parent", rehearsal: false }] : [], maya_calls: calls };
+  const db = createClient<Database>("https://test.invalid", "test", { global: { fetch: async (input) => {
+    const url = new URL(String(input));
+    requests.push(url);
+    const table = url.pathname.split("/").pop()!;
+    if (table === broken) return Response.json({ message: "read failed" }, { status: 500 });
+    if (table === "family_retention_cards") return Response.json([{ customer: "cus_family", saved: true }]);
+    if (!(table in tables)) throw Error(url.pathname);
+    let rows = tables[table];
+    for (const [key, raw] of url.searchParams) {
+      if (raw.startsWith("eq.")) rows = rows.filter((r) => String(r[key]) === raw.slice(3));
+      if (raw.startsWith("gte.")) rows = rows.filter((r) => String(r[key]) >= raw.slice(4));
+      if (raw.startsWith("lt.")) rows = rows.filter((r) => String(r[key]) < raw.slice(3));
+    }
+    if (table === "child_plan_states" || table === "maya_calls") return Response.json(rows);
+    return Response.json(rows[0] ?? null);
+  } } });
+  return Object.assign(db, { requests });
+}
+afterEach(() => { vi.unstubAllEnvs(); state.statuses = []; state.customers = []; state.db = null; });
+
+describe("the voice gate", () => {
+  const open = { ...LIVEKIT, MAYA_VOICE_ENABLED: "on" };
+  const plans = [planRow("child", "paying")];
+
+  it("is closed when LiveKit is not set up, for every family, before anything is read", async () => {
+    const db = fakeDb({ test: true });
+    expect(await voiceGate(db, "parent", 5, "child", { MAYA_VOICE_ENABLED: "on" })).toBe("closed");
+    expect(await voiceGate(db, "parent", 5, "child", { ...LIVEKIT, LIVEKIT_API_SECRET: "" })).toBe("closed");
+    expect(db.requests).toEqual([]);
+  });
+
+  it("refuses Grade 2 for a test family and for a family with an open plan, as chat does", async () => {
+    expect(await voiceGate(fakeDb({ test: true }), "parent", 2, "child", LIVEKIT)).toBe("too_young");
+    expect(await voiceGate(fakeDb({ plans }), "parent", 2, "child", open)).toBe("too_young");
+    expect(await voiceGate(fakeDb({ test: true }), "parent", null, "child", LIVEKIT)).toBe("too_young");
+    expect(await voiceGate(fakeDb({ test: true }), "parent", 3, "child", LIVEKIT)).toBe("open");
+  });
+
+  it("is open to a test family with the voice switch off, and with chat switched off", async () => {
+    expect(await voiceGate(fakeDb({ test: true }), "parent", 4, "child", LIVEKIT)).toBe("open");
+    vi.stubEnv("MAYA_CHAT_ENABLED", "off");
+    expect(await voiceGate(fakeDb({ test: true }), "parent", 4, "child", { ...LIVEKIT, MAYA_VOICE_ENABLED: "off" })).toBe("open");
+  });
+
+  it.each([undefined, "", "off", "ON", "true", "1", " on"])("keeps another family closed with the switch at %j, before the plan is read", async (value) => {
+    const db = fakeDb({ plans });
+    expect(await voiceGate(db, "parent", 4, "child", { ...LIVEKIT, MAYA_VOICE_ENABLED: value })).toBe("closed");
+    expect(db.requests.map((r) => r.pathname.split("/").pop())).toEqual(["test_accounts"]);
+    expect(state.customers).toEqual([]);
+  });
+
+  it("opens another family only with the exact switch and chat open to the child (its plan gate)", async () => {
+    expect(await voiceGate(fakeDb({ plans }), "parent", 4, "child", open)).toBe("open");
+    // A plan child of another id, a stopped plan and no plan at all stay closed.
+    expect(await voiceGate(fakeDb({ plans }), "parent", 4, "sibling", open)).toBe("closed");
+    expect(await voiceGate(fakeDb({ plans: [planRow("child", "ended")] }), "parent", 4, "child", open)).toBe("closed");
+    expect(await voiceGate(fakeDb(), "parent", 4, "child", open)).toBe("closed");
+  });
+
+  it("is stopped for another family by MAYA_CHAT_ENABLED=off, even with the voice switch on", async () => {
+    vi.stubEnv("MAYA_CHAT_ENABLED", "off");
+    expect(await voiceGate(fakeDb({ plans }), "parent", 4, "child", open)).toBe("closed");
+    expect(await voiceGate(fakeDb({ plans, listed: true }), "parent", 4, "child", open)).toBe("closed");
+  });
+
+  it("opens a listed family with a running plan when both switches are on, and fails closed when a read fails", async () => {
+    vi.stubEnv("MAYA_CHAT_ENABLED", "on"); state.statuses = ["active"];
+    expect(await voiceGate(fakeDb({ listed: true }), "parent", 4, "child", open)).toBe("open");
+    await expect(voiceGate(fakeDb({ broken: "test_accounts" }), "parent", 4, "child", open)).rejects.toThrow();
+    state.statuses = ["canceled"];
+    expect(await voiceGate(fakeDb({ listed: true }), "parent", 4, "child", open)).toBe("closed");
+  });
+});
+
+describe("the voice week read", () => {
+  const zone = familyZone({ timeZone: "America/Vancouver", postal: null, province: "BC" });
+  const now = Date.UTC(2026, 10, 11, 20);
+  const monday = new Date(localDateTime("2026-11-09", zone)).toISOString();
+  const call = (created_at: string, over: Row = {}) => ({ parent_id: "parent", child_id: "child", kind: "family", created_at, status: "ended", connected_seconds: 100, end_at_ms: null, ...over });
+
+  it("reads this child's family calls of this family week, and sums them", async () => {
+    const db = fakeDb({ calls: [
+      call(new Date(Date.parse(monday) + 1000).toISOString(), { connected_seconds: 300 }),
+      call(new Date(now).toISOString(), { status: "live", connected_seconds: null, end_at_ms: 150_000 }),
+      call(new Date(Date.parse(monday) - 1000).toISOString(), { connected_seconds: 999 }),
+      call(new Date(now).toISOString(), { child_id: "sibling", connected_seconds: 999 }),
+      call(new Date(now).toISOString(), { kind: "chat", connected_seconds: 999 }),
+      call(new Date(now).toISOString(), { parent_id: "other", connected_seconds: 999 }),
+    ] });
+    expect(await readVoiceUsedSeconds(db, "parent", "child", zone, now)).toBe(450);
+    const asked = db.requests.find((r) => r.pathname.endsWith("maya_calls"))!;
+    expect(asked.searchParams.get("kind")).toBe("eq.family");
+    expect(asked.searchParams.get("select")).toContain("live->text->session->limits->endAtMs");
+  });
+
+  it("throws when the calls cannot be read, so a caller never treats an unread week as unused", async () => {
+    await expect(readVoiceUsedSeconds(fakeDb({ broken: "maya_calls" }), "parent", "child", zone, now)).rejects.toThrow();
+  });
+
+  it("gives the desk the usage, or null when voice is closed or cannot be read (never throws)", async () => {
+    vi.stubEnv("LIVEKIT_URL", LIVEKIT.LIVEKIT_URL); vi.stubEnv("LIVEKIT_API_KEY", LIVEKIT.LIVEKIT_API_KEY); vi.stubEnv("LIVEKIT_API_SECRET", LIVEKIT.LIVEKIT_API_SECRET);
+    const child = { id: "child", grade: 4 };
+    state.db = fakeDb({ test: true, calls: [call(new Date(now).toISOString(), { connected_seconds: 420 })] });
+    expect(await deskVoice({} as never, "parent", child, zone, now)).toMatchObject({ usage: { usedSeconds: 420, leftSeconds: 1380, limitSeconds: 600 } });
+    expect(await deskVoice({} as never, "parent", { id: "child", grade: 2 }, zone, now)).toBeNull();
+    state.db = fakeDb({ test: true, broken: "maya_calls" });
+    expect(await deskVoice({} as never, "parent", child, zone, now)).toBeNull();
+    state.db = fakeDb({ broken: "test_accounts" });
+    expect(await deskVoice({} as never, "parent", child, zone, now)).toBeNull();
+    state.db = fakeDb();
+    expect(await deskVoice({} as never, "parent", child, zone, now)).toBeNull();
+    state.db = null;
+    expect(await deskVoice({} as never, "parent", child, zone, now)).toBeNull();
+  });
+});
+
+// ---------- one desk voice request, on the call module's in-memory seams ----------
+
+const PARENT = "11111111-1111-4111-8111-111111111111";
+const CHILD = "22222222-2222-4222-8222-222222222222";
+const BOOK = "44444444-4444-4444-8444-444444444444";
+const REF = { source: "workbook" as const, workbookId: BOOK, page: 1, question: 1 };
+const PKG: QuestionPackage = { ...SAMPLE_PACKAGES["add-27-39"], ref: REF };
+const zone = familyZone({ timeZone: "America/Vancouver", postal: null, province: "BC" });
+const verifier = new TokenVerifier(PROJECT.apiKey, PROJECT.apiSecret);
+const ctx = (over: Partial<ChatContext> = {}): ChatContext => ({ db: {} as never, parent: PARENT, child: CHILD, name: "Leah", grade: 4, zone, ...over });
+
+function setup(over: { used?: number; accepted?: boolean; project?: typeof PROJECT | null; canCall?: boolean; book?: Record<string, unknown> | null; found?: boolean; testFamilies?: string[] } = {}) {
+  let n = 0;
+  const now = Date.parse("2026-11-11T20:00:00Z");
+  const store = memoryCallStore({ testFamilies: over.testFamilies ?? [] });
+  const base = {
+    store, history: memoryWordingHistoryStore(), events: learningEvents(memoryLearningEventStore({ children: [{ id: CHILD, parentId: PARENT }] })), rebuild: async () => true,
+    model: () => ruleMayaModel(), isTestFamily: async () => false, alerts: { send: async () => {}, list: async () => [] },
+    clock: () => now, newId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`, seed: () => 42,
+  };
+  const calls = mayaCalls({ ...base, canCallVoice: async (p, c) => over.canCall !== false && p === PARENT && c === CHILD });
+  const used = { seconds: over.used ?? 0 };
+  const accepted = { value: over.accepted !== false };
+  const deps = {
+    calls, store,
+    books: {
+      workbook: async () => (over.book === undefined ? { childId: CHILD, parentId: PARENT, status: "shipped" } : over.book) as never,
+      question: async () => (over.found === false ? { status: "not-found" as const } : { status: "found" as const, package: PKG }),
+    },
+    notice: { accepted: async () => accepted.value },
+    project: over.project === undefined ? PROJECT : over.project,
+    usedSeconds: async () => used.seconds,
+    now: () => now,
+  };
+  return { deps, store, calls, used, accepted, run: (action: Parameters<typeof runVoice>[1], c = ctx()) => runVoice(c, action, deps) };
+}
+const ID = "55555555-5555-4555-8555-555555555555";
+const start = (id = ID, question = REF) => ({ type: "start" as const, id, question });
+
+describe("a desk voice request", () => {
+  it("starts a call for this child, with a ticket for that room and that child only", async () => {
+    const s = setup();
+    const r = await s.run(start());
+    expect(r.error).toBeUndefined();
+    expect(r.call).toMatchObject({ id: ID, mode: "voice", status: "live", started: false, ended: false, transcript: [], batches: [] });
+    const row = s.store.rows()[0];
+    expect(row).toMatchObject({ id: ID, kind: "family", mode: "voice", parentId: PARENT, childId: CHILD, startedBy: PARENT, status: "live" });
+    expect(row.live!.text.session.limits).toBeUndefined();
+    expect(row.live!.text.session.freeTalk).toBe(false);
+    expect(r.ticket).toMatchObject({ url: PROJECT.url, room: voiceRoom(ID), identity: `child-${CHILD}` });
+    const claims = await verifier.verify(r.ticket!.token);
+    expect(claims.video).toMatchObject({ room: voiceRoom(ID), roomJoin: true });
+    expect(claims.attributes).toMatchObject({ "maya.call": ID, "maya.parent": PARENT, "maya.child": CHILD });
+    expect(r.usage).toMatchObject({ usedSeconds: 0, leftSeconds: 1800, limitSeconds: 600 });
+    // Nothing of the model, the saved session or the family is in what the child's screen gets.
+    expect(Object.keys(r.call!).sort()).toEqual(["batches", "ended", "hint", "id", "mode", "revision", "safetyMessage", "started", "status", "transcript"]);
+  });
+
+  it("needs the parent's agreement to the Maya notice, and makes no call without it", async () => {
+    const s = setup({ accepted: false });
+    expect(await s.run(start())).toMatchObject({ call: null, error: "notice_required" });
+    expect(s.store.rows()).toHaveLength(0);
+  });
+
+  it("needs a shipped workbook of this child, and a question that is found", async () => {
+    for (const book of [null, { childId: "someone-else", parentId: PARENT, status: "shipped" }, { childId: CHILD, parentId: "another-family", status: "shipped" }, { childId: CHILD, parentId: PARENT, status: "draft" }]) {
+      const s = setup({ book });
+      expect(await s.run(start())).toMatchObject({ call: null, error: "not_found" });
+      expect(s.store.rows()).toHaveLength(0);
+    }
+    const s = setup({ found: false });
+    expect(await s.run(start())).toMatchObject({ call: null, error: "invalid_question" });
+    expect(s.store.rows()).toHaveLength(0);
+  });
+
+  it("is refused when the server's authorization says no, and stores nothing", async () => {
+    const s = setup({ canCall: false });
+    expect(await s.run(start())).toMatchObject({ call: null, error: "unavailable" });
+    expect(s.store.rows()).toHaveLength(0);
+  });
+
+  it("refuses a new call when less than a minute of the week is left, and shortens a call to the time left", async () => {
+    const used = setup({ used: 1741 });
+    expect(await used.run(start())).toMatchObject({ call: null, error: "voice_week_used", usage: { leftSeconds: 59 } });
+    expect(used.store.rows()).toHaveLength(0);
+    const edge = setup({ used: 1740 });
+    expect((await edge.run(start())).error).toBeUndefined();
+    expect(edge.store.rows()[0].live!.text.session.limits).toEqual({ closingAtMs: 0, endAtMs: 60_000 });
+    const part = setup({ used: 1500 });
+    const r = await part.run(start());
+    expect(r.usage).toMatchObject({ leftSeconds: 300, limitSeconds: 300 });
+    expect(part.store.rows()[0].live!.text.session.limits).toEqual({ closingAtMs: 240_000, endAtMs: 300_000 });
+    const plenty = setup({ used: 1200 });
+    await plenty.run(start());
+    expect(plenty.store.rows()[0].live!.text.session.limits).toBeUndefined();
+  });
+
+  it("starts the same call again as that call, with a fresh ticket, and refuses another question for it", async () => {
+    const s = setup();
+    const first = await s.run(start());
+    const again = await s.run(start());
+    expect(s.store.rows()).toHaveLength(1);
+    expect(again.call).toEqual(first.call);
+    expect(again.ticket?.token).toBeTruthy();
+    expect(await s.run(start(ID, { ...REF, page: 2 }))).toMatchObject({ call: null, error: "conflict" });
+    // A second tab that starts at once: the insert of the same id fails once, and that call is the answer.
+    const racing = setup();
+    const real = racing.deps.calls.startVoice;
+    racing.deps.calls = { ...racing.deps.calls, startVoice: async (input) => { await real(input); throw Error("duplicate key"); } };
+    const r = await racing.run(start());
+    expect(r.error).toBeUndefined();
+    expect(r.ticket?.room).toBe(voiceRoom(ID));
+    expect(racing.store.rows()).toHaveLength(1);
+  });
+
+  it("ends a call it cannot give a ticket for, so no live call is left behind", async () => {
+    const s = setup({ project: null });
+    expect(await s.run(start())).toMatchObject({ error: "unavailable", call: { status: "ended" } });
+    expect(s.store.rows()[0]).toMatchObject({ status: "ended", learningEventId: null });
+  });
+
+  describe("calls that are not this child's", () => {
+    async function foreign(over: Record<string, unknown>) {
+      const s = setup();
+      await s.run(start());
+      const row = s.store.rows()[0];
+      s.store.rows().length = 0;
+      const other = setup({ testFamilies: [PARENT, "99999999-9999-4999-8999-999999999999"] });
+      await other.store.insert({ ...structuredClone(row), ...over } as never);
+      return other;
+    }
+    it.each([
+      ["another family's call", { parentId: "99999999-9999-4999-8999-999999999999" }],
+      ["a sibling's call", { childId: "88888888-8888-4888-8888-888888888888" }],
+      ["a chat call", { kind: "chat", mode: "text" }],
+      ["a test call", { kind: "admin_test" }],
+    ])("answers not_found for %s on every action, with no call and no ticket", async (_name, over) => {
+      const s = await foreign(over);
+      for (const type of ["start", "token", "read", "cancel"] as const) {
+        const r = await s.run(type === "start" ? start() : { type, id: ID });
+        expect(r).toMatchObject({ call: null, error: "not_found" });
+        expect(r.ticket).toBeUndefined();
+      }
+      expect(s.store.rows()[0].status).toBe("live");
+    });
+
+    it("answers not_found for no call at all, as it does for another family's", async () => {
+      const s = setup();
+      for (const type of ["token", "read", "cancel"] as const) expect(await s.run({ type, id: ID })).toMatchObject({ call: null, error: "not_found" });
+    });
+  });
+
+  it("gives a fresh ticket for the child's own live call, and none for an ended one", async () => {
+    const s = setup();
+    await s.run(start());
+    const t = await s.run({ type: "token", id: ID });
+    expect(t.error).toBeUndefined();
+    expect(t.ticket?.room).toBe(voiceRoom(ID));
+    expect((await verifier.verify(t.ticket!.token)).sub).toBe(`child-${CHILD}`);
+    s.accepted.value = false;
+    expect(await s.run({ type: "token", id: ID })).toMatchObject({ error: "notice_required" });
+    s.accepted.value = true;
+    await s.run({ type: "cancel", id: ID });
+    expect(await s.run({ type: "token", id: ID })).toMatchObject({ error: "ended", call: { status: "ended" } });
+  });
+
+  it("reads the call's child-safe view without a ticket", async () => {
+    const s = setup();
+    await s.run(start());
+    const r = await s.run({ type: "read", id: ID });
+    expect(r.call).toMatchObject({ id: ID, status: "live", started: false });
+    expect(r.ticket).toBeUndefined();
+  });
+
+  it("cancels a call Maya has not joined, once, with no learning event", async () => {
+    const s = setup();
+    await s.run(start());
+    const r = await s.run({ type: "cancel", id: ID });
+    expect(r.error).toBeUndefined();
+    expect(r.call).toMatchObject({ status: "ended", ended: true });
+    expect(s.store.rows()[0]).toMatchObject({ status: "ended", learningEventId: null });
+    expect(await s.run({ type: "cancel", id: ID })).toMatchObject({ call: { status: "ended" } });
+  });
+
+  it("does not cancel a call Maya has joined", async () => {
+    const s = setup();
+    await s.run(start());
+    const row = s.store.rows()[0];
+    await s.store.update(ID, row.revision, { startedAt: "2026-11-11T20:00:05.000Z" });
+    const r = await s.run({ type: "cancel", id: ID });
+    expect(r).toMatchObject({ error: "already_started", call: { status: "live", started: true } });
+    expect(s.store.rows()[0].status).toBe("live");
+  });
+
+  it("reads the call again when Maya joins between the read and the end, and then refuses the cancel", async () => {
+    const s = setup();
+    await s.run(start());
+    const real = s.deps.calls.input;
+    let first = true;
+    s.deps.calls = { ...s.deps.calls, input: async (id, revision, input, name) => {
+      if (first) { first = false; await s.store.update(id, revision, { startedAt: "2026-11-11T20:00:05.000Z" }); }
+      return real(id, revision, input, name);
+    } };
+    expect(await s.run({ type: "cancel", id: ID })).toMatchObject({ error: "already_started", call: { status: "live" } });
+  });
+});
