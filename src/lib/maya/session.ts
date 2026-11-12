@@ -1783,7 +1783,8 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     s.expect = "maya";
     s.silence = "none";
   } else if (p.act === "close") {
-    end(s, backupClose ? "child_stopped" : closeCause(base, spoken.chosen.some((o) => o.line === "close.stuck")), effects, false);
+    // The backup close at the time limit is a time_limit end (closeCause), never the child stopping (#749).
+    end(s, backupClose && base.state !== "TIME_CLOSE" ? "child_stopped" : closeCause(base, spoken.chosen.some((o) => o.line === "close.stuck")), effects, false);
   } else if (doneAfterAnswer || p.act === "safety" || (p.act === "example_step" && s.exampleShown < pkg!.easierExample.steps.length)) {
     s.expect = "maya";
     s.silence = "none";
