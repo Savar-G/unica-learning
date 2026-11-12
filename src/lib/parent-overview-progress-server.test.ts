@@ -12,7 +12,7 @@ const expected: ExpectedItem = {
   number: 1, method: "parent", scoredRegions: [], mastery: { eligible: true, reason: null },
   teaching: { curriculum: { key: "bc", version: "1" }, part: "practice", slot: "1", practiceType: "now-you", itemStep: { unit: "U1", skill: "add", step: 1 } },
 };
-const event = { key: `marking:${createHash("sha256").update(`${book}:${revision}:${page}:item`).digest("hex")}`, parentId: parent, childId: child, source: "marking", question: { source: "workbook", workbookId: book, page: 1, question: 1 }, skill: { standard: "2.4", skills: [] } };
+const event = { occurredAt: "2026-10-04T18:00:00Z", key: `marking:${createHash("sha256").update(`${book}:${revision}:${page}:item`).digest("hex")}`, parentId: parent, childId: child, source: "marking", question: { source: "workbook", workbookId: book, page: 1, question: 1 }, skill: { standard: "2.4", skills: [] } };
 const mark = (result: "right" | "wrong") => ({ id: "row", expected, observation: { ...firstObservation(expected, "photo"), state: "parent-checked", method: "parent", actor: "admin", result, resultVersion: 2 }, original_event: event, event_id: "event", evidence_at: "2026-11-01T00:00:00Z", model: null, prompt: null });
 
 function reader(items: ReturnType<typeof mark>[], questionId = "item", secondTries: { result: string }[] = [], marking: { revision: number; status: { revision: number; profile_revision: number } | null } = { revision: 1, status: { revision: 1, profile_revision: 1 } }, revisions: number[] = []) {
@@ -45,6 +45,10 @@ describe("stored overview marks", () => {
     expect((await moved.value.overviewProgress(child))?.marks).toEqual([{ area: "number", level: 2, correct: true }]);
     expect(moved.requests.filter((t) => t === "rpc/scan_marking_command" ).length).toBeGreaterThan(3);
     await expect(reader([], "item", [], undefined, [1, 2, 3, 4, 5, 6]).value.overviewProgress(child)).rejects.toThrow("overview progress changed");
+  });
+  it("dates each mark by its original event, so a correction or a re-saved result stays in its month", async () => {
+    const changed = { ...mark("right"), evidence_at: "2026-11-02T18:00:00Z" };
+    expect((await reader([changed]).value.overviewProgress(child))?.skillMarks).toEqual([{ standard: "2.4", right: true, review: false, at: "2026-10-04T18:00:00Z" }]);
   });
   it("reads no workbook question with no marked item, and only two package fields with one", async () => {
     const none = reader([]);

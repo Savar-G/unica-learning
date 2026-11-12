@@ -435,6 +435,12 @@ describe("the Overview (#560)", () => {
       expect(tile).toEqual({ mastered: 3, total: map?.length, moreThisMonth: 1 });
     });
 
+    it("counts net: a skill lost and another gained this month show no change", async () => {
+      // 3.1 was mastered in October; a wrong answer this month makes it Needs review. 3.2 becomes mastered this month.
+      const lost = { ...tally("3.1", "2026-11-02T18:00:00Z"), correct: 0 };
+      expect(await skills([tally("3.1", "2026-10-20T18:00:00Z"), lost, tally("3.2", "2026-11-02T18:00:00Z")])).toEqual({ mastered: 1, total: grade3, moreThisMonth: 0 });
+    });
+
     it("shows only with the Progress tab", async () => {
       expect(await skills([tally("3.1", "2026-10-20T18:00:00Z")], { switches: { progress: false, maya: false, scanPages: false } })).toBeNull();
     });

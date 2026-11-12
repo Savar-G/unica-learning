@@ -8,10 +8,11 @@ import {
 // Kindergarten to Grade 2 belongs only to the area bars. Each tile has its state and a plain line on why. Pure: no
 // network, database or clock.
 //
-// The states come from the rule (skillStates), from the same inputs the profile rebuild reads (the tests, the current
-// workbook and each marked item's effective original result), not from the last row of the history. The history records what each rebuild saw, and a rebuild runs after a finished test and a learning card
-// change, not when a workbook ships; a child with no rebuild since the rule shipped has no rows, and no row means Not
-// started. Here a parent reads what the rule says now. Whatever counts or orders changes by time still reads the history.
+// The states come from the rule (skillStates), from the inputs the profile rebuild reads (the tests, the current workbook
+// and each marked item's effective original result), not from the last row of the history. The history records what each
+// rebuild saw, and a rebuild runs after a finished test and a learning card change, not when a workbook ships; a child with
+// no rebuild since the rule shipped has no rows, and no row means Not started. Here a parent reads what the rule says now.
+// The Overview's "N more this month" runs the same rule on the tests and marks from before the family month (#880).
 //
 // A panel section with no data is empty, and the page leaves it out. Nothing here says what comes next: the skill map's
 // prerequisite links are not a child's next step. A skill in the current workbook says so as a plain fact.
