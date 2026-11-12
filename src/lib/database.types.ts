@@ -851,6 +851,21 @@ export type Database = {
           },
         ]
       }
+      contact_message_claims: {
+        Row: {
+          created_at: string
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+        }
+        Relationships: []
+      }
       email_copies: {
         Row: {
           attachments: Json | null
@@ -7992,6 +8007,10 @@ export type Database = {
       }
       claim_child_deletion: {
         Args: { c: string; p: string; token: string }
+        Returns: boolean
+      }
+      claim_contact_message: {
+        Args: { p_max: number; p_window_seconds: number }
         Returns: boolean
       }
       claim_family_delete_attempt: {

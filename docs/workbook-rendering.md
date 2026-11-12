@@ -244,7 +244,11 @@ workbooks mailed in the month (`src/lib/print-engine-chromium.test.ts`). The chi
 markup prints as text and loads nothing, though the engine runs scripts and allows network requests for its other
 callers (checked with real Chromium in the same test file).
 
-`outputFileTracingIncludes` in `next.config.ts` gives every route that runs Chromium the serverless build's files. Its
+`outputFileTracingIncludes` in `next.config.ts` gives every route that runs Chromium the serverless build's files: the
+render check, the monthly summary, and the routes that call `runWorkbookJobNow` or `runFirstPagesNow`
+(`/api/admin/children/[id]/workbook-runs`, `/api/workbook-runs/[id]/resume`, `/api/admin/workbook-runs/[id]/server`,
+`/api/admin/workbooks/runs/[id]/edit` and `/api/first-pages/[id]/run`). A route that only queues a run (report finish,
+reminders, the admin first-pages button) renders nothing and needs no entry. Add a route here when it calls either function. Its
 keys are route globs, which Turbopack matches itself, so a dynamic segment's brackets are escaped
 (`/api/account/children/\[id\]/monthly-summary`); unescaped, `[id]` is a character class and the route gets no
 Chromium. Checked in two builds on 5 November 2026: with the brackets unescaped, the `route.js.nft.json` of each of the

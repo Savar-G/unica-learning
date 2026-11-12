@@ -9,11 +9,13 @@ export const SOCIAL_LINKS = [
 ] as const;
 
 // One plan for now: math only (Savar, 2026-10-11). Reading comes back later. Stored rows can still say "both".
+// The price also lives in SQL, as cents literals (7999 and 5999) in the family plan functions: a price change here alone
+// would be capped by the database with no error. Change both; src/lib/plan-price-sql.test.ts fails when they differ.
 export const PLANS = {
   one: { id: "one", name: "Math", price: 79.99, note: "K to Grade 9, ages 5 to 14" },
 } as const;
 
-/** Monthly price for every child after the first on the same family plan. */
+/** Monthly price for every child after the first on the same family plan. Also in SQL as 5999: see PLANS above. */
 export const ADDITIONAL_CHILD_PRICE = 59.99;
 
 export type PlanId = keyof typeof PLANS;
