@@ -44,7 +44,7 @@ it("keeps already fitting U10 grids at zero extra gap", async () => {
   expect(plan.days[0].pages.every(p => (p.extraGap ?? 0) === 0)).toBe(true);
 });
 
-it("keeps unapproved Challenge slots missing when the fallback checks its grid", async () => {
+it.each([false, true])("keeps unapproved slots missing in final grid checks (spacing retry: %s, #764)", async (retrySpacing) => {
   const source = input(2);
   const prepared = await prepareWorkbookCapacity(source, { fits: async () => ({ ok: true }) });
   const challenge = prepared.days[0].pages.find(p => p.type === "challenge")!;
@@ -55,13 +55,16 @@ it("keeps unapproved Challenge slots missing when the fallback checks its grid",
   const plan = await prepareWorkbookCapacity({ ...source, plan: prepared }, { fits: async page => {
     if (page.type !== "challenge") return { ok: true };
     measured.push(structuredClone(page));
-    return page.content?.kind === "day" && (page.content.extraGap ?? 0) >= 4 ? { ok: true } : fullness;
+    return !retrySpacing || page.content?.kind === "day" && (page.content.extraGap ?? 0) >= 4 ? { ok: true } : fullness;
   } });
-  expect(measured.length).toBeGreaterThan(1);
+  expect(measured.length).toBeGreaterThanOrEqual(retrySpacing ? 2 : 1);
   expect(measured.every(p => p.questions.length === measured[0].questions.length)).toBe(true);
   const page = plan.days[0].pages.find(p => p.type === "challenge")!;
   const missing = Object.values(page.itemContracts!).filter(c => c === null).length;
   expect(missing).toBeGreaterThan(0);
+  // The final empty-cell check must not fill these holes with invented stand-in questions.
+  expect(Object.entries(page.itemContracts!).filter(([, contract]) => contract === null).map(([slot]) => slot)).toEqual(["1.2", "1.3"]);
+  expect(measured.every(p => p.questions.length === 1)).toBe(true);
   const last = measured.at(-1)!;
   expect(last.content?.kind === "day" ? last.content.blocks.flatMap(b => b.missing ?? []) : []).toHaveLength(missing);
 });
