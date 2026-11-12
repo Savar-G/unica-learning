@@ -113,7 +113,7 @@ describe("reading spoken and typed fractions in a fraction call (#407)", () => {
 
   it("keeps the old reading outside a fraction call: a spoken fraction is confirmed there", () => {
     expect(readAnswer("three quarters").final).toBeNull();
-    expect(readOptionsFor(C38)).toEqual({ fractions: true });
+    expect(readOptionsFor(C38)).toMatchObject({ fractions: true });
   });
 
   it.each([
@@ -151,6 +151,27 @@ describe("reading spoken and typed fractions in a fraction call (#407)", () => {
     expect(readNumbers(said).values).toEqual(expected);
     expect(valuesIn(said)).toEqual(expected);
     expect(valuesIn(said, { fractions: false })).toEqual(expected);
+  });
+
+  it.each([
+    "I got 7/8. I used eighths.", "7/8. I used eighths.",
+    "I used eighths. I got seven eighths.", "I got 7/8. I used quarters.",
+  ])("keeps a committed answer beside the nonnumeric method sentence %j", (said) => {
+    expect(readAnswer(said, readOptionsFor(C38))).toMatchObject({ final: frac(7, 8), sure: true });
+    const c = call(C38, said);
+    expect(c.propose({ act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [answer(frac(7, 8), "result", "right")] } }).refusal).toBeNull();
+    expect(c.s.solved).toBe("child");
+  });
+
+  it.each([
+    "Maybe 7/8. I used eighths.", "7/8. I used eighths. No, that is wrong.",
+    "7/8. Eighths.", "7/8. I used eighths of 10.", "7/8. I used two eighths.",
+    "7/8. I used eighths, maybe.", "7/8. I used eighths or quarters.",
+    "7/8. I used eighths and got 6/8.", "7/8. I used one eighths.",
+  ])("does not accept an uncertain answer or numeric method claim in %j", (said) => {
+    const c = call(C38, said);
+    expect(c.propose({ act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [answer(frac(7, 8), "result", "right")] } }).refusal).not.toBeNull();
+    expect(c.s.solved).toBeNull();
   });
 
   it("limits the new mixed-number reading to fraction calls", () => {
@@ -212,9 +233,18 @@ describe("fraction expression and explanation boundaries", () => {
         ["3 - 1 is 2", "I used two of four"].flatMap((body) =>
           [" ", ". "].map((separator) => `${prefix}${form}${separator}${word} ${body}`))))))("keeps the answer before arithmetic in its explanation: %s", (said) => {
     const value = said.includes("two fourths") ? frac(2, 4) : frac(1, 2);
-    expect(readAnswer(said, READ)).toMatchObject({ final: value, sure: true });
     const pkg = pkgOf("3/4 - 1/4 = ?", sub(frac(3, 4), frac(1, 4)), sub(frac(3, 5), frac(1, 5)));
     const proposal = { version: 2, act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [answer(value, "result", "right")] } };
+    // PR #624 review round 3: an explanation in a sentence of its own with a number makes two sentences that hold numbers.
+    // The answer still stands as the final one, and Maya confirms it before she accepts it.
+    if (/\. \S/.test(said) && /\d|two|four/.test(said.slice(said.lastIndexOf(". ")))) {
+      expect(readAnswer(said, READ)).toMatchObject({ final: value, sure: false });
+      const asked = call(pkg, said);
+      expect(asked.propose(proposal).refusal?.code).toBe("answer_not_committed");
+      expect(asked.s.solved).toBeNull();
+      return;
+    }
+    expect(readAnswer(said, READ)).toMatchObject({ final: value, sure: true });
     const direct = call(pkg, said);
     expect(direct.propose(proposal).refusal).toBeNull();
     expect(direct.s.solved).toBe("child");
@@ -355,7 +385,7 @@ describe("the controller teaches fractions (#407)", () => {
     c.child("14/16.");
     expect(c.propose({ act: "guide", step: "result", level: 0, parts: [equal], reading: { answers: [answer(frac(14, 16), "result", "wrong")] } }).refusal).toBeNull();
     c.child("I don't know.");
-    expect(c.propose({ act: "give_answer", parts: [], reading: { help: "more" } }).refusal).toMatchObject({ code: "hint_too_high" });
+    expect(c.propose({ act: "give_answer", parts: [], reading: { help: "more" } }).refusal).toMatchObject({ code: "act_not_allowed" });
     const h1 = c.propose({ act: "guide", step: "result", level: 1, parts: [{ line: "step.point", slots: { step: "result" } }], reading: { help: "more" } });
     expect(h1.refusal).toBeNull();
     expect(c.said(h1)).toMatch(/14.*16/);

@@ -1,0 +1,713 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the generator is unchanged by the place-value kind > attaches the same teaching data to stored place-value questions as before: none 1`] = `
+[
+  {
+    "answer": null,
+    "operation": null,
+    "same": true,
+    "source": null,
+    "text": "In 53172, which digit is in the thousands place?",
+  },
+  {
+    "answer": null,
+    "operation": null,
+    "same": true,
+    "source": null,
+    "text": "What is the value of the digit in the ten thousands place of 61847?",
+  },
+  {
+    "answer": null,
+    "operation": null,
+    "same": true,
+    "source": null,
+    "text": "Mo saw the number 61847 on a sign at the bus stop. What is the value of the digit in the hundreds place?",
+  },
+  {
+    "answer": null,
+    "operation": null,
+    "same": true,
+    "source": null,
+    "text": "In 785243, which digit is in the hundred thousands place?",
+  },
+  {
+    "answer": null,
+    "operation": null,
+    "same": true,
+    "source": null,
+    "text": "What is the value of the digit in the ten thousands place of 785243?",
+  },
+  {
+    "answer": null,
+    "operation": null,
+    "same": true,
+    "source": null,
+    "text": "Zara saw the number 914362 on a sign at the park. What is the value of the digit in the thousands place?",
+  },
+  {
+    "answer": null,
+    "operation": null,
+    "same": true,
+    "source": null,
+    "text": "In 407891, which digit is in the thousands place?",
+  },
+  {
+    "answer": null,
+    "operation": null,
+    "same": true,
+    "source": null,
+    "text": "402561: value of the ten thousands digit?",
+  },
+  {
+    "answer": null,
+    "operation": null,
+    "same": true,
+    "source": null,
+    "text": "Zara saw the number 523406 on a sign at the park. What is the value of the digit in the tens place?",
+  },
+]
+`;
+
+exports[`the generator is unchanged by the place-value kind > finalizes a draft the same way as before 1`] = `
+[
+  {
+    "answer": null,
+    "difficulty": 1,
+    "easierExample": null,
+    "id": "synthetic-place-value-1.1-53172-thousands",
+    "item": {
+      "checks": [
+        {
+          "kind": "template",
+          "region": "answer",
+          "source": {
+            "answer": "n // 1000 % 10",
+            "check": "'0' not in str(n)",
+            "derived": [
+              [
+                "n",
+                "n0",
+              ],
+            ],
+            "slots": [
+              {
+                "domain": {
+                  "max": 99999,
+                  "min": 10000,
+                },
+                "name": "n0",
+                "value": {
+                  "int": "53172",
+                },
+              },
+            ],
+            "values": null,
+          },
+        },
+      ],
+      "error": null,
+      "format": "write-number",
+      "parentChecked": false,
+      "regions": [
+        {
+          "answer": {
+            "type": "number",
+            "value": 3,
+          },
+          "id": "answer",
+          "kind": "box",
+          "label": null,
+        },
+      ],
+      "scorable": true,
+    },
+    "level": 16,
+    "operation": null,
+    "ref": {
+      "page": 4,
+      "question": 1,
+      "source": "workbook",
+      "workbookId": "00000000-0000-4000-8000-00000000b1a0",
+    },
+    "skill": {
+      "skills": [
+        "5.1-place-value-million",
+      ],
+      "standard": "5.1",
+    },
+    "steps": [],
+    "templateId": "5.1-place-value-million#1.1:bare",
+    "text": "In 53172, which digit is in the thousands place?",
+    "textSource": "code",
+    "wrongAnswers": [],
+  },
+  {
+    "answer": null,
+    "difficulty": 1,
+    "easierExample": null,
+    "id": "synthetic-place-value-1.2-61847-ten-thousands",
+    "item": {
+      "checks": [
+        {
+          "kind": "template",
+          "region": "answer",
+          "source": {
+            "answer": "n // 10000 % 10 * 10000",
+            "check": "'0' not in str(n)",
+            "derived": [
+              [
+                "n",
+                "n0",
+              ],
+            ],
+            "slots": [
+              {
+                "domain": {
+                  "max": 99999,
+                  "min": 10000,
+                },
+                "name": "n0",
+                "value": {
+                  "int": "61847",
+                },
+              },
+            ],
+            "values": null,
+          },
+        },
+      ],
+      "error": null,
+      "format": "write-number",
+      "parentChecked": false,
+      "regions": [
+        {
+          "answer": {
+            "type": "number",
+            "value": 60000,
+          },
+          "id": "answer",
+          "kind": "box",
+          "label": null,
+        },
+      ],
+      "scorable": true,
+    },
+    "level": 16,
+    "operation": null,
+    "ref": {
+      "page": 4,
+      "question": 1,
+      "source": "workbook",
+      "workbookId": "00000000-0000-4000-8000-00000000b1a0",
+    },
+    "skill": {
+      "skills": [
+        "5.1-place-value-million",
+      ],
+      "standard": "5.1",
+    },
+    "steps": [],
+    "templateId": "5.1-place-value-million#1.2:bare",
+    "text": "What is the value of the digit in the ten thousands place of 61847?",
+    "textSource": "code",
+    "wrongAnswers": [],
+  },
+  {
+    "answer": null,
+    "difficulty": 1,
+    "easierExample": null,
+    "id": "synthetic-place-value-1.3-61847-hundreds",
+    "item": {
+      "checks": [
+        {
+          "kind": "template",
+          "region": "answer",
+          "source": {
+            "answer": "n // 100 % 10 * 100",
+            "check": "'0' not in str(n)",
+            "derived": [
+              [
+                "n",
+                "n0",
+              ],
+            ],
+            "slots": [
+              {
+                "domain": {
+                  "max": 99999,
+                  "min": 10000,
+                },
+                "name": "n0",
+                "value": {
+                  "int": "61847",
+                },
+              },
+            ],
+            "values": null,
+          },
+        },
+      ],
+      "error": null,
+      "format": "write-number",
+      "parentChecked": false,
+      "regions": [
+        {
+          "answer": {
+            "type": "number",
+            "value": 800,
+          },
+          "id": "answer",
+          "kind": "box",
+          "label": null,
+        },
+      ],
+      "scorable": true,
+    },
+    "level": 16,
+    "operation": null,
+    "ref": {
+      "page": 4,
+      "question": 1,
+      "source": "workbook",
+      "workbookId": "00000000-0000-4000-8000-00000000b1a0",
+    },
+    "skill": {
+      "skills": [
+        "5.1-place-value-million",
+      ],
+      "standard": "5.1",
+    },
+    "steps": [],
+    "templateId": "5.1-place-value-million#1.3:story",
+    "text": "Mo saw the number 61847 on a sign at the bus stop. What is the value of the digit in the hundreds place?",
+    "textSource": "code",
+    "wrongAnswers": [],
+  },
+  {
+    "answer": null,
+    "difficulty": 1,
+    "easierExample": null,
+    "id": "synthetic-place-value-2.1-785243-hundred-thousands",
+    "item": {
+      "checks": [
+        {
+          "kind": "template",
+          "region": "answer",
+          "source": {
+            "answer": "n // 100000 % 10",
+            "check": "'0' not in str(n)",
+            "derived": [
+              [
+                "n",
+                "n0",
+              ],
+            ],
+            "slots": [
+              {
+                "domain": {
+                  "max": 999999,
+                  "min": 100000,
+                },
+                "name": "n0",
+                "value": {
+                  "int": "785243",
+                },
+              },
+            ],
+            "values": null,
+          },
+        },
+      ],
+      "error": null,
+      "format": "write-number",
+      "parentChecked": false,
+      "regions": [
+        {
+          "answer": {
+            "type": "number",
+            "value": 7,
+          },
+          "id": "answer",
+          "kind": "box",
+          "label": null,
+        },
+      ],
+      "scorable": true,
+    },
+    "level": 16,
+    "operation": null,
+    "ref": {
+      "page": 4,
+      "question": 1,
+      "source": "workbook",
+      "workbookId": "00000000-0000-4000-8000-00000000b1a0",
+    },
+    "skill": {
+      "skills": [
+        "5.1-place-value-million",
+      ],
+      "standard": "5.1",
+    },
+    "steps": [],
+    "templateId": "5.1-place-value-million#2.1:bare",
+    "text": "In 785243, which digit is in the hundred thousands place?",
+    "textSource": "code",
+    "wrongAnswers": [],
+  },
+  {
+    "answer": null,
+    "difficulty": 1,
+    "easierExample": null,
+    "id": "synthetic-place-value-2.2-785243-ten-thousands",
+    "item": {
+      "checks": [
+        {
+          "kind": "template",
+          "region": "answer",
+          "source": {
+            "answer": "n // 10000 % 10 * 10000",
+            "check": "'0' not in str(n)",
+            "derived": [
+              [
+                "n",
+                "n0",
+              ],
+            ],
+            "slots": [
+              {
+                "domain": {
+                  "max": 999999,
+                  "min": 100000,
+                },
+                "name": "n0",
+                "value": {
+                  "int": "785243",
+                },
+              },
+            ],
+            "values": null,
+          },
+        },
+      ],
+      "error": null,
+      "format": "write-number",
+      "parentChecked": false,
+      "regions": [
+        {
+          "answer": {
+            "type": "number",
+            "value": 80000,
+          },
+          "id": "answer",
+          "kind": "box",
+          "label": null,
+        },
+      ],
+      "scorable": true,
+    },
+    "level": 16,
+    "operation": null,
+    "ref": {
+      "page": 4,
+      "question": 1,
+      "source": "workbook",
+      "workbookId": "00000000-0000-4000-8000-00000000b1a0",
+    },
+    "skill": {
+      "skills": [
+        "5.1-place-value-million",
+      ],
+      "standard": "5.1",
+    },
+    "steps": [],
+    "templateId": "5.1-place-value-million#2.2:bare",
+    "text": "What is the value of the digit in the ten thousands place of 785243?",
+    "textSource": "code",
+    "wrongAnswers": [],
+  },
+  {
+    "answer": null,
+    "difficulty": 1,
+    "easierExample": null,
+    "id": "synthetic-place-value-2.3-914362-thousands",
+    "item": {
+      "checks": [
+        {
+          "kind": "template",
+          "region": "answer",
+          "source": {
+            "answer": "n // 1000 % 10 * 1000",
+            "check": "'0' not in str(n)",
+            "derived": [
+              [
+                "n",
+                "n0",
+              ],
+            ],
+            "slots": [
+              {
+                "domain": {
+                  "max": 999999,
+                  "min": 100000,
+                },
+                "name": "n0",
+                "value": {
+                  "int": "914362",
+                },
+              },
+            ],
+            "values": null,
+          },
+        },
+      ],
+      "error": null,
+      "format": "write-number",
+      "parentChecked": false,
+      "regions": [
+        {
+          "answer": {
+            "type": "number",
+            "value": 4000,
+          },
+          "id": "answer",
+          "kind": "box",
+          "label": null,
+        },
+      ],
+      "scorable": true,
+    },
+    "level": 16,
+    "operation": null,
+    "ref": {
+      "page": 4,
+      "question": 1,
+      "source": "workbook",
+      "workbookId": "00000000-0000-4000-8000-00000000b1a0",
+    },
+    "skill": {
+      "skills": [
+        "5.1-place-value-million",
+      ],
+      "standard": "5.1",
+    },
+    "steps": [],
+    "templateId": "5.1-place-value-million#2.3:story",
+    "text": "Zara saw the number 914362 on a sign at the park. What is the value of the digit in the thousands place?",
+    "textSource": "code",
+    "wrongAnswers": [],
+  },
+  {
+    "answer": null,
+    "difficulty": 1,
+    "easierExample": null,
+    "id": "synthetic-place-value-3.1-467891-thousands",
+    "item": {
+      "checks": [
+        {
+          "kind": "template",
+          "region": "answer",
+          "source": {
+            "answer": "n // 1000 % 10",
+            "check": null,
+            "derived": [
+              [
+                "n",
+                "n0 if '0' in str(n0) else n0 - n0 // (10 ** (1 + n0 % 4)) % 10 * 10 ** (1 + n0 % 4)",
+              ],
+            ],
+            "slots": [
+              {
+                "domain": {
+                  "max": 999999,
+                  "min": 100000,
+                },
+                "name": "n0",
+                "value": {
+                  "int": "467891",
+                },
+              },
+            ],
+            "values": null,
+          },
+        },
+      ],
+      "error": null,
+      "format": "write-number",
+      "parentChecked": false,
+      "regions": [
+        {
+          "answer": {
+            "type": "number",
+            "value": 7,
+          },
+          "id": "answer",
+          "kind": "box",
+          "label": null,
+        },
+      ],
+      "scorable": true,
+    },
+    "level": 16,
+    "operation": null,
+    "ref": {
+      "page": 4,
+      "question": 1,
+      "source": "workbook",
+      "workbookId": "00000000-0000-4000-8000-00000000b1a0",
+    },
+    "skill": {
+      "skills": [
+        "5.1-place-value-million",
+      ],
+      "standard": "5.1",
+    },
+    "steps": [],
+    "templateId": "5.1-place-value-million#3.1:bare",
+    "text": "In 407891, which digit is in the thousands place?",
+    "textSource": "code",
+    "wrongAnswers": [],
+  },
+  {
+    "answer": null,
+    "difficulty": 1,
+    "easierExample": null,
+    "id": "synthetic-place-value-3.2-402561-ten-thousands",
+    "item": {
+      "checks": [
+        {
+          "kind": "template",
+          "region": "answer",
+          "source": {
+            "answer": "n // 10000 % 10 * 10000",
+            "check": null,
+            "derived": [
+              [
+                "n",
+                "n0 if '0' in str(n0) else n0 - n0 // (10 ** (1 + n0 % 4)) % 10 * 10 ** (1 + n0 % 4)",
+              ],
+            ],
+            "slots": [
+              {
+                "domain": {
+                  "max": 999999,
+                  "min": 100000,
+                },
+                "name": "n0",
+                "value": {
+                  "int": "402561",
+                },
+              },
+            ],
+            "values": null,
+          },
+        },
+      ],
+      "error": null,
+      "format": "write-number",
+      "parentChecked": false,
+      "regions": [
+        {
+          "answer": {
+            "type": "number",
+            "value": 0,
+          },
+          "id": "answer",
+          "kind": "box",
+          "label": null,
+        },
+      ],
+      "scorable": true,
+    },
+    "level": 16,
+    "operation": null,
+    "ref": {
+      "page": 4,
+      "question": 1,
+      "source": "workbook",
+      "workbookId": "00000000-0000-4000-8000-00000000b1a0",
+    },
+    "skill": {
+      "skills": [
+        "5.1-place-value-million",
+      ],
+      "standard": "5.1",
+    },
+    "steps": [],
+    "templateId": "5.1-place-value-million#3.2:bare",
+    "text": "402561: value of the ten thousands digit?",
+    "textSource": "code",
+    "wrongAnswers": [],
+  },
+  {
+    "answer": null,
+    "difficulty": 1,
+    "easierExample": null,
+    "id": "synthetic-place-value-3.3-523416-tens",
+    "item": {
+      "checks": [
+        {
+          "kind": "template",
+          "region": "answer",
+          "source": {
+            "answer": "n // 10 % 10 * 10",
+            "check": null,
+            "derived": [
+              [
+                "n",
+                "n0 if '0' in str(n0) else n0 - n0 // (10 ** (1 + n0 % 4)) % 10 * 10 ** (1 + n0 % 4)",
+              ],
+            ],
+            "slots": [
+              {
+                "domain": {
+                  "max": 999999,
+                  "min": 100000,
+                },
+                "name": "n0",
+                "value": {
+                  "int": "523416",
+                },
+              },
+            ],
+            "values": null,
+          },
+        },
+      ],
+      "error": null,
+      "format": "write-number",
+      "parentChecked": false,
+      "regions": [
+        {
+          "answer": {
+            "type": "number",
+            "value": 0,
+          },
+          "id": "answer",
+          "kind": "box",
+          "label": null,
+        },
+      ],
+      "scorable": true,
+    },
+    "level": 16,
+    "operation": null,
+    "ref": {
+      "page": 4,
+      "question": 1,
+      "source": "workbook",
+      "workbookId": "00000000-0000-4000-8000-00000000b1a0",
+    },
+    "skill": {
+      "skills": [
+        "5.1-place-value-million",
+      ],
+      "standard": "5.1",
+    },
+    "steps": [],
+    "templateId": "5.1-place-value-million#3.3:story",
+    "text": "Zara saw the number 523406 on a sign at the park. What is the value of the digit in the tens place?",
+    "textSource": "code",
+    "wrongAnswers": [],
+  },
+]
+`;

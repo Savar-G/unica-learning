@@ -20,13 +20,13 @@ describe("R443-1: spoken word counts keep every word", () => {
   ])("counts %s as %s spoken words", (text, count) => expect(speechWords(text)).toBe(count));
 
   it.each([
-    [1, [10], 25, true], [1, [1], 26, false],
+    [1, [9], 25, true], [1, [1], 26, false],
     [4, [1, 2, 1, 6], 45, true], [4, [1, 2, 1, 8], 46, false],
   ] as const)("grade %s accepts only its boundary (%s, %s words)", (grade, picks, count, accepted) => {
     let s = createSession({ callId: "boundary", package: FIXTURES.A, grade, random: 9 });
     s = step(s, { type: "start", at: 1000 }).session;
     s = step(s, { type: "proposal", at: 1000, proposal: { version: 2, act: "open", parts: [{ line: "open.hello" }] } }).session;
-    s = step(s, { type: "child_turn", at: 1001, text: "I tried it." }).session;
+    s = step(s, { type: "child_turn", at: 1001, text: "I am happy!" }).session;
     const result = step(s, { type: "proposal", at: 1001, proposal: { version: 2, act: "guide", step: "ones", level: 2,
       parts: [...picks.map((pick) => ({ warm: "encourage", pick })), { line: "step.point", slots: { step: "ones" } }, { line: "step.operation", slots: { step: "ones" } }],
       reading: { start: "has_work" } } });

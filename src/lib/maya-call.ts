@@ -74,12 +74,13 @@ import { createHistory, inkLog, mayaWrites, readInkEvent, withChildInk, withInkL
 import { fitView, type PlayStep } from "@/lib/board-svg";
 import type { LearningEvents, NewLearningEvent } from "@/lib/learning-events";
 import type { NoteStep } from "@/lib/maya-call-note";
-import { heardWordings, learningEvent, limitsOf, SAFETY_GUIDANCE, type Outcome, type Session, type Severity, type WordingHistory, type WordingHistoryStore } from "@/lib/maya";
+import { heardWordings, learningEvent, limitsOf, mayaPackageCheck, SAFETY_GUIDANCE, type Outcome, type Session, type Severity, type WordingHistory, type WordingHistoryStore } from "@/lib/maya";
 import { modelInput, type MayaModel } from "@/lib/maya-model";
 import type { TalkReviewer } from "@/lib/maya-talk-review";
 import { createTextSession, type FinishOptions, type SavedTextSession, type TextOutput, type TextSession } from "@/lib/maya-text";
 import { packageHash, type MayaTrace } from "@/lib/maya-trace";
-import { checkQuestionPackage, type QuestionPackage, type QuestionRef } from "@/lib/question-package";
+import { type QuestionPackage, type QuestionRef } from "@/lib/question-package";
+import { teachingPackage } from "@/lib/maya-teaching";
 import { connectedSeconds, VOICE_CALL_STALE_MS, type ConnectionEvent, type ConnectionKind } from "@/lib/maya-voice";
 import { spendCloseOf, SPEND_CLOSE, type CallSpend, type SpendCall, type SpendState, type VoiceMeter } from "@/lib/maya-spend";
 import { SpendRefused } from "@/lib/maya-spend-ai";
@@ -982,7 +983,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
     if (input.kind === "chat") {
       if (mode !== "text" || !(await seams.canChat?.(input.parentId, input.childId))) return { ok: false, error: "not_test_family" };
     } else if (!(await seams.isTestFamily(input.parentId))) return { ok: false, error: "not_test_family" };
-    const check = checkQuestionPackage(input.package);
+    // Every call (chat, voice, admin) teaches from the package Maya makes from the stored one; the stored one is unchanged.
+    const check = mayaPackageCheck(teachingPackage(input.package));
     if (!check.ok) return { ok: false, error: "invalid_question" };
     const pkg = check.package;
     if (input.kind === "chat" && pkg.ref.source !== "workbook") return { ok: false, error: "invalid_question" };

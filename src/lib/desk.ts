@@ -1,6 +1,8 @@
 import { confirmedWorkbookDelivery } from "@/lib/workbook-delivery-access";
 import type { DeliveryStore } from "@/lib/workbook-delivery";
 import { hasOperation } from "@/lib/question-package";
+import { heldReason } from "@/lib/maya";
+import { teachingPackage } from "@/lib/maya-teaching";
 import { operationText } from "@/lib/question-package-math";
 import { isUuid, type PageImage, type QuestionBox, type WorkbookPage, type WorkbookStore, type WorkbookSummary } from "@/lib/workbook-content";
 
@@ -104,6 +106,8 @@ export interface DeskQuestion {
   text: string | null;
   /** The question for the board in columns, or null when it is not two whole numbers added, taken away or multiplied. */
   columns: ColumnsQuestion | null;
+  /** D-279: a selected question without a supported teaching path offers no chat button. */
+  held: boolean;
 }
 
 export interface DeskPage {
@@ -152,6 +156,8 @@ const deskPage = (p: WorkbookPage): DeskPage => ({
   number: p.number, dayLabel: p.dayLabel, type: p.type, image: p.image,
   questions: p.questions.map((q) => ({
     number: q.number, box: q.box, text: q.content.status === "found" ? q.content.package.text : null, columns: columnsOf(q),
+    // Held by the same rule a call uses: the teaching package Maya makes from the stored one (src/lib/maya-teaching).
+    held: q.content.status !== "found" || heldReason(teachingPackage(q.content.package)) !== null,
   })),
 });
 

@@ -274,7 +274,7 @@ function put(state: DivisionState, target: Target, value: string | undefined, in
     }
     row.cells.forEach((c, i) => (written[c.place] = { digit: Number(row.value[i]), seq: ctx.seq, ink: pen }));
   } else {
-    const place = PLACE_NAMES.indexOf(target.column);
+    const place = (PLACE_NAMES as readonly string[]).indexOf(target.column);
     const i = row.cells.findIndex((c) => c.place === place);
     if (i < 0) return refuse("not_writable", `The ${row.name} has no ${target.column} digit.`);
     if (value !== undefined && !/^\d$/.test(value)) return refuse("invalid_command", "A cell takes one digit.");
@@ -319,7 +319,7 @@ function refuseMark(state: DivisionState, target: Target, style: MarkStyle): Ref
     done = !!state.written.quotient[placeOf(state, state.steps[n - 1].at)] && all.filter((w) => w.step === n && w.kind !== "remainder").every(finished);
     what = `Step ${n}`;
   } else if (row) {
-    done = target.part === "cell" ? !!state.written[row.id][PLACE_NAMES.indexOf(target.column)] : finished(row);
+    done = target.part === "cell" ? !!state.written[row.id][(PLACE_NAMES as readonly string[]).indexOf(target.column)] : finished(row);
     what = `The ${row.name}`;
   } else return refuse("not_allowed", "A check marks finished work: put it on the quotient, a step, a work row or the whole problem.");
   return done ? null : refuse("not_allowed", `${what} is not finished: check it after it is written.`);

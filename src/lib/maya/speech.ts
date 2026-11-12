@@ -84,7 +84,8 @@ export function speechWords(text: string): number {
   const explicit = text
     .replace(/\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b/g, (digits) => digits.replace(/,/g, ""))
     .replace(/(?<![\d./])(\d+)\s+(\d+)\s*\/\s*(\d+)(?![\d/])/g, "$1 and $2/$3")
-    .replace(/[−–-](?=\s*\d)/g, " minus ")
+    // A missing number's printed equation says its minus before the "?" too ("9000 − ? = 3000").
+    .replace(/[−–-](?=\s*[\d?])/g, " minus ")
     .replace(/(?<![\d.])\.(?=\d)/g, "0.")
     .replace(/%/g, " percent ")
     .replace(/\d{13,}/g, (digits) => [...digits].map((d) => ONES[Number(d)]).join(" "));

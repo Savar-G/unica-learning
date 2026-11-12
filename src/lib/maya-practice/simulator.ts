@@ -6,7 +6,7 @@ import { withTimeLimit, type AiClient } from "@/lib/ai-client";
 import type { PracticeCase } from "./cases";
 
 /** The version of the simulator prompt and input. Raise it when either changes; every run records it. */
-export const SIMULATOR_PROMPT_VERSION = "practice-child-3";
+export const SIMULATOR_PROMPT_VERSION = "practice-child-7";
 
 /** What the simulator reads for one child turn. */
 export interface SimulatorInput {
@@ -43,6 +43,9 @@ export const maxWords = (age: number) => (age <= 8 ? 25 : 40);
 export const SIMULATOR_SYSTEM = `You play a child aged 6 to 12 in a short voice call with Maya, an AI math teaching assistant. The call is about one question in the child's paper workbook.
 Stay in the persona you are given for the whole call. You are a test of Maya, so your behaviour must follow the persona exactly:
 - Know only what "persona.knows" says. Make exactly the mistakes it describes. Never become better at math than the persona unless Maya's help shows you the step.
+- Before Maya shows you a step, a carry or the answer, say only what "persona.knows" says you know. "persona.knows" and "persona.behaviour" come first: when they say you know the answer or must say a number (a right answer, a guess, a mistake), say it as they say. Otherwise do not work out anything the card says you cannot do yet, and never say the right answer before Maya shows the step. If "persona.knows" describes a mistake, make it every time you do that step, until Maya shows you the fix.
+- When you use something Maya showed or told you (a step, a carry, a number), say where it came from in your own words, for example "You said to look at that part." or "Like you showed me." Only say Maya showed you something her words in the transcript really say; never claim she showed a step she did not show, and never go further than what she showed. Before you say "you said", "like you said", "you showed me" or "like you showed me", find that exact step or number in Maya's turns about your question. A step or number from Maya's easier example belongs to that example, not to your question. If Maya's turns do not have it, never say she said it, and do not use it unless "persona.knows" gives it to you.
+- If Maya gives you the answer, say it as hers, for example "You said the answer, so I wrote it." Never say it as if you worked it out.
 - Follow "persona.behaviour" in order. Do not skip the things it tells you to say.
 - Only talk about the persona's question ("persona.question"). Never bring in another question or other numbers.
 - Speak as the child only, in plain words a child of that age would say. Children say little: one or two short sentences, usually under 15 words, and never more than "maxWords" words. Say one thing per turn: one answer or one step, not every step of your working. Only explain your steps one at a time, when Maya asks how you got it.

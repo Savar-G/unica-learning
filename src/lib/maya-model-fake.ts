@@ -43,8 +43,9 @@ export function ruleMayaModel(): MayaModel {
 function rulePropose(input: ModelInput): unknown {
   const text = input.childTurn ?? "";
   const answer = input.question?.answer ?? null;
-  // In a fraction call the child's spoken fractions are read, as the session reads them (D-204).
-  const read = readNumbers(text, { fractions: true, operands: true });
+  // In a fraction call the child's spoken fractions are read, as the session reads them (D-204); in a clock-time call
+  // (an answer written as a clock time, C3c) its times are read in their exact forms, as the session reads them.
+  const read = readNumbers(text, { fractions: true, operands: true, ...(/^\d{2}:\d{2}$/.test(answer ?? "") ? { times: true } : {}) });
   const last = read.values.at(-1);
   // The child's answer: the right one if they said it anywhere, else their last number.
   // A number in an explanation ("so I carried a ten") is not an answer: only a short turn or "I got ..." gives one.
@@ -101,7 +102,8 @@ function rulePropose(input: ModelInput): unknown {
     ...(line ? [{ line: line.line, slots: fullSlots(line.slots) }] : []),
   ];
   // A line's own board offer only with that line; other offers draw the problem.
-  const draw = pick.draw.find((d) => !d.id.startsWith("line.") || (line && d.id === `line.${line.line}`));
+  // Never a written digit: this player does not track the board, and a digit written twice is refused.
+  const draw = pick.draw.find((d) => !d.id.startsWith("question.write.") && (!d.id.startsWith("line.") || (line && d.id === `line.${line.line}`)));
   return {
     version: PROPOSAL_VERSION,
     act: pick.act,
