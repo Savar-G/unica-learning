@@ -208,6 +208,15 @@
   .desk-stage { container-type: normal; display: block; }
   .desk-sheet { width: 100%; }
   .desk-pagebar a { padding: 0 12px; }
+  /* A voice call on a phone: Maya's board goes above the talk and stays in view while the talk scrolls under it. */
+  .desk-root.is-calling { grid-template-areas: "top" "main" "maya"; }
+  .desk-root.is-calling .desk-main { position: sticky; top: 0; z-index: 20; padding: 8px 12px; background: var(--desk-bg); border-bottom: 1px solid var(--line); }
+  .desk-root.is-calling .desk-modes { display: none; }
+  .desk-root.is-calling .desk-maya-head { display: none; }
+  .desk-root.is-calling .desk-board > header { padding: 10px 14px 6px; }
+  .desk-root.is-calling .desk-canvas { min-height: 0; height: 34dvh; padding: 8px 10px 40px; }
+  /* The call's controls (Hang up) stay in reach above the rail. */
+  .desk-root.is-calling .desk-say { position: sticky; bottom: calc(72px + env(safe-area-inset-bottom)); z-index: 20; background: #fff; border-top: 1px solid var(--line); }
 }
 
 @media (prefers-reduced-motion: reduce) {

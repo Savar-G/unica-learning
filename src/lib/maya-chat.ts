@@ -73,7 +73,7 @@ export function chatPlanClosedLine(closed: { reason: string; resumesOn?: string 
   }
 }
 /** What the desk says when a younger child's family has chat. */
-export const chatGradeLine = () => "Chat with Maya is for Grade 3 and up, because it needs typing. Calls with Maya start soon.";
+export const chatGradeLine = () => "Chat and calls with Maya are for Grade 3 and up.";
 
 /**
  * Who may chat. A test family always may, on the fake path (#530). `MAYA_CHAT_ENABLED=off` is the emergency stop for

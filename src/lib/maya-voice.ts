@@ -476,11 +476,11 @@ export function callKeyterms(pkg: QuestionPackage | null): string[] {
 /** The id the greeting is saved under in the call's `live.acknowledged`, so it is said once per call (docs/maya-voice.md). */
 export const GREETING_ID = "greeting.hello";
 /**
- * The first words of a voice call, code-written, before Maya's first teaching line: who she is, that she is a computer
- * helper, and that she can be wrong. The worker says it with the same speech path as other code lines. It stages no
+ * The first words of a voice call, code-written, before Maya's first teaching line: that she can be wrong. Her own
+ * opening already says her name and that she is an AI, so the greeting does not say it again (Chief of Staff, 2026-11-12). The worker says it with the same speech path as other code lines. It stages no
  * board batch and is not in the call's transcript.
  */
-export const GREETING_TEXT = "Hi, I'm Maya. I'm a computer helper for your math. I can make mistakes, so tell me if something sounds wrong.";
+export const GREETING_TEXT = "I can make mistakes, so tell me if something sounds wrong.";
 
 // ---------- connected time ----------
 

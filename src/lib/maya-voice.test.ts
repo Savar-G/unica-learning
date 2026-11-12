@@ -349,7 +349,7 @@ describe("Maya asks for a number", () => {
 
 describe("the greeting", () => {
   it("is the exact fixed line, with an id of its own", () => {
-    expect(GREETING_TEXT).toBe("Hi, I'm Maya. I'm a computer helper for your math. I can make mistakes, so tell me if something sounds wrong.");
+    expect(GREETING_TEXT).toBe("I can make mistakes, so tell me if something sounds wrong.");
     expect(GREETING_ID).toBe("greeting.hello");
     expect(GREETING_TEXT).not.toContain(String.fromCharCode(0x2014));
   });

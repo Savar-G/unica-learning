@@ -25,6 +25,18 @@ import "./desk.css";
 // `voice` prop, src/components/desk-voice.tsx) shows its control there only while voice is open for the child, and
 // Maya's board then shows read-only. Nothing on the desk shows an answer.
 
+// The safety tip (Anthropic's guidelines for products serving minors, D-336): shown on the desk until the child's first
+// chat or call with Maya starts, then kept as seen on this device. Pending Savar's approval of the words.
+export const SAFETY_TIP = "Don't tell Maya your full name, address or phone number.";
+const tipKey = (child: string) => `unica-maya-tip:${child}`;
+const TIP_EVENT = "unica-maya-tip";
+const subscribeTip = (change: () => void) => {
+  window.addEventListener("storage", change);
+  window.addEventListener(TIP_EVENT, change);
+  return () => { window.removeEventListener("storage", change); window.removeEventListener(TIP_EVENT, change); };
+};
+const tipSeen = (child: string) => { try { return localStorage.getItem(tipKey(child)) === "seen"; } catch { return false; } };
+
 const subscribeMotion = (change: () => void) => {
   const q = window.matchMedia("(prefers-reduced-motion: reduce)");
   q.addEventListener("change", change);
@@ -103,6 +115,13 @@ export function Desk(props: DeskProps) {
   const voice = useDeskVoice(props.voice ?? null, { book: ready?.book.id ?? "none", page: ready?.page.number ?? 0, question: picked });
   // Out of chat messages for today still leaves the page, the picker and the call.
   const chatOpen = chat.usage?.left !== 0 || voice.enabled;
+  const seenTip = useSyncExternalStore(subscribeTip, () => tipSeen(props.childId), () => true);
+  const mayaStarted = !!chat.chat || voice.flow !== "idle";
+  useEffect(() => {
+    if (!mayaStarted) return;
+    try { localStorage.setItem(tipKey(props.childId), "seen"); } catch { /* Shown again next time: no harm. */ }
+    window.dispatchEvent(new Event(TIP_EVENT));
+  }, [mayaStarted, props.childId]);
 
   useEffect(() => {
     if (ready?.openPicker) picker.current?.showModal();
@@ -137,7 +156,7 @@ export function Desk(props: DeskProps) {
   const greeting = `Hi${props.name ? ` ${props.name}` : ""}! Which question are you on? Pick it from your page.`;
 
   return (
-    <div className="look-root desk-root" data-look="warm">
+    <div className={`look-root desk-root${voice.showBoard ? " is-calling" : ""}`} data-look="warm">
       <AnnounceDesk />
       <header className="desk-top">
         <p className="desk-title"><Avatar size={24} /><span className="desk-title-name">{props.name ? `${props.name}'s desk` : "Your desk"}</span><span className="desk-brand">Unica<b /></span></p>
@@ -171,6 +190,7 @@ export function Desk(props: DeskProps) {
           ) : (
             <p className="desk-bubble">{greeting}</p>
           )}
+          {!props.problem && (props.chatUsage || props.voice) && !seenTip && !mayaStarted && <p className="desk-event">{SAFETY_TIP}</p>}
           {card && ready && <QuestionCard card={card} where={where!} image={ready.image} />}
           {chat.chat?.transcript.map((line, i) => <p key={`${chat.chat!.id}-${i}`} className={`desk-bubble${line.speaker === "child" ? " desk-child-bubble" : ""}`}><span className="sr-only">{line.speaker === "child" ? "You" : "Maya"}: </span>{line.text}</p>)}
           <VoiceTranscript state={voice} />
