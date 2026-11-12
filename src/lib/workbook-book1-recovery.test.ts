@@ -6,7 +6,7 @@ import { recoverBook1PlanningInput, type Book1RecoverySources, type PinnedPlanni
 import { curriculumFor } from "./workbook-curriculum";
 import type { RunFrame } from "./workbook-job";
 import { planNextWorkbook } from "./workbook-placement";
-import type { PlanInput } from "./workbook-plan";
+import type { PlanInput, WorkbookPlan } from "./workbook-plan";
 import { bookPersona, type BookPersona } from "./workbook-sample-profiles";
 
 // #472 recovery contract, on synthetic records only, against the real pinned planners loaded from Git objects:
@@ -95,15 +95,15 @@ describe("recoverBook1PlanningInput with the pinned original planner", () => {
   });
 });
 
-describe("default public outputs are unchanged against the base pin", () => {
-  const cases: { name: string; grade: number; persona: BookPersona | null; workbooks: { number: number; levels: number[] }[]; number: number }[] = [
+describe("public planning contracts against the base pin", () => {
+  const cases: { name: string; grade: number; persona: BookPersona | null; workbooks: { number: number; levels: number[] }[]; number: number; reviewedOmissions?: string[] }[] = [
     { name: "no profile, grade 1", grade: 1, persona: null, workbooks: [], number: 1 },
     { name: "on-level", grade: 4, persona: "on-level", workbooks: [], number: 1 },
-    { name: "catch-up", grade: 4, persona: "catch-up", workbooks: [], number: 1 },
+    { name: "catch-up", grade: 4, persona: "catch-up", workbooks: [], number: 1, reviewedOmissions: ["3.1", "3.6", "3.13"] },
     { name: "ahead", grade: 4, persona: "ahead", workbooks: [], number: 1 },
     { name: "rushed book 2", grade: 4, persona: "rushed", workbooks: [{ number: 1, levels: [13] }], number: 2 },
   ];
-  it.each(cases)("planNextWorkbook gives the same plan and planner input for $name", c => {
+  it.each(cases)("planNextWorkbook preserves scheduling and planner input for $name", c => {
     const profile = c.persona ? JSON.parse(JSON.stringify(bookPersona(c.persona).profile)) : null;
     const facts = profile ? { report, device } : {};
     const pinned = base.plan({ curriculumKey: "bc", grade: c.grade, profile, ...facts, workbooks: c.workbooks, number: c.number });
@@ -112,7 +112,18 @@ describe("default public outputs are unchanged against the base pin", () => {
     const withCapture = planNextWorkbook(input, i => { captured.push(i); });
     const without = planNextWorkbook(input);
     expect(JSON.parse(JSON.stringify(without))).toEqual(JSON.parse(JSON.stringify(withCapture)));
-    expect(JSON.parse(JSON.stringify(withCapture.ok && withCapture.plan))).toEqual(JSON.parse(JSON.stringify(pinned.result.plan)));
+    const expectedPlan = structuredClone(pinned.result.plan) as WorkbookPlan;
+    if (c.reviewedOmissions) {
+      // #755 corrects omission metadata only. Pin the exact legacy entries removed, and prove they receive review.
+      const omissions = expectedPlan.personal!.notReviewed!;
+      const removed = omissions.filter(entry => c.reviewedOmissions!.includes(entry.unit));
+      expect(removed.map(entry => entry.unit)).toEqual(c.reviewedOmissions);
+      const scheduled = new Set(withCapture.ok ? withCapture.plan.days.flatMap(day => day.pages.flatMap(page =>
+        page.parts.filter(part => part.items > 0).flatMap(part => (part.reviewSteps ?? []).map(review => review.skill)))) : []);
+      expect(removed.flatMap(entry => entry.skills).every(skill => scheduled.has(skill))).toBe(true);
+      expectedPlan.personal!.notReviewed = omissions.filter(entry => !c.reviewedOmissions!.includes(entry.unit));
+    }
+    expect(JSON.parse(JSON.stringify(withCapture.ok && withCapture.plan))).toEqual(JSON.parse(JSON.stringify(expectedPlan)));
     expect(captured).toHaveLength(1);
     expect(JSON.parse(JSON.stringify(captured))).toEqual(JSON.parse(JSON.stringify(pinned.calls)));
   });
