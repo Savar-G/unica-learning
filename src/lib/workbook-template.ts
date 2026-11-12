@@ -1185,6 +1185,8 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
         ? items()
         : `<div class="outl"><div class="lab" data-measure="heading-${i}">Now it's your turn${b.label ? `: ${escape(b.label)}` : ""}</div><div class="two">${qs.map((q, k) => lineItem(q, band, null, 80, b.figures?.[k])).join("")}</div></div>`;
     case "spot-the-error": {
+      const fallbackChoice = `<span class="strip"><span class="ch"><i class="tb"></i>Yes</span><span class="ch"><i class="tb"></i>No</span></span>`
+        + (isWarmUpPage(c) ? `<span class="t1"><span>Tick one</span><i>✓</i></span>` : "");
       if (!c.consistentLayout) {
 
       // Full width at every level: Sam's work, the yes/no strip and the fix box do not fit a half-width parent card.
@@ -1195,7 +1197,7 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
           const box = names.find(x => x.region.kind === "box");
           return `<div class="list" ${mark.question(q.number)}><div class="q"><span class="n">${questionNumber(q.number)}</span>${text(q)}</div>`
             + `<div class="wk">${(b.lines ?? []).map(worked).join("<br>")}</div>`
-            + `<div class="q"><span>Is it right?</span>${choice?.region.kind === "choice" ? regionHtml(q, { ...choice.region, label: null }, choice.name, { band, noTick: !isWarmUpPage(c) }) : `<span class="strip"><span class="ch"><i class="tb"></i>Yes</span><span class="ch"><i class="tb"></i>No</span></span>`}</div>`
+            + `<div class="q"><span>Is it right?</span>${choice?.region.kind === "choice" ? regionHtml(q, { ...choice.region, label: null }, choice.name, { band, noTick: !isWarmUpPage(c) }) : fallbackChoice}</div>`
             + `<div>If it's not right, fix it:</div>${box ? regionHtml(q, box.region, box.name, { band }) : ""}</div>`;
         }).join("") + `</div>`;
 
@@ -1207,7 +1209,7 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
           const names = regionNames(q);
           const choice = names.find(x => x.region.kind === "choice");
           const box = names.find(x => x.region.kind === "box");
-          return `<div class="error-item" ${mark.question(q.number)}><div class="q"><span class="n">${questionNumber(q.number)}</span><span class="wk" ${mark.questionContent(q.number)}>${(b.lines ?? []).map(worked).join("<br>")}</span></div><div class="q ans"><span>Is it right?</span>${choice?.region.kind === "choice" ? regionHtml(q, { ...choice.region, label: null }, choice.name, { band, noTick: !isWarmUpPage(c) }) : `<span class="strip"><span class="ch"><i class="tb"></i>Yes</span><span class="ch"><i class="tb"></i>No</span></span>`}`
+          return `<div class="error-item" ${mark.question(q.number)}><div class="q"><span class="n">${questionNumber(q.number)}</span><span class="wk" ${mark.questionContent(q.number)}>${(b.lines ?? []).map(worked).join("<br>")}</span></div><div class="q ans"><span>Is it right?</span>${choice?.region.kind === "choice" ? regionHtml(q, { ...choice.region, label: null }, choice.name, { band, noTick: !isWarmUpPage(c) }) : fallbackChoice}`
             + `<span class="fix">If not, fix it:</span>${box ? regionHtml(q, box.region, box.name, { band }) : ""}</div></div>`;
         }).join("") + `</div>`;
     }
