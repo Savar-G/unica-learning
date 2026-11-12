@@ -374,3 +374,11 @@ Said when a child asks Maya to be a secret friend or an only-me friend, and now 
 | about.no_secret.1 | I'm an AI. I can't keep secrets. A grown-up you trust can help. |
 | about.no_secret.2 | I can't keep secrets, but I'm glad you told me. You can tell a grown-up you trust. |
 | about.no_secret.3 | I can't be a secret friend. A grown-up you trust is great to talk to. |
+
+## Wave lines (wave integration, D-202)
+
+Every new wave wording is listed in `docs/maya-wave-lines.md`, one row per wording, with its approval:
+
+- Waves B and C (603 wordings): approved by Savar through the Chief of Staff, 2026-11-11, with review. The condition: before merge, an independent review checks every new line against `NEVER_SAY`, the no-answer rule (D-306), the `DESIGN.md` copy rules and the existing line list.
+- Wave A (221 wordings: evaluate #734, missing number #732, claims #737): pending Savar.
+- `check.fix` and `about.no_secret` (6 wordings): approved by Savar 2026-11-12 (#884, D-329), above.
