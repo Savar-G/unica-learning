@@ -4063,8 +4063,10 @@ function offersFor(s: Session, act: Act, view: View): LineOffer[] {
   const offers = claimShortAck(s, rawOffersFor(s, act, view));
   const available = (s.noBoard ? offers.map(spokenOffer) : offers).filter((o) => o.texts.length > 0).filter((o) => {
     if (o.line !== "step.show" || !s.package) return true;
-    const shownStep = s.package.steps.find((step) => step.id === o.slots.step);
-    if (shownStep && stepAnswers(shownStep).some((value) => equivalent(value, s.package!.answer.value))) return false;
+    // A step whose own value is the answer is never shown, except a missing factor's try: its show works one try, never
+    // the answer (trial-factor.ts), and the text check below still holds.
+    const shownStep = workSteps(s.package).find((step) => step.id === o.slots.step);
+    if (shownStep && shownStep.kind !== "try-factor" && stepAnswers(shownStep).some((value) => equivalent(value, s.package!.answer.value))) return false;
     return ![...o.texts, ...(o.board ? [o.board] : [])].some((text) =>
       valuesIn(text, readOptionsFor(s.package)).some((value) => equivalent(value, s.package!.answer.value)));
   });
