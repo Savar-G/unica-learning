@@ -58,7 +58,7 @@ it('closes after two committed final misses without the answer', () => {
   expect(out.text ?? '').not.toMatch(/\b66\b/);
  }
  expect(r.s.finalMisses).toBe(2);
- expect(r.s.outcome?.reason).toBe('child_stopped');
+ expect(r.s.outcome?.reason).toBe('maya_closed');
  expect(r.s.assistance).not.toContain('answer_given');
 });
 

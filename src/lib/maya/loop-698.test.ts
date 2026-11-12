@@ -599,7 +599,7 @@ describe("#698 round 4: the loop guard never closes a child who is still working
       ].map(down)]);
       // At 6a0581bd this call ended with close.stuck from the confirm, as a technical_issue.
       expect(r.told.at(-1)).toMatchObject({ act: "close", lines: ["close.stuck", "close.together"] });
-      expect(r.outcome?.reason).toBe("child_stopped");
+      expect(r.outcome?.reason).toBe("maya_closed");
       expect(r.technical).toEqual([]);
       const acts = r.told.map((t) => t.act);
       for (let i = 2; i < acts.length; i++) expect(acts[i] === "confirm" && acts[i - 1] === "confirm" && acts[i - 2] === "confirm", `${i}`).toBe(false);
@@ -614,7 +614,7 @@ describe("#698 round 4: the loop guard never closes a child who is still working
         { child: "Yes, 66? I'm not sure.", maya: [{ act: "close", lines: ["close.stuck", "close.together"], repair: { throws: true } }] }]);
       expect(r.told.at(-2)).toMatchObject({ act: "confirm" });
       expect(r.told.at(-1)).toMatchObject({ act: "close", lines: ["close.stuck", "close.together"] });
-      expect(r.outcome?.reason).toBe("child_stopped");
+      expect(r.outcome?.reason).toBe("maya_closed");
       expect(r.technical).toEqual([]);
     });
   });
@@ -652,7 +652,7 @@ describe("#698 round 4: the loop guard never closes a child who is still working
       for (let i = 1; i < guides.length; i++) expect(guides[i].lines.includes("step.show") && guides[i - 1].lines.includes("step.show"), `${i}`).toBe(false);
       expect(r.told.at(-1)).toMatchObject({ act: "close", lines: ["close.stuck", "close.together"] });
       expect(r.told.filter((t) => t.act === "example_step" && t.lines.includes("example.intro")).length).toBe(1);
-      expect(r.outcome?.reason).toBe("child_stopped");
+      expect(r.outcome?.reason).toBe("maya_closed");
       expect(r.technical).toEqual([]);
       expect(r.hard).toEqual([]);
     });
@@ -761,7 +761,7 @@ describe("#698 round 5: copies pass only this question's shown step; carry and e
     expect(r.told.at(-1), JSON.stringify(r.told.map((t) => [t.act, t.step, t.level, t.lines]))).toMatchObject({ act: "close" });
     expect(r.told.at(-1)!.lines).toContain("close.stuck");
     expect(r.told.length - 1).toBeLessThanOrEqual(20);
-    expect(r.outcome?.reason).toBe("child_stopped");
+    expect(r.outcome?.reason).toBe("maya_closed");
   };
 
   describe("P1-1: the easier example's steps never pass a step of the child's own question", () => {

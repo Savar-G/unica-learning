@@ -332,7 +332,7 @@ describe("the hint ladder", () => {
     c.child("Still 4.");
     const closed = c.maya({ act: "close", parts: [ln("close.stuck"), ln("close.together")], reading: wrong(4, "tens") });
     expect(said(closed.effects).join(" ")).not.toMatch(/\b66\b/);
-    expect(ended(closed.effects)).toMatchObject({ outcome: { reason: "child_stopped" } });
+    expect(ended(closed.effects)).toMatchObject({ outcome: { reason: "maya_closed" } });
     expect(c.session.assistance).not.toContain("answer_given");
   });
 
@@ -898,7 +898,7 @@ describe("review follow-up", () => {
     c.maya({ act: "guide", step: "ones", level: 3, parts: [ln("step.show", { step: "ones" })], reading: { help: "show" } });
     c.child("15.");
     c.maya({ act: "close", parts: [ln("close.stuck"), ln("close.together")], reading: { answers: [{ value: num(15), step: "ones", verdict: "wrong" }] } });
-    expect(c.session.outcome).toMatchObject({ reason: "child_stopped" });
+    expect(c.session.outcome).toMatchObject({ reason: "maya_closed" });
     expect(learningEvent(c.session, FAMILY)).toMatchObject({ result: "blank", stuckStep: "ones" });
   });
 
@@ -1127,7 +1127,7 @@ describe("the final step after two wrong final answers (D-199)", () => {
     expect(c.refused({ ...finalHelp, reading: wrongFinal(65) })).toMatchObject({ code: "act_not_allowed", allowed: ["close"] });
     const closed = c.maya({ act: "close", parts: [ln("close.stuck"), ln("close.together")], reading: wrongFinal(65) });
     expect(said(closed.effects).join(" ")).not.toMatch(/\b66\b/);
-    expect(ended(closed.effects)).toMatchObject({ outcome: { reason: "child_stopped", understanding: "uncertain" } });
+    expect(ended(closed.effects)).toMatchObject({ outcome: { reason: "maya_closed", understanding: "uncertain" } });
     expect(c.session.finalMisses).toBe(2);
     expect(c.session.assistance).not.toContain("answer_given");
     expect(learningEvent(c.session, FAMILY)).toMatchObject({ result: "blank", stuckStep: "result" });
@@ -1187,6 +1187,6 @@ describe("the final step after two wrong final answers (D-199)", () => {
     expect(first).toMatchObject({ act: "close", reading: wrongFinal(65) });
     const text = said(c.send({ type: "proposal", at: T0, proposal: first }).effects).join(" ");
     expect(text).not.toMatch(/\b66\b/);
-    expect(c.session.outcome?.reason).toBe("child_stopped");
+    expect(c.session.outcome?.reason).toBe("maya_closed");
   });
 });

@@ -446,7 +446,7 @@ export const BEHAVIOURS: Behaviour[] = [
       child("I'm still stuck.", { help: "more" }, [{ act: "give_answer", repair: { act: "close", lines: ["close.stuck"] } }]),
     ],
     expect: {
-      outcome: { reason: "child_stopped", highestHint: 3, understanding: "uncertain" },
+      outcome: { reason: "maya_closed", highestHint: 3, understanding: "uncertain" },
       acts: [OPEN, "example_step", "example_step", "example_step", "try_target", "guide", "guide", "guide", "close"],
       refused: ["act_not_allowed"],
       counts: { hints: 3 },
@@ -468,7 +468,7 @@ export const BEHAVIOURS: Behaviour[] = [
       child("56.", { answers: [[56, "result", "wrong"]] }, [{ act: "close", lines: ["close.stuck", "close.together"] }]),
     ],
     expect: {
-      outcome: { reason: "child_stopped", highestHint: 3, understanding: "uncertain" },
+      outcome: { reason: "maya_closed", highestHint: 3, understanding: "uncertain" },
       acts: [OPEN, "example_step", "example_step", "example_step", "try_target", "guide", "guide", "guide", "close"],
       counts: { hints: 3 },
     },
@@ -485,7 +485,7 @@ export const BEHAVIOURS: Behaviour[] = [
       child("I'm stuck.", undefined, [{ throws: true }]),
     ],
     expect: {
-      outcome: { reason: "child_stopped", highestHint: 3 },
+      outcome: { reason: "maya_closed", highestHint: 3 },
       acts: [OPEN, "guide", "guide", "guide", "guide", "example_step", "example_step", "example_step", "close"],
       never: ["give_answer"],
     },
@@ -859,7 +859,7 @@ export const BEHAVIOURS: Behaviour[] = [
       child("Can you do question 5 instead?", { offTopic: true }),
       child("Please, question 5.", { offTopic: true }, [{ act: "close" }]),
     ],
-    expect: { outcome: { reason: "child_stopped", assistance: "independent" }, acts: [OPEN, "redirect", "close"] },
+    expect: { outcome: { reason: "maya_closed", assistance: "independent" }, acts: [OPEN, "redirect", "close"] },
   },
   {
     id: "C28",
@@ -1604,7 +1604,7 @@ export const BEHAVIOURS: Behaviour[] = [
       child("65.", { answers: [[65, "result", "wrong"]] }, [{ act: "close", lines: ["close.stuck", "close.together"] }]),
     ],
     expect: {
-      outcome: { reason: "child_stopped", understanding: "uncertain" },
+      outcome: { reason: "maya_closed", understanding: "uncertain" },
       acts: [OPEN, "guide", "guide", "guide", "close"],
       counts: { refusals: 0, hints: 0 },
     },

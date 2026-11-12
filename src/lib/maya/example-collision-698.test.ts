@@ -26,7 +26,7 @@ it.each([
     output = await session.child("I'm stuck.");
     if (output.ended) break;
   }
-  expect(output?.ended?.reason).toBe("child_stopped");
+  expect(output?.ended?.reason).toBe("maya_closed");
   expect(output?.say.join(" ")).toContain("We worked on");
 });
 
@@ -58,7 +58,7 @@ it("has a fallback when the model reads no start before an unsafe example", asyn
   const session = createTextSession({ callId: "collision-no-start", package: pkg, grade: 2, clock: () => at, model });
   await session.start(); at += 4000;
   const out = await session.child("I don't know how to start.");
-  expect(out.ended?.reason).toBe("child_stopped");
+  expect(out.ended?.reason).toBe("maya_closed");
   expect(out.say.join(" ")).toContain("We worked on");
 });
 
@@ -71,7 +71,7 @@ it.each(["Help.", "Help!", "help me"])("escapes repeated bare %s requests with t
     at += 4000;
     output = await session.child(help);
   }
-  expect(output.ended?.reason).toBe("child_stopped");
+  expect(output.ended?.reason).toBe("maya_closed");
 });
 
 it.each([[2, 1], [12, 11]])("closes safely with answer 1 for %i - %i when the model is down", async (a, b) => {
@@ -87,7 +87,7 @@ it.each([[2, 1], [12, 11]])("closes safely with answer 1 for %i - %i when the mo
     model: fakeMayaModel({ answer: () => { throw new Error("model unavailable"); } }) });
   let output = await session.start();
   for (let i = 0; i < 20 && !output.ended; i++) { at += 4000; output = await session.child("I'm stuck."); }
-  expect(output.ended?.reason).toBe("child_stopped");
+  expect(output.ended?.reason).toBe("maya_closed");
   expect(output.say.join(" ")).toMatch(/stop/i);
 });
 
@@ -104,5 +104,5 @@ it.each([[3, 0], [0, 1]])("advances on repeated help for %i + %i with the model 
     model: fakeMayaModel({ answer: () => { throw new Error("offline"); } }) });
   let output = await session.start();
   for (let i = 0; i < 20 && !output.ended; i++) { at += 4000; output = await session.child("Help."); }
-  expect(output.ended?.reason).toBe("child_stopped");
+  expect(output.ended?.reason).toBe("maya_closed");
 });

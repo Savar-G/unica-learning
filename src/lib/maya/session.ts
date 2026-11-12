@@ -102,7 +102,8 @@ const BOARD_ACTS: readonly Act[] = ["clarify", "example_step", "try_target", "gu
 /** Acts whose proposal may score the child's answers. Safety, a stop, a confirmation or a wait never scores one. */
 const SCORING_ACTS: readonly Act[] = ["clarify", "example_step", "try_target", "guide", "accept_answer", "ask_write", "close"];
 
-export type Reason = "solved" | "child_stopped" | "time_limit" | "no_response" | "technical_issue" | "content_issue" | "safety";
+/** maya_closed (2026-11-12): Maya ended an unsolved call on her own (the D-199 two-miss close, the "This one is hard" close), not the child. */
+export type Reason = "solved" | "child_stopped" | "time_limit" | "no_response" | "technical_issue" | "content_issue" | "safety" | "maya_closed";
 /** Least help first: the outcome keeps the most help used, never less. */
 export const ASSISTANCE = ["independent", "hint", "worked_example", "guided", "answer_given"] as const;
 export type Assistance = (typeof ASSISTANCE)[number];
@@ -1783,8 +1784,9 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     s.expect = "maya";
     s.silence = "none";
   } else if (p.act === "close") {
-    // The backup close at the time limit is a time_limit end (closeCause), never the child stopping (#749).
-    end(s, backupClose && base.state !== "TIME_CLOSE" ? "child_stopped" : closeCause(base, spoken.chosen.some((o) => o.line === "close.stuck")), effects, false);
+    // The backup close at the time limit is a time_limit end (closeCause), never the child stopping (#749). Before the
+    // time limit it is Maya's own close (maya_closed, 2026-11-12), never the child stopping either.
+    end(s, backupClose && base.state !== "TIME_CLOSE" ? "maya_closed" : closeCause(base, spoken.chosen.some((o) => o.line === "close.stuck")), effects, false);
   } else if (doneAfterAnswer || p.act === "safety" || (p.act === "example_step" && s.exampleShown < pkg!.easierExample.steps.length)) {
     s.expect = "maya";
     s.silence = "none";
@@ -3210,7 +3212,9 @@ function closeCause(before: Session, stuck = false): Reason {
   if (before.state === "TIME_CLOSE") return "time_limit";
   // A close Maya chose on purpose (close.stuck) is never a hearing failure (round 4: F02-r1 ended as technical_issue).
   if (before.state === "CONFIRM_HEARD" && !stuck) return "technical_issue";
-  return "child_stopped";
+  // Any other close is Maya's own (2026-11-12): the child did not ask to stop. A solved question is "solved" by the
+  // outcome's priority (outcomeOf).
+  return "maya_closed";
 }
 
 /** When the call ended, or ends now: never after the call's limit. */

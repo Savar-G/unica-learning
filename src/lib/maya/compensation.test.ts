@@ -86,7 +86,7 @@ describe("(iii) an honest close by how much help the child had", () => {
       { child: "15.", read: { answers: [[15, "ones", "wrong"]] }, maya: [{ act: "give_answer" }] },
       { child: "I wrote 66.", read: { paper: "written" }, maya: [{ act: "close", lines: ["close.together"] }] },
     ]);
-    expect(outcome?.reason).toBe("child_stopped");
+    expect(outcome?.reason).toBe("maya_closed");
     expect(outcome?.assistance).not.toBe("answer_given");
     const close = told.at(-1)!;
     expect(close.act).toBe("close");

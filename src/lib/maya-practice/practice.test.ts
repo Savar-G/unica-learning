@@ -940,7 +940,7 @@ describe("the D-326 outcome rule", () => {
       "Seven plus nine is sixteen.", "Two plus three plus one is six.", "56.", "65.",
     ]) });
     const saved = JSON.parse(store.load(traceFile("C07-r1"))!);
-    expect(saved.outcome?.reason).toBe("child_stopped");
+    expect(saved.outcome?.reason).toBe("maya_closed");
     expect(recount().runs[0].hardFailures.map((f) => f.code)).not.toContain("outcome_not_allowed");
     const maya = saved.turns.filter((turn: { kind: string; output?: unknown }) => turn.kind === "maya" && turn.output);
     const original = JSON.stringify(saved);

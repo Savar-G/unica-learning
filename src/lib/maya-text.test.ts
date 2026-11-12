@@ -361,7 +361,7 @@ describe("the final answer and the final step (D-199)", () => {
     expect(lastMaya(session).output?.act).toBe("close");
     expect(said(out)).not.toMatch(/\b66\b/);
     expect(said(out)).toContain("We worked on");
-    expect(out.ended).toMatchObject({ reason: "child_stopped", understanding: "uncertain" });
+    expect(out.ended).toMatchObject({ reason: "maya_closed", understanding: "uncertain" });
     expect(checkTrace(JSON.parse(JSON.stringify(session.trace()))).ok).toBe(true);
   });
 });
