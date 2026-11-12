@@ -37,15 +37,24 @@ export async function voiceGate(db: DB, parent: string, grade: number | null | u
   return (await chatGate(db, parent, grade, child)) === "open" ? "open" : "closed";
 }
 
-/** The week's used seconds of a child: its family calls created in the family's current week (see voiceUsedSeconds). */
+/** The most rows one week read holds: more than the week's 1800 seconds as one-second calls. */
+const USAGE_ROWS = 2000;
+
+/**
+ * The week's used seconds of a child: its family calls created in the family's current week (see voiceUsedSeconds).
+ * Only calls that count are read: a live call, or an ended call with connected time (a cancelled attempt has none).
+ * The read asks for the exact count and throws when it holds fewer rows, so a week is never under-counted (#904 review).
+ */
 export async function readVoiceUsedSeconds(db: DB, parent: string, child: string, zone: FamilyZone, now = Date.now()): Promise<number> {
   const week = weekOf(now, zone);
-  const { data, error } = await db.from("maya_calls")
-    .select("status, connected_seconds, end_at_ms:live->text->session->limits->endAtMs")
+  const { data, error, count } = await db.from("maya_calls")
+    .select("status, connected_seconds, end_at_ms:live->text->session->limits->endAtMs", { count: "exact" })
     .eq("parent_id", parent).eq("child_id", child).eq("kind", "family")
     .gte("created_at", new Date(localDateTime(week.start, zone)).toISOString()).lt("created_at", new Date(week.resetsAt).toISOString())
-    .limit(1000);
+    .or("status.eq.live,connected_seconds.gt.0")
+    .limit(USAGE_ROWS);
   if (error || !data) throw Error(`voice usage: ${error?.message ?? "no rows"}`);
+  if (count === null || count > data.length) throw Error("voice usage: the week has more calls than one read holds");
   return voiceUsedSeconds(data.map((r) => ({ status: r.status, connectedSeconds: r.connected_seconds, endAtMs: typeof r.end_at_ms === "number" ? r.end_at_ms : null })));
 }
 

@@ -32,7 +32,7 @@ const planRow = (child_id: string, kind: string) => ({ parent_id: "parent", chil
 function fakeDb({ test = false, listed = false, broken = "", plans = [] as Row[], calls = [] as Row[] } = {}) {
   const requests: URL[] = [];
   const tables: Record<string, Row[]> = { child_plan_states: plans, test_accounts: test ? [{ parent_id: "parent" }] : [], maya_chat_families: listed ? [{ parent_id: "parent", rehearsal: false }] : [], maya_calls: calls };
-  const db = createClient<Database>("https://test.invalid", "test", { global: { fetch: async (input) => {
+  const db = createClient<Database>("https://test.invalid", "test", { global: { fetch: async (input, init) => {
     const url = new URL(String(input));
     requests.push(url);
     const table = url.pathname.split("/").pop()!;
@@ -44,8 +44,14 @@ function fakeDb({ test = false, listed = false, broken = "", plans = [] as Row[]
       if (raw.startsWith("eq.")) rows = rows.filter((r) => String(r[key]) === raw.slice(3));
       if (raw.startsWith("gte.")) rows = rows.filter((r) => String(r[key]) >= raw.slice(4));
       if (raw.startsWith("lt.")) rows = rows.filter((r) => String(r[key]) < raw.slice(3));
+      if (key === "or" && raw === "(status.eq.live,connected_seconds.gt.0)") rows = rows.filter((r) => r.status === "live" || Number(r.connected_seconds) > 0);
     }
-    if (table === "child_plan_states" || table === "maya_calls") return Response.json(rows);
+    const total = rows.length;
+    const limit = url.searchParams.get("limit");
+    if (limit) rows = rows.slice(0, Number(limit));
+    const counted = new Headers(init?.headers).get("prefer")?.includes("count=exact");
+    if (table === "maya_calls") return Response.json(rows, counted ? { headers: { "content-range": `0-${Math.max(0, rows.length - 1)}/${total}` } } : undefined);
+    if (table === "child_plan_states") return Response.json(rows);
     return Response.json(rows[0] ?? null);
   } } });
   return Object.assign(db, { requests });
@@ -125,6 +131,19 @@ describe("the voice week read", () => {
     const asked = db.requests.find((r) => r.pathname.endsWith("maya_calls"))!;
     expect(asked.searchParams.get("kind")).toBe("eq.family");
     expect(asked.searchParams.get("select")).toContain("live->text->session->limits->endAtMs");
+  });
+
+  it("leaves out cancelled attempts, so 1000 of them cannot hide the week's real time (#904 fourth review)", async () => {
+    const at = new Date(now).toISOString();
+    const zeros = Array.from({ length: 1000 }, () => call(at, { connected_seconds: 0 }));
+    const db = fakeDb({ calls: [...zeros, call(at, { connected_seconds: 1680 })] });
+    expect(await readVoiceUsedSeconds(db, "parent", "child", zone, now)).toBe(1680);
+  });
+
+  it("throws when the week has more counting calls than one read holds", async () => {
+    const at = new Date(now).toISOString();
+    const db = fakeDb({ calls: Array.from({ length: 2001 }, () => call(at, { connected_seconds: 1 })) });
+    await expect(readVoiceUsedSeconds(db, "parent", "child", zone, now)).rejects.toThrow(/more calls than one read holds/);
   });
 
   it("throws when the calls cannot be read, so a caller never treats an unread week as unused", async () => {
