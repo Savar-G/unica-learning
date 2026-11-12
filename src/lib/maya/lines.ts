@@ -579,11 +579,14 @@ export type TemplateKey = keyof typeof TEMPLATES;
 type Vars = Record<string, string | number>;
 
 const fill = (template: string, vars: Vars) => template.replace(/\{(\w+)\}/g, (_, name: string) => String(vars[name]));
+/** The values a template's wordings say: a value a builder passes that no wording uses is never said, so it is not filled. */
+const usedVars = (key: TemplateKey, vars: Vars): Vars =>
+  Object.fromEntries(Object.entries(vars).filter(([name]) => TEMPLATES[key].some((t) => t.includes(`{${name}}`))));
 const offer = (line: LineId, key: TemplateKey, vars: Vars, extra: Omit<LineOffer, "line" | "texts" | "key"> = { slots: {} }): LineOffer => ({
   line,
   ...extra,
   key,
-  filled: vars,
+  filled: usedVars(key, vars),
   texts: TEMPLATES[key].map((t) => sentence(fill(t, vars))),
 });
 
