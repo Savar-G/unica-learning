@@ -4,7 +4,7 @@
 
 export type AdminNavKey =
   | "home" | "families" | "tests" | "feedback" | "production" | "delivery" | "marking" | "calls"
-  | "flyers" | "emails" | "templates" | "skillmap" | "reviews" | "preview" | "export";
+  | "flyers" | "emails" | "templates" | "skillmap" | "reviews" | "ai" | "preview" | "export";
 
 export interface AdminNavItem {
   key: AdminNavKey;
@@ -46,6 +46,7 @@ export const ADMIN_NAV: readonly AdminNavEntry[] = [
     { key: "templates", label: "Templates", href: "/admin/templates" },
     { key: "skillmap", label: "Skill map", href: "/admin/skill-map" },
     { key: "reviews", label: "AI reviews", href: "/admin/reviews" },
+    { key: "ai", label: "AI usage", href: "/admin/ai" },
   ] },
   { folder: "Team tools", items: [
     { key: "preview", label: "Parent app preview", href: "/admin/dashboard" },
@@ -81,6 +82,7 @@ const SEGMENT: Record<string, AdminNavKey> = {
   templates: "templates",
   "skill-map": "skillmap",
   reviews: "reviews",
+  ai: "ai",
   dashboard: "preview",
   "parent-dashboard": "preview",
   export: "export",

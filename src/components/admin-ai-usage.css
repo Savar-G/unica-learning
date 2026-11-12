@@ -1,0 +1,47 @@
+/* The admin AI usage page (D-330). The admin's tokens and parts (admin.css, admin-blocks.css) carry the layout; this file
+   holds the chart, its legend and the check. Light only, as the admin is. Chart colours are the validated categorical slots
+   1 to 6 of the data-viz palette, in fixed order; the models folded into "Other models" are grey. Three of the six sit
+   below 3:1 on white (aqua, yellow, magenta), so the legend names every colour and a table view sits under the chart. */
+.adm-ai {
+  --c1: #2a78d6; --c2: #eb6834; --c3: #1baf7a; --c4: #eda100; --c5: #e87ba4; --c6: #008300; --cother: #9a9993;
+}
+.adm-ai .ai-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s3); margin-bottom: var(--s4); }
+.adm-ai .ai-out { font-size: 13px; color: var(--ink-2); text-underline-offset: 3px; }
+.adm-ai .ai-note { margin: 0 0 var(--s4); font-size: 13px; line-height: 1.5; color: var(--ink-2); }
+.adm-ai .ap-card .ai-note { margin: var(--s3) 0 0; }
+.adm-ai .ai-sub { font-size: 12.5px; color: var(--ink-2); font-weight: 400; }
+
+/* OpenRouter says / we recorded / not recorded */
+.adm-ai .ai-check { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s3); margin: 0; }
+.adm-ai .ai-check > div { display: grid; gap: var(--s1); min-width: 0; }
+.adm-ai .ai-check dt { font: 400 11px/1.3 var(--mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-2); }
+.adm-ai .ai-check dd { margin: 0; font: 300 24px/1.2 var(--sans); font-variant-numeric: tabular-nums; }
+.adm-ai .ai-check .is-gap dd { color: #a8380f; font-weight: 400; }
+.adm-ai .ai-check-none { margin: 0; color: var(--ink-2); font-size: 14px; }
+@media (max-width: 559.98px) { .adm-ai .ai-check { grid-template-columns: minmax(0, 1fr); } }
+
+/* the daily chart */
+.adm-ai .ai-figure { margin: 0; }
+.adm-ai .ai-chart-wrap { overflow-x: auto; }
+.adm-ai .ai-chart { display: block; width: 100%; min-width: 560px; height: auto; }
+.adm-ai .ai-block { display: block; }
+.adm-ai .ai-grid { stroke: var(--line-soft); stroke-width: 1; }
+.adm-ai .ai-axis { font: 400 11.5px var(--mono); fill: var(--ink-2); }
+.adm-ai .ai-seg.is-c1, .adm-ai .ai-legend i.is-c1 { fill: var(--c1); background: var(--c1); }
+.adm-ai .ai-seg.is-c2, .adm-ai .ai-legend i.is-c2 { fill: var(--c2); background: var(--c2); }
+.adm-ai .ai-seg.is-c3, .adm-ai .ai-legend i.is-c3 { fill: var(--c3); background: var(--c3); }
+.adm-ai .ai-seg.is-c4, .adm-ai .ai-legend i.is-c4 { fill: var(--c4); background: var(--c4); }
+.adm-ai .ai-seg.is-c5, .adm-ai .ai-legend i.is-c5 { fill: var(--c5); background: var(--c5); }
+.adm-ai .ai-seg.is-c6, .adm-ai .ai-legend i.is-c6 { fill: var(--c6); background: var(--c6); }
+.adm-ai .ai-seg.is-cother, .adm-ai .ai-legend i.is-cother { fill: var(--cother); background: var(--cother); }
+.adm-ai .ai-seg:hover { opacity: 0.8; }
+.adm-ai .ai-legend { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s4); margin-top: var(--s3); font-size: 12.5px; color: var(--ink-2); }
+.adm-ai .ai-legend span { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
+.adm-ai .ai-legend i { display: inline-block; flex: none; width: 10px; height: 10px; border-radius: 3px; }
+.adm-ai .ai-table { margin-top: var(--s3); font-size: 13px; }
+.adm-ai .ai-table summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; color: var(--ink-2); }
+
+/* cost by feature and by model, side by side on a wide screen */
+.adm-ai .ai-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s4); align-items: start; }
+.adm-ai .ai-pair .ap-card { margin-bottom: var(--s5); }
+@media (max-width: 859.98px) { .adm-ai .ai-pair { grid-template-columns: minmax(0, 1fr); } }
