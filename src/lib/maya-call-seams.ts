@@ -73,7 +73,7 @@ async function rebuild(db: SupabaseClient<Database>, env: Env, ledger: SpendLedg
   try {
     const plain = options.factsOnly ? null : childProfileAiClient();
     const { ai, keepFindings } = plain && options.call && plain.model !== "fake"
-      ? await profileAi(ledger, options.call, () => randomUUID(), (hooks) => aiClient(env, undefined, hooks)!)
+      ? await profileAi(ledger, options.call, () => randomUUID(), (hooks) => aiClient(env, undefined, { ...hooks, usage: { feature: "child_profile", parentId: options.call?.parentId, childId, source: options.call ? { kind: "maya_call", id: options.call.id } : null } })!)
       : { ai: plain, keepFindings: false };
     const workbooks = workbookStore(db);
     const tests = assessmentQuestionReader(db);

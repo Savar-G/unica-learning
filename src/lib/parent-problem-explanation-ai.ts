@@ -1,9 +1,10 @@
 import { aiClient } from "@/lib/ai-client";
+import type { AiUsageTag } from "@/lib/ai-usage";
 import { EXPLANATION_MAX_BYTES, EXPLANATION_MAX_TOKENS, EXPLANATION_MODEL, type ExplanationClientFactory } from "@/lib/parent-problem-explanation";
 
 /** Only transport usage is charge evidence. A missing or incompatible response retains the full reservation. */
 export function explanationAiClient(env: Readonly<Record<string, string | undefined>> = process.env,
-  base: typeof globalThis.fetch = globalThis.fetch): ExplanationClientFactory {
+  base: typeof globalThis.fetch = globalThis.fetch, usage?: AiUsageTag): ExplanationClientFactory {
   return beforeAttempt => {
     let cost: number | null = null;
     const fetch: typeof globalThis.fetch = async (url, init) => {
@@ -31,7 +32,7 @@ export function explanationAiClient(env: Readonly<Record<string, string | undefi
       return response;
     };
     // This feature uses only its dedicated key and model. Global or other feature credentials cannot enable it.
-    const client = aiClient({ OPENROUTER_API_KEY: env.PARENT_EXPLANATION_API_KEY }, EXPLANATION_MODEL, { fetch, onRequest: async () => { try { await beforeAttempt(); } finally { cost = null; } } });
+    const client = aiClient({ OPENROUTER_API_KEY: env.PARENT_EXPLANATION_API_KEY }, EXPLANATION_MODEL, { fetch, usage, onRequest: async () => { try { await beforeAttempt(); } finally { cost = null; } } });
     return client ? { client, costMicros: () => cost } : null;
   };
 }

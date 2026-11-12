@@ -27,7 +27,7 @@ async function previewOf(id: string): Promise<{ store: ScanCropStore; parent: st
  */
 async function startPhotoCheck(admin: SupabaseClient<Database>, parent: string, photo: string) {
   try {
-    const client = photoCheckClient();
+    const client = photoCheckClient(process.env, { feature: "photo_check", parentId: parent, source: { kind: "scan_photo", id: photo } });
     if (!client) return;
     const store = photoCheckStore(admin), token = randomUUID();
     if (!await claimPhotoCheck(store, { parent, photo }, { client, token })) return;

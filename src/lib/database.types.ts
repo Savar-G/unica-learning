@@ -97,6 +97,72 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_usage_events: {
+        Row: {
+          calls: number
+          child_id: string | null
+          cost_usd: number | null
+          created_at: string
+          feature: string
+          generation_id: string | null
+          id: number
+          input_tokens: number | null
+          model: string
+          output_tokens: number | null
+          parent_id: string | null
+          provider: string
+          source_id: string | null
+          source_kind: string | null
+        }
+        Insert: {
+          calls?: number
+          child_id?: string | null
+          cost_usd?: number | null
+          created_at?: string
+          feature: string
+          generation_id?: string | null
+          id?: never
+          input_tokens?: number | null
+          model: string
+          output_tokens?: number | null
+          parent_id?: string | null
+          provider: string
+          source_id?: string | null
+          source_kind?: string | null
+        }
+        Update: {
+          calls?: number
+          child_id?: string | null
+          cost_usd?: number | null
+          created_at?: string
+          feature?: string
+          generation_id?: string | null
+          id?: never
+          input_tokens?: number | null
+          model?: string
+          output_tokens?: number | null
+          parent_id?: string | null
+          provider?: string
+          source_id?: string | null
+          source_kind?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_usage_events_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "ai_usage_events_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       anonymous_test_links: {
         Row: {
           assessment_id: string
@@ -7466,6 +7532,16 @@ export type Database = {
         Args: { p_parent: string }
         Returns: boolean
       }
+      admin_ai_usage: {
+        Args: {
+          p_cad_per_usd?: number
+          p_day_starts?: string[]
+          p_from: string
+          p_to: string
+          p_with_tests?: boolean
+        }
+        Returns: Json
+      }
       admin_assessments: {
         Args: never
         Returns: {
@@ -7561,6 +7637,17 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      admin_health_v1: {
+        Args: { p_with_tests?: boolean }
+        Returns: {
+          at: string
+          d30: number
+          d7: number
+          key: string
+          n30: number
+          n7: number
+        }[]
       }
       admin_latest_draft_revisions: {
         Args: { p_drafts: string[] }
