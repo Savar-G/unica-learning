@@ -90,3 +90,20 @@ it("refuses a fallback grid when spreading its gaps causes overflow", async () =
   } })).rejects.toThrow("The content exceeds the page height.");
   expect(Math.max(...gaps)).toBe(4);
 });
+
+it("checks final empty cells using approved questions, not invented stand-ins (#764)", async () => {
+  const source = input(2);
+  const prepared = await prepareWorkbookCapacity(source, { fits: async () => ({ ok: true }) });
+  const mixed = prepared.days[0].pages.find(p => p.type === "remember-these-mixed-set")!;
+  // Three planned slots, but only two approved questions: the printed two-column grid is complete.
+  mixed.capacity = mixed.capacity!.map(c => c.slot === "mixed-set" ? { ...c, items: 3 } : c);
+  mixed.parts = mixed.parts.map(p => p.kind === "mixed-set" ? { ...p, items: 3 } : p);
+  mixed.itemContracts!["2.3"] = null;
+  delete mixed.itemContracts!["2.4"];
+  mixed.capacityChecked = false;
+  const plan = await prepareWorkbookCapacity({ ...source, plan: prepared }, { fits: async () => ({ ok: true }) });
+  const page = plan.days[0].pages.find(p => p.type === "remember-these-mixed-set")!;
+  expect(page.capacityChecked).toBe(true);
+  expect(page.itemContracts!["2.3"]).toBeNull();
+  expect(Object.values(page.itemContracts!).filter(Boolean)).toHaveLength(6);
+});
