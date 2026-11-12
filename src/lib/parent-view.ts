@@ -1,8 +1,8 @@
 import "server-only";
 import { resultLate } from "@/lib/report-late";
 import {
-  REPORTED_STRAND_NAMES, areaLevels, attemptState, storedLevelCertainty,
-  type AreaAnswer, type AreaLabel, type Attempt, type Grade, type Level, type ReportModel, type ReportedStrand, type SkillTestResult,
+  BC_SKILL_MAP, REPORTED_STRAND_NAMES, areaLevels, attemptState, storedLevelCertainty,
+  type AreaAnswer, type AreaLabel, type Attempt, type Grade, type Level, type ReportModel, type ReportedStrand, type SkillTestResult, type SkillState,
 } from "@/lib/assessment";
 import { childStage, type StageView, type TabSwitches, type TestFact } from "@/lib/child-stage";
 import { addMonths, familyZone, formatCalendarDate, localDateTime, localDay, localMonth, type FamilyZone } from "@/lib/family-time";
@@ -109,6 +109,8 @@ export interface ParentViewReader {
   mayaCalls(childId: string, from: number, to: number): Promise<number>;
   /** Each finished test's tally of each standard it asked, for one child: what the skill state rule reads, and nothing else. */
   skillTests(childId: string): Promise<SkillTestResult[]>;
+  /** Saved original page results and recorded skill changes, or null when unavailable. */
+  overviewProgress(childId: string): Promise<{ marks: AreaAnswer[]; history: { standard: string; state: SkillState; changedAt: string }[]; statesReady: boolean } | null>;
   /** The BC standards of one of the family's shipped workbooks. */
   workbookStandards(workbookId: string): Promise<string[]>;
 }
@@ -309,6 +311,10 @@ export interface OverviewView {
   level: LevelTileView | null;
   /** One bar per reported area with answers, from the same test; empty when `level` is null or unreliable. */
   areas: AreaBarView[];
+  /** Stored skill states, or null when the state data is unavailable. */
+  skills: { mastered: number; total: number; moreThisMonth: number } | null;
+  /** Whether the area bars include marked pages. */
+  areasIncludeMarks: boolean;
   /** The newest finished test's report is not ready, so no older result shows in its place. */
   resultPreparing: boolean;
   /** The report is more than an hour late (src/lib/report-late.ts): the report job and its retries have not made it yet. */
@@ -347,11 +353,12 @@ function scannedDays(pages: readonly WorkbookPageRecord[], scans: readonly Saved
 }
 
 /**
- * One child's Overview (#560, spec #544): the Level tile, the area bars, This workbook and the one action card. Null for
- * a child that is not the parent's, and for a child whose stage has no Overview. A panel with no data is null or empty.
- * The level and the bars come from the newest finished test, scored by the assessment core; while its report is not
- * ready, they come from no test. Nothing comes from a raw profile, a learning event, a Maya call or an AI finding. Marked
- * pages do not count yet: no marking is live.
+ * One child's Overview (#560, spec #544, #880): the Level tile, Skills mastered, the area bars, This workbook and the
+ * one action card. Null for a child that is not the parent's, and for a child whose stage has no Overview. A panel with
+ * no data is null or empty. The level comes from the newest finished test, scored by the assessment core; while its
+ * report is not ready, it comes from no test. The bars add the saved original page results (`overviewProgress`) to that
+ * test's answers; Skills mastered counts the recorded skill states (`skill_state_history`). Nothing comes from a raw
+ * profile, a Maya call, an AI finding or a parent's judgement (D-303).
  */
 export async function readOverview(reader: ParentViewReader, childId: string, now: number): Promise<OverviewView | null> {
   const [child, children, family, tests, reports, workbooks, plans, cards, pinSet, scans] = await Promise.all([
@@ -366,9 +373,28 @@ export async function readOverview(reader: ParentViewReader, childId: string, no
     .filter((t) => t.status === "completed" && t.completedAt !== null)
     .reduce<TestRecord | null>((best, t) => (!best || t.completedAt! > best.completedAt! ? t : best), null);
   const reportReady = latest !== null && reports.some((r) => r.assessmentId === latest.id);
-  const { level, areas } = reportReady ? await testLevel(reader, latest, child.schoolGrade, zone) : { level: null, areas: [] };
+  const progress = await reader.overviewProgress(child.id).catch(() => null);
+  const test = reportReady ? await testLevel(reader, latest, child.schoolGrade, zone, progress?.marks ?? []) : { level: null, areas: [] };
+  const { level } = test;
+  const areas = progress ? test.areas : [];
 
   const book = workbooks.filter((w) => w.childId === child.id).sort((a, b) => b.number - a.number)[0];
+  const workbookStandards = book && level && progress?.statesReady ? await reader.workbookStandards(book.id).catch(() => null) : [];
+  let skills: OverviewView["skills"] = null;
+  if (child.tabs.includes("progress") && level && !level.unreliable && progress?.statesReady && workbookStandards !== null) {
+    const selected = new Set(BC_SKILL_MAP.standards.filter((s) => s.grade === level.working || workbookStandards.includes(s.code)).map((s) => s.code));
+    const current = new Map<string, SkillState>();
+    const before = new Map<string, SkillState>();
+    const month = localMonth(now, zone);
+    for (const row of progress.history) {
+      if (!selected.has(row.standard) || Date.parse(row.changedAt) > now) continue;
+      current.set(row.standard, row.state);
+      if (localMonth(row.changedAt, zone) < month) before.set(row.standard, row.state);
+    }
+    const count = (states: Map<string, SkillState>) => [...states.values()].filter((state) => state === "mastered").length;
+    const mastered = count(current);
+    skills = { mastered, total: selected.size, moreThisMonth: mastered - count(before) };
+  }
   const bookScans = book ? scans.filter((s) => s.workbookId === book.id) : [];
   let workbook: OverviewView["workbook"] = null;
   if (book && bookScans.length > 0) {
@@ -390,11 +416,11 @@ export async function readOverview(reader: ParentViewReader, childId: string, no
   const resultPreparing = latest !== null && !reportReady;
   const late = resultPreparing && resultLate(latest!.completedAt!, now);
   const summaryMonth = offeredSummaryMonth(await readFirstDeliveryMonth(reader, child.id, zone), now, zone);
-  return { child, level, areas, resultPreparing, resultLate: late, workbook, action, summaryMonth };
+  return { child, level, areas, skills, areasIncludeMarks: !!progress?.marks.length && areas.length > 0, resultPreparing, resultLate: late, workbook, action, summaryMonth };
 }
 
 /** The Level tile and the area bars of one finished test with a report, scored by the assessment core. */
-async function testLevel(reader: ParentViewReader, test: TestRecord, schoolGrade: Grade, zone: FamilyZone): Promise<{ level: LevelTileView | null; areas: AreaBarView[] }> {
+async function testLevel(reader: ParentViewReader, test: TestRecord, schoolGrade: Grade, zone: FamilyZone, marks: readonly AreaAnswer[] = []): Promise<{ level: LevelTileView | null; areas: AreaBarView[] }> {
   const result = await reader.testResult(test.id);
   if (!result) return { level: null, areas: [] };
   // D-258 (#579): a test the report calls unreliable shows no bars. A fall back to the overall level would invent a
@@ -408,7 +434,7 @@ async function testLevel(reader: ParentViewReader, test: TestRecord, schoolGrade
     unreliable,
   };
   const areas: AreaBarView[] = result.answers && !unreliable
-    ? areaLevels({ answers: result.answers, schoolGrade, workingLevel: result.level.working })
+    ? areaLevels({ answers: [...result.answers, ...marks], schoolGrade, workingLevel: result.level.working })
       .map((a) => ({ area: a.area, name: REPORTED_STRAND_NAMES[a.area], level: a.level, label: a.label, earlySign: a.certainty !== "clear" }))
     : [];
   return { level, areas };

@@ -325,7 +325,7 @@ describe("the Overview (#560)", () => {
 
   it("before the first test: no tile, no bar, and Start the test as the one thing to do", async () => {
     expect(await read({})).toEqual({
-      child: expect.objectContaining({ id: "child-1", stage: "first_book_coming" }), level: null, areas: [], resultPreparing: false, resultLate: false, workbook: null, action: "start_test", summaryMonth: null,
+      child: expect.objectContaining({ id: "child-1", stage: "first_book_coming" }), level: null, areas: [], skills: null, areasIncludeMarks: false, resultPreparing: false, resultLate: false, workbook: null, action: "start_test", summaryMonth: null,
     });
   });
 
@@ -383,6 +383,27 @@ describe("the Overview (#560)", () => {
       { area: "algebra", name: "Patterns and algebra", level: 2, label: "building-up", earlySign: false },
       { area: "shapes", name: "Shapes, measurement and data", level: 4, label: "ahead", earlySign: false },
     ]);
+  });
+
+  it("combines stored page results with the test and keeps the assessment level", async () => {
+    const data = { ...own, marks: at("number", 4, 4, 0), history: [], statesReady: true };
+    const view = await read({ ...tested, results: [result("t", { answers: at("number", 3, 4, 0) })], overviewProgress: [data] });
+    expect(view?.level?.working).toBe(3);
+    expect(view?.areas[0]).toMatchObject({ level: 4, label: "ahead" });
+    expect(view?.areasIncludeMarks).toBe(true);
+    expect((await read({ ...tested, results: [result("t", { answers: null })], overviewProgress: [data] }))?.areas).toEqual([]);
+    expect((await read({ ...tested, results: [result("t", { answers: [], unreliable: true })], overviewProgress: [data] }))?.areas).toEqual([]);
+  });
+
+  it("counts stored skill states at the family month boundary and hides unavailable states", async () => {
+    const data = { ...own, marks: [], statesReady: true, history: [
+      { standard: "3.1", state: "mastered" as const, changedAt: "2026-11-01T06:30:00Z" },
+      { standard: "3.2", state: "mastered" as const, changedAt: "2026-11-01T07:30:00Z" },
+    ] };
+    const tables = { ...tested, switches: { progress: true, maya: false, scanPages: false }, results: [result("t")], overviewProgress: [data] };
+    const view = await read(tables);
+    expect(view?.skills).toMatchObject({ mastered: 2, moreThisMonth: 1 });
+    expect((await read({ ...tables, overviewProgress: [{ ...data, statesReady: false }] }))?.skills).toBeNull();
   });
 
   it("an area with no answers has no bar; Kindergarten to Grade 2 show no fractions", async () => {
