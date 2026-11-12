@@ -1,6 +1,7 @@
 // #472 Book 1 baseline storage and capture. The SQL transport is its own interface; book1BaselineSql binds it to the
-// three service-only functions of migration workbook_book1_baseline. There is no route, worker or switch: the admin
-// preview reads Book 1 sources through it, and the capture runs by hand after R2.
+// three service-only functions of migration workbook_book1_baseline. The admin preview reads Book 1 sources through it.
+// The capture runs after each Book 1 approval and in the reminders run (#870, src/lib/workbook-book1-capture.ts), and by
+// hand for a frame with no planning capture (scripts/book1-baseline-recover.ts).
 //
 // Capture order (the handoff names the exact root steps): the final draft revision is saved (R2) first; then
 // captureBook1Baseline reads that revision as approval would, proves the planning input, and saves the baseline, whose

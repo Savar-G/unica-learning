@@ -142,6 +142,17 @@ When there are many more customers, the API becomes the default again (D-200):
 The work review, the report text, the learner and child profiles and Maya run live for parents and children. They always use the API (`src/lib/ai-client.ts`). Only workbook generation uses the subscription.
 
 
+## Book 1 baseline recovery (#870)
+
+After an admin approves a Book 1 draft, the site saves its starting record (the Book 1 baseline) from the plan input that the run frame keeps. A run made before #472 kept no plan input. For such a run, the admin run page says "Not saved" and names the recovery script. The site cannot recover it: recovery runs the original planner, built from this repository's Git objects.
+
+On the Mac, from a checkout that has the frame's build commit:
+
+1. Run `npm run workbooks:book1-recover -- --run <run id>`. It saves nothing. It prints the recovered input hash, or the reason it refuses.
+2. Run it again with `--save`. It saves the baseline for the latest approved version, and it never replaces a baseline that exists.
+
+Do this before any page of the book is marked: after the first mark, the save refuses (`activity-before-boundary`). Recovery also refuses when the child's profile was rebuilt after the run's frame.
+
 ## Draft review comments (#313)
 
 The draft page has a comment reviewer. Click a question or a place on the page. You can also select a question from the list. Enter saves a comment. Esc cancels it. Saved comments survive a reload and do not change the workbook. Use **Edit myself** inside a question comment to change its exact fields. Code calculates its answer and worked steps.

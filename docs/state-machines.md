@@ -109,7 +109,7 @@ Scores: U = user experience value, D = developer experience value, A = agent exp
 | WB9 | Print contract freeze | workbooks.printed_revision, pdf_sha256, print_manifest | legacy (none), frozen, cleared | workbook-print-contract.ts + SQL | format checks + trigger | - | 1 | 1 | 1 |
 | WB10 | Delivery receipt and corrections | workbook_delivery_receipts, _corrections | not delivered, delivered, corrected | 2 SQL fns + workbook-delivery.ts; derived in 3 places | immutable triggers + CAS on audit id | - | 2 | 2 | 1 |
 | WB11 | Workbook emails | workbook_emails.status | pending, sending, sent, failed, unknown, skipped | claim SQL + workbook-email.ts; 10-minute rule in 3 places | check + unique + row lock + claim token | Row stays "sending" for ever if the process dies | 2 | 2 | 2 |
-| WB12 | Book 1 baseline, second tries, previews | workbook_book1_baselines, _second_tries, _plan_previews | none, baseline saved, second tries, preview saved | SQL + workbook-book1-store.ts | immutability triggers + unique keys | - | 1 | 1 | 1 |
+| WB12 | Book 1 baseline, second tries, previews | workbook_book1_baselines, _baseline_pending, _second_tries, _plan_previews | none, pending recovery, baseline saved, second tries, preview saved | SQL + workbook-book1-store.ts + workbook-book1-capture.ts | immutability triggers + unique keys | - | 1 | 1 | 1 |
 | WB13 | Boundary items (scan receipts, restart requests) | workbook_scan_*, workbook_restart_requests | pending (run_id null), consumed; scan states not traced | 2 SQL triggers; not inventoried in depth | FK + triggers | Any run insert clears the restart request, even a failed run | 1 | 1 | 1 |
 
 ### Assessments, reports and email

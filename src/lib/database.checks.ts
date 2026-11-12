@@ -413,6 +413,8 @@ export const DATABASE_CHECKS: readonly { table: string; name: string; definition
   {"table":"workbook_audit","name":"workbook_audit_action_check","definition":"CHECK ((action ~ '^[a-z][a-z-]{1,40}$'::text))"},
   {"table":"workbook_audit","name":"workbook_audit_actor_email_check","definition":"CHECK ((char_length(actor_email) <= 320))"},
   {"table":"workbook_audit","name":"workbook_audit_detail_check","definition":"CHECK (((jsonb_typeof(detail) = 'object'::text) AND (pg_column_size(detail) < 20000)))"},
+  {"table":"workbook_book1_baseline_pending","name":"workbook_book1_baseline_pending_reason_check","definition":"CHECK ((reason ~ '^[a-z0-9-]{1,80}$'::text))"},
+  {"table":"workbook_book1_baseline_pending","name":"workbook_book1_baseline_pending_revision_check","definition":"CHECK (((revision >= 1) AND (revision <= 10000)))"},
   {"table":"workbook_book1_baselines","name":"workbook_book1_baselines_check","definition":"CHECK (((payload_hash ~ '^[0-9a-f]{64}$'::text) AND (payload_hash = encode(sha256(convert_to(payload, 'UTF8'::name)), 'hex'::text))))"},
   {"table":"workbook_book1_baselines","name":"workbook_book1_baselines_db_content_hash_check","definition":"CHECK ((db_content_hash ~ '^[0-9a-f]{64}$'::text))"},
   {"table":"workbook_book1_baselines","name":"workbook_book1_baselines_db_frame_hash_check","definition":"CHECK ((db_frame_hash ~ '^[0-9a-f]{64}$'::text))"},
