@@ -3030,13 +3030,16 @@ function stepStatement(pkg: OperationPackage, step: Extract<WorkedStep, { kind: 
     return opened.split(STATEMENT_JOIN).map((c, i) => (i === 0 ? c : c.replace(/^(?:so|and|then)\b\s*/, "")).trim());
   });
   let totals = 0;
+  // One pool of the step's operands for the whole turn (review P1, 2026-11-12): each operand is described at most once, so
+  // "I add 9. I add 9. That's 16." (9 + 9) is no description of 7 + 9. The sum clause is the commit and takes none.
+  const pool = step.carryIn > 0 ? [...step.digits, step.carryIn] : [...step.digits];
   for (const c of clauses) {
     if (c === "") return false;
     if (lead.test(c) || already.test(c) || /^(?:that's|that is) what i got$/.test(c)) continue;
     const add = /^i added (.+?) (?:and|plus|\+) (.+?)(?: (?:and|plus|\+) (.+?))?$/.exec(c);
     if (add) {
       const ns = add.slice(1).filter((x) => x !== undefined).map(plainNumber);
-      if (ns.some((n) => n === null) || ns.map(Number).sort((a, b) => a - b).join(",") !== operands) return false;
+      if (ns.some((n) => n === null) || ns.map(Number).sort((a, b) => a - b).join(",") !== operands || !takeOperands(pool, ns as number[])) return false;
       continue;
     }
     const sum = wholeSum(c.replace(/^i did\s+/, ""));
@@ -3055,7 +3058,7 @@ function stepStatement(pkg: OperationPackage, step: Extract<WorkedStep, { kind: 
     const w = /^(?:i )?wrote (?:the )?(.+)$/.exec(c);
     if (w && totals === 1 && plainNumber(w[1]) === step.write) continue;
     // Sentence-level commit (2026-11-12): any other clause must be harmless.
-    if (harmlessClause(step, c, totals === 0)) continue;
+    if (harmlessClause(step, c, totals === 0, pool)) continue;
     return false;
   }
   if (totals !== 1) return false;
@@ -3079,26 +3082,57 @@ const PLACE_WORDS = new Set(["ones", "tens", "hundreds", "thousands", "tenths", 
 /**
  * A clause of a step statement that commits nothing and withdraws nothing (sentence-level commit rule, 2026-11-12): every
  * word is on HARMLESS_WORDS or is a number; the only place it names is the step's own; its numbers are some of the step's
- * own operands (and its carry-in), never the total, another number or a number twice, and only before the committing
+ * own operands (and its carry-in) still in the turn's pool (`pool`, one for the whole turn: an operand once in the turn),
+ * never the total, another number or a number twice, and only before the committing
  * clause (`numbers`: "I add 7 and 9. That's 16." but not "9 and 7 is 16, 9 and 7."); and a clause that names "you" (Maya)
  * holds no number and is not what she said, so "Like you showed me" is harmless and "like you said" and "You said 16"
  * are not: that is Maya's number, not the child's. The committing clause is the caller's: a harmless clause alone never
  * credits.
  */
-function harmlessClause(step: Extract<WorkedStep, { kind: "add-column" }>, clause: string, numbers: boolean): boolean {
+function harmlessClause(step: Extract<WorkedStep, { kind: "add-column" }>, clause: string, numbers: boolean, pool: number[]): boolean {
   const words = clause.replace(/\+/g, " + ").split(/\s+/).filter(Boolean);
   if (words.length === 0 || !words.every((w) => HARMLESS_WORDS.has(w) || plainNumber(w) !== null)) return false;
   if (words.some((w) => PLACE_WORDS.has(w) && w !== step.place)) return false;
   const r = readNumbers(clause);
   if (r.unreadable) return false;
   if (words.includes("you") && words.includes("said")) return false;
+  if (asksMaya(words)) return false;
   if (r.values.length === 0) return true;
   if (!numbers || words.includes("you")) return false;
-  const left = step.carryIn > 0 ? [...step.digits, step.carryIn] : [...step.digits];
-  return r.values.every((v) => {
-    const at = v.type === "number" ? left.indexOf(v.value) : -1;
-    return at >= 0 && left.splice(at, 1).length === 1;
-  });
+  return r.values.every((v) => v.type === "number") && takeOperands(pool, r.values.map((v) => (v as { value: number }).value));
+}
+
+/** The verbs of HARMLESS_WORDS. */
+const HARMLESS_VERBS = new Set(["showed", "show", "shown", "taught", "said", "add", "added", "adding", "start", "started"]);
+
+/**
+ * The clause asks Maya to do or show something (review P2, 2026-11-12): "you" before any verb but a past "showed" or
+ * "taught" ("You show me.", "Now you add."), or a verb with no subject before it ("Show me.", "Add 9."). Such a clause is
+ * a request, never a harmless description: "Like you showed me" and "I add the ones first" are not requests.
+ */
+function asksMaya(words: readonly string[]): boolean {
+  let subject = false;
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (w === "you") {
+      if (words[i + 1] !== "showed" && words[i + 1] !== "taught") return true;
+      subject = true;
+    } else if (w === "i") subject = true;
+    else if (HARMLESS_VERBS.has(w) && !subject) return true;
+  }
+  return false;
+}
+
+/** Takes these numbers out of the turn's operand pool, each once; false (and the pool unchanged) when one is not left. */
+function takeOperands(pool: number[], values: readonly number[]): boolean {
+  const left = [...pool];
+  for (const v of values) {
+    const at = left.indexOf(v);
+    if (at < 0) return false;
+    left.splice(at, 1);
+  }
+  pool.splice(0, pool.length, ...left);
+  return true;
 }
 
 /** The steps the ladder is past: done by the child, or passed after Maya showed them at H3 (copiedStep). */
