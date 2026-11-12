@@ -28,6 +28,7 @@ const ICON: Record<AdminNavKey | "chev" | "side" | "menu" | "search", string> = 
   reviews: '<path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6z"/><path d="m9 12 2 2 4-4"/>',
   ai: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
   preview: '<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>',
+  budget: '<rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6.5 9.5v.01M17.5 14.5v.01"/>',
   export: '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 19h16"/>',
   chev: '<path d="m6 9 6 6 6-6"/>',
   side: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>',
