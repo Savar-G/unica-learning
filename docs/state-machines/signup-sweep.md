@@ -112,6 +112,7 @@ Cross-area signals worth knowing (not deep-dived, other agents own them): `paren
 - Value x risk: AX value (four stage models). Low risk to document, medium to merge (admin money views).
 
 ### 8. Legacy booking signup (`public.signups`, `/api/signup`) and signup_heard
+- Update 2026-11-11: `/api/signup`, `/api/heard`, `cardSetupUrl`, `src/lib/heard.ts` and `src/lib/signup-route.test.ts` were removed (no caller; 0 rows in `public.signups` and `public.signup_heard`). The tables, triggers and functions stay. The notes below describe the code before the removal.
 - Entity / storage: `public.signups` (`status` reserved|waitlist, `booking_state` pending|ready|not_started, `booking_customer_id`, `ref`), `public.booking_family_links`, `public.signup_heard` (channel, detail).
 - States: `status` check (schema.sql:6) set by `statusFor(curriculum)` (src/lib/signup.ts:42-ish). `booking_state` check ('pending','ready','not_started'), NULL for pre-migration rows (migration 20261016_fence_booking_operations.sql:11-12).
 - Transitions: insert -> `pending` if reserved else `not_started` (trigger `fence_booking_signup`, same migration). `pending` -> `ready` (with a Stripe customer) or `not_started` (no customer) only, via `finish_booking_signup` (`update ... where booking_state = 'pending'`). The trigger refuses every other change (`booking_transition_unavailable`). Writers: /api/signup (src/app/api/signup/route.ts:57, :77, :84) through `begin_booking_signup` and `finish_booking_signup` RPCs.
@@ -361,7 +362,7 @@ Observations from the table:
 | ChildTab | src/lib/child-stage.ts:11 | overview, progress, workbooks, schedule, scan_pages, maya, assessment, account | 2 | 3 | - |
 | FeedbackError | src/lib/feedback.ts:29 | empty, too_long, no_product, invalid, conflict, rate_limited, family_unavailable, child_unavailable, unavailable, signed_out, desk_open | 2 | 9 | - |
 | FeedbackAdmission | src/lib/feedback.ts:31 | saved, duplicate, conflict, rate_limited, family_unavailable, child_unavailable | 1 | 8 | - |
-| ChannelId | src/lib/heard.ts:5 | friend, search, ai, social, other | 2 | 1 | signup_heard.channel |
+| ChannelId | src/lib/heard.ts:5 (removed 2026-11-11) | friend, search, ai, social, other | 2 | 1 | signup_heard.channel |
 | EventResult | src/lib/learning-events.ts:36 | right, wrong, blank, right_with_help | 1 | 16 | learning_events.result |
 | EvidenceKind | src/lib/learning-events.ts:38 | call, scan, answer | 1 | 1 | learning_events.evidence_kind |
 | LearningError | src/lib/learning-style.ts:92 | bad_json, signed_out, invalid, not_found, store_failed | 1 | 6 | - |
@@ -473,8 +474,8 @@ Observations from the table:
 | field | file:line | values |
 |---|---|---|
 | status | src/app/api/admin/scans/marks/route.ts:6 | conflict, not_waiting, no_photo |
-| stripeState | src/app/api/signup/route.ts:69 | sent, off, failed |
-| stripeState | src/app/api/signup/route.ts:101 | sent, off, failed |
+| stripeState | src/app/api/signup/route.ts:69 (removed 2026-11-11) | sent, off, failed |
+| stripeState | src/app/api/signup/route.ts:101 (removed 2026-11-11) | sent, off, failed |
 | status | src/lib/account-server.ts:19 | exists, busy, unavailable, failed |
 | kind | src/lib/admin-dashboard.ts:23 | continue, come_back, start, start_followup, unsubscribe, maya_daily, maya_weekly, maya_unsubscribe, monthly_summary, monthly_summary_unsubscribe |
 | status | src/lib/admin-dashboard.ts:23 | claimed, sent, failed |
