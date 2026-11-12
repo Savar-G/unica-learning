@@ -177,3 +177,83 @@ it.each(["null", "empty"] as const)("R450-7 late %s output cannot stop a replace
   await c.board.played(newScope, 100);
   expect(boardPaths(c.receiver.scene()).length).toBeGreaterThan(0);
 });
+
+/** A sentence's audio that the test plays out: one frame, then the end only when `end` is called. */
+function heldSentence() {
+  let end = () => {};
+  let cancelled = false;
+  const stream = new ReadableStream<AudioFrame>({
+    start(o) {
+      o.enqueue(new AudioFrame(new Int16Array(2400), 24000, 1, 2400));
+      end = () => { try { o.close(); } catch { /* already cancelled */ } };
+    },
+    cancel() { cancelled = true; },
+  });
+  return { stream, end: () => end(), get cancelled() { return cancelled; } };
+}
+
+it("synthesizes the next sentence while the current one plays, and reads them in order", async () => {
+  const c = await setup(1);
+  const made: string[] = [];
+  const sentences: ReturnType<typeof heldSentence>[] = [];
+  const audio = boardAudio(inputText("Write 27. Then add 39."), async (text) => {
+    for await (const chunk of text) made.push(chunk);
+    const s = heldSentence();
+    sentences.push(s);
+    return s.stream;
+  }, c.board, c.scope);
+  const reader = audio.getReader();
+  // The first sentence's frame plays, and its end has not come: the second is already being made.
+  await reader.read();
+  await new Promise<void>(r => setImmediate(r));
+  expect(made).toEqual(["Write 27.", "Then add 39."]);
+  sentences[0].end();
+  const second = await reader.read();
+  expect(second.done).toBe(false);
+  sentences[1].end();
+  expect((await reader.read()).done).toBe(true);
+});
+
+it("a cut stream retires the sentence made ahead, so it is never read", async () => {
+  const c = await setup(1);
+  const sentences: ReturnType<typeof heldSentence>[] = [];
+  const audio = boardAudio(inputText("Write 27. Then add 39."), async () => {
+    const s = heldSentence();
+    sentences.push(s);
+    return s.stream;
+  }, c.board, c.scope);
+  const reader = audio.getReader();
+  await reader.read();
+  await new Promise<void>(r => setImmediate(r));
+  expect(sentences).toHaveLength(2);
+  await reader.cancel();
+  await new Promise<void>(r => setImmediate(r));
+  expect(sentences[1].cancelled).toBe(true);
+});
+
+it("plays nothing before the plan is on the receiver, and nothing at all when sending it failed", async () => {
+  const receiver = createBoardReceiver({ sessionId: "call" });
+  const sender = createBoardSender({ sessionId: "call", senderId: "worker", transport: createMemoryTransport(receiver) });
+  const board = createBoardSpeech({ sender, now: () => 0 });
+  await board.connect();
+  // The plan's send does not answer until the test says so.
+  let answer: (ok: boolean) => void = () => {};
+  const send = sender.send.bind(sender);
+  vi.spyOn(sender, "send").mockImplementation(async (b, o) => (await new Promise<boolean>(r => { answer = r; })) ? send(b, o) : Promise.reject(new Error("no answer")));
+  const staging = board.stage("speech", [{ word: 1, batch: columns }]);
+  void staging.catch(() => {});
+  const scope = board.capture("speech")!;
+  let made = 0;
+  const audio = boardAudio(inputText("Write."), async () => { made++; return synthFrame(); }, board, scope);
+  const reader = audio.getReader();
+  let heard = false;
+  const read = reader.read().then(r => { heard = !r.done; return r; });
+  await new Promise<void>(r => setTimeout(r, 20));
+  // The voice was asked already, and no frame came out.
+  expect(made).toBe(1);
+  expect(heard).toBe(false);
+  answer(false);
+  expect((await read).done).toBe(true);
+  expect(heard).toBe(false);
+  await expect(board.sent(scope)).rejects.toThrow();
+});

@@ -174,6 +174,8 @@ export interface VoiceTuning {
   sttMinSilenceMs: number;
   /** AssemblyAI `max_turn_silence` (ms): silence after which the turn ends whatever the model thinks. */
   sttMaxSilenceMs: number;
+  /** `min_turn_silence` while Maya waits for the child to say a number (ms): a pause after "fifty" must not end the turn. */
+  sttNumberMinSilenceMs: number;
   /** `max_turn_silence` while Maya waits for the child to say a number (ms). */
   sttNumberSilenceMs: number;
   /** LiveKit endpointing `minDelay` (ms): added after the speech-to-text end of turn. */
@@ -186,10 +188,18 @@ export interface VoiceTuning {
   interruptMinWords: number;
 }
 
-/** The defaults. Each is a starting point to confirm with children's calls, not a measured result. */
+/**
+ * The defaults. Each is a starting point to confirm with children's calls, not a measured result. The normal turn
+ * (docs/maya-voice.md, "Tuning for children"): AssemblyAI ends a turn that reads complete at `min_turn_silence`, and holds
+ * a turn that reads unfinished, or ends in a number that can go on, until `max_turn_silence`. 400 ms is between its
+ * "balanced" 128 ms, which can cut a child's pause in a sentence, and "max_accuracy" 512 ms. 1600 ms is just above
+ * "balanced" 1280 ms and near the 1.64 s AssemblyAI measured for its slowest tenth of held turns. A number answer keeps
+ * the long limits (512 ms and 4500 ms), because a child thinks between "fifty" and "six".
+ */
 export const VOICE_TUNING_DEFAULTS: VoiceTuning = {
-  sttMinSilenceMs: 512,
-  sttMaxSilenceMs: 3000,
+  sttMinSilenceMs: 400,
+  sttMaxSilenceMs: 1600,
+  sttNumberMinSilenceMs: 512,
   sttNumberSilenceMs: 4500,
   turnMinDelayMs: 100,
   numberContinueMs: 1500,
@@ -201,12 +211,29 @@ export const VOICE_TUNING_DEFAULTS: VoiceTuning = {
 const TUNING_SETTINGS = [
   { env: "MAYA_STT_MIN_SILENCE_MS", field: "sttMinSilenceMs", min: 0, max: 2000 },
   { env: "MAYA_STT_MAX_SILENCE_MS", field: "sttMaxSilenceMs", min: 100, max: 10_000 },
+  { env: "MAYA_STT_NUMBER_MIN_SILENCE_MS", field: "sttNumberMinSilenceMs", min: 0, max: 2000 },
   { env: "MAYA_STT_NUMBER_SILENCE_MS", field: "sttNumberSilenceMs", min: 100, max: 10_000 },
   { env: "MAYA_TURN_MIN_DELAY_MS", field: "turnMinDelayMs", min: 0, max: 2000 },
   { env: "MAYA_NUMBER_CONTINUE_MS", field: "numberContinueMs", min: 0, max: 3000 },
   { env: "MAYA_INTERRUPT_MIN_MS", field: "interruptMinMs", min: 0, max: 2000 },
   { env: "MAYA_INTERRUPT_MIN_WORDS", field: "interruptMinWords", min: 0, max: 5 },
 ] as const satisfies readonly { env: string; field: keyof VoiceTuning; min: number; max: number }[];
+
+/** AssemblyAI's two end-of-turn silences (ms): `min_turn_silence` and `max_turn_silence`. */
+export interface TurnSilence {
+  minMs: number;
+  maxMs: number;
+}
+
+/**
+ * The silences of a normal child turn, and of the one turn after Maya asks for a number (`asksForNumber`). The number
+ * turn is never shorter than a normal turn, also when the normal minimum is set above the number minimum.
+ */
+export function turnSilences(tuning: VoiceTuning): { normal: TurnSilence; number: TurnSilence } {
+  const normal = { minMs: tuning.sttMinSilenceMs, maxMs: tuning.sttMaxSilenceMs };
+  const minMs = Math.max(normal.minMs, tuning.sttNumberMinSilenceMs);
+  return { normal, number: { minMs, maxMs: Math.max(tuning.sttNumberSilenceMs, minMs) } };
+}
 
 /** The tuning from the worker's environment, or the problems with it. An unset or empty variable keeps its default. */
 export function voiceTuning(env: Readonly<Record<string, string | undefined>>): { tuning: VoiceTuning; problems: string[] } {
@@ -222,6 +249,7 @@ export function voiceTuning(env: Readonly<Record<string, string | undefined>>): 
   if (!problems.length) {
     if (tuning.sttMaxSilenceMs < tuning.sttMinSilenceMs) problems.push("MAYA_STT_MAX_SILENCE_MS must not be less than MAYA_STT_MIN_SILENCE_MS");
     if (tuning.sttNumberSilenceMs < tuning.sttMaxSilenceMs) problems.push("MAYA_STT_NUMBER_SILENCE_MS must not be less than MAYA_STT_MAX_SILENCE_MS");
+    if (tuning.sttNumberSilenceMs < tuning.sttNumberMinSilenceMs) problems.push("MAYA_STT_NUMBER_SILENCE_MS must not be less than MAYA_STT_NUMBER_MIN_SILENCE_MS");
   }
   return { tuning, problems };
 }
@@ -367,8 +395,8 @@ const NUMBER_REQUEST = /\b(?:try|work out|find|solve|add|subtract|multiply|divid
  * Whether Maya's last accepted words ask the child for a number: the session is in a state where she asks for a
  * computed answer, and her last sentence is a question that asks "what", "how many", "how much" or "which number" (or
  * asks the child to work something out), or a request to try, work out, add, subtract, multiply or divide. It is a rule
- * on her words, not a controller flag. A wrong yes only gives the child a longer limit for the next turn
- * (`sttNumberSilenceMs`), which the speech-to-text uses only to hold a turn it thinks is not finished.
+ * on her words, not a controller flag. A wrong yes only gives the child the longer limits for the next turn
+ * (`sttNumberMinSilenceMs`, `sttNumberSilenceMs`); the worker puts the normal limits back when that turn arrives.
  */
 export function asksForNumber(say: string, state: Session["state"]): boolean {
   if (!NUMBER_STATES.includes(state)) return false;

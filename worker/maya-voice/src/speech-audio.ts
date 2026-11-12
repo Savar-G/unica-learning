@@ -52,7 +52,12 @@ export async function countedSynthesis(
   });
 }
 
-/** Synthesize separate sentences so a provider without word times still has real sentence audio boundaries. */
+/**
+ * Synthesize separate sentences so a provider without word times still has real sentence audio boundaries. The next
+ * sentence is synthesized while the current one plays, so the voice does not stop between sentences for the provider's
+ * first-audio delay. No frame plays before the plan's batches are on the receiver (`board.sent`): the text goes to the
+ * voice while the plan goes out, and a cue word can never be heard before its batch is staged.
+ */
 export function boardAudio(
   text: ReadableStream<string> | AsyncIterable<string>,
   synthesize: (text: ReadableStream<string>) => Promise<ReadableStream<AudioFrame> | null>,
@@ -61,6 +66,13 @@ export function boardAudio(
 ): ReadableStream<AudioFrame> {
   const abort = new AbortController();
   let current: ReadableStreamDefaultReader<AudioFrame> | null = null;
+  /** The next sentence's synthesis, started early. It is retired with this stream. */
+  let ahead: Promise<ReadableStream<AudioFrame> | null> | null = null;
+  const retireAhead = () => {
+    const next = ahead;
+    ahead = null;
+    void next?.then(frames => frames?.cancel(scope)).catch(() => {});
+  };
   return new ReadableStream<AudioFrame>({
     async start(controller) {
       const stale = () => {
@@ -69,22 +81,44 @@ export function boardAudio(
         controller.close();
         return true;
       };
+      const synthesizeSentence = (sentence: string) => synthesize(new ReadableStream<string>({ start(c) { c.enqueue(sentence); c.close(); } }));
       try {
         if (stale()) return;
         let full = "";
         for await (const chunk of text) { if (stale()) return; full += chunk; }
         let offsetMs = 0;
         let words = 0;
-        for (const sentence of speechSentences(full)) {
+        const sentences = speechSentences(full);
+        let gated = false;
+        for (const [index, sentence] of sentences.entries()) {
           if (stale()) return;
-          const input = new ReadableStream<string>({ start(c) { c.enqueue(sentence); c.close(); } });
-          const frames = await synthesize(input);
+          const pending = ahead ?? synthesizeSentence(sentence);
+          ahead = null;
+          const frames = await pending;
           if (stale()) {
             // A provider can return after cancellation. Retire its stream without touching a newer board plan.
             void frames?.cancel(scope).catch(() => {});
             return;
           }
           if (!frames) { await board.interrupt(scope); if (!abort.signal.aborted) controller.close(); return; }
+          if (!gated) {
+            gated = true;
+            // The voice has the words already; its audio waits until the plan is on the child's screen. A plan that
+            // could not be sent has no audio: the call's own handler ends the call for that failure.
+            let failed = false;
+            try { await board.sent(scope); } catch { failed = true; }
+            if (failed || stale()) {
+              void frames.cancel(scope).catch(() => {});
+              if (failed && !abort.signal.aborted) controller.close();
+              return;
+            }
+          }
+          // The next sentence's audio is made while this one is read out.
+          if (index + 1 < sentences.length) {
+            ahead = synthesizeSentence(sentences[index + 1]);
+            // Its failure is read when its turn comes (below), not as an unhandled rejection while this one plays.
+            void ahead.catch(() => {});
+          }
           const reader = frames.getReader();
           current = reader;
           let durationMs = 0;
@@ -152,8 +186,11 @@ export function boardAudio(
           if (board.owns(scope)) controller.error(e);
           else controller.close();
         }
+      } finally {
+        // Every way out, a stale plan or a cut included, retires the sentence made ahead: it is never read.
+        retireAhead();
       }
     },
-    async cancel() { abort.abort(); await current?.cancel(scope).catch(() => {}); },
+    async cancel() { abort.abort(); retireAhead(); await current?.cancel(scope).catch(() => {}); },
   });
 }

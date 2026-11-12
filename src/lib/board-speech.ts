@@ -47,6 +47,10 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
   let retired = false;
   let active: { scope: SpeechScope; id: string; cues: BoardCue[]; timings: { word: number; audioMs: number; source: CueSource; reachedAt?: number }[]; position: number | null; playedAt: number; anchorAt?: number; generation: number } | null = null;
   let observation: Promise<unknown> = Promise.resolve();
+  /** The save of the receiver's snapshot after the newest plan went out. It is outside the serial order (below). */
+  let stagedObservation: Promise<unknown> = Promise.resolve();
+  /** When the newest plan's batches reached the receiver (or it can no longer send them). */
+  let sending: { scope: SpeechScope; done: Promise<void> } | null = null;
   let queue: Promise<unknown> = Promise.resolve();
   const serial = <T>(op: () => Promise<T>) => { const run = queue.then(op); queue = run.catch(() => {}); return run; };
   const matches = (scope: SpeechScope | null) => !!scope && plannedScope?.utteranceId === scope.utteranceId && plannedScope.generation === scope.generation;
@@ -88,7 +92,12 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
       return plannedScope?.utteranceId === utteranceId && !retired ? { ...plannedScope } : null;
     },
     owns,
-    /** Plans must be staged before their speech starts. A new plan invalidates callbacks from the previous speech. */
+    /**
+     * Plans must be on the receiver before their speech is heard: the audio of a plan waits for `sent(scope)`. A new plan
+     * invalidates callbacks from the previous speech. The returned promise also covers the save of the receiver's
+     * snapshot that follows, which is not in the serial order: a release (and so the audio that waits for a word time)
+     * never waits for that save.
+     */
     stage(id: string, cues: readonly BoardCue[]) {
       const gen = ++generation;
       const scope: SpeechScope = { utteranceId: id, generation: gen };
@@ -98,20 +107,41 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
       active = null;
       const copy = structuredClone([...cues]);
       if (copy.some((c, i) => !Number.isSafeInteger(c.word) || c.word < 1 || (i > 0 && c.word < copy[i - 1].word))) throw new Error("Speech cues must be ordered word positions.");
-      return serial(async () => {
-        if (!owns(scope)) return;
-        if (cancellation) check(await cancellation);
-        if (!owns(scope)) return;
-        if (deliveryScope) check(await sender.cancel(deliveryScope));
-        await options.observe?.(sender.snapshot());
-        if (!owns(scope)) return;
-        active = { scope, id, cues: copy, timings: [], position: null, playedAt: options.now(), generation: gen };
-        for (const cue of copy) {
+      let markSent = () => {};
+      let failSent: (e: unknown) => void = () => {};
+      const done = new Promise<void>((resolve, reject) => { markSent = resolve; failSent = reject; });
+      void done.catch(() => {});
+      sending = { scope, done };
+      let changed = false;
+      const sent = serial(async () => {
+        try {
           if (!owns(scope)) return;
-          deliveryScope = scope;
-          check(await sender.send(cue.batch, { scope }));
+          if (cancellation) check(await cancellation);
+          if (!owns(scope)) return;
+          if (deliveryScope) { changed = true; check(await sender.cancel(deliveryScope)); }
+          if (!owns(scope)) return;
+          active = { scope, id, cues: copy, timings: [], position: null, playedAt: options.now(), generation: gen };
+          for (const cue of copy) {
+            if (!owns(scope)) return;
+            deliveryScope = scope;
+            changed = true;
+            check(await sender.send(cue.batch, { scope }));
+          }
+        } catch (e) {
+          failSent(e);
+          throw e;
+        } finally {
+          markSent();
         }
       });
+      // Taken once the plan went out, so it holds the cancellation and the new batches (pending until released).
+      const observed = sent.then(() => (changed ? options.observe?.(sender.snapshot()) : undefined));
+      stagedObservation = observed.catch(() => {});
+      return observed;
+    },
+    /** Resolves when this scope's batches are on the receiver; rejects when sending them failed. Other scopes: at once. */
+    sent(scope: SpeechScope): Promise<void> {
+      return sending && sending.scope.utteranceId === scope.utteranceId && sending.scope.generation === scope.generation ? sending.done : Promise.resolve();
     },
     timing(scope: SpeechScope, word: number, audioMs: number, source: CueSource) {
       if (!owns(scope) || !active || active.generation !== scope.generation || !Number.isFinite(audioMs) || audioMs < 0) return Promise.resolve();
@@ -163,7 +193,7 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
       plannedScope = null;
       return connect();
     },
-    settled: async () => { await observation; await queue; },
+    settled: async () => { await observation; await queue; await stagedObservation; },
   };
 }
 export type BoardSpeech = ReturnType<typeof createBoardSpeech>;

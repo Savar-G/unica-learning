@@ -14,13 +14,13 @@
 // plugin sends 100 ms for both when no mode and no limit is set (`#connectWS` in the AssemblyAI plugin's stt.js). Every
 // AssemblyAI model here gets the configuration's limits and the call's keyterms.
 import type { stt, tts } from "@livekit/agents";
-import { VOICE_TUNING_DEFAULTS, type SpeechToTextConfig, type VoiceConfig, type VoiceTuning } from "@/lib/maya-voice";
+import { VOICE_TUNING_DEFAULTS, type SpeechToTextConfig, type TurnSilence, type VoiceConfig, type VoiceTuning } from "@/lib/maya-voice";
 import { FakeSpeech, FakeSTT, FakeTTS } from "./fake-providers";
 
 /** Changes how long the speech-to-text waits through a silence before it ends the child's turn, during the call. */
 export interface TurnPatience {
-  /** Sets `max_turn_silence` (ms) for the turns that follow. */
-  setMaxSilenceMs(ms: number): void;
+  /** Sets `min_turn_silence` and `max_turn_silence` (ms) for the turns that follow. */
+  setSilence(limits: TurnSilence): void;
 }
 
 export interface Providers {
@@ -59,7 +59,8 @@ export async function makeProviders(
     } else if (c.model.startsWith("deepgram/") && keyterms.length) modelOptions.keyterm = [...keyterms];
     const inferenceStt = new inference.STT({ model: c.model, language: "en", apiKey: c.apiKey, apiSecret: c.apiSecret, modelOptions: modelOptions as never });
     speech = inferenceStt;
-    if (c.model.startsWith("assemblyai/")) patience = { setMaxSilenceMs: ms => inferenceStt.updateOptions({ modelOptions: { max_turn_silence: ms } as never }) };
+    // The SDK merges these into the model options it holds (`updateOptions` in inference/stt.js), so the keyterms stay.
+    if (c.model.startsWith("assemblyai/")) patience = { setSilence: ({ minMs, maxMs }) => inferenceStt.updateOptions({ modelOptions: { min_turn_silence: minMs, max_turn_silence: maxMs } as never }) };
   } else if (config.speechToText.provider === "assemblyai") {
     const assemblyai = await import("@livekit/agents-plugin-assemblyai");
     // The model id is the configuration's (MAYA_STT_MODEL); AssemblyAI refuses an id it does not know at connection.
@@ -74,7 +75,8 @@ export async function makeProviders(
       ...(DIRECT_U3.has(String(model)) ? { languageCodes: ["en"] } : {}),
     });
     speech = direct;
-    patience = { setMaxSilenceMs: ms => direct.updateOptions({ maxTurnSilence: ms }) };
+    // The plugin sends both in one UpdateConfiguration message.
+    patience = { setSilence: ({ minMs, maxMs }) => direct.updateOptions({ minTurnSilence: minMs, maxTurnSilence: maxMs }) };
   } else {
     fakeSpeech = new FakeSpeech();
     speech = new FakeSTT(fakeSpeech);

@@ -79,12 +79,13 @@ describe("the worker's providers", () => {
     // The options as the SDK holds them for the connection: `settings.extra` of the session.create message (inference/stt.js).
     const options = () => (providers.stt as unknown as { opts: { modelOptions: Record<string, unknown>; language: string } }).opts;
     expect(options().language).toBe("en");
-    expect(options().modelOptions).toEqual({ min_turn_silence: 512, max_turn_silence: 3000, keyterms_prompt: keyterms });
+    expect(options().modelOptions).toEqual({ min_turn_silence: 400, max_turn_silence: 1600, keyterms_prompt: keyterms });
     expect(providers.patience).not.toBeNull();
-    providers.patience!.setMaxSilenceMs(4500);
-    expect(options().modelOptions).toMatchObject({ min_turn_silence: 512, max_turn_silence: 4500, keyterms_prompt: keyterms });
-    providers.patience!.setMaxSilenceMs(3000);
-    expect(options().modelOptions).toMatchObject({ max_turn_silence: 3000 });
+    // The number turn's limits, then the normal ones back: both silences change, and the keyterms stay.
+    providers.patience!.setSilence({ minMs: 512, maxMs: 4500 });
+    expect(options().modelOptions).toEqual({ min_turn_silence: 512, max_turn_silence: 4500, keyterms_prompt: keyterms });
+    providers.patience!.setSilence({ minMs: 400, maxMs: 1600 });
+    expect(options().modelOptions).toEqual({ min_turn_silence: 400, max_turn_silence: 1600, keyterms_prompt: keyterms });
     await providers.stt.close();
 
     // The settings and no keyterms when the call's question is not known; the configuration's own numbers.
@@ -111,7 +112,7 @@ describe("the worker's providers", () => {
     // other models), and the live update is accepted too.
     expect(providers.stt.model).toBe("universal-3-6-pro");
     expect(providers.patience).not.toBeNull();
-    expect(() => providers.patience!.setMaxSilenceMs(4500)).not.toThrow();
+    expect(() => providers.patience!.setSilence({ minMs: 512, maxMs: 4500 })).not.toThrow();
     await providers.stt.close();
     // A model with no Universal-3 Pro options still builds: no language codes are sent to it.
     const streaming = voiceProviders({ MAYA_VOICE_PRIVACY_CONFIRMED: "assemblyai-optout,child-use-approved", MAYA_STT: "assemblyai", ASSEMBLYAI_API_KEY: "test-key", MAYA_STT_MODEL: "universal-streaming-english" });

@@ -8,7 +8,7 @@
 // text and sends it to Maya over LiveKit instead of a microphone she could not understand.
 //
 // livekit-client loads only when the admin connects. Labels are plain: no provider errors, no ids.
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import type { BoardSnapshot } from "@/lib/board-protocol";
 import type { VoiceTicket } from "@/lib/maya-voice";
 import { clock, useMayaVoiceRoom, useMicCheck, type MayaState, type MicState } from "@/components/maya-voice-room";
@@ -37,7 +37,7 @@ const ERROR_TEXT: Record<string, string> = {
 
 const MAYA_TEXT: Record<Exclude<MayaState, null>, string> = { listening: "Maya is listening", thinking: "Maya is thinking", speaking: "Maya is speaking" };
 
-export function VoicePanel({ callId, childName, started, onUpdate, onEnded, onCancel, onBoard, busy }: {
+export function VoicePanel({ callId, childName, started, onUpdate, onEnded, onCancel, onBoard, onHearing, busy }: {
   callId: string;
   childName: string | null;
   /** The call has started (Maya joined once). */
@@ -48,11 +48,13 @@ export function VoicePanel({ callId, childName, started, onUpdate, onEnded, onCa
   /** Ends a call that never started (no Maya). */
   onCancel(): void;
   onBoard?(snapshot: BoardSnapshot, restored: boolean): void;
+  /** The child's words Maya is hearing now (null when none), for the transcript's last line. Never saved. */
+  onHearing?(words: string | null): void;
   busy: boolean;
 }) {
   const mic = useMicCheck();
   const [said, setSaid] = useState("");
-  const { phase: call, maya, error: errorCode, seconds, fakeSpeech, sending, audioHost, connect: join, hangUp, say: sendSaid } = useMayaVoiceRoom({
+  const { phase: call, maya, error: errorCode, seconds, fakeSpeech, sending, hearing, audioHost, connect: join, hangUp, say: sendSaid } = useMayaVoiceRoom({
     callId,
     async getTicket() {
       const res = await fetch(`/api/admin/maya/calls/${callId}/token`, { method: "POST" });
@@ -66,6 +68,9 @@ export function VoicePanel({ callId, childName, started, onUpdate, onEnded, onCa
   });
   const error = errorCode ? ERROR_TEXT[errorCode] ?? ERROR_TEXT.connect : null;
   const name = childName ?? "the child";
+  const live = call === "live";
+  useEffect(() => { onHearing?.(live ? hearing : null); }, [onHearing, live, hearing]);
+  useEffect(() => () => onHearing?.(null), [onHearing]);
 
   function connect() {
     mic.release();

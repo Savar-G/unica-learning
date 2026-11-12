@@ -227,6 +227,8 @@
 
 /* The chat uses the desk's conversation, controls and board. */
 .desk-child-bubble { margin-left: 24px; background: var(--accent-soft); }
+/* The child's words while Maya hears them: the same bubble, lighter, until the saved turn replaces it. */
+.desk-hearing { color: var(--ink-2); opacity: 0.75; }
 .desk-chat-end { min-height: 44px; border: 0; background: transparent; color: var(--ink-2); text-decoration: underline; font: inherit; }
 .desk-say > .desk-bubble { font-size: 14px; margin-bottom: 12px; }
 

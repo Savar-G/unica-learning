@@ -28,9 +28,9 @@ import { CuePlaybackOutput } from "./cue-playback";
 import { boardAudio, countedSynthesis } from "./speech-audio";
 import { VOICE_METER_TICK_MS } from "@/lib/maya-spend";
 import { limitsOf } from "@/lib/maya";
-import { asksForNumber, CONNECTION_RENEW_MS, childTurnFrom, endsInOpenNumber, GREETING_ID, nextTickAt, RECONNECT_GRACE_MS, type Heard, type VoiceTuning } from "@/lib/maya-voice";
+import { asksForNumber, CONNECTION_RENEW_MS, childTurnFrom, endsInOpenNumber, GREETING_ID, nextTickAt, RECONNECT_GRACE_MS, type Heard, type TurnSilence, type VoiceTuning } from "@/lib/maya-voice";
 import { ACK_HOLD_LIMIT_MS, ACK_LIMIT_MS, nextAcknowledgement } from "@/lib/maya-voice-ack";
-import { TurnClock, type AckSkip, type TurnOutcome, type VoiceTurnSample } from "./turn-timing";
+import { TurnClock, type AckSkip, type HeardMarks, type TurnOutcome, type VoiceTurnSample } from "./turn-timing";
 
 const userTexts = (ctx: llm.ChatContext) =>
   ctx.items.flatMap((i) => (i.type === "message" && i.role === "user" ? [i.textContent ?? ""] : []));
@@ -81,32 +81,62 @@ interface AgentHooks {
   childWentOn(text: string): Promise<boolean>;
 }
 
+/**
+ * When one final transcript reached the worker, and when the child's last word in it ended by the speech-to-text's own
+ * word times (null when the provider gave none). Both on the system clock.
+ */
+export interface FinalMark {
+  finalAt: number;
+  wordEndAt: number | null;
+}
+
 export class MayaVoiceAgent extends voice.Agent {
   private seen = 0;
   private opened = false;
   private finals: Heard[][] = [];
+  /** One mark per entry of `finals`, kept and joined with them. */
+  private marks: FinalMark[] = [];
   /** The held words were already waited on once, so the turn that joins them is not waited on again. */
   private extended = false;
   constructor(
     private readonly call: VoiceCall,
     private readonly onTurn: (turn: VoiceTurn) => Promise<boolean>,
     private readonly board: { sync: BoardSpeech; scope(): SpeechScope | null } | undefined,
-    private readonly reply: (stoppedAt: number | undefined, work: () => Promise<VoiceTurn[]>) => ReadableStream<string | FlushSentinel>,
+    private readonly reply: (stoppedAt: number | undefined, work: () => Promise<VoiceTurn[]>, mark: FinalMark | null) => ReadableStream<string | FlushSentinel>,
     private readonly hooks: AgentHooks = { greetingOver: async () => {}, childWentOn: async () => false },
   ) {
     super({ instructions: "Maya's words come from her session through the text adapter, not from these instructions." });
   }
 
-  /** The speech-to-text as LiveKit runs it, keeping each final transcript's confidence and alternatives. */
+  /**
+   * The speech-to-text as LiveKit runs it, keeping each final transcript's confidence and alternatives, and its time
+   * marks (FinalMark). The child's last word ends at the time the first audio frame went in plus the transcript's end
+   * time, as LiveKit reads it (`inputStartedAt` in voice/audio_recognition.js).
+   */
   override async sttNode(audio: ReadableStream<AudioFrame> | AsyncIterable<AudioFrame>, settings: voice.ModelSettings) {
-    const stream = await voice.Agent.default.sttNode(this, audio, settings);
+    let inputStartedAt: number | null = null;
+    const input = "pipeThrough" in audio
+      ? audio.pipeThrough(new TransformStream<AudioFrame, AudioFrame>({
+        transform(frame, controller) {
+          inputStartedAt ??= Date.now() - (frame.samplesPerChannel / frame.sampleRate) * 1000;
+          controller.enqueue(frame);
+        },
+      }))
+      : audio;
+    const stream = await voice.Agent.default.sttNode(this, input, settings);
     if (!stream) return null;
     const finals = this.finals;
+    const marks = this.marks;
     return stream.pipeThrough(
       new TransformStream<stt.SpeechEvent | string, stt.SpeechEvent | string>({
         transform(event, controller) {
           if (typeof event !== "string" && event.type === stt.SpeechEventType.FINAL_TRANSCRIPT && event.alternatives) {
             finals.push(event.alternatives.map((a) => ({ text: a.text, confidence: a.confidence })));
+            const finalAt = Date.now();
+            const end = event.alternatives[0]?.endTime ?? 0;
+            const wordEndAt = inputStartedAt !== null && end > 0 ? inputStartedAt + end * 1000 : null;
+            // A word that "ends" after its transcript came is a clock that does not fit: no mark rather than a wrong one.
+            marks.push({ finalAt, wordEndAt: wordEndAt !== null && wordEndAt <= finalAt ? wordEndAt : null });
           }
           controller.enqueue(event);
         },
@@ -134,12 +164,14 @@ export class MayaVoiceAgent extends voice.Agent {
     this.opened = true;
     if (fresh.length > 0) {
       const held = this.finals.splice(0);
+      const heldMarks = this.marks.splice(0);
       const heard = childTurnFrom(held) ?? { text: fresh.join(" "), uncertain: false, alternatives: [] };
       // A transcript that ends in "fifty" may be the start of "fifty six": wait once for more words (one extension). If
       // they come, these words are not answered: the child's next turn is read with them, as one answer.
       if (opening === false && !this.extended && await this.hooks.childWentOn(heard.text)) {
         this.seen = before;
         this.finals.unshift(...held);
+        this.marks.unshift(...heldMarks);
         this.extended = true;
         return null;
       }
@@ -147,7 +179,7 @@ export class MayaVoiceAgent extends voice.Agent {
       return this.reply(stoppedSpeakingAt(chatCtx), async () => [
         ...(opening ? [await this.call.start()] : []),
         await this.call.child(heard.text, heard.uncertain ? { uncertain: true, alternatives: heard.alternatives } : undefined),
-      ]);
+      ], heldMarks.at(-1) ?? null);
     }
     if (!opening) return null;
     const turn = await this.call.start();
@@ -232,6 +264,11 @@ export class VoiceCallRun {
   private boardScope: SpeechScope | null = null;
   private boardAudio: CuePlaybackOutput | null = null;
   private childStoppedAt: number | null = null;
+  /**
+   * The first end of speech LiveKit reported since the child last started (system clock): in a real call its voice
+   * activity detector, which reports it after its own silence window, so before the speech-to-text ends the turn.
+   */
+  private speechEndSeenAt: number | null = null;
   private pace: TurnPace | null = null;
   /** The guidance on its way to the child. */
   private guidance: { speech: voice.SpeechHandle; over: Promise<void>; scope: SpeechScope | null; cut: boolean; repeated: boolean } | null = null;
@@ -269,25 +306,29 @@ export class VoiceCallRun {
        */
       greeting?: string;
       /**
-       * The speech-to-text's silence limit while Maya waits for a number (`numberMs`) and otherwise (`normalMs`), set
-       * through `set` while the call runs. Absent: the limit set at the start stays.
+       * The speech-to-text's silence limits for the one child turn after Maya asks for a number (`number`) and for every
+       * other turn (`normal`), set through `set` while the call runs. Absent: the limits set at the start stay.
        */
-      patience?: { normalMs: number; numberMs: number; set(ms: number): void };
+      patience?: { normal: TurnSilence; number: TurnSilence; set(limits: TurnSilence): void };
       /** How long to wait once more when a transcript ends in a number word that can go on (ms). 0 or absent: no wait. */
       numberContinueMs?: number;
     },
   ) {
     this.segment = call.revision;
     this.agent = new MayaVoiceAgent(call, turn => this.after(turn), options.board ? { sync: options.board, scope: () => this.boardScope } : undefined,
-      (stoppedAt, work) => this.reply(stoppedAt, work),
+      (stoppedAt, work, mark) => this.reply(stoppedAt, work, mark),
       { greetingOver: () => this.greetingOver(), childWentOn: text => this.childWentOn(text) });
     call.onGuidance(turn => this.guidanceNow(turn));
     session.on(voice.AgentSessionEventTypes.UserInputTranscribed, ev => { if (ev.transcript.trim()) this.wordsHeard(); });
     session.on(voice.AgentSessionEventTypes.UserStateChanged, ev => {
       if (ev.newState === "speaking") {
+        this.speechEndSeenAt = null;
         if (this.pace) this.cutAck(this.pace);
         if (this.boardScope) this.stopBoard(this.boardScope);
-      } else if (ev.oldState === "speaking") this.childStoppedAt = this.timers.now();
+      } else if (ev.oldState === "speaking") {
+        this.childStoppedAt = this.timers.now();
+        this.speechEndSeenAt = ev.createdAt;
+      }
     });
     session.on(voice.AgentSessionEventTypes.SpeechCreated, ev => { this.speech = ev.speechHandle; });
     session.on(voice.AgentSessionEventTypes.Close, () => { void this.finish({ detail: "the voice session closed unexpectedly" }); });
@@ -349,7 +390,7 @@ export class VoiceCallRun {
     if (!patience || this.numberWait === number) return;
     this.numberWait = number;
     // A live update that fails changes nothing: the limit set at the start stays.
-    try { patience.set(number ? patience.numberMs : patience.normalMs); } catch { /* keep the limit as it is */ }
+    try { patience.set(number ? patience.number : patience.normal); } catch { /* keep the limit as it is */ }
   }
 
   /** After words Maya was accepted to say: does she ask for a number? Then the next child turn may wait longer. */
@@ -384,14 +425,24 @@ export class VoiceCallRun {
   }
 
   /** The stream of a child turn's reply. It is returned at once: the turn runs behind it. */
-  private reply(stoppedAt: number | undefined, work: () => Promise<VoiceTurn[]>) {
+  private reply(stoppedAt: number | undefined, work: () => Promise<VoiceTurn[]>, mark: FinalMark | null = null) {
     this.setPatience(false);
     this.closeTurn();
     const heardAt = this.timers.now();
+    const systemNow = Date.now();
+    /** A system-clock mark on the turn's clock: keep only how long ago it was. */
+    const sinceThen = (at: number) => heardAt - Math.max(0, systemNow - at);
     // LiveKit's mark is on the system clock, and can be earlier than its user state change. Keep only how long ago it was.
-    const speechEndedAt = stoppedAt === undefined ? this.childStoppedAt ?? heardAt : heardAt - Math.max(0, Date.now() - stoppedAt * 1000);
+    const speechEndedAt = stoppedAt === undefined ? this.childStoppedAt ?? heardAt : sinceThen(stoppedAt * 1000);
+    // The child's own end of speech: the speech-to-text's end of the last word, else LiveKit's first end of speech if it
+    // came before the final transcript (one at or after it is the speech-to-text's own end of turn, not the child's).
+    const seen = this.speechEndSeenAt;
+    const heard: HeardMarks = !mark ? { speechEndAt: null, source: null, finalAt: null }
+      : mark.wordEndAt !== null ? { speechEndAt: sinceThen(mark.wordEndAt), source: "stt_words", finalAt: sinceThen(mark.finalAt) }
+      : seen !== null && seen < mark.finalAt ? { speechEndAt: sinceThen(seen), source: "vad", finalAt: sinceThen(mark.finalAt) }
+      : { speechEndAt: null, source: null, finalAt: sinceThen(mark.finalAt) };
     const pace: TurnPace = {
-      clock: new TurnClock(this.timers.now, speechEndedAt, heardAt), generation: this.generation,
+      clock: new TurnClock(this.timers.now, speechEndedAt, heardAt, heard), generation: this.generation,
       writable: true, ready: false, closed: false, handle: this.speech, guided: false, ackStopped: false, ownSpeech: false, limit: null, hold: null, ack: null, ackOver: null, write: () => {}, end: () => {},
     };
     this.pace = pace;
@@ -438,11 +489,18 @@ export class VoiceCallRun {
     pace.clock.held();
     const said: string[] = [];
     // A dropped turn must not stage: its speech cannot play, and its plan would take the board from the turn that
-    // replaced it. It keeps the rest of `after` (the revision, the check-ins, the call's end).
-    for (const turn of turns) if (await this.after(turn, undefined, () => this.ownsReply(pace))) said.push(...turn.say);
-    pace.clock.staged();
+    // replaced it. It keeps the rest of `after` (the revision, the check-ins, the call's end). The turn's own save is
+    // done (`VoiceCall.child` waits for it), so the words do not wait for later saves, and the plan goes out while the
+    // voice makes the first sentence: its audio waits for the plan (`boardAudio`), so no cue word is heard first.
+    for (const turn of turns) if (await this.after(turn, undefined, () => this.ownsReply(pace), true)) said.push(...turn.say);
     const text = said.join(" ");
-    if (!text || !this.ownsReply(pace)) return this.closeTurn(pace, this.ownsReply(pace) ? "no_words" : "interrupted");
+    if (!text || !this.ownsReply(pace)) {
+      pace.clock.staged();
+      return this.closeTurn(pace, this.ownsReply(pace) ? "no_words" : "interrupted");
+    }
+    const scope = this.boardScope;
+    if (scope && this.options.board) void this.options.board.sent(scope).then(() => pace.clock.planSent(), () => {});
+    pace.clock.staged();
     pace.write(text);
   }
 
@@ -790,13 +848,18 @@ export class VoiceCallRun {
     } catch { if (generation === this.generation && this.childHere) await this.finish({ detail: "the voice turn failed" }); }
   }
 
-  private async after(turn: VoiceTurn, handle = this.speech, stage: () => boolean = () => true): Promise<boolean> {
-    await this.call.settled();
+  /**
+   * What follows a turn the call accepted: its board plan, the revision for the child's screen, the check-ins and the
+   * call's end. `overlap` (a child turn's reply, whose own save is done): no wait for later saves, and the plan is not
+   * waited for here, as the reply's audio waits for it (`boardAudio`); a plan that fails ends the call (`boardTask`).
+   */
+  private async after(turn: VoiceTurn, handle = this.speech, stage: () => boolean = () => true, overlap = false): Promise<boolean> {
+    if (!overlap) await this.call.settled();
     if (this.call.lost) { void this.finish({ detail: "the call could not be saved" }); return false; }
     if (this.finishing || !this.childHere) { this.finalDropped(turn); return false; }
     const generation = this.generation;
     if (stage()) {
-      try { await this.stageBoard(turn); }
+      try { await this.stageBoard(turn, !overlap); }
       catch { if (generation === this.generation && this.childHere) void this.finish({ detail: "the speech board could not be staged" }); return false; }
     }
     if (this.finishing || generation !== this.generation || !this.childHere) { this.finalDropped(turn); return false; }
