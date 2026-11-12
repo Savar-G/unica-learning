@@ -5,7 +5,7 @@
 // (src/lib/ai-client-fake.ts).
 // Behind a switch: on only when OPENROUTER_API_KEY is set. Off, there is no client, so no AI call can happen.
 // For the server only. No "server-only" import so that its tests can run, as src/lib/sign-in-link.ts.
-import { openRouterClient } from "@/lib/ai-openrouter";
+import { openRouterClient, type OpenRouterProvider } from "@/lib/ai-openrouter";
 import { recordAiUsage, type AiUsageTag } from "@/lib/ai-usage";
 
 /** The model when AI_MODEL is not set: an OpenRouter model id with image input, structured output and reasoning. */
@@ -52,9 +52,10 @@ export interface AiClient {
  * feature uses its own (Maya's free-talk review, MAYA_REVIEW_MODEL). `hooks`: the fetch to send with and a step before
  * each attempt (Maya's spending ledger reserves and settles each attempt through them, src/lib/maya-spend-ai.ts).
  * `hooks.usage`: what the call is for. Each answer's usage goes to the AI usage ledger with this tag (src/lib/ai-usage.ts,
- * D-330); a call with no tag is stored as feature "other". Recording never fails or slows the call.
+ * D-330); a call with no tag is stored as feature "other". Recording never fails or slows the call. `hooks.provider`: the
+ * OpenRouter route; none keeps the default route (Maya sets her zero-data-retention route, src/lib/maya-ai-route.ts).
  */
-export function aiClient(env: Readonly<Record<string, string | undefined>> = process.env, model?: string, hooks?: { fetch?: typeof globalThis.fetch; onRequest?: () => Promise<void>; usage?: AiUsageTag }): AiClient | null {
+export function aiClient(env: Readonly<Record<string, string | undefined>> = process.env, model?: string, hooks?: { fetch?: typeof globalThis.fetch; onRequest?: () => Promise<void>; usage?: AiUsageTag; provider?: OpenRouterProvider }): AiClient | null {
   const apiKey = env.OPENROUTER_API_KEY?.trim();
   if (!apiKey) return null;
   const chosen = model?.trim() || env.AI_MODEL?.trim() || AI_DEFAULT_MODEL;
