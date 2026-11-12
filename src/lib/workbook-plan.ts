@@ -1310,14 +1310,6 @@ function planWith(input: PlanInput, carried: readonly InstructionOutcome[]): Pla
 
   const timeShortfalls: RequiredTimeShortfall[] = [];
   const reviewFallbacks: ReviewFallback[] = [];
-  const notReviewed = personal ? [...new Set([...input.profile.standards.map(s => s.code), ...level.units.map(u => u.code)])].flatMap(unit => {
-    const skills = (STANDARDS.get(unit)?.skills ?? []).map(s => s.id).filter(skill => (level.skillLevels?.[skill] ?? 0) >= n
-      && levelSkills.find(s => s.id === skill)?.delivery !== "warm-up" && taughtStep(skill, DAYS + 1) === 0 && !teachLess.has(unit));
-    const reason = secureUnits.includes(unit) && skills.some(skill => level.skillLevels?.[skill] === n)
-      ? "not reviewed: secure on the assessment; no review scheduled in this book" as const
-      : "not reviewed: taught in a later book" as const;
-    return skills.length ? [{ unit, skills, reason }] : [];
-  }) : [];
   if (personal) {
     for (const d of days) {
       // Support keeps the real day's pictures. Stretch changes only the number range and difficulty.
@@ -1422,6 +1414,17 @@ function planWith(input: PlanInput, carried: readonly InstructionOutcome[]): Pla
         : { section: "teach-more", value: code, applied: false, note: remaining.has(code) ? "No room to start it in this book: the units it builds on come first." : "It has no steps left to teach." });
     }
   }
+
+  const reviewedSkills = new Set(days.flatMap(d => d.pages.flatMap(page => page.parts.filter(part => part.items > 0)
+    .flatMap(part => (part.reviewSteps ?? []).map(review => review.skill)))));
+  const notReviewed = personal ? [...new Set([...input.profile.standards.map(s => s.code), ...level.units.map(u => u.code)])].flatMap(unit => {
+    const skills = (STANDARDS.get(unit)?.skills ?? []).map(s => s.id).filter(skill => (level.skillLevels?.[skill] ?? 0) >= n
+      && levelSkills.find(s => s.id === skill)?.delivery !== "warm-up" && taughtStep(skill, DAYS + 1) === 0 && !teachLess.has(unit) && !reviewedSkills.has(skill));
+    const reason = secureUnits.includes(unit) && skills.some(skill => level.skillLevels?.[skill] === n)
+      ? "not reviewed: secure on the assessment; no review scheduled in this book" as const
+      : "not reviewed: taught in a later book" as const;
+    return skills.length ? [{ unit, skills, reason }] : [];
+  }) : [];
 
   // Every part with items has a skill to aim at.
   for (const d of days) {
