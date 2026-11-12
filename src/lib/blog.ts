@@ -30,7 +30,7 @@ export type BlogMeta = {
   published: string;
   /** ISO date of the last real update. Same as `published` until the post changes. */
   updated: string;
-  /** Rendered after the body and emitted as FAQPage JSON-LD. Plain text answers. 3-6 questions. */
+  /** Rendered after the body. Plain text answers. 3-6 questions. */
   faqs: ArticleFaq[];
   /** Numbered "Sources" list. <Cite n={2} /> links to the 2nd entry. At least 3. */
   sources: ArticleSource[];

@@ -1009,7 +1009,7 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
     return { acts: ["close"], code: "act_not_allowed", reason: "Close honestly without giving the answer." };
   }
   // Two wrong final answers once every column is done: the final step has only its gentlest help, already given, so
-  // Maya closes without the answer (D-313). Never over a right answer.
+  // Maya closes without the answer (D-326). Never over a right answer.
   if (misses >= 2 && !rightResult && s.solved === null && FINAL_GIVE_STATES.includes(main)) {
     return {
       acts: ["close"], code: "act_not_allowed",
@@ -3020,7 +3020,7 @@ export function fallbacks(given: Session, refused: readonly unknown[] = []): Pro
   const read = session.turn && pkg ? turnRead(session) : null;
   const doubtful = !rightResult && s.solved === null && pkg !== null && read?.final != null && !read.sure && rightForQuestion(pkg, read.final) ? read.final : null;
   // Once the answer stands, the request to write it (or the close) comes before more help on a step. After two wrong
-  // final answers on the final step, the backup close takes the place of more help (D-313).
+  // final answers on the final step, the backup close takes the place of more help (D-326).
   const solved = s.solved !== null || rightResult;
   // A step a model named, in a turn that is not heard: the confirm question comes before more help. Only that refusal: a
   // claim judged wrong is not a hearing problem (review of fec3dac4).
@@ -3535,7 +3535,7 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
       const simplify = view.steps.includes("result") ? view.equal ?? s.equalForm ?? null : null;
       const own = [...candidates.flatMap((v) => l.equal(v, simplestWords(pkg))), ...(simplify ? l.simplifyOwn(simplify) : [])];
       // A right final answer said with doubt or as a guess: a lead-in to check it together, before the step's line (#605).
-      // Round 4 (#698, D-253 item 17): also after the step was shown at H3 (the answer is never given now, D-313, so the
+      // Round 4 (#698, D-253 item 17): also after the step was shown at H3 (the answer is never given now, D-326, so the
       // check's step question below the show skips nothing), and only once per step in a call (doubtCheckDue).
       const due = doubtCheckDue(s, view.steps[0]);
       const check = due === "guess" ? l.guess() : due === "together" ? l.together() : [];

@@ -40,7 +40,7 @@ export type ResourceMeta = {
   lead: string;
   /** ISO date of the last real update, e.g. "2026-10-09". */
   updated: string;
-  /** Rendered after the body and emitted as FAQPage JSON-LD. Plain text answers. */
+  /** Rendered after the body. Plain text answers. */
   faqs?: ResourceFaq[];
   /** Rendered as a numbered "Sources" list. <Cite n={2} /> links to the 2nd entry. */
   sources?: ResourceSource[];

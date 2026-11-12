@@ -204,7 +204,7 @@ function supabase(world: World) {
   });
 }
 
-const details = { name: "Priya Shah", child: { firstName: "Asha", grade: 4, province: "BC" }, source: { utm_source: "flyer" } };
+const details = { name: "Priya Shah", phone: "(604) 555-0123", child: { firstName: "Asha", grade: 4, province: "BC" }, source: { utm_source: "flyer" } };
 
 function finish(body: unknown, ua = LAPTOP) {
   return POST(new Request("https://unica.test/api/account/finish", {
@@ -252,7 +252,7 @@ describe("a password set before the email was proved never reaches a family acco
     // Both changes go through the parent's own session, the one in their cookies.
     expect(calls.filter((c) => `${c.method} ${c.path}` === OWN_PASSWORD).map((c) => c.auth)).toEqual([`Bearer ${accessToken()}`, `Bearer ${accessToken()}`]);
     expect(calls.find((c) => c.path === "/rest/v1/rpc/create_family")?.body).toMatchObject({
-      p_parent: ID, p_email: "priya@family.ca", p_name: "Priya Shah", p_postal: null, p_child_name: "Asha", p_child_grade: 4, p_child_province: "BC",
+      p_parent: ID, p_phone: "+16045550123", p_email: "priya@family.ca", p_name: "Priya Shah", p_postal: null, p_child_name: "Asha", p_child_grade: 4, p_child_province: "BC",
     });
   });
 
@@ -616,5 +616,20 @@ describe("one finish at a time for a user (migration sign_in_races)", () => {
     expect((await finish({ ...details, password: "a-long-password" })).status).toBe(502);
     expect(paths()).toEqual([]);
     expect(claims.size).toBe(0);
+  });
+});
+
+describe("phone admission", () => {
+  it.each(["604", "+44 20 7946 0958", "604 555 0123 ext 4", ""]) ("rejects an invalid number before family creation: %s", async (phone) => {
+    supabase({});
+    const response = await finish({ ...details, phone });
+    expect(response.status).toBe(400);
+    expect(paths()).not.toContain(FAMILY);
+  });
+  it("leaves an existing family unchanged even with no number", async () => {
+    supabase({ existing: true });
+    const response = await finish({ ...details, phone: "" });
+    expect(await response.json()).toEqual({ ok: true, existing: true });
+    expect(paths()).toEqual([]);
   });
 });

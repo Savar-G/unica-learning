@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { childPlanAccess, markingDecision, markingMode, type ChildPlanAccess, type Env } from "@/lib/scan-marking-access";
 import { changeScanMark, markingCommand, scanMarkingStore, type ParentMarkChoice } from "@/lib/scan-marking-store";
-import { markingAiClient } from "@/lib/scan-marking-ai";
+import { markingAiClient, markingClientReady } from "@/lib/scan-marking-ai";
 import { MARKING_MODEL, MARKING_PROMPT_VERSION, markingPageView, runScanMarking } from "@/lib/scan-marking";
 import { SCAN_MARKING_LAUNCH_EVIDENCE, scanMarkingLaunchReadiness } from "@/lib/scan-marking-launch";
 import { rebuildChildProfile } from "@/lib/child-profile";
@@ -35,6 +35,11 @@ export interface ProcessMarkingOptions {
    * Absent: the rebuild runs here, after this photo.
    */
   deferRebuild?: (child: string) => void;
+  /**
+   * Called when the photo is admitted but there is no marking client (no key, or an unpinned model): marking it only
+   * pauses it, and so would every next photo. The recovery run stops there (#706).
+   */
+  onNoClient?: () => void;
 }
 export async function processScanMarking(db: SupabaseClient<Database>, parent: string, photo: string, env: Env = process.env, plan: ChildPlanAccess = childPlanAccess, options: ProcessMarkingOptions = {}) {
   const decision = await markingDecision(db, parent, env, { photo }, plan);
@@ -44,6 +49,7 @@ export async function processScanMarking(db: SupabaseClient<Database>, parent: s
     if (markingMode(env) === "families" && decision.reason !== "off" && decision.reason !== "child_unknown") await publishCommitted(db, parent, photo, options);
     return "off";
   }
+  if (!markingClientReady(env)) options.onNoClient?.();
   const row = await db.from("scan_photos").select("child_id").eq("id", photo).eq("parent_id", parent).maybeSingle();
   if (row.error || !row.data) return "terminal";
   const store = scanMarkingStore(db), child = row.data.child_id;
@@ -58,8 +64,15 @@ async function publishCommitted(db: SupabaseClient<Database>, parent: string, ph
   const row = await db.from("scan_photos").select("child_id").eq("id", photo).eq("parent_id", parent).maybeSingle();
   if (row.error || !row.data) return;
   const child = row.data.child_id;
-  await scanMarkingStore(db).publish(parent, child);
-  await rebuildOrDefer(db, child, options);
+  if (await scanMarkingStore(db).publish(parent, child) > 0) {
+    await rebuildOrDefer(db, child, options);
+    return;
+  }
+  // Publication can finish before a rebuild fails. Its durable revision stays ahead until a profile is saved.
+  const pending = await db.from("scan_marking_revisions").select("revision,profile_revision")
+    .eq("parent_id", parent).eq("child_id", child).maybeSingle();
+  if (pending.error) throw new Error("marking_profile_revision");
+  if (pending.data && pending.data.profile_revision < pending.data.revision) await rebuildOrDefer(db, child, options);
 }
 async function rebuildOrDefer(db: SupabaseClient<Database>, child: string, options: ProcessMarkingOptions) {
   if (options.deferRebuild) { options.deferRebuild(child); return; }
@@ -152,8 +165,11 @@ export async function recoverScanMarking(db: SupabaseClient<Database>, env: Env 
     aiTimeLeftMs: () => startedAt + RECOVERY_DB_LIMIT_MS - RECOVERY_AFTER_AI_MS - now(),
     deferRebuild: (child) => { children.add(child); },
   };
+  // (No marking client: each admitted photo would only be claimed and paused. Stop after the first one, #706.)
+  let noClient = false;
+  options.onNoClient = () => { noClient = true; };
   let restarted = false;
-  while (seen.size < RECOVERY_MAX_PHOTOS && now() - startedAt < RECOVERY_START_MS) {
+  while (!noClient && seen.size < RECOVERY_MAX_PHOTOS && now() - startedAt < RECOVERY_START_MS) {
     const rows = await db.rpc("recover_scan_marking_oldest", { p_limit: 1 });
     if (rows.error) throw new Error("marking_recovery");
     const value: unknown = rows.data;

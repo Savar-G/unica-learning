@@ -144,7 +144,7 @@ describe("next book after a curriculum change", () => {
     return curriculumStructureOf(d as CurriculumData);
   };
 
-  it("plans the same next book after a template-only change, and refuses a structural change or an unknown version", async () => {
+  it("plans the same next book after a version-label change, and refuses a structural change or an unknown version", async () => {
     const job = await jobBook(5), { baseline, record } = baselineOf(job);
     const frozen = baseline.planning.placement.curriculum.version;
     expect(frozen).toBe(curriculumVersion("bc"));
@@ -153,7 +153,7 @@ describe("next book after a curriculum change", () => {
     expect(today.ok && prepared.ok, JSON.stringify([today, prepared])).toBe(true);
     expect(book2Planning(baseline, { curricula: { version: curriculumVersion, structure: () => { throw Error("not read"); }, frozen: () => null } })).toEqual(today);
 
-    // Template-only change: a new fingerprint, the same structure. The plan is the one an unchanged curriculum makes.
+    // Version-label change only: this seam does not change templates, which can affect the planned questions.
     const templates = changedTo(frozen, () => curriculumStructure("bc"));
     expect(book2Planning(baseline, { curricula: templates })).toEqual(today);
     expect(book2Planning(baseline, { prepareOnly: true, curricula: templates })).toEqual(prepared);

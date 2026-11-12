@@ -30,6 +30,18 @@ const deskView = (store: Parameters<typeof readDeskView>[0], options: Parameters
   }) }, NOW);
 
 
+/** The desk with a receipt only for the workbooks in `delivered`, and the store's reads counted. */
+async function deskWith(store: Parameters<typeof readDeskView>[0], options: Parameters<typeof readDeskView>[1], delivered: string[]) {
+  const reads = { workbook: 0, page: 0 };
+  const counted = { ...store, workbook: (id: string) => (reads.workbook++, store.workbook(id)), page: (id: string, n: number) => (reads.page++, store.page(id, n)) };
+  const view = await readDeskView(counted, options, { receipt: async id => delivered.includes(id) ? {
+    workbookId: id, parentId: PARENT, childId: CHILD, number: id === SECOND ? 2 : 1,
+    deliveredAt: "2026-11-01T20:00:00Z", localTime: "2026-11-01T12:00", timeZone: "America/Vancouver",
+    recordedAt: "2026-11-01T21:00:00Z", actorId: PARENT, auditId: 1,
+  } : null }, NOW);
+  return { view, reads };
+}
+
 const token = (book: string, page: number) => `${book.slice(0, 8)}-page-${page}`.padEnd(20, "x");
 
 async function family() {
@@ -105,6 +117,27 @@ describe("the desk view", () => {
     store.setStatus(SECOND, "approved");
     expect(await deskView(store, { parentId: PARENT, childId: CHILD })).toEqual({ status: "no-workbook" });
     expect(await deskView(store, { parentId: PARENT, childId: OTHER_CHILD })).toEqual({ status: "no-workbook" });
+  });
+
+  it("opens the newest delivered workbook when a newer one is shipped but not delivered yet, reading only the page shown", async () => {
+    const { view, reads } = await deskWith(await family(), { parentId: PARENT, childId: CHILD }, [FIRST]);
+    if (view.status !== "ready") throw new Error(view.status);
+    expect([view.workbook.id, view.page.number, view.notice]).toEqual([FIRST, 2, null]);
+    expect(view.workbooks.map((w) => w.id)).toEqual([SECOND, FIRST]);
+    expect(view.pages).toEqual([1, 2, 3]);
+    expect(reads).toEqual({ workbook: 0, page: 1 });
+  });
+
+  it("waits for delivery, reading no page, when no shipped workbook is delivered", async () => {
+    const { view, reads } = await deskWith(await family(), { parentId: PARENT, childId: CHILD }, []);
+    expect(view).toEqual({ status: "awaiting-delivery" });
+    expect(reads).toEqual({ workbook: 0, page: 0 });
+  });
+
+  it("still refuses a workbook asked for that is not delivered, even when an older one is", async () => {
+    const { view, reads } = await deskWith(await family(), { parentId: PARENT, childId: CHILD, workbookId: SECOND, page: 2 }, [FIRST]);
+    expect(view).toEqual({ status: "awaiting-delivery" });
+    expect(reads).toEqual({ workbook: 0, page: 0 });
   });
 
   it("never shows a question's answer", async () => {

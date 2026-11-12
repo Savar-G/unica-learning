@@ -605,7 +605,7 @@ describe("C04: the fallback path keeps to the hint ladder", () => {
 
   // Changed in #698 round 4: the guessed yes after the show is checked together once (D-253 item 17), with the step's
   // question below the show. The old reason for no lower check was a given answer after H2 (hint_skipped); Maya gives no
-  // answer now (D-313). Never a second show in a row, and the check does not count in the loop guard's row: no progress
+  // answer now (D-326). Never a second show in a row, and the check does not count in the loop guard's row: no progress
   // after it gives the easier example.
   it("checks a guessed yes together once after the step was shown, then the easier example", async () => {
     const { told, hard } = await play("A", [

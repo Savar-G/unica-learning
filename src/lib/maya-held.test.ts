@@ -12,7 +12,7 @@ import { ruleMayaModel } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { checkTrace, PRE_D314_HELD, TRACE_VERSION, type MayaTrace } from "@/lib/maya-trace";
 
-// A question Maya cannot teach yet (#527, D-314), through the call module's public interface on the in-memory seams:
+// A question Maya cannot teach yet (#527, D-327), through the call module's public interface on the in-memory seams:
 // chat, an admin test call and a voice call each give code's held turn (hello, that Maya is an AI, plainly that she
 // cannot teach this question yet, and an invitation to pick another question on the page), ask the model nothing,
 // write no learning event and rebuild no profile. The parent's note says the same in plain words.
@@ -21,7 +21,7 @@ const TEST_PARENT = "11111111-1111-4111-8111-111111111111";
 const PARENT = "44444444-4444-4444-8444-444444444444";
 const CHILD = "55555555-5555-4555-8555-555555555555";
 const T0 = Date.UTC(2026, 10, 4, 16, 0, 0);
-// The held lines by id and wording, in order (D-314). A hold from the start: held.hello.0, held.cannot.0,
+// The held lines by id and wording, in order (D-327). A hold from the start: held.hello.0, held.cannot.0,
 // held.next.0. A hold found during the call does not repeat the hello (Maya said she is an AI at the opening):
 // held.cannot.0 then held.next.0 only, as PR #581 did.
 const text = (id: "held.hello" | "held.cannot" | "held.next" | "redirect.back", n = 0) => TEMPLATES[id][n];
@@ -170,7 +170,7 @@ describe("a held question in a call (#527)", () => {
   });
 });
 
-describe("a hold found during the call (#527, D-314)", () => {
+describe("a hold found during the call (#527, D-327)", () => {
   const said = (effects: Effect[]) => effects.flatMap((e) => (e.kind === "say" ? [e.text] : [])).join(" ");
   const send = (session: Session, event: Parameters<typeof step>[1]) => {
     const r = step(session, event);
@@ -208,7 +208,7 @@ describe("a hold found during the call (#527, D-314)", () => {
   });
 });
 
-describe("stored held traces stay readable (D-314, trace version 9)", () => {
+describe("stored held traces stay readable (D-327, trace version 9)", () => {
   // A held chat's real trace, rewritten to a version and a held text: the text is in the controller turn's output.
   async function heldTrace(): Promise<MayaTrace> {
     const s = setup();
@@ -224,14 +224,14 @@ describe("stored held traces stay readable (D-314, trace version 9)", () => {
     return json;
   };
 
-  it("writes version 10 with the D-314 held text", async () => {
+  it("writes version 10 with the D-327 held text", async () => {
     const trace = await heldTrace();
     expect(TRACE_VERSION).toBe(10);
     expect(trace.version).toBe(10);
     expect(checkTrace(trace)).toMatchObject({ ok: true });
   });
 
-  it("reads a version 8 trace that holds the held text from before D-314", async () => {
+  it("reads a version 8 trace that holds the held text from before D-327", async () => {
     expect(PRE_D314_HELD).toBe("Hi, I'm Maya, an AI. Want to pick another question on this page?");
     expect(checkTrace(rewrite(await heldTrace(), 8, PRE_D314_HELD))).toMatchObject({ ok: true });
   });

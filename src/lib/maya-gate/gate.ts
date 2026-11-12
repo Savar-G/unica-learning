@@ -484,7 +484,7 @@ type MayaTurn = Extract<TraceTurn, { kind: "maya" }>;
 const mayaTurns = (t: MayaTrace) => t.turns.filter((x): x is MayaTurn => x.kind === "maya");
 const accepted = (m: MayaTurn) => (m.output ? m.attempts.at(-1) : undefined);
 const proposalOf = (m: MayaTurn) => (accepted(m)?.proposal ?? {}) as { act?: Act; level?: number; step?: string; reading?: { help?: string | null; stop?: boolean | null; answers?: { value: AnswerValue; step: string; problem?: string | null }[] | null } | null };
-/** D-313 uses two approved lines together, which can exceed the short-turn limit. */
+/** D-326 uses two approved lines together, which can exceed the short-turn limit. */
 export function isBackupClose(m: MayaTurn): boolean {
   if (m.output?.act !== "close" || m.output.board.length !== 0) return false;
   const parts = (accepted(m)?.proposal as { parts?: { line?: string }[] } | null)?.parts;

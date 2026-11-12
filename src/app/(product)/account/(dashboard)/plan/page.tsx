@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { familyProvince, familyZone } from "@/lib/family-time";
 import { pageMetadata } from "@/lib/metadata";
 import { parentDashboard } from "@/lib/parent-dashboard-server";
-import { PlanClosedNote, planClosedFamily } from "@/components/plan-closed-note";
+import { PlanClosedNote, closedNoteFor } from "@/components/plan-closed-note";
 import { planManagementAccess } from "@/lib/parent-dashboard-access";
 import { familyPendingControls } from "@/lib/plan-controls-server";
 import { familyPlans } from "@/lib/parent-plan-server";
@@ -26,6 +26,6 @@ export default async function PlanPage() {
   // A family with a stopped plan has no dashboard, and keeps its plan's controls and the way to its card here.
   const manage = !!dashboard || await planManagementAccess(parent);
   const pending = manage && plans ? await familyPendingControls(parent, plans.map(plan => plan.cardId)) : new Map();
-  const closed = dashboard ? null : await planClosedFamily(parent);
-  return <ParentPlanView plans={plans} zone={zone} controls={manage} pending={pending} closed={closed} note={closed ? <PlanClosedNote closed={closed} on="plan" /> : undefined} />;
+  const note = await closedNoteFor(parent, !!dashboard), closed = note?.closed ?? null;
+  return <ParentPlanView plans={plans} zone={zone} controls={manage} pending={pending} closed={closed} note={note ? <PlanClosedNote closed={note.closed} dashboardOpen={note.dashboardOpen} on="plan" /> : undefined} />;
 }

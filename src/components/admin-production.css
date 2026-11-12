@@ -1,0 +1,101 @@
+/* Workbooks > Production (D-315), after the picked prototype (.design/experiments/r-admin-nav/b-pulse.html): the stage
+   tracker, then the groups of book cards. The admin's spacing scale (4 8 12 16 24 32 48) and 8 px corners. The tracker
+   is vertical in a narrow box and a row of seven when its box is wide (a container query), so a phone never scrolls
+   sideways. */
+.adm-pd { display: grid; gap: var(--s6); }
+
+/* ---------- the stage tracker ---------- */
+.adm-pd-lead { container-type: inline-size; padding: var(--s5); border: 1px solid var(--line); border-radius: var(--r); background: var(--soft); }
+.adm-pd-lead-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); margin-bottom: var(--s2); }
+[data-look="warm"] .adm-main .adm-pd-lead-head h2 { margin: 0; font: 400 11.5px/1.2 var(--mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink); }
+.adm-pd-hint { font-size: 13px; color: var(--ink-3); }
+.adm-main .adm-pd-clear { display: inline-flex; align-items: center; min-height: 40px; margin-left: auto; padding: 0 var(--s3); border: 1px solid #d4d4d8; border-radius: 6px; background: #fff; font-size: 13.5px; text-decoration: none; }
+.adm-main .adm-pd-clear:hover { border-color: var(--ink); }
+.adm-pd-stages { position: relative; display: grid; margin: 0; padding: 0; list-style: none; }
+.adm-pd-stages::before { content: ""; position: absolute; left: 19px; top: 24px; bottom: 24px; width: 2px; background: color-mix(in srgb, var(--ink) 12%, transparent); }
+.adm-main .adm-pd-stage > a { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: var(--s3); min-height: 48px; padding: var(--s1) var(--s2) var(--s1) 0; border-radius: 6px; color: inherit; text-decoration: none; }
+.adm-main .adm-pd-stage > a:hover .adm-pd-node { box-shadow: 0 0 0 4px var(--card); }
+.adm-main .adm-pd-stage.is-on > a { background: #fff; box-shadow: 0 0 0 1px var(--line); }
+.adm-pd-node { position: relative; z-index: 1; display: grid; place-items: center; width: 40px; height: 40px; border: 1px solid var(--line); border-radius: 50%; background: #fff; font: 450 16px/1 var(--sans); font-variant-numeric: tabular-nums; transition: box-shadow 0.15s; }
+.adm-pd-stage.is-zero .adm-pd-node { background: var(--soft); color: var(--ink-3); font-weight: 400; }
+.adm-pd-stage.is-you .adm-pd-node { border-color: var(--accent); background: var(--accent-soft); color: #b23d14; font-weight: 500; }
+.adm-pd-stage.is-done .adm-pd-node { border-color: color-mix(in srgb, var(--leaf) 60%, #fff); background: var(--adm-ok); color: #135c3d; }
+.adm-pd-stage-text { display: grid; gap: 2px; min-width: 0; }
+.adm-pd-stage-text b { font-size: 14.5px; font-weight: 450; }
+.adm-pd-stage.is-zero .adm-pd-stage-text b { color: var(--ink-3); font-weight: 400; }
+.adm-pd-you { font: 500 10.5px/1 var(--mono); letter-spacing: 0.05em; text-transform: uppercase; color: #b23d14; }
+.adm-pd-faces { display: flex; }
+.adm-pd-faces .adm-pd-face + .adm-pd-face { margin-left: -6px; }
+@container (min-width: 760px) {
+  .adm-pd-stages { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .adm-pd-stages::before { left: calc(100% / 14); right: calc(100% / 14); top: 38px; bottom: auto; width: auto; height: 2px; }
+  .adm-main .adm-pd-stage > a { grid-template-columns: 1fr; justify-items: center; align-content: start; gap: var(--s2); height: 100%; padding: var(--s4) var(--s1); text-align: center; }
+  .adm-pd-node { width: 44px; height: 44px; font-size: 18px; }
+  .adm-pd-stage-text { justify-items: center; }
+  .adm-pd-faces { min-height: 28px; }
+}
+
+/* ---------- faces ---------- */
+.adm-pd-face { display: inline-grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: 50%; box-shadow: 0 0 0 2px #fff; color: var(--ink); font: 500 12px/1 var(--sans); }
+.adm-pd-face.is-lg { width: 36px; height: 36px; font-size: 14px; }
+.adm-pd-face.is-test { outline: 1px dashed #b9b9c0; outline-offset: 1px; }
+
+/* ---------- groups and cards ---------- */
+.adm-pd-group-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s1) var(--s3); margin-bottom: var(--s3); padding-bottom: var(--s2); border-bottom: 1px solid var(--line); }
+[data-look="warm"] .adm-main .adm-pd-group-head h2 { margin: 0; font: 400 20px/1.2 var(--sans); letter-spacing: -0.02em; }
+.adm-pd-count { font: 400 12px/1 var(--mono); color: var(--ink-3); }
+.adm-main .adm-pd-group-head p { margin: 0; font-size: 13.5px; color: var(--ink-3); }
+.adm-pd-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--s4); }
+.adm-pd-book { display: flex; flex-direction: column; gap: var(--s3); min-width: 0; padding: var(--s4); border: 1px solid var(--line); border-radius: var(--r); background: #fff; }
+.adm-pd-book.is-you { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); box-shadow: inset 3px 0 0 var(--accent); }
+.adm-pd-book.is-test { border-style: dashed; background: var(--soft); }
+.adm-pd-top { display: flex; align-items: center; gap: var(--s3); }
+.adm-pd-who { display: grid; flex: 1; gap: 2px; min-width: 0; }
+.adm-pd-who b { font-weight: 500; overflow-wrap: anywhere; }
+.adm-pd-who > span { font-size: 13px; color: var(--ink-2); }
+.adm-main .adm-pd-who a { text-decoration: none; }
+.adm-main .adm-pd-who a:hover { text-decoration: underline; }
+.adm-main .adm-pd-who > span a { color: var(--ink-2); }
+.adm-main .adm-pd-text { margin: 0; font-size: 13.5px; color: var(--ink-2); }
+.adm-pd-checks { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; font-size: 13.5px; }
+.adm-pd-checks li { display: flex; align-items: flex-start; gap: var(--s2); }
+.adm-pd-checks svg { flex: none; width: 16px; height: 16px; margin-top: 2px; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.adm-pd-checks .is-ok svg { stroke: var(--leaf); }
+.adm-pd-checks .is-warn svg { stroke: #c98a00; }
+
+/* a book being made */
+.adm-pd-run { display: grid; gap: var(--s2); padding: var(--s3) var(--s4); border: 1px solid var(--line-soft); border-radius: 6px; background: var(--soft); }
+.adm-pd-run-top { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); font-size: 14px; }
+.adm-pd-run-top b { font-weight: 500; }
+.adm-pd-left { margin-left: auto; font: 400 12px/1.2 var(--mono); color: var(--ink-3); }
+.adm-pd-meter { display: block; height: 8px; overflow: hidden; border-radius: 999px; background: var(--line-soft); }
+.adm-pd-meter i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--g1), var(--g2)); }
+.adm-pd-sub { font-size: 13px; color: var(--ink-3); }
+.adm-pd-warn { padding: 6px var(--s2); border-radius: 6px; background: var(--adm-warn); font-size: 13px; }
+.adm-pd-pulse { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--g2); box-shadow: 0 0 0 0 color-mix(in srgb, var(--g2) 60%, transparent); animation: adm-pd-ping 1.6s infinite; }
+@keyframes adm-pd-ping { to { box-shadow: 0 0 0 8px transparent; } }
+
+/* earlier tries: a closed line */
+.adm-pd-tries { font-size: 13px; color: var(--ink-3); }
+.adm-pd-tries summary { min-height: 24px; cursor: pointer; }
+.adm-pd-tries ul { display: grid; gap: var(--s1); margin: var(--s2) 0 0; padding-left: var(--s4); color: var(--ink-2); }
+.adm-main .adm-pd-tries a { color: var(--ink-2); }
+
+.adm-pd-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); margin-top: auto; padding-top: var(--s3); border-top: 1px solid var(--line-soft); font-size: 13px; }
+.adm-pd-when { color: var(--ink-3); }
+.adm-pd-act { display: flex; justify-content: flex-end; margin-left: auto; }
+.adm-pd-act .adm-row { justify-content: flex-end; }
+.adm-pd-act [role="alert"] { margin: 0; flex-basis: 100%; text-align: right; }
+.adm-pd-empty { margin: 0; padding: var(--s4); border: 1px dashed var(--line); border-radius: var(--r); color: var(--ink-3); font-size: 13.5px; }
+.adm-main .adm-pd-more { margin: var(--s3) 0 0; font-size: 14px; }
+
+@media (max-width: 859.98px) {
+  .adm-pd-lead { padding: var(--s4); }
+  .adm-pd-cards { grid-template-columns: minmax(0, 1fr); }
+  [data-look="warm"] .adm-pd .adm-btn { min-height: 40px; }
+  .adm-pd-tries summary { min-height: 40px; display: flex; align-items: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .adm-pd-pulse { animation: none; }
+  .adm-pd-node { transition: none; }
+}

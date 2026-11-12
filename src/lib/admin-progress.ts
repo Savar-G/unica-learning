@@ -19,8 +19,7 @@ export interface ProgressInput {
   /** How many questions each stored part has. `stage3Up` and `stage3Down` (D-282) are absent on older tests. */
   lengths: { stage1: number; up: number; stay: number; down: number; stage3Up?: number; stage3Down?: number };
   /**
-   * How many questions have an answer. D-145: two finished tests also have answers to the removed extra round (#190);
-   * the count is capped at the test's length, so they never show.
+   * How many questions have an answer, capped at the test's length.
    */
   answered: number;
   /** The prompt of the next question to answer (the one at place `answered`); null when there is none. */

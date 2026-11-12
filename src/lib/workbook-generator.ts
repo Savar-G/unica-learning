@@ -938,6 +938,12 @@ export interface GenerateDeps {
   calls?: CallStore;
   /** Asked before each day page starts: true stops starting pages (a time budget); the result is "paused". */
   stop?(): boolean;
+  /**
+   * The first pages a parent saw (docs/first-pages.md): the cover's QR code and the day pages the whole book must keep
+   * exactly. Each of those day pages must be in the page store; the pages written around them know what they ask, and
+   * the whole-book check never changes them.
+   */
+  sample?: { coverToken: string; pages: readonly number[] };
 }
 
 export type GenerateResult =
@@ -2539,6 +2545,16 @@ function layOut(input: GenerateInput) {
     // then leave it (#482 review at db3b1a0: an example answered a later question; the full U4 book: the questions had
     // used every task of a small step before its examples were chosen).
     for (const w of work) for (const panel of w.panels) {
+      // A measured plan keeps the attempt its capacity pass chose (#746: page 64 was measured with a code example and then
+      // written by the writer, whose example was two lines longer).
+      const saved = w.page.panelAttempts?.[panel.id];
+      if (saved !== undefined) {
+        panel.attempt = saved;
+        const c = contractFor(input, w, panelSlot(w, panel), saved);
+        const pkg = c ? contractPackage(input, w, c) : null;
+        if (pkg) used.set(taskIdentity(pkg), 2);
+        continue;
+      }
       for (let attempt = 0; attempt < 64; attempt++) {
         const c = contractFor(input, w, panelSlot(w, panel), attempt);
         const pkg = c ? contractPackage(input, w, c) : null;
@@ -2794,13 +2810,73 @@ export function bookOutline(input: GenerateInput): string {
   // customer's run failed its own check on the first call).
   return digestOf(canonical({
     number: input.number, level: input.plan.level, total, laidOut: !!input.book, ...(input.itemPolicy === "approved-v1" ? { itemPipeline: { version: 6, examples: ITEM_EXAMPLES, compactExamples: COMPACT_STORY_FRAMES } } : {}),
-    pages: work.map((w) => ({
-      number: w.number, day: w.day, page: w.page.number, type: w.page.type, layout: w.layout, panels: w.panels,
-      slots: w.slots.map((x) => ({
-        id: x.id, part: x.part.kind, skills: x.part.skills, place: x.place, layoutSlot: x.layoutSlot, aim: x.aim ?? null,
-        room: x.place ? roomOf(input, x.place, w.day) ?? null : null, planned: x.planned ?? null, ...(input.itemPolicy === "approved-v1" ? { contract: contractFor(input, w, x), existing: !!x.existing } : {}),
-      })),
+    pages: work.map((w) => pageOutline(input, w)),
+  }));
+}
+
+/** One day page of the outline: its place, layout, panels, and each slot's plan, room and contract. */
+function pageOutline(input: GenerateInput, w: PageWork) {
+  return {
+    number: w.number, day: w.day, page: w.page.number, type: w.page.type, layout: w.layout, panels: w.panels,
+    slots: w.slots.map((x) => ({
+      id: x.id, part: x.part.kind, skills: x.part.skills, place: x.place, layoutSlot: x.layoutSlot, aim: x.aim ?? null,
+      room: x.place ? roomOf(input, x.place, w.day) ?? null : null, planned: x.planned ?? null, ...(input.itemPolicy === "approved-v1" ? { contract: contractFor(input, w, x), existing: !!x.existing } : {}),
     })),
+  };
+}
+
+/** The first pages of Workbook 1 a parent sees (docs/first-pages.md): the cover, the first lesson and two practice pages. */
+export interface FirstPages {
+  /** The book page of the first lesson (a "new-idea" page, with its worked example). */
+  lesson: number;
+  /** The two practice pages after it on the same day, on the same topic. */
+  practice: [number, number];
+}
+
+/** The page types that practise the lesson's topic. */
+const FIRST_PRACTICE: ReadonlySet<string> = new Set(["practice", "practice-2"]);
+
+/**
+ * The first pages of the book `input` plans: its first lesson page in book order, and the first two practice pages after
+ * it on the same day whose taught skill is the lesson's. Null when the book has no such pages (then there are no first
+ * pages to show). Pure: code only, the layout of the whole book.
+ */
+export function firstPagesOf(input: GenerateInput): FirstPages | null {
+  const { work } = layOut(input);
+  const taught = (w: PageWork) => w.page.parts.find((p) => p.unit === "A" && p.step)?.step?.skill ?? null;
+  const lesson = work.find((w) => w.page.type === "new-idea" && !w.page.extraPractice && w.slots.length > 0);
+  if (!lesson) return null;
+  const skill = taught(lesson);
+  if (!skill) return null;
+  const practice = work.filter((w) => w.day === lesson.day && w.number > lesson.number && !w.page.extraPractice && w.slots.length > 0
+    && FIRST_PRACTICE.has(w.page.type) && taught(w) === skill).slice(0, 2);
+  return practice.length === 2 ? { lesson: lesson.number, practice: [practice[0].number, practice[1].number] } : null;
+}
+
+/**
+ * What the given day pages and the cover of the book `input` plans are made from, as one digest: each page's outline
+ * (bookOutline's, so the same AI request and the same code choices), the cover's content (the child's name, the
+ * workbook number, the title, the sentence and the plan topics it prints), and the workbook id that seeds the code's
+ * choices. Two inputs with the same digest write the same pages. The child's name counts here (the cover prints it), so
+ * the digest is never stored where the name must not be: it is compared, never shown.
+ */
+export function pagesDigest(input: GenerateInput, numbers: readonly number[]): string {
+  const { work } = layOut(input.book ? { ...input, book: { child: "" } } : input);
+  const byNumber = new Map(work.map((w) => [w.number, w]));
+  const coverOf = (type: "cover" | "how-plan") => input.book
+    ? bookPageContent({ curriculum: input.curriculum, plan: input.plan, child: input.book.child, workbook: input.number, type, number: type === "cover" ? 1 : 2 })
+    : null;
+  const how = coverOf("how-plan");
+  const cover = coverOf("cover");
+  return digestOf(canonical({
+    workbookId: input.workbookId, number: input.number, level: input.plan.level, itemPolicy: input.itemPolicy ?? null,
+    // The cover prints its title, its sentence and the first three plan topics; its minutes are not printed.
+    cover: cover && cover.kind === "cover" ? { ...cover, minutes: null } : null,
+    topics: how && how.kind === "how-plan" ? [...new Set(how.rows.map((r) => r.topic))].slice(0, 3) : [],
+    pages: [...numbers].sort((a, b) => a - b).map((n) => {
+      const w = byNumber.get(n);
+      return w ? pageOutline(input, w) : null;
+    }),
   }));
 }
 
@@ -2918,6 +2994,67 @@ function standIn(input: GenerateInput, w: PageWork, s: Slot, i: number): BuiltQu
   return b;
 }
 
+/**
+ * A stand-in for a panel's worked example that the writer builds itself (no code contract), when its page is measured
+ * before writing (#746): the small sum the writer is asked for, which code works in the most steps a panel prints
+ * (three, then the answer), under a story as long as a writer's. Planning then keeps the room the writer's own example
+ * takes, as standIn does for a writer's slot. Only for measuring: it is never a task and never prints.
+ * (Not larger: a bigger stand-in left the fake U10 book's page 64 at 81% full when the writer's "54 + 3" printed. The
+ * words are code's, about 70 characters, shorter than the stand-in's; the writer picks only the numbers, in the skill's
+ * range, and a panel prints at most three steps. A longer one is still caught by the final fit check, which stays strict.)
+ */
+function exampleStandIn(input: GenerateInput, w: PageWork, p: Panel): QuestionPackage | null {
+  const max = skillRange(input.curriculum, input.plan.level, p.skill).max;
+  // (A two-digit and a one-digit number: three steps, as the #744 review's "34 + 4". Below 100, U6 and down, the
+  // longest count on: ten numbers.)
+  const [a, b] = max >= 100 ? [76, 8] : [10, 10];
+  const op = { kind: "add", operands: [itemNumber(a), itemNumber(b)], expression: null, unit: null, denominator: null, values: [] };
+  const raw = {
+    slot: p.id, skill: p.skill, difficulty: 2, text: `Mia has ${a} shells. She finds ${b} more on the beach. How many shells does Mia have now?`, format: "write-number",
+    figure: null, numbers: [], places: null, direction: null, sequence: null, pattern: null, relation: null, figureShows: null, name: null, thing: null,
+    operation: op, easier: null, wrongAnswers: [{ value: itemNumber(a + b + 1), cause: "careless", description: "A slip.", step: null }], shownWrong: null,
+  };
+  const built = buildQuestion(raw, { id: `budget:${w.number}:${p.id}`, workbookId: input.workbookId, page: w.number, question: 1, level: input.plan.level, skills: [p.skill], preserveText: true });
+  return built.package ? withoutSam(built.package, null) : null;
+}
+
+/**
+ * A panel's example that no question and no other example of the book asks (#811), in place of a repeated one: a
+ * code-built example of the panel's skill first; else, for a whole-number +, - or × the writer built (Kai's estimation
+ * pages have no code example at any attempt), the same sum with its first number moved on, to a number of as many
+ * digits, so the method keeps its steps and the room measured for it. Code writes its words (D-231). Null when there is none.
+ */
+function unusedPanelExample(input: GenerateInput, w: PageWork, panel: Panel, repeated: QuestionPackage, taken: ReadonlySet<string>): QuestionPackage | null {
+  const usable = (pkg: QuestionPackage | null): pkg is QuestionPackage => !!pkg && workableExample(pkg) && !taken.has(taskIdentity(pkg)) && !levelRange(pkg, input) && !dayProblem(input, pkg, w.day, panel.place);
+  for (let attempt = 0; attempt < PANEL_ATTEMPTS; attempt++) {
+    const c = contractFor(input, w, panelSlot(w, panel), attempt);
+    const pkg = c ? contractPackage(input, w, c) : null;
+    if (!usable(pkg)) continue;
+    // (The page prints the example of this attempt from now on, as the capacity pass's panels do.)
+    panel.attempt = attempt;
+    return withoutSam(pkg, null);
+  }
+  const op = repeated.operation;
+  const sign = op ? SUM_SIGNS[op.kind] : undefined;
+  if (!op || !sign || typeof op.operands[0] !== "number" || typeof op.operands[1] !== "number") return null;
+  const [a, b] = op.operands as [number, number];
+  const result = (n: number) => (op.kind === "add" ? n + b : op.kind === "subtract" ? n - b : n * b);
+  const operation = (x: number, y: number) => ({ kind: op.kind, operands: [itemNumber(x), itemNumber(y)], expression: null, unit: null, denominator: null, values: [] });
+  for (let first = a + 1; String(first).length === String(a).length; first++) {
+    const built = buildQuestion({
+      slot: panel.id, skill: panel.skill, difficulty: 2, text: `${first} ${sign} ${b} = ?`, format: "write-number", figure: null, numbers: [], places: null, direction: null,
+      sequence: null, pattern: null, relation: null, figureShows: null, name: null, thing: null, operation: operation(first, b),
+      easier: { text: `2 ${sign} 1 = ?`, operation: operation(2, 1) },
+      wrongAnswers: [{ value: itemNumber(result(first) + 1), cause: "careless", description: "A slip.", step: null }], shownWrong: null,
+    }, { id: repeated.id, workbookId: input.workbookId, page: w.number, question: 1, level: input.plan.level, skills: [panel.skill], signs: skillSigns(input.curriculum, input.plan.level, panel.skill) });
+    if (built.check.status !== "failed" && usable(built.package)) return withoutSam(built.package, null);
+  }
+  return null;
+}
+/** The attempts a panel's example may take (as the layout's first choice of them). */
+const PANEL_ATTEMPTS = 64;
+const SUM_SIGNS: Partial<Record<string, string>> = { add: "+", subtract: "−", multiply: "×" };
+
 /** A contract's code-built package as the page plans it, for its task identity and printed form (cached). */
 const contractPackages = new WeakMap<ItemPlan, QuestionPackage | null>();
 function contractPackage(input: GenerateInput, w: PageWork, c: ItemPlan): QuestionPackage | null {
@@ -2992,7 +3129,7 @@ function budgetPage(input: GenerateInput, w: PageWork): DraftPage {
     if (built.package && s.place !== "spot-the-error") built.package = withoutSam(built.package, s.planned?.name ?? null);
     return generated(w, i, built, 1);
   });
-  const examples = w.panels.map(p => { const c = contractFor(input, w, panelSlot(w, p), p.attempt ?? 0); const pkg = c ? contractPackage(input, w, c) : null; return pkg ? withoutSam(pkg, null) : null; });
+  const examples = w.panels.map(p => { const c = contractFor(input, w, panelSlot(w, p), p.attempt ?? 0); const pkg = c ? contractPackage(input, w, c) : null; return pkg ? withoutSam(pkg, null) : c ? null : exampleStandIn(input, w, p); });
   return fitPage(w, "token-000000000001", questions, contentOf(input, w, questions, examples));
 }
 
@@ -3192,7 +3329,8 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         const examples = w.panels.map(p => {
           const c = contractFor(input, w, panelSlot(w, p), p.attempt ?? 0);
           const pkg = c ? buildPlannedItem(c, c.item, { id: `budget:${w.number}:${p.id}`, workbookId: input.workbookId, page: w.number, question: 1, level: input.plan.level, skills: [p.skill] }).package : null;
-          return pkg ? withoutSam(pkg, null) : null;
+          // (A panel the writer builds is measured with its stand-in, #746.)
+          return pkg ? withoutSam(pkg, null) : c ? null : exampleStandIn(input, w, p);
         });
         // (Room only: a layout problem is the template's, reported when the page is written.)
         const budgetPage = fitPage(w, "token-000000000001", questions, contentOf(input, w, questions, examples));
@@ -3678,11 +3816,19 @@ async function repairFinalRows(input: GenerateInput, w: PageWork, work: PageWork
   return questions;
 }
 
+/** The planned book does not fit its pages: the same plan and workbook id give the same answer every time. */
+export class CapacityProblem extends Error {}
+
 export async function prepareWorkbookCapacity(input: GenerateInput, fitCheck: FitCheck): Promise<WorkbookPlan> {
   const { work } = layOut(input);
   const problem = await fitWorkBudget(input, fitCheck, work);
-  if (problem) throw new Error(problem);
-  return { ...input.plan, extraPractice: work.filter(w=>w.page.extraPractice).map(w=>w.page), days: input.plan.days.map(d=>({ ...d, pages:d.pages.map(p=>work.find(w=>w.day===d.day && w.page.number===p.number)!.page) })) };
+  if (problem) throw new CapacityProblem(problem);
+  // (Each panel's measured attempt goes with its page, as its slots' contracts do, #746.)
+  const withPanelAttempts = (w: PageWork) => {
+    const attempts = w.panels.filter((p) => p.attempt !== undefined).map((p) => [p.id, p.attempt!] as const);
+    return attempts.length ? { ...w.page, panelAttempts: Object.fromEntries(attempts) } : w.page;
+  };
+  return { ...input.plan, extraPractice: work.filter(w=>w.page.extraPractice).map(withPanelAttempts), days: input.plan.days.map(d=>({ ...d, pages:d.pages.map(p=>withPanelAttempts(work.find(w=>w.day===d.day && w.page.number===p.number)!)) })) };
 }
 
 /**
@@ -3691,6 +3837,33 @@ export async function prepareWorkbookCapacity(input: GenerateInput, fitCheck: Fi
  * attempt or call does not fit the plan (R379-8-2).
  */
 export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps): Promise<GenerateResult> {
+  const result = await generate(input, deps, null);
+  if (result.status === "written") throw new Error("a whole book was asked for, and only some pages were written");
+  return result;
+}
+
+/** Some day pages of a book, written as the whole book writes them, with its cover (docs/first-pages.md). */
+export type PagesResult =
+  | { status: "written"; cover: GeneratedPage; pages: GeneratedPage[] }
+  | { status: "paused"; done: number; total: number }
+  | { status: "refused"; reason: string };
+
+/**
+ * Writes only the given day pages of the book `input` plans (the first pages of Workbook 1, docs/first-pages.md),
+ * exactly as generateWorkbook writes them: the same layout, capacity plan, AI calls, checks, fit and attempt limits, and
+ * the memory of the given pages before them on their day, so the whole book can keep them (GenerateDeps.sample: the
+ * whole book then writes its other pages knowing these). Each page must be a day page with questions. Stores no draft
+ * and runs no whole-book check. The cover has no AI content; it comes with its QR code. Throws ResumeMismatch as
+ * generateWorkbook does.
+ */
+export async function generateWorkbookPages(input: GenerateInput, deps: Omit<GenerateDeps, "sample">, numbers: readonly number[]): Promise<PagesResult> {
+  if (numbers.length === 0) return { status: "refused", reason: "no pages were asked for" };
+  const result = await generate(input, deps, new Set(numbers));
+  if (result.status === "stored") throw new Error("only some pages were asked for, and a whole book was stored");
+  return result;
+}
+
+async function generate(input: GenerateInput, deps: GenerateDeps, only: ReadonlySet<number> | null): Promise<GenerateResult | Extract<PagesResult, { status: "written" }>> {
   if (!isUuid(input.workbookId)) return { status: "refused", reason: "the workbook id is not a UUID" };
   if (!isUuid(input.childId)) return { status: "refused", reason: "the child id is not a UUID" };
   if (input.plan.days.length === 0) return { status: "refused", reason: "the plan has no days" };
@@ -3700,6 +3873,14 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
   const capacityProblem = await fitWorkBudget(input, deps.fit, work);
   if (capacityProblem) return { status: "refused", reason: capacityProblem };
   const byNumber = new Map(work.map((w) => [w.number, w]));
+  if (only) {
+    for (const n of only) {
+      const w = byNumber.get(n);
+      if (!w || w.page.extraPractice || w.slots.length === 0) return { status: "refused", reason: `page ${n} is not a day page with questions` };
+    }
+  }
+  // The day pages this call writes: all, or the ones asked for.
+  const target = only ? work.filter((w) => only.has(w.number)) : work;
   // A resumed run (#312) keeps its stored pages and their tokens; a new token never repeats a kept one (a bounded
   // number of tries; a maker that keeps repeating is caught by draftProblem). Each page starts with the attempts its
   // slots used in earlier calls. Everything kept must fit the plan's pages and slots, else nothing goes on (R379-8-2).
@@ -3707,7 +3888,11 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
   for (const p of kept.values()) {
     const problem = keptPageProblem(input, byNumber.get(p.number), p);
     if (problem) throw new ResumeMismatch(problem);
+    if (only && !only.has(p.number)) throw new ResumeMismatch(`kept page ${p.number} is not one of the pages to write`);
   }
+  // The first pages a parent saw are kept, never written again (docs/first-pages.md).
+  const pinned = new Set(deps.sample?.pages ?? []);
+  for (const n of pinned) if (!kept.has(n)) throw new ResumeMismatch(`the first page ${n} the parent saw is not kept`);
   const spentBefore = await deps.attempts?.load() ?? new Map<string, number>();
   for (const key of spentBefore.keys()) {
     const [page, id] = [Number(key.slice(0, key.indexOf(":"))), key.slice(key.indexOf(":") + 1)];
@@ -3723,7 +3908,7 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
   }
   // The AI calls earlier tries kept of the pages still to write (R379-7-1): each page replays them in order, with
   // their kept solve checks (R379-8-1).
-  const open = work.filter((w) => !kept.has(w.number) && w.slots.length > 0);
+  const open = target.filter((w) => !kept.has(w.number) && w.slots.length > 0);
   if (deps.calls && open.length > 0) {
     const numbers = open.map((w) => w.number);
     const openByNumber = new Map(open.map((w) => [w.number, w]));
@@ -3742,7 +3927,11 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
     for (const [key, verdict] of await deps.calls.solves(numbers)) openByNumber.get(Number(key.slice(0, key.indexOf(":"))))?.solves.set(key, verdict);
   }
   const used = new Set([...kept.values()].map((p) => p.qrToken));
-  const tokens = Array.from({ length: total }, (_, i) => kept.get(i + 1)?.qrToken ?? (() => {
+  if (deps.sample) {
+    if (used.has(deps.sample.coverToken)) throw new ResumeMismatch("the cover's QR code is used by a kept page");
+    used.add(deps.sample.coverToken);
+  }
+  const tokens = Array.from({ length: total }, (_, i) => kept.get(i + 1)?.qrToken ?? (i === 0 && deps.sample ? deps.sample.coverToken : null) ?? (() => {
     let t = deps.qrToken();
     for (let tries = 0; used.has(t) && tries < 1000; tries++) t = deps.qrToken();
     used.add(t);
@@ -3757,9 +3946,12 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
   // What the days before have asked, for a laid-out book: each page is told it, and a repeat goes to the redo. It
   // changes only between days (#312), so the pages of a day read the same memory however many run at once.
   let memory: BookMemory | null = input.book ? { texts: new Map(), keys: new Map(), shapes: new Map(), shapeText: new Map(), codeShapes: new Map() } : null;
+  // The first pages a parent saw are in the book from the start: every page written around them knows what they ask,
+  // so no page repeats them (a repeat would be named on the later page, and those pages are never changed).
+  if (memory) for (const n of [...pinned].sort((a, b) => a - b)) remember(memory, n, kept.get(n)!.questions);
   const finished = new Map<number, GeneratedPage>();
-  for (const w of work) if (kept.has(w.number)) finished.set(w.number, kept.get(w.number)!);
-  if (finished.size > 0) deps.progress?.(finished.size, work.length);
+  for (const w of target) if (kept.has(w.number)) finished.set(w.number, kept.get(w.number)!);
+  if (finished.size > 0) deps.progress?.(finished.size, target.length);
   const writePage = async (w: PageWork, first: PageCall | null, memory: BookMemory | null): Promise<GeneratedPage> => {
     const qrToken = tokens[w.number - 1];
     const page = { number: w.number, type: w.page.type, dayLabel: w.page.extraPractice ? "Extra practice" : `Day ${w.day}`, day: w.page.extraPractice ? null : w.day, pageOfDay: w.page.extraPractice ? null : w.page.number, qrToken };
@@ -3841,7 +4033,9 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
   // book and this day's pages before it, the redo, the fit) runs in page order, and the page is stored then. So the
   // draft is the same at any concurrency, and a resumed day reads what its stored pages asked.
   for (const day of input.plan.days) {
-    const pagesOfDay = work.filter((w) => w.day === day.day);
+    if (only && target.every((w) => finished.has(w.number))) break;
+    const pagesOfDay = target.filter((w) => w.day === day.day);
+    if (pagesOfDay.length === 0) continue;
     const before = memory;
     const seen = memory ? cloneMemory(memory) : null;
     const turns = pagesOfDay.map(() => {
@@ -3862,17 +4056,27 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
         if (!kept) {
           await deps.pages?.save(page);
           finished.set(w.number, page);
-          deps.progress?.(finished.size, work.length);
+          deps.progress?.(finished.size, target.length);
         }
-        if (seen) remember(seen, w.number, page.questions);
+        if (seen && !pinned.has(w.number)) remember(seen, w.number, page.questions);
         turns[k].settle();
       } catch (error) {
         turns[k].settle(error ?? new Error("a page failed"));
         throw error;
       }
     }, () => deps.stop?.() ?? false);
-    if (pagesOfDay.some((w) => !finished.has(w.number))) return { status: "paused", done: finished.size, total: work.length };
+    if (pagesOfDay.some((w) => !finished.has(w.number))) return { status: "paused", done: finished.size, total: target.length };
     memory = seen;
+  }
+  if (only) {
+    // With a page store, the stored pages are the truth.
+    const stored = deps.pages ? new Map((await deps.pages.load()).map((p) => [p.number, p])) : finished;
+    const pages = target.map((w) => {
+      const page = stored.get(w.number);
+      if (!page) throw new Error(`day page ${w.number} is not stored`);
+      return page;
+    });
+    return { status: "written", cover: plain(1, "cover"), pages };
   }
   // With a page store, the stored pages are the truth (#312, R379-2): the draft is built from them.
   if (deps.pages) {
@@ -3891,7 +4095,29 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
     const repairKeys=new Set<string>(), repairFrames=new Set<string>();
     const reviewed = await checkWholeBook(pages, async (page, issues) => {
       const w = byNumber.get(page.number);
-      if (!w) return null;
+      // The first pages a parent saw stay as they were; their issues stay on them.
+      if (!w || pinned.has(page.number)) return null;
+      // #811: a worked example an earlier page already shows (Kai's U10 book 2: page 77's repeated page 64's, which the
+      // writer built both times) takes a code-built example of its panel's skill that no question and no other example
+      // asks, instead of failing the book. A panel with none to give keeps its example, and the book check reports it.
+      let examples = page.panelExamples ?? [];
+      const swapped = new Set<number>();
+      if (issues.some((i) => i.kind === "repeat" && /^the worked example repeats/.test(i.reason))) {
+        const keysOf = (ps: GeneratedPage[]) => ps.flatMap((p) => (p.panelExamples ?? []).flatMap((e) => (e ? [taskIdentity(e)] : [])));
+        const earlier = new Set(keysOf(pages.filter((p) => p.number < page.number)));
+        const taken = new Set([...keysOf(pages), ...repairKeys,
+          ...pages.flatMap((p) => p.questions.flatMap((q) => (q.package && q.place !== "warm-up" ? [taskIdentity(q.package)] : [])))]);
+        examples = examples.map((e, k) => {
+          const panel = w.panels[k];
+          if (!e || !panel || !earlier.has(taskIdentity(e))) return e;
+          const fresh = unusedPanelExample(input, w, panel, e, taken);
+          if (!fresh) return e;
+          taken.add(taskIdentity(fresh));
+          repairKeys.add(taskIdentity(fresh));
+          swapped.add(k);
+          return fresh;
+        });
+      }
       const keyOf=(pkg:QuestionPackage)=>taskIdentity(pkg);
       const current=[...page.questions];
       const questions = page.questions.map((q,index) => {
@@ -3944,19 +4170,20 @@ export async function generateWorkbook(input: GenerateInput, deps: GenerateDeps)
         }
         return q;
       });
-      const finalQuestions = await repairFinalRows(input, w, work, questions, page.panelExamples ?? [], deps.fit, book);
-      const content = contentOf(input, w, finalQuestions, page.panelExamples ?? []);
+      const finalQuestions = await repairFinalRows(input, w, work, questions, examples, deps.fit, book);
+      const content = contentOf(input, w, finalQuestions, examples);
       // Older checkpoints keep the checked teaching blocks, even if their
-      // separate example packages predate panelExamples.
+      // separate example packages predate panelExamples. (Not a panel whose example was just swapped: it prints the new one.)
+      const swappedPlaces = new Set([...swapped].map((k) => w.page.compactPanel && w.panels[k].place === "watch-one" ? "reminder" : w.panels[k].place));
       if (content?.kind === "day" && page.content?.kind === "day") {
-        const old = page.content.blocks.filter(b=>PANEL_SLOTS.includes(b.slot));
-        for (const block of content.blocks.filter(b=>PANEL_SLOTS.includes(b.slot))) {
+        const old = page.content.blocks.filter(b=>PANEL_SLOTS.includes(b.slot) && !swappedPlaces.has(b.slot));
+        for (const block of content.blocks.filter(b=>PANEL_SLOTS.includes(b.slot) && !swappedPlaces.has(b.slot))) {
           const index = old.findIndex(b=>b.slot===block.slot);
           if (index>=0) Object.assign(block,structuredClone(old.splice(index,1)[0]));
         }
       }
       const fit = await deps.fit.fits(fitPage(w, page.qrToken, finalQuestions, content), book);
-      return { ...page, questions: finalQuestions, ...(content ? { content } : {}), fit: fit.ok ? { status: "fits" } : { status: "failed", problems: fit.problems } };
+      return { ...page, questions: finalQuestions, ...(swapped.size ? { panelExamples: examples } : {}), ...(content ? { content } : {}), fit: fit.ok ? { status: "fits" } : { status: "failed", problems: fit.problems } };
     });
     quality = reviewed.quality;
     // G1: the personal book checks read the printed book: the warm-up's fact families (item 4) and the interest share

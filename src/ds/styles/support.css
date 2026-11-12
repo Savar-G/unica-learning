@@ -19,18 +19,6 @@
   .mobile-assessment .btn { width: 100%; justify-content: center; }
   body:has(dialog[open]) .mobile-assessment, body:has([data-cookie-banner]) .mobile-assessment { display: none; }
 }
-.heard { margin: 0 0 32px; padding: 22px 22px 6px; background: var(--card, #f6f4ef); border-radius: 4px; }
-.support-page .heard h2 { margin: 0 0 4px; font-size: 21px; }
-.heard .small { margin: 0; }
-.heard-picks { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
-.heard-pick { position: relative; border: 1px solid var(--line); border-radius: 6px; background: #fff; padding: 10px 14px; cursor: pointer; font: 500 15px/1 var(--sans); }
-.heard-pick input { position: absolute; opacity: 0; pointer-events: none; }
-.heard-pick:has(input:checked) { background: var(--ink); color: #fff; }
-.heard-pick:has(input:focus-visible) { outline: 2px solid var(--sky); outline-offset: 2px; }
-.heard-picks.sub .small { margin-right: 4px; }
-.heard-other { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin-top: 14px; }
-.heard-other .fld { flex: 1 1 240px; }
-.heard-thanks { min-height: 1.4em; margin: 12px 0 16px !important; }
 /* Parent account pages (online assessment, #62). */
 .acct-form { display: grid; gap: 18px; max-width: 520px; margin-top: 28px; }
 .acct-form fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 16px; }
@@ -58,6 +46,10 @@
 .support-page .plan-closed-note + .acct-alert:not(.acct-saved) { margin-top: 12px; }
 .acct-card { padding: 22px; border: 1px solid var(--line); border-radius: 10px; }
 .support-page .acct-card h2 { margin: 0 0 8px; font-size: 21px; }
+/* Parent home: the prediction from the newest report (src/lib/progress-preview.ts). */
+.acct-goal { display: grid; gap: 6px; margin-top: 12px; background: #fff8dc; border-color: #f0e2a8; }
+.support-page .acct-goal .acct-goal-say { margin: 0; font-size: 21px; font-weight: 300; line-height: 1.25; letter-spacing: -0.02em; }
+.support-page .acct-goal .acct-goal-say b { font-weight: 500; }
 .acct-phone { margin: 24px 0; background: var(--card, #f6f4ef); border: 0; }
 .acct-phone p { margin: 0; }
 .support-page .acct-kids { list-style: none; padding: 0; margin: 24px 0; display: grid; gap: 12px; }

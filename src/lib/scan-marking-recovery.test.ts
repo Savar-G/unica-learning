@@ -224,3 +224,16 @@ it("starts no end-of-run rebuild in the last 5 s before the database deadline, a
   expect(JSON.parse(String(info.mock.calls.at(-1)![1]))).toEqual({ finished: 3, profile_pending: 1 });
   info.mockRestore();
 });
+
+// #706: with no marking client (no key, or an unpinned model), every admitted photo is claimed and paused as "off". The
+// run stops at the first such photo instead of pausing up to RECOVERY_MAX_PHOTOS; a closed-plan "off" keeps the run going.
+it("stops at the first admitted photo with no marking client, and goes on past a closed plan", async () => {
+  photos(5);
+  const noClient = async (_db: unknown, _parent: string, photo: string, _env: unknown, _plan: unknown, options: ProcessMarkingOptions) => {
+    if (photo === "photo-00") return "off"; // a closed plan: no claim, no client question
+    options.onNoClient?.();
+    return "off";
+  };
+  const run = await recoverScanMarking(db, env, open, { now: () => clock.t, startedAt: 0, mark: noClient as never });
+  expect(run).toEqual({ status: "processed", results: ["off", "off"] });
+});

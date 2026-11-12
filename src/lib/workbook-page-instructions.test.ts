@@ -42,7 +42,7 @@ describe("truthful printed U16 instructions",()=>{
   p.content.blocks=[{slot:"warm-up",items:[1]},{slot:"spot-the-error",items:[2]}];
   expect(workQuestionNumbers(p)).toEqual([]);
   expect(workbookWorkLine(p)).toBeNull();
-  expect(workbookPageInstruction(p)).toBe("A warm-up on things you learned before. Do every question. Write in boxes.");
+  expect(workbookPageInstruction(p)).toBe("A warm-up on things you learned before. Answer every question in its box.");
  });
  it("prints the warm-up instruction with no timing or counting words on every day, without changing stored text",()=>{
   for(let day=1;day<=10;day++) {
@@ -52,7 +52,7 @@ describe("truthful printed U16 instructions",()=>{
    p.content.subtitle="Facts you know. Beat your own count from last time.";
    const before=structuredClone(p),root=new Window().document.createElement("div");
    root.innerHTML=workbookTemplate().page(p,{qr:"",qrUrl:""},sample())!;
-   expect(root.querySelector('[data-measure="slot-subtitle"]')?.textContent).toBe("A warm-up on things you learned before. Do every question. Write in boxes.");
+   expect(root.querySelector('[data-measure="slot-subtitle"]')?.textContent).toBe("A warm-up on things you learned before. Answer every question in its box.");
    expect(root.textContent).not.toMatch(/Beat your own|Do as many|no timer/);
    expect(p).toEqual(before);
   }
@@ -98,13 +98,22 @@ describe("truthful printed U16 instructions",()=>{
   }
  });
  // (The review of 42bd5a6d: at U8 and U9 the warm-up sentence and "Circle yes or no." ran to 733 px of 688.)
+ it("joins the warm-up sentences only on a warm-up page; a stored instruction elsewhere prints as written", () => {
+  const qs=[question(1,"5 + 4 = ?",[box])];
+  const p=page(qs);p.content.level=15;p.content.consistentLayout=false;p.content.subtitle="Do every question. Write in boxes.";
+  p.content.blocks=[{slot:"on-your-own",items:[1]}];
+  expect(printedInstruction(p)).toBe("Do every question. Write in boxes.");
+  // (A stored warm-up says "Write in boxes." with the retired counting words; the warm-up sentence is added at print.)
+  p.content.blocks=[{slot:"warm-up",items:[1]}];p.content.subtitle="Write in boxes. Do as many as you can.";
+  expect(printedInstruction(p)).toBe("A warm-up on things you learned before. Answer every question in its box.");
+ });
  it.each([8,9,16])("names no choice on a U%s warm-up page: each choice question prints its own cue",level=>{
   const said={...circle,choices:["yes","no"],answer:"yes"};
   const qs=[question(1,"5 + 4 = ?",[box]),question(2,"Is 7 + 6 = 13?",[said],"circle"),question(3,"Is it right?",[{...said,mark:"tick"},{...box,id:"fix"}],"spot-the-error"),question(4,"Is 9 + 9 = 19? Circle yes or no.",[said],"circle")];
   for(const stored of [`${WARM_UP_INSTRUCTION} Circle yes or no.`,"Circle yes or no.",`${WARM_UP_INSTRUCTION} Circle your answers.`]) {
    const p=page(qs);p.content.level=level;p.content.subtitle=stored;
    p.content.blocks=[{slot:"warm-up",items:[1]},{slot:"fix-it",items:[2,3,4]}];
-   const expected=level===16?`${WARM_UP_INSTRUCTION} Write in boxes.`:WARM_UP_INSTRUCTION;
+   const expected=level===16?"A warm-up on things you learned before. Answer every question in its box.":WARM_UP_INSTRUCTION;
    expect(printedInstruction(p)).toBe(expected);
    expect(circleProblem({...p.content,subtitle:expected},qs)).toBeNull();
    const root=new Window().document.createElement("div");

@@ -11,7 +11,7 @@ describe("the copy of a reminder", () => {
   const { token } = newToken();
   const r = { kind: "start_followup" as const, parentId: "p1", childId: "c1", assessmentId: null, dueAt: 0, retry: null };
   const links = reminderLinks("https://unicalearning.com", r, token);
-  const mail = reminderEmail({ kind: "start_followup", parentName: "Priya Shah", childName: "Maya", url: links.url, unsubscribeUrl: links.unsubscribeUrl, postal: "V3S 1A1", total: 30 });
+  const mail = reminderEmail({ kind: "start_followup", parentName: "Priya Shah", childName: "Maya", url: links.url, unsubscribeUrl: links.unsubscribeUrl, postal: "V3S 1A1" });
   const message = { sender: { to: "parent" as const }, to: "priya@family.ca", replyTo: "help@unicalearning.com", ...mail, headers: { "List-Unsubscribe": `<${links.oneClickUrl}>` } };
   const row = copyRow({ emailLogId: "l1" }, "p1", { from: "Unica Learning <contact@unicalearning.com>", message, outcome: "sent", emailId: "re_123" });
 

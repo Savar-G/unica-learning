@@ -129,3 +129,54 @@ it("Scan pages asks for no preview unless the server says this family has checks
   await open("on");
   expect(calls.some((c) => c === "POST /api/account/scans/photo-1/preview")).toBe(true);
 });
+
+// Review of PR #874, finding 3. Failing input: the POST answers "pending" at 0 s, the GET starts at 1 s, and its answer
+// comes at 8 s with "done" and problem "blurry". The screen waits until one fixed deadline (6 s) and shows nothing later.
+const photoCheckFetch = (answerAt: number | null, view: unknown) => {
+  const gets: number[] = [];
+  let held: ((r: Response) => void) | null = null;
+  vi.stubGlobal("fetch", async (path: string, init?: RequestInit) => {
+    if (init?.method === "POST") return Response.json({ preview: READY, photoCheck: { state: "pending" } });
+    if (path.endsWith("/preview")) {
+      gets.push(Date.now());
+      if (answerAt === null) return Response.json({ preview: READY, photoCheck: view });
+      // The answer arrives at `answerAt` ms, whatever the request's signal says (as a slow network can).
+      return new Promise<Response>((resolve) => { held = resolve; setTimeout(() => held?.(Response.json({ preview: READY, photoCheck: view })), answerAt - Date.now()); });
+    }
+    return new Response(new Blob(["private"]));
+  });
+  return gets;
+};
+const at = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+
+it("a photo check answer that comes after the 6 s deadline is not shown, and the wait ends at the deadline", async () => {
+  // Disproved if the blurry box appears at 8 s, or "Checking the photo..." stays after 6 s.
+  vi.useFakeTimers({ now: 0, toFake: ["setTimeout", "clearTimeout", "Date"] });
+  try {
+    const gets = photoCheckFetch(8000, { state: "done", problem: "blurry" });
+    await act(async () => root.render(createElement(ScanPreview, { photo: "photo-1", child: "Alex", onSendAnyway: () => {} })));
+    await at(0);
+    expect(host.textContent).toContain("Checking the photo");
+    await at(1000);
+    expect(gets).toEqual([1000]);
+    await at(5000);
+    expect(host.textContent).not.toContain("Checking the photo");
+    expect(host.querySelector(".scan-check-problem")).toBeNull();
+    await at(3000);
+    expect(host.textContent).not.toContain("The photo is blurry");
+    expect(host.querySelector(".scan-check-problem")).toBeNull();
+    expect(gets).toEqual([1000]);
+  } finally { vi.useRealTimers(); }
+});
+
+it("a photo check answer that comes before the deadline shows the problem with Send anyway", async () => {
+  vi.useFakeTimers({ now: 0, toFake: ["setTimeout", "clearTimeout", "Date"] });
+  try {
+    photoCheckFetch(null, { state: "done", problem: "blurry" });
+    await act(async () => root.render(createElement(ScanPreview, { photo: "photo-1", child: "Alex", onSendAnyway: () => {} })));
+    await at(1000);
+    expect(host.querySelector(".scan-check-problem")?.textContent).toContain("The photo is blurry. Hold the phone still and take it again.");
+    expect(host.textContent).toContain("Send anyway");
+    expect(host.textContent).not.toContain("Checking the photo");
+  } finally { vi.useRealTimers(); }
+});

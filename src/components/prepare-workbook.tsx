@@ -7,14 +7,15 @@ import { adminWorkbookRunPath } from "@/lib/admin-view";
 /**
  * #312: "Prepare next workbook" on a child. One confirm, then the run starts in the background and the run's page opens
  * with its progress. When a run is active already, that run's page opens. D-200: with the Mac runner the run is queued
- * for the workbook worker on Savar's Mac.
+ * for the workbook worker on Savar's Mac. The Production page shows the same control on a child with no workbook yet
+ * (`label`: the button's words there).
  */
-export function PrepareWorkbook({ childId, child, runner = "server" }: { childId: string; child: string; runner?: "mac" | "server" }) {
+export function PrepareWorkbook({ childId, child, runner = "server", label = "Prepare next workbook" }: { childId: string; child: string; runner?: "mac" | "server"; label?: string }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   async function start() {
-    const where = runner === "mac" ? "It is made on Savar's Mac, on the Claude subscription (the paid API only if the subscription cannot)." : "It is made on the server with the paid API.";
+    const where = runner === "mac" ? "It is made on the workbook computer, on the Claude subscription. The paid API is used only when the subscription cannot make it." : "It is made on the server with the paid API.";
     if (busy || !window.confirm(`Prepare ${child}'s next workbook? The AI writes every page, so it takes a while. ${where}`)) return;
     setBusy(true);
     setError("");
@@ -28,7 +29,7 @@ export function PrepareWorkbook({ childId, child, runner = "server" }: { childId
     finally { setBusy(false); }
   }
   return <div className="adm-row">
-    <button type="button" className="btn adm-btn" onClick={start} disabled={busy}>{busy ? "Starting..." : "Prepare next workbook"}</button>
+    <button type="button" className="btn adm-btn" onClick={start} disabled={busy}>{busy ? "Starting..." : label}</button>
     {error && <p role="alert" className="adm-note">{error}</p>}
   </div>;
 }

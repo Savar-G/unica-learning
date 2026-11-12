@@ -47,7 +47,7 @@ export function ArticleLayout({ meta, section, related, children }: { meta: Arti
   const sec = ARTICLE_SECTIONS[section];
   const path = articlePath(section, meta.slug);
   const src = `${sec.src}-${meta.slug}`;
-  const jsonLd = articleJsonLd({ section, path, title: meta.title, description: meta.description, published: meta.published, updated: meta.updated, faqs: meta.faqs });
+  const jsonLd = articleJsonLd({ section, path, title: meta.title, description: meta.description, published: meta.published, updated: meta.updated });
   // A blog post shows its publish date, plus the update date once it changes. A guide shows the update date only.
   const dates = meta.published ? (
     <>

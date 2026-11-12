@@ -1,7 +1,7 @@
 import { BUSINESS_NAME, MAILING_ADDRESS, SUPPORT_EMAIL, WEBSITE } from "@/lib/contact";
 
 /** Who signs an email: the team (notices and security emails) or the two founders (D-225). */
-export type Signer = "team" | "founders";
+export type Signer = "team" | "founders" | "results-founders";
 
 // Approved email design A. These fragments are table rows, with inline styles and system fonts.
 const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
@@ -21,7 +21,7 @@ export interface EmailFooter {
 }
 
 export function emailSignatureText(support?: "email", signer: Signer = "team"): string {
-  const by = signer === "founders" ? `Savar & Cedric\nCo-founders, ${BUSINESS_NAME}` : `The ${BUSINESS_NAME} team`;
+  const by = signer === "results-founders" ? `Cedric and Savar\nCo-founders, ${BUSINESS_NAME}` : signer === "founders" ? `Savar & Cedric\nCo-founders, ${BUSINESS_NAME}` : `The ${BUSINESS_NAME} team`;
   return `Thank you,\n${by}\n${support === "email" ? `Questions? Email ${SUPPORT_EMAIL}.` : "Questions? Reply to this email."}`;
 }
 
@@ -46,7 +46,9 @@ export function emailEndHtml(f: EmailFooter, inset = 24): string {
     : "Questions? Reply to this email.";
   const p = (s: string) => `<p style="margin:0 0 16px">${s}</p>`;
   return `<tr><td style="padding:24px ${inset}px 32px;font-size:16px;line-height:1.6;color:${INK}">
-Thank you,<br>${f.signer === "founders"
+Thank you,<br>${f.signer === "results-founders"
+    ? `<strong style="font-weight:600">Cedric and Savar</strong><br><span style="color:${SECONDARY}">Co-founders, ${esc(BUSINESS_NAME)}</span>`
+    : f.signer === "founders"
     ? `<strong style="font-weight:600">Savar &amp; Cedric</strong><br><span style="color:${SECONDARY}">Co-founders, ${esc(BUSINESS_NAME)}</span>`
     : `<strong style="font-weight:600">The ${esc(BUSINESS_NAME)} team</strong>`}<br>
 <span style="font-size:14px;color:${SECONDARY}">${support}</span>

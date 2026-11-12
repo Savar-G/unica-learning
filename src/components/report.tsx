@@ -13,7 +13,6 @@ import { CURRICULA } from "@/lib/signup";
 import { BRAND } from "@/lib/site";
 import type { ReportSrc } from "@/lib/next-step";
 import { BookCall, ReportNextActions, type NextStepStart } from "@/components/report-next";
-import { BOOKING_URL } from "@/lib/contact";
 import { LearningStep } from "@/components/learning";
 import type { LearningAnswers } from "@/lib/learning-style";
 import Link from "next/link";
@@ -57,8 +56,11 @@ import {
   strengthsView,
   whereNotes,
   whereView,
+  resultsCall,
   workingLevelNote,
 } from "@/lib/report-view";
+import { ReportFirstPages, type FirstPagesView } from "@/components/report-first-pages";
+import type { ProgressPreview } from "@/lib/progress-preview";
 import "./report.css";
 
 const NO_NEXT: ReportNextContext = { src: "account", asked: false, start: { saved: null, joined: false, cancelled: false } };
@@ -76,17 +78,24 @@ export interface NewTestOffer {
 /**
  * `nextSlot` replaces the next-step row: the public sample report shows its own button there. `newTest` (#189): when the
  * next test opens, and the button under the reliability note; without it the note names no time (the admin's copy).
- * `actionBeside` (#552): the dashboard shows the next step beside the report, so the report ends with the call only.
+ * `actionBeside` (#552): the dashboard shows the next step beside the report, so the report has no next-step row.
+ * `progress`: the progress preview (src/lib/progress-preview.ts), computed on the server by the page: it reads the whole BC
+ * curriculum, which must not reach a browser bundle, and this file is imported by client previews.
+ * The results call sits after the working level for parents and on the sample report, not on the admin's copy.
  */
-export function ReportCard({ view, next = NO_NEXT, readOnly = false, nextSlot, newTest = null, actionBeside = false }: { view: ReportView; next?: ReportNextContext; readOnly?: boolean; nextSlot?: ReactNode; newTest?: NewTestOffer | null; actionBeside?: boolean }) {
+export function ReportCard({ view, next = NO_NEXT, readOnly = false, nextSlot, newTest = null, actionBeside = false, firstPages = null, progress = null }: { view: ReportView; next?: ReportNextContext; readOnly?: boolean; nextSlot?: ReactNode; newTest?: NewTestOffer | null; actionBeside?: boolean; firstPages?: FirstPagesView | null; progress?: ProgressPreview | null }) {
   return (
     <article className="rpt" aria-labelledby="rpt-title">
       <ReportHeader view={view} />
       <ReportOverall view={view} />
       <ReportContext view={view} newTest={newTest} />
+      {(!readOnly || nextSlot) && <Row id="rpt-call" title="Results call"><BookCall call={resultsCall(view)} /></Row>}
       <ReportWhere view={view} />
       {bookOneView(view) ? <ReportBookOne view={view} /> : <ReportHelp view={view} />}
-      {actionBeside ? BOOKING_URL && <Row id="rpt-call" title="Questions"><BookCall childName={view.childName} /></Row> : nextSlot ? <Row id={NEXT_STEP_ANCHOR} title="Next step">{nextSlot}</Row> : readOnly ? <Row id={NEXT_STEP_ANCHOR} title="Next step"><p>{nextStep(view).title}</p></Row> : <ReportNextStep view={view} next={next} />}
+      {/* The first pages of workbook 1 (docs/first-pages.md), when ready: the action only while no card is saved. */}
+      {firstPages && <ReportFirstPages name={view.childName} view={firstPages} offer={!readOnly && view.model.callToAction === "card" && !next.start.saved} />}
+      <ReportProgress preview={progress} />
+      {actionBeside ? null : nextSlot ? <Row id={NEXT_STEP_ANCHOR} title="Next step">{nextSlot}</Row> : readOnly ? <Row id={NEXT_STEP_ANCHOR} title="Next step"><p>{nextStep(view).title}</p></Row> : <ReportNextStep view={view} next={next} />}
       <div className="rpt-details-h" id={DETAILS_ID}>
         <p className="eyebrow">The details</p>
         <p>How we measured, and {view.childName}&apos;s own answers.</p>
@@ -444,6 +453,54 @@ function ReportBookOne({ view }: { view: ReportView }) {
   );
 }
 
+/**
+ * The progress preview (round r-progress-preview-5, option P2): "We can help [Name] reach ...", the skills today beside the skills at
+ * the goal (a round arrow on the goal column's edge), then how the books get there. Nothing without workbook 1.
+ */
+export function ReportProgress({ preview: p }: { preview: ProgressPreview | null }) {
+  if (!p) return null;
+  return (
+    <section className="rpt-goal" id="rpt-progress" aria-labelledby="rpt-goal-h">
+      <h2 id="rpt-goal-h">{p.sentence.lead}<b>{p.sentence.goal}</b>{p.sentence.by && <> by <b>{p.sentence.by}</b></>}.</h2>
+      <table className="rpt-goal-t" aria-labelledby="rpt-goal-h">
+        <thead>
+          <tr>
+            <td />
+            <th scope="col"><span className="rpt-k">Today</span><b>{p.todayLabel}</b></th>
+            <th scope="col" className="is-goal"><span className="rpt-k">{p.goalMonth ? `By ${p.goalMonth}` : "The goal"}</span><b>{p.goalLabel}</b></th>
+          </tr>
+        </thead>
+        <tbody>
+          {p.rows.map((r) => (
+            <tr key={r.area}>
+              <th scope="row">{r.area}</th>
+              <td>{r.today ?? <span className="rpt-goal-not">Not started yet</span>}</td>
+              <td className="is-goal"><i className="rpt-goal-arrow" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M3 8h10M9 4l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg></i>{r.goal}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="rpt-k rpt-goal-how-k">How we get {p.name} there</p>
+      <ol className="rpt-goal-how">
+        {p.steps.map((step, i) => (
+          <li key={step.title}>
+            <i className="rpt-path-n">{i + 1}</i>
+            <b>{step.title}</b>
+            <span>{step.text}</span>
+            {i === 0 && (
+              <>
+                <span className="rpt-goal-books" aria-hidden="true">{p.stages.map((s) => <i key={s.grade} className={`is-g${s.grade % 8}`} style={{ flexGrow: s.books }} />)}</span>
+                <span className="rpt-goal-legend">{p.stages.map((s) => <span key={s.grade}><i className={`is-g${s.grade % 8}`} />{s.label}{s.months ? `: ${s.months}` : `: ${s.books} workbooks`}</span>)}</span>
+              </>
+            )}
+          </li>
+        ))}
+      </ol>
+      <p className="rpt-small">{p.basis}</p>
+    </section>
+  );
+}
+
 /** Needs practice in sunflower, like Developing; never the tangerine of Needs attention. */
 const factsChip = (label: string) => `rpt-chip ${label === "Needs practice" ? "is-developing" : "is-secure"}`;
 
@@ -544,7 +601,6 @@ function ReportNextStep({ view, next }: { view: ReportView; next: ReportNextCont
     <Row id={NEXT_STEP_ANCHOR} title="Next step">
       {learning && <LearningStep childId={learning.childId} name={view.childName} start={learning.start} place="report" />}
       <ReportNextActions reportId={view.id} step={step} childName={view.childName} province={view.province} {...actions} />
-      <BookCall childName={view.childName} />
     </Row>
   );
 }

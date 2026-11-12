@@ -11,7 +11,7 @@ The approved comment pins, pending list, Send all comments, before/after view an
 | R428-5 | Resume with a changed build, writer model or solve model | The batch fails and returns its comments to pending. Unframed legacy partial results also fail. |
 | R428-6 | `admin-workbook-lists.test.ts` | The workbook and child lists use the latest counts and render problems. |
 | R428-7 | Both runners: response save failures, lost dispatch and result replies, eight recoveries | Dispatch rows retain spent attempts. Saved writer responses replay. Three storage attempts precede recovery. No batch can dispatch more than five writer requests per page. |
-| R428-8 | `scripts/workbook-edit-browser-check.mjs` in Aside | The tag and pin do not overlap. Restoring the old CSS rule makes the same assertion fail. |
+| R428-8 | A one-off Aside REPL check (the script was removed on 2026-11-11; it is in git history at `484f7950`) | The tag and pin do not overlap. Restoring the old CSS rule makes the same assertion fail. |
 | R428-10 | Both runners: a manual edit passes its solve, then the image checkpoint fails | Recovery reuses the saved solve log. The solver receives one call. No batch can dispatch more than five solve requests per question. |
 | R428-9 | Position tests and keyboard Enter in Aside | Pointer fractions stay in [0, 1]. The saved keyboard comment has x=0.5 and y=0.5. |
 
@@ -23,8 +23,7 @@ Edit clients use one provider request per ledger dispatch. Transport retries are
 
 The public-interface tests cover both runners and both call kinds: repeated result-save failures, a lost dispatch reply, a failure before dispatch commits, a crash after the result commits, and a checkpoint failure after a successful manual solve. The first regression run reproduced the four duplicate-call failures in `/tmp/w428b-red.log`.
 
-`supabase/tests/workbook-edit-call-ledger.sql` verifies both call kinds through hosted RPCs. It checks immutable replay, uncertain attempts, the five-call cap, expired and replaced leases, pending comments, RLS and RPC grants. It deletes the test family inside the rolled-back transaction and verifies that the ledger is empty. `scripts/check-workbook-edit-types.mjs` checks that the generated types add only this PR's three tables and ten functions against current main.
-
+`supabase/tests/workbook-edit-call-ledger.sql` verifies both call kinds through hosted RPCs. It checks immutable replay, uncertain attempts, the five-call cap, expired and replaced leases, pending comments, RLS and RPC grants. It deletes the test family inside the rolled-back transaction and verifies that the ledger is empty.
 The result banner counts question comments in the latest batch and open layout comments on the current revision. It states how many layout comments are saved and remain open. It states how many question comments were applied or could not be applied, with a plain reason when all failed. A partial failure says, "1 comment couldn't be applied. The rest are done." Earlier question batches do not change the count.
 
 The hosted SQL probe clones a test-family draft. It uses the public RPCs. It rolls back all fixture writes. The browser uses a separate copy of a test-family draft with fake AI on the local development server. The original printed workbook stays locked.

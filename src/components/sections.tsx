@@ -59,7 +59,7 @@ export function Hero() {
     <header id="top" className="hero hero-wb">
       <div className="txt">
         <p className="kicker">{HERO.kicker}</p>
-        <h1>{HERO.title} <span className="mark">{HERO.highlight}</span> {HERO.after}</h1>
+        <h1>{HERO.title} <span className="mark">{HERO.highlight}</span></h1>
         <p className="lead">{HERO.lead}</p>
         <div className="ctas">
           <GetStarted src="hero" />
@@ -153,6 +153,9 @@ export function OurPromise() {
   );
 }
 
+/** What each child after the first saves a month, in whole cents (79.99 - 59.99 is 20.000000000000007 in floats). */
+const SIBLING_SAVING = Math.round((PLANS.one.price - ADDITIONAL_CHILD_PRICE) * 100) / 100;
+
 export function Pricing() {
   return (
     <Section id="price" aria-labelledby="priceT">
@@ -172,7 +175,20 @@ export function Pricing() {
           note={PLANS.one.note}
           price={PLANS.one.price}
           offer={{ price: "Free", note: "your first month!", then: `Then CAD ${cad(PLANS.one.price)} a month.` }}
-          priceNote={<>Additional children: CAD {cad(ADDITIONAL_CHILD_PRICE)}/month each</>}
+          priceNote={
+            <span className="plan-family">
+              <svg viewBox="0 0 34 34" aria-hidden="true">
+                <circle cx="12" cy="11" r="5" fill="var(--sun)" />
+                <circle cx="23" cy="13" r="4" fill="var(--sky)" />
+                <path d="M3 30c0-6 4-10 9-10s9 4 9 10" fill="var(--sun)" />
+                <path d="M16 30c.5-5 3.5-8 7-8s6.5 3 7 8" fill="var(--sky)" />
+              </svg>
+              <span>
+                <b>More than one child?</b> Each sibling is CAD {cad(ADDITIONAL_CHILD_PRICE)} a month.{" "}
+                <span className="plan-family-save">CAD {cad(SIBLING_SAVING)} less a month for each additional child.</span>
+              </span>
+            </span>
+          }
           features={[
             "Free online math assessment and report, before you choose a plan",
             "A program built from your child's level and gaps",

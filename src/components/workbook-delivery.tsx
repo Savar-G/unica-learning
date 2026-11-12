@@ -18,8 +18,9 @@ const ERRORS: Record<string, string> = {
   correction_conflict: "This correction was already sent with different details. Reload before you correct it.",
   time_unchanged: "Enter a different delivery time to make a correction.",
 };
-export function WorkbookDelivery({ workbookId, childId, number, timeZone, receipt, actor }: {
-  workbookId: string; childId: string; number: number; timeZone: FamilyZone; receipt: DeliveryReceipt | null; actor?: string | null;
+/** `heading`: the level of its heading, h3 inside the workbook page's print and ship steps. */
+export function WorkbookDelivery({ workbookId, childId, number, timeZone, receipt, actor, heading: Heading = "h2" }: {
+  workbookId: string; childId: string; number: number; timeZone: FamilyZone; receipt: DeliveryReceipt | null; actor?: string | null; heading?: "h2" | "h3";
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -52,7 +53,7 @@ export function WorkbookDelivery({ workbookId, childId, number, timeZone, receip
     finally { setBusy(false); }
   }
   return <section className="adm-wb-section" aria-labelledby="workbook-delivery">
-    <h2 id="workbook-delivery">Workbook delivery</h2>
+    <Heading id="workbook-delivery">Workbook delivery</Heading>
     {receipt ? <>
       <p className="adm-note"><b>Delivery confirmed.</b> Workbook {number} arrived {when(receipt.deliveredAt)}.</p>
       <p className="adm-note">{familyZoneName(timeZone)}. {correction ? "Corrected" : "Recorded"} {when(correction?.recordedAt ?? receipt.recordedAt)} by {actor ?? correction?.actorId ?? receipt.actorId}.</p>
@@ -73,7 +74,7 @@ export function WorkbookDelivery({ workbookId, childId, number, timeZone, receip
       </form>
       <p id="delivery-zone" className="adm-note">Use {familyZoneName(timeZone)}. {correcting ? "The audit log will keep the previous time and your reason." : "You can correct a saved time with a reason."}</p>
     </>}
-    <p className="adm-note">To start the first free month, use <Link href="/admin/next-steps">Cards and waitlist</Link>. Saving a delivery time does not start or restart billing.</p>
+    <p className="adm-note">To start the first free month, use <Link href="/admin/next-steps">Plans and delivery</Link>. Saving a delivery time does not start or restart billing.</p>
     {error && <p className="adm-note" role="alert">{error}</p>}
   </section>;
 }

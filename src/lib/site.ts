@@ -9,11 +9,13 @@ export const SOCIAL_LINKS = [
 ] as const;
 
 // One plan for now: math only (Savar, 2026-10-11). Reading comes back later. Stored rows can still say "both".
+// The price also lives in SQL, as cents literals (7999 and 5999) in the family plan functions: a price change here alone
+// would be capped by the database with no error. Change both; src/lib/plan-price-sql.test.ts fails when they differ.
 export const PLANS = {
   one: { id: "one", name: "Math", price: 79.99, note: "K to Grade 9, ages 5 to 14" },
 } as const;
 
-/** Monthly price for every child after the first on the same family plan. */
+/** Monthly price for every child after the first on the same family plan. Also in SQL as 5999: see PLANS above. */
 export const ADDITIONAL_CHILD_PRICE = 59.99;
 
 export type PlanId = keyof typeof PLANS;
@@ -39,10 +41,12 @@ export const priceWithOffer = (price: number) => `CAD ${cad(price)}/month, first
 
 // Plain words first (Oct 2026): a parent reading in her second language took the "same box" headline for an online
 // program. The headline says what Unica does; the lead names the struggle and says how (D-215: plain lead, no topic chip).
+// D-318: the headline names the product and the subject ("personalized math program"), the words parents search for;
+// the kicker gives the ages and grades instead.
+// D-321: the lead says what Unica does (paper workbook, phone-scan marking, AI Teaching Assistant, books that build).
 export const HERO = {
-  kicker: "A personalized math program for ages 5 to 14.",
-  title: "Unica meets your child",
-  highlight: "at their level,",
-  after: "and takes them further.",
-  lead: "Miss one topic and every lesson after it gets harder. Unica gives your child a workbook built for where they are.",
+  kicker: "For ages 5 to 14, Kindergarten to Grade 9.",
+  title: "A personalized math program that meets your child",
+  highlight: "at their level.",
+  lead: "Unica mails a paper workbook made for your child. You scan the pages with your phone, and we mark them. An AI Teaching Assistant helps when your child gets stuck, and each book builds on the last.",
 };

@@ -9,7 +9,7 @@ import { memoryLearningEventStore } from "@/lib/learning-events-memory";
 import { hasOperation } from "@/lib/question-package";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { checkTrace } from "@/lib/maya-trace";
-import { scopeSummary } from "@/lib/maya-scope-review";
+import { callRefusals, scopeSummary } from "@/lib/maya-scope-review";
 import { MayaCall } from "@/components/admin-maya";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
@@ -59,7 +59,7 @@ describe.each(["chat", "admin_test"] as const)("%s public session scope", kind =
     expect(r.view.flag).toBeNull(); expect(r.view.scopeRefusals).toHaveLength(1);
     expect(Object.keys(r.view.scopeRefusals![0]).sort()).toEqual(["at", "reason"]);
     expect(store.rows()[0].live?.text.session.done).toEqual([]);
-    expect(scopeSummary(store.rows()).count).toBe(1);
+    expect(scopeSummary(store.rows().map(callRefusals)).count).toBe(1);
     // The next request reconstructs the controller from its saved log.
     r = ok(await calls.input(r.view.id, r.view.revision, { type: "child", text: "66" }, "Leah"));
     r = ok(await calls.input(r.view.id, r.view.revision, { type: "end" }, "Leah"));
@@ -67,7 +67,7 @@ describe.each(["chat", "admin_test"] as const)("%s public session scope", kind =
     expect(row.trace && checkTrace(row.trace).ok).toBe(true);
     expect(row.trace?.scopeRefusals).toHaveLength(1);
     expect(row.outcome?.reason).toBe("solved");
-    expect(scopeSummary(store.rows()).count).toBe(1);
+    expect(scopeSummary(store.rows().map(callRefusals)).count).toBe(1);
     const saved = recordView(row)!;
     expect(saved.scopeRefusals).toEqual(r.view.scopeRefusals);
     const html = renderToStaticMarkup(createElement(MayaCall, { initial: saved, childName: "Leah", board: boardPlayback(saved.batches) }));
@@ -130,9 +130,9 @@ it("counts refusals across ended calls and a live chat, without counting the sam
     r = ok(await calls.input(r.view.id, r.view.revision, { type: "child", text: outside[0] }, null));
     if (kind === "admin_test") await calls.input(r.view.id, r.view.revision, { type: "end" }, null);
   }
-  expect(scopeSummary(store.rows())).toEqual({ count: 2, reasons: { outside_work: 2 } });
+  expect(scopeSummary(store.rows().map(callRefusals))).toEqual({ count: 2, reasons: { outside_work: 2 } });
   const ended = store.rows().find(r => r.trace)!;
   const duplicate = { ...ended, live: { text: { session: { scopeRefusals: ended.trace!.scopeRefusals } } } };
-  expect(scopeSummary([duplicate]).count).toBe(1);
-  expect(scopeSummary([{ trace: {}, live: null }]).count).toBe(0);
+  expect(scopeSummary([duplicate].map(callRefusals)).count).toBe(1);
+  expect(scopeSummary([{ trace: {}, live: null }].map(callRefusals)).count).toBe(0);
 });

@@ -6,8 +6,6 @@ import { memoryWordingHistoryStore, TIME_LIMITS } from "@/lib/maya";
 import { mayaCalls, type CallChange, type CallResult, type CallSeams } from "@/lib/maya-call";
 import { memoryCallStore, memoryConnectionLog } from "@/lib/maya-call-memory";
 import { abandonedAt, SWEEP_BATCH, SWEEP_GRACE_MS, SWEEP_PAGES, SWEEP_START_MS, SWEEP_TIME_LIMIT_MS, sweepAbandonedCalls, sweepSeams, type SweepResult } from "@/lib/maya-call-sweep";
-import { createMinutesLedger } from "@/lib/maya-minutes";
-import { memoryMinutesStore } from "@/lib/maya-minutes-memory";
 import type { MayaModel } from "@/lib/maya-model";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
@@ -32,20 +30,16 @@ function setup() {
   let now = T0;
   let n = 0;
   const clock = () => now;
-  const minutes = memoryMinutesStore({ clock });
   const inner = memoryCallStore({ testFamilies: [PARENT], clock });
   /** Calls whose writes the database refuses (the family write fence of a family whose deletion was requested). */
   const fenced = new Set<string>();
   /** Failures still to come: the learning event write, the profile rebuild, the connection read. */
   const faults = { event: 0, rebuild: 0, read: 0 };
-  // The settle trigger of migration add_maya_minutes: a call's end settles its grant at its connected seconds.
   const store: typeof inner = {
     ...inner,
     async update(id: string, revision: number, change: CallChange) {
       if (fenced.has(id)) throw new Error("maya call update: family_write_fence");
-      const written = await inner.update(id, revision, change);
-      if (written && change.status === "ended") minutes.callEnded(id, change.connectedSeconds ?? 0);
-      return written;
+      return inner.update(id, revision, change);
     },
   };
   const log = memoryConnectionLog(store, clock);
@@ -104,7 +98,7 @@ function setup() {
   const chat = async () => ok(await calls.start({ kind: "chat", parentId: PARENT, childId: CHILD, childName: "Leah", package: PKG, startedBy: PARENT })).view;
   const row = (id: string) => inner.rows().find((r) => r.id === id)!;
   return {
-    calls, seams, sweep, chat, events: () => eventStore.range(CHILD, { from: "2026-01-01", to: "2027-01-01" }), row, note, notes, rebuild, minutes, inner, connections, fenced, faults,
+    calls, seams, sweep, chat, events: () => eventStore.range(CHILD, { from: "2026-01-01", to: "2027-01-01" }), row, note, notes, rebuild, inner, connections, fenced, faults,
     asked: () => asked, now: () => now, set: (ms: number) => (now = ms), advance: (ms: number) => (now += ms),
   };
 }
@@ -189,17 +183,12 @@ describe("the sweep of abandoned calls", () => {
     for (const id of ids) expect(s.row(id).notePending).toBeNull();
   });
 
-  it("ends a crashed voice call from its stored connection time, so its minutes stop counting", async () => {
-    // Wrong if: the week still counts the whole 10-minute grant after the sweep, or the connected seconds include the
-    // time after the worker's last lease renewal (15 seconds at most, docs/maya-voice.md).
+  it("ends a crashed voice call from its stored connection time", async () => {
+    // Wrong if: the connected seconds include the time after the worker's last lease renewal (15 seconds at most,
+    // docs/maya-voice.md).
     const s = setup();
-    const ledger = createMinutesLedger({ store: s.minutes, clock: s.now });
-    const who = { parentId: PARENT, childId: CHILD, timeZone: "America/Vancouver" };
     const id = "00000000-0000-4000-8000-0000000000aa";
-    const grant = await ledger.grantChild({ ...who, callId: id });
-    if (!grant.ok) throw new Error("no grant");
-    ok(await s.calls.startVoice({ id, kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: PKG, startedBy: "admin-1", limitMs: grant.limitMs }));
-    s.minutes.callMade(id);
+    ok(await s.calls.startVoice({ id, kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: PKG, startedBy: "admin-1" }));
     const opened = await s.calls.openVoice(id, PROVIDERS, "Leah");
     if (!opened.ok) throw new Error(opened.error);
     const call = opened.call;
@@ -213,7 +202,6 @@ describe("the sweep of abandoned calls", () => {
     await call.settled();
     const lastRenewal = s.now();
     // The worker crashes here: no more renewals, no end.
-    expect(await ledger.usage(who)).toMatchObject({ usedSeconds: grant.seconds });
 
     expect(abandonedAt(s.row(id))).toBe(Date.parse(s.row(id).startedAt!) + DUE_MS);
     s.set(abandonedAt(s.row(id)) - 1);
@@ -225,7 +213,6 @@ describe("the sweep of abandoned calls", () => {
     const started = Date.parse(ended.startedAt!);
     expect(ended.connectedSeconds).toBeGreaterThanOrEqual(Math.floor((lastRenewal - started) / 1000));
     expect(ended.connectedSeconds).toBeLessThanOrEqual(Math.ceil((lastRenewal + 15_000 - T0) / 1000));
-    expect((await ledger.usage(who)).usedSeconds).toBe(ended.connectedSeconds);
     // The crashed worker's handle can no longer write.
     expect(await call.tick()).toMatchObject({ say: [], ended: false });
     expect(s.row(id).revision).toBe(ended.revision);

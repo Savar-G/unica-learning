@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { childPlanAccess as sharedChildPlanAccess } from "@/lib/plan-access";
 import { markedFamily } from "@/lib/scan-pages-access";
+import type { ScanAccessReads } from "@/lib/scan-pages-access";
 import { isUuid } from "@/lib/workbook-content";
 
 /**
@@ -68,29 +69,33 @@ async function planDecision(db: SupabaseClient<Database>, plan: ChildPlanAccess,
   return { open: a?.open === true && (reason === "open" || reason === "ending_until_end"), reason };
 }
 
-/** The one rule. A test family or admin (only listed ones when a list applies); in families mode also a real family for a child whose plan is running. */
+/**
+ * The one rule. A test family or admin (only listed ones when a list applies); in families mode also a real family for a
+ * child whose plan is running. `reads`: one request's marked and plan answers (scanAccessReads), reused instead of read
+ * again; it changes no decision, and only the shared plan gate is reused (a `plan` passed in is always asked).
+ */
 async function admission(db: SupabaseClient<Database>, parent: string, families: boolean, list: Set<string> | null,
-  scope: MarkingScope | undefined, plan: ChildPlanAccess): Promise<MarkingDecision> {
-  if ((list === null || list.has(parent.toLowerCase())) && await markedFamily(parent, db)) return { open: true, reason: "test_family" };
+  scope: MarkingScope | undefined, plan: ChildPlanAccess, reads?: ScanAccessReads): Promise<MarkingDecision> {
+  if ((list === null || list.has(parent.toLowerCase())) && await (reads ? reads.marked(parent, db) : markedFamily(parent, db))) return { open: true, reason: "test_family" };
   if (!families) return { open: false, reason: "not_test_family" };
   const child = await scopedChild(db, parent, scope);
   if (!child) return { open: false, reason: "child_unknown" };
-  return planDecision(db, plan, parent, child);
+  return planDecision(db, reads && plan === childPlanAccess ? reads.childPlan.bind(reads) as ChildPlanAccess : plan, parent, child);
 }
 
 /** Automatic marking and its reads. Off unless the switch is on; SCAN_MARKING_TEST_PARENT_IDS limits test families and admins. */
 export async function markingDecision(db: SupabaseClient<Database>, parent: string, env: Env = process.env,
-  scope?: MarkingScope, plan: ChildPlanAccess = childPlanAccess): Promise<MarkingDecision> {
+  scope?: MarkingScope, plan: ChildPlanAccess = childPlanAccess, reads?: ScanAccessReads): Promise<MarkingDecision> {
   const mode = markingMode(env);
   if (mode === "off") return { open: false, reason: "off" };
   const list = testParentList(env);
   if (list === false) return { open: false, reason: "off" };
-  return admission(db, parent, mode === "families", list, scope, plan);
+  return admission(db, parent, mode === "families", list, scope, plan, reads);
 }
 
 export async function markingAccess(db: SupabaseClient<Database>, parent: string, env: Env = process.env,
-  scope?: MarkingScope, plan: ChildPlanAccess = childPlanAccess) {
-  return (await markingDecision(db, parent, env, scope, plan)).open;
+  scope?: MarkingScope, plan: ChildPlanAccess = childPlanAccess, reads?: ScanAccessReads) {
+  return (await markingDecision(db, parent, env, scope, plan, reads)).open;
 }
 
 /**
@@ -99,14 +104,14 @@ export async function markingAccess(db: SupabaseClient<Database>, parent: string
  * real families.
  */
 export async function scanChecksDecision(db: SupabaseClient<Database>, parent: string, env: Env = process.env,
-  scope?: MarkingScope, plan: ChildPlanAccess = childPlanAccess): Promise<MarkingDecision> {
+  scope?: MarkingScope, plan: ChildPlanAccess = childPlanAccess, reads?: ScanAccessReads): Promise<MarkingDecision> {
   const families = markingMode(env) === "families";
   // A malformed list closes marking in every mode; in families mode it closes these steps too, so they cannot disagree.
   if (families && testParentList(env) === false) return { open: false, reason: "off" };
-  return admission(db, parent, families, null, scope, plan);
+  return admission(db, parent, families, null, scope, plan, reads);
 }
 
 export async function scanChecksAccess(db: SupabaseClient<Database>, parent: string, env: Env = process.env,
-  scope?: MarkingScope, plan: ChildPlanAccess = childPlanAccess) {
-  return (await scanChecksDecision(db, parent, env, scope, plan)).open;
+  scope?: MarkingScope, plan: ChildPlanAccess = childPlanAccess, reads?: ScanAccessReads) {
+  return (await scanChecksDecision(db, parent, env, scope, plan, reads)).open;
 }

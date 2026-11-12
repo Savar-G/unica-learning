@@ -406,12 +406,13 @@ export function templateMethod(src: TemplateSource, text: string): string | null
     if ("answer" in result) return `Work it out: ${expr.replace(/\/\//g, "÷").replace(/\*/g, "×").replace(/-/g, "−").replace(/\d{5,}/g, (x) => groupedNumber(Number(x)))} = ${groupedNumber(Number(result.answer))}.`;
   }
   if (direct) return `Work it out: ${direct}.`;
-  // A true or false: the sum it checks, from the derived values.
-  // (A sum whose two numbers the question prints.)
-  const printed = new Set((text.replace(/(\d)[\s\u00a0\u202f](?=\d{3}\b)/g, "$1").match(/\d+/g) ?? []).map(Number));
+  // A true-or-false example can work a calculation the question prints. Two matching numbers alone can be a distractor.
+  const plain = text.replace(/(\d)[\s\u00a0\u202f](?=\d{3}\b)/g, "$1").replace(/−/g, "-").replace(/×/g, "*").replace(/÷/g, "//");
+  const printed = new Set([...plain.matchAll(/(?:^|[^\d.-])(-?\d+)\s*(\+|-|\*|\/\/)\s*(-?\d+)(?![\d.])/g)]
+    .map(m => `${Number(m[1])}:${m[2]}:${Number(m[3])}`));
   if (/'true'|'false'|'yes'|'no'/.test(src.answer)) for (const [, e] of src.derived) {
     const m = e.trim().match(/^(\w+) (\+|-|\*|\/\/) (\w+)$/);
-    if (m && printed.has(n(m[1])) && printed.has(n(m[3]))) return `Work it out: ${binary(e)}.`;
+    if (m && printed.has(`${n(m[1])}:${m[2]}:${n(m[3])}`)) return `Work it out: ${binary(e)}.`;
   }
   return null;
 }
@@ -1160,7 +1161,10 @@ export function dayPageContent(o: {
         const ex = taught ? (own ? exampleOf(own, plan.level) : null) : panel();
         // (Its question first when the worked line does not say it: "Count on. What are the next two numbers?" over
         // "6, [7], [8]".)
-        const asked = taught && own && ex?.lines.length && !ex.lines.some((l) => l.replace(/[[\]]/g, "").includes(own.text.trim())) ? [own.text] : [];
+        // (Never for a relation: its worked lines open with its question in code's own words, "Is 240 close to 30 or
+        // 300?", and Kai's U10 book 2 printed both, #811.)
+        const relation = !!own?.item?.checks.some((c) => c.kind === "relation");
+        const asked = taught && own && ex?.lines.length && !relation && !ex.lines.some((l) => l.replace(/[[\]]/g, "").includes(own.text.trim())) ? [own.text] : [];
         const lines = ex?.lines.length ? [...asked, ...ex.lines] : taught?.lines ?? [];
         return { slot: s.slot, items: [], label: ex?.lines.length ? ex.label : taught ? "How it works" : undefined, note: "Read the example, then try it.", lines, ...(taught?.remember ? { explain: `Watch out: ${taught.remember}` } : {}) };
       }

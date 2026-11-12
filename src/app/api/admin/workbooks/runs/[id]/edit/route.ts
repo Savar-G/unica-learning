@@ -2,6 +2,7 @@ import { after } from "next/server";
 import { adminSession } from "@/lib/admin-store";
 import { adminClient } from "@/lib/supabase-auth";
 import type { Json } from "@/lib/database.types";
+import { workbookRunner } from "@/lib/workbook-ai";
 import { isUuid } from "@/lib/workbook-content";
 import { runWorkbookJobNow } from "@/lib/workbook-job-server";
 import { workbookEditProgress } from "@/lib/workbook-edit-progress";
@@ -49,7 +50,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/workb
   let body: { revision: number; send?: boolean; delete?: boolean; comment?: unknown; layout?: unknown };
   try { body = await request.json(); } catch { return Response.json({ reason: "Check the fields." }, { status: 400 }); }
   if (!body || !Number.isInteger(body.revision) || body.revision < 1) return Response.json({ reason: "Reload the page." }, { status: 400 });
-  const runner = process.env.WORKBOOK_RUNNER === "server" ? "server" : "mac";
+  const runner = workbookRunner();
   let plan = null;
   if (body.layout !== undefined) {
     const build = process.env.VERCEL_GIT_COMMIT_SHA;

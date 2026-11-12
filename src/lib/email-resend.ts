@@ -1,5 +1,6 @@
 import "server-only";
 import type { EmailMessage, MailTransport, SendResult } from "@/lib/email-delivery";
+import { admitted, NOT_ADMITTED } from "@/lib/email-admit";
 import { FOUNDERS_SENDER_NAME } from "@/lib/contact";
 
 // The Resend adapter of the mail transport (#149). The one place that reads the Resend key, the sender address and the
@@ -30,10 +31,10 @@ export function resendSender(): string | null {
  */
 export function resendFrom(message: Pick<EmailMessage, "sender">): string | null {
   const from = resendSender();
-  if (!from || message.sender.to !== "parent" || message.sender.from !== "founders") return from;
+  if (!from || message.sender.to !== "parent" || message.sender.from !== "founders" && message.sender.from !== "results-founders") return from;
   const address = from.match(/<([^>]+)>/)?.[1] ?? from.trim();
   // Plain `Name <address>`, the form in Resend's docs: the name has no comma or other character that needs quotes.
-  return `${FOUNDERS_SENDER_NAME} <${address}>`;
+  return message.sender.from === "results-founders" ? `"Cedric and Savar, co-founders of Unica Learning" <${address}>` : `${FOUNDERS_SENDER_NAME} <${address}>`;
 }
 
 const refusal = (status: number) => status >= 400 && status < 500 && status !== 408;
@@ -44,6 +45,7 @@ export function resendTransport({ fetch: request = (input, init) => fetch(input,
   return {
     async send(message, options): Promise<SendResult> {
       if (options?.signal?.aborted || options?.mayStart?.() === false) return { status: "refused", error: "The send did not start: the time ran out" };
+      if (!(await admitted(options))) return NOT_ADMITTED;
       const key = process.env.RESEND_API_KEY;
       if (!key) return { status: "refused", error: "RESEND_API_KEY is not set" };
       const from = resendFrom(message);
@@ -64,6 +66,9 @@ export function resendTransport({ fetch: request = (input, init) => fetch(input,
             html: message.html,
             reply_to: message.replyTo,
             headers: message.headers,
+            ...(message.attachments?.length ? {
+              attachments: message.attachments.map((a) => ({ filename: a.filename, content: Buffer.from(a.content).toString("base64"), content_type: a.contentType })),
+            } : {}),
           }),
           signal: options?.signal ? AbortSignal.any([controller.signal, options.signal]) : controller.signal,
         });

@@ -1,14 +1,16 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { SendLink, StartTest, TrackOnce } from "@/components/account";
 import { NoteCard } from "@/components/parent-maya-notes";
-import { DeskText, MayaNoticeCard, MayaChatRow } from "@/components/parent-home-rows";
+import { DeskText, MayaNoticeCard, MayaChatRow, ProgressCard } from "@/components/parent-home-rows";
+import type { HomeProgress } from "@/lib/progress-preview-server";
 import { ParentAlerts, ParentTestStart } from "@/components/parent-assessment";
 import { ParentOverview } from "@/components/parent-overview";
 import { SupportPage } from "@/components/support-page";
 import type { StartState } from "@/lib/assessment";
 import { gradeLabel } from "@/lib/assessment/grades";
 import { startWhen, type FamilyZone } from "@/lib/family-time";
-import { fromRow, learningPath, type LearningRow } from "@/lib/learning-style";
+import { cardAnswered, fromRow, learningPath, type LearningRow } from "@/lib/learning-style";
 import type { ChatUsage } from "@/lib/maya-chat";
 import type { ParentNote } from "@/lib/parent-maya-notes";
 import type { ParentDashboard } from "@/lib/parent-dashboard-server";
@@ -41,6 +43,10 @@ export interface DashboardHomeProps {
   scansEnabled: boolean;
   noticeDue: boolean;
   alerts: Parameters<typeof ParentAlerts>[0];
+  /** The prediction from each child's newest report, by child id (round r-progress-preview-5). */
+  progress?: ReadonlyMap<string, HomeProgress>;
+  /** Why the product is closed, for a family whose plan stopped while the switch keeps this home open (#709). */
+  note?: ReactNode;
 }
 
 /**
@@ -48,7 +54,7 @@ export interface DashboardHomeProps {
  * Overview, one child's part of Parent home until #560 fills it. A panel with no data does not appear. A stage that opens
  * on the report never reaches this page: /account sends it there. The family's links are on the Account tab.
  */
-export function ParentDashboardHome({ dashboard, overview, kids, addressChild, phone, sent, parentEmail, timeZone, states, reportFor, lateFor, current, chats, notes, scansEnabled, noticeDue, alerts }: DashboardHomeProps) {
+export function ParentDashboardHome({ dashboard, overview, kids, addressChild, phone, sent, parentEmail, timeZone, states, reportFor, lateFor, current, chats, notes, scansEnabled, noticeDue, alerts, note, progress }: DashboardHomeProps) {
   const view = pickChild(dashboard.children, addressChild, dashboard.remembered);
   const kid = kids.find((k) => k.id === view?.id);
   const links = tabLinks(view);
@@ -58,10 +64,14 @@ export function ParentDashboardHome({ dashboard, overview, kids, addressChild, p
   const sentHere = sent && kid?.id === kids[0]?.id;
   // The Maya tab holds chat usage and saved notes (#553). A child without it keeps them here.
   const mayaHere = !view?.tabs.includes("maya");
+  const goal = kid && progress?.get(kid.id);
+  const progressCard = goal && <ProgressCard progress={goal} />;
   const scanLink = scansEnabled && !links.some((l) => l.tab === "scan_pages") && <p><Link className="btn" href="/account/scan">Scan pages <span aria-hidden="true">→</span></Link></p>;
   if (kid && state && view && (view.opensOn === "start_test" || view.opensOn === "continue_or_wait")) {
     return (
-      <ParentTestStart childId={kid.id} name={kid.first_name} state={state} when={startWhen(state, timeZone)} report={reportFor(kid.id, state)} late={lateFor(kid.id, state)} phone={phone} sent={sentHere} parentEmail={parentEmail} alerts={alerts} learning={view.reportIds.length > 0 ? { path: learningPath(kid.id), answered: !!fromRow(kid) } : null}>
+      <ParentTestStart childId={kid.id} name={kid.first_name} state={state} when={startWhen(state, timeZone)} report={reportFor(kid.id, state)} late={lateFor(kid.id, state)} phone={phone} sent={sentHere} parentEmail={parentEmail} alerts={alerts} learning={view.reportIds.length > 0 ? { path: learningPath(kid.id), answered: cardAnswered(fromRow(kid)) } : null}>
+        {note}
+        {progressCard}
         {noticeDue && current.size > 0 && <MayaNoticeCard />}
         {mayaHere && chats.has(kid.id) && <MayaChatRow name={kid.first_name} chat={chats.get(kid.id)!} />}
         {mayaHere && notes.has(kid.id) && <NoteCard note={notes.get(kid.id)!} name={kid.first_name} zone={timeZone} latest />}
@@ -71,10 +81,12 @@ export function ParentDashboardHome({ dashboard, overview, kids, addressChild, p
   }
   return (
     <SupportPage label={label} title={kid?.first_name ?? "Your account"}>
+      {note}
       <ParentAlerts {...alerts} />
       {noticeDue && current.size > 0 && <MayaNoticeCard />}
       {!kid && <p className="lead">Add a child on the <Link href="/account/settings">Account</Link> page to start.</p>}
       {kid && overview?.child.id === kid.id && <ParentOverview overview={overview} />}
+      {progressCard}
       {kid && state && (
         <>
           {phone && state.kind !== "wait" && (
@@ -90,7 +102,7 @@ export function ParentDashboardHome({ dashboard, overview, kids, addressChild, p
               <span>
                 <b>The test</b><span className="small">{gradeLabel(kid.grade)} · {CURRICULA[kid.province]}</span>
                 {view && view.reportIds.length > 0 && <Link className="small acct-learn" href={learningPath(kid.id)}>
-                  {fromRow(kid) ? `How ${kid.first_name} learns: change answers` : `Tell us how ${kid.first_name} learns`}
+                  {cardAnswered(fromRow(kid)) ? `How ${kid.first_name} learns: change answers` : `Tell us how ${kid.first_name} learns`}
                 </Link>}
               </span>
               {phone && state.kind !== "wait"

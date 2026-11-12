@@ -2,26 +2,33 @@
 // working at a Grade 2 level. Its next step is a "Take free assessment" button.
 // Every number is computed by the real session and report model (src/lib/sample-children.ts).
 import { ReportCard } from "@/components/report";
-import { BookCall } from "@/components/report-next";
 import { StartLink, StartNote } from "@/components/start-link";
 import { START_LABEL } from "@/components/sections";
 import { SupportPage } from "@/components/support-page";
 import { pageMetadata } from "@/lib/metadata";
+import { JsonLd } from "@/components/json-ld";
+import { pageJsonLd } from "@/lib/structured-data";
 import { SAMPLE_CHILDREN } from "@/lib/sample-children";
 import { sampleReportWithBook } from "@/lib/sample-book-one";
+import { progressPreview } from "@/lib/progress-preview";
 import "@/ds/styles/personalization.css";
 
-export const metadata = pageMetadata({
+const PAGE = {
   path: "/sample-report",
   title: "Sample math report",
   description: "See the report from the free online math assessment, for a sample Grade 3 child.",
-});
+};
+export const metadata = pageMetadata(PAGE);
+
+// The sample's goal date counts from the day the page is built, so it never promises a month that has passed: rebuilt daily.
+export const revalidate = 86400;
 
 export default function SampleReportPage() {
   const view = sampleReportWithBook();
   const name = SAMPLE_CHILDREN.a.name;
   return (
     <SupportPage label="" title="" wide>
+      <JsonLd data={pageJsonLd(PAGE)} />
       <aside className="sample-note" aria-label="About this sample">
         <div>
           <p className="eyebrow">Sample report</p>
@@ -38,10 +45,8 @@ export default function SampleReportPage() {
       <ReportCard
         view={view}
         readOnly
-        nextSlot={<>
-          <div><StartLink src="sample-report-end">{START_LABEL} <span className="arr" aria-hidden="true">→</span></StartLink><StartNote /></div>
-          <BookCall childName={name} />
-        </>}
+        progress={progressPreview({ ...view, completedAt: new Date().toISOString() })}
+        nextSlot={<div><StartLink src="sample-report-end">{START_LABEL} <span className="arr" aria-hidden="true">→</span></StartLink><StartNote /></div>}
       />
     </SupportPage>
   );

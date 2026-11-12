@@ -27,7 +27,7 @@ import type { DraftPage, FitProblem, MeasuredElement } from "@/lib/workbook-rend
 import type { QuestionPackage } from "@/lib/question-package";
 import type { PagePlan } from "@/lib/workbook-template";
 import { questionWorkSpace } from "./workbook-work-space";
-import { answerInstruction, isWarmUpPage, workbookPageInstruction, workbookWorkLine } from "@/lib/workbook-page-instructions";
+import { answerInstruction, isWarmUpPage, workbookPageInstruction, workbookWorkLine, mergeWarmUp, WARM_UP_INSTRUCTION } from "@/lib/workbook-page-instructions";
 
 /** How far measured things may differ and still count as lined up or even, in CSS pixels. */
 export const LAYOUT_TOLERANCE = {
@@ -347,7 +347,9 @@ export function circleProblem(content: DayContent | null | undefined, questions:
   if (content.level === 16 && content.consistentLayout) {
     const expected = answerInstruction(questions, !warmUp);
     // (A warm-up's instruction says what it is first: "A warm-up on things you learned before. Do every question.")
-    return instruction === expected || instruction.startsWith(`${expected} `) || instruction.endsWith(` ${expected}`) ? null
+    // (On a warm-up the printed words join "Do every question." and "Write in boxes." into one sentence, mergeWarmUp.)
+    const merged = warmUp ? mergeWarmUp(`${WARM_UP_INSTRUCTION} ${expected}`) : null;
+    return instruction === expected || instruction === merged || instruction.startsWith(`${expected} `) || instruction.endsWith(` ${expected}`) ? null
       : "the page instruction does not match its boxed, circled and ticked answers";
   }
   if (warmUp) return null;

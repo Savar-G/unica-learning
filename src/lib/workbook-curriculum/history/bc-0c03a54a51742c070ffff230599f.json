@@ -1,10 +1,10 @@
 {
-  "format": "curriculum-structure/1",
+  "format": "curriculum-structure/2",
   "key": "bc",
   "digest": "0c03a54a51742c070ffff230599f",
   "source": {"commit":"de9404ee545517387a241d79f19f1d70ab1e3201","path":"src/lib/workbook-curriculum/bc.ts","blob":"091839c34a3d7986da92fe35f994ca6fbe2916ed"},
   "levels": [
-    {"id": "U1", "number": 1, "units": [
+    {"id": "U1", "number": 1, "schoolGrade": 0, "units": [
       {"code": "K1", "skills": [
         {"id":"K1-rote-count-10","order":1,"position":"U1.1.1","level":"U1","steps":[{"number":1,"position":"U1.1.1.1","name":"Count up from 1 to 5"},{"number":2,"position":"U1.1.1.2","name":"Count up from 1 to 10"},{"number":3,"position":"U1.1.1.3","name":"Count on from a number"}]},
         {"id":"K1-count-objects","order":2,"position":"U1.1.2","level":"U1","steps":[{"number":1,"position":"U1.1.2.1","name":"Count 1 to 5 in a row"},{"number":2,"position":"U1.1.2.2","name":"Count 6 to 10 in a row"},{"number":3,"position":"U1.1.2.3","name":"Count and say the last number"}]},
@@ -32,7 +32,7 @@
         {"id":"K10-which-more-likely","order":20,"position":"U1.3.2","level":"U1","steps":[{"number":1,"position":"U1.3.2.1","name":"Which is more likely: clear pairs"},{"number":2,"position":"U1.3.2.2","name":"Which is more likely: closer pairs"}]}
       ]}
     ]},
-    {"id": "U2", "number": 2, "units": [
+    {"id": "U2", "number": 2, "schoolGrade": 0, "units": [
       {"code": "K2", "skills": [
         {"id":"K2-subitize-to-5","order":1,"position":"U2.1.1","level":"U2","steps":[{"number":1,"position":"U2.1.1.1","name":"See 1 to 3 at once"},{"number":2,"position":"U2.1.1.2","name":"See 4 and 5 at once"},{"number":3,"position":"U2.1.1.3","name":"Match different ways to show a number"}]},
         {"id":"K2-five-frame","order":2,"position":"U2.1.2","level":"U2","steps":[{"number":1,"position":"U2.1.2.1","name":"Show a number on a five-frame"},{"number":2,"position":"U2.1.2.2","name":"Read the five-frame"},{"number":3,"position":"U2.1.2.3","name":"How many empty spaces?"}]},
@@ -59,7 +59,7 @@
         {"id":"K8-shape-attributes","order":19,"position":"U2.3.6","level":"U2","steps":[{"number":1,"position":"U2.3.6.1","name":"Sort 2D shapes by sides or corners"},{"number":2,"position":"U2.3.6.2","name":"Sort 3D objects by roll or stack"},{"number":3,"position":"U2.3.6.3","name":"Find the sorting rule"}]}
       ]}
     ]},
-    {"id": "U3", "number": 3, "units": [
+    {"id": "U3", "number": 3, "schoolGrade": 0, "units": [
       {"code": "K3", "skills": [
         {"id":"K3-ten-frame","order":1,"position":"U3.1.1","level":"U3","steps":[{"number":1,"position":"U3.1.1.1","name":"Numbers under 5"},{"number":2,"position":"U3.1.1.2","name":"Shade 5 and some more"},{"number":3,"position":"U3.1.1.3","name":"Read the ten-frame and the empty squares"}]},
         {"id":"K3-benchmarks-5-10","order":2,"position":"U3.1.2","level":"U3","steps":[{"number":1,"position":"U3.1.2.1","name":"Less than 5 or more than 5"},{"number":2,"position":"U3.1.2.2","name":"Close to 10"},{"number":3,"position":"U3.1.2.3","name":"Sort numbers using 5 and 10"}]},
@@ -91,7 +91,7 @@
         {"id":"K11-wants-needs","order":20,"position":"U3.5.4","level":"U3","steps":[{"number":1,"position":"U3.5.4.1","name":"Need or want"},{"number":2,"position":"U3.5.4.2","name":"Need or want: less clear"}]}
       ]}
     ]},
-    {"id": "U4", "number": 4, "units": [
+    {"id": "U4", "number": 4, "schoolGrade": 1, "units": [
       {"code": "1.1", "skills": [
         {"id":"1.1-count-to-20","order":1,"position":"U4.1.1","level":"U4","steps":[{"number":1,"position":"U4.1.1.1","name":"Count on to 20 from a small number"},{"number":2,"position":"U4.1.1.2","name":"Count on through the teens"},{"number":3,"position":"U4.1.1.3","name":"Count back from 20"},{"number":4,"position":"U4.1.1.4","name":"Number before and after"}]},
         {"id":"1.1-read-write-20","order":2,"position":"U4.1.2","level":"U4","steps":[{"number":1,"position":"U4.1.2.1","name":"Write numerals 6 to 10"},{"number":2,"position":"U4.1.2.2","name":"Write teen numerals"},{"number":3,"position":"U4.1.2.3","name":"Match number words to numerals"}]},
@@ -114,7 +114,7 @@
         {"id":"1.10-likelihood-words","order":15,"position":"U4.3.1","level":"U4","steps":[{"number":1,"position":"U4.3.1.1","name":"Never, sometimes, always"},{"number":2,"position":"U4.3.1.2","name":"More or less likely"}]}
       ]}
     ]},
-    {"id": "U5", "number": 5, "units": [
+    {"id": "U5", "number": 5, "schoolGrade": 1, "units": [
       {"code": "1.3", "skills": [
         {"id":"1.3-meaning-of-addition","order":1,"position":"U5.1.1","level":"U5","steps":[{"number":1,"position":"U5.1.1.1","name":"Join two groups in a picture"},{"number":2,"position":"U5.1.1.2","name":"Write the addition sentence"}]},
         {"id":"1.3-meaning-of-subtraction","order":2,"position":"U5.1.2","level":"U5","steps":[{"number":1,"position":"U5.1.2.1","name":"Take away in a picture"},{"number":2,"position":"U5.1.2.2","name":"Find the missing part"},{"number":3,"position":"U5.1.2.3","name":"Write the subtraction sentence"}]},
@@ -136,7 +136,7 @@
         {"id":"1.5-change-unknown","order":16,"position":"U5.2.3","level":"U5","steps":[{"number":1,"position":"U5.2.3.1","name":"How many to add"},{"number":2,"position":"U5.2.3.2","name":"How many to take away"}]}
       ]}
     ]},
-    {"id": "U6", "number": 6, "units": [
+    {"id": "U6", "number": 6, "schoolGrade": 1, "units": [
       {"code": "1.4", "skills": [
         {"id":"1.4-sorting-rule","order":1,"position":"U6.1.1","level":"U6","steps":[{"number":1,"position":"U6.1.1.1","name":"Name the sorting rule"},{"number":2,"position":"U6.1.1.2","name":"Find the one that does not belong"}]},
         {"id":"1.4-extend-repeating","order":2,"position":"U6.1.2","level":"U6","steps":[{"number":1,"position":"U6.1.2.1","name":"Longer cores: A B B and A A B B"},{"number":2,"position":"U6.1.2.2","name":"ABC patterns and patterns that change two ways"}]},
@@ -174,7 +174,7 @@
         {"id":"1.11-count-one-coin-type","order":24,"position":"U6.6.2","level":"U6","steps":[{"number":1,"position":"U6.6.2.1","name":"Count nickels and dimes"},{"number":2,"position":"U6.6.2.2","name":"Count loonies and toonies"}]}
       ]}
     ]},
-    {"id": "U7", "number": 7, "units": [
+    {"id": "U7", "number": 7, "schoolGrade": 2, "units": [
       {"code": "2.1", "skills": [
         {"id":"2.1-count-by-ones-100","order":1,"position":"U7.1.1","level":"U7","steps":[{"number":1,"position":"U7.1.1.1","name":"Count forward inside a decade"},{"number":2,"position":"U7.1.1.2","name":"Count forward across a ten"},{"number":3,"position":"U7.1.1.3","name":"Count back, and before and after"}]},
         {"id":"2.1-read-write-100","order":2,"position":"U7.1.2","level":"U7","steps":[{"number":1,"position":"U7.1.2.1","name":"Tens words"},{"number":2,"position":"U7.1.2.2","name":"Words to numerals"},{"number":3,"position":"U7.1.2.3","name":"Numerals to words, and 100"}]},
@@ -202,7 +202,7 @@
         {"id":"2.10-read-pictograph","order":18,"position":"U7.4.2","level":"U7","steps":[{"number":1,"position":"U7.4.2.1","name":"Read one group"},{"number":2,"position":"U7.4.2.2","name":"Compare and total"}]}
       ]}
     ]},
-    {"id": "U8", "number": 8, "units": [
+    {"id": "U8", "number": 8, "schoolGrade": 2, "units": [
       {"code": "2.3", "skills": [
         {"id":"2.3-facts-to-10","order":1,"position":"U8.1.1","level":"U8","steps":[{"number":1,"position":"U8.1.1.1","name":"Add facts and take-away partners"},{"number":2,"position":"U8.1.1.2","name":"Missing numbers in facts"},{"number":3,"position":"U8.1.1.3","name":"Quick recall to 10"}]},
         {"id":"2.3-near-doubles","order":2,"position":"U8.1.2","level":"U8","steps":[{"number":1,"position":"U8.1.2.1","name":"Doubles in a story, then double plus one"},{"number":2,"position":"U8.1.2.2","name":"Double plus one"},{"number":3,"position":"U8.1.2.3","name":"Double plus or minus"}]},
@@ -232,7 +232,7 @@
         {"id":"2.11-compare-likelihood","order":18,"position":"U8.5.1","level":"U8","steps":[{"number":1,"position":"U8.5.1.1","name":"Certain or uncertain"},{"number":2,"position":"U8.5.1.2","name":"More, less and equally likely"}]}
       ]}
     ]},
-    {"id": "U9", "number": 9, "units": [
+    {"id": "U9", "number": 9, "schoolGrade": 2, "units": [
       {"code": "2.4", "skills": [
         {"id":"2.4-add-subtract-tens","order":1,"position":"U9.1.1","level":"U9","steps":[{"number":1,"position":"U9.1.1.1","name":"Add tens"},{"number":2,"position":"U9.1.1.2","name":"Subtract tens"},{"number":3,"position":"U9.1.1.3","name":"Tens with a missing number"}]},
         {"id":"2.4-add-tens-to-number","order":2,"position":"U9.1.2","level":"U9","steps":[{"number":1,"position":"U9.1.2.1","name":"Add tens to a two-digit number"},{"number":2,"position":"U9.1.2.2","name":"Subtract tens from a two-digit number"},{"number":3,"position":"U9.1.2.3","name":"Tens up or down, unknown"}]},
@@ -259,7 +259,7 @@
         {"id":"2.12-spend-save","order":19,"position":"U9.3.2","level":"U9","steps":[{"number":1,"position":"U9.3.2.1","name":"Wants and needs"},{"number":2,"position":"U9.3.2.2","name":"Spend or save"}]}
       ]}
     ]},
-    {"id": "U10", "number": 10, "units": [
+    {"id": "U10", "number": 10, "schoolGrade": 3, "units": [
       {"code": "3.1", "skills": [
         {"id":"3.1-place-value-1000","order":1,"position":"U10.1.1","level":"U10","steps":[{"number":1,"position":"U10.1.1.1","name":"Hundreds, tens and ones"},{"number":2,"position":"U10.1.1.2","name":"Zero as a placeholder"},{"number":3,"position":"U10.1.1.3","name":"Trading tens and ones (up to 19 tens)"},{"number":4,"position":"U10.1.1.4","name":"Number words and numerals"}]},
         {"id":"3.1-compare-order-1000","order":2,"position":"U10.1.2","level":"U10","steps":[{"number":1,"position":"U10.1.2.1","name":"Compare by hundreds"},{"number":2,"position":"U10.1.2.2","name":"Compare by tens and ones"},{"number":3,"position":"U10.1.2.3","name":"Order 3 or 4 numbers"},{"number":4,"position":"U10.1.2.4","name":"Between and on a number line"}]},
@@ -285,7 +285,7 @@
         {"id":"3.13-independent-trials","order":14,"position":"U10.5.2","level":"U10","steps":[{"number":1,"position":"U10.5.2.1","name":"A coin has no memory"},{"number":2,"position":"U10.5.2.2","name":"Spinners have no memory"},{"number":3,"position":"U10.5.2.3","name":"Read a tally of trials"}]}
       ]}
     ]},
-    {"id": "U11", "number": 11, "units": [
+    {"id": "U11", "number": 11, "schoolGrade": 3, "units": [
       {"code": "3.5", "skills": [
         {"id":"3.5-equal-groups","order":1,"position":"U11.1.1","level":"U11","steps":[{"number":1,"position":"U11.1.1.1","name":"Equal groups by adding"},{"number":2,"position":"U11.1.1.2","name":"Arrays"},{"number":3,"position":"U11.1.1.3","name":"Write it as multiplication"},{"number":4,"position":"U11.1.1.4","name":"Equal-group stories"},{"number":5,"position":"U11.1.1.5","name":"Skip-count to multiply"}]},
         {"id":"3.5-equal-sharing","order":2,"position":"U11.1.2","level":"U11","steps":[{"number":1,"position":"U11.1.2.1","name":"Share pictured objects by circling"},{"number":2,"position":"U11.1.2.2","name":"Sharing with a number sentence"},{"number":3,"position":"U11.1.2.3","name":"Sharing stories"}]},
@@ -313,7 +313,7 @@
         {"id":"3.14-earning-payment","order":16,"position":"U11.5.3","level":"U11","steps":[{"number":1,"position":"U11.5.3.1","name":"Ways to earn"},{"number":2,"position":"U11.5.3.2","name":"Ways to pay"},{"number":3,"position":"U11.5.3.3","name":"Saving toward a goal"},{"number":4,"position":"U11.5.3.4","name":"Earn, then pay"}]}
       ]}
     ]},
-    {"id": "U12", "number": 12, "units": [
+    {"id": "U12", "number": 12, "schoolGrade": 3, "units": [
       {"code": "3.2", "skills": [
         {"id":"3.2-equal-parts","order":1,"position":"U12.1.1","level":"U12","steps":[{"number":1,"position":"U12.1.1.1","name":"Equal or not equal"},{"number":2,"position":"U12.1.1.2","name":"Pick the equal cuts"},{"number":3,"position":"U12.1.1.3","name":"Equal parts that look different"}]},
         {"id":"3.2-name-fraction-region","order":2,"position":"U12.1.2","level":"U12","steps":[{"number":1,"position":"U12.1.2.1","name":"Unit fractions"},{"number":2,"position":"U12.1.2.2","name":"Fractions with more than one part"},{"number":3,"position":"U12.1.2.3","name":"Pick the shaded fraction"},{"number":4,"position":"U12.1.2.4","name":"Fraction words"}]},
@@ -337,7 +337,7 @@
         {"id":"3.11-nets","order":14,"position":"U12.4.3","level":"U12","steps":[{"number":1,"position":"U12.4.3.1","name":"Nets of a cube"},{"number":2,"position":"U12.4.3.2","name":"Nets of prisms and pyramids"},{"number":3,"position":"U12.4.3.3","name":"Skeletons"}]}
       ]}
     ]},
-    {"id": "U13", "number": 13, "units": [
+    {"id": "U13", "number": 13, "schoolGrade": 4, "units": [
       {"code": "4.1", "skills": [
         {"id":"4.1-place-value-10000","order":1,"position":"U13.1.1","level":"U13","steps":[{"number":1,"position":"U13.1.1.1","name":"Value of a digit, four digits"},{"number":2,"position":"U13.1.1.2","name":"Zeros as placeholders"},{"number":3,"position":"U13.1.1.3","name":"Up to 10 000"}]},
         {"id":"4.1-compare-order-10000","order":2,"position":"U13.1.2","level":"U13","steps":[{"number":1,"position":"U13.1.2.1","name":"Same number of digits"},{"number":2,"position":"U13.1.2.2","name":"Different number of digits, order a list"},{"number":3,"position":"U13.1.2.3","name":"Missing digit"}]},
@@ -368,7 +368,7 @@
         {"id":"4.15-line-symmetry","order":15,"position":"U13.7.1","level":"U13","steps":[{"number":1,"position":"U13.7.1.1","name":"Is it a line of symmetry?"},{"number":2,"position":"U13.7.1.2","name":"Count the lines"},{"number":3,"position":"U13.7.1.3","name":"Shapes with none; count the lines"}]}
       ]}
     ]},
-    {"id": "U14", "number": 14, "units": [
+    {"id": "U14", "number": 14, "schoolGrade": 4, "units": [
       {"code": "4.5", "skills": [
         {"id":"4.5-multiply-1-digit","order":1,"position":"U14.1.1","level":"U14","steps":[{"number":1,"position":"U14.1.1.1","name":"Two-digit, no carrying"},{"number":2,"position":"U14.1.1.2","name":"Two-digit, carry from the ones"},{"number":3,"position":"U14.1.1.3","name":"Two-digit, carry from the tens too"},{"number":4,"position":"U14.1.1.4","name":"Three-digit × one-digit"}]},
         {"id":"4.5-divide-1-digit","order":2,"position":"U14.1.2","level":"U14","steps":[{"number":1,"position":"U14.1.2.1","name":"Two-digit, no remainder, tens split evenly"},{"number":2,"position":"U14.1.2.2","name":"Trade a ten"},{"number":3,"position":"U14.1.2.3","name":"With a remainder"},{"number":4,"position":"U14.1.2.4","name":"Three-digit dividends"},{"number":5,"position":"U14.1.2.5","name":"Zeros in the answer and remainders"}]},
@@ -396,7 +396,7 @@
         {"id":"4.14-missing-side","order":14,"position":"U14.6.2","level":"U14","steps":[{"number":1,"position":"U14.6.2.1","name":"Rectangle with one side"},{"number":2,"position":"U14.6.2.2","name":"Regular shapes"},{"number":3,"position":"U14.6.2.3","name":"Irregular polygon, one side unknown"}]}
       ]}
     ]},
-    {"id": "U15", "number": 15, "units": [
+    {"id": "U15", "number": 15, "schoolGrade": 4, "units": [
       {"code": "4.2", "skills": [
         {"id":"4.2-tenths","order":1,"position":"U15.1.1","level":"U15","steps":[{"number":1,"position":"U15.1.1.1","name":"Tenths on a strip"},{"number":2,"position":"U15.1.1.2","name":"Tenths on a number line"},{"number":3,"position":"U15.1.1.3","name":"Tenths beyond one"}]},
         {"id":"4.2-hundredths","order":2,"position":"U15.1.2","level":"U15","steps":[{"number":1,"position":"U15.1.2.1","name":"Hundredths on a grid"},{"number":2,"position":"U15.1.2.2","name":"Tenths and hundredths together"},{"number":3,"position":"U15.1.2.3","name":"Hundredths on a number line"}]},
@@ -422,7 +422,7 @@
         {"id":"4.17-record-trials","order":14,"position":"U15.5.2","level":"U15","steps":[{"number":1,"position":"U15.5.2.1","name":"Read a tally"},{"number":2,"position":"U15.5.2.2","name":"Fill a tally from results"},{"number":3,"position":"U15.5.2.3","name":"Compare with the prediction"}]}
       ]}
     ]},
-    {"id": "U16", "number": 16, "units": [
+    {"id": "U16", "number": 16, "schoolGrade": 5, "units": [
       {"code": "5.1", "skills": [
         {"id":"5.1-place-value-million","order":1,"position":"U16.1.1","level":"U16","steps":[{"number":1,"position":"U16.1.1.1","name":"Value of a digit to 10 000s"},{"number":2,"position":"U16.1.1.2","name":"Value of a digit to 100 000s"},{"number":3,"position":"U16.1.1.3","name":"Zeros as placeholders"},{"number":4,"position":"U16.1.1.4","name":"Up to 1 000 000"}]},
         {"id":"5.1-read-write","order":2,"position":"U16.1.2","level":"U16","steps":[{"number":1,"position":"U16.1.2.1","name":"Words to digits, five digits"},{"number":2,"position":"U16.1.2.2","name":"Words to digits"},{"number":3,"position":"U16.1.2.3","name":"Digits to words and expanded form"}]},
@@ -454,7 +454,7 @@
         {"id":"5.17-scale","order":16,"position":"U16.7.2","level":"U16","steps":[{"number":1,"position":"U16.7.2.1","name":"One symbol stands for many"},{"number":2,"position":"U16.7.2.2","name":"Half symbols and scales"}]}
       ]}
     ]},
-    {"id": "U17", "number": 17, "units": [
+    {"id": "U17", "number": 17, "schoolGrade": 5, "units": [
       {"code": "5.6", "skills": [
         {"id":"5.6-multiply-2-digit","order":1,"position":"U17.1.1","level":"U17","steps":[{"number":1,"position":"U17.1.1.1","name":"2-digit × 2-digit with an area model"},{"number":2,"position":"U17.1.1.2","name":"Column method"},{"number":3,"position":"U17.1.1.3","name":"3-digit × 2-digit"}]},
         {"id":"5.6-divide-remainder","order":2,"position":"U17.1.2","level":"U17","steps":[{"number":1,"position":"U17.1.2.1","name":"Check a division with multiplication"},{"number":2,"position":"U17.1.2.2","name":"Zero in the quotient"},{"number":3,"position":"U17.1.2.3","name":"Find the missing number"}]},
@@ -484,7 +484,7 @@
         {"id":"5.18-experiment","order":16,"position":"U17.6.2","level":"U17","steps":[{"number":1,"position":"U17.6.2.1","name":"Predict first"},{"number":2,"position":"U17.6.2.2","name":"Tally the trials"},{"number":3,"position":"U17.6.2.3","name":"Compare with the prediction"}]}
       ]}
     ]},
-    {"id": "U18", "number": 18, "units": [
+    {"id": "U18", "number": 18, "schoolGrade": 5, "units": [
       {"code": "5.2", "skills": [
         {"id":"5.2-thousandths","order":1,"position":"U18.1.1","level":"U18","steps":[{"number":1,"position":"U18.1.1.1","name":"Read thousandths"},{"number":2,"position":"U18.1.1.2","name":"Thousandths as fractions and decimals"},{"number":3,"position":"U18.1.1.3","name":"Decimals with whole numbers"}]},
         {"id":"5.2-decimal-place-value","order":2,"position":"U18.1.2","level":"U18","steps":[{"number":1,"position":"U18.1.2.1","name":"Value of a digit"},{"number":2,"position":"U18.1.2.2","name":"Expanded form"}]},
@@ -514,7 +514,7 @@
         {"id":"5.16-rotation","order":16,"position":"U18.6.3","level":"U18","steps":[{"number":1,"position":"U18.6.3.1","name":"Quarter turn"},{"number":2,"position":"U18.6.3.2","name":"Half turn"}]}
       ]}
     ]},
-    {"id": "U19", "number": 19, "units": [
+    {"id": "U19", "number": 19, "schoolGrade": 6, "units": [
       {"code": "6.1", "skills": [
         {"id":"6.1-place-value","order":1,"position":"U19.1.1","level":"U19","steps":[{"number":1,"position":"U19.1.1.1","name":"Whole-number places to billions"},{"number":2,"position":"U19.1.1.2","name":"Digits in big numbers"}]},
         {"id":"6.1-large-numbers","order":2,"position":"U19.1.2","level":"U19","steps":[{"number":1,"position":"U19.1.2.1","name":"Millions in words and digits"},{"number":2,"position":"U19.1.2.2","name":"Billions"},{"number":3,"position":"U19.1.2.3","name":"Millions inside billions"},{"number":4,"position":"U19.1.2.4","name":"Add and subtract big numbers"}]},
@@ -549,7 +549,7 @@
         {"id":"6.18-compare","order":19,"position":"U19.7.3","level":"U19","steps":[{"number":1,"position":"U19.7.3.1","name":"Close, but not equal"},{"number":2,"position":"U19.7.3.2","name":"More trials, closer result"}]}
       ]}
     ]},
-    {"id": "U20", "number": 20, "units": [
+    {"id": "U20", "number": 20, "schoolGrade": 6, "units": [
       {"code": "6.5", "skills": [
         {"id":"6.5-improper-to-mixed","order":1,"position":"U20.1.1","level":"U20","steps":[{"number":1,"position":"U20.1.1.1","name":"Pictures, halves to fifths"},{"number":2,"position":"U20.1.1.2","name":"Numbers only, denominators to 12"},{"number":3,"position":"U20.1.1.3","name":"Larger numerators and whole numbers"}]},
         {"id":"6.5-mixed-to-improper","order":2,"position":"U20.1.2","level":"U20","steps":[{"number":1,"position":"U20.1.2.1","name":"Pictures"},{"number":2,"position":"U20.1.2.2","name":"Numbers only"},{"number":3,"position":"U20.1.2.3","name":"Whole numbers as fractions and bigger numbers"}]},
@@ -582,7 +582,7 @@
         {"id":"6.16-combine-transformations","order":19,"position":"U20.6.3","level":"U20","steps":[{"number":1,"position":"U20.6.3.1","name":"Reflect, then slide"},{"number":2,"position":"U20.6.3.2","name":"Turn, then slide"},{"number":3,"position":"U20.6.3.3","name":"Does the order matter?"}]}
       ]}
     ]},
-    {"id": "U21", "number": 21, "units": [
+    {"id": "U21", "number": 21, "schoolGrade": 6, "units": [
       {"code": "6.6", "skills": [
         {"id":"6.6-write-ratio","order":1,"position":"U21.1.1","level":"U21","steps":[{"number":1,"position":"U21.1.1.1","name":"Part to part"},{"number":2,"position":"U21.1.1.2","name":"Part to whole"},{"number":3,"position":"U21.1.1.3","name":"Ratios in tables and sentences"}]},
         {"id":"6.6-equivalent-ratios","order":2,"position":"U21.1.2","level":"U21","steps":[{"number":1,"position":"U21.1.2.1","name":"Multiply both parts"},{"number":2,"position":"U21.1.2.2","name":"Divide both parts"},{"number":3,"position":"U21.1.2.3","name":"Missing amounts in stories"}]},
@@ -614,7 +614,7 @@
         {"id":"6.17-make-line-graph","order":18,"position":"U21.6.2","level":"U21","steps":[{"number":1,"position":"U21.6.2.1","name":"Points from a table"},{"number":2,"position":"U21.6.2.2","name":"Choose a scale"},{"number":3,"position":"U21.6.2.3","name":"Labels and a whole graph"}]}
       ]}
     ]},
-    {"id": "U22", "number": 22, "units": [
+    {"id": "U22", "number": 22, "schoolGrade": 7, "units": [
       {"code": "7.1", "skills": [
         {"id":"7.1-fact-strategies","order":1,"position":"U22.1.1","level":"U22","steps":[{"number":1,"position":"U22.1.1.1","name":"Times 5 as times 10, then half"},{"number":2,"position":"U22.1.1.2","name":"Times 25 and times 50"},{"number":3,"position":"U22.1.1.3","name":"Double one, halve the other"}]},
         {"id":"7.1-divide-strategies","order":2,"position":"U22.1.2","level":"U22","steps":[{"number":1,"position":"U22.1.2.1","name":"Divide by 5 with divide by 10, then double"},{"number":2,"position":"U22.1.2.2","name":"Divide by 50 and 25"},{"number":3,"position":"U22.1.2.3","name":"Divide by halving"}]}
@@ -641,7 +641,7 @@
         {"id":"7.4-ratio-percent","order":19,"position":"U22.3.8","level":"U22","steps":[{"number":1,"position":"U22.3.8.1","name":"Out of 100, 50, 25, 20"},{"number":2,"position":"U22.3.8.2","name":"Any whole"},{"number":3,"position":"U22.3.8.3","name":"Part-to-part ratios"}]}
       ]}
     ]},
-    {"id": "U23", "number": 23, "units": [
+    {"id": "U23", "number": 23, "schoolGrade": 7, "units": [
       {"code": "7.3", "skills": [
         {"id":"7.3-add-subtract-decimals","order":1,"position":"U23.1.1","level":"U23","steps":[{"number":1,"position":"U23.1.1.1","name":"Same number of decimal places"},{"number":2,"position":"U23.1.1.2","name":"Different number of decimal places"},{"number":3,"position":"U23.1.1.3","name":"Whole numbers and thousandths"}]},
         {"id":"7.3-powers-of-ten","order":2,"position":"U23.1.2","level":"U23","steps":[{"number":1,"position":"U23.1.2.1","name":"Multiply by 10, 100, 1 000"},{"number":2,"position":"U23.1.2.2","name":"Divide by 10, 100, 1 000"},{"number":3,"position":"U23.1.2.3","name":"Find the power of ten"}]},
@@ -674,7 +674,7 @@
         {"id":"7.12-experimental-two-events","order":21,"position":"U23.5.2","level":"U23","steps":[{"number":1,"position":"U23.5.2.1","name":"Probability from a tally"},{"number":2,"position":"U23.5.2.2","name":"Predict for more trials"},{"number":3,"position":"U23.5.2.3","name":"Compare with what to expect"}]}
       ]}
     ]},
-    {"id": "U24", "number": 24, "units": [
+    {"id": "U24", "number": 24, "schoolGrade": 7, "units": [
       {"code": "7.6", "skills": [
         {"id":"7.6-model-equality","order":1,"position":"U24.1.1","level":"U24","steps":[{"number":1,"position":"U24.1.1.1","name":"Balance with bags and cubes"},{"number":2,"position":"U24.1.1.2","name":"Algebra tiles"},{"number":3,"position":"U24.1.1.3","name":"Keep both sides equal"}]},
         {"id":"7.6-solve-two-step","order":2,"position":"U24.1.2","level":"U24","steps":[{"number":1,"position":"U24.1.2.1","name":"ax + b = c"},{"number":2,"position":"U24.1.2.2","name":"ax - b = c"},{"number":3,"position":"U24.1.2.3","name":"Larger numbers, flipped equations"}]},
@@ -707,7 +707,7 @@
         {"id":"7.13-total-cost","order":21,"position":"U24.5.3","level":"U24","steps":[{"number":1,"position":"U24.5.3.1","name":"Discount then tax"},{"number":2,"position":"U24.5.3.2","name":"Discount then 12% tax"},{"number":3,"position":"U24.5.3.3","name":"Several items and change"}]}
       ]}
     ]},
-    {"id": "U25", "number": 25, "units": [
+    {"id": "U25", "number": 25, "schoolGrade": 8, "units": [
       {"code": "8.1", "skills": [
         {"id":"8.1-squares-cubes","order":1,"position":"U25.1.1","level":"U25","steps":[{"number":1,"position":"U25.1.1.1","name":"Square of a number with tiles"},{"number":2,"position":"U25.1.1.2","name":"Cube of a number with blocks"},{"number":3,"position":"U25.1.1.3","name":"Squares and cubes, numbers only"}]},
         {"id":"8.1-identify-perfect","order":2,"position":"U25.1.2","level":"U25","steps":[{"number":1,"position":"U25.1.2.1","name":"Perfect squares to 100"},{"number":2,"position":"U25.1.2.2","name":"Squares to 225 and cubes to 1000"},{"number":3,"position":"U25.1.2.3","name":"Square, cube or neither"}]},
@@ -740,7 +740,7 @@
         {"id":"8.11-nets","order":21,"position":"U25.5.2","level":"U25","steps":[{"number":1,"position":"U25.5.2.1","name":"Match a net to its solid"},{"number":2,"position":"U25.5.2.2","name":"Does it fold into a cube?"},{"number":3,"position":"U25.5.2.3","name":"Sizes of the faces in a net"}]}
       ]}
     ]},
-    {"id": "U26", "number": 26, "units": [
+    {"id": "U26", "number": 26, "schoolGrade": 8, "units": [
       {"code": "8.2", "skills": [
         {"id":"8.2-square-root","order":1,"position":"U26.1.1","level":"U26","steps":[{"number":1,"position":"U26.1.1.1","name":"Side of a square from its area"},{"number":2,"position":"U26.1.1.2","name":"Square root symbol"},{"number":3,"position":"U26.1.1.3","name":"Square root of a fraction"}]},
         {"id":"8.2-cube-root","order":2,"position":"U26.1.2","level":"U26","steps":[{"number":1,"position":"U26.1.2.1","name":"Edge of a cube from its volume"},{"number":2,"position":"U26.1.2.2","name":"Cube root symbol"},{"number":3,"position":"U26.1.2.3","name":"Square root or cube root"}]},
@@ -772,7 +772,7 @@
         {"id":"8.3-find-original","order":22,"position":"U26.4.7","level":"U26","steps":[{"number":1,"position":"U26.4.7.1","name":"After a whole-number percent change"},{"number":2,"position":"U26.4.7.2","name":"Rises over 100%"},{"number":3,"position":"U26.4.7.3","name":"Decimal percents"}]}
       ]}
     ]},
-    {"id": "U27", "number": 27, "units": [
+    {"id": "U27", "number": 27, "schoolGrade": 8, "units": [
       {"code": "8.6", "skills": [
         {"id":"8.6-evaluate-relation","order":1,"position":"U27.1.1","level":"U27","steps":[{"number":1,"position":"U27.1.1.1","name":"Negative inputs"},{"number":2,"position":"U27.1.1.2","name":"Larger numbers and negative coefficients"}]},
         {"id":"8.6-table-of-values","order":2,"position":"U27.1.2","level":"U27","steps":[{"number":1,"position":"U27.1.2.1","name":"Negative inputs"},{"number":2,"position":"U27.1.2.2","name":"Bigger steps in the input"}]},
@@ -812,7 +812,7 @@
         {"id":"8.14-compare-services","order":28,"position":"U27.5.4","level":"U27","steps":[{"number":1,"position":"U27.5.4.1","name":"Compare at one use"},{"number":2,"position":"U27.5.4.2","name":"When are they equal"},{"number":3,"position":"U27.5.4.3","name":"Choose with judgement"}]}
       ]}
     ]},
-    {"id": "U28", "number": 28, "units": [
+    {"id": "U28", "number": 28, "schoolGrade": 9, "units": [
       {"code": "9.2", "skills": [
         {"id":"9.2-power-parts","order":1,"position":"U28.1.1","level":"U28","steps":[{"number":1,"position":"U28.1.1.1","name":"Base and exponent"},{"number":2,"position":"U28.1.1.2","name":"Write as repeated multiplication"},{"number":3,"position":"U28.1.1.3","name":"Variable and bracket bases"}]},
         {"id":"9.2-evaluate-power","order":2,"position":"U28.1.2","level":"U28","steps":[{"number":1,"position":"U28.1.2.1","name":"Positive base"},{"number":2,"position":"U28.1.2.2","name":"Negative base in brackets"},{"number":3,"position":"U28.1.2.3","name":"(-3)² or -3²?"},{"number":4,"position":"U28.1.2.4","name":"Fraction and decimal bases"}]},
@@ -838,7 +838,7 @@
         {"id":"9.6-indirect-measurement","order":18,"position":"U28.3.7","level":"U28","steps":[{"number":1,"position":"U28.3.7.1","name":"Shadows: whole numbers"},{"number":2,"position":"U28.3.7.2","name":"Different units"},{"number":3,"position":"U28.3.7.3","name":"Two similar triangles with a gap"}]}
       ]}
     ]},
-    {"id": "U29", "number": 29, "units": [
+    {"id": "U29", "number": 29, "schoolGrade": 9, "units": [
       {"code": "9.3", "skills": [
         {"id":"9.3-vocabulary","order":1,"position":"U29.1.1","level":"U29","steps":[{"number":1,"position":"U29.1.1.1","name":"Terms, coefficients and the constant"},{"number":2,"position":"U29.1.1.2","name":"Degree"},{"number":3,"position":"U29.1.1.3","name":"Name the polynomial"}]},
         {"id":"9.3-algebra-tiles","order":2,"position":"U29.1.2","level":"U29","steps":[{"number":1,"position":"U29.1.2.1","name":"Read positive tiles"},{"number":2,"position":"U29.1.2.2","name":"Negative tiles"},{"number":3,"position":"U29.1.2.3","name":"Zero pairs"},{"number":4,"position":"U29.1.2.4","name":"Pick the tiles"}]},
@@ -863,7 +863,7 @@
         {"id":"9.8-planned-purchase","order":17,"position":"U29.3.4","level":"U29","steps":[{"number":1,"position":"U29.3.4.1","name":"Weeks to save"},{"number":2,"position":"U29.3.4.2","name":"Saving with interest"},{"number":3,"position":"U29.3.4.3","name":"Save or pay over time"},{"number":4,"position":"U29.3.4.4","name":"Choose the best plan"}]}
       ]}
     ]},
-    {"id": "U30", "number": 30, "units": [
+    {"id": "U30", "number": 30, "schoolGrade": 9, "units": [
       {"code": "9.4", "skills": [
         {"id":"9.4-table-of-values","order":1,"position":"U30.1.1","level":"U30","steps":[{"number":1,"position":"U30.1.1.1","name":"Negative inputs"},{"number":2,"position":"U30.1.1.2","name":"Fraction and decimal inputs"},{"number":3,"position":"U30.1.1.3","name":"Fraction and decimal rules"}]},
         {"id":"9.4-write-relation","order":2,"position":"U30.1.2","level":"U30","steps":[{"number":1,"position":"U30.1.2.1","name":"A start amount and a rate"},{"number":2,"position":"U30.1.2.2","name":"From a table"},{"number":3,"position":"U30.1.2.3","name":"Decreasing and fractional rates"}]},

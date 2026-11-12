@@ -161,6 +161,10 @@ export function memoryWorkbookStore(o: { children: readonly { id: string; parent
       return page ? readPage(workbookId, page) : null;
     },
 
+    async pageIndex(workbookId) {
+      return (books.get(workbookId)?.pages ?? []).map((p) => ({ number: p.number, questions: p.questions.length }));
+    },
+
     async question(ref) {
       const page = books.get(ref.workbookId)?.pages.find((p) => p.number === ref.page);
       const question = page?.questions.find((q) => q.number === ref.question);

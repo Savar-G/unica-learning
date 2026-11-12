@@ -69,7 +69,7 @@ export function memoryReportJobStore(
     async parent(parentId) {
       count("parents");
       const row = parents.find((p) => p.id === parentId);
-      return row ? { name: row.name, email: row.email } : null;
+      return row ? { name: row.name, email: row.email, phone: row.phone ?? null } : null;
     },
     async unsubscribed(parentId) {
       // The unsubscribes are rows of public.email_log.

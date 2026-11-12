@@ -9,7 +9,7 @@ vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase-auth", () => ({ adminClient: () => null }));
 // Every AI transport the marking lane makes is counted here (it makes one only after its claim, right before a call).
 const ai = vi.hoisted(() => ({ transports: 0 }));
-vi.mock("@/lib/scan-marking-ai", () => ({ markingAiClient: () => () => { ai.transports++; return null; } }));
+vi.mock("@/lib/scan-marking-ai", () => ({ markingClientReady: () => true, markingAiClient: () => () => { ai.transports++; return null; } }));
 vi.mock("@/lib/child-profile", () => ({ rebuildChildProfile: async () => ({ built: false, reason: "nothing_to_build" }) }));
 
 const parent = "11111111-1111-4111-8111-111111111111", child = "22222222-2222-4222-8222-222222222222";
@@ -33,6 +33,11 @@ const db = createClient<Database>("https://send-marking.example.test", "syntheti
       return Response.json(state.taken.includes(SLOT[table]) ? [{ id: "row", photo_id: "row" }] : []);
     }
     if (url.pathname.endsWith("/scan_photos")) return Response.json([{ child_id: child }]);
+    if (url.pathname.endsWith("/scan_marking_revisions")) {
+      expect(url.searchParams.get("parent_id")).toBe(`eq.${parent}`);
+      expect(url.searchParams.get("child_id")).toBe(`eq.${child}`);
+      return Response.json([]);
+    }
     if (url.pathname.endsWith("/rpc/scan_marking_command")) {
       const body = JSON.parse(String(init?.body)); state.commands.push(body.p_action);
       if (body.p_action === "outbox") return Response.json([]);

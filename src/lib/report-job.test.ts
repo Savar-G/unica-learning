@@ -72,7 +72,7 @@ const cohort: ComparisonTest[] = [
  * (#126, #195). `comparison` counts the comparison reads.
  */
 function database({
-  unsubscribed = false, parent = PRIYA as typeof PRIYA | null, child = true, helped = false, rushed = false, learning = null as ProfileLearning | null,
+  unsubscribed = false, parent = PRIYA as (typeof PRIYA & { phone?: string | null }) | null, child = true, helped = false, rushed = false, learning = null as ProfileLearning | null,
 } = {}) {
   const tables: MemoryReportTables = {
     reports: [],
@@ -222,6 +222,17 @@ describe("the stored report", () => {
 });
 
 describe("the report emails", () => {
+  it.each(["Priya Shah", "Priya\nPhone: +12125550123\nShah"])("sends the stored phone but removes it from the saved copy for name %j", async (name) => {
+    const db = database({ parent: { ...PRIYA, name, phone: "+16045550123" } });
+    const mail = memoryTransport();
+    const book = memoryReportLedger();
+    await run(db, mail, book);
+    expect(mail.delivered[1].text).toContain("+16045550123");
+    expect(mail.delivered[1].html).toContain('href="tel:+16045550123"');
+    const copy = book.keptCopy({ report: "report-1", email: "alert" });
+    expect(copy?.message.text).toContain("[phone removed]");
+    expect(JSON.stringify(copy)).not.toContain("+16045550123");
+  });
   it("sends the parent email and the alert once each through the delivery module; a second run sends nothing", async () => {
     const db = database();
     const mail = memoryTransport();
@@ -234,7 +245,7 @@ describe("the report emails", () => {
     expect(report.text).toContain(`See Asha's full report: ${ORIGIN}/account/report/report-1?src=email`);
     expect(alert).toMatchObject({ sender: { to: "savar" }, replyTo: "priya@family.ca" });
     expect(alert.text).toContain("Parent email: sent to priya@family.ca");
-    expect(alert.text).toContain(`Report: ${ORIGIN}/admin/assessments/${TEST}`);
+    expect(alert.text).toContain(`Report: ${ORIGIN}/admin/reports/report-1/deck`);
 
     // CASL (#80): the email offers a plan, so it carries the unsubscribe link and the one-click headers. The claim
     // stored the hash of the link's token, so the link works.
@@ -652,6 +663,39 @@ describe("the learner profile", () => {
     rebuilt.length = 0;
     await runReportJob(TEST, ORIGIN, { ...options, reader: unfinished.readers.key(), store: unfinished.job.store, profiles: unfinished.profiles.store });
     expect(rebuilt).toEqual([]);
+  });
+});
+
+// The first pages of Workbook 1 (docs/first-pages.md): queued last, after both emails; never on a run with no email,
+// and a failure to queue changes nothing the job did.
+describe("the first pages", () => {
+  it("are queued last, after the emails and the profile rebuild; not when the run sends no email; a failure is only logged", async () => {
+    const db = database();
+    const mail = memoryTransport();
+    const order: string[] = [];
+    const rebuildChild = async () => void order.push("rebuild");
+    const firstPages = vi.fn(async (id: string, origin: string) => { order.push(`first pages ${id} ${origin} after ${mail.delivered.length} emails`); });
+    const options = { reader: db.readers.key(), comparison: db.comparison, store: db.job.store, profiles: db.profiles.store, reviewer: null, transport: mail.transport, ledger: memoryReportLedger().ledger, rebuildChild, firstPages };
+    await runReportJob(TEST, ORIGIN, options);
+    expect(order).toEqual(["rebuild", `first pages ${TEST} ${ORIGIN} after 2 emails`]);
+
+    const quiet = database();
+    firstPages.mockClear();
+    await runReportJob(TEST, ORIGIN, { ...options, reader: quiet.readers.key(), store: quiet.job.store, profiles: quiet.profiles.store, email: false });
+    expect(firstPages).not.toHaveBeenCalled();
+
+    const failing = database();
+    const mail2 = memoryTransport();
+    await runReportJob(TEST, ORIGIN, { ...options, reader: failing.readers.key(), store: failing.job.store, profiles: failing.profiles.store, transport: mail2.transport, ledger: memoryReportLedger().ledger,
+      firstPages: async () => { throw new Error("queue down"); } });
+    expect(mail2.delivered).toHaveLength(2);
+  });
+
+  it("are not queued by the in-memory job unless given", async () => {
+    const db = database();
+    const mail = memoryTransport();
+    await run(db, mail, memoryReportLedger());
+    expect(network).toEqual([]);
   });
 });
 

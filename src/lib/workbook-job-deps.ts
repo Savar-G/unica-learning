@@ -5,6 +5,7 @@
 // run with its provider and cost (public.workbook_run_ai_calls). In development WORKBOOK_AI_FAKE gives the fakes.
 // No "server-only" import: the worker is plain Node.
 import { runWorkbookEditWith } from "@/lib/workbook-edit-deps";
+import { isFirstPages, runFirstPagesWith } from "@/lib/first-pages-deps";
 import { randomBytes, randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
@@ -40,6 +41,11 @@ export interface RunPlace {
 
 /** Makes one job call of a run with the live deps. Throws only when the deps cannot be made (fonts, the template). */
 export async function runWorkbookJobWith(admin: SupabaseClient<Database>, runId: string, place: RunPlace, o: { resume?: boolean } = {}): Promise<JobOutcome> {
+  // The first pages of Workbook 1 (docs/first-pages.md) share the worker's queue.
+  if (await isFirstPages(admin, runId)) {
+    const outcome = await runFirstPagesWith(admin, runId, place);
+    return outcome === "ready" ? "done" : outcome === "stale" || outcome === "not-claimed" ? outcome : "failed";
+  }
   const edit = await admin.from("workbook_edits").select("id").eq("id", runId).maybeSingle();
   if (edit.error) throw new Error(edit.error.message);
   if (edit.data) return runWorkbookEditWith(admin, runId, place);

@@ -69,7 +69,8 @@ export interface MarkingStore {
   finish(ref: MarkingRef, token: string): Promise<boolean>;
   pause(ref: MarkingRef, token: string, status: MarkingStatus): Promise<void>;
   /** Durable outbox recovery is independent of the photo after application committed. */
-  publish(parent: string, child: string): Promise<void>;
+  /** Publishes the committed marks waiting in the outbox; answers how many it published. */
+  publish(parent: string, child: string): Promise<number>;
   effective(parent: string, child: string): Promise<EffectiveMark[]>;
 }
 export interface MarkingTransport {

@@ -111,7 +111,7 @@ export const NEVER_SAY = [
   },
   {
     id: "held_limit",
-    rule: "Maya's own words never say what she can or cannot teach, that she is not yet able, or that she does not know how. On a workbook question Maya cannot teach yet, code's own held lines say so and invite another question on the page (D-314); her own words never add to them. Keep the separate AI disclosure, safety, secrecy and promise rules.",
+    rule: "Maya's own words never say what she can or cannot teach, that she is not yet able, or that she does not know how. On a workbook question Maya cannot teach yet, code's own held lines say so and invite another question on the page (D-327); her own words never add to them. Keep the separate AI disclosure, safety, secrecy and promise rules.",
     examples: ["I can't help with this kind of question yet.", "I can't teach this question.", "I'm not yet able to teach this.", "I don't know how to teach this question."],
   },
   {

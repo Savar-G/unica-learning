@@ -3,8 +3,11 @@
 // through bookMix; a child with no answer gets the default mix. #195 (D-107) adds how the child feels about math, the
 // parent's main goal and the time each week, for the learner profile; they do not change the mix. Shared by the form
 // (client), the route and the admin pages (server). Never sent to analytics: no answer travels with an event.
-// The ids are also in the check constraints of supabase/migrations/20261012_add_learning_style.sql and
-// 20261016_add_learning_questions.sql; change both.
+// D-325: the feeling and the goal are now asked right after signup, before the first test (src/lib/child-goals.ts,
+// /account/goals), with the math help the child gets now; the learning card no longer asks or writes them (toRow).
+// The ids are also in the check constraints of supabase/migrations/20261012_add_learning_style.sql,
+// 20261016_add_learning_questions.sql and 20261111204124_child_goals_on_children.sql; change both
+// (src/lib/state-lists.test.ts proves the lists).
 
 export const LEARNING_STYLES = [
   { id: "pictures", label: "Pictures and diagrams" },
@@ -32,21 +35,39 @@ export const INTERESTS = [
 ] as const;
 export type Interest = (typeof INTERESTS)[number]["id"];
 
-/** "How does {child} feel about math?" One answer. */
+/** "How does {child} feel about math right now?" One answer. avoids keeps its id for the planner (workbook-signals). */
 export const MATH_FEELINGS = [
   { id: "enjoys", label: "Enjoys it" },
   { id: "okay", label: "It's okay" },
-  { id: "avoids", label: "Avoids it" },
+  { id: "finds_hard", label: "Finds it hard" },
+  { id: "avoids", label: "Gets upset or avoids it" },
 ] as const;
 export type MathFeeling = (typeof MATH_FEELINGS)[number]["id"];
 
-/** "What is your main goal?" One answer. */
+/**
+ * "What is your main goal for {child} in math?" One answer. keep_up is only in older answers (the card before D-325):
+ * the signup does not offer it (SIGNUP_GOALS). catch_up and get_ahead keep their meaning for the planner.
+ */
 export const LEARNING_GOALS = [
-  { id: "catch_up", label: "Catch up" },
+  { id: "catch_up", label: "Catch up to grade level" },
+  { id: "confident", label: "Feel confident at grade level" },
+  { id: "next_grade", label: "Get ready for the next grade" },
+  { id: "get_ahead", label: "Get ahead with more challenge" },
+  { id: "not_sure", label: "Not sure yet" },
   { id: "keep_up", label: "Keep up" },
-  { id: "get_ahead", label: "Get ahead" },
 ] as const;
 export type LearningGoal = (typeof LEARNING_GOALS)[number]["id"];
+/** The goals the signup offers, in order. */
+export const SIGNUP_GOALS = LEARNING_GOALS.filter((g) => g.id !== "keep_up");
+
+/** "What math help does {child} get now, other than school?" One answer (D-325). Column children.math_help. */
+export const MATH_HELPS = [
+  { id: "school_only", label: "Only school" },
+  { id: "parent", label: "A parent or family member" },
+  { id: "tutor", label: "A tutor or learning centre" },
+  { id: "app", label: "A math app or website" },
+] as const;
+export type MathHelp = (typeof MATH_HELPS)[number]["id"];
 
 /** "How much time each week?" One answer. A book plans 15-30 minutes a day, 5 days a week: about 1 to 2.5 hours. */
 export const WEEKLY_TIMES = [
@@ -129,15 +150,19 @@ export function parseLearning(body: unknown): LearningAnswers | null {
   return { styles, interests, note, feeling, goal, weeklyTime };
 }
 
-export function toRow(a: LearningAnswers): LearningRow {
+/** The card's own columns. The feeling and the goal belong to the signup questions (D-325): the card never writes them. */
+export function toRow(a: LearningAnswers): Omit<LearningRow, "math_feeling" | "learning_goal"> {
   return {
     learning_styles: a.styles.length ? a.styles : null,
     interests: a.interests.length ? a.interests : null,
     learning_note: a.note || null,
-    math_feeling: a.feeling,
-    learning_goal: a.goal,
     weekly_time: a.weeklyTime,
   };
+}
+
+/** Whether the parent answered the learning card itself: the signup's feeling and goal do not count (D-325). */
+export function cardAnswered(a: LearningAnswers | null): boolean {
+  return !!a && (a.styles.length > 0 || a.interests.length > 0 || !!a.note || !!a.weeklyTime);
 }
 
 /** The stored answers, or null when the parent gave none (skipped, or never asked). */
@@ -158,17 +183,19 @@ export const interestLabel = (id: Interest) => INTERESTS.find((i) => i.id === id
 export const feelingLabel = (id: MathFeeling) => MATH_FEELINGS.find((f) => f.id === id)?.label ?? id;
 export const goalLabel = (id: LearningGoal) => LEARNING_GOALS.find((g) => g.id === id)?.label ?? id;
 export const weeklyTimeLabel = (id: WeeklyTime) => WEEKLY_TIMES.find((t) => t.id === id)?.label ?? id;
+export const helpLabel = (id: MathHelp) => MATH_HELPS.find((h) => h.id === id)?.label ?? id;
 
 const NO_ANSWER = "No answer";
 
-/** The parent's answers as label and value rows for the admin child page, in the card's order. */
+/**
+ * The learning card's answers as label and value rows for the admin child page, in the card's order. The feeling and
+ * the goal show with the parent goals (D-325, goalFacts in src/lib/child-goals.ts).
+ */
 export function answerFacts(a: LearningAnswers | null): [string, string][] {
   return [
-    ["Feeling about math", a?.feeling ? feelingLabel(a.feeling) : NO_ANSWER],
     ["Learns best from", a?.styles.length ? a.styles.map(styleLabel).join("; ") : NO_ANSWER],
     ["Interests", a?.interests.length ? a.interests.map(interestLabel).join(", ") : NO_ANSWER],
     ["Finds hard in math", a?.note || "-"],
-    ["Main goal", a?.goal ? goalLabel(a.goal) : NO_ANSWER],
     ["Time each week", a?.weeklyTime ? weeklyTimeLabel(a.weeklyTime) : NO_ANSWER],
   ];
 }

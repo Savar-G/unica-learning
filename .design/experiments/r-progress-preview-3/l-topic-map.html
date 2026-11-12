@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en-CA">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>L. Topic map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shell.css">
+<style>
+.map { margin-top: 24px; padding: clamp(18px, 3vw, 36px); border-radius: 18px; background: #fff; box-shadow: 0 0 0 1px var(--line), 0 30px 60px -40px rgba(0,0,0,.35); }
+.top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 14px; }
+.count { font-size: clamp(22px, 2.4vw, 28px); font-weight: 300; letter-spacing: -.02em; line-height: 1.2; }
+.count b { font-weight: 500; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 16px; font: 400 12px/1.3 var(--mono); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 14px; height: 14px; border-radius: 4px; }
+.row { display: grid; grid-template-columns: 170px 1fr; gap: 16px; padding: 18px 0; border-top: 1px solid var(--line); }
+.row:first-of-type { margin-top: 16px; }
+@media (max-width: 700px) { .row { grid-template-columns: 1fr; gap: 10px; } }
+.rh b { display: block; font-weight: 500; }
+.rh span { font: 400 12px/1.3 var(--mono); color: var(--ink-2); }
+.tiles { display: flex; flex-wrap: wrap; gap: 6px; }
+.tile { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 6px 10px; border-radius: 8px; font-size: 14px; line-height: 1.2; background: #fff; box-shadow: inset 0 0 0 1.5px #d9d9de; color: var(--ink-2); opacity: 0; animation: in .35s var(--d) cubic-bezier(.2,.8,.2,1) forwards; }
+@keyframes in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.tile.sec { background: #e3f5ec; box-shadow: none; color: #146b45; }
+.tile.sec::before { content: "✓"; font-weight: 600; }
+.tile.b1 { background: #fff2c7; box-shadow: inset 0 0 0 1.5px #e3b400; color: #4a3800; font-weight: 500; }
+.tile.goal { background: var(--ink); color: #fff; box-shadow: none; }
+.l-sec { background: #e3f5ec; } .l-b1 { background: #fff2c7; box-shadow: inset 0 0 0 1.5px #e3b400; } .l-next { box-shadow: inset 0 0 0 1.5px #d9d9de; } .l-goal { background: var(--ink); }
+.note { margin-top: 6px; font: 400 11px/1.3 var(--mono); color: var(--ink-3); }
+</style>
+</head>
+<body>
+<div class="chrome"><span class="v">L. Topic map</span><div class="cases" data-cases></div><a href="board.html">All options</a></div>
+<main class="page">
+  <div class="stub">Report: "Where Leah is", "What's in workbook 1" (unchanged)</div>
+  <section class="section" id="out"></section>
+  <div class="stub">Next step: card and plan button (unchanged)</div>
+</main>
+<script src="levels.js"></script><script src="pace.js"></script><script src="units.js"></script>
+<script>
+// Every BC topic (unit) between today and the goal, one tile each. Secure tiles come from the child's test (here a
+// sample: the 2nd and 5th unit of the working grade); Book 1 tiles from the real planner (here: the first level's units
+// that are not secure). Parent home later fills tiles as marked pages prove them.
+mount((p, setPace) => {
+  let d = 0;
+  const rows = p.grades.map((s, i) => {
+    const units = UNITS[s.grade] ?? [];
+    const goal = i === p.grades.length - 1;
+    const firstLevel = units[0]?.level;
+    const tiles = (goal ? units.slice(0, 3) : units).map((u, j) => {
+      let cls = "";
+      if (goal) cls = "goal";
+      else if (i === 0 && (j === 1 || j === 4)) cls = "sec";
+      else if (i === 0 && u.level === firstLevel) cls = "b1";
+      return `<span class="tile ${cls}" style="--d:${(d++ * 0.025).toFixed(2)}s" title="${u.code}">${u.title}</span>`;
+    }).join("");
+    const head = goal ? `<b>${gradeName(s.grade)}: the goal</b><span>about ${monthYear(s.date)}</span>`
+      : `<b>${gradeName(s.grade)} topics</b><span>${i === 0 ? "from Book 1" : "from " + monthYear(s.date)} · books ${s.books[0].n} to ${s.books.at(-1).n}</span>`;
+    return `<div class="row"><div class="rh">${head}</div><div class="tiles">${tiles}${goal ? `<span class="tile goal" style="--d:${(d++ * 0.025).toFixed(2)}s">and more ⚑</span>` : ""}</div></div>`;
+  }).join("");
+  const total = p.grades.slice(0, -1).reduce((a, s) => a + (UNITS[s.grade]?.length ?? 0), 0);
+  const out = document.getElementById("out");
+  out.innerHTML = `
+    <div class="section-head"><p class="k">Where ${p.c.name} can go</p><h2>${headline(p)}</h2></div>
+    <div class="map">
+      <div class="top"><p class="count"><b>${total} topics</b> to ${gradeName(p.goal)}. The test found ${p.c.name} secure in <b>2</b> already.</p>${paceSwitch(p)}</div>
+      <p class="legend"><span><i class="l-sec"></i>Secure in the test</span><span><i class="l-b1"></i>In Book 1</span><span><i class="l-next"></i>Next books</span><span><i class="l-goal"></i>The goal</span></p>
+      ${rows}
+      <p class="note">Sample: the secure topics here are made up for the mockup; the real map uses ${p.c.name}'s test.</p>
+      <p class="basis">${basis(p)}</p>
+    </div>`;
+  wirePace(out, setPace);
+});
+</script>
+</body>
+</html>

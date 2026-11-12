@@ -11,6 +11,7 @@ const profile = vi.hoisted(() => ({ failed: false, calls: 0 }));
 vi.mock("@/lib/child-profile", () => ({ rebuildChildProfile: async () => {
   profile.calls++;
   if (profile.failed) throw Error("synthetic profile interruption");
+  state.profilePending = false;
   return { built: false, reason: "nothing_to_build" };
 } }));
 
@@ -19,11 +20,20 @@ const otherParent = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const scopedEnv = (ids: string) => ({ SCAN_MARKING_ENABLED: "test-only", SCAN_MARKING_TEST_PARENT_IDS: ids });
 const expected = { ...expectedItems({ workbookId: "book", printedRevision: "print", pageId: "page", questions: [{ number: 1, package: null, teaching: null }] })[0], method: "parent" as const };
 const original = { ...firstObservation(expected, "expired-photo"), state: "parent-checked", method: "parent", result: "wrong", actor: "parent", resultVersion: 2 };
-const state = { test: false, admin: false, failed: false, wrongParent: false, photo: false, queries: [] as URL[], commands: [] as string[], mark: original };
+const state = { test: false, admin: false, failed: false, wrongParent: false, photo: false, queries: [] as URL[], commands: [] as string[], mark: original, outbox: false, profilePending: false, revisionFailed: false };
 function persisted() {
   return { id: "item-row", expected, observation: state.mark, original_event: null, event_id: null,
     evidence_at: "2026-11-01T00:00:00.000Z", model: null, prompt: null };
 }
+// (#706: one committed mark waiting in the outbox, published as a learning event.)
+const outboxBook = "44444444-4444-4444-8444-444444444444";
+const outboxEvent = { key: "marking:book:item:p:a", parentId: parent, childId: child, source: "marking",
+  question: { source: "workbook", workbookId: outboxBook, page: 1, question: 1 }, skill: { standard: "2.4", skills: ["2.4-add-within-100"] },
+  result: "wrong", stuckStep: null, mistake: null, hints: 0, timeMs: null, occurredAt: "2026-11-01T00:00:00.000Z", evidence: null };
+const eventRow = { id: "event-1", idempotency_key: outboxEvent.key, parent_id: parent, child_id: child, source: outboxEvent.source,
+  question_source: "workbook", workbook_id: outboxBook, workbook_page: 1, workbook_question: 1, assessment_id: null, assessment_question_id: null,
+  skill_standard: "2.4", skills: ["2.4-add-within-100"], result: "wrong", stuck_step: null, mistake: null, hints: 0, time_ms: null, occurred_at: outboxEvent.occurredAt,
+  evidence_kind: null, evidence_id: null };
 const db = createClient<Database>("https://marking-launch.example.test", "synthetic-service-key", {
   auth: { persistSession: false, autoRefreshToken: false },
   global: { fetch: async (input, init) => {
@@ -39,6 +49,12 @@ const db = createClient<Database>("https://marking-launch.example.test", "synthe
       expect(url.searchParams.get("parent_id")).toBe(`eq.${parent}`);
       return Response.json([{ id: "expired-photo", child_id: child, workbook_id: "book", page_id: "page", printed_revision: "print", state: "expired", expires_at: "2026-01-01T00:00:00.000Z" }]);
     }
+    if (url.pathname.endsWith("/scan_marking_revisions")) {
+      expect(url.searchParams.get("parent_id")).toBe(`eq.${parent}`);
+      expect(url.searchParams.get("child_id")).toBe(`eq.${child}`);
+      return state.revisionFailed ? Response.json({ message: "read failed" }, { status: 503 })
+        : Response.json([{ revision: state.profilePending ? 2 : 1, profile_revision: 1 }]);
+    }
     if (url.pathname.endsWith("/scan_marking_items")) {
       expect(url.searchParams.get("parent_id")).toBe(`eq.${parent}`); expect(url.searchParams.get("item_id")).toBe(`eq.${expected.identity.itemId}`);
       return Response.json([{ result_version: state.mark.resultVersion, observation: state.mark }]);
@@ -49,17 +65,19 @@ const db = createClient<Database>("https://marking-launch.example.test", "synthe
       expect(body.p_parent).toBe(parent); state.commands.push(body.p_action);
       if (body.p_action === "detail") return Response.json({ job: null });
       if (body.p_action === "effective") return Response.json(body.p_data.after ? [] : [persisted()]);
-      if (body.p_action === "outbox") return Response.json([]);
+      if (body.p_action === "outbox") return Response.json(state.outbox && !body.p_data?.after ? [{ ...persisted(), original_event: outboxEvent }] : []);
+      if (body.p_action === "ack") { state.outbox = false; state.profilePending = true; return Response.json(true); }
       if (body.p_action === "change") {
         state.mark = { ...state.mark, result: body.p_data.result, resultVersion: state.mark.resultVersion + 1 };
         return Response.json({ status: "saved", mark: persisted() });
       }
     }
+    if (url.pathname.endsWith("/learning_events") && init?.method === "POST") return Response.json(eventRow);
     throw Error(`Unexpected request, including any image or paid dispatch: ${url.pathname}`);
   } },
 });
 beforeEach(() => {
-  Object.assign(state, { test: false, admin: false, failed: false, wrongParent: false, photo: false, queries: [], commands: [], mark: { ...original } });
+  Object.assign(state, { test: false, admin: false, failed: false, wrongParent: false, photo: false, queries: [], commands: [], mark: { ...original }, outbox: false, profilePending: false, revisionFailed: false });
   Object.assign(profile, { failed: false, calls: 0 });
   vi.stubEnv("SCAN_MARKING_ENABLED", "off");
 });
@@ -209,4 +227,59 @@ it.each([false, true])("keeps an expired-photo parent change and its recovery ha
   expect(state.mark.result).toBe("right"); expect(state.mark.resultVersion).toBe(3);
   expect(state.commands).toEqual(["change", "outbox"]); expect(profile.calls).toBe(1);
   expect(state.queries.some((q) => /test_accounts|admin_users|storage/.test(q.pathname))).toBe(false);
+});
+
+// #706: an admitted photo with no marking client tells the caller, so a recovery run can stop.
+it("tells the caller when an admitted photo has no marking client", async () => {
+  state.test = true;
+  const onNoClient = vi.fn();
+  expect(await processScanMarking(db, parent, "missing-photo", { SCAN_MARKING_ENABLED: "test-only" }, undefined, { onNoClient })).toBe("terminal");
+  expect(onNoClient).toHaveBeenCalledOnce();
+});
+
+// #706: a closed-plan photo in families mode publishes its committed marks; with nothing in the outbox it rebuilds no profile.
+it("rebuilds no profile for a closed-plan photo whose outbox is empty", async () => {
+  state.photo = true;
+  const closed = async () => ({ open: false, reason: "ended" as const });
+  expect(await processScanMarking(db, parent, "33333333-3333-4333-8333-333333333333", { SCAN_MARKING_ENABLED: "families" }, closed as never)).toBe("off");
+  expect(state.commands).toEqual(["outbox"]);
+  expect(profile.calls).toBe(0);
+});
+
+it("rebuilds the profile once when a closed-plan photo really publishes a committed mark", async () => {
+  state.photo = true; state.outbox = true;
+  const closed = async () => ({ open: false, reason: "ended" as const });
+  expect(await processScanMarking(db, parent, "33333333-3333-4333-8333-333333333333", { SCAN_MARKING_ENABLED: "families" }, closed as never)).toBe("off");
+  // (The reader pages the outbox until an empty page, then the published mark is acknowledged.)
+  expect(state.commands).toEqual(["outbox", "outbox", "ack"]);
+  expect(profile.calls).toBe(1);
+});
+
+it("retries a failed closed-plan profile rebuild after its outbox was acknowledged", async () => {
+  state.photo = true; state.outbox = true; profile.failed = true;
+  const closed = async () => ({ open: false, reason: "ended" as const });
+  const retry = () => processScanMarking(db, parent, "33333333-3333-4333-8333-333333333333", { SCAN_MARKING_ENABLED: "families" }, closed as never);
+  await expect(retry()).rejects.toThrow("synthetic profile interruption");
+  expect(state.outbox).toBe(false);
+  profile.failed = false;
+  expect(await retry()).toBe("off");
+  expect(profile.calls).toBe(2);
+  expect(await retry()).toBe("off");
+  expect(profile.calls).toBe(2);
+});
+
+it("defers an outstanding closed-plan profile revision with an empty outbox", async () => {
+  state.photo = true; state.profilePending = true;
+  const deferRebuild = vi.fn();
+  const closed = async () => ({ open: false, reason: "ended" as const });
+  expect(await processScanMarking(db, parent, "33333333-3333-4333-8333-333333333333", { SCAN_MARKING_ENABLED: "families" }, closed as never, { deferRebuild })).toBe("off");
+  expect(deferRebuild).toHaveBeenCalledWith(child);
+  expect(profile.calls).toBe(0);
+});
+
+it("keeps an unavailable closed-plan profile revision retryable", async () => {
+  state.photo = true; state.revisionFailed = true;
+  const closed = async () => ({ open: false, reason: "ended" as const });
+  await expect(processScanMarking(db, parent, "33333333-3333-4333-8333-333333333333", { SCAN_MARKING_ENABLED: "families" }, closed as never)).rejects.toThrow("marking_profile_revision");
+  expect(profile.calls).toBe(0);
 });

@@ -5,13 +5,10 @@ import Account from "./page";
 import StartScreen from "../start/[child]/page";
 import type { ParentNote } from "@/lib/parent-maya-notes";
 import type { ChildView } from "@/lib/parent-view";
-import { parentMinutes } from "@/lib/maya-minutes-server";
 
 vi.mock("server-only", () => ({}));
 vi.mock("next/navigation", () => ({ usePathname: () => "/account", useRouter: () => ({}), redirect: (path: string) => { throw new Error(`REDIRECT ${path}`); } }));
 vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
-const minutes = vi.hoisted(() => ({ value: new Map<string, import("@/lib/maya-minutes-server").ChildMinutes>() }));
-vi.mock("@/lib/maya-minutes-server", () => ({ parentMinutes: vi.fn(async () => minutes.value) }));
 const chats = vi.hoisted(() => ({ value: new Map<string, import("@/lib/maya-chat").ChatUsage>() }));
 vi.mock("@/lib/maya-chat-server", () => ({ parentChatUsage: async () => chats.value }));
 vi.mock("@/lib/parent-pin-server", () => ({ pinIsSet: async () => false }));
@@ -19,9 +16,14 @@ const mayaNotice = vi.hoisted(() => ({ due: false, books: [] as { id: string; ch
 vi.mock("@/lib/workbook-store", () => ({ workbookStore: () => ({ childWorkbooks: async (child: string) => mayaNotice.books.filter((b) => b.childId === child) }) }));
 vi.mock("@/lib/maya-notice-server", () => ({ mayaNoticeDueForFamily: async () => mayaNotice.due }));
 const planNote = vi.hoisted(() => ({ closed: null as null | { reason: string; child: string | null } }));
-vi.mock("@/components/plan-closed-note", () => ({ planClosedFamily: async () => planNote.closed, PlanClosedNote: ({ on }: { on: string }) => `Your plan is closed, on ${on}` }));
+vi.mock("@/components/plan-closed-note", () => ({
+  closedNoteFor: async (_parent: string, dashboard: boolean) => (planNote.closed ? { closed: planNote.closed, dashboardOpen: dashboard } : null),
+  PlanClosedNote: ({ on, dashboardOpen }: { on: string; dashboardOpen?: boolean }) => `Your plan is closed, on ${on}${dashboardOpen ? ", dashboard open" : ""}`,
+}));
 const scanning = vi.hoisted(() => ({ enabled: false }));
 vi.mock("@/lib/scan-pages-access", () => ({ scanPagesAccess: async () => scanning.enabled }));
+const progress = vi.hoisted(() => ({ value: new Map<string, import("@/lib/progress-preview-server").HomeProgress>(), reads: null as string[][] | null }));
+vi.mock("@/lib/progress-preview-server", () => ({ homeProgress: async (_db: unknown, _parent: string, reports: { child_id: string }[]) => { progress.reads?.push(reports.map((r) => r.child_id)); return new Map([...progress.value].filter(([id]) => reports.some((r) => r.child_id === id))); } }));
 const notes = vi.hoisted(() => ({ latest: new Map<string, ParentNote>() }));
 vi.mock("@/lib/parent-maya-notes", async (original) => ({ ...await original<typeof import("@/lib/parent-maya-notes")>(), latestParentMayaNotes: async () => notes.latest }));
 
@@ -31,7 +33,7 @@ vi.mock("@/lib/parent-dashboard-server", () => ({
   parentDashboard: async () => dashboard.value,
   dashboardOverview: async () => { overview.reads++; return overview.value; },
 }));
-const family = vi.hoisted(() => ({ postal: "V3S 1A1" as string | null, timeZone: null as string | null, olderChild: false, card: false, signedOut: false }));
+const family = vi.hoisted(() => ({ postal: "V3S 1A1" as string | null, timeZone: null as string | null, olderChild: false, card: false, signedOut: false, report: false }));
 const opensAt = Date.parse("2026-11-18T04:29:00Z");
 vi.mock("@/lib/test-attempt-server", () => ({
   parentStartStates: async () => new Map([["c1", { kind: "wait", completedAt: Date.parse("2026-10-19T04:29:00Z"), opensAt: Date.parse("2026-11-18T04:29:00Z") }]]),
@@ -45,7 +47,9 @@ vi.mock("@/lib/supabase-auth", () => ({
         const rows: Record<string, Record<string, unknown>[]> = {
           parents: [{ name: "Alex Family", email: "alex@example.com", postal: family.postal, time_zone: family.timeZone }],
           children: [{ id: "c1", parent_id: "p1", created_at: "2021-01-01", first_name: "Asha", grade: 3, province: "BC" }, ...(family.olderChild ? [{ id: "z-old", parent_id: "p1", created_at: "2020-01-01", first_name: "Sam", grade: 4, province: "ON" }] : [])],
-          reports: [],
+          reports: family.report ? [{ id: "r1", child_id: "c1" }] : [],
+          // Both children have a test, so the goals step (D-325) does not stop the start screen.
+          assessments: [{ child_id: "c1" }, { child_id: "z-old" }],
           card_setups: family.card ? [{ card_saved_at: "2026-11-01T00:00:00Z" }] : [{ card_saved_at: null }],
         };
         let data = (rows[table] ?? []).map((row) => Object.fromEntries(Object.entries(row).filter(([key]) => columns.split(/,\s*/).includes(key))));
@@ -53,6 +57,7 @@ vi.mock("@/lib/supabase-auth", () => ({
           order: (key: string) => { if (key === "created_at") data.sort((a, b) => String(a[key]).localeCompare(String(b[key]))); return query; },
           eq: (key: string, value: string) => { if (key === "id") data = data.filter((r) => r.id === value); return query; },
           limit: (n: number) => { data = data.slice(0, n); return query; },
+          in: (key: string, values: unknown[]) => { data = data.filter((r) => values.includes(r[key])); return query; },
           maybeSingle: async () => ({ data: data[0] ?? null }),
           then: (resolve: (result: { data: typeof data }) => unknown) => resolve({ data }),
         };
@@ -62,7 +67,7 @@ vi.mock("@/lib/supabase-auth", () => ({
   }),
 }));
 
-beforeEach(() => { minutes.value = new Map(); chats.value = new Map(); dashboard.value = null; overview.value = null; overview.reads = 0; family.postal = "V3S 1A1"; family.timeZone = null; family.olderChild = false; family.card = false; family.signedOut = false; scanning.enabled = false; notes.latest = new Map(); });
+beforeEach(() => { chats.value = new Map(); dashboard.value = null; overview.value = null; overview.reads = 0; family.postal = "V3S 1A1"; family.timeZone = null; family.olderChild = false; family.card = false; family.report = false; family.signedOut = false; scanning.enabled = false; notes.latest = new Map(); progress.value = new Map(); progress.reads = null; });
 
 it("a signed-out parent signs in and comes back to the child the link named (#563)", async () => {
   family.signedOut = true;
@@ -72,8 +77,6 @@ it("a signed-out parent signs in and comes back to the child the link named (#56
 
 it("shows only the latest note and its links on the matching child's card, without an empty notes section", async () => {
   family.olderChild = true;
-  minutes.value.set("c1", { used: 12, left: 18, backOn: "Monday, November 9" });
-  minutes.value.set("z-old", { used: 30, left: 0, backOn: "Monday, November 9" });
   chats.value.set("c1", { used: 7, left: 53, backAt: "midnight on November 9", resetsAt: Date.parse("2026-11-09T07:00:00Z") });
   notes.latest.set("c1", {
     child_id: "c1", call_id: "latest-chat", channel: "chat", startedAt: "2026-11-08T01:00:00Z", call_ended_at: "2026-11-08T01:06:00Z",
@@ -92,7 +95,6 @@ it("shows only the latest note and its links on the matching child's card, witho
   expect(out).toContain("Asha used 7 of 60 chat messages today.");
   expect(out).not.toContain("Sam used");
   expect(out).not.toMatch(/of 30 minutes|minutes left|minutes start again|Try Maya|Start (?:a )?call/i);
-  expect(parentMinutes).not.toHaveBeenCalled();
 });
 
 it("adds no note heading or links when no session has a note", async () => {
@@ -156,6 +158,41 @@ it("R425M-3: account and a younger child's start use the oldest sibling's provin
   }
 });
 
+it("shows the goal sentence from the child's newest report, with a link to the report's plan", async () => {
+  family.report = true;
+  const render = async () => renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) })));
+  expect(await render()).not.toContain("We can help");
+  progress.value = new Map([["c1", { href: "/account/report/r1#rpt-progress", preview: {
+    name: "Asha", today: 1, goal: 3, todayLabel: "Grade 1 level", goalLabel: "Grade 3 level", goalMonth: "September 2027",
+    sentence: { lead: "We can help Asha reach a ", goal: "grade 3 level", by: "September 2027" }, rows: [], books: [1, 1, 2], stages: [],
+    steps: [{ title: "A new workbook every 2 weeks", text: "" }, { title: "8 pages a day, 5 days a week", text: "" }, { title: "We mark the finished pages", text: "" }], basis: "",
+  } }]]);
+  const out = await render();
+  expect(out).toContain("We can help Asha reach a <b>grade 3 level</b> by <b>September 2027</b>.");
+  expect(out).toContain("3 workbooks, 8 pages a day, 5 days a week.");
+  expect(out).toContain('href="/account/report/r1#rpt-progress"');
+});
+
+it("shows no goal sentence once the child has a shipped workbook, and reads only the shown child's report on the dashboard", async () => {
+  family.report = true;
+  const asked: string[][] = [];
+  progress.reads = asked;
+  progress.value = new Map([["c1", { href: "/account/report/r1#rpt-progress", preview: {
+    name: "Asha", today: 1, goal: 3, todayLabel: "", goalLabel: "", goalMonth: "September 2027", sentence: { lead: "We can help Asha reach a ", goal: "grade 3 level", by: "September 2027" },
+    rows: [], books: [1], stages: [], steps: [{ title: "", text: "" }, { title: "8 pages a day, 5 days a week", text: "" }, { title: "", text: "" }], basis: "",
+  } }]]);
+  mayaNotice.books = [{ id: "w1", childId: "c1", number: 1, status: "shipped" }];
+  let out: string;
+  try {
+    out = renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) })));
+  } finally {
+    mayaNotice.books = [];
+  }
+  // The loader is told to skip a child with a shipped workbook (the real one is never called for it).
+  expect(asked.at(-1)).toEqual([]);
+  expect(out).not.toContain("We can help");
+});
+
 it("links to the plan page only for a family with a saved card", async () => {
   const render = async () => renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) })));
   expect(await render()).not.toContain('href="/account/plan"');
@@ -208,6 +245,18 @@ describe("a family the switch opens to", () => {
     return renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve(query) })));
   };
   beforeEach(() => { family.olderChild = true; });
+
+  // #709: with the switch on, a stopped plan keeps this home; it still says why, in both of its views.
+  it("tells a stopped family why, with the dashboard open, on the test-start view and the overview", async () => {
+    try {
+      planNote.closed = { reason: "payment_failed", child: "Asha" };
+      expect(await open()).toContain("Your plan is closed, on home, dashboard open");
+      dashboard.value = { children: [{ ...view("c1", "Asha"), opensOn: "overview" }], remembered: null, pinSet: true, timeZoneSaved: true };
+      expect(renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({}) })))).toContain("Your plan is closed, on home, dashboard open");
+      planNote.closed = null;
+      expect(await open()).not.toContain("Your plan is closed");
+    } finally { planNote.closed = null; dashboard.value = null; }
+  });
 
   // #529: the notice card is for a family with Maya open, no agreement and a desk to open.
   it("shows the Maya notice card only when it is due and a child has a workbook, in both homes", async () => {
@@ -263,7 +312,6 @@ describe("a family the switch opens to", () => {
       facts: { question: { source: "workbook", page: 23, number: 4, text: "27 + 39" }, minutes: 6, finished: "with_help", reason: "solved", help: "hint", stuckOn: null, paper: "unknown", safety: false },
       sentences: ["{child} called Maya about page 23, question 4.", "{child} finished it after a small hint."], warm: null,
     });
-    minutes.value = new Map([["c1", { used: 12, left: 18, backOn: "Monday, November 9" }]]);
     chats.value.set("c1", { used: 7, left: 53, backAt: "midnight on November 9", resetsAt: Date.parse("2026-11-09T07:00:00Z") });
     const tabs = ["overview", "workbooks", "maya", "assessment", "account"] as const;
     const asha = { ...view("c1", "Asha"), stage: "active" as const, opensOn: "overview" as const, tabs: [...tabs] };
@@ -369,7 +417,6 @@ describe("a family the switch opens to", () => {
     };
 
     it("shows the tiles, the area bars and one thing to do, naming the child", async () => {
-      minutes.value = new Map([["c1", { used: 12, left: 18, backOn: "Monday, November 9" }]]);
       const out = await render(full());
       expect(out).toContain("Working at Grade 4");
       expect(out).toContain("In Grade 3 at school.");
@@ -405,7 +452,6 @@ describe("a family the switch opens to", () => {
       expect(await render(full())).toContain('id="po-maya"');
       const withoutMaya = tabs.filter((t) => t !== "maya");
       expect(await render(full(withoutMaya), withoutMaya)).not.toContain('id="po-maya"');
-      expect(parentMinutes).not.toHaveBeenCalled();
     });
 
     it.each(["active", "first_book_coming", "ended"] as const)("keeps %s notes access independent of voice usage and chat release", async (stage) => {
@@ -414,14 +460,12 @@ describe("a family the switch opens to", () => {
       const child = { ...asha(t), stage, readOnly: stage === "ended", currentWorkbook: hasMaya ? { number: 2 } : null };
       dashboard.value = { children: [view("z-old", "Sam"), child], remembered: null, pinSet: true, timeZoneSaved: true };
       overview.value = { ...full(t), child, workbook: null, level: null, areas: [], resultPreparing: stage === "active" };
-      minutes.value.set("c1", { used: 30, left: 0, backOn: "Monday, November 9" });
       const out = renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({ child: "c1" }) })));
       expect(out.includes('href="/account/notes/c1"')).toBe(hasMaya);
       expect(out).not.toMatch(/of 30 minutes|minutes left|minutes start again|Try Maya|Start (?:a )?call|chat messages today/i);
       expect(out).not.toContain("Sam");
       expect(out).not.toContain("/account/notes/z-old");
       if (stage === "active") expect(out).toContain("Asha&#x27;s new result is being prepared.");
-      expect(parentMinutes).not.toHaveBeenCalled();
     });
 
     // #771 review: the Overview says the result is late, so the test's line under it does not say it again.

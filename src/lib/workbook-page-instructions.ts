@@ -75,11 +75,19 @@ const RETIRED_WARM_UP = ["Beat your own count from last time.", "Do as many as y
   // (The choice words a stored warm-up page may hold: its choice questions print their own cue, isWarmUpPage.)
   /\b(?:Circle|Tick) (?:one choice|or tick one choice|your answers?|true or false|yes or no)\./g];
 const warmUp = (page: InstructionPage) => isWarmUpPage(page.content);
+/**
+ * On a warm-up, one sentence says both (Cedric and Savar, 2026-11-09): "Do every question. Write in boxes." said the same
+ * thing twice. Only the printed words change; stored instructions stay.
+ */
+export const mergeWarmUp = (text: string) => text
+  .replace("Do every question. Write in boxes.", "Answer every question in its box.")
+  .replace("Do every question. Write on the lines.", "Answer every question on its line.");
 
 /** The first-delivery U16 template's instruction, from the page's answer regions. Stored questions and content stay unchanged. */
 export function workbookPageInstruction(page: InstructionPage): string | null {
   if (page.content?.kind !== "day" || page.content.level !== 16 || !page.content.consistentLayout) return null;
-  return [warmUp(page) ? WARM_UP_INSTRUCTION : null, answerInstruction(page.questions, !warmUp(page))].filter(Boolean).join(" ");
+  const text = [warmUp(page) ? WARM_UP_INSTRUCTION : null, answerInstruction(page.questions, !warmUp(page))].filter(Boolean).join(" ");
+  return warmUp(page) ? mergeWarmUp(text) : text;
 }
 
 /**
@@ -96,5 +104,7 @@ export function printedInstruction(page: InstructionPage): string | null {
   for (const said of [...SAID_ELSEWHERE, ...(warmUp(page) ? RETIRED_WARM_UP : [])]) text = text.replaceAll(said, " ");
   text = text.replace(/\s+/g, " ").trim();
   if (warmUp(page) && !text.includes(WARM_UP_INSTRUCTION)) text = `${WARM_UP_INSTRUCTION} ${text}`.trim();
-  return text || answerInstruction(page.questions);
+  const printed = text || answerInstruction(page.questions);
+  // (Only a warm-up page joins the sentences: a stored "Do every question. Write in boxes." elsewhere stays as written.)
+  return warmUp(page) ? mergeWarmUp(printed) : printed;
 }

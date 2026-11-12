@@ -8,13 +8,13 @@ All current email texts, including the free-month variants for children below Gr
 
 On the admin workbook screen, the email controls appear below **Print and ship** after the workbook is marked printed. The family, child, saved card and workbook number come from that stored workbook. **Workbook ready** is unavailable after it is marked shipped. A child without a confirmed saved card has no email controls.
 
-In **Admin > Cards and waitlist**, open **Workbook emails** on the child's saved card. The same controls appear on the family and child records, with a workbook number field for these manual sends.
+In **Admin > Plans and delivery**, open **Workbook emails** on the child's saved card. The same controls appear on the family and child records, with a workbook number field for these manual sends.
 
 1. For an earlier signup, select **Preview welcome email**. Review the recipient and text. Select **Send welcome email**.
 2. When the printed workbook is ready, select **Workbook ready**. Review the recipient and text. Select **Send workbook ready email**.
 3. After a workbook leaves you, select **Hand delivery** or **Courier**. Courier requires a carrier and tracking number. An HTTPS tracking link is optional. Select **Preview courier email** after entering the details. Hand delivery opens its preview with no tracking fields.
 4. Review the recipient, workbook number and text. Select **Send delivery email**. Hand delivery and Courier share one dispatch key, so choosing the other method cannot send a second copy.
-5. Only after the first workbook arrives at the family's home, use **Workbook delivered: start free month** and confirm delivery. The full 30-day free month begins at that confirmation. Sending an email does not start a subscription or change workbook status.
+5. Only after the first workbook arrives at the family's home, use **Workbook delivered: start plan** and confirm delivery. The full 30-day free month begins at that confirmation. Sending an email does not start a subscription or change workbook status.
 
 The ready email says that the workbook is ready and will be shipped soon. The delivery email says that it is on its way. Neither email claims arrival. Neither changes the workbook status, starts a plan or changes billing. The existing reminder before the first charge remains separate.
 

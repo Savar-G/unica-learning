@@ -4,16 +4,24 @@ import { notFound } from "next/navigation";
 import { detailProgress, getStrokes, getTest, requireAdmin } from "@/lib/admin-store";
 import { progressSnapshot } from "@/lib/admin-progress";
 import { ProgressPanel } from "@/components/admin-progress";
-import { adminParentPath, adminProfilePath, adminReportPath, answerLines, duration, factLines, flagText, helpAnswerText, levelText, questionNumbers, shownWithoutAnswer, when } from "@/lib/admin-view";
+import { adminParentPath, adminProfilePath, adminReportPath, answerLines, duration, factLines, levelText, questionNumbers, shownWithoutAnswer, when } from "@/lib/admin-view";
 import { contextFacts } from "@/lib/admin-view";
-import { QuestionTimeline, ShownWithoutAnswer, awayCount, changeCount, readAloudCount } from "@/components/admin-timeline";
-import { AdminFrame, Chip, StatusChip, Table, gradeAndPlace } from "@/components/admin";
+import { QuestionTimeline, ShownWithoutAnswer } from "@/components/admin-timeline";
+import { Chip, StatusChip, Table, gradeAndPlace } from "@/components/admin";
+import { AdminFrame } from "@/components/admin-frame";
+import { Fold } from "@/components/admin-fold";
+import { AnswersTable, ResultCard, TestHeaderCard } from "@/components/admin-tests";
 import { EmailTable, RecordFacts, ReviewDetail, childPath } from "@/components/admin-records";
 import { QuestionSkills } from "@/components/admin-question-skills";
 import { StrokeReplay } from "@/components/stroke-replay";
 import { ResultCertainty } from "@/components/admin-certainty";
 import { DELIVERY_WORDS, reportAlertState, reportEmailState } from "@/lib/delivery-state";
 
+const pl = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+// One test (D-313, D-315): the header card, the live progress while the test is open, the Result card, the answers and
+// the shown work; then the timeline, skills, break and device, report delivery, quick facts and emails in closed
+// sections, and the ids in Technical details.
 export default async function TestDetailPage({ params }: PageProps<"/admin/assessments/[id]">) {
   const admin = await requireAdmin();
   const id = (await params).id;
@@ -24,61 +32,102 @@ export default async function TestDetailPage({ params }: PageProps<"/admin/asses
   const lines = answerLines(t.stored, detail.answers, detail.reviews, t.placement?.pace?.leftOut);
   const numbers = questionNumbers(detail.answers);
   const work = lines.filter((a) => a.work.required || a.work.image || a.work.text || a.review || a.questionId in strokes);
+  const lowReviews = work.filter((a) => a.review?.confidence === "low").length;
   const quick = facts ? factLines(facts.test, facts.answers) : [];
   const progress = progressSnapshot(new Map([[t.id, detailProgress(detail)]]), new Date());
-  return <AdminFrame email={admin.email} section="tests" title={`${t.child?.first_name ?? "Child"}'s test`}>
-    <RecordFacts facts={[
-      ["Parent", <Link key="parent" href={adminParentPath(t.parent_id)}>{t.parent?.name ?? "Family"}</Link>],
-      ["Child", <Link key="child" href={childPath(t.child_id)}>{t.child?.first_name ?? "Child"}</Link>],
-      ["Grade and curriculum", gradeAndPlace(t.grade, t.province)], ["Status", <StatusChip key="status" status={t.status} />],
-      ["Started (Pacific)", when(t.started_at)], ["Last answer (Pacific)", when(t.last_answer_at)], ["Completed (Pacific)", when(t.completed_at)],
-      ["Resume until (Pacific)", when(t.resume_until)], ["Working level", t.placement ? levelText(t.placement.workingLevel) : "-"], ["Route", t.route ?? "-"],
-      ["Unknown answers", detail.answers.filter(a => a.response === UNKNOWN_RESPONSE).length],
-      ["Assessment format", t.stored.adaptive ? "Six-question blocks" : "Stages"],
-      ["Did anyone help?", helpAnswerText(t.help)], ["Seed", t.seed], ["Test id", t.id],
-      ["Learner profile", t.status === "completed" ? <Link key="profile" href={adminProfilePath(t.id)}>Open the profile</Link> : "-"],
+  const open = progress.tests[t.id]?.open === true;
+  const child = t.child?.first_name ?? "Child";
+  const live = <ProgressPanel id={t.id} initial={progress} live />;
+  const ctx = Object.fromEntries(contextFacts(detail.context));
+  const reportProblem = report && (report.email_error || report.alert_error);
+  return <AdminFrame email={admin.email} title={`${child}'s test`}
+    lead={`${gradeAndPlace(t.grade, t.province)} · started ${when(t.started_at)} (Pacific)`}
+    actions={<>
+      {report && <Link className="btn adm-btn" href={adminReportPath(report.id)}>Open the report</Link>}
+      {t.status === "completed" && <Link className="btn adm-btn ghost" href={adminProfilePath(t.id)}>Learner profile</Link>}
+    </>}>
+    <TestHeaderCard facts={[
+      ["Child", <span key="child"><Link href={childPath(t.child_id)}>{child}</Link><span className="adm-sub">{gradeAndPlace(t.grade, t.province)}</span></span>],
+      ["Family", <Link key="family" href={adminParentPath(t.parent_id)}>{t.parent?.name ?? "Family"}</Link>],
+      ["Status", <StatusChip key="status" status={t.status} />],
+      ["Level", t.placement ? `${levelText(t.placement.workingLevel)}, route ${t.route ?? t.placement.route}` : "-"],
+      ["Started (Pacific)", when(t.started_at)],
+      [t.completed_at ? "Finished (Pacific)" : "Last answer (Pacific)", when(t.completed_at ?? t.last_answer_at)],
     ]} />
-    <h2>Where the child is</h2>
-    <ProgressPanel id={t.id} initial={progress} live />
-    {progress.tests[t.id]?.open && <p className="adm-note">This box updates by itself. The tables below show the page as it loaded: reload for new answers.</p>}
-    <h2>Break and device</h2>
-    <RecordFacts facts={contextFacts(detail.context)} />
-    <h2>Flags</h2>
-    {t.flags?.length ? <ul className="adm-list">{t.flags.map((f, i) => <li key={i}>{flagText(f, numbers)}</li>)}</ul> : <p className="adm-note">{t.status === "completed" ? "No flags." : "Flags are recorded when the test finishes."}</p>}
-    <h2>How sure the result is</h2>
-    <ResultCertainty placement={t.placement} />
-    <h2>Report and delivery</h2>
-    {report ? <><p><Link href={adminReportPath(report.id)}>Open the report</Link></p><RecordFacts facts={[["Created (Pacific)", when(report.created_at)], ["Questions", report.questions], ["Minutes", report.minutes], ["Parent email", DELIVERY_WORDS[reportEmailState(report)]], ["Parent email claimed (Pacific)", when(report.emailed_at)], ["Parent email error", report.email_error], ["Alert", DELIVERY_WORDS[reportAlertState(report)]], ["Alert (Pacific)", when(report.alerted_at)], ["Alert error", report.alert_error]]} /></> : <p className="adm-note">No report has been stored.</p>}
-    <h2>Answers and times</h2>
-    <p className="adm-note">Thinking time is measured in the browser. Time on the server runs from when the server sent the question to when the answer arrived (#184). Changes, read aloud and away: what the child did before Next. A dash: not recorded (a test from before #184).</p>
-    <Table label="Answers" head={["#", t.stored.adaptive ? "Block" : "Stage", "Level / strand", "Template / BC", "Question", "Right answer", "Child answer", "Result", "Thinking time", "Time on the server", "Changes", "Read aloud", "Away", "Mistake"]} empty="No answers yet.">
-      {lines.map((a) => <tr key={a.number} className={a.correct ? "" : "is-wrong"}><td><a href={`#question-${a.number}`}>{a.number}</a></td><td>{a.stage ?? "-"}</td><td>{a.level === null ? "-" : `${levelText(a.level)} / ${a.strand}`}</td><td><span className="adm-mono">{a.templateId ?? "-"}</span><span className="adm-sub">BC {a.standard ?? "-"}</span></td><td className="adm-wide">{a.prompt ?? a.questionId}</td><td>{a.rightAnswer ?? "-"}</td><td>{a.response || "Skipped"}</td><td>{a.correct ? "Right" : "Wrong"}{a.leftOut && <span className="adm-sub">Left out: rushed</span>}</td><td className="adm-nowrap">{duration(a.timeMs)}{a.tooFast && <span className="adm-sub">Under 3 s</span>}</td><td className="adm-nowrap">{a.timeline.serverMs === null ? "-" : duration(a.timeline.serverMs)}</td><td className="adm-num">{changeCount(a)}</td><td className="adm-num">{readAloudCount(a)}</td><td className="adm-nowrap">{awayCount(a)}</td><td>{a.misconception ?? "-"}</td></tr>)}
-    </Table>
-    <ShownWithoutAnswer lines={shownWithoutAnswer(t.stored, detail.shows, detail.answers)} />
-    <h2>Skills of each question</h2>
-    <QuestionSkills lines={lines} />
-    <h2>Each question as the child saw it</h2>
-    <QuestionTimeline lines={lines} />
-    <h2>Shown work and AI reviews</h2>
-    {work.length === 0 ? <p className="adm-note">No shown work yet.</p> : <ul className="adm-work">{work.map((a) => <li key={a.questionId} id={`work-${a.questionId}`}>
-      <h3>Question {a.number}</h3><p>{a.prompt ?? a.questionId}</p><p>Answer: {a.response || "Skipped"}. Right answer: {a.rightAnswer ?? "-"}.</p>
-      <div className="adm-row"><Chip tone={a.correct ? "ok" : "bad"}>{a.correct ? "Right" : "Wrong"}</Chip><span>{a.work.required ? "Work required" : "Optional work"}</span></div>
-      {a.work.image && <div className="adm-board">{images[a.work.image] ?
-        // Signed private URLs must not pass through the image optimizer.
-        // eslint-disable-next-line @next/next/no-img-element
-        <a href={images[a.work.image]} target="_blank" rel="noopener noreferrer"><img src={images[a.work.image]} alt={`Drawing for question ${a.number}`} /></a> : <p>The drawing did not load. Reload the page to try again.</p>}</div>}
-      {a.questionId in strokes && (strokes[a.questionId]
-        ? <StrokeReplay src={strokes[a.questionId]!} label={`Strokes for question ${a.number}`} />
-        : <p className="adm-note">The strokes did not load. Reload the page to try again.</p>)}
-      {a.work.text && <pre className="adm-typed">{a.work.text}</pre>}
-      {!a.work.image && !a.work.text && !(a.questionId in strokes) && <p className="adm-note">No work stored.</p>}
-      <ReviewDetail review={a.review} />
-    </li>)}</ul>}
-    <h2>Quick facts</h2>
-    {facts && <p className="adm-note">Started: {when(facts.started_at)} (Pacific). Server time: since the answer before, by the server&apos;s clock. Browser time: from when the fact appeared to Enter. The fact speed uses the browser time when there is one.</p>}
-    <Table label="Quick facts" head={["#", "Fact", "Right answer", "Child answer", "Result", "Time since start", "Server time", "Browser time"]} empty="No quick facts answers.">
-      {quick.map((f) => <tr key={f.number}><td>{f.number}</td><td>{f.fact}</td><td>{f.rightAnswer}</td><td>{f.skipped ? "Skipped" : f.response}</td><td>{f.correct ? "Right" : "Wrong"}</td><td>{duration(f.atMs)}</td><td>{duration(f.serverMs)}</td><td>{f.browserMs === null ? "-" : duration(f.browserMs)}</td></tr>)}
-    </Table>
-    <h2>Emails and unsubscribes</h2><EmailTable emails={detail.emails} />
+    {open && <section className="tst-live" aria-labelledby="tst-live-h">
+      <h2 id="tst-live-h">Where the child is</h2>
+      {live}
+      <p className="adm-note">This box updates by itself. The rest of the page shows it as it loaded: reload for new answers.</p>
+    </section>}
+    <ResultCard test={t} lines={lines} numbers={numbers} certainty={<ResultCertainty placement={t.placement} />} />
+
+    <section className="tst-section" aria-labelledby="tst-answers-h">
+      <div className="tst-section-head">
+        <h2 id="tst-answers-h">Answers</h2><span className="tst-count">{lines.length}</span>
+        <p>Time is the thinking time in the browser. A number opens the question as the child saw it.</p>
+      </div>
+      <AnswersTable lines={lines} adaptive={!!t.stored.adaptive} />
+      <ShownWithoutAnswer lines={shownWithoutAnswer(t.stored, detail.shows, detail.answers)} />
+    </section>
+
+    <section className="tst-section" aria-labelledby="tst-work-h">
+      <div className="tst-section-head">
+        <h2 id="tst-work-h">Shown work and AI reviews</h2><span className="tst-count">{work.length}</span>
+        {lowReviews > 0 && <Chip tone="bad">{pl(lowReviews, "low confidence review", "low confidence reviews")}</Chip>}
+      </div>
+      {work.length === 0 ? <p className="adm-empty">No shown work yet.</p> : <ul className="adm-work">{work.map((a) => <li key={a.questionId} id={`work-${a.questionId}`}>
+        <h3>Question {a.number}</h3><p>{a.prompt ?? a.questionId}</p><p>Answer: {a.response || "Skipped"}. Right answer: {a.rightAnswer ?? "-"}.</p>
+        <div className="adm-row"><Chip tone={a.correct ? "ok" : "bad"}>{a.correct ? "Right" : "Wrong"}</Chip><span>{a.work.required ? "Work required" : "Optional work"}</span></div>
+        {a.work.image && <div className="adm-board">{images[a.work.image] ?
+          // Signed private URLs must not pass through the image optimizer.
+          // eslint-disable-next-line @next/next/no-img-element
+          <a href={images[a.work.image]} target="_blank" rel="noopener noreferrer"><img src={images[a.work.image]} alt={`Drawing for question ${a.number}`} /></a> : <p>The drawing did not load. Reload the page to try again.</p>}</div>}
+        {a.questionId in strokes && (strokes[a.questionId]
+          ? <StrokeReplay src={strokes[a.questionId]!} label={`Strokes for question ${a.number}`} />
+          : <p className="adm-note">The strokes did not load. Reload the page to try again.</p>)}
+        {a.work.text && <pre className="adm-typed">{a.work.text}</pre>}
+        {!a.work.image && !a.work.text && !(a.questionId in strokes) && <p className="adm-note">No work stored.</p>}
+        <ReviewDetail review={a.review} />
+      </li>)}</ul>}
+    </section>
+
+    <section className="tst-section" aria-labelledby="tst-more-h">
+      <div className="tst-section-head"><h2 id="tst-more-h">More about this test</h2><p>Closed until you open one.</p></div>
+      <Fold title="Each question as the child saw it" hint={`${pl(lines.length, "question", "questions")}, with server times, answer changes, read aloud and time away`}>
+        <QuestionTimeline lines={lines} />
+      </Fold>
+      <Fold title="Skills of each question" hint="The skill map skills of each question's template">
+        <QuestionSkills lines={lines} />
+      </Fold>
+      <Fold title="Break and device" hint={detail.context.device ? `${ctx.Device}, ${ctx.Browser}. Halfway break: ${ctx["Halfway break"]}.` : `Device not recorded. Halfway break: ${ctx["Halfway break"]}.`}>
+        <RecordFacts facts={contextFacts(detail.context)} />
+      </Fold>
+      {!open && <Fold title="Progress through the test" hint="Where the child stopped, by part">{live}</Fold>}
+      <Fold title="Report and delivery" open={!!reportProblem}
+        hint={report ? `Parent email: ${DELIVERY_WORDS[reportEmailState(report)]}. Alert: ${DELIVERY_WORDS[reportAlertState(report)]}.` : "No report has been stored"}>
+        {report ? <>
+          <p><Link href={adminReportPath(report.id)}>Open the report</Link></p>
+          <RecordFacts facts={[["Created (Pacific)", when(report.created_at)], ["Questions", report.questions], ["Minutes", report.minutes], ["Parent email", DELIVERY_WORDS[reportEmailState(report)]], ["Parent email claimed (Pacific)", when(report.emailed_at)], ["Parent email error", report.email_error], ["Alert", DELIVERY_WORDS[reportAlertState(report)]], ["Alert (Pacific)", when(report.alerted_at)], ["Alert error", report.alert_error]]} />
+        </> : <p className="adm-note">No report has been stored.</p>}
+      </Fold>
+      <Fold title="Quick facts" hint={facts ? `${pl(quick.length, "fact", "facts")} answered, ${quick.filter((f) => f.correct).length} right` : "No quick facts for this test"}>
+        {facts && <p className="adm-note">Started: {when(facts.started_at)} (Pacific). Server time: since the answer before, by the server&apos;s clock. Browser time: from when the fact appeared to Enter. The fact speed uses the browser time when there is one.</p>}
+        <Table label="Quick facts" head={["#", "Fact", "Right answer", "Child answer", "Result", "Time since start", "Server time", "Browser time"]} empty="No quick facts answers.">
+          {quick.map((f) => <tr key={f.number}><td>{f.number}</td><td>{f.fact}</td><td>{f.rightAnswer}</td><td>{f.skipped ? "Skipped" : f.response}</td><td>{f.correct ? "Right" : "Wrong"}</td><td>{duration(f.atMs)}</td><td>{duration(f.serverMs)}</td><td>{f.browserMs === null ? "-" : duration(f.browserMs)}</td></tr>)}
+        </Table>
+      </Fold>
+      <Fold title="Emails and unsubscribes" hint={pl(detail.emails.length, "email", "emails")}>
+        <EmailTable emails={detail.emails} />
+      </Fold>
+    </section>
+    <details className="adm-tech">
+      <summary>Technical details</summary>
+      <RecordFacts facts={[
+        ["Test id", <span key="id" className="adm-mono">{t.id}</span>], ["Question draw number", t.seed],
+        ["Parent id", <span key="parent" className="adm-mono">{t.parent_id}</span>], ["Child id", <span key="child" className="adm-mono">{t.child_id}</span>],
+        ["Assessment format", t.stored.adaptive ? "Six-question blocks" : "Stages"], ["Resume until (Pacific)", when(t.resume_until)],
+        ["Unknown answers", detail.answers.filter((a) => a.response === UNKNOWN_RESPONSE).length],
+      ]} />
+    </details>
   </AdminFrame>;
 }

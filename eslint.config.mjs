@@ -13,6 +13,9 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
     ".design/**",
+    // Other agents' worktrees live in .claude/worktrees; .design-sync/previews has old errors.
+    ".claude/**",
+    ".design-sync/**",
     // Vendored third-party code, copied unchanged (src/vendor/stageshow/README.md).
     "src/vendor/**",
   ]),

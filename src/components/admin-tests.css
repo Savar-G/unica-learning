@@ -1,0 +1,86 @@
+/* The Tests list and one test's page (D-313, D-315), on the admin's tokens (admin.css): the summary tiles, the filter
+   toolbar, the test's header card, the Result card with its answer bar. The spacing scale is 4 8 12 16 24 32 48;
+   cards have a 1 px line and 8 px corners. Colour is never the only signal: every bar has a legend or a label. */
+
+/* ---------- the list: summary tiles ---------- */
+.tst-sum { margin: 0 0 var(--s4); }
+.tst-tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--s3); margin: 0; padding: 0; list-style: none; }
+@media (max-width: 1000px) { .tst-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .tst-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } .tst-tiles li:first-child { grid-column: 1 / -1; } }
+.adm-main .tst-tile { display: grid; align-content: start; gap: var(--s1); height: 100%; min-height: 88px; padding: var(--s3) var(--s4); border: 1px solid var(--line); border-radius: var(--r); background: #fff; color: var(--ink); text-decoration: none; }
+.adm-main .tst-tile:hover { border-color: #c9c9cf; }
+.adm-main .tst-tile.is-on { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.tst-tile-n { font: 300 32px/1 var(--sans); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.tst-tile-label { font-size: 13.5px; color: var(--ink-2); }
+.tst-tile.is-warn .tst-tile-n { color: #8a5a00; }
+.tst-tile.is-bad .tst-tile-n { color: #a8380f; }
+.tst-tile.is-warn { background: color-mix(in srgb, var(--adm-warn) 45%, #fff); }
+.tst-tile.is-bad { background: color-mix(in srgb, var(--adm-bad) 45%, #fff); }
+.tst-status-bar { display: flex; height: 6px; margin-top: var(--s1); overflow: hidden; border-radius: 999px; background: var(--card); }
+.tst-status-bar i { display: block; height: 100%; }
+.tst-status-bar .is-done { background: var(--leaf); }
+.tst-status-bar .is-open { background: var(--sky); }
+.tst-status-bar .is-gone { background: #c9c9cf; }
+.adm-main .tst-scope { margin: var(--s2) 0 0; font-size: 13px; color: var(--ink-3); }
+
+/* the filters as a slim toolbar */
+.tst-tools .adm-filters { gap: var(--s2) var(--s3); padding: var(--s2) var(--s3); background: #fff; }
+.tst-tools .adm-filters select { min-width: 0; }
+@media (max-width: 859.98px) {
+  .tst-tools .adm-filters label:not(.adm-check) { flex: 1 1 140px; }
+  .tst-tools .adm-filters select, .tst-tools .adm-filters .adm-check, [data-look="warm"] .tst-tools .adm-btn { min-height: 40px; }
+  .tst-tools .adm-clear { display: inline-flex; align-items: center; min-height: 40px; }
+}
+
+/* ---------- one test: the header card ---------- */
+.tst-head-card { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--s4) var(--s5); margin: 0 0 var(--s4); padding: var(--s4) var(--s5); border: 1px solid var(--line); border-radius: var(--r); background: var(--soft); }
+.tst-head-card dt { font: 400 11.5px/1.2 var(--mono); letter-spacing: 0.03em; text-transform: uppercase; color: var(--ink-2); }
+.tst-head-card dd { margin: var(--s1) 0 0; overflow-wrap: anywhere; }
+.tst-head-card .adm-sub { margin-top: 2px; }
+
+/* ---------- the Result card ---------- */
+.tst-result { container-type: inline-size; display: grid; gap: var(--s4); margin: 0 0 var(--s4); padding: var(--s5); border: 1px solid var(--line); border-radius: var(--r); background: #fff; }
+.tst-result-top { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3); }
+[data-look="warm"] .adm-main .tst-result-top h2 { margin: 0; font: 400 11.5px/1.2 var(--mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink); }
+.tst-result-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: var(--s5); align-items: start; }
+@container (max-width: 640px) { .tst-result-grid { grid-template-columns: minmax(0, 1fr); } }
+.tst-level { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--s4); }
+.tst-big { font: 300 72px/0.9 var(--sans); letter-spacing: -0.045em; font-variant-numeric: tabular-nums; }
+.tst-big-label { display: grid; gap: 2px; padding-bottom: 2px; font-size: 13.5px; color: var(--ink-2); }
+.tst-big-label b { font-size: 15px; font-weight: 450; color: var(--ink); }
+.tst-result-side { display: grid; gap: var(--s2); min-width: 0; }
+[data-look="warm"] .adm-main .tst-mini { margin: 0; font: 400 11px/1.3 var(--mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-3); }
+.tst-result-side .tst-mini:not(:first-child) { margin-top: var(--s2); }
+.tst-flags { display: grid; gap: var(--s1); margin: 0; padding-left: 18px; font-size: 14px; }
+.adm-main .tst-help { margin: 0; font-size: 14px; color: var(--ink-2); }
+.tst-help b { font-weight: 500; color: var(--ink); }
+.tst-certainty { display: grid; gap: var(--s2); padding-top: var(--s4); border-top: 1px solid var(--line-soft); font-size: 14px; }
+.adm-main .tst-certainty p { margin: 0; }
+
+/* right, wrong, don't know, skipped */
+.tst-answers { display: grid; gap: var(--s2); }
+.tst-bar { display: flex; gap: 2px; height: 10px; overflow: hidden; border-radius: 999px; background: var(--card); }
+.tst-bar i { display: block; height: 100%; }
+.tst-legend { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s4); margin: 0; padding: 0; list-style: none; font-size: 13.5px; color: var(--ink-2); }
+.tst-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.tst-legend b { font-weight: 500; color: var(--ink); font-variant-numeric: tabular-nums; }
+.tst-sw { flex: none; width: 10px; height: 10px; border-radius: 3px; }
+.tst-bar .is-right, .tst-sw.is-right { background: var(--leaf); }
+.tst-bar .is-wrong, .tst-sw.is-wrong { background: var(--tang); }
+.tst-bar .is-unknown, .tst-sw.is-unknown { background: var(--sun); }
+.tst-bar .is-skipped, .tst-sw.is-skipped { background: #c9c9cf; }
+
+/* the sections of one test */
+.tst-section { margin-top: var(--s6); }
+.tst-section-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s1) var(--s3); margin-bottom: var(--s3); padding-bottom: var(--s2); border-bottom: 1px solid var(--line); }
+[data-look="warm"] .adm-main .tst-section-head h2 { margin: 0; font: 400 20px/1.2 var(--sans); letter-spacing: -0.02em; }
+.tst-count { font: 400 12px/1 var(--mono); color: var(--ink-3); }
+.adm-main .tst-section-head p { margin: 0; font-size: 13.5px; color: var(--ink-3); }
+.tst-live { margin: 0 0 var(--s4); padding: var(--s4) var(--s5); border: 1px solid var(--line); border-radius: var(--r); background: #fff; }
+[data-look="warm"] .adm-main .tst-live h2 { margin: 0 0 var(--s2); font: 400 11.5px/1.2 var(--mono); letter-spacing: 0.05em; text-transform: uppercase; }
+.adm-main .tst-live > .adm-note { margin: var(--s2) 0 0; }
+
+@media (max-width: 859.98px) {
+  .tst-result, .tst-head-card, .tst-live { padding: var(--s4); }
+  .tst-big { font-size: 56px; }
+}

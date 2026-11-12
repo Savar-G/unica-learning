@@ -2,7 +2,7 @@ import { ADDITIONAL_CHILD_PRICE, cad } from "@/lib/site";
 
 /** Savar approved these 22 texts on 2026-11-09: "Approve with ur 2 changes". */
 export const familyPlanWords = {
-  siblingStop: "This child is a sibling. Their price (CAD 59.99) can start once the sibling update ships.",
+  siblingStop: `This child is a sibling. Their price (CAD ${cad(ADDITIONAL_CHILD_PRICE)}) can start once the sibling update ships.`,
   adminAction: "Workbook delivered: start plan",
   adminConfirm: (child: string) => `Has ${child}'s first workbook arrived at their home?`,
   existingWindow: "The family's existing free window applies.",
