@@ -44,15 +44,15 @@ export const PLACE_VALUE_TEMPLATES = {
   ],
   // H1 for a value question's digit step: the column is striped (the value is the next step).
   "point.place.band": [
-    "I colored the {place} place. Count from the right: {count}.", "The colored column is the {place} place: {count}.",
+    "I coloured the {place} place. Count from the right: {count}.", "The coloured column is the {place} place: {count}.",
     "Count the places from the right: {count}.", "Start at the ones and count to the left: {count}.",
     "The {place} place is the {ordinal} place from the right.",
   ],
   // H2 for a digit question: the asked column is striped on a chart with no digits; the child reads their own page.
   "operation.place": [
-    "I colored the {place} place, the {ordinal} from the right. Which digit of {number} goes there?",
-    "The colored column is the {place} place, the {ordinal} from the right. Which digit of {number} is there?",
-    "Look at the colored column, the {ordinal} from the right. What digit is there in {number}?",
+    "I coloured the {place} place, the {ordinal} from the right. Which digit of {number} goes there?",
+    "The coloured column is the {place} place, the {ordinal} from the right. Which digit of {number} is there?",
+    "Look at the coloured column, the {ordinal} from the right. What digit is there in {number}?",
     "In {number}, the {place} place is the {ordinal} digit from the right. Which digit is it?",
     "Count to the {ordinal} digit from the right in {number}. Which digit is it?",
   ],
@@ -68,7 +68,7 @@ export const PLACE_VALUE_TEMPLATES = {
   "show.digit": ["{show}", "Here it is. {show}", "Let me show you. {show}", "Like this. {show}", "I'll do this part. {show}"],
   // The answer to a question about a place ("Which one is the thousands?"), J06: said before going on.
   "where.place": [
-    "Good question. The {place} place is the {ordinal} place from the right.", "Start at the ones on the right. The {place} place is the {ordinal} place.",
+    "The {place} place is the {ordinal} place from the right.", "Start at the ones on the right. The {place} place is the {ordinal} place.",
     "The places go {count}. The {place} place is the {ordinal} from the right.", "Count from the right: {count}. That last place is the {place} place.",
     "Each place sits to the left of the place before it. The {place} place is the {ordinal} from the right.",
   ],
@@ -183,7 +183,7 @@ export const PLACE_VALUE_TEMPLATES = {
     "You got it! The {place} digit is {answer}.", "Yes, {answer}. That's the digit in the {place} place.", "Exactly! {number} has {answer} in the {place} place.",
   ],
   "answer.digit.zero": [
-    "Yes! The {place} digit of {number} is 0. A zero holds the place.", "That's right. There are 0 {place} in {number}.",
+    "Yes! The {place} digit of {number} is 0. A zero holds the place.", "That's right. The {place} digit of {number} is 0.",
     "You got it! The {place} digit is 0. The zero keeps the place.", "Yes, 0. A zero means there are no {place}.",
     "Exactly! {number} has 0 in the {place} place.",
   ],

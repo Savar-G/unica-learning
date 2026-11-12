@@ -57,7 +57,7 @@ export const PLACE_PARTS_TEMPLATES = {
   ],
   // "Why is 8 bigger?" (J06): an answer that does not say which digit.
   "why.bigger": [
-    "Good question. Bigger means more. When we count up, the bigger digit comes later.", "A digit that comes later when we count up is bigger.",
+    "Bigger means more. When we count up, the bigger digit comes later.", "A digit that comes later when we count up is bigger.",
     "We count 0, 1, 2, 3 and on. Each digit is one more than the one before.", "Bigger means more. A later counting number is always more.",
     "Each step when we count up adds one more, so later digits are bigger.",
   ],
@@ -116,12 +116,12 @@ export const PLACE_PARTS_TEMPLATES = {
     "How much is the 1 in the {place} place worth?",
   ],
   "point.worth": [
-    "I colored the {place} place. Each {unit} is worth {perOne}, and there are {digit}.", "The colored column is the {place} place. We have {digit} {place}. Each is {perOne}.",
+    "I coloured the {place} place. Each {unit} is worth {perOne}, and there are {digit}.", "The coloured column is the {place} place. We have {digit} {place}. Each is {perOne}.",
     "Think of {digit} {place}. Each one is worth {perOne}.", "We have {digit} {place}, and each is worth {perOne}.",
     "The {place} place counts in {perOne}s. There are {digit} of them.",
   ],
   "point.worth.one": [
-    "I colored the {place} place. The 1 there is worth what that place is worth.", "There is one digit 1 in the {place} place. What is that place worth?",
+    "I coloured the {place} place. The 1 there is worth what that place is worth.", "There is one digit 1 in the {place} place. What is that place worth?",
     "With a 1 there, the value is the {place} place's own value.", "Think about what the {place} place is worth. The 1 is worth that much.",
     "A 1 in a place is worth just that place.",
   ],
@@ -205,7 +205,7 @@ export const PLACE_PARTS_TEMPLATES = {
     "{wp} and {tp}: the wholes go before the point. What decimal is that?", "How would you say {wp} and {tp} as a decimal? The point comes after the wholes.",
   ],
   "point.build": [
-    "I colored the ones place and the tenths place. The wholes go in the ones place.", "The colored columns are the ones and the tenths. The point sits between them.",
+    "I coloured the ones place and the tenths place. The wholes go in the ones place.", "The coloured columns are the ones and the tenths. The point sits between them.",
     "Wholes go in the ones place, and tenths go in the tenths place. The decimal point sits between them.",
     "Put the wholes first, then the decimal point, then the tenths.", "Start with the wholes, then the point, then the tenths.",
   ],
@@ -254,7 +254,7 @@ export const PLACE_PARTS_TEMPLATES = {
 } as const satisfies Record<string, readonly string[]>;
 export type PlacePartsTemplateKey = keyof typeof PLACE_PARTS_TEMPLATES;
 
-/** The keys whose line says Maya colored a column (placeAutoDraw draws the stripe), circled a digit, or drew the chart. */
+/** The keys whose line says Maya coloured a column (placeAutoDraw draws the stripe), circled a digit, or drew the chart. */
 export const PARTS_BAND_KEYS: readonly string[] = ["point.worth", "point.worth.one", "point.build"];
 export const PARTS_CIRCLE_KEYS: readonly string[] = ["operation.worth", "operation.worth.one"];
 export const PARTS_CHART_KEYS: readonly string[] = ["chart.open.parts"];

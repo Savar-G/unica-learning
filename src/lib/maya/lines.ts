@@ -65,7 +65,7 @@ const operationText = (op: Parameters<typeof baseOperationText>[0]) => clockExpr
  * Version 20 (#884, D-329, Savar 2026-11-12): check.fix, a right answer with a wrong reason.
  * Version 21 (#884, D-329): three more about.no_secret wordings.
  */
-export const LINES_VERSION = 21;
+export const LINES_VERSION = 22;
 
 export const LINE_IDS = [
   "about.ai",
@@ -477,8 +477,8 @@ export const TEMPLATES = {
   // A right final answer with a wrong reason (#624, D-329, Savar 2026-11-12): the answer stays, the step is fixed with its
   // checked equation, and the reason gets no praise.
   "check.fix": [
-    "Your answer is right. One part needs a fix: {eq}.", "The answer is right. But check {where}: {eq}.",
-    "You have the right answer. One part is off: {eq}.",
+    "Your answer is right. One part needs a fix. It should be {eq}.", "The answer is right. But check {where}: {eq}.",
+    "You have the right answer. One part is off. It should be {eq}.",
   ],
   "answer.right": [
     "Yes! {expr} = {answer}.", "That's right: {expr} = {answer}.", "You got it! {expr} = {answer}.", "Yes, {expr} = {answer}!",

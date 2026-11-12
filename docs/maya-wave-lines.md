@@ -2,7 +2,7 @@
 
 Every line template wording that the wave integration adds to Maya, compared with PR #698 head 0be7925c. One row per wording. The approval column follows D-202:
 
-- Waves B and C (place value, patterns, spot the error, clock, other topics and the shared wave lines): approved by Savar through the Chief of Staff, 2026-11-11, with review. The condition: an independent review checks every new line against `NEVER_SAY`, the no-answer rule (D-306), the `DESIGN.md` copy rules and the existing line list before merge.
+- Waves B and C (place value, patterns, spot the error, clock, other topics and the shared wave lines): approved by Savar through the Chief of Staff, 2026-11-11, with review. The condition: an independent review checks every new line against `NEVER_SAY`, the no-answer rule (D-326), the `DESIGN.md` copy rules and the existing line list before merge.
 - `check.fix` (3 wordings) and `about.no_secret` (3 wordings): approved by Savar 2026-11-12 (#884, D-329).
 - Wave A (evaluate #734, missing number #732, claims #737): **pending Savar**. No approval record exists yet.
 
@@ -10,7 +10,7 @@ The topic sentences in `src/lib/maya/topic-frame.ts` are written by code, not te
 
 | Id | Wording | Where | Source | Approval |
 |---|---|---|---|---|
-Counts: 6 approved by Savar 2026-11-12 (#884, D-329); 603 approved by Savar through the Chief of Staff, 2026-11-11, with review; 221 pending Savar (Wave A).
+Counts: 6 approved by Savar 2026-11-12 (#884, D-329); 608 approved by Savar through the Chief of Staff, 2026-11-11, with review; 211 pending Savar (Wave A).
 
 | `about.no_secret#1` | I'm an AI. I can't keep secrets. A grown-up you trust can help. | `src/lib/maya/lines.ts:175` | lines.ts (C3 other topics #731 / wave shared) | approved by Savar 2026-11-12 (#884, D-329) |
 | `about.no_secret#2` | I can't keep secrets, but I'm glad you told me. You can tell a grown-up you trust. | `src/lib/maya/lines.ts:176` | lines.ts (C3 other topics #731 / wave shared) | approved by Savar 2026-11-12 (#884, D-329) |
@@ -95,11 +95,6 @@ Counts: 6 approved by Savar 2026-11-12 (#884, D-329); 603 approved by Savar thro
 | `pattern.show#2` | {reason} Here it is: {part} = {value}. | `src/lib/maya/pattern-lines.ts:17` | C1 patterns (#754) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `pattern.show#3` | {reason} We get {part} = {value}. | `src/lib/maya/pattern-lines.ts:18` | C1 patterns (#754) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `pattern.show#4` | {reason} Watch: {part} = {value}. | `src/lib/maya/pattern-lines.ts:18` | C1 patterns (#754) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
-| `pattern.why#0` | {why} | `src/lib/maya/pattern-lines.ts:21` | C1 patterns (#754) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
-| `pattern.why#1` | Good question. {why} | `src/lib/maya/pattern-lines.ts:21` | C1 patterns (#754) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
-| `pattern.why#2` | Here's why. {why} | `src/lib/maya/pattern-lines.ts:21` | C1 patterns (#754) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
-| `pattern.why#3` | Let's see. {why} | `src/lib/maya/pattern-lines.ts:21` | C1 patterns (#754) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
-| `pattern.why#4` | Good thinking. {why} | `src/lib/maya/pattern-lines.ts:21` | C1 patterns (#754) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `pattern.fact#0` | {reason} {fact} What number makes it true? | `src/lib/maya/pattern-lines.ts:24` | C1 patterns (#754) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `pattern.fact#1` | {reason} Think: {fact} Which number fits? | `src/lib/maya/pattern-lines.ts:24` | C1 patterns (#754) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `pattern.fact#2` | {reason} {fact} What is the missing number? | `src/lib/maya/pattern-lines.ts:24` | C1 patterns (#754) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
@@ -135,9 +130,9 @@ Counts: 6 approved by Savar 2026-11-12 (#884, D-329); 603 approved by Savar thro
 | `pattern.answer#2` | You got it! It's {answer}. | `src/lib/maya/pattern-lines.ts:56` | C1 patterns (#754) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `pattern.answer#3` | Exactly! {answer}. | `src/lib/maya/pattern-lines.ts:56` | C1 patterns (#754) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `pattern.answer#4` | Well done! It's {answer}. | `src/lib/maya/pattern-lines.ts:56` | C1 patterns (#754) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
-| `check.fix#0` | Your answer is right. One part needs a fix: {eq}. | `src/lib/maya/lines.ts:480` | lines.ts (C3 other topics #731 / wave shared) | approved by Savar 2026-11-12 (#884, D-329) |
+| `check.fix#0` | Your answer is right. One part needs a fix. It should be {eq}. | `src/lib/maya/lines.ts:480` | lines.ts (C3 other topics #731 / wave shared) | approved by Savar 2026-11-12 (#884, D-329) |
 | `check.fix#1` | The answer is right. But check {where}: {eq}. | `src/lib/maya/lines.ts:480` | lines.ts (C3 other topics #731 / wave shared) | approved by Savar 2026-11-12 (#884, D-329) |
-| `check.fix#2` | You have the right answer. One part is off: {eq}. | `src/lib/maya/lines.ts:481` | lines.ts (C3 other topics #731 / wave shared) | approved by Savar 2026-11-12 (#884, D-329) |
+| `check.fix#2` | You have the right answer. One part is off. It should be {eq}. | `src/lib/maya/lines.ts:481` | lines.ts (C3 other topics #731 / wave shared) | approved by Savar 2026-11-12 (#884, D-329) |
 | `close.topic#0` | This one is hard, and it's okay to stop. Try the easier one on paper, or ask a grown-up to help. | `src/lib/maya/lines.ts:534` | lines.ts (C3 other topics #731 / wave shared) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `close.topic#1` | This is a hard one. It's fine to stop here. You can ask a grown-up to try it with you. | `src/lib/maya/lines.ts:535` | lines.ts (C3 other topics #731 / wave shared) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `close.topic#2` | This one is hard. It's okay to stop for now. Try the easier one on your paper. | `src/lib/maya/lines.ts:536` | lines.ts (C3 other topics #731 / wave shared) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
@@ -284,11 +279,6 @@ Counts: 6 approved by Savar 2026-11-12 (#884, D-329); 603 approved by Savar thro
 | `answer.claim#2` | You got it! {expr} = {value}. It's {word}. | `src/lib/maya/claim.ts:162` | A4 claims (#737) | pending Savar (Wave A) |
 | `answer.claim#3` | Well done! {expr} = {value}. You circle {word}. | `src/lib/maya/claim.ts:162` | A4 claims (#737) | pending Savar (Wave A) |
 | `answer.claim#4` | Exactly! {expr} = {value}. The answer is {word}. | `src/lib/maya/claim.ts:162` | A4 claims (#737) | pending Savar (Wave A) |
-| `answer.give.claim#0` | {compare} So the answer is {word}. Please circle {word}. | `src/lib/maya/claim.ts:167` | A4 claims (#737) | pending Savar (Wave A) |
-| `answer.give.claim#1` | {compare} So it's {word}. Can you circle {word}? | `src/lib/maya/claim.ts:167` | A4 claims (#737) | pending Savar (Wave A) |
-| `answer.give.claim#2` | {compare} That means {word}. Please circle {word} on your page. | `src/lib/maya/claim.ts:168` | A4 claims (#737) | pending Savar (Wave A) |
-| `answer.give.claim#3` | {compare} So we circle {word}. Can you circle it? | `src/lib/maya/claim.ts:168` | A4 claims (#737) | pending Savar (Wave A) |
-| `answer.give.claim#4` | {compare} The answer is {word}. Now circle {word}. | `src/lib/maya/claim.ts:169` | A4 claims (#737) | pending Savar (Wave A) |
 | `write.claim#0` | Please circle {word} on your page. | `src/lib/maya/claim.ts:168` | A4 claims (#737) | pending Savar (Wave A) |
 | `write.claim#1` | Can you circle {word} on your page? | `src/lib/maya/claim.ts:172` | A4 claims (#737) | pending Savar (Wave A) |
 | `write.claim#2` | Now circle {word} on your page. | `src/lib/maya/claim.ts:172` | A4 claims (#737) | pending Savar (Wave A) |
@@ -318,11 +308,11 @@ Counts: 6 approved by Savar 2026-11-12 (#884, D-329); 603 approved by Savar thro
 | `question.spot#1` | Let's find {opening}. Then check the answer given. | `src/lib/maya/spot-error.ts:110` | C2 spot the error (#743) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `question.spot#2` | Find {opening}. Then check the answer given. | `src/lib/maya/spot-error.ts:111` | C2 spot the error (#743) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `question.spot#3` | Find {opening} first. Then check the answer given. | `src/lib/maya/spot-error.ts:111` | C2 spot the error (#743) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
-| `example.intro.spot#0` | Let's try an easier one first. {ask} | `src/lib/maya/claim.ts:129` | A4 claims (#737) | pending Savar (Wave A) |
-| `example.intro.spot#1` | Here's a smaller one to warm up. {ask} | `src/lib/maya/claim.ts:129` | A4 claims (#737) | pending Savar (Wave A) |
-| `example.intro.spot#2` | Let me show you an easier one. {ask} | `src/lib/maya/claim.ts:129` | A4 claims (#737) | pending Savar (Wave A) |
-| `example.intro.spot#3` | First, a smaller one. {ask} | `src/lib/maya/claim.ts:130` | A4 claims (#737) | pending Savar (Wave A) |
-| `example.intro.spot#4` | I'll show you an easier one first. {ask} | `src/lib/maya/claim.ts:130` | A4 claims (#737) | pending Savar (Wave A) |
+| `example.intro.spot#0` | Let's try an easier one first. {ask} | `src/lib/maya/claim.ts:129` | A4 claims (#737) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
+| `example.intro.spot#1` | Here's a smaller one to warm up. {ask} | `src/lib/maya/claim.ts:129` | A4 claims (#737) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
+| `example.intro.spot#2` | Let me show you an easier one. {ask} | `src/lib/maya/claim.ts:129` | A4 claims (#737) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
+| `example.intro.spot#3` | First, a smaller one. {ask} | `src/lib/maya/claim.ts:130` | A4 claims (#737) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
+| `example.intro.spot#4` | I'll show you an easier one first. {ask} | `src/lib/maya/claim.ts:130` | A4 claims (#737) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `example.spot.compare#0` | {Name} is {value}. The answer given was {shown}. | `src/lib/maya/spot-error.ts:118` | C2 spot the error (#743) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `example.spot.compare#1` | We get {value} for {name}. The answer given was {shown}. | `src/lib/maya/spot-error.ts:118` | C2 spot the error (#743) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `example.spot.compare#2` | So {name} is {value}. The page says {shown}. | `src/lib/maya/spot-error.ts:119` | C2 spot the error (#743) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
@@ -463,14 +453,14 @@ Counts: 6 approved by Savar 2026-11-12 (#884, D-329); 603 approved by Savar thro
 | `point.place#2` | The {place} place is the {ordinal} place from the right: {count}. | `src/lib/maya/place-value-lines.ts:42` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `point.place#3` | Let's name the places from the right: {count}. | `src/lib/maya/place-value-lines.ts:42` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `point.place#4` | Places go from right to left: {count}. | `src/lib/maya/place-value-lines.ts:43` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
-| `point.place.band#0` | I colored the {place} place. Count from the right: {count}. | `src/lib/maya/place-value-lines.ts:47` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
-| `point.place.band#1` | The colored column is the {place} place: {count}. | `src/lib/maya/place-value-lines.ts:47` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
+| `point.place.band#0` | I coloured the {place} place. Count from the right: {count}. | `src/lib/maya/place-value-lines.ts:47` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
+| `point.place.band#1` | The coloured column is the {place} place: {count}. | `src/lib/maya/place-value-lines.ts:47` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `point.place.band#2` | Count the places from the right: {count}. | `src/lib/maya/place-value-lines.ts:41` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `point.place.band#3` | Start at the ones and count to the left: {count}. | `src/lib/maya/place-value-lines.ts:41` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `point.place.band#4` | The {place} place is the {ordinal} place from the right. | `src/lib/maya/place-value-lines.ts:49` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
-| `operation.place#0` | I colored the {place} place, the {ordinal} from the right. Which digit of {number} goes there? | `src/lib/maya/place-value-lines.ts:53` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
-| `operation.place#1` | The colored column is the {place} place, the {ordinal} from the right. Which digit of {number} is there? | `src/lib/maya/place-value-lines.ts:54` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
-| `operation.place#2` | Look at the colored column, the {ordinal} from the right. What digit is there in {number}? | `src/lib/maya/place-value-lines.ts:55` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
+| `operation.place#0` | I coloured the {place} place, the {ordinal} from the right. Which digit of {number} goes there? | `src/lib/maya/place-value-lines.ts:53` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
+| `operation.place#1` | The coloured column is the {place} place, the {ordinal} from the right. Which digit of {number} is there? | `src/lib/maya/place-value-lines.ts:54` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
+| `operation.place#2` | Look at the coloured column, the {ordinal} from the right. What digit is there in {number}? | `src/lib/maya/place-value-lines.ts:55` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `operation.place#3` | In {number}, the {place} place is the {ordinal} digit from the right. Which digit is it? | `src/lib/maya/place-value-lines.ts:56` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `operation.place#4` | Count to the {ordinal} digit from the right in {number}. Which digit is it? | `src/lib/maya/place-value-lines.ts:57` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `operation.place.circle#0` | I circled the digit in the {place} place, the {ordinal} from the right. What is it? | `src/lib/maya/place-value-lines.ts:61` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
@@ -479,7 +469,7 @@ Counts: 6 approved by Savar 2026-11-12 (#884, D-329); 603 approved by Savar thro
 | `operation.place.circle#3` | Count to the {ordinal} place from the right. Say just the digit there. | `src/lib/maya/place-value-lines.ts:64` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `operation.place.circle#4` | Which single digit sits in the {place} place, the {ordinal} from the right? | `src/lib/maya/place-value-lines.ts:65` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `show.digit#1` | Here it is. {show} | `src/lib/maya/place-value-lines.ts:68` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
-| `where.place#0` | Good question. The {place} place is the {ordinal} place from the right. | `src/lib/maya/place-value-lines.ts:71` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
+| `where.place#0` | The {place} place is the {ordinal} place from the right. | `src/lib/maya/place-value-lines.ts:71` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `where.place#1` | Start at the ones on the right. The {place} place is the {ordinal} place. | `src/lib/maya/place-value-lines.ts:71` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `where.place#2` | The places go {count}. The {place} place is the {ordinal} from the right. | `src/lib/maya/place-value-lines.ts:72` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `where.place#3` | Count from the right: {count}. That last place is the {place} place. | `src/lib/maya/place-value-lines.ts:72` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
@@ -585,7 +575,7 @@ Counts: 6 approved by Savar 2026-11-12 (#884, D-329); 603 approved by Savar thro
 | `answer.digit#3` | Yes, {answer}. That's the digit in the {place} place. | `src/lib/maya/place-value-lines.ts:183` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `answer.digit#4` | Exactly! {number} has {answer} in the {place} place. | `src/lib/maya/place-value-lines.ts:183` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `answer.digit.zero#0` | Yes! The {place} digit of {number} is 0. A zero holds the place. | `src/lib/maya/place-value-lines.ts:186` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
-| `answer.digit.zero#1` | That's right. There are 0 {place} in {number}. | `src/lib/maya/place-value-lines.ts:186` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
+| `answer.digit.zero#1` | That's right. The {place} digit of {number} is 0. | `src/lib/maya/place-value-lines.ts:186` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `answer.digit.zero#2` | You got it! The {place} digit is 0. The zero keeps the place. | `src/lib/maya/place-value-lines.ts:187` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `answer.digit.zero#3` | Yes, 0. A zero means there are no {place}. | `src/lib/maya/place-value-lines.ts:187` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `answer.digit.zero#4` | Exactly! {number} has 0 in the {place} place. | `src/lib/maya/place-value-lines.ts:188` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
@@ -651,7 +641,7 @@ Counts: 6 approved by Savar 2026-11-12 (#884, D-329); 603 approved by Savar thro
 | `notyet.bigger#2` | Hmm, not yet. Which is more, {a} or {b}? | `src/lib/maya/place-value-parts-templates.ts:55` | B1b place-value parts | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `notyet.bigger#3` | That's not it yet. Let's look at {a} and {b} once more. | `src/lib/maya/place-value-parts-templates.ts:56` | B1b place-value parts | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `notyet.bigger#4` | Not yet. Let's go back to {a} and {b}. | `src/lib/maya/place-value-parts-templates.ts:56` | B1b place-value parts | approved by Savar through the Chief of Staff, 2026-11-11, with review |
-| `why.bigger#0` | Good question. Bigger means more. When we count up, the bigger digit comes later. | `src/lib/maya/place-value-parts-templates.ts:60` | B1b place-value parts | approved by Savar through the Chief of Staff, 2026-11-11, with review |
+| `why.bigger#0` | Bigger means more. When we count up, the bigger digit comes later. | `src/lib/maya/place-value-parts-templates.ts:60` | B1b place-value parts | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `why.bigger#1` | A digit that comes later when we count up is bigger. | `src/lib/maya/place-value-parts-templates.ts:60` | B1b place-value parts | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `why.bigger#2` | We count 0, 1, 2, 3 and on. Each digit is one more than the one before. | `src/lib/maya/place-value-parts-templates.ts:61` | B1b place-value parts | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `why.bigger#3` | Bigger means more. A later counting number is always more. | `src/lib/maya/place-value-parts-templates.ts:61` | B1b place-value parts | approved by Savar through the Chief of Staff, 2026-11-11, with review |
@@ -711,12 +701,12 @@ Counts: 6 approved by Savar 2026-11-12 (#884, D-329); 603 approved by Savar thro
 | `invite.worth.one#2` | The value of a digit depends on its place. What is the 1 in the {place} place worth? | `src/lib/maya/place-value-lines.ts:113` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `invite.worth.one#3` | Let's find the value of the 1 in the {place} place. | `src/lib/maya/place-value-parts-templates.ts:115` | B1b place-value parts | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `invite.worth.one#4` | How much is the 1 in the {place} place worth? | `src/lib/maya/place-value-parts-templates.ts:116` | B1b place-value parts | approved by Savar through the Chief of Staff, 2026-11-11, with review |
-| `point.worth#0` | I colored the {place} place. Each {unit} is worth {perOne}, and there are {digit}. | `src/lib/maya/place-value-parts-templates.ts:119` | B1b place-value parts | approved by Savar through the Chief of Staff, 2026-11-11, with review |
-| `point.worth#1` | The colored column is the {place} place. We have {digit} {place}. Each is {perOne}. | `src/lib/maya/place-value-parts-templates.ts:119` | B1b place-value parts | approved by Savar through the Chief of Staff, 2026-11-11, with review |
+| `point.worth#0` | I coloured the {place} place. Each {unit} is worth {perOne}, and there are {digit}. | `src/lib/maya/place-value-parts-templates.ts:119` | B1b place-value parts | approved by Savar through the Chief of Staff, 2026-11-11, with review |
+| `point.worth#1` | The coloured column is the {place} place. We have {digit} {place}. Each is {perOne}. | `src/lib/maya/place-value-parts-templates.ts:119` | B1b place-value parts | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `point.worth#2` | Think of {digit} {place}. Each one is worth {perOne}. | `src/lib/maya/place-value-parts-templates.ts:120` | B1b place-value parts | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `point.worth#3` | We have {digit} {place}, and each is worth {perOne}. | `src/lib/maya/place-value-parts-templates.ts:120` | B1b place-value parts | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `point.worth#4` | The {place} place counts in {perOne}s. There are {digit} of them. | `src/lib/maya/place-value-lines.ts:142` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
-| `point.worth.one#0` | I colored the {place} place. The 1 there is worth what that place is worth. | `src/lib/maya/place-value-parts-templates.ts:124` | B1b place-value parts | approved by Savar through the Chief of Staff, 2026-11-11, with review |
+| `point.worth.one#0` | I coloured the {place} place. The 1 there is worth what that place is worth. | `src/lib/maya/place-value-parts-templates.ts:124` | B1b place-value parts | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `point.worth.one#1` | There is one digit 1 in the {place} place. What is that place worth? | `src/lib/maya/place-value-parts-templates.ts:124` | B1b place-value parts | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `point.worth.one#2` | With a 1 there, the value is the {place} place's own value. | `src/lib/maya/place-value-lines.ts:149` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `point.worth.one#3` | Think about what the {place} place is worth. The 1 is worth that much. | `src/lib/maya/place-value-lines.ts:149` | B1a place value | approved by Savar through the Chief of Staff, 2026-11-11, with review |
@@ -802,8 +792,8 @@ Counts: 6 approved by Savar 2026-11-12 (#884, D-329); 603 approved by Savar thro
 | `invite.build#2` | Let's write {wp} and {tp} as a decimal. The wholes come first, then the point. | `src/lib/maya/place-value-parts-templates.ts:204` | B1b place-value parts | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `invite.build#3` | {wp} and {tp}: the wholes go before the point. What decimal is that? | `src/lib/maya/place-value-parts-templates.ts:205` | B1b place-value parts | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `invite.build#4` | How would you say {wp} and {tp} as a decimal? The point comes after the wholes. | `src/lib/maya/place-value-parts-templates.ts:205` | B1b place-value parts | approved by Savar through the Chief of Staff, 2026-11-11, with review |
-| `point.build#0` | I colored the ones place and the tenths place. The wholes go in the ones place. | `src/lib/maya/place-value-parts-templates.ts:208` | B1b place-value parts | approved by Savar through the Chief of Staff, 2026-11-11, with review |
-| `point.build#1` | The colored columns are the ones and the tenths. The point sits between them. | `src/lib/maya/place-value-parts-templates.ts:208` | B1b place-value parts | approved by Savar through the Chief of Staff, 2026-11-11, with review |
+| `point.build#0` | I coloured the ones place and the tenths place. The wholes go in the ones place. | `src/lib/maya/place-value-parts-templates.ts:208` | B1b place-value parts | approved by Savar through the Chief of Staff, 2026-11-11, with review |
+| `point.build#1` | The coloured columns are the ones and the tenths. The point sits between them. | `src/lib/maya/place-value-parts-templates.ts:208` | B1b place-value parts | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `point.build#2` | Wholes go in the ones place, and tenths go in the tenths place. The decimal point sits between them. | `src/lib/maya/place-value-parts-templates.ts:209` | B1b place-value parts | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `point.build#3` | Put the wholes first, then the decimal point, then the tenths. | `src/lib/maya/place-value-parts-templates.ts:210` | B1b place-value parts | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `point.build#4` | Start with the wholes, then the point, then the tenths. | `src/lib/maya/place-value-parts-templates.ts:210` | B1b place-value parts | approved by Savar through the Chief of Staff, 2026-11-11, with review |
@@ -842,3 +832,22 @@ Counts: 6 approved by Savar 2026-11-12 (#884, D-329); 603 approved by Savar thro
 | `close.hard#2` | This question is hard, and that's okay. Let's stop here. Try the easier one on your paper. | `src/lib/maya/place-value-parts-templates.ts:250` | B1b place-value parts | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `close.hard#3` | That was a hard one. It's fine to stop. You could try it with a grown-up later. | `src/lib/maya/place-value-parts-templates.ts:251` | B1b place-value parts | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `close.hard#4` | This one is tough, and stopping is fine. Try the easier one on paper first. | `src/lib/maya/place-value-parts-templates.ts:252` | B1b place-value parts | approved by Savar through the Chief of Staff, 2026-11-11, with review |
+| `pattern.why#0` | {why} | `src/lib/maya/pattern-lines.ts:21` | C1 patterns (#754) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
+| `pattern.why#1` | Here's why. {why} | `src/lib/maya/pattern-lines.ts:21` | C1 patterns (#754) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
+| `pattern.why#2` | Let's see. {why} | `src/lib/maya/pattern-lines.ts:21` | C1 patterns (#754) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
+| `pattern.why#3` | Look at the steps. {why} | `src/lib/maya/pattern-lines.ts:21` | C1 patterns (#754) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
+| `pattern.why#4` | This is how it works. {why} | `src/lib/maya/pattern-lines.ts:21` | C1 patterns (#754) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
+
+## Changes after the line review (2026-11-12, for Savar's approval with Wave A)
+
+The Opus line review of #892 found 10 P2 lines. These rewordings wait for Savar's approval, with the Wave A lines:
+
+- `check.fix#0`: "Your answer is right. One part needs a fix. It should be {eq}." (was "...needs a fix: {eq}.", which can read as if the right equation is the wrong part).
+- `check.fix#2`: "You have the right answer. One part is off. It should be {eq}." (was "...is off: {eq}.").
+- `pattern.why`: "Good question." and "Good thinking." removed (said after "I'm stuck." too); two neutral wordings added: "Look at the steps. {why}", "This is how it works. {why}".
+- `where.place#0`, `why.bigger#0`: "Good question." removed.
+- `answer.digit.zero#1`: "That's right. The {place} digit of {number} is 0." (was "There are 0 {place} in {number}.", which is false for 530,172).
+- `answer.give.claim` (5 wordings): removed. They said the claim word for the child; nothing offered them after D-326.
+- "colored" is "coloured" (DESIGN.md, Canadian spelling).
+- `example.intro.spot`: Wave C (spot the error), not Wave A.
+- Still for Savar: the `about.no_secret` wordings end with "A grown-up you trust can help.", which the free-talk rule `NOT_OK_TALK` counts as advice. Code lines do not go through that review, so nothing is refused today, but the two rules disagree.

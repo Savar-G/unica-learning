@@ -141,9 +141,8 @@ describe("a claim question's session (A4)", () => {
 
   it("asks the child to circle the word, never to write a number", () => {
     const l = packageLines(claimView(tf));
-    // The word is given only after two real wrong words (D-199): code's comparison and a request to circle, never to write.
-    expect(l.answerGive().map((o) => o.key)).toEqual(["answer.give.claim"]);
-    for (const t of l.answerGive()[0].texts) expect(t).toMatch(/^48 and 48 are the same number\. .*\bcircle (?:true|it)\b/i);
+    // No line gives the claim word for the child (D-326: give_answer is off).
+    expect(l.answerGive()).toEqual([]);
     expect(l.answerParts()).toEqual([]);
     for (const o of [...l.writeAnswer(), ...l.writeYours()]) for (const t of o.texts) expect(t).toMatch(/\bcircle\b/i);
     expect(l.writeAnswer()[0].texts.every((t) => /\btrue\b/.test(t) && !/\d/.test(t))).toBe(true);
