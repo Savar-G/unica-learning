@@ -19,7 +19,7 @@ interface CorpusTurn {
   run: string; case: string; question: string; turn: number; text: string; answers: CorpusAnswer[]; code: string | null;
   doneBefore: string[]; shownBefore: string[]; why?: string; blocked?: string[];
 }
-interface Corpus { runs: number; turns: CorpusTurn[]; moved?: { run: string; turn: number; text: string; reason: string }[] }
+interface Corpus { runs: number; turns: CorpusTurn[]; moved?: { run: string; turn: number; text: string; reason: string }[]; review?: CorpusTurn[] }
 const load = (name: string) => JSON.parse(readFileSync(new URL(`./commit-corpus/${name}.json`, import.meta.url), "utf8")) as Corpus;
 const POSITIVE = load("positive");
 /** COMMIT_CORPUS_REPORT=<file> also writes each summary there (vitest hides the console of a passing test). */
@@ -120,7 +120,7 @@ function creditedWrongly(pkg: QuestionPackage, t: CorpusTurn, p: Played): string
   const gained = p.done.filter((id) => !p.before.includes(id));
   if (t.blocked) return [...gained.filter((id) => t.blocked!.includes(id)), ...(p.solved && t.blocked.includes("result") ? ["result"] : [])];
   const wrong = t.answers.filter((a) => !a.problem && a.verdict === "wrong");
-  if (wrong.length === 0 || (t.why ?? "").startsWith("moved") || /hedge|request/.test(t.why ?? "")) return [...gained, ...(p.solved ? ["result"] : [])];
+  if (wrong.length === 0 || /^(?:moved|review)/.test(t.why ?? "") || /hedge|request/.test(t.why ?? "")) return [...gained, ...(p.solved ? ["result"] : [])];
   const first = Math.min(...wrong.map((a) => (a.step === "result" ? steps.length : steps.indexOf(a.step))));
   return [...gained.filter((id) => steps.indexOf(id) >= first), ...(p.solved && wrong.some((a) => a.step === "result") ? ["result"] : [])];
 }
@@ -154,10 +154,12 @@ describe("the commit-rule corpus (practice pass 2026-11-12T16-17-39-955Z)", () =
     const credited: string[] = [];
     const skipped: string[] = [];
     let n = 0;
-    for (const t of NEGATIVE.turns) {
+    // The extracted turns, then the hand-added review set (review of 1b5c3b50).
+    for (const t of [...NEGATIVE.turns, ...(NEGATIVE.review ?? [])]) {
       const pkg = packageFor(t);
       if (!pkg) continue;
-      if (misread(pkg, t)) {
+      // Only a turn read wrong and nothing else: a hedge or a request is refused whatever the model read.
+      if (t.why === "read wrong" && misread(pkg, t)) {
         skipped.push(`${t.run}#${t.turn}: ${t.text}`);
         continue;
       }

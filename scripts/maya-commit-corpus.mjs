@@ -8,7 +8,7 @@
 //   show me, just tell me, stop, and act_not_allowed cases).
 // Usage: node scripts/maya-commit-corpus.mjs <traces dir> <out dir> [--only C,F]
 // No model call and no network: it only reads the saved traces.
-import { readFileSync, readdirSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 const [dir, out, ...rest] = process.argv.slice(2);
@@ -96,8 +96,11 @@ for (const file of files) {
     }
     const wrong = answers.some((a) => a.verdict === "wrong");
     const hedged = HEDGE.test(text) || reading?.start === "guess";
-    // A request in the child's own words (help, show me, just tell me, stop), whatever the refusal (act_not_allowed too).
-    const request = REQUEST.test(text);
+    // A request in the child's own words (help, show me, just tell me, stop), or one the model read (help, stop, math
+    // requests) in a turn it read no right answer in (review of 1b5c3b50, P2-2). A right turn refused only for its act
+    // (act_not_allowed with a right reading) is no request.
+    const readRequest = (reading?.help === "more" || reading?.help === "show" || reading?.stop === true || (reading?.mathRequests?.length ?? 0) > 0 || code === "act_not_allowed") && !answers.some((a) => a.verdict === "right");
+    const request = REQUEST.test(text) || readRequest;
     const why = [wrong && "read wrong", hedged && "guess or hedge", request && "request"].filter(Boolean);
     if (why.length > 0) negative.push({ ...base, why: why.join(", ") });
   }
@@ -106,5 +109,7 @@ for (const file of files) {
 mkdirSync(out, { recursive: true });
 const meta = { source: dir.replace(/^.*\/traces\//, "traces/"), runs, childTurns, generated: "scripts/maya-commit-corpus.mjs" };
 writeFileSync(join(out, "positive.json"), `${JSON.stringify({ ...meta, moved: moved.map(({ run, turn, text, reason }) => ({ run, turn, text, reason })), turns: positive }, null, 1)}\n`);
-writeFileSync(join(out, "negative.json"), `${JSON.stringify({ ...meta, turns: negative }, null, 1)}\n`);
+// The hand-added review set (turns a review found credited) is kept as it is: it is not extracted from the traces.
+const previous = existsSync(join(out, "negative.json")) ? JSON.parse(readFileSync(join(out, "negative.json"), "utf8")) : {};
+writeFileSync(join(out, "negative.json"), `${JSON.stringify({ ...meta, turns: negative, ...(previous.review ? { review: previous.review } : {}) }, null, 1)}\n`);
 console.log(`runs ${runs}, child turns ${childTurns}: positive ${positive.length}, moved ${moved.length}, negative ${negative.length}`);

@@ -3036,6 +3036,12 @@ const OWN_HEDGE = /\b(?:think|thinks|thought|maybe|guess|guessed|guessing|probab
 /** A negation that withdraws or denies ("I don't add the ones", "that's wrong"). A next-step "don't know what" is no negation. */
 const OWN_NEGATION = /\b(?:not|never|nope|nah|wrong|incorrect|mistake|mistaken|false|withdraw|reject|scratch|erase|changed my mind|change my answer|take (?:it|this|that) back|taking it back)\b|n't\b/;
 const NEXT_STEP_DOUBT = /\b(?:(?:don't|do not|dont|didn't|did not) (?:know|get|understand|see)|not (?:so |really |very |too )?sure) (?:what|how|where|which|why|about)\b[^.!?]*/g;
+/** A copied or looked-up number (review of 1b5c3b50, P1-1), whoever says it. */
+const SOURCE = /\b(?:copied|copy|copying|looked (?:at the back|it up|up)|look(?:ed)? it up|checked the answer|answer key|answer sheet|back of the book|the app|an app|google|internet|calculator|ipad|tablet|siri|alexa|on the screen)\b/;
+/** A clause's subject before a verb that gives a number to someone ("Sam said", "my iPad got", "the sheet has"). */
+const ATTRIBUTION = /^(?:(?:so|and|then|okay|ok|um|uh|oh|yes|yeah|no|well|but|like)\b[,\s]*)*(.+?)\s+(?:said|says|told|tells|got|gets|wrote|writes|has|have|had|showed|shows|shown|gave|gives|thinks|think|knows|know|found|finds|put|puts)\b/;
+/** Near the value, not the value (review of 1b5c3b50, P1-2). */
+const NEAR = new RegExp(`\\b(?:about|around|almost|approximately|roughly|nearly|close to)\\s+(?:\\d|(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)\\b)|-ish\\b|\\bish\\b|\\bfeel like\\b|\\breckon\\b|\\bsomething like\\b|\\bi suppose\\b|\\bi bet\\b|\\bpretty sure\\b|\\bapproximately\\b|\\broughly\\b`);
 /** Another person, or another source, of a number. Maya herself is "you": rule C reads her. */
 const OTHER_PERSON = /\b(?:mom|mum|mommy|mummy|mother|dad|daddy|father|teacher|brother|sister|friend|grandma|grandpa|granny|nana|papa|aunt|auntie|uncle|cousin|parents?|tutor|classmate|someone|somebody|everyone|everybody|she|he|they|her|his|their|calculator|google|book)\b/;
 /** Maya's words named as the source, with what she said after it ("You said 16", "you told me to add the ones"): rule C reads it. */
@@ -3043,7 +3049,7 @@ const ECHO_SAID = /\byou (?:said|say|told (?:me|us)|showed (?:me|us)|taught (?:m
 /** Maya or her example named as the source with nothing after it ("like you said", "the 1 you carried", "like your example"). */
 const ECHO_TAG = /\blike (?:you (?:said|showed(?: me| us)?|told (?:me|us)|taught (?:me|us)|did|wrote)|(?:in )?(?:your|the) (?:example|warm-?up|easier one|steps|way))\b|\byou (?:showed|did|gave|explained)\b|\byour (?:example|warm-?up|easier one|steps|way)\b/g;
 /** Where an echoed clause ends: the end of its sentence, a semicolon, or "so", "and" or "then" that starts the child's own words. */
-const ECHO_END = /[.!?;]|,?\s+(?:so|and|then)\s+(?=i\b|it\b|it's\b|that's\b|the answer\b|\d)|,\s+(?=i\b|so\b|it's\b|that's\b)/;
+const ECHO_END = /[.!?;]|,?\s+(?:so|then)\s+(?=i\b|it\b|it's\b|that's\b|the answer\b|\d)|,?\s+and\s+(?=i\b|it's\b|that's\b)|,\s+(?=i\b|so\b|it's\b|that's\b)/;
 /** A question that only checks what was said ("Is that right?", "Right?", "Is it?"). */
 const VALUE_QUESTION = /^(?:(?:so|okay|ok|um|uh|oh|yes|yeah|and|but)\b[,\s]*)*(?:is (?:that|it|this|that one)(?: (?:right|correct|ok|okay|true|it))?|am i right|right|correct|really|did i get it(?: right)?|did i do it right|is that what you mean|yes|okay|ok|i'?m right)$/;
 /** A question about the next step that may name the value ("What do I do with the 16?", "Where does the 1 go?"). */
@@ -3243,7 +3249,17 @@ function ownTurn(s: Session, target: WorkedStep | null, value: AnswerValue, opti
   }
   // Whole-turn blockers, read on everything the child said.
  if (/\bmy\s+(?!answer\b|final\b|sum\b|total\b)[a-z]+\s+(?:is|was)\b/.test(lower)) return "other_person";
- if (/\b(?:copied|copy|copying)\b/.test(lower)) return "other_person";
+  // Review of 1b5c3b50 (P1-1): a number copied or looked up is not the child's own, whoever says it.
+  if (SOURCE.test(lower)) return "other_person";
+  // ...and a clause that holds the value is the child's own only with a first-person subject or none ("16.", "It's 16.",
+  // "7 plus 9 is 16."): "Sam said 16.", "My iPad got 16.", "The answer sheet has 16." are another's. A name list never ends.
+  for (const clause of lower.split(/[.!?;,:\n]+|\s+(?:and|so|then|but)\s+/)) {
+    const m = ATTRIBUTION.exec(clause.trim());
+    if (!m || !valuesIn(collapsed(digitWords(clause)), opts).some((v) => saidAs(v, value))) continue;
+    if (!/^(?:i|we|i've|we've|i'd|we'd|you)(?:\s+(?:just|also|already|still|all|both|then|first|really|did))*$/.test(m[1].trim())) return "other_person";
+  }
+  // P1-2: more hedges: an amount near the value ("about 16", "around 16", "16-ish"), "I feel like", "I reckon".
+  if (formToo && NEAR.test(lower)) return "hedge";
   if (OTHER_PERSON.test(lower) || /\bsays\b|\b(?:ms|mr|mrs|miss|dr)\.?\s+[a-z]/.test(lower)) return "other_person";
   if (formToo && (OWN_HEDGE.test(lower) || readAnswer(raw, opts).choice)) return "hedge";
   if (saysGuess(raw)) return "guess";
@@ -3273,7 +3289,7 @@ function ownTurn(s: Session, target: WorkedStep | null, value: AnswerValue, opti
     for (const clause of withoutEchoes(body).split(/\s*[,;:]\s*/)) {
       const plain = clause.replace(/\bthank you\b/g, " ").replace(/\b(?:do|can|should|could|would|will|did) (?:i|we)\b/g, " ");
       const words = plain.replace(/[^\w'+]+/g, " ").split(/\s+/).filter(Boolean);
-      if (/\b(?:can|could|will|would) you\b/.test(clause) || asksMaya(words)) return "request";
+      if (/\b(?:can|could|will|would) you\b/.test(clause) || /\b(?:just say|say if|say whether|let me know|tell me if|tell me whether)\b/.test(clause) || asksMaya(words)) return "request";
     }
     const numbers = readNumbers(collapsed(body), opts);
     if (question && target) {
@@ -3297,6 +3313,10 @@ function ownTurn(s: Session, target: WorkedStep | null, value: AnswerValue, opti
       const end = ECHO_END.exec(after);
       const said = valuesIn(collapsed(end ? after.slice(0, end.index) : after), opts);
       if (formToo && !said.every((v) => saidAs(v, value) || (v.type === "number" && own.has(v.value)))) return "echo";
+      // Review of 1b5c3b50 (P2-1): Maya never says the answer (D-326), so the final answer said back from her words is never
+      // the child's; (P3) an echo that holds two of the step's values ("You said 6 and 16.") commits to neither.
+      if (!target && said.some((v) => saidAs(v, value))) return "copy";
+      if (target && new Set(said.flatMap((v) => (v.type === "number" && placeValues(target).includes(v.value) ? [v.value] : []))).size > 1) return "other_number";
     }
   }
   // The value is said in a statement (a question about it goes to the confirm), and at least once as this step's own:
@@ -3448,7 +3468,8 @@ function ownTurn(s: Session, target: WorkedStep | null, value: AnswerValue, opti
         const v = value.value;
         if (new RegExp(`\\b(?:answer is|answer's|whole (?:sum|thing|answer) is)\\s+${v}\\b|\\b${v}\\s+is\\s+(?:my|the)\\s+(?:final\\s+)?answer\\b|\\b${v}\\s+for\\s+(?:the\\s+)?(?:whole|everything|all)\\b|\\b${v}\\b.*\\bso\\s+(?:it's|it is)\\s+${v}\\b`).test(plain)) return "other_number";
       }
-      if (/\b(?:everything|all of it|whole thing|i'?m done|i am done|i'?m finished|i am finished|that's it)\b/.test(plain)) return "other_number";
+      // "The answer is 66" after the step is the final answer said in order, not this step said as the answer.
+      if (/\b(?:everything|all of it|whole thing|i'?m done|i am done|i'?m finished|i am finished|that's it|done|finished|the answer)\b/.test(plain.replace(/\b(?:and |so )?(?:the|my) answer is\s+\d+/g, " "))) return "other_number";
       // A digit moved in words the claims reader does not know: "9 goes down", "1 down, 6 up", "all of it goes under",
       // "the 1 goes on the 2", "I give the 6 to the 2". Down or under is the written digit, up or on top the carry.
       if (/\b(?:all of it|it all|the whole thing)\s+(?:goes|go|went)\b|\b(?:goes|go|went)\s+on\s+the\s+\d|\bgive\b/.test(plain)) return "claim";
