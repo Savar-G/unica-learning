@@ -144,12 +144,15 @@ The work review, the report text, the learner and child profiles and Maya run li
 
 ## Book 1 baseline recovery (#870)
 
-After an admin approves a Book 1 draft, the site saves its starting record (the Book 1 baseline) from the plan input that the run frame keeps. A run made before #472 kept no plan input. For such a run, the admin run page says "Not saved" and names the recovery script. The site cannot recover it: recovery runs the original planner, built from this repository's Git objects.
+After an admin approves a Book 1 draft, the site saves its starting record (the Book 1 baseline) from the plan input that the run frame keeps. The site cannot save it in two cases, and the admin run page then says "Not saved" and names the recovery script:
 
-On the Mac, from a checkout that has the frame's build commit:
+- The run was made before #472, so its frame kept no plan input (`planning-capture-missing`).
+- The curriculum changed in a deploy after the book was planned (`curriculum-version-changed`). The record must copy the skills and steps of the version the book was planned on.
 
-1. Run `npm run workbooks:book1-recover -- --run <run id>`. It saves nothing. It prints the recovered input hash, or the reason it refuses.
-2. Run it again with `--save`. It saves the baseline for the latest approved version, and it never replaces a baseline that exists.
+Both need the frame's own build: the original planner and its curriculum, built from this repository's Git objects. On the Mac, from a checkout that has the frame's build commit:
+
+1. Run `npm run workbooks:book1-recover -- --run <run id>`. It saves nothing. It runs every step of the save: the planning proof or recovery, the record, and the database save in a transaction that is always rolled back. It prints each result, whether book 2 can be planned on today's curriculum (#812), and the verdict.
+2. If the verdict says the save would store it, run it again with `--save`. It never replaces a baseline that exists.
 
 Do this before any page of the book is marked: after the first mark, the save refuses (`activity-before-boundary`). Recovery also refuses when the child's profile was rebuilt after the run's frame.
 

@@ -4610,6 +4610,62 @@ export type Database = {
           },
         ]
       }
+      workbook_book1_baseline_tries: {
+        Row: {
+          child_id: string
+          draft_id: string
+          last_tried_at: string
+          parent_id: string
+          revision: number
+          tries: number
+        }
+        Insert: {
+          child_id: string
+          draft_id: string
+          last_tried_at?: string
+          parent_id: string
+          revision: number
+          tries?: number
+        }
+        Update: {
+          child_id?: string
+          draft_id?: string
+          last_tried_at?: string
+          parent_id?: string
+          revision?: number
+          tries?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_book1_baseline_tries_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_book1_baseline_tries_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_book1_baseline_tries_draft_id_revision_fkey"
+            columns: ["draft_id", "revision"]
+            isOneToOne: true
+            referencedRelation: "workbook_draft_revisions"
+            referencedColumns: ["draft_id", "revision"]
+          },
+          {
+            foreignKeyName: "workbook_book1_baseline_tries_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workbook_book1_baselines: {
         Row: {
           actor_id: string
@@ -8532,6 +8588,7 @@ export type Database = {
           parent_id: string
           revision: number
           run_id: string
+          tries: number
         }[]
       }
       email_copy_child_scope: {
@@ -8920,6 +8977,10 @@ export type Database = {
       note_plan_start_read_tried: {
         Args: { p_child: string }
         Returns: undefined
+      }
+      note_workbook_book1_baseline_try: {
+        Args: { p_draft: string; p_revision: number }
+        Returns: Json
       }
       parent_explanation_command: {
         Args: {

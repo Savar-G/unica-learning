@@ -10,7 +10,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./database";
 import { isDeepStrictEqual as same } from "node:util";
-import { createBook1Baseline, proveBook1PlanningCapture, readBook1Baseline, type Book1BaselineRecord, type Book1PlanningProof } from "./workbook-book1-baseline";
+import { createBook1Baseline, proveBook1PlanningCapture, readBook1Baseline, type Book1BaselineRecord, type Book1CurriculumSource, type Book1PlanningProof } from "./workbook-book1-baseline";
 import { recoverBook1PlanningInput, type Book1RecoveryRefusal, type Book1RecoverySources, type PinnedPlanningEngine } from "./workbook-book1-recovery";
 import type { Book1CorrectionSources, SecondTryRow } from "./workbook-correction-journal";
 import { isUuid } from "./workbook-content";
@@ -117,17 +117,21 @@ export interface Book1CaptureDeps {
   frame(runId: string): Promise<{ reference: string; createdAt: string; frame: RunFrame } | null>;
   /** Only for a frame with no planning capture: the frozen sources and the pinned planner of the frame's build. */
   recovery?: { sources(runId: string): Promise<Book1RecoverySources | null>; engine(pin: string): Promise<PinnedPlanningEngine | null> };
+  /** The curriculum the record copies (createBook1Baseline). Today's by default; the local recovery passes the pinned build's. */
+  curricula?: Book1CurriculumSource;
   repository: Book1BaselineRepository;
 }
 export type Book1CaptureResult = { status: "saved" | "duplicate"; baseline: StoredBook1Baseline }
   | { status: "refused"; reason: string };
+export type Book1CaptureRequest = { id: string; actorId: string; parentId: string; childId: string; runId: string; revision: number };
+export type Book1Prepared = { status: "prepared"; scope: Book1Scope; record: Book1BaselineRecord; planning: Book1PlanningProof } | { status: "refused"; reason: string };
 
 /**
- * Captures one child's Book 1 baseline at the final revision the admin reviewed (`revision`). It reads, proves and saves;
- * it never writes a draft, a rendering, a question, a workbook row, an approval or a print mark.
+ * Everything the capture does before the save: it reads the final revision as approval would, proves the planning
+ * input and makes the record. It writes nothing. The local check (scripts/book1-baseline-recover.ts) stops here.
  */
-export async function captureBook1Baseline(deps: Book1CaptureDeps, o: { id: string; actorId: string; parentId: string; childId: string; runId: string; revision: number }): Promise<Book1CaptureResult> {
-  const refuse = (reason: string): Book1CaptureResult => ({ status: "refused", reason });
+export async function prepareBook1Baseline(deps: Omit<Book1CaptureDeps, "repository">, o: Book1CaptureRequest): Promise<Book1Prepared> {
+  const refuse = (reason: string): Book1Prepared => ({ status: "refused", reason });
   if (![o.id, o.actorId, o.parentId, o.childId, o.runId].every(isUuid) || !Number.isSafeInteger(o.revision)) return refuse("invalid-request");
   const final = await deps.draft(o.runId);
   if (!final) return refuse("draft-not-found");
@@ -148,14 +152,24 @@ export async function captureBook1Baseline(deps: Book1CaptureDeps, o: { id: stri
     if (!recovered.ok) return refuse(`recovery-${recovered.reason satisfies Book1RecoveryRefusal}`);
     planning = recovered.proof;
   }
-  const made = createBook1Baseline({ id: o.id, parentId: o.parentId, childId: o.childId, final, frame: framed.frame, planning });
+  const made = createBook1Baseline({ id: o.id, parentId: o.parentId, childId: o.childId, final, frame: framed.frame, planning, curricula: deps.curricula });
   if (!made.ok) return refuse(made.reason);
-  const scope = { parentId: o.parentId, childId: o.childId, runId: o.runId, draftId: final.draftId };
-  const status = await deps.repository.save(o.actorId, scope, o.id, made.record);
-  if (typeof status === "object") return refuse(status.refused);
-  if (status !== "saved" && status !== "duplicate") return refuse(status);
+  return { status: "prepared", scope: { parentId: o.parentId, childId: o.childId, runId: o.runId, draftId: final.draftId }, record: made.record, planning };
+}
+
+/**
+ * Captures one child's Book 1 baseline at the final revision the admin reviewed (`revision`). It reads, proves and saves;
+ * it never writes a draft, a rendering, a question, a workbook row, an approval or a print mark.
+ */
+export async function captureBook1Baseline(deps: Book1CaptureDeps, o: Book1CaptureRequest): Promise<Book1CaptureResult> {
+  const prepared = await prepareBook1Baseline(deps, o);
+  if (prepared.status === "refused") return prepared;
+  const { scope, record } = prepared;
+  const status = await deps.repository.save(o.actorId, scope, o.id, record);
+  if (typeof status === "object") return { status: "refused", reason: status.refused };
+  if (status !== "saved" && status !== "duplicate") return { status: "refused", reason: status };
   // Read back through the saved contract: a successful call alone is not storage proof.
   const saved = await deps.repository.read(o.actorId, scope, o.id);
-  if (!saved || saved.record.payload !== made.record.payload || saved.record.hash !== made.record.hash) return refuse("saved-baseline-unavailable");
+  if (!saved || saved.record.payload !== record.payload || saved.record.hash !== record.hash) return { status: "refused", reason: "saved-baseline-unavailable" };
   return { status, baseline: saved };
 }

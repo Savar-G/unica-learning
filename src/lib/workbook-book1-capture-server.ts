@@ -37,6 +37,10 @@ export function book1PendingStore(db: SupabaseClient<Database>): Book1PendingSto
       if (error || !Array.isArray(data)) throw new Error("book1-due-read");
       return data.map((r) => ({ runId: r.run_id, draftId: r.draft_id, revision: r.revision, parentId: r.parent_id, childId: r.child_id, actorId: r.actor_id }));
     },
+    async tried(t) {
+      const { data, error } = await db.rpc("note_workbook_book1_baseline_try", { p_draft: t.draftId, p_revision: t.revision });
+      if (error || (data as { status?: unknown } | null)?.status !== "noted") throw new Error("book1-try-write");
+    },
     async pending(t, reason) {
       const { data, error } = await db.rpc("record_workbook_book1_baseline_pending", { p_run: t.runId, p_draft: t.draftId, p_revision: t.revision, p_reason: reason });
       if (error) throw new Error("book1-pending-write");

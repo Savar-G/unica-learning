@@ -3,6 +3,7 @@ vi.mock("server-only", () => ({}));
 import { ACTOR, BASELINE, CHILD, PARENT, baselineOf, id, jobBook } from "./workbook-book1.fixture";
 import { book1BaselineId, pendingReason, reconcileBook1Baselines, settleBook1Baseline, type Book1CaptureTarget, type Book1PendingStore } from "./workbook-book1-capture";
 import { book1BaselineRepository, type Book1BaselineSql, type Book1CaptureDeps } from "./workbook-book1-store";
+import { curriculumFor, type Curriculum } from "./workbook-curriculum";
 
 // #870 The Book 1 baseline after approval and its repair, through the public interface, on a synthetic first book made
 // by the real job. The in-memory database keeps what the SQL keeps: one baseline per (draft, revision), never replaced,
@@ -37,6 +38,10 @@ function memoryDb(o: { failSave?: "before" | "after-store" } = {}) {
     async secondTry() { return { status: "refused" }; },
   };
   const approved: Book1CaptureTarget[] = [];
+  // When each revision was last tried (a counter, not a clock): the due list puts the least recently tried first.
+  const lastTried = new Map<string, number>();
+  let tick = 0;
+  const key = (t: { draftId: string; revision: number }) => `${t.draftId}:${t.revision}`;
   const store: Book1PendingStore = {
     async existing(draftId, revision) {
       const r = baselines.find(b => b.draftId === draftId && b.revision === revision);
@@ -44,8 +49,10 @@ function memoryDb(o: { failSave?: "before" | "after-store" } = {}) {
     },
     async due(limit) {
       return approved.filter(t => !baselines.some(b => b.draftId === t.draftId && b.revision === t.revision)
-        && !pending.some(p => p.draftId === t.draftId && p.revision === t.revision)).slice(0, limit);
+        && !pending.some(p => p.draftId === t.draftId && p.revision === t.revision))
+        .map((t, i) => ({ t, i, at: lastTried.get(key(t)) ?? -1 })).sort((a, b) => a.at - b.at || a.i - b.i).map(x => x.t).slice(0, limit);
     },
+    async tried(t) { lastTried.set(key(t), ++tick); },
     async pending(t, reason) {
       if (baselines.some(b => b.draftId === t.draftId && b.revision === t.revision)) return "baseline";
       if (pending.some(p => p.draftId === t.draftId && p.revision === t.revision)) return "duplicate";
@@ -53,10 +60,11 @@ function memoryDb(o: { failSave?: "before" | "after-store" } = {}) {
       return "saved";
     },
   };
-  return { sql, store, baselines, pending, saves, approved };
+  return { sql, store, baselines, pending, saves, approved, lastTried };
 }
-function deps(sql: Book1BaselineSql, o: { legacy?: boolean; draftThrows?: boolean } = {}): Omit<Book1CaptureDeps, "recovery"> {
+function deps(sql: Book1BaselineSql, o: { legacy?: boolean; draftThrows?: boolean; curricula?: Book1CaptureDeps["curricula"] } = {}): Omit<Book1CaptureDeps, "recovery"> {
   return {
+    curricula: o.curricula,
     draft: async run => {
       if (o.draftThrows) throw Error("draft read failed");
       return run === made.runId ? structuredClone(made.final) : null;
@@ -191,5 +199,63 @@ describe("capture after approval, and the reconcile", () => {
     db.approved.push(target());
     expect(await reconcileBook1Baselines(deps(db.sql), db.store, { limit: 3, inTime: () => false })).toMatchObject({ due: 1, saved: 0 });
     expect(db.saves).toHaveLength(0);
+  });
+});
+
+describe("the curriculum the record copies (review on #885)", () => {
+  /** Today's curriculum code with every step's "change" text marked, as an older build's data would differ. */
+  const marked = (c: Curriculum): Curriculum => ({ ...c, skillSteps: id => c.skillSteps(id)?.map(st => ({ ...st, change: `PINNED ${st.change}` })) ?? null });
+  it("a curriculum deploy between planning and approval refuses the hosted capture, and records a plain reason", async () => {
+    // Wrong if: the site stores a record that labels today's skills with the frame's older version, or tries forever.
+    const db = memoryDb();
+    db.approved.push(target());
+    const today = { version: () => "0".repeat(28), curriculum: curriculumFor };
+    expect(await reconcileBook1Baselines(deps(db.sql, { curricula: today }), db.store, { limit: 3 })).toMatchObject({ due: 1, saved: 0, pending: 1 });
+    expect(db.pending).toEqual([{ draftId: made.final.draftId, revision: made.final.revision, reason: "curriculum-version-changed" }]);
+    expect(db.baselines).toHaveLength(0);
+  });
+  it("the pinned build's curriculum at the frame's version is copied exactly", async () => {
+    // Wrong if: the record copies today's steps instead of the pinned build's, or refuses a version equal to the frame's.
+    const db = memoryDb();
+    const frozen = made.frame.versions.curriculum;
+    const pinned = { version: () => frozen, curriculum: (k: string) => { const c = curriculumFor(k); return c && marked(c); } };
+    const r = await settleBook1Baseline(deps(db.sql, { curricula: pinned }), db.store, target(), { recordPending: true });
+    expect(r.status).toBe("saved");
+    const payload = JSON.parse(db.baselines[0].payload) as { curriculum: { version: string; skills: { steps: { change: string }[] }[] } };
+    expect(payload.curriculum.version).toBe(frozen);
+    expect(payload.curriculum.skills.flatMap(x => x.steps).every(st => st.change.startsWith("PINNED "))).toBe(true);
+  });
+  it("a pinned build whose curriculum version is not the frame's is refused, and nothing is stored", async () => {
+    const db = memoryDb();
+    const other = { version: () => "f".repeat(28), curriculum: curriculumFor };
+    expect(await settleBook1Baseline(deps(db.sql, { curricula: other }), db.store, target(), { recordPending: false }))
+      .toEqual({ status: "refused", reason: "curriculum-version-changed" });
+    expect(db.baselines).toHaveLength(0);
+    expect(db.saves).toHaveLength(0);
+  });
+});
+
+describe("the due list never stalls (review on #885)", () => {
+  it("revisions that are tried again every run do not keep a later Book 1 from its turn", async () => {
+    // Wrong if: three revisions that never settle hold the top of the list, so the later Book 1 is never captured.
+    const db = memoryDb();
+    const stuck = [1, 2, 3].map(n => ({ ...target(), runId: id(0x900 + n), draftId: id(0x910 + n) }));
+    db.approved.push(...stuck, target());
+    const failing: Omit<Book1CaptureDeps, "recovery"> = { ...deps(db.sql), draft: async run => {
+      if (stuck.some(t => t.runId === run)) throw Error("draft read failed");
+      return structuredClone(made.final);
+    } };
+    expect(await reconcileBook1Baselines(failing, db.store, { limit: 3 })).toMatchObject({ due: 3, saved: 0, failed: 3 });
+    expect(await reconcileBook1Baselines(failing, db.store, { limit: 3 })).toMatchObject({ due: 3, saved: 1, failed: 2 });
+    expect(db.baselines.map(b => b.draftId)).toEqual([made.final.draftId]);
+    // Every stuck revision keeps its turn too.
+    expect(stuck.every(t => db.lastTried.has(`${t.draftId}:${t.revision}`))).toBe(true);
+  });
+  it("a try that cannot be counted is one failure and stops nothing else", async () => {
+    const db = memoryDb();
+    const other: Book1CaptureTarget = { ...target(), runId: id(0x991), draftId: id(0x992) };
+    db.approved.push(other, target());
+    const store = { ...db.store, tried: async (t: Book1CaptureTarget) => { if (t.draftId === other.draftId) throw Error("note failed"); } };
+    expect(await reconcileBook1Baselines(deps(db.sql), store, { limit: 3 })).toMatchObject({ due: 2, saved: 1, failed: 1 });
   });
 });

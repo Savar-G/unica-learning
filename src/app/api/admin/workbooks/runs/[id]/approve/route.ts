@@ -27,7 +27,8 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/workb
     const result = await approveDraft(workbookShipStore(db), { runId: id.toLowerCase(), revision, actor: { id: admin.userId, email: admin.email } });
     if (result.status === "not-found") return new Response("Not found", { status: 404 });
     if (result.status === "refused") return Response.json({ ok: false, reasons: result.reasons }, { status: 409 });
-    after(() => captureBook1AfterApproval(db, { runId: id.toLowerCase(), revision, actorId: admin.userId }));
+    // Its own client: every database call of the capture stops after 60 s.
+    after(() => captureBook1AfterApproval(adminClient(AbortSignal.timeout(60_000), { retry: false }) ?? db, { runId: id.toLowerCase(), revision, actorId: admin.userId }));
     return Response.json({ ok: true, workbookId: result.workbookId });
   } catch (e) {
     console.error("[workbook ship] approve failed", id, e instanceof Error ? e.message : String(e));

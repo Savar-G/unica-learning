@@ -12,7 +12,9 @@
 //   and Git (src/lib/workbook-book1-pinned.ts), which a Vercel function does not have: the reconcile records it once as
 //   pending recovery (public.workbook_book1_baseline_pending), and scripts/book1-baseline-recover.ts recovers it on a Mac.
 // - A refusal that can change by itself (the service is unavailable, a race) is not recorded: the next run tries again.
-//   Every other refusal is recorded once with its reason, so the run does not try it every 15 minutes.
+//   Every other refusal is recorded once with its reason, so the run does not try it every 15 minutes. Each try is
+//   counted before it starts, and the due list puts the least recently tried first: a revision that never settles
+//   cannot keep a later Book 1 from its turn.
 //
 // No Next.js, React or clock. The Supabase seams are in src/lib/workbook-book1-capture-server.ts.
 import "server-only";
@@ -25,8 +27,10 @@ export interface Book1CaptureTarget { runId: string; draftId: string; revision: 
 export interface Book1PendingStore {
   /** The baseline that binds (draft, revision), whatever its id, or null. */
   existing(draftId: string, revision: number): Promise<{ id: string; runId: string } | null>;
-  /** Approved Book 1 revisions with no baseline and no pending row, oldest approval first. */
+  /** Approved Book 1 revisions with no baseline and no pending row: the least recently tried first, then the oldest approval. */
   due(limit: number): Promise<Book1CaptureTarget[]>;
+  /** Counts one try of the revision before its capture starts, so a capture that throws or hangs still moves it back. */
+  tried(target: Book1CaptureTarget): Promise<void>;
   /** Records the revision as pending recovery; the first reason stays. "baseline": a baseline binds it, nothing stored. */
   pending(target: Book1CaptureTarget, reason: string): Promise<"saved" | "duplicate" | "baseline" | "refused">;
 }
@@ -68,7 +72,7 @@ export async function settleBook1Baseline(deps: Omit<Book1CaptureDeps, "recovery
     // A baseline binds the key but cannot be read now: store nothing, try again later.
     return baseline ? { status: "existing", baseline } : { status: "retry", reason: "existing-baseline-unreadable" };
   }
-  const result = await captureBook1Baseline({ draft: deps.draft, frame: deps.frame, repository: deps.repository },
+  const result = await captureBook1Baseline({ draft: deps.draft, frame: deps.frame, repository: deps.repository, curricula: deps.curricula },
     { id: book1BaselineId(t.draftId, t.revision), actorId: t.actorId, parentId: t.parentId, childId: t.childId, runId: t.runId, revision: t.revision });
   if (result.status !== "refused") return result;
   if (RETRY.has(result.reason)) return { status: "retry", reason: result.reason };
@@ -96,6 +100,7 @@ export async function reconcileBook1Baselines(deps: Omit<Book1CaptureDeps, "reco
   for (const t of due) {
     if (o.inTime && !o.inTime()) break;
     try {
+      await store.tried(t);
       const s = await settleBook1Baseline(deps, store, t, { recordPending: true });
       if (s.status === "saved" || s.status === "duplicate") r.saved++;
       else if (s.status === "existing") r.existing++;

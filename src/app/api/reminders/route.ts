@@ -36,7 +36,8 @@ import { createWorkbookScanMaintenanceServer, scanMaintenanceRelease } from "@/l
 // Last, the first pages' sample email (docs/first-pages.md), only with FIRST_PAGES_EMAIL_ENABLED "on", and (with
 // WORKBOOK_RUNNER "server") a restart of the first pages that stopped on the server; both end 52 seconds after the run began.
 // Also beside the emails, it captures the Book 1 baseline of up to 3 approved Book 1 revisions that have none and are not
-// pending recovery (#870, src/lib/workbook-book1-capture.ts); none starts 40 seconds after the run began.
+// pending recovery (#870, src/lib/workbook-book1-capture.ts); none starts 30 seconds after the run began, and its
+// database calls stop 45 seconds after it.
 // ?dry=1 counts what is due and sends and ends nothing.
 // The answer holds counts only, never a parent's details.
 
@@ -49,7 +50,9 @@ const MONTHLY_END_MS = 50_000;
 /** No first pages email starts this long after the run began. */
 const FIRST_PAGES_END_MS = 52_000;
 /** No Book 1 baseline capture starts this long after the run began. */
-const BOOK1_END_MS = 40_000;
+const BOOK1_END_MS = 30_000;
+/** Every database call of the Book 1 step is stopped this long after the run began, so a hung capture cannot hold the run. */
+const BOOK1_ABORT_MS = 45_000;
 
 function authorized(header: string | null, secret: string): boolean {
   const given = Buffer.from(header ?? "");
@@ -120,9 +123,12 @@ export async function POST(request: Request) {
       return r;
     });
     // The Book 1 baselines run beside the emails; the step never throws, so a failure never hides the other results.
-    book1 = reconcileBook1BaselinesNow(admin, { inTime: () => Date.now() < now + BOOK1_END_MS }).then((r) => {
+    book1 = reconcileBook1BaselinesNow(adminClient(AbortSignal.timeout(BOOK1_ABORT_MS), { retry: false }) ?? admin, { inTime: () => Date.now() < now + BOOK1_END_MS }).then((r) => {
       if (!("error" in r) && r.due > 0) console.info("[book1 baseline] run", JSON.stringify(r));
       return r;
+    }, (e) => {
+      console.error("[book1 baseline] run failed", e instanceof Error ? e.message : e);
+      return { error: "run_failed" as const };
     });
     const result = await runReminders(store, now, {
       newToken,
