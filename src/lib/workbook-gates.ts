@@ -23,21 +23,29 @@ export const GATE_THRESHOLDS = {
 } as const;
 export interface GateInput { question: PrintedQuestion; grade: number; interest: string | null }
 
-/** The decision questions that apply to this printed question. */
-export function gateRequest(input: GateInput): { input: { type: "text"; text: string }[]; questions: Partial<Record<QuestionGate, DecisionQuestion>> } {
+/** The gates the report marks on for this model. Any other model asks none. */
+export function activeQuestionGates(model: string): QuestionGate[] {
+  if (!Object.hasOwn(GATE_THRESHOLDS, model)) return [];
+  const terms = GATE_THRESHOLDS[model as keyof typeof GATE_THRESHOLDS];
+  return QUESTION_GATES.filter((gate) => terms[gate].enabled);
+}
+
+/** The decision questions that apply to this printed question. `only` limits them to the gates a run asks. */
+export function gateRequest(input: GateInput, only?: readonly QuestionGate[]): { input: { type: "text"; text: string }[]; questions: Partial<Record<QuestionGate, DecisionQuestion>> } {
   const { question, grade, interest } = input;
-  const questions: Partial<Record<QuestionGate, DecisionQuestion>> = {
-    reading_level: { type: "score", instructions: `What is the reading level of this question for grade ${grade}?`, levels: [`too easy to read for grade ${grade}`, `right for grade ${grade}`, "one grade too hard", "two or more grades too hard"] },
-    one_right_answer: { type: "noul", instructions: "Does this question have exactly one correct answer?" },
-  };
-  if (question.picture) questions.picture_matches = { type: "noul", instructions: "Do the numbers and objects in the picture description match the question?" };
-  if (interest) questions.uses_interest = { type: "noul", instructions: `Does the question use ${interest}?` };
+  const allow = new Set(only ?? QUESTION_GATES);
+  const questions: Partial<Record<QuestionGate, DecisionQuestion>> = {};
+  if (allow.has("reading_level")) questions.reading_level = { type: "score", instructions: `What is the reading level of this question for grade ${grade}?`, levels: [`too easy to read for grade ${grade}`, `right for grade ${grade}`, "one grade too hard", "two or more grades too hard"] };
+  if (allow.has("one_right_answer")) questions.one_right_answer = { type: "noul", instructions: "Does this question have exactly one correct answer?" };
+  if (allow.has("picture_matches") && question.picture) questions.picture_matches = { type: "noul", instructions: "Do the numbers and objects in the picture description match the question?" };
+  if (allow.has("uses_interest") && interest) questions.uses_interest = { type: "noul", instructions: `Does the question use ${interest}?` };
   return { input: [{ type: "text", text: JSON.stringify(question) }], questions };
 }
 
 /** Return the probability that a gate should flag the question. Errors remain errors. */
-export async function questionGateProbabilities(client: DecisionClient, input: GateInput, signal: AbortSignal): Promise<{ probabilities: Partial<Record<QuestionGate, number>>; result: DecisionResult }> {
-  const request = gateRequest(input);
+export async function questionGateProbabilities(client: DecisionClient, input: GateInput, signal: AbortSignal, only?: readonly QuestionGate[]): Promise<{ probabilities: Partial<Record<QuestionGate, number>>; result: DecisionResult }> {
+  const request = gateRequest(input, only);
+  if (Object.keys(request.questions).length === 0) throw new Error("no question gates apply");
   const result = await client.decide({ ...request, signal });
   const probabilities: Partial<Record<QuestionGate, number>> = {};
   for (const gate of Object.keys(request.questions) as QuestionGate[]) {

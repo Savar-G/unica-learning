@@ -8,6 +8,7 @@ import { memoryDraftStore } from "@/lib/workbook-draft-memory";
 import { renderFitCheck } from "@/lib/workbook-fit";
 import { curriculumFor } from "@/lib/workbook-curriculum";
 import { bookOutline, generateWorkbook, kindsOf, ResumeMismatch, shapeOf, type FitCheck, type GenerateDeps, type GeneratedPage, type GeneratedWorkbook, type StoredCall } from "@/lib/workbook-generator";
+import { openQuestionGateRun, type QuestionGateChecker, type StoredQuestionGate } from "@/lib/workbook-run-gates";
 import { planLevel, planWorkbook, type WorkbookPlan } from "@/lib/workbook-plan";
 import { skillRange } from "@/lib/workbook-book";
 import { buildQuestion, choiceAsked, pictureProblem, type SlotWording } from "@/lib/workbook-generator-items";
@@ -2242,5 +2243,82 @@ describe("quantity card checks at every level (D-201)", () => {
       expect(pictureProblem("Mia draws 4 orange dots and 3 blue dots. How many dots?", f)).toMatch(/picture shows 3/);
       expect(pictureProblem("Mia draws 3 orange dots and 4 blue dots. How many dots?", f)).toBeNull();
     }
+  });
+});
+
+describe("quality gates (#858)", () => {
+  const marked = (s: SlotAsked) => goodItem(s, {
+    text: "What is 7 take away 5?", operation: addOp(7, 5),
+    easier: { text: "6 + 5 = ?", operation: addOp(6, 5) },
+    wrongAnswers: [{ value: num(2), cause: "operation", description: "x", step: null }],
+  });
+  function gates(decide: QuestionGateChecker["check"], stored: StoredQuestionGate[] = []): { run: ReturnType<typeof openQuestionGateRun>; saved: StoredQuestionGate[] } {
+    const saved = [...stored];
+    const checker: QuestionGateChecker = { model: "script", check: decide };
+    return { saved, run: openQuestionGateRun(checker, stored, async (row) => { saved.push(row); }) };
+  }
+
+  it("rewrites a flagged question once, then keeps it with the flag and does not use the fit rewrite", async () => {
+    const asked: string[] = [];
+    const { run } = gates(async (input) => {
+      asked.push(input.question.text);
+      const flag = input.question.text.includes("take away");
+      return { questionId: input.question.id, model: "script", thresholdVersion: 2, outcome: flag ? "flag" : "pass", flags: flag ? ["one_right_answer"] : [], probabilities: {}, reason: flag ? "A quality gate flagged this question: it may have more than one right answer." : null };
+    });
+    const ai = fakeAiClient({ answer: (r) => fill(r, (s, q) => (q.day === 1 && q.page === 1 && s.slot === "1.1" ? marked(s) : goodItem(s))) });
+    const draft = await generate(deps({ ai, questionGates: run }));
+    const q = firstDayPage(draft).questions[0];
+    expect(q.attempts).toBe(2);
+    expect(q.check.status).toBe("checked");
+    expect(q.gate).toMatchObject({ outcome: "flag", flags: ["one_right_answer"] });
+    const names = ai.requests.filter((r) => read(r).day === 1 && read(r).page === 1).map((r) => r.name);
+    expect(names).toEqual(["workbook_page", "workbook_page_redo"]);
+    expect(ai.requests.some((r) => r.name === "workbook_page_shorter")).toBe(false);
+    expect(read(ai.requests.find((r) => r.name === "workbook_page_redo")!).note).toContain("quality gate");
+    expect(asked.filter((text) => text.includes("take away")).length).toBe(2);
+  });
+
+  it("flags an errored gate without a rewrite, then stops asking", async () => {
+    let calls = 0;
+    const { run } = gates(async (input) => {
+      calls += 1;
+      return { questionId: input.question.id, model: "script", thresholdVersion: 2, outcome: "unknown", flags: [], probabilities: {}, reason: "the quality gate failed" };
+    });
+    const draft = await generate(deps({ questionGates: run }));
+    expect(draft.gatesUnavailable).toBe(true);
+    const flagged = draft.pages.flatMap((p) => p.questions).filter((q) => q.gate?.outcome === "unknown");
+    expect(flagged.length).toBeGreaterThan(0);
+    expect(flagged.some((q) => q.attempts === 1)).toBe(true);
+    expect(calls).toBeGreaterThanOrEqual(10);
+    expect(draft.pages.flatMap((p) => p.questions).some((q) => !q.gate)).toBe(true);
+  });
+
+  it("reads a stored gate on resume and does not ask it again", async () => {
+    const calls = new Map<string, { page: number; seq: number; call: StoredCall }>();
+    const solves = new Map<string, SolveVerdict>();
+    const copy = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
+    const callStore = {
+      load: async (wanted: number[]) => [...calls.values()].filter((c) => wanted.includes(c.page)).map(copy),
+      save: async (page: number, seq: number, call: StoredCall) => { if (!calls.has(`${page}:${seq}`)) calls.set(`${page}:${seq}`, copy({ page, seq, call })); },
+      solves: async (wanted: number[]) => new Map([...solves].filter(([k]) => wanted.includes(Number(k.split(":")[0]))).map(([k, v]) => [k, copy(v)])),
+      saveSolve: async (key: string, log: SolveLog) => { if (!solves.has(key)) solves.set(key, copy(log.verdict)); },
+    };
+    let checks = 0;
+    const first = gates(async (input) => {
+      checks += 1;
+      const flag = input.question.text.includes("take away");
+      return { questionId: input.question.id, model: "script", thresholdVersion: 2, outcome: flag ? "flag" : "pass", flags: flag ? ["one_right_answer"] : [], probabilities: {}, reason: flag ? "A quality gate flagged this question: it may have more than one right answer." : null };
+    });
+    const ai = fakeAiClient({ answer: (r) => fill(r, (s, q) => (q.day === 1 && q.page === 1 && s.slot === "1.1" ? marked(s) : goodItem(s))) });
+    const draft = await generate(deps({ ai, questionGates: first.run, calls: callStore }));
+    expect(draft.pages.flatMap((p) => p.questions).some((q) => q.gate?.outcome === "flag")).toBe(true);
+    const seen = checks;
+    const second = openQuestionGateRun({ model: "script", check: async () => { throw new Error("asked again"); } }, first.saved, async () => { throw new Error("stored again"); });
+    const again = await generate(deps({
+      ai: fakeAiClient({ answer: () => { throw new Error("the writer was asked again"); } }),
+      questionGates: second, calls: callStore,
+    }));
+    expect(checks).toBe(seen);
+    expect(again.pages.flatMap((p) => p.questions).some((q) => q.gate?.outcome === "flag")).toBe(true);
   });
 });

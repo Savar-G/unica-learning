@@ -126,6 +126,30 @@ describe("the Supabase reader", () => {
     expect((await listChildren(reader(undefined, { PROGRESS_TAB_ENABLED: "on" }).reader, NOW))[0].tabs).toContain("progress");
     expect((await listChildren(reader(undefined, { PROGRESS_TAB_ENABLED: "off" }).reader, NOW))[0].tabs).not.toContain("progress");
   });
+  it.each(["off", "test-only", "on", ""])("uses the Maya release and each child's plan with switch %s", async (setting) => {
+    const sibling = "55555555-5555-4555-8555-555555555555";
+    const rows: Record<string, unknown> = {
+      ...ROWS,
+      children: [{ id: CHILD, first_name: "Leah", grade: 3 }, { id: sibling, first_name: "Ana", grade: 3 }],
+      workbook_delivery_receipts: [{ child_id: CHILD }, { child_id: sibling }],
+      child_plan_states: [{ child_id: CHILD, kind: "paying", monthly_cents: 3000 }, { child_id: sibling, kind: "ended" }],
+    };
+    const makeClient = (test: boolean, failPlan = false) => createClient<never>("https://fixture.invalid", "synthetic-key", { auth: { persistSession: false }, global: { fetch: async (input) => {
+      const table = new URL(String(input)).pathname.replace("/rest/v1/", "");
+      if (table === "child_plan_states" && failPlan) return Response.json({ message: "boom" }, { status: 500 });
+      if (table === "test_accounts") return Response.json(test ? { parent_id: PARENT } : null);
+      return Response.json(rows[table] ?? []);
+    } } }) as never;
+    const tabs = async (test: boolean, failPlan = false) => {
+      const db = makeClient(test, failPlan);
+      return (await listChildren(parentViewReader(db, PARENT, db, { MAYA_CHAT_ENABLED: setting }), NOW)).map((child) => child.tabs.includes("maya"));
+    };
+    expect(await tabs(false)).toEqual([setting !== "off", false]);
+    expect(await tabs(true)).toEqual([setting !== "off", setting !== "off"]);
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await tabs(false, true)).toEqual([false, false]);
+    log.mockRestore();
+  });
 });
 
 describe("the Supabase reader of the Workbooks tab (#558)", () => {
@@ -177,9 +201,13 @@ describe("the Supabase reader of the Overview (#560)", () => {
     const all: Record<string, unknown> = { ...ROWS, children, ...rows };
     const session: URL[] = [];
     const admin: URL[] = [];
-    const fake = (requests: URL[]) => createClient<never>("https://fixture.invalid", "synthetic-key", { auth: { persistSession: false }, global: { fetch: async (input) => {
+    const fake = (requests: URL[]) => createClient<never>("https://fixture.invalid", "synthetic-key", { auth: { persistSession: false }, global: { fetch: async (input, init) => {
       const url = new URL(String(input));
       requests.push(url);
+      if (url.pathname.endsWith("/rpc/scan_marking_command")) {
+        const body = JSON.parse(String(init?.body));
+        return Response.json(body.p_action === "revision" ? 0 : []);
+      }
       // A count (HEAD) reads its number from this header; no Maya call in these rows.
       return Response.json(all[url.pathname.replace("/rest/v1/", "")] ?? [], { headers: { "content-range": "*/0" } });
     } } }) as never;
@@ -304,7 +332,7 @@ describe("the Supabase reader of the Overview (#560)", () => {
     expect(log).toHaveBeenCalledWith("[parent-view] test replay failed", expect.any(String));
     log.mockRestore();
   });
-  it("reads saved scans, a workbook's pages and the learning card with the parent's session, and no raw profile, event or call table", async () => {
+  it("reads parent-visible data with the session and only progress facts with the secret key", async () => {
     const r = overviewReader({
       ...scored(take()),
       scan_photos: [{ workbook_id: WORKBOOK, page_id: "p1", expires_at: "2027-01-01T00:00:00Z", created_at: "2026-10-20T18:00:00Z" }],
@@ -318,7 +346,7 @@ describe("the Supabase reader of the Overview (#560)", () => {
     expect((await r.reader.learningCards())[0]).toMatchObject({ childId: CHILD, interests: ["space"] });
     await readOverview(r.reader, CHILD, NOW);
     expect(tables(r.session)).toEqual(["card_setups", "children", "parents", "reports", "scan_photos", "workbook_delivery_corrections", "workbook_delivery_receipts", "workbook_pages", "workbooks"]);
-    expect(tables(r.admin)).toEqual(["admin_users", "answers", "assessments", "child_plan_states", "test_accounts"]);
+    expect(tables(r.admin)).toEqual(["admin_users", "answers", "assessments", "child_plan_states", "rpc/scan_marking_command", "test_accounts"]);
   });
 });
 

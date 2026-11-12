@@ -49,8 +49,9 @@
 //   between two rebuilds has no row.
 // - A state's evidenceAt is the time of the test or mark it rests on (null for a workbook or no evidence), so a row can
 //   carry an older date than the row before it. changed_at, which the database sets, is when the rebuild recorded the
-//   row. Whatever counts or orders changes by time ("3 more this month", the progress line) reads changed_at, never
-//   evidenceAt: the month a delayed test is dated in is not the month the child's map changed.
+//   row. Whatever counts or orders the history's changes by time (the progress line) reads changed_at, never evidenceAt:
+//   the month a delayed test is dated in is not the month the child's map changed. The Overview's "N more this month"
+//   (#880) does not read the history: it runs this rule on the tests and marks dated before the family month.
 // - The stored reasons predate #578, so they keep their names: "secure_on_test" is a Secure test result (Mastered when
 //   every answer was right, else Not started), and "failed_review" is any wrong answer after Mastered, its evidence
 //   "test" or "pages" by where the wrong answer was.

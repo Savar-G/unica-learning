@@ -404,6 +404,8 @@ describe("a family the switch opens to", () => {
         { area: "fractions", name: "Fractions and decimals", level: 2, label: "building-up", earlySign: true },
         { area: "shapes", name: "Shapes, measurement and data", level: 4, label: "ahead", earlySign: false },
       ],
+      skills: null,
+      areasIncludeMarks: false,
       resultPreparing: false,
       resultLate: false,
       workbook: { number: 2, scannedDays: 3, days: 10 },

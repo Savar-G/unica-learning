@@ -79,7 +79,7 @@ function overview(child: ChildView, state: string): OverviewView {
       { area: "number", name: "Number", level: 2, label: "building-up", earlySign: state === "early" },
       { area: "fractions", name: "Fractions", level: 3, label: "at-grade", earlySign: false },
       { area: "shapes", name: "Shapes and measurement", level: 4, label: "ahead", earlySign: false },
-    ], resultPreparing: preparing, resultLate: state === "late", workbook: child.currentWorkbook ? { number: 3, scannedDays: 4, days: 10 } : null,
+    ], skills: empty ? null : { mastered: 12, atLevel: { grade: 2, mastered: 5, total: 14 }, moreThisMonth: 3 }, areasIncludeMarks: !empty, resultPreparing: preparing, resultLate: state === "late", workbook: child.currentWorkbook ? { number: 3, scannedDays: 4, days: 10 } : null,
     action: state === "payment_failed" || state === "no_pin" || state === "learning_card_empty" ? state : null, summaryMonth: child.stage === "active" || child.stage === "ended" ? "2026-10" : null };
 }
 
@@ -204,7 +204,7 @@ function previewContent(selection: PreviewSelection, child: ChildView | undefine
       })),
     }} />;
     case "progress": {
-      const areas = state === "empty" ? [] : skillMapView({ firstName: child.firstName, schoolGrade: child.schoolGrade, workingLevel: 2, tests: [{ standard: "2.1", correct: 4, total: 4, unreliable: false, at: "2026-11-04T20:00:00Z" }, { standard: "2.3", correct: 0, total: 4, unreliable: false, at: "2026-11-04T20:00:00Z" }], workbookStandards: ["2.1", "2.2"], workbookNumber: 3, day: at => at.slice(0, 10) });
+      const areas = state === "empty" ? [] : skillMapView({ firstName: child.firstName, schoolGrade: child.schoolGrade, workingLevel: 2, tests: [{ standard: "2.1", correct: 4, total: 4, unreliable: false, at: "2026-11-04T20:00:00Z" }, { standard: "2.3", correct: 0, total: 4, unreliable: false, at: "2026-11-04T20:00:00Z" }], workbookStandards: ["2.1", "2.2"], workbookNumber: 3, marks: [], day: at => at.slice(0, 10) });
       return <ParentProgress child={child} level={state === "empty" ? null : { working: 2, earlySign: false, testedOn: "2026-11-04", unreliable: state === "unreliable" }} workbookNumber={3} areas={areas}
         panel={state === "panel" && areas[0]?.tiles[0] ? <dialog open className="pp-panel" aria-labelledby="pp-panel-title"><SkillPanel tile={areas[0].tiles[0]} onClose={noAction} /></dialog> : undefined} />;
     }
