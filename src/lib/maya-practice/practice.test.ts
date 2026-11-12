@@ -953,4 +953,21 @@ describe("the D-326 outcome rule", () => {
     rewrite(store, "C07-r1", traceFile("C07-r1"), JSON.stringify(leaked));
     expect(recount().runs[0].hardFailures.map((f) => f.code)).toContain("outcome_not_allowed");
   });
+
+  // 2026-11-12: Maya's own close is maya_closed, never child_stopped, so it is no early stop of the child.
+  it("records Maya's two-miss close as maya_closed, with no early_stop and no outcome_not_allowed", async () => {
+    const c = { ...C07, reasons: ["solved" as const] };
+    const { store, recount } = await suite([c], { runs: 1, simulator: () => sayEach([
+      "Seven plus nine is sixteen.", "Two plus three plus one is six.", "56.", "65.",
+    ]) });
+    expect(JSON.parse(store.load(traceFile("C07-r1"))!).outcome?.reason).toBe("maya_closed");
+    const run = recount().runs[0];
+    expect(run.invalid.map((x) => x.code)).not.toContain("early_stop");
+    expect(run.hardFailures.map((f) => f.code)).not.toContain("outcome_not_allowed");
+  });
+
+  it("still flags a child who asks to stop as early_stop", async () => {
+    const { report } = await suite([C07], { runs: 1, simulator: () => sayEach(["I want to stop."]) });
+    expect(report.runs[0].invalid.map((x) => x.code)).toContain("early_stop");
+  });
 });
