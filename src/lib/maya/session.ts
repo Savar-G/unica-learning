@@ -1291,8 +1291,15 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
   if (isMissingNumber(s.package) && main === "MODEL_EXAMPLE" && s.exampleShown === steps && realMissNow(s, reading) && !acts.includes("guide")) acts = [...acts, "guide"];
   const missed = reading.answers?.some(a => (a.problem ?? "target") === "target" && a.verdict === "wrong" && committedValue(s, a));
   if (s.solved === null && !rightResult && !rightHere && s.turn !== null && s.ladder.step !== "result" && copiedStep(s) === null &&
-      s.ladder.hint >= 3 && missed && (!noStart || s.retried) && !ownWayOut(s.package)) {
-    return { acts: ["close"], code: "act_not_allowed", reason: "Close honestly without giving the answer." };
+      s.ladder.hint >= 3 && missed && (!noStart || s.retried)) {
+    if (!ownWayOut(s.package)) return { acts: ["close"], code: "act_not_allowed", reason: "Close honestly without giving the answer." };
+    // A question type with its own way out: after a second committed miss on the shown step (D-199's two misses), its
+    // easier example, then its honest close, never the answer (D-306; as the review of 9884b94e asked for claims, P1).
+    if (s.ladder.failures + 1 >= 2) {
+      return s.exampleShown < steps && !exampleRevealsAnswer(s)
+        ? { acts: ["example_step", ...confirm], code: "act_not_allowed", reason: "Two committed wrong answers after the shown step: show the easier example (example_step), never the answer." }
+        : { acts: ["close"], code: "act_not_allowed", reason: `Two committed wrong answers after the easier example: close honestly with ${stuckCloseLine(s)}, never with the answer.` };
+    }
   }
   // Two wrong final answers once every column is done: the final step has only its gentlest help, already given, so
   // Maya closes without the answer (D-326). Never over a right answer.
