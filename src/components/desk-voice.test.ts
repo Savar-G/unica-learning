@@ -31,7 +31,7 @@ vi.mock("livekit-client", () => {
 const USAGE: VoiceUsage = { usedSeconds: 600, leftSeconds: 1200, limitSeconds: 1800, resetsAt: "2026-11-17T03:00:00.000Z", zone: "America/Vancouver" };
 /** The route answers with the call id the browser made. */
 let lastId = "c1";
-const call = (over: Partial<DeskVoiceCall> = {}): DeskVoiceCall => ({ id: lastId, revision: 1, ended: false, transcript: [], batches: [], hint: 0, safetyMessage: null, mode: "voice", started: false, ...over });
+const call = (over: Partial<DeskVoiceCall> = {}): DeskVoiceCall => ({ id: lastId, revision: 1, ended: false, transcript: [], batches: [], hint: 0, safetyMessage: null, mode: "voice", started: false, status: over.ended ? "ended" : "live", ...over });
 
 let root: Root | undefined;
 let host: HTMLDivElement;
