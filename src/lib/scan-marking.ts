@@ -304,10 +304,11 @@ export function effectiveMarkingEvents(raw: readonly LearningEvent[], marks: rea
       stuckStep: m.observation.actor === "system" ? m.originalEvent.stuckStep : null }] : [];
   })];
 }
+// Corrections replace a result at its original time; evidence_at records the edit, not new practice.
 export function effectiveSkillMarks(marks: readonly EffectiveMark[]): SkillMark[] {
   return marks.flatMap((m) => {
     const d = markingEvent(m.expected, m.observation);
-    return d.publish && m.originalEvent && m.eventId ? [{ standard: m.originalEvent.skill.standard, right: d.result === "right", review: ["friday-5", "mixed-set", "show-what-you-know"].includes(m.expected.teaching?.part ?? ""), at: m.at }] : [];
+    return d.publish && m.originalEvent && m.eventId ? [{ standard: m.originalEvent.skill.standard, right: d.result === "right", review: ["friday-5", "mixed-set", "show-what-you-know"].includes(m.expected.teaching?.part ?? ""), at: m.originalEvent.occurredAt }] : [];
   });
 }
 /**
