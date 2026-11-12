@@ -32,10 +32,11 @@ export function ParentOverview({ overview }: { overview: OverviewView }) {
   // D-293: this is a link to saved notes, not a claim that new chats or calls are available.
   const maya = child.tabs.includes("maya");
   const tiles = level || skills || workbook || maya;
-  // On the three-column desktop grid the Level tile takes two columns and the others one: Maya fills the rest of its
-  // row (D-328), or takes a full row when the row before it is full.
-  const used = ((level ? 2 : 0) + (skills ? 1 : 0) + (workbook ? 1 : 0)) % 3;
-  const mayaSpan = used === 0 ? "po-maya" : `po-maya po-maya-${3 - used}`;
+  // Maya fills the rest of its row (D-328), or takes a full row when the row before it is full. At 3 columns Level takes
+  // two and the others one; at 2 columns Level takes a full row and the others one (parent-overview.css).
+  const singles = (skills ? 1 : 0) + (workbook ? 1 : 0);
+  const used3 = ((level ? 2 : 0) + singles) % 3;
+  const mayaSpan = ["po-maya", used3 ? `po-maya-3c-${3 - used3}` : "", singles % 2 ? "po-maya-2c-1" : ""].filter(Boolean).join(" ");
   return (
     <div className="po">
       {resultPreparing && (
