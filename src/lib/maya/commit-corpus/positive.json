@@ -1,7 +1,7 @@
 {
  "source": "traces/maya-practice/2026-11-12T16-17-39-955Z",
- "runs": 66,
- "childTurns": 780,
+ "runs": 84,
+ "childTurns": 937,
  "generated": "scripts/maya-commit-corpus.mjs",
  "moved": [
   {
@@ -537,6 +537,102 @@
    "turn": 8,
    "text": "I got 16. I put the 6 down and the 1 goes up, right?",
    "reason": "value check after the value"
+  },
+  {
+   "run": "OT5-r1",
+   "turn": 6,
+   "text": "Yes, that's 11. Is it right?",
+   "reason": "value check after the value"
+  },
+  {
+   "run": "OT5-r1",
+   "turn": 10,
+   "text": "I still think it's 11. Is it right?",
+   "reason": "hedge"
+  },
+  {
+   "run": "OT5-r1",
+   "turn": 12,
+   "text": "Okay. The 6 and the 5 make 11, I think.",
+   "reason": "hedge"
+  },
+  {
+   "run": "OT5-r2",
+   "turn": 12,
+   "text": "Okay. I think 6 and 5 make 11.",
+   "reason": "hedge"
+  },
+  {
+   "run": "PTP1-r1",
+   "turn": 10,
+   "text": "Yes, I think 10 is right! You said 8 equal steps, so I split the 80.",
+   "reason": "hedge"
+  },
+  {
+   "run": "PTP1-r1",
+   "turn": 16,
+   "text": "Okay. So my answer is 10, right?",
+   "reason": "value only in a question"
+  },
+  {
+   "run": "PTP2-r1",
+   "turn": 10,
+   "text": "I got 24 for 3 times 8. Then 24 plus 20 is 44. Is that right?",
+   "reason": "value check after the value"
+  },
+  {
+   "run": "PTP2-r1",
+   "turn": 20,
+   "text": "Oh, so in the small one, 3 steps after the start. So my 44 is the answer?",
+   "reason": "value only in a question"
+  },
+  {
+   "run": "PTP2-r2",
+   "turn": 18,
+   "text": "I think it's 44. You said to line up the tens, so I did.",
+   "reason": "hedge"
+  },
+  {
+   "run": "PTP2-r2",
+   "turn": 20,
+   "text": "So is 44 right? I changed it from 52.",
+   "reason": "value only in a question"
+  },
+  {
+   "run": "PTP2-r3",
+   "turn": 12,
+   "text": "Yes, I think 44 is right. I did 3 times 8 and added it to 20.",
+   "reason": "hedge"
+  },
+  {
+   "run": "PTP2-r3",
+   "turn": 24,
+   "text": "So 20 plus 24 is 44. Is 44 my answer?",
+   "reason": "a question about the value"
+  },
+  {
+   "run": "PTP2-r3",
+   "turn": 26,
+   "text": "You said 24, so I add it to 20. That's 44.",
+   "reason": "echo after a show"
+  },
+  {
+   "run": "PTP3-r1",
+   "turn": 19,
+   "text": "I think so. I got 140 from 97 plus 43.",
+   "reason": "hedge"
+  },
+  {
+   "run": "PTP3-r1",
+   "turn": 29,
+   "text": "Oh, 7 times 9 is 63. So is my 140 right?",
+   "reason": "value check after the value"
+  },
+  {
+   "run": "PTP4-r2",
+   "turn": 2,
+   "text": "Hi. I think 8 times 9 is 72.",
+   "reason": "hedge"
   }
  ],
  "turns": [
@@ -6342,6 +6438,1350 @@
    "lastMaya": {
     "act": "confirm",
     "say": "I think I heard 6. Is that it?"
+   }
+  },
+  {
+   "run": "OT5-r1",
+   "case": "OT5",
+   "question": "sample-symmetry-4-5",
+   "turn": 2,
+   "text": "The hexagon has 6 and the pentagon has 5, so I got 11.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "open",
+    "say": "Hey! I'm Maya, an AI helper for your workbook. A regular hexagon has 6 lines of symmetry. A regular pentagon has 5. Our question is 6 + 5."
+   }
+  },
+  {
+   "run": "OT5-r1",
+   "case": "OT5",
+   "question": "sample-symmetry-4-5",
+   "turn": 8,
+   "text": "Six plus five is 11. I counted the hexagon's 6 and the pentagon's 5.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "result"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "That's alright. Let's check it together. What is 6 + 5?"
+   }
+  },
+  {
+   "run": "OT5-r1",
+   "case": "OT5",
+   "question": "sample-symmetry-4-5",
+   "turn": 14,
+   "text": "6 plus 5 is 11. I got 11.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "ones",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "result"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Can you add 6 + 5?"
+   }
+  },
+  {
+   "run": "OT5-r1",
+   "case": "OT5",
+   "question": "sample-symmetry-4-5",
+   "turn": 18,
+   "text": "You said 4 plus 2 is 6. My question is still 6 and 5, so I still got 11.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "result"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "example_step",
+    "say": "So 4 + 2 = 6."
+   }
+  },
+  {
+   "run": "OT5-r2",
+   "case": "OT5",
+   "question": "sample-symmetry-4-5",
+   "turn": 2,
+   "text": "I got 11. The hexagon has 6 lines and the pentagon has 5, so 6 + 5 is 11.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "open",
+    "say": "Hello, I'm Maya. I'm an AI. I'm here to help. A regular hexagon has 6 lines of symmetry. A regular pentagon has 5. So our question is 6 + 5."
+   }
+  },
+  {
+   "run": "OT5-r2",
+   "case": "OT5",
+   "question": "sample-symmetry-4-5",
+   "turn": 6,
+   "text": "Yes, it's 11. The hexagon has 6 and the pentagon has 5.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "result"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Was that 11?"
+   }
+  },
+  {
+   "run": "OT5-r2",
+   "case": "OT5",
+   "question": "sample-symmetry-4-5",
+   "turn": 8,
+   "text": "You said 6 plus 5. I still got 11.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "result"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "That's alright. Let's check it together. Add up the ones: 6 + 5."
+   }
+  },
+  {
+   "run": "OT5-r2",
+   "case": "OT5",
+   "question": "sample-symmetry-4-5",
+   "turn": 10,
+   "text": "I already did 6 plus 5. I got 11.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "ones",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "result"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "What could you try for the ones?"
+   }
+  },
+  {
+   "run": "OT5-r2",
+   "case": "OT5",
+   "question": "sample-symmetry-4-5",
+   "turn": 14,
+   "text": "It's 11. 6 plus 5 is 11.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "result"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "I'm glad you told me. Add the ones: 6 + 5. What do you get?"
+   }
+  },
+  {
+   "run": "OT5-r3",
+   "case": "OT5",
+   "question": "sample-symmetry-4-5",
+   "turn": 2,
+   "text": "Hi! You said the hexagon has 6 lines and the pentagon has 5. So 6 + 5 is 11.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "open",
+    "say": "Hello, I'm Maya. I'm an AI. I'm here to help. A regular hexagon has 6 lines of symmetry. A regular pentagon has 5. Our question is 6 + 5."
+   }
+  },
+  {
+   "run": "OT5-r3",
+   "case": "OT5",
+   "question": "sample-symmetry-4-5",
+   "turn": 6,
+   "text": "Yes, I said 11. 6 plus 5 is 11.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "result"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Did you say 11?"
+   }
+  },
+  {
+   "run": "OT5-r3",
+   "case": "OT5",
+   "question": "sample-symmetry-4-5",
+   "turn": 8,
+   "text": "6 plus 5 is 11. I got that from the 6 and the 5.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "result"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "That's fine. Let's check it one part at a time. Let's add the ones: 6 + 5."
+   }
+  },
+  {
+   "run": "PTP1-r1",
+   "case": "PTP1",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-missing9-35-10",
+   "turn": 2,
+   "text": "Hi! I did 115 minus 35, and I got 80.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 80
+     },
+     "step": "e1",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "open",
+    "say": "Hey! I'm Maya, an AI helper for your workbook. Today we're working on the missing step."
+   }
+  },
+  {
+   "run": "PTP1-r1",
+   "case": "PTP1",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-missing9-35-10",
+   "turn": 8,
+   "text": "Oh, you said 8 equal steps. So 80 divided by 8 is 10.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 10
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Here's how. The 9th term is 8 equal steps past the start. 115 − 35 is what they add."
+   }
+  },
+  {
+   "run": "PTP1-r1",
+   "case": "PTP1",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-missing9-35-10",
+   "turn": 12,
+   "text": "Yes, I got 10. I split the 80 into 8 equal steps. Is that the answer?",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 10
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "So you said 10?"
+   }
+  },
+  {
+   "run": "PTP1-r1",
+   "case": "PTP1",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-missing9-35-10",
+   "turn": 14,
+   "text": "I already did that one. 115 minus 35 is 80.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 80
+     },
+     "step": "e1",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 10
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "There are 8 equal steps. Subtract the start. Try 115 − 35. What is it?"
+   }
+  },
+  {
+   "run": "PTP1-r2",
+   "case": "PTP1",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-missing9-35-10",
+   "turn": 6,
+   "text": "You said 80 divided by 8, so I did it. I got 10.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 10
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "e1"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Here's how. Each step adds the same amount. So the 8 equal steps share the increase: 80 ÷ 8."
+   }
+  },
+  {
+   "run": "PTP1-r2",
+   "case": "PTP1",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-missing9-35-10",
+   "turn": 8,
+   "text": "Yes, I got 10 from 80 divided by 8.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 10
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "e1"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Was that 10?"
+   }
+  },
+  {
+   "run": "PTP2-r1",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 16,
+   "text": "Yes, it's 44! I added 20 to the 24.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 44
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "result"
+   ],
+   "shownBefore": [
+    "e1"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "I think I heard 44. Is that it?"
+   }
+  },
+  {
+   "run": "PTP2-r1",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 22,
+   "text": "Yes, I said 44. I did 3 times 8 is 24, then plus 20.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 44
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "result"
+   ],
+   "shownBefore": [
+    "e1"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Did you say 44?"
+   }
+  },
+  {
+   "run": "PTP2-r2",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 12,
+   "text": "You said to add 20 and 24. So I got 44!",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 44
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "e1"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "You got it, 3 × 8 = 24. Add the start after the steps. Try 20 + 24. What is it?"
+   }
+  },
+  {
+   "run": "PTP2-r2",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 14,
+   "text": "Yes, I said 44. You said to add 20 and 24, so I did that.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 44
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "e1"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Did you say 44?"
+   }
+  },
+  {
+   "run": "PTP2-r2",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 16,
+   "text": "Yes, I got 44. You said to add 20 and 24, so I did.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 44
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "e1"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "So you said 44?"
+   }
+  },
+  {
+   "run": "PTP2-r2",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 22,
+   "text": "My final answer is 44. I changed it from 52.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 44
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "e1"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Thanks for explaining. What is your final answer on its own?"
+   }
+  },
+  {
+   "run": "PTP2-r3",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 8,
+   "text": "Okay, you said three steps, so I did 3 times 8. That is 24.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 24
+     },
+     "step": "e1",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Thank you for telling me. The start is the 1st term. The 4th term is 3 steps after it: 3 × 8."
+   }
+  },
+  {
+   "run": "PTP2-r3",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 10,
+   "text": "Okay, so 3 times 8 is 24. Then I add 24 to 20. That's 44.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 24
+     },
+     "step": "e1",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 44
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Thanks for telling me. The fourth term takes three steps. Work out 3 × 8 to find it."
+   }
+  },
+  {
+   "run": "PTP2-r3",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 14,
+   "text": "Yes, I said 44. I did 3 times 8 and added it to 20.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 44
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Did you say 44?"
+   }
+  },
+  {
+   "run": "PTP2-r3",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 16,
+   "text": "Three times eight is twenty-four. You said three steps.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 24
+     },
+     "step": "e1",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "That's fine. Let's check it one part at a time. The fourth term takes three steps. Try 3 × 8. What is it?"
+   }
+  },
+  {
+   "run": "PTP2-r3",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 18,
+   "text": "Yes, twenty-four. You said three steps, so I did three eights.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 24
+     },
+     "step": "e1",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "I think I heard 24. Is that it?"
+   }
+  },
+  {
+   "run": "PTP2-r3",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 22,
+   "text": "You said three steps, so I did 3 times 8. That's 24. Then 20 plus 24 is 44.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 24
+     },
+     "step": "e1",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 44
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "The fourth term takes three steps. Can you work out 3 × 8?"
+   }
+  },
+  {
+   "run": "PTP2-r3",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 30,
+   "text": "Yes, 44. I got it by adding 24 to 20.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 44
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "result"
+   ],
+   "shownBefore": [
+    "e1"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Just checking, was that 44?"
+   }
+  },
+  {
+   "run": "PTP3-r1",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 9,
+   "text": "You said the eighth term takes seven steps. So I did seven times nine, that's 63.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 63
+     },
+     "step": "e1",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "example_step",
+    "say": "There we go: (1 + 7 × 3) + (1 + 3) = 26."
+   }
+  },
+  {
+   "run": "PTP3-r1",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 11,
+   "text": "Then I add 34. That makes 97.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 97
+     },
+     "step": "e2",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "try_target",
+    "say": "Back to yours. Count the steps from the start."
+   }
+  },
+  {
+   "run": "PTP3-r1",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 13,
+   "text": "I did 34 plus 9, that's 43.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 43
+     },
+     "step": "e3",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "The eighth term takes seven steps. What do you get for 7 × 9?"
+   }
+  },
+  {
+   "run": "PTP3-r1",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 15,
+   "text": "Yes, 34 plus 9 is 43.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 43
+     },
+     "step": "e3",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Just checking, was that 43?"
+   }
+  },
+  {
+   "run": "PTP3-r1",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 17,
+   "text": "So 97 plus 43 is 140. I got 140.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 140
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Not quite. Let's look at 7 × 9 again. The eighth term takes seven steps. Work out 7 × 9 to find it."
+   }
+  },
+  {
+   "run": "PTP3-r1",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 21,
+   "text": "I did seven times nine. I got 63 for that.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 63
+     },
+     "step": "e1",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "The eighth term takes seven steps. What is 7 × 9?"
+   }
+  },
+  {
+   "run": "PTP3-r1",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 23,
+   "text": "I did seven times nine. It's 63, so I still got 140.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 63
+     },
+     "step": "e1",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 140
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "The eighth term takes seven steps. Use 7 × 9 for this. What is it?"
+   }
+  },
+  {
+   "run": "PTP3-r1",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 25,
+   "text": "Yes, I got 140. I added 97 and 43.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 140
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Did you say 140?"
+   }
+  },
+  {
+   "run": "PTP3-r1",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 27,
+   "text": "Yes, I said 140. I got it from 97 plus 43.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 140
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "So you said 140?"
+   }
+  },
+  {
+   "run": "PTP3-r2",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 8,
+   "text": "Like you showed me, seven times nine is 63.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 63
+     },
+     "step": "e1",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "example_step",
+    "say": "All done: (1 + 7 × 3) + (1 + 3) = 26."
+   }
+  },
+  {
+   "run": "PTP3-r2",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 12,
+   "text": "You said add the start. I got 97.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 97
+     },
+     "step": "e2",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "e1"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Exactly! 7 × 9 = 63. Add the start for the eighth term. Can you work out 34 + 63?"
+   }
+  },
+  {
+   "run": "PTP3-r2",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 14,
+   "text": "I already got 97. Now 34 plus 9 is 43.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 97
+     },
+     "step": "e2",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 43
+     },
+     "step": "e3",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "e1"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Add the start for the eighth term. Work out 34 + 63 to find it."
+   }
+  },
+  {
+   "run": "PTP3-r3",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 8,
+   "text": "You said the eighth term takes seven steps. So seven times nine is 63.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 63
+     },
+     "step": "e1",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "example_step",
+    "say": "And that's it: (1 + 7 × 3) + (1 + 3) = 26."
+   }
+  },
+  {
+   "run": "PTP3-r3",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 10,
+   "text": "Yes, seven times nine is 63.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 63
+     },
+     "step": "e1",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Was that 63?"
+   }
+  },
+  {
+   "run": "PTP3-r3",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 12,
+   "text": "You said count from the start. So I add 34 to 63. That's 97.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 63
+     },
+     "step": "e1",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 97
+     },
+     "step": "e2",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "try_target",
+    "say": "Now try your pattern. Count the steps from the start."
+   }
+  },
+  {
+   "run": "PTP3-r3",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 14,
+   "text": "Seven times nine is 63. I already said that.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 63
+     },
+     "step": "e1",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "The eighth term takes seven steps. What is 7 × 9?"
+   }
+  },
+  {
+   "run": "PTP3-r3",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 16,
+   "text": "I said it's 63 already. Now 34 plus 9 is 43.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 63
+     },
+     "step": "e1",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 43
+     },
+     "step": "e3",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "The eighth term takes seven steps. 7 × 9 gives this number. What is it?"
+   }
+  },
+  {
+   "run": "PTP4-r1",
+   "case": "PTP4",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-days8-32-9",
+   "turn": 4,
+   "text": "You said add the start, so 32 plus 72 is 104.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 104
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "e1"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "That's it: 8 × 9 = 72. Add the start after the steps. Can you work out 32 + 72?"
+   }
+  },
+  {
+   "run": "PTP4-r3",
+   "case": "PTP4",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-days8-32-9",
+   "turn": 2,
+   "text": "I did 8 times 9 is 72.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 72
+     },
+     "step": "e1",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "open",
+    "say": "Hello, I'm Maya. I'm an AI. I'm here to help. Today we're working on the pattern. Here's the question: {name} has 32 beads and gets 9 more each day."
+   }
+  },
+  {
+   "run": "PTP4-r3",
+   "case": "PTP4",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-days8-32-9",
+   "turn": 4,
+   "text": "It's 72. I did 8 times 9.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 72
+     },
+     "step": "e1",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Count 8 steps after the start. What is 8 × 9?"
    }
   }
  ]

@@ -45,7 +45,12 @@ function plainValue(st: WorkedStep): number | null {
     case "partial-product": case "place-point": return st.value;
     case "divide-digit": return st.quotient;
     case "combine-numerators": return st.numerator;
-    default: return null;
+    default: {
+      // Any other kind (a part of an evaluate or pattern question, a place-value digit): its own number.
+      const x = st as unknown as Record<string, unknown>;
+      for (const k of ["value", "total", "quotient", "digit"]) if (typeof x[k] === "number") return x[k] as number;
+      return null;
+    }
   }
 }
 

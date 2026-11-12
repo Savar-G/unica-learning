@@ -1,7 +1,7 @@
 {
  "source": "traces/maya-practice/2026-11-12T16-17-39-955Z",
- "runs": 66,
- "childTurns": 780,
+ "runs": 84,
+ "childTurns": 937,
  "generated": "scripts/maya-commit-corpus.mjs",
  "turns": [
   {
@@ -5591,6 +5591,1170 @@
     "say": "Let's look at the ones column: 7 and 9."
    },
    "why": "moved from positive: value check after the value"
+  },
+  {
+   "run": "OT4-r1",
+   "case": "OT4",
+   "question": "sample-symmetry-4-5",
+   "turn": 2,
+   "text": "I think my answer is 10!",
+   "answers": [],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "open",
+    "say": "Hey! I'm Maya, an AI helper for your workbook. A regular hexagon has 6 lines of symmetry. A regular pentagon has 5. Our question is 6 + 5."
+   },
+   "why": "guess or hedge"
+  },
+  {
+   "run": "OT4-r1",
+   "case": "OT4",
+   "question": "sample-symmetry-4-5",
+   "turn": 4,
+   "text": "Yes, I got 10!",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 10
+     },
+     "step": "result",
+     "verdict": "wrong"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Was that 10?"
+   },
+   "why": "read wrong"
+  },
+  {
+   "run": "OT4-r1",
+   "case": "OT4",
+   "question": "sample-symmetry-4-5",
+   "turn": 6,
+   "text": "Um, I'm not sure what to do with the ones. Can you show me?",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 10
+     },
+     "step": "result",
+     "verdict": "wrong"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Let's check this answer again together. How about the ones? What can you do there?"
+   },
+   "why": "read wrong, guess or hedge, request"
+  },
+  {
+   "run": "OT4-r1",
+   "case": "OT4",
+   "question": "sample-symmetry-4-5",
+   "turn": 10,
+   "text": "You said add the ones. So 6 plus 5 is 10!",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 10
+     },
+     "step": "ones",
+     "verdict": "wrong"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Add up the ones: 6 + 5."
+   },
+   "why": "read wrong"
+  },
+  {
+   "run": "OT4-r1",
+   "case": "OT4",
+   "question": "sample-symmetry-4-5",
+   "turn": 12,
+   "text": "Hmm, I still get 10. Is 6 plus 5 not 10?",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 10
+     },
+     "step": "ones",
+     "verdict": "wrong"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "That's not it yet. Let's look at the ones once more. Let's add the ones: 6 + 5."
+   },
+   "why": "read wrong"
+  },
+  {
+   "run": "OT4-r1",
+   "case": "OT4",
+   "question": "sample-symmetry-4-5",
+   "turn": 16,
+   "text": "You said 4 plus 2 is 6. I get that one. But 6 plus 5 still makes 10 for me.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 10
+     },
+     "step": "ones",
+     "verdict": "wrong"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "example_step",
+    "say": "There we go: 4 + 2 = 6."
+   },
+   "why": "read wrong"
+  },
+  {
+   "run": "OT4-r1",
+   "case": "OT4",
+   "question": "sample-symmetry-4-5",
+   "turn": 18,
+   "text": "Um, 6 plus 5 is 10 for me.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 10
+     },
+     "step": "ones",
+     "verdict": "wrong"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "try_target",
+    "say": "Thanks for telling me. Can you try 6 + 5 the same way?"
+   },
+   "why": "read wrong"
+  },
+  {
+   "run": "OT4-r1",
+   "case": "OT4",
+   "question": "sample-symmetry-4-5",
+   "turn": 20,
+   "text": "I still get 10. Six plus five is 10.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 10
+     },
+     "step": "ones",
+     "verdict": "wrong"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Not quite. Let's look at the ones again. Add the ones: 6 + 5. What do you get?"
+   },
+   "why": "read wrong"
+  },
+  {
+   "run": "OT4-r2",
+   "case": "OT4",
+   "question": "sample-symmetry-4-5",
+   "turn": 2,
+   "text": "I got 10 for the answer.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 10
+     },
+     "step": "result",
+     "verdict": "wrong"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "open",
+    "say": "Hello, I'm Maya. I'm an AI. I'm here to help. A regular hexagon has 6 lines of symmetry. A regular pentagon has 5. So our question is 6 + 5."
+   },
+   "why": "read wrong"
+  },
+  {
+   "run": "OT4-r2",
+   "case": "OT4",
+   "question": "sample-symmetry-4-5",
+   "turn": 4,
+   "text": "Um, I think 10 is right? I added 6 and 5.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 10
+     },
+     "step": "ones",
+     "verdict": "wrong"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Not yet. Let's check this answer together. Let's go to the ones. What do you think?"
+   },
+   "why": "read wrong, guess or hedge"
+  },
+  {
+   "run": "OT4-r2",
+   "case": "OT4",
+   "question": "sample-symmetry-4-5",
+   "turn": 8,
+   "text": "Okay. I still think it's 10. The ones column is the 6 and 5, right?",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 10
+     },
+     "step": "result",
+     "verdict": "wrong"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "I hear you. Let's look at the ones column: 6 and 5."
+   },
+   "why": "read wrong, guess or hedge"
+  },
+  {
+   "run": "OT4-r2",
+   "case": "OT4",
+   "question": "sample-symmetry-4-5",
+   "turn": 10,
+   "text": "Six plus five is 10. So my answer is still 10.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 10
+     },
+     "step": "ones",
+     "verdict": "wrong"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "I hear you. What do you get for 6 + 5?"
+   },
+   "why": "read wrong"
+  },
+  {
+   "run": "OT4-r2",
+   "case": "OT4",
+   "question": "sample-symmetry-4-5",
+   "turn": 12,
+   "text": "Six plus five is 10. I still got 10.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 10
+     },
+     "step": "ones",
+     "verdict": "wrong"
+    }
+   ],
+   "code": "same_hint_again",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Thanks for telling me. Not yet. Let's go back to the ones. What is 6 + 5?"
+   },
+   "why": "read wrong"
+  },
+  {
+   "run": "OT4-r2",
+   "case": "OT4",
+   "question": "sample-symmetry-4-5",
+   "turn": 18,
+   "text": "Okay. I got 10 again.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 10
+     },
+     "step": "ones",
+     "verdict": "wrong"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "try_target",
+    "say": "Thank you for telling me. Let's go back to yours: 6 + 5. You try it."
+   },
+   "why": "read wrong"
+  },
+  {
+   "run": "OT4-r2",
+   "case": "OT4",
+   "question": "sample-symmetry-4-5",
+   "turn": 20,
+   "text": "Six plus five is 10. I still got 10.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 10
+     },
+     "step": "ones",
+     "verdict": "wrong"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "I'm glad you told me. Let's check the ones again together. Add the ones: 6 + 5. What do you get?"
+   },
+   "why": "read wrong"
+  },
+  {
+   "run": "OT4-r2",
+   "case": "OT4",
+   "question": "sample-symmetry-4-5",
+   "turn": 22,
+   "text": "Okay, 6 and 5. I still think it's 10.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 10
+     },
+     "step": "ones",
+     "verdict": "wrong"
+    }
+   ],
+   "code": "same_hint_again",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "That's not it yet. Let's look at the ones once more. Look at the ones: 6 and 5."
+   },
+   "why": "read wrong, guess or hedge"
+  },
+  {
+   "run": "OT4-r3",
+   "case": "OT4",
+   "question": "sample-symmetry-4-5",
+   "turn": 2,
+   "text": "I got 10 for my answer.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 10
+     },
+     "step": "result",
+     "verdict": "wrong"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "open",
+    "say": "Hello, I'm Maya. I'm an AI. I'm here to help. A regular hexagon has 6 lines of symmetry. A regular pentagon has 5. Our question is 6 + 5."
+   },
+   "why": "read wrong"
+  },
+  {
+   "run": "OT4-r3",
+   "case": "OT4",
+   "question": "sample-symmetry-4-5",
+   "turn": 8,
+   "text": "Okay. You said 6 and 5. I still got 10 when I added them.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 10
+     },
+     "step": "ones",
+     "verdict": "wrong"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "I hear you. Let's look at the ones column: 6 and 5."
+   },
+   "why": "read wrong"
+  },
+  {
+   "run": "OT4-r3",
+   "case": "OT4",
+   "question": "sample-symmetry-4-5",
+   "turn": 10,
+   "text": "I think it's 10.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 10
+     },
+     "step": "ones",
+     "verdict": "wrong"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Not quite. Let's look at the ones again. What is 6 + 5?"
+   },
+   "why": "read wrong, guess or hedge"
+  },
+  {
+   "run": "OT4-r3",
+   "case": "OT4",
+   "question": "sample-symmetry-4-5",
+   "turn": 12,
+   "text": "I still think it's 10.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 10
+     },
+     "step": "ones",
+     "verdict": "wrong"
+    }
+   ],
+   "code": "invalid_proposal",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Thank you for telling me. Not yet. Let's check the ones together. Add the ones: 6 + 5. What do you get?"
+   },
+   "why": "read wrong, guess or hedge"
+  },
+  {
+   "run": "OT4-r3",
+   "case": "OT4",
+   "question": "sample-symmetry-4-5",
+   "turn": 16,
+   "text": "Um, I still think it's 10. I wrote 10.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 10
+     },
+     "step": "ones",
+     "verdict": "wrong"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "example_step",
+    "say": "Take your time. All done: 4 + 2 = 6."
+   },
+   "why": "read wrong, guess or hedge"
+  },
+  {
+   "run": "OT5-r1",
+   "case": "OT5",
+   "question": "sample-symmetry-4-5",
+   "turn": 6,
+   "text": "Yes, that's 11. Is it right?",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "result"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "I think I heard 11. Is that it?"
+   },
+   "why": "moved from positive: value check after the value"
+  },
+  {
+   "run": "OT5-r1",
+   "case": "OT5",
+   "question": "sample-symmetry-4-5",
+   "turn": 10,
+   "text": "I still think it's 11. Is it right?",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "result"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Let's go to the ones. What do you think?"
+   },
+   "why": "moved from positive: hedge"
+  },
+  {
+   "run": "OT5-r1",
+   "case": "OT5",
+   "question": "sample-symmetry-4-5",
+   "turn": 12,
+   "text": "Okay. The 6 and the 5 make 11, I think.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "result"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "I hear you. Let's look at the ones column: 6 and 5."
+   },
+   "why": "moved from positive: hedge"
+  },
+  {
+   "run": "OT5-r2",
+   "case": "OT5",
+   "question": "sample-symmetry-4-5",
+   "turn": 4,
+   "text": "Yes, I think it's 11. The hexagon has 6 and the pentagon has 5.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "I heard 11. Is that right?"
+   },
+   "why": "guess or hedge"
+  },
+  {
+   "run": "OT5-r2",
+   "case": "OT5",
+   "question": "sample-symmetry-4-5",
+   "turn": 12,
+   "text": "Okay. I think 6 and 5 make 11.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "result"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Let's look at the ones column: 6 and 5."
+   },
+   "why": "moved from positive: hedge"
+  },
+  {
+   "run": "PTP1-r1",
+   "case": "PTP1",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-missing9-35-10",
+   "turn": 10,
+   "text": "Yes, I think 10 is right! You said 8 equal steps, so I split the 80.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 10
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "I heard 10. Is that right?"
+   },
+   "why": "moved from positive: hedge"
+  },
+  {
+   "run": "PTP1-r1",
+   "case": "PTP1",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-missing9-35-10",
+   "turn": 16,
+   "text": "Okay. So my answer is 10, right?",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 10
+     },
+     "step": "result",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 80
+     },
+     "step": "e1",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "e1"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "There are 8 equal steps. Subtract the start. Here it is: 115 − 35 = 80."
+   },
+   "why": "moved from positive: value only in a question"
+  },
+  {
+   "run": "PTP2-r1",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 2,
+   "text": "Hi! I got 52 for the fourth term.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 52
+     },
+     "step": "result",
+     "verdict": "wrong"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "open",
+    "say": "Hey! I'm Maya, an AI helper for your workbook. Today we're working on the pattern."
+   },
+   "why": "read wrong"
+  },
+  {
+   "run": "PTP2-r1",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 10,
+   "text": "I got 24 for 3 times 8. Then 24 plus 20 is 44. Is that right?",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 24
+     },
+     "step": "e1",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 44
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "The fourth term takes three steps. Can you work out 3 × 8?"
+   },
+   "why": "moved from positive: value check after the value"
+  },
+  {
+   "run": "PTP2-r1",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 14,
+   "text": "Yes, I think it's 44. You said 3 times 8 is 24, so I added 20 to get 44.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 44
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [
+    "e1"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Just checking, was that 44?"
+   },
+   "why": "guess or hedge"
+  },
+  {
+   "run": "PTP2-r1",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 20,
+   "text": "Oh, so in the small one, 3 steps after the start. So my 44 is the answer?",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 44
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "result"
+   ],
+   "shownBefore": [
+    "e1"
+   ],
+   "lastMaya": {
+    "act": "example_step",
+    "say": "There we go: 1 + 3 × 2 = 7."
+   },
+   "why": "moved from positive: value only in a question"
+  },
+  {
+   "run": "PTP2-r2",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 2,
+   "text": "I got 52 for the fourth term.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 52
+     },
+     "step": "result",
+     "verdict": "wrong"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "open",
+    "say": "Hello, I'm Maya. I'm an AI. I'm here to help. Our question is the pattern."
+   },
+   "why": "read wrong"
+  },
+  {
+   "run": "PTP2-r2",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 4,
+   "text": "Why only three steps? I thought the fourth term needs four.",
+   "answers": [],
+   "code": "hint_too_high",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Not yet. Let's check this answer together. The fourth term takes three steps. What do you get for 3 × 8?"
+   },
+   "why": "guess or hedge"
+  },
+  {
+   "run": "PTP2-r2",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 18,
+   "text": "I think it's 44. You said to line up the tens, so I did.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 44
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "e1"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "It's okay to feel unsure. Let's check it together. Line up the ones and the tens. What is 20 + 24?"
+   },
+   "why": "moved from positive: hedge"
+  },
+  {
+   "run": "PTP2-r2",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 20,
+   "text": "So is 44 right? I changed it from 52.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 44
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "e1"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Add the start after the steps. The part to work out is 20 + 24."
+   },
+   "why": "moved from positive: value only in a question"
+  },
+  {
+   "run": "PTP2-r3",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 2,
+   "text": "I added eight four times, so I got 52.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 52
+     },
+     "step": "result",
+     "verdict": "wrong"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "open",
+    "say": "Hello, I'm Maya. I'm an AI. I'm here to help. Today we're working on the pattern."
+   },
+   "why": "read wrong"
+  },
+  {
+   "run": "PTP2-r3",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 4,
+   "text": "Why only three steps? I thought I did four.",
+   "answers": [],
+   "code": "hint_too_high",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Hmm, not yet. Let's try this answer again. The fourth term takes three steps. What is 3 × 8?"
+   },
+   "why": "guess or hedge"
+  },
+  {
+   "run": "PTP2-r3",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 12,
+   "text": "Yes, I think 44 is right. I did 3 times 8 and added it to 20.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 44
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "I heard 44. Is that right?"
+   },
+   "why": "moved from positive: hedge"
+  },
+  {
+   "run": "PTP2-r3",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 24,
+   "text": "So 20 plus 24 is 44. Is 44 my answer?",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 44
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "I'm glad you told me. The fourth term takes three steps. Use 3 × 8 for this. What is it?"
+   },
+   "why": "moved from positive: a question about the value"
+  },
+  {
+   "run": "PTP2-r3",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 26,
+   "text": "You said 24, so I add it to 20. That's 44.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 24
+     },
+     "step": "e1",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 44
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "e1"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "The fourth term takes three steps. We get 3 × 8 = 24."
+   },
+   "why": "moved from positive: echo after a show",
+   "blocked": [
+    "e1"
+   ]
+  },
+  {
+   "run": "PTP3-r1",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 2,
+   "text": "I'm stuck. Can we try a smaller one?",
+   "answers": [],
+   "code": "line_not_offered",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "open",
+    "say": "Hey! I'm Maya, an AI helper for your workbook. Today we're working on the pattern. It says: What is its 8th term plus its 2nd term?"
+   },
+   "why": "request"
+  },
+  {
+   "run": "PTP3-r1",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 19,
+   "text": "I think so. I got 140 from 97 plus 43.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 140
+     },
+     "step": "result",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 97
+     },
+     "step": "e2",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 43
+     },
+     "step": "e3",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "I heard 140. Is that right?"
+   },
+   "why": "moved from positive: hedge"
+  },
+  {
+   "run": "PTP3-r1",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 29,
+   "text": "Oh, 7 times 9 is 63. So is my 140 right?",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 63
+     },
+     "step": "e1",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 140
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "e1"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "The eighth term takes seven steps. We get 7 × 9 = 63."
+   },
+   "why": "moved from positive: value check after the value"
+  },
+  {
+   "run": "PTP4-r2",
+   "case": "PTP4",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-days8-32-9",
+   "turn": 2,
+   "text": "Hi. I think 8 times 9 is 72.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 72
+     },
+     "step": "e1",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "open",
+    "say": "Hello, I'm Maya. I'm an AI. I'm here to help. Our question is the pattern. Let's read it again: {name} has 32 beads and gets 9 more each day. It says: How many beads does {name} have after 8 days?"
+   },
+   "why": "moved from positive: hedge"
   }
  ]
 }
