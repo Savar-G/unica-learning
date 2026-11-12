@@ -1095,6 +1095,8 @@ function exampleRevealsAnswer(s: Session): boolean {
 function stuckWayOut(s: Session, reading: Reading, rightResult: boolean): "example" | "close" | null {
   const pkg = s.package;
   if (!pkg || !s.turn || s.solved !== null || rightResult) return null;
+  // A question type with its own way out (ownWayOut: the waves' top help, easier example and honest close) keeps it.
+  if (ownWayOut(pkg)) return null;
   const main = isTeaching(s.state) ? s.state : s.resume;
   if (!main || !["ASSESS", "MODEL_EXAMPLE", "TRY_TARGET", "GUIDE_TARGET"].includes(main)) return null;
   const steps = pkg.easierExample.steps.length;
@@ -1276,7 +1278,7 @@ function teachingActsOf(s: Session, reading: Reading, rightResult: boolean, prog
   if (isMissingNumber(s.package) && main === "MODEL_EXAMPLE" && s.exampleShown === steps && realMissNow(s, reading) && !acts.includes("guide")) acts = [...acts, "guide"];
   const missed = reading.answers?.some(a => (a.problem ?? "target") === "target" && a.verdict === "wrong" && committedMiss(s, a));
   if (s.solved === null && !rightResult && !rightHere && s.turn !== null && s.ladder.step !== "result" && copiedStep(s) === null &&
-      s.ladder.hint >= 3 && missed && (!noStart || s.retried)) {
+      s.ladder.hint >= 3 && missed && (!noStart || s.retried) && !ownWayOut(s.package)) {
     return { acts: ["close"], code: "act_not_allowed", reason: "Close honestly without giving the answer." };
   }
   // Two wrong final answers once every column is done: the final step has only its gentlest help, already given, so
