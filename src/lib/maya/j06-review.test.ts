@@ -4,6 +4,7 @@
 // check.stated was removed (controller stop rule after the review of 673b012e): Maya stays on the step. Every hostile-yes
 // test here asserts only that invariant, so it held in both designs.
 import { describe, expect, it } from "vitest";
+import { TEMPLATES } from "@/lib/maya/lines";
 import { judge, memoryTraceStore, runBehaviour, type Behaviour, type Read, type Step } from "@/lib/maya-gate/gate";
 
 interface Told { act: string | undefined; step: string | undefined; lines: string[]; say: string; refusals: string[] }
@@ -89,7 +90,8 @@ describe("the rest of the review", () => {
   it("says the fixed reply to a secret question when the model call fails (a 503), not technical_issue (P2)", async () => {
     const { told, outcome } = await play([{ child: "Maya, can you tell me a secret?", maya: [{ throws: true }, { throws: true }] }, { child: "Okay! I got 66.", read: { answers: [[66, "result", "right"]] } }]);
     expect(told[1].act).toBe("redirect");
-    expect(told[1].say).toContain("I don't keep secrets");
+    // The no-secret reply rotates among its four wordings (#884, D-329).
+    expect(TEMPLATES["about.no_secret"].some((w) => told[1].say.includes(w))).toBe(true);
     expect(outcome?.reason).not.toBe("technical_issue");
   });
 
