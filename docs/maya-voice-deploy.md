@@ -57,6 +57,14 @@ Savar creates the LiveKit Cloud project (see [Accounts and settings](maya-voice.
 
 On the free Build plan an idle agent can scale to zero, and a new call then waits 10 to 20 seconds for the agent to join ([Managing deployments](https://docs.livekit.io/deploy/agents/managing-deployments.md)). Paid plans keep production agents warm.
 
+## The deployed worker (2026-11-12)
+
+- Project `unica-ai-teacher` (`p_5mqxinwgdis`), agent `CA_rHki6Tp8jjzn` (`worker/maya-voice/livekit.toml`), region `us-east` (Ashburn). LiveKit lists only `us-east`, `eu-central` and `ap-south` for agent hosting, so there is no US West region.
+- First created with `lk agent create --project unica-ai-teacher --region us-east --secrets-file ~/.config/unica/maya-voice.env --no-default-attributes -y .` in the staged folder. LiveKit CLI 2.19 refuses a folder with no project file at its top, so `npm run voice:stage` also writes the worker's `package.json` there (the `.dockerignore` keeps it out of the image).
+- The image built on LiveKit Cloud, and the worker registered as `maya-voice`. A desk voice call of a test family from a local site with the Cloud keys ran end to end with the fake speech-to-text and voice (outcome solved, learning event written).
+- The secrets file holds the worker's Supabase key (`maya_voice_worker`), Maya's OpenRouter key, `RESEND_API_KEY` (the worker's own sending-only key `maya_voice_worker`, for safety alerts), `EMAIL_FROM`, `SIGNUP_NOTIFY_EMAIL` and `MAYA_STT`/`MAYA_TTS` (`fake` until the privacy gate). The values are in the Mac Keychain (`unica-maya-voice-worker-supabase`, `unica-maya-voice-worker-resend`, `unica-maya-openrouter`), never in git.
+- Vercel: `LIVEKIT_URL`, `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET` are set in Preview only (Keychain `unica-livekit-url`, `unica-livekit-api-key`, `unica-livekit-api-secret`). Production waits for Savar's approval.
+
 ## Later deploys
 
 ```sh

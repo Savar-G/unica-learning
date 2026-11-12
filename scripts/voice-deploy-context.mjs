@@ -49,6 +49,9 @@ function main() {
   const show = (path) => git("show", `${ref}:${path}`);
   writeFileSync(join(out, "Dockerfile"), show("worker/maya-voice/Dockerfile"));
   writeFileSync(join(out, ".dockerignore"), show("worker/maya-voice/Dockerfile.dockerignore"));
+  // The LiveKit CLI (2.19) refuses a folder with no project file at its top. The .dockerignore keeps this copy out of
+  // the image, which installs from worker/maya-voice/package.json as before.
+  writeFileSync(join(out, "package.json"), show("worker/maya-voice/package.json"));
   const toml = show("worker/maya-voice/livekit.toml");
   if (agentId(toml)) writeFileSync(join(out, "livekit.toml"), toml);
   writeFileSync(join(out, MARK), `${git("rev-parse", ref).trim()}\n`);
