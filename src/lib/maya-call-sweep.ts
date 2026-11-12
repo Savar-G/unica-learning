@@ -1,12 +1,12 @@
 // The sweep of abandoned Maya chats and calls (#528). A child who closes the desk tab mid-chat, or a voice worker that
-// crashes, leaves a call live: no learning event, no parent note, and a voice call's whole minute grant stays counted
-// for the week. The reminder job (src/app/api/reminders) runs this sweep every 15 minutes. It ends each abandoned call
+// crashes, leaves a call live: no learning event, no parent note, and no connected seconds for a voice call. The
+// reminder job (src/app/api/reminders) runs this sweep every 15 minutes. It ends each abandoned call
 // through the call module's public "end" (src/lib/maya-call.ts `input(..., { type: "end" })`), the same path as a hang-up,
 // so the call stores its outcome, its learning event, the profile rebuild and the parent note, and a voice call stores
-// its connected seconds, which settle its minutes (the settle trigger of migration add_maya_minutes).
+// its connected seconds.
 //
 // The idle limit: a call is abandoned SWEEP_GRACE_MS (5 minutes) after its own end time, that is its start (or, when it
-// never started, when it was made) plus its time limit (10 minutes, or the shorter grant, `limitsOf` in src/lib/maya).
+// never started, when it was made) plus its time limit (10 minutes, or a shorter limit, `limitsOf` in src/lib/maya).
 // Why this and not a shorter silence:
 // - Every call, the desk chat too, ends at its time limit: the controller ends a session at the first input after
 //   start + limit as "time_limit". So a quiet child (writing on paper, say) is never cut off by the sweep while the chat
@@ -31,7 +31,7 @@
 //
 // No call holds up the others (review P2): the sweep reads calls page by page, and a call it cannot end (the family's
 // deletion fence, a store error) is counted as failed and tried again by a later run. A voice call whose connection
-// times cannot be read is not ended (the call module refuses), so a later run settles its minutes from them.
+// times cannot be read is not ended (the call module refuses), so a later run stores its connected seconds from them.
 //
 // Its place between runs (#586): each kind of call keeps a place in the source (migrations maya_call_sweep_cursors and
 // maya_call_sweep_cursor_until). Before it starts to end a call, the sweep stores that call as its place, and the next

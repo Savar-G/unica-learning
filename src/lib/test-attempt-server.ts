@@ -60,7 +60,7 @@ export function attemptStore(admin: SupabaseClient<Database>): AttemptStore {
         .maybeSingle();
       if (error) throw new StoreError("load failed", error.message);
       if (!row) return null;
-      // Every answer in place order. The module leaves out the removed extra round's answers (D-145, fromRemovedRound).
+      // Every answer in place order.
       const { data: answers, error: answersError } = await admin.from("answers")
         .select("question_id, response, time_ms").eq("assessment_id", id).order("position");
       if (answersError) throw new StoreError("answers load failed", answersError.message);
@@ -318,6 +318,15 @@ export async function parentStartStates(parent: string, childId?: string): Promi
  */
 function factsStore(admin: SupabaseClient<Database>): FactsStore {
   return {
+    // Only the attempt columns and the profile and seed inside the stored test: never its question pool or the answers.
+    async factsOwner(parent, id) {
+      const { data: row, error } = await admin.from("assessments").select(`${ATTEMPT_COLUMNS}, profile:test->profile, seed:test->seed`)
+        .eq("id", id).eq("parent_id", parent)
+        .maybeSingle();
+      if (error) throw new StoreError("load failed", error.message);
+      return row ? { attempt: toAttempt(row), profile: row.profile, seed: row.seed } : null;
+    },
+
     async loadFacts(id) {
       const { data: row, error } = await admin.from("assessment_facts").select("started_at, test").eq("assessment_id", id)
         .maybeSingle();

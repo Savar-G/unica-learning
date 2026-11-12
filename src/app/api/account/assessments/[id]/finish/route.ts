@@ -12,6 +12,9 @@ import { attemptStore } from "@/lib/test-attempt-server";
 // Scores a complete test with the assessment core and stores the placement with the assessment.
 // Safe to call twice: a finished test answers ok again. The test attempt module (src/lib/test-attempt.ts, #150) scores
 // and stores it; this route reads the help answer from the request and only translates the result.
+// The report job runs after the response (after()) with this function's 300 seconds, as in the retry route.
+export const maxDuration = 300;
+
 export async function POST(request: Request, ctx: RouteContext<"/api/account/assessments/[id]/finish">) {
   const parent = await parentId(await sessionClient());
   if (!parent) return testFail("signed_out", 401);

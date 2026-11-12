@@ -128,7 +128,8 @@ describe("workbook email delivery through its public server interface", () => {
 
 describe("the plan start email, one per generation (review round 5 of PR #593)", () => {
   type Claim = { email_send_status: string; email_claim_token: string; email_claimed_at: string; email_text?: string; email_html?: string; monthly_cents?: number; first_charge_at?: string; family_terms?: boolean; trial_end?: string | null };
-  function planFixture(grade = 3, testFamily = false) {
+  type FamilyChild = { id: string; created_at: string; province: string };
+  function planFixture(grade = 3, testFamily = false, family?: { postal: string | null; children: FamilyChild[] }) {
     const records = new Map<number, Claim>([[1, { email_send_status: "", email_claim_token: "", email_claimed_at: "" }], [2, { email_send_status: "", email_claim_token: "", email_claimed_at: "" }]]);
     const legacy: number[] = [];
     const requests: URL[] = [];
@@ -139,8 +140,15 @@ describe("the plan start email, one per generation (review round 5 of PR #593)",
         const json = (data: unknown) => new Response(JSON.stringify(data), { status: 200, headers: { "content-type": "application/json" } });
         const body = init?.body ? JSON.parse(String(init.body)) : {};
         if (url.pathname.endsWith("/card_setups")) return json([{ parent_id: "parent-1", child_id: "child-1" }]);
-        if (url.pathname.endsWith("/parents")) return json([{ name: "Priya", email: "real-parent@example.com", postal: "V3S 1A1", time_zone: null }]);
-        if (url.pathname.endsWith("/children")) return json([{ first_name: "Asha", province: "BC", grade }]);
+        if (url.pathname.endsWith("/parents")) return json([{ name: "Priya", email: "real-parent@example.com", postal: family ? family.postal : "V3S 1A1", time_zone: null }]);
+        // The family province read: the family's children in the order asked for (created_at, then id), up to the limit.
+        if (url.pathname.endsWith("/children") && url.searchParams.get("select")?.includes("created_at")) {
+          if (url.searchParams.get("parent_id") !== "eq.parent-1" || url.searchParams.get("order") !== "created_at.asc,id.asc") throw Error(`Unexpected family read: ${url.search}`);
+          const rows = [...family?.children ?? [{ id: "child-1", created_at: "2026-10-01T00:00:00Z", province: "BC" }]]
+            .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
+          return json(rows.slice(0, Number(url.searchParams.get("limit") ?? rows.length)));
+        }
+        if (url.pathname.endsWith("/children")) return json([{ first_name: "Asha", province: family?.children.find((c) => c.id === "child-1")?.province ?? "BC", grade }]);
         if (url.pathname.endsWith("/test_accounts")) return json(testFamily ? [{ parent_id: "parent-1" }] : []);
         if (url.pathname.endsWith("/admin_users")) return json([]);
         // The old ledger's one key, for a head that still uses it: a second send with the same key finds it taken.
@@ -195,6 +203,19 @@ describe("the plan start email, one per generation (review round 5 of PR #593)",
     } finally { clock.mockRestore(); }
   });
 
+  it("dates the first charge in the family's zone from its oldest child, not the card's child", async () => {
+    // No browser zone and no postal code: the province decides. The card is for the younger child, in Ontario; the
+    // oldest child is in BC, so the family is on Pacific time. 06:00 UTC on December 10 is still December 9 in Vancouver.
+    const f = planFixture(3, false, { postal: null, children: [
+      { id: "child-1", created_at: "2026-11-02T00:00:00Z", province: "ON" },
+      { id: "child-0", created_at: "2026-10-01T00:00:00Z", province: "BC" },
+    ] });
+    Object.assign(f.records.get(1)!, { family_terms: true, monthly_cents: 5999, first_charge_at: "2026-12-10T06:00:00Z", trial_end: "2026-12-10T06:00:00Z" });
+    expect((await sendPlanStartEmail(f.db, key(1), f.transport)).status).toBe("sent");
+    expect(f.messages[0].text).toContain("December 9, 2026");
+    expect(f.messages[0].text).not.toContain("December 10, 2026");
+  });
+
   it.each([2, 3])("uses the saved card child's stored grade and keeps the exact instructions in its claim (%i)", async (grade) => {
     const f = planFixture(grade);
     expect((await sendPlanStartEmail(f.db, key(1), f.transport)).status).toBe("sent");
@@ -204,7 +225,7 @@ describe("the plan start email, one per generation (review round 5 of PR #593)",
     expect(f.records.get(1)?.email_text).toBe(message.text);
     expect(f.records.get(1)?.email_html).toBe(message.html);
     expect(message.html).toContain('href="https://unicalearning.com/account/feedback"');
-    const child = f.requests.find((u) => u.pathname.endsWith("/children"))!.searchParams;
+    const child = f.requests.find((u) => u.pathname.endsWith("/children") && u.searchParams.has("id"))!.searchParams;
     expect(child.get("id")).toBe("eq.child-1");
     expect(child.get("parent_id")).toBe("eq.parent-1");
     expect(child.get("select")?.split(",")).toContain("grade");

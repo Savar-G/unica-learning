@@ -22,16 +22,13 @@ import { allRight, knowsUpTo, takeTest } from "./scripted-child";
 import { MAIN_REJECTED_UNTESTED } from "./untested-wordings";
 
 const grade4 = (isRight = allRight, province: Province = "BC") => takeTest({ grade: 4, province }, 1, isRight).placement;
-const report = (placement: Placement, completedTestsInGrade = 0, workReviews: WorkReview[] = []) =>
-  reportModel(placement, { completedTestsInGrade, workReviews });
+const report = (placement: Placement, workReviews: WorkReview[] = []) =>
+  reportModel(placement, { workReviews });
 
 describe("report model", () => {
-  describe("comparison stage, by completed tests in the child's grade", () => {
-    it("under 100 shows the grade-level scale only", () => {
-      expect(report(grade4(), 99).comparison).toEqual({ stage: "scale" });
-    });
-    it("does not infer a rank from a raw legacy count", () => {
-      for (const n of [100, 399, 400]) expect(report(grade4(), n).comparison).toEqual({ stage: "scale" });
+  describe("comparison stage", () => {
+    it("without a comparison input shows the grade-level scale only", () => {
+      expect(report(grade4()).comparison).toEqual({ stage: "scale" });
     });
     it("builds a measured comparison without retaining any cohort input", () => {
       const placement = grade4();
@@ -109,7 +106,7 @@ describe("report model", () => {
       ...extra,
     });
     const withWork = (shownWork: ShownWork[], workReviews: WorkReview[] = []) =>
-      reportModel(grade4(), { completedTestsInGrade: 0, workReviews, shownWork }).work;
+      reportModel(grade4(), { workReviews, shownWork }).work;
     const ids = (work: ReportModel["work"]) => work.map((w) => w.questionId);
 
     it("no shown work: nothing to show, even with reviews", () => {
@@ -170,7 +167,7 @@ describe("report model", () => {
       expect(low.confidence).toBe("low");
       expect(workReview(wrong, result({ score: REVIEW_SURE_SCORE })).confidence).toBe("high");
       const shownWork: ShownWork[] = [{ questionId: "s1-3", prompt: "47 + 38 = ?", correct: false, required: true, image: "p/a/s1-3.png", text: null }];
-      expect(reportModel(grade4(), { completedTestsInGrade: 0, workReviews: [low], shownWork }).work).toEqual([
+      expect(reportModel(grade4(), { workReviews: [low], shownWork }).work).toEqual([
         { questionId: "s1-3", prompt: "47 + 38 = ?", correct: false, image: "p/a/s1-3.png", text: null, comment: null },
       ]);
     });
@@ -206,7 +203,7 @@ describe("report model", () => {
 
   describe("the AI report text (#68)", () => {
     const withText = (reportText: string | null, placement = grade4(knowsUpTo(4))) =>
-      reportModel(placement, { completedTestsInGrade: 0, workReviews: [], reportText });
+      reportModel(placement, { workReviews: [], reportText });
 
     describe("the level claim the page already shows (D-133)", () => {
       const ceiling = () => grade4(allRight);
@@ -320,7 +317,7 @@ describe("report model", () => {
     it("allows the numbers of the work shown in the report", () => {
       const shownWork: ShownWork[] = [{ questionId: "s1-3", prompt: "47 + 38 = ?", correct: false, required: true, image: "p/a/s1-3.png", text: null }];
       const text = "On 47 + 38, {name} added each column but did not carry.";
-      expect(reportModel(grade4(knowsUpTo(4)), { completedTestsInGrade: 0, workReviews: [], shownWork, reportText: text }).summary).toBe(text);
+      expect(reportModel(grade4(knowsUpTo(4)), { workReviews: [], shownWork, reportText: text }).summary).toBe(text);
       expect(withText(text)).not.toHaveProperty("summary");
     });
 
@@ -333,14 +330,14 @@ describe("report model", () => {
         image: "4f1c2e9a-0b3d-4c71-97aa-1234567890ab/9e8d7c6b-5a49-4382-a1b0-c9d8e7f60514/s1-3-71ab97.png",
         text: "97 then 71",
       }];
-      const model = (reportText: string) => reportModel(grade4(knowsUpTo(4)), { completedTestsInGrade: 0, workReviews: [], shownWork, reportText });
+      const model = (reportText: string) => reportModel(grade4(knowsUpTo(4)), { workReviews: [], shownWork, reportText });
       expect(model("{name} got 97 questions right and is 71 days ahead.")).not.toHaveProperty("summary");
       expect(model("On 47 + 38, {name} did not carry.").summary).toBe("On 47 + 38, {name} did not carry.");
     });
 
     it("reads a number written as two words as one number", () => {
       const shownWork: ShownWork[] = [{ questionId: "s1-3", prompt: "20 + 5 = ?", correct: true, required: true, image: "p/a/s1-3.png", text: null }];
-      const model = (reportText: string) => reportModel(grade4(knowsUpTo(4)), { completedTestsInGrade: 0, workReviews: [], shownWork, reportText });
+      const model = (reportText: string) => reportModel(grade4(knowsUpTo(4)), { workReviews: [], shownWork, reportText });
       expect(model("On 20 + 5, {name} wrote twenty-five.")).not.toHaveProperty("summary");
       expect(model("On 20 + 5, {name} wrote twenty five.")).not.toHaveProperty("summary");
     });
@@ -383,7 +380,7 @@ describe("report model", () => {
     // 27 of 29 facts right, about 2 seconds a fact: quick and secure.
     const FACTS: FactsResult = { families: ["add20", "sub20"], seconds: 60, answered: 29, correct: 27, skipped: 0, medianMs: 2000, accuracy: "secure", speed: "quick" };
     const withFacts = (grade: Grade, reportText: string | null = null) =>
-      reportModel({ ...takeTest({ grade, province: "BC" }, 1, knowsUpTo(grade)).placement, facts: FACTS }, { completedTestsInGrade: 0, workReviews: [], reportText });
+      reportModel({ ...takeTest({ grade, province: "BC" }, 1, knowsUpTo(grade)).placement, facts: FACTS }, { workReviews: [], reportText });
     const SPEEDY = [
       // The round's 60 seconds is not among the facts below grade 5 either (a "number" problem): see the next tests.
       "{name} got 27 facts right, accurate and quick.",

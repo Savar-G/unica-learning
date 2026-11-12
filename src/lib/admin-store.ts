@@ -13,7 +13,7 @@ import { givenQuestions, type FactsTest, type HelpAnswer, type Placement, type P
 import type { ProgressInput } from "@/lib/admin-progress";
 import { isUuid } from "@/lib/assessment-store";
 import { LEARNING_COLUMNS, type LearningRow } from "@/lib/learning-style";
-import { filterTests, mainOnly, questionNumbers, type AdminFilters, type AnswerRecord, type FactAnswerRecord, type ReviewRecord, type ShownRecord } from "@/lib/admin-view";
+import { filterTests, questionNumbers, type AdminFilters, type AnswerRecord, type FactAnswerRecord, type ReviewRecord, type ShownRecord } from "@/lib/admin-view";
 import type { TestContextRecord } from "@/lib/admin-view";
 import { sessionClient } from "@/lib/supabase-auth";
 import type { AssessmentStatus } from "@/lib/test-api";
@@ -279,12 +279,12 @@ export interface TestDetail {
   test: TestRow & { seed: number; resume_until: string; stored: StoredTest };
   /** The test context (#185): the device and the halfway break. */
   context: TestContextRecord;
-  /** The answers in test order. D-145: not those to the removed extra round's questions (#190, fromRemovedRound). */
+  /** The answers in test order. */
   answers: AnswerRecord[];
   reviews: ReviewRecord[];
   report: { id: string; created_at: string; questions: number; minutes: number; emailed_at: string | null; email_id: string | null; email_error: string | null; alerted_at: string | null; alert_error: string | null } | null;
   facts: { started_at: string; test: FactsTest; answers: FactAnswerRecord[] } | null;
-  /** When the server first served each question (#184). D-145: not the removed extra round's questions. */
+  /** When the server first served each question (#184). */
   shows: ShownRecord[];
   emails: EmailRow[];
   /** Short-lived signed URLs of the drawings, by stored path. */
@@ -305,13 +305,11 @@ export async function getTest(a: AdminSession, id: string): Promise<TestDetail |
   if (!isUuid(id)) return null;
   // Everything keyed by the test id is read with the test row, not after it; the drawings are signed as soon as the
   // answers arrive. With no such test the other reads are thrown away.
-  // D-145: the answers, serves and work reviews of the removed extra round's questions (#190), which two tests still
-  // store, are left out here, so no part of the test page, its progress or its drawings shows them.
   const answersRead = a.db.from("answers").select(`${ANSWER_COLUMNS}, ${TIMELINE_COLUMNS}`).eq("assessment_id", id).order("position")
-    .then((r) => mainOnly(must<AnswerRecord[]>(r, "answers")));
+    .then((r) => must<AnswerRecord[]>(r, "answers"));
   const related = Promise.all([
     answersRead,
-    a.db.from("work_reviews").select(REVIEW_COLUMNS).eq("assessment_id", id).then((r) => mainOnly(must<ReviewRecord[]>(r, "reviews"))),
+    a.db.from("work_reviews").select(REVIEW_COLUMNS).eq("assessment_id", id).then((r) => must<ReviewRecord[]>(r, "reviews")),
     a.db.rpc("admin_reports").select("id, created_at, questions, minutes, emailed_at, email_id, email_error, alerted_at, alert_error").eq("assessment_id", id)
       .maybeSingle().then((r) => must<TestDetail["report"]>(r, "report")),
     a.db.from("assessment_facts").select("started_at, test").eq("assessment_id", id).maybeSingle()
@@ -320,7 +318,7 @@ export async function getTest(a: AdminSession, id: string): Promise<TestDetail |
       .then((r) => must<FactAnswerRecord[]>(r, "fact answers")),
     emailRows(a, (q) => q.eq("assessment_id", id)),
     a.db.from("question_shows").select("position, question_id, shown_at").eq("assessment_id", id).order("position")
-      .then((r) => mainOnly(must<ShownRecord[]>(r, "question shows"))),
+      .then((r) => must<ShownRecord[]>(r, "question shows")),
     answersRead.then((answers) => signWork(a.db, answers.flatMap((x) => (x.work_path ? [x.work_path] : [])))),
   ]);
   // a failed read with no test row behind it must not become an unhandled rejection
@@ -352,8 +350,8 @@ export async function getTest(a: AdminSession, id: string): Promise<TestDetail |
  */
 export async function getStrokes(a: AdminSession, id: string): Promise<Record<string, string | null>> {
   if (!isUuid(id)) return {};
-  const rows = mainOnly(must<{ question_id: string; strokes_path: string }[]>(
-    await a.db.from("answers").select("question_id, strokes_path").eq("assessment_id", id).not("strokes_path", "is", null), "strokes"));
+  const rows = must<{ question_id: string; strokes_path: string }[]>(
+    await a.db.from("answers").select("question_id, strokes_path").eq("assessment_id", id).not("strokes_path", "is", null), "strokes");
   const urls = await signWork(a.db, rows.map((r) => r.strokes_path));
   return Object.fromEntries(rows.map((r) => [r.question_id, urls[r.strokes_path] ?? null]));
 }
@@ -381,7 +379,7 @@ export async function getProfile(a: AdminSession, id: string): Promise<ProfileDe
     a.db.from("learner_profiles").select("created_at, built_at, schema_version, profile").eq("assessment_id", id).maybeSingle()
       .then((r) => must<ProfileDetail["stored"]>(r, "learner profile")),
     a.db.from("answers").select("position, question_id").eq("assessment_id", id)
-      .then((r) => mainOnly(must<Pick<AnswerRecord, "position" | "question_id">[]>(r, "answers"))),
+      .then((r) => must<Pick<AnswerRecord, "position" | "question_id">[]>(r, "answers")),
   ]);
   return { test: { ...test, child: child ?? null, parent: parent ?? null }, stored, numbers: questionNumbers(answers) };
 }

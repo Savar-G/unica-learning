@@ -199,6 +199,11 @@ export interface WorkbookStore {
   childWorkbooks(childId: string): Promise<WorkbookSummary[]>;
   /** One page with its questions, or null. */
   page(workbookId: string, pageNumber: number): Promise<WorkbookPage | null>;
+  /**
+   * Every page of a workbook, in page order: its number and how many questions it holds, without reading a question.
+   * Empty for a workbook that is not found.
+   */
+  pageIndex(workbookId: string): Promise<{ number: number; questions: number }[]>;
   /** A question by workbook, page number and question number. */
   question(ref: WorkbookQuestionRef): Promise<QuestionLookup>;
   /** The page whose QR code holds `token` (its number), with its workbook, or null. */

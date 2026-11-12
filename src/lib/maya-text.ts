@@ -68,7 +68,7 @@ export interface TextSessionOptions {
    * the flag it started with.
    */
   freeTalk?: boolean;
-  /** The call's end when it is shorter than 10 minutes (ms; #330). A resumed call keeps the limits it started with. */
+  /** The call's end when it is shorter than 10 minutes (ms). A resumed call keeps the limits it started with. */
   limitMs?: number;
   /** The free-talk review (src/lib/maya-talk-review.ts), or null. */
   reviewer?: TalkReviewer | null;
