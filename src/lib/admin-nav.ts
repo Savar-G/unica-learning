@@ -3,7 +3,7 @@
 // labels and the grouping changed (emails and the analytics filter link to the old addresses).
 
 export type AdminNavKey =
-  | "home" | "families" | "tests" | "feedback" | "production" | "delivery" | "marking" | "calls"
+  | "home" | "health" | "families" | "tests" | "feedback" | "production" | "delivery" | "marking" | "calls"
   | "flyers" | "emails" | "templates" | "skillmap" | "reviews" | "ai" | "preview" | "export";
 
 export interface AdminNavItem {
@@ -25,6 +25,7 @@ export type AdminBadges = Partial<Record<AdminNavKey, AdminBadge>>;
 
 export const ADMIN_NAV: readonly AdminNavEntry[] = [
   { key: "home", label: "Home", href: "/admin" },
+  { key: "health", label: "What to fix", href: "/admin/health" },
   { folder: "Families", items: [
     { key: "families", label: "Families", href: "/admin/parents" },
     { key: "tests", label: "Tests", href: "/admin/tests" },
@@ -66,6 +67,7 @@ export const ADMIN_NAV_ITEMS: readonly AdminNavItem[] = ADMIN_NAV.flatMap((e) =>
  */
 const SEGMENT: Record<string, AdminNavKey> = {
   activity: "home",
+  health: "health",
   parents: "families",
   children: "families",
   "maya-chat": "families",

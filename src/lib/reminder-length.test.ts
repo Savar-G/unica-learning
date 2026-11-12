@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
-import { createAdaptiveSession, createSession, lockAdaptiveBlock, nextQuestion, storedTest, submitAnswer, type Route, type Session, type StoredTest } from "@/lib/assessment";
+import { createAdaptiveSession, createSession, lockAdaptiveBlock, nextQuestion, storedTest, submitAnswer, REPORTED_STRAND, startState, type Route, type Session, type StoredTest } from "@/lib/assessment";
 import { reminderMessage, reminderStore } from "@/lib/reminder-store";
 import { dueReminders } from "@/lib/reminders";
 
@@ -110,11 +110,11 @@ it("R425M-3: a younger child's reminder uses the older inactive sibling's provin
 });
 
 /** Maya's block (adaptive) test, as stored after `blocks` blocks locked, with every drawn question answered; complete when no block follows. */
-function adaptiveTest(blocks: number | "all"): { test: StoredTest; answered: number } {
-  let s: Session = createAdaptiveSession(PROFILE, 7);
+function adaptiveTest(blocks: number | "all", rushed = false): { test: StoredTest; answered: number } {
+  let s: Session = createAdaptiveSession(PROFILE, rushed ? 1 : 7);
   for (let locked = 0; blocks === "all" ? !s.adaptive!.complete : locked <= blocks; ) {
     const q = nextQuestion(s);
-    if (q) s = submitAnswer(s, { questionId: q.id, response: q.answer, timeMs: 20_000 });
+    if (q) s = submitAnswer(s, { questionId: q.id, response: rushed && REPORTED_STRAND[q.strand] === "shapes" ? q.wrong[0].value : q.answer, timeMs: rushed ? 100 : 20_000 });
     else if (blocks === "all" || locked < blocks) { s = lockAdaptiveBlock(s); locked++; }
     else break;
   }
@@ -152,4 +152,20 @@ describe("a block (adaptive) test stopped on a block boundary", () => {
     const now = lastAnswer + 25 * HOUR;
     expect(dueReminders(await reminderStore(fakeAdmin(tables)).load(now), now)).toEqual([]);
   });
+});
+
+
+it("offers restart for an unscorable terminal test and waits until the usual reminder time (#769)", async () => {
+  const { test, answered } = adaptiveTest("all", true);
+  expect(test.adaptive).toMatchObject({ complete: true, sufficientEvidence: false });
+  const tables = mayaTables("stay", answered);
+  tables.assessments[0].test = test;
+  const { state, due } = await remindersFor(tables);
+  expect(startState(state.tests, lastAnswer + 2 * HOUR)).toEqual({ kind: "expired", attemptId: "a1" });
+  expect(due).toEqual([]);
+  // A read may already have stored the early closure: it still must not email before the scheduled time.
+  tables.assessments[0].status = "expired";
+  expect((await remindersFor(tables)).due).toEqual([]);
+  const now = lastAnswer + 25 * HOUR;
+  expect(dueReminders(await reminderStore(fakeAdmin(tables)).load(now), now)).toMatchObject([{ kind: "come_back", assessmentId: "a1" }]);
 });

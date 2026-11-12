@@ -13,6 +13,7 @@ import { testsCookie } from "@/lib/admin-test-families";
 // The icons of the picked prototype (.design/experiments/r-admin-nav/shared.js), 24 x 24, drawn with the stroke.
 const ICON: Record<AdminNavKey | "chev" | "side" | "menu" | "search", string> = {
   home: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/>',
+  health: '<path d="M3 12h4l2.5-6 4 12 2.5-6H21"/>',
   families: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 14.2c2.9-.4 5.5 1.8 5.5 4.8"/>',
   tests: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/>',
   feedback: '<path d="M4 5h16v11H9l-5 4z"/>',

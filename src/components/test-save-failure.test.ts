@@ -183,3 +183,12 @@ describe("a failed save of the question on the screen", () => {
     expect(answerShown()).toBe("793");
   });
 });
+
+
+it("tells the grown-up how to restart a test with insufficient evidence (#769)", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => json({ ok: true, step: { status: "complete", total: 20, sufficientEvidence: false } })));
+  await pad("7");
+  await pressNext();
+  expect(host.textContent).toContain("Please ask your grown-up to start a new test.");
+  expect(host.querySelector('a[href="/account"]')?.textContent).toBe("Back to your account");
+});

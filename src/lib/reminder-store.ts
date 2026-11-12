@@ -170,18 +170,21 @@ export function emailLogLedger(admin: SupabaseClient<Database>): SendLedger<DueR
 
 /**
  * Whether every question of an in-progress test with `answered` stored answers is in, by the test module's rule, so the
- * job and the start screen agree: then the test only waits to be scored. A block (adaptive) test asks the assessment
- * core (adaptiveAnsweredAll): the questions of the blocks drawn so far are not the test's length, as the next block is
+ * job and the start screen agree. A terminal test without enough evidence instead offers Start again. A block test
+ * asks the assessment core (adaptiveAnsweredAll): the questions of the blocks drawn so far are not the test's length, as the next block is
  * drawn when one locks. A staged test: stage 1 plus the stored route's form (#214); the band's length while the route is
  * not chosen.
  */
-async function answeredAllOf(admin: SupabaseClient<Database>, row: TestRow, answered: number): Promise<boolean> {
+async function completionOf(admin: SupabaseClient<Database>, row: TestRow, answered: number): Promise<{ answeredAll: boolean; insufficientEvidence?: true }> {
   const band = bandFor(row.grade as Grade).length;
-  if (!row.route) return answered >= band;
+  if (!row.route) return { answeredAll: answered >= band };
   const { data, error } = await admin.from("assessments").select("test").eq("id", row.id).maybeSingle();
   if (error) throw new Error(`test load: ${error.message}`);
-  if (!data?.test) return answered >= band;
-  return data.test.adaptive ? adaptiveAnsweredAll(data.test.adaptive, answered) : answered >= testLength(data.test, row.route, row.stage3_route);
+  if (!data?.test) return { answeredAll: answered >= band };
+  const adaptive = data.test.adaptive;
+  return adaptive ? { answeredAll: adaptiveAnsweredAll(adaptive, answered),
+    ...(adaptive.complete === true && adaptive.sufficientEvidence === false ? { insufficientEvidence: true as const } : {}) }
+    : { answeredAll: answered >= testLength(data.test, row.route, row.stage3_route) };
 }
 
 /** A test row in the rules' terms. One in progress counts its answers: with every answer in, it waits to be scored. */
@@ -191,7 +194,8 @@ async function withAnswers(admin: SupabaseClient<Database>, row: TestRow): Promi
   const { count, error } = await admin.from("answers").select("id", { count: "exact", head: true }).eq("assessment_id", row.id);
   if (error) throw new Error(`answers count: ${error.message}`);
   const answered = count ?? 0;
-  return { ...toAttempt(row, await answeredAllOf(admin, row, answered)), childId: row.child_id, answered };
+  const completion = await completionOf(admin, row, answered);
+  return { ...toAttempt(row, completion.answeredAll), ...(completion.insufficientEvidence ? { insufficientEvidence: true } : {}), childId: row.child_id, answered };
 }
 
 /**

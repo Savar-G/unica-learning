@@ -42,9 +42,9 @@ describe("the continue your test reminder", () => {
 describe("the come back reminder", () => {
   const e = email({ kind: "come_back", url: URL.replace("continue", "come_back") });
 
-  it("says the 24 hours ran out and the child can start fresh with new questions", () => {
+  it("says the test closed before a report and the child can start fresh", () => {
     expect(e.subject).toBe("Maya can start the math test fresh");
-    expect(e.text).toContain("Maya's free math placement test closed after 24 hours, before Maya finished.");
+    expect(e.text).toContain("Maya's free math placement test closed before a report could be made.");
     expect(e.text).toContain("Maya can start fresh with a new set of questions.");
     expect(e.text).toContain("about 20 minutes");
     expect(e.html).toContain("Start again");

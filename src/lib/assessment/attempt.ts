@@ -13,7 +13,7 @@ const DAY_MS = 24 * HOUR_MS;
 /** The stored status of a test (public.assessments.status); equal to its check constraint. */
 export const ATTEMPT_STATUSES = ["in_progress", "completed", "expired"] as const;
 export type AttemptStatus = (typeof ATTEMPT_STATUSES)[number];
-/** "finish": the test is scored. "expire": it ran out of time (see attemptState for when). */
+/** "finish": the test is scored. "expire": it ran out of time or cannot produce a report (see attemptState). */
 export type AttemptEvent = "finish" | "expire";
 /**
  * The moves of a stored test. Only a test in progress moves; a completed or expired test never changes status. The
@@ -39,10 +39,13 @@ export interface Attempt {
   resumeUntil: number;
   completedAt: number | null;
   /**
-   * True when every question has an answer and the test waits only to be scored. Such a test never expires, so a
-   * finished test whose scoring call failed is not lost. Leave it out when unknown (the answers were not loaded).
+   * True when every question has an answer. A scorable test never expires, so a
+   * finished test whose scoring call failed is not lost. `insufficientEvidence` takes precedence.
+   * Leave it out when the answers were not loaded.
    */
   answeredAll?: boolean;
+  /** A terminal adaptive test cannot produce a report. Derived from its stored state, never from a client request. */
+  insufficientEvidence?: boolean;
   /**
    * #189: the completed test's result may not be reliable (more than UNRELIABLE_FAST_PERCENT very fast answers), so a
    * new test opens at once, without the 30-day wait, at most once per 30 days (D-108, startState). Leave it out when
@@ -56,11 +59,12 @@ export function startAttempt(id: string, now: number): Attempt {
   return { id, status: "in_progress", startedAt: now, lastAnswerAt: null, resumeUntil: now + RESUME_HOURS * HOUR_MS, completedAt: null };
 }
 
-/** "open": the test takes answers. "expired": it ran out of time. "completed": it was scored. */
+/** "open": takes answers or awaits scoring. "expired": its window ended or it cannot produce a report. */
 export type AttemptState = "open" | "expired" | "completed";
 
 export function attemptState(attempt: Attempt, now: number): AttemptState {
   if (attempt.status !== "in_progress") return attempt.status;
+  if (attempt.insufficientEvidence) return "expired";
   return attempt.answeredAll || now <= attempt.resumeUntil ? "open" : "expired";
 }
 
@@ -90,7 +94,7 @@ export type StartState =
       /** #253: the next step is the part 2 "Check your answers" grid; the test attempt module adds it. */
       checkGrid?: boolean;
     }
-  /** "Start again": the last test ran out of time; a new one has new questions. */
+  /** "Start again": the last test closed before a report could be made; a new one has new questions. */
   | { kind: "expired"; attemptId: string }
   /** No new test yet: it opens 30 days after the last completed one. */
   | { kind: "wait"; completedAt: number; opensAt: number };

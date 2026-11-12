@@ -60,7 +60,7 @@ function content(e: ReminderEmailInput): { subject: string; preview: string; par
         subject: `${name} can start the math test fresh`,
         preview: `A new set of questions, about 20 minutes.`,
         paragraphs: [
-          `${name}'s free math placement test closed after 24 hours, before ${name} finished. That happens, and it's easy to start again.`,
+          `${name}'s free math placement test closed before a report could be made. You can start it again when ${name} is ready.`,
           `${name} can start fresh with a new set of questions. ${howLong}`,
         ],
         button: "Start again",
