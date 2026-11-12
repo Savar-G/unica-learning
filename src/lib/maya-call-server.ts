@@ -289,16 +289,20 @@ async function refusalPage(a: AdminSession, childId: string, traced: boolean, af
  * trace's list, a call with none the live session's. Only those JSON paths are read, never the whole trace or live state
  * (each holds the transcript, the board and the saved session). PostgREST stores a JSON null as SQL null, so `trace is
  * null` is exactly a call with no trace. Keyset pages avoid the API row cap. Admin RLS applies.
+ *
+ * The live read runs first. A call that ends between the two reads is in both, and its trace replaces the live list.
+ * The other order drops that call: the traced read misses it while `trace` is null, and the live read misses it once
+ * the trace is saved.
  */
 export async function childScopeSummary(a: AdminSession, childId: string) {
-  const records: Awaited<ReturnType<typeof refusalPage>> = [];
-  for (const traced of [true, false]) {
+  const byId = new Map<string, NonNullable<Awaited<ReturnType<typeof refusalPage>>>[number]>();
+  for (const traced of [false, true]) {
     for (let cursor: string | null = null; ;) {
       const rows = await refusalPage(a, childId, traced, cursor);
       if (!rows.length) break;
-      records.push(...rows);
+      for (const row of rows) byId.set(row.id, row);
       cursor = rows[rows.length - 1].id;
     }
   }
-  return scopeSummary(records.sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0)));
+  return scopeSummary([...byId.values()].sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0)));
 }

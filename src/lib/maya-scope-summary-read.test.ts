@@ -57,3 +57,42 @@ it("reads only the two refusal paths and counts what the whole rows count", asyn
   // never the whole trace or live column
   for (const s of new Set(selects)) expect(s.split(",").map((x) => x.trim()).every((x) => x === "id" || /^refusals:(trace|live)->/.test(x))).toBe(true);
 });
+
+/** One call, read through the same PostgREST filters, with a change that lands between the two passes. */
+function oneCallClient(finishing: Call, between: (traceFilter: string | null) => void) {
+  const fetch = async (input: RequestInfo | URL) => {
+    const url = new URL(String(input instanceof Request ? input.url : input));
+    const select = url.searchParams.get("select")!;
+    const trace = url.searchParams.get("trace");
+    const after = url.searchParams.get("id");
+    let rows = after ? [] : [finishing];
+    if (trace === "not.is.null") rows = rows.filter((r) => r.trace !== null);
+    else if (trace === "is.null") rows = rows.filter((r) => r.trace === null);
+    const body = rows.map((r) => Object.fromEntries(select.split(",").map((s) => s.trim()).map((s) => {
+      const [alias, expr] = s.includes(":") ? s.split(":") : [s, s];
+      return [alias, expr.includes("->") ? path(r, expr) : r[expr as keyof Call]];
+    })));
+    between(trace);
+    return Response.json(body);
+  };
+  return createClient<Database>("https://example.com", "test", { global: { fetch: fetch as typeof globalThis.fetch } });
+}
+
+it("still counts a call that saves its trace after the traced read has missed it", async () => {
+  const finishing: Call = { id: id(50), child_id: child, trace: null, live: { text: { session: { scopeRefusals: [refusal("outside_work", 9)] } } } };
+  const db = oneCallClient(finishing, (trace) => {
+    if (trace === "not.is.null" && finishing.trace === null) finishing.trace = { scopeRefusals: [refusal("outside_work", 9)] };
+  });
+  expect(await childScopeSummary({ db, userId: id(9999), email: "admin@example.invalid" } as AdminSession, child)).toEqual({ count: 1, reasons: { outside_work: 1 } });
+});
+
+it("counts the trace once when the call ends after the live read and is returned by both", async () => {
+  const finishing: Call = { id: id(51), child_id: child, trace: null, live: { text: { session: { scopeRefusals: [refusal("outside_work", 9), refusal("other_subject", 10)] } } } };
+  const db = oneCallClient(finishing, (trace) => {
+    if (trace === "is.null" && finishing.trace === null) {
+      finishing.trace = { scopeRefusals: [refusal("outside_work", 9)] };
+      finishing.live = null;
+    }
+  });
+  expect(await childScopeSummary({ db, userId: id(9999), email: "admin@example.invalid" } as AdminSession, child)).toEqual({ count: 1, reasons: { outside_work: 1 } });
+});
