@@ -13,7 +13,9 @@ describe("spot error committed miss probes", () => {
         const text = createTextSession({ callId: `spot-probe-${throws}-${said}`, package: FIXTURES.SPOT_MUL, model, clock: () => 1000, random: 1 });
         model.next([], undefined);
         await text.start();
-        for (let i = 0; i < 4; i++) {
+        // "Help me." is a help request (#698), so a claim's easier example comes first (lesson 10); help then climbs to the
+        // step's top (H3), where the probe's answer is read.
+        for (let i = 0; i < 12 && !(text.session.exampleShown > 0 && text.session.ladder.hint >= 3); i++) {
           model.next([{ throws: true }], { start: "has_work", help: "more" });
           await text.child("Help me.");
         }
