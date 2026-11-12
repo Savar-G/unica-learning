@@ -5,7 +5,7 @@ import { parentPlan, type KnownPlan, type ParentPlan, type PlanSubscription } fr
 import { cancelPlan, stripe, type CancelPlanOutcome } from "@/lib/stripe";
 import { customerSubscriptions } from "@/lib/stripe-subscriptions";
 import { adminClient } from "@/lib/supabase-auth";
-import { finishControl } from "@/lib/plan-controls-server";
+import { alertOpenCancel } from "@/lib/plan-cancel-recovery-server";
 
 // A parent's plans. Every read starts from the signed-in parent's id, so a parent reaches only their own Stripe
 // customers. The customer id stays on the server: the browser sends only the card setup's id.
@@ -23,6 +23,7 @@ function planSubscription(s: Stripe.Subscription): PlanSubscription {
   return {
     status: s.status, cancelAtPeriodEnd: s.cancel_at_period_end, trialEnd: s.trial_end, created: s.created,
     periodEnd: item?.current_period_end ?? null, cents: item?.price.unit_amount ?? null, endedAt: s.ended_at,
+    ...((s.metadata?.start_reason === "family_window_ended" || s.metadata?.start_reason === "paid_restart") && Number.isFinite(s.created) ? { firstCharge: s.created } : {}),
   };
 }
 
@@ -85,10 +86,20 @@ export async function cancelFamilyPlan(parent: string, cardId: string): Promise<
   const admission = await db.rpc("admit_plan_cancel", { p_parent: parent, p_card: cardId });
   if (admission.error) throw new Error(`plan cancel admission: ${admission.error.message}`);
   if (typeof admission.data !== "string" || !admission.data) return { ok: false, error: "pending" };
-  const result = await cancelPlan(s, data.stripe_customer_id);
-  // A definite no-plan refusal preserves the prior state. A thrown or uncertain result keeps its hold.
-  await finishControl(db, admission.data, result.ok ? "applied" : "refused");
-  return result.ok ? { ...result, child: data.child.first_name } : result;
+  const operation = admission.data, child = data.child.first_name;
+  let attemptedWrite = false;
+  let result: CancelPlanOutcome;
+  try {
+    result = await cancelPlan(s, data.stripe_customer_id, () => { attemptedWrite = true; });
+  } catch (e) {
+    // No command went to Stripe: nothing can still change the plan, so the operation closes and the parent can retry.
+    // After a command, the open operation and its family hold stay until the team proves every command ended.
+    if (!attemptedWrite) await finishOrAlert(db, parent, operation, "refused");
+    else await planCancelCheckAlert(db, parent, operation);
+    throw e;
+  }
+  await finishOrAlert(db, parent, operation, result.ok ? "applied" : "refused");
+  return result.ok ? { ...result, child } : result;
 }
 
 /** Tells the team, so that no further workbook is prepared for this child. Sends nothing without an address. */
@@ -100,4 +111,25 @@ export async function planCancelledAlert(cardId: string, child: string, endsAt: 
     text: [`A parent cancelled ${child}'s plan from their account.`, endsAt ? `The plan ends: ${endsAt}` : "The plan ended now, after a failed payment.", `Card setup: ${cardId}`, "Do not prepare another workbook for this child."].join("\n"),
   });
   if (outcome.status !== "sent") console.error("[plan] cancel alert failed", outcome.status);
+}
+
+/** The new close can settle this family's open Cancel behind its deletion fence. */
+async function finishOrAlert(db: NonNullable<ReturnType<typeof adminClient>>, parent: string, operation: string, state: "applied" | "refused") {
+  try {
+    const { data, error } = await db.rpc("close_plan_cancel", { p_parent: parent, p_id: operation, p_state: state });
+    if (error || data !== true) throw new Error("Plan cancellation could not be closed");
+  } catch (e) {
+    await planCancelCheckAlert(db, parent, operation);
+    throw e;
+  }
+}
+
+/** The immediate alert and the sweep share one claim. A failed alert never hides the cancellation error. */
+async function planCancelCheckAlert(db: NonNullable<ReturnType<typeof adminClient>>, parent: string, operation: string) {
+  try {
+    const outcome = await alertOpenCancel(db, operation, parent, {
+      origin: "https://unicalearning.com", to: process.env.SIGNUP_NOTIFY_EMAIL || null,
+    });
+    if (outcome.status !== "sent" && outcome.status !== "busy") console.error("[plan] cancel check alert failed", outcome.status, operation);
+  } catch { console.error("[plan] cancel check alert failed", operation); }
 }

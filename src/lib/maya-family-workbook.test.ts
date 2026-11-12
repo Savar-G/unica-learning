@@ -52,13 +52,13 @@ async function setup() {
 }
 
 describe("#677 family chat workbook selection through runChat", () => {
-  it("marks an unsupported selected question on the desk without sending its answer", async () => {
+  it("keeps the stored printed question on the desk and in Maya's opening", async () => {
     const f = await setup();
     const book = await f.books.workbook(f.ids.workbook);
     if (!book) throw Error("Missing book");
     const question = book.pages[0].questions[0];
     if (question.content.status !== "found") throw Error("Missing question");
-    // A checked operation with no supported teaching path remains on the printed page.
+    // An edited whole-book response does not replace the stored printed page.
     const pkg = question.content.package;
     const operation = { kind: "missing-addend" as const, operands: [7, 10] as [number, number] };
     const easier = { kind: "missing-addend" as const, operands: [1, 2] as [number, number] };
@@ -72,9 +72,13 @@ describe("#677 family chat workbook selection through runChat", () => {
         recordedAt: new Date(now).toISOString(), actorId: f.ids.parent, auditId: 1 }),
     }, now);
     if (view.status !== "ready") throw Error("No desk");
-    expect(view.page.questions[0]).toMatchObject({ number: 1, text: "7 + ? = 10", held: true });
+    expect(view.page.questions[0]).toMatchObject({ number: 1, text: pkg.text, held: false });
     expect(view.page.questions[1]).toMatchObject({ held: false });
     expect(view.page.questions[0]).not.toHaveProperty("answer");
+    const started = await f.start({ reference: "page 4, number 1" });
+    expect(started.error).toBeUndefined();
+    expect(started.chat?.transcript.filter(t => t.speaker === "maya").map(t => t.text))
+      .toEqual(["Hi, I'm Maya, an AI helper. Let's do page 4, number 1: 27 + 39."]);
   });
 
   it("resolves a typed reference, confirms the stored question, and teaches only after that opening", async () => {

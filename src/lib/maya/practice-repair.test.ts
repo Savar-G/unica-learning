@@ -21,17 +21,18 @@ function call(pkg: QuestionPackage = FIXTURES.A) {
 }
 
 describe("repairs from the full subscription practice", () => {
-  it.each(["I do not know.", "Can you show me again?"])("ends the help loop after a shown step and %j", (text) => {
+  // #735, decision (a): after a shown step, help alone leads to the easier example, never to the answer.
+  it.each(["I do not know.", "Can you show me again?"])("ends the help loop after a shown step and %j with the easier example, not the answer", (text) => {
     const c = call();
     c.child("Can you show me the ones?");
     c.ok({ act: "guide", step: "ones", level: 3, parts: [line("step.show", { step: "ones" })], reading: { help: "show" } });
     c.child(text);
     expect(c.propose({ act: "guide", step: "ones", level: 0, parts: [line("step.invite", { step: "ones" })], reading: { help: "more" } }).refusal).not.toBeNull();
     const r = c.fallback();
-    expect(r.effects.some(e => e.kind === "say" && e.act === "give_answer")).toBe(true);
-    expect(c.s.solved).toBe("maya");
+    expect(r.effects.some(e => e.kind === "say" && e.act === "example_step")).toBe(true);
+    expect(c.s.solved).toBeNull();
     expect(c.s.done).not.toContain("ones");
-    expect(c.s.assistance).toContain("answer_given");
+    expect(c.s.assistance).not.toContain("answer_given");
   });
 
   it("keeps the highest help level when a child asks for a gentler prompt", () => {
@@ -39,19 +40,22 @@ describe("repairs from the full subscription practice", () => {
     c.child("Show me the ones.");
     c.ok({ act: "guide", step: "ones", level: 3, parts: [line("step.show", { step: "ones" })], reading: { help: "show" } });
     c.child("Okay.");
-    c.ok({ act: "guide", step: "ones", level: 0, parts: [line("step.invite", { step: "ones" })] });
+    // #698 round 3: after the show, a gentler prompt on the same step with no progress is the same loop (loopGuard): it is
+    // refused, the help level stays at the top, and code's fallback takes the easier example.
+    expect(c.propose({ act: "guide", step: "ones", level: 0, parts: [line("step.invite", { step: "ones" })] }).refusal?.code).toBe("same_hint_again");
     expect(c.s.ladder.hint).toBe(3);
-    c.child("I do not know.");
-    expect(c.fallback().effects.some(e => e.kind === "say" && e.act === "give_answer")).toBe(true);
+    expect(c.fallback().effects.some(e => e.kind === "say" && e.act === "example_step")).toBe(true);
   });
 
   it("does not replace new checked progress with an answer after H3", () => {
     const c = call();
     c.child("Show me the ones.");
     c.ok({ act: "guide", step: "ones", level: 3, parts: [line("step.show", { step: "ones" })], reading: { help: "show" } });
-    // The sum Maya just showed is a copy; what the child wrote on their paper is theirs.
+    // The sum Maya just showed is a copy; what the child wrote on their paper is theirs. A copy moves the ladder past the
+    // shown step with no credit, so the line that calls it right is not offered (fault B of the practice run at 361a05c9).
     c.child("7 plus 9 is 16.");
-    expect(c.propose({ act: "guide", step: "tens", level: 0, parts: [line("check.right_step", { step: "ones" }), line("step.invite", { step: "tens" })], reading: { answers: [answer(16, "ones")] } }).refusal).toMatchObject({ code: "answer_not_committed" });
+    expect(c.propose({ act: "guide", step: "tens", level: 0, parts: [line("check.right_step", { step: "ones" }), line("step.invite", { step: "tens" })], reading: { answers: [answer(16, "ones")] } }).refusal).toMatchObject({ code: "line_not_offered" });
+    expect(c.s.done).not.toContain("ones");
     const d = call();
     d.child("Show me the ones.");
     d.ok({ act: "guide", step: "ones", level: 3, parts: [line("step.show", { step: "ones" })], reading: { help: "show" } });
@@ -83,9 +87,27 @@ describe("repairs from the full subscription practice", () => {
     expect(c.s.done).toEqual([]);
   });
 
+  // A sentence that only tells how the child worked is no second answer (C09 at 361a05c9): the right answer at its end
+  // stands, with no "What is your final answer on its own?".
+  it.each(["I did 27 plus 40, then took away one. I got 66.", "I did 27 plus 40. Then I took away one. I got 66.", "I made 39 into 40. Then I took one away. So it's 66."])("accepts %j with no confirm", (text) => {
+    const c = call();
+    c.child(text);
+    expect(lineOffers(c.s).confirm ?? []).toEqual([]);
+    c.ok({ act: "accept_answer", parts: [line("answer.right")], reading: { answers: [answer(66, "result")] } });
+    expect(c.s.solved).toBe("child");
+  });
+
+  it.each(["My mom did 27 plus 40. I got 66.", "I did 27 plus 40. I got 66?", "I didn't do 27 plus 40. I got 66."])("still confirms %j", (text) => {
+    const c = call();
+    c.child(text);
+    expect(c.propose({ act: "accept_answer", parts: [line("answer.right")], reading: { answers: [answer(66, "result")] } }).refusal).not.toBeNull();
+    expect(c.s.solved).toBeNull();
+  });
+
   it("asks for the answer alone when an unsupported method prevents confirmation", () => {
     const c = call();
-    c.child("I did 27 plus 40, then took away one. I got 66.");
+    // A second result in the working ("27 plus 40 is 67") is a second answer: Maya asks for the final answer alone.
+    c.child("I did 27 plus 40 is 67, then took away one. I got 66.");
     expect(c.propose({ act: "accept_answer", parts: [line("answer.right")], reading: { answers: [answer(66, "result")] } }).refusal).not.toBeNull();
     expect(lineOffers(c.s).confirm?.some(o => o.line === "confirm.answer")).toBe(true);
     expect(c.propose({ act: "confirm", parts: [line("question.read", { sentence: 0 })] }).refusal).not.toBeNull();

@@ -5,7 +5,6 @@ import {
   comparisonView,
   STATUS_LABEL,
   factsView,
-  helpWarning,
   howWeHelp,
   levelNotes,
   levelSentence,
@@ -21,10 +20,15 @@ import {
   thresholdsLine,
   verdictSentence,
   strengthsView,
-  strugglesView,
-  workbookPreview,
+  bookOneView,
+  earlySignNote,
+  gapsView,
+  nextView,
+  whereView,
+  workingLevelNote,
   type ReportView,
 } from "@/lib/report-view";
+import type { BookOne } from "@/lib/report-book-one";
 
 /** A finished report for a scripted child, as the page and the email get it. */
 function view(isRight: Script, { grade = 4, province = "BC", name = "Maya" }: { grade?: Grade; province?: Province; name?: string } = {}): ReportView {
@@ -32,11 +36,12 @@ function view(isRight: Script, { grade = 4, province = "BC", name = "Maya" }: { 
   return {
     id: "r-1",
     childName: name,
+    planOffer: { monthly: 79.99, window: "new" },
     province,
     completedAt: "2026-10-10T19:30:00Z",
     questions: 36,
     minutes: 34,
-    model: reportModel(placement, { completedTestsInGrade: 0, workReviews: [] }),
+    model: reportModel(placement, { workReviews: [] }),
   };
 }
 
@@ -118,35 +123,20 @@ describe("the AI paragraph (#68)", () => {
   });
 });
 
-describe("the help warning (#71)", () => {
-  const helped = (v: ReportView, helpWarning = true): ReportView => ({ ...v, model: { ...v.model, helpWarning } });
-
-  it("says the level may be too high and suggests a retake on the day the 30-day wait has ended (#72)", () => {
-    // Finished 12:30 p.m. October 10 in BC; the next test opens 30 days later, at 11:30 a.m. November 9, so the first
-    // whole day it is open is November 10.
-    expect(helpWarning(helped(view(knowsUpTo(4))))).toEqual({
-      title: "This level may be too high",
-      text: "We saw signs in this test that can make a level look higher than it is, such as help with some questions or answers given very quickly.",
-      retake: "For a level you can trust, Maya can take a new test alone, with new questions, from November 10, 2026.",
-    });
-  });
-  it("dates the retake in the family's time zone", () => {
-    // Opens at 07:00 UTC November 10: 2 a.m. that day in Ontario (first whole day November 11), but 11 p.m.
-    // November 9 in BC (first whole day November 10).
-    const v = { ...helped(view(knowsUpTo(4), { province: "ON" })), completedAt: "2026-10-11T07:00:00Z" };
-    expect(helpWarning(v)?.retake).toContain("from November 11, 2026.");
-    expect(helpWarning({ ...v, province: "BC" })?.retake).toContain("from November 10, 2026.");
-  });
-  it("is absent when help is not likely, and in reports stored before #71", () => {
-    expect(helpWarning(helped(view(knowsUpTo(4)), false))).toBeNull();
+describe("no level warning (D-305)", () => {
+  it("drops a stored AI sentence that says the level may be too high, and keeps the rest", () => {
     const v = view(knowsUpTo(4));
-    const old: Partial<ReportView["model"]> = { ...v.model };
-    delete old.helpWarning;
-    expect(helpWarning({ ...v, model: old as ReportView["model"] })).toBeNull();
+    const old = { ...v, model: { ...v.model, helpWarning: true, summary: "{name} is working at a grade 4 level. This level may be too high. {name} is secure in every area." } };
+    expect(summaryText(old)).toBe("Maya is working at a grade 4 level. Maya is secure in every area.");
   });
-  it("never blames the child or the parent", () => {
-    const w = helpWarning(helped(view(knowsUpTo(4))));
-    expect(JSON.stringify(w)).not.toMatch(/cheat|honest|lie|fault|blame/i);
+});
+
+describe("what the working level means (D-305)", () => {
+  it("says the books cover more than the working level, only to a family that can start them", () => {
+    expect(workingLevelNote(view(knowsUpTo(3)))).toMatch(/not the only grade Maya's workbooks cover/);
+    const waitlist = workingLevelNote(view(knowsUpTo(3), { province: "ON" }));
+    expect(waitlist).toMatch(/^Working level is/);
+    expect(waitlist).not.toMatch(/workbook/i);
   });
 });
 
@@ -267,10 +257,10 @@ describe("the date and the closing line", () => {
 describe("the next step", () => {
   it("BC families add a card, and see the math price and when the charge starts", () => {
     const step = nextStep(view(knowsUpTo(4)));
-    expect(step).toMatchObject({ kind: "card", title: "Start Maya's books" });
-    expect(step.text).toContain("Math is CAD 79.99 a month");
+    expect(step).toMatchObject({ kind: "card", title: "Start Maya's plan" });
+    expect(step.text).toContain("CAD 79.99 a month.");
     expect(step.text).not.toContain("reading");
-    expect(step.text).toContain("The first month is free, starting when the first workbook arrives at your home.");
+    expect(step.text).toContain("Your family gets one free month. It starts when your first workbook arrives.");
   });
   it("offers the first month free in place of the money-back guarantee (D-139)", () => {
     expect(nextStep(view(knowsUpTo(4))).text).not.toMatch(/money-back/);
@@ -283,7 +273,7 @@ describe("the next step", () => {
   });
   it("BC families get the one plan, math at CAD 79.99, the price of the site's plan", () => {
     expect(nextStep(view(knowsUpTo(4))).plans).toEqual([
-      { plan: "one", subject: "Math", price: 79.99, label: "Math, CAD 79.99 a month" },
+      { plan: "one", subject: "Math", price: 79.99, label: "CAD 79.99 a month." },
     ]);
   });
   it("waitlist families get no plans to choose", () => {
@@ -355,10 +345,12 @@ describe("certainty labels", () => {
     expect(estimate.model.level.confidence).toBe("low");
     expect(estimate.model.level.certainty).toBe("early-sign");
   });
-  it("promises no workbook to a family on the waitlist, who has none yet", () => {
-    const waitlist = certaintyText(view(allRight, { province: "ON" }), "early-sign");
+  it("says early signs once per list (D-305): nothing when all are clear, and a workbook only to a family that can start the books", () => {
+    const early = [{ certainty: "clear" as const }, { certainty: "early-sign" as const }];
+    expect(earlySignNote(view(allRight), [{ certainty: "clear" }])).toBeNull();
+    expect(earlySignNote(view(allRight), early)).toMatch(/workbook 1/i);
+    const waitlist = earlySignNote(view(allRight, { province: "ON" }), early);
     expect(waitlist).toBeTruthy();
-    expect(waitlist).not.toBe(certaintyText(view(allRight), "early-sign"));
     expect(waitlist).not.toMatch(/workbook/i);
   });
 });
@@ -384,13 +376,6 @@ describe("the reliability note", () => {
     expect(new Set(offers).size).toBe(3);
     expect(offers[1]).toContain("November 10, 2026");
   });
-  it("makes the help warning's retake line agree with the note: the same date, or none", () => {
-    const v = rushed(view(knowsUpTo(4)));
-    const helped = { ...v, model: { ...v.model, helpWarning: true } };
-    expect(helpWarning(helped, opens)?.retake).toContain("November 10, 2026");
-    for (const retake of [{ kind: "open" } as const, undefined]) expect(helpWarning(helped, retake)?.retake).not.toMatch(/\d{4}/);
-    expect(helpWarning(helped, { kind: "open" })?.retake).not.toBe(helpWarning(helped)?.retake);
-  });
 });
 
 describe("rushed wrong answers left out", () => {
@@ -402,7 +387,7 @@ describe("rushed wrong answers left out", () => {
   });
 });
 
-describe("strengths, struggles and the workbook 1 preview (#198)", () => {
+describe("strengths, gaps, next topics and workbook 1 (#198, D-305)", () => {
   // The parent's part of a learner profile (reportFindings), as the loaded report carries it.
   const FINDINGS: ReportFindings = {
     strengths: [{ code: "4.5", text: "multiplication and division to two digits (single-digit multiplier)", grade: 4, aboveGrade: false, correct: 6, total: 6, certainty: "clear" }],
@@ -422,40 +407,89 @@ describe("strengths, struggles and the workbook 1 preview (#198)", () => {
   };
   const withFindings = (findings: ReportFindings | null, v = view(knowsUpTo(3))): ReportView => ({ ...v, findings });
 
+  // Workbook 1 as report-book-one.ts gives it: grade 3 adding and subtracting taught, grade 2 facts reviewed.
+  const BOOK: BookOne = {
+    level: 10, pagesADay: { min: 8, max: 8 }, days: 10, minutes: 25,
+    main: [{ code: "3.3", title: "Adding and subtracting", grade: 3, skills: ["Add 3-digit numbers", "Subtract with regrouping"] }],
+    review: [{ code: "2.3", title: "Facts to 20", grade: 2, skills: ["Near doubles", "Make a ten", "Doubles", "Count on"] }],
+    warmUp: ["Facts to 20"],
+    challenge: { harder: true, twoWays: true, showWhatYouKnow: true },
+    next: { grade: 3, titles: ["Fractions", "Time"] },
+    then: { grade: 4, titles: ["Numbers to 10 000", "Decimals"] },
+    covers: { "3.3": "main", "2.3": "review" },
+    later: ["3.2", "3.10"], mix: [],
+  };
+  // A gap at grade 3 (the working level) that workbook 1 teaches.
+  const GAP = { ...FINDINGS.struggles[0], code: "3.3", text: "addition and subtraction to 1000", grade: 3 as const, correct: 0, total: 2, certainty: "clear" as const };
+  const withBook = (v: ReportView, findings: ReportFindings = { ...FINDINGS, struggles: [GAP, ...FINDINGS.struggles] }): ReportView => ({ ...v, findings, bookOne: BOOK });
+
   it("shows none of them for a report without findings: no learner profile (another curriculum), or none stored yet", () => {
     for (const v of [view(knowsUpTo(3)), withFindings(null)]) {
       expect(strengthsView(v)).toBeNull();
-      expect(strugglesView(v)).toBeNull();
-      expect(workbookPreview(v)).toBeNull();
+      expect(gapsView(v)).toBeNull();
+      expect(nextView(v)).toBeNull();
+      expect(whereView(v)).toBeNull();
+      expect(bookOneView(v)).toBeNull();
     }
   });
 
-  it("hides strengths and struggles when there are none", () => {
+  it("hides strengths, gaps and next topics when there are none", () => {
     const v = withFindings({ ...FINDINGS, strengths: [], struggles: [] });
     expect(strengthsView(v)).toBeNull();
-    expect(strugglesView(v)).toBeNull();
+    expect(gapsView(v)).toBeNull();
+    expect(nextView(v)).toBeNull();
   });
 
-  it("gives each struggle the child's answer, the right answer and the likely cause, in the child's name", () => {
-    const struggles = strugglesView(withFindings(FINDINGS))!;
-    expect(struggles.map((s) => [s.answer, s.rightAnswer])).toEqual([["4252", "3748"], ["3", "3000"]]);
+  it("splits the topics not mastered at the working level: gaps at or below it, next topics above it", () => {
+    const v = withBook(view(knowsUpTo(3)));
+    expect(v.model.level.working).toBe(3);
+    expect(gapsView(v)!.map((s) => s.code)).toEqual(["3.3"]);
+    expect(nextView(v)!.map((s) => s.code)).toEqual(["4.4", "4.1"]);
+  });
+
+  it("gives each topic a plain name, with the BC wording beside it", () => {
+    const [gap] = gapsView(withBook(view(knowsUpTo(3))))!;
+    expect(gap.title).toBe("Adding and subtracting");
+    expect(gap.bc).toBe("Addition and subtraction to 1000");
+  });
+
+  it("gives each gap the child's answer, the right answer and the likely cause, in the child's name", () => {
+    const next = nextView(withFindings(FINDINGS))!;
+    expect(next.map((s) => [s.answer, s.rightAnswer])).toEqual([["4252", "3748"], ["3", "3000"]]);
     // The known mistake in plain words; the AI's text with the child's name for {name}.
-    expect(struggles[0].cause).toContain(MISCONCEPTIONS.O1.description.toLowerCase());
-    expect(struggles[1].cause).toBe("Maya may read each digit as ones.");
+    expect(next[0].cause).toContain(MISCONCEPTIONS.O1.description.toLowerCase());
+    expect(next[1].cause).toBe("Maya may read each digit as ones.");
     const noCause = withFindings({ ...FINDINGS, struggles: [{ ...FINDINGS.struggles[0], cause: null }] });
-    expect(strugglesView(noCause)![0].cause).toBeNull();
+    expect(nextView(noCause)![0].cause).toBeNull();
   });
 
-  it("previews workbook 1 for a family that can start the books, and never for the waitlist, which has no workbook yet", () => {
-    const preview = workbookPreview(withFindings(FINDINGS))!;
-    expect(preview).toMatch(/^Workbook 1 focuses on addition and subtraction to 10 000\. We will challenge Maya on increasing and decreasing patterns\.$/);
-    expect(workbookPreview(withFindings({ ...FINDINGS, preview: { ...FINDINGS.preview!, challenge: [] } }))).toBe("Workbook 1 focuses on addition and subtraction to 10 000.");
-    expect(workbookPreview(withFindings({ ...FINDINGS, preview: null }))).toBeNull();
-    // A topic from another grade than the child's names its grade: BC repeats some topics, such as the facts to 20.
-    const later = { ...FINDINGS, preview: { focus: FINDINGS.preview!.focus, challenge: [{ code: "5.8", text: "addition and subtraction facts to 20 (extending computational fluency)", grade: 5 as const }] } };
-    expect(workbookPreview(withFindings(later))).toBe("Workbook 1 focuses on addition and subtraction to 10 000. We will challenge Maya on grade 5 addition and subtraction facts to 20.");
+  it("says where the books take up each topic, from workbook 1's plan", () => {
+    const v = withBook(view(knowsUpTo(3)), { ...FINDINGS, struggles: [GAP, { ...GAP, code: "2.3", grade: 2 }, { ...GAP, code: "3.10", grade: 3 }, { ...GAP, code: "2.9", grade: 2 }] });
+    expect(gapsView(v)!.map((s) => [s.code, s.cover])).toEqual([["3.3", "In workbook 1"], ["2.3", "Review in workbook 1"], ["3.10", "In a later book"], ["2.9", null]]);
+    expect(gapsView(withFindings(FINDINGS, view(allRight)))?.every((s) => s.cover === null)).toBe(true);
+  });
+
+  it("puts every topic in one of three groups, naming a grade other than the working level", () => {
+    const where = whereView(withBook(view(knowsUpTo(3))))!;
+    expect(where.secure).toEqual([{ title: "Multiplying and dividing", meta: "grade 4" }]);
+    expect(where.gaps).toEqual([{ title: "Adding and subtracting", meta: "In workbook 1" }]);
+    expect(where.next.map((t) => t.title)).toEqual(["Adding and subtracting", "Numbers to 10 000"]);
+  });
+
+  it("says what is in workbook 1 from the plan: the main work and why, the review, the harder problems and what comes after", () => {
+    const book = bookOneView(withBook(view(knowsUpTo(3))))!;
+    expect(book.note).toBe("10 days, about 25 minutes a day. Made from Maya's answers.");
+    expect(book.main).toMatchObject({ title: "Adding and subtracting", grade: "Grade 3 · most of each day", skills: BOOK.main[0].skills });
+    expect(book.main.why).toBe("Why: Maya got 0 of 2 of these right on the test.");
+    expect(book.review?.items).toEqual(["Facts to 20: near doubles; make a ten; doubles; and more"]);
+    expect(book.challenge?.items).toHaveLength(3);
+    expect(book.path.map((p) => p.title)).toEqual(["Workbook 1", "Next books", "Then grade 4"]);
+  });
+
+  it("says nothing of workbook 1 without its plan, and never to a family on the waitlist, which has no workbook yet", () => {
+    expect(bookOneView(view(knowsUpTo(3)))).toBeNull();
     const waitlist = view(knowsUpTo(3), { province: "ON" });
     expect(waitlist.model.callToAction).toBe("waitlist");
-    expect(workbookPreview(withFindings(FINDINGS, waitlist))).toBeNull();
+    expect(bookOneView(withBook(waitlist))).toBeNull();
   });
 });

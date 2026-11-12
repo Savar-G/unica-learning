@@ -6,10 +6,11 @@ import { openRouterClient } from "@/lib/ai-openrouter";
 import { aiMayaModel, PROMPT_VERSION } from "@/lib/maya-model";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
+import { noteFenced } from "@/lib/ai-fenced";
 import {
   aiChildSimulator, aiJudge, buildReport, freeTalkMarkdown, JUDGE_SYSTEM, MAX_CHILD_TURNS, cappedClient, estimateCost, fakeJudge, fileHash, judgeFile, JUDGE_PROMPT_VERSION, judgeSchema,
   meteredFetch, memoryPracticeStore, PLAN_FILE, planSuite, PRACTICE_CASES, readJudgement, recordFile, reportMarkdown, runSuite, scriptedSimulator, simFile,
-  SIMULATOR_PROMPT_VERSION, SIMULATOR_SYSTEM, Spending, traceFile, fakeValidityJudge, validityFile, VALIDITY_PROMPT_VERSION, VALIDITY_SYSTEM, type ValidityJudge, type AiJudge, type ChildSimulator, type PracticeCase, type PracticeDeps, type PracticeStore, type RunRecord,
+  SIMULATOR_PROMPT_VERSION, SIMULATOR_SYSTEM, Spending, traceFile, fakeValidityJudge, validityFile, validityInput, VALIDITY_PROMPT_VERSION, VALIDITY_SYSTEM, type ValidityJudge, type AiJudge, type ChildSimulator, type PracticeCase, type PracticeDeps, type PracticeStore, type RunRecord,
 } from "./index";
 
 // The practice suite (#325) through its public interface, with fake models only: no network. A real run is the same
@@ -164,7 +165,8 @@ describe("an invalid simulation never counts as a pass", () => {
     ["talks too long for the age", C07, () => sayEach([`${"so ".repeat(45)}I got 66.`, ...solved]), "too_long"],
     ["breaks its output schema", C07, () => answer(() => ({ action: "shout", text: "hi", seconds: null, stop: false })), "simulator_error"],
     ["fails as a model call", C07, () => answer(() => { throw new Error("OpenRouter answered 500: boom"); }), "simulator_error"],
-    ["never lets the call end", C07, () => answer(() => ({ action: "say", text: "Um.", seconds: null, stop: false })), "turn_cap"],
+    // A child who only says "Um." is closed by the loop guard since #698 round 2; one who keeps writing gets Maya's wait.
+    ["never lets the call end", C07, () => answer(() => ({ action: "say", text: "I'm still writing.", seconds: null, stop: false })), "turn_cap"],
   ];
 
   it.each(invalidCases)("a child that %s is invalid, and the judge is not asked", async (_, c, simulator, code) => {
@@ -270,10 +272,13 @@ describe("an invalid simulation never counts as a pass", () => {
 });
 
 describe("the turn cap counts spoken child turns (#604)", () => {
-  /** A child who says "Um." and waits a second, in turn: as many waits as words. */
+  /**
+   * A child who says they are still writing and waits a second, in turn: as many waits as words. ("Um." is closed by the
+   * loop guard since #698 round 2: Maya never shows the same step again and again.)
+   */
   const umAndWait = () => {
     let n = 0;
-    return answer(() => (n++ % 2 === 0 ? { action: "say", text: "Um.", seconds: null, stop: false } : { action: "wait", text: null, seconds: 1, stop: false }));
+    return answer(() => (n++ % 2 === 0 ? { action: "say", text: "I'm still writing.", seconds: null, stop: false } : { action: "wait", text: null, seconds: 1, stop: false }));
   };
 
   it("cuts a child who waits between turns after 24 spoken turns, not 24 turns in all", async () => {
@@ -548,7 +553,10 @@ describe("the validity judge (R386-2-1)", () => {
     expect(report.passed).toBe(false);
   });
 
-  it("reads only the persona card and the child's own turns: never Maya's words or the expected behaviour", async () => {
+  // Review of 8ce1adff (C30, C02): the judge never saw Maya's words, so it could not tell taught from untaught, nor check
+  // a child's claim that Maya showed something. It now reads the call in order: Maya's turns and the child's. Never the
+  // expected behaviour.
+  it("reads the persona card, the child's turns and Maya's turns in order: never the expected behaviour", async () => {
     const validity = fakeValidityJudge();
     await suite([C07], { runs: 1, validity: validity as ValidityJudge });
     const input = (validity as ReturnType<typeof fakeValidityJudge>).inputs[0];
@@ -557,9 +565,90 @@ describe("the validity judge (R386-2-1)", () => {
     expect(input.childTurns.map((t) => t.text)).toEqual(C07.fakeScript);
     const seen = JSON.stringify(input);
     expect(seen).not.toContain(C07.expected);
-    expect(Object.keys(input).sort()).toEqual(["childTurns", "persona", "promptVersion"]);
-    // None of Maya's lines (her opening says "I'm Maya") reaches it.
-    expect(seen).not.toContain("I'm Maya");
+    expect(Object.keys(input).sort()).toEqual(["call", "childTurns", "persona", "promptVersion"]);
+    // Maya's opening comes first, then each child turn with its id, in the call's order.
+    expect(input.call[0]).toMatchObject({ speaker: "maya" });
+    expect(input.call[0].text).toContain("Maya");
+    expect(input.call.filter((t) => t.speaker === "child").map((t) => [t.childTurn, t.text])).toEqual(C07.fakeScript.map((text, i) => [i + 1, text]));
+    expect(input.call.filter((t) => t.speaker === "maya").every((t) => t.childTurn === undefined)).toBe(true);
+  });
+
+  // The blind spot the review named: a child that claims Maya taught it something she never showed. The old validity
+  // layer passed this run (the fake judge clears it, and code had no rule); now code flags it before any judge.
+  it("flags a child turn that claims Maya showed it something before Maya showed any step (false_teaching_claim)", async () => {
+    // Maya only accepted the answer and asked how: she showed no step, so the claim in turn 2 is false.
+    const claim = [C07.fakeScript[0], "Because the ones made sixteen, like you showed me.", ...C07.fakeScript.slice(2)];
+    const judge = fakeJudge({ score: 3 });
+    const { report } = await suite([C07], { runs: 1, judge, simulator: () => scriptedSimulator(claim) });
+    expect(report.runs[0].status).toBe("invalid");
+    expect(report.runs[0].invalid.map((x) => x.code)).toEqual(["false_teaching_claim"]);
+    expect(report.runs[0].invalid[0].detail).toContain("like you showed me");
+    // Without the claim, the same run is valid and passes: the claim alone makes it invalid.
+    const plain = await suite([C07], { runs: 1, judge: fakeJudge({ score: 3 }), simulator: () => scriptedSimulator(C07.fakeScript) });
+    expect(plain.report.runs[0].status).toBe("pass");
+    expect(judge.inputs).toHaveLength(0);
+    // The same words after Maya worked the easier example are a true claim: no finding.
+    const shown = [...C01.fakeScript];
+    shown[4] = `Like you showed me, ${shown[4][0].toLowerCase()}${shown[4].slice(1)}`;
+    const after = await suite([C01], { runs: 1, simulator: () => scriptedSimulator(shown) });
+    expect(after.report.runs[0].invalid.map((x) => x.code)).not.toContain("false_teaching_claim");
+  });
+
+  // Review of be8accf0 (P1): "like you said" claims no teaching. "I wrote it, like you said." after ask_write made a real
+  // C07 run invalid, and one invalid run fails the gate.
+  it.each([
+    ["after ask_write", [...C07.fakeScript.slice(0, 2), "I wrote it, like you said."]],
+    ["after check.right_step", ["Seven plus nine is 16.", "Like you said, 16 is right. Two plus three plus one is 6, so 66.", "I wrote it."]],
+    ["with 'as you said' and 'the way you told me'", [C07.fakeScript[0], "Because the ones made sixteen, as you said.", "I wrote it the way you told me."]],
+  ])("gives no false_teaching_claim for words that claim no teaching (%s)", async (_name, script) => {
+    const { report, store } = await suite([C07], { runs: 1, simulator: () => scriptedSimulator(script as string[]) });
+    expect(report.runs[0].invalid.map((x) => x.code)).not.toContain("false_teaching_claim");
+    const said = (JSON.parse(store.load(traceFile("C07-r1"))!) as { turns: { kind: string; text?: string }[] }).turns.filter((t) => t.kind === "child").map((t) => t.text);
+    expect(said).toEqual(expect.arrayContaining([(script as string[]).find((x) => /you (?:said|told)/.test(x))]));
+  });
+
+  // Delta review of 31d65fb9 (P3): other forms of a teaching claim, and "told me to" stays a true statement.
+  it.each(["you just showed me", "you've shown me", "you have taught me", "you explained it", "you already showed me", "you’ve shown me"])("flags '%s' before any teaching", async (phrase) => {
+    const claim = [C07.fakeScript[0], `Because the ones made sixteen, ${phrase}.`, ...C07.fakeScript.slice(2)];
+    const { report } = await suite([C07], { runs: 1, simulator: () => scriptedSimulator(claim) });
+    expect(report.runs[0].invalid.map((x) => x.code)).toContain("false_teaching_claim");
+  });
+
+  it("gives no false_teaching_claim for 'you told me to write it' after ask_write", async () => {
+    const { report } = await suite([C07], { runs: 1, simulator: () => scriptedSimulator([...C07.fakeScript.slice(0, 2), "I wrote it, you told me to write it."]) });
+    expect(report.runs[0].invalid.map((x) => x.code)).not.toContain("false_teaching_claim");
+  });
+
+  it("leaves non-content board commands (clear, focus, remove, undo) out of the judge's call", () => {
+    const trace = {
+      turns: [{ kind: "maya", output: { act: "guide", say: ["Let's look again."], board: ["tx-1"] } }, { kind: "child", text: "Okay." }],
+      board: [{ transactionId: "tx-1", commands: [{ op: "clear", count: 2 }, { op: "focus", target: "c1", seconds: 3 }, { op: "remove", id: "n1" }, { op: "undo", steps: 1 }, { op: "write", id: "n2", text: "7 + 9 = 16" }] }],
+    };
+    const log = { turns: [{ raw: { action: "say", text: "Okay.", seconds: null, stop: false } }] };
+    const maya = validityInput(C07, trace as never, log as never).call[0].text;
+    expect(maya).toContain("7 + 9 = 16");
+    expect(maya).not.toMatch(/clear|focus|remove|undo/);
+    const onlyClear = validityInput(C07, { ...trace, board: [{ transactionId: "tx-1", commands: [{ op: "clear", count: 2 }] }] } as never, log as never).call[0].text;
+    expect(onlyClear).toBe("Let's look again.");
+  });
+
+  // Review of be8accf0 (P3): a step Maya showed only on the board is teaching the judge must see.
+  it("gives the validity judge Maya's board-only teaching in the call", () => {
+    const trace = {
+      turns: [
+        { kind: "maya", output: { act: "open", say: ["Hi, I'm Maya, an AI helper."], board: [] } },
+        { kind: "child", text: "Hi." },
+        { kind: "maya", output: { act: "guide", say: [], board: ["tx-1"] } },
+        { kind: "child", text: "Oh, 7 plus 9 is 16." },
+      ],
+      board: [{ transactionId: "tx-1", commands: [{ op: "write", id: "note-1", text: "7 + 9 = 16", place: { region: "main" } }] }],
+    };
+    const log = { turns: [{ raw: { action: "say", text: "Hi.", seconds: null, stop: false } }, { raw: { action: "say", text: "Oh, 7 plus 9 is 16.", seconds: null, stop: false } }] };
+    const input = validityInput(C07, trace as never, log as never);
+    const maya = input.call.filter((t) => t.speaker === "maya").map((t) => t.text);
+    expect(maya).toHaveLength(2);
+    expect(maya[1]).toContain("7 + 9 = 16");
+    expect(maya[1]).toMatch(/board/i);
   });
 
   const bad: [string, () => ValidityJudge][] = [
@@ -576,6 +665,41 @@ describe("the validity judge (R386-2-1)", () => {
     const { report } = await suite([C07], { runs: 1, judge, validity: validity() });
     expect(report.runs[0].status).toBe("invalid");
     expect(judge.inputs).toHaveLength(0);
+  });
+
+  // C38 at 361a05c9: a slow judge call timed out. One more try on a time-out; a second time-out or any other failure
+  // stays a failure.
+  const timingOut = <T,>(times: number, error: string, then: () => T) => {
+    let calls = 0;
+    return { get calls() { return calls; }, call: async (): Promise<T> => { calls++; if (calls <= times) throw new Error(error); return then(); } };
+  };
+  it("asks a timed-out validity judge once more, and the run is judged", async () => {
+    const t = timingOut(1, "time is up", () => ({ persona_ok: true, knows_too_much: false, reasons: [], turns: [] }));
+    const { store, report } = await suite([C07], { runs: 1, validity: { ...fakeValidityJudge(), check: t.call } });
+    expect(t.calls).toBe(2);
+    expect(report.runs[0].invalid.map((x) => x.code)).not.toContain("validity_unjudged");
+    expect(JSON.parse(store.load(validityFile("C07-r1"))!)).toMatchObject({ error: null, timeoutRetries: 1 });
+  });
+
+  it.each([["times out twice", 2, "time is up"], ["fails another way", 1, "OpenRouter answered 500"]] as const)("keeps the run invalid when the validity judge %s", async (_name, times, error) => {
+    const t = timingOut(times, error, () => ({ persona_ok: true, knows_too_much: false, reasons: [], turns: [] }));
+    const { report } = await suite([C07], { runs: 1, validity: { ...fakeValidityJudge(), check: t.call } });
+    expect(t.calls).toBe(error === "time is up" ? 2 : 1);
+    expect(report.runs[0].status).toBe("invalid");
+    expect(report.runs[0].invalid.map((x) => x.code)).toContain("validity_unjudged");
+  });
+
+  it("asks a timed-out judge once more; a judge that times out twice leaves the run unjudgeable", async () => {
+    const answer = (input: unknown) => Object.fromEntries((input as { rubric: { id: string }[] }).rubric.map((d) => [d.id, { status: "scored", score: 3, turns: [1], reason: "fine" }]));
+    let last: unknown;
+    const once = timingOut(1, "time is up", () => answer(last));
+    const ok = await suite([C07], { runs: 1, judge: { ...fakeJudge(), judge: async (input) => { last = input; return once.call(); } } });
+    expect(once.calls).toBe(2);
+    expect(ok.report.runs[0].status).toBe("pass");
+    const twice = timingOut(2, "time is up", () => answer(last));
+    const bad = await suite([C07], { runs: 1, judge: { ...fakeJudge(), judge: async (input) => { last = input; return twice.call(); } } });
+    expect(twice.calls).toBe(2);
+    expect(bad.report.runs[0].status).toBe("unjudgeable");
   });
 
   it("a deleted validity judgement makes the run invalid; a changed one fails it", async () => {
@@ -713,13 +837,76 @@ describe("the docs", () => {
   });
 });
 
+// First-ship practice at 6de7e777: proposals read from inside one code fence are counted in report.json and report.md.
+describe("the report counts proposals read from inside a code fence", () => {
+  it("counts each fenced proposal from the saved traces, per run, in report.json and report.md", async () => {
+    const store = memoryPracticeStore();
+    const rule = ruleMayaModel();
+    // Every proposal noted as read from a fence, as the OpenRouter client notes one.
+    const maya = { ...rule, propose: async (input: Parameters<typeof rule.propose>[0], signal: AbortSignal) => { const v = await rule.propose(input, signal); noteFenced(v); return v; } };
+    const simulator = scriptedSimulator(C07.fakeScript);
+    const judge = fakeJudge();
+    const validity = fakeValidityJudge();
+    const plan = planSuite([C07], versions({ maya, simulator, judge, validity }), { runs: 1 });
+    await runSuite([C07], plan, { maya, simulator, validity, judge, store });
+    const report = buildReport([C07], store, 1);
+    const trace = JSON.parse(store.load(traceFile("C07-r1"))!) as { turns: { kind: string; attempts?: { source: string; fenced?: true }[] }[] };
+    const calls = trace.turns.flatMap((t) => t.attempts ?? []).filter((a) => a.source === "model" || a.source === "repair");
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.every((a) => a.fenced === true)).toBe(true);
+    expect(report.fencedJson).toEqual({ calls: calls.length, fenced: calls.length, runs: { "C07-r1": calls.length } });
+    expect(JSON.parse(JSON.stringify(report)).fencedJson.fenced).toBe(calls.length);
+    expect(reportMarkdown(report)).toContain(`Fenced JSON: ${calls.length} of ${calls.length} Maya model calls were read from inside one code fence (C07-r1 ${calls.length}).`);
+    // With none, the count is there and is zero.
+    const { report: plain } = await suite([C07], { runs: 1 });
+    expect(plain.fencedJson).toMatchObject({ fenced: 0, runs: {} });
+    expect(reportMarkdown(plain)).toContain("Fenced JSON: 0 of ");
+  });
+});
+
 describe("the practice child speaks like a child (practice run 5: too_long and turn_cap)", () => {
   it("asks for one short thing per turn, and each persona request once, so the call can end", () => {
-    expect(SIMULATOR_PROMPT_VERSION).toBe("practice-child-3");
+    expect(SIMULATOR_PROMPT_VERSION).toBe("practice-child-7");
     expect(SIMULATOR_SYSTEM).toContain("Say one thing per turn");
     expect(SIMULATOR_SYSTEM).toContain("not every step of your working");
     expect(SIMULATOR_SYSTEM).toContain("ask again at most once");
     expect(SIMULATOR_SYSTEM).toContain("wait for Maya to say goodbye");
+  });
+});
+
+// First-ship practice at 6de7e777: 8 of 26 runs were invalid because the practice child said a right answer or a carry
+// before any teaching in its own turns (C01 to C05, C24, C30, C37). The validity judge reads only the child's turns.
+describe("the practice child knows only its persona, and shows where it learned the rest (first-ship practice at 6de7e777)", () => {
+  it("never says a step, a carry or the answer before Maya's words show it, and says in its own words when it uses her help", () => {
+    expect(SIMULATOR_PROMPT_VERSION).toBe("practice-child-7");
+    expect(SIMULATOR_SYSTEM).toContain("Before Maya shows you a step, a carry or the answer, say only what \"persona.knows\" says you know");
+    // Review of 8ce1adff (P3): a planned mistake holds every time, until Maya shows the fix (C37, C10), not only the first time.
+    expect(SIMULATOR_SYSTEM).toContain("If \"persona.knows\" describes a mistake, make it every time you do that step, until Maya shows you the fix");
+    expect(SIMULATOR_SYSTEM).not.toContain("the first time you do that step");
+    expect(SIMULATOR_SYSTEM).toContain("say where it came from in your own words");
+    // Review of 67dacf9d and be8accf0: the validity judge now reads Maya's turns, so this was false, and it pushed the
+    // child to attribute even plain words ("like you said"), which the claim check then misread.
+    expect(SIMULATOR_SYSTEM).not.toContain("Someone who reads only your turns");
+    expect(SIMULATOR_SYSTEM).toContain("If Maya gives you the answer, say it as hers");
+    // Independent review of 67dacf9d: the persona card comes first (C07, C09, C38 and the G-solved cases open with the
+    // right answer; C04 guesses "Is it 66?"), a claim of teaching must be true, and no example holds 27 + 39's numbers.
+    expect(SIMULATOR_SYSTEM).toContain("\"persona.knows\" and \"persona.behaviour\" come first");
+    expect(SIMULATOR_SYSTEM).toContain("never claim she showed a step she did not show");
+    // Practice at 361a05c9 (C26-r1, C29-r2 validity_flagged): the child said "Like you said, 2 plus 3 plus 1 is 6" and
+    // "you showed me to write the 6" with the easier example's 3. A claim of teaching is checked against Maya's turns first.
+    expect(SIMULATOR_SYSTEM).toContain("find that exact step or number in Maya's turns about your question");
+    expect(SIMULATOR_SYSTEM).toContain("A step or number from Maya's easier example belongs to that example, not to your question");
+    expect(SIMULATOR_SYSTEM).toContain("never say she said it, and do not use it unless \"persona.knows\" gives it to you");
+    const examples = SIMULATOR_SYSTEM.slice(SIMULATOR_SYSTEM.indexOf("Before Maya shows you"), SIMULATOR_SYSTEM.indexOf("Follow \"persona.behaviour\""));
+    for (const n of ["66", "16", "56", "2 plus 3", "7 plus 9"]) expect(examples).not.toContain(n);
+    // Review of 8ce1adff (P2): an example teaches no method either ("carry the 1, so I add it to the tens" taught C01, C05
+    // and C24 the skill they lack): each quoted example is a bare attribution, with no method word and no number.
+    const quoted = [...examples.matchAll(/"([^"]+)"/g)].map((m) => m[1]).filter((q) => !q.startsWith("persona."));
+    expect(quoted.length).toBeGreaterThanOrEqual(2);
+    for (const q of quoted) {
+      expect(q, q).not.toMatch(/\b(?:carr(?:y|ied|ies|ying)|tens?|ones?|regroup\w*|trad(?:e|ed|ing)|borrow\w*|add\w*|subtract\w*|plus|minus|column\w*)\b/i);
+      expect(q, q).not.toMatch(/\d/);
+    }
   });
 });
 
@@ -738,7 +925,47 @@ describe("the safety cases' request is said (practice run 9: C29 and C29b invali
   });
 
   it("tells the validity judge that words the card scripts are in persona", () => {
-    expect(VALIDITY_PROMPT_VERSION).toBe("practice-validity-2");
+    expect(VALIDITY_PROMPT_VERSION).toBe("practice-validity-5");
     expect(VALIDITY_SYSTEM).toContain("Words the card's \"behaviour\" tells the child to say");
+  });
+
+  // Review of 8ce1adff: C30-r1 was flagged for "I added the ones. I got 16." though its card says the child knows 7 + 9 =
+  // 16, and C02 for "the tens are 2 and 3, so 5?", the mistake its card describes.
+  it("reads the card's knowledge as allowed, judges teaching from Maya's turns, and flags a claim of teaching Maya did not give", () => {
+    // Review of be8accf0 (P3): the card's own order holds ("After two wrong guesses you guess 66", C04).
+    expect(VALIDITY_SYSTEM).toContain("What \"persona.knows\" says the child knows, and every step of the mistake it describes, is allowed, in the order the card gives");
+    expect(VALIDITY_SYSTEM).not.toContain("allowed from the first turn");
+    // Review of be8accf0 (P2): a hint teaches only what its words say; a question or an invitation teaches nothing.
+    expect(VALIDITY_SYSTEM).toContain("A hint teaches only what its words say. A question or an invitation teaches nothing.");
+    // Delta review of 31d65fb9 (P3): the question on the board is no teaching.
+    expect(VALIDITY_SYSTEM).toContain("Writing the question itself on the board teaches nothing.");
+    expect(VALIDITY_SYSTEM).toContain("Something counts as taught when one of Maya's turns before that child turn in \"call\" shows it");
+    expect(VALIDITY_SYSTEM).toContain("a child turn that says Maya showed, told or taught it something that none of her earlier turns in \"call\" shows");
+    expect(VALIDITY_SYSTEM).not.toContain("You get the card and only the child's turns");
+    // The cards say what the flagged turns used: C30 knows 7 + 9 = 16; C02 now states its tens step.
+    expect(byId("C30").persona.knows).toContain("7 + 9 = 16");
+    expect(byId("C02").persona.knows).toContain("2 + 3 = 5");
+  });
+});
+
+describe("the D-326 outcome rule", () => {
+  it("accepts a recorded two-miss close and rejects an early stop as outcome_not_allowed", async () => {
+    const c = { ...C07, reasons: ["solved" as const] };
+    const { store, recount } = await suite([c], { runs: 1, simulator: () => sayEach([
+      "Seven plus nine is sixteen.", "Two plus three plus one is six.", "56.", "65.",
+    ]) });
+    const saved = JSON.parse(store.load(traceFile("C07-r1"))!);
+    expect(saved.outcome?.reason).toBe("child_stopped");
+    expect(recount().runs[0].hardFailures.map((f) => f.code)).not.toContain("outcome_not_allowed");
+    const maya = saved.turns.filter((turn: { kind: string; output?: unknown }) => turn.kind === "maya" && turn.output);
+    const original = JSON.stringify(saved);
+    for (const turn of maya) turn.finalMisses = Math.min(turn.finalMisses, 1);
+    rewrite(store, "C07-r1", traceFile("C07-r1"), JSON.stringify(saved));
+    expect(recount().runs[0].hardFailures.map((f) => f.code)).toContain("outcome_not_allowed");
+    const leaked = JSON.parse(original);
+    const close = leaked.turns.findLast((turn: { kind: string; output?: { act: string } }) => turn.kind === "maya" && turn.output?.act === "close");
+    close.output.say.push("66");
+    rewrite(store, "C07-r1", traceFile("C07-r1"), JSON.stringify(leaked));
+    expect(recount().runs[0].hardFailures.map((f) => f.code)).toContain("outcome_not_allowed");
   });
 });

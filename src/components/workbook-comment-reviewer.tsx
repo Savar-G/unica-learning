@@ -1,7 +1,7 @@
 "use client";
-import { workbookEditMessage } from "@/lib/workbook-edit-message";
+import { author, authorCounts, changedPages, commentPlan, commentResult, historyGroups, pageCounts, pendingComments, sendableComments, sendLabel, vancouverTime, versionStatus } from "@/lib/workbook-review-display";
 import { watchWorkbookEditProgress, type EditProgress } from "@/lib/workbook-edit-progress";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { RunDetail } from "@/lib/admin-store";
 import type { ReviewComment } from "@/lib/workbook-edit";
@@ -55,9 +55,19 @@ function preview(value: unknown): string {
 
 export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail; history: { id: number; text: string }[] }) {
   const router = useRouter(), draft = detail.draft!;
-  const pages = draft.workbook.pages;
+  // Only the version on screen is loaded: choosing another loads the page again with ?version= (the newest has none).
+  const [choosing, startChoosing] = useTransition(), [chosen, setChosen] = useState<number | null>(null);
+  const [before, setBefore] = useState(false), [changedOnly, setChangedOnly] = useState(false);
+  const version = detail.versions.find(v => v.revision === (detail.shownRevision ?? draft.revision)) ?? detail.versions[0];
+  const previous = detail.versions.find(v => v.revision === version?.revision - 1);
+  const pages = version?.workbook?.pages ?? draft.workbook.pages;
+  const readOnly = !!version && version.revision !== draft.revision;
+  const changedPageNumbers = version ? changedPages(version, previous) : [];
+  const historyData = historyGroups(detail.comments, detail.edits);
+  const status = version ? versionStatus(version, detail.edits, detail.comments, detail.adminNames) : null;
   const [selected, setSelected] = useState(pages.find((p) => p.questions.length)?.number ?? 1);
   const [anchor, setAnchor] = useState<Anchor | null>(null), [note, setNote] = useState("");
+  const composing = useRef(false), refreshDue = useRef(false);
   const [item, setItem] = useState<unknown>(null), [exact, setExact] = useState(false);
   const [saving, setSaving] = useState(false), [error, setError] = useState("");
   const [notice, setNotice] = useState(""), [requestedRoute, setRequestedRoute] = useState<CommentRoute | "auto">("auto");
@@ -69,12 +79,23 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
   const loadingResult = active && (currentProgress?.status === "done" || currentProgress?.status === "failed");
   const stalled = active && (currentProgress ? currentProgress.phase === "stalled" : detail.editBatch?.stalled);
   const working = active && !stalled;
-  const resultMessage = workbookEditMessage(detail.editBatch, detail.comments);
-  const pending = detail.comments.filter((c) => c.status === "pending" || c.status === "failed");
+  const pending = pendingComments(detail.comments);
   const layoutComments = pending.filter(c => workbookCommentRoute(pages.find(p => p.number === c.page), c.note, c.route) === "layout");
-  const page = pages.find((p) => p.number === selected)!;
-  const rendered = draft.rendering?.pages.find((p) => p.number === selected);
-  const comments = detail.comments.filter((c) => c.page === selected);
+  const page = pages.find((p) => p.number === selected) ?? pages[0];
+  const rendered = version?.rendering?.pages.find((p) => p.number === page?.number);
+  const oldImage = previous?.rendering?.pages.find(p => p.number === page?.number);
+  const comments = pending.filter((c) => c.page === page?.number);
+  const visiblePages = changedOnly ? pages.filter(p => changedPageNumbers.includes(p.number)) : pages;
+  useEffect(() => {
+    function key(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      if (target?.matches("input, textarea, select, [contenteditable=true]") || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      const index = visiblePages.findIndex(p => p.number === selected), next = visiblePages[index + (e.key === "ArrowRight" ? 1 : -1)];
+      if (next) { e.preventDefault(); setSelected(next.number); setAnchor(null); }
+    }
+    window.addEventListener("keydown", key); return () => window.removeEventListener("keydown", key);
+  }, [selected, visiblePages]);
   useEffect(() => {
     if (!active) return;
     return watchWorkbookEditProgress({
@@ -86,7 +107,8 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
       update(next) {
         setProgressErrors(0);
         if (!next || next.id !== detail.editBatch?.id || next.status === "done" || next.status === "failed") {
-          setProgress(next); router.refresh(); return false;
+          // Never reload under an unsaved comment: wait until it is saved or cancelled.
+          setProgress(next); if (composing.current) refreshDue.current = true; else router.refresh(); return false;
         }
         setProgress(next); return true;
       },
@@ -94,8 +116,15 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
     });
   }, [active, detail.editBatch?.id, detail.run.id, router]);
   useEffect(() => { if (anchor) input.current?.focus(); }, [anchor]);
+  useEffect(() => { composing.current = !!anchor && note.trim().length > 0; }, [anchor, note]);
+  useEffect(() => { if (!anchor && refreshDue.current) { refreshDue.current = false; router.refresh(); } }, [anchor, router]);
+  function chooseVersion(n: number) {
+    const url = new URL(window.location.href);
+    if (n === draft.revision) url.searchParams.delete("version"); else url.searchParams.set("version", String(n));
+    setChosen(n); startChoosing(() => router.push(`${url.pathname}${url.search}`, { scroll: false }));
+  }
   function select(a: Anchor, comment?: ReviewComment) {
-    if (locked || working) return;
+    if (locked || working || readOnly) return;
     setSelected(a.page); setAnchor({ ...a, requestKey: a.requestKey ?? crypto.randomUUID() }); setNote(comment?.note ?? ""); setExact(!!comment?.item); setItem(comment?.item ?? null); setError("");
     setRequestedRoute(comment?.route ?? "auto");
   }
@@ -106,7 +135,7 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
         body: JSON.stringify({ revision: draft.revision, ...body }) });
       const result = await r.json();
       if (!r.ok) throw new Error(result.reason ?? "The comment could not be saved.");
-      if (result.status === "layout-review") setNotice(result.reason);
+      if (result.status === "layout-review" && result.reason !== LAYOUT_REVIEW_MESSAGE && result.reason !== "Page-layout comments are saved for review. They remain open.") setNotice(result.reason);
       router.refresh(); return true;
     } catch (e) { setError(e instanceof Error ? e.message : "Reload to check whether the comment was saved."); return false; }
     finally { setSaving(false); }
@@ -121,58 +150,71 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
   const displayRoute = requestedRoute === "question" && !questionRouteAvailable ? "layout" : requestedRoute;
   const built = exact && question?.package && item ? buildQuestion(item, { id: question.package.id, workbookId: draft.workbook.id,
     page: selected, question: question.number, level: question.package.level, skills: question.package.skill.skills }) : null;
-  const changed = new Set(comments.filter((c) => c.status === "done").map((c) => c.question));
+  const changed = new Set(detail.comments.filter((c) => c.page === selected && c.status === "done" && detail.edits.some(e => e.id === c.batchId && e.revision === version?.revision)).map((c) => c.question));
   const workingPages = [...new Set(detail.comments.filter((c) => c.status === "sent").map((c) => c.page))];
-  const phaseText: Record<EditProgress["phase"], string> = { waiting: "Waiting for your Mac", working: "Applying comments",
+  const phaseText: Record<EditProgress["phase"], string> = { waiting: "Waiting for the workbook computer", working: "Applying comments",
     retrying: "Retrying with saved work", stalled: "The edit stopped", saving: "Saving the new revision",
     done: "Changes saved. Loading the new revision", failed: "The edit stopped. Loading the comment results" };
   const state = active && currentProgress ? phaseText[currentProgress.phase]
-    : working ? detail.editBatch?.status === "queued" && detail.editBatch.runner === "mac" ? "Waiting for your Mac"
+    : working ? detail.editBatch?.status === "queued" && detail.editBatch.runner === "mac" ? "Waiting for the workbook computer"
       : `Applying comments to ${workingPages.length} ${workingPages.length === 1 ? "page" : "pages"}` : "Comment mode";
   return <section className="wbr" aria-label="Workbook review">
-    <header className="wbr-bar"><div><strong>Review workbook</strong><span>Version {draft.revision} · {state}</span></div>
-      <div className="wbr-progress"><button className="btn adm-btn" disabled={locked || working || saving || (!pending.length && !stalled)} onClick={() => post({ send: true })}>
-        {loadingResult ? "Loading results..." : stalled ? "Try again" : working ? "Applying comments..." : `Send all comments (${pending.length})`}</button>
+    <header className="wbr-bar"><div><strong>Review workbook</strong>
+      {version?.rendering?.pdfPath && detail.images[version.rendering.pdfPath] && <a href={detail.images[version.rendering.pdfPath]} target="_blank" rel="noopener">Open PDF of this version</a>}
+      <span>{status?.line ?? `Version ${draft.revision}`}</span>
+      <label>Version <select aria-label="Choose version" value={(choosing ? chosen : null) ?? version?.revision ?? draft.revision} disabled={choosing} onChange={e => { chooseVersion(Number(e.target.value)); setAnchor(null); setBefore(false); setChangedOnly(false); }}>
+        {detail.versions.map(v => <option key={v.revision} value={v.revision}>Version {v.revision}</option>)}</select></label></div>
+      <div className="wbr-progress"><button className="btn adm-btn" disabled={readOnly || locked || working || saving || (!sendableComments(pending).length && !stalled)} onClick={() => post({ send: true })}>
+        {loadingResult ? "Loading results..." : stalled ? "Try again" : working ? "Applying comments..." : sendLabel(pending, detail.adminNames)}</button>
         {active && <span role="status">{currentProgress
-          ? `${currentProgress.checked} of ${currentProgress.total} pages checked. ${currentProgress.ready} ready. ${currentProgress.failed} need attention.`
+          ? `Making version ${draft.revision + 1}: page ${Math.min(currentProgress.checked + 1, currentProgress.total)} of ${currentProgress.total}...`
           : "Checking saved progress..."}</span>}
       </div>
     </header>
-    {locked && <p className="wbr-message" role="note">This workbook is {detail.approved?.status}. It cannot change. You can read its comments.</p>}
+    {locked && <p className="wbr-message wbr-note" role="note">This workbook is {detail.approved?.status}. It cannot change. You can read its comments.</p>}
     {stalled && <p role="alert" className="wbr-message">The edit stopped. Try again to continue with the saved responses.</p>}
-    {working && <p className="wbr-message" role="status">{state} Your current workbook stays in place until the checked changes are ready.</p>}
+    {working && <p className="wbr-message wbr-note" role="status">{state} Your current workbook stays in place until the checked changes are ready.</p>}
     {active && progressErrors > 0 && <p className="wbr-message" role="alert">Progress is unavailable. Retrying shortly.{currentProgress ? " The last saved counts stay above." : " No saved count is available yet."}</p>}
-    {resultMessage && <p role="alert" className="wbr-message">{resultMessage}</p>}
-    {notice && <p role="status" className="wbr-message">{notice}</p>}
-    {layoutComments.length > 0 && <p className="wbr-message" role="note">{layoutComments.length} page-layout {layoutComments.length === 1 ? "comment needs" : "comments need"} review. Send all comments applies supported question text. Layout requests stay open in the review path below.</p>}
+    {!active && layoutComments.length > 0 && <p className="wbr-message wbr-note">{layoutComments.length} page-layout {layoutComments.length === 1 ? "comment is" : "comments are"} saved and open for the team. {layoutComments.length === 1 ? "It stays" : "They stay"} open until the pages are re-rendered.</p>}
+    {!active && !readOnly && status?.later && <p role="status" className={status.laterTone === "warn" ? "wbr-message" : "wbr-message wbr-note"}>{status.later}</p>}
+    {notice && <p role="status" className="wbr-message wbr-note">{notice}</p>}
     <div className="wbr-body">
-      <nav className="wbr-thumbs" aria-label="Workbook pages">{pages.map((p) => {
-        const count = detail.comments.filter((c) => c.page === p.number).length;
-        const image = draft.rendering?.pages.find((i) => i.number === p.number);
+      <nav className="wbr-thumbs" aria-label="Workbook pages"><label><input type="checkbox" checked={changedOnly} onChange={e => { setChangedOnly(e.target.checked); if (e.target.checked && changedPageNumbers.length) setSelected(changedPageNumbers[0]); }} /> Changed in this version</label>{visiblePages.map((p) => {
+        const count = pageCounts(detail.comments, p.number);
+        const image = version?.rendering?.pages.find((i) => i.number === p.number);
         return <button key={p.number} aria-current={selected === p.number ? "page" : undefined} onClick={() => { setSelected(p.number); setAnchor(null); }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           {image && detail.images[image.image.path] && <img src={detail.images[image.image.path]} alt="" loading="lazy" />}
-          Page {p.number}{count > 0 && <b title={`${count} comments`}>{count}</b>}</button>;
+          Page {p.number}{count.pending > 0 && <b title={`${count.pending} pending comments`}>{count.pending}</b>}{count.earlier && <small title="Earlier comments">History</small>}</button>;
       })}</nav>
-      <div className="wbr-canvas"><p>Page {selected} · {page.questions.length} questions</p>
+      <div className="wbr-canvas"><p>Page {page?.number} · {page?.questions.length ?? 0} questions</p>
+        <div className="wbr-buttons"><button type="button" disabled={visiblePages.findIndex(p => p.number === selected) <= 0} onClick={() => setSelected(visiblePages[visiblePages.findIndex(p => p.number === selected) - 1].number)}>Previous page</button><button type="button" disabled={visiblePages.findIndex(p => p.number === selected) >= visiblePages.length - 1} onClick={() => setSelected(visiblePages[visiblePages.findIndex(p => p.number === selected) + 1].number)}>Next page</button>
+        {changedPageNumbers.includes(page?.number) && <label><input type="checkbox" checked={before} onChange={e => setBefore(e.target.checked)} /> Show before</label>}</div>
+        <div className={before ? "wbr-comparison" : undefined}>
+        {before && oldImage && detail.images[oldImage.image.path] && <div className="wbr-before"><span>Before</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={detail.images[oldImage.image.path]} alt={`Previous version, page ${selected}`} /></div>}
+        {!version?.rendering?.pages.length && <p>No page images are available for this version.</p>}
+        {before && (!oldImage || !detail.images[oldImage.image.path]) && <p>No earlier page image is available.</p>}
         <div className="wbr-sheet" style={{ aspectRatio: rendered ? `${rendered.image.width}/${rendered.image.height}` : "8.5/11" }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           {rendered && detail.images[rendered.image.path] && <img src={detail.images[rendered.image.path]} alt={`Workbook page ${selected}`} />}
-          <button className="wbr-page-hit" disabled={locked || working} aria-label={`Comment on page ${selected}`} onClick={(e) => {
+          <button className="wbr-page-hit" disabled={readOnly || locked || working} aria-label={`Comment on page ${selected}`} onClick={(e) => {
             const r = e.currentTarget.getBoundingClientRect(); select({ page: selected, question: null, ...commentPosition(e.detail, e.clientX, e.clientY, r) });
           }} />
-          {rendered?.questions.map((q) => <button key={q.number} disabled={locked || working} aria-label={`Comment on question ${q.number} on page ${selected}`}
+          {rendered?.questions.map((q) => <button key={q.number} disabled={readOnly || locked || working} aria-label={`Comment on question ${q.number} on page ${selected}`}
             className={`wbr-question${changed.has(q.number) || changed.has(null) ? " wbr-changed" : ""}`}
             style={{ left: `${q.box.x / rendered.image.width * 100}%`, top: `${q.box.y / rendered.image.height * 100}%`, width: `${q.box.width / rendered.image.width * 100}%`, height: `${q.box.height / rendered.image.height * 100}%` }}
             onClick={() => select({ page: selected, question: q.number, x: q.box.x / rendered.image.width, y: q.box.y / rendered.image.height })}>
               <span>{changed.has(q.number) || changed.has(null) ? "Changed · " : ""}{q.number}</span></button>)}
           {comments.map((c) => <button key={c.id} className={`wbr-pin ${c.status}`} style={{ left: `${c.x * 100}%`, top: `${c.y * 100}%` }}
             aria-label={`${location(c)}: ${c.note}`} onClick={() => { if (["pending", "failed", "stale"].includes(c.status)) select({ ...c }, c); else document.getElementById(`comment-${c.id}`)?.scrollIntoView({ block: "nearest" }); }}>{detail.comments.findIndex((x) => x.id === c.id) + 1}</button>)}
-        </div>
-        <label className="wbr-question-list">Select a question<select disabled={locked || working} value={anchor?.page === selected ? anchor.question ?? "page" : ""} onChange={(e) => select({ page: selected, question: e.target.value === "page" ? null : Number(e.target.value), x: .5, y: .2 })}>
+        </div></div>
+        <label className="wbr-question-list">Select a question<select disabled={readOnly || locked || working} value={anchor?.page === selected ? anchor.question ?? "page" : ""} onChange={(e) => select({ page: selected, question: e.target.value === "page" ? null : Number(e.target.value), x: .5, y: .2 })}>
           <option value="" disabled>Choose a location</option><option value="page">Whole page</option>{page.questions.map((q) => <option key={q.number} value={q.number}>Question {q.number}: {q.package?.text ?? "Needs fixing"}</option>)}</select></label>
       </div>
       <aside className="wbr-comments" aria-label="Review comments"><h3>Comments <span>{pending.length} pending</span></h3>
+        <p>{authorCounts(pending, detail.adminNames).map(c => `${c.name} ${c.count}`).join(" · ")}</p>
         <p className="adm-sub">Select a question or a place on the page. Save each comment, then send them together.</p>
         {anchor && <form className="wbr-compose" onSubmit={(e) => { e.preventDefault(); void add(); }}>
           <strong>{location(anchor)}</strong><label>What needs to change?<textarea ref={input} value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)}
@@ -191,17 +233,23 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
           <small>Enter to save · Esc to cancel · Shift+Enter for a new line</small>
         </form>}
         {error && <p role="alert">{error}</p>}
-        <WorkbookLayoutReview comments={layoutComments} pages={pages.map(p => p.number)} busy={locked || active || saving} apply={layout => post({ layout })} />
+        {!readOnly && <WorkbookLayoutReview comments={layoutComments} pages={pages.map(p => p.number)} busy={locked || active || saving} apply={layout => post({ layout })} />}
         {!detail.comments.length && <p className="wbr-empty">No comments yet.</p>}
-        {detail.comments.map((c, i) => <article id={`comment-${c.id}`} key={c.id} className={`wbr-comment ${c.status}`}>
+        {pending.map((c, i) => <article id={`comment-${c.id}`} key={c.id} className={`wbr-comment ${c.status}`}>
           <button className="wbr-location" onClick={() => setSelected(c.page)}>{i + 1}. {location(c)}</button><span className="wbr-result">{workbookCommentStatus(c, workbookCommentRoute(pages.find(p => p.number === c.page), c.note, c.route))}</span>
-          <p>{c.note}</p>{c.item ? <small>Exact fields saved</small> : null}
+          <p>{c.note}</p><small>{author(c.actor.id, c.actor.email, detail.adminNames)}</small><p>{commentPlan(pages.find(p => p.number === c.page), c)}</p>{c.item ? <small>Exact fields saved</small> : null}
           {c.resultNote && <p className="wbr-reason">{c.resultNote}</p>}
           {c.error && <p className="wbr-reason">{commentReason(c.error)}</p>}
           {c.status === "stale" && <p>Select a new location to add this comment again.</p>}
           {c.status === "done" && c.route !== "layout" && <details><summary>Before and after</summary><p><b>Before</b><br />{preview(c.before)}</p><p><b>After</b><br />{preview(c.after)}</p></details>}
-          {!locked && !working && ["pending", "failed", "stale"].includes(c.status) && <div className="wbr-buttons"><button className="wbr-link" onClick={() => select({ page: c.page, question: c.question, x: c.x, y: c.y, id: c.id }, c)}>Edit comment</button><button className="wbr-link" disabled={saving} onClick={() => post({ delete: true, comment: { id: c.id } })}>Delete</button></div>}
+          {!readOnly && !locked && !working && ["pending", "failed", "stale"].includes(c.status) && <div className="wbr-buttons"><button className="wbr-link" onClick={() => select({ page: c.page, question: c.question, x: c.x, y: c.y, id: c.id }, c)}>Edit comment</button><button className="wbr-link" disabled={saving} onClick={() => post({ delete: true, comment: { id: c.id } })}>Delete</button></div>}
         </article>)}
+        <details><summary>Earlier comments ({historyData.count})</summary>
+          {historyData.groups.map(({ send, comments: group }) => <section key={send.id}><h4>{send.displayAt ?? vancouverTime(send.createdAt)}{send.revision ? ` · Version ${send.revision}` : " · No new version"}</h4>
+            {group.map(c => <article className="wbr-comment" key={c.id}><button className="wbr-location" onClick={() => setSelected(c.page)}>{location(c)}</button><small>{author(c.actor.id, c.actor.email, detail.adminNames)}</small><p>{c.note}</p><b>{commentResult(c, send)}</b>{c.resultNote && <p>{c.resultNote}</p>}</article>)}
+          </section>)}
+          {historyData.other.map(c => <article className="wbr-comment" key={c.id}><b>{location(c)}</b><small>{author(c.actor.id, c.actor.email, detail.adminNames)}</small><p>{c.note}</p><b>{commentResult(c)}</b>{c.resultNote && <p>{c.resultNote}</p>}</article>)}
+        </details>
       </aside>
     </div>
     <details className="wbr-history"><summary>Review history</summary>{history.map((e) => <p key={e.id}>{e.text}</p>)}</details>

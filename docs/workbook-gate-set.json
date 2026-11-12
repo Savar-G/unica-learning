@@ -1,0 +1,3655 @@
+{
+  "version": 1,
+  "originals": [
+    {
+      "id": "q1",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.1",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "? = 45 + 3",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q2",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.2",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "66 + 9 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q3",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.3",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "77 + 3 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q4",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.4",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "8 + 16 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q5",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.5",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "? = 11 + 3",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q6",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.6",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "29 + 4 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q7",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.7",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "39 + 17 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q8",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.8",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "? = 71 + 4",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q9",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.9",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "60 + 5 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q10",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.10",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "74 + 12 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q11",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.11",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "6 + 6 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q12",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.12",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "? = 67 + 8",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q13",
+      "source": "gate857-u16",
+      "page": 11,
+      "slot": "1.1",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "47 + 2 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q14",
+      "source": "gate857-u16",
+      "page": 11,
+      "slot": "1.2",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "? = 68 + 7",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q15",
+      "source": "gate857-u16",
+      "page": 11,
+      "slot": "1.3",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "68 + 9 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q16",
+      "source": "gate857-u16",
+      "page": 11,
+      "slot": "1.4",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "78 + 3 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q17",
+      "source": "gate857-u16",
+      "page": 11,
+      "slot": "1.5",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "? = 48 + 2",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q18",
+      "source": "gate857-u16",
+      "page": 11,
+      "slot": "1.6",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "? = 72 + 1",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q19",
+      "source": "gate857-u16",
+      "page": 11,
+      "slot": "1.7",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "31 + 4 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q20",
+      "source": "gate857-u16",
+      "page": 11,
+      "slot": "1.8",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "41 + 17 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q21",
+      "source": "gate857-u16",
+      "page": 11,
+      "slot": "1.9",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "52 + 11 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q22",
+      "source": "gate857-u16",
+      "page": 11,
+      "slot": "1.10",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "30 + 17 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q23",
+      "source": "gate857-u16",
+      "page": 11,
+      "slot": "1.11",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "40 + 11 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q24",
+      "source": "gate857-u16",
+      "page": 11,
+      "slot": "1.12",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "51 + 5 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q25",
+      "source": "gate857-u16",
+      "page": 19,
+      "slot": "1.1",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "9 + 18 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q26",
+      "source": "gate857-u16",
+      "page": 19,
+      "slot": "1.2",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "? = 58 + 5",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q27",
+      "source": "gate857-u16",
+      "page": 19,
+      "slot": "1.3",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "30 + 6 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q28",
+      "source": "gate857-u16",
+      "page": 19,
+      "slot": "1.4",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "? = 45 + 3",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q29",
+      "source": "gate857-u16",
+      "page": 19,
+      "slot": "1.5",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "51 + 13 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q30",
+      "source": "gate857-u16",
+      "page": 19,
+      "slot": "1.6",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "61 + 7 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q31",
+      "source": "gate857-u16",
+      "page": 19,
+      "slot": "1.7",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "72 + 1 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q32",
+      "source": "gate857-u16",
+      "page": 19,
+      "slot": "1.8",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "3 + 14 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q33",
+      "source": "gate857-u16",
+      "page": 19,
+      "slot": "1.9",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "14 + 8 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q34",
+      "source": "gate857-u16",
+      "page": 19,
+      "slot": "1.10",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "6 + 5 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q35",
+      "source": "gate857-u16",
+      "page": 19,
+      "slot": "1.11",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "17 + 18 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q36",
+      "source": "gate857-u16",
+      "page": 19,
+      "slot": "1.12",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "? = 2 + 19",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q37",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.1",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "673+7=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q38",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.2",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "530+70=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q39",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.3",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "911+9=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q40",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.4",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "768+2=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q41",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.5",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "149+1=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q42",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.6",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "6 × 5 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q43",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.7",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "387+3=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q44",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.8",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "244+6=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q45",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.9",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "625+5=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q46",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.10",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "9 × 5 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q47",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.11",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "628+8=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q48",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.12",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "247+7=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q49",
+      "source": "first-customer-u16-20261106",
+      "page": 51,
+      "slot": "1.1",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "736+80 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q50",
+      "source": "first-customer-u16-20261106",
+      "page": 51,
+      "slot": "1.2",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "2 × 7 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q51",
+      "source": "first-customer-u16-20261106",
+      "page": 51,
+      "slot": "1.3",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "974+60 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q52",
+      "source": "first-customer-u16-20261106",
+      "page": 51,
+      "slot": "1.4",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "5 × 8 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q53",
+      "source": "first-customer-u16-20261106",
+      "page": 51,
+      "slot": "1.5",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "260+70 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q54",
+      "source": "first-customer-u16-20261106",
+      "page": 51,
+      "slot": "1.6",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "4 × 10 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q55",
+      "source": "first-customer-u16-20261106",
+      "page": 51,
+      "slot": "1.7",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "498+30 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q56",
+      "source": "first-customer-u16-20261106",
+      "page": 51,
+      "slot": "1.8",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "2 × 9 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q57",
+      "source": "first-customer-u16-20261106",
+      "page": 51,
+      "slot": "1.9",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "784+50 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q58",
+      "source": "first-customer-u16-20261106",
+      "page": 51,
+      "slot": "1.10",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "5 × 5 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q59",
+      "source": "first-customer-u16-20261106",
+      "page": 51,
+      "slot": "1.11",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "771+90 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q60",
+      "source": "first-customer-u16-20261106",
+      "page": 51,
+      "slot": "1.12",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "10×10 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q61",
+      "source": "first-customer-u16-20261106",
+      "page": 59,
+      "slot": "1.1",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "5 × 7 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q62",
+      "source": "first-customer-u16-20261106",
+      "page": 59,
+      "slot": "1.2",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "416+4 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q63",
+      "source": "first-customer-u16-20261106",
+      "page": 59,
+      "slot": "1.3",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "797+3 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q64",
+      "source": "first-customer-u16-20261106",
+      "page": 59,
+      "slot": "1.4",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "178+2 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q65",
+      "source": "first-customer-u16-20261106",
+      "page": 59,
+      "slot": "1.5",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "559+11 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q66",
+      "source": "first-customer-u16-20261106",
+      "page": 59,
+      "slot": "1.6",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "940+60 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q67",
+      "source": "first-customer-u16-20261106",
+      "page": 59,
+      "slot": "1.7",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "321+19 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q68",
+      "source": "first-customer-u16-20261106",
+      "page": 59,
+      "slot": "1.8",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "702+8 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q69",
+      "source": "first-customer-u16-20261106",
+      "page": 59,
+      "slot": "1.9",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "83+7 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q70",
+      "source": "first-customer-u16-20261106",
+      "page": 59,
+      "slot": "1.10",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "159+1 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q71",
+      "source": "first-customer-u16-20261106",
+      "page": 59,
+      "slot": "1.11",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "778+12 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q72",
+      "source": "first-customer-u16-20261106",
+      "page": 59,
+      "slot": "1.12",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "921+9 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q73",
+      "source": "first-customer-u16-20261106",
+      "page": 67,
+      "slot": "1.1",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "818+8=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q74",
+      "source": "first-customer-u16-20261106",
+      "page": 67,
+      "slot": "1.2",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "2 × 6 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q75",
+      "source": "first-customer-u16-20261106",
+      "page": 67,
+      "slot": "1.3",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "580+70=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q76",
+      "source": "first-customer-u16-20261106",
+      "page": 67,
+      "slot": "1.4",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "3 × 3 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q77",
+      "source": "first-customer-u16-20261106",
+      "page": 67,
+      "slot": "1.5",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "294+9=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q78",
+      "source": "first-customer-u16-20261106",
+      "page": 67,
+      "slot": "1.6",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "5 × 10 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q79",
+      "source": "first-customer-u16-20261106",
+      "page": 67,
+      "slot": "1.7",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "7 × 8 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q80",
+      "source": "first-customer-u16-20261106",
+      "page": 67,
+      "slot": "1.8",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "247+6=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q81",
+      "source": "first-customer-u16-20261106",
+      "page": 67,
+      "slot": "1.9",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "2 × 8 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q82",
+      "source": "first-customer-u16-20261106",
+      "page": 67,
+      "slot": "1.10",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "188+7=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q83",
+      "source": "first-customer-u16-20261106",
+      "page": 67,
+      "slot": "1.11",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "569+5=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q84",
+      "source": "first-customer-u16-20261106",
+      "page": 67,
+      "slot": "1.12",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "9 × 10 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q85",
+      "source": "first-customer-u16-20261106",
+      "page": 75,
+      "slot": "1.1",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "602+8=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q86",
+      "source": "first-customer-u16-20261106",
+      "page": 75,
+      "slot": "1.2",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "3 × 5 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q87",
+      "source": "first-customer-u16-20261106",
+      "page": 75,
+      "slot": "1.3",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "364+6=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q88",
+      "source": "first-customer-u16-20261106",
+      "page": 75,
+      "slot": "1.4",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "2 × 10 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q89",
+      "source": "first-customer-u16-20261106",
+      "page": 75,
+      "slot": "1.5",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "78+2=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q90",
+      "source": "first-customer-u16-20261106",
+      "page": 75,
+      "slot": "1.6",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "6 × 6 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q91",
+      "source": "first-customer-u16-20261106",
+      "page": 75,
+      "slot": "1.7",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "840+60=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q92",
+      "source": "first-customer-u16-20261106",
+      "page": 75,
+      "slot": "1.8",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "7 × 7 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q93",
+      "source": "first-customer-u16-20261106",
+      "page": 75,
+      "slot": "1.9",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "650+50=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q94",
+      "source": "first-customer-u16-20261106",
+      "page": 75,
+      "slot": "1.10",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "8 × 8 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q95",
+      "source": "first-customer-u16-20261106",
+      "page": 75,
+      "slot": "1.11",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "9 × 9 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q96",
+      "source": "first-customer-u16-20261106",
+      "page": 75,
+      "slot": "1.12",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "80+90=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q97",
+      "source": "codex-sol-high-u16-20261105",
+      "page": 19,
+      "slot": "1.1",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "602+100=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q98",
+      "source": "codex-sol-high-u16-20261105",
+      "page": 19,
+      "slot": "1.2",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "2 × 6 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q99",
+      "source": "codex-sol-high-u16-20261105",
+      "page": 19,
+      "slot": "1.3",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "364+200=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q100",
+      "source": "codex-sol-high-u16-20261105",
+      "page": 19,
+      "slot": "1.4",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "5 × 7 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q101",
+      "source": "codex-sol-high-u16-20261105",
+      "page": 19,
+      "slot": "1.5",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "78+60=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q102",
+      "source": "codex-sol-high-u16-20261105",
+      "page": 19,
+      "slot": "1.6",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "4 × 6 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q103",
+      "source": "codex-sol-high-u16-20261105",
+      "page": 19,
+      "slot": "1.7",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "840+70=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q104",
+      "source": "codex-sol-high-u16-20261105",
+      "page": 19,
+      "slot": "1.8",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "10 × 8 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q105",
+      "source": "codex-sol-high-u16-20261105",
+      "page": 19,
+      "slot": "1.9",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "650+80=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q106",
+      "source": "codex-sol-high-u16-20261105",
+      "page": 19,
+      "slot": "1.10",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "5 × 9 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q107",
+      "source": "codex-sol-high-u16-20261105",
+      "page": 19,
+      "slot": "1.11",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "313+300=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "q108",
+      "source": "codex-sol-high-u16-20261105",
+      "page": 19,
+      "slot": "1.12",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "2 × 9 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      }
+    }
+  ],
+  "changed": [
+    {
+      "id": "reading-1",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.1",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Ascertain the numerical value that satisfies the subsequent equality. ? = 45 + 3",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q1",
+      "gate": "reading_level"
+    },
+    {
+      "id": "reading-2",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.2",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Determine the quantity that renders the following mathematical statement accurate. 66 + 9 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q2",
+      "gate": "reading_level"
+    },
+    {
+      "id": "reading-3",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.3",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Evaluate the expression and establish the value required by the equation. 77 + 3 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q3",
+      "gate": "reading_level"
+    },
+    {
+      "id": "reading-4",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.4",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Calculate the unknown quantity in the numerical relationship shown below. 8 + 16 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q4",
+      "gate": "reading_level"
+    },
+    {
+      "id": "reading-5",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.5",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Identify the value that makes the ensuing mathematical proposition valid. ? = 11 + 3",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q5",
+      "gate": "reading_level"
+    },
+    {
+      "id": "reading-6",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.6",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Establish which numerical quantity completes the subsequent equation correctly. 29 + 4 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q6",
+      "gate": "reading_level"
+    },
+    {
+      "id": "reading-7",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.7",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Deduce the unknown value from the arithmetic relationship specified below. 39 + 17 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q7",
+      "gate": "reading_level"
+    },
+    {
+      "id": "reading-8",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.8",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Compute the quantity that would make the following equality mathematically sound. ? = 71 + 4",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q8",
+      "gate": "reading_level"
+    },
+    {
+      "id": "reading-9",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.9",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Determine the numerical result represented by the arithmetic expression below. 60 + 5 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q9",
+      "gate": "reading_level"
+    },
+    {
+      "id": "reading-10",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.10",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Ascertain the missing quantity by evaluating the mathematical statement that follows. 74 + 12 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q10",
+      "gate": "reading_level"
+    },
+    {
+      "id": "reading-11",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.11",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Infer the value necessary to maintain equivalence in the equation below. 6 + 6 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q11",
+      "gate": "reading_level"
+    },
+    {
+      "id": "reading-12",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.12",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Establish the numerical result of the calculation presented in the following statement. ? = 67 + 8",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q12",
+      "gate": "reading_level"
+    },
+    {
+      "id": "reading-13",
+      "source": "gate857-u16",
+      "page": 11,
+      "slot": "1.1",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Determine the quantity that fulfils the conditions of the subsequent equality. 47 + 2 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q13",
+      "gate": "reading_level"
+    },
+    {
+      "id": "reading-14",
+      "source": "gate857-u16",
+      "page": 11,
+      "slot": "1.2",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Calculate the missing numerical value in the mathematical relationship below. ? = 68 + 7",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q14",
+      "gate": "reading_level"
+    },
+    {
+      "id": "reading-15",
+      "source": "gate857-u16",
+      "page": 11,
+      "slot": "1.3",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Evaluate the stated arithmetic operation to identify its resultant quantity. 68 + 9 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q15",
+      "gate": "reading_level"
+    },
+    {
+      "id": "reading-16",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.1",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Ascertain which value would preserve the equivalence indicated in this equation. 673+7=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q37",
+      "gate": "reading_level"
+    },
+    {
+      "id": "reading-17",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.2",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Determine the unknown component of the mathematical equality that follows. 530+70=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q38",
+      "gate": "reading_level"
+    },
+    {
+      "id": "reading-18",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.3",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Deduce the numerical quantity represented by the missing element below. 911+9=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q39",
+      "gate": "reading_level"
+    },
+    {
+      "id": "reading-19",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.4",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Establish the value that ensures the subsequent equation remains mathematically valid. 768+2=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q40",
+      "gate": "reading_level"
+    },
+    {
+      "id": "reading-20",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.5",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Compute the result and identify the missing quantity in the following relationship. 149+1=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q41",
+      "gate": "reading_level"
+    },
+    {
+      "id": "reading-21",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.6",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Identify the numerical value that satisfies the arithmetic condition stated below. 6 × 5 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q42",
+      "gate": "reading_level"
+    },
+    {
+      "id": "reading-22",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.7",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Evaluate the following expression to establish the value of its unknown component. 387+3=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q43",
+      "gate": "reading_level"
+    },
+    {
+      "id": "reading-23",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.8",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Determine the quantity required to complete the mathematical equivalence below. 244+6=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q44",
+      "gate": "reading_level"
+    },
+    {
+      "id": "reading-24",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.9",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Ascertain the missing numerical result of the subsequent arithmetic operation. 625+5=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q45",
+      "gate": "reading_level"
+    },
+    {
+      "id": "reading-25",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.10",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Deduce the result of the calculation and complete the equality that follows. 9 × 5 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q46",
+      "gate": "reading_level"
+    },
+    {
+      "id": "reading-26",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.11",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Establish the unknown quantity that makes the mathematical statement accurate. 628+8=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q47",
+      "gate": "reading_level"
+    },
+    {
+      "id": "reading-27",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.12",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Compute the numerical value represented by the missing component of this equation. 247+7=?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q48",
+      "gate": "reading_level"
+    },
+    {
+      "id": "reading-28",
+      "source": "first-customer-u16-20261106",
+      "page": 51,
+      "slot": "1.1",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Identify the quantity that fulfils the requirements of the following arithmetic statement. 736+80 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q49",
+      "gate": "reading_level"
+    },
+    {
+      "id": "reading-29",
+      "source": "first-customer-u16-20261106",
+      "page": 51,
+      "slot": "1.2",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Determine the missing value by evaluating the numerical expression presented below. 2 × 7 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q50",
+      "gate": "reading_level"
+    },
+    {
+      "id": "reading-30",
+      "source": "first-customer-u16-20261106",
+      "page": 51,
+      "slot": "1.3",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Ascertain the result that makes the subsequent mathematical relationship valid. 974+60 = ?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q51",
+      "gate": "reading_level"
+    },
+    {
+      "id": "answers-1",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.1",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write either the result of 45 + 3 or a number one greater than that result. Both answers are correct.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q1",
+      "gate": "one_right_answer"
+    },
+    {
+      "id": "answers-2",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.2",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write either the result of 66 + 9 or a number one greater than that result. Both answers are correct.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q2",
+      "gate": "one_right_answer"
+    },
+    {
+      "id": "answers-3",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.3",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write either the result of 77 + 3 or a number one greater than that result. Both answers are correct.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q3",
+      "gate": "one_right_answer"
+    },
+    {
+      "id": "answers-4",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.4",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write either the result of 8 + 16 or a number one greater than that result. Both answers are correct.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q4",
+      "gate": "one_right_answer"
+    },
+    {
+      "id": "answers-5",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.5",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write either the result of 11 + 3 or a number one greater than that result. Both answers are correct.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q5",
+      "gate": "one_right_answer"
+    },
+    {
+      "id": "answers-6",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.6",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write either the result of 29 + 4 or a number one greater than that result. Both answers are correct.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q6",
+      "gate": "one_right_answer"
+    },
+    {
+      "id": "answers-7",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.7",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write either the result of 39 + 17 or a number one greater than that result. Both answers are correct.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q7",
+      "gate": "one_right_answer"
+    },
+    {
+      "id": "answers-8",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.8",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write either the result of 71 + 4 or a number one greater than that result. Both answers are correct.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q8",
+      "gate": "one_right_answer"
+    },
+    {
+      "id": "answers-9",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.9",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write either the result of 60 + 5 or a number one greater than that result. Both answers are correct.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q9",
+      "gate": "one_right_answer"
+    },
+    {
+      "id": "answers-10",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.10",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write either the result of 74 + 12 or a number one greater than that result. Both answers are correct.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q10",
+      "gate": "one_right_answer"
+    },
+    {
+      "id": "answers-11",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.11",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write either the result of 6 + 6 or a number one greater than that result. Both answers are correct.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q11",
+      "gate": "one_right_answer"
+    },
+    {
+      "id": "answers-12",
+      "source": "gate857-u16",
+      "page": 3,
+      "slot": "1.12",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write either the result of 67 + 8 or a number one greater than that result. Both answers are correct.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q12",
+      "gate": "one_right_answer"
+    },
+    {
+      "id": "answers-13",
+      "source": "gate857-u16",
+      "page": 11,
+      "slot": "1.1",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write either the result of 47 + 2 or a number one greater than that result. Both answers are correct.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q13",
+      "gate": "one_right_answer"
+    },
+    {
+      "id": "answers-14",
+      "source": "gate857-u16",
+      "page": 11,
+      "slot": "1.2",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write either the result of 68 + 7 or a number one greater than that result. Both answers are correct.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q14",
+      "gate": "one_right_answer"
+    },
+    {
+      "id": "answers-15",
+      "source": "gate857-u16",
+      "page": 11,
+      "slot": "1.3",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write either the result of 68 + 9 or a number one greater than that result. Both answers are correct.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q15",
+      "gate": "one_right_answer"
+    },
+    {
+      "id": "answers-16",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.1",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write either the result of 673+7 or a number one greater than that result. Both answers are correct.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q37",
+      "gate": "one_right_answer"
+    },
+    {
+      "id": "answers-17",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.2",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write either the result of 530+70 or a number one greater than that result. Both answers are correct.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q38",
+      "gate": "one_right_answer"
+    },
+    {
+      "id": "answers-18",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.3",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write either the result of 911+9 or a number one greater than that result. Both answers are correct.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q39",
+      "gate": "one_right_answer"
+    },
+    {
+      "id": "answers-19",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.4",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write either the result of 768+2 or a number one greater than that result. Both answers are correct.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q40",
+      "gate": "one_right_answer"
+    },
+    {
+      "id": "answers-20",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.5",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write either the result of 149+1 or a number one greater than that result. Both answers are correct.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q41",
+      "gate": "one_right_answer"
+    },
+    {
+      "id": "answers-21",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.6",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write either the result of 6 × 5 or a number one greater than that result. Both answers are correct.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q42",
+      "gate": "one_right_answer"
+    },
+    {
+      "id": "answers-22",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.7",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write either the result of 387+3 or a number one greater than that result. Both answers are correct.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q43",
+      "gate": "one_right_answer"
+    },
+    {
+      "id": "answers-23",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.8",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write either the result of 244+6 or a number one greater than that result. Both answers are correct.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q44",
+      "gate": "one_right_answer"
+    },
+    {
+      "id": "answers-24",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.9",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write either the result of 625+5 or a number one greater than that result. Both answers are correct.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q45",
+      "gate": "one_right_answer"
+    },
+    {
+      "id": "answers-25",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.10",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write either the result of 9 × 5 or a number one greater than that result. Both answers are correct.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q46",
+      "gate": "one_right_answer"
+    },
+    {
+      "id": "answers-26",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.11",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write either the result of 628+8 or a number one greater than that result. Both answers are correct.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q47",
+      "gate": "one_right_answer"
+    },
+    {
+      "id": "answers-27",
+      "source": "first-customer-u16-20261106",
+      "page": 43,
+      "slot": "1.12",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write either the result of 247+7 or a number one greater than that result. Both answers are correct.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q48",
+      "gate": "one_right_answer"
+    },
+    {
+      "id": "answers-28",
+      "source": "first-customer-u16-20261106",
+      "page": 51,
+      "slot": "1.1",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write either the result of 736+80 or a number one greater than that result. Both answers are correct.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q49",
+      "gate": "one_right_answer"
+    },
+    {
+      "id": "answers-29",
+      "source": "first-customer-u16-20261106",
+      "page": 51,
+      "slot": "1.2",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write either the result of 2 × 7 or a number one greater than that result. Both answers are correct.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q50",
+      "gate": "one_right_answer"
+    },
+    {
+      "id": "answers-30",
+      "source": "first-customer-u16-20261106",
+      "page": 51,
+      "slot": "1.3",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write either the result of 974+60 or a number one greater than that result. Both answers are correct.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q51",
+      "gate": "one_right_answer"
+    }
+  ]
+}

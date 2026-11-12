@@ -1,4 +1,5 @@
-import { createAdaptiveSession, lockAdaptiveBlock, UNKNOWN_RESPONSE, type AdaptiveTest } from "@/lib/assessment";
+import { ATTEMPT_MOVES, createAdaptiveSession, lockAdaptiveBlock, UNKNOWN_RESPONSE, type AdaptiveTest } from "@/lib/assessment";
+import { next as nextStatus } from "@/lib/state-machine";
 // One child's test attempt on the server (spec #144, #146): start or continue it ("Start test", "Continue test",
 // "Finish test", "Start again", #72), read its next step, answer a question with its whiteboard work (#147), run the
 // timed facts section (#148), and finish it: score it once and store the placement (#150).
@@ -17,7 +18,6 @@ import {
   changeAnswer as remark,
   decideStart,
   finish,
-  fromRemovedRound,
   lockStage1,
   lockStage2,
   nextQuestion,
@@ -34,6 +34,7 @@ import {
   workProblem,
   type Answer,
   type Attempt,
+  type ChildProfile,
   type OpenSection,
   type Grade,
   type HelpAnswer,
@@ -861,18 +862,13 @@ interface ReadTest {
   /** #185: the halfway break as stored, for a resume. */
   break?: BreakResume;
   help: HelpAnswer | null;
-  /**
-   * D-145: the stored answers to the removed extra round's questions (#190), in order, after the main answers. They
-   * never count; the finish passes them to the store's check unchanged, which compares every stored answer.
-   */
-  roundAnswers: Submission[];
 }
 
 /** The parent's test at `now`, or "expired" when it ran out of time: then it is marked expired if still in progress. */
 async function openTest(store: AttemptStore, parent: string, id: string, now: number): Promise<ReadTest | Refusal> {
   const read = await readTest(store, parent, id);
   if (!read.ok || attemptState(read.attempt, now) !== "expired") return read;
-  if (read.attempt.status === "in_progress") {
+  if (nextStatus(ATTEMPT_MOVES, read.attempt.status, "expire")) {
     try {
       await store.expire(id, now);
     } catch (e) {
@@ -892,12 +888,9 @@ async function readTest(store: AttemptStore, parent: string, id: string): Promis
   }
   if (!loaded) return { ok: false, error: "not_found" };
   let session: Session;
-  // D-145: the answers to the removed extra round's questions (#190), which tests from before the removal store after
-  // their main answers, are left out of the session (fromRemovedRound).
-  const roundAnswers = loaded.answers.filter((a) => fromRemovedRound(a.questionId));
   try {
     // #253: the stored route is the stage 1 lock record. D-282: the stored third stage is the stage 2 lock record.
-    session = restoreSession(loaded.test, loaded.answers.filter((a) => !fromRemovedRound(a.questionId)), loaded.route ?? null, loaded.stage3Route ?? null);
+    session = restoreSession(loaded.test, loaded.answers, loaded.route ?? null, loaded.stage3Route ?? null);
   } catch (e) {
     console.error("[test] restore failed", id, messageOf(e));
     return { ok: false, error: "store_failed", unreadable: true };
@@ -909,7 +902,6 @@ async function readTest(store: AttemptStore, parent: string, id: string): Promis
     session,
     ...(loaded.break && { break: loaded.break }),
     help: loaded.help ?? null,
-    roundAnswers,
   };
 }
 
@@ -924,11 +916,23 @@ export interface LoadedFacts {
   answers: FactSubmission[];
 }
 
+/** The parent's test as its facts section needs it: the attempt (its status), and the profile and seed that draw the facts. */
+export interface FactsOwner {
+  attempt: Attempt;
+  profile: ChildProfile;
+  seed: number;
+}
+
 /**
- * The store seam's operations for the timed facts section. Each keeps one database guard. The module calls them only
- * for a test that `load` returned for the parent, so they take the test's id alone.
+ * The store seam's operations for the timed facts section. Each keeps one database guard. The module calls the others
+ * only for a test that `factsOwner` returned for the parent, so they take the test's id alone.
  */
 export interface FactsStore {
+  /**
+   * One of the parent's tests, as its facts section needs it; null when the parent has no test with this id. A small
+   * read: never the stored questions or the answers, which `load` reads.
+   */
+  factsOwner(parent: string, id: string): Promise<FactsOwner | null>;
   /** The test's facts section with its answers in order; null when it has not started. */
   loadFacts(id: string): Promise<LoadedFacts | null>;
   /** Stores the section when it starts. "taken": the test already has one (one facts section per test). */
@@ -963,15 +967,15 @@ function factsFailed(e: unknown): StoreFailed {
 }
 
 /** The parent's test, for its facts section: the status, and the profile and seed that draw the facts. */
-async function parentTest(store: AttemptStore, parent: string, id: string): Promise<{ ok: true; attempt: Attempt; test: StoredTest } | FactsRefusal> {
-  let loaded: LoadedAttempt | null;
+async function parentTest(store: AttemptStore, parent: string, id: string): Promise<({ ok: true } & FactsOwner) | FactsRefusal> {
+  let owner: FactsOwner | null;
   try {
-    loaded = await store.load(parent, id);
+    owner = await store.factsOwner(parent, id);
   } catch (e) {
     console.error("[facts] assessment load failed", e instanceof StoreError ? e.detail : messageOf(e));
     return { ok: false, error: "store_failed" };
   }
-  return loaded ? { ok: true, attempt: loaded.attempt, test: loaded.test } : { ok: false, error: "not_found" };
+  return owner ? { ok: true, ...owner } : { ok: false, error: "not_found" };
 }
 
 /** The test's facts section, rebuilt from the stored facts and answers; null when it has not started. */
@@ -1022,7 +1026,7 @@ export async function startFacts(store: AttemptStore, parent: string, id: string
   if (!existing.ok) return existing;
   if (existing.section) return { ok: true, step: stepAt(existing.section, now) };
 
-  const session = createFacts(owner.test.profile, owner.test.seed);
+  const session = createFacts(owner.profile, owner.seed);
   let inserted: "stored" | "taken";
   try {
     inserted = await store.insertFacts(id, { startedAt: now, test: storedFacts(session) });
@@ -1118,16 +1122,15 @@ async function finishOnce(store: AttemptStore, parent: string, id: string, help:
   if (!open.ok) return open;
   const { attempt, session } = open;
   if (attempt.status === "completed") return { ok: true, id: attempt.id, finished: "already" };
-  if (attempt.status !== "in_progress" || testStep(session).status !== "complete" || (session.adaptive && !session.adaptive.sufficientEvidence)) return { ok: false, error: "incomplete" };
+  if (!nextStatus(ATTEMPT_MOVES, attempt.status, "finish") || testStep(session).status !== "complete" || (session.adaptive && !session.adaptive.sufficientEvidence)) return { ok: false, error: "incomplete" };
   // As before the module, the help answer is checked only for a test that can be finished now.
   if (help === "invalid") return { ok: false, error: "invalid" };
   // The timed facts section (#70) goes into the placement beside the test; none when the child had none.
   const facts = await readSection(store, id);
   if (!facts.ok) return facts;
   const placement = finish(session, facts.section?.session ?? null, help);
-  // Every stored answer, as read: the store checks them in its write. D-145: a test left part way through the removed
-  // extra round still has the round's answers after the main ones; they go to the check unchanged, never to the score.
-  const answers = [...session.answers, ...open.roundAnswers].map(({ questionId, response, timeMs }) => ({ questionId, response, timeMs }));
+  // Every stored answer, as read: the store checks them in its write.
+  const answers = session.answers.map(({ questionId, response, timeMs }) => ({ questionId, response, timeMs }));
   let completed: "done" | "changed";
   try {
     completed = await store.complete(id, { at: now, placement, help, answers });

@@ -60,6 +60,8 @@ type DeskProps = {
   /** Why chat is off until a parent agrees to the notice (#529), in place of "start soon". */
   noticeLine?: string | null;
   chatNote?: string | null;
+  /** The family's plan stopped: chatNote is the closed-plan line, and the header says chat is closed. */
+  chatPlanClosed?: boolean;
 } & (
   | { problem: string; books?: undefined }
   | {
@@ -158,7 +160,8 @@ export function Desk(props: DeskProps) {
           <Avatar size={48} />
           <div className="desk-who"><h1>Maya</h1>{where && <p>{where}</p>}</div>
           <dl className="desk-limits" aria-label="Help from Maya">
-            <div><dt><Icon name="chat" size={14} />Chat</dt><dd>{chatLimitLabel(chat.usage, props.chatNote ?? null)}</dd></div>
+            {/* No Calls row while voice calls are closed (the Call button below is off): the desk never promises call minutes it cannot give. */}
+            <div><dt><Icon name="chat" size={14} />Chat</dt><dd>{chatLimitLabel(chat.usage, props.chatNote ?? null, props.chatPlanClosed === true)}</dd></div>
           </dl>
         </header>
 
@@ -183,7 +186,7 @@ export function Desk(props: DeskProps) {
             </button>
           )}
           {props.chatUsage ? <ChatControls key={picked} state={chat} picked={picked !== null} held={card?.held} /> : <>
-          <p className="desk-soon">{props.noticeLine ?? props.chatNote ?? "Chat with Maya starts soon."}</p>
+          <p className="desk-soon">{props.noticeLine ?? props.chatNote ?? "Chat and calls with Maya start soon."}</p>
           <div className="desk-compose">
             <input type="text" disabled placeholder="Write to Maya" aria-label="Write to Maya" />
             <button type="button" disabled aria-label="Send"><Icon name="send" size={20} /></button>

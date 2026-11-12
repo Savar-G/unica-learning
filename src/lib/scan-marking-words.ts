@@ -32,7 +32,7 @@ const plainText = (text: string) => text.trim().replace(/\s+/g, " ").toLowerCase
  * only when it cannot be another real word.
  */
 export const KNOWN_MISSPELLINGS: Readonly<Record<string, string>> = {
-  fourty: "forty", ninty: "ninety", ninteen: "nineteen", eightteen: "eighteen", eigth: "eight", twelv: "twelve",
+  fourty: "forty", ninty: "ninety", ninteen: "nineteen", eightteen: "eighteen", twelv: "twelve",
   fivety: "fifty", fivty: "fifty", fiveteen: "fifteen", hundered: "hundred", hunderd: "hundred",
 };
 

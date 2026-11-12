@@ -20,7 +20,7 @@ To reverse this restriction, remove `SCAN_MARKING_TEST_PARENT_IDS` from the serv
 
 ### Families mode
 
-`SCAN_MARKING_ENABLED=families` opens marking to a real family for one child when that child's plan is running. Marking opens when an admin presses "Start free month" and closes with the plan. `markingAccess` (`src/lib/scan-marking-access.ts`) decides on every request:
+`SCAN_MARKING_ENABLED=families` opens marking to a real family for one child when that child's plan is running. Marking opens when an admin presses "Workbook delivered: start plan" and closes with the plan. `markingAccess` (`src/lib/scan-marking-access.ts`) decides on every request:
 
 1. Test families and admins keep the `test-only` rule, including `SCAN_MARKING_TEST_PARENT_IDS` when it is present. The list limits only this path; a malformed list closes marking for everyone.
 2. Any other family needs the child, read with the signed-in parent's id: the page names it (the workbooks page, history, progress, the stack and Send; the child is read on `id` and `parent_id`), or the photo belongs to it (results, marking, corrections, explanations, direct marking and recovery; the photo is read with the signed-in parent's id, so another family's photo has no child). With no child, marking stays closed.
@@ -192,7 +192,7 @@ Each template states every line exactly:
 
 - **Split a factor by place value:** `7 × 300 = 2100`, `7 × 60 = 420`, `2100 + 420 = 2520`. The parts are the factor's place-value parts, largest first.
 - **Strip the zeros of a tens factor:** its core times the other factor, then times 10 to the number of zeros: `36 × 7 = 252`, `252 × 10 = 2520`. When both factors are tens numbers, both may lose their zeros (`5 × 8 = 40`, `40 × 100 = 4000`). These forms are one template. The core is 2 or more.
-- **Round a factor up:** a factor that is not a tens number goes up to the next tens number, and a tens number goes up to the next hundreds number. Then the stated difference is taken off: `10 × 360 = 3600`, `3 × 360 = 1080`, `3600 - 1080 = 2520`. The difference is 2 or more, and it is not equal to a factor of the question or to the answer, so rounding 50 up to 100 on `50 × 80` has no template. Rounding down is a split, so it has no template.
+- **Round a factor up:** a factor that is not a tens number goes up to the next tens number, and a tens number goes up to the next hundreds number. The rounded number must not equal a factor of the question. Then the stated difference is taken off: `10 × 360 = 3600`, `3 × 360 = 1080`, `3600 - 1080 = 2520`. The difference is 2 or more, and it is not equal to a factor of the question or to the answer, so rounding 50 up to 100 on `50 × 80` has no template. Rounding down is a split, so it has no template.
 - **Divide:** `t ÷ k`, or the same division with the same zeros taken off both numbers (`480 ÷ 6 = 80` for `4800 ÷ 60`), with a divisor of 2 or more. These forms are one template.
 - **Groups of k**, in three exact forms that are one template. A skip count is a build-up in chunks of 1 × k, and repeated subtraction is the same count going down, so two of these forms are one way written twice:
   - build up: exact multiples of k, then their sum, then the sum of the multipliers: `8 × 400 = 3200`, `8 × 30 = 240`, `3200 + 240 = 3440`, `400 + 30 = 430`. Each multiplier is 2 or more and less than the answer. Build-up adds only: a multiplying form (`8 × 43 = 344`, `344 × 10 = 3440`) is a reverse check with zeros taken off;

@@ -1,0 +1,17 @@
+{
+  "round": "r682",
+  "decision": "D-325: parent goals before the test (three select-one questions per child on /account/goals; shown on the admin child and family pages)",
+  "route": "direct: Savar settled the content and the placement in the interview (2026-11-11). The step reuses the learning card's choice chips and the support page frame, so no variants.",
+  "picked": null,
+  "picked_by": "waiting for Savar",
+  "how_captured": "Aside repl (account u0), local dev server on localhost:3123 against the live database, signed in with a minted session (no email sent) as the Workbook samples test family (test_accounts). One real save went to the child 'Worker smoke' (next_grade, avoids, tutor); after the admin shots its three columns were set back to null. The admin shots use a minted admin session, cropped to leave out the sidebar. Both sessions were signed out afterwards.",
+  "viewports": { "desktop": [1280, 1450], "desktop_error": [1280, 1520], "phone": [390, 2350], "phone_error": [390, 2400], "admin": [1440, 1100] },
+  "screens": {
+    "goals-desktop.png": "The step for the oldest child with no answers: three numbered questions, chips, Continue",
+    "goals-desktop-error.png": "Continue with only the feeling chosen: the two empty questions turn red with 'Choose one answer.'; focus moves to the first empty question",
+    "goals-phone.png": "The same at phone width: one chip per row, full-width Continue, no side scroll",
+    "goals-phone-error.png": "Phone, goal and feeling chosen, help empty",
+    "admin-child.png": "Admin child page head card: Main goal, Feeling about math, Math help now after the save",
+    "admin-family.png": "Admin family page child cards: 'Parent goals' with the saved answers, and 'No answer' for children not asked yet"
+  }
+}

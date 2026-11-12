@@ -44,6 +44,7 @@ import { figureCount } from "@/lib/question-package-items";
 import { relationChoices } from "@/lib/question-package";
 import type { Curriculum } from "@/lib/workbook-curriculum";
 import { curriculumTitleSkills, pageTitle } from "@/lib/workbook-titles";
+import { WARM_UP_INSTRUCTION } from "@/lib/workbook-page-instructions";
 import {
   headerGrowth,
   pageId,
@@ -94,7 +95,8 @@ export function dayHeader(curriculum: Curriculum, page: PlannedPage, level: numb
     : first === "new-idea" ? "new-idea" : first === "picture-stories" ? "word-problems" : first === "remember-these" ? "remember-these" : first ?? "practice";
   const subtitles: Record<string, string> = {
     // From U13 the warm-up's facts go past 20 (times tables, adding hundreds): it names no range then.
-    "warm-up": level >= 16 ? "Facts you know. Beat your own count from last time." : level >= 13 ? "Facts you know. Take your time: there is no timer." : "Facts to 20. Take your time: there is no timer.",
+    // Every warm-up says what it is and that every question is done: no timing or counting words (Savar, 2026-11-09).
+    "warm-up": WARM_UP_INSTRUCTION,
     "new-idea": level >= 19 ? "Try it first. Then see how it works." : "Read how it works, then try it.",
     practice: "Read the example, then answer the questions.",
     "practice-2": "Each row is a little harder than the one before.",
@@ -355,6 +357,20 @@ export function templateMethod(src: TemplateSource, text: string): string | null
     const d = src.derived.find(([k]) => k === name);
     return d && depth < 3 ? resolve(d[1], depth + 1) : null;
   };
+  if (src.answer.trim() === "str(h * 100) + ' + ' + str(o)") {
+    const h = n("h"), o = n("o"), number = n("n");
+    if (!Number.isInteger(h) || h < 1 || h > 9 || !Number.isInteger(o) || o < 0 || o > 9 || number !== 100 * h + o) return null;
+    return `${fmt(number)} has ${h} ${h === 1 ? "hundred" : "hundreds"}, 0 tens and ${o} ${o === 1 ? "one" : "ones"}: ${fmt(100 * h)} + ${o} = ${fmt(number)}.`;
+  }
+  const zeroDigit = "0 if sv == 0 else (o if sv == 1 else h)";
+  const zeroValue = "0 if sv == 0 else (o if sv == 1 else h * 100)";
+  if (src.answer.trim() === zeroDigit || src.answer.trim() === zeroValue) {
+    const h = n("h"), o = n("o"), number = n("n"), sv = n("sv");
+    if (!Number.isInteger(h) || h < 1 || h > 9 || !Number.isInteger(o) || o < 0 || o > 9 || number !== 100 * h + o || ![0, 1, 2].includes(sv)) return null;
+    const place = ["tens", "ones", "hundreds"][sv], digit = [0, o, h][sv];
+    const value = src.answer.trim() === zeroValue ? `, worth ${sv === 2 ? h * 100 : digit}` : "";
+    return `${fmt(number)} has ${h} ${h === 1 ? "hundred" : "hundreds"}, 0 tens and ${o} ${o === 1 ? "one" : "ones"}. The ${place} digit is ${digit}${value}.`;
+  }
   // A digit of a number: "n // 1000 % 10", its value "n // 1000 % 10 * 1000".
   const digit = src.answer.match(/^\(?(\w+) \/\/ (\d+)\)? % 10(?: \* (\d+))?$/);
   if (digit && n(digit[1]) !== undefined && PLACE_NAMES[Number(digit[2])]) {
@@ -390,12 +406,13 @@ export function templateMethod(src: TemplateSource, text: string): string | null
     if ("answer" in result) return `Work it out: ${expr.replace(/\/\//g, "÷").replace(/\*/g, "×").replace(/-/g, "−").replace(/\d{5,}/g, (x) => groupedNumber(Number(x)))} = ${groupedNumber(Number(result.answer))}.`;
   }
   if (direct) return `Work it out: ${direct}.`;
-  // A true or false: the sum it checks, from the derived values.
-  // (A sum whose two numbers the question prints.)
-  const printed = new Set((text.replace(/(\d)[\s\u00a0\u202f](?=\d{3}\b)/g, "$1").match(/\d+/g) ?? []).map(Number));
+  // A true-or-false example can work a calculation the question prints. Two matching numbers alone can be a distractor.
+  const plain = text.replace(/(\d)[\s\u00a0\u202f](?=\d{3}\b)/g, "$1").replace(/−/g, "-").replace(/×/g, "*").replace(/÷/g, "//");
+  const printed = new Set([...plain.matchAll(/(?:^|[^\d.-])(-?\d+)\s*(\+|-|\*|\/\/)\s*(-?\d+)(?![\d.])/g)]
+    .map(m => `${Number(m[1])}:${m[2]}:${Number(m[3])}`));
   if (/'true'|'false'|'yes'|'no'/.test(src.answer)) for (const [, e] of src.derived) {
     const m = e.trim().match(/^(\w+) (\+|-|\*|\/\/) (\w+)$/);
-    if (m && printed.has(n(m[1])) && printed.has(n(m[3]))) return `Work it out: ${binary(e)}.`;
+    if (m && printed.has(`${n(m[1])}:${m[2]}:${n(m[3])}`)) return `Work it out: ${binary(e)}.`;
   }
   return null;
 }
@@ -1149,7 +1166,10 @@ export function dayPageContent(o: {
         const ex = taught ? (own ? exampleOf(own, plan.level) : null) : panel();
         // (Its question first when the worked line does not say it: "Count on. What are the next two numbers?" over
         // "6, [7], [8]".)
-        const asked = taught && own && ex?.lines.length && !ex.lines.some((l) => l.replace(/[[\]]/g, "").includes(own.text.trim())) ? [own.text] : [];
+        // (Never for a relation: its worked lines open with its question in code's own words, "Is 240 close to 30 or
+        // 300?", and Kai's U10 book 2 printed both, #811.)
+        const relation = !!own?.item?.checks.some((c) => c.kind === "relation");
+        const asked = taught && own && ex?.lines.length && !relation && !ex.lines.some((l) => l.replace(/[[\]]/g, "").includes(own.text.trim())) ? [own.text] : [];
         const lines = ex?.lines.length ? [...asked, ...ex.lines] : taught?.lines ?? [];
         return { slot: s.slot, items: [], label: ex?.lines.length ? ex.label : taught ? "How it works" : undefined, note: "Read the example, then try it.", lines, ...(taught?.remember ? { explain: `Watch out: ${taught.remember}` } : {}) };
       }
@@ -1204,10 +1224,10 @@ export function planRow(curriculum: Curriculum, plan: WorkbookPlan, day: number)
     return part ? pageTopic(curriculum, part.step!.skill, part.step!.step) : null;
   };
   if (d.kind === "test") return { topic: "Level test", second: "Done alone, in one sitting" };
-  if (d.kind === "light") return { topic: "A light day", second: "Remember these? and a challenge" };
+  if (d.kind === "light") return { topic: "A light day", second: "Review and a challenge" };
   const a = topicOf("A");
   const b = topicOf("B");
-  const second = day === 10 ? "Show what you know" : day === 5 ? "Friday 5" : b ?? (d.kind === "mixed" ? "Mixed practice" : "Remember these?");
+  const second = day === 10 ? "Show what you know" : day === 5 ? "Friday 5" : b ?? (d.kind === "mixed" ? "Mixed practice" : "Review");
   return { topic: a ?? (d.kind === "mixed" ? "Mixed practice" : "Review"), second };
 }
 

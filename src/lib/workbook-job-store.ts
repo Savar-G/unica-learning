@@ -4,9 +4,13 @@ import { toJson, type Database, type Tables } from "@/lib/database";
 import { draftProblem, GENERATED_DRAFT_VERSION } from "@/lib/workbook-generator";
 import { newGate, type ProviderGate, type AiCallRecord, type AiProvider } from "@/lib/ai-fallback";
 import type { AiCallKind } from "@/lib/workbook-ai";
-import { readPaged, SLOT_ATTEMPTS, STALE_SECONDS, type RunRunner, type WorkbookJobSource, type WorkbookRun, type WorkbookRunStore } from "@/lib/workbook-job";
+import type { FirstPagesResult } from "@/lib/first-pages";
+import { firstPagesCandidates } from "@/lib/first-pages-store";
+import { readPaged, SLOT_ATTEMPTS, STALE_SECONDS, type ReadyFirstPages, type RunFrame, type RunRunner, type WorkbookJobSource, type WorkbookRun, type WorkbookRunStore } from "@/lib/workbook-job";
 import type { WorkerCandidate, WorkerQueue } from "@/lib/workbook-worker";
 import type { SolveVerdict } from "@/lib/workbook-solve-check";
+import { workbookInstructions } from "@/lib/workbook-instructions";
+import { workbookPlanRefusal } from "@/lib/workbook-plan-refusal";
 
 // The runs' store (#312) in Supabase (migration add_workbook_runs), and the job's read of the child. Pass a client with
 // the secret key: the service role runs the run functions and the progress update; admins only read. The solve checks
@@ -51,7 +55,7 @@ export function workbookRunStore(admin: SupabaseClient<Database>): WorkbookRunSt
       const { data, error } = await admin.rpc("start_workbook_run", {
         p_child: childId, p_by: by.id, p_by_email: by.email, p_max_attempts: o.maxAttempts, p_stale_seconds: o.staleSeconds,
       });
-      if (error?.code === "55000") return { status: "refused", reason: "the family is being deleted" };
+      if (error?.code === "55000") return { status: "refused", reason: workbookPlanRefusal(error.message, "prepare") };
       if (error) throw new Error(`workbook run start: ${error.message}`);
       const answer = data as { status: "started" | "busy" | "stalled"; run: string } | { status: "refused"; reason: string };
       return answer.status === "refused" ? answer : { status: answer.status, runId: answer.run };
@@ -107,8 +111,29 @@ export function workbookRunStore(admin: SupabaseClient<Database>): WorkbookRunSt
       const row = must(await admin.from("workbook_run_frames").select("frame").eq("run_id", id).maybeSingle(), "plan load");
       return row?.frame ?? null;
     },
+    async hasStoredWork(id) {
+      const results = await Promise.all([
+        admin.from("workbook_run_pages").select("run_id").eq("run_id", id).limit(1),
+        admin.from("workbook_run_attempts").select("run_id").eq("run_id", id).limit(1),
+        admin.from("workbook_run_calls").select("run_id").eq("run_id", id).limit(1),
+        admin.from("workbook_run_solves").select("run_id").eq("run_id", id).limit(1),
+        admin.from("workbook_run_ai_calls").select("run_id").eq("run_id", id).limit(1),
+      ]);
+      if (results.map((result) => must(result, "stored work load") ?? []).some((rows) => rows.length > 0)) return true;
+      // Fail closed: progress, an error history or a saved draft on the run row is also stored work (every run has a
+      // draft key from its start, so the key alone is not work).
+      const run = must(await admin.from("workbook_runs").select("done_pages, errors, draft_id").eq("id", id).maybeSingle(), "stored work load");
+      if (!run) return true;
+      return (run.done_pages ?? 0) > 0 || (Array.isArray(run.errors) && run.errors.length > 0) || run.draft_id !== null;
+    },
     async saveFrame(id, lease, frame) {
       return must(await admin.rpc("save_workbook_run_frame", { p_run: id, p_lease: lease, p_frame: toJson(frame) }), "plan save") === true;
+    },
+    async adoptFirstPages(id, lease, firstPagesId, frame) {
+      const answer = must(await admin.rpc("adopt_workbook_first_pages", { p_run: id, p_lease: lease, p_first_pages: firstPagesId, p_frame: toJson(frame) }), "first pages keep") as { status?: string; reason?: string } | null;
+      if (answer?.status === "adopted") return "adopted";
+      if (answer?.status === "lost") return "lost";
+      return { refused: answer?.reason ?? "the database gave no answer" };
     },
     async savePage(id, lease, page) {
       return must(await admin.rpc("save_workbook_run_page", { p_run: id, p_lease: lease, p_number: page.number, p_page: toJson(page) }), "page save") === true;
@@ -132,7 +157,7 @@ export function workbookRunStore(admin: SupabaseClient<Database>): WorkbookRunSt
         p_questions: draft.counts.questions, p_failed: draft.counts.failed, p_not_checked: draft.counts.notChecked,
         p_failed_pages: draft.counts.failedPages,
       });
-      if (error?.code === "55000") return { refused: "the family is being deleted" };
+      if (error?.code === "55000") return { refused: workbookPlanRefusal(error.message, "draft") };
       if (error) throw new Error(`workbook run draft save: ${error.message}`);
       if (data === "saved" || data === "lost" || data === "used") return data;
       throw new Error(`workbook run draft save: unknown answer ${String(data)}`);
@@ -161,6 +186,7 @@ export function workbookRunStore(admin: SupabaseClient<Database>): WorkbookRunSt
 export function workbookJobSource(admin: SupabaseClient<Database>, prepareProfile: WorkbookJobSource["prepareProfile"]): WorkbookJobSource {
   return {
     prepareProfile,
+    firstPages: (childId) => readyFirstPages(admin, childId),
     async planningMetadata(assessmentId) {
       const [test, report] = await Promise.all([
         admin.from("assessments").select("device").eq("id", assessmentId).maybeSingle(),
@@ -173,17 +199,23 @@ export function workbookJobSource(admin: SupabaseClient<Database>, prepareProfil
         howWeHelp: recommendation === "ahead" || recommendation === "behind" || recommendation === "on-grade" ? recommendation : null } };
     },
     async inputs(childId) {
-      const [child, books] = await Promise.all([
+      const [child, books, told] = await Promise.all([
         admin.from("children").select("parent_id, first_name, grade, province").eq("id", childId).maybeSingle(),
         admin.from("workbooks").select("number, levels").eq("child_id", childId),
+        admin.from("workbook_instructions").select("instructions").eq("child_id", childId).maybeSingle(),
       ]);
       const row = must(child, "child load");
       if (!row) return null;
       if (!isGrade(row.grade)) throw new Error(`workbook run child load: grade ${row.grade} is not K to 9`);
+      const stored = must(told, "book instructions load");
+      // A stored set the code cannot read stops the run: a book made without the admin's instructions would look right.
+      const instructions = stored ? workbookInstructions(stored.instructions) : null;
+      if (stored && !instructions) throw new Error("workbook run child load: the book instructions cannot be read");
       return {
         parentId: row.parent_id, name: row.first_name, grade: row.grade, province: row.province,
         profile: null,
         workbooks: must(books, "workbooks load") ?? [],
+        instructions,
       };
     },
   };
@@ -207,12 +239,14 @@ export function workbookWorkerQueue(admin: SupabaseClient<Database>, worker: { i
       const cutoff = Date.now() - staleSeconds * 1000;
       const edits = must(await admin.from("workbook_edits").select("id,status,heartbeat_at").eq("runner", "mac")
         .in("status", ["queued", "running"]).order("created_at").limit(50), "worker edit queue") ?? [];
+      // The first pages of Workbook 1 (docs/first-pages.md) come after the runs: a family's book goes first.
+      const first = await firstPagesCandidates(admin, "mac", staleSeconds);
       return [...edits.filter((e) => e.status === "queued" || Date.parse(e.heartbeat_at) < cutoff)
         .map((e) => ({ id: e.id, resume: e.status === "running" })), ...rows.flatMap((r): WorkerCandidate[] => {
         if (r.status === "queued") return [{ id: r.id, resume: false }];
         const quiet = r.lease === null || !r.heartbeat_at || Date.parse(r.heartbeat_at) < cutoff;
         return quiet ? [{ id: r.id, resume: true }] : [];
-      })];
+      }), ...first.map((id) => ({ id, resume: false }))];
     },
     async beat({ runId, started, note }) {
       // The heartbeat's foreign key names a generation run. A review batch keeps that run as its owner.
@@ -220,6 +254,8 @@ export function workbookWorkerQueue(admin: SupabaseClient<Database>, worker: { i
       if (runId) {
         const edit = must(await admin.from("workbook_edits").select("draft_id").eq("id", runId).maybeSingle(), "worker edit owner");
         if (edit) ownerRun = must(await admin.from("workbook_runs").select("id").eq("draft_id", edit.draft_id).maybeSingle(), "worker generation owner")?.id ?? null;
+        // First pages are no run: the heartbeat names none.
+        else if (must(await admin.from("workbook_first_pages").select("id").eq("id", runId).maybeSingle(), "worker first pages owner")) ownerRun = null;
       }
       must(await admin.rpc("beat_workbook_worker", {
         p_id: worker.id, p_build: worker.build, p_run: ownerRun, p_primary_ai: worker.primary, p_note: note, p_started: started,
@@ -276,7 +312,7 @@ export async function excludeRunProvider(admin: SupabaseClient<Database>, runId:
   }
 }
 
-/** Stores AI calls of a run through save_workbook_run_ai_calls. */
+/** Stores AI calls of a run through save_workbook_run_ai_calls_v2. */
 export const saveRunAiCalls = (admin: SupabaseClient<Database>, runId: string) => async (calls: RunAiCall[]) => {
   for (let i = 0; i < calls.length; i += AI_CALL_BATCH) {
     const chunk = calls.slice(i, i + AI_CALL_BATCH);
@@ -284,3 +320,26 @@ export const saveRunAiCalls = (admin: SupabaseClient<Database>, runId: string) =
     if (saved !== chunk.length) throw new Error("workbook run AI calls were not saved");
   }
 };
+
+/**
+ * The child's ready first pages a Workbook 1 run may keep (docs/first-pages.md), newest first: ready, or ready and
+ * chosen to "keep-plan"; not kept by a run that is waiting, working or done. Hidden sets ("drop") are not ready.
+ */
+export async function readyFirstPages(admin: SupabaseClient<Database>, childId: string): Promise<ReadyFirstPages | null> {
+  const rows = must(await admin.from("workbook_first_pages").select("id, workbook_id, frame, result, decision, kept_by")
+    .eq("child_id", childId).eq("status", "ready").order("ready_at", { ascending: false }).limit(5), "first pages load") ?? [];
+  for (const row of rows) {
+    if (row.kept_by) {
+      const holder = must(await admin.from("workbook_runs").select("status").eq("id", row.kept_by).maybeSingle(), "first pages holder load");
+      if (holder && holder.status !== "failed" && holder.status !== "stale") continue;
+    }
+    const result = row.result as unknown as FirstPagesResult | null;
+    const frame = row.frame as unknown as RunFrame | null;
+    if (!result || !frame || result.version !== 1) continue;
+    return {
+      id: row.id, workbookId: row.workbook_id, frame, coverToken: result.cover.qrToken, pages: result.pages.map((p) => p.number), digest: result.digest,
+      decision: row.decision === "keep-plan" ? "keep-plan" : row.decision === "drop" ? "drop" : null,
+    };
+  }
+  return null;
+}

@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { DESK_COOKIE, deskGate } from "@/lib/desk";
+import { DESK_COOKIE, DESK_GATE, deskAccess } from "@/lib/desk";
 import { sessionClient } from "@/lib/supabase-auth";
 
 // Whether the child's desk is open on this device for the signed-in parent (#301, review R349-2): the desk guard on
@@ -8,6 +8,6 @@ import { sessionClient } from "@/lib/supabase-auth";
 export async function GET() {
   const { data, error } = await (await sessionClient()).auth.getClaims();
   const known = !error || error.name === "AuthSessionMissingError";
-  const open = deskGate("/account", (await cookies()).get(DESK_COOKIE)?.value, data?.claims.sub ?? null, known) !== "pass";
+  const open = DESK_GATE[deskAccess((await cookies()).get(DESK_COOKIE)?.value, data?.claims.sub ?? null, known).state].page !== "pass";
   return Response.json({ open }, { headers: { "Cache-Control": "no-store" } });
 }

@@ -123,8 +123,8 @@ describe("retention run", () => {
   };
   /**
    * One test as the database lists it for the copy (#201): 2 questions shown, one answered, a 3-fact section. With
-   * `round`, the child also took the removed extra round (#190) and answered its first question; D-145: the copy leaves
-   * that answer out.
+   * `round`, the test also carries the removed extra round's record (#190) as it was stored before migration
+   * drop_extra_round_data deleted the round's answers; D-145: the copy leaves the record out.
    */
   const test = (id: string, copied = false, round = false) => ({
     id, copied, testFamily: false, grade: 4, province: "BC", status: "in_progress", route: null, help: null,
@@ -133,7 +133,6 @@ describe("retention run", () => {
     extraOfferedAt: round ? "2025-09-02T18:50:00Z" : null, extraSkippedAt: null, extraStartedAt: round ? "2025-09-02T18:50:05Z" : null, extraFinishedAt: null,
     answers: [
       { position: 0, questionId: "s1-0", round: "main", templateId: "t", values: {}, response: "12", correct: true, misconception: null, timeMs: 9000 },
-      ...(round ? [{ position: 2, questionId: "x-0", round: "extra", templateId: "t", values: {}, response: "3", correct: false, misconception: null, timeMs: 7000 }] : []),
     ],
     shows: [{ position: 0, questionId: "s1-0", shownAt: "2025-09-02T18:30:01Z" }, { position: 1, questionId: "s1-1", shownAt: "2025-09-02T18:30:10Z" }],
     facts: { startedAt: "2025-09-02T18:40:00Z", stored: { facts: [] }, answers: [0, 1, 2].map((position) => ({ position, factId: `f${position}`, response: "7", correct: true, atMs: 1000 * (position + 1) })) },

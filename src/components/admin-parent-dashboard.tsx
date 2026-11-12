@@ -44,23 +44,23 @@ export function AdminParentDashboard({ selection }: { selection: PreviewSelectio
 
   // The same-origin token permits local fonts. The sandbox never permits scripts, forms, downloads or top navigation.
   return <div className="apd">
-    <p className="adm-note">Synthetic family data. Preview only. Buttons and account links are read-only. Use the controls to change the view.</p>
-    <form className="adm-filters apd-controls" onSubmit={event => event.preventDefault()} aria-label="Parent dashboard preview controls">
+    <p className="apd-note"><span className="adm-chip is-info">Sample data</span> Made-up families. Buttons and account links are read-only. Use the controls to change the view.</p>
+    <form className="adm-filters apd-controls" onSubmit={event => event.preventDefault()} aria-label="Parent app preview controls">
       <label>View<select value={selection.view} onChange={event => select({ view: event.target.value as PreviewSelection["view"], scenario: "" })}>{PARENT_PREVIEW_VIEWS.map(view => <option key={view.id} value={view.id}>{view.label}</option>)}</select></label>
       <label>Scenario<select value={selection.scenario} onChange={event => select({ scenario: event.target.value })}>{currentView.scenarios.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}</select></label>
       <label>Screen size<select value={selection.size} onChange={event => select({ size: event.target.value as PreviewSelection["size"] })}>{Object.entries(PREVIEW_SIZES).map(([id, value]) => <option key={id} value={id}>{value.label} ({value.width} px)</option>)}</select></label>
       <label>Family<select value={selection.family} onChange={event => select({ family: event.target.value as PreviewSelection["family"] })}>{Object.entries(PREVIEW_FAMILIES).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
       {selection.family === "two" && <label>Child<select value={selection.child} onChange={event => select({ child: event.target.value as PreviewSelection["child"] })}><option value="first">Leah</option><option value="second">Kai</option></select></label>}
     </form>
-    <p className="adm-note" role="status">{currentView.label}: {selectedScenario(selection).label}. {child ? `Stage: ${child.stage}. Tabs: ${child.tabs.join(", ")}.` : "No children."} {Math.round(scale * 100)}% of {size.width} × {size.height} px.</p>
+    <p className="apd-status" role="status">{currentView.label}: {selectedScenario(selection).label}. {child ? `Stage: ${child.stage}. Tabs: ${child.tabs.join(", ")}.` : "No children."} {Math.round(scale * 100)}% of {size.width} × {size.height} px.</p>
     <div className="apd-frame-host" ref={host}>
       <div className="apd-frame-space" style={{ width: size.width * scale, height: size.height * scale }}>
         {failed ? <p role="alert">The preview could not load. Select the view again.</p> : document?.key === key ? <iframe title={`${currentView.label}: ${selectedScenario(selection).label}. Read-only parent preview.`} srcDoc={document.html} sandbox="allow-same-origin" referrerPolicy="no-referrer" width={size.width} height={size.height} style={{ transform: `scale(${scale})` }} /> : <p role="status">Loading preview...</p>}
       </div>
     </div>
-    <details className="apd-limits"><summary>Coverage and limits</summary>
+    <details className="adm-tech apd-limits"><summary>Coverage and limits</summary>
       <p>These samples include implemented tabs even when their family release switches are off. This page changes no release switch.</p>
-      <p>Page history, answer corrections, solutions, future progress charts, and plan details that have no implemented parent view are not shown (#458, #470, #565).</p>
+      <p>Page history, answer corrections, solutions, future progress charts, and plan details that have no parent view yet are not shown.</p>
       <p>Use the Scenario control for open confirmations and error states. The frame permits scrolling and native text disclosures. It cannot send data, open an account, use a camera, or download a file.</p>
     </details>
   </div>;

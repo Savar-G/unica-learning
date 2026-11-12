@@ -16,6 +16,8 @@ describe("stored workbook comment corrections", () => {
     if(plan?.kind!=="how-plan")throw new Error("missing plan");
     const root=parsed(html(cover,book));
     expect(root.querySelector('[data-measure="slot-made-for"]')?.textContent).toContain("Made for Mila");
+    // The level's plain name from the curriculum data follows the level (Savar, 2026-11-09).
+    expect(root.querySelector('[data-measure="slot-made-for"]')?.textContent).toBe("Made for Mila · Level U16 · Big numbers and multiplication facts");
     expect([...root.querySelectorAll(".cover-plan li")].map(x=>x.textContent)).toEqual([...new Set(plan.rows.map(x=>x.topic))].slice(0,3).map(commaNumbers));
     expect(book).toEqual(before);
     if(cover.content?.kind!=="cover")throw new Error("missing cover");
@@ -28,7 +30,7 @@ describe("stored workbook comment corrections", () => {
     const page=first.pages.find(p=>p.content?.kind==="how-plan")!;
     const saved=structuredClone(page.content);
     const root=parsed(html(page,first));
-    expect(root.textContent).toContain("select your child, then Scan pages.");
+    expect(root.textContent).toContain("Sign in at unicalearning.com/account, then choose Scan pages.");
     expect(root.textContent).toContain("unicalearning.com/account");
     expect(root.textContent).toContain("Ask for help using Maya, the AI Teaching Assistant.");
     expect(root.textContent).not.toContain("previous workbook");

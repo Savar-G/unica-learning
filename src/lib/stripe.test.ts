@@ -1,6 +1,6 @@
 import Stripe from "stripe";
 import { describe, expect, it, vi } from "vitest";
-import { cardSetupUrl, reportCardSetupUrl, type ReportCardSetup } from "@/lib/stripe";
+import { reportCardSetupUrl, type ReportCardSetup } from "@/lib/stripe";
 
 vi.mock("server-only", () => ({}));
 
@@ -12,7 +12,7 @@ const setup: ReportCardSetup = {
 };
 
 describe("shipping at card setup", () => {
-  it.each(["booking", "report"] as const)("collects and saves a Canadian shipping address without starting a charge for %s", async (path) => {
+  it("collects and saves a Canadian shipping address without starting a charge", async () => {
     const requests: { url: string; body: URLSearchParams }[] = [];
     const client = new Stripe("sk_test_shipping", {
       httpClient: Stripe.createFetchHttpClient(async (url, init) => {
@@ -22,8 +22,7 @@ describe("shipping at card setup", () => {
           : { id: "cs_test_shipping", url: "https://checkout.stripe.com/test-shipping" }), { status: 200 });
       }),
     });
-    if (path === "booking") await cardSetupUrl(client, setup);
-    else await reportCardSetupUrl(client, "cus_shipping", setup);
+    await reportCardSetupUrl(client, "cus_shipping", setup);
 
     const checkout = requests.find((r) => r.url.endsWith("/checkout/sessions"))?.body;
     expect(checkout).toBeDefined();
@@ -32,7 +31,7 @@ describe("shipping at card setup", () => {
     expect(checkout?.get("customer")).toBe("cus_shipping");
     expect(checkout?.get("custom_text[shipping_address][message]")).toContain("ship your workbook");
     expect(checkout?.get("mode")).toBe("setup");
-    expect(checkout?.get("custom_text[submit][message]")).toContain("starting when your first workbook arrives at your home");
+    expect(checkout?.get("custom_text[submit][message]")).toContain("Your family gets one free month. It starts when your first workbook arrives.");
     expect(requests.some((r) => /\/(subscriptions|payment_intents)$/.test(r.url))).toBe(false);
   });
 });

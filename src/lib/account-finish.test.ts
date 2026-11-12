@@ -71,13 +71,29 @@ interface World {
   endsAfterPasswordChange?: number;
   /** Auth fails (500) on the session check after the last password change. */
   sessionCheckDown?: boolean;
+  /** Another finish of this user holds a live claim (claim_family_finish answers busy) for this many claim calls. */
+  claimHeldFor?: number;
+  /** claim_family_finish fails. */
+  claimDown?: boolean;
+  /** claim_family_finish takes the claim, but its answer is lost. */
+  claimAnswerLost?: boolean;
+  /** Each request waits a random few milliseconds, so parallel finishes interleave. */
+  slow?: boolean;
 }
+
+/** The finish claims the fake database holds (migration sign_in_races): user id to claim id. */
+let claims: Map<string, string>;
+/** Set when the fake create_family made the family, so a later claim answers exists. */
+let familyMade: boolean;
 
 /** Every request the route sends to Supabase, in order, with its body and Authorization header. */
 let calls: { method: string; path: string; query: string; body: unknown; auth: string | null }[];
 
 function supabase(world: World) {
   calls = [];
+  claims = new Map();
+  familyMade = false;
+  let claimBusy = world.claimHeldFor ?? 0;
   let passwordChanges = 0;
   auth = { password: world.earlierPassword ?? null, sessions: new Set(world.earlierPassword ? [PARENT, STRANGER] : [PARENT]) };
   const fakeUser = () => ({ id: ID, aud: "authenticated", email: user?.email, email_confirmed_at: user?.email_confirmed_at });
@@ -87,6 +103,7 @@ function supabase(world: World) {
     const body = typeof init?.body === "string" && init.body ? JSON.parse(init.body) : null;
     const authorization = new Headers(init?.headers).get("authorization");
     calls.push({ method, path: url.pathname, query: url.search, body, auth: authorization });
+    if (world.slow) await new Promise((r) => setTimeout(r, Math.random() * 6));
     const json = (value: unknown, status = 200, headers: Record<string, string> = {}) =>
       new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json", "x-supabase-api-version": "2024-01-01", ...headers } });
     /** The calling session, or an error answer when Auth has ended it. */
@@ -135,7 +152,29 @@ function supabase(world: World) {
       }
       return json(fakeUser());
     }
-    if (url.pathname === "/rest/v1/rpc/create_family") return json(world.admission ?? { status: "created", child: "child-1" });
+    if (url.pathname === "/rest/v1/rpc/create_family") {
+      const admission = familyMade ? { status: "exists" } : (world.admission ?? { status: "created", child: "child-1" });
+      if (admission.status === "created") familyMade = true;
+      return json(admission);
+    }
+    // The finish claim: one step each, as the SQL functions do under their lock.
+    if (url.pathname === "/rest/v1/rpc/claim_family_finish") {
+      const { p_user, p_claim } = body as { p_user: string; p_claim: string };
+      if (world.claimDown) return json({ code: "XX000", message: "down" }, 500);
+      if (world.existing || familyMade) return json("exists");
+      if (claimBusy > 0) return claimBusy--, json("busy");
+      const held = claims.get(p_user);
+      if (held && held !== p_claim) return json("busy");
+      claims.set(p_user, p_claim);
+      if (world.claimAnswerLost) return json({ code: "", message: "fetch failed" }, 502);
+      return json("claimed");
+    }
+    if (url.pathname === "/rest/v1/rpc/release_family_finish") {
+      const { p_user, p_claim } = body as { p_user: string; p_claim: string };
+      if (claims.get(p_user) === p_claim) claims.delete(p_user);
+      return new Response(null, { status: 204 });
+    }
+    if (url.pathname === "/rest/v1/rpc/issue_sign_in_link") return json("created");
     if (url.pathname === "/rest/v1/parents") {
       // The phone link step reads the new parent back by name; the existing-account check reads only the id.
       if (url.searchParams.get("select")?.includes("name")) return json([{ name: "Priya Shah", email: "priya@family.ca" }]);
@@ -165,7 +204,7 @@ function supabase(world: World) {
   });
 }
 
-const details = { name: "Priya Shah", child: { firstName: "Asha", grade: 4, province: "BC" }, source: { utm_source: "flyer" } };
+const details = { name: "Priya Shah", phone: "(604) 555-0123", child: { firstName: "Asha", grade: 4, province: "BC" }, source: { utm_source: "flyer" } };
 
 function finish(body: unknown, ua = LAPTOP) {
   return POST(new Request("https://unica.test/api/account/finish", {
@@ -178,7 +217,11 @@ function finish(body: unknown, ua = LAPTOP) {
 /** The session check the route makes first: the parent's own request to Auth. */
 const WHO = "GET /auth/v1/user";
 /** Every request but the two reads that come before any write: the session check and the existing-account check. */
-const paths = () => calls.map((c) => `${c.method} ${c.path}`).filter((p) => p !== WHO && p !== "GET /rest/v1/parents");
+const CLAIM = "POST /rest/v1/rpc/claim_family_finish";
+const RELEASE = "POST /rest/v1/rpc/release_family_finish";
+/** The sign-in link row for a phone signup (migration sign_in_races). */
+const LINK = "POST /rest/v1/rpc/issue_sign_in_link";
+const paths = () => calls.map((c) => `${c.method} ${c.path}`).filter((p) => p !== WHO && p !== "GET /rest/v1/parents" && p !== CLAIM && p !== RELEASE);
 const passwordsSet = () => calls.filter((c) => c.method === "PUT" && (c.body as { password?: unknown } | null)?.password !== undefined).map((c) => (c.body as { password: string }).password);
 /** The parent changes the password through their own session, so Auth keeps that session and ends every other one. */
 const OWN_PASSWORD = "PUT /auth/v1/user";
@@ -209,7 +252,7 @@ describe("a password set before the email was proved never reaches a family acco
     // Both changes go through the parent's own session, the one in their cookies.
     expect(calls.filter((c) => `${c.method} ${c.path}` === OWN_PASSWORD).map((c) => c.auth)).toEqual([`Bearer ${accessToken()}`, `Bearer ${accessToken()}`]);
     expect(calls.find((c) => c.path === "/rest/v1/rpc/create_family")?.body).toMatchObject({
-      p_parent: ID, p_email: "priya@family.ca", p_name: "Priya Shah", p_postal: null, p_child_name: "Asha", p_child_grade: 4, p_child_province: "BC",
+      p_parent: ID, p_phone: "+16045550123", p_email: "priya@family.ca", p_name: "Priya Shah", p_postal: null, p_child_name: "Asha", p_child_grade: 4, p_child_province: "BC",
     });
   });
 
@@ -399,7 +442,7 @@ describe("what the database decides (#82, #78)", () => {
     const res = await finish(details, PHONE);
     expect(res.status).toBe(429);
     expect(await res.json()).toEqual({ ok: false, error: "busy" });
-    expect(paths()).not.toContain("POST /rest/v1/sign_in_links");
+    expect(paths()).not.toContain(LINK);
     expect(parentSignedIn()).toBe(true);
   });
 
@@ -445,8 +488,8 @@ describe("finishing on a phone (#63)", () => {
     supabase({ admission: { status: "created", child: "child-42" } });
     const res = await finish(details, PHONE);
     vi.unstubAllGlobals();
-    const link = calls.find((c) => c.method === "POST" && c.path === "/rest/v1/sign_in_links");
-    expect(link?.body).toMatchObject({ parent_id: ID, child_id: "child-42" });
+    const link = calls.find((c) => `${c.method} ${c.path}` === LINK);
+    expect(link?.body).toMatchObject({ p_parent: ID, p_child: "child-42" });
     expect(sent).toEqual(["https://api.resend.com/emails"]);
     expect(bodies[0]).toMatchObject({ from: "Savar & Cedric from Unica Learning <contact@unicalearning.com>", subject: "Welcome to Unica Learning: open this on a laptop or tablet" });
     expect(await res.json()).toEqual({ ok: true, linkSent: true });
@@ -507,5 +550,86 @@ describe("the founders' welcome (D-225)", () => {
     supabase({ existing: true });
     await finish(details);
     expect(afterResponse).toHaveLength(0);
+  });
+});
+
+// Two tabs that finish the same signup at once (docs/state-machines.md, item 12). Before the claim, both changed the
+// password; the tab that lost create_family's race answered "existing" with its password change already done.
+describe("one finish at a time for a user (migration sign_in_races)", () => {
+  const claimFirst = () => {
+    const at = (p: string) => calls.findIndex((c) => `${c.method} ${c.path}` === p);
+    return at(CLAIM) >= 0 && at(CLAIM) < at(OWN_PASSWORD);
+  };
+
+  it("two tabs at once: one makes the family with its password, the other changes nothing and answers existing", async () => {
+    supabase({ slow: true });
+    const [a, b] = await Promise.all([finish({ ...details, password: "tab-one-password" }), finish({ ...details, password: "tab-two-password" })]);
+    const answers = [await a.json(), await b.json()];
+    expect(answers).toContainEqual({ ok: true, linkSent: false });
+    expect(answers).toContainEqual({ ok: true, existing: true });
+    const winner = answers[0].existing ? "tab-two-password" : "tab-one-password";
+    // One random password, then the winner's: the other tab never changed it.
+    expect(passwordsSet()).toHaveLength(2);
+    expect(passwordsSet()[1]).toBe(winner);
+    expect(auth.password).toBe(winner);
+    expect(calls.filter((c) => `${c.method} ${c.path}` === FAMILY)).toHaveLength(1);
+    expect(claims.size).toBe(0);
+  });
+
+  it("takes the claim before the first password change, and lets it go when the family is made", async () => {
+    supabase({});
+    expect(await (await finish({ ...details, password: "a-long-password" })).json()).toEqual({ ok: true, linkSent: false });
+    expect(claimFirst()).toBe(true);
+    expect(calls.filter((c) => `${c.method} ${c.path}` === RELEASE)).toHaveLength(1);
+    expect(claims.size).toBe(0);
+  });
+
+  it("lets the claim go when the finish fails, so a retry works at once", async () => {
+    supabase({});
+    expect((await finish({ ...details, password: WEAK })).status).toBe(400);
+    expect(claims.size).toBe(0);
+    expect(await (await finish({ ...details, password: "a-stronger-password" })).json()).toEqual({ ok: true, linkSent: false });
+  });
+
+  it("waits for a claim that another tab holds, then goes on", async () => {
+    supabase({ claimHeldFor: 2 });
+    expect(await (await finish({ ...details, password: "a-long-password" })).json()).toEqual({ ok: true, linkSent: false });
+    expect(calls.filter((c) => `${c.method} ${c.path}` === CLAIM)).toHaveLength(3);
+  });
+
+  it("changes nothing when another tab holds the claim for too long, or when the claim cannot be taken", async () => {
+    supabase({ claimHeldFor: 1000, earlierPassword: "parents-password" });
+    const held = await finish({ ...details, password: "a-long-password" });
+    expect(held.status).toBe(502);
+    expect(await held.json()).toEqual({ ok: false, error: "store_failed" });
+    expect(paths()).toEqual([]);
+    expect(auth.password).toBe("parents-password");
+
+    supabase({ claimDown: true, earlierPassword: "parents-password" });
+    expect((await finish({ ...details, password: "a-long-password" })).status).toBe(502);
+    expect(paths()).toEqual([]);
+    expect(auth.password).toBe("parents-password");
+  });
+
+  it("lets go of a claim whose answer was lost, so the parent's retry is not held for 5 minutes", async () => {
+    supabase({ claimAnswerLost: true });
+    expect((await finish({ ...details, password: "a-long-password" })).status).toBe(502);
+    expect(paths()).toEqual([]);
+    expect(claims.size).toBe(0);
+  });
+});
+
+describe("phone admission", () => {
+  it.each(["604", "+44 20 7946 0958", "604 555 0123 ext 4", ""]) ("rejects an invalid number before family creation: %s", async (phone) => {
+    supabase({});
+    const response = await finish({ ...details, phone });
+    expect(response.status).toBe(400);
+    expect(paths()).not.toContain(FAMILY);
+  });
+  it("leaves an existing family unchanged even with no number", async () => {
+    supabase({ existing: true });
+    const response = await finish({ ...details, phone: "" });
+    expect(await response.json()).toEqual({ ok: true, existing: true });
+    expect(paths()).toEqual([]);
   });
 });

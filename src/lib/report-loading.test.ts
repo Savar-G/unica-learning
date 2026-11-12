@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { ReportCard } from "@/components/report";
 import { reportEmail } from "@/lib/report-email";
-import { BANKS, BC_SKILL_MAP, createSession, learnerProfile, reportModel, storedProfile, storedTest, type LearnerProfile, type Placement, type ProfileAi, type ShownWork, type StoredTest } from "@/lib/assessment";
+import { BANKS, BC_SKILL_MAP, createSession, learnerProfile, reportModel, storedProfile, storedTest, type LearnerProfile, type ProfileAi, type ShownWork } from "@/lib/assessment";
 import { knowsUpTo, takeTest } from "@/lib/assessment/scripted-child";
 import { loadReportInputs, loadReportView, type ComparisonRead } from "@/lib/report-loading";
 import { memoryReportReaders, type MemoryAnswer, type MemoryAssessment, type MemoryReportTables } from "@/lib/report-loading-memory";
@@ -75,7 +75,7 @@ describe("the report view (#161)", () => {
       childId: "child-1",
       assessmentId: "test-1",
       // No learner profile is stored (#198).
-      view: { id: "report-1", childName: "Asha", province: "BC", timeZone: "America/Vancouver", completedAt: "2026-10-10T19:30:00Z", questions: 36, minutes: 34, model, findings: null },
+      view: { id: "report-1", childName: "Asha", province: "BC", timeZone: "America/Vancouver", completedAt: "2026-10-10T19:30:00Z", questions: 36, minutes: 34, model, findings: null, bookOne: null },
     };
     for (const loaded of [asParent, asAdmin]) {
       const { workImages, ...view } = loaded!.view;
@@ -115,19 +115,6 @@ describe("the report view (#161)", () => {
     expect(readers.signed).toEqual([{ reader: "parent-1", paths: onReport }, { reader: "admin", paths: onReport }]);
   });
 
-  it("leaves out stored work for a question of the removed extra round (#190, D-145): not shown, not signed", async () => {
-    const t = tables();
-    const roundWork = { questionId: "x-0", prompt: "ROUND QUESTION", correct: true, image: "parent-1/test-1/x-0-x.png", text: "ROUND WORKING", comment: null };
-    const readers = memoryReportReaders({ ...t, reports: t.reports?.map((r) => ({ ...r, model: { ...r.model, work: [roundWork, ...(r.model.work ?? [])] } })) });
-    for (const reader of [readers.parent("parent-1"), readers.admin()]) {
-      const { view } = (await loadReportView(reader, "report-1"))!;
-      expect(view.model.work?.map((w) => w.questionId)).toEqual(model.work.map((w) => w.questionId));
-      const page = renderToStaticMarkup(createElement(ReportCard, { view, readOnly: true }));
-      const email = reportEmail({ view, parentName: "Priya Shah", url: "https://unicalearning.com/account/report/report-1", unsubscribeUrl: "https://unicalearning.com/unsubscribe" });
-      for (const place of [page, email.text, email.html]) expect(place).not.toMatch(/ROUND QUESTION|ROUND WORKING|x-0-x\.png/);
-    }
-    expect(readers.signed.flatMap((x) => x.paths)).not.toContain("parent-1/test-1/x-0-x.png");
-  });
 });
 
 describe("a stored report reads with the rules of today (#242)", () => {
@@ -214,7 +201,7 @@ describe("the parent's part of the learner profile on the report view (#198)", (
   });
 
   it("leaves out a stored wrong answer to the removed extra round (#190, D-145): the parent's example and the admin's list", async () => {
-    // Two stored profiles were built with the round's answers: here a round answer comes first in the struggle's list.
+    // One stored profile was built with the round's answers: here a round answer comes first in the struggle's list.
     const roundWrong = { questionId: "x-0", templateId: struggle.wrong[0].templateId, prompt: "ROUND PROMPT", response: "round-answer", rightAnswer: "9", misconception: "ROUND-ONLY" };
     const withRound = { ...facts, struggles: facts.struggles.map((s) => (s.code === missed ? { ...s, wrong: [roundWrong, ...s.wrong], misconceptions: ["ROUND-ONLY", ...s.misconceptions] } : s)) };
     for (const reader of [memoryReportReaders(stored(withRound)).parent("parent-1"), memoryReportReaders(stored(withRound)).admin()]) {
@@ -248,7 +235,7 @@ describe("the parent's part of the learner profile on the report view (#198)", (
     const page = renderToStaticMarkup(createElement(ReportCard, { view, readOnly: true }));
     const email = reportEmail({ view, parentName: "Priya Shah", url: "https://unicalearning.com/account/report/report-1", unsubscribeUrl: "https://unicalearning.com/unsubscribe" });
     for (const place of [page, email.text, email.html]) {
-      expect(place).toContain("To work on");
+      expect(place).toMatch(/Gaps to fix|Next to learn/);
       expect(place).not.toContain("Word problems");
       expect(place).not.toContain("1 of 3");
     }
@@ -342,27 +329,6 @@ describe("the report inputs (#162)", () => {
       memoryReportReaders({ ...tables(), assessments: [{ ...ASSESSMENT, placement: rushed }], answers: rows }).key(), "test-1", noComparison,
     );
     expect(inputs?.questions).toBe(42);
-  });
-
-  it("leaves out the answers of the removed extra round (#190, D-145), also when the stored result counted them", async () => {
-    // A test from before the round was removed: two round questions after the main test, stored under `extra`, both
-    // answered in 20 seconds, the first with a drawing. The stored result may or may not record the round.
-    const extra = [{ ...asked[0], id: "x-0" }, { ...asked[1], id: "x-1" }];
-    const round = (position: number, questionId: string, workPath: string | null): MemoryAnswer => ({
-      assessmentId: "test-1", position, questionId, response: "1", correct: true, misconception: null, timeMs: 20_000, workRequired: false, workPath, workText: null,
-    });
-    const rows = [...answers(), round(42, "x-0", drawing("parent-1", 0)), round(43, "x-1", null)];
-    const counted = { ...placement, extraRound: { questions: 2, strands: ["number"] } } as Placement;
-    for (const result of [placement, counted]) {
-      const inputs = await loadReportInputs(
-        memoryReportReaders({ ...tables(), assessments: [{ ...ASSESSMENT, placement: result, test: { ...test, extra } as StoredTest }], answers: rows }).key(), "test-1", noComparison,
-      );
-      // The main test's 42 answers and 14 minutes, its shown work, review pieces and profile answers alone.
-      expect(inputs).toMatchObject({ questions: 42, minutes: 14 });
-      expect(inputs?.shownWork.map((w) => w.questionId)).toEqual(["s1-3", "s1-4", "s1-6", "up-8"]);
-      expect(inputs?.reviewPieces().map((p) => p.questionId)).toEqual(["s1-3", "s1-4", "s1-6", "up-8"]);
-      expect(inputs?.profileAnswers().map((a) => a.question.id)).toEqual(asked.map((q) => q.id));
-    }
   });
 
   it("is null for a test that is not completed or has no placement, and then the answers are not read", async () => {

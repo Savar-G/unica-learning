@@ -1,20 +1,23 @@
 import { pageMetadata } from "@/lib/metadata";
+import { JsonLd } from "@/components/json-ld";
+import { pageJsonLd } from "@/lib/structured-data";
 import { SupportPage } from "@/components/support-page";
 import { BUSINESS_NAME, SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 
-export const metadata = pageMetadata({
+const PAGE = {
   path: "/privacy",
   title: "Privacy policy",
   description: `How ${BUSINESS_NAME} uses your information and cookies, and how to contact us about your privacy.`,
-  index: false,
-});
+};
+export const metadata = pageMetadata(PAGE);
 
 export default function Privacy() {
-  return <SupportPage label="Updated 5 November 2026" title="Privacy policy">
+  return <SupportPage label="Updated 11 November 2026" title="Privacy policy">
+    <JsonLd data={pageJsonLd(PAGE)} />
     <p className="lead">{BUSINESS_NAME} is responsible for the information you share through this website. This policy explains what we collect, why we use it, and the choices you have.</p>
     <h2>What you share with us</h2>
     <p>Before the online assessment, families booked through a reservation form. For those bookings, we keep the name, email address, Canadian postal code, chosen plan and subject, the child&apos;s grade, and their school curriculum.</p>
-    <p>For an online assessment account, we ask for your name, email address, and each child&apos;s first name, grade, and province. Accounts made before November 2026 also gave a postal code; we keep it with the account. To confirm your email address, we email you a one-time code. We keep the child&apos;s test answers, answer times, typed working, drawings and the pen strokes that made them, results, work reviews, and reports. We also keep account sign-in records, card setup or waitlist records, and records of assessment emails and unsubscribe requests. We do not ask for a child&apos;s date of birth.</p>
+    <p>For an online assessment account, we ask for your name, email address, phone number, and each child&apos;s first name, grade, and province. Accounts made before November 2026 also gave a postal code; we keep it with the account. We use your phone number to contact you about your child&apos;s results and account. We remove it when we delete your family account. To confirm your email address, we email you a one-time code. We keep the child&apos;s test answers, answer times, typed working, drawings and the pen strokes that made them, results, work reviews, and reports. We also keep account sign-in records, card setup or waitlist records, and records of assessment emails and unsubscribe requests. We do not ask for a child&apos;s date of birth.</p>
     <p>When you send us a message through our contact form, we get your name, email address and message by email. We use them only to reply to you, and we do not add them to your account or to any list.</p>
     <p>For your workbook program, we keep welcome and delivery email records, the delivery method, and any carrier and tracking details. We use these to tell you what happens next and help you track your workbook. We keep a copy of each email and its send status. These records are removed with your family account.</p>
     <p>After the assessment, you can tell us how your child likes to learn, what they are interested in, and anything else about how they learn. These answers are optional. We keep them with the child&apos;s account and use them only to plan your child&apos;s books. You can change or clear them from your account.</p>
@@ -33,7 +36,7 @@ export default function Privacy() {
     <p>AI comments can be wrong. We leave a work comment out when the review is not sufficiently certain. Our team can review the work and its confidence result. Contact us if you want us to check a result.</p>
     <p>When you add your card, we send your name, email address, and postal code (if your account has one) to our payment provider. We also send your plan, subject, price, your child&apos;s grade and school curriculum, and a reference for your booking. You enter your card details and shipping address on its secure page. We keep the shipping address with your payment provider&apos;s customer record and use it to ship your workbooks. You do not need to give a shipping address to create an account or take the free assessment. Our booking form does not collect your card number.</p>
     <h2>Maya, our AI Teaching Assistant</h2>
-    <p>Maya is the AI Teaching Assistant on your child&apos;s desk. Maya is an AI, not a person. Your child picks a question from a workbook page, and Maya helps with that question, one step at a time, on a shared board. We open chat with Maya to families on a workbook plan in stages, so your family may not have it yet.</p>
+    <p>Maya is the AI Teaching Assistant on your child&apos;s desk. Maya is an AI, not a person. Your child picks a question from a workbook page, and Maya helps with that question, one step at a time, on a shared board. Chat with Maya opens when your family&apos;s plan starts.</p>
     <p>Before a child&apos;s first chat, a parent must read a short notice in the parent account and agree. One agreement covers all the children in the family. We save who agreed, when, and which version of the notice. If the notice changes in an important way, we ask again. Without an agreement, no chat starts.</p>
     <p>To turn Maya off for your family, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>. We then remove your agreement, and no new chat starts. A chat already open can continue until it ends, at most 10 minutes. We still write its note and learning record.</p>
     <p>In a chat, your child types to Maya. For each turn, we send an AI model, through OpenRouter, the question, its answer and worked steps, your child&apos;s latest message, and the last 12 lines of the chat. The AI model chooses from sentences that our code wrote. In a chat, it does not write Maya&apos;s words. We do not send your name, email address, postal code, payment details or account identifiers. Maya can say your child&apos;s first name, so the AI model can read that first name in Maya&apos;s earlier lines. It also reads anything your child types. Please ask your child not to type full names, addresses, phone numbers or other personal details.</p>
@@ -49,6 +52,7 @@ export default function Privacy() {
     <h2>Cookies and your choice</h2>
     <p>Cookies are small pieces of information saved on your device. If you accept optional cookies, we count page visits and steps in the signup, the assessment, and the plan choice to understand how people use our website. These counts can include your chosen plan, subject and school curriculum. They do not include your name, email address, postal code, or your child&apos;s grade. We do not record your screen or the text you enter.</p>
     <p>If you accept optional cookies, we also use tools from Meta (Facebook and Instagram) and Google Ads to measure whether our ads lead to signups. Meta learns which of our main pages you open and when you create an account. It does not run on pages whose web address holds a reference to your account, report or payment. Google Ads learns when you create an account, open a report, or add a card. We do not send them your name, email address, postal code, or anything about your child. Meta and Google can connect this to an account you have with them, to tell us how many people our ads brought. These tools never send anything from the pages your child uses for the assessment.</p>
+    <p>The results-call calendar loads inside your report only after you accept optional cookies. You can also open the booking page in a new tab without accepting our optional cookies. We do not put your contact details or your child&apos;s details in the booking link.</p>
     <p>You can reject optional cookies and still take the free math assessment, choose a plan, or join the waitlist. Use Cookie settings at the bottom of any page to change your choice.</p>
     <p>Your device also saves your cookie choice, keeps the link tags of your visit until you close the tab, and briefly keeps details needed when you return from adding your card. These help the website work and are separate from the optional cookies.</p>
     <h2>Companies that help us</h2>
@@ -59,8 +63,10 @@ export default function Privacy() {
         <li>Supabase manages account sign-in and stores form details, assessment records, private drawings, and Maya&apos;s chats, notes and learning records.</li>
         <li>Resend sends sign-in codes, account links, reports, reminders, workbook welcome and delivery emails, Maya recaps, and notices to our team. A Maya recap holds the notes and what was said for up to 10 chats or calls.</li>
         <li>OpenRouter processes the assessment work and report facts described above when AI processing is enabled. When workbook marking is enabled, it receives the whole normalized page photo. It sends each request to the company that runs the AI model we choose. We must verify the provider&apos;s no-training and retention settings before families use marking. The provider&apos;s own retention terms are separate from our 90-day photo rule.</li>
+        <li>When enabled, OpenRouter sends a photo of your child&apos;s workbook page and the printed workbook questions to TypeSafe, which provides an AI model. We use it to check whether a photo is clear and to check workbook questions.</li>
         <li>OpenRouter also receives the Maya chat requests and the transcript for a note sentence, described above, and sends each request to a company that runs the AI model. Today Maya&apos;s model is Claude, made by Anthropic.</li>
         <li>Stripe handles adding your card and payments.</li>
+        <li>Calendly provides the results-call calendar. Its booking page has its own cookie settings. It receives the details you enter when you book a call.</li>
         <li>Vercel makes the website available to you and measures how fast our pages load.</li>
         <li>PostHog counts visits and signup steps only if you accept optional cookies.</li>
         <li>Meta (Facebook and Instagram) and Google Ads measure whether our ads lead to signups. They run only if you accept optional cookies, and they never send anything from the pages your child uses.</li>

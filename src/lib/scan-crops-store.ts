@@ -1,17 +1,14 @@
 import "server-only";
+import { scanPhotoIsActive } from "@/lib/scan-photo-active";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/database";
 import { scanPath, SCAN_BUCKET } from "@/lib/scan-photo-server";
 import { isFenceRefusal, SCAN_LEASE_MS, scanPartPath, type BeginAnswer, type FinishAnswer, type ScanCropStore } from "@/lib/scan-crops";
-import { storedQuestion } from "@/lib/workbook-content";
+import { storedQuestion, WORKBOOK_FILES_BUCKET } from "@/lib/workbook-content";
 import { storedPrintContract } from "@/lib/workbook-print-contract";
 
-const WORKBOOK_BUCKET = "workbook-pages";
 /** How many of the other pages one read asks for. Only their paths: the job reads the images themselves a few at a time. */
 const OTHER_PAGES_READ = 500;
-const isActive = (p: { state: string; created_at: string; expires_at: string }, now: number) =>
-  Date.parse(p.expires_at) > now && (p.state === "saved" || (p.state === "pending" && Date.parse(p.created_at) > now - 23.5 * 3_600_000));
-
 /** The crop job's store, on the secret key: every read names the family, and Storage's fence holds the write rules. */
 export function scanCropStore(db: SupabaseClient<Database>): ScanCropStore {
   const bucket = () => db.storage.from(SCAN_BUCKET);
@@ -47,7 +44,7 @@ export function scanCropStore(db: SupabaseClient<Database>): ScanCropStore {
       if (row.error) throw new Error("scan crops: photo");
       if (!row.data) return null;
       const p = row.data;
-      const active = isActive(p, Date.now());
+      const active = scanPhotoIsActive(p, Date.now());
       if (!p.page_id || !p.workbook_id) return { photo: { id: p.id, printedRevision: p.printed_revision, active }, book: { printedRevision: null }, page: { printContract: null, imagePath: null, qrToken: null, questions: [], others: [] } };
       const [book, page, questions] = await Promise.all([
         db.from("workbooks").select("printed_revision,child_id").eq("id", p.workbook_id).eq("parent_id", parent).maybeSingle(),
@@ -107,7 +104,7 @@ export function scanCropStore(db: SupabaseClient<Database>): ScanCropStore {
       return new Uint8Array(await data.arrayBuffer());
     },
     async printedBytes(path) {
-      const { data, error } = await db.storage.from(WORKBOOK_BUCKET).download(path);
+      const { data, error } = await db.storage.from(WORKBOOK_FILES_BUCKET).download(path);
       return error ? null : new Uint8Array(await data.arrayBuffer());
     },
     async put({ parent, photo, token, part, bytes }) {

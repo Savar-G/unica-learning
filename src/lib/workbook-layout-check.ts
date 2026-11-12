@@ -26,8 +26,8 @@ import type { DayContent, SlotName } from "@/lib/workbook-page";
 import type { DraftPage, FitProblem, MeasuredElement } from "@/lib/workbook-render";
 import type { QuestionPackage } from "@/lib/question-package";
 import type { PagePlan } from "@/lib/workbook-template";
-import { questionWorkSpace, WORK_INSTRUCTION } from "./workbook-work-space";
-import { answerInstruction, workbookPageInstruction } from "@/lib/workbook-page-instructions";
+import { questionWorkSpace } from "./workbook-work-space";
+import { answerInstruction, isWarmUpPage, workbookPageInstruction, workbookWorkLine, mergeWarmUp, WARM_UP_INSTRUCTION } from "@/lib/workbook-page-instructions";
 
 /** How far measured things may differ and still count as lined up or even, in CSS pixels. */
 export const LAYOUT_TOLERANCE = {
@@ -342,11 +342,17 @@ export function choiceInstruction(questions: ChoiceQuestions): string | null {
 export function circleProblem(content: DayContent | null | undefined, questions: readonly { package: QuestionPackage | null; place?: string | null }[]): string | null {
   if (!content) return null;
   const instruction = content.subtitle ?? "";
+  // (A warm-up page names no choice: each choice question prints its own cue, isWarmUpPage.)
+  const warmUp = isWarmUpPage(content);
   if (content.level === 16 && content.consistentLayout) {
-    const expected = answerInstruction(questions);
-    return instruction === expected || instruction.startsWith(`${expected} `) ? null
+    const expected = answerInstruction(questions, !warmUp);
+    // (A warm-up's instruction says what it is first: "A warm-up on things you learned before. Do every question.")
+    // (On a warm-up the printed words join "Do every question." and "Write in boxes." into one sentence, mergeWarmUp.)
+    const merged = warmUp ? mergeWarmUp(`${WARM_UP_INSTRUCTION} ${expected}`) : null;
+    return instruction === expected || instruction === merged || instruction.startsWith(`${expected} `) || instruction.endsWith(` ${expected}`) ? null
       : "the page instruction does not match its boxed, circled and ticked answers";
   }
+  if (warmUp) return null;
   if (circled(questions).length && !/\bcircle\b/i.test(instruction)) return "the page has a question to circle, but its instruction does not say to circle";
   // (Every kind, other choices too: "Circle true or false" on a page that also prints never/sometimes/always passed,
   // Codex on #633.)
@@ -386,12 +392,12 @@ export function layoutProblems(page: DraftPage, measured: Measured, plan: PagePl
     const spaces = [measured.get(`workspace-${q.number}`), ...(q.package.item?.regions ?? []).flatMap(r => r.kind === "work" ? [measured.get(`region-${q.number}-${r.id}`)] : [])].filter(shown);
     if (!spaces.some(m => m.height >= need - .5)) work.push({ question: q.number, slot: null, reason: `question ${q.number} needs at least ${need} px of white work space` });
   }
+  // (The work line under the instruction names the questions to work: the template's fit check measures it.)
   const scopedInstruction = workbookPageInstruction(page);
-  if (scopedInstruction !== null ? c.subtitle !== scopedInstruction
-    : page.questions.some(q => questionWorkSpace(q.package, slotOf(c, q.number)) > 0 || q.package.item?.regions.some(r => r.kind === "work")) && !c.subtitle.includes(WORK_INSTRUCTION)) {
-    work.push({ question: null, slot: null, reason: scopedInstruction !== null
-      ? "the page instruction names different answer or work regions" : "the page with work space lacks its work instruction" });
-  }
+  if (scopedInstruction !== null && c.subtitle !== scopedInstruction)
+    work.push({ question: null, slot: null, reason: "the page instruction names different answer or work regions" });
+  if (/\bshow your work\b/i.test(c.subtitle) && workbookWorkLine(page))
+    work.push({ question: null, slot: null, reason: "the page instruction says the work line again" });
   const all = hasLines(measured)
     ? [...spacingProblems(page, c, measured), ...alignmentProblems(page, c, measured, plan), ...clippingProblems(page, c, measured), ...repeat, ...work]
     : [...repeat, ...work];

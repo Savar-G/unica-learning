@@ -297,14 +297,21 @@ export function renderedPages(result: Extract<RenderResult, { status: "rendered"
  */
 export async function renderWorkbook(o: {
   draft: WorkbookDraft; parentId: string; template: WorkbookTemplate; engine: PrintEngine; fileKey?: string;
+  /**
+   * The whole book the pages are from, when `draft` holds only some of its pages (the first pages of Workbook 1,
+   * docs/first-pages.md): the template reads other pages from it (the cover prints the topics of How + Plan). Only
+   * `draft`'s pages print. Absent: the draft is the whole book.
+   */
+  book?: WorkbookDraft;
 }): Promise<RenderResult> {
   const { draft, template } = o;
+  const book = o.book ?? draft;
   const answerMin = template.answerMin ?? ANSWER_MIN;
   const problems: RenderProblem[] = [];
   const sheets: string[] = [];
   for (const page of draft.pages) {
     const qrUrl = pageUrl(page.qrToken);
-    const html = template.page(page, { qr: qrElement(qrUrl), qrUrl }, draft);
+    const html = template.page(page, { qr: qrElement(qrUrl), qrUrl }, book);
     if (html === null) problems.push({ page: page.number, question: null, reason: `the template has no layout for a ${page.type} page` });
     sheets.push(html ?? "");
   }
@@ -332,6 +339,8 @@ export async function renderWorkbook(o: {
     if (overflows(measured.get("sheet"))) fail(null, "the content does not fit the page");
     for (const m of measured.values()) {
       if (m.name.startsWith("slot-") && overflows(m)) fail(null, `the ${m.name.slice(5)} does not fit its space`, m.name.slice(5));
+      // #801: a cover topic the plan card clips prints no text, though nothing overflows its own box.
+      else if (/^slot-cover-topic-\d+$/.test(m.name) && (!m.visible || !m.textPrinted)) fail(null, `the ${m.name.slice(5)} is not printed`, m.name.slice(5));
     }
     const number = measured.get("page-number");
     if (number?.text !== String(page.number) || !number.visible || !number.textPrinted || !insidePage(number)) fail(null, "the page number is not printed");
@@ -353,7 +362,7 @@ export async function renderWorkbook(o: {
         fail(q.number, `question ${q.number} has no answer space`);
       } else questions.push({ ...q, box: pixelBox(m, image), regions: printedRegions(q, measured, image) });
     }
-    for (const p of template.fit?.(page, measured, draft) ?? []) fail(p.question, p.reason, p.slot ?? undefined, p.kind);
+    for (const p of template.fit?.(page, measured, book) ?? []) fail(p.question, p.reason, p.slot ?? undefined, p.kind);
     pages.push({ number: page.number, dayLabel: page.dayLabel, type: page.type, qrToken: page.qrToken, image: { path, width: image.width, height: image.height }, questions });
   });
   if (problems.length) return { status: "failed", problems };

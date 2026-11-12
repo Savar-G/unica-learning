@@ -385,7 +385,7 @@ describe("the controller teaches fractions (#407)", () => {
     c.child("14/16.");
     expect(c.propose({ act: "guide", step: "result", level: 0, parts: [equal], reading: { answers: [answer(frac(14, 16), "result", "wrong")] } }).refusal).toBeNull();
     c.child("I don't know.");
-    expect(c.propose({ act: "give_answer", parts: [], reading: { help: "more" } }).refusal).toMatchObject({ code: "hint_too_high" });
+    expect(c.propose({ act: "give_answer", parts: [], reading: { help: "more" } }).refusal).toMatchObject({ code: "act_not_allowed" });
     const h1 = c.propose({ act: "guide", step: "result", level: 1, parts: [{ line: "step.point", slots: { step: "result" } }], reading: { help: "more" } });
     expect(h1.refusal).toBeNull();
     expect(c.said(h1)).toMatch(/14.*16/);

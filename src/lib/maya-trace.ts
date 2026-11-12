@@ -26,11 +26,19 @@ export interface TraceRefusal {
  * Each records `cancelled`: whether Maya's output was stopped. Version 5 records input obligations and the
  * delivered turn that served each one, or the reason it was dropped. Version 6 adds controller safety output on
  * terminal events. Version 7 adds scope refusal reasons and times. Version 8 (#527) adds controller held output: on a
- * question Maya cannot teach, code's held lines at the start, with no model. `checkTrace` reads all eight versions.
+ * question Maya cannot teach, code's exact held lines at the start, with no model; in version 8 that is the text before
+ * D-327 (`PRE_D314_HELD`). Version 9 (D-327) holds the held lines that say plainly Maya cannot teach the question yet
+ * (hello, can't teach, another question); a version 9 trace with the old text is refused. Version 10 records the configured call limits. `checkTrace` reads all ten
+ * versions.
  */
-export const TRACE_VERSION = 8;
+export const TRACE_VERSION = 10;
 /** The trace versions `checkTrace` reads. */
-export const TRACE_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+export const TRACE_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+/**
+ * The held turn as version 8 traces stored it, before D-327 (line sets 11 to 13). Frozen here: stored admin test
+ * calls from preview deployments may hold it, and they stay readable.
+ */
+export const PRE_D314_HELD = "Hi, I'm Maya, an AI. Want to pick another question on this page?";
 export const TRACE_KIND = "maya-trace";
 
 export const OBLIGATION_KINDS = ["start_pending", "safety_due", "opening_due", "repair_due", "child_turn_pending", "content_problem"] as const;
@@ -137,6 +145,11 @@ export interface TraceAttempt {
   talk?: TraceTalk[];
   /** Version 3: how long the free-talk reviews of this attempt took, by the passed-in clock. */
   reviewMs?: number;
+  /**
+   * The client read this proposal from inside one Markdown code fence (a request sent without `response_format`, first
+   * ship practice at 6de7e777). Absent otherwise, and in traces from before. Counted by `fencedReplies`.
+   */
+  fenced?: true;
 }
 
 /** One piece of the model's own words in a trace (D-197): the session's TalkCheck. */
@@ -161,6 +174,8 @@ export type TraceTurn =
       /** The session state before and after the turn. */
       state: SessionState;
       stateAfter: SessionState;
+      /** Count of committed wrong final answers after this turn, from the controller. */
+      finalMisses?: number;
       attempts: TraceAttempt[];
       /** Null when nothing was output: every attempt failed and the call ended as a technical issue. */
       output: TraceOutput | null;
@@ -241,6 +256,12 @@ export function traceCounts(turns: readonly TraceTurn[]): TraceCounts {
   };
 }
 
+/** The model calls of a trace, and how many of their proposals the client read from inside one code fence. */
+export function fencedReplies(turns: readonly TraceTurn[]): { calls: number; fenced: number } {
+  const attempts = turns.flatMap((t) => (t.kind === "maya" ? t.attempts : [])).filter((a) => a.source === "model" || a.source === "repair");
+  return { calls: attempts.length, fenced: attempts.filter((a) => a.fenced === true).length };
+}
+
 /** JSON with sorted keys, so the same package always gives the same hash. */
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
@@ -317,6 +338,7 @@ function checkAttempt(a: unknown, path: string) {
   need(!(x.error !== undefined && x.refusal !== null), `${path}`, "an attempt with an error has no refusal");
   need(!(x.source === "fallback" && x.refusal !== null), `${path}`, "a fallback attempt is recorded only when it was accepted");
   need(x.reviewMs === undefined || (isNum(x.reviewMs) && x.reviewMs >= 0), `${path}.reviewMs`, "a duration");
+  need(x.fenced === undefined || (x.fenced === true && (x.source === "model" || x.source === "repair") && x.proposal !== null && x.error === undefined), `${path}.fenced`, "true on a model or repair proposal, or absent");
   if (x.talk !== undefined) {
     need(Array.isArray(x.talk) && x.talk.length > 0, `${path}.talk`, "a list of free-talk checks");
     need(x.refusal === null && x.error === undefined, `${path}.talk`, "only on an accepted attempt");
@@ -359,7 +381,7 @@ function checkOrder(attempts: Record<string, unknown>[], path: string) {
   if (attempts[1]?.source === "repair") need(attempts[0].refusal !== null, `${path}[1]`, "a repair only after a refusal, not after a model error");
 }
 
-function checkTurn(t: unknown, path: string): Record<string, unknown> {
+function checkTurn(t: unknown, path: string, version: number): Record<string, unknown> {
   need(isObject(t), path, "a turn");
   const x = t as Record<string, unknown>;
   need(isNum(x.at), `${path}.at`, "a time");
@@ -395,12 +417,15 @@ function checkTurn(t: unknown, path: string): Record<string, unknown> {
     case "maya": {
       need(oneOf(STATES, x.state), `${path}.state`, "a session state");
       need(oneOf(STATES, x.stateAfter), `${path}.stateAfter`, "a session state");
+      if (x.finalMisses !== undefined) need(isCount(x.finalMisses), `${path}.finalMisses`, "a count");
       need(Array.isArray(x.attempts) && x.attempts.length > 0 && x.attempts.length <= 3, `${path}.attempts`, "1 to 3 attempts");
       const attempts = x.attempts as Record<string, unknown>[];
       if (attempts[0]?.source === "controller") {
         const o = x.output as { act?: unknown; say?: unknown; board?: unknown } | null;
-        // Code's own words with no model: safety guidance, or the held lines on a question Maya cannot teach (#527).
-        const exact = o?.act === "safety" ? Object.values(SAFETY_GUIDANCE) as string[] : o?.act === "close" ? [heldSentences(true).join(" ")] : [];
+        // Code's own words with no model: safety guidance, or the held lines on a question Maya cannot teach (#527):
+        // the text before D-327 in version 8 and earlier, the D-327 text from version 9.
+        const held = version <= 8 ? PRE_D314_HELD : heldSentences(true).join(" ");
+        const exact = o?.act === "safety" ? Object.values(SAFETY_GUIDANCE) as string[] : o?.act === "close" ? [held] : [];
         need(attempts.length === 1 && attempts[0].proposal === null && attempts[0].refusal === null && attempts[0].error === undefined && Array.isArray(o?.say) && o.say.length === 1 && exact.includes(o.say[0] as string) && Array.isArray(o?.board) && o.board.length === 0, path, "controller output is exact safety guidance or the exact held lines only");
       }
       // A chat's close after the safety guidance is code's own: no model is asked for it (#589).
@@ -473,7 +498,7 @@ function check(raw: unknown): MayaTrace {
   } else need(r.reviewer === undefined, "reviewer", "absent before version 3");
 
   need(Array.isArray(r.turns), "turns", "a list");
-  const turns = (r.turns as unknown[]).map((t, i) => checkTurn(t, `turns[${i}]`));
+  const turns = (r.turns as unknown[]).map((t, i) => checkTurn(t, `turns[${i}]`, r.version as number));
   turns.forEach((t, i) => need(i === 0 || (t.at as number) >= (turns[i - 1].at as number), `turns[${i}].at`, "not before the turn before it"));
   turns.forEach((t, i) => {
     if (t.kind !== "maya" || (r.version as number) >= 3) return;

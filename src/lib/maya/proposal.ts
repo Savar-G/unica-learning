@@ -158,7 +158,7 @@ export const PROPOSAL_SCHEMA = {
   required: ["version", "act", "parts", "reading", "step", "level", "understanding", "draw", "board"],
   properties: {
     version: { const: PROPOSAL_VERSION },
-    act: { enum: [...ACTS] },
+    act: { enum: ACTS.filter((act) => act !== "give_answer") },
     parts: {
       type: "array",
       maxItems: PART_LIMITS.parts,

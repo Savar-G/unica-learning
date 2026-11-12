@@ -326,26 +326,33 @@ describe("the Supabase reader of the monthly summary (#562)", () => {
   // October 2026 in Toronto: from 04:00 UTC on October 1 to 04:00 UTC on November 1.
   const FROM = Date.parse("2026-10-01T04:00:00Z");
   const TO = Date.parse("2026-11-01T04:00:00Z");
-  it("counts the child's Maya calls of the month in the database, with the parent's session alone, and reads no row", async () => {
+  it("counts the child's ended chats of the month in the database, with the secret key on the parent, and reads no row", async () => {
     const asked: { url: URL; method: string; prefer: string | null }[] = [];
-    const own = parentViewReader(createClient<never>("https://fixture.invalid", "synthetic-key", { auth: { persistSession: false }, global: { fetch: async (input, init) => {
+    const counting = createClient<never>("https://fixture.invalid", "synthetic-key", { auth: { persistSession: false }, global: { fetch: async (input, init) => {
       asked.push({ url: new URL(String(input)), method: init?.method ?? "GET", prefer: new Headers(init?.headers).get("prefer") });
-      // A thousand calls in September would fill a page of rows; a count has no page.
+      // A thousand chats in September would fill a page of rows; a count has no page.
       return new Response(null, { status: 200, headers: { "content-range": "*/1" } });
-    } } }) as never, PARENT, null);
+    } } }) as never;
+    const session: URL[] = [];
+    const own = parentViewReader(client(session), PARENT, counting);
     expect(await own.mayaCalls(CHILD, FROM, TO)).toBe(1);
+    // maya_calls stays closed to parents: the session asks for nothing.
+    expect(session).toEqual([]);
     expect(asked).toHaveLength(1);
     const { url, method, prefer } = asked[0];
-    expect(url.pathname).toBe("/rest/v1/maya_minute_grants");
+    expect(url.pathname).toBe("/rest/v1/maya_calls");
     expect(method).toBe("HEAD");
     expect(prefer).toContain("count=exact");
-    expect(url.searchParams.get("kind")).toBe("eq.child");
+    expect(url.searchParams.get("parent_id")).toBe(`eq.${PARENT}`);
     expect(url.searchParams.get("child_id")).toBe(`eq.${CHILD}`);
-    expect(url.searchParams.get("used_seconds")).toBe("gt.0");
-    expect(url.searchParams.getAll("created_at")).toEqual(["gte.2026-10-01T04:00:00.000Z", "lt.2026-11-01T04:00:00.000Z"]);
+    expect(url.searchParams.get("kind")).toBe("eq.chat");
+    expect(url.searchParams.get("status")).toBe("eq.ended");
+    expect(url.searchParams.get("child_turns")).toBe("gt.0");
+    expect(url.searchParams.getAll("ended_at")).toEqual(["gte.2026-10-01T04:00:00.000Z", "lt.2026-11-01T04:00:00.000Z"]);
   });
-  it("throws when the ledger cannot be counted", async () => {
-    await expect(reader("maya_minute_grants").reader.mayaCalls(CHILD, FROM, TO)).rejects.toThrow("maya calls read");
+  it("throws when the chats cannot be counted, and with no secret key", async () => {
+    await expect(reader("maya_calls").reader.mayaCalls(CHILD, FROM, TO)).rejects.toThrow("maya calls read");
+    await expect(parentViewReader(client([]), PARENT, null).mayaCalls(CHILD, FROM, TO)).rejects.toThrow("maya calls read: no secret key");
   });
 });
 

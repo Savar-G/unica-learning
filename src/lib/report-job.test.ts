@@ -72,7 +72,7 @@ const cohort: ComparisonTest[] = [
  * (#126, #195). `comparison` counts the comparison reads.
  */
 function database({
-  unsubscribed = false, parent = PRIYA as typeof PRIYA | null, child = true, helped = false, rushed = false, learning = null as ProfileLearning | null,
+  unsubscribed = false, parent = PRIYA as (typeof PRIYA & { phone?: string | null }) | null, child = true, helped = false, rushed = false, learning = null as ProfileLearning | null,
 } = {}) {
   const tables: MemoryReportTables = {
     reports: [],
@@ -222,6 +222,17 @@ describe("the stored report", () => {
 });
 
 describe("the report emails", () => {
+  it.each(["Priya Shah", "Priya\nPhone: +12125550123\nShah"])("sends the stored phone but removes it from the saved copy for name %j", async (name) => {
+    const db = database({ parent: { ...PRIYA, name, phone: "+16045550123" } });
+    const mail = memoryTransport();
+    const book = memoryReportLedger();
+    await run(db, mail, book);
+    expect(mail.delivered[1].text).toContain("+16045550123");
+    expect(mail.delivered[1].html).toContain('href="tel:+16045550123"');
+    const copy = book.keptCopy({ report: "report-1", email: "alert" });
+    expect(copy?.message.text).toContain("[phone removed]");
+    expect(JSON.stringify(copy)).not.toContain("+16045550123");
+  });
   it("sends the parent email and the alert once each through the delivery module; a second run sends nothing", async () => {
     const db = database();
     const mail = memoryTransport();
@@ -234,7 +245,7 @@ describe("the report emails", () => {
     expect(report.text).toContain(`See Asha's full report: ${ORIGIN}/account/report/report-1?src=email`);
     expect(alert).toMatchObject({ sender: { to: "savar" }, replyTo: "priya@family.ca" });
     expect(alert.text).toContain("Parent email: sent to priya@family.ca");
-    expect(alert.text).toContain(`Report: ${ORIGIN}/admin/assessments/${TEST}`);
+    expect(alert.text).toContain(`Report: ${ORIGIN}/admin/reports/report-1/deck`);
 
     // CASL (#80): the email offers a plan, so it carries the unsubscribe link and the one-click headers. The claim
     // stored the hash of the link's token, so the link works.
@@ -424,20 +435,15 @@ describe("the report email and the report page (#163)", () => {
     expectEverywhere(places(email, page), [words(summary)]);
   });
 
-  it("hold the same finish date: the retake date of a report that warns about help, in the family's time zone", async () => {
-    // Asha said someone helped. The warning gives the first whole day of the retake, 30 days after the finish
-    // (2026-10-10 12:00 UTC), in Vancouver time.
+  it("hold the same facts, and neither says the level may be too high when help is likely (D-305)", async () => {
     const db = database({ helped: true });
     const mail = memoryTransport();
     await run(db, mail, memoryReportLedger());
     const [email] = mail.delivered;
     const page = await reportPage(db);
 
-    expectEverywhere(places(email, page), [
-      "This level may be too high",
-      "For a level you can trust, Asha can take a new test alone, with new questions, from November 10, 2026.",
-      "42 questions in 14 minutes",
-    ]);
+    expectEverywhere(places(email, page), ["42 questions in 14 minutes", "What's in workbook 1"]);
+    for (const body of [email.text, email.html, page.text]) expect(body).not.toMatch(/may be too high/);
     // The page also shows the finish date itself.
     expect(page.text).toContain("October 10, 2026");
   });
@@ -657,6 +663,39 @@ describe("the learner profile", () => {
     rebuilt.length = 0;
     await runReportJob(TEST, ORIGIN, { ...options, reader: unfinished.readers.key(), store: unfinished.job.store, profiles: unfinished.profiles.store });
     expect(rebuilt).toEqual([]);
+  });
+});
+
+// The first pages of Workbook 1 (docs/first-pages.md): queued last, after both emails; never on a run with no email,
+// and a failure to queue changes nothing the job did.
+describe("the first pages", () => {
+  it("are queued last, after the emails and the profile rebuild; not when the run sends no email; a failure is only logged", async () => {
+    const db = database();
+    const mail = memoryTransport();
+    const order: string[] = [];
+    const rebuildChild = async () => void order.push("rebuild");
+    const firstPages = vi.fn(async (id: string, origin: string) => { order.push(`first pages ${id} ${origin} after ${mail.delivered.length} emails`); });
+    const options = { reader: db.readers.key(), comparison: db.comparison, store: db.job.store, profiles: db.profiles.store, reviewer: null, transport: mail.transport, ledger: memoryReportLedger().ledger, rebuildChild, firstPages };
+    await runReportJob(TEST, ORIGIN, options);
+    expect(order).toEqual(["rebuild", `first pages ${TEST} ${ORIGIN} after 2 emails`]);
+
+    const quiet = database();
+    firstPages.mockClear();
+    await runReportJob(TEST, ORIGIN, { ...options, reader: quiet.readers.key(), store: quiet.job.store, profiles: quiet.profiles.store, email: false });
+    expect(firstPages).not.toHaveBeenCalled();
+
+    const failing = database();
+    const mail2 = memoryTransport();
+    await runReportJob(TEST, ORIGIN, { ...options, reader: failing.readers.key(), store: failing.job.store, profiles: failing.profiles.store, transport: mail2.transport, ledger: memoryReportLedger().ledger,
+      firstPages: async () => { throw new Error("queue down"); } });
+    expect(mail2.delivered).toHaveLength(2);
+  });
+
+  it("are not queued by the in-memory job unless given", async () => {
+    const db = database();
+    const mail = memoryTransport();
+    await run(db, mail, memoryReportLedger());
+    expect(network).toEqual([]);
   });
 });
 
@@ -1007,13 +1046,13 @@ describe("the learner profile's AI parts", () => {
     // Both: a strength, the struggle with Asha's own wrong answer to one question, and the right answer.
     expect(strengths.length).toBeGreaterThan(0);
     expectEverywhere(places(email, page), [words(shown.prompt), shown.response, shown.rightAnswer]);
-    // The email: the likely cause from the known mistake, and no workbook 1 preview: the AI wrote after it went.
+    // The email: the likely cause from the known mistake (the AI wrote after it went). D-305: workbook 1 comes from the
+    // planner, not the AI, so the email and the page both have it.
     expect(words(email.text)).toContain(mistake);
-    for (const body of [email.text, email.html]) expect(body).not.toContain("Workbook 1 focuses on");
-    // The page, opened after the AI parts were stored: the AI's likely cause, and the preview.
+    // The page, opened after the AI parts were stored: the AI's likely cause.
     expect(page.text).toContain("The wrong answers match a known mistake, and a skill this builds on may not be secure yet.");
     expect(page.text).not.toContain(mistake);
-    expect(page.text).toContain("Workbook 1 focuses on");
+    expectEverywhere(places(email, page), ["What's in workbook 1"]);
     // Never how to help, the model id or the build id: admin only.
     for (const body of [email.text, email.html, page.html]) {
       for (const secret of ["short daily sets", MODEL, "buildId"]) expect(body).not.toContain(secret);

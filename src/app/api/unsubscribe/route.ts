@@ -1,7 +1,7 @@
 import { unsubscribe } from "@/lib/reminder-store";
 import { adminClient } from "@/lib/supabase-auth";
 
-// Unsubscribe from reminder emails (#73, CASL), from the daily Maya email with that email's token (#332), or from the
+// Unsubscribe from reminder emails (#73, CASL), from the weekly Maya email (and the retired daily one) with that email's token (#332), or from the
 // monthly summary email with that email's token (#563). CASL wants the link in a sent email to keep working for 60 days.
 // A token we did not send does nothing.
 // POST /api/unsubscribe?t=<token>:

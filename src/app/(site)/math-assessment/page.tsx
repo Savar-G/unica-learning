@@ -1,17 +1,16 @@
 import Link from "next/link";
 import { AssessmentCta, KeyFacts, ResourcesShell, Section } from "@/components/article";
 import { Eyebrow } from "@/ds";
-import { pageMetadata, SITE_URL } from "@/lib/metadata";
+import { pageMetadata } from "@/lib/metadata";
+import { pageJsonLd } from "@/lib/structured-data";
 
 const title = "Free online math assessment for K to Grade 9";
-export const metadata = pageMetadata({
-  path: "/math-assessment", title,
-  description: "Find your child's math level and gaps with a free online assessment for Kindergarten to Grade 9 in Canada. Get a parent report. No card needed.",
-});
+const PAGE = { path: "/math-assessment", title, description: "Find your child's math level and gaps with a free online assessment for Kindergarten to Grade 9 in Canada. Get a parent report. No card needed." };
+export const metadata = pageMetadata(PAGE);
 
 export default function MathAssessmentPage() {
   return (
-    <ResourcesShell navSrc="assessment-guide-nav" jsonLd={{ "@context": "https://schema.org", "@type": "WebPage", name: title, url: `${SITE_URL}/math-assessment` }}>
+    <ResourcesShell navSrc="assessment-guide-nav" jsonLd={pageJsonLd(PAGE)}>
       <main id="main" className="res res-article">
         <header className="res-head">
           <Eyebrow>Free math assessment</Eyebrow>

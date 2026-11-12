@@ -30,6 +30,28 @@ export const CARD_READ: Stripe.RequestOptions = { timeout: 4000, maxNetworkRetri
 /** A Stripe write of a card or a plan. One attempt, so its longest time is known. */
 export const CARD_WRITE: Stripe.RequestOptions = { timeout: 15_000, maxNetworkRetries: 0 };
 
+/** The Cancel command and its recovery use the same status and promised end. */
+export function planCancelTerms(plan: Stripe.Subscription) {
+  const atPeriodEnd = plan.status === "trialing" || plan.status === "active";
+  const end = atPeriodEnd
+    ? (plan.trial_end && plan.status === "trialing" ? plan.trial_end : plan.items.data[0]?.current_period_end) ?? null
+    : null;
+  return { atPeriodEnd, end };
+}
+
+/** A future date alone does not prove Cancel: another renewal or scheduled resume must not survive it. */
+export function planCancelApplied(plan: Stripe.Subscription): boolean {
+  // Cancel releases the controlling schedule before it ends the subscription.
+  if (plan.schedule) return false;
+  if (plan.status === "canceled") return true;
+  if (plan.cancel_at_period_end !== true && plan.cancel_at == null) return false;
+  const { atPeriodEnd, end } = planCancelTerms(plan);
+  if (!atPeriodEnd || !end || !Number.isSafeInteger(end) || end <= 0 || plan.pause_collection) return false;
+  // A conflicting date must not override the promised trial or paid-period end.
+  if (plan.cancel_at != null && plan.cancel_at !== end) return false;
+  return plan.cancel_at_period_end === true || plan.cancel_at === end;
+}
+
 /** Deletion ends both the subscription and its schedule, so no scheduled resume survives it. */
 export async function cancelSubscriptionNow(s: Stripe, plan: Stripe.Subscription, options: Stripe.RequestOptions): Promise<void> {
   const schedule = typeof plan.schedule === "string" ? plan.schedule : plan.schedule?.id;
@@ -57,7 +79,8 @@ const idOf = (value: string | { id: string } | null | undefined) => (typeof valu
 export function planCard(x: Stripe.Subscription): PlanCard {
   return {
     id: x.id, status: x.status, defaultCard: idOf(x.default_payment_method), startKey: x.metadata?.start_key ?? null,
-    firstCharge: x.trial_end ? new Date(x.trial_end * 1000).toISOString() : null,
+    ...(x.metadata?.start_reason === "paid_restart" ? { paidRestart: true } : {}),
+    firstCharge: x.trial_end ? new Date(x.trial_end * 1000).toISOString() : (x.metadata?.start_reason === "family_window_ended" || x.metadata?.start_reason === "paid_restart") && Number.isFinite(x.created) ? new Date(x.created * 1000).toISOString() : null,
   };
 }
 

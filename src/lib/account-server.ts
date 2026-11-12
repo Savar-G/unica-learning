@@ -25,15 +25,15 @@ export type Admission = { status: "created"; child: string } | { status: "exists
 export async function createFamily(
   admin: SupabaseClient<Database>,
   id: string,
-  parent: { name: string; email: string; source: Record<string, string> },
+  parent: { name: string; email: string; phone: string; source: Record<string, string> },
   child: ChildInput,
 ): Promise<Admission> {
   const { data, error } = await admin.rpc("create_family", {
     p_parent: id, p_name: parent.name, p_email: parent.email, p_postal: null, p_source: parent.source,
-    p_child_name: child.firstName, p_child_grade: child.grade, p_child_province: child.province,
+    p_child_name: child.firstName, p_child_grade: child.grade, p_child_province: child.province, p_phone: parent.phone,
   });
   if (error) {
-    console.error("[account] create_family failed", error.code, error.message);
+    console.error("[account] create_family failed", error.code);
     return { status: "failed" };
   }
   const result = (data ?? {}) as { status?: unknown; child?: unknown };
@@ -44,6 +44,44 @@ export async function createFamily(
   }
   console.error("[account] create_family answered", JSON.stringify(result).slice(0, 200));
   return { status: "failed" };
+}
+
+/** What claim_family_finish answers (migration sign_in_races), or "failed" when the call did not work. */
+export type FinishClaim = "claimed" | "exists" | "busy" | "failed";
+
+/** How long a finish waits for another tab's finish of the same user, and how often it asks again. */
+export const FINISH_WAIT = { tries: 20, stepMs: 300 } as const;
+
+/**
+ * Takes the one finish of Auth user `user` (docs/state-machines.md, item 12): no other /api/account/finish of this user
+ * changes the password until releaseFamilyFinish. While another tab holds the claim, asks again every `stepMs`, up to
+ * `tries` times; that tab's finish usually makes the family first, and this one then answers "exists".
+ */
+export async function claimFamilyFinish(admin: SupabaseClient<Database>, user: string, claim: string, wait: { tries: number; stepMs: number } = FINISH_WAIT): Promise<FinishClaim> {
+  for (let attempt = 1; ; attempt++) {
+    const { data, error } = await admin.rpc("claim_family_finish", { p_user: user, p_claim: claim });
+    if (error) {
+      console.error("[account] claim_family_finish failed", error.code, error.message);
+      return "failed";
+    }
+    if (data === "claimed" || data === "exists") return data;
+    if (data !== "busy") {
+      console.error("[account] claim_family_finish answered", JSON.stringify(data).slice(0, 200));
+      return "failed";
+    }
+    if (attempt >= wait.tries) return "busy";
+    await new Promise((r) => setTimeout(r, wait.stepMs));
+  }
+}
+
+/** Lets the finish claim go. Never throws: a claim left behind ends by itself after 5 minutes. */
+export async function releaseFamilyFinish(admin: SupabaseClient<Database>, user: string, claim: string): Promise<void> {
+  try {
+    const { error } = await admin.rpc("release_family_finish", { p_user: user, p_claim: claim });
+    if (error) console.error("[account] release_family_finish failed", error.code, error.message);
+  } catch (e) {
+    console.error("[account] release_family_finish failed", e instanceof Error ? e.message : e);
+  }
 }
 
 /** True on a phone. The test needs a laptop or tablet (D-082). */
@@ -79,25 +117,26 @@ export async function sendSignInLink(admin: SupabaseClient<Database>, parentId: 
     console.error("[account] RESEND_API_KEY or EMAIL_FROM is not set");
     return "failed";
   }
-  const [{ data: parent }, { data: child }, { count, error: countError }] = await Promise.all([
+  const [{ data: parent }, { data: child }] = await Promise.all([
     admin.from("parents").select("name, email").eq("id", parentId).maybeSingle(),
     admin.from("children").select("first_name").eq("id", childId).eq("parent_id", parentId).maybeSingle(),
-    admin.from("sign_in_links").select("id", { count: "exact", head: true })
-      .eq("parent_id", parentId).gt("created_at", new Date(Date.now() - 60 * 60_000).toISOString()),
   ]);
   if (!parent || !child) return "not_found";
-  if (countError) {
-    console.error("[account] link count failed", countError.message);
-    return "failed";
-  }
-  if ((count ?? 0) >= MAX_LINKS_PER_HOUR) return "too_many";
 
+  // The rate limit and the new row in one step (migration sign_in_races): the database counts the parent's links of
+  // the last hour and inserts under one lock for the parent, so parallel requests cannot all pass the limit.
   const { token, hash } = newToken();
-  const { error } = await admin.from("sign_in_links").insert({
-    parent_id: parentId, child_id: childId, token_hash: hash, expires_at: new Date(Date.now() + LINK_TTL_MS).toISOString(),
+  const { data: issued, error } = await admin.rpc("issue_sign_in_link", {
+    p_parent: parentId, p_child: childId, p_token_hash: hash, p_max: MAX_LINKS_PER_HOUR, p_ttl_seconds: LINK_TTL_MS / 1000,
   });
   if (error) {
-    console.error("[account] link insert failed", error.message);
+    console.error("[account] link issue failed", error.code, error.message);
+    return "failed";
+  }
+  if (issued === "not_found") return "not_found";
+  if (issued === "too_many") return "too_many";
+  if (issued !== "created") {
+    console.error("[account] issue_sign_in_link answered", JSON.stringify(issued).slice(0, 200));
     return "failed";
   }
 

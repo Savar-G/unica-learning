@@ -2,18 +2,17 @@ import Link from "next/link";
 import { DataTable, ResourcesShell, Section } from "@/components/article";
 import { StartLink, StartNote } from "@/components/start-link";
 import { Eyebrow } from "@/ds";
-import { pageMetadata, SITE_URL } from "@/lib/metadata";
+import { pageMetadata } from "@/lib/metadata";
+import { pageJsonLd } from "@/lib/structured-data";
 import { ADDITIONAL_CHILD_PRICE, BRAND, OFFER_ENDS, PLANS, TRIAL_DAYS, cad } from "@/lib/site";
 
 const title = "Math program pricing and free first month";
-export const metadata = pageMetadata({
-  path: "/pricing", title,
-  description: `Math is CAD ${cad(PLANS.one.price)}/month. Additional children: CAD ${cad(ADDITIONAL_CHILD_PRICE)} each. Delivery included. See the free first month, payment and cancellation terms.`,
-});
+const PAGE = { path: "/pricing", title, description: `Math is CAD ${cad(PLANS.one.price)}/month. Additional children: CAD ${cad(ADDITIONAL_CHILD_PRICE)} each. Delivery included. See the free first month, payment and cancellation terms.` };
+export const metadata = pageMetadata(PAGE);
 
 export default function PricingPage() {
   return (
-    <ResourcesShell navSrc="pricing-nav" jsonLd={{ "@context": "https://schema.org", "@type": "WebPage", name: title, url: `${SITE_URL}/pricing` }}>
+    <ResourcesShell navSrc="pricing-nav" jsonLd={pageJsonLd(PAGE)}>
       <main id="main" className="res res-article">
         <header className="res-head">
           <Eyebrow>Pricing</Eyebrow>
@@ -31,7 +30,7 @@ export default function PricingPage() {
               <li>A free online math assessment and report before you choose a plan.</li>
               <li>A program built from your child&apos;s level and gaps.</li>
               <li>Two paper workbooks a month, mailed home.</li>
-              <li>The Teaching Assistant for spoken help when your child is stuck.</li>
+              <li>Chat with the Teaching Assistant for children in Grade 3 and up, within daily and weekly limits.</li>
               <li>The parent app for page scans, answer checks, solutions and progress reports.</li>
               <li>Rewards for completed practice and delivery across Canada.</li>
             </ul>
@@ -47,7 +46,7 @@ export default function PricingPage() {
             <p>We email you seven days before the first charge, with a link to manage or cancel the plan. Cancel before day {TRIAL_DAYS} and you pay nothing.</p>
           </Section>
           <Section title="Pauses, cancellation and program limits">
-            <p>Cancel anytime from your account, through the link in your reminder email, or <Link href="/contact">contact us</Link>. Contact us to arrange a pause of up to two months a year.</p>
+            <p>Cancel anytime from your account, through the link in your reminder email, or <Link href="/contact">contact us</Link>. Once your first workbook arrives, you can pause from your account for up to 8 weeks a year, or contact us to arrange a pause.</p>
             <p>The program is for math. Reading is planned for later. Each book follows your child&apos;s level and gaps. Province-specific curriculum alignment is expanding, so the books may not yet cover every topic in your local curriculum.</p>
             <p><Link href="/compare">Compare {BRAND} with tutors and learning centres</Link>, or <Link href="/sample-report">read a sample assessment report</Link>.</p>
           </Section>

@@ -2,6 +2,8 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { SendLink, StartTest, TrackOnce } from "@/components/account";
 import { ReportCard, type NewTestOffer, type ReportNextContext } from "@/components/report";
+import type { FirstPagesView } from "@/components/report-first-pages";
+import type { ProgressPreview } from "@/lib/progress-preview";
 import { ReportNextActions } from "@/components/report-next";
 import type { StartState } from "@/lib/assessment";
 import { familyWhen, formatInZone, zoneForProvince } from "@/lib/family-time";
@@ -38,7 +40,7 @@ function LearnLink({ path, answered, name, forWorkbook }: { path: string; answer
   return <p className="small"><Link href={path}>{answered ? `How ${name} learns: change answers` : `Tell us how ${name} learns`}</Link>{forWorkbook && " (optional, for Workbook 1)"}</p>;
 }
 
-export function ParentReport({ view, child, next, newTest, learning, alerts, tracked, src, nextActions }: {
+export function ParentReport({ view, child, next, newTest, learning, alerts, tracked, src, nextActions, firstPages = null, progress = null }: {
   view: ReportView;
   child: ChildView;
   next: ReportNextContext;
@@ -49,6 +51,10 @@ export function ParentReport({ view, child, next, newTest, learning, alerts, tra
   tracked: boolean;
   src: ReportSrc;
   nextActions?: ReactNode;
+  /** The first pages of workbook 1, when ready (docs/first-pages.md). */
+  firstPages?: FirstPagesView | null;
+  /** The progress preview, computed by the page on the server (src/lib/progress-preview.ts). */
+  progress?: ProgressPreview | null;
 }) {
   const name = view.childName;
   const zone = view.timeZone ?? zoneForProvince(view.province);
@@ -65,16 +71,16 @@ export function ParentReport({ view, child, next, newTest, learning, alerts, tra
       <p className="pd-sub">Finished on {reportDate(view)}.{opens !== null && !child.readOnly && ` The next test opens at ${familyWhen(opens, zone)}.`}</p>
       <div className="pd-split">
         <div className="pd-split-main">
-          <ReportCard view={view} next={next} newTest={view.model.reliability && !child.readOnly ? newTest : null} actionBeside />
+          <ReportCard view={view} next={next} newTest={view.model.reliability && !child.readOnly ? newTest : null} actionBeside firstPages={child.readOnly ? null : firstPages} progress={progress} />
         </div>
         <aside className="pd-split-rail" aria-label="Next step">
           {action && (
             <div className="rpt" id={NEXT_STEP_ANCHOR}>
-              {nextActions ?? <ReportNextActions reportId={view.id} step={nextStep(view)} childName={name} province={view.province} src={next.src} asked={next.asked} start={next.start} words={card ? freeMonthWords(name) : undefined} pinned />}
+              {nextActions ?? <ReportNextActions reportId={view.id} step={nextStep(view)} childName={name} province={view.province} src={next.src} asked={next.asked} start={next.start} words={card ? freeMonthWords(name, view.planOffer) : undefined} pinned />}
             </div>
           )}
           <div className="pd-rail-more">
-            {card && <div className="pd-after"><p className="pd-k">What happens next</p><Steps steps={whatHappensNext(name)} /></div>}
+            {card && <div className="pd-after"><p className="pd-k">What happens next</p><Steps steps={whatHappensNext(name, view.planOffer)} /></div>}
             {!child.readOnly && <div className="pd-after"><LearnLink path={learningPath(child.id)} answered={learning !== null} name={name} forWorkbook={card} /></div>}
             {(tests.length > 0 || startable) && (
               <div className="pd-after">
@@ -96,12 +102,14 @@ export function ParentReport({ view, child, next, newTest, learning, alerts, tra
   );
 }
 
-export function ParentTestStart({ childId, name, state, when, report, phone, sent, parentEmail, alerts, learning, children }: {
+export function ParentTestStart({ childId, name, state, when, report, late = false, phone, sent, parentEmail, alerts, learning, children }: {
   childId: string;
   name: string;
   state: StartState;
   when: string;
   report?: string;
+  /** #771: the report of the test just done is late. */
+  late?: boolean;
   phone: boolean;
   sent: boolean;
   parentEmail: string;
@@ -135,7 +143,7 @@ export function ParentTestStart({ childId, name, state, when, report, phone, sen
               <div className="pd-test-go">
                 {usesLink
                   ? <SendLink key={childId} childId={childId} name={name} sent={sent} />
-                  : <StartTest childId={childId} name={name} state={state} when={when} report={report} />}
+                  : <StartTest childId={childId} name={name} state={state} when={when} report={report} late={late} />}
               </div>
             </div>
           </div>

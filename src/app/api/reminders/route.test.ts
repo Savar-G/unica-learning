@@ -21,6 +21,7 @@ const h = vi.hoisted(() => ({
   claimMs: 0,
   weeklySend: false,
   sendTimes: [] as number[],
+  cancelRuns: 0,
   cardRuns: 0,
   cardFails: false,
   cardSends: 0,
@@ -29,6 +30,7 @@ const h = vi.hoisted(() => ({
   scanEnabled: false,
   scanRuns: 0,
   scanFails: false,
+  reportRuns: [] as { dry: boolean; startedAt: number }[],
 }));
 
 vi.mock("@/lib/account-server", () => ({ linkOrigin: () => "https://unicalearning.com" }));
@@ -56,6 +58,12 @@ vi.mock("@/lib/email-resend", () => ({
     },
   }),
 }));
+vi.mock("@/lib/plan-cancel-recovery-server", () => ({
+  sweepOpenCancelsNow: async ({ transport }: { transport: unknown }) => {
+    h.cancelRuns++; h.transports.add(transport);
+    return { checked: 1, sent: 1, failed: 0, outOfTime: false };
+  },
+}));
 vi.mock("@/lib/card-sweep-server", () => ({
   dueCardCount: async () => 3,
   duePlanReadCount: async () => 2,
@@ -72,6 +80,13 @@ vi.mock("@/lib/maya-call-sweep-server", () => ({
     if (!options.dry) h.transports.add(options.transport);
     if (options.transport) for (let i = 0; i < h.maySends; i++) await options.transport.send({ to: `alert-${i}@family.ca` });
     return { due: 0 };
+  },
+}));
+vi.mock("@/lib/report-retry-server", () => ({
+  retryReportsNow: async (o: { dry?: boolean; startedAt: number; transport?: unknown }) => {
+    h.reportRuns.push({ dry: !!o.dry, startedAt: o.startedAt });
+    if (!o.dry) h.transports.add(o.transport);
+    return o.dry ? { due: 2 } : { due: 1, retried: 1, emailing: 1, gaveUp: 0, skipped: 0, failed: 0, outOfTime: false };
   },
 }));
 vi.mock("@/lib/maya-weekly-email-store", () => ({ mayaWeeklyStore: () => ({ load: async () => ({}) }) }));
@@ -139,6 +154,7 @@ beforeEach(() => {
   h.scanEnabled = false;
   h.scanRuns = 0;
   h.scanFails = false;
+  h.reportRuns = [];
 });
 
 afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers(); });
@@ -274,4 +290,19 @@ it("the card sweep runs beside the emails, a failed sweep hides nothing else, an
   const runs = h.cardRuns;
   expect(await (await call("?dry=1")).json()).toMatchObject({ ok: true, dry: true, cards: 3, planReads: 2 });
   expect(h.cardRuns).toBe(runs);
+});
+
+it("runs the cancellation sweep on the shared transport and skips it in a dry run", async () => {
+  h.cancelRuns = 0;
+  expect(await (await call()).json()).toMatchObject({ ok: true, cancels: { checked: 1, sent: 1 } });
+  expect(h.cancelRuns).toBe(1);
+  await call("?dry=1"); expect(h.cancelRuns).toBe(1);
+});
+
+it("retries the report jobs on the shared transport from the run's start, and only counts them in a dry run (#771)", async () => {
+  expect(await (await call()).json()).toMatchObject({ ok: true, reports: { due: 1, retried: 1 } });
+  expect(h.reportRuns).toEqual([{ dry: false, startedAt: Date.UTC(2026, 10, 1, 15) }]);
+  expect(h.transports.size).toBe(1);
+  expect(await (await call("?dry=1")).json()).toMatchObject({ ok: true, dry: true, reports: { due: 2 } });
+  expect(h.reportRuns.map((r) => r.dry)).toEqual([false, true]);
 });

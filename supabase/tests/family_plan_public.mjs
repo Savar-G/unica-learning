@@ -1,0 +1,10 @@
+import { writeFileSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
+if (process.env.PD559_SOCKET !== '/tmp/pd559-postgres' || process.env.PD559_DATABASE !== 'pd559_family_pricing') throw Error('Isolated family pricing database required');
+const root=process.cwd(),prefix='/tmp/family-plan-r1-public';
+writeFileSync(prefix+'.test.ts',readFileSync('supabase/tests/family_plan_public.test.fixture'));
+writeFileSync(prefix+'-empty.mjs','');
+writeFileSync(prefix+'.config.mjs','export default '+JSON.stringify({root:'/tmp',cacheDir:prefix+'-cache',resolve:{alias:{'@':root+'/src','server-only':prefix+'-empty.mjs',stripe:resolve('node_modules/stripe/esm/stripe.esm.node.js'),vitest:resolve('node_modules/vitest/dist/index.js'),pg:resolve('node_modules/pg/lib/index.js')}},test:{include:['family-plan-r1-public.test.ts'],testTimeout:15000}}));
+const result=spawnSync(process.execPath,['node_modules/vitest/vitest.mjs','run','--config',prefix+'.config.mjs','--configLoader','runner','--maxWorkers=2'],{stdio:'inherit'});
+process.exitCode=result.status??1;

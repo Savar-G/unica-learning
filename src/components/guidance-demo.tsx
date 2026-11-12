@@ -20,6 +20,9 @@ const STEPS: Step[] = [
 
 const LABEL = "Demo: Maya, the Unica AI Teaching Assistant, works through 27 + 39 with a child on a shared board, showing how to carry the 1 to get 66. Captions show what is said.";
 
+// Savar restored the existing home-page demo; its caption states that voice is not available yet.
+export const SHOW_VOICE_DEMO = true;
+
 type Kind = "wide" | "board";
 
 export function GuidanceDemo() {
@@ -54,6 +57,8 @@ export function GuidanceDemo() {
   const end = STEPS[active + 1]?.[kind] ?? dur;
   const fill = Math.min(1, Math.max(0, (t - start) / (end - start)));
 
+  if (!SHOW_VOICE_DEMO) return null;
+
   return (
     <div className="gd-body" ref={wrap}>
       <div className="gd-media">
@@ -72,7 +77,7 @@ export function GuidanceDemo() {
           </li>
         ))}
       </ol>
-      <p className="gd-cap">Shown without sound. The captions show what Maya and Emma say.</p>
+      <p className="gd-cap">This demo shows a planned voice call. Voice calls are not available yet; Maya is available by typed chat.</p>
     </div>
   );
 }

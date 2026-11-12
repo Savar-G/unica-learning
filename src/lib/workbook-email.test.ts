@@ -55,7 +55,7 @@ describe("workbook emails", () => {
     expect(message.text).toContain("when it is on its way");
     expect(message.text).toContain("local hand delivery");
     expect(message.text).toContain("Nothing was charged");
-    expect(message.text).toContain("free first month starts when your first workbook arrives at your home");
+    expect(message.text).toContain("Your family gets one free month. It starts when your first workbook arrives.");
     expect(message.text).not.toContain("Tracking number:");
     expect(message.text).toContain("Please allow 5 to 7 days for us to prepare your first workbook.");
     expect(message.text).toContain("You have nothing to do right now.\n\n" + contact);
@@ -101,7 +101,7 @@ describe("workbook emails", () => {
 });
 
 describe("the free month confirmation", () => {
-  const email = planStartEmail({ parentName: "Priya", childName: "Asha & Co", grade: 3, price: 79.99, firstCharge: "December 5, 2026" });
+  const email = planStartEmail({ parentName: "Priya", childName: "Asha & Co", grade: 3, price: 79.99, firstCharge: "December 5, 2026", marking: true, explain: true });
   it("gives the terms the card networks require: the price, how often, the first charge and how to cancel", () => {
     expect(email.text).toContain("On December 5, 2026, we charge CAD 79.99 to your saved card. We then charge CAD 79.99 each month until you cancel.");
     expect(email.text).toContain("We will email you a reminder 7 days before the first charge.");
@@ -114,7 +114,7 @@ describe("the free month confirmation", () => {
     expect(email.html).not.toContain("Asha & Co");
   });
   it.each([0, 1, 2, 3, 9, -1, 10, NaN])("includes Maya chat only for a valid school grade of at least 3 (%s)", (grade) => {
-    const message = planStartEmail({ parentName: "Sam", childName: "Alex", grade, price: 79.99, firstCharge: "December 15, 2026" });
+    const message = planStartEmail({ parentName: "Sam", childName: "Alex", grade, price: 79.99, firstCharge: "December 15, 2026", marking: true, explain: true });
     for (const format of [message.text, message.html]) {
       if (grade === 3 || grade === 9) expect(format).toContain("can chat with Maya, our AI Teaching Assistant");
       else expect(format).not.toContain("Maya");
@@ -127,17 +127,19 @@ describe("the free month confirmation", () => {
     for (const path of ["schedule", "scan", "feedback", "plan"]) expect(message.html).toContain(`href="https://unicalearning.com/account/${path}"`);
   });
   it("matches Savar's approved free-month words, with unchanged signature and footer", () => {
-    const message = planStartEmail({ parentName: "Sam", childName: "Alex", grade: 3, price: 79.99, firstCharge: "December 15, 2026" });
+    const message = planStartEmail({ parentName: "Sam", childName: "Alex", grade: 3, price: 79.99, firstCharge: "December 15, 2026", marking: true, explain: true });
     const expected = `Hi Sam,
 
 Thanks for joining Unica Learning. Alex's first workbook has arrived, so your free first month has started. Nothing has been charged.
 
 As a parent, here are your responsibilities:
 
-1. Follow the schedule. See which pages Alex does each day: https://unicalearning.com/account/schedule. The same schedule is on page 2 of the workbook.
+1. Follow the schedule, 5 days a week. The workbook has 10 days, so it takes 2 weeks. Do one day on 5 days of each week, for example Monday to Friday with the weekend off. You can choose any 5 days, but do the days in order, Day 1 to Day 10. See which pages Alex does each day: https://unicalearning.com/account/schedule. The same schedule is on page 2 of the workbook.
 2. Scan the finished pages. After Alex finishes the pages, scan them: https://unicalearning.com/account/scan. Each page has its own QR code.
 3. Read the marks. You will see which questions are right and wrong. On a wrong answer, press "Explain this problem" for a simple explanation that you can use with Alex.
 4. Set up Maya. If Alex gets stuck, Alex can chat with Maya, our AI Teaching Assistant. Sign in at https://unicalearning.com/account, set a PIN, agree to the Maya notice, then open Alex's desk.
+
+Why 5 days? Two days off each week give Alex time to rest, or to look back at the week's pages, and come back ready to learn. A steady 5 days builds a habit. Working every day can wear kids out and make math feel like a chore, for Alex and for you.
 
 If anything is broken, if anything does not work, or if you have feedback, email contact@unicalearning.com or use https://unicalearning.com/account/feedback.
 
@@ -150,5 +152,60 @@ To cancel, sign in and open https://unicalearning.com/account/plan, then press "
     for (const paragraph of expected.split("\n\n")) expect(htmlText).toContain(paragraph);
     expect(message.text).toContain("Thank you,\nThe Unica Learning team");
     expect(message.text).toContain("16557 87A Ave");
+  });
+  it.each([false, true])("pins the five-day copy in both formats for shared window %s", (sharedWindow) => {
+    for (const marking of [false, true]) for (const explain of [false, true]) {
+      const message = planStartEmail({ parentName: "Sam", childName: "Alex", grade: 3, price: 79.99, firstCharge: "December 15, 2026", marking, explain, sharedWindow });
+      const step = "1. Follow the schedule, 5 days a week. The workbook has 10 days, so it takes 2 weeks. Do one day on 5 days of each week, for example Monday to Friday with the weekend off. You can choose any 5 days, but do the days in order, Day 1 to Day 10. See which pages Alex does each day: https://unicalearning.com/account/schedule. The same schedule is on page 2 of the workbook.";
+      const why = "Why 5 days? Two days off each week give Alex time to rest, or to look back at the week's pages, and come back ready to learn. A steady 5 days builds a habit. Working every day can wear kids out and make math feel like a chore, for Alex and for you.";
+      const htmlText = message.html.replace(/<br>/g, "\n").replace(/<[^>]*>/g, "").replace(/&#39;/g, "'").replace(/&quot;/g, '\"');
+      for (const format of [message.text, htmlText]) {
+        expect(format).toContain(step);
+        expect(format).toContain(why);
+      }
+      expect(message.text.split("\n").filter(line => line.startsWith("1. "))).toEqual([step]);
+      expect(message.text).toContain(`\n\n${why}\n\n`);
+      expect(message.html).toContain('<a href="https://unicalearning.com/account/schedule"');
+    }
+  });
+  it("promises no marks and no Explain button while marking is closed for the child: step 3 says the marks come later", () => {
+    const open = planStartEmail({ parentName: "Sam", childName: "Alex", grade: 3, price: 79.99, firstCharge: "December 15, 2026", marking: true, explain: true });
+    const closed = planStartEmail({ parentName: "Sam", childName: "Alex", grade: 3, price: 79.99, firstCharge: "December 15, 2026", marking: false, explain: true });
+    const later = "3. Marks come later. Scan the pages now. Later, we will use the photos to mark Alex's work.";
+    expect(closed.text).toContain(later);
+    for (const format of [closed.text, closed.html]) {
+      expect(format).not.toContain("Read the marks");
+      expect(format).not.toContain("right and wrong");
+      expect(format).not.toContain("Explain this problem");
+    }
+    const htmlText = closed.html.replace(/<br>/g, "\n").replace(/<[^>]*>/g, "").replace(/&#39;/g, "'");
+    expect(htmlText).toContain(later);
+    // Only step 3 differs: the steps before and after it, the plan terms and the footer are the same words.
+    const lines = (t: string) => t.split("\n").filter((l) => !l.startsWith("3. "));
+    expect(lines(closed.text)).toEqual(lines(open.text));
+    expect(open.text).not.toContain("Marks come later");
+  });
+  it.each([
+    [true, true, '3. Read the marks. You will see which questions are right and wrong. On a wrong answer, press "Explain this problem" for a simple explanation that you can use with Alex.'],
+    [true, false, "3. Read the marks. You will see which questions are right and wrong."],
+    [false, true, "3. Marks come later. Scan the pages now. Later, we will use the photos to mark Alex's work."],
+    [false, false, "3. Marks come later. Scan the pages now. Later, we will use the photos to mark Alex's work."],
+  ])("step 3 with marking %s and Explain %s", (marking, explain, step) => {
+    const message = planStartEmail({ parentName: "Sam", childName: "Alex", grade: 3, price: 79.99, firstCharge: "December 15, 2026", marking, explain });
+    expect(message.text.split("\n").filter((l) => l.startsWith("3. "))).toEqual([step]);
+    if (!(marking && explain)) for (const format of [message.text, message.html]) expect(format).not.toContain("Explain");
+  });
+});
+
+describe("the plan start email's reminder words (PR #803 review)", () => {
+  // Every reminder case renders byte for byte as main renders it without the shared reminder rule. The digest was first taken at
+  // b4d9feb3, then again after the merge of main at b8e938ef, which added #806's approved five-day guidance; all 72 renders were
+  // compared with main's own workbook-email.ts and matched exactly.
+  const cases = [undefined, true].flatMap((sharedWindow) => [undefined, true, false].flatMap((free) => [undefined, true, false].map((reminder) => ({ sharedWindow, free, reminder }))));
+  it("keeps the parent email unchanged for every window, free and reminder case", async () => {
+    const { createHash } = await import("node:crypto");
+    const rendered = cases.map((c) => planStartEmail({ parentName: "Sam", childName: "Alex", grade: 3, price: 59.99, firstCharge: "December 15, 2026", marking: true, explain: true, ...c }));
+    expect(createHash("sha256").update(JSON.stringify(rendered)).digest("hex")).toBe("e062e3b2ae7195b52a4daaf337e4d856700bf0017b6c6ba7d03760a726cc68ed");
+    rendered.forEach((m, i) => expect(m.text.includes(" We will email you a reminder 7 days before the first charge.")).toBe(cases[i].reminder !== false));
   });
 });

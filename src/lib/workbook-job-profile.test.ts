@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
+const policy = vi.hoisted(() => ({ countsCalls: false }));
+vi.mock("@/lib/workbook-call-policy", () => ({ get WORKBOOK_COUNTS_CALL_EVENTS() { return policy.countsCalls; } }));
 import { createSession, learnerProfile, storedTest } from "@/lib/assessment";
 import { allRight, knowsUpTo, takeTest } from "@/lib/assessment/scripted-child";
 import { fakeAiClient } from "@/lib/ai-client-fake";
@@ -27,13 +29,13 @@ const ADMIN = { id: "admin", email: "admin@example.com" };
 const BC = curriculumFor("bc")!;
 
 /** A finished test, learner profiles and child profiles in memory. No real names, ids or answer text. */
-function setup({ test = true, ahead = false }: { test?: boolean; ahead?: boolean } = {}) {
+function setup({ test = true, ahead = false, grade = 4 }: { test?: boolean; ahead?: boolean; grade?: 1 | 4 } = {}) {
   const right = ahead ? allRight : knowsUpTo(2);
-  const { asked, placement } = takeTest({ grade: 4, province: "BC" }, 71, right);
+  const { asked, placement } = takeTest({ grade, province: "BC" }, 71, right);
   const tables: MemoryReportTables = {
     assessments: test ? [{
-      id: TEST, parentId: PARENT, childId: CHILD, status: "completed", grade: 4, province: "BC", completedAt: COMPLETED,
-      placement, help: "no", test: storedTest(createSession({ grade: 4, province: "BC" }, 71)),
+      id: TEST, parentId: PARENT, childId: CHILD, status: "completed", grade, province: "BC", completedAt: COMPLETED,
+      placement, help: "no", test: storedTest(createSession({ grade, province: "BC" }, 71)),
     }] : [],
     answers: asked.map((q, position) => ({
       assessmentId: TEST, position, questionId: q.id, response: right(q, position) ? q.answer : "no idea", correct: right(q, position),
@@ -42,7 +44,7 @@ function setup({ test = true, ahead = false }: { test?: boolean; ahead?: boolean
   };
   const readers = memoryReportReaders(tables);
   const learner = memoryLearnerProfileStore(tables);
-  const family = memoryChildProfiles({ children: [{ id: CHILD, parentId: PARENT, grade: 4 }], tests: [] });
+  const family = memoryChildProfiles({ children: [{ id: CHILD, parentId: PARENT, grade }], tests: [{ id: TEST, childId: CHILD, completedAt: COMPLETED, profile: null }] });
   // Both adapters read the same in-memory learner profile rows, as the live stores do.
   const profiles: ChildProfileStore = {
     ...family.profiles,
@@ -99,7 +101,7 @@ function setup({ test = true, ahead = false }: { test?: boolean; ahead?: boolean
   const store = (profile: unknown, schemaVersion = 1, assessmentId = TEST) => {
     learner.rows().push({ assessmentId, parentId: PARENT, childId: CHILD, schemaVersion, profile });
   };
-  return { runs, drafts, deps, start, seams, profiles, rebuilds, learner, tables, facts, store, ai, reader: readers.key() };
+  return { runs, drafts, deps, start, seams, profiles, events: family.events, rebuilds, learner, tables, facts, store, ai, reader: readers.key() };
 }
 
 describe("P2 profile at plan time", () => {
@@ -329,10 +331,11 @@ describe("P2 profile at plan time", () => {
     expect(await s.runs.frame(id)).toEqual(frame);
   });
 
-  it("refuses a resume without a frame before any profile build", async () => {
+  it("refuses a resume with stored work but no frame before any profile build", async () => {
     const s = setup();
     const id = await s.start();
     expect(await s.runs.claim(id, "interrupted")).not.toBeNull();
+    expect(await s.runs.useAttempts(id, "interrupted", 1, ["1.1"])).toEqual({ refused: [] });
     expect(await s.runs.yield(id, "interrupted")).toBe(true);
     expect(await runWorkbookJob(id, s.deps, { resume: true })).toBe("failed");
     expect(s.rebuilds).toEqual({ prepare: 0, learner: 0, child: 0 });
@@ -349,4 +352,154 @@ describe("P2 profile at plan time", () => {
     expect(await readChildProfile(s.profiles, CHILD)).toBeNull();
     expect(s.rebuilds).toEqual({ prepare: 1, learner: 0, child: 1 });
   });
+});
+
+
+it("leaves call events out of the workbook plan", async () => {
+  const plain = setup({ test: false });
+  const calls = setup({ test: false });
+  for (let i = 0; i < 8; i++) {
+    await calls.events.insert({ key: `call:${i}`, parentId: PARENT, childId: CHILD, source: "call",
+      question: { source: "workbook", workbookId: TEST, page: 1, question: i + 1 },
+      skill: { standard: "3.3", skills: [] }, result: "right", stuckStep: null, mistake: null,
+      hints: 0, timeMs: 1000, occurredAt: COMPLETED, evidence: { kind: "call", id: `call:${i}` } });
+  }
+  const plainId = await plain.start();
+  const callId = await calls.start();
+  expect(await runWorkbookJob(plainId, plain.deps)).toBe("handed-on");
+  expect(await runWorkbookJob(callId, calls.deps)).toBe("handed-on");
+  expect((await calls.runs.frame(callId))!.plan).toEqual((await plain.runs.frame(plainId))!.plan);
+  expect((await readChildProfile(calls.profiles, CHILD))!.profile.events.counted).toBe(8);
+});
+
+
+it.each(["marking", "assessment"] as const)("keeps %s events in the workbook plan", async (source) => {
+  const plain = setup({ test: false });
+  const withEvents = setup({ test: false });
+  for (const fixture of [plain, withEvents]) {
+    await fixture.events.insert({ key: "call:guard", parentId: PARENT, childId: CHILD, source: "call",
+      question: { source: "workbook", workbookId: TEST, page: 1, question: 99 },
+      skill: { standard: "3.1", skills: [] }, result: "right", stuckStep: null, mistake: null,
+      hints: 0, timeMs: 1000, occurredAt: COMPLETED, evidence: null });
+  }
+  for (let i = 0; i < 8; i++) {
+    const inserted = await withEvents.events.insert({ key: `${source}:${i}`, parentId: PARENT, childId: CHILD, source,
+      question: source === "assessment" ? { source: "assessment", assessmentId: TEST, questionId: `q-${i}` } : { source: "workbook", workbookId: TEST, page: 1, question: i + 1 },
+      skill: { standard: "3.3", skills: [] }, result: "right", stuckStep: null, mistake: null,
+      hints: 0, timeMs: 1000, occurredAt: COMPLETED, evidence: null });
+    expect(inserted).toHaveProperty("created", true);
+  }
+  const plainId = await plain.start();
+  const eventId = await withEvents.start();
+  expect(await runWorkbookJob(plainId, plain.deps)).toBe("handed-on");
+  expect(await runWorkbookJob(eventId, withEvents.deps)).toBe("handed-on");
+  expect((await withEvents.runs.frame(eventId))!.plan).not.toEqual((await plain.runs.frame(plainId))!.plan);
+});
+
+it("counts calls when enabled and keeps the stored profile unchanged by the filtered read", async () => {
+  const s = setup({ test: false });
+  const plain = setup({ test: false });
+  for (let i = 0; i < 8; i++) {
+    await s.events.insert({ key: `call:${i}`, parentId: PARENT, childId: CHILD, source: "call",
+      question: { source: "workbook", workbookId: TEST, page: 1, question: i + 1 },
+      skill: { standard: "3.3", skills: [] }, result: "right", stuckStep: null, mistake: null,
+      hints: 0, timeMs: 1000, occurredAt: COMPLETED, evidence: null });
+  }
+  const plainId = await plain.start();
+  expect(await runWorkbookJob(plainId, plain.deps)).toBe("handed-on");
+  policy.countsCalls = true;
+  const enabledId = await s.start();
+  try {
+    expect(await runWorkbookJob(enabledId, s.deps)).toBe("handed-on");
+  } finally {
+    policy.countsCalls = false;
+  }
+  const enabledPlan = (await s.runs.frame(enabledId))!.plan;
+  expect(enabledPlan).not.toEqual((await plain.runs.frame(plainId))!.plan);
+  const full = await readChildProfile(s.profiles, CHILD);
+  expect(full?.profile.events.counted).toBe(8);
+  const filtered = await prepareChildProfileForWorkbook(CHILD, s.seams);
+  expect(filtered.ok && filtered.profile).toBeNull();
+  const stored = await readChildProfile(s.profiles, CHILD);
+  expect(stored?.profile).toEqual(full?.profile);
+});
+
+it("refuses to resume a frame made with another call event policy", async () => {
+  const s = setup({ test: false });
+  const id = await s.start();
+  expect(await runWorkbookJob(id, s.deps)).toBe("handed-on");
+  const frame = (await s.runs.frame(id))!;
+  expect(frame.countsCallEvents).toBe(false);
+  const original = s.deps.runs.frame;
+  s.deps.runs.frame = async (runId) => {
+    const saved = await original(runId);
+    return saved ? { ...saved, countsCallEvents: true } : saved;
+  };
+  expect(await runWorkbookJob(id, s.deps, { resume: true })).toBe("failed");
+  expect((await s.runs.run(id))?.error).toContain("call event policy changed");
+});
+
+it("keeps a marking finding in the same workbook plan when an unrelated call is added", async () => {
+  const s = setup({ grade: 1 });
+  s.store({ ...s.facts, workbookDerivedVersion: WORKBOOK_LEARNER_DERIVED_VERSION });
+  const mark = await s.events.insert({ key: "mark:finding", parentId: PARENT, childId: CHILD, source: "marking",
+    question: { source: "workbook", workbookId: TEST, page: 1, question: 1 },
+    skill: { standard: "1.10", skills: [] }, result: "wrong", stuckStep: null, mistake: null,
+    hints: 0, timeMs: 1000, occurredAt: COMPLETED, evidence: null });
+  if (!("event" in mark)) throw new Error("mark was not stored");
+  await s.events.insert({ key: "mark:other", parentId: PARENT, childId: CHILD, source: "marking",
+    question: { source: "workbook", workbookId: TEST, page: 1, question: 3 },
+    skill: { standard: "1.1", skills: [] }, result: "wrong", stuckStep: null, mistake: null,
+    hints: 0, timeMs: 1000, occurredAt: COMPLETED, evidence: null });
+  const first = await prepareChildProfileForWorkbook(CHILD, s.seams);
+  if (!first.ok || !first.profile) throw new Error("missing profile");
+  const current = (await s.profiles.current(CHILD))!;
+  const finding = { standard: "1.10", hypothesis: "Practise this standard.", events: [mark.event.id] };
+  expect(await s.profiles.save({ childId: CHILD, parentId: PARENT, assessmentId: TEST,
+    profile: { ...first.profile.profile, ai: { model: "test", findings: [finding] } } }, current)).toHaveProperty("revision");
+  s.seams.child.keepFindings = true;
+  const baseline = await prepareChildProfileForWorkbook(CHILD, s.seams);
+  if (!baseline.ok || !baseline.profile) throw new Error("missing baseline");
+  const plan = (profile: typeof baseline.profile.profile) => planNextWorkbook({ curriculum: BC, grade: 1, profile, workbooks: [{ number: 1, levels: [4] }], number: 2 });
+  const noFinding = plan({ ...baseline.profile.profile, ai: null });
+  expect(plan(baseline.profile.profile)).not.toEqual(noFinding);
+  await s.events.insert({ key: "call:unrelated", parentId: PARENT, childId: CHILD, source: "call",
+    question: { source: "workbook", workbookId: TEST, page: 1, question: 2 },
+    skill: { standard: "1.1", skills: [] }, result: "right", stuckStep: null, mistake: null,
+    hints: 0, timeMs: 1000, occurredAt: COMPLETED, evidence: null });
+  const filtered = await prepareChildProfileForWorkbook(CHILD, s.seams);
+  if (!filtered.ok || !filtered.profile) throw new Error("missing filtered profile");
+  expect(filtered.profile.profile.ai?.findings).toEqual([finding]);
+  expect(plan(filtered.profile.profile)).toEqual(plan(baseline.profile.profile));
+});
+
+it("drops findings with call links or no links only from the filtered view", async () => {
+  const s = setup({ test: false });
+  const mark = await s.events.insert({ key: "mark:mixed", parentId: PARENT, childId: CHILD, source: "marking",
+    question: { source: "workbook", workbookId: TEST, page: 1, question: 1 },
+    skill: { standard: "3.3", skills: [] }, result: "wrong", stuckStep: null, mistake: null,
+    hints: 0, timeMs: 1000, occurredAt: COMPLETED, evidence: null });
+  if (!("event" in mark)) throw new Error("mark was not stored");
+  const first = await prepareChildProfileForWorkbook(CHILD, s.seams);
+  if (!first.ok || !first.profile) throw new Error("missing profile");
+  const empty = { standard: "3.3", hypothesis: "No links.", events: [] };
+  let current = (await s.profiles.current(CHILD))!;
+  expect(await s.profiles.save({ childId: CHILD, parentId: PARENT, assessmentId: null,
+    profile: { ...first.profile.profile, ai: { model: "test", findings: [empty] } } }, current)).toHaveProperty("revision");
+  s.seams.child.keepFindings = true;
+  const noCall = await prepareChildProfileForWorkbook(CHILD, s.seams);
+  expect(noCall.ok && noCall.profile?.profile.ai?.findings).toEqual([empty]);
+  const call = await s.events.insert({ key: "call:mixed", parentId: PARENT, childId: CHILD, source: "call",
+    question: { source: "workbook", workbookId: TEST, page: 1, question: 2 },
+    skill: { standard: "3.3", skills: [] }, result: "right", stuckStep: null, mistake: null,
+    hints: 0, timeMs: 1000, occurredAt: COMPLETED, evidence: null });
+  if (!("event" in call) || !noCall.ok || !noCall.profile) throw new Error("missing call or profile");
+  const mixed = { standard: "3.3", hypothesis: "Mixed links.", events: [mark.event.id, call.event.id] };
+  const markingOnly = { standard: "3.3", hypothesis: "Marking link.", events: [mark.event.id] };
+  current = (await s.profiles.current(CHILD))!;
+  expect(await s.profiles.save({ childId: CHILD, parentId: PARENT, assessmentId: null,
+    profile: { ...noCall.profile.profile, ai: { model: "test", findings: [mixed, empty, markingOnly] } } }, current)).toHaveProperty("revision");
+  const filtered = await prepareChildProfileForWorkbook(CHILD, s.seams);
+  expect(filtered.ok && filtered.profile?.profile.ai?.findings).toEqual([markingOnly]);
+  expect((await readChildProfile(s.profiles, CHILD))?.profile.ai?.findings).toEqual([mixed, empty, markingOnly]);
 });

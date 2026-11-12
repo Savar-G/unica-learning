@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { previewNextWorkbookPlanFromHistory, readWorkbookProgressHistory, type WorkbookProgressHistoryPreview, type WorkbookProgressHistoryStore } from "./workbook-progress-history";
+import { previewNextWorkbookPlanFromHistory, readFrozenWorkbookProgressHistory, readFrozenWorkbookReviewHistory, readWorkbookProgressHistory, type WorkbookProgressHistoryPreview, type WorkbookProgressHistoryStore } from "./workbook-progress-history";
 import { historyFixture, historyTime, firstTime } from "./workbook-progress-history.fixture";
 import type { Observation } from "./scan-observation";
 import { expectedItems, firstObservation } from "./scan-observation";
@@ -32,6 +32,35 @@ function assertPlan(r: WorkbookProgressHistoryPreview, count = 123) {
 describe("canonical retained history through public reading and preview", () => {
   // Falsifiers: dropped pages, lost old 56, changed teaching target, missing original event/question avoidance,
   // post-cutoff judgments, or a partial/failed source presented as complete.
+  it("validates frozen rows with the same results as the paged reader", async () => {
+    const f = historyFixture(10, 8);
+    f.parentChange(0, "wrong");
+    const rows = { fence: f.fence(), books: f.input.books.map(book => ({ workbookId: book.workbookId,
+      items: f.marks.filter(m => m.workbook_id === book.workbookId),
+      changes: f.changes.filter(c => f.marks.some(m => m.id === c.item_id && m.workbook_id === book.workbookId)),
+      events: f.events.filter(e => e.workbook_id === book.workbookId) })) };
+    const paged = await readWorkbookProgressHistory(f.store, f.input), frozen = readFrozenWorkbookProgressHistory(f.input, rows);
+    expect(frozen.ok && paged.ok).toBe(true);
+    if (!frozen.ok || !paged.ok) return;
+    expect(frozen.snapshot).toEqual(paged.snapshot);
+    expect(frozen.history).toEqual(paged.history);
+    expect(frozen.held).toEqual(paged.held);
+    expect(frozen.proof.usedVersions).toEqual(paged.proof.usedVersions);
+    const missing = structuredClone(rows); missing.books[0].items.pop();
+    expect(readFrozenWorkbookProgressHistory(f.input, missing)).toMatchObject({ ok: false, reason: "invalid-record" });
+  });
+  it("normalizes a review without requiring or claiming earlier mastery", () => {
+    const f = historyFixture(10, 10);
+    f.input.snapshot.priorMastery.passedSteps = 0;
+    const rows = { fence: f.fence(), books: f.input.books.map(book => ({ workbookId: book.workbookId,
+      items: f.marks.filter(m => m.workbook_id === book.workbookId),
+      changes: f.changes.filter(c => f.marks.some(m => m.id === c.item_id && m.workbook_id === book.workbookId)),
+      events: f.events.filter(e => e.workbook_id === book.workbookId) })) };
+    expect(readFrozenWorkbookProgressHistory(f.input, rows)).toMatchObject({ ok: false, reason: "mastery-gap" });
+    const review = readFrozenWorkbookReviewHistory(f.input, rows);
+    expect(review).toMatchObject({ ok: true, availability: "complete" });
+    if (review.ok) expect(review.proof.usedVersions).toHaveLength(10);
+  });
   it("retains facts but refuses a definitive plan when correction proof is unavailable", async () => {
     const f = historyFixture(10, 8);
     f.input.proof.corrections = "unavailable";

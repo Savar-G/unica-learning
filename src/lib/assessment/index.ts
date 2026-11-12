@@ -44,6 +44,7 @@ export { SAMPLE_BANK } from "./sample-bank";
 export { BANKS, GRADE_1_2_BANK, bankFor, difficultyOf, wordingOf, type BankTemplate } from "./bank";
 export type { TaggedTemplate } from "./bank/kit";
 export {
+  adaptiveAnsweredAll,
   allAnswered,
   breakDue,
   changeAnswer,

@@ -19,9 +19,11 @@ const state = vi.hoisted(() => ({
   dashboard: null as ParentDashboard | null,
   report: null as { view: ReturnType<typeof import("@/lib/sample-children").sampleReportView>; childId: string } | null,
   retake: null as Awaited<ReturnType<typeof import("@/lib/test-attempt-server").parentRetakeState>>,
+  offer: { monthly: 79.99, window: "new" } as import("@/lib/family-plan-words").FamilyPlanOffer | null,
   saved: false,
   joined: false,
 }));
+vi.mock("@/lib/family-plan-offer-server", () => ({ loadFamilyPlanOffer: async () => state.offer }));
 vi.mock("@/lib/parent-dashboard-server", () => ({ parentDashboard: async () => state.dashboard }));
 vi.mock("@/lib/report-loading", () => ({ loadReportView: async () => state.report }));
 vi.mock("@/lib/report-loading-server", () => ({ parentReportReader: () => ({}) }));
@@ -52,6 +54,7 @@ beforeEach(() => {
   state.dashboard = null;
   state.report = { view: { ...sampleReportView(), id: ID }, childId: CHILD };
   state.retake = null;
+  state.offer = { monthly: 79.99, window: "new" };
   state.saved = false;
   state.joined = false;
 });
@@ -63,8 +66,8 @@ describe("a family the switch does not open to", () => {
     const out = await open();
     await expect(out).toMatchFileSnapshot("./report-bc.golden.html");
     expect(out).not.toContain("pd-");
-    expect(out).toContain("Math, CAD 79.99 a month");
-    expect(out).not.toContain("Start free month");
+    expect(out).toContain("CAD 79.99 a month.");
+    expect(out).toContain("Start Leah&#x27;s plan");
   });
 
   it("gets today's report from the email's plan link, with a saved card, byte for byte", async () => {
@@ -98,12 +101,12 @@ describe("a family the switch opens to", () => {
   describe("report_ready_bc", () => {
     beforeEach(() => family());
 
-    it("shows the whole report, with one Start free month button beside it and none in it", async () => {
+    it("shows the whole report, with one Start plan button beside it and none in it", async () => {
       const out = await open();
       expect(main(out)).toContain("rpt-overall");
       expect(main(out)).toContain("How we help");
-      expect(count(out, "Start free month")).toBe(1);
-      expect(rail(out)).toContain("Start free month");
+      expect(count(out, "Start plan")).toBe(1);
+      expect(rail(out)).toContain("Start plan");
       expect(count(out, 'class="rpt-plans"')).toBe(1);
       expect(main(out)).not.toContain("rpt-plans");
     });
@@ -113,7 +116,7 @@ describe("a family the switch opens to", () => {
       expect(rail(out)).not.toContain("<form");
       expect(rail(out)).not.toContain("<input");
       expect(rail(out)).toContain("Checking your card");
-      expect(rail(out)).toMatch(/<button class="btn" type="button" disabled=""[^>]*>Start free month/);
+      expect(rail(out)).toMatch(/<button class="btn" type="button" disabled=""[^>]*>Start plan/);
     });
 
     it("gives the email's plan link somewhere to land, once", async () => {
@@ -126,7 +129,7 @@ describe("a family the switch opens to", () => {
     it("says free month and the price, names the child, and never says trial, she or her", async () => {
       const out = await open();
       const side = rail(out);
-      expect(side).toContain("Start Leah&#x27;s free month");
+      expect(side).toContain("Start Leah&#x27;s plan");
       expect(side).toContain("CAD 79.99 a month");
       expect(side).toContain("Nothing is charged today.");
       expect(side).toContain("What happens next");
@@ -145,10 +148,12 @@ describe("a family the switch opens to", () => {
       expect(out).not.toContain("rpt-back");
     });
 
-    it("keeps the free call at the end of the report, once", async () => {
+    it("puts the results call once, after the working level and before where the child is", async () => {
       const out = await open();
-      expect(count(out, "Book a call")).toBe(1);
-      expect(main(out)).toContain("Book a call");
+      expect(count(out, "Book your 15-minute results call in a new tab")).toBe(1);
+      expect(main(out)).toContain("Go over Leah&#x27;s results with us");
+      expect(out.indexOf('id="rpt-call"')).toBeLessThan(out.indexOf('id="rpt-where"'));
+      expect(out.indexOf('id="rpt-call"')).toBeGreaterThan(out.indexOf('id="rpt-level"'));
     });
 
     it("shows the saved messages that came through /account", async () => {
@@ -180,7 +185,7 @@ describe("a family the switch opens to", () => {
     it.each([["first_book_coming"], ["active"], ["ended"]] as const)("%s offers no action on the report", async (stage) => {
       family({ stage, opensOn: "overview", tabs: ["overview", "assessment", "account"], readOnly: stage === "ended" });
       const out = await open();
-      expect(out).not.toContain("Start free month");
+      expect(out).not.toContain("Start plan");
       expect(out).not.toContain('class="rpt-plans"');
       expect(out).not.toContain("Card saved");
     });
@@ -219,7 +224,7 @@ describe("a family the switch opens to", () => {
       expect(side).toContain("Start a new test");
       expect(side).toContain(`href="/account/start/${CHILD}"`);
       expect(side).toContain("btn ghost pd-new-test");
-      expect(side.indexOf("Start free month")).toBeLessThan(side.indexOf("Start a new test"));
+      expect(side.indexOf("Start plan")).toBeLessThan(side.indexOf("Start a new test"));
     });
 
     it("continues a new test that is open", async () => {
@@ -249,4 +254,14 @@ describe("a family the switch opens to", () => {
     state.report = null;
     await expect(open()).rejects.toThrow("NOT FOUND");
   });
+});
+
+it.each([false, true])("renders current late sibling terms with saved card=%s", async saved => {
+  state.offer = { monthly: 59.99, window: "ended" };
+  state.saved = saved;
+  const out = await open();
+  expect(out).toContain("CAD 59.99 a month.");
+  expect(out).toContain("A child who starts after that window is charged when their plan starts.");
+  expect(out).not.toContain("79.99");
+  expect(out).not.toContain("Your first month is free");
 });

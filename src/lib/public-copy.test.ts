@@ -9,7 +9,7 @@ import Terms from "@/app/(site)/terms/page";
 import Privacy from "@/app/(site)/privacy/page";
 
 // Public launch (#82): the free assessment is online, math only, and comes before any plan or card. These are the
-// shared texts behind the FAQ section, the FAQPage data, /llms.txt, /pricing.md and the page metadata.
+// shared texts behind the FAQ section, /llms.txt, /pricing.md and the page metadata.
 
 const answer = (question: RegExp) => {
   const item = FAQ.find((f) => question.test(f.question));
@@ -24,6 +24,19 @@ describe("the FAQ describes the online math assessment", () => {
     expect(a).toMatch(/additional child is CAD 59\.99 a month/);
     expect(a).toMatch(/own assessment/);
     expect(a).toMatch(/own progress report/);
+  });
+
+  it("describes Maya chat and its limits on the public FAQ and summaries", () => {
+    const how = answer(/How does the AI Teaching Assistant work/);
+    expect(how).toMatch(/Grade 3 and up/);
+    expect(how).toMatch(/type to Maya/);
+    expect(how).toMatch(/cannot teach a question yet/);
+    expect(how).toMatch(/60 messages a day/);
+    expect(how).toMatch(/Weekly limits/);
+    for (const text of [how, answer(/screen time/), llmsTxt(), pricingMarkdown(), PARENT_NOTE]) {
+      expect(text).toMatch(/Grade 3 and up/);
+      expect(text).not.toMatch(/voice call|talk with the Teaching Assistant/i);
+    }
   });
 
   it("answers the AI accuracy question beside the Teaching Assistant explanation", () => {
@@ -102,7 +115,7 @@ describe("a space follows every full stop and colon in public copy", () => {
   const glued = /[a-z][.:][A-Za-z]/;
   const words = (text: string) => text.replace(/https?:\/\/\S+/g, " ").replace(/\S+@\S+/g, " ");
 
-  it("in the FAQ (also the FAQPage data), the parent section and the plain-text summaries", () => {
+  it("in the FAQ, the parent section and the plain-text summaries", () => {
     const texts = [...FAQ.flatMap((f) => [f.question, f.answer]), PARENT_TITLE, PARENT_LEAD, ...PARENT_NOT_YOURS.flat(), ...PARENT_YOURS, PARENT_NOTE, llmsTxt(), pricingMarkdown()];
     for (const text of texts) expect(words(text)).not.toMatch(glued);
   });

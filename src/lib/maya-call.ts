@@ -39,7 +39,7 @@
 // started or once it cannot still be running (VOICE_CALL_STALE_MS).
 //
 // Test calls never touch a real family: `start` refuses a family the seam does not call a test family, the database
-// refuses it again (migration add_maya_calls), and a test call never counts minutes.
+// refuses it again (migration add_maya_calls).
 //
 // The safety flag (#333): when the controller's SAFETY interrupt fires, the call is flagged in the same write that saves
 // the input, and then the internal alert goes through the alerts seam (src/lib/maya-call-alert.ts): one email per call
@@ -75,7 +75,6 @@ import { fitView, type PlayStep } from "@/lib/board-svg";
 import type { LearningEvents, NewLearningEvent } from "@/lib/learning-events";
 import type { NoteStep } from "@/lib/maya-call-note";
 import { heardWordings, learningEvent, limitsOf, mayaPackageCheck, SAFETY_GUIDANCE, type Outcome, type Session, type Severity, type WordingHistory, type WordingHistoryStore } from "@/lib/maya";
-import { freeTalkFor } from "@/lib/maya-free-talk";
 import { modelInput, type MayaModel } from "@/lib/maya-model";
 import type { TalkReviewer } from "@/lib/maya-talk-review";
 import { createTextSession, type FinishOptions, type SavedTextSession, type TextOutput, type TextSession } from "@/lib/maya-text";
@@ -389,9 +388,9 @@ export interface StartInput {
   grade?: number;
   package: unknown;
   startedBy: string | null;
-  /** The call's id when the caller made it first: a minutes grant names the call before it exists (#330). */
+  /** The call's id when the caller made it first (a desk chat names its call before it exists). */
   id?: string;
-  /** The call's end when it is shorter than 10 minutes (ms): the minutes the grant gave (#330, src/lib/maya-minutes.ts). */
+  /** The call's end when it is shorter than 10 minutes (ms). No production caller passes it; tests use it for short calls. */
   limitMs?: number;
 }
 
@@ -820,12 +819,12 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
     }
   }
 
-  /** A call's text session. Admin test calls have free talk on (D-197), with the model's review; a resumed call keeps its flag. */
+  /** A call's text session. Admin test calls have free talk on (D-197), with the model's review; chat has it off. A resumed call keeps its flag. */
   function textSession(record: Pick<CallRecord, "id" | "parentId" | "childId"> & { kind: CallKind }, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number, grade?: number, confirmWorkbook?: boolean, onGuidance?: (output: TextOutput) => void): TextSession {
     return createTextSession({
       onGuidance,
       callId: record.id, channel: record.kind === "chat" ? "chat" : undefined, package: pkg, model, clock: seams.clock, random: seed, history, childName, runner: "text", resume: saved, limitMs, grade, confirmWorkbook,
-      freeTalk: record.kind === "chat" ? false : freeTalkFor("admin_test"), reviewer: seams.reviewer?.(model.id, spendCall(record)) ?? null,
+      freeTalk: record.kind !== "chat", reviewer: seams.reviewer?.(model.id, spendCall(record)) ?? null,
     });
   }
 
@@ -1375,8 +1374,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         if (input.type !== "end" || (started !== null && seams.clock() - started < VOICE_CALL_STALE_MS)) return { ok: false, error: "voice_call" };
         const session = textSession(record, record.live.package, idleModel(record), childName, record.live.text);
         const detail = started === null ? "Maya did not join the voice call" : "the voice call stopped without an end";
-        // Connection times that cannot be read refuse the end (the read throws), so a later end settles the minutes from
-        // them rather than at 0 seconds (#528 review). As in the worker's own end, the room time counts through the last
+        // Connection times that cannot be read refuse the end (the read throws), so a later end stores the connected
+        // seconds from them rather than 0 seconds (#528 review). As in the worker's own end, the room time counts through the last
         // stored event: the final speech after the outcome (a "solved" close, say) is connected time too (#586 review).
         const stored = async (endedAt: number): Promise<CallChange> => {
           const events = seams.connections ? await seams.connections.read(record.id) : [];

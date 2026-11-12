@@ -4,7 +4,7 @@ import { AppRouterContext, type AppRouterInstance } from "next/dist/shared/lib/a
 import { PathnameContext, SearchParamsContext } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
 import { renderToStaticMarkup } from "react-dom/server.browser";
 import { FeedbackFormView } from "@/components/feedback-form";
-import { AdminFrame } from "@/components/admin";
+import { AdminPage } from "@/components/admin";
 import { AdminFeedbackList } from "@/components/admin-feedback";
 import { FEEDBACK_MESSAGES, type FeedbackError } from "@/lib/feedback";
 import { ParentShell } from "@/components/parent-shell";
@@ -137,7 +137,7 @@ function planControl(name: string, state: string, cardId: string) {
     preview: preview ? { token: "sample-token", weeks: 2, remaining: 6, year: 2026, late: state === "pause_late", targetNumber: 5, charge: "December 10, 2026", earliest: state === "pause_late" ? null : "December 10", latest: state === "pause_late" ? null : "December 15" } : null,
     restart: state === "restart_review" ? { price: PLANS.one.price, token: "sample-token" } : null,
     error: pending ? "We cannot confirm this change yet. Check again before you make another change or delete the account." : state === "restart_declined" ? "Your payment did not go through. Please update your card. Then return here to restart the plan." : null,
-    done: state === "pause_saved" || state === "restart_started", onOpen: noAction, setWeeks: noAction, setPreview: noAction, send: noAction, close: noAction, cardId };
+    done: state === "pause_saved" ? "pause" : state === "restart_started" ? "restart" : null, onOpen: noAction, setWeeks: noAction, setPreview: noAction, send: noAction, close: noAction, cardId };
   return <PlanControlView {...props} />;
 }
 
@@ -165,10 +165,10 @@ function previewContent(selection: PreviewSelection, child: ChildView | undefine
   if (!child && selection.view === "plan") return <ParentPlanView plans={[]} zone={zone} controls />;
   if (!child && selection.view === "scan") return <SupportPage label="Your account" title="Scan pages"><ScanPages childrenList={[]} parent="sample-parent" noticeAcknowledged initial={{ listing: scanListing("empty") }} /></SupportPage>;
   if (selection.view === "feedback") {
-    if (state === "admin_rows") return <AdminFrame email="admin@example.invalid" section="feedback" title="Feedback"><AdminFeedbackList product={null} rows={[
+    if (state === "admin_rows") return <div className="look-root adm-root" data-look="warm"><AdminPage title="Feedback"><AdminFeedbackList product={null} rows={[
       { id: "sample-1", parent_id: "sample-parent-1", child_id: null, product: "workbook", text: "The space for the written answer was helpful.\nCould you add more room for working?", source: "/account/workbooks", created_at: "2026-11-05T19:00:00Z", status: "new" },
       { id: "sample-2", parent_id: "sample-parent-2", child_id: null, product: "parent_dashboard", text: "I found the report quickly on my phone.", source: "/account", created_at: "2026-11-05T18:00:00Z", status: "read" },
-    ]} /></AdminFrame>;
+    ]} /></AdminPage></div>;
     const error = Object.hasOwn(FEEDBACK_MESSAGES, state) ? state as FeedbackError : null;
     return <SupportPage label="Your account" title="Feedback"><p className="lead">Tell us what worked well or what we can improve.</p>
       <FeedbackFormView product={state === "form" || state === "no_product" || state.startsWith("stage_") ? "" : "workbook"} text={state === "too_long" ? "Thank you for the workbook. ".repeat(193) : state === "unavailable" || state === "no_product" ? "Could you add more room for working?" : ""}
@@ -185,7 +185,7 @@ function previewContent(selection: PreviewSelection, child: ChildView | undefine
     }
     case "report": {
       const base = baseReport();
-      const view = { ...base, id: "sample-report", childName: child.firstName, province: child.stage === "report_ready_waitlist" ? "ON" as const : "BC" as const,
+      const view = { ...base, planOffer: { monthly: PLANS.one.price, window: "new" as const }, id: "sample-report", childName: child.firstName, province: child.stage === "report_ready_waitlist" ? "ON" as const : "BC" as const,
         completedAt: "2026-11-04T20:00:00Z", timeZone: zone, findings: child.stage === "report_ready_waitlist" ? null : base.findings, model: { ...base.model, ...(state === "unreliable" ? { reliability: { veryFast: 18, answers: 20 } } : {}), callToAction: child.stage === "report_ready_waitlist" ? "waitlist" as const : "card" as const } };
       const start = { saved: state === "saved" ? "one" as const : null, joined: state === "joined", cancelled: state === "cancelled" };
       const card: CardState = ["checking", "unknown", "error", "later", "saved"].includes(state) ? state as CardState : "choose";

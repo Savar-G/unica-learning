@@ -28,7 +28,7 @@ beforeEach(async () => {
   const store = memoryWorkbookStore({ children: [{ id: CHILD, parentId: PARENT }], now: () => new Date("2026-11-01T20:00:00Z") });
   expect((await store.write(sampleWorkbook({ workbookId: BOOK, childId: CHILD, parentId: PARENT, qrTokens: [1, 2, 3].map(p => `sample-token-0000000${p}`) }))).status).toBe("written");
   store.setStatus(BOOK, "shipped"); state.store = store;
-  vi.spyOn(store, "workbook"); state.receipt.mockResolvedValue(receipt);
+  vi.spyOn(store, "workbook"); vi.spyOn(store, "page"); state.receipt.mockResolvedValue(receipt);
   state.sign.mockResolvedValue({ data: { signedUrl: "https://example.invalid/page.png" }, error: null });
   state.chat.mockResolvedValue({ usage: { used: 0, left: 60, resetsAt: 1800000000000, backAt: "Monday" }, note: null });
 });
@@ -39,13 +39,13 @@ it("shows the awaiting-delivery desk without reading packages or signing an imag
   expect(body).toContain("Leave"); expect(body).toContain('aria-label="Page and question number"');
   expect(body).toContain("Chat with Maya"); expect(body).toContain("60 left today");
   expect(body).not.toContain("Pick from my page"); expect(body).not.toContain("https://example.invalid/page.png");
-  expect(state.store!.workbook).not.toHaveBeenCalled(); expect(state.sign).not.toHaveBeenCalled();
+  expect(state.store!.workbook).not.toHaveBeenCalled(); expect(state.store!.page).not.toHaveBeenCalled(); expect(state.sign).not.toHaveBeenCalled();
   expect(state.chat).toHaveBeenCalledOnce();
 });
 it.each([{ deliveredAt: "2999-01-01T00:00:00Z" }, { parentId: BOOK }, { childId: BOOK }, { workbookId: CHILD }, { number: 2 }])("keeps an invalid effective receipt closed: %j", async change => {
   state.receipt.mockResolvedValue({ ...receipt, ...change });
   expect(await html()).toContain("after we confirm delivery");
-  expect(state.store!.workbook).not.toHaveBeenCalled(); expect(state.sign).not.toHaveBeenCalled();
+  expect(state.store!.workbook).not.toHaveBeenCalled(); expect(state.store!.page).not.toHaveBeenCalled(); expect(state.sign).not.toHaveBeenCalled();
 });
 it("keeps the notice and delivery message visible when Maya is unavailable or the weekly chat count is zero", async () => {
   state.receipt.mockResolvedValue(null); state.notice = true;
@@ -64,4 +64,25 @@ it("keeps the delivered page, picks and question crop through the real desk comp
 it("returns to awaiting delivery if the receipt is retracted during the content read", async () => {
   state.receipt.mockResolvedValueOnce(receipt).mockResolvedValue(null);
   expect(await html()).toContain("after we confirm delivery"); expect(state.sign).not.toHaveBeenCalled();
+});
+it.each([
+  ["never had a plan", { usage: null, note: null, planClosed: false }, "Chat and calls with Maya start soon.", "60 messages a day"],
+  ["ended", { usage: null, note: "Chat with Maya is closed because your family's plan has ended. Ask a grown-up.", planClosed: true }, "Chat with Maya is closed because your family's plan has ended. Ask a grown-up.", "Closed"],
+  ["payment failed", { usage: null, note: "Chat with Maya is paused because the last payment did not go through. Ask a grown-up.", planClosed: true }, "Chat with Maya is paused because the last payment did not go through. Ask a grown-up.", "Closed"],
+])("tells the child about chat for a family whose plan state is %s, on the delivered page and while awaiting delivery", async (_, chat, line, label) => {
+  state.chat.mockResolvedValue(chat);
+  for (const receipt of [undefined, null]) {
+    if (receipt === null) state.receipt.mockResolvedValue(null);
+    const body = (await html()).replace(/&#x27;/g, "'");
+    expect(body).toContain(line);
+    expect(body).toContain(`<dd>${label}</dd>`);
+    if (chat.planClosed) expect(body).not.toContain("start soon");
+    expect(body).not.toContain("Grade 3 and up");
+  }
+});
+it("an open plan shows the chat, with no closed line and no start-soon line", async () => {
+  const body = await html();
+  expect(body).toContain("<dd>60 left today</dd>");
+  expect(body).not.toMatch(/Chat with Maya is (closed|paused)/);
+  expect(body).not.toContain("start soon");
 });

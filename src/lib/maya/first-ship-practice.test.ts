@@ -114,7 +114,7 @@ describe("C28, C29: a done step is not asked again when the model gives no readi
     ["Is it 16?", 16], ["Uh, 16?", 16], ["16?", 16], ["7 plus 9 is 16?", 16], ["I wrote 6?", 6],
     ["7 and 9 make 16 and 3.", 16], ["66 is 16.", 16], ["16 or 15", 16],
     ["7 is 16.", 16], ["9 and 16.", 16], ["9 is 16.", 16], ["My mom said 7 plus 9 is 16.", 16], ["Mia says 7 plus 9 is 16.", 16], ["I think 7 plus 9 is 16.", 16], ["Maybe 7 plus 9 is 16.", 16], ["I guess 7 plus 9 is 16.", 16],
-    ["7 plus 9 is not 16.", 16], ["Then 7 plus 9 is 16.", 16], ["I know 7 plus 9 is 16.", 16], ["The ones make 16.", 16], ["It's 16. I got 16.", 16], ["It's 16, I think.", 16], ["I got 16 for the ones.", 16], ["My mom got 16.", 16], ["It's not 16.", 16], ["It is 16?", 16], ["I got 16?", 16], ["7 plus 9 is 16, so I write 6.", 16], ["I write 6 and carry 1 ten.", 6],
+    ["7 plus 9 is not 16.", 16], ["Then 7 plus 9 is 16.", 16], ["I know 7 plus 9 is 16.", 16], ["The ones make 16.", 16], ["It's 16. I got 16.", 16], ["It's 16, I think.", 16], ["16 in the ones.", 16], ["My mom got 16.", 16], ["It's not 16.", 16], ["It is 16?", 16], ["I got 16?", 16], ["7 plus 9 is 16, so I write 6.", 16], ["I write 6 and carry 1 ten.", 6],
     // A lone written digit is not the column's total (decision after review of fec3dac4).
     ["6", 6], ["6.", 6], ["It's 6.", 6], ["I got 6.", 6], ["I wrote 6.", 6], ["Wrote 6.", 6], ["So I wrote 6.", 6], ["I put 6 in the ones.", 6], ["I wrote 6 in the tens.", 6],
     ["16 and 3.", 16], ["I didn't write 6.", 6], ["I wrote 6. I think.", 6],
@@ -169,7 +169,20 @@ describe("C28, C29: a done step is not asked again when the model gives no readi
     expect(model).toMatchObject({ act: "guide", step: "tens" });
   });
 
-  it.each([["7 plus 9 is 16.", 16], ["9 + 7 = 16", 16], ["16.", 16], ["6.", 6]] as const)("treats %j after H3 as a copy on both paths", async (text, value) => {
+  // A copy of the shown total or sum after H3 is no credit, and the ladder goes past the shown step (fault B of the
+  // subscription practice run at 361a05c9, C04-r2: the ones came again until Maya gave the answer). A lone digit is no copy
+  // of the step: Maya stays on it.
+  it.each([["7 plus 9 is 16.", 16], ["9 + 7 = 16", 16], ["16.", 16]] as const)("treats %j after H3 as a copy on both paths, and goes on with no credit", async (text, value) => {
+    for (const step of [down(text), named(text, value, "ones")]) {
+      const { told, outcome } = await play("A", [shown, step]);
+      expect(told[2].lines).not.toContain("check.right_step");
+      expect(told[2].say).not.toMatch(/7 \+ 9 = 16/);
+      expect(told[2]).toMatchObject({ act: "guide", step: "tens" });
+      expect(outcome?.assistance).not.toBe("independent");
+    }
+  });
+
+  it.each([["6.", 6]] as const)("treats %j after H3 as no copy of the step on both paths", async (text, value) => {
     for (const step of [down(text), named(text, value, "ones")]) {
       const told = (await play("A", [shown, step])).told[2];
       expect(told.lines).not.toContain("check.right_step");
@@ -297,10 +310,13 @@ describe("C28, C29: a done step is not asked again when the model gives no readi
       const first = (await play("A", [step])).told.at(-1)!;
       expect(first.lines).not.toContain("check.right_step");
       expect(first.say).not.toMatch(/7 \+ 9 = 16/);
-      // After H3 Maya may show the sum again; she never says the claim was right.
-      const shownFirst = (await play("A", [shown, step])).told.at(-1)!;
-      expect(shownFirst.lines).not.toContain("check.right_step");
-      expect(shownFirst.step ?? "ones").toBe("ones");
+      // After H3 she never says the claim was right, and never guides past the ones. The show is not said a second time
+      // in a row: the easier example comes instead (#698 round 2, P1 e).
+      const after = (await play("A", [shown, step])).told.slice(2);
+      expect(after.flatMap((t) => t.lines)).not.toContain("check.right_step");
+      expect(after.filter((t) => t.act === "guide").map((t) => t.step ?? "ones")).not.toContain("tens");
+      expect(after.filter((t) => t.act === "guide").map((t) => t.step ?? "ones")).not.toContain("result");
+      expect(after.length).toBeGreaterThan(0);
     }
   });
 
@@ -422,8 +438,16 @@ describe("C28, C29: a done step is not asked again when the model gives no readi
   it.each(["6 in the ones.", "The ones are 6.", "I got 6 for the ones.", "6 tens?"])("gives the tens no confirm and no credit: %j (27 + 39)", async (text) => {
     await noStepConfirm(27, 39, [onesDone], text, 6, "tens");
   });
-  it.each(["16 in the tens.", "The tens make 16.", "16 tens?", "The answer is 16.", "My mom said 16.", "16. My mom said.", "The ones make 16.", "I got 16 for the ones."])("gives the ones no confirm and no credit: %j (27 + 39)", async (text) => {
+  it.each(["16 in the tens.", "The tens make 16.", "16 tens?", "The answer is 16.", "My mom said 16.", "16. My mom said.", "The ones make 16.", "16 in the ones."])("gives the ones no confirm and no credit: %j (27 + 39)", async (text) => {
     await noStepConfirm(27, 39, [], text, 16, "ones");
+  });
+  // #698 loop round (practice at bef51538): the child names the ones and their total in their own words, so it credits.
+  // "16 in the ones." stays above: it may mean 16 written in the ones place.
+  it("credits the ones for 'I got 16 for the ones.' (27 + 39)", async () => {
+    for (const first of [{ child: "I got 16 for the ones.", read: { answers: [[16, "ones", "right"]] } as Read, maya: [THROWS_REPAIR] }, { child: "I got 16 for the ones.", maya: THROWS }]) {
+      const told = await playSum(27, 39, [first]);
+      expect(told[1]).toMatchObject({ ...NEXT, step: "tens" });
+    }
   });
   it("gives the hundreds no confirm and no credit: '3 in the ones?' (156 + 237)", async () => {
     await noStepConfirm(156, 237, [{ child: "6 plus 7 is 13.", read: { answers: [[13, "ones", "right"]] } }, { child: "5 plus 3 plus 1 is 9.", read: { answers: [[9, "tens", "right"]] } }], "3 in the ones?", 3, "hundreds");
@@ -569,26 +593,38 @@ describe("C04: the fallback path keeps to the hint ladder", () => {
   // The child's words of C04-r1, turn by turn, with the model down on every turn.
   const C04 = ["Hi Maya! Is it 60?", "Um, is it 70?", "Is it 66?", "I think it's 66. Is it right?", "I don't know. I just guessed 66.", "Yes, 66. I just guessed it.", "Okay. I don't know what 7 plus 9 is.", "I don't know how to do that one.", "Okay, I wrote the 6. Is the 1 for the tens?", "I still don't get the 1. Is it 66?", "Yes, I said 66. I just guessed it.", "I don't know that one. I just guessed.", "I don't know what 7 plus 9 is.", "Okay, the 6 goes in the ones. What do I do next?", "Okay, I wrote the 6. I still don't get the 1, sorry.", "Okay, I wrote the 6 down. Now what do I do with the 1?", "I'm still lost, sorry. I think it's 66.", "I still don't get it. I think it's 66, I guessed.", "Yes, I guessed 66.", "I don't know. I just guessed.", "Okay, I wrote 66. I just guessed it."];
 
-  it("gives the answer only straight after H3, with no hint skipped (C04-r1)", async () => {
+  // #735, decision (a): the help request after H3 ("I don't know. I just guessed.") gets the easier example, never the answer.
+  it("gives the easier example only straight after H3, with no hint skipped and no answer (C04-r1)", async () => {
     const { told, hard } = await play("A", C04.map(down));
     expect(hard).toEqual([]);
-    const at = told.findIndex((t) => t.act === "give_answer");
+    expect(told.map((t) => t.act)).not.toContain("give_answer");
+    const at = told.findIndex((t) => t.act === "example_step");
     expect(at).toBeGreaterThan(0);
     expect(told.slice(0, at).filter((t) => t.act === "guide").at(-1)!.level).toBe(3);
   });
 
-  it("does not step back to a lower check once the step was shown", async () => {
-    const { told } = await play("A", [
+  // Changed in #698 round 4: the guessed yes after the show is checked together once (D-253 item 17), with the step's
+  // question below the show. The old reason for no lower check was a given answer after H2 (hint_skipped); Maya gives no
+  // answer now (D-326). Never a second show in a row, and the check does not count in the loop guard's row: no progress
+  // after it gives the easier example.
+  it("checks a guessed yes together once after the step was shown, then the easier example", async () => {
+    const { told, hard } = await play("A", [
       { child: "Show me the ones.", read: { help: "show" }, maya: [{ act: "guide", step: "ones", level: 3, lines: ["step.show"] }] },
-      down("Is it 66?"), down("Yes, I said 66. I just guessed it."),
+      down("Is it 66?"), down("Yes, I said 66. I just guessed it."), down("I don't know."),
     ]);
-    expect(told.at(-1)).toMatchObject({ act: "guide", step: "ones", level: 3 });
-    expect(told.at(-1)!.lines).not.toContain("check.guess");
+    expect(hard).toEqual([]);
+    expect(told[2]).toMatchObject({ act: "confirm" });
+    expect(told[3]).toMatchObject({ act: "guide", step: "ones", level: 2, lines: ["check.guess", "step.operation"] });
+    expect(told[4]).toMatchObject({ act: "example_step" });
+    expect(told.slice(2).flatMap((t) => t.lines)).not.toContain("step.show");
   });
 
-  it("says no question about a step in the turn that gives the answer", async () => {
-    const { told } = await play("A", C04.map(down));
-    const given = told.find((t) => t.act === "give_answer")!;
-    expect(given.lines).toEqual([]);
+  it("closes without the answer after a miss at H3", async () => {
+    // The model reads the miss and shows the step again; that is refused, so code's fallback gives the answer.
+    const miss: Step = { child: "15.", read: { answers: [[15, "ones", "wrong"]] }, maya: [{ act: "guide", step: "ones", level: 3, lines: ["step.show"], repair: { throws: true } }] };
+    const { told } = await play("A", [...C04.slice(0, 13).map(down), miss]);
+    const close = told.find((t) => t.act === "close")!;
+    expect(close.lines).toEqual(["close.stuck", "close.together"]);
+    expect(close.say).not.toMatch(/\b66\b/);
   });
 });

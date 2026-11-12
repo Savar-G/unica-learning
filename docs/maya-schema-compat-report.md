@@ -117,7 +117,7 @@ The existing `provider: { require_parameters: true }` statement is unchanged. Ti
 
 ## Remaining limits
 
-Instruction-based JSON has no provider grammar guarantee. Existing caller validation remains mandatory. The helper does not predict undocumented grammar complexity, resolve recursive references, or validate every JSON Schema keyword. A later incompatible schema can still receive a 400; no automatic schema-refusal retry was added.
+Instruction-based JSON has no provider grammar guarantee. Existing caller validation remains mandatory. **Fenced output (first-ship practice at 6de7e777, 9 of 319 Maya calls failed as `bad_json`):** for a request sent without `response_format`, the OpenRouter adapter (`readOutput` in `src/lib/ai-openrouter.ts`) also reads JSON inside exactly one outer ```` ```json ```` or ```` ``` ```` fence around the whole output, and notes it (`src/lib/ai-fenced.ts`). Prose before or after it, a second block, a fence inside it, another language tag or an unclosed fence is still not JSON. A request that sent `response_format` reads its output strictly, as before. The caller checks the value against the same schema either way. Each fenced Maya proposal is `fenced: true` on its trace attempt (`fencedReplies` counts them), and the practice report counts them (`fencedJson` in report.json, a "Fenced JSON" line in report.md). The helper does not predict undocumented grammar complexity, resolve recursive references, or validate every JSON Schema keyword. A later incompatible schema can still receive a 400; no automatic schema-refusal retry was added.
 
 Root owns independent review, the full gate, required practice, browser checks and publication. Practice remains REQUIRED. Paid runs used: 0 of 2.
 

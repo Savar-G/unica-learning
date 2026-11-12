@@ -18,7 +18,7 @@ import { allRight, knowsUpTo, takeTest, type Script, checked, beforeThirdStage }
 import { answerQuestion, doneChecking, finishTest, nextStep, retakeState, startStates, startTest, stateFor, StoreError, type AnswerInput, type AttemptStore, type HelpInput } from "@/lib/test-attempt";
 import { memoryAttemptStore, type MemoryTest } from "@/lib/test-attempt-memory";
 import { answerFact, readFacts, startFacts } from "@/lib/test-attempt";
-import { createFacts } from "@/lib/assessment";
+import { createFacts, FACTS_SECONDS } from "@/lib/assessment";
 
 // The test attempt module (#146) against the in-memory store, which keeps the database's guards: one open test per
 // child (a unique index), updates that only change a test while it is still open (guarded updates), and reads that
@@ -936,7 +936,7 @@ describe("when the facts store fails", () => {
   it("a failed read of the test is store_failed, logged as before", async () => {
     const log = logs();
     const memory = atBreak();
-    memory.fail.load = new StoreError("load failed", "timeout");
+    memory.fail.factsOwner = new StoreError("load failed", "timeout");
     expect(await readFacts(memory.store, P1, "a1", T0)).toEqual({ ok: false, error: "store_failed" });
     expect(await startFacts(memory.store, P1, "a1", T0)).toEqual({ ok: false, error: "store_failed" });
     expect(await answerF0(memory, T0)).toEqual({ ok: false, error: "store_failed" });
@@ -1256,5 +1256,26 @@ describe("selection changes preserve stored tests (#188)", () => {
       expect(result.ok).toBe(true);
     }
     expect(await nextStep(store, P1, "legacy", T0 + HOUR)).toMatchObject({ ok: true, step: { status: "check", section: "stage2", total: 34, numbers: Array.from({ length: 18 }, (_, i) => 17 + i) } });
+  });
+});
+
+describe("the facts section reads only what it needs", () => {
+  it("never reads the whole stored test or its answers, and still refuses another family's test", async () => {
+    const memory = family(stored(open("a1", T0), { answered: 12 }), stored(open("b1", T0), { parent: "p-other", child: "c-other" }));
+    const load = vi.spyOn(memory.store, "load");
+    const [f0] = createFacts(ASHA, 7).facts;
+    expect(await readFacts(memory.store, P1, "a1", T0)).toEqual({ ok: true, step: { status: "ready", seconds: FACTS_SECONDS } });
+    // The facts are drawn from the test's own profile and seed, as before.
+    const started = await startFacts(memory.store, P1, "a1", T0);
+    expect(started).toMatchObject({ ok: true, step: { status: "running", answered: 0 } });
+    expect(started.ok && started.step.status === "running" && started.step.facts[0].id).toBe(f0.id);
+    expect(await answerFact(memory.store, P1, "a1", T0 + 1_000, { factId: f0.id, response: String(f0.answer) })).toMatchObject({ ok: true, step: { status: "running", answered: 1 } });
+    for (const id of ["b1", "none"]) {
+      expect(await readFacts(memory.store, P1, id, T0)).toEqual({ ok: false, error: "not_found" });
+      expect(await startFacts(memory.store, P1, id, T0)).toEqual({ ok: false, error: "not_found" });
+      expect(await answerFact(memory.store, P1, id, T0, { factId: f0.id, response: "1" })).toEqual({ ok: false, error: "not_found" });
+    }
+    expect(memory.facts.map((f) => f.assessmentId)).toEqual(["a1"]);
+    expect(load).not.toHaveBeenCalled();
   });
 });

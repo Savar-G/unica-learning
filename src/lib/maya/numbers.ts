@@ -1025,7 +1025,7 @@ export function readAnswer(said: string, options?: ReadOptions): AnswerRead {
  * never commits a new one (takenBack).
  */
 function readAnswerParts(said: string, options?: ReadOptions): { read: AnswerRead; sureApart: boolean } {
-  const text = prepared(said, options);
+  const text = prepared(withoutSource(said), options);
   const committed = committedText(text);
   if (offersChoice(committed)) return { read: { kept: [], final: null, choice: true, sure: false, outside: [] }, sureApart: false };
   // What a negative takes back is gone (#605): the rest of the turn is read as usual.
@@ -1047,8 +1047,39 @@ function readAnswerParts(said: string, options?: ReadOptions): { read: AnswerRea
   // words the child kept. Any other turn with numbers is confirmed in code's words, or Maya asks which one they mean.
   // A sentence before the last that only points back at work done is no second answer (first-ship practice, C28-r1, C29-r1).
   const numeric = stated.split(SENTENCE_END).filter((x) => { const r = readNumbers(x); return r.values.length > 0 || r.unreadable; });
-  const sure = sureApart && numeric.filter((x, i) => i === numeric.length - 1 || !pointsBack(x, options)).length === 1;
+  // A sentence before the last that only tells how the child worked ("I did 27 plus 40, then took away one.") is no
+  // second answer either (practice at 361a05c9, C09).
+  const sure = sureApart && numeric.filter((x, i) => i === numeric.length - 1 || !(pointsBack(x, options) || methodSentence(x))).length === 1;
   return { read: { kept, final, choice: false, sure, outside: unclear ? [] : answer.values }, sureApart };
+}
+
+/**
+ * Where the answer came from, after it, as an exact allow-list (PR #698 practice: "Yes, it's 66. I got it from the steps
+ * you showed me." was not sure): a last sentence "I got it from the steps you showed me.", "I followed the steps.",
+ * "That's what I got.", or a last clause "because you showed me the steps". It holds no number, hedge, question or other
+ * speaker, so it says nothing about the answer: it is left out before the turn is read, but only when what is left is
+ * one declared answer (DECLARED_ANSWER): "Yes, it's 66.", "It's 66.", "I said 66.", "My answer is 66.", "66.". Any other
+ * answer keeps the whole turn as it was, so it stays not sure: a question in any punctuation ("Is it 66. I followed the
+ * steps.", "Is it 66 because you showed me the steps."), a hedge ("Maybe 66.", "I think it's 66."), "66 right", "66 or 56".
+ * Fail-closed review of the round-1 fix (#698, P1 c).
+ */
+const SOURCE_SENTENCE = /^(?:i got (?:it|that|this) from (?:the|your) steps(?: (?:you showed me|you did|we did))?|i (?:did|followed|used) (?:the|your) steps(?: (?:you showed me|we did))?|(?:that's|that is) what i got)$/;
+const SOURCE_REASON = /,?\s+because\s+(?:you showed me(?: the steps| how)?|of the steps(?: you showed me)?|i (?:did|followed|used) (?:the|your) steps(?: you showed me)?)([.!]?)$/;
+/** One declared answer, with at most a yes before it: the number is checked by plainNumber. */
+const DECLARED_ANSWER = /^(?:(?:yes|yeah|yep)[,\s]+)?(?:(?:it's|it is|i said|i got|my answer is|the answer is)\s+)?(.+?)[.!]?$/;
+function withoutSource(said: string): string {
+  const t = said.trim().replace(/’/g, "'");
+  if (t.includes("\n") || t.includes("?")) return said;
+  const sentences = t.split(/(?<=[.!])\s+/).filter(Boolean).map((x) => x.toLowerCase());
+  if (sentences.length === 0) return said;
+  while (sentences.length > 1 && SOURCE_SENTENCE.test(sentences.at(-1)!.replace(/[.!]+$/, "").trim())) sentences.pop();
+  const last = sentences.length - 1;
+  sentences[last] = sentences[last].replace(SOURCE_REASON, "$1");
+  const kept = sentences.join(" ");
+  if (kept === t.toLowerCase()) return said;
+  // Only one declared answer is left: anything else keeps the turn as the child said it.
+  const declared = sentences.length === 1 ? DECLARED_ANSWER.exec(sentences[0].trim()) : null;
+  return declared && plainNumber(declared[1]) !== null ? kept : said;
 }
 
 /**
@@ -1071,6 +1102,25 @@ function pointsBack(sentence: string, options?: ReadOptions): boolean {
   return n !== null && (options?.saidBefore ?? []).includes(n);
 }
 
+/** Words a sentence that only tells how the child worked may hold besides numbers: no result word, speaker, hedge or negation. */
+const METHOD_ONLY = new Set(["i", "did", "added", "add", "made", "make", "changed", "change", "rounded", "round", "up", "used", "use", "took", "take",
+  "away", "subtracted", "subtract", "minus", "plus", "and", "then", "so", "first", "it", "into", "to", "from", "the", "a", "more", "less", "back", "off"]);
+
+/**
+ * The sentence only tells, in the first person, the operations the child did, as an exact allow-list: "I did 27 plus 40,
+ * then took away one", "Then I took away one", "I made 39 into 40". It starts with "I" (after "so", "and", "first" or
+ * "then") and an action word, holds a number, and every other word is on METHOD_ONLY: no "is", "got", "answer", other
+ * speaker, hedge or negation, so it states no result.
+ */
+function methodSentence(sentence: string): boolean {
+  const words = sentence.toLowerCase().replace(/’/g, "'").replace(/[.!,;]+/g, " ").split(/\s+/).filter(Boolean);
+  let i = 0;
+  while (i < words.length && ["so", "and", "first", "then"].includes(words[i])) i++;
+  if (words[i] !== "i" || !["did", "added", "add", "made", "changed", "rounded", "used", "took", "subtracted"].includes(words[i + 1] ?? "")) return false;
+  const numbers = words.filter((w) => plainNumber(w) !== null);
+  return numbers.length > 0 && words.every((w) => METHOD_ONLY.has(w) || plainNumber(w) !== null);
+}
+
 /** The whole text is one plain whole number, in digits or words ("16", "sixteen", "twenty-six"), or null. */
 export function plainNumber(text: string): number | null {
   const words = text.trim().toLowerCase().split(/[\s-]+/);
@@ -1091,10 +1141,99 @@ export function wholeTurn(text: string): string | null {
   return t.replace(/^(?:so|okay|ok|um|oh)\b[,.\s]*/i, "").replace(/[.!]$/, "").trim().toLowerCase() || null;
 }
 
-/** The whole text is one value, alone or in the child's own words: "16", "it's 16", "I got 16". Else null. */
+/**
+ * The whole text is one value, alone or in the child's own words: "16", "it's 16", "I got 16", "I already got 16", "I got
+ * 16, like I said". Else null. "Like you said" is not here: that is Maya's number, not the child's.
+ */
 export function wholeValue(body: string): number | null {
-  const m = /^(?:it's|i got)\s+(.+)$/.exec(body);
+  const m = /^(?:it's|i got|i already got)\s+(.+?)(?:,?\s+like i said)?$/.exec(body) ?? /^(?:it's|i got)\s+(.+)$/.exec(body);
   return plainNumber(m ? m[1] : body);
+}
+
+/** Sentence-level filler before a step sentence or a next-step question: "So", "Okay", "Um", "Oh", "And", "Then". */
+const SENTENCE_LEAD = /^(?:(?:so|okay|ok|um|uh|oh|and|then)\b[,\s]*)*/;
+
+/**
+ * The sentence is one next-step question from a closed list (first-ship practice, C01: "I got 16, like I said. What do I
+ * do next?"): "What do I do next?", "What do I do now?", "What do I do with the 1?", "Where does the 1 go?", "Do I write the
+ * 1 at the top of the tens?", "Is the 1 the carry?", "What about the tens?", "Now what?", "What's next?". The only number it may hold is `carry`,
+ * the step's own carry, as "the 1", "the one" or "the ten" (or "the carried 1"); no other speaker, hedge, negation or check
+ * of a value ("Is it 16?", "Is that right?") is on the list. A step with no carry has only the forms with no number.
+ */
+export function nextStepQuestion(sentence: string, carry: number): boolean {
+  const s = sentence.trim().replace(/’/g, "'").toLowerCase().replace(/[?.!]+$/, "").trim().replace(SENTENCE_LEAD, "").replace(/\s+/g, " ");
+  // "Then what?": its "then" is no filler here.
+  if (/^(?:(?:and |so |okay |ok )?then what)$/.test(sentence.trim().replace(/[?.!,]+/g, "").trim().toLowerCase())) return true;
+  if (/^(?:what do i do (?:next|now)|what do we do (?:next|now)|now what|what's next|what is next|what about the tens(?: column)?|what do i do with the tens(?: column)?)$/.test(s)) return true;
+  const ref = (phrase: string) => {
+    if (phrase === "the carry") return carry > 0;
+    const m = /^the (?:carried |carry )?(\w+)(?: i carried)?$/.exec(phrase);
+    return !!m && carry > 0 && (m[1] === "ten" || plainNumber(m[1]) === carry);
+  };
+  const what = /^what do i do with (the .+)$/.exec(s);
+  if (what) return ref(what[1]);
+  const where = /^where (?:does|do) (the .+?) go$/.exec(s);
+  if (where) return ref(where[1]);
+  const carried = /^is (the .+?) (?:the|a) carry$/.exec(s);
+  if (carried) return ref(carried[1]);
+  const put = /^do i (?:write|put|carry) (the (?:carried |carry )?\w+)(?: (?:in|at|on|to|into|over) the (?:top(?: of the tens(?: column)?)?|tens(?: column| place)?))?$/.exec(s);
+  return !!put && ref(put[1]);
+}
+
+/**
+ * The one sentence of a turn that may be a step template, as wholeTurn gives it (stepTurnHeard): the whole turn, or, when
+ * the turn also holds next-step questions (nextStepQuestion), the one other sentence beside them. A lone filler sentence
+ * ("Okay.") is no second sentence. Null when two sentences are left, or none, or the turn has more than one line.
+ */
+export function stepTurnBody(text: string, carry: number): string | null {
+  const t = text.trim().replace(/’/g, "'");
+  if (t.includes("\n")) return null;
+  const parts = t.split(/(?<=[.!?])\s+/).filter(Boolean);
+  if (!parts.some((p) => nextStepQuestion(p, carry))) return wholeTurn(t);
+  const rest = parts.filter((p) => !nextStepQuestion(p, carry) && !/^(?:so|okay|ok|um|uh|oh)[.!]?$/i.test(p.trim()));
+  return rest.length === 1 ? wholeTurn(rest[0]) : null;
+}
+
+/**
+ * The text without its next-step questions (nextStepQuestion), for the claim checks: "Do I put the 1 in the tens?" asks,
+ * it claims nothing written. Every other sentence stays as it was.
+ */
+export function withoutNextStepQuestions(text: string, carry: number): string {
+  const parts = text.trim().split(/(?<=[.!?])\s+/).filter(Boolean);
+  return parts.some((p) => nextStepQuestion(p, carry)) ? parts.filter((p) => !nextStepQuestion(p, carry)).join(" ") : text;
+}
+
+/** The turn is only next-step questions (nextStepQuestion), with at most a filler sentence ("Okay. Where does the 1 go?"). */
+export function onlyNextStepQuestions(text: string, carry: number): boolean {
+  const t = text.trim().replace(/’/g, "'");
+  if (t.includes("\n")) return false;
+  const parts = t.split(/(?<=[.!?])\s+/).filter(Boolean);
+  return parts.some((p) => nextStepQuestion(p, carry)) && parts.every((p) => nextStepQuestion(p, carry) || /^(?:so|okay|ok|um|uh|oh)[.!]?$/i.test(p.trim()));
+}
+
+/**
+ * The child's claim about their own paper, after Maya's number: "you said 16, so I wrote 6 and carried 1", "like you said, I
+ * wrote 6 and carried 1". The number Maya said, or null when "like you said" names none, and the claim. Null for any other
+ * text: "You said 16." alone, or "You said 16, so it's 16.", is a copy, and the claim is checked as a claim by its caller.
+ */
+export function echoedClaim(body: string): { said: number | null; claim: string } | null {
+  const m = /^(?:you said\s+(.+?),?\s+so|like you said,?)\s+(i\s.+)$/.exec(body);
+  if (!m) return null;
+  if (m[1] === undefined) return { said: null, claim: m[2] };
+  const said = plainNumber(m[1]);
+  return said === null ? null : { said, claim: m[2] };
+}
+
+/**
+ * A whole turn (as wholeTurn gives it) that only says back what Maya just showed, with the step's total `total`: "You
+ * said 16.", "You said 16, so it's 16.", "Like you said, it's 16.", or a plain "I see", "Got it", "I get it", "I
+ * understand". A bare "yes" or "okay" is not here: it says nothing about what Maya showed.
+ */
+export function echoesShown(body: string, total: number): boolean {
+  if (/^(?:(?:oh|okay|ok)[,\s]+)?(?:i see|got it|i get it(?: now)?|i understand(?: now)?)$/.test(body)) return true;
+  const m = /^(?:you said\s+(.+?)(?:,?\s+so\s+(?:it's|it is)\s+(.+))?|like you said,?\s+(?:it's\s+|it is\s+)?(.+))$/.exec(body);
+  if (!m) return false;
+  return [m[1], m[2], m[3]].filter((x) => x !== undefined).every((x) => plainNumber(x!) === total);
 }
 
 /**

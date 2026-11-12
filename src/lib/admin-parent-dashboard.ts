@@ -108,6 +108,7 @@ export const PARENT_PREVIEW_VIEWS = [
     scenario("explain_idle", "Wrong answer: explanation control"), scenario("explain_loading", "Explanation loading"),
     scenario("explain_ready", "Explanation ready"), scenario("explain_retry", "Explanation retry"),
     scenario("explain_cap", "Explanation limit"), scenario("explain_stale", "Changed mark"), scenario("explain_unavailable", "Explanation unavailable"),
+    scenario("explain_closed", "Explanation: plan closed"),
   ] },
   { id: "feedback", label: "Feedback", scenarios: [
     scenario("form", "Parent form", "no_test"), scenario("sent", "Saved confirmation"),

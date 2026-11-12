@@ -6,63 +6,72 @@ import { applyPlanStart } from "@/lib/plan-state";
 import { livePlanStates } from "@/lib/plan-state-server";
 import { startPlan, stripe } from "@/lib/stripe";
 import { planPrice } from "@/lib/subscription-plan";
+import type { StartPlanError } from "@/lib/plan-start-errors";
 import { firstDelivery } from "@/lib/workbook-delivery";
 import { workbookDeliveryStore } from "@/lib/workbook-delivery-store";
 import { sendPlanStartEmail } from "@/lib/workbook-email-server";
 import { workbookStore } from "@/lib/workbook-store";
 
+const fail = (error: StartPlanError, status: number) => Response.json({ ok: false, error }, { status });
+
 // D-139: an admin starts a saved card's paid plan when the child's first workbook arrives at your home. Stripe holds the result; the
 // dashboard reads it from there, and the parent gets the confirmation email. This action also opens the product for that child
 // (src/lib/plan-access.ts): it writes the plan state at once, before any webhook. Answers { ok, firstChargeAt, access, confirmation }
-// or { ok: false, error }. `access` is "open" when the plan state is written, else "pending": see openAccess for what writes it then.
+// or { ok: false, error }. `access` is "open" when the plan state is written, else "pending": see openAccess.
 export async function POST(request: Request, ctx: RouteContext<"/api/admin/cards/[id]/start">) {
   // Checks Auth and live admin membership for every request.
   const admin = await adminSession();
   if (!admin) return new Response("Not found", { status: 404 });
   if (request.headers.get("origin") !== new URL(request.url).origin) return new Response("Forbidden", { status: 403 });
-  if (!request.headers.get("content-type")?.startsWith("application/json")) return Response.json({ ok: false, error: "delivery_confirmation_required" }, { status: 415 });
+  if (!request.headers.get("content-type")?.startsWith("application/json")) return fail("delivery_confirmation_required", 415);
   const { id } = await ctx.params;
   if (!isUuid(id)) return new Response("Not found", { status: 404 });
   let body: unknown;
   try { body = await request.json(); }
-  catch { return Response.json({ ok: false, error: "invalid" }, { status: 400 }); }
+  catch { return fail("invalid", 400); }
   if (!body || typeof body !== "object" || !("deliveryConfirmed" in body) || body.deliveryConfirmed !== true) {
-    return Response.json({ ok: false, error: "not_delivered" }, { status: 409 });
+    return fail("not_delivered", 409);
   }
   const { data, error } = await admin.db.rpc("admin_card_setups").select("*").eq("id", id.toLowerCase()).maybeSingle();
-  if (error) return Response.json({ ok: false, error: "unavailable" }, { status: 503 });
+  if (error) return fail("unavailable", 503);
   const card = data as CardSetupRow | null;
   if (!card) return new Response("Not found", { status: 404 });
-  if (!card.card_saved_at || !card.stripe_customer_id) return Response.json({ ok: false, error: "no_card" }, { status: 409 });
+  if (!card.card_saved_at || !card.stripe_customer_id) return fail("no_card", 409);
   try {
     const receipt = await firstDelivery(workbookDeliveryStore(admin.db), await workbookStore(admin.db).childWorkbooks(card.child_id), card.parent_id, card.child_id);
-    if (!receipt) return Response.json({ ok: false, error: "delivery_receipt_required" }, { status: 409 });
+    if (!receipt) return fail("delivery_receipt_required", 409);
     const s = stripe();
-    if (!s) return Response.json({ ok: false, error: "unavailable" }, { status: 503 });
+    if (!s) return fail("unavailable", 503);
     // #556: a family's deletion request reads no plans, so a plan must not start under one. Started first, this hold makes
     // the request wait for a retry that sees the plan. Requested first, the fence refuses the hold, and so does the delete's
-    // hold, from before its final plan read. A throw below stopped at a point it cannot name, so the hold stays until a retry.
-    // An answer ends the hold, "unconfirmed" too: Stripe may still make that plan, but the open plan start record refuses the
-    // family's deletion in the database until it resolves or an admin closes it, which can take days (#554).
+    // hold, from before its final plan read. Every exit releases this route hold. An uncertain create keeps its open plan
+    // start record, which refuses deletion until recovery or an admin check closes it (#554).
     const service = adminClient();
-    if (!service) return Response.json({ ok: false, error: "unavailable" }, { status: 503 });
-    if (await holdPlanStart(service, card.parent_id, card.id) === "fenced") return Response.json({ ok: false, error: "family_unavailable" }, { status: 409 });
-    const price = planPrice(Number(card.price), card.plan);
-    const startedAt = Date.now();
-    const result = await startPlan(s, { cardSetup: card.id, customer: card.stripe_customer_id, price, deliveryConfirmed: true });
-    await endCardOperation(service, card.id);
-    if (!result.ok) return Response.json(result, { status: 409 });
-    const access = await openAccess({ customer: card.stripe_customer_id, cardSetup: card.id, generation: result.generation, startedAt });
-    return Response.json({ ...result, access, confirmation: await confirm(card.id, result.generation, price, result.firstChargeAt, new URL(request.url).origin) });
+    if (!service) return fail("unavailable", 503);
+    if (await holdPlanStart(service, card.parent_id, card.id) === "fenced") return fail("family_unavailable", 409);
+    try {
+      const price = planPrice(Number(card.price), card.plan);
+      const startedAt = Date.now();
+      const result = await startPlan(s, { cardSetup: card.id, customer: card.stripe_customer_id, price, deliveryConfirmed: true });
+      if (!result.ok) return Response.json(result, { status: 409 });
+      const access = await openAccess({ customer: card.stripe_customer_id, cardSetup: card.id, generation: result.generation, startedAt });
+      return Response.json({ ...result, access, confirmation: await confirm(card.id, result.generation, result.monthlyPrice ?? price, result.firstChargeAt, new URL(request.url).origin) });
+    } finally {
+      await endCardOperation(service, card.id);
+    }
   } catch (e) {
     console.error("[stripe] start plan failed", e instanceof Error ? e.message : "failed");
-    return Response.json({ ok: false, error: "failed" }, { status: 502 });
+    // PR B: a sibling start through an older deployment's call shape is refused by the database (accepted stop).
+    if (e instanceof Error && e.message.includes("family_plan_upgrade_required")) return fail("family_plan_upgrade_required", 409);
+    return fail("failed", 502);
   }
 }
 
 /**
- * The plan has started, so a failed write must not read as a failed start. After a failed write the webhook is the fallback: the re-read does not
- * take `not_started` rows, and the card sweep writes plan state only when it closes an open start itself. A load of the Account tab fills only a missing row.
+ * The plan has started, so a failed write must not read as a failed start. "pending" means only that the write did not answer `stored`:
+ * it may have stored and lost its answer. After a real failure the webhook or the daily re-read tries again: the re-read takes a child
+ * whose newest plan start is `started` while its row is missing, `not_started` or `ended` (#713, PLAN_START_READ_KINDS in
+ * src/lib/plan-state.ts), a few per run, for as long as Stripe answers. The admin card says that access could not be confirmed (StartPlan).
  */
 async function openAccess(start: Parameters<typeof applyPlanStart>[0]): Promise<"open" | "pending"> {
   try {

@@ -24,6 +24,7 @@ function paidFixture({ lose = false, refuse = false } = {}) {
   const client=new Stripe("sk_test_paid_restart",{maxNetworkRetries:0,httpClient:Stripe.createFetchHttpClient(async(input,init)=>{
     const url=new URL(String(input)), method=init?.method??"GET", body=new URLSearchParams(String(init?.body??""));
     if(method==="GET"&&url.pathname==="/v1/subscriptions")return Response.json({data:[{id:"old",status:"canceled",metadata:{},trial_end:1},...plans],has_more:false});
+    if (url.pathname === "/v1/prices") return Response.json({data:[{id:"price_7999",active:true,currency:"cad",product:"unica_math",unit_amount:7999,recurring:{interval:"month",interval_count:1,usage_type:"licensed"}}],has_more:false});
     if(method==="GET"&&url.pathname.startsWith("/v1/products/"))return Response.json({id:"unica_math"});
     if(method==="GET"&&url.pathname==="/v1/customers/cus")return Response.json({id:"cus",invoice_settings:{default_payment_method:{id:customerCard,type:"card"}}});
     if(method==="POST"&&url.pathname==="/v1/subscriptions"){
@@ -43,7 +44,7 @@ function paidFixture({ lose = false, refuse = false } = {}) {
 it("charges immediately without trial fields, reminder fields or a future anchor",async()=>{
  const f=paidFixture();const result=await f.start("restart",planPrice(99,"one"));expect(result).toMatchObject({ok:true,firstChargeAt:"2026-11-05T18:00:00.000Z"});
  const body=f.writes[0].body;
- expect(body.get("items[0][price_data][unit_amount]")).toBe("7999");expect(body.get("payment_behavior")).toBe("error_if_incomplete");
+ expect(body.get("items[0][price]")).toBe("price_7999");expect(body.get("payment_behavior")).toBe("error_if_incomplete");
  expect(body.get("metadata[start_reason]")).toBe("paid_restart");expect([...body.keys()].filter(k=>/trial|billing_cycle_anchor|reminder/.test(k))).toEqual([]);
  expect(f.b.planStarts.get("card")?.[0]).toMatchObject({purpose:"restart",monthlyCents:7999,state:"started",email:"none",firstCharge:null});
  expect(planPrice(49,"one")).toBe(49);

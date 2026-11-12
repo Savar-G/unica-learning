@@ -1,6 +1,7 @@
 // One family's whole story in a side panel (?family=<id>) on the dashboard and activity pages (D-099).
 import Link from "next/link";
 import { gradeLabel } from "@/lib/assessment/grades";
+import { DELIVERY_WORDS } from "@/lib/delivery-state";
 import { adminEmailPath, adminParentPath, adminReportPath, adminTestPath } from "@/lib/admin-view";
 import { EMAIL_LABEL, STAGES, isUnsubscribe, clicksText, deliveryLine, emailDot, STAGE_ACTION, STAGE_TEXT, ago, at, nextReminderText, paymentText, type Dashboard, type Stage } from "@/lib/admin-dashboard";
 import { stripeCustomerUrl as stripeUrl } from "@/lib/stripe";
@@ -10,8 +11,19 @@ import type { ProgressSnapshot } from "@/lib/admin-progress";
 
 export function FamilyDrawer({ ctx, d, id, progress }: { ctx: Ctx; d: Dashboard; id: string; progress: ProgressSnapshot }) {
   const f = d.families.find((x) => x.id === id);
-  if (!f) return null;
   const close = href(ctx, { family: null });
+  // A test family opened here (from its own page) while "Show test families" is off: say why it is not shown.
+  if (!f) return d.tests.ids.includes(id) ? (
+    <>
+      <Link href={close} className="dash-scrim" aria-label="Close family" />
+      <aside className="dash-drawer" aria-label="Test family">
+        <header>
+          <div><p className="dash-kicker">Family</p><p role="status">This is a test family. Turn on Show test families to see it.</p></div>
+          <Link href={close} className="dash-x" aria-label="Close">×</Link>
+        </header>
+      </aside>
+    </>
+  ) : null;
   const full = ctx.demo ? null : adminParentPath(f.id);
   const path: Stage[] = f.reached.waitlist && !f.reached.card_started ? ["account", "started", "finished", "waitlist"] : [...STAGES, ...(f.reached.cancelled ? ["cancelled" as const] : [])];
   return (
@@ -64,7 +76,7 @@ export function FamilyDrawer({ ctx, d, id, progress }: { ctx: Ctx; d: Dashboard;
               <li key={e.id}>
                 <span className={`dash-dot is-${emailDot(e)}`} />
                 <div><b>{EMAIL_LABEL[e.kind]}</b>{!isUnsubscribe(e.kind) && <> <Link href={adminEmailPath(e.id, ctx.demo)} className="dash-muted">&ldquo;{e.subject}&rdquo;</Link></>}
-                  <span className="dash-sub">{e.status === "failed" ? `Failed after ${e.attempts} ${e.attempts === 1 ? "try" : "tries"}: ${e.error ?? "unknown error"}` : e.status === "pending" ? "Waiting to send" : (deliveryLine(e)?.text ?? (e.kind === "alert" ? "Sent to you" : "Sent to the parent"))}{clicksText(e) && ` · ${clicksText(e)}`} · {at(e.at)}</span></div>
+                  <span className="dash-sub">{e.status === "failed" ? `Failed after ${e.attempts} ${e.attempts === 1 ? "try" : "tries"}: ${e.error ?? "unknown error"}` : e.status === "pending" ? DELIVERY_WORDS[e.state] : (deliveryLine(e)?.text ?? (e.kind === "alert" ? "Sent to you" : "Sent to the parent"))}{clicksText(e) && ` · ${clicksText(e)}`} · {at(e.at)}</span></div>
               </li>
             ))}
           </ul>

@@ -4,7 +4,8 @@ name: CI
 # (`unit`, a matrix) beside one `checks` job (lint and the SQL comparison); the final job, named exactly `test`, needs
 # them all and fails if any failed. Vercel lists the `test` job as a
 # Deployment Check (Settings → Build and Deployment), so a main commit whose tests fail is built but not promoted to
-# production. `next build` (the type check) already runs in Vercel's own build.
+# production. Branches get no Vercel build (main-only deploys, #774), so the `checks` job runs the type check that
+# `next build` would run: `next typegen` (route types), then `tsc --noEmit`.
 # Every main commit needs this check, or its production deploy waits forever. A push made with GITHUB_TOKEN starts no
 # workflow, so the blog publish job (blog-publish.yml) starts this one with workflow_dispatch after it pushes main.
 
@@ -110,6 +111,21 @@ jobs:
           PGPASSWORD: maya-ci-only
       - run: npx eslint src
         timeout-minutes: 5
+      - name: Type check (what next build checks)
+        run: npx next typegen && npx tsc --noEmit
+        timeout-minutes: 8
+      # The root tsconfig.json excludes worker/, so the Maya voice worker's own type check and tests run here.
+      - name: Voice worker type check
+        run: npm run voice:typecheck
+        timeout-minutes: 5
+      - name: Voice worker tests
+        run: npm run voice:test
+        timeout-minutes: 8
+      # The daily Family retention workflow runs a bundle that plain Node must load. Build it and load it with --help
+      # (no credentials, no database), so an import Node cannot resolve fails here and not at 15:17 UTC (2026-11-06).
+      - name: Retention worker loads
+        run: node scripts/build-retention-worker.mjs && node --conditions=react-server .retention/worker.mjs --help
+        timeout-minutes: 2
 
   # The required check. Keep this name exactly `test`: Vercel's Deployment Check and branch rules use it.
   test:

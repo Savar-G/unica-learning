@@ -1,8 +1,8 @@
 import "server-only";
 import {
   MISCONCEPTIONS,
-  fromRemovedRound,
   everyQuestion,
+  isGrade,
   reportFindings,
   storedProfile,
   storedReportModel,
@@ -19,6 +19,7 @@ import {
   type StoredTest,
 } from "@/lib/assessment";
 import type { ReportView } from "@/lib/report-view";
+import { bookOne } from "@/lib/report-book-one";
 import { familyZone } from "@/lib/family-time";
 import type { ReviewPiece } from "@/lib/work-review";
 
@@ -163,12 +164,9 @@ export type ComparisonRead = (assessmentId: string) => Promise<ComparisonInput>;
 export async function loadReportInputs(reader: ReportReader, assessmentId: string, comparison: ComparisonRead): Promise<ReportInputs | null> {
   const a = await reader.assessment(assessmentId);
   if (!a || a.status !== "completed" || !a.completedAt || !a.placement) return null;
-  const stored = await reader.answers(a.id);
+  const answers = await reader.answers(a.id);
   // The question map: every question the test could ask, from every stage and path.
   const questions = new Map(everyQuestion(a.test).map((q) => [q.id, q]));
-  // D-145: the answers to the removed extra round's questions (#190), which two tests still store, are left out: no
-  // report part, learner profile or count reads them.
-  const answers = stored.filter((x) => !fromRemovedRound(x.questionId));
   const withWork = answers.filter((x) => x.workPath !== null || x.workText !== null);
   return {
     assessment: {
@@ -241,13 +239,20 @@ export interface LoadedReport {
  * numbers and the workbook 1 preview, with the AI parts once stored. Null without a stored profile of this schema
  * version. A failed read is logged and gives null: the report shows without these sections.
  */
-async function findingsOf(reader: ReportReader, assessmentId: string) {
+async function findingsOf(reader: ReportReader, row: ReportRecord, model: ReportModel) {
+  const assessmentId = row.assessmentId;
   try {
     const profile = storedProfile(await reader.profile(assessmentId));
-    return profile ? reportFindings(profile) : null;
+    if (!profile) return { findings: null, book: null };
+    // D-305: workbook 1 from the real planner, only for a family that can start the books (BC, card).
+    const grade = model.level.grade;
+    const book = model.callToAction === "card" && row.assessment && isGrade(grade)
+      ? bookOne({ profile, grade, assessmentId, completedAt: row.assessment.completedAt, minutes: row.minutes, howWeHelp: model.howWeHelp })
+      : null;
+    return { findings: reportFindings(profile), book };
   } catch (e) {
     console.error("[report] learner profile load failed", assessmentId, e instanceof Error ? e.message : String(e));
-    return null;
+    return { findings: null, book: null };
   }
 }
 
@@ -260,10 +265,10 @@ async function findingsOf(reader: ReportReader, assessmentId: string) {
 export async function loadReportView(reader: ReportReader, id: string): Promise<LoadedReport | null> {
   const row = await reader.report(id);
   if (!row?.assessment || !row.child) return null;
-  // Only the work the stored model shows today is signed (D-145: not the removed extra round's).
+  // Only the work the stored model shows is signed.
   const model = storedReportModel(row.model);
   const paths = (model.work ?? []).flatMap((w) => (w.image ? [w.image] : []));
-  const [workImages, findings] = await Promise.all([reader.sign(paths), findingsOf(reader, row.assessmentId)]);
+  const [workImages, { findings, book }] = await Promise.all([reader.sign(paths), findingsOf(reader, row, model)]);
   return {
     childId: row.childId,
     assessmentId: row.assessmentId,
@@ -278,6 +283,7 @@ export async function loadReportView(reader: ReportReader, id: string): Promise<
       model,
       workImages,
       findings,
+      bookOne: book,
     },
   };
 }

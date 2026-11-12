@@ -1,0 +1,85 @@
+{
+  "round": 681,
+  "date": "2026-11-11",
+  "route": "focused",
+  "phase": "handoff",
+  "decision": "Approve the required phone field, personal report email opening, sender name, and consent-aware inline calendar.",
+  "primary_axis": "The report email leads with the weak topic or with an invitation.",
+  "invariants": [
+    "Existing signup and report styles",
+    "Required phone without a hint",
+    "Topic-only email opening",
+    "No calendar request before optional cookie consent",
+    "Existing report unsubscribe behavior",
+    "Sample data only"
+  ],
+  "options": [
+    {
+      "id": "A",
+      "artifact": "preview.html",
+      "bet": "Name the weak topic first.",
+      "benefit": "The parent sees the reason for the call at once.",
+      "cost": "Repeats the topic in the invitation.",
+      "risk": "Requires clear evidence of a weak topic."
+    },
+    {
+      "id": "B",
+      "artifact": "preview.html",
+      "bet": "Start with the invitation.",
+      "benefit": "The opening is a direct question.",
+      "cost": "The topic follows the invitation.",
+      "risk": "The invitation can seem general."
+    }
+  ],
+  "recommendation": "A",
+  "approval": "approved by Savar, 2026-11-11",
+  "sender_name": "Cedric and Savar, co-founders of Unica Learning",
+  "calendar": "Illustration only. No live embed or booking.",
+  "source_head": "3b1e1290db8e7838297fa0513db5a642d3b18f62",
+  "sources": [
+    "DESIGN.md",
+    ".design/decisions.md",
+    "src/components/account.tsx",
+    "src/components/report-next.tsx",
+    "src/lib/report-email.ts",
+    "src/lib/results-deck.ts",
+    "src/lib/contact.ts",
+    "src/lib/consent.ts",
+    "src/lib/ad-tags.ts",
+    "src/components/site-analytics.tsx",
+    "https://calendly.com/help/calendly-cookie-management-and-banner"
+  ],
+  "implementation": "Complete. Hosted migration, owned-test-family Aside checks, 89 focused regressions, full test/lint/build gate, and Sol high source recheck passed. Await Savar merge.",
+  "render_checks": [
+    {
+      "width": 728,
+      "content_height": 2169,
+      "console_errors": 0,
+      "result": "Default A opening and accepted-cookie calendar show no visible clipping."
+    },
+    {
+      "width": 390,
+      "content_height": 3010,
+      "console_errors": 0,
+      "result": "Default A opening and accepted-cookie calendar show no visible clipping."
+    }
+  ],
+  "verification_limits": "HTML mockup only. Live Calendly, alternate-state interactions, actual signup, migration, report emails and product tests remain unverified.",
+  "vault_record": "Approval and current proof limits recorded. Final PR receipt to follow.",
+  "selected_option": "A",
+  "handoff_marker": "FAST_RESULTS_CALL_BUILD_PENDING",
+  "review_findings": [
+    "Clear developing topic excluded from opening: fixed, regression failed before and passes after.",
+    "Injected Phone line caused wrong redaction: fixed by passing stored phone directly, regression failed before and passes after."
+  ],
+  "verified_source_head": "4285ebf3268ca82f5aae5551e0f7b47b98bd10d7",
+  "final_gate": {
+    "test_files_passed": 649,
+    "tests_passed": 20595,
+    "tests_skipped": 1,
+    "eslint": "passed",
+    "build": "passed",
+    "log_limit": "Final build stdout was redirected to /dev/null by the gate worker. Full requested log was not saved. T3 command record and completed build artifact were checked."
+  },
+  "review": "Final Sol high source recheck passed. Two P2 regressions and TS2367 resolved."
+}

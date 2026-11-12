@@ -1,3 +1,4 @@
+import { SCAN_PENDING_WINDOW_MS } from "@/lib/scan-photo-active";
 // The in-memory store of the crop job, for tests: it keeps the same rules as the database's fence (fence_scan_object,
 // begin_scan_calibration, reopen_scan_calibration and finish_scan_calibration), with a clock the test passes in. The real policies are proved on the
 // hosted database by scripts/scan-crops-hosted.ts; this store cannot prove them.
@@ -23,7 +24,7 @@ export function memoryScanCropStore(o: { now: () => number }) {
   /** Runs between the bytes arriving and the file's commit, as a held upload does. */
   const hooks: { beforeCommit?: (part: string) => Promise<void> } = {};
 
-  const active = (p: MemoryScanPhoto) => p.expiresAt > o.now() && (p.state === "saved" || (p.state === "pending" && p.createdAt > o.now() - 23.5 * 3_600_000));
+  const active = (p: MemoryScanPhoto) => p.expiresAt > o.now() && (p.state === "saved" || (p.state === "pending" && p.createdAt > o.now() - SCAN_PENDING_WINDOW_MS));
   const own = (ref: PhotoRef) => { const p = photos.get(ref.photo); return p && p.parent === ref.parent ? p : null; };
 
   const store: ScanCropStore = {

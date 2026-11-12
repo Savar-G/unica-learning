@@ -1,0 +1,12 @@
+{
+  "round": "r-progress-preview-4",
+  "decision": "Lead with the outcome, then show how. Savar, 2026-11-11: 'Every kid is gonna do five days a week ... We predict Leah can reach x level by x date. And then we have to show how. We gotta lead with the outcome.'",
+  "invariants": ["one pace: 5 days a week, no pace switch", "the first line is 'We predict [name] can reach a [Grade N] level by [Month Year]'", "pages a day and minutes from D-186", "dates from the real level book counts, a book every 2 weeks", "no level ids shown to a parent"],
+  "primary_axis": "how the 'how' is shown: a route by grade (N), numbered steps under a prediction card (O), today and the goal side by side plus what Unica does (P)",
+  "options": [
+    { "id": "N", "artifact": "n-route.html", "bet": "Big sentence with the date highlighted, the plan in four numbers, then one column per grade on a time track", "benefit": "Typographic, calm, the route and its topics in one view", "cost": "Columns get narrow when a stage is short", "risk": "Reads as an editorial page, not a product card" },
+    { "id": "O", "artifact": "o-prediction-card.html", "bet": "One warm card: sentence, plan chips, a clean curve to a dated flag; numbered steps under it", "benefit": "The most 'product' look; the curve shows the climb at a glance", "cost": "A chart in the email must be an image", "risk": "The curve shape is a drawing, not data between the grade points" },
+    { "id": "P", "artifact": "p-before-after.html", "bet": "Real math today beside real math at the goal, then three steps: a workbook every 2 weeks, 8 pages a day, every page marked", "benefit": "A parent can picture the result and sees how Unica does it", "cost": "Example problems must come from real question templates", "risk": "One problem stands for a whole grade" }
+  ],
+  "recommendation": "P"
+}

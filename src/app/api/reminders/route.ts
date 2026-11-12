@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { linkOrigin } from "@/lib/account-server";
+import { sweepOpenCancelsNow } from "@/lib/plan-cancel-recovery-server";
 import { dueCardCount, duePlanReadCount, sweepCardsNow } from "@/lib/card-sweep-server";
 import { emailConfigProblem, pacedTransport } from "@/lib/email-delivery";
 import { resendTransport } from "@/lib/email-resend";
@@ -9,8 +10,13 @@ import { mayaWeeklyStore } from "@/lib/maya-weekly-email-store";
 import { dueMonthlyEmails, runMonthlyEmails } from "@/lib/monthly-summary-email";
 import { monthlySummaryEmailStore } from "@/lib/monthly-summary-email-store";
 import { reminderMessage, reminderStore } from "@/lib/reminder-store";
+import { retryReportsNow } from "@/lib/report-retry-server";
 import { REMINDER_KINDS, dueReminders, runReminders, type DueReminder } from "@/lib/reminders";
 import { newToken } from "@/lib/sign-in-link";
+import { runFirstPagesEmails } from "@/lib/first-pages-email";
+import { firstPagesEmailStore } from "@/lib/first-pages-email-store";
+import { firstPagesEmailEnabled, restartFirstPagesNow } from "@/lib/first-pages-server";
+import { stripe } from "@/lib/stripe";
 import { adminClient } from "@/lib/supabase-auth";
 import { createWorkbookScanMaintenanceServer, scanMaintenanceRelease } from "@/lib/workbook-scan-maintenance-server";
 
@@ -23,6 +29,11 @@ import { createWorkbookScanMaintenanceServer, scanMaintenanceRelease } from "@/l
 // the cron's 60-second request limit (timeout_milliseconds in migration add_reminder_cron). Also beside the emails, it brings
 // Stripe to each child's newest card (#554, src/lib/card-reconcile.ts) and reads each plan row that can still change, not read for 24 hours, again. All the card sweep's work ends 45 seconds after the run began
 // (SWEEP_END_MS in src/lib/card-sweep-server.ts), and the monthly emails' work 50 seconds after it (MONTHLY_END_MS).
+// Also beside the emails, it retries the report job of each finished test that still has no report, or whose report
+// email was refused (#771, src/lib/report-retry.ts): bounded retries, each started through the retry route, under one
+// signal that ends 40 seconds after the run began (REPORT_RETRY_END_MS in src/lib/report-retry-server.ts).
+// Last, the first pages' sample email (docs/first-pages.md), only with FIRST_PAGES_EMAIL_ENABLED "on", and (with
+// WORKBOOK_RUNNER "server") a restart of the first pages that stopped on the server; both end 52 seconds after the run began.
 // ?dry=1 counts what is due and sends and ends nothing.
 // The answer holds counts only, never a parent's details.
 
@@ -32,6 +43,8 @@ export const maxDuration = 60;
 const SEND_GAP_MS = 600;
 /** The monthly emails' work has ended this long after the run began, which leaves time to answer inside the 60-second limit; the next run does the rest. */
 const MONTHLY_END_MS = 50_000;
+/** No first pages email starts this long after the run began. */
+const FIRST_PAGES_END_MS = 52_000;
 
 function authorized(header: string | null, secret: string): boolean {
   const given = Buffer.from(header ?? "");
@@ -62,12 +75,14 @@ export async function POST(request: Request) {
   const origin = linkOrigin(request);
   let sweep: Promise<unknown> | null = null;
   let cards: Promise<unknown> | null = null;
+  let cancels: Promise<unknown> | null = null;
+  let reports: Promise<unknown> | null = null;
   try {
     if (new URL(request.url).searchParams.get("dry") === "1") {
       const maya = dueWeeklyEmails(await mayaWeeklyStore(admin).load(now), now).length;
       const monthly = dueMonthlyEmails(await monthlySummaryEmailStore(admin).load(now), now).length;
       const abandoned = (await sweepAbandonedCallsNow(admin, { dry: true })).due;
-      return Response.json({ ok: true, dry: true, due: byKind(dueReminders(await store.load(now), now)), maya, monthly, sweep: abandoned, cards: await dueCardCount(now), planReads: await duePlanReadCount() });
+      return Response.json({ ok: true, dry: true, due: byKind(dueReminders(await store.load(now), now)), maya, monthly, sweep: abandoned, cards: await dueCardCount(now), planReads: await duePlanReadCount(), reports: await retryReportsNow({ origin, startedAt: now, dry: true }) });
     }
     const scanEnv = {
       WORKBOOK_SCAN_PROGRESS_ENABLED: process.env.WORKBOOK_SCAN_PROGRESS_ENABLED,
@@ -93,6 +108,11 @@ export async function POST(request: Request) {
       },
     );
     cards = sweepCardsNow({ origin, startedAt: now, transport });
+    cancels = sweepOpenCancelsNow({ origin, startedAt: now, transport });
+    reports = retryReportsNow({ origin, startedAt: now, transport }).then((r) => {
+      if ("due" in r && r.due > 0) console.info("[report retry] run", JSON.stringify(r));
+      return r;
+    });
     const result = await runReminders(store, now, {
       newToken,
       message: (reminder, token, state) => reminderMessage(reminder, token, state, origin),
@@ -117,6 +137,19 @@ export async function POST(request: Request) {
       console.error("[monthly summary] run failed", e instanceof Error ? e.message : e);
       monthly = { error: "run_failed" };
     }
+    // The first pages: off unless switched on; a failure never hides the other results.
+    let firstPages: unknown;
+    try {
+      const restarted = await restartFirstPagesNow(origin);
+      const emails = await runFirstPagesEmails(firstPagesEmailStore(admin, stripe()), {
+        enabled: firstPagesEmailEnabled(), origin, transport, newToken, inTime: () => Date.now() < now + FIRST_PAGES_END_MS,
+      });
+      firstPages = { restarted, emails };
+      if (!("off" in emails) && emails.due > 0) console.info("[first pages email] run", JSON.stringify(emails));
+    } catch (e) {
+      console.error("[first pages] run failed", e instanceof Error ? e.message : e);
+      firstPages = { error: "run_failed" };
+    }
     let scans: Awaited<ReturnType<NonNullable<typeof scan>["run"]>> | { error: "run_failed" } | undefined;
     if (scan) {
       try { scans = await scan.run({ now: () => Date.now(), endAt: now + 55_000 }); }
@@ -125,13 +158,15 @@ export async function POST(request: Request) {
         scans = { error: "run_failed" };
       }
     }
-    return Response.json({ ok: true, ...result, maya, monthly, sweep: await sweep, cards: await cards,
+    return Response.json({ ok: true, ...result, maya, monthly, firstPages, sweep: await sweep, cards: await cards, cancels: await cancels, reports: await reports,
       ...(scans ? { scans } : {}) });
   } catch (e) {
     console.error("[reminders] run failed", e instanceof Error ? e.message : e);
     // The sweep finishes before the answer, so the function is not stopped in the middle of a call's end.
     await sweep;
     await cards;
+    await cancels;
+    await reports;
     return Response.json({ ok: false, error: "run_failed" }, { status: 500 });
   }
 }

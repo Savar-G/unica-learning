@@ -2,6 +2,14 @@
 import { BC_SKILL_MAP, MISCONCEPTIONS, type FactFamilyId } from "@/lib/assessment";
 import { UNIT_TITLES } from "@/lib/workbook-titles";
 import { feelingLabel, goalLabel, interestLabel, styleLabel, weeklyTimeLabel } from "@/lib/learning-style";
+
+// The plan stores this text, and stored plans and run fingerprints must not change when a label on a parent screen
+// changes (D-325 renamed the goal and feeling answers on the signup step). The values the learning card used before
+// D-325 keep their old short words here; a value added by D-325 uses its label from the signup step.
+const PLAN_FEELING_WORDS: Partial<Record<Parameters<typeof feelingLabel>[0], string>> = { enjoys: "Enjoys it", okay: "It's okay", avoids: "Avoids it" };
+const PLAN_GOAL_WORDS: Partial<Record<Parameters<typeof goalLabel>[0], string>> = { catch_up: "Catch up", keep_up: "Keep up", get_ahead: "Get ahead" };
+const planFeelingLabel = (id: Parameters<typeof feelingLabel>[0]) => PLAN_FEELING_WORDS[id] ?? feelingLabel(id);
+const planGoalLabel = (id: Parameters<typeof goalLabel>[0]) => PLAN_GOAL_WORDS[id] ?? goalLabel(id);
 import type { WorkbookPlan } from "@/lib/workbook-plan";
 import type { BookSignals, BookSoftSource, SignalId, SignalTrace } from "@/lib/workbook-signals";
 import { bookSignals } from "@/lib/workbook-signals";
@@ -119,7 +127,7 @@ function values(s: BookSignals): Record<SignalId, string> {
     S15: b ? `${b.helpLikely ? "Help likely" : "Help not likely"}; ${b.helpFlags} warning signs` : "No help information",
     S16: "Excluded from planning",
     S17: `Interests: ${list(s.preferences.interests.map(interestLabel), "not answered")}. Learns from: ${list(s.preferences.styles.map(styleLabel), "not answered")}`,
-    S18: `Feeling: ${s.parent.feeling ? feelingLabel(s.parent.feeling) : "not answered"}. Goal: ${s.parent.goal ? goalLabel(s.parent.goal) : "not answered"}. Weekly time: ${s.parent.weeklyTime ? weeklyTimeLabel(s.parent.weeklyTime) : "not answered"}`,
+    S18: `Feeling: ${s.parent.feeling ? planFeelingLabel(s.parent.feeling) : "not answered"}. Goal: ${s.parent.goal ? planGoalLabel(s.parent.goal) : "not answered"}. Weekly time: ${s.parent.weeklyTime ? weeklyTimeLabel(s.parent.weeklyTime) : "not answered"}`,
     S19: aiSource(s.soft.sources?.test),
     S20: aiSource(s.soft.sources?.learning),
     S21: s.report.howWeHelp ? ({ ahead: "Move ahead", behind: "Catch up", "on-grade": "Work at school grade" })[s.report.howWeHelp] : "No report recommendation supplied",
@@ -153,7 +161,9 @@ export function workbookWhy(plan: WorkbookPlan, fallback?: BookSignals, placemen
     P4: "Start at the working level. Teach the lower weak topic alongside it for two books.",
     P5: `The measured working level is ${s.working ? grade(s.working.working) : "unavailable"}.${s.weak.length === 0 ? " No topic at or below school grade is weak." : " Early gaps below it do not lower the start."}`,
     P9: "Kindergarten starts at the first level.",
+    I1: "A team instruction sets this level. Weak topics below it get review checks instead of a lower start.",
   };
+  const asked = plan.instructions?.instructions;
   const pages: WorkbookWhy["pages"] = [{ label: "Cover", choices: [`${s.working && s.working.working > s.grade && s.adjustments.trustedAboveGrade ? "Move ahead" : plan.units.support || s.clearlyWeak.length ? "Build weak topics step by step" : "Work at the measured level"} with taught topics ${topicList([...new Set(plan.newSteps.map(step => step.unit))])}. The cover wording is added when the book is made.`] }];
   for (const day of plan.days) for (const page of day.pages) {
     const choices: string[] = [];
@@ -165,17 +175,21 @@ export function workbookWhy(plan: WorkbookPlan, fallback?: BookSignals, placemen
       if (s.preferences.interests.length) choices.push(`Story settings requested: ${s.preferences.interests.map(interestLabel).join(", ")}.`);
       if (s.preferences.styles.length) choices.push(`Ways of learning requested: ${s.preferences.styles.map(styleLabel).join(", ")}.`);
     }
-    if (s.hasAssessment && s.adjustments.stretchShift > 0) choices.push(`Harder work starts ${s.adjustments.stretchShift} days earlier because of the working level and test results.`);
+    if (s.hasAssessment && s.adjustments.stretchShift > 0) choices.push(`Harder work starts ${s.adjustments.stretchShift} days earlier because ${asked?.difficulty === "harder" ? "the team asked for harder work" : "of the working level and test results"}.`);
     if (day.shortStories && page.parts.some(p => p.kind === "word-problems" || p.kind === "picture-stories")) choices.push("Shorter stories follow the recorded read-aloud use.");
     if (s.hasAssessment && page.parts.some(p => p.kind === "new-idea")) choices.push(`Picture support stays through Day ${s.adjustments.picturesThrough}.`);
     for (const part of page.parts) {
       if (part.step && s.weak.some(w => w.code === part.step!.unit)) choices.push(`Teach weak topic ${topic(part.step.unit)}, step ${part.step.step}.`);
-      if (part.weakChecks?.length) choices.push(`Check early gaps: ${part.weakChecks.map(c => `${topic(c.unit)}, ${c.items} questions`).join("; ")}.`);
+      const requested = part.weakChecks?.filter(c => asked?.addReview.includes(c.unit) || asked?.teachLess.includes(c.unit)) ?? [];
+      const gaps = part.weakChecks?.filter(c => !requested.includes(c)) ?? [];
+      if (gaps.length) choices.push(`Check early gaps: ${gaps.map(c => `${topic(c.unit)}, ${c.items} questions`).join("; ")}.`);
+      if (requested.length) choices.push(`Review the team asked for: ${requested.map(c => `${topic(c.unit)}, ${c.items} questions`).join("; ")}.`);
       if (part.templateDifficulty === "hard") choices.push("Challenge uses the hardest allowed questions from the first day.");
       if (part.extra) choices.push("This block is Extra to reduce the required time.");
       if (part.preferStandards?.length) choices.push(`Review or Challenge prefers secure topics ${topicList(part.preferStandards)}. AI can choose only between equal allowed topics.`);
       if (plan.units.support && part.step?.unit === plan.units.support) choices.push(`Teach lower topic ${topic(plan.units.support)} alongside the working level.`);
     }
+    if (page.weakPractice && asked?.teachMore.includes(page.weakPractice)) choices.push(`Extra practice page on ${topic(page.weakPractice)}: the team asked to teach more of it.`);
     if (day.time && (s.parent.weeklyTime || s.behaviour?.lateDrop || page.parts.some(p => p.extra))) choices.push(`Required time for the day: ${day.time.required} minutes; target: ${day.time.target} minutes. This is a planning estimate.`);
     pages.push({ label: `Day ${day.day}, page ${page.number}`, choices: [...new Set(choices.length ? choices : ["Same as a standard book"])] });
   }

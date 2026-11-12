@@ -490,6 +490,12 @@ type MayaTurn = Extract<TraceTurn, { kind: "maya" }>;
 const mayaTurns = (t: MayaTrace) => t.turns.filter((x): x is MayaTurn => x.kind === "maya");
 const accepted = (m: MayaTurn) => (m.output ? m.attempts.at(-1) : undefined);
 const proposalOf = (m: MayaTurn) => (accepted(m)?.proposal ?? {}) as { act?: Act; level?: number; step?: string; reading?: { help?: string | null; stop?: boolean | null; answers?: { value: AnswerValue; step: string; problem?: string | null }[] | null } | null };
+/** D-326 uses two approved lines together, which can exceed the short-turn limit. */
+export function isBackupClose(m: MayaTurn): boolean {
+  if (m.output?.act !== "close" || m.output.board.length !== 0) return false;
+  const parts = (accepted(m)?.proposal as { parts?: { line?: string }[] } | null)?.parts;
+  return parts?.length === 2 && parts[0].line === "close.stuck" && parts[1].line === "close.together";
+}
 
 /** The judge's own reading of a claim turn that is no miss: a help request, doubt or a question (D-199, #737 review). */
 const CLAIM_NOT_A_MISS = /\?|\b(?:stuck|help|show me|confused|i think|i guess|i believe|maybe|probably|might be|not sure)\b/i;
@@ -624,7 +630,7 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
     }
     if (event.kind !== "maya" || !event.output || event.output.act === "safety") continue;
     const said = event.output.say.join(" ");
-    if (gateWordCount(said) > (shorter || (b.grade ?? 4) <= 3 ? 25 : 45)) fail("flow_mismatch", "Maya exceeded the spoken word limit");
+    if (!isBackupClose(event) && gateWordCount(said) > (shorter || (b.grade ?? 4) <= 3 ? 25 : 45)) fail("flow_mismatch", "Maya exceeded the spoken word limit");
     if (noBoard && (event.output.board.length || /\b(?:board|look|watch|see|show me|follow along)\b/i.test(said))) fail("flow_mismatch", "Visual help after noBoard");
     if (shortNext) {
       if (said !== "What part should we try again?") fail("flow_mismatch", "The shorter reply was not the single code action");

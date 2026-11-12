@@ -158,3 +158,7 @@ A lost commit response has an unknown outcome. The job keeps its files because t
 Each finished review page is checkpointed under the batch lease before the next page starts. A server call lets go after two minutes, then uses the existing protected resume route. The next call reuses those pages and their images. A worker restart can also read them. It does not ask the writer or render those pages again. Failed pages are checkpointed too; their comments can be edited and submitted in a later batch.
 
 The review schema was applied through the Management API in this order: `workbook_edit`, `workbook_comments`, `workbook_comment_checks`, `workbook_comment_results`, `workbook_comment_resume`, `workbook_comment_send`. The matching SQL files are under `supabase/migrations/`. Keep this order when setting up another database. The repository uses date-only migration filenames; alphabetical filename order is not the dependency order.
+
+## First pages
+
+The worker also makes the first pages of Workbook 1 that wait for the Mac (`public.workbook_first_pages` with runner `mac`, docs/first-pages.md), after the runs and edits of its queue. They use the same AI settings. Nothing queues them while `FIRST_PAGES_ENABLED` is off, except an admin's one test.

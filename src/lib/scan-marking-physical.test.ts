@@ -188,19 +188,30 @@ describe("physical plans, journals and accounting", () => {
       fetch: async (_url, init) => { fetched++; return response(input.set.photos[0].photo, modelOf(init)); } })).rejects.toThrow("fatal");
     expect(fetched).toBe(stage === "reserved" ? 0 : 1); expect([...mem.holds.values()]).toEqual([null]); expect(mem.settles()).toBe(0);
   });
-  it("stops unknown usage and counts malformed output as a schema failure", async () => {
-    const unknown = await setAndPlan(), mem = memoryBudget(); let fetched = 0;
-    await expect(executePhysical({ ...execution(unknown, mem), fetch: async () => { fetched++; return Response.json({ error: "unknown upstream outcome" }, { status: 503 }); } })).rejects.toThrow(/unknown-usage|fatal/);
-    expect(fetched).toBe(1); expect([...mem.holds.values()]).toEqual([null]);
-    const lost = await setAndPlan(), lostBudget = memoryBudget(); let lostCalls = 0;
-    await expect(executePhysical({ ...execution(lost, lostBudget), fetch: async () => { lostCalls++; throw Error("local lost response"); } })).rejects.toThrow("unknown-usage");
-    expect(lostCalls).toBe(1); expect([...lostBudget.holds.values()]).toEqual([null]);
-    expect(JSON.parse(await readFile(resolve(lost.out, "report.json"), "utf8"))).toMatchObject({ reconciliationRequired: true, heldMicros: 100_000, spentOrHeldMicros: 100_000 });
-    const invalid = await setAndPlan(), budget = memoryBudget();
-    const results = await executePhysical({ ...execution(invalid, budget), fetch: async (_url, init) => response(invalid.set.photos[0].photo, modelOf(init), { readings: [] }) });
-    const invalidReport = physicalReport(invalid.set, results, evidences(), invalid.run);
-    expect(invalidReport.passed).toBe(false);
-    expect(invalidReport.models[1]).toMatchObject({ schemaFailures: 2, schemaUnvalidated: 2 });
+  // #816: each case gets its own fresh folder (the execution marker makes a folder single-use) and its own test, so
+  // three fixture-and-run cycles of disk work never share one time limit. The clock and the wait are injected, so no
+  // case reads wall time, and none of them may wait.
+  describe("stops unknown usage and counts malformed output as a schema failure", () => {
+    const stillClock = () => { const waits: number[] = []; return { waits, now: () => 1000, wait: async (ms: number) => { waits.push(ms); } }; };
+    it("stops an unknown 503 outcome and keeps its hold", async () => {
+      const unknown = await setAndPlan(), mem = memoryBudget(), clock = stillClock(); let fetched = 0;
+      await expect(executePhysical({ ...execution(unknown, mem), now: clock.now, wait: clock.wait, fetch: async () => { fetched++; return Response.json({ error: "unknown upstream outcome" }, { status: 503 }); } })).rejects.toThrow(/unknown-usage|fatal/);
+      expect(fetched).toBe(1); expect([...mem.holds.values()]).toEqual([null]); expect(clock.waits).toEqual([]);
+    });
+    it("stops a lost response and reports its hold for reconciliation", async () => {
+      const lost = await setAndPlan(), lostBudget = memoryBudget(), clock = stillClock(); let lostCalls = 0;
+      await expect(executePhysical({ ...execution(lost, lostBudget), now: clock.now, wait: clock.wait, fetch: async () => { lostCalls++; throw Error("local lost response"); } })).rejects.toThrow("unknown-usage");
+      expect(lostCalls).toBe(1); expect([...lostBudget.holds.values()]).toEqual([null]); expect(clock.waits).toEqual([]);
+      expect(JSON.parse(await readFile(resolve(lost.out, "report.json"), "utf8"))).toMatchObject({ reconciliationRequired: true, heldMicros: 100_000, spentOrHeldMicros: 100_000 });
+    });
+    it("counts malformed output as a schema failure", async () => {
+      const invalid = await setAndPlan(), budget = memoryBudget(), clock = stillClock();
+      const results = await executePhysical({ ...execution(invalid, budget), now: clock.now, wait: clock.wait, fetch: async (_url, init) => response(invalid.set.photos[0].photo, modelOf(init), { readings: [] }) });
+      expect(clock.waits).toEqual([]);
+      const invalidReport = physicalReport(invalid.set, results, evidences(), invalid.run);
+      expect(invalidReport.passed).toBe(false);
+      expect(invalidReport.models[1]).toMatchObject({ schemaFailures: 2, schemaUnvalidated: 2 });
+    });
   });
   it("retains a clean 429 hold, waits 15 minutes and retries the pair only once", async () => {
     const input = await setAndPlan(), mem = memoryBudget(); let now = 1000, fetched = 0; const waits: number[] = [];
@@ -544,6 +555,9 @@ describe("fixed 40 set in the same paid step", () => {
       twoWays: { items: 2, clearItems: 2, clearUnsure: team, clearUnsureRate: TWO_WAYS_METHOD_MARKS ? 0 : 1 } });
     const text = physicalFixedSideBySide(report);
     for (const piece of ["v8", "v7", "Sonnet 5.5", "Terra 6.1", "0/218", "1/219", "2W unsure", "Unsure+team", `0/${18 - team} 0.0%`, `${team}/18 ${(team / 18 * 100).toFixed(1)}%`, "1/219 0.5%"]) expect(text).toContain(piece);
+    const v7Lines = text.split("\n").filter(line => line.includes("v7") && line.includes("1/219"));
+    expect(v7Lines).toHaveLength(2);
+    for (const line of v7Lines) expect(line.match(/n\/a/g)).toHaveLength(2);
     if (!TWO_WAYS_METHOD_MARKS) expect(text).toContain("reads 100% while the method switch is off");
     expect(text.split("\n")[0]).toBe(team ? `${team} items went to the team: two-ways method marking is off.` : "0 items went to the team.");
   });

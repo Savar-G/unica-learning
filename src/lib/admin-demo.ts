@@ -91,9 +91,9 @@ export function demoRows(now: Date): DashboardRows {
       if (expired) email("come_back", startedMs + 8 * 24 * H, tid);
       continue;
     }
-    const report: RawReport = { id: id("demo-report"), created_at: iso(finishedMs + 120_000), assessment_id: tid, parent_id: pid, child_id: kid.id, emailed_at: null, email_error: null, alerted_at: iso(finishedMs + 150_000), alert_error: null, email_clicks: 0, email_first_clicked_at: null };
+    const report: RawReport = { id: id("demo-report"), created_at: iso(finishedMs + 120_000), assessment_id: tid, parent_id: pid, child_id: kid.id, emailed_at: null, email_id: null, email_error: null, alerted_at: iso(finishedMs + 150_000), alert_error: null, email_clicks: 0, email_first_clicked_at: null };
     if (r() < 0.04) report.email_error = "Resend: 500 internal error";
-    else report.emailed_at = iso(finishedMs + 140_000);
+    else Object.assign(report, { emailed_at: iso(finishedMs + 140_000), email_id: `re_${report.id}` });
     if (report.emailed_at && rd() < 0.6) Object.assign(report, { email_clicks: rd() < 0.6 ? 1 : 3, email_first_clicked_at: iso(finishedMs + (0.5 + rd() * 20) * H) });
     out.reports.push(report);
     if (report.emailed_at) deliver({ email_log_id: null, report_id: report.id, report_email: "parent" }, finishedMs + 140_000);
@@ -133,7 +133,7 @@ export function demoRows(now: Date): DashboardRows {
 export function demoEmailCopy(e: EmailEvent, f: Family | undefined): EmailCopyView | null {
   if (!f || (e.kind !== "start" && e.kind !== "start_followup" && e.kind !== "continue" && e.kind !== "come_back")) return null;
   const child = e.childName ?? f.children[0]?.name ?? "Maya";
-  const common = { parentName: f.name, childName: child, url: "https://unicalearning.com/account/start/demo?reminder=" + e.kind, unsubscribeUrl: "https://unicalearning.com/unsubscribe?t=hidden", postal: f.postal, total: 30 };
+  const common = { parentName: f.name, childName: child, url: "https://unicalearning.com/account/start/demo?reminder=" + e.kind, unsubscribeUrl: "https://unicalearning.com/unsubscribe?t=hidden", postal: f.postal };
   const mail = e.kind === "continue"
     ? reminderEmail({ ...common, kind: "continue", answered: 12, resumeUntil: Date.parse(e.at) + 23 * 3_600_000 })
     : reminderEmail({ ...common, kind: e.kind });

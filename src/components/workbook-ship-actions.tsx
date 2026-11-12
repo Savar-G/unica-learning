@@ -14,9 +14,10 @@ async function post(url: string, body: unknown): Promise<{ status: number; resul
 }
 
 /** "Approve for print" on a run's draft, at the revision the admin sees. */
-export function ApproveDraft({ runId, revision, workbookPath, child }: { runId: string; revision: number; workbookPath: string; child: string }) {
+export function ApproveDraft({ runId, revision, workbookPath, child, pending }: { runId: string; revision: number; workbookPath: string; child: string; pending: number }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [askPending, setAskPending] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   async function approve() {
     if (busy || !window.confirm(`Approve this version of ${child}'s workbook for print? It is stored as the workbook to print, and any later edit needs approval again.`)) return;
@@ -31,7 +32,12 @@ export function ApproveDraft({ runId, revision, workbookPath, child }: { runId: 
     finally { setBusy(false); }
   }
   return <>
-    <button type="button" className="btn adm-btn" onClick={approve} disabled={busy}>{busy ? "Approving..." : "Approve for print"}</button>
+    <button type="button" className="btn adm-btn" onClick={() => pending ? setAskPending(true) : void approve()} disabled={busy}>{busy ? "Approving..." : `Approve version ${revision} for print`}</button>
+    {askPending && <div role="dialog" aria-modal="true" aria-labelledby="unsent-comments-title" className="adm-note adm-wb-full">
+      <p id="unsent-comments-title">There {pending === 1 ? "is 1 unsent comment" : `are ${pending} unsent comments`}. Send {pending === 1 ? "it" : "them"} first?</p>
+      <button type="button" className="btn adm-btn" onClick={() => setAskPending(false)}>Return to comments</button>{" "}
+      <button type="button" className="btn adm-btn" onClick={() => { setAskPending(false); void approve(); }}>Continue to approval</button>
+    </div>}
     {errors.length > 0 && <div role="alert" className="adm-note adm-wb-full">Not approved: <ul className="adm-wb-list">{errors.map((e) => <li key={e}>{e}</li>)}</ul></div>}
   </>;
 }
@@ -54,7 +60,7 @@ export function MarkWorkbook({ workbookId, to, number }: { workbookId: string; t
       const { status, result } = await post(`/api/admin/workbooks/${workbookId}/status`, { to });
       if (!result) { setError(status === 404 ? "This workbook is unavailable or your admin access has ended." : LOST); return; }
       if (result.ok) { router.refresh(); return; }
-      setError(typeof result.reason === "string" ? `Not changed: ${result.reason}.` : "The database is unavailable. Try again later.");
+      setError(typeof result.reason === "string" ? (result.reason.endsWith(".") ? result.reason : `Not changed: ${result.reason}.`) : "The database is unavailable. Try again later.");
     } catch { setError(LOST); }
     finally { setBusy(false); }
   }

@@ -1,0 +1,31 @@
+name: SEO guard
+
+# D-319: checks the live site every day and after each production deploy (scripts/seo-guard.mjs):
+# robots.txt, the sitemap pages (200, no noindex, self-canonical, one H1), the search bots and the www redirect.
+# A failed run is the alert: GitHub emails the repository owner.
+on:
+  schedule:
+    - cron: '5 16 * * *'
+  deployment_status:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    if: github.event_name != 'deployment_status' || (github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Production')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        timeout-minutes: 1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        timeout-minutes: 1
+        with:
+          node-version: '22.23.1'
+          package-manager-cache: false
+      - run: node scripts/seo-guard.mjs
+        timeout-minutes: 8

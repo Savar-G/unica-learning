@@ -110,7 +110,7 @@ describe("bounded workbook scan maintenance", () => {
       return true;
     };
     await expect(runWorkbookScanMaintenance(f.deps, f.options)).rejects.toThrow("synthetic permission read failure");
-    expect(f.events).toEqual(["unseeded", "due", "reconcile"]);
+    expect(f.events).toEqual(["unseeded", "due"]);
     expect(f.recorded).toEqual([]);
     expect(f.sends).toEqual([]);
   });
@@ -124,7 +124,7 @@ describe("bounded workbook scan maintenance", () => {
     f.deps.clocks.record = async request => { attempted.push(request.workbookId); throw new Error("synthetic lost write"); };
     await expect(runWorkbookScanMaintenance(f.deps, f.options)).rejects.toThrow("synthetic lost write");
     expect(attempted).toEqual([book(1).workbookId]);
-    expect(f.events).toEqual(["unseeded", "due", "reconcile"]);
+    expect(f.events).toEqual(["unseeded", "due", "reconcile", "reconcile"]);
     expect(f.sends).toEqual([]);
   });
 

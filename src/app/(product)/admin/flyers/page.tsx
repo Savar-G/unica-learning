@@ -1,4 +1,4 @@
-import { AdminFrame } from "@/components/admin";
+import { AdminFrame } from "@/components/admin-frame";
 import { FlyersView } from "@/components/admin-flyers";
 import { loadFlyers } from "@/lib/flyer-store";
 import { ADMIN_PATH } from "@/lib/admin-view";
@@ -12,7 +12,7 @@ export const metadata = pageMetadata({ path: PATH, title: "Admin: flyers", descr
 export default async function AdminFlyers({ searchParams }: PageProps<"/admin/flyers">) {
   const d = await loadFlyers(await searchParams);
   return (
-    <AdminFrame email={d.who} section="flyers" title="Flyers: A/B test">
+    <AdminFrame email={d.who} title="Flyers" lead="Flyer A against flyer B: scans, signups and cards." testNote={d.withTests && "Test families are showing, and on this page they are counted in the numbers."}>
       <FlyersView d={d} />
     </AdminFrame>
   );

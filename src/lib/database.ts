@@ -1,5 +1,6 @@
 import type { Database as Generated, Json } from "@/lib/database.types";
 import type { AdStep } from "@/lib/ad-visit-steps";
+import type { MathHelp } from "@/lib/learning-style";
 import type { AnswerChange } from "@/lib/answer-events";
 import type { EventResult, EventSource, EvidenceKind } from "@/lib/learning-events";
 import type { QuestionRef } from "@/lib/question-package";
@@ -8,6 +9,7 @@ import type { KnownPlan } from "@/lib/parent-plan";
 import type { LogKind, LogStatus } from "@/lib/reminders";
 import type { PlanId } from "@/lib/site";
 import type { ScanCalibrationResult } from "@/lib/scan-crops";
+import type { ScanBlockedReason, ScanCalibrationState, ScanJobState, ScanPhotoState } from "@/lib/scan-states";
 import type { TestDevice } from "@/lib/test-context";
 import type { StoredReview } from "@/lib/work-review";
 import type { WorkbookStatus } from "@/lib/workbook-content";
@@ -44,7 +46,7 @@ type ColumnTypes = KnownColumns<{
   assessments: { status: AttemptStatus; province: Province; route: Route | null; stage3_route: Stage3Route | null; help: HelpAnswer | null; test: StoredTest; placement: Placement | null; device: TestDevice | null };
   card_setups: { plan: PlanId };
   child_plan_states: { kind: KnownPlan["kind"] };
-  children: { province: Province };
+  children: { province: Province; math_help: MathHelp | null };
   email_log: { kind: LogKind; status: LogStatus | null };
   learning_events: { source: EventSource; question_source: QuestionRef["source"]; result: EventResult; evidence_kind: EvidenceKind | null };
   maya_calls: {
@@ -62,7 +64,9 @@ type ColumnTypes = KnownColumns<{
   reports: { model: ReportModel };
   skill_state_history: { state: SkillState; reason: SkillStateReason; evidence_source: SkillEvidence };
   work_reviews: { kind: StoredReview["kind"]; confidence: StoredReview["confidence"] };
-  scan_calibrations: { state: "running" | "ready" | "refused"; result: ScanCalibrationResult | null };
+  scan_calibrations: { state: ScanCalibrationState; result: ScanCalibrationResult | null };
+  scan_photos: { state: ScanPhotoState };
+  scan_marking_jobs: { state: ScanJobState; blocked_reason: ScanBlockedReason | null };
   workbooks: { status: WorkbookStatus; print_manifest: ScanManifest | null };
   workbook_pages: { print_contract: PagePrintContract | null };
   workbook_questions: { regions: PrintedRegion[] | null; teaching: TeachingContext | null };
@@ -110,6 +114,10 @@ type NullArgs = KnownArgs<{
   propose_workbook_scan_inactivity: "p_activity";
   finish_workbook_scan_reminder: "p_email_id";
   submit_feedback: "p_child";
+  // A Day 7 or backstop claim has no admin, and the admin action has no claim; automatic admission has no actor.
+  claim_next_book_snapshot: "p_trigger" | "p_book" | "p_actor" | "p_email";
+  admit_next_book_run: "p_by" | "p_email";
+  retake_next_book_snapshot: "p_email";
   scan_marking_command: "p_parent" | "p_photo" | "p_token";
   parent_explanation_command: "p_parent" | "p_photo" | "p_token";
   save_marked_child_profile: "p_assessment" | "p_expected";
@@ -135,9 +143,7 @@ type NullArgs = KnownArgs<{
   complete_test: "p_help";
   create_family: "p_postal";
   // Paging: null asks for the first page.
-  family_deletion_candidates: "after_id";
   family_retention_candidates: "after_id";
-  finish_booking_signup: "customer";
   // A parent's demo minutes have no child (#330).
   grant_maya_minutes: "p_child";
   reserve_maya_spend: "p_parent" | "p_child" | "p_call" | "p_week" | "p_week_cap";

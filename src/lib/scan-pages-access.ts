@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
-import { childPlanAccess, familyPlanAccess } from "@/lib/plan-access";
+import { childPlanAccess, familyPlanAccess, type PlanAccess, type PlanAccessDeps } from "@/lib/plan-access";
 import { adminClient } from "@/lib/supabase-auth";
 
 /** A family marked in `test_accounts` or a user in `admin_users`, read on each call. No secret key, or a failed read, is not marked. */
@@ -18,14 +18,47 @@ export async function markedFamily(parent: string, db: SupabaseClient<Database> 
   } catch { return false; }
 }
 
+/**
+ * The access answers of ONE request, each read once and then reused by the checks of that request: whether the family is
+ * marked (markedFamily) and each child's stored plan (childPlanAccess), for the one secret-key client `db`. A read through
+ * another client, with a signal or with a clock goes to the database as before. Make a new one for each request and
+ * never keep it: the next request reads again, so a plan change or a removed test mark counts at once. Only for checks
+ * that run together at the start of a request (the scan stack poll); a check made again after long work reads again.
+ */
+export interface ScanAccessReads {
+  marked(parent: string, db: SupabaseClient<Database> | null): Promise<boolean>;
+  childPlan(input: { parentId: string; childId: string }, deps?: PlanAccessDeps): Promise<PlanAccess>;
+}
+
+export function scanAccessReads(db: SupabaseClient<Database> | null): ScanAccessReads {
+  const marked = new Map<string, Promise<boolean>>();
+  const plans = new Map<string, Promise<PlanAccess>>();
+  return {
+    marked(parent, client) {
+      if (client !== db) return markedFamily(parent, client);
+      let read = marked.get(parent);
+      if (!read) marked.set(parent, read = markedFamily(parent, client));
+      return read;
+    },
+    childPlan(input, deps = {}) {
+      if (deps.db !== db || deps.now) return childPlanAccess(input, deps);
+      const key = `${input.parentId}\n${input.childId}`;
+      let read = plans.get(key);
+      if (!read) plans.set(key, read = childPlanAccess({ parentId: input.parentId, childId: input.childId }, { db }));
+      return read;
+    },
+  };
+}
+
 /** The release with no plan: the exact value `on`, or a verified test family or admin. It covers every child of the family. */
 export async function scanReleased(
   parent: string,
   db: SupabaseClient<Database> | null = adminClient(),
   env: Readonly<Record<string, string | undefined>> = process.env,
+  reads?: ScanAccessReads,
 ): Promise<boolean> {
   if (env.SCAN_PAGES_ENABLED === "on") return true;
-  return markedFamily(parent, db);
+  return reads ? reads.marked(parent, db) : markedFamily(parent, db);
 }
 
 /**
@@ -36,16 +69,19 @@ export async function scanPagesAccess(
   parent: string,
   db: SupabaseClient<Database> | null = adminClient(),
   env: Readonly<Record<string, string | undefined>> = process.env,
+  reads?: ScanAccessReads,
 ): Promise<boolean> {
-  return await scanReleased(parent, db, env) || (await familyPlanAccess({ parentId: parent }, { db })).open;
+  return await scanReleased(parent, db, env, reads) || (await familyPlanAccess({ parentId: parent }, { db })).open;
 }
 
-/** Scanning for one child: the release, or this child's own open plan. Never cached. */
+/** Scanning for one child: the release, or this child's own open plan. Never cached across requests (`reads`: one request's answers). */
 export async function scanChildAccess(
   parent: string,
   child: string,
   db: SupabaseClient<Database> | null = adminClient(),
   env: Readonly<Record<string, string | undefined>> = process.env,
+  reads?: ScanAccessReads,
 ): Promise<boolean> {
-  return await scanReleased(parent, db, env) || (await childPlanAccess({ parentId: parent, childId: child }, { db })).open;
+  const plan = reads ? reads.childPlan.bind(reads) : childPlanAccess;
+  return await scanReleased(parent, db, env, reads) || (await plan({ parentId: parent, childId: child }, { db })).open;
 }

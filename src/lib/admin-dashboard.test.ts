@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { activities, buildDashboard, buildFamilies, clicksText, deliveryLine, emailFailed, dayKey, monthlyAmount, pickRange, rangeDays, shiftDay, type DashboardRows, type RawEmail, type RawSubscription } from "@/lib/admin-dashboard";
+import { LOG_KINDS } from "@/lib/email-log-kinds";
+import { familyPlanWords } from "@/lib/family-plan-words";
+import { EMAIL_KINDS, STAGE_ACTION, activities, buildDashboard, buildFamilies, clickable, clicksText, deliveryLine, emailFailed, dayKey, monthlyAmount, pickRange, rangeDays, shiftDay, type DashboardRows, type RawEmail, type RawSubscription } from "@/lib/admin-dashboard";
 
 // 2026-10-12 19:00 Pacific (PDT, UTC-7)
 const NOW = new Date("2026-10-13T02:00:00Z");
@@ -99,7 +101,7 @@ describe("emails", () => {
     children: [child("k1", "a")],
     tests: [test("t1", "a", "k1", ago(9), ago(5))],
     reports: [
-      { id: "r1", created_at: ago(5), assessment_id: "t1", parent_id: "a", child_id: "k1", emailed_at: null, email_error: "Resend 500", alerted_at: ago(5), alert_error: null, email_clicks: 0, email_first_clicked_at: null },
+      { id: "r1", created_at: ago(5), assessment_id: "t1", parent_id: "a", child_id: "k1", emailed_at: null, email_id: null, email_error: "Resend 500", alerted_at: ago(5), alert_error: null, email_clicks: 0, email_first_clicked_at: null },
     ],
     emails: [email("e1", "a", "start", ago(9, 1)), email("e2", "a", "continue", ago(8), "failed"), email("e3", "a", "unsubscribe", ago(7), null)],
   });
@@ -122,6 +124,22 @@ describe("emails", () => {
     expect(row("continue")).toMatchObject({ sent: 0, failed: 1, last: null });
     expect(row("report")).toMatchObject({ sent: 0, failed: 1 });
     expect(d.needs.map((n) => n.title)).toContain("Email failed");
+  });
+
+  // B13: emailed_at is the claim time, so only the email id proves the report email went (report-row-ledger.ts).
+  it("shows a report email as sent only when it has an email id, and an unknown send as unknown", () => {
+    const report = (id: string, over: object) => ({ id, created_at: ago(5), assessment_id: "t1", parent_id: "a", child_id: "k1", emailed_at: ago(5), email_id: null, email_error: null, alerted_at: ago(5), alert_error: null, email_clicks: 0, email_first_clicked_at: null, ...over });
+    const d = rows({
+      parents: [parent("a", ago(10))], children: [child("k1", "a")], tests: [test("t1", "a", "k1", ago(9), ago(5))],
+      reports: [report("claimed", {}), report("unknown", { email_error: "timeout" }), report("sent", { email_id: "re_1" })],
+      emails: [{ ...email("e1", "a", "continue", ago(8), "claimed"), error: "timeout" }, email("e2", "a", "come_back", ago(7), "claimed")],
+    });
+    const byId = Object.fromEntries(buildFamilies(d, NOW)[0].emails.map((e) => [e.id, [e.state, e.status]]));
+    expect(byId).toMatchObject({
+      "claimed:report": ["claimed", "pending"], "unknown:report": ["unknown", "pending"], "sent:report": ["sent", "sent"],
+      e1: ["unknown", "pending"], e2: ["claimed", "pending"],
+    });
+    expect(buildDashboard(d, "all", NOW).emailSummary.find((e) => e.kind === "report")).toMatchObject({ sent: 1, failed: 0, pending: 2 });
   });
 });
 
@@ -205,16 +223,27 @@ describe("team and test families", () => {
     expect(d.families.map((f) => f.id)).toEqual(["a"]);
     expect(d.kpis.find((k) => k.key === "finished")?.value).toBe(1);
     expect(d.activity.every((a) => a.familyId === "a")).toBe(true);
-    expect(d.tests).toEqual({ count: 2, shown: false });
+    expect({ ...d.tests, ids: [...d.tests.ids].sort() }).toEqual({ count: 2, shown: false, ids: ["t", "team"] });
+    expect(d.real.families.map((f) => f.id)).toEqual(["a"]);
     expect(d.days).toHaveLength(14);
   });
 
-  it("counts them when asked, and marks them", () => {
+  it("lists and marks them when asked, and still leaves them out of every number", () => {
     const d = buildDashboard(r, "all", NOW, { withTests: true });
+    const real = buildDashboard(r, "all", NOW);
     expect(d.families).toHaveLength(3);
-    expect(d.kpis.find((k) => k.key === "finished")?.value).toBe(2);
     expect(d.families.filter((f) => f.test).map((f) => f.id).sort()).toEqual(["t", "team"]);
-    expect(d.days[0]).toBe(dayKey(ago(40)));
+    expect(d.kpis.map((k) => [k.key, k.value])).toEqual(real.kpis.map((k) => [k.key, k.value]));
+    expect(d.kpis.find((k) => k.key === "finished")?.value).toBe(1);
+    expect(d.funnel).toEqual(real.funnel);
+    expect(d.stageCounts).toEqual(real.stageCounts);
+    expect(d.days).toEqual(real.days);
+    expect(d.days[0]).not.toBe(dayKey(ago(40)));
+    expect({ ...d.tests, ids: [...d.tests.ids].sort() }).toEqual({ count: 2, shown: true, ids: ["t", "team"] });
+    // the lists hold the test families; the real lists that every count reads do not
+    expect(d.real.families.map((f) => f.id)).toEqual(real.families.map((f) => f.id));
+    expect(d.real.emails).toEqual(real.emails);
+    expect(d.real.activity).toEqual(real.activity);
   });
 });
 
@@ -345,7 +374,7 @@ describe("next start reminder", () => {
 
 // Resend's delivery events (D-104), joined to the email list through the kept copies.
 describe("email delivery", () => {
-  const report = { id: "r1", created_at: ago(1), assessment_id: "t1", parent_id: "p", child_id: "k1", emailed_at: ago(1), email_error: null, alerted_at: ago(1), alert_error: null, email_clicks: 0, email_first_clicked_at: null };
+  const report = { id: "r1", created_at: ago(1), assessment_id: "t1", parent_id: "p", child_id: "k1", emailed_at: ago(1), email_id: "re_1", email_error: null, alerted_at: ago(1), alert_error: null, email_clicks: 0, email_first_clicked_at: null };
   const r = (deliveries: DashboardRows["deliveries"]) => rows({
     parents: [parent("p", ago(5))], children: [child("k1", "p")], tests: [test("t1", "p", "k1", ago(2), ago(1))], reports: [report],
     emails: [email("e1", "p", "start", ago(3))], deliveries,
@@ -383,7 +412,7 @@ describe("email delivery", () => {
 
 // Our own click tracking (D-105): the parent's visits from an email's button.
 describe("email clicks", () => {
-  const report = { id: "r1", created_at: ago(1), assessment_id: "t1", parent_id: "p", child_id: "k1", emailed_at: ago(1), email_error: null, alerted_at: ago(1), alert_error: null, email_clicks: 3, email_first_clicked_at: ago(0, 20) };
+  const report = { id: "r1", created_at: ago(1), assessment_id: "t1", parent_id: "p", child_id: "k1", emailed_at: ago(1), email_id: "re_1", email_error: null, alerted_at: ago(1), alert_error: null, email_clicks: 3, email_first_clicked_at: ago(0, 20) };
   const d = rows({
     parents: [parent("p", ago(5))], children: [child("k1", "p")], tests: [test("t1", "p", "k1", ago(2), ago(1))], reports: [report],
     emails: [{ ...email("e1", "p", "start", ago(3)), clicks: 1, first_clicked_at: ago(2, 20) }, email("e2", "p", "start_followup", ago(1))],
@@ -402,4 +431,33 @@ describe("email clicks", () => {
     const summary = Object.fromEntries(buildDashboard(d, "7d", NOW).emailSummary.map((k) => [k.kind, k]));
     expect([summary.start.clicked, summary.start_followup.clicked, summary.report.clicked]).toEqual([1, 0, 1]);
   });
+});
+
+describe("every email log kind (B1)", () => {
+  it("has admin words for each kind the email log allows, in the admin's order", () => {
+    expect(EMAIL_KINDS.map((k) => k.kind)).toEqual([
+      "start", "start_followup", "continue", "come_back", "report", "alert", "unsubscribe", "maya_daily", "maya_weekly",
+      "maya_unsubscribe", "monthly_summary", "monthly_summary_unsubscribe", "scan_inactivity", "first_pages",
+    ]);
+    for (const kind of LOG_KINDS) expect(EMAIL_KINDS.some((k) => k.kind === kind)).toBe(true);
+  });
+
+  it.each(LOG_KINDS)("builds the dashboard with a %s row", (kind) => {
+    const r = rows({ parents: [parent("a", ago(10))], children: [child("k1", "a")], emails: [{ ...email("e", "a", kind, ago(1)), child_id: kind === "scan_inactivity" ? null : "k1" }] });
+    const d = buildDashboard(r, "all", NOW);
+    expect(d.emails).toHaveLength(1);
+    expect(d.emailSummary.find((k) => k.kind === kind)?.sent).toBe(1);
+  });
+
+  it("names the scan reminder by its subject, and counts no click for it", () => {
+    const [f] = buildFamilies(rows({ parents: [parent("a", ago(10))], emails: [{ ...email("e", "a", "scan_inactivity", ago(1)), child_id: null }] }));
+    expect(f.emails[0].subject).toBe("Ready to scan your next page?");
+    expect(clickable(f.emails[0])).toBe(false);
+  });
+});
+
+it("names the admin's start button by its real text in the card saved step", () => {
+  expect(STAGE_ACTION.card_saved).toContain(`press "${familyPlanWords.adminAction}" under Plans and delivery`);
+  expect(familyPlanWords.adminAction).toBe("Workbook delivered: start plan");
+  expect(STAGE_ACTION.card_saved).not.toContain("start free month");
 });

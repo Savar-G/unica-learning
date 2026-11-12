@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DESK_HOME, deskGate, deskView as readDeskView, lockCookie, openPageToken, questionCrop, readLock, tapAreas } from "@/lib/desk";
+import { heldPackage } from "@/lib/maya-held-fixture";
+import type { WorkbookQuestionRef } from "@/lib/question-package";
 import { sampleWorkbook } from "@/lib/workbook-sample";
 import { memoryWorkbookStore } from "@/lib/workbook-store-memory";
 
@@ -27,6 +29,18 @@ const deskView = (store: Parameters<typeof readDeskView>[0], options: Parameters
     recordedAt: "2026-11-01T21:00:00Z", actorId: PARENT, auditId: 1,
   }) }, NOW);
 
+
+/** The desk with a receipt only for the workbooks in `delivered`, and the store's reads counted. */
+async function deskWith(store: Parameters<typeof readDeskView>[0], options: Parameters<typeof readDeskView>[1], delivered: string[]) {
+  const reads = { workbook: 0, page: 0 };
+  const counted = { ...store, workbook: (id: string) => (reads.workbook++, store.workbook(id)), page: (id: string, n: number) => (reads.page++, store.page(id, n)) };
+  const view = await readDeskView(counted, options, { receipt: async id => delivered.includes(id) ? {
+    workbookId: id, parentId: PARENT, childId: CHILD, number: id === SECOND ? 2 : 1,
+    deliveredAt: "2026-11-01T20:00:00Z", localTime: "2026-11-01T12:00", timeZone: "America/Vancouver",
+    recordedAt: "2026-11-01T21:00:00Z", actorId: PARENT, auditId: 1,
+  } : null }, NOW);
+  return { view, reads };
+}
 
 const token = (book: string, page: number) => `${book.slice(0, 8)}-page-${page}`.padEnd(20, "x");
 
@@ -105,6 +119,27 @@ describe("the desk view", () => {
     expect(await deskView(store, { parentId: PARENT, childId: OTHER_CHILD })).toEqual({ status: "no-workbook" });
   });
 
+  it("opens the newest delivered workbook when a newer one is shipped but not delivered yet, reading only the page shown", async () => {
+    const { view, reads } = await deskWith(await family(), { parentId: PARENT, childId: CHILD }, [FIRST]);
+    if (view.status !== "ready") throw new Error(view.status);
+    expect([view.workbook.id, view.page.number, view.notice]).toEqual([FIRST, 2, null]);
+    expect(view.workbooks.map((w) => w.id)).toEqual([SECOND, FIRST]);
+    expect(view.pages).toEqual([1, 2, 3]);
+    expect(reads).toEqual({ workbook: 0, page: 1 });
+  });
+
+  it("waits for delivery, reading no page, when no shipped workbook is delivered", async () => {
+    const { view, reads } = await deskWith(await family(), { parentId: PARENT, childId: CHILD }, []);
+    expect(view).toEqual({ status: "awaiting-delivery" });
+    expect(reads).toEqual({ workbook: 0, page: 0 });
+  });
+
+  it("still refuses a workbook asked for that is not delivered, even when an older one is", async () => {
+    const { view, reads } = await deskWith(await family(), { parentId: PARENT, childId: CHILD, workbookId: SECOND, page: 2 }, [FIRST]);
+    expect(view).toEqual({ status: "awaiting-delivery" });
+    expect(reads).toEqual({ workbook: 0, page: 0 });
+  });
+
   it("never shows a question's answer", async () => {
     const view = await deskView(await family(), { parentId: PARENT, childId: CHILD });
     if (view.status !== "ready") throw new Error(view.status);
@@ -148,6 +183,22 @@ describe("the picked question", () => {
     const view = await deskView(store, { parentId: PARENT, childId: CHILD, page: 2 });
     if (view.status !== "ready") throw new Error(view.status);
     expect(view.page.questions.map((q) => q.columns)).toEqual([null, { kind: "add", operands: [345, 286] }, { kind: "add", operands: [419, 193] }, { kind: "add", operands: [176, 248] }]);
+  });
+});
+
+describe("the held pre-check (#527)", () => {
+  it("marks a question Maya cannot teach yet from its package, and no other question", async () => {
+    const store = memoryWorkbookStore({ children: [{ id: CHILD, parentId: PARENT }], now: () => new Date("2026-10-29T18:00:00Z") });
+    const book = sampleWorkbook({ workbookId: FIRST, childId: CHILD, parentId: PARENT, qrTokens: [1, 2, 3].map((p) => token(FIRST, p)) });
+    const first = book.pages[1].questions[0];
+    first.package = { ...heldPackage(first.package.ref as WorkbookQuestionRef), id: first.package.id };
+    expect((await store.write(book)).status).toBe("written");
+    store.setStatus(FIRST, "shipped");
+    const view = await deskView(store, { parentId: PARENT, childId: CHILD, page: 2 });
+    if (view.status !== "ready") throw new Error(view.status);
+    expect(view.page.questions.map((q) => q.held)).toEqual([true, ...view.page.questions.slice(1).map(() => false)]);
+    expect(view.page.questions.length).toBeGreaterThan(1);
+    expect(view.page.questions[0]).toMatchObject({ text: "Yes or no: 3 and 4 make 6.", columns: null });
   });
 });
 

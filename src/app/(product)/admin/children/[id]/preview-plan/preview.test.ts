@@ -5,6 +5,8 @@ import { WORKBOOK_LEARNER_DERIVED_VERSION } from "@/lib/workbook-profile-freshne
 import { createSession, storedTest } from "@/lib/assessment";
 import { allRight, takeTest } from "@/lib/assessment/scripted-child";
 vi.mock("server-only", () => ({}));
+// The frame reads the request (the test families switch, the sidebar counts); this test checks the page inside it.
+vi.mock("@/components/admin-frame", () => ({ AdminFrame: ({ children }: { children: unknown }) => children }));
 const f = vi.hoisted(() => ({ child: vi.fn(), books: vi.fn(), events: vi.fn(), requireAdmin: vi.fn(), inputs: vi.fn() }));
 vi.mock("@/lib/admin-store", () => ({ getChild: f.child, getChildWorkbooks: f.books, requireAdmin: f.requireAdmin }));
 vi.mock("@/lib/learning-events-store", () => ({ learningEventStore: () => ({ range: f.events }) }));
@@ -18,19 +20,21 @@ let db: AdminSession["db"];
 const reads: string[] = [];
 let latest: object | null;
 let stored: object | null;
+let instructions: object | null;
 const admin = () => ({ db, userId: "admin", email: "admin@example.test" });
 
 beforeEach(() => {
   vi.clearAllMocks();
   reads.length = 0;
   latest = { id, completed_at: "2026-10-28T00:00:00Z", device: null };
+  instructions = null;
   stored = { schema_version: 1, profile: { ...firstCustomerProfile().assessment!.profile, workbookDerivedVersion: WORKBOOK_LEARNER_DERIVED_VERSION } };
   // No insert, update, delete or run-start method exists in this read-only test client.
   function read(name: string) {
     reads.push(name);
     const chain = {
       select: () => chain, eq: () => chain, order: () => chain, limit: () => chain,
-      maybeSingle: async () => ({ data: name === "admin_assessments" ? latest : name === "learner_profiles" ? stored : { minutes: 55, recommendation: "ahead" }, error: null }),
+      maybeSingle: async () => ({ data: name === "admin_assessments" ? latest : name === "learner_profiles" ? stored : name === "workbook_instructions" ? instructions : { minutes: 55, recommendation: "ahead" }, error: null }),
     };
     return chain;
   }
@@ -47,7 +51,8 @@ it("runs the public preview loader using only reads and returns U16 with the rep
   if (!detail?.preview.ok) return;
   expect(detail.preview.plan.level).toBe(16);
   expect(detail.preview.why.inputs.find(i => i.label === "Report recommendation")).toMatchObject({ status: "Used", value: "Move ahead" });
-  expect(reads).toEqual(["admin_assessments", "child_profiles", "admin_reports", "learner_profiles"]);
+  expect(reads).toEqual(["admin_assessments", "child_profiles", "workbook_instructions", "admin_reports", "learner_profiles"]);
+  expect(detail.preview.plan.instructions).toBeUndefined();
   expect(f.inputs).not.toHaveBeenCalled();
   expect(JSON.stringify(detail.preview)).not.toContain("PRIVATE_NOTE");
 });
@@ -78,7 +83,7 @@ it("keeps grade-only planning when there is no completed test", async () => {
   const detail = await loadPreviewPlan(admin(), id);
   expect(detail?.preview.ok).toBe(true);
   if (detail?.preview.ok) expect(detail.preview.plan.level).toBe(13);
-  expect(reads).toEqual(["admin_assessments", "child_profiles"]);
+  expect(reads).toEqual(["admin_assessments", "child_profiles", "workbook_instructions"]);
 });
 
 // Codex's public-loader reproduction from /tmp/pr570-review-probes/load.test.ts.
@@ -119,4 +124,18 @@ it.each(["row schema", "JSON schema", "derived version", "facts"])("rebuilds the
     expect(detail.preview.plan.personal?.soft.sources?.test.suggested).toEqual([]);
     expect(detail.preview.why.warnings).toContain("This preview rebuilt older test facts without AI. A real run can add new AI notes after it rebuilds those facts.");
   }
+});
+
+it("plans the preview with the child's saved book instructions and shows what each did", async () => {
+  instructions = { instructions: { version: 1, startLevel: "U19", teachMore: [], teachLess: [], addReview: ["5.5"], difficulty: null }, updated_at: "2026-11-08T00:00:00Z", updated_by_email: "admin@example.test" };
+  const detail = await loadPreviewPlan(admin(), id);
+  expect(detail?.preview.ok).toBe(true);
+  if (!detail?.preview.ok) return;
+  expect(detail.preview.plan.level).toBe(19);
+  expect(detail.preview.plan.instructions?.outcomes.map(o => [o.section, o.value, o.applied])).toEqual([["start-level", "U19", true], ["add-review", "5.5", true]]);
+  const page = await PreviewPlanPage({ params: Promise.resolve({ id }), searchParams: Promise.resolve({}) });
+  const { renderToStaticMarkup } = await import("react-dom/server");
+  const html = renderToStaticMarkup(page);
+  expect(html).toContain("Book instructions used");
+  expect(html).toContain("Applied");
 });

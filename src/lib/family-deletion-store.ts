@@ -28,8 +28,8 @@ export async function endCardOperation(db: SupabaseClient<Database>, token: stri
 }
 
 /**
- * A plan start holds the family across its Stripe call (#556). The hold's id is the card setup's id: a start whose answer
- * was lost keeps the hold, and a retry with the same Stripe key takes the same hold and ends it. `fenced`: the family asked
+ * A plan start holds the family across its Stripe call (#556). The hold's id is the card setup's id: a request that stopped
+ * before it let go leaves the hold, and a later press on the same card setup takes the same hold and ends it. The caller also releases it on every exit; an open start record still blocks deletion. `fenced`: the family asked
  * for deletion, or its delete has read its plans and is about to ask, so no plan may start.
  */
 export async function holdPlanStart(db: SupabaseClient<Database>, parent: string, card: string): Promise<"held" | "fenced"> {
@@ -82,20 +82,6 @@ function timeRemaining(deadline: number, execution?: FamilyDeletionExecution) {
 
 function paymentOptions(deadline: number, execution?: FamilyDeletionExecution) {
   return { timeout: Math.min(timeRemaining(deadline, execution), execution?.paymentRequestTimeoutMs ?? Infinity), maxNetworkRetries: 0 };
-}
-
-/** Stable keyset RPC paging, including jobs whose Auth deletion succeeded before the worker stopped. */
-export async function deletionCandidates(db: SupabaseClient<Database>): Promise<string[]> {
-  const ids: string[] = [];
-  let after: string | null = null;
-  for (;;) {
-    const page: { parent_id: string }[] = await rpc(db, "family_deletion_candidates", { after_id: after, page_size: 100 });
-    if (page.length === 0) return ids;
-    ids.push(...page.map((r) => r.parent_id));
-    const next = page.at(-1)!.parent_id;
-    if (next === after) throw new Error("Deletion pagination did not advance");
-    after = next;
-  }
 }
 
 const isFamilyCard = (c: unknown): c is FamilyCard => typeof c === "object" && c !== null

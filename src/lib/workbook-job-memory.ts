@@ -37,6 +37,14 @@ export function memoryRunStore(o: {
   children: Record<string, string>; workbooks?: Record<string, number[]>; now: () => Date; newId: () => string; drafts: WorkbookDraftStore;
   /** The most rows one read answers, as the database's row limit: reads page through it like the Supabase adapter. */
   rowLimit?: number;
+  /**
+   * The first pages a Workbook 1 run keeps (docs/first-pages.md), as adopt_workbook_first_pages decides: their Workbook
+   * 1 id, day pages and attempts, or why not. `kept` marks them kept by the run. None: no run can keep first pages.
+   */
+  firstPages?: {
+    take(firstPagesId: string, run: WorkbookRun, runs: readonly WorkbookRun[]): { workbookId: string; pages: GeneratedPage[]; attempts: Map<string, number> } | { refused: string };
+    kept(firstPagesId: string, runId: string): void;
+  };
 }) {
   const runs = new Map<string, WorkbookRun & { lease: string | null }>();
   const pages = new Map<string, Map<number, GeneratedPage>>();
@@ -166,12 +174,37 @@ export function memoryRunStore(o: {
       const f = frames.get(id);
       return f ? json(f) : null;
     },
+    async hasStoredWork(id) {
+      const r = runs.get(id);
+      if (!r) return true;
+      return (pages.get(id)?.size ?? 0) > 0 || (attempts.get(id)?.size ?? 0) > 0 ||
+        (calls.get(id)?.size ?? 0) > 0 || (solves.get(id)?.length ?? 0) > 0 ||
+        (r.donePages ?? 0) > 0 || (r.errors?.length ?? 0) > 0 || r.draftId !== null;
+    },
     async saveFrame(id, lease, frame) {
       const r = holding(id, lease);
       if (!r) return false;
       r.heartbeatAt = iso();
       if (!frames.has(id)) frames.set(id, json(frame));
       return true;
+    },
+    async adoptFirstPages(id, lease, firstPagesId, frame) {
+      const r = holding(id, lease);
+      if (!r) return "lost";
+      if (!o.firstPages) return { refused: "this store keeps no first pages" };
+      if (frames.has(id) || (pages.get(id)?.size ?? 0) > 0 || (attempts.get(id)?.size ?? 0) > 0) return { refused: "the run already has stored work" };
+      if (r.number !== 1) return { refused: "only Workbook 1 keeps first pages" };
+      const taken = o.firstPages.take(firstPagesId, view(r), [...runs.values()].filter((x) => x.id !== id).map(view));
+      if ("refused" in taken) return taken;
+      if (await o.drafts.draft(taken.workbookId)) return { refused: "a draft with the first pages' workbook id exists" };
+      r.draftKey = taken.workbookId;
+      r.heartbeatAt = iso();
+      pages.set(id, new Map(taken.pages.map((p) => [p.number, json(p)])));
+      attempts.set(id, new Map(taken.attempts));
+      frames.set(id, json(frame));
+      o.firstPages.kept(firstPagesId, id);
+      log(id, "first-pages-kept", { firstPages: firstPagesId });
+      return "adopted";
     },
     async savePage(id, lease, page) {
       const r = holding(id, lease);

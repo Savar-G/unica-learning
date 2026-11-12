@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { BEHAVIOURS } from "./behaviours";
 import { runGateBehaviour, judgeSaved } from "./call";
-import { memoryTraceStore, type Behaviour } from "./gate";
+import { memoryTraceStore, isBackupClose, type Behaviour } from "./gate";
 import { gateWordCount } from "./word-count";
 
 /** Keep every behaviour and seed, with a separate timeout budget for each seed. */
@@ -21,7 +21,7 @@ export function gradeWordCountCases(grade: 1 | 4) {
           if (t.kind !== "maya" || !t.output || t.output.act === "safety") continue;
           outputs++;
           const count = gateWordCount(t.output.say.join(" "));
-          expect(count, `${b.id}, seed ${seed}: ${t.output.say.join(" ")}`).toBeLessThanOrEqual(grade <= 3 ? 25 : 45);
+          if (!isBackupClose(t)) expect(count, `${b.id}, seed ${seed}: ${t.output.say.join(" ")}`).toBeLessThanOrEqual(grade <= 3 ? 25 : 45);
           if (t.attempts.at(-1)?.source === "fallback") fallbacks++;
         }
       }

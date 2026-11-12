@@ -1,8 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+vi.mock("server-only", () => ({}));
 import { reportModel, storedReportModel, type Grade, type Province, type ReportFacts } from "@/lib/assessment";
 import { allRight, knowsUpTo, takeTest, type Script } from "@/lib/assessment/scripted-child";
 import { reportAlert, reportEmail } from "@/lib/report-email";
 import type { ReportView } from "@/lib/report-view";
+import { progressPreview } from "@/lib/progress-preview";
+import { sampleReportWithBook } from "@/lib/sample-book-one";
 
 const URL = "https://unicalearning.com/account/report/r-1?src=email";
 const UNSUB = "https://unicalearning.com/unsubscribe?t=tok_123";
@@ -16,7 +19,7 @@ function view(isRight: Script, { grade = 4, province = "BC", name = "Maya" }: { 
     completedAt: "2026-10-10T19:30:00Z",
     questions: 36,
     minutes: 34,
-    model: reportModel(placement, { completedTestsInGrade: 0, workReviews: [] }),
+    model: reportModel(placement, { workReviews: [] }),
   };
 }
 
@@ -64,7 +67,7 @@ describe("the report email to the parent", () => {
     const rendered = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(2)), parentName: "Priya", url: URL });
     for (const body of [rendered.text, rendered.html]) {
       expect(body).toContain("so grade 2 is an estimate.");
-      expect(body).toContain("How sure: Early sign: workbook 1 checks this");
+      expect(body).toContain("How sure: Early sign");
       expect(body).not.toContain("How sure: Clear");
     }
   });
@@ -120,17 +123,17 @@ describe("the report email to the parent", () => {
     expect(email.html).toMatch(/>See Maya&#39;s full report<\/a>/);
     expect(email.text).toContain(`See Maya's full report: ${URL}`);
   });
-  it("carries the help warning and the retake date when help is likely (#71), and never the flags", () => {
+  it("never says the level may be too high, even when help is likely (D-305), and never the flags", () => {
     const v = view(knowsUpTo(3));
     const warned = reportEmail({ unsubscribeUrl: UNSUB, view: { ...v, model: { ...v.model, helpWarning: true } }, parentName: "Priya", url: URL });
-    for (const body of [warned.text, warned.html]) {
-      expect(body).toContain("This level may be too high");
-      expect(body).toContain("from November 10, 2026.");
+    for (const body of [warned.text, warned.html, email.text, email.html]) {
+      expect(body).not.toMatch(/may be too high/);
       expect(body).not.toMatch(/too-fast|pause-then-perfect|helped/);
     }
   });
-  it("has no help warning when help is not likely", () => {
-    for (const body of [email.text, email.html]) expect(body).not.toMatch(/may be too high/);
+  it("says what the working level means, under the level (D-305)", () => {
+    expect(email.text).toContain(`How sure: Clear\nWhat "working level" means: Working level is`);
+    expect(email.html).toContain("What &quot;working level&quot; means.");
   });
   it("ends with the sender, the mailing address, the website and an unsubscribe link (CASL: it offers a plan)", () => {
     expect(email.text).toContain("Unica Learning, 16557 87A Ave, Surrey, BC V4N 5B2");
@@ -143,8 +146,8 @@ describe("the report email to the parent", () => {
   it("is signed by the founders in both report variants (D-225)", () => {
     for (const offer of [true, false]) {
       const e = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3)), parentName: "Priya", url: URL, offer });
-      expect(e.text).toContain("Thank you,\nSavar & Cedric\nCo-founders, Unica Learning");
-      expect(e.html).toContain("Savar &amp; Cedric");
+      expect(e.text).toContain("Thank you,\nCedric and Savar\nCo-founders, Unica Learning");
+      expect(e.html).toContain("Cedric and Savar");
       for (const body of [e.text, e.html]) expect(body).not.toContain("The Unica Learning team");
       expect(e.html.indexOf("Co-founders, Unica Learning")).toBeLessThan(e.html.indexOf("16557 87A Ave"));
     }
@@ -156,7 +159,7 @@ describe("the report email to the parent", () => {
     for (const province of ["BC", "ON"] as const) {
       const quiet = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3), { province }), parentName: "Priya", url: URL, offer: false });
       for (const body of [quiet.text, quiet.html]) {
-        expect(body).not.toMatch(/Choose a plan|Join the waitlist|step=|CAD \d+|Unsubscribe:|unsubscribe\?t=|How we help|first book|books keep|The books/);
+        expect(body).not.toMatch(/Book your results call|first workbook|calendly\.com|Choose a plan|Join the waitlist|step=|CAD \d+|Unsubscribe:|unsubscribe\?t=|How we help|first book|books keep|The books/);
         expect(body).toContain("You unsubscribed from reminders and emails about our plans, so this email has only the report.");
       }
       expect(quiet.html).toMatch(new RegExp(`<a href="${URL.replace(/[?.]/g, "\\$&")}"[^>]*>See Maya&#39;s full report</a>`));
@@ -164,6 +167,15 @@ describe("the report email to the parent", () => {
       expect(quiet.text).toContain("Unica Learning, 16557 87A Ave, Surrey, BC V4N 5B2");
     }
   });
+  it("offers the results call after the neutral opening and before the findings", () => {
+    const result = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3)), parentName: "Priya", url: URL });
+    for (const body of [result.text, result.html]) {
+      expect(body).toContain("Would you like us to go through the results with you");
+      expect(body).toContain("Book your 15-minute results call");
+      expect(body.indexOf("Book your 15-minute results call")).toBeLessThan(body.indexOf("By area"));
+    }
+  });
+
   it("escapes names in the HTML (parent email)", () => {
     const html = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3), { name: "Jo & <i>" }), parentName: "<b>A</b>", url: "https://x.test/?a=1&b=2" }).html;
     expect(html).not.toMatch(/<b>A<\/b>|<i>/);
@@ -179,7 +191,7 @@ describe("the report email to the parent", () => {
 
     it("follows the verdict, with the child's name, in the text and the HTML (escaped)", () => {
       const email = reportEmail({ unsubscribeUrl: UNSUB, view: withSummary("{name} is working at a grade 3 level & {name}'s best area is Patterns and algebra."), parentName: "Priya", url: URL });
-      expect(email.text).toContain("That is one grade below Maya's school grade (grade 4).\nHow sure: Clear\nMaya is working at a grade 3 level & Maya's best area is Patterns and algebra.");
+      expect(email.text).toMatch(/That is one grade below Maya's school grade \(grade 4\)\.\nHow sure: Clear\nWhat "working level" means: [^\n]+\nMaya is working at a grade 3 level & Maya's best area is Patterns and algebra\./);
       expect(email.html).toContain("Maya is working at a grade 3 level &amp; Maya&#39;s best area is Patterns and algebra.");
     });
 
@@ -194,7 +206,7 @@ describe("the report email to the parent", () => {
 
     it("is absent without AI text", () => {
       const email = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3)), parentName: "Priya", url: URL });
-      expect(email.text).toContain("That is one grade below Maya's school grade (grade 4).\nHow sure: Clear\n\nFor context");
+      expect(email.text).toMatch(/That is one grade below Maya's school grade \(grade 4\)\.\nHow sure: Clear\nWhat "working level" means: [^\n]+\n\nFor context/);
       expect(email.text).not.toContain("{name}");
     });
   });
@@ -204,7 +216,7 @@ describe("the report email to the parent", () => {
       const v = view(knowsUpTo(3));
       const { placement } = takeTest({ grade: 4, province: "BC" }, 1, knowsUpTo(3));
       const shownWork = [{ questionId: "s1-0", prompt: "47 + 25 = ?", correct: true, required: true, image: "p/a/s1-0-x.png", text: "carry the 1" }];
-      return { ...v, model: reportModel(placement, { completedTestsInGrade: 0, workReviews: [], shownWork }), workImages: { "p/a/s1-0-x.png": "https://signed.example/x" } };
+      return { ...v, model: reportModel(placement, { workReviews: [], shownWork }), workImages: { "p/a/s1-0-x.png": "https://signed.example/x" } };
     };
 
     it("says the work is in the full report, with a link, and carries no image or private link", () => {
@@ -275,7 +287,7 @@ describe("the alert to Savar for each finished test", () => {
     expect(alert().text).toContain("Help likely: no");
     const v = view(knowsUpTo(3));
     expect(alert({ view: { ...v, model: { ...v.model, helpWarning: true } }, flags: [{ kind: "helped", answer: "yes" }] }).text).toContain(
-      "Help likely: yes. The report says the level may be too high and suggests a retake.",
+      "Help likely: yes. The parent's report does not say so (D-305).",
     );
   });
   it("gives the number facts, or none; with the speed at every grade, as Savar is an admin", () => {
@@ -320,5 +332,56 @@ describe("the alert to Savar for each finished test", () => {
     const text = alert({ parentEmail: { sent: false, reason: "response lost", uncertain: true } }).text;
     expect(text).toContain("Parent email: delivery UNKNOWN (response lost). Check delivery before sending again.");
     expect(text).not.toContain("NOT SENT");
+  });
+});
+
+describe("results call invitation", () => {
+  it.each([
+    { status: "needs-attention" as const, correct: 0, total: 3 },
+    { status: "developing" as const, correct: 4, total: 6 },
+  ])("uses the weakest clear $status topic and keeps the neutral and unsubscribe controls", ({ status, correct, total }) => {
+    const v = view(knowsUpTo(3));
+    const finding = { code: "4.4", text: "addition and subtraction to 10 000", grade: 4 as const, correct, total, certainty: "clear" as const, status, answer: { prompt: "1+1", response: "3", rightAnswer: "2" }, cause: null };
+    const withFindings = { ...v, findings: { strengths: [], struggles: [finding], preview: null } };
+    const email = reportEmail({ view: withFindings, parentName: "Priya", url: URL, unsubscribeUrl: UNSUB });
+    for (const body of [email.text, email.html]) {
+      expect(body).toContain("Maya found adding and subtracting hard.");
+      expect(body).toContain("Would you like us to explain how we can help Maya with adding and subtracting?");
+    }
+    const neutral = reportEmail({ view: { ...withFindings, findings: { ...withFindings.findings, struggles: [{ ...finding, certainty: "early-sign" }] } }, parentName: "Priya", url: URL, unsubscribeUrl: UNSUB });
+    expect(neutral.text).toContain("Maya's math report is ready. Would you like us");
+    expect(neutral.html).toContain("math report is ready. Would you like us");
+    const quiet = reportEmail({ view: withFindings, parentName: "Priya", url: URL, unsubscribeUrl: UNSUB, offer: false });
+    for (const body of [quiet.text, quiet.html]) {
+      expect(body).not.toContain("Would you like us");
+      expect(body).not.toContain("Book your 15-minute results call");
+    }
+  });
+  it("includes a telephone link and the deck strategy in the team alert", () => {
+    const v = view(knowsUpTo(3));
+    const alert = reportAlert({ view: v, parent: { name: "Priya", email: "p@example.test", phone: "+16045550123" }, url: "https://example.test/admin/reports/r-1/deck", flags: [], parentEmail: { sent: true } });
+    expect(alert.text).toContain("Phone: +16045550123");
+    expect(alert.text).toContain("Call strategy:");
+    expect(alert.html).toContain('href="tel:+16045550123"');
+    expect(alert.html).toContain('href="https://example.test/admin/reports/r-1/deck"');
+  });
+});
+
+describe("progress preview (round r-progress-preview-5)", () => {
+  it("says the prediction, the skills today and at the goal, and how, as on the report page; nothing without the offer", () => {
+    const v = sampleReportWithBook();
+    const p = progressPreview(v)!;
+    const email = reportEmail({ unsubscribeUrl: UNSUB, view: v, parentName: "Priya", url: URL });
+    expect(email.text).toContain(`We can help ${p.name} reach a ${p.sentence.goal} by ${p.goalMonth}.`);
+    expect(email.text).toContain(`- Adding and subtracting: ${p.rows[1].today} -> ${p.rows[1].goal}`);
+    expect(email.html).toContain(`We can help ${p.name} reach a <b style="font-weight:600">${p.sentence.goal}</b>`);
+    expect(email.html).toContain(p.rows[1].goal);
+    expect(email.html).toContain("How we get");
+    expect(email.text).toContain(`- ${p.stages[0].label}: ${p.stages[0].months}`);
+    // One cell per grade, never one per book: a long path would be wider than the 600 px column.
+    expect(email.html.match(/bgcolor="#2fb37a"/g)?.length ?? 0).toBe(1);
+    const quiet = reportEmail({ unsubscribeUrl: UNSUB, view: v, parentName: "Priya", url: URL, offer: false });
+    expect(quiet.text).not.toContain("We can help");
+    expect(quiet.html).not.toContain("We can help");
   });
 });

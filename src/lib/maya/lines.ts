@@ -54,12 +54,16 @@ const operationText = (op: Parameters<typeof baseOperationText>[0]) => clockExpr
  * Version 14 (Wave A): missing numbers: the framing invites, try.target.frame, and the try-a-number lines; a
  * check.not_yet line may name the wrong try it answers (`heard`). Version 14 (A4): claim questions (claim.ts):
  * confirm.claim, confirm.word, close.honest, and the claim wordings of existing lines.
+ * Version 14 (#698, D-327, Savar 2026-11-08: "We should just be straightforward"): a held question says plainly that
+ * Maya cannot teach it yet (held.cannot), then invites another question on the page.
  * Version 15 (B1a, B1b): place value (place-value-lines.ts): chart.open, and the place-value templates of the shared ids.
  * Version 16: combines the Wave B and Wave C line sets.
  * Version 17: spot-the-error lines combined with Wave C.
  * Version 18: pattern lines combined with spot-the-error and Wave C.
+ * Version 19: the waves combined with #698: close.stuck (the honest close after help alone, #735), check.method (C09),
+ * held.cannot; a question type with its own honest close (closeUnsolved) says it in place of close.stuck.
  */
-export const LINES_VERSION = 18;
+export const LINES_VERSION = 19;
 
 export const LINE_IDS = [
   "about.ai",
@@ -86,6 +90,7 @@ export const LINE_IDS = [
   "check.thinking",
   "check.together",
   "check.guess",
+  "check.method",
   "step.why",
   "step.order",
   "answer.right",
@@ -105,8 +110,10 @@ export const LINE_IDS = [
   "close.solved",
   "close.together",
   "close.honest",
+  "close.stuck",
   "repair.sorry",
   "held.hello",
+  "held.cannot",
   "held.next",
 ] as const;
 export type LineId = (typeof LINE_IDS)[number];
@@ -145,6 +152,8 @@ export interface LineOffer {
   wordingIds?: string[];
   /** The template the variants come from: a shared one, or a place-value one (place-value-lines.ts). */
   key: TemplateKey | PlaceValueTemplateKey;
+  /** Values filled by code into the approved template. */
+  filled?: Record<string, string | number>;
   /** The text Maya may write on the board with this line: its expression or its equation. */
   board?: string;
 }
@@ -517,13 +526,42 @@ export const TEMPLATES = {
     "We worked through {expr} together.", "We finished {expr} together today.", "We got through {expr} together.",
     "Together, we finished {expr}.", "We worked on {expr} together today.",
   ],
+  // The honest close (#735, decision (a)): the child still only asks for help after the top hint and the easier example.
+  // It says this one is hard and stopping is fine, and names a next step. It holds no number, so no answer and no part of
+  // one. Pending Savar's approval (docs/maya-practice-lines.md, "Pending Savar, #698 fix round 2026-11-08").
+  // The child's own compensation method, named back (practice at 361a05c9, C09): only for a method code recognises in the
+  // child's words, with its numbers from the checked package: {b} an operand, {round} its nearest ten, {diff} how far apart.
+  // "down": {round} is more than {b}, so the child took {diff} away. "up": {round} is less, so they added {diff} back.
+  // Pending Savar's approval (docs/maya-practice-lines.md, "Pending Savar, #698 fix round 2026-11-08").
+  "check.method.down": [
+    "You made {b} into {round}. Then you took {diff} away. That works.",
+    "You turned {b} into {round} and took {diff} away. That works.",
+    "You used {round} for {b}. Then you took {diff} away. Smart!",
+    "You added {round} instead of {b}. Then you took {diff} away. That works.",
+    "{b} is {diff} less than {round}. So you took {diff} away. That works.",
+  ],
+  "check.method.up": [
+    "You made {b} into {round}. Then you added {diff} back. That works.",
+    "You turned {b} into {round} and added {diff} back. That works.",
+    "You used {round} for {b}. Then you added {diff} back. Smart!",
+    "You added {round} instead of {b}. Then you added {diff} more. That works.",
+    "{b} is {diff} more than {round}. So you added {diff} back. That works.",
+  ],
+  "close.stuck": [
+    "This one is hard, and it's okay to stop. Try the easier one on paper, or ask a grown-up for help.",
+    "This is a tricky one. It's fine to stop for now. Try the easier one on paper, or ask a grown-up.",
+    "That was a hard one, and it's okay to stop. Next, try the easier one on paper, or ask a grown-up.",
+    "This one is tough, and stopping is okay. You could try the easier one on paper, or ask a grown-up.",
+    "It's okay to stop here. This one is hard. Try the easier one on paper, or ask a grown-up for help.",
+  ],
   "repair.sorry": [
     "Oops, I said that wrong. Let me fix it.", "Sorry, I made a mistake there. Here it is again.", "Wait, I mixed that up. Let me say it again.",
     "Oops, my mistake. Let me try again.", "Sorry, that came out wrong. Here's the right way.",
   ],
-  // A held question (#605, Savar 2026-11-05): offer another question on the page, without an inability claim.
-  // Code adds the AI disclosure only before the first hello. No alternate question is invented or promised.
+  // A held question (D-327, Savar 2026-11-08): say plainly that Maya cannot teach it yet, then offer another question
+  // on the page. Code adds the AI disclosure only before the first hello. No alternate question is invented or promised.
   "held.hello": ["Hi, I'm Maya, an AI."],
+  "held.cannot": ["Sorry, I can't teach this question yet."],
   "held.next": ["Want to pick another question on this page?"],
   // Missing numbers (Wave A): the framing and the try-a-number lines, from their own modules.
   ...MISSING_TEMPLATES,
@@ -545,6 +583,7 @@ const offer = (line: LineId, key: TemplateKey, vars: Vars, extra: Omit<LineOffer
   line,
   ...extra,
   key,
+  filled: vars,
   texts: TEMPLATES[key].map((t) => sentence(fill(t, vars))),
 });
 
@@ -1083,21 +1122,35 @@ function sharedLines(given: OperationPackage) {
     decline: (): LineOffer[] => [offer("redirect.decline", "redirect.decline", {})],
     patternClose: (): LineOffer[] => patternClose(pkg, offer),
     patternTop: (id: string): number | null => patternTopHint(pkg, id, offer),
-    /**
-     * Planned (agreed with Lead: Maya): when the wave rebases onto main after #698, Maya's close.stuck set replaces this.
-     * The honest close of a missing number left unsolved (review of #732): the existing close.together line, in its one
-     * wording that claims no finish ("We worked on {expr} together today."), with no answer. No new wording: #698's
-     * close.stuck set replaces it when the wave rebases onto main. Place value has its own (place-value-lines.ts).
-     */
-    closeUnsolved: (): LineOffer[] => {
-      if (!framed) return [];
-      const o = offer("close.together", "close.together", { expr: asked });
-      const honest = TEMPLATES["close.together"].findIndex((t) => t === "We worked on {expr} together today.");
-      return honest < 0 ? [] : [{ ...o, texts: [o.texts[honest]], wordingIds: [`close.together#${honest}`] }];
-    },
     closeSolved: (by: "child" | "maya", workObserved = true): LineOffer[] => [by === "child" ? offer("close.solved", workObserved ? "close.solved" : "close.checked", { expr: asked }) : offer("close.together", "close.together", { expr: asked })],
     /** The honest close of an "other-topic" question left unsolved after the easier example: never the answer. */
     closeHonest: (): LineOffer[] => (topicQuestion(pkg.text, pkg.operation) ? [offer("close.honest", "close.topic", {})] : []),
+    /**
+     * A question type's own honest close, said in place of close.stuck (session.ts, honestCloseLines): a pattern's, an
+     * other-topic question's and a claim's; place value, its parts and spot the error give their own. Every other
+     * question has none: it closes with close.stuck (#735), and a missing number left unsolved too (review of #732,
+     * as planned with Lead: Maya when the wave met #698).
+     */
+    closeUnsolved: (): LineOffer[] => {
+      const own = patternClose(pkg, offer);
+      if (own.length > 0) return own;
+      const topic = topicQuestion(pkg.text, pkg.operation) ? [offer("close.honest", "close.topic", {})] : [];
+      return topic.length > 0 ? topic : claim?.honestClose() ?? [];
+    },
+    /** The honest close after help alone (#735): it holds no number, so it gives no answer. */
+    closeStuck: (): LineOffer[] => [offer("close.stuck", "close.stuck", {})],
+    /**
+     * The close after Maya gave the answer, and beside close.stuck: only the approved close.together wording that claims
+     * no finished work ("We worked on {expr} together today."), never "We finished {expr} together" (practice at
+     * 361a05c9, C09 item iii). `{expr}` is the question as the child sees it.
+     */
+    closeGiven: (): LineOffer[] => {
+      const o = offer("close.together", "close.together", { expr: asked });
+      const keep = TEMPLATES["close.together"].map((t, i) => (t === "We worked on {expr} together today." ? i : -1)).filter((i) => i >= 0);
+      return [{ ...o, texts: keep.map((i) => o.texts[i]), wordingIds: keep.map((i) => `${o.key}#${i}`) }];
+    },
+    /** The child's compensation method, named back with the package's numbers: one offer per operand it fits. */
+    method: (): LineOffer[] => compensations(pkg).map((m) => offer("check.method", m.up ? "check.method.up" : "check.method.down", { b: m.b, round: m.round, diff: m.diff }, { slots: { heard: String(m.round) } })),
     repair: (): LineOffer[] => [offer("repair.sorry", "repair.sorry", {})],
     /** The ids of the child's question's work steps, in order. */
     stepIds: steps.map((s) => s.id),
@@ -1110,6 +1163,19 @@ const unique = (xs: string[]) => [...new Set(xs)];
 function withoutYes(o: LineOffer): LineOffer {
   const keep = o.texts.map((_, i) => i).filter((i) => !/^yes\b/i.test(o.texts[i]));
   return { ...o, texts: keep.map((i) => o.texts[i]), wordingIds: keep.map((i) => o.wordingIds?.[i] ?? `${o.key}#${i}`) };
+}
+
+/**
+ * The compensation forms of a two-number addition (C09): for each operand that is not a whole ten, its nearest ten and
+ * how far apart they are. "27 + 39": 39 to 40 (down: take 1 away), 27 to 30 (down: take 3 away). From the package only.
+ */
+export function compensations(pkg: OperationPackage): { b: number; round: number; diff: number; up: boolean }[] {
+  const op = pkg.operation;
+  if (op.kind !== "add" || op.operands.length !== 2 || !op.operands.every((n) => typeof n === "number" && Number.isInteger(n) && n > 10)) return [];
+  return (op.operands as number[]).flatMap((b) => {
+    const round = Math.round(b / 10) * 10;
+    return round === b ? [] : [{ b, round, diff: Math.abs(round - b), up: round < b }];
+  });
 }
 
 /** The offer a choice names: the same line with the same slots, or null. */
@@ -1146,7 +1212,7 @@ export function allLineTexts(given: OperationPackage, heardValues: readonly Answ
     ...l.hello(), ...l.question(), ...l.assess(), ...l.exampleIntro(), ...pkg.easierExample.steps.flatMap((s) => l.exampleStep(s.id)),
     ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id, "due"), ...l.help(id, "heard"), ...l.help(id, "done"), ...l.help(id, "due", true), ...l.help(id, "heard", true), ...l.regroupOut(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.help("result"), ...l.notYet("result"), ...l.explain(),
     ...l.thinking(), ...l.answerRight(), ...l.answerGive(), ...l.answerParts(), ...l.writeAnswer(), ...l.writeYours(), ...l.heard(heard, heard.flatMap((a) => heard.map((b) => [a, b] as [AnswerValue, AnswerValue]))),
-    ...l.answerOnly(), ...l.otherInput(), ...l.redirect(), ...l.workbook(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("child", false), ...l.closeSolved("maya"), ...l.closeHonest(), ...l.closeUnsolved(), ...l.repair(),
+    ...l.answerOnly(), ...l.otherInput(), ...l.redirect(), ...l.workbook(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("child", false), ...l.closeSolved("maya"), ...l.closeHonest(), ...l.closeUnsolved(), ...l.closeStuck(), ...l.closeGiven(), ...l.method(), ...l.repair(),
     ...l.together(), ...l.guess(), ...l.patternClose(), ...(pkg.steps.some((st) => st.kind === "claim-compare") ? l.stepIds.flatMap((id) => l.rightStepShort(id)) : []), ...l.which(), ...l.honestClose(), ...(pkg.item?.regions.flatMap((r) => (r.kind === "choice" ? r.choices : [])) ?? []).flatMap(l.said),
   ];
   const extra = [...fixedOffers(), ...areaOffers(pkg), ...heldOffers(true)];
@@ -1154,11 +1220,12 @@ export function allLineTexts(given: OperationPackage, heardValues: readonly Answ
 }
 
 /**
- * Maya's whole turn on a question she cannot teach yet (#527): hello and that she is an AI when she has not said hello
- * yet, then an invitation to pick another question on the page. Needs no package.
+ * Maya's whole turn on a question she cannot teach yet (#527, D-327): hello and that she is an AI when she has not said
+ * hello yet, then plainly that she cannot teach this question yet, then an invitation to pick another question on the
+ * page. A hold found during the call, after the hello, says the last two only. Needs no package.
  */
 export function heldOffers(hello: boolean): LineOffer[] {
-  return [...(hello ? [offer("held.hello", "held.hello", {})] : []), offer("held.next", "held.next", {})];
+  return [...(hello ? [offer("held.hello", "held.hello", {})] : []), offer("held.cannot", "held.cannot", {}), offer("held.next", "held.next", {})];
 }
 
 /** The held turn's sentences, as Maya says them and as the desk shows them before a chat. */

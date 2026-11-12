@@ -53,7 +53,7 @@ export default async function MayaNotice({ searchParams }: PageProps<"/account/m
   if (saved === "1" && accepted) {
     return (
       <SupportPage label="Your account" title="Thank you. We saved your answer.">
-        <p className="lead">This does not open chat with Maya by itself. We open chat to families on a workbook plan in stages. You can read this notice again from your account.</p>
+        <p className="lead">This does not open chat with Maya by itself. Chat with Maya opens when your family&apos;s plan starts. You can read this notice again from your account.</p>
         <div className="acct-notice-actions">
           {openDesk}
           <Link className={openDesk ? "btn ghost" : "btn"} href="/account">Back to your account</Link>

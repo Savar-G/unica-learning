@@ -127,8 +127,9 @@ describe("workbook email delivery through its public server interface", () => {
 });
 
 describe("the plan start email, one per generation (review round 5 of PR #593)", () => {
-  type Claim = { email_send_status: string; email_claim_token: string; email_claimed_at: string; email_text?: string; email_html?: string };
-  function planFixture(grade = 3) {
+  type Claim = { email_send_status: string; email_claim_token: string; email_claimed_at: string; email_text?: string; email_html?: string; monthly_cents?: number; first_charge_at?: string; family_terms?: boolean; trial_end?: string | null };
+  type FamilyChild = { id: string; created_at: string; province: string };
+  function planFixture(grade = 3, testFamily = false, family?: { postal: string | null; children: FamilyChild[] }) {
     const records = new Map<number, Claim>([[1, { email_send_status: "", email_claim_token: "", email_claimed_at: "" }], [2, { email_send_status: "", email_claim_token: "", email_claimed_at: "" }]]);
     const legacy: number[] = [];
     const requests: URL[] = [];
@@ -139,8 +140,17 @@ describe("the plan start email, one per generation (review round 5 of PR #593)",
         const json = (data: unknown) => new Response(JSON.stringify(data), { status: 200, headers: { "content-type": "application/json" } });
         const body = init?.body ? JSON.parse(String(init.body)) : {};
         if (url.pathname.endsWith("/card_setups")) return json([{ parent_id: "parent-1", child_id: "child-1" }]);
-        if (url.pathname.endsWith("/parents")) return json([{ name: "Priya", email: "real-parent@example.com", postal: "V3S 1A1", time_zone: null }]);
-        if (url.pathname.endsWith("/children")) return json([{ first_name: "Asha", province: "BC", grade }]);
+        if (url.pathname.endsWith("/parents")) return json([{ name: "Priya", email: "real-parent@example.com", postal: family ? family.postal : "V3S 1A1", time_zone: null }]);
+        // The family province read: the family's children in the order asked for (created_at, then id), up to the limit.
+        if (url.pathname.endsWith("/children") && url.searchParams.get("select")?.includes("created_at")) {
+          if (url.searchParams.get("parent_id") !== "eq.parent-1" || url.searchParams.get("order") !== "created_at.asc,id.asc") throw Error(`Unexpected family read: ${url.search}`);
+          const rows = [...family?.children ?? [{ id: "child-1", created_at: "2026-10-01T00:00:00Z", province: "BC" }]]
+            .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
+          return json(rows.slice(0, Number(url.searchParams.get("limit") ?? rows.length)));
+        }
+        if (url.pathname.endsWith("/children")) return json([{ first_name: "Asha", province: family?.children.find((c) => c.id === "child-1")?.province ?? "BC", grade }]);
+        if (url.pathname.endsWith("/test_accounts")) return json(testFamily ? [{ parent_id: "parent-1" }] : []);
+        if (url.pathname.endsWith("/admin_users")) return json([]);
         // The old ledger's one key, for a head that still uses it: a second send with the same key finds it taken.
         if (url.pathname.endsWith("/rpc/claim_workbook_email")) { legacy.push(body.p_workbook_number); return json(legacy.length === 1 ? [{ id: "e1", claim_token: body.p_token }] : []); }
         if (url.pathname.endsWith("/workbook_emails")) return json(null);
@@ -170,6 +180,42 @@ describe("the plan start email, one per generation (review round 5 of PR #593)",
   }
   const key = (generation: number) => ({ cardId: "card-1", generation, price: 79.99, firstChargeAt: "2026-12-05T18:00:00.000Z", origin: "https://unica.test" });
 
+  it.each([true, false])("reads the admitted sibling amount and first charge from its durable record (free=%s)", async free => {
+    const f = planFixture();
+    Object.assign(f.records.get(1)!, { family_terms: true, monthly_cents: 5999, first_charge_at: "2026-12-10T18:00:00Z", trial_end: free ? "2026-12-10T18:00:00Z" : null });
+    expect((await sendPlanStartEmail(f.db, key(1), f.transport)).status).toBe("sent");
+    const text = f.messages[0].text;
+    expect(text).toContain("CAD 59.99"); expect(text).toContain("December 10, 2026"); expect(text).not.toContain("79.99");
+    expect(text.includes("Nothing has been charged.")).toBe(free);
+    expect(text.includes("you pay nothing")).toBe(free);
+    if (!free) expect(text).not.toContain("reminder 7 days");
+  });
+
+  it.each([[7 * 86400000 - 1, false], [7 * 86400000, true]])("includes the reminder promise at a remaining time of %i ms: %s", async (remaining, expected) => {
+    const now = Date.parse("2026-11-10T18:00:00Z");
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+    try {
+      const f = planFixture();
+      const end = new Date(now + Number(remaining)).toISOString();
+      Object.assign(f.records.get(1)!, { family_terms: true, monthly_cents: 5999, first_charge_at: end, trial_end: end });
+      expect((await sendPlanStartEmail(f.db, key(1), f.transport)).status).toBe("sent");
+      expect(f.messages[0].text.includes("reminder 7 days")).toBe(expected);
+    } finally { clock.mockRestore(); }
+  });
+
+  it("dates the first charge in the family's zone from its oldest child, not the card's child", async () => {
+    // No browser zone and no postal code: the province decides. The card is for the younger child, in Ontario; the
+    // oldest child is in BC, so the family is on Pacific time. 06:00 UTC on December 10 is still December 9 in Vancouver.
+    const f = planFixture(3, false, { postal: null, children: [
+      { id: "child-1", created_at: "2026-11-02T00:00:00Z", province: "ON" },
+      { id: "child-0", created_at: "2026-10-01T00:00:00Z", province: "BC" },
+    ] });
+    Object.assign(f.records.get(1)!, { family_terms: true, monthly_cents: 5999, first_charge_at: "2026-12-10T06:00:00Z", trial_end: "2026-12-10T06:00:00Z" });
+    expect((await sendPlanStartEmail(f.db, key(1), f.transport)).status).toBe("sent");
+    expect(f.messages[0].text).toContain("December 9, 2026");
+    expect(f.messages[0].text).not.toContain("December 10, 2026");
+  });
+
   it.each([2, 3])("uses the saved card child's stored grade and keeps the exact instructions in its claim (%i)", async (grade) => {
     const f = planFixture(grade);
     expect((await sendPlanStartEmail(f.db, key(1), f.transport)).status).toBe("sent");
@@ -179,12 +225,104 @@ describe("the plan start email, one per generation (review round 5 of PR #593)",
     expect(f.records.get(1)?.email_text).toBe(message.text);
     expect(f.records.get(1)?.email_html).toBe(message.html);
     expect(message.html).toContain('href="https://unicalearning.com/account/feedback"');
-    const child = f.requests.find((u) => u.pathname.endsWith("/children"))!.searchParams;
+    const child = f.requests.find((u) => u.pathname.endsWith("/children") && u.searchParams.has("id"))!.searchParams;
     expect(child.get("id")).toBe("eq.child-1");
     expect(child.get("parent_id")).toBe("eq.parent-1");
     expect(child.get("select")?.split(",")).toContain("grade");
     expect((await sendPlanStartEmail(f.db, key(1), f.transport)).status).toBe("busy");
     expect(f.messages).toHaveLength(1);
+  });
+
+  const MARKS = '3. Read the marks. You will see which questions are right and wrong. On a wrong answer, press "Explain this problem" for a simple explanation that you can use with Asha.';
+  const MARKS_ONLY = "3. Read the marks. You will see which questions are right and wrong.";
+  const step3 = (text: string) => text.split("\n").filter((l) => l.startsWith("3. "));
+  const LATER = "3. Marks come later. Scan the pages now. Later, we will use the photos to mark Asha's work.";
+  const sentAndStored = (f: ReturnType<typeof planFixture>) => {
+    expect(f.messages).toHaveLength(1);
+    expect(f.records.get(1)?.email_text).toBe(f.messages[0].text);
+    expect(f.records.get(1)?.email_html).toBe(f.messages[0].html);
+    return f.messages[0].text;
+  };
+
+  it("promises the marks only when marking is open for the card's own child at send time, and keeps the sent words in the claim", async () => {
+    const f = planFixture();
+    const read = vi.fn(async () => true);
+    expect((await sendPlanStartEmail(f.db, key(1), f.transport, undefined, read, () => true)).status).toBe("sent");
+    expect(read).toHaveBeenCalledWith(f.db, "parent-1", "child-1");
+    expect(step3(sentAndStored(f))).toEqual([MARKS]);
+  });
+
+  it("with marking open and no explanation feature, keeps the marks and drops only the Explain sentence", async () => {
+    const f = planFixture();
+    expect((await sendPlanStartEmail(f.db, key(1), f.transport, undefined, async () => true, () => false)).status).toBe("sent");
+    const text = sentAndStored(f);
+    expect(step3(text)).toEqual([MARKS_ONLY]);
+    expect(text).not.toContain("Explain");
+  });
+
+  it("an explanation check that throws counts as no explanation", async () => {
+    const f = planFixture();
+    await sendPlanStartEmail(f.db, key(1), f.transport, undefined, async () => true, () => { throw Error("no"); });
+    expect(step3(sentAndStored(f))).toEqual([MARKS_ONLY]);
+  });
+
+  it("with marking closed, Explain changes nothing: the marks come later", async () => {
+    const f = planFixture();
+    await sendPlanStartEmail(f.db, key(1), f.transport, undefined, async () => false, () => true);
+    expect(step3(sentAndStored(f))).toEqual([LATER]);
+  });
+
+  it("says the marks come later when marking is closed for the child", async () => {
+    const f = planFixture();
+    expect((await sendPlanStartEmail(f.db, key(1), f.transport, undefined, async () => false)).status).toBe("sent");
+    const text = sentAndStored(f);
+    expect(text).toContain(LATER);
+    expect(text).not.toContain("Explain this problem");
+  });
+
+  it.each([
+    ["throws", async () => { throw Error("plan read failed"); }],
+    ["answers something other than true", async () => "open" as unknown as boolean],
+  ])("fails closed when the marking read %s: the email still goes, with the later line", async (_, read) => {
+    const f = planFixture();
+    expect((await sendPlanStartEmail(f.db, key(1), f.transport, undefined, read)).status).toBe("sent");
+    expect(sentAndStored(f)).toContain(LATER);
+  });
+
+  // Its own short limit: if the read's time limit is gone, this test fails in 2 s instead of hanging.
+  it("fails closed when the marking read does not answer in time", async () => {
+    vi.useFakeTimers();
+    try {
+      const f = planFixture();
+      let asked = false;
+      const sending = sendPlanStartEmail(f.db, key(1), f.transport, undefined, () => { asked = true; return new Promise<boolean>(() => {}); }, () => true);
+      await vi.waitFor(() => { if (!asked) throw Error("not read yet"); }, { timeout: 1000, interval: 5 });
+      expect(vi.getTimerCount()).toBeGreaterThan(0);
+      await vi.advanceTimersByTimeAsync(5000);
+      expect((await sending).status).toBe("sent");
+      expect(step3(sentAndStored(f))).toEqual([LATER]);
+    } finally { vi.useRealTimers(); }
+  }, 2000);
+
+  it("uses the product's marking rule by default: off, and test-only for a real family, give the later line; test-only for a test family gives the marks", async () => {
+    vi.stubEnv("SCAN_MARKING_ENABLED", "");
+    let f = planFixture();
+    await sendPlanStartEmail(f.db, key(1), f.transport);
+    expect(sentAndStored(f)).toContain(LATER);
+    vi.stubEnv("SCAN_MARKING_ENABLED", "test-only");
+    f = planFixture();
+    await sendPlanStartEmail(f.db, key(1), f.transport);
+    expect(sentAndStored(f)).toContain(LATER);
+    // A test family with marking open: without the explanation feature's key, no Explain; with it, the approved step 3.
+    vi.stubEnv("PARENT_EXPLANATION_API_KEY", "");
+    f = planFixture(3, true);
+    await sendPlanStartEmail(f.db, key(1), f.transport);
+    expect(step3(sentAndStored(f))).toEqual([MARKS_ONLY]);
+    vi.stubEnv("PARENT_EXPLANATION_API_KEY", "sk-or-synthetic");
+    f = planFixture(3, true);
+    await sendPlanStartEmail(f.db, key(1), f.transport);
+    expect(step3(sentAndStored(f))).toEqual([MARKS]);
+    vi.unstubAllEnvs();
   });
 
   it("two generations send two emails, and the same generation sends one", async () => {

@@ -11,6 +11,8 @@ vi.mock("@/lib/family-deletion-store", () => ({ holdPlanStart: f.hold, endCardOp
 const planStates = vi.hoisted(() => ({ value: null as unknown }));
 vi.mock("@/lib/plan-state-server", () => ({ livePlanStates: () => planStates.value }));
 import { POST } from "./route";
+import { POST as mainPOST } from "./main-724f38b4.fixture";
+import { sweepPlanReads } from "@/lib/card-reconcile";
 import { planAccessRule } from "@/lib/plan-access";
 import { readChildPlan } from "@/lib/plan-state";
 import { memoryPlanStates } from "@/lib/plan-state-memory";
@@ -63,10 +65,11 @@ it("lets go of the hold when startPlan answers unconfirmed: a timeout takes this
   expect(await response.json()).toEqual({ ok: false, error: "unconfirmed" });
   expect(f.release).toHaveBeenCalledExactlyOnceWith({ service: true }, id);
 });
-it("keeps the hold when startPlan throws: its work stopped at a point it cannot name, and a retry with the same key ends the hold", async () => {
+it("releases the route hold even when startPlan throws", async () => {
   f.start.mockRejectedValue(new Error("Store down"));
   expect((await POST(request(), context)).status).toBe(502);
-  expect(f.release).not.toHaveBeenCalled();
+  expect(f.release).toHaveBeenCalledExactlyOnceWith({ service: true }, id);
+  f.release.mockClear();
   f.start.mockResolvedValue({ ok: true, subscription: "sub", firstChargeAt: "2026-12-02", generation: 1 });
   expect((await POST(request(), context)).status).toBe(200);
   expect(f.release).toHaveBeenCalledExactlyOnceWith({ service: true }, id);
@@ -138,6 +141,19 @@ describe("the start opens access with no webhook", () => {
     expect((await access(states)).open).toBe(false);
   });
 
+  it("a failed write and a lost webhook: the next daily re-read opens access (#713)", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const states = live();
+    states.fail.save = new Error("Database down");
+    expect(await (await POST(request(), context)).json()).toMatchObject({ ok: true, access: "pending" });
+    delete states.fail.save;
+    // startPlan (a fake here) closes the start record as started before it answers.
+    states.starts.push({ childId: "child", generation: 1, state: "started", finishedAt: Date.now() });
+    expect((await access(states)).open).toBe(false);
+    expect(await sweepPlanReads(states.reads, states, { now: Date.now, startBy: Date.now() + 60_000 })).toMatchObject({ due: 1, read: 1, changed: 1, failed: 0 });
+    expect(await access(states)).toEqual({ open: true, reason: "open" });
+  });
+
   it("a failed Stripe read does not read as a failed start", async () => {
     const states = live();
     states.fail.plan = new Error("Stripe down");
@@ -169,4 +185,17 @@ describe("the start opens access with no webhook", () => {
     expect((await POST(request(), context)).status).toBe(502);
     expect(states.rows).toEqual([]);
   });
+});
+
+it("main maps the legacy sibling refusal to its existing generic failure", async () => {
+  f.start.mockRejectedValue(new Error("plan start admission: family_plan_upgrade_required"));
+  const response = await mainPOST(request(), context);
+  expect(response.status).toBe(502);
+  expect(await response.json()).toEqual({ ok: false, error: "failed" });
+});
+it("PR B returns a typed sibling stop for the admin card", async () => {
+  f.start.mockRejectedValue(new Error("plan start admission: family_plan_upgrade_required"));
+  const response = await POST(request(), context);
+  expect(response.status).toBe(409);
+  expect(await response.json()).toEqual({ ok: false, error: "family_plan_upgrade_required" });
 });

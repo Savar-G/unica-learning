@@ -96,6 +96,18 @@ describe("Why this book and read-only preview", () => {
     expect(workbookWhy(result.plan)!.warnings).toContain("Day 1: 22 required minutes exceed the 20-minute target by 2 minutes.");
   });
 
+  it("keeps the old words for answers from before D-325 and uses the signup labels for the new ones", () => {
+    const parentAnswers = (parent: Record<string, string>) => {
+      const profile = structuredClone(bookPersona("catch-up").profile);
+      profile.parent = { ...profile.parent, ...parent } as typeof profile.parent;
+      const result = planNextWorkbook({ curriculum, grade: 4, profile, workbooks: [], number: 1 });
+      if (!result.ok) throw Error("no plan");
+      return workbookWhy(result.plan)!.inputs.find(i => i.label === "Parent's answers")?.value;
+    };
+    expect(parentAnswers({ feeling: "avoids", goal: "catch_up" })).toContain("Feeling: Avoids it. Goal: Catch up.");
+    expect(parentAnswers({ feeling: "finds_hard", goal: "next_grade" })).toContain("Feeling: Finds it hard. Goal: Get ready for the next grade.");
+  });
+
   it("shows a report mismatch without changing placement", () => {
     const result = planNextWorkbook({ curriculum, grade: 4, profile: firstCustomerProfile(), workbooks: [], number: 1, report: { howWeHelp: "behind", minutes: 55 } });
     expect(result.ok).toBe(true);
@@ -166,5 +178,14 @@ describe("Why this book and read-only preview", () => {
     const rows = result.plan.personal!.why!.inputs;
     expect(rows.find(r => r.label === "AI notes from the test")).toMatchObject({ status: "Used", value: expect.stringContaining("3.3") });
     expect(rows.find(r => r.label === "AI notes from later learning")).toMatchObject({ status: "Not used", value: expect.not.stringContaining("3.3") });
+  });
+  it("names the team's request as the reason for harder work", () => {
+    const told = previewWorkbook({ curriculum, grade: 4, facts: facts(), workbooks: [],
+      instructions: { version: 1, startLevel: null, teachMore: [], teachLess: [], addReview: [], difficulty: "harder" } }, planNextWorkbook);
+    expect(told.ok).toBe(true);
+    if (!told.ok) return;
+    const day1 = told.why.pages.find(p => p.label === "Day 1, page 1")!.choices;
+    expect(day1).toContain("Harder work starts 2 days earlier because the team asked for harder work.");
+    expect(preview().why.pages.find(p => p.label === "Day 1, page 1")!.choices).toContain("Harder work starts 2 days earlier because of the working level and test results.");
   });
 });

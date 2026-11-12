@@ -1,25 +1,35 @@
-import { randomBytes } from "node:crypto";
+import { normalizePhone } from "@/lib/phone-number";
+import { randomBytes, randomUUID } from "node:crypto";
 import { after } from "next/server";
 import { isAuthSessionMissingError, type AuthError } from "@supabase/supabase-js";
 import { cleanChild, cleanDetails, fail, validPassword, type AccountResult, type FinishPayload } from "@/lib/account";
-import { createFamily, isPhone, linkOrigin, sendSignInLink, sendWelcome } from "@/lib/account-server";
+import { claimFamilyFinish, createFamily, isPhone, linkOrigin, releaseFamilyFinish, sendSignInLink, sendWelcome } from "@/lib/account-server";
 import { adminClient, sessionClient } from "@/lib/supabase-auth";
 
 // The one step that writes a family: the parent row and the first child (#63, #82). The id and the email come from the
 // session, never from the request body.
 //
 // Supabase keeps the first password of an unconfirmed address, so someone else may have set a password for this email
-// before its owner proved it. Three rules keep that password away from a family:
+// before its owner proved it. Three rules keep that password away from a family, and a fourth keeps two tabs apart:
 // 1. Only a session that proved the email may make a family (the email code, a sign-in or reset link, or Google). A
 //    password sign-in alone writes nothing.
 // 2. Before any step that can fail, the password becomes one that nobody knows, and every other session ends. The
 //    password from the signup form (or from /account/finish) is set after that.
 // 3. An existing family changes nothing: no new child, no new password.
+// 4. One finish at a time for a user (claim_family_finish, docs/state-machines.md item 12). Two tabs that finish at once
+//    would otherwise both change the password, and the one that lost create_family's race would answer "existing"
+//    after its change. The claim comes before the first password change and goes when the route ends. A second tab
+//    waits for it: when the first made the family, it changes nothing; when the first failed, it goes on (and usually
+//    answers signed_out, since the first tab's random password ended its session). A claim lives 5 minutes, longer
+//    than this route can run (maxDuration below), so a claim is never taken from a route that is still running.
 //
 // Both password changes go through the parent's own session (PUT /auth/v1/user). Supabase Auth then ends every other
 // session of the user in the same transaction and keeps the parent's. An admin password change (updateUserById) ends
 // every session, the parent's too: the parent is signed out with a password nobody knows (2026-10-12, every first
 // signup failed). Checked on the hosted project; see docs/assessment-signup.md.
+
+/** At most 300 s (Vercel's limit): the finish claim lives 5 minutes, so it always outlives the route. */
+export const maxDuration = 300;
 
 /** Sign-in methods (the access token's amr claim) that prove the email: "otp" is the email code and every emailed link. */
 const PROVED = new Set(["otp", "magiclink", "recovery", "email/signup", "invite", "oauth"]);
@@ -69,6 +79,28 @@ export async function POST(request: Request) {
 
   if (!signInMethods(jwt).some((method) => PROVED.has(method))) return fail("unproved", 403);
 
+  const claim = randomUUID();
+  const held = await claimFamilyFinish(admin, user.id, claim);
+  if (held === "exists") return Response.json({ ok: true, existing: true } satisfies AccountResult);
+  if (held !== "claimed") {
+    // A lost answer may hide a claim that was taken: let it go, or the parent's retries wait 5 minutes.
+    if (held === "failed") await releaseFamilyFinish(admin, user.id, claim);
+    return fail("store_failed", 502);
+  }
+  try {
+    return await finishClaimed(request, session, admin, { id: user.id, email: user.email });
+  } finally {
+    await releaseFamilyFinish(admin, user.id, claim);
+  }
+}
+
+/** The finish under the claim: rules 2 and 3 above, then the family. */
+async function finishClaimed(
+  request: Request,
+  session: Awaited<ReturnType<typeof sessionClient>>,
+  admin: NonNullable<ReturnType<typeof adminClient>>,
+  user: { id: string; email: string },
+): Promise<Response> {
   const { error: resetError } = await session.auth.updateUser({ password: unknownPassword() });
   if (resetError) return passwordFailed("password reset", resetError, false);
 
@@ -80,7 +112,8 @@ export async function POST(request: Request) {
   }
   const details = cleanDetails(body);
   const child = cleanChild(body.child);
-  if (!details || !child || (body.password !== undefined && !validPassword(body.password))) return fail("invalid", 400);
+  const telephone = normalizePhone(body.phone);
+  if (!details || !child || !telephone || (body.password !== undefined && !validPassword(body.password))) return fail("invalid", 400);
 
   if (body.password !== undefined) {
     const { error } = await session.auth.updateUser({ password: body.password });
@@ -96,7 +129,7 @@ export async function POST(request: Request) {
   }
   if (currentUser?.id !== user.id) return fail("signed_out", 401);
 
-  const family = await createFamily(admin, user.id, { ...details, email: user.email.toLowerCase() }, child);
+  const family = await createFamily(admin, user.id, { ...details, phone: telephone, email: user.email.toLowerCase() }, child);
   if (family.status === "exists") return Response.json({ ok: true, existing: true } satisfies AccountResult);
   if (family.status === "busy") return fail("busy", 429);
   if (family.status === "unavailable") return fail("unavailable", 409);

@@ -5,7 +5,7 @@
 // in one database statement. Answers (#147): one answer per place in a test (the unique index on assessment_id and
 // position), and the drawings bucket as a map by path. Finish (#150): a test is completed only while it is in progress.
 // Strokes (#186): the stroke files of the same bucket, as their own map by path, so a test can check them apart.
-import { fromRemovedRound, type Attempt, type HelpAnswer, type Placement, type Route, type Stage3Route, type StoredTest, type Submission } from "@/lib/assessment";
+import { RESUME_HOURS, type Attempt, type HelpAnswer, type Placement, type Route, type Stage3Route, type StoredTest, type Submission } from "@/lib/assessment";
 import type { FactsTest } from "@/lib/assessment";
 import { StoreError, type AttemptChild, type AttemptStore, type NewAnswer } from "@/lib/test-attempt";
 import type { FactsStore, NewFactAnswer } from "@/lib/test-attempt";
@@ -92,6 +92,11 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
    */
   const facts: MemoryFacts[] = [];
   const factsOps: FactsStore = {
+    async factsOwner(parent, id) {
+      await begin("factsOwner");
+      const row = tests.find((t) => t.id === id && t.parentId === parent);
+      return row ? { attempt: attemptOf(row), profile: structuredClone(row.test.profile), seed: row.test.seed } : null;
+    },
     async loadFacts(id) {
       await begin("loadFacts");
       const row = facts.find((f) => f.assessmentId === id);
@@ -265,8 +270,7 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       // D-282: a stage 2 answer changes only while stage 2 is not locked (no third stage record stored).
       if (row.stage3Route != null && position < row.test.stage1.length + row.test.stage2[row.route!].length) return "closed";
       const old = row.answers[position];
-      // D-145: the removed extra round's answers (after the main ones) never change and never count as newer answers.
-      if (fromRemovedRound(marked.questionId) || row.answers.filter((a) => !fromRemovedRound(a.questionId)).length > unansweredFrom || !old || old.questionId !== marked.questionId) return "closed";
+      if (row.answers.length > unansweredFrom || !old || old.questionId !== marked.questionId) return "closed";
       const timeline = { shownAt: old.timeline?.shownAt ?? null, answeredAt, events: structuredClone(events) };
       const { strokesPath: oldStrokes, ...kept } = old;
       // #252: keepDrawing changes only the typed working; the drawing and strokes stay as the row has them now.
@@ -308,9 +312,18 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
       await begin("lockBlock");
       const row = tests.find(t => t.id === id && t.status === "in_progress");
       if (!row?.test.adaptive) return "closed";
-      if (row.test.adaptive.locked !== expected || !sameAnswers(row.answers, answers)) return "changed";
+      // As lock_assessment_block (20261105_assessment_blocks.sql): the lock count first, then a complete test is closed,
+      // then the answers, then the new block must lock exactly one more block of the same pool; the deadline and the last
+      // answer time only move forward.
+      if (row.test.adaptive.locked !== expected) return "changed";
+      if (row.test.adaptive.complete) return "closed";
+      if (!sameAnswers(row.answers, answers)) return "changed";
+      if (adaptive.version !== 1 || adaptive.locked !== expected + 1 || JSON.stringify(adaptive.pool) !== JSON.stringify(row.test.adaptive.pool)) {
+        throw new Error("Invalid assessment block transition");
+      }
       row.test.adaptive = structuredClone(adaptive);
-      row.resumeUntil = resumeUntil;
+      row.lastAnswerAt = Math.max(row.lastAnswerAt ?? -Infinity, resumeUntil - RESUME_HOURS * 60 * 60_000);
+      row.resumeUntil = Math.max(row.resumeUntil, resumeUntil);
       return "stored";
     },
     async complete(id, { at, placement, help, answers }) {

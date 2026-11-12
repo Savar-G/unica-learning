@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en-CA">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B. Grade climb</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shell.css">
+<style>
+.climb { margin-top: 24px; padding: clamp(20px, 3.5vw, 40px); }
+.climb-top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
+.chart { margin-top: 20px; padding: 16px 12px 8px; border-radius: 12px; background: #fff; box-shadow: 0 20px 40px -24px rgba(0,0,0,.35); }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart text { font-family: var(--mono); }
+.line { fill: none; stroke: var(--ink); stroke-width: 3.5; stroke-linejoin: round; stroke-linecap: round; transition: d .5s cubic-bezier(.2,.8,.2,1); }
+.area { fill: url(#fade); }
+.stops { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 12px; margin-top: 16px; }
+.stop { padding: 14px 16px; border-radius: 12px; background: rgba(255,255,255,.72); }
+.stop b { display: block; font: 500 16px/1.3 var(--sans); }
+.stop .when { font: 400 12px/1.3 var(--mono); color: var(--ink-2); }
+.stop p:last-child { margin-top: 6px; font-size: 14px; line-height: 1.45; color: var(--ink-2); }
+.stop.is-goal { background: var(--ink); color: #fff; }
+.stop.is-goal .when, .stop.is-goal p:last-child { color: #d6d6dc; }
+</style>
+</head>
+<body>
+<div class="chrome"><span class="v">B. Grade climb</span><div class="cases" data-cases></div><a href="board.html">All options</a></div>
+<main class="page">
+  <div class="stub">Report: "Where Leah is", "What's in workbook 1" (unchanged)</div>
+  <section class="section" id="out"></section>
+  <div class="stub">Next step: card and plan button (unchanged)</div>
+</main>
+<script src="levels.js"></script><script src="pace.js"></script>
+<script>
+mount((p, setPace) => {
+  // Fixed x scale: the slowest pace (3 days a week), so the switch visibly moves the goal left and right.
+  const slow = plan(p.c, 3);
+  const W = 820, H = 330, L = 92, R = 40, T = 34, B = 44;
+  const t0 = START_DATE.getTime(), t1 = slow.goalDate.getTime() + 30 * 864e5;
+  const x = (d) => L + (d.getTime() - t0) / (t1 - t0) * (W - L - R);
+  const lo = p.c.working, hi = p.goal;
+  const y = (g) => T + (hi - g) / (hi - lo) * (H - T - B);
+  const pts = p.grades.map((s) => [x(s.date), y(s.grade)]);
+  const d = "M" + pts.map((q) => q.join(" ")).join(" L");
+  const area = d + ` L${pts.at(-1)[0]} ${H - B} L${pts[0][0]} ${H - B} Z`;
+  // month ticks every 3 months
+  const ticks = [];
+  for (let m = new Date(START_DATE.getFullYear(), START_DATE.getMonth(), 1); m.getTime() <= t1; m = new Date(m.getFullYear(), m.getMonth() + 3, 1)) if (m.getTime() >= t0 - 20 * 864e5) ticks.push(m);
+  const school = p.c.grade >= lo && p.c.grade <= hi ? `<line x1="${L}" x2="${W - R}" y1="${y(p.c.grade)}" y2="${y(p.c.grade)}" stroke="var(--tang)" stroke-width="1.5" stroke-dasharray="6 6"/><text x="${W - R}" y="${y(p.c.grade) - 8}" text-anchor="end" font-size="12" fill="#a8360f">School grade now</text>` : "";
+  const svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${headline(p)}">
+    <defs><linearGradient id="fade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2fb37a" stop-opacity=".28"/><stop offset="1" stop-color="#2fb37a" stop-opacity="0"/></linearGradient></defs>
+    ${p.grades.map((s) => `<line x1="${L}" x2="${W - R}" y1="${y(s.grade)}" y2="${y(s.grade)}" stroke="#ececef"/><text x="${L - 14}" y="${y(s.grade) + 4}" text-anchor="end" font-size="13" fill="#0c0c0e">${gradeName(s.grade)}</text>`).join("")}
+    ${ticks.map((m) => `<text x="${x(m)}" y="${H - 14}" text-anchor="middle" font-size="12" fill="#44444c">${monthShort(m)}${m.getMonth() === 0 || m === ticks[0] ? " " + m.getFullYear() : ""}</text>`).join("")}
+    ${school}
+    <path class="area" d="${area}"/><path class="line" d="${d}"/>
+    ${p.grades.slice(1, -1).map((s) => `<circle cx="${x(s.date)}" cy="${y(s.grade)}" r="6" fill="#fff" stroke="#0c0c0e" stroke-width="2.5"/><text x="${x(s.date) + 12}" y="${y(s.grade) + 20}" font-size="12" fill="#44444c">${monthShort(s.date)} ${s.date.getFullYear()}</text>`).join("")}
+    <circle cx="${pts[0][0]}" cy="${pts[0][1]}" r="9" fill="var(--leaf)"/><text x="${pts[0][0] + 16}" y="${pts[0][1] + 5}" font-size="12" font-weight="600" fill="#0c0c0e">Book 1</text>
+    <g transform="translate(${pts.at(-1)[0] - 5} ${pts.at(-1)[1] - 40})"><path d="M5 40V2" stroke="#0c0c0e" stroke-width="2.5" stroke-linecap="round"/><path d="M6 3h22l-6 7 6 7H6z" fill="#0c0c0e"/></g>
+    <text x="${pts.at(-1)[0] + (pts.at(-1)[0] > W - 200 ? -12 : 30)}" y="${pts.at(-1)[1] - 22}" text-anchor="${pts.at(-1)[0] > W - 200 ? "end" : "start"}" font-size="13" font-weight="600" fill="#0c0c0e">${monthShort(p.goalDate)} ${p.goalDate.getFullYear()}</text>
+  </svg>`;
+  const stops = p.grades.map((s, i) => i === p.grades.length - 1
+    ? `<div class="stop is-goal"><b>${gradeName(s.grade)} level</b><p class="when">about ${monthYear(s.date)}</p><p>The goal. Book ${s.firstBook} starts ${gradeName(s.grade)} work.</p></div>`
+    : `<div class="stop"><b>${gradeName(s.grade)} work</b><p class="when">${i === 0 ? "Book 1" : "Book " + s.firstBook} · ${monthYear(s.date)}</p><p>${s.levels.map((l) => l.title).join("; ")}</p></div>`).join("");
+  const out = document.getElementById("out");
+  out.innerHTML = `
+    <div class="section-head"><p class="k">Where ${p.c.name} can go</p><h2>${headline(p)}</h2></div>
+    <div class="climb field">
+      <div class="climb-top"><p class="k">${p.months} months · ${p.books.length} books</p>${paceSwitch(p)}</div>
+      <div class="chart">${svg}</div>
+      <div class="stops">${stops}</div>
+      <p class="basis">${basis(p)}</p>
+    </div>`;
+  wirePace(out, setPace);
+});
+</script>
+</body>
+</html>
