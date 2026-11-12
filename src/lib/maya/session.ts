@@ -2481,18 +2481,27 @@ function heardOneWay(s: Session): boolean {
  */
 function ownMissRule(s: Session, step: string): boolean {
   const pkg = s.package;
-  if (!pkg) return false;
+  if (!ownWayOut(pkg)) return false;
   const claim = !!sessionClaim(pkg);
   const place = isPlaceValue(pkg) || isSpot(pkg);
-  const topic = topicQuestion(pkg.text, pkg.operation) || !!patternOf(pkg);
-  if (!isMissingNumber(pkg) && !claim && !place && !topic) return false;
+  const topic = !!pkg && (topicQuestion(pkg.text, pkg.operation) || !!patternOf(pkg));
   return !(claim && !place && !topic && step !== "result");
 }
 
 /**
- * The one rule for whether a checked wrong answer counts as a miss (a failed attempt or a wrong final answer): a turn
- * heard one way, and then the question type's own allow-list (committedTurn) or, for every other question and a claim's
- * operation columns, committedValue (#698). Both fail closed: help, a hedge, a question or a copy is never a miss.
+ * A question type the waves teach with its own way out (a missing number, a claim, place value, spot the error, an
+ * other-topic question, a pattern): its misses follow committedTurn, and after its easier example a child still stuck
+ * at the top help gets its honest close (teachingActs), with no answer.
+ */
+function ownWayOut(pkg: OperationPackage | null): boolean {
+  return !!pkg && (isMissingNumber(pkg) || !!sessionClaim(pkg) || isPlaceValue(pkg) || isSpot(pkg) || topicQuestion(pkg.text, pkg.operation) || !!patternOf(pkg));
+}
+
+/**
+ * Whether this turn commits to a value, the one rule for counting a miss (a failed attempt or a wrong final answer) or
+ * releasing an answer: a turn heard one way, and then the question type's own allow-list (committedTurn) or, for every
+ * other question and a claim's operation columns, #698's numeric form (committedNumber). Both fail closed: help, a
+ * hedge, a question or a copy is never a miss.
  */
 function committedMiss(s: Session, a: ChildAnswer): boolean {
   if (!heardOneWay(s)) return false;
@@ -3078,7 +3087,9 @@ function justShown(s: Session, id: string): boolean {
  */
 function afterExample(s: Session, ladder: Ladder) {
   if (ladder.hint >= 3 && !(s.shows?.[ladder.step])) s.shows = { ...(s.shows ?? {}), [ladder.step]: 1 };
-  Object.assign(ladder, { hint: Math.min(ladder.hint, 1), unlocked: Math.min(ladder.unlocked, 2), failures: 0 });
+  // A question type with its own way out (ownWayOut) keeps its ladder: its honest close after the example reads it. The
+  // loop guard's row still ends, so a child who goes on working is never closed for Maya's help before the example.
+  if (!ownWayOut(s.package)) Object.assign(ladder, { hint: Math.min(ladder.hint, 1), unlocked: Math.min(ladder.unlocked, 2), failures: 0 });
   if (s.prompt) {
     const rest = { ...s.prompt, key: "", times: 0, floor: Math.min(s.prompt.floor, 1) };
     delete rest.shown;
