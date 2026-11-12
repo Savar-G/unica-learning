@@ -61,7 +61,7 @@ import { biggerTemplate, partsStepHeard, partsStepTotal, worthTemplate } from ".
 import { partsChartFits } from "./place-value-parts-lines";
 import { isPartsOperation } from "@/lib/question-package-place-parts";
 import { claimActs, claimAnswers, claimCommitted, claimConfirm, claimQuestionAsked, claimRead, claimResultDone, claimReveals, claimSaid, claimStepConfirmable, claimStepHeard, claimSessionPackage, claimUnclear, sessionClaim, type ClaimTurn } from "./claim";
-import { closeParts, compareEquationSaid, currentPart, evaluateTeaching, partBoards, partCovered, partEquationSaid, partIdOf, stepsBeforeLastPart, withEvaluateExample } from "./evaluate";
+import { closeParts, compareEquationSaid, currentPart, evaluateSteps, evaluateTeaching, partBoards, partCovered, partEquationSaid, partIdOf, stepsBeforeLastPart, withEvaluateExample } from "./evaluate";
 import { isSpot, spotAnswers, spotReveals, spotSessionPackage, spotStepHeard } from "./spot-error";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
 import type { TalkReviewResult } from "./talk-review";
@@ -2691,8 +2691,11 @@ function regroupOf(s: Session): Regroup {
  * and the next one, which takes it (`in`, the tens). Empty for any other operation.
  */
 function carryPairs(pkg: OperationPackage): { out: Extract<WorkedStep, { kind: "add-column" }>; in: Extract<WorkedStep, { kind: "add-column" }> }[] {
-  const columns = pkg.steps.filter((st): st is Extract<WorkedStep, { kind: "add-column" }> => st.kind === "add-column");
-  return columns.slice(0, -1).flatMap((out, i) => (out.carryOut > 0 && columns[i + 1].carryIn === out.carryOut ? [{ out, in: columns[i + 1] }] : []));
+  // An evaluate question's additions are its parts' columns ("e1.ones", "e1.tens"): a carry pairs two columns of one
+  // part, never the last column of one part with the first of the next (review of #760).
+  const columns = (evaluateSteps(pkg) ?? pkg.steps).filter((st): st is Extract<WorkedStep, { kind: "add-column" }> => st.kind === "add-column");
+  const partOf = (id: string) => (id.includes(".") ? id.slice(0, id.indexOf(".")) : "");
+  return columns.slice(0, -1).flatMap((out, i) => (out.carryOut > 0 && columns[i + 1].carryIn === out.carryOut && partOf(out.id) === partOf(columns[i + 1].id) ? [{ out, in: columns[i + 1] }] : []));
 }
 
 /** Both columns of the carry the line explains, without marking an adjacent carry as explained. */
