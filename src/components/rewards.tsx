@@ -55,7 +55,7 @@ export function Rewards() {
           <section className="rewards-part" aria-labelledby="chargeT">
             <Rise as="h2" id="chargeT">You stay in charge</Rise>
             <p>
-              Nothing is ordered without you. When your child picks a prize in the app, you get a request on your phone.
+              Nothing is ordered without you. When your child picks a prize on our website, you get a request on your phone.
               Say yes and we send it: small prizes ride in the next workbook box, tickets and gift cards come by email. Say not yet, and the points wait.
             </p>
           </section>

@@ -235,10 +235,7 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
           marks.push({ area: REPORTED_STRAND[standard.strand], level: standard.grade, correct: right });
         }
         if (await command("revision", parent, null, null, { child: childId }) !== revision) continue;
-        // Each mark is dated by its original event, when its first result was saved, not by its last change: a correction
-        // or a re-saved result replaces the result where it was, so it cannot move a mastery into another month.
-        const dated = items.map((item) => (item.originalEvent ? { ...item, at: item.originalEvent.occurredAt } : item));
-        return { marks, skillMarks: effectiveSkillMarks(dated) };
+        return { marks, skillMarks: effectiveSkillMarks(items) };
       }
       throw new Error("overview progress changed");
     },

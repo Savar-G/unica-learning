@@ -2,7 +2,8 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { getWorkbookRun, getWorkbookWorker, requireAdmin } from "@/lib/admin-store";
 import { AdminWorkbookRun } from "@/components/admin-workbook-runs";
-import { savedWorkbookInstructions, savedWorkbookWhy } from "../../[id]/saved-why";
+import { savedBook1Baseline, savedWorkbookInstructions, savedWorkbookWhy } from "../../[id]/saved-why";
+import { Book1Baseline } from "../../[id]/book1-baseline";
 import { InstructionsUsed } from "../../[id]/instructions-used";
 import { WhyThisBook } from "../../[id]/why-this-book";
 
@@ -13,9 +14,9 @@ export default async function WorkbookRunPage({ params, searchParams }: PageProp
   const admin = await requireAdmin();
   await connection();
   const [{ id }, query] = await Promise.all([params, searchParams]);
-  const [detail, worker, why, instructions] = await Promise.all([getWorkbookRun(admin, id, { version: savedVersion(query.version) }), getWorkbookWorker(admin), savedWorkbookWhy(admin, id), savedWorkbookInstructions(admin, id)]);
+  const [detail, worker, why, instructions, book1] = await Promise.all([getWorkbookRun(admin, id, { version: savedVersion(query.version) }), getWorkbookWorker(admin), savedWorkbookWhy(admin, id), savedWorkbookInstructions(admin, id), savedBook1Baseline(admin, id)]);
   if (!detail) notFound();
-  return <AdminWorkbookRun email={admin.email} detail={detail} now={new Date()} only={query.only === "attention"} worker={worker} why={<><InstructionsUsed trace={instructions} /><WhyThisBook why={why} /></>} />;
+  return <AdminWorkbookRun email={admin.email} detail={detail} now={new Date()} only={query.only === "attention"} worker={worker} why={<><InstructionsUsed trace={instructions} /><WhyThisBook why={why} /></>} book1={<Book1Baseline status={book1} />} />;
 }
 
 function savedVersion(raw: string | string[] | undefined): number | undefined {

@@ -17,6 +17,7 @@
 import "server-only";
 import { isDeepStrictEqual as same } from "node:util";
 import type { RunFrame } from "./workbook-job";
+import type { Curriculum } from "./workbook-curriculum";
 import type { PlanInput } from "./workbook-plan";
 import { jsonHash, masteryPolicyProblem, stored, type Book1PlanningProof } from "./workbook-book1-baseline";
 
@@ -27,6 +28,8 @@ export interface PinnedPlanningEngine {
   tree: string;
   placementBlob: string;
   curriculumVersion(key: string): string | null;
+  /** The pinned build's curriculum (its curriculumFor), for the baseline's copy of the planned skills and steps. */
+  curriculum?(key: string): Curriculum | null;
   /** Runs the pinned public planNextWorkbook once, recording every planWorkbook input it made. */
   plan(o: { curriculumKey: string; grade: number; profile: unknown; report?: { howWeHelp: unknown; minutes: unknown }; device?: unknown;
     workbooks: { number: number; levels: number[] }[]; number: number }): { profileReadable: boolean; calls: PlanInput[]; result: { ok: boolean; plan?: unknown } };

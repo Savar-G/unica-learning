@@ -133,6 +133,6 @@ export const COMPARE_FAQ: { question: string; answer: string }[] = [
   { question: "What if my child is ahead or behind?", answer: "The free assessment finds their level, whatever their grade. Their pages start there: more practice on the gaps, and new topics when they're ready." },
   { question: `Does ${BRAND} replace school?`, answer: `No. ${BRAND} works alongside school. It follows your child's curriculum, so practice at home matches class, and moves ahead when your child is ready.` },
   { question: "Can we keep our tutor?", answer: `Yes. A tutor can explain live, and ${BRAND} gives your child daily practice between sessions.` },
-  { question: "Is there any screen time?", answer: "Daily practice is on paper. The free math assessment is online. You use the app to scan finished pages and see progress. Children in Grade 3 and up can type to the Teaching Assistant for help." },
+  { question: "Is there any screen time?", answer: "Daily practice is on paper. The free math assessment is online. You use our website to scan finished pages and see progress. Children in Grade 3 and up can type to the Teaching Assistant for help." },
   { question: "Where do these prices come from?", answer: "Public price lists and rate pages, checked October 2026. Tutor prices are for 1 hour a week. Prices are in Canadian dollars, except some online platforms that list US prices. They vary by tutor, centre and plan." },
 ];

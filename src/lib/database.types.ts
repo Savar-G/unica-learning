@@ -7535,6 +7535,7 @@ export type Database = {
       admin_ai_usage: {
         Args: {
           p_cad_per_usd?: number
+          p_day_starts?: string[]
           p_from: string
           p_to: string
           p_with_tests?: boolean

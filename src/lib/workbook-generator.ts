@@ -3167,6 +3167,8 @@ function ownStepFirst(w: PageWork): void {
   }
 }
 
+// Row swaps, restored-grid retries and the final empty-cell check all read the same printable questions (#764).
+// An absent approved contract stays missing; only an existing writer slot gets its measured stand-in.
 function budgetPage(input: GenerateInput, w: PageWork): DraftPage {
   const questions = w.slots.map((s, i) => {
     const c = s.contract;

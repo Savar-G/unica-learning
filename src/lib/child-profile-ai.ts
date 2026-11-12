@@ -32,6 +32,7 @@
 // No "server-only" import so that its tests can run, as src/lib/learner-profile-ai.ts. Pure apart from the client and
 // the question reader.
 import { aiClient, type AiClient } from "@/lib/ai-client";
+import type { AiUsageTag } from "@/lib/ai-usage";
 import { BC_SKILL_MAP, MISCONCEPTIONS, checkAiText } from "@/lib/assessment";
 import { fakeChildProfileAi } from "@/lib/child-profile-ai-fake";
 import type { ChildLearnerProfile, ChildProfileFinding } from "@/lib/child-profile";
@@ -293,10 +294,10 @@ function checkChildProfileAi(facts: ChildProfileAiFacts, output: unknown): { fin
  * The client for the findings, or null when the AI is off (no OPENROUTER_API_KEY; the model comes from AI_MODEL). In
  * development (never in a production build), AI_REVIEW_FAKE=sure or unsure gives the fake, for findings without a key.
  */
-export function childProfileAiClient(env: Record<string, string | undefined> = process.env): AiClient | null {
+export function childProfileAiClient(env: Record<string, string | undefined> = process.env, usage?: AiUsageTag): AiClient | null {
   const fake = env.AI_REVIEW_FAKE;
   if (env.NODE_ENV !== "production" && (fake === "sure" || fake === "unsure")) return fakeChildProfileAi(fake);
-  return aiClient(env);
+  return aiClient(env, undefined, { usage: usage ?? { feature: "child_profile" } });
 }
 
 /**
