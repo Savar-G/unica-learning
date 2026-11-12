@@ -633,12 +633,33 @@ export function configuredSecrets(env: Record<string, string | undefined> = proc
  * Text with the child's name as {name} and every secret as [secret]: the configured secret values first (whatever
  * their shape), then the secret patterns. Redact before cutting text short, so a cut never leaves part of a key.
  */
-export function redactText(text: string, childName: string | null = null, secrets: readonly string[] = configuredSecrets()): string {
+export function redactText(text: string, childName: string | null = null, secrets: readonly string[] = configuredSecrets(), keep: readonly string[] = []): string {
   let out = secrets.reduce((t, v) => t.split(v).join("[secret]"), text);
   out = SECRETS.reduce((t, [re, to]) => t.replace(re, to), out);
   const name = childName?.trim();
-  if (name) out = out.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escape(name)}(?![\\p{L}\\p{N}])`, "giu"), "{name}");
-  return out;
+  if (!name) return out;
+  // The question's own words keep a name they hold (F1, practice PTP4: "Leo has 32 beads ..." read back to a child named
+  // Leo). The question is printed in the workbook and stored in the trace as it is, so this hides nothing more.
+  const kept: string[] = [];
+  for (const phrase of keep) {
+    if (!phrase) continue;
+    out = out.split(phrase).join(`\u0000${kept.length}\u0000`);
+    kept.push(phrase);
+  }
+  out = out.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escape(name)}(?![\\p{L}\\p{N}])`, "giu"), "{name}");
+  return out.replace(/\u0000(\d+)\u0000/g, (_, i: string) => kept[Number(i)]);
+}
+
+/** The sentences of the question's own text that hold the child's name: what Maya reads back keeps them (redactText). */
+function questionPhrases(trace: MayaTrace, childName: string | null): string[] {
+  const name = childName?.trim();
+  const text = (trace as { question?: { text?: string } | null }).question?.text ?? "";
+  if (!name || !text) return [];
+  const holds = new RegExp(`(?<![\\p{L}\\p{N}])${escape(name)}(?![\\p{L}\\p{N}])`, "iu");
+  // Whole sentences, and each clause of them, longest first, so a line that says part of a sentence keeps it too.
+  const sentences = text.split(/(?<=[.?!])\s+/).map((x) => x.trim()).filter(Boolean);
+  const pieces = sentences.flatMap((x) => [x, x.replace(/[.?!]+$/, ""), ...x.replace(/[.?!]+$/, "").split(/\s*[,;:]\s*/)]);
+  return [...new Set(pieces.filter((x) => holds.test(x)))].sort((a, b) => b.length - a.length);
 }
 
 const redactDeep = (x: unknown, name: string | null): unknown =>
@@ -649,6 +670,7 @@ const redactDeep = (x: unknown, name: string | null): unknown =>
  * wrote: child turns, Maya's sentences, proposals, errors and technical details. Codes, states and commands stay.
  */
 export function redactTrace(trace: MayaTrace, childName: string | null): MayaTrace {
+  const keep = questionPhrases(trace, childName);
   const turns = trace.turns.map((t): TraceTurn => {
     switch (t.kind) {
       case "child":
@@ -669,7 +691,7 @@ export function redactTrace(trace: MayaTrace, childName: string | null): MayaTra
             ...(a.talk ? { talk: a.talk.map((x) => redactDeep(x, childName) as TraceTalk) } : {}),
             // Errors are codes and fixed wording: nothing to redact.
           })),
-          output: t.output ? { ...t.output, say: t.output.say.map((x) => redactText(x, childName)) } : null,
+          output: t.output ? { ...t.output, say: t.output.say.map((x) => redactText(x, childName, configuredSecrets(), keep)) } : null,
         };
       default:
         return t;
