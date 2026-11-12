@@ -494,13 +494,13 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | CL60 | CLAIM_GT | passing | 'It's yes, 7.' is no answer: its work is not true, so an accept or a confirm the model proposes never credits it | child_stopped | |
 | CL61 | CLAIM_TF | passing | '48 is not 48, so it's true.' is no answer: its work is not true, so an accept or a confirm the model proposes never credits it | child_stopped | |
 | CL62 | CLAIM_DEC | passing | '5.83 is 5.93, so it's false.' is no answer: its work is not true, so an accept or a confirm the model proposes never credits it | child_stopped | |
-| CL63 | CLAIM_TF | passing | The work done, then 'It's false.' twice: Maya gives the word with code's comparison (D-199), then closes | solved, answer_given | |
-| CL64 | CLAIM_GT | passing | The model down: the product, then 'It's no.' twice: code's fallback gives the word (D-199), never the honest close | solved, answer_given | |
+| CL63 | CLAIM_TF | passing | The work done, then 'It's false.' twice: no given word (D-306); the easier example, then the honest close (review of 9884b94e, P1) | child_stopped, worked_example | |
+| CL64 | CLAIM_GT | passing | The model down: the product, then 'It's no.' twice: code's fallback shows the easier example, then the honest close, never the word (review of 9884b94e, P1) | child_stopped, worked_example | |
 | CL65 | CLAIM_GT | passing | The product, then 'I'm stuck, but it's no.' twice: no miss (help or doubt), so a give_answer the model proposes is refused | child_stopped | |
 | CL66 | CLAIM_GT | passing | The product, then 'I think it's no.' twice: no miss (help or doubt), so a give_answer the model proposes is refused | child_stopped | |
 | CL69 | CLAIM_GT | passing | The product, then 'Help, no.' twice: no miss (help or doubt), so a give_answer the model proposes is refused | child_stopped | |
 | CL70 | CLAIM_GT | passing | The product, then 'No, help me.' twice: no miss (help or doubt), so a give_answer the model proposes is refused | child_stopped | |
-| CL67 | CLAIM_GT | passing | 'It's no.', then 'I'm stuck, but it's no.', then 'It's no.': the help turn is no miss, so the word comes only after the second real one | solved, answer_given | |
+| CL67 | CLAIM_GT | passing | 'It's no.', then 'I'm stuck, but it's no.', then 'It's no.': the help turn is no miss, so the easier example comes only after the second real one, then the honest close | child_stopped, worked_example | |
 | CL68 | CLAIM_TF | passing | Only 'I'm stuck.', the model asking to give the answer each turn: refused every time; the easier example, H1 to H3, then the honest close | child_stopped, guided | |
 
 ### Claim questions (A4)
@@ -624,22 +624,22 @@ Fixtures `M_DIVIDE` (30 × ? = 1620), `M_TRY` (236 × ? = 1416) and `M_SUBTRACT`
 | MN9a | M_TRY | passing | 236 × ? = 1416, H3, then a wrong '7.' (one real miss) and 'I don't know.' twice, with give_answer proposed on every turn: refused each time; the easier example, then the honest close | child_stopped, honest close | |
 | MN9b | M_DIVIDE | passing | 30 × ? = 1620, H3, then a wrong '1.' (one real miss) and 'I don't know.' twice, with give_answer proposed on every turn: refused each time; the easier example, then the honest close | child_stopped, honest close | |
 | MN9c | M_SUBTRACT | passing | 9000 − ? = 3000, H3, then a wrong '1.' (one real miss) and 'I don't know.' twice, with give_answer proposed on every turn: refused each time; the easier example, then the honest close | child_stopped, honest close | |
-| MN10 | M_TRY | passing | 236 × ? = 1416, after H3, two real wrong tries ('7.' then '8.'): 'Not quite' and H3 again after the first, the second reaches the given answer (D-199) | solved, answer_given | |
+| MN10 | M_TRY | passing | 236 × ? = 1416, after H3, two real wrong tries ('7.' then '8.'): the loop guard shows the easier example after the first, the second closes honestly; never the answer (D-306) | child_stopped | |
 | MN10b | M_TRY | passing | 236 × ? = 1416, after H3, one real miss ('7.'), then a copy ('5.'), then 'I'm stuck.': the easier example, then the honest close; never the answer | child_stopped, honest close | |
 | MN11 | M_TRY | passing | 236 × ? = 1416, after H3, 'I'm stuck. Is it 7?' then 'I'm stuck. Is it 8?' (read as help with a wrong number), give_answer proposed each time: the easier example, then the honest close; never the answer | child_stopped, honest close | |
 | MN11b | M_TRY | passing | 236 × ? = 1416, after H3, 'Is it 7?' then 'Is it 8?' (read as wrong numbers), give_answer proposed each time: the easier example, then the honest close; never the answer | child_stopped, honest close | |
 | MN12 | M_TRY | passing | 236 × ? = 1416, after H3, 'I'm stuck, but it's 7.' then 'I'm stuck, but it's 8.' (read as wrong numbers, no help reading), give_answer proposed each time: the easier example, then the honest close; never the answer | child_stopped, honest close | |
 | MN12b | M_TRY | passing | 236 × ? = 1416, after H3, 'I think it's 7.' then 'I think it's 8.' (read as wrong numbers, no help reading), give_answer proposed each time: the easier example, then the honest close; never the answer | child_stopped, honest close | |
-| MN10c | M_TRY | passing | 236 × ? = 1416, after H3, two committed wrong numbers ('It's 7.' then '5 times 236 is 1170.'): the second reaches the given answer (D-199) | solved, answer_given | |
+| MN10c | M_TRY | passing | 236 × ? = 1416, after H3, two committed wrong numbers ('It's 7.' then '5 times 236 is 1170.'): the easier example after the first, the honest close after the second; never the answer (D-306) | child_stopped | |
 | MN13a | M_TRY | passing | 236 × ? = 1416, after H3, 'Help, 7.' then 'Help, 8.' (read as wrong numbers), give_answer proposed each time: never a miss; the easier example, then the honest close | child_stopped, honest close | |
 | MN13b | M_TRY | passing | 236 × ? = 1416, after H3, '7, help me.' then '8, help me.' (read as wrong numbers), give_answer proposed each time: never a miss; the easier example, then the honest close | child_stopped, honest close | |
-| MN15 | M_TRY | passing | 236 × ? = 1416, stuck to H2, then '236 times 6 is 1416.' three times: the try is credited once, Maya asks for the missing number each time (no example, no close), then 6 is accepted | solved | |
+| MN15 | M_TRY | passing | 236 × ? = 1416, stuck to H2, then '236 times 6 is 1416.' three times: the try is credited once, Maya asks for the missing number twice, then #698's loop guard takes the easier example, then 6 is accepted | solved | |
 | MN15b | M_TRY | passing | 236 × ? = 1416, the try credited, then 'I'm not stuck, it's 7.' at the final step's top hint (a stray number): the easier example, never a given answer | child_stopped | |
 | MN13c | M_TRY | passing | 236 × ? = 1416, after H3, 'I'm not stuck, it's 7.' then 'I'm not stuck, it's 8.' (read as wrong numbers), give_answer proposed each time: never a miss; the easier example, then the honest close | child_stopped, honest close | |
 | MN13d | M_TRY | passing | 236 × ? = 1416, after H3, 'I'm stuck I mean 7' then 'I'm stuck I mean 8' (read as wrong numbers), give_answer proposed each time: never a miss; the easier example, then the honest close | child_stopped, honest close | |
 | MN13e | M_TRY | passing | 236 × ? = 1416, after H3, '7 maybe' then '8 maybe' (read as wrong numbers), give_answer proposed each time: never a miss; the easier example, then the honest close | child_stopped, honest close | |
-| MN10d | M_TRY | passing | 236 × ? = 1416, after H3, 'I got 7.' then 'I got 8.' (committed wrong answers): the second reaches the given answer (D-199) | solved, answer_given | |
-| MN14 | M_TRY | passing | 236 × ? = 1416, after H3, 'I'm stuck I mean 7' (no miss: the easier example), then 'It's 8.' and 'It's 9.' (two committed misses): the given answer only after the second | solved, answer_given | |
+| MN10d | M_TRY | passing | 236 × ? = 1416, after H3, 'I got 7.' then 'I got 8.' (committed wrong answers): the easier example after the first, the honest close after the second; never the answer (D-306) | child_stopped | |
+| MN14 | M_TRY | passing | 236 × ? = 1416, after H3, 'I'm stuck I mean 7' (no miss: the easier example), then 'It's 8.' and 'It's 9.' (two committed misses): the honest close only after the second, never the answer (D-306) | child_stopped | |
 | MN3 | M_SUBTRACT | passing | 9000 − ? = 3000, says 12000 (adds): not yet, the framing invite says 9000 − 3000, then 6000 is accepted | solved, independent | |
 
 ### Spot the error (C2)
