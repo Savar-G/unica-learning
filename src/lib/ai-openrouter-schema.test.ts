@@ -83,7 +83,7 @@ describe("OpenRouter schema compatibility through public callers and fake HTTP",
     expect(wire.messages[0].content).toContain(JSON.stringify(actual.schema));
     expect(wire.messages[1]).toEqual({ role: "user", content: [{ type: "text", text: JSON.stringify(input()) }] });
     expect(wire).toMatchObject({ model: MODEL, stream: false, max_tokens: 4000, provider: { require_parameters: true }, reasoning: { effort: "low", exclude: true } });
-    expect(PROMPT_VERSION).toBe("maya-text-chat-29");
+    expect(PROMPT_VERSION).toBe("maya-text-23");
   });
 
   it("inventories and dispatches every practice role, with supported roles still structured", async () => {
