@@ -4,13 +4,13 @@ Every line template wording that the wave integration adds to Maya, compared wit
 
 - Waves B and C (place value, patterns, spot the error, clock, other topics and the shared wave lines): approved by Savar through the Chief of Staff, 2026-11-11, with review. The condition: an independent review checks every new line against `NEVER_SAY`, the no-answer rule (D-326), the `DESIGN.md` copy rules and the existing line list before merge.
 - `check.fix` (3 wordings) and `about.no_secret` (3 wordings): approved by Savar 2026-11-12 (#884, D-329).
-- Wave A (evaluate #734, missing number #732, claims #737): **pending Savar**. No approval record exists yet.
+- Wave A (evaluate #734, missing number #732, claims #737): approved by Savar, 2026-11-12 (D-339).
 
 The topic sentences in `src/lib/maya/topic-frame.ts` are written by code, not templates, so they are not rows here. They belong to C3 (#731) and are under the same Wave C approval and review.
 
 | Id | Wording | Where | Source | Approval |
 |---|---|---|---|---|
-Counts: 6 approved by Savar 2026-11-12 (#884, D-329); 608 approved by Savar through the Chief of Staff, 2026-11-11, with review; 211 pending Savar (Wave A).
+Counts: 6 approved by Savar 2026-11-12 (#884, D-329); 608 approved by Savar through the Chief of Staff, 2026-11-11, with review; 211 approved by Savar, 2026-11-12 (D-339, Wave A).
 
 | `about.no_secret#1` | I'm an AI. I can't keep secrets. A grown-up you trust can help. | `src/lib/maya/lines.ts:175` | lines.ts (C3 other topics #731 / wave shared) | approved by Savar 2026-11-12 (#884, D-329) |
 | `about.no_secret#2` | I can't keep secrets, but I'm glad you told me. You can tell a grown-up you trust. | `src/lib/maya/lines.ts:176` | lines.ts (C3 other topics #731 / wave shared) | approved by Savar 2026-11-12 (#884, D-329) |
@@ -35,52 +35,52 @@ Counts: 6 approved by Savar 2026-11-12 (#884, D-329); 608 approved by Savar thro
 | `example.framed#2` | An easier one. {frame} It is {expr}. | `src/lib/maya/lines.ts:221` | lines.ts (C3 other topics #731 / wave shared) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `example.framed#3` | Smaller one first. {frame} It is {expr}. | `src/lib/maya/lines.ts:222` | lines.ts (C3 other topics #731 / wave shared) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `example.framed#4` | Warm-up. {frame} It is {expr}. | `src/lib/maya/lines.ts:222` | lines.ts (C3 other topics #731 / wave shared) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
-| `part.first#0` | {reason} So start with {part}. What is it? | `src/lib/maya/evaluate-lines.ts:13` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.first#1` | {reason} So {part} comes first. What do you get? | `src/lib/maya/evaluate-lines.ts:13` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.first#2` | Let's start with {part}. {reason} What is it? | `src/lib/maya/evaluate-lines.ts:14` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.first#3` | {reason} First, work out {part}. What do you get? | `src/lib/maya/evaluate-lines.ts:14` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.first#4` | {reason} Can you work out {part} first? | `src/lib/maya/evaluate-lines.ts:15` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.next#0` | {reason} Next, {part}. What is it? | `src/lib/maya/evaluate-lines.ts:19` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.next#1` | Next is {part}. {reason} What do you get? | `src/lib/maya/evaluate-lines.ts:19` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.next#2` | {reason} So next, work out {part}. | `src/lib/maya/evaluate-lines.ts:19` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.next#3` | Now {part}. {reason} What is it? | `src/lib/maya/evaluate-lines.ts:20` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.next#4` | {reason} What is {part}? | `src/lib/maya/evaluate-lines.ts:20` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.last#0` | Now we have {part}. What is it? | `src/lib/maya/evaluate-lines.ts:24` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.last#1` | Now it's just {part}. What do you get? | `src/lib/maya/evaluate-lines.ts:24` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.last#2` | We have {part} now. Can you work it out? | `src/lib/maya/evaluate-lines.ts:24` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.last#3` | Next, {part}. What is it? | `src/lib/maya/evaluate-lines.ts:19` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.last#4` | Now work out {part}. What do you get? | `src/lib/maya/evaluate-lines.ts:25` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.frame.divide#0` | Now {equation}. Divide to find it: {part}. What is it? | `src/lib/maya/evaluate-lines.ts:29` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.frame.divide#1` | We have {equation}. The missing number is {part}. What is it? | `src/lib/maya/evaluate-lines.ts:29` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.frame.divide#2` | Now {equation}. What is {part}? | `src/lib/maya/evaluate-lines.ts:30` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.frame.divide#3` | Look at {equation}. To find the missing number, work out {part}. | `src/lib/maya/evaluate-lines.ts:30` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.frame.divide#4` | Now {equation}. Find the missing number: {part}. | `src/lib/maya/evaluate-lines.ts:31` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.frame.subtract#0` | Now {equation}. Subtract to find it: {part}. What is it? | `src/lib/maya/evaluate-lines.ts:34` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.frame.subtract#1` | We have {equation}. The missing number is {part}. What is it? | `src/lib/maya/evaluate-lines.ts:29` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.frame.subtract#2` | Now {equation}. What is {part}? | `src/lib/maya/evaluate-lines.ts:30` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.frame.subtract#3` | Look at {equation}. To find the missing number, work out {part}. | `src/lib/maya/evaluate-lines.ts:30` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.frame.subtract#4` | Now {equation}. Find the missing number: {part}. | `src/lib/maya/evaluate-lines.ts:31` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.lead.first#0` | First, {verb}. | `src/lib/maya/evaluate-lines.ts:41` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.lead.first#1` | {Verb} first. | `src/lib/maya/evaluate-lines.ts:41` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.lead.first#2` | Start: {verb}. | `src/lib/maya/evaluate-lines.ts:41` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.lead.first#3` | First: {verb}. | `src/lib/maya/evaluate-lines.ts:41` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.lead.first#4` | Begin: {verb}. | `src/lib/maya/evaluate-lines.ts:41` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.lead.next#0` | Next, {verb}. | `src/lib/maya/evaluate-lines.ts:42` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.lead.next#1` | Then {verb}. | `src/lib/maya/evaluate-lines.ts:42` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.lead.next#2` | {Verb} next. | `src/lib/maya/evaluate-lines.ts:42` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.lead.next#3` | Next: {verb}. | `src/lib/maya/evaluate-lines.ts:42` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.lead.next#4` | Now {verb}. | `src/lib/maya/evaluate-lines.ts:42` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.lead.last#0` | Now {verb}. | `src/lib/maya/evaluate-lines.ts:42` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.lead.last#1` | Last, {verb}. | `src/lib/maya/evaluate-lines.ts:43` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.lead.last#2` | {Verb} now. | `src/lib/maya/evaluate-lines.ts:43` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.lead.last#3` | Then {verb}. | `src/lib/maya/evaluate-lines.ts:42` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.lead.last#4` | Finally, {verb}. | `src/lib/maya/evaluate-lines.ts:43` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.order#0` | {reason} So {part} comes first. | `src/lib/maya/evaluate-lines.ts:13` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.order#1` | {reason} That is why {part} is first. | `src/lib/maya/evaluate-lines.ts:46` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.order#2` | {reason} So {part} goes first. | `src/lib/maya/evaluate-lines.ts:46` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.order#3` | {reason} We work out {part} before the rest. | `src/lib/maya/evaluate-lines.ts:47` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `part.order#4` | {reason} So we start with {part}. | `src/lib/maya/evaluate-lines.ts:47` | A2 evaluate (#734) | pending Savar (Wave A) |
-| `pattern.ask#0` | {reason} What is {part}? | `src/lib/maya/evaluate-lines.ts:20` | A2 evaluate (#734) | pending Savar (Wave A) |
+| `part.first#0` | {reason} So start with {part}. What is it? | `src/lib/maya/evaluate-lines.ts:13` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.first#1` | {reason} So {part} comes first. What do you get? | `src/lib/maya/evaluate-lines.ts:13` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.first#2` | Let's start with {part}. {reason} What is it? | `src/lib/maya/evaluate-lines.ts:14` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.first#3` | {reason} First, work out {part}. What do you get? | `src/lib/maya/evaluate-lines.ts:14` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.first#4` | {reason} Can you work out {part} first? | `src/lib/maya/evaluate-lines.ts:15` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.next#0` | {reason} Next, {part}. What is it? | `src/lib/maya/evaluate-lines.ts:19` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.next#1` | Next is {part}. {reason} What do you get? | `src/lib/maya/evaluate-lines.ts:19` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.next#2` | {reason} So next, work out {part}. | `src/lib/maya/evaluate-lines.ts:19` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.next#3` | Now {part}. {reason} What is it? | `src/lib/maya/evaluate-lines.ts:20` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.next#4` | {reason} What is {part}? | `src/lib/maya/evaluate-lines.ts:20` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.last#0` | Now we have {part}. What is it? | `src/lib/maya/evaluate-lines.ts:24` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.last#1` | Now it's just {part}. What do you get? | `src/lib/maya/evaluate-lines.ts:24` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.last#2` | We have {part} now. Can you work it out? | `src/lib/maya/evaluate-lines.ts:24` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.last#3` | Next, {part}. What is it? | `src/lib/maya/evaluate-lines.ts:19` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.last#4` | Now work out {part}. What do you get? | `src/lib/maya/evaluate-lines.ts:25` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.frame.divide#0` | Now {equation}. Divide to find it: {part}. What is it? | `src/lib/maya/evaluate-lines.ts:29` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.frame.divide#1` | We have {equation}. The missing number is {part}. What is it? | `src/lib/maya/evaluate-lines.ts:29` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.frame.divide#2` | Now {equation}. What is {part}? | `src/lib/maya/evaluate-lines.ts:30` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.frame.divide#3` | Look at {equation}. To find the missing number, work out {part}. | `src/lib/maya/evaluate-lines.ts:30` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.frame.divide#4` | Now {equation}. Find the missing number: {part}. | `src/lib/maya/evaluate-lines.ts:31` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.frame.subtract#0` | Now {equation}. Subtract to find it: {part}. What is it? | `src/lib/maya/evaluate-lines.ts:34` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.frame.subtract#1` | We have {equation}. The missing number is {part}. What is it? | `src/lib/maya/evaluate-lines.ts:29` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.frame.subtract#2` | Now {equation}. What is {part}? | `src/lib/maya/evaluate-lines.ts:30` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.frame.subtract#3` | Look at {equation}. To find the missing number, work out {part}. | `src/lib/maya/evaluate-lines.ts:30` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.frame.subtract#4` | Now {equation}. Find the missing number: {part}. | `src/lib/maya/evaluate-lines.ts:31` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.lead.first#0` | First, {verb}. | `src/lib/maya/evaluate-lines.ts:41` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.lead.first#1` | {Verb} first. | `src/lib/maya/evaluate-lines.ts:41` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.lead.first#2` | Start: {verb}. | `src/lib/maya/evaluate-lines.ts:41` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.lead.first#3` | First: {verb}. | `src/lib/maya/evaluate-lines.ts:41` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.lead.first#4` | Begin: {verb}. | `src/lib/maya/evaluate-lines.ts:41` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.lead.next#0` | Next, {verb}. | `src/lib/maya/evaluate-lines.ts:42` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.lead.next#1` | Then {verb}. | `src/lib/maya/evaluate-lines.ts:42` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.lead.next#2` | {Verb} next. | `src/lib/maya/evaluate-lines.ts:42` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.lead.next#3` | Next: {verb}. | `src/lib/maya/evaluate-lines.ts:42` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.lead.next#4` | Now {verb}. | `src/lib/maya/evaluate-lines.ts:42` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.lead.last#0` | Now {verb}. | `src/lib/maya/evaluate-lines.ts:42` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.lead.last#1` | Last, {verb}. | `src/lib/maya/evaluate-lines.ts:43` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.lead.last#2` | {Verb} now. | `src/lib/maya/evaluate-lines.ts:43` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.lead.last#3` | Then {verb}. | `src/lib/maya/evaluate-lines.ts:42` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.lead.last#4` | Finally, {verb}. | `src/lib/maya/evaluate-lines.ts:43` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.order#0` | {reason} So {part} comes first. | `src/lib/maya/evaluate-lines.ts:13` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.order#1` | {reason} That is why {part} is first. | `src/lib/maya/evaluate-lines.ts:46` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.order#2` | {reason} So {part} goes first. | `src/lib/maya/evaluate-lines.ts:46` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.order#3` | {reason} We work out {part} before the rest. | `src/lib/maya/evaluate-lines.ts:47` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `part.order#4` | {reason} So we start with {part}. | `src/lib/maya/evaluate-lines.ts:47` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
+| `pattern.ask#0` | {reason} What is {part}? | `src/lib/maya/evaluate-lines.ts:20` | A2 evaluate (#734) | approved by Savar, 2026-11-12 (D-339) |
 | `pattern.ask#1` | {reason} Can you work out {part}? | `src/lib/maya/pattern-lines.ts:9` | C1 patterns (#754) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `pattern.ask#2` | {reason} What do you get for {part}? | `src/lib/maya/pattern-lines.ts:9` | C1 patterns (#754) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `pattern.ask#3` | {reason} Try {part}. What is it? | `src/lib/maya/pattern-lines.ts:10` | C1 patterns (#754) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
@@ -138,172 +138,172 @@ Counts: 6 approved by Savar 2026-11-12 (#884, D-329); 608 approved by Savar thro
 | `close.topic#2` | This one is hard. It's okay to stop for now. Try the easier one on your paper. | `src/lib/maya/lines.ts:536` | lines.ts (C3 other topics #731 / wave shared) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `close.topic#3` | That was a hard one, and stopping is okay. Ask a grown-up to look at it with you. | `src/lib/maya/lines.ts:537` | lines.ts (C3 other topics #731 / wave shared) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `close.topic#4` | This question is hard. It's fine to stop. Try the smaller one on paper first. | `src/lib/maya/lines.ts:538` | lines.ts (C3 other topics #731 / wave shared) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
-| `invite.frame#0` | {Reason}. So the missing number is {inverse}. Let's start with {where}. What can you do there? | `src/lib/maya/missing-number.ts:207` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame#1` | {Reason}. To find the missing number, work out {inverse}. Let's look at {where} first. | `src/lib/maya/missing-number.ts:208` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame#2` | {Reason}. That means the missing number is {inverse}. Start with {where}. What do you think? | `src/lib/maya/missing-number.ts:209` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame#3` | {Reason}. So work out {inverse} to find it. First, {where}. What would you do? | `src/lib/maya/missing-number.ts:210` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame#4` | {Reason}. We find the missing number with {inverse}. Start with {where}. | `src/lib/maya/missing-number.ts:211` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame#5` | The missing number is {inverse}. Start with {where}. | `src/lib/maya/missing-number.ts:212` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame.zeros#0` | {Reason}. So the missing number is {inverse}. Take {zeros} off both numbers. That gives {reduced}. | `src/lib/maya/missing-number.ts:215` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame.zeros#1` | {Reason}. To find it, work out {inverse}. Take {zeros} off both numbers. Now it's {reduced}. | `src/lib/maya/missing-number.ts:216` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame.zeros#2` | {Reason}. That means the missing number is {inverse}. Take {zeros} off both to get {reduced}. | `src/lib/maya/missing-number.ts:217` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame.zeros#3` | {Reason}. So work out {inverse}. Take {zeros} off both numbers. That makes {reduced}. | `src/lib/maya/missing-number.ts:218` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame.zeros#4` | {Reason}. We find it with {inverse}. Take {zeros} off both numbers. We get {reduced}. | `src/lib/maya/missing-number.ts:219` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame.zeros#5` | The missing number is {inverse}. That is {reduced}. | `src/lib/maya/missing-number.ts:220` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame.try#0` | {Reason}. So the missing number is {inverse}. Try a number for it. What is {factor} times your number? | `src/lib/maya/missing-number.ts:223` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame.try#1` | {Reason}. To find it, work out {inverse}. Pick a number to try. Multiply {factor} by it. | `src/lib/maya/missing-number.ts:224` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame.try#2` | {Reason}. That means the missing number is {inverse}. Let's try a number. What do you get for {factor} times it? | `src/lib/maya/missing-number.ts:225` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame.try#3` | {Reason}. So work out {inverse}. Guess a number first. Then work out {factor} times it. | `src/lib/maya/missing-number.ts:226` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame.try#4` | {Reason}. We find it with {inverse}. Choose a number. Then multiply it by {factor}. | `src/lib/maya/missing-number.ts:227` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame.try#5` | The missing number is {inverse}. Try a number for it. | `src/lib/maya/missing-number.ts:228` | A3 missing number (#732) | pending Savar (Wave A) |
-| `frame.why#0` | {Reason}. That is why we work out {inverse}. | `src/lib/maya/missing-number.ts:232` | A3 missing number (#732) | pending Savar (Wave A) |
-| `frame.why#1` | {Reason}. So {inverse} gives the missing number. | `src/lib/maya/missing-number.ts:233` | A3 missing number (#732) | pending Savar (Wave A) |
-| `frame.why#2` | Here's why. {Reason}. So we work out {inverse}. | `src/lib/maya/missing-number.ts:234` | A3 missing number (#732) | pending Savar (Wave A) |
-| `frame.why#3` | {Reason}. Working out {inverse} finds the missing number. | `src/lib/maya/missing-number.ts:235` | A3 missing number (#732) | pending Savar (Wave A) |
-| `frame.why#4` | Because {reason}. So the missing number is {inverse}. | `src/lib/maya/missing-number.ts:236` | A3 missing number (#732) | pending Savar (Wave A) |
-| `trial.why#0` | Dividing by {factor} in your head is hard. Multiplying is easier. So we try a number and multiply it by {factor}. | `src/lib/maya/missing-number.ts:239` | A3 missing number (#732) | pending Savar (Wave A) |
-| `trial.why#1` | {Reason}. Multiplying by {factor} is easier than dividing. So we try a number and check it. | `src/lib/maya/missing-number.ts:240` | A3 missing number (#732) | pending Savar (Wave A) |
-| `trial.why#2` | It's hard to divide by {factor}. It's easier to multiply. So we try a number and check {factor} times it. | `src/lib/maya/missing-number.ts:241` | A3 missing number (#732) | pending Savar (Wave A) |
-| `trial.why#3` | We try numbers because multiplying is easier than dividing by {factor}. Each try shows if we need bigger or smaller. | `src/lib/maya/missing-number.ts:242` | A3 missing number (#732) | pending Savar (Wave A) |
-| `trial.why#4` | {Reason}. A try times {factor} shows if the number is too big or too small. | `src/lib/maya/missing-number.ts:243` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame.heard#0` | Yes! The missing number is {inverse}. Let's start with {where}. What can you do there? | `src/lib/maya/missing-number.ts:247` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame.heard#1` | That's right: {inverse}. Let's look at {where} first. | `src/lib/maya/missing-number.ts:248` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame.heard#2` | Yes, {inverse} finds it. Start with {where}. What do you think? | `src/lib/maya/missing-number.ts:249` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame.heard#3` | Good thinking: {inverse}. First, {where}. What would you do? | `src/lib/maya/missing-number.ts:250` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame.heard#4` | Yes! We work out {inverse}. Start with {where}. | `src/lib/maya/missing-number.ts:251` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame.heard#5` | Yes! The missing number is {inverse}. Start with {where}. | `src/lib/maya/missing-number.ts:252` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame.heard.zeros#0` | Yes! The missing number is {inverse}. Take {zeros} off both numbers. That gives {reduced}. | `src/lib/maya/missing-number.ts:255` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame.heard.zeros#1` | That's right: {inverse}. Take {zeros} off both. Now it's {reduced}. | `src/lib/maya/missing-number.ts:256` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame.heard.zeros#2` | Yes, {inverse} finds it. Take {zeros} off both numbers to get {reduced}. | `src/lib/maya/missing-number.ts:257` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame.heard.zeros#3` | Good thinking: {inverse}. Take {zeros} off both numbers. That makes {reduced}. | `src/lib/maya/missing-number.ts:258` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame.heard.zeros#4` | Yes! We work out {inverse}. Take {zeros} off both numbers. We get {reduced}. | `src/lib/maya/missing-number.ts:259` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame.heard.zeros#5` | Yes! The missing number is {inverse}. That is {reduced}. | `src/lib/maya/missing-number.ts:260` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame.heard.try#0` | Yes! The missing number is {inverse}. Try a number for it. What is {factor} times your number? | `src/lib/maya/missing-number.ts:263` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame.heard.try#1` | That's right: {inverse}. Pick a number to try. Multiply {factor} by it. | `src/lib/maya/missing-number.ts:264` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame.heard.try#2` | Yes, {inverse} finds it. Let's try a number. What do you get for {factor} times it? | `src/lib/maya/missing-number.ts:265` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame.heard.try#3` | Good thinking: {inverse}. Guess a number first. Then work out {factor} times it. | `src/lib/maya/missing-number.ts:266` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame.heard.try#4` | Yes! We work out {inverse}. Choose a number. Then multiply it by {factor}. | `src/lib/maya/missing-number.ts:267` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.frame.heard.try#5` | Yes! The missing number is {inverse}. Try a number for it. | `src/lib/maya/missing-number.ts:263` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.zeros#0` | Take {zeros} off both numbers. That gives {reduced}. Let's start with {where}. | `src/lib/maya/missing-number.ts:272` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.zeros#1` | Take {zeros} off both numbers. Now it's {reduced}. Start with {where}. | `src/lib/maya/missing-number.ts:273` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.zeros#2` | Take {zeros} off both numbers to get {reduced}. Then look at {where}. | `src/lib/maya/missing-number.ts:274` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.zeros#3` | Take {zeros} off both. That makes {reduced}. First, {where}. | `src/lib/maya/missing-number.ts:275` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.zeros#4` | Take {zeros} off both numbers. We get {reduced}. Start with {where}. | `src/lib/maya/missing-number.ts:276` | A3 missing number (#732) | pending Savar (Wave A) |
-| `try.target.frame#0` | Now you try yours: {expr}. To find the missing number, work out {inverse}. | `src/lib/maya/missing-number.ts:279` | A3 missing number (#732) | pending Savar (Wave A) |
-| `try.target.frame#1` | Your turn! Try {expr}. Work out {inverse} to find the missing number. | `src/lib/maya/missing-number.ts:280` | A3 missing number (#732) | pending Savar (Wave A) |
-| `try.target.frame#2` | Can you try {expr} the same way? The missing number is {inverse}. | `src/lib/maya/missing-number.ts:281` | A3 missing number (#732) | pending Savar (Wave A) |
-| `try.target.frame#3` | Now it's your turn with {expr}. Find the missing number with {inverse}. | `src/lib/maya/missing-number.ts:282` | A3 missing number (#732) | pending Savar (Wave A) |
-| `try.target.frame#4` | Over to you! Try {expr}. Work out {inverse} the same way. | `src/lib/maya/missing-number.ts:283` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.try#0` | Try a number for the missing number. What is {factor} times your number? | `src/lib/maya/trial-factor.ts:37` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.try#1` | Pick a number to try. Multiply {factor} by it. What do you get? | `src/lib/maya/trial-factor.ts:38` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.try#2` | Let's try a number. What do you get for {factor} times it? | `src/lib/maya/missing-number.ts:225` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.try#3` | Choose a number for the missing number. Then multiply it by {factor}. | `src/lib/maya/trial-factor.ts:40` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.try#4` | Guess a number first. Then work out {factor} times it. | `src/lib/maya/missing-number.ts:226` | A3 missing number (#732) | pending Savar (Wave A) |
-| `trial.point#0` | Pick a number for the missing number. Multiply {factor} by it. Do you get {total}? | `src/lib/maya/trial-factor.ts:44` | A3 missing number (#732) | pending Savar (Wave A) |
-| `trial.point#1` | Try one number. Work out {factor} times it. Is it {total}? | `src/lib/maya/trial-factor.ts:45` | A3 missing number (#732) | pending Savar (Wave A) |
-| `trial.point#2` | Choose a number to try. Multiply it by {factor}. Check it against {total}. | `src/lib/maya/trial-factor.ts:46` | A3 missing number (#732) | pending Savar (Wave A) |
-| `trial.point#3` | Guess a number. Then work out {factor} times it. Is that {total}? | `src/lib/maya/trial-factor.ts:47` | A3 missing number (#732) | pending Savar (Wave A) |
-| `trial.point#4` | Try a number. Does {factor} times that number make {total}? | `src/lib/maya/trial-factor.ts:48` | A3 missing number (#732) | pending Savar (Wave A) |
-| `trial.round#0` | {factor} is close to {round}. About how many {round}s make {total}? | `src/lib/maya/trial-factor.ts:51` | A3 missing number (#732) | pending Savar (Wave A) |
-| `trial.round#1` | Round {factor} to {round}. About how many {round}s are close to {total}? | `src/lib/maya/trial-factor.ts:52` | A3 missing number (#732) | pending Savar (Wave A) |
-| `trial.round#2` | Think of {factor} as about {round}. How many {round}s get close to {total}? | `src/lib/maya/trial-factor.ts:53` | A3 missing number (#732) | pending Savar (Wave A) |
-| `trial.round#3` | {factor} is near {round}. About how many {round}s make {total}? Try that number. | `src/lib/maya/trial-factor.ts:54` | A3 missing number (#732) | pending Savar (Wave A) |
-| `trial.round#4` | Use {round} to guess. About how many {round}s make {total}? | `src/lib/maya/trial-factor.ts:55` | A3 missing number (#732) | pending Savar (Wave A) |
-| `trial.big#0` | {factor} × {guess} = {product}. That is more than {total}. Try a smaller number. | `src/lib/maya/trial-factor.ts:58` | A3 missing number (#732) | pending Savar (Wave A) |
-| `trial.big#1` | {factor} × {guess} = {product}. That is too big. Try a smaller number. | `src/lib/maya/trial-factor.ts:59` | A3 missing number (#732) | pending Savar (Wave A) |
-| `trial.big#2` | {factor} × {guess} makes {product}. That is more than {total}. Go smaller. | `src/lib/maya/trial-factor.ts:60` | A3 missing number (#732) | pending Savar (Wave A) |
-| `trial.big#3` | {factor} × {guess} = {product}. {product} is bigger than {total}. Try a smaller number. | `src/lib/maya/trial-factor.ts:61` | A3 missing number (#732) | pending Savar (Wave A) |
-| `trial.big#4` | Let's check: {factor} × {guess} = {product}. That is too big. Try a smaller number. | `src/lib/maya/trial-factor.ts:62` | A3 missing number (#732) | pending Savar (Wave A) |
-| `trial.right#0` | Yes! {factor} times your number makes {total}. | `src/lib/maya/trial-factor.ts:66` | A3 missing number (#732) | pending Savar (Wave A) |
-| `trial.right#1` | That's right. Your number times {factor} makes {total}. | `src/lib/maya/trial-factor.ts:67` | A3 missing number (#732) | pending Savar (Wave A) |
-| `trial.right#2` | Yes, that works. {factor} times it is {total}. | `src/lib/maya/trial-factor.ts:68` | A3 missing number (#732) | pending Savar (Wave A) |
-| `trial.right#3` | Exactly! Your number works. {factor} times it makes {total}. | `src/lib/maya/trial-factor.ts:69` | A3 missing number (#732) | pending Savar (Wave A) |
-| `trial.right#4` | Nice. {factor} times your number is {total}. | `src/lib/maya/trial-factor.ts:70` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.result.try#0` | So what is the missing number? | `src/lib/maya/trial-factor.ts:74` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.result.try#1` | Now say the missing number. | `src/lib/maya/trial-factor.ts:75` | A3 missing number (#732) | pending Savar (Wave A) |
+| `invite.frame#0` | {Reason}. So the missing number is {inverse}. Let's start with {where}. What can you do there? | `src/lib/maya/missing-number.ts:207` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame#1` | {Reason}. To find the missing number, work out {inverse}. Let's look at {where} first. | `src/lib/maya/missing-number.ts:208` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame#2` | {Reason}. That means the missing number is {inverse}. Start with {where}. What do you think? | `src/lib/maya/missing-number.ts:209` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame#3` | {Reason}. So work out {inverse} to find it. First, {where}. What would you do? | `src/lib/maya/missing-number.ts:210` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame#4` | {Reason}. We find the missing number with {inverse}. Start with {where}. | `src/lib/maya/missing-number.ts:211` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame#5` | The missing number is {inverse}. Start with {where}. | `src/lib/maya/missing-number.ts:212` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame.zeros#0` | {Reason}. So the missing number is {inverse}. Take {zeros} off both numbers. That gives {reduced}. | `src/lib/maya/missing-number.ts:215` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame.zeros#1` | {Reason}. To find it, work out {inverse}. Take {zeros} off both numbers. Now it's {reduced}. | `src/lib/maya/missing-number.ts:216` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame.zeros#2` | {Reason}. That means the missing number is {inverse}. Take {zeros} off both to get {reduced}. | `src/lib/maya/missing-number.ts:217` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame.zeros#3` | {Reason}. So work out {inverse}. Take {zeros} off both numbers. That makes {reduced}. | `src/lib/maya/missing-number.ts:218` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame.zeros#4` | {Reason}. We find it with {inverse}. Take {zeros} off both numbers. We get {reduced}. | `src/lib/maya/missing-number.ts:219` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame.zeros#5` | The missing number is {inverse}. That is {reduced}. | `src/lib/maya/missing-number.ts:220` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame.try#0` | {Reason}. So the missing number is {inverse}. Try a number for it. What is {factor} times your number? | `src/lib/maya/missing-number.ts:223` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame.try#1` | {Reason}. To find it, work out {inverse}. Pick a number to try. Multiply {factor} by it. | `src/lib/maya/missing-number.ts:224` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame.try#2` | {Reason}. That means the missing number is {inverse}. Let's try a number. What do you get for {factor} times it? | `src/lib/maya/missing-number.ts:225` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame.try#3` | {Reason}. So work out {inverse}. Guess a number first. Then work out {factor} times it. | `src/lib/maya/missing-number.ts:226` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame.try#4` | {Reason}. We find it with {inverse}. Choose a number. Then multiply it by {factor}. | `src/lib/maya/missing-number.ts:227` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame.try#5` | The missing number is {inverse}. Try a number for it. | `src/lib/maya/missing-number.ts:228` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `frame.why#0` | {Reason}. That is why we work out {inverse}. | `src/lib/maya/missing-number.ts:232` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `frame.why#1` | {Reason}. So {inverse} gives the missing number. | `src/lib/maya/missing-number.ts:233` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `frame.why#2` | Here's why. {Reason}. So we work out {inverse}. | `src/lib/maya/missing-number.ts:234` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `frame.why#3` | {Reason}. Working out {inverse} finds the missing number. | `src/lib/maya/missing-number.ts:235` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `frame.why#4` | Because {reason}. So the missing number is {inverse}. | `src/lib/maya/missing-number.ts:236` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `trial.why#0` | Dividing by {factor} in your head is hard. Multiplying is easier. So we try a number and multiply it by {factor}. | `src/lib/maya/missing-number.ts:239` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `trial.why#1` | {Reason}. Multiplying by {factor} is easier than dividing. So we try a number and check it. | `src/lib/maya/missing-number.ts:240` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `trial.why#2` | It's hard to divide by {factor}. It's easier to multiply. So we try a number and check {factor} times it. | `src/lib/maya/missing-number.ts:241` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `trial.why#3` | We try numbers because multiplying is easier than dividing by {factor}. Each try shows if we need bigger or smaller. | `src/lib/maya/missing-number.ts:242` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `trial.why#4` | {Reason}. A try times {factor} shows if the number is too big or too small. | `src/lib/maya/missing-number.ts:243` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame.heard#0` | Yes! The missing number is {inverse}. Let's start with {where}. What can you do there? | `src/lib/maya/missing-number.ts:247` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame.heard#1` | That's right: {inverse}. Let's look at {where} first. | `src/lib/maya/missing-number.ts:248` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame.heard#2` | Yes, {inverse} finds it. Start with {where}. What do you think? | `src/lib/maya/missing-number.ts:249` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame.heard#3` | Good thinking: {inverse}. First, {where}. What would you do? | `src/lib/maya/missing-number.ts:250` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame.heard#4` | Yes! We work out {inverse}. Start with {where}. | `src/lib/maya/missing-number.ts:251` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame.heard#5` | Yes! The missing number is {inverse}. Start with {where}. | `src/lib/maya/missing-number.ts:252` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame.heard.zeros#0` | Yes! The missing number is {inverse}. Take {zeros} off both numbers. That gives {reduced}. | `src/lib/maya/missing-number.ts:255` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame.heard.zeros#1` | That's right: {inverse}. Take {zeros} off both. Now it's {reduced}. | `src/lib/maya/missing-number.ts:256` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame.heard.zeros#2` | Yes, {inverse} finds it. Take {zeros} off both numbers to get {reduced}. | `src/lib/maya/missing-number.ts:257` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame.heard.zeros#3` | Good thinking: {inverse}. Take {zeros} off both numbers. That makes {reduced}. | `src/lib/maya/missing-number.ts:258` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame.heard.zeros#4` | Yes! We work out {inverse}. Take {zeros} off both numbers. We get {reduced}. | `src/lib/maya/missing-number.ts:259` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame.heard.zeros#5` | Yes! The missing number is {inverse}. That is {reduced}. | `src/lib/maya/missing-number.ts:260` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame.heard.try#0` | Yes! The missing number is {inverse}. Try a number for it. What is {factor} times your number? | `src/lib/maya/missing-number.ts:263` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame.heard.try#1` | That's right: {inverse}. Pick a number to try. Multiply {factor} by it. | `src/lib/maya/missing-number.ts:264` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame.heard.try#2` | Yes, {inverse} finds it. Let's try a number. What do you get for {factor} times it? | `src/lib/maya/missing-number.ts:265` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame.heard.try#3` | Good thinking: {inverse}. Guess a number first. Then work out {factor} times it. | `src/lib/maya/missing-number.ts:266` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame.heard.try#4` | Yes! We work out {inverse}. Choose a number. Then multiply it by {factor}. | `src/lib/maya/missing-number.ts:267` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.frame.heard.try#5` | Yes! The missing number is {inverse}. Try a number for it. | `src/lib/maya/missing-number.ts:263` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.zeros#0` | Take {zeros} off both numbers. That gives {reduced}. Let's start with {where}. | `src/lib/maya/missing-number.ts:272` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.zeros#1` | Take {zeros} off both numbers. Now it's {reduced}. Start with {where}. | `src/lib/maya/missing-number.ts:273` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.zeros#2` | Take {zeros} off both numbers to get {reduced}. Then look at {where}. | `src/lib/maya/missing-number.ts:274` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.zeros#3` | Take {zeros} off both. That makes {reduced}. First, {where}. | `src/lib/maya/missing-number.ts:275` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.zeros#4` | Take {zeros} off both numbers. We get {reduced}. Start with {where}. | `src/lib/maya/missing-number.ts:276` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `try.target.frame#0` | Now you try yours: {expr}. To find the missing number, work out {inverse}. | `src/lib/maya/missing-number.ts:279` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `try.target.frame#1` | Your turn! Try {expr}. Work out {inverse} to find the missing number. | `src/lib/maya/missing-number.ts:280` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `try.target.frame#2` | Can you try {expr} the same way? The missing number is {inverse}. | `src/lib/maya/missing-number.ts:281` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `try.target.frame#3` | Now it's your turn with {expr}. Find the missing number with {inverse}. | `src/lib/maya/missing-number.ts:282` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `try.target.frame#4` | Over to you! Try {expr}. Work out {inverse} the same way. | `src/lib/maya/missing-number.ts:283` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.try#0` | Try a number for the missing number. What is {factor} times your number? | `src/lib/maya/trial-factor.ts:37` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.try#1` | Pick a number to try. Multiply {factor} by it. What do you get? | `src/lib/maya/trial-factor.ts:38` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.try#2` | Let's try a number. What do you get for {factor} times it? | `src/lib/maya/missing-number.ts:225` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.try#3` | Choose a number for the missing number. Then multiply it by {factor}. | `src/lib/maya/trial-factor.ts:40` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.try#4` | Guess a number first. Then work out {factor} times it. | `src/lib/maya/missing-number.ts:226` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `trial.point#0` | Pick a number for the missing number. Multiply {factor} by it. Do you get {total}? | `src/lib/maya/trial-factor.ts:44` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `trial.point#1` | Try one number. Work out {factor} times it. Is it {total}? | `src/lib/maya/trial-factor.ts:45` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `trial.point#2` | Choose a number to try. Multiply it by {factor}. Check it against {total}. | `src/lib/maya/trial-factor.ts:46` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `trial.point#3` | Guess a number. Then work out {factor} times it. Is that {total}? | `src/lib/maya/trial-factor.ts:47` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `trial.point#4` | Try a number. Does {factor} times that number make {total}? | `src/lib/maya/trial-factor.ts:48` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `trial.round#0` | {factor} is close to {round}. About how many {round}s make {total}? | `src/lib/maya/trial-factor.ts:51` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `trial.round#1` | Round {factor} to {round}. About how many {round}s are close to {total}? | `src/lib/maya/trial-factor.ts:52` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `trial.round#2` | Think of {factor} as about {round}. How many {round}s get close to {total}? | `src/lib/maya/trial-factor.ts:53` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `trial.round#3` | {factor} is near {round}. About how many {round}s make {total}? Try that number. | `src/lib/maya/trial-factor.ts:54` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `trial.round#4` | Use {round} to guess. About how many {round}s make {total}? | `src/lib/maya/trial-factor.ts:55` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `trial.big#0` | {factor} × {guess} = {product}. That is more than {total}. Try a smaller number. | `src/lib/maya/trial-factor.ts:58` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `trial.big#1` | {factor} × {guess} = {product}. That is too big. Try a smaller number. | `src/lib/maya/trial-factor.ts:59` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `trial.big#2` | {factor} × {guess} makes {product}. That is more than {total}. Go smaller. | `src/lib/maya/trial-factor.ts:60` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `trial.big#3` | {factor} × {guess} = {product}. {product} is bigger than {total}. Try a smaller number. | `src/lib/maya/trial-factor.ts:61` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `trial.big#4` | Let's check: {factor} × {guess} = {product}. That is too big. Try a smaller number. | `src/lib/maya/trial-factor.ts:62` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `trial.right#0` | Yes! {factor} times your number makes {total}. | `src/lib/maya/trial-factor.ts:66` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `trial.right#1` | That's right. Your number times {factor} makes {total}. | `src/lib/maya/trial-factor.ts:67` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `trial.right#2` | Yes, that works. {factor} times it is {total}. | `src/lib/maya/trial-factor.ts:68` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `trial.right#3` | Exactly! Your number works. {factor} times it makes {total}. | `src/lib/maya/trial-factor.ts:69` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `trial.right#4` | Nice. {factor} times your number is {total}. | `src/lib/maya/trial-factor.ts:70` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.result.try#0` | So what is the missing number? | `src/lib/maya/trial-factor.ts:74` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.result.try#1` | Now say the missing number. | `src/lib/maya/trial-factor.ts:75` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
 | `invite.result.try#2` | What is the missing number? | `src/lib/maya/pattern-lines.ts:24` | C1 patterns (#754) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
-| `invite.result.try#3` | So the missing number is what? | `src/lib/maya/trial-factor.ts:77` | A3 missing number (#732) | pending Savar (Wave A) |
-| `invite.result.try#4` | Tell me the missing number. | `src/lib/maya/trial-factor.ts:78` | A3 missing number (#732) | pending Savar (Wave A) |
-| `trial.small#0` | {factor} × {guess} = {product}. That is less than {total}. Try a bigger number. | `src/lib/maya/trial-factor.ts:81` | A3 missing number (#732) | pending Savar (Wave A) |
-| `trial.small#1` | {factor} × {guess} = {product}. That is too small. Try a bigger number. | `src/lib/maya/trial-factor.ts:82` | A3 missing number (#732) | pending Savar (Wave A) |
-| `trial.small#2` | {factor} × {guess} makes {product}. That is less than {total}. Go bigger. | `src/lib/maya/trial-factor.ts:83` | A3 missing number (#732) | pending Savar (Wave A) |
-| `trial.small#3` | {factor} × {guess} = {product}. {product} is smaller than {total}. Try a bigger number. | `src/lib/maya/trial-factor.ts:84` | A3 missing number (#732) | pending Savar (Wave A) |
-| `trial.small#4` | Let's check: {factor} × {guess} = {product}. That is too small. Try a bigger number. | `src/lib/maya/trial-factor.ts:85` | A3 missing number (#732) | pending Savar (Wave A) |
-| `question.claim#0` | First we work out {expr}. | `src/lib/maya/claim.ts:122` | A4 claims (#737) | pending Savar (Wave A) |
-| `question.claim#1` | Let's work out {expr} first. | `src/lib/maya/claim.ts:122` | A4 claims (#737) | pending Savar (Wave A) |
-| `question.claim#2` | We start with {expr}. | `src/lib/maya/claim.ts:122` | A4 claims (#737) | pending Savar (Wave A) |
-| `question.claim#3` | Let's find {expr} first. | `src/lib/maya/claim.ts:122` | A4 claims (#737) | pending Savar (Wave A) |
-| `question.claim#4` | First, let's find {expr}. | `src/lib/maya/claim.ts:122` | A4 claims (#737) | pending Savar (Wave A) |
-| `question.claim.swap#0` | {printed} is the same as {expr}. | `src/lib/maya/claim.ts:125` | A4 claims (#737) | pending Savar (Wave A) |
-| `question.claim.swap#1` | We can swap them: {printed} is the same as {expr}. | `src/lib/maya/claim.ts:125` | A4 claims (#737) | pending Savar (Wave A) |
-| `question.claim.swap#2` | {printed} makes the same number as {expr}. | `src/lib/maya/claim.ts:125` | A4 claims (#737) | pending Savar (Wave A) |
-| `question.claim.swap#3` | Swap the numbers: {printed} is the same as {expr}. | `src/lib/maya/claim.ts:126` | A4 claims (#737) | pending Savar (Wave A) |
-| `question.claim.swap#4` | {printed} and {expr} make the same number. | `src/lib/maya/claim.ts:126` | A4 claims (#737) | pending Savar (Wave A) |
-| `example.intro.claim#0` | Let's try an easier one first. {ask} | `src/lib/maya/claim.ts:129` | A4 claims (#737) | pending Savar (Wave A) |
-| `example.intro.claim#1` | Here's a smaller one to warm up. {ask} | `src/lib/maya/claim.ts:129` | A4 claims (#737) | pending Savar (Wave A) |
-| `example.intro.claim#2` | Let me show you an easier one. {ask} | `src/lib/maya/claim.ts:129` | A4 claims (#737) | pending Savar (Wave A) |
-| `example.intro.claim#3` | First, a smaller one. {ask} | `src/lib/maya/claim.ts:130` | A4 claims (#737) | pending Savar (Wave A) |
-| `example.intro.claim#4` | I'll show you an easier one first. {ask} | `src/lib/maya/claim.ts:130` | A4 claims (#737) | pending Savar (Wave A) |
-| `invite.claim.product#0` | What is {expr}? Then we compare it with {shown}. | `src/lib/maya/claim.ts:136` | A4 claims (#737) | pending Savar (Wave A) |
-| `invite.claim.product#1` | Now find {expr}. Then we compare it with {shown}. | `src/lib/maya/claim.ts:136` | A4 claims (#737) | pending Savar (Wave A) |
-| `invite.claim.product#2` | What does {expr} make? Then we check {shown}. | `src/lib/maya/claim.ts:137` | A4 claims (#737) | pending Savar (Wave A) |
-| `invite.claim.product#3` | So what is {expr}? Then we look at {shown}. | `src/lib/maya/claim.ts:137` | A4 claims (#737) | pending Savar (Wave A) |
-| `invite.claim.product#4` | Put it together: what is {expr}? Then we check {shown}. | `src/lib/maya/claim.ts:137` | A4 claims (#737) | pending Savar (Wave A) |
-| `point.claim.product#0` | Put the parts together to get {expr}. Then compare it with {shown}. | `src/lib/maya/claim.ts:141` | A4 claims (#737) | pending Savar (Wave A) |
-| `point.claim.product#1` | Your columns make {expr}. Then we compare it with {shown}. | `src/lib/maya/claim.ts:141` | A4 claims (#737) | pending Savar (Wave A) |
-| `point.claim.product#2` | Join the parts of {expr}. Then we look at {shown}. | `src/lib/maya/claim.ts:142` | A4 claims (#737) | pending Savar (Wave A) |
-| `point.claim.product#3` | Put your columns together for {expr}. Then check {shown}. | `src/lib/maya/claim.ts:142` | A4 claims (#737) | pending Savar (Wave A) |
-| `point.claim.product#4` | The columns together make {expr}. Then compare it with {shown}. | `src/lib/maya/claim.ts:143` | A4 claims (#737) | pending Savar (Wave A) |
-| `operation.claim.product#0` | First find {expr}. Then we compare it with {shown}. | `src/lib/maya/claim.ts:146` | A4 claims (#737) | pending Savar (Wave A) |
-| `operation.claim.product#1` | We need {expr} first. Then we look at {shown}. | `src/lib/maya/claim.ts:146` | A4 claims (#737) | pending Savar (Wave A) |
-| `operation.claim.product#2` | Work out {expr}. Then check it against {shown}. | `src/lib/maya/claim.ts:147` | A4 claims (#737) | pending Savar (Wave A) |
-| `operation.claim.product#3` | Find {expr}. After that, compare it with {shown}. | `src/lib/maya/claim.ts:147` | A4 claims (#737) | pending Savar (Wave A) |
-| `operation.claim.product#4` | Let's finish {expr}. Then we check {shown}. | `src/lib/maya/claim.ts:148` | A4 claims (#737) | pending Savar (Wave A) |
-| `invite.claim#0` | {ask} | `src/lib/maya/claim.ts:116` | A4 claims (#737) | pending Savar (Wave A) |
-| `invite.claim#1` | Now check it. {ask} | `src/lib/maya/claim.ts:150` | A4 claims (#737) | pending Savar (Wave A) |
-| `invite.claim#2` | Last part. {ask} | `src/lib/maya/claim.ts:150` | A4 claims (#737) | pending Savar (Wave A) |
-| `invite.claim#3` | Let's check. {ask} | `src/lib/maya/claim.ts:150` | A4 claims (#737) | pending Savar (Wave A) |
-| `invite.claim#4` | Now the question. {ask} | `src/lib/maya/claim.ts:150` | A4 claims (#737) | pending Savar (Wave A) |
-| `point.claim#0` | Compare {value} with {shown}. Circle {first} or {second}. | `src/lib/maya/claim.ts:152` | A4 claims (#737) | pending Savar (Wave A) |
-| `point.claim#1` | We found {value}. The page says {shown}. Circle {first} or {second}. | `src/lib/maya/claim.ts:152` | A4 claims (#737) | pending Savar (Wave A) |
-| `point.claim#2` | Look at {value} and {shown}. Circle {first} or {second}. | `src/lib/maya/claim.ts:153` | A4 claims (#737) | pending Savar (Wave A) |
-| `point.claim#3` | Our number is {value}. The page has {shown}. Circle {first} or {second}. | `src/lib/maya/claim.ts:153` | A4 claims (#737) | pending Savar (Wave A) |
-| `point.claim#4` | Check {value} against {shown}. Circle {first} or {second}. | `src/lib/maya/claim.ts:154` | A4 claims (#737) | pending Savar (Wave A) |
-| `compare.claim#0` | {compare} Circle {first} or {second}. | `src/lib/maya/claim.ts:157` | A4 claims (#737) | pending Savar (Wave A) |
-| `compare.claim#1` | Look: {compare} Circle {first} or {second}. | `src/lib/maya/claim.ts:157` | A4 claims (#737) | pending Savar (Wave A) |
-| `compare.claim#2` | Let's compare. {compare} Circle {first} or {second}. | `src/lib/maya/claim.ts:157` | A4 claims (#737) | pending Savar (Wave A) |
-| `compare.claim#3` | Here's the check. {compare} Circle {first} or {second}. | `src/lib/maya/claim.ts:158` | A4 claims (#737) | pending Savar (Wave A) |
-| `compare.claim#4` | {compare} Which word do you circle? | `src/lib/maya/claim.ts:158` | A4 claims (#737) | pending Savar (Wave A) |
-| `answer.claim#0` | Yes! {expr} = {value}. So you circle {word}. | `src/lib/maya/claim.ts:161` | A4 claims (#737) | pending Savar (Wave A) |
-| `answer.claim#1` | That's right: {expr} = {value}. You circle {word}. | `src/lib/maya/claim.ts:161` | A4 claims (#737) | pending Savar (Wave A) |
-| `answer.claim#2` | You got it! {expr} = {value}. It's {word}. | `src/lib/maya/claim.ts:162` | A4 claims (#737) | pending Savar (Wave A) |
-| `answer.claim#3` | Well done! {expr} = {value}. You circle {word}. | `src/lib/maya/claim.ts:162` | A4 claims (#737) | pending Savar (Wave A) |
-| `answer.claim#4` | Exactly! {expr} = {value}. The answer is {word}. | `src/lib/maya/claim.ts:162` | A4 claims (#737) | pending Savar (Wave A) |
-| `write.claim#0` | Please circle {word} on your page. | `src/lib/maya/claim.ts:168` | A4 claims (#737) | pending Savar (Wave A) |
-| `write.claim#1` | Can you circle {word} on your page? | `src/lib/maya/claim.ts:172` | A4 claims (#737) | pending Savar (Wave A) |
-| `write.claim#2` | Now circle {word} on your page. | `src/lib/maya/claim.ts:172` | A4 claims (#737) | pending Savar (Wave A) |
-| `write.claim#3` | Go ahead and circle {word} on your paper. | `src/lib/maya/claim.ts:173` | A4 claims (#737) | pending Savar (Wave A) |
-| `write.claim#4` | Circle {word} on your page, please. | `src/lib/maya/claim.ts:173` | A4 claims (#737) | pending Savar (Wave A) |
-| `write.claim.yours#0` | Please circle your answer on your page. | `src/lib/maya/claim.ts:176` | A4 claims (#737) | pending Savar (Wave A) |
-| `write.claim.yours#1` | Can you circle your answer on your page? | `src/lib/maya/claim.ts:176` | A4 claims (#737) | pending Savar (Wave A) |
-| `write.claim.yours#2` | Go ahead and circle your answer on your paper. | `src/lib/maya/claim.ts:176` | A4 claims (#737) | pending Savar (Wave A) |
-| `write.claim.yours#3` | Now circle your answer on your page. | `src/lib/maya/claim.ts:177` | A4 claims (#737) | pending Savar (Wave A) |
-| `write.claim.yours#4` | Circle your answer on your page, please. | `src/lib/maya/claim.ts:177` | A4 claims (#737) | pending Savar (Wave A) |
-| `close.honest#0` | This one is hard, and it's okay to stop. You can try the easier one on paper. | `src/lib/maya/claim.ts:182` | A4 claims (#737) | pending Savar (Wave A) |
-| `close.honest#1` | This is a tricky one. It's fine to stop here. You could ask a grown-up to try it with you. | `src/lib/maya/claim.ts:183` | A4 claims (#737) | pending Savar (Wave A) |
-| `close.honest#2` | This one is hard. We can stop for now. Try the easier one on your paper later. | `src/lib/maya/claim.ts:184` | A4 claims (#737) | pending Savar (Wave A) |
-| `close.honest#3` | This one is tough, and stopping is fine. A grown-up can help you try it. | `src/lib/maya/claim.ts:185` | A4 claims (#737) | pending Savar (Wave A) |
-| `close.honest#4` | This question is hard, and that's okay. Let's stop here. Try the smaller one on paper. | `src/lib/maya/claim.ts:186` | A4 claims (#737) | pending Savar (Wave A) |
-| `confirm.claim.said#0` | You said {heard}. Is {heard} the word you circle? | `src/lib/maya/claim.ts:190` | A4 claims (#737) | pending Savar (Wave A) |
-| `confirm.claim.said#1` | I heard {heard}. Do you circle {heard}? | `src/lib/maya/claim.ts:190` | A4 claims (#737) | pending Savar (Wave A) |
-| `confirm.claim.said#2` | So you circle {heard}? | `src/lib/maya/claim.ts:190` | A4 claims (#737) | pending Savar (Wave A) |
-| `confirm.claim.said#3` | Is {heard} your answer? | `src/lib/maya/claim.ts:191` | A4 claims (#737) | pending Savar (Wave A) |
-| `confirm.claim.said#4` | Just checking: do you circle {heard}? | `src/lib/maya/claim.ts:191` | A4 claims (#737) | pending Savar (Wave A) |
-| `confirm.claim#0` | Which word do you circle: {first} or {second}? | `src/lib/maya/claim.ts:194` | A4 claims (#737) | pending Savar (Wave A) |
-| `confirm.claim#1` | Do you circle {first} or {second}? | `src/lib/maya/claim.ts:194` | A4 claims (#737) | pending Savar (Wave A) |
-| `confirm.claim#2` | Which one is it: {first} or {second}? | `src/lib/maya/claim.ts:194` | A4 claims (#737) | pending Savar (Wave A) |
-| `confirm.claim#3` | Tell me one word: {first} or {second}? | `src/lib/maya/claim.ts:195` | A4 claims (#737) | pending Savar (Wave A) |
-| `confirm.claim#4` | Which word is your answer: {first} or {second}? | `src/lib/maya/claim.ts:195` | A4 claims (#737) | pending Savar (Wave A) |
+| `invite.result.try#3` | So the missing number is what? | `src/lib/maya/trial-factor.ts:77` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.result.try#4` | Tell me the missing number. | `src/lib/maya/trial-factor.ts:78` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `trial.small#0` | {factor} × {guess} = {product}. That is less than {total}. Try a bigger number. | `src/lib/maya/trial-factor.ts:81` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `trial.small#1` | {factor} × {guess} = {product}. That is too small. Try a bigger number. | `src/lib/maya/trial-factor.ts:82` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `trial.small#2` | {factor} × {guess} makes {product}. That is less than {total}. Go bigger. | `src/lib/maya/trial-factor.ts:83` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `trial.small#3` | {factor} × {guess} = {product}. {product} is smaller than {total}. Try a bigger number. | `src/lib/maya/trial-factor.ts:84` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `trial.small#4` | Let's check: {factor} × {guess} = {product}. That is too small. Try a bigger number. | `src/lib/maya/trial-factor.ts:85` | A3 missing number (#732) | approved by Savar, 2026-11-12 (D-339) |
+| `question.claim#0` | First we work out {expr}. | `src/lib/maya/claim.ts:122` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `question.claim#1` | Let's work out {expr} first. | `src/lib/maya/claim.ts:122` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `question.claim#2` | We start with {expr}. | `src/lib/maya/claim.ts:122` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `question.claim#3` | Let's find {expr} first. | `src/lib/maya/claim.ts:122` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `question.claim#4` | First, let's find {expr}. | `src/lib/maya/claim.ts:122` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `question.claim.swap#0` | {printed} is the same as {expr}. | `src/lib/maya/claim.ts:125` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `question.claim.swap#1` | We can swap them: {printed} is the same as {expr}. | `src/lib/maya/claim.ts:125` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `question.claim.swap#2` | {printed} makes the same number as {expr}. | `src/lib/maya/claim.ts:125` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `question.claim.swap#3` | Swap the numbers: {printed} is the same as {expr}. | `src/lib/maya/claim.ts:126` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `question.claim.swap#4` | {printed} and {expr} make the same number. | `src/lib/maya/claim.ts:126` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `example.intro.claim#0` | Let's try an easier one first. {ask} | `src/lib/maya/claim.ts:129` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `example.intro.claim#1` | Here's a smaller one to warm up. {ask} | `src/lib/maya/claim.ts:129` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `example.intro.claim#2` | Let me show you an easier one. {ask} | `src/lib/maya/claim.ts:129` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `example.intro.claim#3` | First, a smaller one. {ask} | `src/lib/maya/claim.ts:130` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `example.intro.claim#4` | I'll show you an easier one first. {ask} | `src/lib/maya/claim.ts:130` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.claim.product#0` | What is {expr}? Then we compare it with {shown}. | `src/lib/maya/claim.ts:136` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.claim.product#1` | Now find {expr}. Then we compare it with {shown}. | `src/lib/maya/claim.ts:136` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.claim.product#2` | What does {expr} make? Then we check {shown}. | `src/lib/maya/claim.ts:137` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.claim.product#3` | So what is {expr}? Then we look at {shown}. | `src/lib/maya/claim.ts:137` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.claim.product#4` | Put it together: what is {expr}? Then we check {shown}. | `src/lib/maya/claim.ts:137` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `point.claim.product#0` | Put the parts together to get {expr}. Then compare it with {shown}. | `src/lib/maya/claim.ts:141` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `point.claim.product#1` | Your columns make {expr}. Then we compare it with {shown}. | `src/lib/maya/claim.ts:141` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `point.claim.product#2` | Join the parts of {expr}. Then we look at {shown}. | `src/lib/maya/claim.ts:142` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `point.claim.product#3` | Put your columns together for {expr}. Then check {shown}. | `src/lib/maya/claim.ts:142` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `point.claim.product#4` | The columns together make {expr}. Then compare it with {shown}. | `src/lib/maya/claim.ts:143` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `operation.claim.product#0` | First find {expr}. Then we compare it with {shown}. | `src/lib/maya/claim.ts:146` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `operation.claim.product#1` | We need {expr} first. Then we look at {shown}. | `src/lib/maya/claim.ts:146` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `operation.claim.product#2` | Work out {expr}. Then check it against {shown}. | `src/lib/maya/claim.ts:147` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `operation.claim.product#3` | Find {expr}. After that, compare it with {shown}. | `src/lib/maya/claim.ts:147` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `operation.claim.product#4` | Let's finish {expr}. Then we check {shown}. | `src/lib/maya/claim.ts:148` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.claim#0` | {ask} | `src/lib/maya/claim.ts:116` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.claim#1` | Now check it. {ask} | `src/lib/maya/claim.ts:150` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.claim#2` | Last part. {ask} | `src/lib/maya/claim.ts:150` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.claim#3` | Let's check. {ask} | `src/lib/maya/claim.ts:150` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `invite.claim#4` | Now the question. {ask} | `src/lib/maya/claim.ts:150` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `point.claim#0` | Compare {value} with {shown}. Circle {first} or {second}. | `src/lib/maya/claim.ts:152` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `point.claim#1` | We found {value}. The page says {shown}. Circle {first} or {second}. | `src/lib/maya/claim.ts:152` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `point.claim#2` | Look at {value} and {shown}. Circle {first} or {second}. | `src/lib/maya/claim.ts:153` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `point.claim#3` | Our number is {value}. The page has {shown}. Circle {first} or {second}. | `src/lib/maya/claim.ts:153` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `point.claim#4` | Check {value} against {shown}. Circle {first} or {second}. | `src/lib/maya/claim.ts:154` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `compare.claim#0` | {compare} Circle {first} or {second}. | `src/lib/maya/claim.ts:157` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `compare.claim#1` | Look: {compare} Circle {first} or {second}. | `src/lib/maya/claim.ts:157` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `compare.claim#2` | Let's compare. {compare} Circle {first} or {second}. | `src/lib/maya/claim.ts:157` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `compare.claim#3` | Here's the check. {compare} Circle {first} or {second}. | `src/lib/maya/claim.ts:158` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `compare.claim#4` | {compare} Which word do you circle? | `src/lib/maya/claim.ts:158` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `answer.claim#0` | Yes! {expr} = {value}. So you circle {word}. | `src/lib/maya/claim.ts:161` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `answer.claim#1` | That's right: {expr} = {value}. You circle {word}. | `src/lib/maya/claim.ts:161` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `answer.claim#2` | You got it! {expr} = {value}. It's {word}. | `src/lib/maya/claim.ts:162` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `answer.claim#3` | Well done! {expr} = {value}. You circle {word}. | `src/lib/maya/claim.ts:162` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `answer.claim#4` | Exactly! {expr} = {value}. The answer is {word}. | `src/lib/maya/claim.ts:162` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `write.claim#0` | Please circle {word} on your page. | `src/lib/maya/claim.ts:168` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `write.claim#1` | Can you circle {word} on your page? | `src/lib/maya/claim.ts:172` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `write.claim#2` | Now circle {word} on your page. | `src/lib/maya/claim.ts:172` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `write.claim#3` | Go ahead and circle {word} on your paper. | `src/lib/maya/claim.ts:173` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `write.claim#4` | Circle {word} on your page, please. | `src/lib/maya/claim.ts:173` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `write.claim.yours#0` | Please circle your answer on your page. | `src/lib/maya/claim.ts:176` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `write.claim.yours#1` | Can you circle your answer on your page? | `src/lib/maya/claim.ts:176` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `write.claim.yours#2` | Go ahead and circle your answer on your paper. | `src/lib/maya/claim.ts:176` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `write.claim.yours#3` | Now circle your answer on your page. | `src/lib/maya/claim.ts:177` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `write.claim.yours#4` | Circle your answer on your page, please. | `src/lib/maya/claim.ts:177` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `close.honest#0` | This one is hard, and it's okay to stop. You can try the easier one on paper. | `src/lib/maya/claim.ts:182` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `close.honest#1` | This is a tricky one. It's fine to stop here. You could ask a grown-up to try it with you. | `src/lib/maya/claim.ts:183` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `close.honest#2` | This one is hard. We can stop for now. Try the easier one on your paper later. | `src/lib/maya/claim.ts:184` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `close.honest#3` | This one is tough, and stopping is fine. A grown-up can help you try it. | `src/lib/maya/claim.ts:185` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `close.honest#4` | This question is hard, and that's okay. Let's stop here. Try the smaller one on paper. | `src/lib/maya/claim.ts:186` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `confirm.claim.said#0` | You said {heard}. Is {heard} the word you circle? | `src/lib/maya/claim.ts:190` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `confirm.claim.said#1` | I heard {heard}. Do you circle {heard}? | `src/lib/maya/claim.ts:190` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `confirm.claim.said#2` | So you circle {heard}? | `src/lib/maya/claim.ts:190` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `confirm.claim.said#3` | Is {heard} your answer? | `src/lib/maya/claim.ts:191` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `confirm.claim.said#4` | Just checking: do you circle {heard}? | `src/lib/maya/claim.ts:191` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `confirm.claim#0` | Which word do you circle: {first} or {second}? | `src/lib/maya/claim.ts:194` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `confirm.claim#1` | Do you circle {first} or {second}? | `src/lib/maya/claim.ts:194` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `confirm.claim#2` | Which one is it: {first} or {second}? | `src/lib/maya/claim.ts:194` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `confirm.claim#3` | Tell me one word: {first} or {second}? | `src/lib/maya/claim.ts:195` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
+| `confirm.claim#4` | Which word is your answer: {first} or {second}? | `src/lib/maya/claim.ts:195` | A4 claims (#737) | approved by Savar, 2026-11-12 (D-339) |
 | `question.spot#0` | First, {opening}. Then check the answer given. | `src/lib/maya/spot-error.ts:110` | C2 spot the error (#743) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `question.spot#1` | Let's find {opening}. Then check the answer given. | `src/lib/maya/spot-error.ts:110` | C2 spot the error (#743) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `question.spot#2` | Find {opening}. Then check the answer given. | `src/lib/maya/spot-error.ts:111` | C2 spot the error (#743) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
@@ -838,7 +838,7 @@ Counts: 6 approved by Savar 2026-11-12 (#884, D-329); 608 approved by Savar thro
 | `pattern.why#3` | Look closely. {why} | `src/lib/maya/pattern-lines.ts:21` | C1 patterns (#754) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `pattern.why#4` | Here's how. {why} | `src/lib/maya/pattern-lines.ts:21` | C1 patterns (#754) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 
-## Changes after the line review (2026-11-12, for Savar's approval with Wave A)
+## Changes after the line review (2026-11-12, approved by Savar, 2026-11-12, D-339)
 
 The Opus line review of #892 found 10 P2 lines. These rewordings wait for Savar's approval, with the Wave A lines:
 

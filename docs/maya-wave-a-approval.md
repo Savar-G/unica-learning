@@ -1,8 +1,8 @@
 # Wave A lines: approval page for Savar
 
-Wave A teaches three kinds of question: evaluate (#734), missing number (#732) and claims (#737). These lines are in PR #892. The 2026-11-11 approval covered Waves B and C only, so #892 stays a draft until you decide on these.
+Wave A teaches three kinds of question: evaluate (#734), missing number (#732) and claims (#737). These lines are in PR #892. The 2026-11-11 approval covered Waves B and C only, Savar approved them on 2026-11-12 (D-339), together with the 10 rewordings below.
 
-**Recommendation: approve.** An independent Opus review (2026-11-12) checked every Wave A line against `NEVER_SAY`, the no-answer rule (D-326), the `DESIGN.md` copy rules and the existing line list. It found no P1 and no P2 line. The only lines that said a claim word for the child (`answer.give.claim`) are now removed.
+**Approved by Savar, 2026-11-12 (D-339).** Recommendation was: approve. An independent Opus review (2026-11-12) checked every Wave A line against `NEVER_SAY`, the no-answer rule (D-326), the `DESIGN.md` copy rules and the existing line list. It found no P1 and no P2 line. The only lines that said a claim word for the child (`answer.give.claim`) are now removed.
 
 ## Counts
 
