@@ -784,8 +784,12 @@ describe("R577: what a delay can change while the phrase waits", () => {
 
     const waited = await readyToQueued(() => m.release());
     expect(waited).toBeLessThanOrEqual(AT_ONCE_MS);
-    expect(c.call.session.state).toBe("TIME_CLOSE");
+    // Since #749 (011e14df) one miss with no work closes honestly at the deadline in this same turn (close.stuck), so
+    // the session is closed, not left in TIME_CLOSE for a later turn. Before the deadline one miss gets a guide.
+    expect(c.call.session.state).toBe("CLOSE");
     await waitFor(() => c.speaker.cut > cutBefore, "the phrase to stop");
+    await waitFor(() => c.said().includes("It's okay to stop here."), "the honest close in the voice");
+    expect(c.said().indexOf(acksIn(c.said())[0])).toBeLessThan(c.said().indexOf("It's okay to stop here."));
     await waitFor(() => c.samples.length === 1, "the sample");
     expect(c.samples[0].parts!.ackHoldMs).toBe(0);
     c.speaker.release();
