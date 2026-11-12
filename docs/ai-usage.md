@@ -24,13 +24,13 @@ Where readings come from:
 | `claude -p` (`src/lib/ai-claude-cli.ts`, `onUsage`) | the envelope's `usage` (cache reads and writes count as input) | none: "subscription, no per-call charge" |
 | Decision client (`src/lib/decision-client.ts`) | the `usd` and `id` it already computes for each request, a charged failed request included | USD |
 
-The caller gives the tag: `aiClient(env, model, { usage: { feature, parentId, childId, source } })`. A call with no tag is stored as feature `other`. Not recorded: the Codex sample client, the local tools on the Anthropic API key (`maya:text`, `maya:practice`, the sample scripts' direct clients), and Maya's speech and voice (estimates in `maya_spend`). Work done in a Vercel request is started before the answer is sent; a process that stops at once can lose the last write.
+The caller gives the tag: `aiClient(env, model, { usage: { feature, parentId, childId, source } })`. A call with no tag is stored as feature `other`. Callers that do not know the family (the child profile rebuild outside a Maya call, the learner profile outside the report job) store no family: those rows count as team cost even with test families left out. The workbook worker on the Mac gets its key from the Keychain, so it passes it with `configureAiUsage` and flushes the writes after each job. Not recorded: the Codex sample client, a `claude -p` call that failed and used nothing, the local tools on the Anthropic API key (`maya:text`, `maya:practice`, the sample scripts' direct clients), and Maya's speech and voice (estimates in `maya_spend`). Work done in a Vercel request is started before the answer is sent; a process that stops at once can lose the last write.
 
 Maya's spending cap is not changed: `maya_spend` still decides the stop. Marking's and the explanations' spend rows are not changed either. The new ledger only reads the answer's usage.
 
 ## Reading
 
-`admin_ai_usage(p_from, p_to, p_with_tests, p_cad_per_usd)` (admins only) returns totals, a daily cost by model (Vancouver days), cost by feature, cost by model and up to 200 family lines, each with the family's monthly plan price from `child_plan_states` (paying, and ending until its end date; a free month counts as no revenue). Test families and admin families are left out unless `p_with_tests`; calls with no family stay in.
+`admin_ai_usage(p_from, p_to, p_with_tests, p_cad_per_usd, p_day_starts)` (admins only; `p_day_starts`: the start instant of each day, so the daily cost follows the site's own Vancouver day rules, not the database's) returns totals, a daily cost by model (Vancouver days), cost by feature, cost by model and up to 200 family lines, each with the family's monthly plan price from `child_plan_states` (paying, and ending until its end date; a free month counts as no revenue). Test families and admin families are left out unless `p_with_tests`; calls with no family stay in.
 
 It also adds the cost older ledgers hold, so the page has history. For one call the new ledger wins:
 

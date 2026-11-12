@@ -43,7 +43,8 @@ export interface RunPlace {
 /** Whose run it is, for the AI usage ledger (D-330). A read that fails gives no family: the calls are still stored. */
 export async function runUsage(admin: SupabaseClient<Database>, runId: string): Promise<{ parentId: string | null; childId: string | null; runId: string }> {
   try {
-    const { data } = await admin.from("workbook_runs").select("parent_id, child_id").eq("id", runId).maybeSingle();
+    // At most 3 seconds: the ledger is never worth holding a run for.
+    const { data } = await admin.from("workbook_runs").select("parent_id, child_id").eq("id", runId).abortSignal(AbortSignal.timeout(3_000)).maybeSingle();
     return { parentId: data?.parent_id ?? null, childId: data?.child_id ?? null, runId };
   } catch {
     return { parentId: null, childId: null, runId };

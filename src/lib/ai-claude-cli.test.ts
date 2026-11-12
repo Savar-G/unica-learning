@@ -23,6 +23,18 @@ const fail = async (p: Promise<unknown>) => p.then(() => { throw new Error("no e
 const signal = () => new AbortController().signal;
 
 describe("claudeCliClient", () => {
+  it("reports the tokens of an answer (cache counted as input), and nothing for a failed call that used nothing", async () => {
+    const seen: { inputTokens: number | null; outputTokens: number | null }[] = [];
+    const ok = fakeSpawn(() => ({ stdout: envelope({ structured_output: { items: [] }, usage: { input_tokens: 10, output_tokens: 4, cache_creation_input_tokens: 5, cache_read_input_tokens: 100 } }) }));
+    await claudeCliClient({ spawn: ok.spawn, env: { PATH: "/bin" }, onUsage: (u) => seen.push(u) }).json(request, signal());
+    expect(seen).toEqual([{ inputTokens: 115, outputTokens: 4 }]);
+    const limit = fakeSpawn(() => ({ stdout: envelope({ is_error: true, subtype: "error", result: "Claude AI usage limit reached|1762020000", usage: { input_tokens: 0, output_tokens: 0 } }) }));
+    await fail(claudeCliClient({ spawn: limit.spawn, env: { PATH: "/bin" }, onUsage: (u) => seen.push(u) }).json(request, signal()));
+    expect(seen).toHaveLength(1);
+    const boom = fakeSpawn(() => ({ stdout: envelope({ structured_output: { items: [] }, usage: {} }) }));
+    await claudeCliClient({ spawn: boom.spawn, env: { PATH: "/bin" }, onUsage: () => { throw new Error("recorder down"); } }).json(request, signal());
+  });
+
   it("runs claude -p with the schema, the instructions and the text, and answers the structured output", async () => {
     const f = fakeSpawn(() => ({ stdout: envelope({ result: "{\"items\":[1]}", structured_output: { items: [1] } }) }));
     const ai = claudeCliClient({ model: "claude-sonnet-5-5", spawn: f.spawn, env: { PATH: "/bin", HOME: "/Users/s" } });

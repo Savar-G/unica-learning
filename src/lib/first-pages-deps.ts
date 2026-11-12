@@ -34,7 +34,7 @@ export async function runFirstPagesWith(admin: SupabaseClient<Database>, id: str
   const fake = workbookFakeAi();
   const calls: AiCallCost[] = [];
   // Whose set it is, for the AI usage ledger (D-330). A read that fails gives no family: the calls are still stored.
-  const owner = await Promise.resolve(admin.from("workbook_first_pages").select("parent_id, child_id").eq("id", id).maybeSingle()).catch(() => null);
+  const owner = await (async () => admin.from("workbook_first_pages").select("parent_id, child_id").eq("id", id).abortSignal(AbortSignal.timeout(3_000)).maybeSingle())().catch(() => null);
   const live = fake ? null : workbookAi(env, {
     subscription: place.subscription, primary: place.primary,
     usage: { parentId: owner?.data?.parent_id ?? null, childId: owner?.data?.child_id ?? null, runId: id, kind: "first_pages" },

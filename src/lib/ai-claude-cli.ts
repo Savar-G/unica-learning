@@ -206,7 +206,8 @@ export function claudeCliClient({
         throw unavailable(words, null) ?? new SubscriptionUnavailable("crash", `claude -p ${out ? "answered with something that is not JSON" : "returned no output"} (exit ${run.code ?? "by signal"}): ${short(words)}`);
       }
       const used = onUsage ? usageOf(envelope) : null;
-      if (used) {
+      // A call that failed and used nothing (a usage limit answer) is not a call: the fallback's own call is the one.
+      if (used && !(envelope.is_error && !used.inputTokens && !used.outputTokens)) {
         try { onUsage!(used); } catch { /* recording never fails a call */ }
       }
       if (envelope.is_error || (envelope.subtype && envelope.subtype !== "success")) {

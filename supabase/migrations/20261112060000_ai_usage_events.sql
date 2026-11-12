@@ -51,6 +51,9 @@ begin raise exception 'ai_usage_events is append only' using errcode = '55000'; 
 create trigger append_only before update on public.ai_usage_events
   for each row execute function public.refuse_ai_usage_update();
 
+-- p_day_starts: the start instant of each day of the period by the site's own Vancouver day rules (src/lib/family-time.ts,
+-- with its dated overrides), which a database time zone table can differ from. The daily cost is grouped by the latest
+-- start at or before each call; with no p_day_starts it groups by the database's Vancouver day.
 -- The admin overview of AI usage for [p_from, p_to): totals, a daily cost by model, cost by feature, cost by model and
 -- one line per family. Admins only. Test families and admins' own families are left out unless p_with_tests; calls
 -- with no family stay in (they are team and sample work, shown as one line).
@@ -65,7 +68,7 @@ create trigger append_only before update on public.ai_usage_events
 --   * scan marking and parent explanations: the older rows hold no family. They count only before the first new-ledger
 --     row of that feature.
 -- Older rows with no model name show as model 'not recorded'.
-create function public.admin_ai_usage(p_from timestamptz, p_to timestamptz, p_with_tests boolean default false, p_cad_per_usd numeric default 1.40)
+create function public.admin_ai_usage(p_from timestamptz, p_to timestamptz, p_with_tests boolean default false, p_cad_per_usd numeric default 1.40, p_day_starts timestamptz[] default null)
 returns jsonb language plpgsql stable security definer set search_path = '' as $$
 declare cut_marking timestamptz; cut_explain timestamptz; result jsonb;
 begin
@@ -130,8 +133,11 @@ begin
     from u
   ),
   daily as (
-    select to_char(created_at at time zone 'America/Vancouver', 'YYYY-MM-DD') as day, model,
-      sum(cost_usd) as cost_usd, sum(calls) as calls
+    -- The day of a call is the latest day start at or before it. The caller sends the day starts (the site's own
+    -- Vancouver day rules, which a database time zone table may not match); with none, the database's Vancouver day.
+    select case when p_day_starts is null then to_char(created_at at time zone 'America/Vancouver', 'YYYY-MM-DD')
+      else to_char((select max(s) from unnest(p_day_starts) s where s <= u.created_at) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') end as day,
+      model, sum(cost_usd) as cost_usd, sum(calls) as calls
     from u group by 1, 2
   ),
   by_feature as (
@@ -174,5 +180,5 @@ begin
   ) into result;
   return result;
 end $$;
-revoke all on function public.admin_ai_usage(timestamptz, timestamptz, boolean, numeric) from public, anon;
-grant execute on function public.admin_ai_usage(timestamptz, timestamptz, boolean, numeric) to authenticated, service_role;
+revoke all on function public.admin_ai_usage(timestamptz, timestamptz, boolean, numeric, timestamptz[]) from public, anon;
+grant execute on function public.admin_ai_usage(timestamptz, timestamptz, boolean, numeric, timestamptz[]) to authenticated, service_role;

@@ -6,7 +6,9 @@
 // caller (a child's request included). Nothing about a child but the ids goes in: no name, no prompt, no answer.
 // A call with no family has no parent id (team tools, sample runs). A write that fails is logged without data.
 // The ledger is for the admin overview (/admin/ai); the older ledgers keep their own jobs (Maya's cap, marking's cap).
-// For the server and the workbook worker. No "server-only" import, so that its tests can run.
+// For the server and the workers. No "server-only" import and no Supabase client, so that its tests can run and the
+// workers stay small.
+import { SUPABASE_URL } from "@/lib/supabase-public";
 /** What made the call. Matches the check on ai_usage_events.feature. */
 export const AI_FEATURES = [
   "workbook", "solve_check", "workbook_gate", "maya", "maya_review", "maya_note", "maya_speech", "child_profile",
@@ -86,17 +88,36 @@ export function usageRow(tag: AiUsageTag, reading: AiUsageReading): AiUsageRow |
   };
 }
 
-/** The live sink: one insert with the server's secret key. With no key, nothing is written. */
+/**
+ * One insert through PostgREST with the server's secret key. No Supabase client: this file is bundled into the workbook
+ * worker and the voice worker, which must not pull in cookie-based auth or more packages. A repeated generation id (409,
+ * unique index) is the same call again: nothing to say.
+ */
+export async function insertUsageRow(row: AiUsageRow, o: { url: string; key: string; fetch?: typeof globalThis.fetch }): Promise<void> {
+  const res = await (o.fetch ?? globalThis.fetch)(`${o.url}/rest/v1/ai_usage_events`, {
+    method: "POST",
+    headers: { apikey: o.key, authorization: `Bearer ${o.key}`, "content-type": "application/json", prefer: "return=minimal" },
+    body: JSON.stringify(row),
+    signal: AbortSignal.timeout(WRITE_LIMIT_MS),
+  });
+  if (!res.ok && res.status !== 409) console.error(`[ai-usage] write failed: ${res.status}`);
+}
+
+let configured: { url: string; key: string } | null = null;
+/**
+ * For a process that gets its secret key some other way than the environment (the workbook worker on the Mac reads it
+ * from the Keychain and the Management API, and never puts it in process.env): the url and key the live sink uses.
+ */
+export function configureAiUsage(target: { url: string; key: string } | null): void {
+  configured = target;
+}
+
+/** The live sink. With no secret key (a local run) or in a test run, nothing is written. Tests give their own sink. */
 const supabaseSink: AiUsageSink = async (row) => {
-  // No key (a local run) or a test run: no write, and no log line from adminClient. Tests give their own sink.
-  if (!process.env.SUPABASE_SECRET_KEY || process.env.VITEST) return;
-  // Loaded here, not at the top: supabase-auth is server only, and the tests of every AI adapter import this file.
-  const { adminClient } = await import("@/lib/supabase-auth");
-  const db = adminClient(AbortSignal.timeout(WRITE_LIMIT_MS), { retry: false });
-  if (!db) return;
-  const { error } = await db.from("ai_usage_events").insert(row);
-  // A repeated generation id (23505) is the same call again: nothing to say.
-  if (error && error.code !== "23505") console.error(`[ai-usage] write failed: ${error.code ?? "error"}`);
+  if (process.env.VITEST) return;
+  const key = configured?.key ?? process.env.SUPABASE_SECRET_KEY?.trim();
+  if (!key) return;
+  await insertUsageRow(row, { url: configured?.url ?? (process.env.SUPABASE_URL?.trim() || SUPABASE_URL), key });
 };
 
 const pending = new Set<Promise<void>>();
