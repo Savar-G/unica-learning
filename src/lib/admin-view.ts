@@ -10,7 +10,6 @@ import {
   PAUSE_WINDOW,
   TOO_FAST_MS,
   everyQuestion,
-  fromRemovedRound,
   helpLikely,
   type FactsTest,
   type Figure,
@@ -223,12 +222,6 @@ function misconceptionText(id: string | null): string | null {
   const known = MISCONCEPTIONS[id as MisconceptionId];
   return known ? `${id}: ${known.description}` : id;
 }
-
-/**
- * D-145: the rows of one test (answers, serves, work reviews) without those for the removed extra round's questions
- * (#190), which two tests still store. The admin's test page, its progress and the profile page read them through this.
- */
-export const mainOnly = <T extends { question_id: string }>(rows: readonly T[]): T[] => rows.filter((r) => !fromRemovedRound(r.question_id));
 
 /** Question id to its number in the test (position + 1, as answerLines numbers them), in test order: for flagText. */
 export const questionNumbers = (answers: readonly Pick<AnswerRecord, "position" | "question_id">[]): Map<string, number> =>

@@ -61,7 +61,7 @@ describe("the AI work reviewer (#68, #183)", () => {
   });
 
   it("writes the report text from the model's facts, with {name} for the child, and returns it", async () => {
-    const model = reportModel(takeTest({ grade: 4, province: "BC" }, 1, knowsUpTo(4)).placement, { completedTestsInGrade: 0, workReviews: [] });
+    const model = reportModel(takeTest({ grade: 4, province: "BC" }, 1, knowsUpTo(4)).placement, { workReviews: [] });
     const client = fakeAiClient({ answer: () => ({ text: "{name} is working at a grade 4 level." }) });
     const text = await aiWorkReviewer(client).reportText(model, signal());
 
@@ -79,7 +79,7 @@ describe("the AI work reviewer (#68, #183)", () => {
     // Grade 5, after a facts round of multiplication (no division), and grade 3 with addition and subtraction facts.
     for (const grade of [3, 5] as const) {
       const facts: FactsResult = { families: [...FACTS_BY_GRADE[grade]], seconds: 60, answered: 20, correct: 18, skipped: 0, medianMs: 2500, accuracy: "secure", speed: "quick" };
-      const model = reportModel({ ...takeTest({ grade, province: "BC" }, 1, knowsUpTo(grade - 1)).placement, facts }, { completedTestsInGrade: 0, workReviews: [] });
+      const model = reportModel({ ...takeTest({ grade, province: "BC" }, 1, knowsUpTo(grade - 1)).placement, facts }, { workReviews: [] });
       const client = fakeAiClient({ answer: () => ({ text: "{name} is working at a grade 4 level." }) });
       await aiWorkReviewer(client).reportText(model, signal());
       const [req] = client.requests;
@@ -97,7 +97,7 @@ describe("the AI work reviewer (#68, #183)", () => {
   });
 
   it("report text output without a text string is an error", async () => {
-    const model = reportModel(takeTest({ grade: 4, province: "BC" }, 1, knowsUpTo(4)).placement, { completedTestsInGrade: 0, workReviews: [] });
+    const model = reportModel(takeTest({ grade: 4, province: "BC" }, 1, knowsUpTo(4)).placement, { workReviews: [] });
     for (const bad of [null, {}, { text: 4 }]) {
       await expect(aiWorkReviewer(fakeAiClient({ answer: () => bad })).reportText(model, signal())).rejects.toThrow();
     }

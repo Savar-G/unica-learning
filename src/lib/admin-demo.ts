@@ -133,7 +133,7 @@ export function demoRows(now: Date): DashboardRows {
 export function demoEmailCopy(e: EmailEvent, f: Family | undefined): EmailCopyView | null {
   if (!f || (e.kind !== "start" && e.kind !== "start_followup" && e.kind !== "continue" && e.kind !== "come_back")) return null;
   const child = e.childName ?? f.children[0]?.name ?? "Maya";
-  const common = { parentName: f.name, childName: child, url: "https://unicalearning.com/account/start/demo?reminder=" + e.kind, unsubscribeUrl: "https://unicalearning.com/unsubscribe?t=hidden", postal: f.postal, total: 30 };
+  const common = { parentName: f.name, childName: child, url: "https://unicalearning.com/account/start/demo?reminder=" + e.kind, unsubscribeUrl: "https://unicalearning.com/unsubscribe?t=hidden", postal: f.postal };
   const mail = e.kind === "continue"
     ? reminderEmail({ ...common, kind: "continue", answered: 12, resumeUntil: Date.parse(e.at) + 23 * 3_600_000 })
     : reminderEmail({ ...common, kind: e.kind });

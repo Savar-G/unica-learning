@@ -5,7 +5,7 @@ import { localDay, PACIFIC_ZONE } from "@/lib/family-time";
 // so a download of thousands of tests streams within the function's time limit and never holds the whole table.
 // Drawings and strokes are their storage paths only. No names, emails or postal codes: the ids link to the admin pages.
 // One more dataset: add its id, its entry in DATASETS and, for a new table, its read in both readers.
-import { fromRemovedRound, type LearnerProfile, type Question, type Route } from "@/lib/assessment";
+import type { LearnerProfile, Question, Route } from "@/lib/assessment";
 import { ADMIN_PATH } from "@/lib/admin-view";
 import type { TableName, Tables } from "@/lib/database";
 
@@ -47,12 +47,12 @@ export interface ExportRequest {
 
 /**
  * Where a dataset's rows come from: the exported tests themselves (`select`: the test columns `rows` reads, when the
- * rows are made from each test), the rows of a table that belong to them (`keep`: only the rows it keeps), or a table
- * of its own, read by id (a row with a parent_id of a test family is left out).
+ * rows are made from each test), the rows of a table that belong to them, or a table of its own, read by id (a row
+ * with a parent_id of a test family is left out).
  */
 type Read =
   | { from: "tests"; select?: readonly string[]; rows?: (test: ExportRow) => ExportRow[] }
-  | { from: "test rows"; table: TestTable; order: readonly string[]; keep?: (row: ExportRow) => boolean }
+  | { from: "test rows"; table: TestTable; order: readonly string[] }
   | { from: "table"; table: PagedTable };
 
 interface Dataset {
@@ -115,9 +115,6 @@ function drawnQuestions(test: ExportRow): ExportRow[] {
   ];
 }
 
-/** D-145: a row of a test's answers or serves that is not for a question of the removed extra round (#190). */
-const mainRow = (row: ExportRow): boolean => !fromRemovedRound(String(row.question_id));
-
 /** The learner profile's parts (#196), in the profile's order. */
 const PROFILE_PARTS = [
   "schemaVersion", "test", "level", "strands", "standards", "strengths", "struggles", "facts", "behaviour",
@@ -161,14 +158,14 @@ const DATASETS: readonly Dataset[] = [
       // Shown work (#67, #186): paths in the private bucket, never the drawing or the strokes themselves.
       "work_required", "work_path", "work_text", "strokes_path",
     ]),
-    read: { from: "test rows", table: "answers", order: stored<"answers">(["position"]), keep: mainRow },
+    read: { from: "test rows", table: "answers", order: stored<"answers">(["position"]) },
   },
   {
     id: "question_shows",
     label: "Serve times",
     row: "a place in a test the server served, with when it first served it.",
     columns: stored<"question_shows">(["assessment_id", "position", "question_id", "shown_at", "created_at"]),
-    read: { from: "test rows", table: "question_shows", order: stored<"question_shows">(["position"]), keep: mainRow },
+    read: { from: "test rows", table: "question_shows", order: stored<"question_shows">(["position"]) },
   },
   {
     id: "facts",
@@ -261,8 +258,7 @@ async function* pages(reader: ExportReader, d: Dataset, withTests: boolean): Asy
     const tests = kept(page);
     if (read.from === "tests") yield read.rows ? tests.flatMap(read.rows) : tests;
     else if (tests.length > 0) {
-      const rows = await reader.ofTests(read.table, d.columns, read.order, tests.map((t) => String(t.id)));
-      yield read.keep ? rows.filter(read.keep) : rows;
+      yield await reader.ofTests(read.table, d.columns, read.order, tests.map((t) => String(t.id)));
     }
   }
 }

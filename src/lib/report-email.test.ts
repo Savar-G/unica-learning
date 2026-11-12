@@ -19,7 +19,7 @@ function view(isRight: Script, { grade = 4, province = "BC", name = "Maya" }: { 
     completedAt: "2026-10-10T19:30:00Z",
     questions: 36,
     minutes: 34,
-    model: reportModel(placement, { completedTestsInGrade: 0, workReviews: [] }),
+    model: reportModel(placement, { workReviews: [] }),
   };
 }
 
@@ -216,7 +216,7 @@ describe("the report email to the parent", () => {
       const v = view(knowsUpTo(3));
       const { placement } = takeTest({ grade: 4, province: "BC" }, 1, knowsUpTo(3));
       const shownWork = [{ questionId: "s1-0", prompt: "47 + 25 = ?", correct: true, required: true, image: "p/a/s1-0-x.png", text: "carry the 1" }];
-      return { ...v, model: reportModel(placement, { completedTestsInGrade: 0, workReviews: [], shownWork }), workImages: { "p/a/s1-0-x.png": "https://signed.example/x" } };
+      return { ...v, model: reportModel(placement, { workReviews: [], shownWork }), workImages: { "p/a/s1-0-x.png": "https://signed.example/x" } };
     };
 
     it("says the work is in the full report, with a link, and carries no image or private link", () => {

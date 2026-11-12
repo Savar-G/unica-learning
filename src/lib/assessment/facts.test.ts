@@ -156,7 +156,7 @@ describe("per-family facts from the seeded section", () => {
   });
 });
 const report = (facts: FactsSession | null) =>
-  reportModel(placementWith(onGrade4, knowsUpTo(4), facts), { completedTestsInGrade: 0, workReviews: [] });
+  reportModel(placementWith(onGrade4, knowsUpTo(4), facts), { workReviews: [] });
 
 describe("facts section: speed beside accuracy in the placement and the report", () => {
   it("quick and right: accuracy secure, speed quick, with the counts", () => {
@@ -214,7 +214,7 @@ describe("facts section: speed beside accuracy in the placement and the report",
     for (const facts of [answer(factsFor4(), 30, SECOND), answer(factsFor4(), 4, 14 * SECOND, false), factsFor4()]) {
       const withFacts = placementWith(onGrade4, isRight, facts);
       expect({ ...withFacts, facts: null }).toEqual(without);
-      const ctx = { completedTestsInGrade: 0, workReviews: [] };
+      const ctx = { workReviews: [] };
       expect(reportModel(withFacts, ctx).howWeHelp).toBe(reportModel(without, ctx).howWeHelp);
     }
   });
