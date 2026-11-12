@@ -74,7 +74,7 @@ describe("the workbook templates", () => {
         const root = parsedPage(workbookTemplate().page(page, { qr: "", qrUrl: "" }, draft)!);
         return [...root.querySelectorAll(".two, .cols")].map(g => [...g.querySelectorAll('[data-measure^="question-"]')].map(q => q.getAttribute("data-measure")!).filter(m => /^question-\d+$/.test(m)).map(m => Number(m.slice(9))));
       };
-      for (const title of ["Review", "Remember these?", "Mixed review"]) {
+      for (const title of ["Review", "Remember these?", "Mixed review", "Reviewing earlier steps", "Reviews"]) {
         const said = at(title);
         expect(reviewLayout(said)).toEqual([{ open: false, pill: false, at: -1 }]);
         expect(grids(said)).toEqual([n]);
@@ -513,4 +513,20 @@ it("prints a period after each question number in every page family",()=>{
       for(const q of p.questions) expect(html,`${level} ${p.type} q${q.number}`).toMatch(new RegExp(`<span class="(?:n|gn|sn|badge)"(?: data-measure="number-${q.number}")?>${q.number}\\.</span>`));
     }
   }
+});
+
+
+it.each([false, true])("prints a tick cue on a warm-up Spot the error strip (consistent: %s, #821)", (consistentLayout) => {
+  const draft = book("U8"), p = draft.pages.find(p => p.content?.kind === "day" && p.content.blocks.some(b => b.slot === "warm-up"))!;
+  if (p.content?.kind !== "day") throw new Error("not a day");
+  const original = p.questions[0], n = p.questions.length + 1;
+  const question = { ...original, number: n, package: { ...original.package, text: "Sam says 7 + 6 = 12.",
+    item: { format: "spot-the-error" as const, scorable: true, parentChecked: false, error: null, checks: [], regions: [
+      { id: "right", kind: "choice" as const, mark: "tick" as const, label: null, choices: ["Yes", "No"], answer: "No" },
+      { id: "fix", kind: "box" as const, label: null, answer: { type: "number" as const, value: 13 } },
+    ] } } };
+  const page: DraftPage = { ...p, questions: [...p.questions, question], content: { ...p.content, consistentLayout,
+    blocks: [...p.content.blocks, { slot: "spot-the-error", items: [n], lines: [] }] } };
+  const root = parsedPage(workbookTemplate().page(page, { qr: "", qrUrl: "" }, draft)!);
+  expect(root.querySelector(`[data-measure="question-${n}"]`)?.textContent).toContain("Tick one");
 });
