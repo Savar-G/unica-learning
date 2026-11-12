@@ -940,7 +940,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
   }
 
   /** Stores the outcome of a call that has just ended, then writes its event and rebuilds the profile. Null on a conflict. */
-  async function end(record: CallRecord, pkg: QuestionPackage, session: TextSession, how: FinishOptions = {}, extra?: (endedAt: number) => Promise<CallChange>, noEvent = false, capped = false): Promise<CallRecord | null> {
+  async function end(record: CallRecord, pkg: QuestionPackage, session: TextSession, how: FinishOptions = {}, extra?: (endedAt: number) => Promise<CallChange>, noEvent = false, capped = false, noNote = false): Promise<CallRecord | null> {
     const trace = await session.finish(how);
     // The cap's close reads as a call that ran out of time, unless safety, content or a solved question comes first.
     const outcome = capped && trace.outcome?.reason === "technical_issue" ? { ...trace.outcome, reason: "time_limit" as const } : trace.outcome;
@@ -952,8 +952,10 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       status: "ended",
       // Kept until the learning event is written (afterEnd).
       live: { package: pkg, text: await session.saved(), ...(noEvent ? { cancelled: true as const } : {}) },
-      // Kept until the parent's note is written (notes). A call Maya never joined has no learning event.
-      notePending: seams.note ? { package: pkg, event: noEvent ? null : learningEvent(session.session, { parentId: record.parentId, childId: record.childId }) } : null,
+      // Kept until the parent's note is written (notes). A call Maya never joined has no learning event, and a voice call
+      // she never joined has no note either (#904 review): no talk happened, and the child may have stopped it or the
+      // weekly voice time refused it.
+      notePending: seams.note && !noNote ? { package: pkg, event: noEvent ? null : learningEvent(session.session, { parentId: record.parentId, childId: record.childId }) } : null,
       trace,
       boardHistory: record.mode === "voice" ? record.boardHistory ?? boardHistoryOf(trace) : boardHistoryOf(trace),
       outcome,
@@ -1384,7 +1386,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           const events = seams.connections ? await seams.connections.read(record.id) : [];
           return { connectedSeconds: connectedSeconds(events, Math.max(endedAt, ...events.map((e) => e.at))) };
         };
-        const ended = await end(record, record.live.package, session, { detail }, stored, started === null);
+        const ended = await end(record, record.live.package, session, { detail }, stored, started === null, false, started === null);
         return ended ? result(ended, ended.trace!, null) : { ok: false, error: "conflict" };
       }
       const { package: pkg, text: saved } = record.live;

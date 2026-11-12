@@ -108,9 +108,28 @@ export async function runVoice(ctx: ChatContext, action: VoiceAction, deps: Voic
     const minted = await mintVoiceToken({ call: { id: r.id, parentId: r.parentId, childId: r.childId, kind: r.kind, mode: r.mode, status: r.status }, notice: deps.notice, parentId: parent, childId: child, project: deps.project, name, now: deps.now() });
     return minted.ok ? { ticket: minted.ticket } : { error: minted.error };
   };
-  /** A call that is live gets a ticket, else the call as it is. */
+  /**
+   * The weekly check before every ticket (R904-1): the week read now, with this call the child's only live call
+   * (index maya_calls_one_live_family_call) counted at its whole limit, so the read is exact. Over the week, or not
+   * readable: no ticket, and a call Maya has not joined ends (it writes no event and no note). A joined call keeps
+   * running: it was checked at its first ticket, and nothing can add to the week while it is live.
+   */
+  const admit = async (r: CallRecord): Promise<"busy" | "unavailable" | null> => {
+    let used: number;
+    try { used = await deps.usedSeconds(); } catch (e) {
+      console.error("[desk voice] usage could not be read for a ticket", e instanceof Error ? e.message : "unknown");
+      if (r.startedAt === null) await end(r).catch(() => undefined);
+      return "unavailable";
+    }
+    if (used <= VOICE_WEEK_SECONDS) return null;
+    if (r.startedAt === null) await end(r).catch(() => undefined);
+    return "busy";
+  };
+  /** A call that is live gets a ticket when the week allows it, else the call as it is. */
   const answer = async (r: CallRecord): Promise<DeskVoiceReply> => {
     if (r.status !== "live") return reply(r);
+    const refused = await admit(r);
+    if (refused) return reply((await deps.store.get(r.id)) ?? r, { error: refused });
     const t = await ticket(r);
     return "ticket" in t ? reply(r, { ticket: t.ticket }) : reply(r, { error: t.error });
   };
@@ -173,13 +192,10 @@ export async function runVoice(ctx: ChatContext, action: VoiceAction, deps: Voic
   if (!started.ok) return reply(null, { error: started.error === "not_test_family" ? "unavailable" : started.error });
   const made = await deps.store.get(started.view.id);
   if (!made) return reply(null, { error: "unavailable" });
-  // The week read again, now that this call is the child's only live call (index maya_calls_one_live_family_call) and
-  // counts at its whole limit (R904-1). A start that read the week before another call ended, and inserted after it,
-  // can be over the week here: that call ends before it gets a ticket, as a call Maya never joined.
-  if (await deps.usedSeconds() > VOICE_WEEK_SECONDS) {
-    await end(made).catch(() => undefined);
-    return reply(await deps.store.get(made.id), { error: "busy" });
-  }
+  // The weekly check again, now that this call is live (R904-1): a start that read the week before another call ended,
+  // and inserted after it, can be over the week here; it then ends before any ticket.
+  const refused = await admit(made);
+  if (refused) return reply((await deps.store.get(made.id)) ?? made, { error: refused });
   const t = await ticket(made);
   if ("ticket" in t) return reply(made, { ticket: t.ticket });
   // A call with no ticket would stay live until the sweep: end it now, as a call Maya never joined.

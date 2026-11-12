@@ -159,7 +159,7 @@ const zone = familyZone({ timeZone: "America/Vancouver", postal: null, province:
 const verifier = new TokenVerifier(PROJECT.apiKey, PROJECT.apiSecret);
 const ctx = (over: Partial<ChatContext> = {}): ChatContext => ({ db: {} as never, parent: PARENT, child: CHILD, name: "Leah", grade: 4, zone, ...over });
 
-function setup(over: { used?: number; accepted?: boolean; project?: typeof PROJECT | null; canCall?: boolean; book?: Record<string, unknown> | null; found?: boolean; testFamilies?: string[] } = {}) {
+function setup(over: { used?: number; accepted?: boolean; project?: typeof PROJECT | null; canCall?: boolean; book?: Record<string, unknown> | null; found?: boolean; testFamilies?: string[]; note?: () => Promise<"done" | "pending"> } = {}) {
   let n = 0;
   const now = Date.parse("2026-11-11T20:00:00Z");
   const store = memoryCallStore({ testFamilies: over.testFamilies ?? [] });
@@ -167,6 +167,7 @@ function setup(over: { used?: number; accepted?: boolean; project?: typeof PROJE
     store, history: memoryWordingHistoryStore(), events: learningEvents(memoryLearningEventStore({ children: [{ id: CHILD, parentId: PARENT }] })), rebuild: async () => true,
     model: () => ruleMayaModel(), isTestFamily: async () => false, alerts: { send: async () => {}, list: async () => [] },
     clock: () => now, newId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`, seed: () => 42,
+    ...(over.note ? { note: over.note } : {}),
   };
   const calls = mayaCalls({ ...base, canCallVoice: async (p, c) => over.canCall !== false && p === PARENT && c === CHILD });
   const used = { seconds: over.used ?? 0 };
@@ -268,6 +269,41 @@ describe("a desk voice request", () => {
     const reads2 = [1680, 1800];
     ontime.deps.usedSeconds = async () => reads2.shift() ?? 1800;
     expect((await ontime.run(start())).ticket).toBeTruthy();
+  });
+
+  it("checks the week before every ticket: a token or a repeated start over the week gets none (R904-1, third review)", async () => {
+    const note = vi.fn(async () => "done" as const);
+    const s = setup({ used: 1680, note });
+    expect((await s.run(start())).ticket).toBeTruthy();
+    // Another call ended while this start waited: the week is now over with this call counted at its limit.
+    s.used.seconds = 1810;
+    expect(await s.run({ type: "token", id: ID })).toMatchObject({ error: "busy", call: { status: "ended" } });
+    expect(await s.run(start())).toMatchObject({ call: { status: "ended" } });
+    expect((await s.run(start())).ticket).toBeUndefined();
+    // A call Maya never joined writes no parent note (third review, P2).
+    expect(note).not.toHaveBeenCalled();
+    expect(s.store.rows()[0]).toMatchObject({ status: "ended", learningEventId: null, notePending: null });
+  });
+
+  it("keeps a joined call running when its reconnect cannot be checked, and gives no ticket", async () => {
+    const s = setup();
+    await s.run(start());
+    const row = s.store.rows()[0];
+    expect(await s.store.update(row.id, row.revision, { startedAt: new Date(Date.parse("2026-11-11T20:00:00Z")).toISOString() })).toBeTruthy();
+    s.deps.usedSeconds = async () => { throw Error("down"); };
+    const r = await s.run({ type: "token", id: ID });
+    expect(r).toMatchObject({ error: "unavailable" });
+    expect(r.ticket).toBeUndefined();
+    expect(s.store.rows()[0].status).toBe("live");
+  });
+
+  it("ends a new call when the week cannot be read after its insert", async () => {
+    const s = setup({ used: 100 });
+    const reads: Array<number | Error> = [100, Error("down")];
+    s.deps.usedSeconds = async () => { const v = reads.shift() ?? 100; if (v instanceof Error) throw v; return v; };
+    const r = await s.run(start());
+    expect(r).toMatchObject({ error: "unavailable", call: { status: "ended" } });
+    expect(r.ticket).toBeUndefined();
   });
 
   it("starts the same call again as that call, with a fresh ticket, and refuses another question for it", async () => {
