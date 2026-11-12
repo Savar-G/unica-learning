@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { sessionClient, adminClient } from "@/lib/supabase-auth";
 import { notFound } from "next/navigation";
-import { scanChildAccess, scanPagesAccess } from "@/lib/scan-pages-access";
+import { scanAccessReads, scanChildAccess, scanPagesAccess, type ScanAccessReads } from "@/lib/scan-pages-access";
 
 export const SCAN_BUCKET = "scan-photos";
 export const scanPath = (parent: string, id: string) => `${parent}/${id}/photo.jpg`;
@@ -25,7 +25,12 @@ export async function signedInParent(): Promise<{ parent: string; admin: Supabas
   return { parent: data.user.id, admin };
 }
 
-export async function scanSession() {
+/**
+ * The signed-in parent's scan session, or the site's 404. `shareReads`: the family's marked and plan answers are read once
+ * for this request and reused by its checks (`reads`, scanAccessReads), for a route whose checks all run at its start (the
+ * scan stack poll). Without it, as for every route that checks `active` again after long work, each check reads again.
+ */
+export async function scanSession({ shareReads = false }: { shareReads?: boolean } = {}) {
   const db = await sessionClient();
   // getUser checks Auth on every request, including after sign-out/revocation.
   const [{ data, error }, claims] = await Promise.all([db.auth.getUser(), db.auth.getClaims()]);
@@ -34,23 +39,24 @@ export async function scanSession() {
   const sessionId = claims.data?.claims.session_id;
   if (claims.error || typeof sessionId !== "string" || claims.data?.claims.sub !== data.user.id) notFound();
   const parent = data.user.id;
+  const reads: ScanAccessReads | undefined = shareReads ? scanAccessReads(admin) : undefined;
   const active = async () => {
     const [result, released] = await Promise.all([
       admin.rpc("scan_session_active", { p_user: parent, p_session: sessionId }),
-      scanPagesAccess(parent, admin),
+      reads ? scanPagesAccess(parent, admin, undefined, reads) : scanPagesAccess(parent, admin),
     ]);
     return !result.error && result.data === true && released;
   };
   if (!await active()) notFound();
   // The family's way in is `active`. A plan opens only its own child, so a route that names a child, or a photo of one, asks here too.
-  const childOpen = (child: string) => scanChildAccess(parent, child, admin);
+  const childOpen = (child: string) => (reads ? scanChildAccess(parent, child, admin, undefined, reads) : scanChildAccess(parent, child, admin));
   /** An unknown photo answers true: the route's own read then gives its usual refusal. A failed read is closed. */
   const photoOpen = async (id: string) => {
     const { data, error } = await admin.from("scan_photos").select("child_id").eq("id", id).eq("parent_id", parent).maybeSingle();
     if (error) return false;
     return !data || childOpen(data.child_id);
   };
-  return { db, admin, parent, active, childOpen, photoOpen };
+  return { db, admin, parent, active, childOpen, photoOpen, reads };
 }
 
 export function scanJson(data: unknown, status = 200) { return Response.json(data, { status, headers: SCAN_HEADERS }); }

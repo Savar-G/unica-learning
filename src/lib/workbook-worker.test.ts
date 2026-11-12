@@ -56,6 +56,20 @@ describe("workbookWorker", () => {
     expect(events).toEqual(["awake", "asleep"]);
   });
 
+  it("rests after a job that throws, so the same run is not repeated without a pause", async () => {
+    let jobs = 0;
+    const worker = workbookWorker({
+      queue: { candidates: async () => [{ id: "r1", resume: false }], beat: async () => undefined },
+      runJob: async () => { jobs++; throw new Error("boom"); },
+      keepAwake: () => () => undefined,
+    });
+    const stop = new AbortController();
+    let rests = 0;
+    await worker.run({ stop: stop.signal, pollMs: 10, heartbeatMs: 60_000, sleep: async () => { if (++rests === 2) stop.abort(); } });
+    expect(jobs).toBe(2);
+    expect(rests).toBe(2);
+  });
+
   it("runs turns until stopped, resting between idle turns, and says it stopped in its last heartbeat", async () => {
     const s = setup({});
     const stop = new AbortController();

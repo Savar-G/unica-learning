@@ -14,7 +14,7 @@ Decisions D-290 and D-291. Savar decided the amount: CAD 10 per child per week (
 
 OpenRouter reports each attempt's cost in US dollars. The ledger turns it into CAD with the one configured rate, and keeps whole micro-units of CAD (1 CAD = 1,000,000). The rate is not looked up: change `MAYA_USD_TO_CAD` in Vercel and in the voice worker's settings when the dollar moves. The speech-to-text and voice rates are estimates, because the voice providers report no cost per call; set them from the providers' price pages.
 
-The week is the minutes ledger's week: Monday 00:00 to Monday 00:00 in the family's time zone (`src/lib/family-time.ts`). The month is the calendar month in Pacific time.
+The week is the family's week: Monday 00:00 to Monday 00:00 in the family's time zone (`src/lib/family-time.ts`). The month is the calendar month in Pacific time.
 
 ## What counts
 

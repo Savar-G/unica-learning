@@ -3,7 +3,7 @@ import { connection } from "next/server";
 import { buildDashboard, pickRange, progressTestIds, type Dashboard } from "@/lib/admin-dashboard";
 import { demoProgress, demoRows } from "@/lib/admin-demo";
 import { progressSnapshot, type ProgressSnapshot } from "@/lib/admin-progress";
-import { PROGRESS_MAX, dashboardRows, progressRows, requireAdmin } from "@/lib/admin-store";
+import { PROGRESS_MAX, dashboardRows, familyDashboardRows, progressRows, requireAdmin, type AdminSession } from "@/lib/admin-store";
 import { showTestFamilies } from "@/lib/admin-test-families-server";
 
 // What the dashboard and activity pages (D-099) share: the admin gate, the rows and the query. ?demo=1 shows made-up
@@ -19,8 +19,15 @@ export interface DashboardLoad {
   demo: boolean;
 }
 
-/** `withTests`: list the test families whatever the switch says; only for a detail page (one email), never a list. */
-export async function loadDashboard(raw: Record<string, string | string[] | undefined>, { withTests }: { withTests?: boolean } = {}): Promise<DashboardLoad> {
+/**
+ * `withTests`: list the test families whatever the switch says; only for a detail page (one email), never a list.
+ * `families`: read only these families' rows (familyDashboardRows), for a page that shows only them; the dashboard and
+ * its lists read every row.
+ */
+export async function loadDashboard(raw: Record<string, string | string[] | undefined>, { withTests, families }: {
+  withTests?: boolean;
+  families?: (admin: AdminSession, query: Record<string, string>) => Promise<string[]>;
+} = {}): Promise<DashboardLoad> {
   await connection();
   const query = Object.fromEntries(Object.entries(raw).flatMap(([k, v]) => (typeof v === "string" && v ? [[k, v]] : []))) as Record<string, string>;
   const demo = query.demo === "1" && process.env.NODE_ENV === "development";
@@ -32,7 +39,8 @@ export async function loadDashboard(raw: Record<string, string | string[] | unde
     return { who: "demo data", d: buildDashboard(rows, pickRange(query.range), now, options), progress: demoProgress(rows, now), query, demo };
   }
   const admin = await requireAdmin();
-  const d = buildDashboard(await dashboardRows(admin), pickRange(query.range), now, options);
+  const rows = families ? await familyDashboardRows(admin, await families(admin, query)) : await dashboardRows(admin);
+  const d = buildDashboard(rows, pickRange(query.range), now, options);
   // The open tests of the families shown: one more small read, after the rows that say which they are.
   const progress = await progressRows(admin, progressTestIds(d.families, PROGRESS_MAX));
   return { who: admin.email, d, progress: progressSnapshot(progress, now), query, demo };

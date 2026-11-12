@@ -25,7 +25,7 @@ const PATHS: { path: string; updated?: string }[] = [
   { path: "/terms", updated: "2026-11-09" },
   { path: "/resources", updated: newest(RESOURCES.map((r) => r.meta.updated)) },
   ...RESOURCES.map((r) => ({ path: resourcePath(r.meta.slug), updated: r.meta.updated })),
-  { path: "/blog", updated: BLOG_POSTS[0]?.meta.updated },
+  { path: "/blog", updated: newest(BLOG_POSTS.map((p) => p.meta.updated)) },
   ...BLOG_POSTS.map((p) => ({ path: blogPath(p.meta.slug), updated: p.meta.updated })),
 ];
 

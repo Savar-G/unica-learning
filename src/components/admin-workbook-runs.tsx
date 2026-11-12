@@ -315,8 +315,12 @@ function QuestionCheckCell({ q, solve }: { q: GeneratedQuestion; solve?: RunSolv
   const read = state === "agreed"
     ? <span className="adm-sub">{QUESTION_SOLVE_TEXT.agreed}</span>
     : state === "not-checked" && wordedBy(q) === "AI" ? <span className="adm-sub">{QUESTION_SOLVE_TEXT["not-checked"]}</span> : null;
-  if (q.check.status === "checked") return <><Chip tone="ok">Math check passed</Chip>{solveChip}{read}</>;
+  const gateChip = q.gate
+    ? <span title={q.gate.reason}><Chip tone={q.gate.outcome === "unknown" ? "warn" : "bad"}>{q.gate.outcome === "unknown" ? "Quality gate did not answer" : "Quality gate flagged this question"}</Chip></span>
+    : null;
+  if (q.check.status === "checked") return <>{gateChip}<Chip tone="ok">Math check passed</Chip>{solveChip}{read}</>;
   return <>
+    {gateChip}
     {solveChip ?? <Chip tone={q.check.status === "failed" ? "bad" : "warn"}>{q.check.status === "failed" ? "Needs fixing" : "Check by hand"}</Chip>}
     {q.check.status === "failed"
       ? !failedSolve(q) && <span className="adm-sub" title={q.check.reason}>{plainReason(q.check.reason)}</span>
@@ -369,6 +373,7 @@ function DraftPageSection({ page, detail, solves }: { page: GeneratedPage; detai
         {page.fit.status === "failed" && <Chip tone="bad">Does not fit the template</Chip>}
         {page.fit.status === "fits" && !noLayout && <Chip tone="ok">Fits</Chip>}
         {issues.failed.length > 0 && <Chip tone="bad">{issues.failed.length} {issues.failed.length === 1 ? "question needs" : "questions need"} fixing</Chip>}
+        {page.questions.some((q) => q.gate) && <Chip tone="warn">{page.questions.filter((q) => q.gate).length} flagged by a quality gate</Chip>}
         {issues.notChecked.length > 0 && <Chip tone="warn">{issues.notChecked.length} to check by hand</Chip>}
         {problems.length > 0 && <Chip tone="bad">{noLayout ? "No page layout" : "Not in the PDF"}</Chip>}
         {(page.omissions ?? []).length > 0 && <Chip tone="warn">{(page.omissions ?? []).reduce((n, o) => n + o.requested - o.placed, 0)} planned items left out</Chip>}
@@ -421,15 +426,19 @@ function Approval({ detail, name }: { detail: RunDetail; name: string }) {
       <WorkbookStatusChip status={approved.status} />
     </>;
   }
+  const flagged = draft.workbook.pages.flatMap((p) => p.questions).filter((q) => q.gate);
+  const flagLine = flagged.length
+    ? <p><b>{flagged.length} {flagged.length === 1 ? "question is" : "questions are"} flagged by a quality gate.</b> Read each flag before you approve.</p>
+    : null;
   const problems = approvalProblems({
     runId: run.id, runDone: run.status === "done", draftId: draft.workbook.id, revision: draft.revision, oldFormat: false,
     draft: draft.workbook, rendering: draft.rendering, renderProblems: draft.problems,
   });
   if (problems.length) {
-    return <div className="adm-note adm-wb-full" role="note"><b>Not ready to approve.</b> Every check must pass first:
+    return <div className="adm-note adm-wb-full" role="note">{flagLine}<b>Not ready to approve.</b> Every check must pass first:
       <ul className="adm-wb-list">{problems.map((p) => <li key={p}>{p}</li>)}</ul></div>;
   }
-  return <ApproveDraft runId={run.id} revision={draft.revision} workbookPath={adminWorkbookPath(draft.workbook.id)} child={name} pending={detail.comments.filter(c => ["pending", "failed", "stale"].includes(c.status)).length} />;
+  return <>{flagLine}<ApproveDraft runId={run.id} revision={draft.revision} workbookPath={adminWorkbookPath(draft.workbook.id)} child={name} pending={detail.comments.filter(c => ["pending", "failed", "stale"].includes(c.status)).length} /></>;
 }
 
 const ICON_OK = <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>;
@@ -526,6 +535,7 @@ export function AdminWorkbookRun({ email, detail, now, only, worker, why }: { em
       {detail.oldFormat !== null && (
         <p className="adm-note" role="note"><Chip tone="muted">Old draft format</Chip> This draft was stored in an older format (version {detail.oldFormat}), so its pages are not shown here. Prepare a new draft to review the pages.</p>
       )}
+      {draft?.workbook.gatesUnavailable && <p className="adm-note" role="status">Quality gates unavailable for this run.</p>}
       {draft && counts && <section className="bk-checks" aria-labelledby="bk-checks-h">
         <div className="bk-checks-text">
           <h2 id="bk-checks-h">Check results</h2>

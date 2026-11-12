@@ -6,11 +6,11 @@
 // is "wrong", with its coded misconception as the mistake. The assessment gives no hints and has no worked steps, so an
 // event from it has 0 hints and no stuck step (reading the question aloud is not help). The skill is the template's BC
 // standard and its tagged skills. The time is when the server saw the answer (answered_at), else when it was stored
-// (answers before #184). A time spent longer than the record keeps is left out (null). Answers of the removed extra
-// round (D-145) and of a template no longer in the bank are skipped and named in the result.
+// (answers before #184). A time spent longer than the record keeps is left out (null). Answers of a template no longer
+// in the bank are skipped and named in the result.
 // Pure TypeScript: no Next.js, React, network, database or clock. The Supabase reader of a test's answers is in
 // src/lib/learning-events-assessment-store.ts.
-import { BANKS, fromRemovedRound, templateSkills } from "@/lib/assessment";
+import { BANKS, templateSkills } from "@/lib/assessment";
 import { MAX_TIME_MS, type LearningEvents, type NewLearningEvent } from "@/lib/learning-events";
 
 /** An answer of a stored test (public.answers), with the columns the events need. */
@@ -43,7 +43,6 @@ const TEMPLATES = new Map(Object.values(BANKS).flat().map((t) => [t.id, t]));
 
 /** The event for one answer, or why it has none. */
 export function assessmentAnswerEvent(test: AssessmentOwner, answer: AssessmentAnswer): NewLearningEvent | { skip: string } {
-  if (fromRemovedRound(answer.questionId)) return { skip: "a question of the removed extra round" };
   const template = TEMPLATES.get(answer.templateId);
   if (!template) return { skip: `template ${answer.templateId} is not in the bank` };
   const result = answer.correct ? "right" : answer.response.trim() === "" ? "blank" : "wrong";

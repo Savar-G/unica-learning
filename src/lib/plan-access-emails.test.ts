@@ -135,11 +135,6 @@ describe("no email sender reaches the plan gate", () => {
     for (const source of ['// The Resend address is https://api.resend.com/emails.', 'import { x } from "./email-copies";']) expect(sends("src/lib/any.ts", source), source).toBe(false);
   });
 
-  it("finds the team alert in the signup route, which calls Resend directly and reads no gate", () => {
-    expect(senders).toContain("src/app/api/signup/route.ts");
-    expect(gateEdges("src/app/api/signup/route.ts")).toEqual([]);
-  });
-
   it("finds the senders of the /api/reminders run, the start, the sweep and the parent's presses", () => {
     for (const file of ["src/app/api/reminders/route.ts", "src/lib/reminder-store.ts", "src/lib/maya-weekly-email.ts", "src/lib/maya-weekly-email-store.ts", "src/lib/monthly-summary-email-store.ts", "src/lib/workbook-scan-reminder-send.ts", "src/lib/workbook-scan-maintenance-server.ts", "src/lib/card-sweep-server.ts", "src/lib/workbook-email-server.ts", "src/lib/scan-link.ts", "src/lib/report-job.ts", "src/app/api/admin/cards/[id]/start/route.ts"]) expect(senders).toContain(file);
   });

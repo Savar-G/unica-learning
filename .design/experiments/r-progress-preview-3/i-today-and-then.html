@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en-CA">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>I. Today and then</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono&family=Gochi+Hand&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shell.css">
+<style>
+.tt { display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: 0; margin-top: 28px; align-items: stretch; }
+@media (max-width: 760px) { .tt { grid-template-columns: 1fr !important; gap: 0; } }
+.sheet { position: relative; padding: 22px 22px 26px; border-radius: 14px; background-color: #fff; background-image: linear-gradient(#eef3ff 1px, transparent 1px), linear-gradient(90deg, #eef3ff 1px, transparent 1px); background-size: 22px 22px; box-shadow: 0 0 0 1px var(--line), 0 24px 40px -30px rgba(0,0,0,.4); }
+.sheet + .bridge + .sheet { }
+.sheet.is-goal { box-shadow: 0 0 0 2px var(--ink), 0 30px 50px -30px rgba(0,0,0,.5); }
+.when { font: 500 12px/1.3 var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--ink-2); }
+.sheet h3 { margin: 6px 0 0; font-size: 30px; font-weight: 300; letter-spacing: -.03em; line-height: 1.05; }
+.sheet .sub { margin-top: 4px; font-size: 14px; color: var(--ink-2); }
+.probs { margin: 18px 0 0; padding: 0; list-style: none; }
+.probs li { display: grid; padding: 7px 0; font: 400 clamp(22px, 2.3vw, 28px)/1.1 "Gochi Hand", cursive; color: #1d3a8a; white-space: nowrap; }
+.probs li b { font-weight: 400; color: #c2410c; }
+.probs li small { margin-top: 2px; font: 400 11px/1.2 var(--mono); color: var(--ink-3); white-space: normal; }
+.tag { display: inline-block; margin-top: 14px; padding: 5px 9px; border-radius: 999px; background: var(--ink); color: #fff; font: 500 12px/1 var(--mono); }
+.bridge { display: grid; place-items: center; align-content: center; gap: 6px; padding: 0 10px; min-width: 96px; text-align: center; font: 400 12px/1.3 var(--mono); color: var(--ink-2); }
+.bridge svg { width: 64px; height: 20px; }
+.bridge .bks { display: flex; gap: 2px; }
+.bridge .bks i { width: 6px; height: 14px; border-radius: 1px; background: var(--c); outline: 1px solid #0c0c0e22; }
+@media (max-width: 760px) { .bridge { grid-auto-flow: column; justify-content: start; padding: 14px 4px; min-width: 0; } .bridge svg { transform: rotate(90deg); width: 30px; } }
+.foot { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-top: 22px; }
+</style>
+</head>
+<body>
+<div class="chrome"><span class="v">I. Today and then</span><div class="cases" data-cases></div><a href="board.html">All options</a></div>
+<main class="page">
+  <div class="stub">Report: "Where Leah is", "What's in workbook 1" (unchanged)</div>
+  <section class="section" id="out"></section>
+  <div class="stub">Next step: card and plan button (unchanged)</div>
+</main>
+<script src="levels.js"></script><script src="pace.js"></script><script src="covers.js"></script>
+<script>
+// One picture-able example per grade, from that grade's BC units (UNIT_TITLES). The build takes them from question templates.
+const EX = {
+  0: [["3 + 2 = ", "5", "Counting to 10"], ["● ● ● ● ●  = ", "5", "Making 5"], ["7 is more than ", "4", "Comparing"]],
+  1: [["8 + 5 = ", "13", "Facts to 20"], ["6 + _ = 10", "4", "Ways to make 10"], ["17 − 9 = ", "8", "Adding and subtracting"]],
+  2: [["47 + 28 = ", "75", "Adding to 100"], ["63 − 25 = ", "38", "Subtracting to 100"], ["9 + 7 = ", "16", "Facts to 20, quickly"]],
+  3: [["348 + 275 = ", "623", "Adding to 1000"], ["4 × 6 = ", "24", "Multiplying"], ["¼ of 12 = ", "3", "Fractions"]],
+  4: [["6 × 7 = ", "42", "Times tables"], ["2.5 + 1.25 = ", "3.75", "Decimals"], ["¾ or ⅔?  ", "¾", "Comparing fractions"]],
+  5: [["426 × 3 = ", "1278", "Long multiplying"], ["⅔ = _⁄6", "4", "Equivalent fractions"], ["15 ÷ 4 = ", "3 R3", "Dividing"]],
+  6: [["3 + 4 × 2 = ", "11", "Order of operations"], ["25% of $40 = ", "$10", "Percents"], ["12 : 18 = 2 : ", "3", "Ratios"]],
+  7: [["−3 + 8 = ", "5", "Negative numbers"], ["2x + 3 = 11, x = ", "4", "Equations"], ["0.4 × 2.5 = ", "1", "Decimals"]],
+};
+mount((p, setPace) => {
+  const mid = p.grades.length > 2 ? [p.grades[1]] : [];
+  const cols = [p.grades[0], ...mid, p.grades.at(-1)];
+  const sheet = (s, i) => {
+    const goal = i === cols.length - 1, now = i === 0;
+    const when = now ? "Today" : `${goal ? "By about" : "About"} ${monthYear(s.date)}`;
+    const ex = EX[s.grade] ?? EX[7];
+    return `<div class="sheet ${goal ? "is-goal" : ""}"><p class="when">${when}</p><h3>${gradeName(s.grade)} ${goal ? "level" : "work"}</h3>
+      <p class="sub">${now ? `${p.c.name} works on things like this:` : goal ? `${p.c.name} is ready for problems like this:` : `${p.c.name} moves on to problems like this:`}</p>
+      <ul class="probs">${ex.map(([q, a, t]) => `<li><span>${q}<b>${a}</b></span><small>${t}</small></li>`).join("")}</ul>
+      ${goal ? `<span class="tag">The goal</span>` : ""}</div>`;
+  };
+  const bridge = (from) => `<div class="bridge"><span class="bks">${from.books.map(() => `<i style="--c:${gradeColor(from.grade)}"></i>`).join("")}</span>
+    <svg viewBox="0 0 64 20" aria-hidden="true"><path d="M2 10h56m-8-7 8 7-8 7" fill="none" stroke="#0c0c0e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>${from.books.length} books</span></div>`;
+  let html = "";
+  cols.forEach((s, i) => { html += sheet(s, i); if (i < cols.length - 1) html += bridge(i === 0 && mid.length === 0 ? { grade: s.grade, books: p.books } : s); });
+  const n = cols.length * 2 - 1;
+  const out = document.getElementById("out");
+  out.innerHTML = `
+    <div class="section-head"><p class="k">Where ${p.c.name} can go</p><h2>${headline(p)}</h2></div>
+    <div class="tt" style="grid-template-columns: ${Array.from({ length: n }, (_, i) => (i % 2 ? "auto" : "minmax(0,1fr)")).join(" ")}">${html}</div>
+    <div class="foot">${paceSwitch(p)}<p class="basis" style="margin:0">${basis(p)}</p></div>`;
+  wirePace(out, setPace);
+});
+</script>
+</body>
+</html>

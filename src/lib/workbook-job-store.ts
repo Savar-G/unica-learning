@@ -107,6 +107,17 @@ export function workbookRunStore(admin: SupabaseClient<Database>): WorkbookRunSt
       }
       return verdicts;
     },
+    async saveGates(id, lease, gates) {
+      return must(await admin.rpc("save_workbook_run_gates", { p_run: id, p_lease: lease, p_rows: toJson(gates) }), "quality gates save") === true;
+    },
+    async gates(id) {
+      const rows = await readPaged(async (from, to) =>
+        must(await admin.from("workbook_run_gates").select("call_key, question_id, model, threshold_version, outcome, flags, probabilities, reason").eq("run_id", id).order("id").range(from, to), "quality gates load") ?? []);
+      return rows.flatMap((r) => r.call_key ? [{
+        callKey: r.call_key, questionId: r.question_id, model: r.model, thresholdVersion: r.threshold_version,
+        outcome: r.outcome, flags: r.flags, probabilities: r.probabilities, reason: r.reason,
+      }] : []);
+    },
     async frame(id) {
       const row = must(await admin.from("workbook_run_frames").select("frame").eq("run_id", id).maybeSingle(), "plan load");
       return row?.frame ?? null;
@@ -117,6 +128,7 @@ export function workbookRunStore(admin: SupabaseClient<Database>): WorkbookRunSt
         admin.from("workbook_run_attempts").select("run_id").eq("run_id", id).limit(1),
         admin.from("workbook_run_calls").select("run_id").eq("run_id", id).limit(1),
         admin.from("workbook_run_solves").select("run_id").eq("run_id", id).limit(1),
+        admin.from("workbook_run_gates").select("run_id").eq("run_id", id).limit(1),
         admin.from("workbook_run_ai_calls").select("run_id").eq("run_id", id).limit(1),
       ]);
       if (results.map((result) => must(result, "stored work load") ?? []).some((rows) => rows.length > 0)) return true;
@@ -312,7 +324,7 @@ export async function excludeRunProvider(admin: SupabaseClient<Database>, runId:
   }
 }
 
-/** Stores AI calls of a run through save_workbook_run_ai_calls. */
+/** Stores AI calls of a run through save_workbook_run_ai_calls_v2. */
 export const saveRunAiCalls = (admin: SupabaseClient<Database>, runId: string) => async (calls: RunAiCall[]) => {
   for (let i = 0; i < calls.length; i += AI_CALL_BATCH) {
     const chunk = calls.slice(i, i + AI_CALL_BATCH);

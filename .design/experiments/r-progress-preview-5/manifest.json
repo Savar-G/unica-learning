@@ -1,0 +1,12 @@
+{
+  "round": "r-progress-preview-5",
+  "decision": "Savar chose P (round 4) and asked for skills in plain words instead of example problems: 'something along the lines of one digit addition versus three digit addition' (2026-11-11).",
+  "invariants": ["P's frame: the prediction, today and the goal, the three steps of how", "skills in four areas that line up from grade to grade (skills.js), written from the BC content per grade", "'Not started yet' when an area begins after today's grade"],
+  "primary_axis": "how today's skills and the goal's skills sit side by side",
+  "options": [
+    { "id": "P1", "artifact": "p1-skill-cards.html", "bet": "P's two cards, each a list of the four areas", "benefit": "Closest to P; easy to read row against row", "cost": "Area labels repeat in both cards", "risk": "The eye must jump across the arrow to compare" },
+    { "id": "P2", "artifact": "p2-skill-table.html", "bet": "One table: area, today, arrow, the goal column in yellow", "benefit": "The clearest comparison; works on a phone and as an email image", "cost": "Looks more like a report than a picture", "risk": "Low" },
+    { "id": "P3", "artifact": "p3-headline-skill.html", "bet": "One big skill per side (1-digit to 3-digit), the others small", "benefit": "The most striking jump for the below and at cases", "cost": "Needs a headline pair per grade", "risk": "From Grade 6 up the adding row changes kind ('Mixed operations in order'), so the pair stops matching" }
+  ],
+  "recommendation": "P2", "chosen": "P2 (Savar, 2026-11-11); arrows to fix: the small grey arrow looked bad. Arrow styles: badge in each row (recommended), one badge in the header, drawn line"
+}

@@ -242,7 +242,7 @@ export function sampleReportView(): ReportView {
     completedAt: "2026-10-05T23:30:00Z",
     questions: count,
     minutes: Math.round(ms / 60_000),
-    model: reportModel(placement, { completedTestsInGrade: 0, workReviews: [] }),
+    model: reportModel(placement, { workReviews: [] }),
     findings: learner ? reportFindings(samplePlan(learner)) : null,
   };
 }

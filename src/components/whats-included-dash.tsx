@@ -63,7 +63,7 @@ export function DashboardDemo() {
       <Fit w={1104} h={640}>
         <div className="wi-dv-stage">
           <div className="wi-browser wi-dsh" style={{ width: WEB_W }}>
-            <div className="bar"><i /><i /><i /><span>app.unicalearning.com/account</span></div>
+            <div className="bar"><i /><i /><i /><span>unicalearning.com/account</span></div>
             <div className="wi-dsh-body" style={{ height: 560 }}>
               <div className="wi-dsh-main" ref={main} style={{ left: Math.round(248 * S) }}>
                 <img src={`${ASSETS}/dash-main.jpg`} alt="The parent dashboard on the website, with sample data" style={{ width: Math.round(1192 * S) }} />

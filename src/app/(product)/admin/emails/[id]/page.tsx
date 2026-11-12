@@ -6,7 +6,7 @@ import { FamilyDrawer } from "@/components/admin-family";
 import { EMAIL_LABEL } from "@/lib/admin-dashboard";
 import { loadDashboard } from "@/lib/admin-dashboard-load";
 import { demoEmailCopy } from "@/lib/admin-demo";
-import { getEmailCopy, requireAdmin } from "@/lib/admin-store";
+import { emailParent, getEmailCopy, requireAdmin } from "@/lib/admin-store";
 import { ADMIN_PATH, adminEmailPath } from "@/lib/admin-view";
 import { pageMetadata } from "@/lib/metadata";
 
@@ -14,10 +14,14 @@ export const metadata = pageMetadata({ path: `${ADMIN_PATH}/emails`, title: "Adm
 
 // One logged email the way the parent got it (D-103), from the Emails list or a family's email list: the subject as the
 // title, the email in a framed preview and its facts on the side. Admins only (loadDashboard runs requireAdmin). Test
-// families count here too, so an admin can open the emails of their own tests.
+// families count here too, so an admin can open the emails of their own tests. Only the email's family and the family
+// drawer's (?family=) are read, not every family.
 export default async function EmailPage({ params, searchParams }: PageProps<"/admin/emails/[id]">) {
   const id = decodeURIComponent((await params).id);
-  const { who, d, progress, query, demo } = await loadDashboard(await searchParams, { withTests: true });
+  const { who, d, progress, query, demo } = await loadDashboard(await searchParams, {
+    withTests: true,
+    families: async (admin, q) => [...(await emailParent(admin, id).then((p) => (p ? [p] : []))), ...(q.family ? [q.family] : [])],
+  });
   const e = d.emails.find((x) => x.id === id);
   if (!e || e.kind === "unsubscribe" || e.kind === "maya_unsubscribe") notFound();
   const copy = demo ? demoEmailCopy(e, d.families.find((f) => f.id === e.familyId)) : await getEmailCopy(await requireAdmin(), id);

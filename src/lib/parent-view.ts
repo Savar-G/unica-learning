@@ -87,8 +87,8 @@ export interface ParentViewReader {
   /** Stored weeks that apply to this next workbook, from the private billing ledger. */
   pauseWeeks?(childId: string, number: number): Promise<number>;
   plans(): Promise<PlanRecord[]>;
-  /** `scanPlanChildren`: the children whose own open plan opens Scan pages, when the release does not (src/lib/plan-access.ts). */
-  switches(): Promise<TabSwitches & { scanPlanChildren?: ReadonlySet<string> }>;
+  /** Children whose own open plan opens a tab (src/lib/plan-access.ts). */
+  switches(): Promise<TabSwitches & { scanPlanChildren?: ReadonlySet<string>; mayaPlanChildren?: ReadonlySet<string> }>;
   /** The family's saved time zone and postal code, for family time. */
   family(): Promise<{ timeZone: string | null; postal: string | null }>;
   /** One of the family's finished tests with a report, scored; null for a test the family does not have or with no report. */
@@ -102,8 +102,9 @@ export interface ParentViewReader {
   /** Whether the parent has a PIN; null when it cannot be read. */
   pinSet(): Promise<boolean | null>;
   /**
-   * How many of the child's Maya calls that counted minutes (a call that used no time is not one) started from `from`
-   * up to, not including, `to` (epoch ms). Only a number: never a call's words, notes or outcome.
+   * How many of the child's Maya chats ended from `from` up to, not including, `to` (epoch ms). A chat counts when the
+   * child sent Maya at least one message; an admin test call never counts. Only a number: never a call's words, notes or
+   * outcome.
    */
   mayaCalls(childId: string, from: number, to: number): Promise<number>;
   /** Each finished test's tally of each standard it asked, for one child: what the skill state rule reads, and nothing else. */
@@ -194,7 +195,7 @@ export async function listChildren(reader: ParentViewReader, now: number): Promi
       cardSaved: cards.some((c) => c.childId === child.id),
       delivered: deliveries.some((d) => d.childId === child.id),
       plan: plans.find((p) => p.childId === child.id)?.kind ?? "unknown",
-    }, { ...switches, scanPages: switches.scanPages || !!switches.scanPlanChildren?.has(child.id) });
+    }, { ...switches, scanPages: switches.scanPages || !!switches.scanPlanChildren?.has(child.id), maya: switches.maya || !!switches.mayaPlanChildren?.has(child.id) });
     const finished = reportsByTime(own.tests, own.reports);
     return { id: child.id, firstName: child.firstName, schoolGrade: child.grade, ...view, currentWorkbook: newest > 0 ? { number: newest } : null, reportIds: finished.map((f) => f.reportId), finishedTests: finished.filter((f) => f.finishedAt > 0) };
   });
@@ -479,7 +480,7 @@ export interface MonthlySummaryView {
   mailed: { number: number; shippedOn: string }[];
   /** Days of work scanned in the month: a day of a shipped workbook whose every page has a saved photo, counted in the month of its last photo. */
   daysScanned: number;
-  /** The child's Maya calls that started in the month. */
+  /** The child's Maya chats that ended in the month, with at least one message from the child. */
   mayaCalls: number;
   /** The next book's range today; null when there is no range to show. */
   next: { earliest: string; latest: string } | null;

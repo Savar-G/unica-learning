@@ -1,5 +1,5 @@
 /* How a child likes to learn (#126): a quiet white card above the report's plan choice, and on its own account page.
-   Chips follow the "How did you hear about us?" picks: a checked chip turns ink. */
+   A checked chip turns ink. */
 .lrn { margin: 0 0 20px; padding: clamp(20px, 2.6vw, 28px); border: 1px solid #d4d4d8; border-radius: 12px; background: #fff; }
 .lrn.is-folded { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding: 16px 20px; }
 .support-page .lrn h3 { margin: 0 0 6px; font-size: 20px; }

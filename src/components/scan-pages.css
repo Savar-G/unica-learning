@@ -107,6 +107,11 @@
 .scan-marking-results p { overflow-wrap: anywhere; }
 .scan-result-refresh { min-height: 44px; }
 .scan-preview .btn { justify-self: start; min-height: 44px; }
+/* The photo check's problem (#855): one sentence, then "Take again" (main) and "Send anyway" (second). Nothing is blocked. */
+.scan-check-problem { display: grid; gap: 12px; padding: 14px 16px; background: var(--accent-soft); border-radius: 10px; }
+.scan-check-problem > p { font-weight: 500; color: var(--scan-accent-ink); }
+.scan-check-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.scan-check-actions .btn { flex: 1 1 140px; justify-content: center; min-height: 48px; }
 .scan-preview-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 20px; align-items: start; }
 .scan-straight { margin: 0; display: grid; gap: 8px; font-size: 14px; color: var(--ink-2); }
 .scan-straight img { display: block; width: 100%; height: auto; border: 1px solid var(--line); }

@@ -23,7 +23,7 @@ describe("time displays and calendar grouping share the confirmed BC rule", () =
   });
 
   it.each([["V3S 1A1", "9:29 p.m."], ["T2P 1J9", "10:29 p.m."], ["X1A 2N2", "10:29 p.m."]])("sends the confirmed deadline for %s", (postal, clock) => {
-    const email = reminderEmail({ kind: "continue", parentName: "Alex", childName: "Asha", url: "https://example.com/start", unsubscribeUrl: "https://example.com/unsubscribe", postal, total: 36, answered: 2, resumeUntil: Date.parse("2026-11-18T04:29:00Z") });
+    const email = reminderEmail({ kind: "continue", parentName: "Alex", childName: "Asha", url: "https://example.com/start", unsubscribeUrl: "https://example.com/unsubscribe", postal, answered: 2, resumeUntil: Date.parse("2026-11-18T04:29:00Z") });
     expect(email.text).toContain(`until ${clock} on Tuesday, November 17`);
     expect(email.html).toContain(`until ${clock} on Tuesday, November 17`);
   });

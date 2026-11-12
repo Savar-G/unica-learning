@@ -1,5 +1,5 @@
 import { HELP_FAST_RIGHT_MIN, TOO_FAST_MS } from "@/lib/assessment";
-import { LIST_MAX, listTests, requireAdmin } from "@/lib/admin-store";
+import { LIST_MAX, TEST_SCAN_PAGES, listTests, requireAdmin } from "@/lib/admin-store";
 import { testsSummary } from "@/lib/admin-tests";
 import { ADMIN_TESTS_PATH, listOffset, parseFilters } from "@/lib/admin-view";
 import { loadTestFamilies } from "@/lib/admin-test-families-server";
@@ -20,11 +20,12 @@ export default async function AdminTests({ searchParams }: PageProps<"/admin/tes
   const filters = parseFilters(query);
   const offset = listOffset(query, LIST_MAX);
   const view = await loadTestFamilies(admin);
-  const { rows, more } = await listTests(admin, filters, offset, view.hidden);
+  const { rows, more, cut } = await listTests(admin, filters, offset, view.hidden);
   // The counts: the real families' tests on this page only (test families are listed while the switch is on, never counted).
   const summary = testsSummary(rows, view.isTest);
   const scope = <>
-    {more || offset > 0 ? `Counts the ${summary.started} tests on this page, not older pages.` : "Counts every test that matches the filters."}
+    {more || offset > 0 || cut ? `Counts the ${summary.started} tests on this page, not older pages.` : "Counts every test that matches the filters."}
+    {cut ? ` Only the newest ${(TEST_SCAN_PAGES * LIST_MAX).toLocaleString("en-CA")} tests were checked against these filters, so older tests that match are not listed.` : ""}
     {view.show ? " Test families are not counted." : ""} Help likely: the child said someone helped, or {HELP_FAST_RIGHT_MIN} or more right answers
     came in under {TOO_FAST_MS / 1000} seconds, or a long pause came before a run of right answers.
   </>;

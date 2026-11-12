@@ -28,7 +28,6 @@ const ANSWERS: AssessmentAnswer[] = [
   answer({ id: "00000000-0000-4000-8000-000000000102", questionId: "s1-2", templateId: "2-subtract-2-digit", response: "43", correct: false, misconception: "O1", timeMs: 30_000, answeredAt: null, createdAt: "2026-10-29T15:01:00.000Z" }),
   answer({ id: "00000000-0000-4000-8000-000000000103", questionId: "s1-3", response: "", correct: false, timeMs: 5_000, answeredAt: "2026-10-29T15:02:00.000Z" }),
   answer({ id: "00000000-0000-4000-8000-000000000104", questionId: "s1-4", templateId: "no-longer-in-the-bank", answeredAt: "2026-10-29T15:03:00.000Z" }),
-  answer({ id: "00000000-0000-4000-8000-000000000105", questionId: "x-0", answeredAt: "2026-10-29T15:04:00.000Z" }),
 ];
 
 const base = (questionId: string, id: string) => ({
@@ -52,7 +51,6 @@ describe("events from assessment answers", () => {
       alreadyStored: 0,
       skipped: [
         { answerId: "00000000-0000-4000-8000-000000000104", reason: "template no-longer-in-the-bank is not in the bank" },
-        { answerId: "00000000-0000-4000-8000-000000000105", reason: "a question of the removed extra round" },
       ],
     });
     expect(await events.read(TEST.childId, DAY)).toEqual([

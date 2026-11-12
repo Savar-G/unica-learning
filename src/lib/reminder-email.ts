@@ -17,8 +17,6 @@ interface Common {
   postal: string | null;
   timeZone?: string | null;
   province?: string | null;
-  /** Questions in the test for the child's grade. */
-  total: number;
 }
 
 export type ReminderEmailInput =
@@ -49,7 +47,7 @@ function content(e: ReminderEmailInput): { subject: string; preview: string; par
         preview: until,
         paragraphs: [
           e.answered > 0
-            ? `${name} answered ${e.answered} of ${e.total} questions on the free math placement test, and those answers are saved.`
+            ? `${name} answered ${e.answered} ${e.answered === 1 ? "question" : "questions"} on the free math placement test, and those answers are saved.`
             : `${name} opened the free math placement test but hasn't answered a question yet.`,
           until,
           `After that, ${name} would start over with a new set of questions.`,

@@ -1,8 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+vi.mock("server-only", () => ({}));
 import { reportModel, storedReportModel, type Grade, type Province, type ReportFacts } from "@/lib/assessment";
 import { allRight, knowsUpTo, takeTest, type Script } from "@/lib/assessment/scripted-child";
 import { reportAlert, reportEmail } from "@/lib/report-email";
 import type { ReportView } from "@/lib/report-view";
+import { progressPreview } from "@/lib/progress-preview";
+import { sampleReportWithBook } from "@/lib/sample-book-one";
 
 const URL = "https://unicalearning.com/account/report/r-1?src=email";
 const UNSUB = "https://unicalearning.com/unsubscribe?t=tok_123";
@@ -16,7 +19,7 @@ function view(isRight: Script, { grade = 4, province = "BC", name = "Maya" }: { 
     completedAt: "2026-10-10T19:30:00Z",
     questions: 36,
     minutes: 34,
-    model: reportModel(placement, { completedTestsInGrade: 0, workReviews: [] }),
+    model: reportModel(placement, { workReviews: [] }),
   };
 }
 
@@ -213,7 +216,7 @@ describe("the report email to the parent", () => {
       const v = view(knowsUpTo(3));
       const { placement } = takeTest({ grade: 4, province: "BC" }, 1, knowsUpTo(3));
       const shownWork = [{ questionId: "s1-0", prompt: "47 + 25 = ?", correct: true, required: true, image: "p/a/s1-0-x.png", text: "carry the 1" }];
-      return { ...v, model: reportModel(placement, { completedTestsInGrade: 0, workReviews: [], shownWork }), workImages: { "p/a/s1-0-x.png": "https://signed.example/x" } };
+      return { ...v, model: reportModel(placement, { workReviews: [], shownWork }), workImages: { "p/a/s1-0-x.png": "https://signed.example/x" } };
     };
 
     it("says the work is in the full report, with a link, and carries no image or private link", () => {
@@ -361,5 +364,24 @@ describe("results call invitation", () => {
     expect(alert.text).toContain("Call strategy:");
     expect(alert.html).toContain('href="tel:+16045550123"');
     expect(alert.html).toContain('href="https://example.test/admin/reports/r-1/deck"');
+  });
+});
+
+describe("progress preview (round r-progress-preview-5)", () => {
+  it("says the prediction, the skills today and at the goal, and how, as on the report page; nothing without the offer", () => {
+    const v = sampleReportWithBook();
+    const p = progressPreview(v)!;
+    const email = reportEmail({ unsubscribeUrl: UNSUB, view: v, parentName: "Priya", url: URL });
+    expect(email.text).toContain(`We can help ${p.name} reach a ${p.sentence.goal} by ${p.goalMonth}.`);
+    expect(email.text).toContain(`- Adding and subtracting: ${p.rows[1].today} -> ${p.rows[1].goal}`);
+    expect(email.html).toContain(`We can help ${p.name} reach a <b style="font-weight:600">${p.sentence.goal}</b>`);
+    expect(email.html).toContain(p.rows[1].goal);
+    expect(email.html).toContain("How we get");
+    expect(email.text).toContain(`- ${p.stages[0].label}: ${p.stages[0].months}`);
+    // One cell per grade, never one per book: a long path would be wider than the 600 px column.
+    expect(email.html.match(/bgcolor="#2fb37a"/g)?.length ?? 0).toBe(1);
+    const quiet = reportEmail({ unsubscribeUrl: UNSUB, view: v, parentName: "Priya", url: URL, offer: false });
+    expect(quiet.text).not.toContain("We can help");
+    expect(quiet.html).not.toContain("We can help");
   });
 });

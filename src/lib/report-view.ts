@@ -14,6 +14,7 @@ import {
   UP_ROUTE_TOP,
   WORKING_LEVEL_PERCENT,
   comparedGrade,
+  gradeLabel,
   type Certainty,
   type Level,
   type Province,
@@ -504,8 +505,6 @@ export function howWeHelp(v: ReportView): { title: string; text: string } {
   }
 }
 
-/** "Grade 4", or "Kindergarten" for level 0. */
-const gradeLabel = (level: Level) => (level === 0 ? "Kindergarten" : `Grade ${level}`);
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
 

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { isUuid } from "@/lib/assessment-store";
-import { dashboardRows, familyProduction, getParent, requireAdmin, testAccountState } from "@/lib/admin-store";
+import { familyDashboardRows, familyProduction, getParent, requireAdmin, testAccountState } from "@/lib/admin-store";
 import { ADMIN_PATH, when } from "@/lib/admin-view";
 import { buildDashboard } from "@/lib/admin-dashboard";
 import { buildBooks } from "@/lib/admin-production";
@@ -10,6 +10,7 @@ import { workbookRunner } from "@/lib/workbook-ai";
 import { AdminFrame } from "@/components/admin-frame";
 import { TestTag, TestsTable } from "@/components/admin";
 import { CardsTable, EmailTable, WaitlistTable } from "@/components/admin-records";
+import { goalFacts } from "@/lib/child-goals";
 import { ChildCard, FamilyHead, FamilyTimeline, SectionHead } from "@/components/admin-family-page";
 import { DeleteFamily } from "@/components/delete-family";
 import { TestAccount } from "@/components/test-account";
@@ -28,11 +29,12 @@ const CHAT_GRADE = 3;
 export default async function ParentPage({ params }: PageProps<"/admin/parents/[id]">) {
   const admin = await requireAdmin();
   const id = (await params).id;
-  // the family's stage and payment, the same way the dashboard works them out (D-099). The related reads run at once,
-  // but the family decides first: an unknown family is a 404 even when another read failed.
+  // the family's stage and payment, the same way the dashboard works them out (D-099), from this family's rows only
+  // (familyDashboardRows: the dashboard's rows for one family, and Stripe asked about its cards only). The related reads
+  // run at once, but the family decides first: an unknown family is a 404 even when another read failed.
   if (!isUuid(id)) notFound();
   const now = new Date();
-  const others = Promise.all([dashboardRows(admin), testAccountState(admin, id), chatFamilyState(admin, id), openFamilyCancels(admin, id), familyProduction(admin, id, now)]);
+  const others = Promise.all([familyDashboardRows(admin, [id]), testAccountState(admin, id), chatFamilyState(admin, id), openFamilyCancels(admin, id), familyProduction(admin, id, now)]);
   others.catch(() => {});
   const family = await getParent(admin, id);
   if (!family) notFound();
@@ -72,7 +74,7 @@ export default async function ParentPage({ params }: PageProps<"/admin/parents/[
         {kids.map((c) => <ChildCard key={c.id} runner={runner} now={now} isTest={isTest} c={{
           id: c.id, parentId: c.parent_id, name: c.first_name, grade: c.grade, place: c.province === "other" ? "other curriculum" : c.province, addedAt: c.created_at,
           test: latestTest(f?.tests ?? [], c.id), tests: (f?.tests ?? []).filter((t) => t.childId === c.id).length,
-          plan: childPlan(family.cards, c.id), book: books.find((b) => b.childId === c.id) ?? null,
+          plan: childPlan(family.cards, c.id), book: books.find((b) => b.childId === c.id) ?? null, goals: goalFacts(c),
           chat: c.grade < CHAT_GRADE ? "From Grade 3." : chat.listed ? "The family is on the chat list." : chat.test ? "Test family: chat works without the list." : "Not on the chat list.",
         }} />)}
       </div>}

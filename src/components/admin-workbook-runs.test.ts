@@ -166,6 +166,28 @@ describe("admin workbook cost and plain labels", () => {
   });
 });
 
+describe("admin workbook quality gates (#858)", () => {
+  it("shows each flag and the outage, and still offers approval when the checks passed", () => {
+    const d = runDetail("agreed");
+    d.draft!.workbook.gatesUnavailable = true;
+    d.draft!.workbook.pages[0].questions[0].gate = {
+      outcome: "flag", flags: ["one_right_answer"], reason: "A quality gate flagged this question: it may have more than one right answer.",
+    };
+    const text = visible(markup(d));
+    const flagAt = text.indexOf("1 question is flagged by a quality gate.");
+    const blockedAt = text.indexOf("Not ready to approve");
+    expect(flagAt).toBeGreaterThan(-1);
+    expect(blockedAt).toBeGreaterThan(flagAt);
+    const reasons = text.slice(blockedAt, text.indexOf("Pages", blockedAt));
+    expect(reasons).toContain("not laid out with the real templates");
+    expect(reasons).toContain("The draft has no PDF");
+    expect(reasons).not.toContain("quality gate");
+    expect(text).toContain("Quality gates unavailable for this run.");
+    expect(text).toContain("Quality gate flagged this question");
+    expect(text).toContain("1 flagged by a quality gate");
+  });
+});
+
 describe("admin workbook questions left out for room (#380)", () => {
   it("lists each question a page left out to fit, with its text, and marks the page to check", () => {
     const d = runDetail("agreed");

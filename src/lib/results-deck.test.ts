@@ -9,7 +9,7 @@ import { sampleReportWithBook } from "@/lib/sample-book-one";
 import type { BookOne } from "@/lib/report-book-one";
 
 const book: BookOne = {
-  days: 20, minutes: 30,
+  level: 7, pagesADay: { min: 8, max: 8 }, days: 20, minutes: 30,
   main: [{ code: "U1", title: "Adding and subtracting", grade: 2, skills: ["Add to 100", "Subtract to 100", "Regroup", "Word problems"] }],
   review: [{ code: "U0", title: "Facts to 20", grade: 1, skills: ["Facts to 10"] }],
   warmUp: [], challenge: { harder: true, twoWays: false, showWhatYouKnow: true },

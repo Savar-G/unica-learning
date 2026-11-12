@@ -72,7 +72,7 @@ function run(reviewer: WorkReviewer | null, pieces: ReviewPiece[], store: Review
     reviewer,
     pieces: async () => pieces,
     store,
-    build: (workReviews, reportText) => reportModel(placement, { completedTestsInGrade: 0, workReviews, shownWork: shownWork(pieces), reportText }),
+    build: (workReviews, reportText) => reportModel(placement, { workReviews, shownWork: shownWork(pieces), reportText }),
     ...times,
   });
 }
@@ -86,7 +86,7 @@ describe("the AI step of the report job (#68)", () => {
       reviewer: aiReviewer({ NODE_ENV: "production" }),
       pieces: loadPieces,
       store,
-      build: (workReviews, reportText) => reportModel(placement, { completedTestsInGrade: 0, workReviews, shownWork: shownWork([piece("s1-3")]), reportText }),
+      build: (workReviews, reportText) => reportModel(placement, { workReviews, shownWork: shownWork([piece("s1-3")]), reportText }),
     });
     expect(ai).toEqual({ on: false });
     expect(fetch).not.toHaveBeenCalled();
@@ -219,7 +219,7 @@ describe("the AI step of the report job (#68)", () => {
     expect(model.work.map((w) => w.comment)).toEqual([null]);
     expect(model.summary).toBe("{name} is working at a grade 4 level.");
     expect(ai).toMatchObject({ reviewed: 0, error: "work_reviews: connection reset" });
-    const noPieces = await aiReport({ reviewer, pieces: async () => { throw new Error("answers: timeout"); }, store: memoryStore().store, build: (workReviews, reportText) => reportModel(placement, { completedTestsInGrade: 0, workReviews, reportText }) });
+    const noPieces = await aiReport({ reviewer, pieces: async () => { throw new Error("answers: timeout"); }, store: memoryStore().store, build: (workReviews, reportText) => reportModel(placement, { workReviews, reportText }) });
     expect(noPieces.ai).toMatchObject({ pieces: 0, reviewed: 0, error: "answers: timeout" });
   });
 

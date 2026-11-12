@@ -10,6 +10,7 @@ import { JsonLd } from "@/components/json-ld";
 import { pageJsonLd } from "@/lib/structured-data";
 import { SAMPLE_CHILDREN } from "@/lib/sample-children";
 import { sampleReportWithBook } from "@/lib/sample-book-one";
+import { progressPreview } from "@/lib/progress-preview";
 import "@/ds/styles/personalization.css";
 
 const PAGE = {
@@ -18,6 +19,9 @@ const PAGE = {
   description: "See the report from the free online math assessment, for a sample Grade 3 child.",
 };
 export const metadata = pageMetadata(PAGE);
+
+// The sample's goal date counts from the day the page is built, so it never promises a month that has passed: rebuilt daily.
+export const revalidate = 86400;
 
 export default function SampleReportPage() {
   const view = sampleReportWithBook();
@@ -41,6 +45,7 @@ export default function SampleReportPage() {
       <ReportCard
         view={view}
         readOnly
+        progress={progressPreview({ ...view, completedAt: new Date().toISOString() })}
         nextSlot={<div><StartLink src="sample-report-end">{START_LABEL} <span className="arr" aria-hidden="true">→</span></StartLink><StartNote /></div>}
       />
     </SupportPage>

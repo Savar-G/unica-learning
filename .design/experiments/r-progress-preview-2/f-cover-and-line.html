@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en-CA">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>F. Cover and line</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shell.css">
+<style id="covercss"></style>
+<style>
+.fl { overflow: hidden; display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 7fr); gap: clamp(20px, 4vw, 56px); align-items: center; margin-top: 28px; padding: clamp(24px, 4vw, 52px); }
+@media (max-width: 760px) { .fl { grid-template-columns: 1fr; } }
+.stack { position: relative; width: min(100%, 320px); margin: 0 auto; }
+.stack .ghost { position: absolute; inset: 0; background: #fff; border-radius: 4px; box-shadow: 0 10px 30px -18px rgba(0,0,0,.4); }
+.stack .ghost.g1 { transform: rotate(5deg) translate(14px, 4px); }
+.stack .ghost.g2 { transform: rotate(9deg) translate(26px, 10px); opacity: .7; }
+.stack .cv { transform: rotate(-2deg); transition: transform .4s cubic-bezier(.2,.8,.2,1); }
+.stack .cv.swap { animation: swap .45s cubic-bezier(.2,.8,.2,1); }
+@keyframes swap { from { transform: rotate(-2deg) translateY(10px) scale(.97); opacity: .4; } }
+.cap { margin-top: 38px; text-align: center; font: 400 12px/1.4 var(--mono); color: var(--ink-2); }
+.cap b { color: var(--ink); font-weight: 600; }
+.right .pace { margin-top: 4px; }
+.chart { margin-top: 14px; padding: 14px 10px 6px; border-radius: 14px; background: rgba(255,255,255,.82); backdrop-filter: blur(6px); }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart text { font-family: "Geist Mono", monospace; }
+.dot { cursor: pointer; transition: r .2s; }
+.dot:hover { r: 7; }
+.line { stroke-dasharray: 2000; stroke-dashoffset: 2000; animation: draw 1.6s cubic-bezier(.4,0,.2,1) forwards; }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+.hint { margin-top: 10px; font: 400 12px/1.3 var(--mono); color: var(--ink-2); }
+</style>
+</head>
+<body>
+<div class="chrome"><span class="v">F. Cover and line</span><div class="cases" data-cases></div><a href="board.html">All options</a></div>
+<main class="page">
+  <div class="stub">Report: "Where Leah is", "What's in workbook 1" (unchanged)</div>
+  <section class="section" id="out"></section>
+  <div class="stub">Next step: card and plan button (unchanged)</div>
+</main>
+<script src="levels.js"></script><script src="pace.js"></script><script src="covers.js"></script>
+<script>
+document.getElementById("covercss").textContent = COVER_CSS;
+let pick = 1;
+mount((p, setPace) => {
+  if (pick > p.books.length) pick = 1;
+  const W = 640, H = 300, L = 70, R = 24, T = 40, B = 34;
+  const t0 = START_DATE.getTime(), t1 = p.goalDate.getTime();
+  const x = (d) => L + (d.getTime() - t0) / (t1 - t0) * (W - L - R);
+  const lo = p.c.working, hi = p.goal;
+  const yg = (g) => T + (hi - g) / (hi - lo) * (H - T - B);
+  // The line goes through each grade's start; a book sits on the line at its start date.
+  const knots = p.grades.map((s) => [x(s.date), yg(s.grade)]);
+  const yAt = (px) => { for (let i = 1; i < knots.length; i++) if (px <= knots[i][0]) { const [x0, y0] = knots[i - 1], [x1, y1] = knots[i]; return y0 + (px - x0) / (x1 - x0) * (y1 - y0); } return knots.at(-1)[1]; };
+  const d = "M" + knots.map((k) => k.join(" ")).join(" L");
+  const dots = p.books.map((b) => { const bx = x(b.start), by = yAt(bx), on = b.n === pick;
+    return `<circle class="dot" data-book="${b.n}" cx="${bx}" cy="${by}" r="${on ? 8 : 4.5}" fill="${on ? "#0c0c0e" : "#fff"}" stroke="${on ? "#fff" : gradeColor(b.grade)}" stroke-width="${on ? 3 : 2.2}"><title>Book ${b.n}: ${b.title}</title></circle>`; }).join("");
+  const grid = p.grades.map((s) => `<line x1="${L}" x2="${W - R}" y1="${yg(s.grade)}" y2="${yg(s.grade)}" stroke="#ececef"/><text x="${L - 10}" y="${yg(s.grade) + 4}" text-anchor="end" font-size="12" fill="#0c0c0e">${gradeName(s.grade)}</text>`).join("");
+  const school = p.c.grade > lo && p.c.grade <= hi ? `<line x1="${L}" x2="${W - R}" y1="${yg(p.c.grade)}" y2="${yg(p.c.grade)}" stroke="${BRAND.tang}" stroke-dasharray="5 6" stroke-width="1.5"/><text x="${W - R}" y="${yg(p.c.grade) - 7}" text-anchor="end" font-size="11" fill="#a8360f">school grade today</text>` : "";
+  const gx = knots.at(-1)[0], gy = knots.at(-1)[1];
+  const svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${headline(p)}">${grid}${school}
+    <path class="line" d="${d}" fill="none" stroke="#0c0c0e" stroke-width="3" stroke-linejoin="round"/>${dots}
+    <g transform="translate(${gx - 2} ${gy - 44})"><path d="M2 44V2" stroke="#0c0c0e" stroke-width="2.5" stroke-linecap="round"/><path d="M3 3h24l-7 7 7 7H3z" fill="#0c0c0e"/></g>
+    <text x="${gx - 8}" y="${gy - 50}" text-anchor="end" font-size="12" font-weight="600" fill="#0c0c0e">${monthShort(p.goalDate)} ${p.goalDate.getFullYear()}</text>
+    <text x="${L}" y="${H - 8}" font-size="11" fill="#44444c">${monthShort(START_DATE)} ${START_DATE.getFullYear()}</text></svg>`;
+  const book = p.books[pick - 1];
+  const out = document.getElementById("out");
+  out.innerHTML = `
+    <div class="section-head"><p class="k">Where ${p.c.name} can go</p><h2>${headline(p)}</h2></div>
+    <div class="fl field">
+      <div><div class="stack"><div class="ghost g2"></div><div class="ghost g1"></div>${coverHtml(book, p.c.name)}</div>
+        <p class="cap"><b>Book ${book.n} of ${p.books.length}</b> · ${gradeName(book.grade)} work · ${monthYear(book.start)}${book.test ? " · level test" : ""}</p></div>
+      <div class="right">${paceSwitch(p)}<div class="chart">${svg}</div><p class="hint">Each dot is a book. Tap one to see it.</p><p class="basis">${basis(p)}</p></div>
+    </div>`;
+  wirePace(out, setPace);
+  out.querySelectorAll("[data-book]").forEach((c) => c.addEventListener("click", () => { pick = Number(c.dataset.book); setPace(p.daysPerWeek); document.querySelector(".stack .cv").classList.add("swap"); }));
+});
+</script>
+</body>
+</html>

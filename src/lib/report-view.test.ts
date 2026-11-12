@@ -41,7 +41,7 @@ function view(isRight: Script, { grade = 4, province = "BC", name = "Maya" }: { 
     completedAt: "2026-10-10T19:30:00Z",
     questions: 36,
     minutes: 34,
-    model: reportModel(placement, { completedTestsInGrade: 0, workReviews: [] }),
+    model: reportModel(placement, { workReviews: [] }),
   };
 }
 
@@ -409,7 +409,7 @@ describe("strengths, gaps, next topics and workbook 1 (#198, D-305)", () => {
 
   // Workbook 1 as report-book-one.ts gives it: grade 3 adding and subtracting taught, grade 2 facts reviewed.
   const BOOK: BookOne = {
-    days: 10, minutes: 25,
+    level: 10, pagesADay: { min: 8, max: 8 }, days: 10, minutes: 25,
     main: [{ code: "3.3", title: "Adding and subtracting", grade: 3, skills: ["Add 3-digit numbers", "Subtract with regrouping"] }],
     review: [{ code: "2.3", title: "Facts to 20", grade: 2, skills: ["Near doubles", "Make a ten", "Doubles", "Count on"] }],
     warmUp: ["Facts to 20"],

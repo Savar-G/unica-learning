@@ -23,6 +23,10 @@ export interface BookUnit {
 export type BookCover = "main" | "review";
 
 export interface BookOne {
+  /** The start level's number (1 to 30): where Book 1 starts. The progress preview counts the books from it. */
+  level: number;
+  /** Pages a day on a teaching day (D-186), from the plan. */
+  pagesADay: { min: number; max: number };
   days: number;
   /** About this many minutes a day, from the plan's time target; null when the plan has none. */
   minutes: number | null;
@@ -128,6 +132,8 @@ function describe(plan: WorkbookPlan, c: Curriculum, profile: LearnerProfile): B
   for (const u of main) covers[u.code] = "main";
   for (const u of review) covers[u.code] ??= "review";
   return {
+    level: plan.level,
+    pagesADay: { ...plan.pagesADay },
     days: plan.days.length,
     minutes: plan.timeTarget ? Math.round(plan.timeTarget.max) : null,
     main,
