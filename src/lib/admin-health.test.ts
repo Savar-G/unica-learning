@@ -23,6 +23,12 @@ describe("What to fix: the measures", () => {
     expect(m.tone).toBe("warn");
   });
 
+  it("calls it bad when 3 or more were counted in 7 days and every one failed, even below 5 counted", () => {
+    expect(get([row("runs_failed", { n7: 4, d7: 4, n30: 4, d30: 4 })], "runs_failed")).toMatchObject({ tone: "bad", rate7: null });
+    expect(get([row("runs_failed", { n7: 2, d7: 2, n30: 2, d30: 2 })], "runs_failed").tone).toBe("warn");
+    expect(get([row("runs_failed", { n7: 3, d7: 4, n30: 3, d30: 4 })], "runs_failed").tone).toBe("warn");
+  });
+
   it("calls any safety flag or missing report of the last 7 days bad", () => {
     expect(get([row("maya_flagged", { n7: 1, d7: 40, n30: 1, d30: 40 })], "maya_flagged").tone).toBe("bad");
     expect(get([row("report_missing", { n7: 0, d7: 4, n30: 1, d30: 10 })], "report_missing").tone).toBe("warn");

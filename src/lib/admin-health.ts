@@ -56,6 +56,8 @@ const SPECS: Record<HealthKey, Spec> = {
 
 /** Below this many things counted, a rate says too little: the page shows the counts only. */
 export const MIN_FOR_RATE = 5;
+/** Below MIN_FOR_RATE counted, this many failures with no success in the last 7 days is still bad. */
+export const ALL_FAILED_MIN = 3;
 
 export interface Measure {
   key: HealthKey;
@@ -91,6 +93,8 @@ function toneOf(s: Spec, r: HealthRow, now: Date): HealthTone {
   }
   if (s.strict) return r.n7 > 0 ? "bad" : "warn";
   if (r.n7 > 0 && r.d7 >= MIN_FOR_RATE && ratio(r.n7, r.d7) >= (s.badRate ?? 0.1)) return "bad";
+  // Too few to read a rate, but every one failed: 3 of 3 is bad, not a "look".
+  if (r.n7 >= ALL_FAILED_MIN && r.n7 === r.d7) return "bad";
   return "warn";
 }
 
