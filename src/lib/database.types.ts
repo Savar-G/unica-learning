@@ -4544,6 +4544,128 @@ export type Database = {
           },
         ]
       }
+      workbook_book1_baseline_pending: {
+        Row: {
+          child_id: string
+          created_at: string
+          draft_id: string
+          parent_id: string
+          reason: string
+          revision: number
+          run_id: string
+        }
+        Insert: {
+          child_id: string
+          created_at?: string
+          draft_id: string
+          parent_id: string
+          reason: string
+          revision: number
+          run_id: string
+        }
+        Update: {
+          child_id?: string
+          created_at?: string
+          draft_id?: string
+          parent_id?: string
+          reason?: string
+          revision?: number
+          run_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_book1_baseline_pending_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_book1_baseline_pending_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_book1_baseline_pending_draft_id_revision_fkey"
+            columns: ["draft_id", "revision"]
+            isOneToOne: true
+            referencedRelation: "workbook_draft_revisions"
+            referencedColumns: ["draft_id", "revision"]
+          },
+          {
+            foreignKeyName: "workbook_book1_baseline_pending_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_book1_baseline_pending_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workbook_book1_baseline_tries: {
+        Row: {
+          child_id: string
+          draft_id: string
+          last_tried_at: string
+          parent_id: string
+          revision: number
+          tries: number
+        }
+        Insert: {
+          child_id: string
+          draft_id: string
+          last_tried_at?: string
+          parent_id: string
+          revision: number
+          tries?: number
+        }
+        Update: {
+          child_id?: string
+          draft_id?: string
+          last_tried_at?: string
+          parent_id?: string
+          revision?: number
+          tries?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_book1_baseline_tries_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_book1_baseline_tries_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_book1_baseline_tries_draft_id_revision_fkey"
+            columns: ["draft_id", "revision"]
+            isOneToOne: true
+            referencedRelation: "workbook_draft_revisions"
+            referencedColumns: ["draft_id", "revision"]
+          },
+          {
+            foreignKeyName: "workbook_book1_baseline_tries_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workbook_book1_baselines: {
         Row: {
           actor_id: string
@@ -7377,6 +7499,20 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      admin_book1_baseline_items: {
+        Args: { p_hide?: string[]; p_limit?: number }
+        Returns: {
+          child_id: string
+          child_name: string
+          draft_id: string
+          kind: string
+          parent_id: string
+          reason: string
+          revision: number
+          run_id: string
+          tries: number
+        }[]
+      }
       admin_card_setups: {
         Args: never
         Returns: {
@@ -8456,6 +8592,19 @@ export type Database = {
           parent_id: string
         }[]
       }
+      due_workbook_book1_baselines: {
+        Args: { p_limit: number }
+        Returns: {
+          actor_id: string
+          approved_at: string
+          child_id: string
+          draft_id: string
+          parent_id: string
+          revision: number
+          run_id: string
+          tries: number
+        }[]
+      }
       email_copy_child_scope: {
         Args: { l: Database["public"]["Tables"]["email_log"]["Row"] }
         Returns: string[]
@@ -8843,6 +8992,10 @@ export type Database = {
         Args: { p_child: string }
         Returns: undefined
       }
+      note_workbook_book1_baseline_try: {
+        Args: { p_draft: string; p_revision: number }
+        Returns: Json
+      }
       parent_explanation_command: {
         Args: {
           p_action: string
@@ -9014,6 +9167,15 @@ export type Database = {
           p_states: Json
         }
         Returns: number
+      }
+      record_workbook_book1_baseline_pending: {
+        Args: {
+          p_draft: string
+          p_reason: string
+          p_revision: number
+          p_run: string
+        }
+        Returns: Json
       }
       record_workbook_scan_delivery_calendar: {
         Args: {

@@ -5,6 +5,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { CardSetupRow, ChildRow, ParentRow, WaitlistRow } from "@/lib/admin-store";
+import { book1ItemSavable, book1ItemText, book1RecoverCommand, type Book1BaselineItem, type Book1BaselineLoad } from "@/lib/admin-book1-baselines";
 import { PLAN_STATE_TEXT, emailsToCheck, familyPlanCounts, needsYou, planState, type NeedReason, type PlanState } from "@/lib/admin-plans";
 import { faceColor, shortWhen } from "@/lib/admin-production";
 import { adminParentPath, adminReportPath, when } from "@/lib/admin-view";
@@ -77,6 +78,25 @@ function HoldCard({ hold, child, isTest }: { hold: Hold; child: string | null; i
     </div>
     <div className="adm-pl-text"><ScanHold number={hold.number} /></div>
     <div className="adm-pl-act"><Link className="btn adm-btn ghost" href={childPath(hold.childId)} prefetch={false}>Open child and workbook {hold.number}</Link></div>
+  </article>;
+}
+
+/** A Book 1 starting record the site could not save: the child, the draft and version, and the exact command. */
+function Book1BaselineCard({ item, isTest }: { item: Book1BaselineItem; isTest: boolean }) {
+  const child = item.childName ?? "A child";
+  return <article className={`adm-pl-card is-you${isTest ? " is-test" : ""}`} aria-label={`${child}: Book 1 starting record`}>
+    <div className="adm-pl-top">
+      <Face parentId={item.parentId} name={child} test={isTest} />
+      <span className="adm-pl-who"><b><Link href={childPath(item.childId)}>{child}</Link> · Book 1<TestTag test={isTest} /></b>
+        <span>Draft {item.draftId.slice(0, 8)}, version {item.revision}</span></span>
+      <Chip tone={item.kind === "pending" ? "warn" : "bad"}>{item.kind === "pending" ? "Not saved" : "Keeps failing"}</Chip>
+    </div>
+    <p className="adm-pl-text">{book1ItemText(item)}</p>
+    {item.runId && book1ItemSavable(item) && <div className="adm-pl-act">
+      <p>Run this on the Mac before any page of the book is marked:</p>
+      <code>{book1RecoverCommand(item.runId)}</code>
+    </div>}
+    {item.runId && <div className="adm-pl-act"><Link className="btn adm-btn ghost" href={`/admin/workbooks/runs/${item.runId}`} prefetch={false}>Open the run</Link></div>}
   </article>;
 }
 
@@ -154,10 +174,10 @@ function GroupHead({ id, title, count, hint }: { id: string; title: string; coun
 
 /**
  * The page. `show`: the "Show test families" switch; `isTest`: the test and team families (tagged while shown, never
- * counted). `holds`: the books on hold (loadAdminScanHolds). `cardsMore`, `waitMore`: the lists stopped at their limit.
+ * counted). `holds`: the books on hold (loadAdminScanHolds). `baselines`: the Book 1 starting records to save (loadAdminBook1Baselines). `cardsMore`, `waitMore`: the lists stopped at their limit.
  */
-export function PlansView({ cards, waitlist, holds, show, isTest, now, cardsMore, waitMore }: {
-  cards: PlanCard[]; waitlist: (WaitlistRow & People)[]; holds: { rows: Hold[]; unavailable: boolean; more: boolean };
+export function PlansView({ cards, waitlist, holds, baselines, show, isTest, now, cardsMore, waitMore }: {
+  cards: PlanCard[]; waitlist: (WaitlistRow & People)[]; holds: { rows: Hold[]; unavailable: boolean; more: boolean }; baselines: Book1BaselineLoad;
   show: boolean; isTest: (parentId: string) => boolean; now: Date; cardsMore: boolean; waitMore: boolean;
 }) {
   const tag = (id: string) => show && isTest(id);
@@ -167,17 +187,18 @@ export function PlansView({ cards, waitlist, holds, show, isTest, now, cardsMore
   const real = (parentId: string, test = false) => !test && !isTest(parentId);
   const count = (k: NeedReason) => groups[k].filter((g) => real(g.card.parent_id)).length;
   const holdCount = holds.rows.filter((h) => real(h.parentId, h.testFamily)).length;
-  const total = count("start_due") + count("start_stuck") + holdCount + count("email");
+  const baselineCount = baselines.rows.filter((b) => real(b.parentId, b.testFamily)).length;
+  const total = count("start_due") + count("start_stuck") + holdCount + baselineCount + count("email");
   const needGroup = (k: NeedReason) => groups[k].length > 0 && <NeedGroup id={`pl-${k}`} title={NEED_TITLE[k].title} hint={NEED_TITLE[k].hint} count={count(k)}>
     {groups[k].map((g) => <NeedCard key={g.card.id} c={g.card} reasons={g.reasons} now={now} isTest={tag(g.card.parent_id)} />)}
   </NeedGroup>;
-  const any = needs.size > 0 || holds.rows.length > 0;
+  const any = needs.size > 0 || holds.rows.length > 0 || baselines.rows.length > 0;
   return <div className="adm-pl">
     <section aria-labelledby="pl-you">
       <GroupHead id="pl-you" title="Needs you" count={total} hint="Start each free month only after Book 1 has arrived at the family's home." />
-      {!any && !holds.unavailable && <div className="adm-pl-calm">
+      {!any && !holds.unavailable && !baselines.unavailable && <div className="adm-pl-calm">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
-        <p><b>Nothing waits for us.</b> A free month to start, a plan start Stripe did not answer, a book on hold or an email to check shows here.</p>
+        <p><b>Nothing waits for us.</b> A free month to start, a plan start Stripe did not answer, a book on hold, a Book 1 record to save or an email to check shows here.</p>
       </div>}
       {needGroup("start_due")}
       {needGroup("start_stuck")}
@@ -186,6 +207,11 @@ export function PlansView({ cards, waitlist, holds, show, isTest, now, cardsMore
         {holds.unavailable && <p className="adm-pl-empty" role="status">Some books on hold could not be read. Check again.</p>}
       </NeedGroup>}
       {holds.more && <p className="adm-note">More books may be on hold. Only the newest are shown here. Open each child to check the rest.</p>}
+      {(baselines.rows.length > 0 || baselines.unavailable) && <NeedGroup id="pl-baselines" title="Book 1 starting records" hint="The site could not save these. Save each one on the Mac before the family marks any page of the book." count={baselineCount}>
+        {baselines.rows.map((b) => <Book1BaselineCard key={`${b.draftId}:${b.revision}`} item={b} isTest={tag(b.parentId) || (show && b.testFamily)} />)}
+        {baselines.unavailable && <p className="adm-pl-empty" role="status">Some Book 1 records could not be read. Check again.</p>}
+      </NeedGroup>}
+      {baselines.more && <p className="adm-note">More Book 1 records may need saving. Only the newest are shown here.</p>}
       {needGroup("email")}
     </section>
     <Summary cards={cards} waitlist={waitlist} waitMore={waitMore} cardsMore={cardsMore} isTest={isTest} />

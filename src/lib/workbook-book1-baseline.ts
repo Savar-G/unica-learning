@@ -18,7 +18,7 @@ import { createHash } from "node:crypto";
 import { isDeepStrictEqual as same } from "node:util";
 import { storedChildProfile } from "./child-profile";
 import { isUuid } from "./workbook-content";
-import { curriculumFor, curriculumVersion } from "./workbook-curriculum";
+import { curriculumFor, curriculumVersion, type Curriculum } from "./workbook-curriculum";
 import { nextBookCurriculumCompat, type CurriculumCompatRefusal, type CurriculumCompatSource } from "./workbook-curriculum/compat";
 import type { CurriculumSkill, CurriculumStep } from "./workbook-curriculum/types";
 import type { RunFrame, RunPlanningCapture } from "./workbook-job";
@@ -85,6 +85,14 @@ export type Book1BaselineRefusal = "invalid-request" | "invalid-final-revision" 
   | "planning-proof-invalid" | "curriculum-version-changed" | "curriculum-conflict" | "baseline-bound";
 export type Book1BaselineResult = { ok: true; baseline: Book1Baseline; record: Book1BaselineRecord } | { ok: false; reason: Book1BaselineRefusal };
 
+/**
+ * Where createBook1Baseline reads the curriculum the book was planned on. Today's code by default. The local recovery
+ * (scripts/book1-baseline-recover.ts) passes the curriculum of the frame's build, loaded with the pinned planner
+ * (src/lib/workbook-book1-pinned.ts): its version must still equal the frame's, so the record holds exactly that version.
+ */
+export interface Book1CurriculumSource { version(key: string): string | null; curriculum(key: string): Curriculum | null }
+export const TODAY_CURRICULUM: Book1CurriculumSource = { version: curriculumVersion, curriculum: curriculumFor };
+
 /** Where a PlanInput breaks the first-book starting-mastery policy, or null. */
 export function masteryPolicyProblem(input: PlanInput): string | null {
   if (!input || typeof input !== "object") return "no input";
@@ -145,7 +153,7 @@ export function issuedSteps(questions: readonly { teaching?: { plannedStep: Step
  * the run's stored RunFrame. Nothing is written: the caller saves the record through the baseline command.
  */
 export function createBook1Baseline(o: { id: string; parentId: string; childId: string; final: DraftForApproval; frame: RunFrame;
-  planning: Book1PlanningProof }): Book1BaselineResult {
+  planning: Book1PlanningProof; curricula?: Book1CurriculumSource }): Book1BaselineResult {
   try {
     const d = o.final;
     if (![o.id, o.parentId, o.childId, d.runId, d.draftId].every(isUuid)) return { ok: false, reason: "invalid-request" };
@@ -158,8 +166,10 @@ export function createBook1Baseline(o: { id: string; parentId: string; childId: 
     if (!w.printedRevision || !isPrintedRevision(w.printedRevision) || !w.printManifest || !isSha256(w.pdfSha256)) return { ok: false, reason: "invalid-final-revision" };
     if (proofProblem(o.planning, o.frame)) return { ok: false, reason: "planning-proof-invalid" };
     const key = o.planning.placement.curriculum.key, version = o.planning.placement.curriculum.version;
-    const curriculum = curriculumFor(key);
-    if (!curriculum || curriculumVersion(key) !== version) return { ok: false, reason: "curriculum-version-changed" };
+    // The exact version rule: the skills and steps the record copies are those of the version Book 1 was planned on.
+    const source = o.curricula ?? TODAY_CURRICULUM;
+    const curriculum = source.curriculum(key);
+    if (!curriculum || source.version(key) !== version) return { ok: false, reason: "curriculum-version-changed" };
     if (w.printManifest.curriculum.key !== key || w.printManifest.curriculum.version !== version) return { ok: false, reason: "curriculum-conflict" };
     const issues = issuedSteps(w.pages.flatMap(p => p.questions));
     const skills: Book1Baseline["curriculum"]["skills"] = [];
