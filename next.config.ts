@@ -22,7 +22,12 @@ const nextConfig: NextConfig = {
   // carry the licence notices of what they run and embed. Turbopack matches the keys as globs, where "[id]" unescaped is a
   // character class: built with the brackets unescaped, the traces of the three dynamic routes held no Chromium file and
   // no notice (route.js.nft.json in .next), so the brackets are escaped.
-  outputFileTracingIncludes: Object.fromEntries(["/api/workbook-render-check", "/api/admin/children/[id]/workbook-runs", "/api/workbook-runs/[id]/resume", "/api/account/children/[id]/monthly-summary"].map((route) => [route.replace(/[[\]]/g, "\\$&"), [
+  // Every route that runs a render: the ones that call runWorkbookJobNow or runFirstPagesNow (first pages, #322), the render
+  // check and the monthly summary. Routes that only queue a run (report finish, reminders, admin first pages) run no engine.
+  outputFileTracingIncludes: Object.fromEntries([
+    "/api/workbook-render-check", "/api/admin/children/[id]/workbook-runs", "/api/workbook-runs/[id]/resume", "/api/account/children/[id]/monthly-summary",
+    "/api/first-pages/[id]/run", "/api/admin/workbook-runs/[id]/server", "/api/admin/workbooks/runs/[id]/edit",
+  ].map((route) => [route.replace(/[[\]]/g, "\\$&"), [
     "./node_modules/@sparticuz/chromium/bin/**", "./src/ds/fonts/Geist.woff2", "./src/ds/fonts/GeistMono.woff2",
     "./THIRD_PARTY_NOTICES.md", "./node_modules/@sparticuz/chromium/LICENSE", "./node_modules/qrcode/license",
     "./node_modules/jsqr/LICENSE", "./node_modules/sharp/LICENSE",

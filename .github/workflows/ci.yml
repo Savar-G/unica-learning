@@ -114,6 +114,13 @@ jobs:
       - name: Type check (what next build checks)
         run: npx next typegen && npx tsc --noEmit
         timeout-minutes: 8
+      # The root tsconfig.json excludes worker/, so the Maya voice worker's own type check and tests run here.
+      - name: Voice worker type check
+        run: npm run voice:typecheck
+        timeout-minutes: 5
+      - name: Voice worker tests
+        run: npm run voice:test
+        timeout-minutes: 8
       # The daily Family retention workflow runs a bundle that plain Node must load. Build it and load it with --help
       # (no credentials, no database), so an import Node cannot resolve fails here and not at 15:17 UTC (2026-11-06).
       - name: Retention worker loads
