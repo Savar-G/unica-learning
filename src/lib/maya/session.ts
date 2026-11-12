@@ -3040,11 +3040,13 @@ const OWN_HEDGE = /\b(?:think|thinks|thought|maybe|guess|guessed|guessing|probab
 const OWN_NEGATION = /\b(?:not|never|nope|nah|wrong|incorrect|mistake|mistaken|false|withdraw|reject|scratch|erase|changed my mind|change my answer|take (?:it|this|that) back|taking it back)\b|n't\b/;
 const NEXT_STEP_DOUBT = /\b(?:(?:don't|do not|dont|didn't|did not) (?:know|get|understand|see)|not (?:so |really |very |too )?sure) (?:what|how|where|which|why|about)\b[^.!?]*/g;
 /** A copied or looked-up number (review of 1b5c3b50, P1-1), whoever says it. */
-const SOURCE = /\b(?:copied|copy|copying|looked (?:at the back|it up|up)|look(?:ed)? it up|checked the answer|answer key|answer sheet|back of the book|the app|an app|google|internet|calculator|ipad|tablet|siri|alexa|on the screen)\b/;
+const SOURCE = /\b(?:copied|copy|copying|looked (?:at the back|it up|up)|look(?:ed)? it up|checked the answer|answer key|answer sheet|back of the book|the app|an app|google|internet|calculator|ipad|tablet|siri|alexa|on the screen|in class|at school|according to|from the board|on the poster|poster|peeked|peek|peeking)\b/;
+/** A subject that is no person or source: a number expression, a place or column, or a word for the numbers ("7 and 9 gives 16", "The ones have 16", "That gives 16"). */
+const NOT_A_PERSON = /^(?:that|it|this|they|these|those|them|the numbers?|adding(?:\s+\w+)*|(?:the\s+)?(?:ones|tens|hundreds|thousands|ten thousands|hundred thousands|tenths|hundredths|thousandths)(?:\s+(?:column|place|part|digit|side))?|\d+(?:\s*(?:,|\+|×|\*|plus|and|times|minus|x)\s*\d+)+)$/;
 /** A clause's subject before a verb that gives a number to someone ("Sam said", "my iPad got", "the sheet has"). */
-const ATTRIBUTION = /^(?:(?:so|and|then|okay|ok|um|uh|oh|yes|yeah|no|well|but|like)\b[,\s]*)*(.+?)\s+(?:said|says|told|tells|got|gets|wrote|writes|has|have|had|showed|shows|shown|gave|gives|thinks|think|knows|know|found|finds|put|puts)\b/;
+const ATTRIBUTION = /^(?:(?:so|and|then|okay|ok|um|uh|oh|yes|yeah|no|well|but|like)\b[,\s]*)*(.+?)\s+(said|says|told|tells|got|gets|wrote|writes|has|have|had|showed|shows|shown|gave|gives|thinks|think|knows|know|found|finds|put|puts)\b/;
 /** Near the value, not the value (review of 1b5c3b50, P1-2). */
-const NEAR = new RegExp(`\\b(?:about|around|almost|approximately|roughly|nearly|close to)\\s+(?:\\d|(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)\\b)|-ish\\b|\\bish\\b|\\bfeel like\\b|\\breckon\\b|\\bsomething like\\b|\\bi suppose\\b|\\bi bet\\b|\\bpretty sure\\b|\\bapproximately\\b|\\broughly\\b`);
+const NEAR = new RegExp(`\\b(?:about|around|almost|approximately|roughly|nearly|close to)\\s+(?:\\d|(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)\\b)|-ish\\b|\\bish\\b|\\bfeel like\\b|\\breckon\\b|\\bsomething like\\b|\\bi suppose\\b|\\bi bet\\b|\\bpretty sure\\b|\\bapproximately\\b|\\broughly\\b|\\b(?:most )?likely\\b|\\blet'?s say\\b|\\bsay\\s+(?:\\d|(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\\b)`);
 /** Another person, or another source, of a number. Maya herself is "you": rule C reads her. */
 const OTHER_PERSON = /\b(?:mom|mum|mommy|mummy|mother|dad|daddy|father|teacher|brother|sister|friend|grandma|grandpa|granny|nana|papa|aunt|auntie|uncle|cousin|parents?|tutor|classmate|someone|somebody|everyone|everybody|she|he|they|her|his|their|calculator|google|book)\b/;
 /** Maya's words named as the source, with what she said after it ("You said 16", "you told me to add the ones"): rule C reads it. */
@@ -3256,11 +3258,18 @@ function ownTurn(s: Session, target: WorkedStep | null, value: AnswerValue, opti
   if (SOURCE.test(lower)) return "other_person";
   // ...and a clause that holds the value is the child's own only with a first-person subject or none ("16.", "It's 16.",
   // "7 plus 9 is 16."): "Sam said 16.", "My iPad got 16.", "The answer sheet has 16." are another's. A name list never ends.
-  for (const clause of lower.split(/[.!?;,:\n]+|\s+(?:and|so|then|but)\s+/)) {
+  // Re-review: only a person or a source blocks; "7 and 9 gives 16", "The ones have 16" and "That gives 16" are the math. A
+  // person who said it blocks anywhere in the turn ("16, Sam said."), and "Sam: 16." names a speaker.
+  for (const clause of lower.split(/[.!?;,\n]+|\s+(?:so|then|but)\s+/)) {
     const m = ATTRIBUTION.exec(clause.trim());
-    if (!m || !valuesIn(collapsed(digitWords(clause)), opts).some((v) => saidAs(v, value))) continue;
-    if (!/^(?:i|we|i've|we've|i'd|we'd|you)(?:\s+(?:just|also|already|still|all|both|then|first|really|did))*$/.test(m[1].trim())) return "other_person";
+    if (!m) continue;
+    const subject = m[1].trim();
+    if (/^(?:i|we|i've|we've|i'd|we'd)\b/.test(subject) || /^you(?:\s+(?:just|also|already))*$/.test(subject) || NOT_A_PERSON.test(digitWords(subject))
+      // "and got 16" (no subject of its own), "the 1 you said" (Maya's words, rule C reads them).
+      || /^(?:and|so|then|but|also|just|now)$/.test(subject) || /\byou$/.test(subject)) continue;
+    if (/^(?:said|says|told|tells)$/.test(m[2]) || valuesIn(collapsed(digitWords(clause)), opts).some((v) => saidAs(v, value))) return "other_person";
   }
+  if (/(?:^|[.!?,]\s*)(?!ones|tens|hundreds|thousands|so|okay|ok|um|uh|oh|yes|yeah|well|first|then|answer|total|sum|step)[a-z]+\s*:\s*\S/.test(lower)) return "other_person";
   // P1-2: more hedges: an amount near the value ("about 16", "around 16", "16-ish"), "I feel like", "I reckon".
   if (formToo && NEAR.test(lower)) return "hedge";
   if (OTHER_PERSON.test(lower) || /\bsays\b|\b(?:ms|mr|mrs|miss|dr)\.?\s+[a-z]/.test(lower)) return "other_person";
@@ -3367,6 +3376,12 @@ function ownTurn(s: Session, target: WorkedStep | null, value: AnswerValue, opti
   // A step Maya showed: the value is a copy (as before); an echo of it too.
   if (shownToo && target && shownStep(s, target)) return "copy";
   if (echoed && !target && steps.some((st) => (s.passed ?? []).includes(st.id))) return "copy";
+  // Re-review (P2-b): the final answer with Maya's words tagged on it ("66, like you said.", "like you said, 66") is hers.
+  if (!target && value.type === "number") {
+    const v = value.value;
+    const tag = "(?:(?:just )?(?:like|as) you (?:said|told me|showed me|showed)|you (?:said|told me|showed me)(?: so)?)";
+    if (new RegExp(`(?<![\\d.])${v}(?!\\d|\\.\\d)[,\\s!]+${tag}\\s*(?:[.!?]|$)|\\b${tag}[,\\s]+(?:it's\\s+|it is\\s+)?${v}(?!\\d|\\.\\d)`).test(text)) return "copy";
+  }
   // Each sum: true (falseEquationResults), and a sum that makes a column's total adds that column's own operands.
   // Every sum is true: in a fraction call by falseEquationResults, else worked out here ("2 and 3 make 6" is false).
   if (opts.fractions ? falseEquationResults(kept, opts).length > 0 : [...text.matchAll(EQUATION)].some((m) => !trueEquation(m))) return "false_sum";
@@ -3462,6 +3477,12 @@ function ownTurn(s: Session, target: WorkedStep | null, value: AnswerValue, opti
     const operands = scope.flatMap((st) => [...stepOperands(st), ...("carryIn" in st && st.carryIn > 0 ? [st.carryIn] : [])]);
     const answer = pkg.answer.value.type === "number" ? pkg.answer.value.value : null;
     const lastStep = steps.at(-1)?.id === target.id;
+    // Re-review: the step's value said as the whole answer, in its clause or right after it ("16 is the whole answer.",
+    // "16, the end.", "16. Done!"); "66 is my answer. I got 16 in the ones" says the 16 as a step.
+    const whole = /\b(?:is|was) (?:the|my) (?:whole |final )?answer\b|\bthat's (?:the|my) (?:whole |final )?answer\b|\bthe whole answer\b|\bthe end\b|\b(?:i'?m|i am|we'?re|all) (?:done|finished)\b(?!\s+with)|^(?:(?:okay|ok|so|yay|and)[,\s]+)?(?:all )?(?:done|finished)[.!]*$|\b(?:everything|all of it|whole thing|that's it)\b/;
+    const clauses = own.flatMap((x) => x.replace(/[.!?]+$/, "").split(/\s*[,;]\s*/)).map((c) => c.trim()).filter(Boolean);
+    const holds = (c: string) => valuesIn(collapsed(c), opts).some((v) => saidAs(v, value));
+    if (clauses.some((c, i) => whole.test(c) && (holds(c) || (i > 0 && holds(clauses[i - 1]) && !valuesIn(collapsed(c), opts).length)))) return "other_number";
     let valueSeen = false;
     for (const sentence of own) {
       const plain = sentence.replace(/[.!?]+$/, "");
@@ -3471,8 +3492,6 @@ function ownTurn(s: Session, target: WorkedStep | null, value: AnswerValue, opti
         const v = value.value;
         if (new RegExp(`\\b(?:answer is|answer's|whole (?:sum|thing|answer) is)\\s+${v}\\b|\\b${v}\\s+is\\s+(?:my|the)\\s+(?:final\\s+)?answer\\b|\\b${v}\\s+for\\s+(?:the\\s+)?(?:whole|everything|all)\\b|\\b${v}\\b.*\\bso\\s+(?:it's|it is)\\s+${v}\\b`).test(plain)) return "other_number";
       }
-      // "The answer is 66" after the step is the final answer said in order, not this step said as the answer.
-      if (/\b(?:everything|all of it|whole thing|i'?m done|i am done|i'?m finished|i am finished|that's it|done|finished|the answer)\b/.test(plain.replace(/\b(?:and |so )?(?:the|my) answer is\s+\d+/g, " "))) return "other_number";
       // A digit moved in words the claims reader does not know: "9 goes down", "1 down, 6 up", "all of it goes under",
       // "the 1 goes on the 2", "I give the 6 to the 2". Down or under is the written digit, up or on top the carry.
       if (/\b(?:all of it|it all|the whole thing)\s+(?:goes|go|went)\b|\b(?:goes|go|went)\s+on\s+the\s+\d|\bgive\b/.test(plain)) return "claim";

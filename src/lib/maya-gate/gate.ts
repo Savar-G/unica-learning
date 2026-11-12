@@ -401,6 +401,8 @@ export const packageOf = (b: Behaviour): QuestionPackage => FIXTURES[b.fixture];
 function gateOwnAnswer(text: string, value: AnswerValue, opts: ReturnType<typeof readOptionsFor>): boolean {
   const t = text.toLowerCase().replace(/[’‘]/g, "'");
   if (/\b(?:think|maybe|guess|guessed|probably|perhaps|or|not sure|unsure|would say|mom|dad|teacher|brother|sister|friend|she|he|they|says|help|show me|tell me)\b/.test(t)) return false;
+  // Another's number, a copy, a near amount, or Maya's own words said back (re-review P3): its own forms, no controller code.
+  if (/\b(?:said|told|copied|copy|peeked|about|around|roughly|likely|according to|you showed)\b|\b[a-z]+\s*:\s*\d/.test(t)) return false;
   return t.split(/(?<=[.!?])\s+/).some((x) => !x.trim().endsWith("?") && valuesIn(x.split(/\b(?:because|since|cause|cuz|coz)\b/)[0], opts).some((v) => sameValue(v, value) || equivalent(v, value)));
 }
 

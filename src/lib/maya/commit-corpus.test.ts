@@ -133,7 +133,8 @@ describe("the commit-rule corpus (practice pass 2026-11-12T16-17-39-955Z)", () =
   it("credits at least 95% of the positive turns on both paths, and lists every one still refused", async () => {
     const refused: string[] = [];
     let n = 0;
-    for (const t of POSITIVE.turns) {
+    // The extracted turns, then the hand-added honest review set (re-review of d956aadf).
+    for (const t of [...POSITIVE.turns, ...(POSITIVE.review ?? [])]) {
       const pkg = packageFor(t);
       if (!pkg) continue;
       n += 1;
