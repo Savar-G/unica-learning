@@ -41,3 +41,15 @@ It also adds the cost older ledgers hold, so the page has history. For one call 
 | `scan_marking_spend`, `parent_explanation_spend` | no family on these rows. They count only before the first new row of that feature, and show as team totals |
 
 Rows with no model name show as "not recorded".
+
+## The page: `/admin/ai`
+
+Admins only (others get the site's 404). In the sidebar under Quality as "AI usage". A glance, not a deep tool.
+
+- Period pills: 7 days, 30 days (default), this month. Days are Vancouver days (`PACIFIC_ZONE`, `src/lib/family-time.ts`), not a family's. The page sends the start of each day to the function (`p_day_starts`), so the daily chart uses the same day rules as the period.
+- Tiles: total cost in USD with CAD at `MAYA_USD_TO_CAD` (default 1.40), AI calls, subscription calls.
+- OpenRouter against our ledger, for this month: "OpenRouter says" (the sum of `GET /api/v1/key` `data.usage_monthly` for each distinct server key: the main key and the keys of marking, explanations and decisions), "We recorded" (test families included, because OpenRouter bills them too) and "Not recorded". One request for each key, once for each page load, server side, 5 s limit. No key set: the card says so. No key answers: "OpenRouter did not answer." Some keys answer: the card says the number is partial. OpenRouter counts the calendar month in UTC.
+- Cost by day, stacked by model: the six models with the most cost get fixed colours in cost order, the rest are grey "Other models". Subscription calls add no cost. A table view sits under the chart.
+- Cost by feature (groups in `FEATURE_GROUPS`) and cost by model (top 8, then one line for the rest).
+- Families by AI cost, largest first, with the family's plan price per month (CAD, from `child_plan_states`: paying, or ending until its end date; a free month shows "free month") and the AI cost as a percent of that price for the same number of days (a month counts as 30.44 days; both in CAD). One line, "No family", holds team tools, tests, sample runs and history without a family.
+- The sidebar's "Show test families" switch decides whether test families count (off by default). The page makes one or two database function calls and no other request; no polling, no prefetch.

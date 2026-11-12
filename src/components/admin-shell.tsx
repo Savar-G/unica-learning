@@ -26,6 +26,7 @@ const ICON: Record<AdminNavKey | "chev" | "side" | "menu" | "search", string> = 
   templates: '<rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/>',
   skillmap: '<circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M7.5 7.5l3.5 8.5M16.5 7.5 13 16M8 6h8"/>',
   reviews: '<path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6z"/><path d="m9 12 2 2 4-4"/>',
+  ai: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
   preview: '<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>',
   export: '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 19h16"/>',
   chev: '<path d="m6 9 6 6 6-6"/>',
