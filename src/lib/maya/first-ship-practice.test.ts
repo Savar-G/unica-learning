@@ -102,6 +102,8 @@ describe("C28, C29: a done step is not asked again when the model gives no readi
     ["7 plus 9 equals 16.", 16], ["7 plus 9 makes 16.", 16], ["seven plus nine is sixteen.", 16], ["seven and nine make sixteen", 16], ["7 and 9 is 16.", 16], ["9 + 7 = 16", 16], ["9+7=16", 16],
     ["It's 16.", 16], ["I got 16.", 16], ["So it's 16.", 16], ["Oh, I got 16.", 16], ["Oh, 16.", 16], ["Oh, 7 plus 9 is 16.", 16],
     ["I wrote 6 and carried 1.", 6], ["So I wrote 6 and carried 1.", 6], ["I put 6 in the ones and carried 1.", 6], ["6, carry the 1", 6],
+    // Rule A (2026-11-12): the ones said as the child's own with no blocker (the whole-turn rule refused these).
+    ["Then 7 plus 9 is 16.", 16], ["I know 7 plus 9 is 16.", 16], ["The ones make 16.", 16], ["It's 16. I got 16.", 16], ["7 plus 9 is 16, so I write 6.", 16], ["I write 6 and carry 1 ten.", 6],
   ];
   it.each(HEARD_ONES)("hears the ones in %j on both paths", async (text, value) => {
     expect((await play("A", [down(text)])).told[1]).toMatchObject({ ...NEXT, step: "tens" });
@@ -114,13 +116,15 @@ describe("C28, C29: a done step is not asked again when the model gives no readi
     ["Is it 16?", 16], ["Uh, 16?", 16], ["16?", 16], ["7 plus 9 is 16?", 16], ["I wrote 6?", 6],
     ["7 and 9 make 16 and 3.", 16], ["66 is 16.", 16], ["16 or 15", 16],
     ["7 is 16.", 16], ["9 and 16.", 16], ["9 is 16.", 16], ["My mom said 7 plus 9 is 16.", 16], ["Mia says 7 plus 9 is 16.", 16], ["I think 7 plus 9 is 16.", 16], ["Maybe 7 plus 9 is 16.", 16], ["I guess 7 plus 9 is 16.", 16],
-    ["7 plus 9 is not 16.", 16], ["Then 7 plus 9 is 16.", 16], ["I know 7 plus 9 is 16.", 16], ["The ones make 16.", 16], ["It's 16. I got 16.", 16], ["It's 16, I think.", 16], ["16 in the ones.", 16], ["My mom got 16.", 16], ["It's not 16.", 16], ["It is 16?", 16], ["I got 16?", 16], ["7 plus 9 is 16, so I write 6.", 16], ["I write 6 and carry 1 ten.", 6],
+    ["7 plus 9 is not 16.", 16], ["It's 16, I think.", 16], ["16 in the ones.", 16], ["My mom got 16.", 16], ["It's not 16.", 16], ["It is 16?", 16], ["I got 16?", 16],
     // A lone written digit is not the column's total (decision after review of fec3dac4).
     ["6", 6], ["6.", 6], ["It's 6.", 6], ["I got 6.", 6], ["I wrote 6.", 6], ["Wrote 6.", 6], ["So I wrote 6.", 6], ["I put 6 in the ones.", 6], ["I wrote 6 in the tens.", 6],
     ["16 and 3.", 16], ["I didn't write 6.", 6], ["I wrote 6. I think.", 6],
   ];
   // One number, the column's total, no claim: the only turns that get a step confirm (review of 6528f2ca).
-  const STEP_CONFIRM = new Set(["Is it 16?", "Uh, 16?", "16?", "It's 16, I think.", "I got 16?", "It is 16?"]);
+  // Rule D (2026-11-12): a right total held back only by a hedge or a question gets the confirm too.
+  const STEP_CONFIRM = new Set(["Is it 16?", "Uh, 16?", "16?", "It's 16, I think.", "I got 16?", "It is 16?",
+    "7 plus 9 is 16. I don't know.", "7 plus 9 is 16. Or not.", "7 plus 9 is 16?", "I guess 7 plus 9 is 16.", "I think 7 plus 9 is 16.", "Maybe 7 plus 9 is 16."]);
   it.each(NOT_HEARD_ONES)("does not hear the ones in %j, and asks a step confirm only for the total alone", async (text, value) => {
     const down1 = (await play("A", [down(text)])).told[1];
     expect(down1.lines).not.toContain("check.right_step");
@@ -335,15 +339,15 @@ describe("C28, C29: a done step is not asked again when the model gives no readi
     for (const later of told.slice(2)) expect(later.lines).not.toContain("check.right_step");
   });
 
-  it("gives an intermediate result in a sentence no credit and no confirm, and a yes credits nothing", async () => {
+  // Rule A (2026-11-12): the child works the tens in two true steps and says 6 as their own, so the tens are credited.
+  it("credits the tens for an intermediate result in a sentence: 'Two plus three is five, plus the one is six.'", async () => {
     const text = "Two plus three is five, plus the one is six.";
-    const said = await play("A", [ones, named(text, 6, "tens"), down("Yes.")]);
-    expect(said.told[2]).toMatchObject({ act: "guide", step: "tens" });
-    expect(said.told[2].lines).not.toContain("check.right_step");
-    expect(said.told[3].lines).not.toContain("check.right_step");
+    const said = await play("A", [ones, named(text, 6, "tens")]);
+    expect(said.told[2]).toMatchObject({ act: "guide", step: "result" });
+    expect(said.told[2].lines).toContain("check.right_step");
     const modelDown = await play("A", [ones, down(text)]);
-    expect(modelDown.told[2].lines).not.toContain("check.right_step");
-    expect(modelDown.told[2].step).toBe("tens");
+    expect(modelDown.told[2].lines).toContain("check.right_step");
+    expect(modelDown.told[2].step).toBe("result");
   });
 
   // Review of 6528f2ca: a step confirm only for one number, the column's total, with no claim in the turn.
@@ -438,7 +442,7 @@ describe("C28, C29: a done step is not asked again when the model gives no readi
   it.each(["6 in the ones.", "The ones are 6.", "I got 6 for the ones.", "6 tens?"])("gives the tens no confirm and no credit: %j (27 + 39)", async (text) => {
     await noStepConfirm(27, 39, [onesDone], text, 6, "tens");
   });
-  it.each(["16 in the tens.", "The tens make 16.", "16 tens?", "The answer is 16.", "My mom said 16.", "16. My mom said.", "The ones make 16.", "16 in the ones."])("gives the ones no confirm and no credit: %j (27 + 39)", async (text) => {
+  it.each(["16 in the tens.", "The tens make 16.", "16 tens?", "The answer is 16.", "My mom said 16.", "16. My mom said.", "16 in the ones."])("gives the ones no confirm and no credit: %j (27 + 39)", async (text) => {
     await noStepConfirm(27, 39, [], text, 16, "ones");
   });
   // #698 loop round (practice at bef51538): the child names the ones and their total in their own words, so it credits.
@@ -452,7 +456,8 @@ describe("C28, C29: a done step is not asked again when the model gives no readi
   it("gives the hundreds no confirm and no credit: '3 in the ones?' (156 + 237)", async () => {
     await noStepConfirm(156, 237, [{ child: "6 plus 7 is 13.", read: { answers: [[13, "ones", "right"]] } }, { child: "5 plus 3 plus 1 is 9.", read: { answers: [[9, "tens", "right"]] } }], "3 in the ones?", 3, "hundreds");
   });
-  it.each(["6 in the ones.", "The ones are 16.", "16 in the ones.", "The tens make 16.", "16 tens?"])("gives the tens no confirm and no credit: %j (77 + 89)", async (text) => {
+  // Rule A (2026-11-12): "The tens make 16." is the tens' own total for 77 + 89, so it is credited (see below).
+  it.each(["6 in the ones.", "The ones are 16.", "16 in the ones.", "16 tens?"])("gives the tens no confirm and no credit: %j (77 + 89)", async (text) => {
     await noStepConfirm(77, 89, [{ child: "7 plus 9 is 16.", read: { answers: [[16, "ones", "right"]] } }], text, 16, "tens");
   });
   it("still credits the tens for 'Is it 16?' then a yes (77 + 89)", async () => {

@@ -37,9 +37,9 @@ describe("R1-1: written digit claims",()=>{
    it.each([true,false])("validates "+written+" correct=%s",right=>{
     const c=call();c.child(`7 plus 9 is 16, ${written} ${right?6:5} in the ones.`);
     const r=rightOnes(c);
-    // A sum and a claim are two templates: a right one is not heard (whole-turn rule), and code still tells it from a wrong one.
-    expect(r.refusal?.code).toBe(right?"answer_not_committed":"accepts_wrong_answer");
-    expect(r.session.done).not.toContain("ones");
+    // Rule A (2026-11-12): a sum and a right claim are the child's own, so the ones are credited; a wrong digit is still caught.
+    expect(r.refusal?.code).toBe(right?undefined:"accepts_wrong_answer");
+    expect(r.session.done.includes("ones")).toBe(right);
    });
  }
 });
@@ -63,8 +63,9 @@ describe("R2-1: pauses and unreadable writing claims", () => {
     const c = call();
     c.child("7 plus 9 is 16, " + claim);
     const result = rightOnes(c);
-    expect(result.refusal?.code).toBe("answer_not_committed");
-    expect(result.session.done).not.toContain("ones");
+    // Rule A (2026-11-12): the right claim beside the sum is credited.
+    expect(result.refusal).toBeNull();
+    expect(result.session.done).toContain("ones");
   });
 });
 
@@ -91,8 +92,9 @@ describe("R3-1: a pause must retain the named column", () => {
     const c = call();
     c.child("7 plus 9 is 16, " + claim);
     const result = rightOnes(c);
-    expect(result.refusal?.code).toBe("answer_not_committed");
-    expect(result.session.done).not.toContain("ones");
+    // Rule A (2026-11-12): the right claim beside the sum is credited.
+    expect(result.refusal).toBeNull();
+    expect(result.session.done).toContain("ones");
   });
 });
 
@@ -143,8 +145,9 @@ describe("R4: incomplete relations and separate carry clauses", () => {
   it.each(["I wrote 6", "it is written as 6"])("accepts a separate correct carry after %s", written => {
     const c = call(); c.child(`7 plus 9 is 16, ${written} in the ones and I carried 1 to the tens.`);
     const result = rightOnes(c);
-    expect(result.refusal?.code).toBe("answer_not_committed");
-    expect(result.session.done).not.toContain("ones");
+    // Rule A (2026-11-12): the right claim beside the sum is credited.
+    expect(result.refusal).toBeNull();
+    expect(result.session.done).toContain("ones");
   });
 });
 
@@ -157,8 +160,9 @@ it.each([1, 2])("checks the incoming value in a backward carry reference: %s", c
     parts: [line("check.right_step", { step: "tens" }), line("step.invite", { step: "result" })],
     reading: { answers: [{ value: value(6), step: "tens", verdict: "right" }] },
   });
-  expect(result.refusal?.code).toBe(carry === 1 ? "answer_not_committed" : "accepts_wrong_answer");
-  expect(result.session.done).not.toContain("tens");
+  // Rule A (2026-11-12): the right carry reference is credited; a wrong one is still caught.
+  expect(result.refusal?.code).toBe(carry === 1 ? undefined : "accepts_wrong_answer");
+  expect(result.session.done.includes("tens")).toBe(carry === 1);
 });
 
 it.each([
@@ -172,6 +176,7 @@ it.each([
     parts: [line("check.right_step", { step: "tens" }), line("step.invite", { step: "result" })],
     reading: { answers: [{ value: value(6), step: "tens", verdict: "right" }] },
   });
-  expect(result.refusal?.code).toBe(correct ? "answer_not_committed" : "accepts_wrong_answer");
-  expect(result.session.done).not.toContain("tens");
+  // Rule A (2026-11-12): the right carry reference is credited; a wrong one is still caught.
+  expect(result.refusal?.code).toBe(correct ? undefined : "accepts_wrong_answer");
+  expect(result.session.done.includes("tens")).toBe(correct);
 });

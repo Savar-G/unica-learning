@@ -50,7 +50,7 @@ import { speechWords, saidAsApproved } from "./speech";
 import { compensations, findOffer, normalSlots, packageLines, stepEquation, workbookOpening, WORKBOOK_OPENING, fixedOffers, areaOffers, spokenOffer, heldOffers, heldSentences, LINE_IDS, type LineOffer } from "./lines";
 import { freeTalkProblem, hardFeeling, CALM_PHRASES, replyFor, workProblem, FALLBACK_GROUP, FEELING_SMALLTALK, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
-import { kindOf, writtenFractions, claimWordsOnly, committedText, confirmWordsOnly, echoedClaim, echoesShown, falseEquationResults, nextStepQuestion, numberSentences, onlyNextStepQuestions, plainNumber, stepTurnBody, withoutNextStepQuestions, wholeSum, wholeTurn, wholeValue, wholeYes, retainedText, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, type AnswerRead, type ReadOptions } from "./numbers";
+import { kindOf, writtenFractions, claimWordsOnly, committedText, confirmWordsOnly, echoedClaim, echoesShown, falseEquationResults, nextStepQuestion, numberSentences, onlyNextStepQuestions, plainNumber, stepTurnBody, withoutNextStepQuestions, wholeSum, wholeTurn, wholeValue, wholeYes, retainedText, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, withoutExplanations, type AnswerRead, type ReadOptions } from "./numbers";
 import { isEqualForm, readOptionsFor, rightForQuestion, simplestWords, teachSteps, untaughtSteps } from "./fractions";
 import { patternOf, patternRows } from "./pattern";
 import { frameOwed, topicQuestion } from "./topic-frame";
@@ -1233,6 +1233,13 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
     return { acts: ["close"], code: "act_not_allowed", reason: "The answer stands and the child is done: close warmly, with no more questions." };
   }
   if (rightResult && s.solved === null && acts.includes("accept_answer")) acts = ["accept_answer"];
+  // Rule D (2026-11-12): a turn that says the right value and is held back only by its form ("7 + 9 is 16. Is that right?",
+  // "I think it's 66.", "You said 16.") is no miss and no stuck turn: Maya asks her confirm, and the turn counts toward no
+  // loop guard, way out or honest close. A request for help, a wrong value or a guess still counts as before.
+  const held = !again && s.opened && s.confirmTries < 2 ? formHeld(s, reading) : null;
+  if (held && !rightResult) {
+    return { acts: ["confirm"], code: "confirm_first", reason: `The child said ${valueText(held)} but not as a committed answer: ask once if that is what they said (confirm.heard ${valueText(held)}).` };
+  }
   // Help requests alone never lead to the answer (#735, decision (a)): after the top hint, the easier example, then an
   // honest close (stuckWayOut).
   const way = stuckWayOut(s, reading, rightResult);
@@ -2059,7 +2066,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   if (scoring) {
     if (failed) s.stuckStep ??= ladder.step;
     // The loop guard's count: the same column held back turn after turn, and whether Maya asked its confirm (loopGuard).
-    if (heldNow && !done.includes(heldNow.step)) {
+    if (heldNow && !done.includes(heldNow.step) && !(p.act === "confirm" && formHeld(base, reading))) {
       const prev = base.heldStep?.step === heldNow.step ? base.heldStep : undefined;
       s.heldStep = { step: heldNow.step, times: (prev?.times ?? 0) + 1, asked: (prev?.asked ?? false) || (p.act === "confirm" && loop === "confirm") };
     } else if (s.turn) delete s.heldStep;
@@ -2555,7 +2562,7 @@ const stuckCloseLine = (s: Session): string => honestCloseLines(s)[0]?.line ?? "
  * a final answer is the last number kept outside the child's explanations, readAnswer, D-199), and each verdict is what
  * code computes. Fills `checked`; returns the first problem.
  */
-function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): { code: RefusalCode; reason: string; unheard?: boolean; held?: boolean } | null {
+function checkAnswers(s: Session, given: ChildAnswer[], checked: Checked[], before: readonly string[] = []): { code: RefusalCode; reason: string; unheard?: boolean; held?: boolean } | null {
   const pkg = s.package!;
   if (!s.turn) return { code: "answer_not_heard", reason: "There is no child turn to read an answer from." };
   const read = turnRead(s);
@@ -2563,6 +2570,11 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
   const heard = read.kept;
   const falseResults = falseEquationResults(s.turn.text, readOptionsFor(pkg));
   const copied = copiedStep(s);
+  // Rule A: several steps said in order credit each one, in order. The target's steps are checked in the question's
+  // order (the final answer last), and each right step this turn credits counts as done for the next (`earlier`).
+  const index = (a: ChildAnswer) => ((a.problem ?? "target") !== "target" ? -1 : a.step === "result" ? Infinity : workSteps(pkg).findIndex((st) => st.id === a.step));
+  const answers = [...given].sort((x, y) => index(x) - index(y));
+  const earlier: string[] = [...before];
   for (const a of answers) {
     const problem = a.problem ?? "target";
     // A reading of a step this turn only copies (copiedStep, round 4) is no credit, no miss and no refusal: the ladder
@@ -2570,7 +2582,7 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
     // A step code credits as the child's own (stepTurnHeard) keeps its credit.
     if (problem === "target" && a.step !== "result" && a.step === copied) {
       const own = workSteps(pkg).find((x) => x.id === a.step);
-      if (!(a.verdict === "right" && own?.kind === "add-column" && stepTurnHeard(s, own, a.value))) continue;
+      if (!(a.verdict === "right" && own && stepTurnHeard(s, own, a.value, earlier))) continue;
     }
     if (a.verdict === "wrong" && (s.turn.text.includes("?") || asksForHelp(s.turn.text) || /\b(?:help|show me)\b/i.test(s.turn.text) || showsDoubt(s.turn.text, readOptionsFor(pkg)) || saysGuess(s.turn.text))) {
       return { code: "answer_not_committed", reason: "A question or request for help does not commit to a wrong answer." };
@@ -2590,7 +2602,11 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
       ? rightForQuestion(pkg, read.final) || isEqualForm(pkg, read.final)
       : isRightAnswer(operation, answer, read.final));
     const loose = a.verdict === "wrong" && s.solved === null && !finalRight && read.outside.some((v) => saidAs(v, a.value));
-    if (a.step === "result" && !saidAs(read.final ?? undefined, a.value) && !loose) {
+    // Rule A: the child's own right final answer stands though narration of the columns follows it ("Yes, 66! You said 2
+    // plus 3 plus 1 is 6, so I wrote 6."): ownTurn allows no other answer beside it.
+    const numeric = ["number", "fraction", "mixed"].includes(a.value.type);
+    const ownFinal = numeric && a.verdict === "right" && problem === "target" && ownTurn(s, null, a.value) === null;
+    if (a.step === "result" && !saidAs(read.final ?? undefined, a.value) && !loose && !ownFinal) {
       return { code: "answer_not_committed", reason: `${valueText(a.value)} is not the last answer the child kept (a number in their explanation is not their answer): ask which one they mean.` };
     }
     // The final answer by the question's wording (#407: an equal fraction may be right); a step by its own values.
@@ -2601,18 +2617,22 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
     const active = problem === "target" ? steps.find((st) => !behind(s).includes(st.id)) ?? at : at;
     // A next-step question ("Do I put the 1 in the tens?") claims nothing written: the claims are read without it.
     const own = at.kind === "add-column" ? withoutNextStepQuestions(s.turn.text, at.carryOut) : s.turn.text;
-    const claims = a.step === "result" ? "right" : checkColumnClaims(pkg, at, steps, active, own);
+    const claims = a.step === "result" ? "right" : checkColumnClaims(pkg, at, steps, active, problem === "target" ? claimText(own) : own);
     if (claims === "unclear") return { code: "answer_not_committed", reason: "The written digit or carry is unclear: ask what the child wrote before judging this step." };
     const stepRight = a.step !== "result" && falseResults.length === 0 && claims === "right" && ownSentences(pkg, at, a.value, own) && answersStep(at, a.value);
     const right = !falseResult && (a.step === "result" ? (problem === "target" ? rightForQuestion(pkg, a.value) : isRightAnswer(operation, answer, a.value)) : stepRight);
     // A doubtful final answer cannot establish correct work, including an equal
     // fraction that still needs simplest form and therefore carries a "wrong" verdict.
     const checkedProgress = a.verdict === "right" || (problem === "target" && isEqualForm(pkg, a.value));
-    if (checkedProgress && a.step === "result" && !read.sure) return { code: "answer_not_committed", reason: `The child was not sure of ${valueText(a.value)}: confirm it before treating it as checked progress.` };
+    // Rule A: the final answer is the child's own when the turn states it with no blocker (ownTurn), or is a plain yes to it.
+    // A word answer (a claim's "true") keeps the reader's own commit rule (readAnswer's sure).
+    if (checkedProgress && a.step === "result" && problem === "target" && !numeric && !read.sure) return { code: "answer_not_committed", reason: `The child was not sure of ${valueText(a.value)}: confirm it before treating it as checked progress.` };
+    if (checkedProgress && a.step === "result" && problem === "target" && numeric && !yesValue(s) && ownTurn(s, null, a.value) !== null) return { code: "answer_not_committed", reason: `The child was not sure of ${valueText(a.value)}, or did not say it as their own: confirm it before treating it as checked progress.` };
+    if (checkedProgress && a.step === "result" && problem !== "target" && !read.sure) return { code: "answer_not_committed", reason: `The child was not sure of ${valueText(a.value)}: confirm it before treating it as checked progress.` };
     if (a.verdict === "right" && !right) return { code: "accepts_wrong_answer", reason: `${valueText(a.value)} is not right for ${a.step}: the checked math says otherwise.` };
     // A column step counts only when the whole turn is heard (stepTurnHeard). Beside a right final answer the child is sure
     // of ("Six, so 66."), the answer stands and the step gets no credit; any other turn goes to the confirm question.
-    if (a.verdict === "right" && a.step !== "result" && problem === "target" && (at.kind === "add-column" || at.kind === "operate" || at.kind === "count-on" || at.kind === "try-factor" || at.kind === "read-digit" || at.kind === "bigger" || at.kind === "place-worth" || (at.kind === "claim-compare" && partsClaim(pkg))) && !stepTurnHeard(s, at, a.value)) {
+    if (a.verdict === "right" && a.step !== "result" && problem === "target" && !(at.kind === "claim-compare" && !partsClaim(pkg)) && !stepTurnHeard(s, at, a.value, earlier)) {
       // A copy of the step Maya showed at H3 is no credit and no refusal: the ladder goes past it (copiedStep).
       if (copiedStep(s) === a.step) continue;
       const answerToo = read.sure && read.final !== null && rightForQuestion(pkg, read.final) && answers.some((x) => x.step === "result" && x.verdict === "right" && (x.problem ?? "target") === "target");
@@ -2635,6 +2655,7 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
       return { code: "rejects_right_answer", reason: `${valueText(a.value)} is the child's final answer, and it is right: accept it (step "result").` };
     }
     checked.push({ answer: a, problem });
+    if (problem === "target" && a.verdict === "right" && a.step !== "result") earlier.push(a.step);
   }
   return null;
 }
@@ -2847,103 +2868,116 @@ function answersOf(raw: unknown): ChildAnswer[] {
 function keptAnswers(session: Session, refused: readonly unknown[]): ChildAnswer[] {
   if (!session.package || !session.turn || session.outcome) return [];
   const kept: ChildAnswer[] = [];
-  for (const a of refused.flatMap(answersOf)) {
+  const order = (a: ChildAnswer) => ((a.problem ?? "target") !== "target" ? -1 : a.step === "result" ? Infinity : workSteps(session.package!).findIndex((st) => st.id === a.step));
+  for (const a of refused.flatMap(answersOf).sort((x, y) => order(x) - order(y))) {
     const twice = kept.some((k) => k.step === a.step && (k.problem ?? "target") === (a.problem ?? "target") && k.verdict === a.verdict && equivalent(k.value, a.value));
-    if (!twice && checkAnswers(session, [a], []) === null) kept.push(a);
+    const before = kept.filter((k) => (k.problem ?? "target") === "target" && k.verdict === "right" && k.step !== "result").map((k) => k.step);
+    if (!twice && checkAnswers(session, [a], [], before) === null) kept.push(a);
   }
   return kept;
 }
 
 /**
- * A column, clock, part or try step is heard only when the child's WHOLE turn is one template (wholeTurn), on the fallback and on a model's
- * reading alike, so the two cannot disagree: the value ("16", "It's 16", "I got 16", "I already got 16", "I got 16, like I
- * said"), a plain yes to Maya's own "Did you say 16?", the step's own sum with every operand in any order ("9 and 7 make
- * 16"), or a first-person written-digit or carry claim ("I wrote 6 and carried 1", also after Maya's number: "You said 16,
- * so I wrote 6 and carried 1"), which checkColumnClaims checks. Beside the one template the turn may hold only next-step
- * questions from a closed list (stepTurnBody, nextStepQuestion: "I got 16. Where does the 1 go?"; first-ship practice
- * C01). Any other question, another sentence, another number, another speaker, a hedge or a negation fits none of them. An allow-list over the whole turn, because six review rounds of reading one sentence each left a gap in the
- * rest of the turn ("7 plus 9 is 16. My mom told me."). After H3 the value and the sum only copy what Maya showed; a claim
- * about the child's own paper is still theirs. A step of any other kind has no templates: its callers keep their own rules.
+ * A worked step of any kind is heard as the child's own (rule A, 2026-11-12): the turn states its value with no blocker
+ * (ownTurn), on the fallback and on a model's reading alike, so the two cannot disagree. Beside it, two forms stay as they
+ * were for an addition column: a plain yes to Maya's own "Did you say 16?" (the child now owns that number, P11), and a
+ * first-person written-digit or carry claim about the child's own paper ("I wrote 6 and carried 1", also after Maya's
+ * number and after H3), which checkColumnClaims checks. A column's written digit alone ("6" for 7 + 9 = 16) is heard only
+ * in a written-digit claim. `earlier` are the steps this turn credits before this one, in order.
+ * The integration's step kinds keep their own whole-turn recognizers as one more way in (a place-value digit, a part of
+ * an evaluate question, a clock count, a missing factor's try, a claim's result); rule A is the other.
  */
-function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue): boolean {
+function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue, earlier: readonly string[] = []): boolean {
   const pkg = s.package;
+  if (!pkg || !s.turn || s.turn.uncertain) return false;
+  // Rule A for a step of these kinds, after its own recognizer: in order, not after Maya showed it.
+  const ruleA = (ordered = true) => answersStep(step, value) && ownTurn(s, step, value, { earlier, ordered }) === null;
   // A place-value digit step: its own templates (place-value-turns.ts), on the same rules: the first step not done, not after H3.
-  if (pkg && s.turn && step.kind === "read-digit") {
-    return workSteps(pkg).find((st) => !s.done.includes(st.id))?.id === step.id &&
-      placeStepHeard({ text: s.turn.text, uncertain: s.turn.uncertain, step, value, copy: s.ladder.step === step.id && s.ladder.hint >= 3, asked: s.stepAsked ?? null });
+  if (step.kind === "read-digit") {
+    return workSteps(pkg).find((st) => !s.done.includes(st.id) && !earlier.includes(st.id))?.id === step.id &&
+      (placeStepHeard({ text: s.turn.text, uncertain: s.turn.uncertain, step, value, copy: s.ladder.step === step.id && s.ladder.hint >= 3, asked: s.stepAsked ?? null }) || ruleA());
   }
   // B1b's bigger and place-worth steps: the same rules, their own templates (place-value-parts-turns.ts).
-  if (pkg && s.turn && (step.kind === "bigger" || step.kind === "place-worth")) {
-    return workSteps(pkg).find((st) => !s.done.includes(st.id))?.id === step.id &&
-      partsStepHeard({ text: s.turn.text, uncertain: s.turn.uncertain, step, value, copy: s.ladder.step === step.id && s.ladder.hint >= 3, asked: s.stepAsked ?? null });
+  if (step.kind === "bigger" || step.kind === "place-worth") {
+    return workSteps(pkg).find((st) => !s.done.includes(st.id) && !earlier.includes(st.id))?.id === step.id &&
+      (partsStepHeard({ text: s.turn.text, uncertain: s.turn.uncertain, step, value, copy: s.ladder.step === step.id && s.ladder.hint >= 3, asked: s.stepAsked ?? null }) || ruleA());
   }
   // A claim's result (claim.ts). A scale, money or minute-hand claim (C3b, topic-claim.ts partsClaim) is heard from a
   // whole turn after its earlier parts (compareTurnHeard, review of #741 P1a); any other claim, marbles and area
   // included, through A4's own whole-turn templates, which may come before the columns, as a whole result.
   if (step.kind === "claim-compare") {
-    if (pkg && partsClaim(pkg)) return compareTurnHeard(s, step, value);
-    if (!pkg || !s.turn || !saidAs(number(step.value), value)) return false;
+    if (partsClaim(pkg)) return compareTurnHeard(s, step, value);
+    if (!saidAs(number(step.value), value)) return false;
     const heard = { text: s.turn.text, uncertain: s.turn.uncertain, operation: pkg.operation, value: step.value, resultAsked: s.resultAsked ?? null, shown: s.ladder.step === step.id && s.ladder.hint >= 3 };
     return claimStepHeard(heard) || spotStepHeard({ ...heard, pkg });
   }
-  // A part of an evaluate question is a step too: its result is its total (evaluate.ts).
-  if (!pkg || !s.turn || (step.kind !== "add-column" && step.kind !== "operate" && step.kind !== "count-on" && step.kind !== "try-factor")) return false;
-  // A turn code could not hear for sure is no step credit: it gets its confirm first.
-  if (s.turn.uncertain) return false;
-  if (step.kind !== "add-column") {
+  if (step.kind === "operate" || step.kind === "count-on" || step.kind === "try-factor") {
     const body = wholeTurn(s.turn.text);
-    if (body === null) return false;
     // A missing factor's try (trial-factor.ts) is first when it is the first step not done; then its value, a yes to Maya's
     // own confirm, or its own product.
     if (step.kind === "try-factor") {
-      if (workSteps(pkg).find((st) => !behind(s).includes(st.id))?.id !== step.id) return false;
-      return trialHeard(step, body, value, s.stepAsked ?? null, shownStep(s, step));
+      if (workSteps(pkg).find((st) => !behind(s).includes(st.id) && !earlier.includes(st.id))?.id !== step.id) return false;
+      return (body !== null && trialHeard(step, body, value, s.stepAsked ?? null, shownStep(s, step))) || (!shownStep(s, step) && ruleA());
     }
     if (step.kind === "count-on") {
-      if (workSteps(pkg).find((st) => !behind(s).includes(st.id))?.id !== step.id || shownStep(s, step)) return false;
-      const bare = wholeValue(body.replace(/\s+minutes?$/, ""));
-      if (bare !== null) return saidAs(number(bare), value);
-      // A count to the hour can include the addition and the destination in one complete sentence.
-      const m = /^(.+?)\s*,?\s+so\s+(.+?)\s+minutes?\s+to\s+(\d{1,2}:\d{2})$/.exec(body);
-      const sum = m && wholeSum(m[1]);
-      return !!sum && step.id === "to-hour" && sum.sum === 60 && sum.operands.length === 2 &&
-        sum.operands.includes(step.from.minutes) && sum.operands.includes(step.minutes) &&
-        plainNumber(m![2]) === step.minutes && m![3] === `${step.to.hours}:${String(step.to.minutes).padStart(2, "0")}` && saidAs(number(step.minutes), value);
+      if (workSteps(pkg).find((st) => !behind(s).includes(st.id) && !earlier.includes(st.id))?.id !== step.id || shownStep(s, step)) return false;
+      if (body !== null) {
+        const bare = wholeValue(body.replace(/\s+minutes?$/, ""));
+        if (bare !== null) return saidAs(number(bare), value);
+        // A count to the hour can include the addition and the destination in one complete sentence.
+        const m = /^(.+?)\s*,?\s+so\s+(.+?)\s+minutes?\s+to\s+(\d{1,2}:\d{2})$/.exec(body);
+        const sum = m && wholeSum(m[1]);
+        if (!!sum && step.id === "to-hour" && sum.sum === 60 && sum.operands.length === 2 &&
+          sum.operands.includes(step.from.minutes) && sum.operands.includes(step.minutes) &&
+          plainNumber(m![2]) === step.minutes && m![3] === `${step.to.hours}:${String(step.to.minutes).padStart(2, "0")}` && saidAs(number(step.minutes), value)) return true;
+      }
+      return ruleA();
     }
     // A part of an evaluate question: it is first while one of its columns is the first not done, whatever the column's
     // kind (currentPart). Its result, a yes to Maya's own confirm, or its own equation, its operands in its order (either
-    // order for + and ×): "9 times 880 is 7920".
+    // order for + and ×): "9 times 880 is 7920". Rule A then, with the part's own order.
     if (!currentSteps(s).some((st) => st.id === step.id)) return false;
     const copy = shownStep(s, step);
     const total = saidAs(number(step.value), value);
-    const yes = wholeYes(body);
-    if (yes) {
-      const asked = s.stepAsked;
-      return !!asked && !copy && total && saidAs(asked, value) && (yes.value === null || saidAs(number(yes.value), asked));
+    if (body !== null) {
+      const yes = wholeYes(body);
+      if (yes) {
+        const asked = s.stepAsked;
+        return !!asked && !copy && total && saidAs(asked, value) && (yes.value === null || saidAs(number(yes.value), asked));
+      }
+      const bare = wholeValue(body);
+      if (bare !== null) return !copy && total && saidAs(number(bare), value);
+      if (!copy && total && partEquationSaid(body, step)) return true;
     }
-    const bare = wholeValue(body);
-    if (bare !== null) return !copy && total && saidAs(number(bare), value);
-    return !copy && total && partEquationSaid(body, step);
+    return !copy && total && ruleA(false);
   }
-  // Only the first step not done or passed: no tens credit before the ones.
-  if (workSteps(pkg).find((st) => !behind(s).includes(st.id))?.id !== step.id) return false;
+  if (!answersStep(step, value)) return false;
+  // Only the first step not done or passed, or credited before it in this turn: no tens credit before the ones.
+  if (workSteps(pkg).find((st) => !behind(s).includes(st.id) && !earlier.includes(st.id))?.id !== step.id) return false;
   // Round 4: a step Maya showed stays shown past the easier example's new try (shownStep).
   const copy = shownStep(s, step);
-  // The value is the column's total: a lone written digit is not ("6" for 7 + 9 = 16).
-  const total = saidAs(number(step.total), value);
-  // A step statement ("I got 16 for the ones.", "7 plus 9 is 16. I wrote the 6."): the total, so only a copy after H3.
-  if (total && stepStatement(pkg, step, s.turn.text)) return !copy;
-  const body = stepTurnBody(s.turn.text, step.carryOut);
-  if (body === null) return false;
-  // A plain yes to Maya's own "Did you say 16?": the child now owns that number, as on the final answer's confirm (P11).
-  const yes = wholeYes(body);
-  if (yes) {
-    const asked = s.stepAsked;
-    return !!asked && !copy && total && saidAs(asked, value) && (yes.value === null || saidAs(number(yes.value), asked));
+  if (step.kind === "add-column") {
+    const total = saidAs(number(step.total), value);
+    const body = stepTurnBody(s.turn.text, step.carryOut);
+    // A plain yes to Maya's own "Did you say 16?": the child now owns that number, as on the final answer's confirm (P11).
+    const yes = body === null ? null : wholeYes(body);
+    if (yes) {
+      const asked = s.stepAsked;
+      if (!!asked && !copy && total && saidAs(asked, value) && (yes.value === null || saidAs(number(yes.value), asked))) return true;
+    }
+    // A claim about the child's own paper is still theirs after H3.
+    if (body !== null && stepForm(pkg, step, value, body) === "claim") return true;
+    // The written digit alone is no column total: only the child's own written-digit claim of it, with the column's carry
+    // ("I wrote 6 and carried 1"), or naming the column when it makes none ("I wrote 6 in the tens"); "I wrote 6." may be
+    // any column's 6.
+    if (!total) {
+      const claims = columnClaims(claimText(s.turn.text));
+      const written = claims.some((c) => !c.carry && c.value === step.write);
+      const tied = step.carryOut > 0 ? claims.some((c) => c.carry && c.value === step.carryOut) : claims.some((c) => !c.carry && claimPlaces(c.tail).some((p) => p.place === step.place));
+      if (!written || !tied) return false;
+    }
   }
-  // The value and the sum only copy what Maya showed after H3; a claim about the child's own paper is still theirs.
-  const form = stepForm(pkg, step, value, body);
-  return form === "total" ? !copy : form === "claim";
+  return ownTurn(s, step, value, { earlier }) === null;
 }
 
 /**
@@ -2986,128 +3020,480 @@ function stepForm(pkg: OperationPackage, step: Extract<WorkedStep, { kind: "add-
   return checkColumnClaims(pkg, step, pkg.steps, step, body) === "right" ? "claim" : null;
 }
 
-/** Where a clause of a step statement ends inside a sentence: a comma, a colon, or "and" or "so" before "wrote" ("and wrote the 6"). */
-const STATEMENT_JOIN = /\s*[,;:]\s*|\s+(?:and|so)\s+(?=(?:i\s+)?wrote\b)/;
+// ---------- The commit rule (rule A, 2026-11-12, approved by Savar through the Chief of Staff) ----------
+//
+// One block-list for every step kind and the final answer, on the model's reading and code's fallback alike: a value is
+// credited when the child's turn states it as their own and the turn has none of the blockers below. It replaces the
+// allow-list of step templates (stepStatement and its harmless clauses), which refused 361 right turns in the practice
+// pass of 2026-11-12 ("I got 66. I put the 6 from the ones with the 6 from the tens.").
 
-/**
- * The child's turn states this addition column's own result in one of the exact forms of a step statement (PR #698, the
- * step-credit loop: "I got 16 for the ones. What do I do next?" got the ones again and again). An allow-list over the
- * whole turn, fail-closed: every clause of every sentence is one of these, bound to the step's own numbers, and exactly
- * one of them states the column's total:
- * - the total in the child's own words: "16", "I got 16", "It's 16", "I got 16 for the ones", "For the ones, I got 16";
- * - the step's own sum, with its operands and carry-in in any order: "7 + 9 is 16", "7 plus 9 is 16", "I did 7 plus 9 is 16";
- * - what the child added, beside the total: "I added 7 and 9" ("I added 7 and 9. I got 16.");
- * - a lead that names this column: "For the ones", "Ones first";
- * - "I already did that one" (or "that", "it") before the total;
- * - "That's what I got.";
- * - after the total, the step's own written digit in the first person and the past tense, with no column or carry ("so I
- *   wrote the 6", "and wrote the 6"): a claim with a column or a carry keeps the claim rules (stepForm, checkColumnClaims).
- * Next-step questions from the closed list (nextStepQuestion) may follow, at the end. The turn's first words may start
- * with one "So", "Okay", "Um" or "Oh", as wholeTurn allows; a later sentence or clause with one "so", "and" or "then"
- * ("Then I wrote the 6."). Any other clause or question, another speaker ("My mom got 16"), a hedge ("I think", "maybe"), a
- * negation, a wrong digit ("I wrote 5"), a false sum, or the total said twice fits none of them.
- */
-function stepStatement(pkg: OperationPackage, step: Extract<WorkedStep, { kind: "add-column" }>, text: string): boolean {
-  const t = text.trim().replace(/’/g, "'");
-  if (t.includes("\n")) return false;
-  const sentences = t.split(/(?<=[.!?])\s+/).filter(Boolean);
-  // Next-step questions only at the end of the turn.
-  let end = sentences.length;
-  while (end > 0 && nextStepQuestion(sentences[end - 1], step.carryOut)) end--;
-  const said = sentences.slice(0, end).filter((x) => !/^(?:so|okay|ok|um|uh|oh)[.!]?$/i.test(x.trim()));
-  if (said.length === 0 || said.some((x) => x.includes("?"))) return false;
-  const place = step.place.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const operands = (step.carryIn > 0 ? [...step.digits, step.carryIn] : step.digits).slice().sort((a, b) => a - b).join(",");
-  const lead = new RegExp(`^(?:for the ${place}|(?:the )?${place} first)$`);
-  const already = new RegExp(`^i (?:already did (?:that|that one|this one|it|the ${place})|did (?:that|that one|it) already)$`);
-  // "That's 16" and "I already got 16 for that" are the child's own first-person claims of the value (2026-11-12).
-  const result = new RegExp(`^(?:i (?:already )?(?:got|get)|it's|it is|that's|that is|that makes)\\s+(.+?)(?: for (?:the ${place}|that|that one|this one|it))?$`);
-  const placeResult = new RegExp(`^for the ${place},? i (?:already )?(?:got|get) (.+)$`);
-  // Each clause, and the words it came with: a lead such as "then" says the verb after it is no request (asksMaya).
-  const asSaid = new Map<number, string>();
-  const clauses = said.flatMap((x, n) => {
-    const sentence = x.trim().replace(/[.!]+$/, "").toLowerCase();
-    // The turn's first words as wholeTurn takes them; a later sentence may go on with one "so", "and" or "then".
-    const opened = n === 0 ? sentence.replace(/^(?:so|okay|ok|um|oh)\b[,.\s]*/, "") : sentence.replace(/^(?:so|and|then)\b,?\s*/, "");
-    const lead = sentence.slice(0, sentence.length - opened.length);
-    return opened.split(STATEMENT_JOIN).map((c, i) => {
-      const clause = (i === 0 ? c : c.replace(/^(?:so|and|then)\b\s*/, "")).trim();
-      asSaid.set(asSaid.size, `${i === 0 ? lead : ""}${c}`.trim());
-      return clause;
-    });
+/** Why a turn does not credit a value as the child's own, or null when it does (ownTurn). */
+type Blocker = "uncertain" | "hedge" | "guess" | "negation" | "other_person" | "request" | "asks_value" | "echo" | "copy" | "order"
+  | "not_said" | "other_number" | "operand_twice" | "false_sum" | "wrong_place" | "claim";
+
+/** Doubt about the value: a hedge word, "or", or "not sure" and "don't know" that are not about what to do next. */
+const OWN_HEDGE = /\b(?:think|thinks|thought|maybe|guess|guessed|guessing|probably|perhaps|possibly|believe|might|unsure|kind of|kinda|sort of|sorta|hope|hopefully|dunno|idk|no idea(?! (?:how|what|why|where|which))|no clue|or|would say|i'd say|could be|suppose|doubt|doubts)\b|\b(?:i'd|i would) (?:write|put|carry|say)\b|\bnot (?:so |really |very |too )?sure\b(?! (?:what|how|where|which|why|about)\b)|\b(?:don't|do not|dont) know\b(?! (?:what|how|where|which|why|about)\b)/;
+/** A negation that withdraws or denies ("I don't add the ones", "that's wrong"). A next-step "don't know what" is no negation. */
+const OWN_NEGATION = /\b(?:not|never|nope|nah|wrong|incorrect|mistake|mistaken|false|withdraw|reject|scratch|erase|changed my mind|change my answer|take (?:it|this|that) back|taking it back)\b|n't\b/;
+const NEXT_STEP_DOUBT = /\b(?:(?:don't|do not|dont|didn't|did not) (?:know|get|understand|see)|not (?:so |really |very |too )?sure) (?:what|how|where|which|why|about)\b[^.!?]*/g;
+/** Another person, or another source, of a number. Maya herself is "you": rule C reads her. */
+const OTHER_PERSON = /\b(?:mom|mum|mommy|mummy|mother|dad|daddy|father|teacher|brother|sister|friend|grandma|grandpa|granny|nana|papa|aunt|auntie|uncle|cousin|parents?|tutor|classmate|someone|somebody|everyone|everybody|she|he|they|her|his|their|calculator|google|book)\b/;
+/** Maya's words named as the source, with what she said after it ("You said 16", "you told me to add the ones"): rule C reads it. */
+const ECHO_SAID = /\byou (?:said|say|told (?:me|us)|showed (?:me|us)|taught (?:me|us)|meant|asked|wrote|carried|put|got|added)(?: that| to)?\b/g;
+/** Maya or her example named as the source with nothing after it ("like you said", "the 1 you carried", "like your example"). */
+const ECHO_TAG = /\blike (?:you (?:said|showed(?: me| us)?|told (?:me|us)|taught (?:me|us)|did|wrote)|(?:in )?(?:your|the) (?:example|warm-?up|easier one|steps|way))\b|\byou (?:showed|did|gave|explained)\b|\byour (?:example|warm-?up|easier one|steps|way)\b/g;
+/** Where an echoed clause ends: the end of its sentence, a semicolon, or "so", "and" or "then" that starts the child's own words. */
+const ECHO_END = /[.!?;]|,?\s+(?:so|and|then)\s+(?=i\b|it\b|it's\b|that's\b|the answer\b|\d)|,\s+(?=i\b|so\b|it's\b|that's\b)/;
+/** A question that only checks what was said ("Is that right?", "Right?", "Is it?"). */
+const VALUE_QUESTION = /^(?:(?:so|okay|ok|um|uh|oh|yes|yeah|and|but)\b[,\s]*)*(?:is (?:that|it|this|that one)(?: (?:right|correct|ok|okay|true|it))?|am i right|right|correct|really|did i get it(?: right)?|did i do it right|is that what you mean|yes|okay|ok|i'?m right)$/;
+/** A question about the next step that may name the value ("What do I do with the 16?", "Where does the 1 go?"). */
+const NEXT_QUESTION = /^(?:(?:so|okay|ok|um|uh|oh|and|but|then|now)\b[,\s]*)*(?:what do (?:i|we) do (?:with|about|next|now)|where (?:does|do|should) |do (?:i|we) (?:write|put|carry|keep) |how do (?:i|we) write |what happens to |what about )/;
+const NUMBER_WORD = "zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million";
+const NUMBER_RUN = new RegExp(`\\b(?:${NUMBER_WORD})(?:[\\s-]+(?:${NUMBER_WORD}))*\\b`, "g");
+/** A place name the commit rule reads ("in the tens", "the ones are 6"). */
+const OWN_PLACES = "ten thousands|hundred thousands|ones|tens|hundreds|thousands|tenths|hundredths|thousandths";
+
+/** The digit text with a place word after a number left out ("1 ten", "6 ones" are 1 and 6), to read the numbers alone. */
+const collapsed = (text: string) => text.replace(new RegExp(`(\\d)\\s+(?:${OWN_PLACES}|ten|one)\\b`, "g"), "$1");
+
+/** The text with number words as digits ("seven plus nine is sixteen" is "7 plus 9 is 16"), for the rule's own reading. */
+function digitWords(text: string): string {
+  // "a ten" is one ten ("I carried a ten").
+  // "10,000" is one number.
+  return text.replace(/(\d),(?=\d{3}\b)/g, "$1").replace(/\b(?:a|an)\s+ten\b/g, "1 ten").replace(NUMBER_RUN, (m) => {
+    // A lone "one" or "ten" ("the one I kept", "carry the ten") is a word for the carry, and a lone "hundred" or
+    // "thousand" a place ("3 hundred thousands"): read as it is.
+    if (["one", "ten", "hundred", "thousand", "million"].includes(m)) return m;
+    const n = plainNumber(m);
+    if (n !== null) return String(n);
+    // "two three one": each word alone.
+    const parts = m.split(/[\s-]+/).map((w) => plainNumber(w));
+    return parts.every((p) => p !== null) ? parts.join(" ") : m;
   });
-  let totals = 0;
-  // One pool of the step's operands for the whole turn (review P1, 2026-11-12): each operand is described at most once, so
-  // "I add 9. I add 9. That's 16." (9 + 9) is no description of 7 + 9. The sum clause is the commit and takes none.
-  const pool = step.carryIn > 0 ? [...step.digits, step.carryIn] : [...step.digits];
-  for (const [k, c] of clauses.entries()) {
-    if (c === "") return false;
-    if (lead.test(c) || already.test(c) || /^(?:that's|that is) what i got$/.test(c)) continue;
-    const add = /^i added (.+?) (?:and|plus|\+) (.+?)(?: (?:and|plus|\+) (.+?))?$/.exec(c);
-    if (add) {
-      const ns = add.slice(1).filter((x) => x !== undefined).map(plainNumber);
-      if (ns.some((n) => n === null) || ns.map(Number).sort((a, b) => a - b).join(",") !== operands || !takeOperands(pool, ns as number[])) return false;
-      continue;
-    }
-    const sum = wholeSum(c.replace(/^i did\s+/, ""));
-    if (sum) {
-      if (sum.sum !== step.total || [...sum.operands].sort((a, b) => a - b).join(",") !== operands) return false;
-      totals += 1;
-      continue;
-    }
-    const got = placeResult.exec(c) ?? result.exec(c);
-    if (got || plainNumber(c) !== null) {
-      if (plainNumber(got ? got[1] : c) !== step.total) return false;
-      totals += 1;
-      continue;
-    }
-    // The written digit comes after the total.
-    const w = /^(?:i )?wrote (?:the )?(.+)$/.exec(c);
-    if (w && totals === 1 && plainNumber(w[1]) === step.write) continue;
-    // Sentence-level commit (2026-11-12): any other clause must be harmless.
-    if (harmlessClause(step, c, totals === 0, pool, asSaid.get(k) ?? c)) continue;
-    return false;
+}
+
+/** Every number a step holds: its fields, the numbers of its own sum ("12 − 8 = 4"), and an addition column's digit sum. */
+function stepNumbers(pkg: OperationPackage, st: WorkedStep): number[] {
+  const out: number[] = [];
+  const walk = (x: unknown) => {
+    if (typeof x === "number") out.push(x);
+    else if (Array.isArray(x)) x.forEach(walk);
+    else if (x && typeof x === "object") Object.values(x).forEach(walk);
+  };
+  walk(st);
+  for (const v of valuesIn(stepText(st, pkg.operation))) if (v.type === "number") out.push(v.value);
+  if (st.kind === "add-column") out.push(st.digits.reduce((a, b) => a + b, 0));
+  return out;
+}
+
+/** The numbers that go into a column (its operands), as one pool for the whole turn: an addition's digits, a subtraction's top and bottom. */
+function stepOperands(st: WorkedStep): number[] {
+  if (st.kind === "add-column") return [...st.digits];
+  if (st.kind === "subtract-column") return [st.top, ...(st.bottom === null ? [] : [st.bottom]), ...(st.regrouped ? [st.top + 10 - (st.lent ? 1 : 0)] : [])];
+  return [];
+}
+
+/** The values a column may be said as with a place word: an addition's total and written digit, else its answers. */
+function placeValues(st: WorkedStep): number[] {
+  const values = stepAnswers(st).flatMap((v) => (v.type === "number" ? [v.value] : []));
+  if ("write" in st && typeof st.write === "number") values.push(st.write);
+  return values;
+}
+
+/** A sentence that asks: it ends in "?", or starts as a question does ("Is it 66 I followed the steps"). */
+const isQuestion = (sentence: string) =>
+  sentence.trim().endsWith("?") || /^(?:(?:so|okay|ok|um|uh|oh|and|but|yes|yeah)\b[,\s]*)*(?:is|are|am|was|did|does|can|could|should|would|will)\s+(?:it|that|this|i|my|the|you|we|there)\b/.test(sentence.trim());
+
+/** An operation word between two numbers of a sum in the rule's digit text. */
+const OP = "\\+|plus|and|added to|add|minus|-|−|take away|takeaway|times|x|×|divided by|÷";
+/** A whole equation in the rule's digit text: numbers joined by operation words, then its result. */
+const EQUATION = new RegExp(`(\\d+(?:\\.\\d+)?)((?:\\s*(?:${OP})\\s*(?:the\\s+)?\\d+(?:\\.\\d+)?)+)\\s*(?:is equal to|is|are|equals?|makes?|=|gives?)\\s*(\\d+(?:\\.\\d+)?)`, "g");
+/** The child's own method, at the start of a clause ("I did 27 plus 40", "then took away one", "I made 39 into 40"). */
+const METHOD = /^(?:(?:so|and|then|first|next|okay|ok|um)\b[,\s]*)*(?:i\s+(?:did|made|changed|rounded|used|took|counted|went|split|broke|started)\b|took\s+away\b|take\s+away\b|made\b|rounded\b)/;
+
+/** A true equation, worked left to right, with "and" as plus. */
+function trueEquation(m: RegExpMatchArray): boolean {
+  const parts = [...`${m[1]}${m[2]}`.matchAll(new RegExp(`(?:^|\\s*(${OP})\\s*(?:the\\s+)?)(\\d+(?:\\.\\d+)?)`, "g"))];
+  let total = Number(parts[0][2]);
+  for (const p of parts.slice(1)) {
+    const n = Number(p[2]);
+    const op = p[1];
+    total = /minus|-|−|take/.test(op) ? total - n : /times|x|×/.test(op) ? total * n : /divided|÷/.test(op) ? total / n : total + n;
   }
-  if (totals !== 1) return false;
-  // The same written-digit check every reading of a column gets.
-  return checkColumnClaims(pkg, step, pkg.steps, step, said.join(" ")) === "right";
+  // A division may leave a remainder: "1 divided by 2 is 0" is a step of long division.
+  return Math.abs(total - Number(m[3])) < 1e-9 || (/divided|÷/.test(m[2]) && Math.floor(total) === Number(m[3]));
 }
 
 /**
- * The only words a harmless clause of a step statement may hold besides the step's own operands (2026-11-12, the
- * sentence-level commit rule): how the child worked ("I add the ones first", "Like you showed me", "I start with the
- * ones"). An allow-list, fail-closed: no other speaker ("my", "mom", "she", "they"), no hedge ("maybe", "think", "guess",
- * "know", "or"), no negation ("not", "don't"), no "is" or "are" that could state a value, and no question (a question mark
- * never reaches a clause: stepStatement refuses it first). The past tense "added" is here too (decision 2026-11-12: J1 and
- * j06-review P1-b follow the sentence-level rule).
+ * The text with the child's working blanked out, for the rule's number check: true equations ("20 plus 30 is 50"), every
+ * explanation ("because 3 - 1 is 2", to the end of the turn as readAnswer reads it), and clauses of the child's own
+ * method ("I did 27 plus 40, then took away one"). In a fraction call only explanations: its equations are left to
+ * falseEquationResults, and a method claim with a number ("7/8. I used two eighths.") is not the child's committed answer.
  */
-const HARMLESS_WORDS = new Set(["i", "me", "you", "like", "showed", "show", "shown", "taught", "said", "add", "added", "adding", "start", "started", "this",
-  "with", "first", "the", "column", "digits", "numbers", "together", "and", "so", "then", "now", "okay", "ok", "um", "uh", "oh", "well", "plus", "+",
-  "ones", "tens", "hundreds", "thousands", "tenths", "hundredths", "thousandths"]);
+function freeOfWorking(text: string, fractions: boolean, final = false): string {
+  let out = withoutExplanations(text);
+  if (fractions) return out;
+  out = out.replace(EQUATION, (...m) => (trueEquation(m as unknown as RegExpMatchArray) ? " " : m[0]));
+  // For the final answer the child may also tell what they added up ("I got 66. I added 20 and 40 and 6.").
+  // A method clause goes on through "and 40 and 6" or "then took away one".
+  let method = false;
+  return out.split(/(?<=[.!?;,])\s+|\s+(?=(?:and|then|so)\s)/).map((clause) => {
+    const c = clause.trim();
+    method = METHOD.test(c) || (final && /^(?:(?:so|and|then|first)\b[,\s]*)*i\s+(?:added|add)\b/.test(c)) || (method && /^(?:and|then|plus)\b(?!.*\b(?:is|are|got|get|makes?|equals?)\b)/.test(c));
+    return method ? " " : clause;
+  }).join(" ");
+}
+
+/** A sum in the rule's digit text: its operands and its total ("2 plus 3 plus 1 is 6", "7 + 9 = 16"). */
+const SUM = /(\d+)((?:\s*(?:\+|plus|and|add|minus|-|take away|times|x)\s*(?:the\s+)?\d+)+)\s*(?:is|are|equals?|makes?|=|gives?)\s*(\d+)/g;
+function sumsIn(text: string): { operands: number[]; total: number; from: number; to: number; at: number }[] {
+  return [...text.matchAll(SUM)].filter((m) => !/minus|-|take away|times|x/.test(m[2])).map((m) => ({
+    operands: [m[1], ...[...m[2].matchAll(/\d+/g)].map((x) => x[0])].map(Number),
+    total: Number(m[3]), from: m.index ?? 0, to: (m.index ?? 0) + m[0].length, at: (m.index ?? 0) + m[0].length - m[3].length,
+  }));
+}
+
+/** The sum adds exactly this addition column's digits and carry, in any order. */
+const sameOperands = (st: WorkedStep, operands: readonly number[]) =>
+  st.kind === "add-column" && [...st.digits, ...(st.carryIn > 0 ? [st.carryIn] : [])].sort((a, b) => a - b).join(",") === [...operands].sort((a, b) => a - b).join(",");
+
+/** The text with each echoed clause of Maya's ("you said add the ones first") taken out. */
+function withoutEchoes(text: string): string {
+  return text.replace(new RegExp(`(?:${ECHO_SAID.source})([^.!?;]*)`, "gi"), (whole, ...groups) => {
+    const after = String(groups[groups.length - 3] ?? "");
+    const end = ECHO_END.exec(after);
+    return end ? ` ${after.slice(end.index)}` : " ";
+  }).replace(new RegExp(ECHO_TAG.source, "gi"), " ");
+}
+
+/**
+ * The child's own claims about their paper, for checkColumnClaims: Maya's words said back are left out (withoutEchoes),
+ * a question claims nothing written ("Do I write all of it?"), "I wrote it on my paper" names no digit, "the carried 1"
+ * names the carry, and "keep the one" is a carry.
+ */
+function claimText(text: string): string {
+  const plain = withoutEchoes(text.trim().replace(/[’‘]/g, "'"));
+  return plain.split(/(?<=[.!?])\s+/).filter((x) => !x.trim().endsWith("?")).join(" ")
+    .replace(/\b(?:wrote|write|put)\s+(?:it|that|this|them)(?=\s*(?:down\b|on (?:my|the)\b|in (?:my|the) (?:paper|board|page|book|sheet)\b|already\b|[.,!?;]|$))(?:\s+down)?(?:\s+(?:on|in)\s+(?:my|the)\s+(?:paper|board|page|book|sheet))?/gi, "did it")
+    .replace(/\b(?:wrote|write|put)\s+\d+\s+(?:on|in)\s+(?:my|the)\s+(?:paper|board|page|book|sheet)\b/gi, "did it")
+    .replace(/\bthe carried\b/gi, "the carryover").replace(/\bkeep\b/gi, "carry").replace(/\bkept\b/gi, "carried");
+}
+
+/**
+ * In this sentence (digit text), the value `n` is said at least once for `target` itself: not placed in another column
+ * ("6 stays in the ones"), not inside a sum (its operand, or the total of another column's sum), and not a written digit
+ * after another column's total in the same sentence ("7 plus 9 is 16, so I wrote the 6").
+ */
+function ownOccurrence(pkg: OperationPackage, target: WorkedStep, n: number, sentence: string): boolean {
+  const steps = workSteps(pkg);
+  const sums = sumsIn(sentence);
+  const place = "place" in target ? target.place : null;
+  for (const m of sentence.matchAll(new RegExp(`(?<![\\d.])${n}(?!\\d|\\.\\d)`, "g"))) {
+    const at = m.index ?? 0;
+    const after = sentence.slice(at + m[0].length);
+    const placedIn = new RegExp(`^\\s+(?:(?:ten|one)s?\\s+)?(?:(?:is|are|was|goes|go|stays|stay|went)\\s+)?(?:in|for|into|to|under|on|at|from|with)\\s+(?:the\\s+)?(${OWN_PLACES})\\b`).exec(after);
+    if (placedIn && placedIn[1] !== place) continue;
+    const named = new RegExp(`\\b(?:the\\s+)?(${OWN_PLACES})(?:\\s+(?:column|part|digit))?\\s+(?:is|are|was|were|make|makes|made)\\s+$`).exec(sentence.slice(0, at));
+    if (named && named[1] !== place) continue;
+    const sum = sums.find((x) => at >= x.from && at < x.to);
+    if (sum && (at !== sum.at || (target.kind === "add-column" ? !sameOperands(target, sum.operands) : steps.some((st) => st.id !== target.id && sameOperands(st, sum.operands))))) continue;
+    const before = sentence.slice(0, at);
+    const written = /\b(?:wrote|write|writes|put|puts)\s+(?:down\s+)?(?:the\s+|a\s+|just\s+)?$/.test(before);
+    // A written digit with no column is this column's only right after its own total ("2 plus 3 plus 1 is 6, so I wrote
+    // 6"): after another column's total it is that column's ("7 plus 9 is 16. I wrote the 6."), and alone it may be any.
+    // A written-digit claim of this column's own digit (not its total) is the claim path's: checkColumnClaims checks it.
+    // Only when another column writes the same digit ("I wrote 6." for 27 + 39 may be the ones' 6 or the tens').
+    if (written && !placedIn && !("write" in target && target.write === n && !("total" in target && target.total === n))) {
+      const lastTotal = [...before.matchAll(/\d+/g)].map((x) => Number(x[0])).at(-1);
+      const shared = steps.some((st) => st.id !== target.id && (("write" in st && st.write === n) || ("total" in st && st.total === n)));
+      if (shared && !("total" in target && target.total === lastTotal)) continue;
+    }
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Rule A: why this turn does not credit `value` for `target` (a worked step, or null for the final answer) as the child's
+ * own, or null when it does. `earlier` are the steps this turn credits before it, in order ("Several steps said in order
+ * credit each one"). `shownToo`: a step Maya showed is a copy (false only for copiedStep, which asks whether the turn
+ * would credit but for the show). Blockers: a turn code could not hear for sure; another person's number; a hedge, "or",
+ * a guess or a negation; a question about the value (it goes to the confirm); a request to Maya (asksMaya); "you said X"
+ * where X is not the step's own numbers, or any echo of a step Maya showed (rule C); a number that is not the question's;
+ * an operand described twice; a false sum or a sum of other numbers for a step's value; a value said in the wrong place
+ * ("16 in the tens"); a written digit or carry checkColumnClaims finds wrong or unclear; a step before its turn.
+ */
+function ownTurn(s: Session, target: WorkedStep | null, value: AnswerValue, options: { earlier?: readonly string[]; shownToo?: boolean; text?: string; formToo?: boolean; ordered?: boolean } = {}): Blocker | null {
+  const { earlier = [], shownToo = true, formToo = true, ordered = true } = options;
+  const pkg = s.package;
+  if (!pkg || !s.turn) return "not_said";
+  if (s.turn.uncertain) return "uncertain";
+  const last = s.turns.map((t) => t.speaker).lastIndexOf("maya");
+  if (s.turns.slice(last + 1).some((t) => t.speaker === "child" && (t.alternatives?.length ?? 0) > 0)) return "uncertain";
+  const opts = readOptionsFor(pkg);
+  const raw = (options.text ?? s.turn.text).trim().replace(/[’‘]/g, "'").replace(/[“”]/g, "\"").replace(/'cause\b/gi, "because")
+    // A stutter ("s-s-sixty-six") is the word it starts.
+    .replace(/\b([a-z])(?:-\1)*-(?=\1)/gi, "");
+  const lower = raw.toLowerCase();
+  const steps = workSteps(pkg);
+  // A step comes after every step before it: done, passed, or credited earlier in this turn.
+  if (target && ordered) {
+    const first = steps.find((st) => !behind(s).includes(st.id) && !earlier.includes(st.id));
+    if (first?.id !== target.id) return "order";
+  }
+  // Whole-turn blockers, read on everything the child said.
+ if (/\bmy\s+(?!answer\b|final\b|sum\b|total\b)[a-z]+\s+(?:is|was)\b/.test(lower)) return "other_person";
+ if (/\b(?:copied|copy|copying)\b/.test(lower)) return "other_person";
+  if (OTHER_PERSON.test(lower) || /\bsays\b|\b(?:ms|mr|mrs|miss|dr)\.?\s+[a-z]/.test(lower)) return "other_person";
+  if (formToo && (OWN_HEDGE.test(lower) || readAnswer(raw, opts).choice)) return "hedge";
+  if (saysGuess(raw)) return "guess";
+  // What the child kept after a take-back ("15, no, 16" keeps "16").
+  const kept = committedText(raw).trim().toLowerCase();
+  // A bare "I don't know", "not sure" or "or not" is a hedge (above), not a negation of the value.
+  if (OWN_NEGATION.test(kept.replace(/^(?:[\s,.!]*(?:no|nope|nah)\b[,.!]?)+/, "").replace(NEXT_STEP_DOUBT, " ").replace(/\b(?:i\s+)?(?:don't|do not|dont) know\b|\bnot (?:so |really |very |too )?sure\b|\bor not\b/g, " "))) return "negation";
+  if (![...valuesIn(kept, opts), ...valuesIn(withoutExplanations(kept), opts)].some((v) => saidAs(v, value))) return "not_said";
+  // Spoken fractions keep their words ("fourteen sixteenths"): the fraction reader needs them.
+  // A pause ("I wrote... 6 ... in the ones") is no sentence end.
+  const text = (opts.fractions || /\bpoint\b/.test(kept) ? kept : digitWords(kept)).replace(/\s*(?:\.{2,}|…)\s*/g, " ");
+  const sentences = text.split(/(?<=[.!?])\s+|\n+/).map((x) => x.trim()).filter(Boolean);
+  // The numbers that belong to what this turn credits: for the final answer, every number of the question.
+  const scope = target ? steps.filter((st) => st.id === target.id || earlier.includes(st.id)) : steps;
+  const own = new Set<number>([...scope.flatMap((st) => stepNumbers(pkg, st)), ...(target ? [] : [...(opts.known ?? []), ...(pkg.answer.value.type === "number" ? [pkg.answer.value.value] : [])])]);
+  const known = new Set<number>([...(opts.known ?? []), ...steps.flatMap((st) => stepNumbers(pkg, st)), ...(pkg.answer.value.type === "number" ? [pkg.answer.value.value] : [])]);
+  const operandOptions = { ...opts, operands: true };
+  const knownFractions = [...readNumbers(operationText(pkg.operation), operandOptions).values, ...steps.flatMap((st) => readNumbers(stepText(st, pkg.operation), operandOptions).values)]
+    .filter((v) => v.type === "fraction" || v.type === "mixed");
+  const isKnown = (v: AnswerValue) => saidAs(v, value) || saidAs(v, pkg.answer.value) || (v.type === "number" ? known.has(v.value) : knownFractions.some((k) => saidAs(v, k)));
+  let echoed = false;
+  for (const sentence of sentences) {
+    const question = isQuestion(sentence);
+    const body = sentence.replace(/[.!?]+$/, "").trim();
+    // A request to Maya, clause by clause, with Maya's words named as the source taken out first: "You said add the ones"
+    // is her instruction said back, not a request.
+    for (const clause of withoutEchoes(body).split(/\s*[,;:]\s*/)) {
+      const plain = clause.replace(/\bthank you\b/g, " ").replace(/\b(?:do|can|should|could|would|will|did) (?:i|we)\b/g, " ");
+      const words = plain.replace(/[^\w'+]+/g, " ").split(/\s+/).filter(Boolean);
+      if (/\b(?:can|could|will|would) you\b/.test(clause) || asksMaya(words)) return "request";
+    }
+    const numbers = readNumbers(collapsed(body), opts);
+    if (question && target) {
+      // A next-step question names only the step's own carry ("Where does the 1 go?"); a sum in a question its operands.
+      const next = NEXT_QUESTION.test(body);
+      const allowed = [...operandsOf(pkg.operation), ...(next ? [] : [...stepOperands(target), ...("carryIn" in target && target.carryIn > 0 ? [target.carryIn] : [])]), ...("carryOut" in target && target.carryOut > 0 ? [target.carryOut, 10] : [])];
+      if (numbers.values.some((v) => v.type === "number" && !saidAs(v, value) && !allowed.includes(v.value))) return "other_number";
+    }
+    if (question) {
+      // A check of what was said, alone or as a tag at the end ("I put the 6 down and the 1 goes up, right?").
+      if (formToo && (VALUE_QUESTION.test(body) || VALUE_QUESTION.test(body.split(/\s*,\s*/).at(-1) ?? ""))) return "asks_value";
+      if (formToo && numbers.values.some((v) => saidAs(v, value)) && !NEXT_QUESTION.test(body)) return "asks_value";
+    }
+    // A value with a check tag at its end and no question mark ("66 right."): a check of the value too.
+    if (formToo && !question && /(?:^|[\s,])(?:right|correct)$/.test(body) && numbers.values.some((v) => saidAs(v, value))) return "asks_value";
+    // Rule C: "you said X" is the child's echo only when X holds this step's own numbers and Maya has not shown the step.
+    if (new RegExp(ECHO_TAG.source).test(body)) echoed = true;
+    for (const m of body.matchAll(ECHO_SAID)) {
+      echoed = true;
+      const after = body.slice((m.index ?? 0) + m[0].length);
+      const end = ECHO_END.exec(after);
+      const said = valuesIn(collapsed(end ? after.slice(0, end.index) : after), opts);
+      if (formToo && !said.every((v) => saidAs(v, value) || (v.type === "number" && own.has(v.value)))) return "echo";
+    }
+  }
+  // The value is said in a statement (a question about it goes to the confirm), and at least once as this step's own:
+  // not placed in another column ("the 6 stays in the ones" says no 6 for the tens), not inside another step's sum, and
+  // not a digit written for an earlier column ("7 plus 9 is 16, so I wrote the 6").
+  // No number beside it that is not the question's, outside a true sum, an explanation ("because 3 - 1 is 2") or the
+  // child's own method ("I did 27 plus 40, then took away one"): "That's 15. I got 16." says another value.
+  const outside = collapsed(freeOfWorking(text, !!opts.fractions, !target));
+  const rest = readNumbers(outside, opts);
+  if (rest.unreadable || !rest.values.every(isKnown)) return "other_number";
+  const statements = sentences.filter((x) => !isQuestion(x));
+  const inStatement = (x: string) => [...valuesIn(withoutExplanations(x), opts), ...(target ? valuesIn(x, opts) : [])].some((v) => saidAs(v, value));
+  if (!(formToo ? statements : sentences).some(inStatement)) return "not_said";
+  // Said outside an explanation: "Because 7 and 9 make 16." holds no answer of the child's, and neither does "I got 56
+  // because 27 and 39 make 66." for 66. A step's value may be in the explanation of an answer ("I got 66 because 7 and 9
+  // make 16").
+  const outsideExplanation = valuesIn(collapsed(withoutExplanations(text)), opts);
+  if (!target ? !outsideExplanation.some((v) => saidAs(v, value)) : outsideExplanation.length === 0) return "not_said";
+  // For the final answer, said as an answer, not as a number in an operation ("27 add 66", "27 and 66").
+  if (!target && value.type === "number" && !opts.fractions) {
+    const plain = text.replace(/[.!?]/g, " ");
+    const ats = [...plain.matchAll(new RegExp(`(?<![\\d.])${value.value}(?!\\d|\\.\\d)`, "g"))];
+    if (ats.length > 0 && ats.every((m) => /(?:\+|plus|add|added to|and|minus|-|−|dash|subtract|take away|times|x|×|multiplied by|divided by|less)\s*$/.test(plain.slice(0, m.index ?? 0)) || /^\s*(?:to the|squared|cubed)\b/.test(plain.slice((m.index ?? 0) + m[0].length)))) return "not_said";
+  }
+  if (target && value.type === "number" && !ownOccurrence(pkg, target, value.value, digitWords((formToo ? statements : sentences).join(" ").replace(/\?/g, ".")))) return "not_said";
+  // For the final answer, no sum after it that makes another number ("I got 66. 20 plus 30 plus 6 is 56.").
+  if (!target && value.type === "number" && !opts.fractions) {
+    const first = text.search(new RegExp(`(?<![\\d.])${value.value}(?!\\d|\\.\\d)`));
+    for (const m of text.matchAll(EQUATION)) if ((m.index ?? 0) > first && !isKnown(number(Number(m[3])))) return "other_number";
+  }
+  // For the final answer, no other answer beside it: a number said as an answer ("It's 56", "my answer is 27") is the
+  // value or a step's own value ("That's 6, so I get 66").
+  if (!target) {
+    const stepValues = new Set(steps.flatMap(placeValues));
+    for (const x of statements) {
+      for (const m of x.matchAll(/\b(?:my answer is|the answer is|answer's|final is|final answer is)\s+(\d+(?:\.\d+)?)(?!\d|[./]\d)/g)) {
+        if (!saidAs(number(Number(m[1])), value)) return "other_number";
+      }
+      for (const m of x.matchAll(/\b(?:answer is|answer's|it's|it is|so it's|so i got|i got|i get|i have|i still got|i still get|that's|that is)\s+(\d+(?:\.\d+)?)(?!\d|[./]\d)(?!\s+(?:for|in|from|to|on|at|into|under|with)\b)/g)) {
+        const n = Number(m[1]);
+        if (!saidAs(number(n), value) && !stepValues.has(n)) return "other_number";
+      }
+    }
+  }
+  // A step Maya showed: the value is a copy (as before); an echo of it too.
+  if (shownToo && target && shownStep(s, target)) return "copy";
+  if (echoed && !target && steps.some((st) => (s.passed ?? []).includes(st.id))) return "copy";
+  // Each sum: true (falseEquationResults), and a sum that makes a column's total adds that column's own operands.
+  // Every sum is true: in a fraction call by falseEquationResults, else worked out here ("2 and 3 make 6" is false).
+  if (opts.fractions ? falseEquationResults(kept, opts).length > 0 : [...text.matchAll(EQUATION)].some((m) => !trueEquation(m))) return "false_sum";
+  // One number said to be another ("16 is 66.", "9 is 16."); a listed sum ("2, 3, 1 is 6") is a sum.
+  for (const m of text.matchAll(/\b(\d+)\s+(?:is|equals|makes?|=)\s+(\d+)(?!\d|[./]\d)/g)) {
+    const before = text.slice(0, m.index ?? 0);
+    if (/(?:\+|plus|and|add|added to|to|of|minus|-|−|take away|times|x|×|divided by|÷)\s*(?:the\s+)?$/.test(before)) continue;
+    const list = /((?:\d+\s*,\s*)+)$/.exec(before);
+    const sum = list ? [...list[1].matchAll(/\d+/g)].reduce((a, x) => a + Number(x[0]), Number(m[1])) : Number(m[1]);
+    if (sum !== Number(m[2])) return "false_sum";
+  }
+  // A sentence of numbers alone ("16 and 3.", "9 and 16.", "The 1 and 6.", "66. 66."): no number in it says what it is.
+  if (sentences.filter((x) => /^(?:(?:so|okay|ok|um|oh|yes|yeah)\b[,\s]*)*\d+(?:\.\d+)?[.!]*$/.test(x.trim())).length > 1) return "other_number";
+  for (const x of sentences) {
+    const words = collapsed(x.replace(/[.!?]+$/, "")).replace(/[,;]/g, " ").split(/\s+/).filter(Boolean);
+    // "6, so 66." after the last step, and a column's own sum listed ("2 and 3 and 1, 6, so 66."), are no bare list.
+    const ns = words.filter((w) => /^\d+(?:\.\d+)?$/.test(w)).map(Number);
+    const answerN = pkg.answer.value.type === "number" ? pkg.answer.value.value : null;
+    const soAnswer = words.length >= 3 && words.at(-2) === "so" && ns.at(-1) === answerN && (!target || steps.at(-1)?.id === target.id);
+    const body = soAnswer ? ns.slice(0, -1) : ns;
+    const column = target ?? (soAnswer ? steps.at(-1) : undefined);
+    const listed = !!column && column.kind === "add-column" && body.length >= 2 && body.at(-1) === column.total && sameOperands(column, body.slice(0, -1));
+    const answerAfter = (soAnswer && body.length === 1) || listed;
+    if (!answerAfter && words.filter((w) => /^\d+(?:\.\d+)?$/.test(w)).length > 1 && words.every((w) => /^\d+(?:\.\d+)?$/.test(w) || /^(?:and|the|then|so|okay|ok|um|uh|oh|yes|yeah)$/.test(w))) return "other_number";
+  }
+  // "I already said 16" points back only at a number the child said before or a step done (as readAnswer reads it).
+  const before = readOptionsIn(s).saidBefore ?? [];
+  for (const m of text.matchAll(/\balready\s+(?:said|got|told you)\s+(\d+)\b/g)) if (!before.includes(Number(m[1])) && !saidAs(number(Number(m[1])), value)) return "other_number";
+  for (const sum of sumsIn(text)) {
+    const columns = steps.filter((st) => st.kind === "add-column" && st.total === sum.total);
+    if (columns.length > 0 && !columns.some((st) => sameOperands(st, sum.operands))) return "false_sum";
+  }
+  // An operand described more than once in the turn ("I add 9. I add 9. That's 16.", "9 and 7 is 16, 9 and 7."), Maya's
+  // words said back left out ("You said add 7 and 9. 7 + 9 is 16." describes each once).
+  const valueish = new Set<number>([...steps.flatMap((st) => [...placeValues(st), ...("carryOut" in st ? [st.carryOut] : []), ...("carryIn" in st ? [st.carryIn] : [])]),
+    ...operandsOf(pkg.operation), ...(pkg.answer.value.type === "number" ? [pkg.answer.value.value] : [])]);
+  const pool = steps.flatMap(stepOperands).filter((n) => !valueish.has(n));
+  if (pool.length > 0) {
+    const described = collapsed(withoutEchoes(text));
+    const count = new Map<number, number>();
+    for (const m of described.matchAll(/\d+(?:\.\d+)?/g)) count.set(Number(m[0]), (count.get(Number(m[0])) ?? 0) + 1);
+    for (const [n, times] of count) if (pool.includes(n) && times > pool.filter((x) => x === n).length) return "operand_twice";
+  }
+  // A value said with a place: it must be that column's ("16 in the tens" is not; "the 1 goes to the tens" is its carry).
+  const placed = (place: string) => steps.find((st) => "place" in st && st.place === place);
+  const PLACE = `(?:the\\s+)?(${OWN_PLACES})(?:\\s+(?:column|place|part|digit|spot))?`;
+  // A question claims nothing written ("Do I put the 1 in the tens?").
+  for (const sentence of statements) {
+    for (const clause of sentence.split(/\s*[,;]\s*|\s+(?:and|but)\s+(?=(?:i\b|the\b|\d))/)) {
+      const checks: { n: number; place: string; role: "value" | "write" | "carry" | "from" }[] = [];
+      for (const m of clause.matchAll(new RegExp(`(?<![\\d.])(\\d+(?:\\.\\d+)?)\\s+(?:(?:ten|one)s?\\s+)?(?:(?:is|are|was|goes|go|stays|stay|went)\\s+)?(?:(in|for|into|to|under|on|at|from|with)\\s+)${PLACE}\\b`, "g"))) {
+        const prep = m[2];
+        // The verb right before the number says what the child did with it: "carried the 1 to the tens", "wrote 6 in the tens".
+        const before = clause.slice(0, m.index ?? 0);
+        const carries = /\b(?:carry|carried|carrying|kept|keep|added|add)\s+(?:over\s+|up\s+)?(?:the\s+|a\s+|that\s+)?$/.test(before);
+        const writes = /\b(?:write|wrote|written|writing|put|puts|putting)\s+(?:down\s+)?(?:the\s+|a\s+|just\s+)?$/.test(before);
+        // "in", "under", "at" or "on" a column with no verb of a result before it ("16 in the ones", "the 6 in the ones") is
+        // where the digit is written; "I got 16 in the ones" is the column's result.
+        const result = /\b(?:got|get|gets|have|has|had|make|makes|made|is|are|was|were|it's|that's|equals?)\s+(?:the\s+|a\s+)?$/.test(before);
+        const role = prep === "from" ? "from" : prep === "with" || (carries && !writes) || (!writes && ["to", "into"].includes(prep)) ? "carry" : writes || (!result && ["in", "under", "at", "on"].includes(prep)) ? "write" : "value";
+        checks.push({ n: Number(m[1]), place: m[3], role });
+      }
+      for (const m of clause.matchAll(new RegExp(`\\b${PLACE}\\s+(?:is|are|was|were|make|makes|made|gives?|equals?)\\s+(\\d+)\\b(?!\\s+(?:ten|one)s?\\b)`, "g"))) checks.push({ n: Number(m[2]), place: m[1], role: "value" });
+      // "16 ones", "16 hundreds", "6 tens": the number as that column's digit.
+      for (const m of clause.matchAll(new RegExp(`\\b(\\d+)\\s+(${OWN_PLACES})\\b(?!\\s+(?:plus|and|\\+|minus))`, "g"))) checks.push({ n: Number(m[1]), place: m[2], role: "write" });
+      for (const m of clause.matchAll(new RegExp(`\\bfor\\s+${PLACE},?\\s+(?:i (?:got|get|have|wrote)|it's|it is|that's|that is)\\s+(\\d+)\\b`, "g"))) checks.push({ n: Number(m[2]), place: m[1], role: "value" });
+      for (const c of checks) {
+        // For the final answer, the answer itself said with a column ("and the tens make 66") is the whole answer.
+        if (!target && pkg.answer.value.type === "number" && c.n === pkg.answer.value.value) continue;
+        const st = placed(c.place);
+        if (!st) return "wrong_place";
+        // This column's written digit written in another column ("7 plus 9 is 16. I wrote the 6 in the tens."), unless that
+        // column is done or credited before it with the same digit ("the 6 in the ones is still there" beside the tens' 6).
+        if (target && "write" in target && "place" in target && c.role === "write" && c.n === target.write && c.place !== target.place
+          && !(placeValues(st).includes(c.n) && (behind(s).includes(st.id) || earlier.includes(st.id)))) return "wrong_place";
+        // "1 ten" and "ten" both name the one ten carried in.
+        const ok = c.role === "carry" ? "carryIn" in st && (st.carryIn === c.n || (st.carryIn > 0 && (c.n === 1 || c.n === 10)))
+          : c.role === "from" ? placeValues(st).includes(c.n) || ("carryOut" in st && st.carryOut === c.n)
+            : c.role === "write" ? "write" in st && st.write === c.n
+              : placeValues(st).includes(c.n);
+        if (!ok) return "wrong_place";
+      }
+    }
+  }
+  if (target && "place" in target) {
+    // Another column done first ("I add the tens first. 7 + 9 is 16."): not this column's work.
+    const first = new RegExp(`\\b(?:add|added|do|did|start with|started with)\\s+(?:the\\s+)?(${OWN_PLACES})\\s+first\\b`).exec(text);
+    if (first && first[1] !== target.place) return "order";
+  }
+  if (target) {
+    // The child's own statements, with Maya's words said back left out ("you said the 1 on top is in the tens").
+    const own = withoutEchoes(text).split(/(?<=[.!?])\s+|\n+/).map((x) => x.trim()).filter((x) => x && !isQuestion(x));
+    const operands = scope.flatMap((st) => [...stepOperands(st), ...("carryIn" in st && st.carryIn > 0 ? [st.carryIn] : [])]);
+    const answer = pkg.answer.value.type === "number" ? pkg.answer.value.value : null;
+    const lastStep = steps.at(-1)?.id === target.id;
+    let valueSeen = false;
+    for (const sentence of own) {
+      const plain = sentence.replace(/[.!?]+$/, "");
+      // The value said as the final answer, or with the whole question done: no step's value ("My answer is 16.",
+      // "I got 16 for the whole thing.", "7 plus 9 is 16 and I'm done.", "7 plus 9 is 16 so it's 16.").
+      if (value.type === "number") {
+        const v = value.value;
+        if (new RegExp(`\\b(?:answer is|answer's|whole (?:sum|thing|answer) is)\\s+${v}\\b|\\b${v}\\s+is\\s+(?:my|the)\\s+(?:final\\s+)?answer\\b|\\b${v}\\s+for\\s+(?:the\\s+)?(?:whole|everything|all)\\b|\\b${v}\\b.*\\bso\\s+(?:it's|it is)\\s+${v}\\b`).test(plain)) return "other_number";
+      }
+      if (/\b(?:everything|all of it|whole thing|i'?m done|i am done|i'?m finished|i am finished|that's it)\b/.test(plain)) return "other_number";
+      // A digit moved in words the claims reader does not know: "9 goes down", "1 down, 6 up", "all of it goes under",
+      // "the 1 goes on the 2", "I give the 6 to the 2". Down or under is the written digit, up or on top the carry.
+      if (/\b(?:all of it|it all|the whole thing)\s+(?:goes|go|went)\b|\b(?:goes|go|went)\s+on\s+the\s+\d|\bgive\b/.test(plain)) return "claim";
+      if ("write" in target && "carryOut" in target) {
+        for (const m of plain.matchAll(new RegExp(`\\b(\\d+)\\s+(?:(?:goes|go|went|is)\\s+)?(down|under|below|at the bottom|up|on top|at the top|above|over)\\b(?!\\s+(?:the\\s+)?(?:${OWN_PLACES}))`, "g"))) {
+          const n = Number(m[1]);
+          if (/down|under|below|bottom/.test(m[2]) ? n !== target.write : n !== target.carryOut && !("carryIn" in target && target.carryIn > 0 && n === target.carryIn)) return "claim";
+        }
+      }
+      // A bare number after the value ("7 plus 9 is 16, so 1.", "16. Then 5.", "16, 16, 16."): its role is not said. The
+      // step's own operands may be listed ("It's 6. I added 2, 3, and the 1."), and "so" the right final answer may follow
+      // the last step ("That's 6, so 66.").
+      let bare = 0;
+      for (const part of plain.split(/\s*[,;]\s*|\s+(?=(?:so|then|and)\s)/)) {
+        const led = /^so\b/.test(part.trim());
+        const words = part.replace(/^(?:(?:so|then|and|okay|ok|um|oh|yes|yeah)\b\s*)+/g, "").trim();
+        if (valueSeen && /^\d+(?:\s+(?:then|and)\s+\d+)*$/.test(words)) {
+          const ns = words.split(/\s+(?:then|and)\s+/).map(Number);
+          const said = ns.every((x) => saidAs(number(x), value));
+          bare += said ? 1 : 0;
+          if (!said && !ns.every((x) => operands.includes(x)) && !(led && lastStep && ns.length === 1 && ns[0] === answer)) return "other_number";
+          if (bare > 1) return "other_number";
+        }
+        if (valuesIn(collapsed(part), opts).some((v) => saidAs(v, value))) valueSeen = true;
+      }
+    }
+  }
+  // For the final answer, a written digit or carry with no column is one of the question's ("I carry 6. It's 66." is not).
+  if (!target) {
+    const carries = steps.flatMap((st) => ("carryOut" in st && st.carryOut > 0 ? [st.carryOut, 10] : []));
+    const writes = [...steps.flatMap((st) => ("write" in st && typeof st.write === "number" ? [st.write] : [])), ...(pkg.answer.value.type === "number" ? [pkg.answer.value.value] : [])];
+    for (const c of columnClaims(claimText(kept))) {
+      // "I put the 1 with the tens" is the carry, said with a column.
+      if (c.value === null || claimPlaces(c.tail).length > 0 || /^\s*with\b/.test(c.tail)) continue;
+      if (c.carry ? !carries.includes(c.value) : !writes.includes(c.value)) return "claim";
+    }
+  }
+  // Written digits and carries, as every reading of a column checks them.
+  if (target && "place" in target && "write" in target) {
+    const claims = checkColumnClaims(pkg, target, pkg.steps, target, claimText(kept));
+    if (claims !== "right") return "claim";
+  }
+  return null;
+}
 const PLACE_WORDS = new Set(["ones", "tens", "hundreds", "thousands", "tenths", "hundredths", "thousandths"]);
-
-/**
- * A clause of a step statement that commits nothing and withdraws nothing (sentence-level commit rule, 2026-11-12): every
- * word is on HARMLESS_WORDS or is a number; the only place it names is the step's own; its numbers are some of the step's
- * own operands (and its carry-in) still in the turn's pool (`pool`, one for the whole turn: an operand once in the turn),
- * never the total, another number or a number twice, and only before the committing
- * clause (`numbers`: "I add 7 and 9. That's 16." but not "9 and 7 is 16, 9 and 7."); and a clause that names "you" (Maya)
- * holds no number and is not what she said, so "Like you showed me" is harmless and "like you said" and "You said 16"
- * are not: that is Maya's number, not the child's. The committing clause is the caller's: a harmless clause alone never
- * credits.
- */
-function harmlessClause(step: Extract<WorkedStep, { kind: "add-column" }>, clause: string, numbers: boolean, pool: number[], said = clause): boolean {
-  const words = clause.replace(/\+/g, " + ").split(/\s+/).filter(Boolean);
-  if (words.length === 0 || !words.every((w) => HARMLESS_WORDS.has(w) || plainNumber(w) !== null)) return false;
-  if (words.some((w) => PLACE_WORDS.has(w) && w !== step.place)) return false;
-  const r = readNumbers(clause);
-  if (r.unreadable) return false;
-  if (words.includes("you") && words.includes("said")) return false;
-  if (asksMaya(said.replace(/,/g, " ").split(/\s+/).filter(Boolean))) return false;
-  if (r.values.length === 0) return true;
-  if (!numbers || words.includes("you")) return false;
-  return r.values.every((v) => v.type === "number") && takeOperands(pool, r.values.map((v) => (v as { value: number }).value));
-}
 
 /** Bare present imperatives: a clause that starts with one of them, with no subject, asks Maya to do it. */
 const IMPERATIVES = new Set(["show", "add", "start", "help", "do", "tell", "check", "explain", "give"]);
@@ -3150,18 +3536,6 @@ function asksMaya(words: readonly string[]): boolean {
   return IMPERATIVES.has(verb);
 }
 
-/** Takes these numbers out of the turn's operand pool, each once; false (and the pool unchanged) when one is not left. */
-function takeOperands(pool: number[], values: readonly number[]): boolean {
-  const left = [...pool];
-  for (const v of values) {
-    const at = left.indexOf(v);
-    if (at < 0) return false;
-    left.splice(at, 1);
-  }
-  pool.splice(0, pool.length, ...left);
-  return true;
-}
-
 /** The steps the ladder is past: done by the child, or passed after Maya showed them at H3 (copiedStep). */
 const behind = (s: Session) => (s.passed?.length ? [...s.done, ...s.passed] : s.done);
 
@@ -3189,7 +3563,8 @@ function copiedStep(s: Session): string | null {
   // copy only right after the show (justShown), never after the easier example or later help.
   const just = justShown(s, st.id);
   if (just && onlyNextStepQuestions(s.turn.text, st.carryOut)) return st.id;
-  if (stepStatement(pkg, st, s.turn.text)) return st.id;
+  // A turn the commit rule would credit but for the show (ownTurn) only copies it.
+  if (ownTurn(s, st, number(st.total), { shownToo: false }) === null) return st.id;
   const body = stepTurnBody(s.turn.text, st.carryOut);
   if (body !== null && (stepForm(pkg, st, number(st.total), body) === "total" || (echoesShown(body, st.total) && (just || valuesIn(body).length > 0)))) return st.id;
   // Round 4 (#698, practice on 6a0581bd and bef51538): a turn that restates the shown step in this step's own numbers, or
@@ -3447,7 +3822,7 @@ function confirmTarget(s: Session): { step: CreditStep; total: AnswerValue } | n
   // A column statement followed only by a check of its value ("7 + 9 is 16. Is that right?"): the step's confirm
   // (sentence-level commit rule, 2026-11-12).
   const column = currentColumn(s);
-  if (column && statementAsked(s.package, column, s.turn.text)) return { step: column, total: totalOf(column) };
+  if (column && statementAsked(s, column, s.turn.text)) return { step: column, total: totalOf(column) };
   const opts = readOptionsFor(s.package);
   const values = valuesIn(s.turn.text, opts);
   if (values.length !== 1 || readAnswer(s.turn.text, opts).kept.length !== 1 || !confirmWordsOnly(s.turn.text)) return null;
@@ -3469,18 +3844,18 @@ function stepConfirmable(s: Session): AnswerValue | null {
 const VALUE_CHECK = /^(?:(?:so|okay|ok|um|uh|oh)\b[,\s]*)?(?:is (?:that|it|this) (?:right|correct)|am i right|right|correct|did i get it right|did i do it right)$/;
 
 /**
- * The turn is a step statement (stepStatement, with the sentence-level commit rule) followed only by questions that check
+ * The turn is a step statement (the commit rule, ownTurn) followed only by questions that check
  * its value (VALUE_CHECK): "7 + 9 is 16. Is that right?" (2026-11-12). It is not credited as it is: it goes to the step's
  * confirm question ("Did you say 16?"), whose plain yes credits it (stepAsked). Any other question, or a value check
  * before the statement, is not this.
  */
-function statementAsked(pkg: OperationPackage, step: Extract<WorkedStep, { kind: "add-column" }>, text: string): boolean {
+function statementAsked(s: Session, step: Extract<WorkedStep, { kind: "add-column" }>, text: string): boolean {
   const t = text.trim().replace(/’/g, "'");
   if (t.includes("\n")) return false;
   const sentences = t.split(/(?<=[.!?])\s+/).filter(Boolean);
   let end = sentences.length;
   while (end > 0 && sentences[end - 1].trim().endsWith("?") && VALUE_CHECK.test(sentences[end - 1].trim().toLowerCase().replace(/[?]+$/, "").trim())) end--;
-  return end > 0 && end < sentences.length && stepStatement(pkg, step, sentences.slice(0, end).join(" "));
+  return end > 0 && end < sentences.length && ownTurn(s, step, number(step.total), { text: sentences.slice(0, end).join(" ") }) === null;
 }
 
 /**
@@ -3545,6 +3920,40 @@ function heldStepNow(s: Session): { step: string; value: AnswerValue } | null {
   if (!st || !s.turn || !s.package || s.solved !== null) return null;
   const value = number(st.total);
   return checkAnswers(s, [{ value, step: st.id, verdict: "right" }], [])?.held ? { step: st.id, value } : null;
+}
+
+/** The blockers of rule A that are only the form of a turn, not its math: rule D asks the confirm for them. */
+const FORM_BLOCKERS: readonly Blocker[] = ["hedge", "asks_value", "echo"];
+
+/**
+ * Rule D: the value this turn says right for the current step (its total) or the question, held back only by the form of
+ * the turn (FORM_BLOCKERS), when Maya can say it back in her confirm. Null for a request for help, a stuck turn, a guess,
+ * a wrong claim, a step Maya showed, or any turn whose value is not right.
+ */
+function formHeld(s: Session, reading: Reading): AnswerValue | null {
+  const pkg = s.package;
+  if (!pkg || !s.turn || s.solved !== null || reading.help || reading.stop || reading.safety) return null;
+  const text = s.turn.text;
+  if (asksForHelp(text) || saysStuck(text) || saysGuess(text) || claimJudgedWrong(s) || doubtCheckDue(s, s.ladder.step) !== null) return null;
+  // A value said with a column ("16 tens?", "3 in the ones?") may mean where it is written: no confirm, as before.
+  if (new RegExp(`\\b(?:${OWN_PLACES})\\b`, "i").test(text)) return null;
+  // A question about why or how ("Why is 9 plus 7 sixteen?") claims no value.
+  if (/\b(?:why|how|what|where|when|which)\b/i.test(text) && /\?/.test(text)) return null;
+  const said = valuesIn(text, readOptionsFor(pkg));
+  const st = workSteps(pkg).find((x) => !behind(s).includes(x.id));
+  const candidates: [WorkedStep | null, AnswerValue][] = [
+    ...(st && !shownStep(s, st) ? stepAnswers(st).slice(0, 1).map((v): [WorkedStep, AnswerValue] => [st, v]) : []),
+    [null, pkg.answer.value],
+  ];
+  for (const [target, value] of candidates) {
+    if (!said.some((v) => saidAs(v, value))) continue;
+    const blocker = ownTurn(s, target, value);
+    // Only the form: the same turn with no form check is right ("I add 9. I add 9. That's 16. Is that right?" is not).
+    if (blocker === null || !FORM_BLOCKERS.includes(blocker) || ownTurn(s, target, value, { formToo: false }) !== null) continue;
+    const offered = offersFor(s, "confirm", { steps: [], done: s.done, checked: [], rightResult: false, equal: null }).some((o) => o.line === "confirm.heard" && o.slots.heard === valueText(value));
+    if (offered) return value;
+  }
+  return null;
 }
 
 /**
@@ -3616,13 +4025,15 @@ function heardAnswers(session: Session): ChildAnswer[] {
   const found: ChildAnswer[] = [];
   // A claim's whole result first ("7 plus 7 is 14." is the result, not only the ones): it shows every step done (claim.ts, J06).
   const steps = workSteps(pkg);
+  // Rule A: the steps the child said in order, each heard on its own, from the first step not done.
+  const earlier: string[] = [];
   for (const st of [...steps.filter((x) => x.kind === "claim-compare"), ...steps.filter((x) => x.kind !== "claim-compare")]) {
     if (behind(session).includes(st.id)) continue;
-    const value = stepAnswers(st).find((v) => stepTurnHeard(session, st, v));
-    if (value) {
-      found.push({ value, step: st.id, verdict: "right" });
-      break;
-    }
+    const value = stepAnswers(st).find((v) => stepTurnHeard(session, st, v, earlier));
+    // A step not heard leaves the next to its own order rule (a part of an evaluate question has its own, currentSteps).
+    if (!value) continue;
+    found.push({ value, step: st.id, verdict: "right" });
+    earlier.push(st.id);
   }
   // A spot-the-error or pattern work step needs a strict wrong-number reading when the model is down.
   const current = steps.find((st) => st.id === session.ladder.step);
@@ -3645,8 +4056,15 @@ function heardAnswers(session: Session): ChildAnswer[] {
   const body = wholeTurn(session.turn.text);
   const equated = body !== null && /^(.+?)\s+(?:is|equals|makes?)\s+(.+)$/.exec(body);
   const twoNumbers = !!equated && plainNumber(equated[1]) !== null && plainNumber(equated[2]) !== null;
-  if (session.solved === null && read.final && read.sure && !twoNumbers && !notClear(session, {}) && !saysGuess(session.turn.text) && rightForQuestion(pkg, read.final)) found.push({ value: read.final, step: "result", verdict: "right" });
-  return found.filter((a) => checkAnswers(session, [a], []) === null);
+  // The right final answer the child states as their own (rule A), though column narration may follow it.
+  const final = [read.final, ...read.kept].find((v): v is AnswerValue => !!v && rightForQuestion(pkg, v));
+  const numericFinal = !!final && ["number", "fraction", "mixed"].includes(final.type);
+  if (session.solved === null && final && numericFinal && !twoNumbers && ownTurn(session, null, final) === null) found.push({ value: final, step: "result", verdict: "right" });
+  // A word answer keeps the reader's own rule.
+  if (session.solved === null && read.final && !["number", "fraction", "mixed"].includes(read.final.type) && read.sure && !twoNumbers && !notClear(session, {}) && !saysGuess(session.turn.text) && rightForQuestion(pkg, read.final)) found.push({ value: read.final, step: "result", verdict: "right" });
+  const heard: ChildAnswer[] = [];
+  for (const a of found) if (checkAnswers(session, [a], [], heard.filter((h) => h.step !== "result").map((h) => h.step)) === null) heard.push(a);
+  return heard;
 }
 
 /**
@@ -3747,7 +4165,7 @@ export function fallbacks(given: Session, refused: readonly unknown[] = []): Pro
   // With no model reading, a step statement followed by a check of its value ("7 + 9 is 16. Is that right?", statementAsked)
   // goes to the same confirm question (sentence-level commit rule, 2026-11-12).
   const column = currentColumn(session);
-  const askedStatement = !!column && answers.length === 0 && !!pkg && !!session.turn && statementAsked(pkg, column, session.turn.text) && stepSaidUnheard(session);
+  const askedStatement = !!column && answers.length === 0 && !!pkg && !!session.turn && statementAsked(session, column, session.turn.text) && stepSaidUnheard(session);
   const unheard = askedStatement || refused.flatMap(answersOf).some((a) => !answers.some((k) => k.step === a.step) && checkAnswers(session, [a], [])?.unheard === true);
   // A claim child who only asks for help and has not seen the easier example gets it first (lesson 10, #737 review P2).
   const claimPkg = sessionClaim(pkg) !== null;

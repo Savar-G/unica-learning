@@ -136,11 +136,12 @@ export const PATTERN_BEHAVIOURS: Behaviour[] = [
     id: "PT14", title: "Lessons 5, 6 and 13, model proposing credit every turn: 'Yes.' first, 'My mom said 14.', 'I copied 14.', 'Maybe 14.', 'Is it 14?' credit nothing", fixture: "PT_MISSING", status: "passing", grade: 3,
     steps: [greedy("Yes.", 14, "e1", { start: "has_work" }), greedy("My mom said 14.", 14, "e1"), greedy("I copied 14.", 14, "e1"), greedy("Maybe 14.", 14, "e1"), greedy("Is it 14?", 14, "e1"),
       greedy("My mom said 7.", 7, "result"), greedy("I copied 7.", 7, "result")],
-    // Each refused credit is a turn with no progress, so the help goes up; at H3 "Is it 14?" only says back what Maya showed
-    // (lesson 13), so the easier pattern comes. The final answer's say-back confirm ("I think I heard 7.") is #735's.
+    // Rule D (2026-11-12): "Maybe 14." and "Is it 14?" say the right step held back only by their form, so Maya asks her
+    // confirm and the turns count toward no climb; another person's or a copied number gets the step's help as before.
+    // Nothing is credited, and no answer is accepted or given.
     expect: { outcome: {}, never: ["accept_answer", "give_answer"],
-      acts: ["open", "guide", "guide", "guide", "guide", "example_step", "example_step", "example_step", "example_step", "confirm", "confirm"],
-      outputs: [1, 2, 3, 4].map(mayaTurn => ({ mayaTurn, lines: [missing.help("e1").flatMap(o => o.texts)] })) },
+      acts: ["open", "guide", "guide", "guide", "confirm", "confirm", "guide", "confirm"],
+      outputs: [1, 2, 3].map(mayaTurn => ({ mayaTurn, lines: [missing.help("e1").flatMap(o => o.texts)] })) },
   },
   {
     id: "PT9", title: "Hedged and copied steps get no credit: 'Maybe 14.' and 'My mom said 14.'", fixture: "PT_MISSING", status: "passing", grade: 3,

@@ -540,7 +540,8 @@ describe("#605 practice run 1: a child who says the step's own setup hears it sa
     "So 3 plus 2 plus 1?", "Is it 2 plus 3 plus 1 or 2 plus 3?", "Yes, the 1 ten. So 1 plus 2 plus 3?", "I don't add 2 plus 3 plus 1.", "So 2 times 3 times 1?"])("still refuses the operation line after %j", (turn) => {
     const c = onTens();
     c.child(turn);
-    expect(c.propose(operation).refusal?.code).toBe("hint_too_high");
+    // Rule D (2026-11-12): "So 2 plus 3 plus 1 is 6?" holds the right tens in a question, so Maya asks her confirm first.
+    expect(c.propose(operation).refusal?.code).toBe(turn === "So 2 plus 3 plus 1 is 6?" ? "confirm_first" : "hint_too_high");
   });
 });
 
@@ -684,11 +685,11 @@ describe("PR #624 review 2: dropped working never hides another answer (fails cl
     "I got 66. 7 plus 9 is 16.",
     "I got 66. Seven plus nine is sixteen, so I carry the ten.",
     "I got 66. 2 plus 3 plus 1 is 6.",
-  ])("keeps 66 as the final of %j, and confirms it before accepting it (two sentences with numbers, review round 3)", (text) => {
+  ])("keeps 66 as the final of %j, and accepts it: the working beside it is the child's own (rule A, 2026-11-12)", (text) => {
     const { c, r } = accept66(text);
-    expect(r.refusal?.code).toBe("answer_not_committed");
+    expect(r.refusal).toBeNull();
+    expect(c.session.solved).toBe("child");
     expect(readAnswer(text, readOptionsFor(ADD as OperationPackage)).final).toEqual(num(66));
-    expect(c.acts).toContain("confirm");
   });
   it("is not sure of a final when dropped working holds another candidate", () => {
     expect(readAnswer("I got 66. I added 20 and 30 and 6 so my final is 56.").sure).toBe(false);
@@ -729,11 +730,16 @@ describe("PR #624 review round 3: only one sentence with numbers commits a final
   it.each(["66", "I got 66.", "It's 66, I'm sure.", "So 66!", "I got 66, with carrying."])("commits %j: one sentence with numbers", (text) => {
     expect(accept66(text).r.refusal).toBeNull();
   });
-  it.each(["I got 66. My answer is 66.", "66. 66.", "I got 66.\n66", "It's 66. I'm sure it's 66."])("confirms %j: two sentences that agree still do not commit", (text) => {
+  // Rule A (2026-11-12): two sentences that agree are the child's own answer said twice (review round 3 confirmed them).
+  it.each(["I got 66. My answer is 66.", "I got 66.\n66", "It's 66. I'm sure it's 66."])("commits %j: two sentences that agree", (text) => {
     const { c, r } = accept66(text);
+    expect(r.refusal).toBeNull();
+    expect(c.session.solved).toBe("child");
+  });
+  it("confirms \"66. 66.\": numbers alone, with nothing said about them", () => {
+    const { c, r } = accept66("66. 66.");
     expect(r.refusal?.code).toBe("answer_not_committed");
     expect(c.session.solved).toBeNull();
-    expect(c.acts).toContain("confirm");
   });
   it("asks which one when two sentences differ", () => {
     const { c, r } = accept66("I got 56. I got 66.");
@@ -741,7 +747,7 @@ describe("PR #624 review round 3: only one sentence with numbers commits a final
     expect(c.session.solved).toBeNull();
   });
   it("commits after a plain yes to Maya's confirmation", () => {
-    const { c } = accept66("I got 66. My answer is 66.");
+    const { c } = accept66("Is it 66?");
     c.maya({ act: "confirm", parts: [ln("confirm.heard", { heard: "66" })] });
     c.child("Yes.");
     expect(c.propose({ act: "accept_answer", parts: [ln("answer.right")], reading: { answers: [ans(66, "result", "right")] } }).refusal).toBeNull();

@@ -32,11 +32,17 @@ describe("after check.stated, only an exact bare yes moves Maya past the column 
 
   it.each([
     "Yes, I wrote 1 in the ones and carried 6.", "Yes, 9.", "Yes? Is it 7?", "Yeah I guess. Is it?", "Yes, 16 in the tens.", "Yes. I wrote 16 in the ones.",
-    "Yes, I think so.", "Yes, but I don't know.", "Yes. Yes.", "Yes 16.", "Okay.", "Maybe.", "Yes!? ", "My mom says yes.",
+    "Yes, I think so.", "Yes, but I don't know.", "Yes. Yes.", "Okay.", "Maybe.", "Yes!? ", "My mom says yes.",
   ])("stays on the ones after %j", async (reply) => {
     const { told } = await play([stated, onToTens(reply)]);
     expect(told[2].step ?? "ones").toBe("ones");
     expect(told.map((t) => t.say).join(" ")).not.toMatch(/Every part is done/);
+  });
+
+  // Rule A and B (2026-11-12): "Yes 16." states the ones' total as the child's own, with no blocker, so it is credited.
+  it("credits the ones after \"Yes 16.\" (rule B: yes with the same value)", async () => {
+    const { told } = await play([stated, onToTens("Yes 16.")]);
+    expect(told[2].step).toBe("tens");
   });
 
   it("keeps the model's wrong verdict on the ones: 'Yes, I wrote 1 in the ones and carried 6.' gets 'not yet' for the ones", async () => {
@@ -126,8 +132,7 @@ const HOSTILE = [
   // The readers' own list (zz-probe): parsed phrases that must stay refused.
   "7 plus 9 is 16, I wrote 1 and carried 6.", "7 plus 9 is 16 and I carried 7.", "7 plus 9 is 16 and I carried 0.", "7 plus 9 is 16. I wrote 16.", "I wrote sixteen.",
   "Seven and nine is sixteen, I put 16 down.", "16 I mean 61", "7 plus 6 is 16.", "9 plus 9 is 16.", "7 plus 9 is 16 and 7 plus 9 is 9.", "I got 16 then 6 then 1", "16 or 16",
-  "Grandpa 16.", "they told me 16", "Teacher: 16.", "Ms Lee says 16", "16, 16, 16.", "I wrote 1 and carried 6.", "I carried 1 and wrote 7.", "I write 6, carry 1, then 2 plus 3 is 5.",
-  "16. Then 5.", "I write 9 and carry 7.", "sixteen. sixty-six.", "16 then 66", "First 7 and 9 makes 16 then I put 16 under", "7 + 9 = 16, put down the 1", "7 + 9 = 16, write the 1, carry the 6",
+  "Grandpa 16.", "they told me 16", "Teacher: 16.", "Ms Lee says 16", "16, 16, 16.", "I wrote 1 and carried 6.", "I carried 1 and wrote 7.", "16. Then 5.", "I write 9 and carry 7.", "sixteen. sixty-six.", "16 then 66", "First 7 and 9 makes 16 then I put 16 under", "7 + 9 = 16, put down the 1", "7 + 9 = 16, write the 1, carry the 6",
   "wrote the 1 carried the 6, 16", "I wrote 1. 16.", "I write 1 carry 6 because 16", "7 plus 9 is 16 and 2 plus 3 is 6.",
 ];
 
@@ -144,6 +149,15 @@ describe("a turn the review named never moves Maya past the ones, on every path 
       expect(told.slice(1).every((t) => t.step !== "tens")).toBe(true);
     });
   }
+
+  // Rule A (2026-11-12): several steps said in order are each checked on their own. "I write 6, carry 1" is the ones'
+  // written digit and carry, right; "then 2 plus 3 is 5" is a wrong tens, which blocks only the tens.
+  it("credits the ones and not the tens for 'I write 6, carry 1, then 2 plus 3 is 5.' on code's fallback", async () => {
+    const { told } = await play([{ child: "I write 6, carry 1, then 2 plus 3 is 5.", maya: [{ throws: true }, { throws: true }] }]);
+    expect(told[1].step).toBe("tens");
+    expect(told[1].lines).toContain("check.right_step");
+    expect(told[1].lines).not.toContain("check.stated");
+  });
 
   it("lets the model judge 'My answer is 16.' as a wrong final answer: no forced check.stated", async () => {
     const { told } = await play([{ child: "My answer is 16.", read: { start: "has_work", answers: [[16, "result", "wrong"]] }, maya: [{ act: "guide", step: "ones", level: 0, lines: ["check.not_yet", "step.invite"] }] }]);

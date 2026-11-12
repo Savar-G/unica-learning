@@ -26,7 +26,8 @@ describe('independent fixed-head counterexamples',()=>{
   const c=call();c.child('7 plus 9 is 16.');c.ok({act:'guide',step:'tens',level:0,parts:[l('check.right_step',{step:'ones'}),l('step.invite',{step:'tens'})],reading:{answers:[a(16,'ones')]}});
   c.child('I wrote 16 on my paper. Now 2 plus 3 plus 1 is 6.');
   const r=c.propose({act:'guide',step:'result',level:0,parts:[l('check.right_step',{step:'tens'}),l('step.invite',{step:'result'})],reading:{answers:[a(6,'tens')]}});
-  console.log('INTERMEDIATE',r.refusal);expect(r.refusal?.code).toBe('answer_not_committed');expect(c.s.done).toEqual(['ones']);
+  // Rule A (2026-11-12): the tens said as the child's own are credited; the ones stay done.
+  expect(r.refusal).toBeNull();expect(c.s.done).toEqual(['ones','tens']);
  });
  it('a regroup for a second carry must not satisfy the first carry',()=>{
   const op:Operation={kind:'add',operands:[67,58]};

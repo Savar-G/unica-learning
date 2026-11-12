@@ -227,7 +227,8 @@ describe("evaluate parts (Wave A, A2)", () => {
       expect(r.refusal, text).toBeNull();
       expect(r.done, text).toContain("e1");
     }
-    for (const text of ["4480?", "I think it's 4480.", "4480 because 7 times 640 is 4480.", "7 plus 640 is 4480", "My brother said 4480.", "I wrote 4480 in the thousands."]) {
+    // Rule A (2026-11-12): "4480 because 7 times 640 is 4480." is the child's own result with true working, so it is credited.
+    for (const text of ["4480?", "I think it's 4480.", "7 plus 640 is 4480", "My brother said 4480.", "I wrote 4480 in the thousands."]) {
       // Refused (not a whole-turn template, or for "7 plus 640" another problem): no credit.
       const r = partTurn(pkg, [], text, 4480, "e1", "e2.r1-ones");
       expect(r.refusal, text).toMatch(/^(?:answer_not_committed|scope_first)$/);

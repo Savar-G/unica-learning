@@ -194,7 +194,8 @@ describe("reading spoken and typed fractions in a fraction call (#407)", () => {
   });
 
   it.each([
-    ...["actually", "oops", "wait", "I mean", "no,", "no wait,", "oh wait, I mean", "actually, I think it's"].map((correction) => [`3/4, ${correction} a half`, frac(1, 2)] as const),
+    // Rule A (2026-11-12): "I think" is a hedge, so "3/4, actually, I think it's a half" is no longer accepted as it is.
+    ...["actually", "oops", "wait", "I mean", "no,", "no wait,", "oh wait, I mean"].map((correction) => [`3/4, ${correction} a half`, frac(1, 2)] as const),
     ["3/4, actually a quarter", frac(1, 4)],
     ["3/4, actually an eighth", frac(1, 8)],
     ["fourteen sixteenths, I mean a half", frac(1, 2)],
@@ -212,6 +213,12 @@ describe("reading spoken and typed fractions in a fraction call (#407)", () => {
     const c = call(pkg, said);
     expect(c.propose({ act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [answer(value, "result", "right")] } }).refusal).toBeNull();
     expect(c.s.solved).toBe("child");
+  });
+
+  it("does not accept a hedged correction as it is (rule A): \"3/4, actually, I think it's a half\"", () => {
+    const c = call(pkgOf("Add the fractions.", add(frac(1, 4), frac(1, 4)), EASY), "3/4, actually, I think it's a half");
+    expect(c.propose({ act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [answer(frac(1, 2), "result", "right")] } }).refusal).toMatchObject({ code: "answer_not_committed" });
+    expect(c.s.solved).toBeNull();
   });
 
   it.each(["a half", "one half", "1/2", "two fourths"].flatMap((form) =>
@@ -235,16 +242,9 @@ describe("fraction expression and explanation boundaries", () => {
     const value = said.includes("two fourths") ? frac(2, 4) : frac(1, 2);
     const pkg = pkgOf("3/4 - 1/4 = ?", sub(frac(3, 4), frac(1, 4)), sub(frac(3, 5), frac(1, 5)));
     const proposal = { version: 2, act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [answer(value, "result", "right")] } };
-    // PR #624 review round 3: an explanation in a sentence of its own with a number makes two sentences that hold numbers.
-    // The answer still stands as the final one, and Maya confirms it before she accepts it.
-    if (/\. \S/.test(said) && /\d|two|four/.test(said.slice(said.lastIndexOf(". ")))) {
-      expect(readAnswer(said, READ)).toMatchObject({ final: value, sure: false });
-      const asked = call(pkg, said);
-      expect(asked.propose(proposal).refusal?.code).toBe("answer_not_committed");
-      expect(asked.s.solved).toBeNull();
-      return;
-    }
-    expect(readAnswer(said, READ)).toMatchObject({ final: value, sure: true });
+    // Rule A (2026-11-12): an explanation in a sentence of its own is the child's own working, not a second answer: the
+    // answer is accepted on both paths (PR #624 round 3 made Maya confirm it first). readAnswer alone still reads it unsure.
+    expect(readAnswer(said, READ)).toMatchObject({ final: value, sure: !(/\. \S/.test(said) && /\d|two|four/.test(said.slice(said.lastIndexOf(". ")))) });
     const direct = call(pkg, said);
     expect(direct.propose(proposal).refusal).toBeNull();
     expect(direct.s.solved).toBe("child");

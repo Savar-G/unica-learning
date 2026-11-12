@@ -435,7 +435,8 @@ describe("the judge", () => {
     it.each(inputs)("%s: '%s' with J02 marked not applicable is unjudgeable, never a pass", async (id, line, at) => {
       const c = byId(id);
       // A wrong final answer is then corrected ("No wait, 66."): still an error the judge must score.
-      const script = id === "C07" ? [line, ...(line.endsWith("is 16.") ? ["No wait, 66."] : []), "Because the ones made sixteen.", "I wrote it."] : c.fakeScript.map((text, i) => (i === at ? line : text));
+      // Rule A (2026-11-12): wrong working beside a right answer holds the answer back, so the child says 66 again after it.
+      const script = id === "C07" ? [line, "No wait, 66.", "Because the ones made sixteen.", "I wrote it."] : c.fakeScript.flatMap((text, i) => (i === at ? [line, "No wait, 66."] : [text]));
       const { report } = await suite([c], { runs: 1, judge: scoredBut(notApplicable), simulator: () => sayEach(script) });
       expect(report.runs[0].invalid).toEqual([]);
       expect(report.runs[0]).toMatchObject({ status: "unjudgeable", unjudgeable: expect.stringContaining("J02: the status is \"not_applicable\"") });

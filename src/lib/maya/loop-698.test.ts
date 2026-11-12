@@ -75,6 +75,9 @@ describe("#698 loop: the ones step is credited when the child states its own res
     "Sixteen. I wrote the 6.",
     "For the ones, I got 16.",
     "Sixteen. Then I wrote the 6.",
+    // Rule A and C (2026-11-12): Maya's number said back before any show, and a next-step question in the middle.
+    "You said 16.",
+    "I got 16 for the ones. What do I do next? I wrote the 6.",
   ])("credits a close variant: %j", async (text) => {
     for (const first of [named(text), down(text)]) {
       const { told } = await play([first]);
@@ -85,7 +88,6 @@ describe("#698 loop: the ones step is credited when the child states its own res
 
   it.each([
     ["another speaker", "My mom got 16 for the ones."],
-    ["Maya's number", "You said 16."],
     ["a false sum", "7 plus 8 is 16. I wrote the 6."],
     ["a wrong sum", "7 plus 9 is 15. I wrote the 5."],
     ["a wrong written digit", "7 plus 9 is 16, I wrote 5."],
@@ -96,7 +98,6 @@ describe("#698 loop: the ones step is credited when the child states its own res
     ["a maybe", "Maybe 7 plus 9 is 16. I wrote the 6."],
     ["a bare question", "Is it 16?"],
     ["a check question after the sum", "Ones first: 7 + 9 is 16. Is that right?"],
-    ["a question in the middle", "I got 16 for the ones. What do I do next? I wrote the 6."],
     ["another column named", "I got 16 for the tens."],
     ["16 in the ones place", "16 in the ones."],
     ["what was added, with no total", "For the ones, I added 7 and 9."],
@@ -151,7 +152,9 @@ describe("#698 loop: a sure final answer with an explanation of where it came fr
 });
 
 describe("#698 loop guard: never the same step line a third time", () => {
-  const held = "I know 7 and 9 make 16.";
+  // Rule A (2026-11-12): "I know 7 and 9 make 16." is credited now; this turn holds the right total with another number
+  // beside it, so code still holds it back (no form problem, so rule D asks no confirm at once).
+  const held = "7 and 9 make 16 and 3.";
   /** The model reads the ones right; its tens step is refused (not committed), and code chooses the repair or the fallback. */
   const refusedOnes = (text: string, repair: Plan | undefined): Step => ({
     child: text, read: { answers: [[16, "ones", "right"]] },
@@ -523,6 +526,9 @@ describe("#698 round 3 loop guard: guides are counted per unfinished step, not p
 // easier example worked, in a question, with "You said", with "I did that" or with work on the next column, was no copy, so
 // Maya asked the ones again until the stuck close. Each script is the run's child words, on the model's own proposal, on
 // its repair, and on code's fallback with the model down.
+// Rule A and C (2026-11-12): "You said write the 6 and carry 1. So I got 66!" is the child's own final answer (Maya showed
+// the ones, not the answer), so it is accepted at once; the F02-r1 scripts below start with a hedged answer instead, which
+// still gets Maya's confirm (rule D), to keep testing the doubtful yes after it.
 describe("#698 round 4: the loop guard never closes a child who is still working", () => {
   const SHOW: Step = { child: "Show me the ones.", read: { help: "show" }, maya: [{ act: "guide", step: "ones", level: 3, lines: ["step.show"] }] };
   const NO_START: Step = { child: "Hi. I don't know how to start this one.", read: { start: "no_start" }, maya: [{ act: "example_step", step: "ones", lines: ["example.intro", "example.step"] }, { act: "example_step", step: "tens" }, { act: "example_step", step: "result" }] };
@@ -546,7 +552,7 @@ describe("#698 round 4: the loop guard never closes a child who is still working
   describe("(1) a doubtful yes with the right answer is checked together, never confirmed a third time", () => {
     it.each(PATHS)("F02-r1: \"Yes, 66! Did I get it right?\" after \"Did you say 66?\" gets the check together on the tens (%s)", async (_name, make) => {
       const r = await play([SHOW,
-        make("You said write the 6 and carry 1. So I got 66!", ACCEPT, RIGHT66),
+        make("You said write the 6 and carry 1. I think I got 66.", ACCEPT, RIGHT66),
         make("Yes, 66! Did I get it right?", { act: "guide", step: "tens", level: 2, lines: ["check.together", "step.operation"] }, RIGHT66)]);
       expect(r.told[2]).toMatchObject({ act: "confirm", lines: ["confirm.heard"] });
       expect(r.told[3]).toMatchObject({ act: "guide", step: "tens", lines: ["check.together", "step.operation"] });
@@ -556,7 +562,7 @@ describe("#698 round 4: the loop guard never closes a child who is still working
 
     it.each(PATHS)("F02-r1: a yes that is not sure gets the check together once, and never a third confirm (%s)", async (_name, make) => {
       const r = await play([SHOW,
-        make("You said write the 6 and carry 1. So I got 66!", ACCEPT, RIGHT66),
+        make("You said write the 6 and carry 1. I think I got 66.", ACCEPT, RIGHT66),
         make("Yes, I got 66! You said write the 6 and carry 1, so I did.", ACCEPT, RIGHT66),
         make("Yes, 66! I wrote the 6 and carried the 1 like you said.", ACCEPT, RIGHT66)]);
       const acts = r.told.map((t) => t.act);
@@ -591,19 +597,20 @@ describe("#698 round 4: the loop guard never closes a child who is still working
 
     it("the whole F02-r1 tail on code's fallback never confirms a third time in a row, checks once, and ends with no technical_issue", async () => {
       const r = await play([SHOW, ...[
-        "You said write the 6 and carry 1. So I got 66!", "Yes, I got 66! You said write the 6 and carry 1, so I did.",
+        "You said write the 6 and carry 1. I think I got 66.", "Yes, I got 66! You said write the 6 and carry 1, so I did.",
         "Yes, 66! I wrote the 6 and carried the 1 like you said.", "Okay. So is my answer for 27 plus 39 right? I got 66.",
         "Yes, it's 66! I wrote the 6 and carried the 1 like you said. Is it right?", "Okay. I think it's 66. I wrote the 6 and carried the 1 like you said.",
         "Yes, I think it's 66. I wrote the 6 and carried the 1 like you said.", "Yes, 66! Did I get it right?",
         ...Array.from({ length: 12 }, () => "Yes, 66! Did I get it right?"),
       ].map(down)]);
-      // At 6a0581bd this call ended with close.stuck from the confirm, as a technical_issue.
-      expect(r.told.at(-1)).toMatchObject({ act: "close", lines: ["close.stuck", "close.together"] });
-      expect(r.outcome?.reason).toBe("maya_closed");
+      // Rule A (2026-11-12): "Yes, I got 66! You said write the 6 and carry 1, so I did." is the child's own answer, so
+      // it is accepted (at 6a0581bd this call ended with close.stuck from the confirm, as a technical_issue).
+      expect(r.told.map((t) => t.act)).toContain("accept_answer");
+      expect(r.outcome?.reason).not.toBe("maya_closed");
       expect(r.technical).toEqual([]);
       const acts = r.told.map((t) => t.act);
       for (let i = 2; i < acts.length; i++) expect(acts[i] === "confirm" && acts[i - 1] === "confirm" && acts[i - 2] === "confirm", `${i}`).toBe(false);
-      expect(r.told.filter((t) => t.lines.includes("check.together")).length).toBe(1);
+      expect(r.told.filter((t) => t.lines.includes("check.together")).length).toBeLessThanOrEqual(1);
       expect(r.told.filter((t) => t.lines.includes("step.show")).length).toBeLessThanOrEqual(3);
     });
 
@@ -724,7 +731,8 @@ describe("#698 round 4: the loop guard never closes a child who is still working
       expect(r.told.flatMap((t) => t.lines)).not.toContain("check.right_step");
     });
 
-    it.each(["7 plus 9 is 16, I wrote 6 and carried 1.", "I'd write the 6 and carry the 1 ten.", "You said write 6 and carry 1. Okay, I did that."])("with no show and no example, %j stays no-credit on the ones (#735)", async (text) => {
+    // Rule A (2026-11-12): "7 plus 9 is 16, I wrote 6 and carried 1." is the child's own right work, so it is credited now.
+    it.each(["I'd write the 6 and carry the 1 ten.", "You said write 6 and carry 1. Okay, I did that."])("with no show and no example, %j stays no-credit on the ones (#735)", async (text) => {
       for (const first of [named(text), down(text)]) {
         const r = await play([first]);
         expect(r.told[1].step, text).not.toBe("tens");
