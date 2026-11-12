@@ -2914,7 +2914,8 @@ function statementAsked(pkg: OperationPackage, step: Extract<WorkedStep, { kind:
 function stepSaidUnheard(s: Session): boolean {
   const st = currentColumn(s);
   const total = stepConfirmable(s);
-  if (!st || !total || !s.turn || s.ladder.hint >= 3 && s.ladder.step === st.id || stepTurnHeard(s, st, total)) return false;
+  // A step Maya showed (shownStep: at H3 now, or earlier in the call) gets no confirm: the yes to it cannot credit (review P3).
+  if (!st || !total || !s.turn || shownStep(s, st.id) || stepTurnHeard(s, st, total)) return false;
   const read = turnRead(s);
   return !(read.final && read.sure && rightForQuestion(s.package!, read.final));
 }
