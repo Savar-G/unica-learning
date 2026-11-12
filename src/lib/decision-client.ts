@@ -138,6 +138,11 @@ export interface DecisionClient {
   readonly maxAttempts: number;
   /** One typed answer per question, or a DecisionError. */
   decide(request: DecisionRequest): Promise<DecisionResult>;
+  /**
+   * Optional: runs the checks that come before a request (the live price check) without sending one, so a caller can do
+   * its own last check between them and `decide`. Throws the DecisionError that `decide` would throw for them.
+   */
+  ready?(signal: AbortSignal): Promise<void>;
 }
 
 /**

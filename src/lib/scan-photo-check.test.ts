@@ -104,6 +104,53 @@ describe("the photo check (#855)", () => {
     expect(client.requests).toHaveLength(0);
   });
 
+  // Review of PR #874, finding 1: a parent who is not an admin has a saved, calibrated photo; markedFamily answered true;
+  // then an admin removes the family from test_accounts (admin_set_test_account(parent, false)).
+  it("a family removed between the eligibility read and the claim gets no claim: the claim checks membership itself", async () => {
+    const mem = await setup();
+    const client = fakeDecisionClient({ answer: () => ({ blurry: noul(0.9) }) });
+    // The earlier read said yes; the removal lands before the claim's transaction.
+    const stale = { ...mem.store, eligible: async () => { mem.eligible.delete(FAMILY); return true; } };
+    expect(await claimPhotoCheck(stale, ref(), { client, token: TOKEN })).toBe(false);
+    expect(mem.photos.get(PHOTO)!.check).toBeNull();
+    expect(mem.writes).toEqual([]);
+    expect(client.requests).toHaveLength(0);
+  });
+
+  it("a family removed after the claim and before the deferred request: no request, and the pending claim is removed", async () => {
+    // Disproved if the photo is sent to the model or any value stays stored for the removed family.
+    const mem = await setup();
+    const client = fakeDecisionClient({ answer: () => ({ blurry: noul(0.9) }) });
+    expect(await claimPhotoCheck(mem.store, ref(), { client, token: TOKEN })).toBe(true);
+    mem.eligible.delete(FAMILY);
+    expect(await runPhotoCheck(mem.store, ref(), { client, token: TOKEN, log: () => {} })).toMatchObject({ state: "unknown", error: "ineligible" });
+    expect(client.requests).toHaveLength(0);
+    expect(mem.photos.get(PHOTO)!.check).toBeNull();
+  });
+
+  it("a family removed while the price is read: the last check comes after it, so no request is sent", async () => {
+    const mem = await setup();
+    const inner = fakeDecisionClient({ answer: () => ({ blurry: noul(0.9) }) });
+    const order: string[] = [];
+    const client = { ...inner, decide: inner.decide, ready: async () => { order.push("price"); mem.eligible.delete(FAMILY); } };
+    const store = { ...mem.store, eligible: async (p: string) => { order.push("eligible"); return mem.store.eligible(p); } };
+    await claimPhotoCheck(mem.store, ref(), { client, token: TOKEN });
+    expect(await runPhotoCheck(store, ref(), { client, token: TOKEN, log: () => {} })).toMatchObject({ state: "unknown", error: "ineligible" });
+    expect(order).toEqual(["price", "eligible"]);
+    expect(inner.requests).toHaveLength(0);
+    expect(mem.photos.get(PHOTO)!.check).toBeNull();
+  });
+
+  it("a family removed while the request runs: the finish stores no result and removes the pending claim", async () => {
+    const mem = await setup();
+    const client = fakeDecisionClient({ answer: () => { mem.eligible.delete(FAMILY); return { blurry: noul(0.9) }; } });
+    await claimPhotoCheck(mem.store, ref(), { client, token: TOKEN });
+    await runPhotoCheck(mem.store, ref(), { client, token: TOKEN });
+    expect(client.requests).toHaveLength(1);
+    expect(mem.photos.get(PHOTO)!.check).toBeNull();
+    expect(mem.writes).toEqual([`claim:${PHOTO}`, `release:${PHOTO}`]);
+  });
+
   it("is off with no decision client, or with no question that has a threshold", async () => {
     const mem = await setup();
     expect(await claimPhotoCheck(mem.store, ref(), { client: null, token: TOKEN })).toBe(false);

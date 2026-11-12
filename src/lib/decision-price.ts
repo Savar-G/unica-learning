@@ -97,6 +97,7 @@ export function withPriceGuard(client: DecisionClient, guard: PriceGuard): Decis
   return {
     model: client.model,
     maxAttempts: client.maxAttempts,
+    ready: (signal) => guard(client.model, signal),
     async decide(request) {
       await guard(client.model, request.signal);
       return client.decide(request);

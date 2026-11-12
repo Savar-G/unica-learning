@@ -12,6 +12,7 @@ export function memoryPhotoCheckStore(o: { eligible?: Iterable<string>; now?: ()
   const store: PhotoCheckStore = {
     async eligible(parent) { return eligible.has(parent); },
     async claim({ parent, photo, token }) {
+      if (!eligible.has(parent)) return false;
       const p = photos.get(photo);
       if (!p || p.parent !== parent || p.state !== "saved" || p.sent) return false;
       const stale = p.check?.state === "pending" && Date.parse(p.check.at) < now() - PHOTO_CHECK_STALE_SECONDS * 1000;
@@ -27,6 +28,8 @@ export function memoryPhotoCheckStore(o: { eligible?: Iterable<string>; now?: ()
     async finish({ parent, photo, token, result }) {
       const p = photos.get(photo);
       if (!p || p.parent !== parent || p.check?.state !== "pending" || p.check.token !== token) return false;
+      // No longer a test family or an admin: nothing is stored, and the pending claim goes.
+      if (!eligible.has(parent)) { p.check = null; writes.push(`release:${photo}`); return false; }
       p.check = result;
       writes.push(`finish:${photo}`);
       return true;

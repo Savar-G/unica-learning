@@ -64,6 +64,8 @@ export function ScanPreview({ photo, child, onRetake, onSendAnyway, onProblem }:
     let live = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let checkTimer: ReturnType<typeof setTimeout> | undefined;
+    let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+    let stopWaiting: (() => void) | undefined;
     const base = `/api/account/scans/${photo}/preview`;
     const load = async (tries: number) => {
       const response = await fetch(base, { method: "POST", cache: "no-store" });
@@ -73,18 +75,30 @@ export function ScanPreview({ photo, child, onRetake, onSendAnyway, onProblem }:
       const answer = body.preview;
       if (!live) return;
       setCheck(body.photoCheck ?? null);
-      // While the check is pending, ask the preview again every second, for at most 6 s. Then stop: a later result is not shown.
+      // While the check is pending, ask the preview again every second, until one fixed deadline 6 s from now. At the
+      // deadline the screen stops waiting and shows no problem; an answer that comes later is not shown (the server
+      // still stores its result).
       if (answer.status === "ready" && body.photoCheck?.state === "pending") {
-        const until = Date.now() + PHOTO_CHECK_WAIT_MS;
+        const waiting = new AbortController();
+        stopWaiting = () => waiting.abort();
+        deadlineTimer = setTimeout(() => {
+          waiting.abort();
+          if (live) setCheck((held) => (held?.state === "pending" ? { state: "unknown" } : held));
+        }, PHOTO_CHECK_WAIT_MS);
         const poll = async () => {
-          if (!live) return;
-          const again = await fetch(base, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-          if (!live) return;
-          const view: PhotoCheckView = again?.photoCheck ?? null;
-          if (view?.state === "pending" && Date.now() + PHOTO_CHECK_POLL_MS <= until) { checkTimer = setTimeout(() => void poll(), PHOTO_CHECK_POLL_MS); return; }
-          setCheck(view?.state === "pending" ? { state: "unknown" } : view);
+          for (;;) {
+            await new Promise<void>((resolve) => { checkTimer = setTimeout(resolve, PHOTO_CHECK_POLL_MS); });
+            if (!live || waiting.signal.aborted) return;
+            const again = await fetch(base, { cache: "no-store", signal: waiting.signal }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+            if (!live || waiting.signal.aborted) return;
+            const view: PhotoCheckView = again?.photoCheck ?? null;
+            if (view?.state === "pending") continue;
+            clearTimeout(deadlineTimer);
+            setCheck(view);
+            return;
+          }
         };
-        checkTimer = setTimeout(() => void poll(), PHOTO_CHECK_POLL_MS);
+        void poll();
       }
       if (answer.status === "busy" && tries > 0) { timer = setTimeout(() => { void load(tries - 1).catch(() => { if (live) setFailed(true); }); }, 2000); return; }
       if (answer.status === "busy") { setFailed(true); return; }
@@ -105,7 +119,7 @@ export function ScanPreview({ photo, child, onRetake, onSendAnyway, onProblem }:
     void load(WAIT_TRIES).catch(() => { if (live) setFailed(true); });
     const hide = () => { live = false; clear(); };
     window.addEventListener("pagehide", hide);
-    return () => { live = false; if (timer) clearTimeout(timer); if (checkTimer) clearTimeout(checkTimer); window.removeEventListener("pagehide", hide); clear(); };
+    return () => { live = false; if (timer) clearTimeout(timer); if (checkTimer) clearTimeout(checkTimer); if (deadlineTimer) clearTimeout(deadlineTimer); stopWaiting?.(); window.removeEventListener("pagehide", hide); clear(); };
   }, [photo, attempt, clear]);
 
   const problem = check?.state === "done" ? check.problem : null;

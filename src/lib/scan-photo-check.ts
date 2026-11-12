@@ -50,8 +50,12 @@ export const PHOTO_CHECK_QUESTIONS: Readonly<Record<PhotoProblem, DecisionQuesti
  */
 export const PHOTO_CHECK_THRESHOLDS: Readonly<Record<PhotoProblem, number | null>> = { blurry: 0.5, glare: null, shadow: null, faint: null };
 
-/** Why a check is unknown: a decision error kind, or "image" (the page could not be read or sized) or "missing" (no page). */
-export type PhotoCheckError = DecisionErrorKind | "image" | "missing";
+/**
+ * Why a check is unknown: a decision error kind, "image" (the page could not be read or sized), "missing" (no page), or
+ * "ineligible" (the family stopped being a test family or an admin before the request; nothing was sent, and the
+ * database does not store it for a family that is no longer eligible).
+ */
+export type PhotoCheckError = DecisionErrorKind | "image" | "missing" | "ineligible";
 
 export type PhotoCheck =
   | { state: "pending"; token: string; at: string }
@@ -117,13 +121,17 @@ export interface PhotoCheckStore {
   /** A family in public.test_accounts, or an admin. A failed read is not eligible. */
   eligible(parent: string): Promise<boolean>;
   /**
-   * Writes {"state":"pending"} with this token when the photo has no check, or only a pending one older than
-   * PHOTO_CHECK_STALE_SECONDS, and is saved and not sent. False: nothing written.
+   * Writes {"state":"pending"} with this token when the family is a test family or an admin (checked in the same
+   * transaction), and the photo has no check, or only a pending one older than PHOTO_CHECK_STALE_SECONDS, and is saved
+   * and not sent. False: nothing written.
    */
   claim(o: PhotoRef & { token: string }): Promise<boolean>;
   /** The straightened page's bytes, or null when there is none. */
   straight(o: PhotoRef): Promise<Uint8Array | null>;
-  /** Stores the result only while this token's claim is the pending one. False: another claim replaced it. */
+  /**
+   * Stores the result only while this token's claim is the pending one and the family is still a test family or an
+   * admin. For a family that is no longer eligible it stores nothing and removes the pending claim. False: nothing stored.
+   */
   finish(o: PhotoRef & { token: string; result: Exclude<PhotoCheck, { state: "pending" }> }): Promise<boolean>;
 }
 
@@ -162,11 +170,17 @@ export async function runPhotoCheck(store: PhotoCheckStore, ref: PhotoRef, o: {
     let image: Uint8Array;
     try { image = await photoCheckImage(bytes); } catch { return unknown("image"); }
     const asked = askedProblems(thresholds);
+    // One time limit for the price check and the request.
+    const signal = AbortSignal.timeout(o.timeoutMs ?? PHOTO_CHECK_TIMEOUT_MS);
     try {
+      await o.client.ready?.(signal);
+      // The family can stop being a test family or an admin while the page and the price are read: ask again right
+      // before the photo is sent. A failed read is not eligible.
+      if (!await store.eligible(ref.parent).catch(() => false)) return unknown("ineligible");
       const answer = await o.client.decide({
         input: [{ type: "text", text: PHOTO_CHECK_CONTEXT }, { type: "image", mediaType: "image/jpeg", data: image }],
         questions: Object.fromEntries(asked.map((p) => [p, PHOTO_CHECK_QUESTIONS[p]])),
-        signal: AbortSignal.timeout(o.timeoutMs ?? PHOTO_CHECK_TIMEOUT_MS),
+        signal,
       });
       const probabilities: Partial<Record<PhotoProblem, number>> = {};
       for (const p of asked) {
