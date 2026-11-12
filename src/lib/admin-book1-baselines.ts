@@ -29,7 +29,7 @@ export function book1PendingText(reason: string): string {
   if (reason === "curriculum-version-changed") return "The curriculum changed after this book was planned. Run the recovery script on the Mac: it uses the curriculum of the book's build (docs/workbook-worker.md).";
   if (reason === "planned-on-another-build") return "The site was updated after this book was planned, so it cannot prove it copies the planned steps. Run the recovery script on the Mac: it uses the book's own build (docs/workbook-worker.md).";
   if (reason === "activity-before-boundary") return "Pages of this book were marked before the record was saved. The record cannot be saved now.";
-  if (reason === "revision-changed") return "The draft has a newer version than the approved one.";
+  if (reason === "revision-changed") return "The draft has a newer version than the one approved. Approve the newest version again: the site saves its record.";
   return `The save was refused (${reason}).`;
 }
 
@@ -38,5 +38,5 @@ export const book1ItemText = (i: Pick<Book1BaselineItem, "kind" | "reason" | "tr
   i.kind === "pending" && i.reason ? book1PendingText(i.reason)
     : `The site tried ${i.tries ?? FAILING_TRIES} times to save this record and could not. Check the run, or run the recovery script on the Mac (docs/workbook-worker.md).`;
 
-/** An item can be saved by the script only while its book has no activity. */
-export const book1ItemSavable = (i: Pick<Book1BaselineItem, "kind" | "reason">) => !(i.kind === "pending" && i.reason === "activity-before-boundary");
+/** The script can save an item only while its book has no activity, and never for a version that is not the approved one. */
+export const book1ItemSavable = (i: Pick<Book1BaselineItem, "kind" | "reason">) => !(i.kind === "pending" && (i.reason === "activity-before-boundary" || i.reason === "revision-changed"));

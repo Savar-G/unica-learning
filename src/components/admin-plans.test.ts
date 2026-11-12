@@ -36,6 +36,7 @@ const baselines: Book1BaselineLoad = { rows: [
   { draftId: "90559915-cc4b-46c6-bc00-d9ee80876b48", revision: 7, runId: RUN, parentId: pid(2), childId: "child-Waiting", childName: "Waiting", kind: "pending" as const, reason: "planned-on-another-build", tries: null, testFamily: false },
   { draftId: "11111111-cc4b-46c6-bc00-d9ee80876b48", revision: 2, runId: null, parentId: pid(3), childId: "child-Stuck", childName: "Stuck", kind: "failing" as const, reason: null, tries: 5, testFamily: false },
   { draftId: "22222222-cc4b-46c6-bc00-d9ee80876b48", revision: 3, runId: "00000000-0000-4000-8000-0000000000bb", parentId: pid(4), childId: "child-Mail", childName: "Mail", kind: "pending" as const, reason: "activity-before-boundary", tries: null, testFamily: false },
+  { draftId: "44444444-cc4b-46c6-bc00-d9ee80876b48", revision: 2, runId: "00000000-0000-4000-8000-0000000000dd", parentId: pid(5), childId: "child-Free", childName: "Free", kind: "pending" as const, reason: "revision-changed", tries: null, testFamily: false },
 ], unavailable: false, more: false };
 const none: Book1BaselineLoad = { rows: [], unavailable: false, more: false };
 const render = (show: boolean, b = none) => renderToStaticMarkup(createElement(PlansView, { cards, waitlist: [], holds, baselines: b, show, isTest, now, cardsMore: false, waitMore: false }));
@@ -89,6 +90,8 @@ it("lists each Book 1 record the site could not save, with the child, the draft,
   // A failing revision with no run found has no command; a book with marks cannot be saved, so it has none either.
   expect(count(html, "workbooks:book1-recover")).toBe(1);
   expect(html).toContain("Pages of this book were marked before the record was saved.");
+  // revision-changed always means an old version: its words say to approve the newest, and it has no command.
+  expect(html).toContain("Approve the newest version again");
   expect(html).toContain(`href="/admin/workbooks/runs/${RUN}"`);
 });
 

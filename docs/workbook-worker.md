@@ -144,7 +144,7 @@ The work review, the report text, the learner and child profiles and Maya run li
 
 ## Book 1 baseline recovery (#870)
 
-After an admin approves a Book 1 draft, the site saves its starting record (the Book 1 baseline) from the plan input that the run frame keeps. The site cannot save it in three cases. The admin run page then says "Not saved", and `/admin/next-steps` (Plans and delivery, "Book 1 starting records") lists the child, the draft, the version and the exact command. It also lists a revision that the site tried 3 times and could not save:
+After an admin approves a Book 1 draft, the site saves its starting record (the Book 1 baseline) from the plan input that the run frame keeps. The site cannot save it in three cases. The admin run page then says "Not saved", and `/admin/next-steps` (Plans and delivery, "Book 1 starting records") lists the child, the draft, the version and the exact command. It also lists a revision that the site tried 3 times and could not save. The list shows only a draft's newest approved version that has no baseline: an older version, or a version that a baseline now binds, is left out. A pending reason `revision-changed` (a newer draft version than the approved one) shows no command: approve the newest version again.
 
 - The run was made before #472, so its frame kept no plan input (`planning-capture-missing`).
 - The curriculum changed in a deploy after the book was planned (`curriculum-version-changed`). The record must copy the skills and steps of the version the book was planned on.
