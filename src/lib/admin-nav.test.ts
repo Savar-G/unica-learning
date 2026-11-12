@@ -13,14 +13,14 @@ describe("the admin sidebar", () => {
       ["Maya", ["Calls"]],
       ["Marketing", ["Flyers", "Emails"]],
       ["Quality", ["Templates", "Skill map", "AI reviews"]],
-      ["Team tools", ["Parent app preview", "Export"]],
+      ["Team tools", ["Parent app preview", "Budget", "Export"]],
     ]);
   });
 
   it("keeps every old address", () => {
     expect(ADMIN_NAV_ITEMS.map((i) => i.href)).toEqual([
       "/admin", "/admin/health", "/admin/parents", "/admin/tests", "/admin/feedback", "/admin/workbooks", "/admin/next-steps", "/admin/scans",
-      "/admin/maya", "/admin/flyers", "/admin/emails", "/admin/templates", "/admin/skill-map", "/admin/reviews", "/admin/dashboard", "/admin/export",
+      "/admin/maya", "/admin/flyers", "/admin/emails", "/admin/templates", "/admin/skill-map", "/admin/reviews", "/admin/dashboard", "/admin/budget", "/admin/export",
     ]);
   });
 
