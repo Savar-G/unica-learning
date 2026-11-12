@@ -26,7 +26,7 @@ import "./desk.css";
 // Maya's board then shows read-only. Nothing on the desk shows an answer.
 
 // The safety tip (Anthropic's guidelines for products serving minors, D-336): shown on the desk until the child's first
-// chat or call with Maya starts, then kept as seen on this device. Pending Savar's approval of the words.
+// chat or call with Maya starts, then kept as seen on this device. Words approved by Savar, 2026-11-12.
 export const SAFETY_TIP = "Don't tell Maya your full name, address or phone number.";
 const tipKey = (child: string) => `unica-maya-tip:${child}`;
 const TIP_EVENT = "unica-maya-tip";
