@@ -476,7 +476,7 @@ The hosted foreign key catalog was checked recursively from `parents` and `child
 | Treatment | Tables |
 | --- | --- |
 | Child and tests | `children`, `assessments`, `answers`, `assessment_facts`, `fact_answers`, `question_shows`, `work_reviews`, `reports`, `learner_profiles`, `anonymous_test_links` |
-| Child account and learning | `card_setups`, `waitlist_joins`, `sign_in_links`, `email_log`, dependent `email_copies` plus affected parent-owned email copies, `child_profiles`, `learning_events`, `skill_state_history`, `child_plan_states`, `child_card_updates`, `plan_starts`, `scan_link_emails` |
+| Child account and learning | `card_setups`, `waitlist_joins`, `sign_in_links`, `email_log`, dependent `email_copies` plus affected parent-owned email copies, `child_profiles`, `learning_events`, `skill_state_history`, `child_plan_states`, `child_card_updates`, `plan_starts`, `scan_link_emails`, `ai_usage_events` |
 | Child Maya records | `maya_calls`, `maya_call_connections`, `maya_call_alerts`, `maya_call_ink_events`, `maya_call_notes`, `maya_chat_messages`, `maya_demo_children`, `maya_minute_grants`, `maya_spend`, `maya_wording_history` |
 | Child workbook records | `workbooks`, `workbook_pages`, `workbook_questions`, `workbook_drafts`, `workbook_draft_revisions`, `workbook_runs`, `workbook_run_pages`, `workbook_run_attempts`, `workbook_run_solves`, `workbook_run_calls`, `workbook_run_frames`, `workbook_run_ai_calls`, `workbook_audit`, `workbook_edits`, `workbook_comments`, `workbook_edit_calls`, `workbook_emails`, `workbook_delivery_receipts`, `workbook_delivery_corrections`, `workbook_instructions`, `next_book_snapshots` |
 | Child scan records | `scan_photos`, `scan_calibrations` |

@@ -7,6 +7,7 @@
 // For the server and local scripts only. No "server-only" import so that its tests can run, as src/lib/ai-client.ts.
 import { openRouterDecisionClient } from "@/lib/decision-openrouter";
 import { livePriceGuard, withPriceGuard, type PriceGuard } from "@/lib/decision-price";
+import { recordAiUsage, type AiUsageTag } from "@/lib/ai-usage";
 
 /** The model when DECISION_MODEL is not set, until the comparison (#851) picks one. */
 export const DECISION_DEFAULT_MODEL = "typesafe/jev-1.14";
@@ -161,12 +162,27 @@ export interface DecisionClient {
 export function decisionClient(
   env: Readonly<Record<string, string | undefined>> = process.env,
   model?: string,
-  hooks?: { fetch?: typeof globalThis.fetch; timeout?: number; maxRetries?: number; priceGuard?: PriceGuard },
+  hooks?: { fetch?: typeof globalThis.fetch; timeout?: number; maxRetries?: number; priceGuard?: PriceGuard; usage?: AiUsageTag },
 ): DecisionClient | null {
   const apiKey = env.DECISIONS_OPENROUTER_API_KEY?.trim();
   if (!apiKey) return null;
   const id = model?.trim() || env.DECISION_MODEL?.trim() || DECISION_DEFAULT_MODEL;
   const { provider } = decisionModelTerms(id);
-  const { priceGuard, ...rest } = hooks ?? {};
-  return withPriceGuard(openRouterDecisionClient({ apiKey, model: id, provider, ...rest }), priceGuard ?? livePriceGuard);
+  const { priceGuard, usage, ...rest } = hooks ?? {};
+  const inner = withPriceGuard(openRouterDecisionClient({ apiKey, model: id, provider, ...rest }), priceGuard ?? livePriceGuard);
+  // The usd each request already computes also goes to the AI usage ledger (D-330), a failed one that was charged included.
+  // One reading for a request: `calls` is not known here, so it counts one.
+  return {
+    ...inner,
+    async decide(request) {
+      try {
+        const result = await inner.decide(request);
+        recordAiUsage(usage ?? { feature: "other" }, { provider: "openrouter", model: id, costUsd: result.usd, generationId: result.id });
+        return result;
+      } catch (e) {
+        if (e instanceof DecisionError && e.usd !== null) recordAiUsage(usage ?? { feature: "other" }, { provider: "openrouter", model: id, costUsd: e.usd });
+        throw e;
+      }
+    },
+  };
 }

@@ -55,7 +55,7 @@ export async function processScanMarking(db: SupabaseClient<Database>, parent: s
   const store = scanMarkingStore(db), child = row.data.child_id;
   // Recover committed intents and profile work even after image expiry or a worker crash after application.
   await store.publish(parent, child);
-  const result = await runScanMarking(store, { parent, photo }, crypto.randomUUID(), markingAiClient(env), () => new Date().toISOString(),
+  const result = await runScanMarking(store, { parent, photo }, crypto.randomUUID(), markingAiClient(env, undefined, undefined, { feature: "marking", parentId: parent, childId: child, source: { kind: "scan_photo", id: photo } }), () => new Date().toISOString(),
     { aiTimeLeftMs: options.aiTimeLeftMs });
   await rebuildOrDefer(db, child, options);
   return result;

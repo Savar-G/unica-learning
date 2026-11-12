@@ -17,6 +17,7 @@ import {
   type WorkReview,
 } from "@/lib/assessment";
 import { aiClient } from "@/lib/ai-client";
+import type { AiUsageTag } from "@/lib/ai-usage";
 import { aiWorkReviewer } from "@/lib/work-review-ai";
 import { fakeReviewer } from "@/lib/work-review-fake";
 
@@ -118,10 +119,10 @@ export type AiOutcome =
  * In development (never in a production build), AI_REVIEW_FAKE=sure or unsure gives the fake, for a report with
  * comments without a key.
  */
-export function aiReviewer(env: Record<string, string | undefined> = process.env): WorkReviewer | null {
+export function aiReviewer(env: Record<string, string | undefined> = process.env, usage?: AiUsageTag): WorkReviewer | null {
   const fake = env.AI_REVIEW_FAKE;
   if (env.NODE_ENV !== "production" && (fake === "sure" || fake === "unsure")) return fakeReviewer({ mode: fake });
-  const client = aiClient(env);
+  const client = aiClient(env, undefined, { usage: usage ?? { feature: "work_review" } });
   return client ? aiWorkReviewer(client) : null;
 }
 

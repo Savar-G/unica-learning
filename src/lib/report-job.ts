@@ -133,6 +133,7 @@ export async function runReportJob(assessmentId: string, origin: string, options
   const rebuildChild = options.rebuildChild ?? (options.profiles ? null : rebuildChildProfileNow);
   let profile: ProfileBuild | null = null;
   let childId: string | null = null;
+  let parentId: string | null = null;
   try {
     const inputs = await loadReportInputs(db.reader, assessmentId, db.comparison);
     if (!inputs) {
@@ -141,7 +142,8 @@ export async function runReportJob(assessmentId: string, origin: string, options
     }
     const { assessment } = inputs;
     childId = assessment.childId;
-    const { report, ai } = await storeReport(store, inputs, reviewer === undefined ? aiReviewer() : reviewer);
+    parentId = assessment.parentId;
+    const { report, ai } = await storeReport(store, inputs, reviewer === undefined ? aiReviewer(process.env, { feature: "report", parentId, childId, source: { kind: "assessment", id: assessmentId } }) : reviewer);
     profile = await profileStep(assessmentId, () => storeProfileFacts(db.profiles, inputs));
     if (!email) {
       console.info("[report] built with no email", assessmentId);
@@ -174,7 +176,7 @@ export async function runReportJob(assessmentId: string, origin: string, options
     if (failureAlert) await alertFailure(transport, assessmentId, message(e));
   }
   // Step 6, after the emails: the profile's AI parts, over the facts this run stored.
-  if (profile) await profileStep(assessmentId, () => addProfileAi(db.profiles, profile, { ai: profileAi === undefined ? profileAiClient() : profileAi }));
+  if (profile) await profileStep(assessmentId, () => addProfileAi(db.profiles, profile, { ai: profileAi === undefined ? profileAiClient(process.env, { feature: "learner_profile", parentId, childId, source: { kind: "assessment", id: assessmentId } }) : profileAi }));
   // Step 7: the child's profile, from what is stored now.
   if (childId && rebuildChild) await profileStep(assessmentId, () => rebuildChild(childId!));
   // Step 8: the first pages, queued only; made elsewhere.
