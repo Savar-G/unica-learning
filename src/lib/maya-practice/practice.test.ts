@@ -6,6 +6,7 @@ import { openRouterClient } from "@/lib/ai-openrouter";
 import { aiMayaModel, PROMPT_VERSION } from "@/lib/maya-model";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
+import { noteFenced } from "@/lib/ai-fenced";
 import {
   aiChildSimulator, aiJudge, buildReport, freeTalkMarkdown, JUDGE_SYSTEM, MAX_CHILD_TURNS, cappedClient, estimateCost, fakeJudge, fileHash, judgeFile, JUDGE_PROMPT_VERSION, judgeSchema,
   meteredFetch, memoryPracticeStore, PLAN_FILE, planSuite, PRACTICE_CASES, readJudgement, recordFile, reportMarkdown, runSuite, scriptedSimulator, simFile,
@@ -695,6 +696,33 @@ describe("the docs", () => {
     const md = reportMarkdown(onSubscription);
     expect(md).toContain("# Maya practice suite: PASS on the Claude subscription (not the final API check)");
     expect(reportMarkdown({ ...report, passed: true, full: true })).toMatch(/^# Maya practice suite: PASS$/m);
+  });
+});
+
+// First-ship practice at 6de7e777: proposals read from inside one code fence are counted in report.json and report.md.
+describe("the report counts proposals read from inside a code fence", () => {
+  it("counts each fenced proposal from the saved traces, per run, in report.json and report.md", async () => {
+    const store = memoryPracticeStore();
+    const rule = ruleMayaModel();
+    // Every proposal noted as read from a fence, as the OpenRouter client notes one.
+    const maya = { ...rule, propose: async (input: Parameters<typeof rule.propose>[0], signal: AbortSignal) => { const v = await rule.propose(input, signal); noteFenced(v); return v; } };
+    const simulator = scriptedSimulator(C07.fakeScript);
+    const judge = fakeJudge();
+    const validity = fakeValidityJudge();
+    const plan = planSuite([C07], versions({ maya, simulator, judge, validity }), { runs: 1 });
+    await runSuite([C07], plan, { maya, simulator, validity, judge, store });
+    const report = buildReport([C07], store, 1);
+    const trace = JSON.parse(store.load(traceFile("C07-r1"))!) as { turns: { kind: string; attempts?: { source: string; fenced?: true }[] }[] };
+    const calls = trace.turns.flatMap((t) => t.attempts ?? []).filter((a) => a.source === "model" || a.source === "repair");
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.every((a) => a.fenced === true)).toBe(true);
+    expect(report.fencedJson).toEqual({ calls: calls.length, fenced: calls.length, runs: { "C07-r1": calls.length } });
+    expect(JSON.parse(JSON.stringify(report)).fencedJson.fenced).toBe(calls.length);
+    expect(reportMarkdown(report)).toContain(`Fenced JSON: ${calls.length} of ${calls.length} Maya model calls were read from inside one code fence (C07-r1 ${calls.length}).`);
+    // With none, the count is there and is zero.
+    const { report: plain } = await suite([C07], { runs: 1 });
+    expect(plain.fencedJson).toMatchObject({ fenced: 0, runs: {} });
+    expect(reportMarkdown(plain)).toContain("Fenced JSON: 0 of ");
   });
 });
 
