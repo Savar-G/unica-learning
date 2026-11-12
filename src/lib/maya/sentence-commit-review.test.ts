@@ -59,7 +59,10 @@ describe("P1: each operand at most once in the whole turn", () => {
 describe("P2: a request to Maya is not harmless", () => {
   it.each(["Show me. That's 16.", "You show me. 16.", "Now you add. 16.", "Show me the ones. That's 16.", "You add 7 and 9. That's 16.",
     "Then you add 9. 16.", "Okay, you start. 16.", "I add 7 and 9. That's 16. Show me.", "7 and 9. You add. That's 16.", "Can you check? 7 + 9 is 16.",
-    "7 + 9 is 16. Can you check?", "Now show me. That's 16."])("does not credit %j", async (text) => {
+    "7 + 9 is 16. Can you check?", "Now show me. That's 16.",
+    // Re-check of 6965a1dd: a lead word does not turn a request into narration.
+    "Then show me. 16.", "Then show me. That's 16.", "So show me. That's 16.", "So, show me. 16.", "And show me. 16.", "First show me. 16.",
+    "7 and 9, then show me. 16.", "I add 7 and 9. Then show me. 16.", "So add. 16."])("does not credit %j", async (text) => {
     for (const first of [named(text), down(text)]) {
       const told = await play([first]);
       expect(rightLines(told), text).toBe(0);
@@ -70,7 +73,8 @@ describe("P2: a request to Maya is not harmless", () => {
   // Re-review (2026-11-12): only a bare present imperative at the start of a clause, or "you" before a verb, is a request.
   // A past or -ing form, or a verb after "then", is the child's own description.
   it.each(["Added 7 and 9. That's 16.", "I add 7, then add 9. That's 16.", "First I add 7, then add 9, that's 16.", "I added 7, then added 9, so 16.",
-    "Adding 7 and 9, I got 16.", "Started with 7. That's 16.", "You taught me this. 16."])("credits the ones for %j", async (text) => {
+    "Adding 7 and 9, I got 16.", "Started with 7. That's 16.", "You taught me this. 16.",
+    "And then add 9. That's 16.", "I add 7, then add the ones. That's 16.", "I add 9, then start with 7. That's 16."])("credits the ones for %j", async (text) => {
     for (const first of [named(text), down(text)]) {
       expect((await play([first]))[1], text).toMatchObject({ act: "guide", step: "tens", lines: ["check.right_step", "step.invite"] });
     }
