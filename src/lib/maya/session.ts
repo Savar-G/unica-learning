@@ -1578,8 +1578,8 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   // (first-ship practice, F06: "Seven plus nine is sixteen." got "Thank you for telling me. Can you try 27 + 39?"). Only a
   // refusal: the credit comes, as before, from a reading or code's fallback that names it.
   if (!blocked && pkg && ["guide", "try_target", "example_step", "clarify"].includes(p.act) && (reading.answers ?? []).length === 0) {
-    const missed = heardAnswers(s).find((a) => a.step !== "result");
-    if (missed) return no("invalid_proposal", `The child said ${valueText(missed.value)} for "${missed.step}": read it in reading.answers and answer it.`, teachingActs(s, reading, false).acts);
+    const missed = heardAnswers(s).find((a) => a.step !== "result" && a.verdict === "right");
+    if (missed) return no("invalid_proposal", `The child said ${valueText(missed.value)} for "${missed.step}": read it in reading.answers and answer it.`, actsNow(s, reading, false).acts);
   }
   const rightResult = checked.some((c) => c.problem === "target" && c.answer.step === "result" && c.answer.verdict === "right");
   // A checked wrong final answer takes back the solution that stood: the outcome follows the current result.
