@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import sharp from "sharp";
-import { DecisionError, type DecisionErrorKind } from "@/lib/decision-client";
+import { DecisionError, decisionClient, type DecisionErrorKind } from "@/lib/decision-client";
+import { DECISIONS_URL } from "@/lib/decision-openrouter";
+import { PRICE_CHECK_TTL_MS, priceGuard } from "@/lib/decision-price";
 import { fakeDecisionClient, noul } from "@/lib/decision-client-fake";
 import { memoryPhotoCheckStore } from "@/lib/scan-photo-check-memory";
 import {
@@ -149,6 +151,34 @@ describe("the photo check (#855)", () => {
     expect(client.requests).toHaveLength(1);
     expect(mem.photos.get(PHOTO)!.check).toBeNull();
     expect(mem.writes).toEqual([`claim:${PHOTO}`, `release:${PHOTO}`]);
+  });
+
+  // Re-check of PR #874, finding 1: with the real price wrapper, the price cache expires during the membership read, so
+  // decide() reads the price again; the admin removes the family during that second read. Nothing may be sent.
+  it("a family removed during a second price read inside decide() gets no photo request (real price wrapper)", async () => {
+    const mem = await setup();
+    let clock = 0, priceReads = 0;
+    const priceFetch = (async () => {
+      priceReads++;
+      if (priceReads === 2) mem.eligible.delete(FAMILY);
+      return Response.json({ data: { endpoints: [{ tag: "typesafe", pricing: { prompt: "0.000000042", completion: "0" } }] } });
+    }) as unknown as typeof globalThis.fetch;
+    const sent: string[] = [];
+    const decisionFetch = (async (url: string | URL | Request) => {
+      sent.push(String(url));
+      return Response.json({ answers: { blurry: { type: "noul", noul: 0.9 } }, usage: { cost: 0.0002 } });
+    }) as unknown as typeof globalThis.fetch;
+    const client = decisionClient({ DECISIONS_OPENROUTER_API_KEY: "sk-or-test" }, undefined, {
+      fetch: decisionFetch, maxRetries: 0, priceGuard: priceGuard({ fetch: priceFetch, now: () => clock }),
+    })!;
+    // The membership read is slow: the price cache expires while it runs, and the family is still a member at its end.
+    const store = { ...mem.store, eligible: async (p: string) => { clock += PRICE_CHECK_TTL_MS + 1; return mem.store.eligible(p); } };
+    await claimPhotoCheck(mem.store, ref(), { client, token: TOKEN });
+    const result = await runPhotoCheck(store, ref(), { client, token: TOKEN, log: () => {} });
+    expect(priceReads).toBe(2);
+    expect(sent.filter((u) => u === DECISIONS_URL)).toEqual([]);
+    expect(result).toMatchObject({ state: "unknown", error: "ineligible" });
+    expect(mem.photos.get(PHOTO)!.check).toBeNull();
   });
 
   it("is off with no decision client, or with no question that has a threshold", async () => {

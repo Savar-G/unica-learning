@@ -85,6 +85,12 @@ export interface DecisionRequest {
   /** By key: letters, digits, "_" and "-". */
   questions: Readonly<Record<string, DecisionQuestion>>;
   signal: AbortSignal;
+  /**
+   * Optional: the caller's last check. The client runs it after every wait that comes before a send (the live price
+   * check included) and immediately before each attempt sends the input. False, or a throw, sends nothing: the request
+   * fails with kind "cancelled".
+   */
+  beforeSend?: () => Promise<boolean>;
 }
 
 export interface DecisionResult {
@@ -108,9 +114,10 @@ export interface DecisionResult {
  * Why a decision failed. refused: the model declined a question. blocked: a provider safety block. timeout: no answer in
  * time, or the caller's signal stopped it. malformed: an answer that is not the typed answer asked for. unavailable: the
  * model or provider could not take or serve the request (an HTTP error, no connection). price: the live price of the
- * model was not shown to be at or below its pinned price (src/lib/decision-price.ts), so nothing was sent.
+ * model was not shown to be at or below its pinned price (src/lib/decision-price.ts), so nothing was sent. cancelled: the
+ * caller's `beforeSend` said no (or failed), so that attempt sent nothing.
  */
-export type DecisionErrorKind = "refused" | "blocked" | "timeout" | "malformed" | "unavailable" | "price";
+export type DecisionErrorKind = "refused" | "blocked" | "timeout" | "malformed" | "unavailable" | "price" | "cancelled";
 
 export class DecisionError extends Error {
   readonly kind: DecisionErrorKind;

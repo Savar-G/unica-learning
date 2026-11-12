@@ -173,6 +173,22 @@ describe("the OpenRouter decision client (#851), fetch faked", () => {
     expect(await kindOf(client(fakeFetch(decided(ALL)).fetch).decide(request({ signal: AbortSignal.abort() })))).toBe("timeout");
   });
 
+  it("beforeSend (#855): runs right before each attempt sends; false or a throw sends nothing and fails as cancelled", async () => {
+    // Disproved if a request reaches fetch after the caller's last check said no.
+    const no = fakeFetch(decided(ALL));
+    expect(await kindOf(client(no.fetch).decide(request({ beforeSend: async () => false })))).toBe("cancelled");
+    expect(await kindOf(client(no.fetch).decide(request({ beforeSend: async () => { throw new Error("read failed"); } })))).toBe("cancelled");
+    expect(no.sent).toHaveLength(0);
+    const yes = fakeFetch(decided(ALL));
+    await client(yes.fetch).decide(request({ beforeSend: async () => true }));
+    expect(yes.sent).toHaveLength(1);
+    // Asked again before the retry: a "no" there stops the second attempt, with the first attempt's cost kept.
+    let asks = 0;
+    const retry = fakeFetch({ status: 503, body: { usage: { cost: 0.04 } } }, decided(ALL));
+    const error = await client(retry.fetch).decide(request({ beforeSend: async () => ++asks === 1 })).catch((e: unknown) => e) as DecisionError;
+    expect([error.kind, error.usd, asks, retry.sent.length]).toEqual(["cancelled", 0.04, 2, 1]);
+  });
+
   it("is on only with DECISIONS_OPENROUTER_API_KEY, takes DECISION_MODEL, refuses a model that is not in the pinned table, and bounds a request by its pinned prices", async () => {
     expect(decisionClient({})).toBeNull();
     expect(decisionClient({ OPENROUTER_API_KEY: "sk-or-other", SCAN_MARKING_OPENROUTER_API_KEY: "sk-or-scan" })).toBeNull();

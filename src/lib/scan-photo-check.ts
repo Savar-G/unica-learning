@@ -173,14 +173,17 @@ export async function runPhotoCheck(store: PhotoCheckStore, ref: PhotoRef, o: {
     // One time limit for the price check and the request.
     const signal = AbortSignal.timeout(o.timeoutMs ?? PHOTO_CHECK_TIMEOUT_MS);
     try {
+      // The family can stop being a test family or an admin while the page and the price are read. The membership is
+      // asked again inside the client (beforeSend), after every price wait and right before the photo is sent; the
+      // early read here only saves a price wait for a family that is already out. A failed read is not eligible.
+      const member = () => store.eligible(ref.parent).catch(() => false);
       await o.client.ready?.(signal);
-      // The family can stop being a test family or an admin while the page and the price are read: ask again right
-      // before the photo is sent. A failed read is not eligible.
-      if (!await store.eligible(ref.parent).catch(() => false)) return unknown("ineligible");
+      if (!await member()) return unknown("ineligible");
       const answer = await o.client.decide({
         input: [{ type: "text", text: PHOTO_CHECK_CONTEXT }, { type: "image", mediaType: "image/jpeg", data: image }],
         questions: Object.fromEntries(asked.map((p) => [p, PHOTO_CHECK_QUESTIONS[p]])),
         signal,
+        beforeSend: member,
       });
       const probabilities: Partial<Record<PhotoProblem, number>> = {};
       for (const p of asked) {
@@ -190,7 +193,8 @@ export async function runPhotoCheck(store: PhotoCheckStore, ref: PhotoRef, o: {
       }
       return { state: "done", ...base, probabilities, problem: firstProblem(probabilities, thresholds), usd: answer.usd, ms: now() - started, at: new Date(now()).toISOString() };
     } catch (e) {
-      return unknown(e instanceof DecisionError ? e.kind : "unavailable");
+      // "cancelled" is only the membership check in beforeSend: nothing was sent.
+      return unknown(e instanceof DecisionError ? (e.kind === "cancelled" ? "ineligible" : e.kind) : "unavailable");
     }
   };
   const result = await check();
