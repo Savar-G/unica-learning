@@ -10,6 +10,7 @@ import { workbookRunner } from "@/lib/workbook-ai";
 import { AdminFrame } from "@/components/admin-frame";
 import { TestTag, TestsTable } from "@/components/admin";
 import { CardsTable, EmailTable, WaitlistTable } from "@/components/admin-records";
+import { goalFacts } from "@/lib/child-goals";
 import { ChildCard, FamilyHead, FamilyTimeline, SectionHead } from "@/components/admin-family-page";
 import { DeleteFamily } from "@/components/delete-family";
 import { TestAccount } from "@/components/test-account";
@@ -72,7 +73,7 @@ export default async function ParentPage({ params }: PageProps<"/admin/parents/[
         {kids.map((c) => <ChildCard key={c.id} runner={runner} now={now} isTest={isTest} c={{
           id: c.id, parentId: c.parent_id, name: c.first_name, grade: c.grade, place: c.province === "other" ? "other curriculum" : c.province, addedAt: c.created_at,
           test: latestTest(f?.tests ?? [], c.id), tests: (f?.tests ?? []).filter((t) => t.childId === c.id).length,
-          plan: childPlan(family.cards, c.id), book: books.find((b) => b.childId === c.id) ?? null,
+          plan: childPlan(family.cards, c.id), book: books.find((b) => b.childId === c.id) ?? null, goals: goalFacts(c),
           chat: c.grade < CHAT_GRADE ? "From Grade 3." : chat.listed ? "The family is on the chat list." : chat.test ? "Test family: chat works without the list." : "Not on the chat list.",
         }} />)}
       </div>}

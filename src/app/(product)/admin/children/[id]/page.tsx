@@ -6,6 +6,7 @@ import { workbookRunner } from "@/lib/workbook-ai";
 import { buildBooks } from "@/lib/admin-production";
 import { adminChildProfilePath, adminParentPath, when } from "@/lib/admin-view";
 import { answerFacts, bookMix, fromRow, interestLabel } from "@/lib/learning-style";
+import { goalFacts } from "@/lib/child-goals";
 import { TestTag, TestsTable, gradeAndPlace } from "@/components/admin";
 import { AdminFrame } from "@/components/admin-frame";
 import { RecordFacts } from "@/components/admin-records";
@@ -81,6 +82,8 @@ export default async function ChildPage({ params }: PageProps<"/admin/children/[
       ["Grade and curriculum", gradeAndPlace(c.grade, c.province)],
       ["Parent", <Link key="parent" href={adminParentPath(c.parent_id)}>{family.parent.name}</Link>],
       ["Added (Pacific)", when(c.created_at)],
+      // D-325: the parent's goals from signup, for the results call.
+      ...goalFacts(c),
       ["Workbook computer", runner === "mac" ? <WorkerLine key="worker" worker={worker} /> : "Made on the server"],
     ]} />
 

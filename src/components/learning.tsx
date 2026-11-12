@@ -6,18 +6,20 @@
 // #195 (D-107): two groups. "About {child}" holds the questions to answer with the child (feeling about math, how they
 // like to learn, interests, what is hard); "Your goal and time" holds the parent's two. Every question is optional, and
 // a second tap on a chosen single answer clears it.
+// D-325: the feeling about math and the main goal moved to the goals step right after signup (/account/goals). The card
+// no longer asks them and the route no longer writes them; the summary still shows them, and only the card's own answers
+// count as answered (cardAnswered).
 import { useRouter } from "next/navigation";
 import { useRef, useState, type FormEvent } from "react";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 import {
+  cardAnswered,
   feelingLabel,
   goalLabel,
   INTERESTS,
   interestLabel,
-  LEARNING_GOALS,
   LEARNING_ROUTE,
   LEARNING_STYLES,
-  MATH_FEELINGS,
   NOTE_MAX,
   STYLE_MAX,
   styleLabel,
@@ -78,8 +80,8 @@ export function LearningSummary({ answers }: { answers: LearningAnswers }) {
 
 /** `place`: on the report (with Skip) or on its own account page. */
 export function LearningStep({ childId, name, start, place }: { childId: string; name: string; start: LearningAnswers | null; place: "report" | "account" }) {
-  const [saved, setSaved] = useState<LearningAnswers | null>(start);
-  const [state, setState] = useState<State>(start ? "saved" : "ask");
+  const [saved, setSaved] = useState<LearningAnswers | null>(cardAnswered(start) ? start : null);
+  const [state, setState] = useState<State>(cardAnswered(start) ? "saved" : "ask");
   const [form, setForm] = useState<LearningAnswers>(start ?? EMPTY);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -87,7 +89,7 @@ export function LearningStep({ childId, name, start, place }: { childId: string;
   const sending = useRef(false);
   const router = useRouter();
 
-  const empty = !form.styles.length && !form.interests.length && !form.note.trim() && !form.feeling && !form.goal && !form.weeklyTime;
+  const empty = !form.styles.length && !form.interests.length && !form.note.trim() && !form.weeklyTime;
 
   const save = async (e: FormEvent) => {
     e.preventDefault();
@@ -164,9 +166,6 @@ export function LearningStep({ childId, name, start, place }: { childId: string;
         <p className="eyebrow" id={`lrn-child-${childId}`}>About {name}</p>
         <p className="lrn-together">If {name} is nearby, answer these together.</p>
 
-        <OneChoice name={`lrn-feeling-${childId}`} legend={`How does ${name} feel about math?`} options={MATH_FEELINGS} value={form.feeling}
-          onChange={(feeling) => setForm((f) => ({ ...f, feeling }))} />
-
         <fieldset className="lrn-q">
           <legend>How does {name} like to learn something new? <span>Choose one or two.</span></legend>
           <div className="lrn-picks">
@@ -201,9 +200,7 @@ export function LearningStep({ childId, name, start, place }: { childId: string;
       </div>
 
       <div className="lrn-group" role="group" aria-labelledby={`lrn-you-${childId}`}>
-        <p className="eyebrow" id={`lrn-you-${childId}`}>Your goal and time</p>
-        <OneChoice name={`lrn-goal-${childId}`} legend="What is your main goal?" options={LEARNING_GOALS} value={form.goal}
-          onChange={(goal) => setForm((f) => ({ ...f, goal }))} />
+        <p className="eyebrow" id={`lrn-you-${childId}`}>Your time</p>
         <OneChoice name={`lrn-time-${childId}`} legend="How much time each week?" hint="For math practice at home." options={WEEKLY_TIMES} value={form.weeklyTime}
           onChange={(weeklyTime) => setForm((f) => ({ ...f, weeklyTime }))} />
       </div>

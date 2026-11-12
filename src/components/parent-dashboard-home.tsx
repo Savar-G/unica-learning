@@ -10,7 +10,7 @@ import { SupportPage } from "@/components/support-page";
 import type { StartState } from "@/lib/assessment";
 import { gradeLabel } from "@/lib/assessment/grades";
 import { startWhen, type FamilyZone } from "@/lib/family-time";
-import { fromRow, learningPath, type LearningRow } from "@/lib/learning-style";
+import { cardAnswered, fromRow, learningPath, type LearningRow } from "@/lib/learning-style";
 import type { ChatUsage } from "@/lib/maya-chat";
 import type { ParentNote } from "@/lib/parent-maya-notes";
 import type { ParentDashboard } from "@/lib/parent-dashboard-server";
@@ -69,7 +69,7 @@ export function ParentDashboardHome({ dashboard, overview, kids, addressChild, p
   const scanLink = scansEnabled && !links.some((l) => l.tab === "scan_pages") && <p><Link className="btn" href="/account/scan">Scan pages <span aria-hidden="true">→</span></Link></p>;
   if (kid && state && view && (view.opensOn === "start_test" || view.opensOn === "continue_or_wait")) {
     return (
-      <ParentTestStart childId={kid.id} name={kid.first_name} state={state} when={startWhen(state, timeZone)} report={reportFor(kid.id, state)} late={lateFor(kid.id, state)} phone={phone} sent={sentHere} parentEmail={parentEmail} alerts={alerts} learning={view.reportIds.length > 0 ? { path: learningPath(kid.id), answered: !!fromRow(kid) } : null}>
+      <ParentTestStart childId={kid.id} name={kid.first_name} state={state} when={startWhen(state, timeZone)} report={reportFor(kid.id, state)} late={lateFor(kid.id, state)} phone={phone} sent={sentHere} parentEmail={parentEmail} alerts={alerts} learning={view.reportIds.length > 0 ? { path: learningPath(kid.id), answered: cardAnswered(fromRow(kid)) } : null}>
         {note}
         {progressCard}
         {noticeDue && current.size > 0 && <MayaNoticeCard />}
@@ -102,7 +102,7 @@ export function ParentDashboardHome({ dashboard, overview, kids, addressChild, p
               <span>
                 <b>The test</b><span className="small">{gradeLabel(kid.grade)} · {CURRICULA[kid.province]}</span>
                 {view && view.reportIds.length > 0 && <Link className="small acct-learn" href={learningPath(kid.id)}>
-                  {fromRow(kid) ? `How ${kid.first_name} learns: change answers` : `Tell us how ${kid.first_name} learns`}
+                  {cardAnswered(fromRow(kid)) ? `How ${kid.first_name} learns: change answers` : `Tell us how ${kid.first_name} learns`}
                 </Link>}
               </span>
               {phone && state.kind !== "wait"

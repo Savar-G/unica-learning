@@ -12,7 +12,7 @@ import { parentId, sessionClient } from "@/lib/supabase-auth";
 import { isPhone } from "@/lib/account-server";
 import { reportPath } from "@/lib/report-view";
 import { reportLateNow } from "@/lib/report-late";
-import { fromRow, LEARNING_COLUMNS, learningPath } from "@/lib/learning-style";
+import { cardAnswered, fromRow, LEARNING_COLUMNS, learningPath } from "@/lib/learning-style";
 import { pinIsSet } from "@/lib/parent-pin-server";
 import { workbookStore } from "@/lib/workbook-store";
 import type { WorkbookSummary } from "@/lib/workbook-content";
@@ -117,7 +117,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
               <b>{c.first_name}</b><span className="small">{gradeLabel(c.grade)} · {CURRICULA[c.province]}</span>
               {/* #126: after the first report, the parent can answer or change how the child learns. */}
               {newestReport.has(c.id) && <Link className="small acct-learn" href={learningPath(c.id)}>
-                {fromRow(c) ? `How ${c.first_name} learns: change answers` : `Tell us how ${c.first_name} learns`}
+                {cardAnswered(fromRow(c)) ? `How ${c.first_name} learns: change answers` : `Tell us how ${c.first_name} learns`}
               </Link>}
             </span>
             {/* Inside the 30 days after a test there is nothing to open on the laptop: the phone shows the date too (#72). */}

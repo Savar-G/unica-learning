@@ -1,0 +1,3873 @@
+{
+  "version": 1,
+  "rows": [
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q2",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q2",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q4",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q4",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q1",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q1",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q3",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q3",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q5",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q5",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.020000000000000018
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q7",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q7",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q8",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.01
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q8",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.020000000000000018
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q9",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.01
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q9",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q11",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q11",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q10",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q10",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q12",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q12",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q13",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q13",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q14",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q14",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.020000000000000018
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q16",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q16",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q15",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.01
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q15",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q17",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q17",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.020000000000000018
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q19",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q19",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q6",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.01
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q6",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q20",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q20",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q18",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.01
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q18",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.030000000000000027
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q21",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q21",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q22",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q22",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q23",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q23",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q24",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q24",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q25",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q25",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q26",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.01
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q26",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q27",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.01
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q27",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q28",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q28",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q29",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q29",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q30",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q30",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q31",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q31",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q32",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q32",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q33",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.01
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q33",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q34",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q34",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q35",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q35",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q36",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q36",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.020000000000000018
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q37",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q37",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q38",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q38",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.020000000000000018
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q40",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q40",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q41",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q41",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.020000000000000018
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q39",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.01
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q39",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.030000000000000027
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q42",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q42",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q43",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q43",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q44",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q44",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q46",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q46",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q45",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q45",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q47",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q47",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q50",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q50",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q49",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q49",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q51",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q51",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q52",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q52",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q53",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q53",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.020000000000000018
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q54",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q54",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q55",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q55",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q56",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q56",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q57",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q57",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q58",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q58",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q59",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q59",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q60",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q60",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q61",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q61",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q48",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q48",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q62",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q62",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q63",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q63",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q64",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q64",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q66",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q66",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q67",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q67",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q68",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q68",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q69",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q69",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q70",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q70",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.020000000000000018
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q71",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q71",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q72",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q72",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q73",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q73",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.020000000000000018
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q74",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q74",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q65",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q65",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q75",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q75",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.020000000000000018
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q76",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q76",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q77",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q77",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q78",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q78",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q81",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q81",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q80",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q80",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.020000000000000018
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q79",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q79",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q82",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q82",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q84",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q84",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q83",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.01
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q83",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.020000000000000018
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q85",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q85",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.020000000000000018
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q86",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.01
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q86",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q87",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.01
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q87",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q88",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q88",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q89",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.01
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q89",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q91",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q91",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q90",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q90",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q93",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q93",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.020000000000000018
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q92",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q92",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q96",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q96",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q94",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q94",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q95",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q95",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q97",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q97",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.020000000000000018
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q100",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q100",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q98",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q98",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q101",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q101",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q99",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q99",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.020000000000000018
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q102",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q102",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q104",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q104",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q103",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q103",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.020000000000000018
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q105",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q105",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.020000000000000018
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q107",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q107",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.020000000000000018
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q106",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q106",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "reading-1",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.08
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q108",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "q108",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.010000000000000009
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "reading-3",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.02
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "reading-2",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.05
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "reading-5",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.06
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "reading-4",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.01
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "reading-6",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.08
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "reading-7",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.04
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "reading-8",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.04
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "reading-9",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "reading-11",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.01
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "reading-10",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.09
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "reading-12",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.06
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "reading-13",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.06
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "reading-15",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.11
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "reading-14",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "reading-16",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.27
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "reading-18",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.14
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "reading-17",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.04
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "reading-19",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.25
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "reading-21",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.02
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "reading-20",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.04
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "reading-22",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.05
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "reading-23",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.05
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "reading-24",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.19
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "reading-25",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.02
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "reading-26",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.09
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "reading-29",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.02
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "reading-28",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.12
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "reading-27",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.03
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "reading-30",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.19
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-1",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.99
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-3",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.98
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-2",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.98
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-4",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.98
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-5",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.99
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-7",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.99
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-6",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.98
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-8",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.98
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-9",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.99
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-10",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.98
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-13",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.98
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-11",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.98
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-12",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.98
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-16",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.98
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-14",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.98
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-15",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.98
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-17",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.98
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-20",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.98
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-18",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.98
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-19",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.98
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-21",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.99
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-22",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.98
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-24",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.98
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-23",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.98
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-25",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.99
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-26",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.98
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-28",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.98
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-27",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.98
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-29",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.98
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-30",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.98
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q2",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.005910586200492979
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q2",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.04022289238393306
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q3",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.011289791025678092
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q3",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.029057094855791776
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q4",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.027195453170969237
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q4",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.03155267794878991
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q1",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.0181416154513497
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q1",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.0365781014147889
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q6",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.02372379039715898
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q6",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.04190311681640224
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q5",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.02159979527526694
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q5",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.04170669001311711
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q7",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.031093143836439553
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q7",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.03641952611553401
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q8",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.014921950197798985
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q8",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.03419697053898196
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q11",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.00387566373732691
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q11",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.04500836836859323
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q10",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.03492354064429256
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q10",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.03914686819433666
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q12",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.025049112515007715
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q12",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.04185882174866662
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q9",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.01669096916439847
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q9",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.03339580795432184
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q13",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.011954613675642604
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q13",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.032767014834025665
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q14",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.02162908917167207
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q14",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.04154829462901921
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q16",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.01596779505940938
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q16",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.031918256823332825
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q15",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.02425540906161036
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q15",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.025463639809252703
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q17",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.02839395475579792
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q17",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.04080010771727205
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q18",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.03926668849531245
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q18",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.04064960578047061
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q20",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.024011619232647215
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q20",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.03043871595513903
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q19",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.009869791207080838
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q19",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.032438409866116236
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q22",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.01626035465183752
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q22",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.023662562355689643
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q21",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.01563982996822398
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q21",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.039365478663315634
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q23",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.023057582982161318
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q23",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.03165040114482387
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q24",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.02467156927742086
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q24",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.04226246116315335
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q25",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.027188273196186212
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q25",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.04109907207212271
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q26",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.030853016670538098
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q26",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.05076957506751156
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q27",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.005476138987128907
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q27",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.035538695737036496
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q29",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.04328122134099958
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q29",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.044280537547402354
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q30",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.01037341431846853
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q30",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.03486743961989547
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q28",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.0181416154513497
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q28",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.0365781014147889
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q31",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.02264222627512445
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q31",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.042937570757182075
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q34",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.00927515552962617
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q34",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.032275304081084366
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q32",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.009559810154870122
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q32",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.03573847915313244
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q33",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.014542968832095167
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q33",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.0371414829336264
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q35",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.02755694749351445
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q35",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.0328309335248923
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q36",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.018612353466935384
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q36",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.04422678170363825
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q38",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.022263550225287684
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q38",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.031461729792317206
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q37",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.010752685985484456
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q37",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.029295708298917922
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q39",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.03107648249679001
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q39",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.046191851479814416
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q40",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.014247199674817641
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q40",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.027641024078806642
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q42",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.04322373198253497
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q42",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.04150373017331932
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q41",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.014816650961452554
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q41",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.05022087615258042
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q43",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.016072676382666677
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q43",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.039990272076674716
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q44",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.00798880716951383
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q44",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.045724783523295676
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q45",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.020479312609427563
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q45",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.039445894582026186
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q47",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.017209968700898408
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q47",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.030465034119955603
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q46",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.03753358669801315
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q46",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.04134703175523868
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q48",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.015114766881063004
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q48",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.035235386620155684
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q49",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.032485074250244245
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q49",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.02509771903768654
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q50",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.022738235855895808
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q50",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.04342966487453437
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q52",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.0509791686821085
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q52",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.03865896930509172
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q51",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.026362249209544088
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q51",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.03387698779015558
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q53",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.036409862865235926
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q53",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.032156983508739745
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q55",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.04546598922828601
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q55",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.03692273492071041
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q54",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.030127484703896208
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q54",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.02951391738482001
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q56",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.04496667367860758
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q56",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.04633466621999183
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q57",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.034006214336532156
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q57",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.0371106925390029
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q58",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.03109749972855532
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q58",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.03913716080298868
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q59",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.025145931975568966
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q59",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.0496383294383701
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q61",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.04581455879461027
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q61",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.049224842021580506
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q60",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.04096430587135953
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q60",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.03680781010260781
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q65",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.04489094430927236
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q65",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.038020745970143155
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q64",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.017966160664261637
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q64",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.03851366614013252
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q62",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.015189254748381384
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q62",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.031023460148060233
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q68",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.028542547075241016
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q68",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.04410621596971864
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q66",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.022477154469235032
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q66",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.02918259784743138
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q63",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.016033421071244305
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q63",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.04190250362547243
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q67",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.029843801328017894
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q67",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.03547177066699381
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q69",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.019096660699924918
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q69",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.03476367983205553
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q71",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.03305852537595349
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q71",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.05084882164305404
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q70",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.017264946492052624
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q70",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.04597254056001954
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q73",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.020132622134240885
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q73",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.040094200786445766
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q72",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.031340086550242445
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q72",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.041910338038845585
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q74",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.025457678555590862
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q74",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.031414563603880064
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q75",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.038607724930387284
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q75",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.0372222324847048
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q76",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.018857888888203753
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q76",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.041025445399386684
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q77",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.021760084590699304
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q77",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.04050036536741464
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q78",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.05320458778171544
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q78",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.04653688544267731
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q79",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.050312120282609174
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q79",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.03398302724100655
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q80",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.018172253213796216
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q80",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.042598095322918916
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q81",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.028072901133330604
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q81",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.03589696396841913
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q82",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.01904605824406389
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q82",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.038080593434072996
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q85",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.019017445971228064
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q85",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.03728317702900996
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q84",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.03853563991364434
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q84",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.033847129310138446
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q83",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.03610807463199103
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q83",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.04098733184035075
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q86",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.04041053874041783
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q86",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.04662449976016769
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q88",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.026312707929702382
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q88",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.04368018481399916
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q89",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.01380351213244745
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q89",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.03920836761974633
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q87",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.019179569263660982
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q87",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.037810825553823646
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q90",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.040161946933162114
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q90",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.03728426502745663
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q91",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.020978534952046223
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q91",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.029235275071142763
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q92",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.043938349062676005
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q92",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.04120159115969613
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q93",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.023846267591659392
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q93",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.04431803968439263
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q94",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.03283421537421423
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q94",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.03687426883019429
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q95",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.036730968478056625
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q95",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.031027537155941975
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q97",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.020542566670083716
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q97",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.03656167333073912
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q96",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.01974076119241839
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q96",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.031181958859813563
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q99",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.024380026571841115
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q99",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.03260583557222152
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q98",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.025457678555590862
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q98",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.031414563603880064
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q100",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.04581455879461027
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q100",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.049224842021580506
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q102",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.024144735189430104
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q102",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.037641804212997676
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q103",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.02545172459411191
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q103",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.02953588511106109
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q101",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.020033742676307875
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q101",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.03992285492527814
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q104",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.03247376789334014
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q104",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.027973390656332753
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q106",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.048245648520317125
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q106",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.03366999457581865
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q105",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.027025960988211358
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q105",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.032162825450498755
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q108",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.04496667367860758
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q108",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.04633466621999183
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q107",
+      "gate": "reading_level",
+      "changed": false,
+      "probability": 0.022585927593371403
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "q107",
+      "gate": "one_right_answer",
+      "changed": false,
+      "probability": 0.040819811745652745
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "reading-1",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.49793942766514543
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "reading-2",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.5119771411387922
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "reading-3",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.07859821851510446
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "reading-4",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.1102549997747776
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "reading-5",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.6431120035869
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "reading-6",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.36850580348168493
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "reading-7",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.107270504889279
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "reading-8",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.5098814918818092
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "reading-10",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.26449393864160836
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "reading-9",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.07851356807611445
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "reading-11",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.46222614981498933
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "reading-12",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.5692391205158915
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "reading-14",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.06588937097186177
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "reading-13",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.590518702267098
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "reading-16",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.6845806527702804
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "reading-15",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.30737012848352574
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "reading-18",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.07122818600411532
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "reading-17",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.3065755178512436
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "reading-20",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.051707822776252715
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "reading-19",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.56298497298291
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "reading-21",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.06765209899683627
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "reading-22",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.029379940359864336
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "reading-23",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.28853771596745387
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "reading-26",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.09376284419227084
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "reading-24",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.6778307386843156
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "reading-25",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.1385972979590928
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "reading-27",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.08746018576933154
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "reading-29",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.04631311813871634
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "reading-28",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.13251538643291336
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "answers-1",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.9402646651098734
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "reading-30",
+      "gate": "reading_level",
+      "changed": true,
+      "probability": 0.57823782013749
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "answers-3",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.9469439627303788
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "answers-2",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.9228448354274076
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "answers-4",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.9589616404234702
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "answers-5",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.9343590347875909
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "answers-6",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.9259655933824491
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "answers-7",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.9530013660676511
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "answers-9",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.9712168259336812
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "answers-8",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.9679524733495931
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "answers-10",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.9554245449318005
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "answers-12",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.9640585753023307
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "answers-11",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.9437091206348927
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "answers-13",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.944565275896656
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "answers-14",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.9478309907697109
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "answers-15",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.956423224506689
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "answers-18",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.9625822477644309
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "answers-17",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.9448099481233801
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "answers-16",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.956111234080977
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "answers-19",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.9551995128059083
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "answers-20",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.9563585027576214
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "answers-23",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.9687402022560315
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "answers-21",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.9492024187392314
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "answers-22",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.9625748686201658
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "answers-27",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.9564757108148416
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "answers-26",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.9656358344442441
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "answers-25",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.9572634699654087
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "answers-24",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.9361468621046445
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "answers-30",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.96867574459682
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "answers-28",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.9549815690854966
+    },
+    {
+      "model": "google/gemini-decision-1",
+      "id": "answers-29",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.9534316028433955
+    }
+  ],
+  "failures": [],
+  "knownSpend": 0.0065412600000000175,
+  "unpriced": 0,
+  "maximumExposure": 0.0065412599999994415
+}
