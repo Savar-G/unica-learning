@@ -385,7 +385,7 @@ describe("the Overview (#560)", () => {
     ]);
   });
 
-  const progress = (over: Partial<OverviewProgress> = {}) => ({ ...own, marks: [], skillMarks: [], history: [], historyAssessment: "t", ...over });
+  const progress = (over: Partial<OverviewProgress> = {}) => ({ ...own, marks: [], skillMarks: [], ...over });
 
   it("combines stored page results with the test and keeps the assessment level", async () => {
     const data = progress({ marks: at("number", 4, 4, 0) });
@@ -406,52 +406,37 @@ describe("the Overview (#560)", () => {
   });
 
   describe("Skills mastered", () => {
-    const tally = (standard: string, at = "2026-11-01T18:00:00Z") => ({ ...own, assessmentId: "t", standard, correct: 4, total: 4, at });
-    const history = [
-      { standard: "3.1", state: "mastered" as const, changedAt: "2026-11-01T06:30:00Z", evidenceAt: "2026-11-01T06:00:00Z" },
-      { standard: "3.2", state: "mastered" as const, changedAt: "2026-11-01T07:30:00Z", evidenceAt: "2026-11-01T07:00:00Z" },
-    ];
-    const tables = { ...tested, switches: { progress: true, maya: false, scanPages: false }, results: [result("t")], skillTests: [tally("3.1"), tally("3.2")] };
+    const tally = (standard: string, at: string) => ({ ...own, assessmentId: "t", standard, correct: 4, total: 4, at });
+    const vancouver = { family: { timeZone: "America/Vancouver", postal: null } };
+    const base = { ...tested, ...vancouver, switches: { progress: true, maya: false, scanPages: false }, results: [result("t")], overviewProgress: [progress()] };
     const grade3 = BC_SKILL_MAP.standards.filter((s) => s.grade === 3).length;
+    const skills = async (skillTests: ReturnType<typeof tally>[], over = {}) => (await read({ ...base, skillTests, ...over }))?.skills;
 
-    it("counts the rule's states and the recorded changes since the start of the family month", async () => {
-      // 06:30 UTC on November 1 is October 31 in Vancouver; 07:30 UTC is November 1.
-      const view = await read({ ...tables, family: { timeZone: "America/Vancouver", postal: null }, overviewProgress: [progress({ history })] });
-      expect(view?.skills).toEqual({ mastered: 2, total: grade3, moreThisMonth: 1 });
+    it("counts the rule's states now, and as new only what the rule on earlier tests and marks did not hold", async () => {
+      // 06:30 UTC on November 1 is October 31 in Vancouver; 18:00 UTC is November 1.
+      expect(await skills([tally("3.1", "2026-10-20T18:00:00Z"), tally("3.2", "2026-11-01T06:30:00Z"), tally("3.3", "2026-11-01T18:00:00Z")]))
+        .toEqual({ mastered: 3, total: grade3, moreThisMonth: 1 });
     });
 
-    it("counts no old mastery as new when the history's first rows are recorded this month", async () => {
-      // A test on October 20; the first rebuild with the history records both states on November 3.
-      const first = history.map((row) => ({ ...row, changedAt: "2026-11-03T18:00:00Z", evidenceAt: "2026-10-20T18:00:00Z" }));
-      const vancouver = { family: { timeZone: "America/Vancouver", postal: null } };
-      expect((await read({ ...tables, ...vancouver, overviewProgress: [progress({ history: first })] }))?.skills).toEqual({ mastered: 2, total: grade3, moreThisMonth: 0 });
-      // A later row that rests on a mark from this month is new.
-      const later = [{ ...first[0], state: "working_on" as const }, { ...first[1] }, { ...first[0], changedAt: "2026-11-04T10:00:00Z", evidenceAt: "2026-11-04T09:00:00Z" }];
-      expect((await read({ ...tables, ...vancouver, overviewProgress: [progress({ history: later })] }))?.skills).toEqual({ mastered: 2, total: grade3, moreThisMonth: 1 });
-    });
-
-    it("counts no change this month while the stored history is not from the newest test and every mark", async () => {
-      for (const historyAssessment of [null, "older-test"]) {
-        const view = await read({ ...tables, family: { timeZone: "America/Vancouver", postal: null }, overviewProgress: [progress({ history, historyAssessment })] });
-        expect(view?.skills).toEqual({ mastered: 2, total: grade3, moreThisMonth: 0 });
-      }
+    it("counts no skill as new when it was mastered before the month and mastered again this month", async () => {
+      expect(await skills([tally("3.1", "2026-10-20T18:00:00Z"), tally("3.1", "2026-11-01T18:00:00Z")])).toEqual({ mastered: 1, total: grade3, moreThisMonth: 0 });
     });
 
     it("counts marked items as the Progress tab does, so the tile and the map agree", async () => {
       const page = (right: boolean, at: string, review = false) => ({ standard: "3.3", right, review, at });
-      const skillMarks = [page(true, "2026-11-01T18:00:00Z"), page(true, "2026-11-02T18:00:00Z"), page(true, "2026-11-02T19:00:00Z"),
-        page(true, "2026-11-03T18:00:00Z"), page(false, "2026-11-03T19:00:00Z"), page(true, "2026-11-04T10:00:00Z", true)];
-      const withMarks = { ...tables, overviewProgress: [progress({ skillMarks })] };
+      const skillMarks = [page(true, "2026-10-01T18:00:00Z"), page(true, "2026-10-02T18:00:00Z"), page(true, "2026-10-02T19:00:00Z"),
+        page(true, "2026-10-03T18:00:00Z"), page(false, "2026-10-03T19:00:00Z"), page(true, "2026-11-02T10:00:00Z", true)];
+      const withMarks = { ...base, skillTests: [tally("3.1", "2026-10-20T18:00:00Z"), tally("3.2", "2026-10-20T18:00:00Z")], overviewProgress: [progress({ skillMarks })] };
       const tile = (await read(withMarks))?.skills;
       const map = (await readProgress(parent({ children: [leahAnswered, omar], ...card, ...withMarks }), "child-1", NOW))?.areas.flatMap((a) => a.tiles);
       expect(map?.find((t) => t.code === "3.3")?.state).toBe("mastered");
-      expect(tile?.mastered).toBe(3);
       expect(map?.filter((t) => t.state === "mastered")).toHaveLength(3);
-      expect(tile?.total).toBe(map?.length);
+      // The review that held this month made 3.3 mastered: it is new; the tests from October are not.
+      expect(tile).toEqual({ mastered: 3, total: map?.length, moreThisMonth: 1 });
     });
 
     it("shows only with the Progress tab", async () => {
-      expect((await read({ ...tables, switches: { progress: false, maya: false, scanPages: false }, overviewProgress: [progress({ history })] }))?.skills).toBeNull();
+      expect(await skills([tally("3.1", "2026-10-20T18:00:00Z")], { switches: { progress: false, maya: false, scanPages: false } })).toBeNull();
     });
   });
 

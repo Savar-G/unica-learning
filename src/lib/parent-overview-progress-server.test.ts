@@ -40,26 +40,11 @@ function reader(items: ReturnType<typeof mark>[], questionId = "item", secondTri
 }
 
 describe("stored overview marks", () => {
-  it("treats the stored states as current only when the profile includes every published mark", async () => {
-    const built = async (marking: Parameters<typeof reader>[3]) => (await reader([], "item", [], marking).value.overviewProgress(child))?.historyAssessment;
-    expect(await built({ revision: 0, status: null })).toBe("test-1");
-    expect(await built({ revision: 1, status: { revision: 1, profile_revision: 1 } })).toBe("test-1");
-    expect(await built({ revision: 2, status: { revision: 2, profile_revision: 1 } })).toBeNull();
-    expect(await built({ revision: 1, status: null })).toBeNull();
-  });
   it("reads again when the marking revision moves between the reads, and gives up after three tries", async () => {
     const moved = reader([mark("right")], "item", [], undefined, [1, 2]);
     expect((await moved.value.overviewProgress(child))?.marks).toEqual([{ area: "number", level: 2, correct: true }]);
     expect(moved.requests.filter((t) => t === "rpc/scan_marking_command" ).length).toBeGreaterThan(3);
     await expect(reader([], "item", [], undefined, [1, 2, 3, 4, 5, 6]).value.overviewProgress(child)).rejects.toThrow("overview progress changed");
-  });
-  it("reads the skill history only when asked for", async () => {
-    const without = reader([]);
-    expect((await without.value.overviewProgress(child))?.history).toEqual([]);
-    expect(without.requests).not.toContain("skill_state_history");
-    const withHistory = reader([]);
-    await withHistory.value.overviewProgress(child, { history: true });
-    expect(withHistory.requests).toContain("skill_state_history");
   });
   it("reads no workbook question with no marked item, and only two package fields with one", async () => {
     const none = reader([]);

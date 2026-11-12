@@ -239,13 +239,10 @@ export function memoryParentViewReaders(tables: MemoryParentViewTables) {
         const unreliable = new Set(own(tables.results).filter((r) => r.unreliable).map((r) => r.assessmentId));
         return own(tables.skillTests).filter((t) => t.childId === childId && reported.has(t.assessmentId)).map((t) => ({ ...t, unreliable: unreliable.has(t.assessmentId) }));
       },
-      async overviewProgress(childId, options = {}) {
+      async overviewProgress(childId) {
         read("overviewProgress");
-        const row = own(tables.overviewProgress).find((r) => r.childId === childId);
         if (!own(tables.children).some((c) => c.id === childId)) return null;
-        // As the server: the history is read only when asked for.
-        if (!row) return { marks: [], skillMarks: [], history: [], historyAssessment: null };
-        return { ...row, history: options.history ? row.history : [] };
+        return own(tables.overviewProgress).find((r) => r.childId === childId) ?? { marks: [], skillMarks: [] };
       },
       async workbookStandards(workbookId) {
         read("questions");

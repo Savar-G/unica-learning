@@ -2,7 +2,7 @@ import "server-only";
 import { resultLate } from "@/lib/report-late";
 import {
   REPORTED_STRAND_NAMES, areaLevels, attemptState, storedLevelCertainty,
-  type AreaAnswer, type AreaLabel, type Attempt, type Grade, type Level, type ReportModel, type ReportedStrand, type SkillMark, type SkillTestResult, type SkillState,
+  type AreaAnswer, type AreaLabel, type Attempt, type Grade, type Level, type ReportModel, type ReportedStrand, type SkillMark, type SkillTestResult,
 } from "@/lib/assessment";
 import { childStage, type StageView, type TabSwitches, type TestFact } from "@/lib/child-stage";
 import { addMonths, familyZone, formatCalendarDate, localDateTime, localDay, localMonth, type FamilyZone } from "@/lib/family-time";
@@ -71,19 +71,12 @@ export interface PlanRecord {
 }
 
 /** Who reads: the seam. A read error throws. A row the reader may not see is not an error: it is left out. */
-/** What marking stored for one child, read in one consistent moment (the marking revision and the profile did not change). */
+/** What marking stored for one child, read in one consistent moment (the marking revision did not change). */
 export interface OverviewProgress {
   /** Each eligible original result of a shipped page of its current print revision, as an area answer (D-303). */
   marks: AreaAnswer[];
   /** Each marked item's effective original result, as the profile rebuild reads them (`effectiveSkillMarks`). */
   skillMarks: SkillMark[];
-  /**
-   * The recorded skill state changes (`skill_state_history`), oldest first: when a rebuild recorded each one, and the
-   * time of the test or mark it rests on (null for a workbook or no evidence). Empty unless asked for.
-   */
-  history: { standard: string; state: SkillState; changedAt: string; evidenceAt: string | null }[];
-  /** The test the stored child profile was built on, when that profile includes every published mark; else null. */
-  historyAssessment: string | null;
 }
 
 export interface ParentViewReader {
@@ -125,7 +118,7 @@ export interface ParentViewReader {
   /** Each finished test's tally of each standard it asked, for one child: what the skill state rule reads, and nothing else. */
   skillTests(childId: string): Promise<SkillTestResult[]>;
   /** One child's saved page results and recorded skill changes; null for a child that is not the parent's. */
-  overviewProgress(childId: string, options?: { history?: boolean }): Promise<OverviewProgress | null>;
+  overviewProgress(childId: string): Promise<OverviewProgress | null>;
   /** The BC standards of one of the family's shipped workbooks. */
   workbookStandards(workbookId: string): Promise<string[]>;
 }
@@ -373,7 +366,7 @@ function scannedDays(pages: readonly WorkbookPageRecord[], scans: readonly Saved
  * no data is null or empty. The level comes from the newest finished test, scored by the assessment core; while its
  * report is not ready, it comes from no test. The bars add the saved original page results (`overviewProgress`) to that
  * test's answers; Skills mastered counts the skill state rule on the same inputs as the Progress tab, and its "more this
- * month" reads the recorded changes (`skill_state_history`). Nothing comes from a raw
+ * month" runs the same rule on the tests and marks from before the family month. Nothing comes from a raw
  * profile, a Maya call, an AI finding or a parent's judgement (D-303).
  */
 export async function readOverview(reader: ParentViewReader, childId: string, now: number): Promise<OverviewView | null> {
@@ -390,39 +383,29 @@ export async function readOverview(reader: ParentViewReader, childId: string, no
     .reduce<TestRecord | null>((best, t) => (!best || t.completedAt! > best.completedAt! ? t : best), null);
   const reportReady = latest !== null && reports.some((r) => r.assessmentId === latest.id);
   // A failed marking read leaves the bars from the test alone, and they say so; the tile needs the marks, so it hides.
-  const progress = await reader.overviewProgress(child.id, { history: child.tabs.includes("progress") }).catch(markingReadFailed);
+  const progress = await reader.overviewProgress(child.id).catch(markingReadFailed);
   const { level, areas } = reportReady ? await testLevel(reader, latest, child.schoolGrade, zone, progress?.marks ?? []) : { level: null, areas: [] };
 
   const book = workbooks.filter((w) => w.childId === child.id).sort((a, b) => b.number - a.number)[0];
   let skills: OverviewView["skills"] = null;
-  if (child.tabs.includes("progress") && level && !level.unreliable && latest && progress) {
+  if (child.tabs.includes("progress") && level && !level.unreliable && progress) {
     const [workbookStandards, results] = await Promise.all([
       book ? reader.workbookStandards(book.id).catch(() => null) : [],
       reader.skillTests(child.id).catch(() => null),
     ]);
     if (workbookStandards && results) {
+      const tests = tallies(results);
+      const shownAt = (input: { tests: SkillTestResult[]; marks: readonly SkillMark[] }) =>
+        shownSkillStates({ schoolGrade: child.schoolGrade, workingLevel: level.working, workbookStandards, ...input });
       // The same rule and inputs as the Progress tab's map (shownSkillStates), so the two always agree.
-      const shown = shownSkillStates({ schoolGrade: child.schoolGrade, workingLevel: level.working, tests: tallies(results), workbookStandards, marks: progress.skillMarks });
+      const shown = shownAt({ tests, marks: progress.skillMarks });
       const mastered = shown.filter((s) => s.state === "mastered").length;
-      // "This month" compares recorded changes, so it shows only when the history was recorded from the newest test and
-      // every published mark: a rebuild still to come would make an old history count from the wrong level.
-      let moreThisMonth = 0;
-      if (progress.historyAssessment === latest.id) {
-        const codes = new Set(shown.map((s) => s.standard));
-        const current = new Map<string, SkillState>();
-        const before = new Map<string, SkillState>();
-        const month = localMonth(now, zone);
-        for (const row of progress.history) {
-          if (!codes.has(row.standard) || Date.parse(row.changedAt) > now) continue;
-          current.set(row.standard, row.state);
-          // A row recorded this month can rest on an older test or mark: the first rebuild after the history began
-          // records every state at once. The state at the month start is the last one that rests on evidence from
-          // before it, so an old mastery never counts as new. The count is net: one skill lost and one gained shows 0.
-          if (localMonth(row.evidenceAt ?? row.changedAt, zone) < month || localMonth(row.changedAt, zone) < month) before.set(row.standard, row.state);
-        }
-        const count = (states: Map<string, SkillState>) => [...states.values()].filter((state) => state === "mastered").length;
-        moreThisMonth = Math.max(0, Math.min(mastered, count(current) - count(before)));
-      }
+      // "This month" is net, over the same standards: the rule now, less the rule on only the tests and marks from before
+      // the family-local month began. The recorded history is not used: it holds when a rebuild saw each state, and a
+      // first rebuild this month records old states with this month's time.
+      const month = localMonth(now, zone);
+      const before = shownAt({ tests: tests.filter((t) => localMonth(t.at, zone) < month), marks: progress.skillMarks.filter((m) => localMonth(m.at, zone) < month) });
+      const moreThisMonth = Math.max(0, mastered - before.filter((s) => s.state === "mastered").length);
       skills = { mastered, total: shown.length, moreThisMonth };
     }
   }
