@@ -7638,6 +7638,27 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      admin_families_at_risk_v1: {
+        Args: { p_with_tests?: boolean }
+        Returns: {
+          child_id: string
+          child_name: string
+          ending_free: boolean
+          ends_at: string
+          held_at: string
+          held_book: number
+          held_workbook_id: string
+          last_activity_at: string
+          last_activity_kind: string
+          last_sign_in_at: string
+          next_charge_at: string
+          parent_id: string
+          parent_name: string
+          plan_kind: string
+          plan_since: string
+          test_family: boolean
+        }[]
+      }
       admin_health_v1: {
         Args: { p_with_tests?: boolean }
         Returns: {
