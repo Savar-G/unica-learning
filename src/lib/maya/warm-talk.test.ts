@@ -108,6 +108,8 @@ describe("the phrase bank", () => {
         continue;
       }
       if (key === "confirm.answer") { expect(wordings).toHaveLength(2); continue; }
+      // A right answer with a wrong reason: exactly the 3 wordings Savar approved (#884, D-329).
+      if (key === "check.fix") { expect(wordings).toHaveLength(3); continue; }
       expect(wordings.length, key).toBeGreaterThanOrEqual(5);
       expect(wordings.length, key).toBeLessThanOrEqual(8);
     }
