@@ -77,7 +77,7 @@ describe("the behaviour gate", () => {
     const kinds = new Set(all.flatMap((v) => v.trace!.turns.map((t) => (t.kind === "writing" ? `writing:${t.status}` : t.kind))));
     for (const k of ["start", "child", "tick", "writing:started", "writing:done", "technical", "maya", "partial", "maya_said", "content_problem"]) expect(kinds.has(k), k).toBe(true);
     const reasons = new Set(all.map((v) => v.trace!.outcome!.reason));
-    expect([...reasons].sort()).toEqual(["child_stopped", "content_issue", "no_response", "safety", "solved", "technical_issue", "time_limit"]);
+    expect([...reasons].sort()).toEqual(["child_stopped", "content_issue", "maya_closed", "no_response", "safety", "solved", "technical_issue", "time_limit"]);
     const sources = new Set(all.flatMap((v) => v.trace!.turns.flatMap((t) => (t.kind === "maya" ? t.attempts.map((a) => a.source) : []))));
     expect([...sources].sort()).toEqual(["controller", "fallback", "model", "repair"]);
   });

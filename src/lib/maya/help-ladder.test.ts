@@ -65,7 +65,7 @@ describe("help requests alone: the easier example, then an honest close (#735, d
     // A final-only step does not repeat its top lines: no guide turn says the same words twice.
     const guides = said.filter((x) => x.act === "guide").map((x) => x.text);
     expect(new Set(guides).size).toBe(guides.length);
-    expect(session.outcome).toMatchObject({ reason: "child_stopped" });
+    expect(session.outcome).toMatchObject({ reason: "maya_closed" });
     expect(session.solved).toBeNull();
     expect(session.assistance).not.toContain("answer_given");
   });
@@ -113,7 +113,7 @@ describe("help requests alone: the easier example, then an honest close (#735, d
     expect(send({ type: "proposal", at, proposal: { version: 2, act: "close", parts: [{ warm: "closing" }] } }).refusal).toMatchObject({ code: "line_not_offered" });
     const closed = ok({ act: "close", parts: [{ line: "close.stuck", slots: {} }, { line: "close.together", slots: {} }] });
     expect(closed.effects.some((e) => e.kind === "say" && CLOSES.some((c) => e.text.startsWith(c)))).toBe(true);
-    expect(s.outcome).toMatchObject({ reason: "child_stopped" });
+    expect(s.outcome).toMatchObject({ reason: "maya_closed" });
   });
 });
 

@@ -282,7 +282,8 @@ export function packageHash(pkg: unknown): string {
 const RUNNERS = ["text", "livekit-text", "voice"];
 const SOURCES = ["model", "repair", "fallback", "controller"];
 const STATES: readonly string[] = [...MAIN_STATES, ...INTERRUPTS];
-const REASONS = ["solved", "child_stopped", "time_limit", "no_response", "technical_issue", "content_issue", "safety"];
+// "maya_closed" (2026-11-12): Maya's own close of an unsolved call. Any version may hold it; older traces recorded that close as child_stopped.
+const REASONS = ["solved", "child_stopped", "time_limit", "no_response", "technical_issue", "content_issue", "safety", "maya_closed"];
 const PAPER = ["child_confirmed", "declined", "unknown"];
 const UNDERSTANDING = ["evidence_observed", "uncertain"];
 const HASH = /^sha256:[0-9a-f]{64}$/;

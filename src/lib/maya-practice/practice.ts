@@ -373,10 +373,12 @@ export const INVALID = {
 export type InvalidCode = keyof typeof INVALID;
 
 /** A hard failure of a practice run: the scripted gate's, plus the two the practice suite adds. */
-/** Only the recorded D-199 replacement permits a stopped result in a solved-only case. */
+/** Only the recorded D-199 replacement permits Maya's own close (maya_closed) in a case that requires solved. */
 // This check trusts counters written only by the controller.
 export function backupStop(trace: MayaTrace, pkg: QuestionPackage): boolean {
-  if (trace.version < 10 || trace.outcome?.reason !== "child_stopped" || !pkg.operation || !pkg.answer) return false;
+  // maya_closed since 2026-11-12; a version 10 trace recorded before then holds the same close as child_stopped.
+  const reason = trace.outcome?.reason;
+  if (trace.version < 10 || (reason !== "maya_closed" && reason !== "child_stopped") || !pkg.operation || !pkg.answer) return false;
   const answer = pkg.answer.value;
   const alone = closeExpressionContainsAnswer(pkg.operation, answer);
   const turns = trace.turns.filter((turn): turn is Extract<MayaTrace["turns"][number], { kind: "maya" }> => turn.kind === "maya" && turn.output !== null);
@@ -716,7 +718,7 @@ export function judgeRun(c: PracticeCase, id: string, store: PracticeStore, opti
   // A run the runner cut (the turn cap, a simulator failure) ends as technical_issue because the runner ended it, not
   // Maya. That run is invalid (`turn_cap`, `simulator_error`), so its outcome is not checked as well (#604).
   const runnerEnded = (log?.cut === "turn_cap" || log?.cut === "simulator_error") && trace?.outcome?.reason === "technical_issue";
-  if (trace?.outcome && !runnerEnded && !c.reasons.includes(trace.outcome.reason) && !(c.reasons.length === 1 && c.reasons[0] === "solved" && backupStop(trace, pkg))) v.hardFailures.push({ code: "outcome_not_allowed", detail: `the call ended as ${trace.outcome.reason}; allowed: ${c.reasons.join(", ")}` });
+  if (trace?.outcome && !runnerEnded && !c.reasons.includes(trace.outcome.reason) && !(c.reasons.includes("solved") && backupStop(trace, pkg))) v.hardFailures.push({ code: "outcome_not_allowed", detail: `the call ended as ${trace.outcome.reason}; allowed: ${c.reasons.join(", ")}` });
   if (!log || log.kind !== "maya-practice-child" || log.run !== id || !Array.isArray(log.turns)) v.invalid.push({ code: "child_log_missing", detail: "no readable simulator log" });
   else {
     v.versions.simulator = log.simulator;

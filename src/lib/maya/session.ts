@@ -124,7 +124,8 @@ const BOARD_ACTS: readonly Act[] = ["clarify", "example_step", "try_target", "gu
 /** Acts whose proposal may score the child's answers. Safety, a stop, a confirmation or a wait never scores one. */
 const SCORING_ACTS: readonly Act[] = ["clarify", "example_step", "try_target", "guide", "accept_answer", "ask_write", "close"];
 
-export type Reason = "solved" | "child_stopped" | "time_limit" | "no_response" | "technical_issue" | "content_issue" | "safety";
+/** maya_closed (2026-11-12): Maya ended an unsolved call on her own (the D-199 two-miss close, the "This one is hard" close), not the child. */
+export type Reason = "solved" | "child_stopped" | "time_limit" | "no_response" | "technical_issue" | "content_issue" | "safety" | "maya_closed";
 /** Least help first: the outcome keeps the most help used, never less. */
 export const ASSISTANCE = ["independent", "hint", "worked_example", "guided", "answer_given"] as const;
 export type Assistance = (typeof ASSISTANCE)[number];
@@ -2132,8 +2133,9 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     s.expect = "maya";
     s.silence = "none";
   } else if (p.act === "close") {
-    // The backup close at the time limit is a time_limit end (closeCause), never the child stopping (#749).
-    end(s, backupClose && base.state !== "TIME_CLOSE" ? "child_stopped" : closeCause(base, spoken.chosen.some((o) => o.line === "close.stuck") || s.honestClose === true), effects, false);
+    // The backup close at the time limit is a time_limit end (closeCause), never the child stopping (#749). Before the
+    // time limit it is Maya's own close (maya_closed, 2026-11-12), never the child stopping either.
+    end(s, backupClose && base.state !== "TIME_CLOSE" ? "maya_closed" : closeCause(base, spoken.chosen.some((o) => o.line === "close.stuck") || s.honestClose === true), effects, false);
   } else if (doneAfterAnswer || p.act === "safety" || (p.act === "example_step" && s.exampleShown < pkg!.easierExample.steps.length)) {
     s.expect = "maya";
     s.silence = "none";
@@ -3018,7 +3020,8 @@ function stepStatement(pkg: OperationPackage, step: Extract<WorkedStep, { kind: 
   const operands = (step.carryIn > 0 ? [...step.digits, step.carryIn] : step.digits).slice().sort((a, b) => a - b).join(",");
   const lead = new RegExp(`^(?:for the ${place}|(?:the )?${place} first)$`);
   const already = new RegExp(`^i (?:already did (?:that|that one|this one|it|the ${place})|did (?:that|that one|it) already)$`);
-  const result = new RegExp(`^(?:i (?:already )?(?:got|get)|it's|it is)\\s+(.+?)(?: for the ${place})?$`);
+  // "That's 16" and "I already got 16 for that" are the child's own first-person claims of the value (2026-11-12).
+  const result = new RegExp(`^(?:i (?:already )?(?:got|get)|it's|it is|that's|that is|that makes)\\s+(.+?)(?: for (?:the ${place}|that|that one|this one|it))?$`);
   const placeResult = new RegExp(`^for the ${place},? i (?:already )?(?:got|get) (.+)$`);
   const clauses = said.flatMap((x, n) => {
     const sentence = x.trim().replace(/[.!]+$/, "").toLowerCase();
@@ -3051,11 +3054,51 @@ function stepStatement(pkg: OperationPackage, step: Extract<WorkedStep, { kind: 
     // The written digit comes after the total.
     const w = /^(?:i )?wrote (?:the )?(.+)$/.exec(c);
     if (w && totals === 1 && plainNumber(w[1]) === step.write) continue;
+    // Sentence-level commit (2026-11-12): any other clause must be harmless.
+    if (harmlessClause(step, c, totals === 0)) continue;
     return false;
   }
   if (totals !== 1) return false;
   // The same written-digit check every reading of a column gets.
   return checkColumnClaims(pkg, step, pkg.steps, step, said.join(" ")) === "right";
+}
+
+/**
+ * The only words a harmless clause of a step statement may hold besides the step's own operands (2026-11-12, the
+ * sentence-level commit rule): how the child worked ("I add the ones first", "Like you showed me", "I start with the
+ * ones"). An allow-list, fail-closed: no other speaker ("my", "mom", "she", "they"), no hedge ("maybe", "think", "guess",
+ * "know", "or"), no negation ("not", "don't"), no "is" or "are" that could state a value, and no question (a question mark
+ * never reaches a clause: stepStatement refuses it first). The past tense "added" is here too (decision 2026-11-12: J1 and
+ * j06-review P1-b follow the sentence-level rule).
+ */
+const HARMLESS_WORDS = new Set(["i", "me", "you", "like", "showed", "show", "shown", "taught", "said", "add", "added", "adding", "start", "started",
+  "with", "first", "the", "column", "digits", "numbers", "together", "and", "so", "then", "now", "okay", "ok", "um", "uh", "oh", "well", "plus", "+",
+  "ones", "tens", "hundreds", "thousands", "tenths", "hundredths", "thousandths"]);
+const PLACE_WORDS = new Set(["ones", "tens", "hundreds", "thousands", "tenths", "hundredths", "thousandths"]);
+
+/**
+ * A clause of a step statement that commits nothing and withdraws nothing (sentence-level commit rule, 2026-11-12): every
+ * word is on HARMLESS_WORDS or is a number; the only place it names is the step's own; its numbers are some of the step's
+ * own operands (and its carry-in), never the total, another number or a number twice, and only before the committing
+ * clause (`numbers`: "I add 7 and 9. That's 16." but not "9 and 7 is 16, 9 and 7."); and a clause that names "you" (Maya)
+ * holds no number and is not what she said, so "Like you showed me" is harmless and "like you said" and "You said 16"
+ * are not: that is Maya's number, not the child's. The committing clause is the caller's: a harmless clause alone never
+ * credits.
+ */
+function harmlessClause(step: Extract<WorkedStep, { kind: "add-column" }>, clause: string, numbers: boolean): boolean {
+  const words = clause.replace(/\+/g, " + ").split(/\s+/).filter(Boolean);
+  if (words.length === 0 || !words.every((w) => HARMLESS_WORDS.has(w) || plainNumber(w) !== null)) return false;
+  if (words.some((w) => PLACE_WORDS.has(w) && w !== step.place)) return false;
+  const r = readNumbers(clause);
+  if (r.unreadable) return false;
+  if (words.includes("you") && words.includes("said")) return false;
+  if (r.values.length === 0) return true;
+  if (!numbers || words.includes("you")) return false;
+  const left = step.carryIn > 0 ? [...step.digits, step.carryIn] : [...step.digits];
+  return r.values.every((v) => {
+    const at = v.type === "number" ? left.indexOf(v.value) : -1;
+    return at >= 0 && left.splice(at, 1).length === 1;
+  });
 }
 
 /** The steps the ladder is past: done by the child, or passed after Maya showed them at H3 (copiedStep). */
@@ -3340,6 +3383,10 @@ const totalOf = (st: CreditStep) =>
 /** The current step whose total is the turn's one number, with that total, for the step confirm. */
 function confirmTarget(s: Session): { step: CreditStep; total: AnswerValue } | null {
   if (!s.turn || !s.package || (patternOf(s.package) && hedgedTurn(s))) return null;
+  // A column statement followed only by a check of its value ("7 + 9 is 16. Is that right?"): the step's confirm
+  // (sentence-level commit rule, 2026-11-12).
+  const column = currentColumn(s);
+  if (column && statementAsked(s.package, column, s.turn.text)) return { step: column, total: totalOf(column) };
   const opts = readOptionsFor(s.package);
   const values = valuesIn(s.turn.text, opts);
   if (values.length !== 1 || readAnswer(s.turn.text, opts).kept.length !== 1 || !confirmWordsOnly(s.turn.text)) return null;
@@ -3355,6 +3402,24 @@ function confirmTarget(s: Session): { step: CreditStep; total: AnswerValue } | n
  */
 function stepConfirmable(s: Session): AnswerValue | null {
   return confirmTarget(s)?.total ?? null;
+}
+
+/** A question that only checks the value the child just said: "Is that right?", "Am I right?", "Is it correct?", "Right?". */
+const VALUE_CHECK = /^(?:(?:so|okay|ok|um|uh|oh)\b[,\s]*)?(?:is (?:that|it|this) (?:right|correct)|am i right|right|correct|did i get it right|did i do it right)$/;
+
+/**
+ * The turn is a step statement (stepStatement, with the sentence-level commit rule) followed only by questions that check
+ * its value (VALUE_CHECK): "7 + 9 is 16. Is that right?" (2026-11-12). It is not credited as it is: it goes to the step's
+ * confirm question ("Did you say 16?"), whose plain yes credits it (stepAsked). Any other question, or a value check
+ * before the statement, is not this.
+ */
+function statementAsked(pkg: OperationPackage, step: Extract<WorkedStep, { kind: "add-column" }>, text: string): boolean {
+  const t = text.trim().replace(/’/g, "'");
+  if (t.includes("\n")) return false;
+  const sentences = t.split(/(?<=[.!?])\s+/).filter(Boolean);
+  let end = sentences.length;
+  while (end > 0 && sentences[end - 1].trim().endsWith("?") && VALUE_CHECK.test(sentences[end - 1].trim().toLowerCase().replace(/[?]+$/, "").trim())) end--;
+  return end > 0 && end < sentences.length && stepStatement(pkg, step, sentences.slice(0, end).join(" "));
 }
 
 /**
@@ -3618,7 +3683,11 @@ export function fallbacks(given: Session, refused: readonly unknown[] = []): Pro
   const solved = s.solved !== null || rightResult;
   // A step a model named, in a turn that is not heard: the confirm question comes before more help. Only that refusal: a
   // claim judged wrong is not a hearing problem (review of fec3dac4).
-  const unheard = refused.flatMap(answersOf).some((a) => !answers.some((k) => k.step === a.step) && checkAnswers(session, [a], [])?.unheard === true);
+  // With no model reading, a step statement followed by a check of its value ("7 + 9 is 16. Is that right?", statementAsked)
+  // goes to the same confirm question (sentence-level commit rule, 2026-11-12).
+  const column = currentColumn(session);
+  const askedStatement = !!column && answers.length === 0 && !!pkg && !!session.turn && statementAsked(pkg, column, session.turn.text) && stepSaidUnheard(session);
+  const unheard = askedStatement || refused.flatMap(answersOf).some((a) => !answers.some((k) => k.step === a.step) && checkAnswers(session, [a], [])?.unheard === true);
   // A claim child who only asks for help and has not seen the easier example gets it first (lesson 10, #737 review P2).
   const claimPkg = sessionClaim(pkg) !== null;
   const exampleFirst = claimPkg && claimExampleDue(s) && claimHelpOnly(s, reading ?? {}, rightResult);
@@ -3752,7 +3821,9 @@ function closeCause(before: Session, stuck = false): Reason {
   // A hearing that failed twice is a technical issue. A close Maya chose on purpose (close.stuck, or a question type's own
   // honest close as the way out) is never one, also while Maya waits on a confirm (round 4: F02-r1; re-review of #731, P1).
   if (before.state === "CONFIRM_HEARD" && !stuck) return "technical_issue";
-  return "child_stopped";
+  // Any other close is Maya's own (2026-11-12): the child did not ask to stop. A solved question is "solved" by the
+  // outcome's priority (outcomeOf).
+  return "maya_closed";
 }
 
 /** When the call ended, or ends now: never after the call's limit. */

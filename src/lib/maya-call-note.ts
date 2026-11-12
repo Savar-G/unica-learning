@@ -284,6 +284,8 @@ export function codeSentences(f: NoteFacts, heldSaid = false): string[] {
       f.reason === "time_limit" ? "The call ran out of time before the question was done."
       : f.reason === "no_response" ? `${CHILD} stopped answering, so the call ended before the question was done.`
       : f.reason === "technical_issue" ? "The call stopped because of a problem on our side."
+      // Pending Savar's approval (2026-11-12)
+      : f.reason === "maya_closed" ? "Maya ended the call before the question was done."
       : `${CHILD} ended the call before the question was done.`,
     );
     if (f.help === "worked_example") lines.push("Maya showed an easier example first.");

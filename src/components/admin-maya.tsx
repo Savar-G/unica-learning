@@ -43,6 +43,7 @@ const useReducedMotion = () => useSyncExternalStore(subscribe, () => window.matc
 export const REASON_TEXT: Record<Outcome["reason"], string> = {
   solved: "Solved",
   child_stopped: "Child stopped",
+  maya_closed: "Maya closed",
   time_limit: "Time limit",
   no_response: "No answer from the child",
   technical_issue: "Technical issue",
