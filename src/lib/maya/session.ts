@@ -2604,9 +2604,31 @@ function harmlessClause(step: Extract<WorkedStep, { kind: "add-column" }>, claus
   const r = readNumbers(clause);
   if (r.unreadable) return false;
   if (words.includes("you") && words.includes("said")) return false;
+  if (asksMaya(words)) return false;
   if (r.values.length === 0) return true;
   if (!numbers || words.includes("you")) return false;
   return r.values.every((v) => v.type === "number") && takeOperands(pool, r.values.map((v) => (v as { value: number }).value));
+}
+
+/** The verbs of HARMLESS_WORDS. */
+const HARMLESS_VERBS = new Set(["showed", "show", "shown", "taught", "said", "add", "added", "adding", "start", "started"]);
+
+/**
+ * The clause asks Maya to do or show something (review P2, 2026-11-12): "you" before any verb but a past "showed" or
+ * "taught" ("You show me.", "Now you add."), or a verb with no subject before it ("Show me.", "Add 9."). Such a clause is
+ * a request, never a harmless description: "Like you showed me" and "I add the ones first" are not requests.
+ */
+function asksMaya(words: readonly string[]): boolean {
+  let subject = false;
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (w === "you") {
+      if (words[i + 1] !== "showed" && words[i + 1] !== "taught") return true;
+      subject = true;
+    } else if (w === "i") subject = true;
+    else if (HARMLESS_VERBS.has(w) && !subject) return true;
+  }
+  return false;
 }
 
 /** Takes these numbers out of the turn's operand pool, each once; false (and the pool unchanged) when one is not left. */
