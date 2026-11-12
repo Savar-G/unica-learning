@@ -50,7 +50,7 @@ describe("the worker's providers", () => {
   });
 
   it("are LiveKit Inference when the configuration says so, and the voice asks for word timings", async () => {
-    const lk = { MAYA_STT: "inference", MAYA_TTS: "inference", LIVEKIT_API_KEY: "test-key", LIVEKIT_API_SECRET: "test-secret", MAYA_VOICE: "Ashley" };
+    const lk = { MAYA_STT: "inference", MAYA_TTS: "inference", MAYA_TTS_MODEL: "inworld/inworld-tts-2", LIVEKIT_API_KEY: "test-key", LIVEKIT_API_SECRET: "test-secret", MAYA_VOICE: "Ashley" };
     const { providers, config } = await build(lk);
     expect(config.ids).toEqual({ speechToText: "inference/assemblyai/universal-3-6-pro", voice: "inference/inworld/inworld-tts-2/Ashley" });
     expect(providers.stt).toBeInstanceOf(inference.STT);

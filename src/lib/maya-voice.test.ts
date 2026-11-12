@@ -69,7 +69,12 @@ describe("providers by configuration", () => {
   const INFERENCE_OK = "livekit-inference-zdr,child-use-approved";
 
   it("routes speech-to-text and the voice through LiveKit Inference by configuration, with the LiveKit key", () => {
-    const p = voiceProviders({ ...LK, MAYA_STT: "inference", MAYA_TTS: "inference", MAYA_VOICE: "Ashley", MAYA_VOICE_PRIVACY_CONFIRMED: INFERENCE_OK });
+    // D-338: with no model and no voice, Cartesia Sonic 3.6 with Katie's voice.
+    expect(voiceProviders({ ...LK, MAYA_STT: "inference", MAYA_TTS: "inference", MAYA_VOICE_PRIVACY_CONFIRMED: INFERENCE_OK })).toMatchObject({
+      ok: true, voice: { provider: "inference", model: "cartesia/sonic-3.6", voice: "f786b574-daa5-4673-aa0c-cbe3e8534c02", modelOptions: { add_timestamps: true } },
+    });
+    expect(voiceProviders({ ...LK, MAYA_STT: "inference", MAYA_TTS: "inference", MAYA_TTS_MODEL: "inworld/inworld-tts-2", MAYA_VOICE_PRIVACY_CONFIRMED: INFERENCE_OK })).toMatchObject({ ok: false, problems: ["MAYA_TTS is inference, but MAYA_VOICE (the voice id) is not set"] });
+    const p = voiceProviders({ ...LK, MAYA_STT: "inference", MAYA_TTS: "inference", MAYA_TTS_MODEL: "inworld/inworld-tts-2", MAYA_VOICE: "Ashley", MAYA_VOICE_PRIVACY_CONFIRMED: INFERENCE_OK });
     expect(p).toMatchObject({
       ok: true,
       speechToText: { provider: "inference", model: "assemblyai/universal-3-6-pro", apiKey: "lk-key", apiSecret: "lk-secret" },
@@ -104,7 +109,8 @@ describe("providers by configuration", () => {
     refused({ MAYA_STT: "inference" }, /LIVEKIT_API_KEY and LIVEKIT_API_SECRET/);
     refused({ MAYA_STT: "inference", LIVEKIT_API_KEY: "k" }, /LIVEKIT_API_KEY and LIVEKIT_API_SECRET/);
     refused({ MAYA_TTS: "inference", MAYA_VOICE: "Ashley", LIVEKIT_API_SECRET: "s" }, /LIVEKIT_API_KEY and LIVEKIT_API_SECRET/);
-    refused({ ...LK, MAYA_TTS: "inference" }, /MAYA_VOICE/);
+    // The default model has a default voice (D-338); another model still needs its own.
+    refused({ ...LK, MAYA_TTS: "inference", MAYA_TTS_MODEL: "inworld/inworld-tts-2" }, /MAYA_VOICE/);
   });
 
   it("refuses a real route without its privacy markers, child-use-approved included, and an unknown marker", () => {

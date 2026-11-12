@@ -81,7 +81,7 @@ The worker sends speech-to-text and the voice through LiveKit Inference with `MA
 ```sh
 lk agent update-secrets \
   --secrets "MAYA_STT=inference" --secrets "MAYA_STT_MODEL=assemblyai/universal-3-6-pro" \
-  --secrets "MAYA_TTS=inference" --secrets "MAYA_TTS_MODEL=<the listening test's winner>" --secrets "MAYA_VOICE=<its voice id>" \
+  --secrets "MAYA_TTS=inference" --secrets "MAYA_TTS_MODEL=cartesia/sonic-3.6" --secrets "MAYA_VOICE=f786b574-daa5-4673-aa0c-cbe3e8534c02" \
   --secrets "MAYA_VOICE_PRIVACY_CONFIRMED=livekit-inference-zdr,child-use-approved"
 ```
 

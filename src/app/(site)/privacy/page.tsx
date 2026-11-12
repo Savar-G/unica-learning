@@ -11,7 +11,7 @@ const PAGE = {
 };
 
 /** The company that makes Maya's voice (D-238 listening test). */
-const VOICE_COMPANY = "Inworld";
+const VOICE_COMPANY = "Cartesia";
 
 export const metadata = pageMetadata(PAGE);
 

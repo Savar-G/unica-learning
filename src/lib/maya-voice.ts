@@ -141,7 +141,10 @@ export const INFERENCE_TTS_MODELS = {
   "cartesia/sonic-3.6": { add_timestamps: true },
 } as const satisfies Record<string, Readonly<Record<string, string | boolean>>>;
 export type InferenceTtsModel = keyof typeof INFERENCE_TTS_MODELS;
-export const INFERENCE_TTS_DEFAULT: InferenceTtsModel = "inworld/inworld-tts-2";
+/** Maya's voice, D-338: Savar chose "Voice 12" from a 12-voice blind set on 2026-11-12, Cartesia Sonic 3.6 "Katie". */
+export const INFERENCE_TTS_DEFAULT: InferenceTtsModel = "cartesia/sonic-3.6";
+/** Katie's Cartesia voice id: the voice when `MAYA_VOICE` is not set and the model is the default. */
+export const INFERENCE_VOICE_DEFAULT = "f786b574-daa5-4673-aa0c-cbe3e8534c02";
 
 /**
  * The operator's confirmations in MAYA_VOICE_PRIVACY_CONFIRMED (docs/maya-voice.md, "Privacy gate"). Each records a check
@@ -240,7 +243,7 @@ const has = <T extends string>(list: readonly T[], v: string): v is T => (list a
  * `ASSEMBLYAI_API_KEY`, model `MAYA_STT_MODEL`, default universal-3-6-pro).
  *
  * `MAYA_TTS`: `fake` (default); `inference` (the LiveKit key, voice `MAYA_VOICE`, model `MAYA_TTS_MODEL` from
- * INFERENCE_TTS_MODELS, default inworld/inworld-tts-2); or `inworld` (the direct plugin, `INWORLD_API_KEY`, voice
+ * INFERENCE_TTS_MODELS, default cartesia/sonic-3.6 with Katie's voice, D-338); or `inworld` (the direct plugin, `INWORLD_API_KEY`, voice
  * `MAYA_VOICE`, model `MAYA_TTS_MODEL`, default inworld-tts-2).
  *
  * The tuning settings (`voiceTuning`: the silence limits, the turn delay and the interruption options) are read here too.
@@ -280,10 +283,11 @@ export function voiceProviders(env: Readonly<Record<string, string | undefined>>
   } else if (tts === "inference") {
     const { apiKey, apiSecret, missing } = livekit();
     if (missing) problems.push("MAYA_TTS is inference, but LIVEKIT_API_KEY and LIVEKIT_API_SECRET are not both set");
-    const id = value(env, "MAYA_VOICE");
+    const model = value(env, "MAYA_TTS_MODEL") || INFERENCE_TTS_DEFAULT;
+    // The default model has a default voice (Katie, D-338); another model needs its own voice id.
+    const id = value(env, "MAYA_VOICE") || (model === INFERENCE_TTS_DEFAULT ? INFERENCE_VOICE_DEFAULT : "");
     if (!id) problems.push("MAYA_TTS is inference, but MAYA_VOICE (the voice id) is not set");
     else if (!VOICE_ID.test(id)) problems.push("MAYA_VOICE must be a voice id: letters, digits, '.', '_' or '-', at most 100");
-    const model = value(env, "MAYA_TTS_MODEL") || INFERENCE_TTS_DEFAULT;
     if (has(Object.keys(INFERENCE_TTS_MODELS) as InferenceTtsModel[], model)) voice = { provider: "inference", model, voice: id, apiKey, apiSecret, modelOptions: INFERENCE_TTS_MODELS[model] };
     else problems.push(`MAYA_TTS is inference, but MAYA_TTS_MODEL "${model}" is not one of ${Object.keys(INFERENCE_TTS_MODELS).join(", ")}`);
   } else if (tts !== "fake") problems.push(`MAYA_TTS must be fake, inference or inworld, not "${tts}"`);
