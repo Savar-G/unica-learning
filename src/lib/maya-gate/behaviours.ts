@@ -3160,7 +3160,8 @@ export const BEHAVIOURS: Behaviour[] = [
     expect: {
       outcome: { reason: "child_stopped", assistance: "guided", highestHint: 3 },
       acts: [OPEN, "guide", "guide", "guide", "guide", "example_step", "example_step", "example_step", "try_target", "guide", "close"],
-      refused: ["act_not_allowed", "line_not_offered"],
+      // #698's loop guard refuses a help the child just heard (same_hint_again) before any line check.
+      refused: ["act_not_allowed", "same_hint_again", "same_hint_again", "same_hint_again"],
       outputs: [{ mayaTurn: 10, lines: [TEMPLATES_CLOSE_HONEST] }],
       never: ["give_answer", "accept_answer"],
     },

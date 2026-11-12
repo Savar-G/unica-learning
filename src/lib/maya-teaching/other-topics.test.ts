@@ -220,7 +220,12 @@ describe("a workbook-confirmed call at grade 3 (review of #731)", () => {
     model.next([{ act: "guide", level: 0, lines: ["question.problem"] }], { start: "has_work" });
     const out = await s.child("I'm stuck.");
     const frame = topicFrame(pkg!.text, pkg!.operation!)!;
-    expect(out.say.join(" ")).toContain(frame);
+    // #698 (0b27f609): no line says a number equal to the answer before it stands. A square and a scalene triangle
+    // (4 + 0) has the answer 4 in its topic sentence ("A square has 4 lines"), so that sentence is never said early.
+    const answer = (pkg as OperationPackage).answer.value;
+    const holdsAnswer = answer.type === "number" && (frame.match(/\d+/g) ?? []).map(Number).includes(answer.value);
+    if (holdsAnswer) expect(out.say.join(" ")).not.toContain(frame);
+    else expect(out.say.join(" ")).toContain(frame);
     for (const text of out.say) expect(gateWordCount(text), text).toBeLessThanOrEqual(25);
   });
 

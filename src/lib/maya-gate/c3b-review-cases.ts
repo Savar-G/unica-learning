@@ -46,8 +46,10 @@ export const C3B_REVIEW_BEHAVIOURS: Behaviour[] = [
         stuck([{ act: "example_step" }]), child("It's false.", undefined, notYet),
       ] },
       // At grade 3 code shows the example at the first "I'm stuck." (a grade-3 turn has no room for the hints first).
-      ...(grade === 3 ? [] : [{ kind: "g", what: "a model that guides to the top hint first", acts: ["guide", "guide", "guide"] as Act[], steps: [
-        stuck([{ act: "guide", level: 0 }]), stuck([{ act: "guide", level: 1 }]), stuck([{ act: "guide", level: 2 }]),
+      // MINUTE's first step offers no H1 or H2 line: the model's invite comes twice, and #698's loop guard never lets it
+      // come a third time, so the example comes at the third "I'm stuck.".
+      ...(grade === 3 ? [] : [{ kind: "g", what: "a model that guides to the top hint first", acts: (fixture === "MINUTE" ? ["guide", "guide"] : ["guide", "guide", "guide"]) as Act[], steps: [
+        ...(fixture === "MINUTE" ? [stuck([{ act: "guide", level: 0 }]), stuck([{ act: "guide", level: 0 }])] : [stuck([{ act: "guide", level: 0 }]), stuck([{ act: "guide", level: 1 }]), stuck([{ act: "guide", level: 2 }])]),
         stuck([{ act: "example_step" }]), child("It's false.", undefined, notYet),
       ] }]),
     ];
