@@ -10,7 +10,7 @@ export const contentType = "image/png";
 const serif = await readFile(join(process.cwd(), "src/og/Zodiak-Regular.ttf"));
 const sans = await readFile(join(process.cwd(), "src/og/Switzer-Medium.ttf"));
 
-const TILES = ["#FFD23F", "#fff", "#3366F0", "#fff", "#FF6430", "#fff", "#16A06A", "#fff", "#fff"];
+const TILES = ["#FFD23F", "#fff", "#3366F0", "#fff", "#FF6430", "#fff", "#16A06A", "#fff", "#B8B3AA"];
 
 export default async function Image() {
   return new ImageResponse(

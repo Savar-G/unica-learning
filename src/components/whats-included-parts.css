@@ -8,6 +8,7 @@
 .wi-mk i:nth-child(3) { background: #2f5be8; }
 .wi-mk i:nth-child(5) { background: #ff6a3d; }
 .wi-mk i:nth-child(7) { background: #1f9d55; }
+.wi-mk i:nth-child(9) { background: #b8b3aa; }
 
 /* Leah's pages: pencil answers and the app's marks */
 .wi-mp { position: relative; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.06), 0 24px 50px -24px rgba(20,30,60,.45); }
