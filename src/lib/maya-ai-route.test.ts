@@ -11,7 +11,7 @@ import { memorySpendStore } from "@/lib/maya-spend-memory";
 import { MAYA_PROVIDER } from "@/lib/maya-ai-route";
 
 // D-337: every OpenRouter request that carries a child's words for Maya (her model, the safety read, the free-talk review
-// and the call note) asks for zero-data-retention endpoints only. Other AI features keep the default route.
+// and the call note) leaves out Google's endpoints. Other AI features keep the default route.
 
 const env = { OPENROUTER_API_KEY: "test-key", AI_MODEL: "anthropic/claude-sonnet-5.5", NODE_ENV: "test" };
 const request = { name: "t", system: "s", content: [{ type: "text" as const, text: "x" }], schema: { type: "object" } };
@@ -44,9 +44,9 @@ async function sent(step: () => Promise<unknown>) {
   return bodies[0].provider;
 }
 
-describe("Maya's OpenRouter route (zero data retention, D-337)", () => {
-  it("asks for ZDR endpoints in order, with fallbacks that stay ZDR", () => {
-    expect(MAYA_PROVIDER).toEqual({ zdr: true, require_parameters: true, order: ["google-vertex/us", "google-vertex/global", "amazon-bedrock/us-east-1"], allow_fallbacks: true });
+describe("Maya's OpenRouter route (no Google endpoints, D-337)", () => {
+  it("leaves out Google's endpoints and keeps the strict schema", () => {
+    expect(MAYA_PROVIDER).toEqual({ ignore: ["google-vertex", "google-ai-studio"], require_parameters: true });
   });
 
   it("sends it for Maya's model, plain, metered and as a safety read", async () => {
