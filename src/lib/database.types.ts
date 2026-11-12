@@ -5949,6 +5949,76 @@ export type Database = {
           },
         ]
       }
+      workbook_run_gates: {
+        Row: {
+          call_key: string
+          child_id: string
+          created_at: string
+          flags: string[]
+          id: number
+          model: string
+          outcome: string
+          parent_id: string
+          probabilities: Json
+          question_id: string
+          reason: string | null
+          run_id: string
+          threshold_version: number
+        }
+        Insert: {
+          call_key: string
+          child_id: string
+          created_at?: string
+          flags: string[]
+          id?: never
+          model: string
+          outcome: string
+          parent_id: string
+          probabilities: Json
+          question_id: string
+          reason?: string | null
+          run_id: string
+          threshold_version: number
+        }
+        Update: {
+          call_key?: string
+          child_id?: string
+          created_at?: string
+          flags?: string[]
+          id?: never
+          model?: string
+          outcome?: string
+          parent_id?: string
+          probabilities?: Json
+          question_id?: string
+          reason?: string | null
+          run_id?: string
+          threshold_version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_run_gates_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_run_gates_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_run_gates_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workbook_run_pages: {
         Row: {
           child_id: string
@@ -9389,6 +9459,10 @@ export type Database = {
       }
       save_workbook_run_frame: {
         Args: { p_frame: Json; p_lease: string; p_run: string }
+        Returns: boolean
+      }
+      save_workbook_run_gates: {
+        Args: { p_lease: string; p_rows: Json; p_run: string }
         Returns: boolean
       }
       save_workbook_run_page: {

@@ -19,6 +19,7 @@ import { runWorkbookJob, type JobOutcome, type WorkbookJobDeps } from "@/lib/wor
 import { excludeRunProvider, loadRunProviderGate, runAiCallLog, saveRunAiCalls, workbookJobSource, workbookRunStore } from "@/lib/workbook-job-store";
 import { workbookFiles } from "@/lib/workbook-store";
 import { workbookTemplate } from "@/lib/workbook-template";
+import { decisionGateChecker } from "@/lib/workbook-run-gates";
 import { fixedTemplateFonts } from "@/lib/workbook-template-fonts";
 
 /** A QR token: 22 URL-safe characters from 16 random bytes. */
@@ -66,6 +67,7 @@ export async function runWorkbookJobWith(admin: SupabaseClient<Database>, runId:
       files: workbookFiles(admin),
       ai: fake ?? live!.ai,
       solver: fake ? workbookFakeSolver() : live!.solve?.solver ?? null,
+      gates: fake ? null : decisionGateChecker(env),
       ...(live?.solve ? { solveCost: live.solve.cost } : {}),
       template,
       fit: (parentId, signal) => renderFitCheck({ template, engine: { print: (job) => engine.print({ ...job, signal }) }, parentId, fullness: true }),

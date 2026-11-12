@@ -7,6 +7,7 @@ import type { RenderProblem } from "@/lib/workbook-render";
 import { draftProblem, type GeneratedPage, type StoredCall, type WorkbookDraftStore } from "@/lib/workbook-generator";
 import { READ_PAGE, readPaged, SLOT_ATTEMPTS, SOLVE_BATCH, type ChildInputs, type DraftRendering, type RunActor, type RunFrame, type RunSolve, type WorkbookJobSource, type WorkbookRun, type WorkbookRunStore } from "@/lib/workbook-job";
 import type { SolveVerdict } from "@/lib/workbook-solve-check";
+import type { StoredQuestionGate } from "@/lib/workbook-run-gates";
 
 /** The job's child reads and profile preparation in memory. Tests can use the real profile builds behind this seam. */
 export function memoryWorkbookJobSource(children: Record<string, ChildInputs>, prepareProfile: WorkbookJobSource["prepareProfile"]): WorkbookJobSource {
@@ -50,6 +51,7 @@ export function memoryRunStore(o: {
   const pages = new Map<string, Map<number, GeneratedPage>>();
   const attempts = new Map<string, Map<string, number>>();
   const solves = new Map<string, RunSolve[]>();
+  const gates = new Map<string, StoredQuestionGate[]>();
   const calls = new Map<string, Map<string, { page: number; seq: number; call: StoredCall }>>();
   const frames = new Map<string, RunFrame>();
   // The database keeps JSON (jsonb): a stored call comes back as JSON does.
@@ -170,6 +172,21 @@ export function memoryRunStore(o: {
       for (const x of solves.get(id) ?? []) if (x.callKey !== undefined) verdicts.set(x.callKey, json(x.log.verdict));
       return verdicts;
     },
+    async saveGates(id, lease, batch) {
+      if (batch.length > SOLVE_BATCH) throw new Error(`workbook run quality gates save: ${batch.length} results in one write`);
+      const bad = batch.find((x) => !/^[0-9]{1,4}:[0-9]:([0-9]{1,3}\.[0-9]{1,3}|e[0-9]{1,3})$/.test(x.callKey));
+      if (bad) throw new Error(`workbook run quality gates save: the call key ${bad.callKey} breaks workbook_run_gates_call_key_check`);
+      const r = holding(id, lease);
+      if (!r) return false;
+      r.heartbeatAt = iso();
+      const had = gates.get(id) ?? [];
+      const fresh = batch.filter((x, k) => !had.some((y) => y.callKey === x.callKey) && !batch.slice(0, k).some((y) => y.callKey === x.callKey));
+      gates.set(id, [...had, ...json(fresh)]);
+      return true;
+    },
+    async gates(id) {
+      return json(gates.get(id) ?? []);
+    },
     async frame(id) {
       const f = frames.get(id);
       return f ? json(f) : null;
@@ -178,7 +195,7 @@ export function memoryRunStore(o: {
       const r = runs.get(id);
       if (!r) return true;
       return (pages.get(id)?.size ?? 0) > 0 || (attempts.get(id)?.size ?? 0) > 0 ||
-        (calls.get(id)?.size ?? 0) > 0 || (solves.get(id)?.length ?? 0) > 0 ||
+        (calls.get(id)?.size ?? 0) > 0 || (solves.get(id)?.length ?? 0) > 0 || (gates.get(id)?.length ?? 0) > 0 ||
         (r.donePages ?? 0) > 0 || (r.errors?.length ?? 0) > 0 || r.draftId !== null;
     },
     async saveFrame(id, lease, frame) {
