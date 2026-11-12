@@ -38,6 +38,7 @@ export const meta: ResourceMeta = {
     { label: "Province of British Columbia: Foundation Skills Assessment (FSA)", url: "https://www2.gov.bc.ca/gov/content/education-training/k-12/administration/program-management/assessment/foundation-skills-assessment", accessed: "2026-10-09" },
     { label: "BC Ministry of Education and Child Care: All about the Foundation Skills Assessment, information for parents and caregivers (PDF)", url: "https://curriculum.gov.bc.ca/sites/curriculum.gov.bc.ca/files/pdf/assessment/fsa/en-foundation-skills-assessment-for-parents-and-caregivers.pdf", accessed: "2026-10-09" },
     { label: "BC Ministry of Education and Child Care: K-12 Student Reporting, information for parents and caregivers (PDF)", url: "https://curriculum.gov.bc.ca/sites/curriculum.gov.bc.ca/files/pdf/reporting/K-12-student-reporting-one-pager-for-parents-and-caregivers.pdf", accessed: "2026-11-11" },
+    { label: "BC Ministry of Education and Child Care: K-12 Student Reporting Policy, Communicating Student Learning Guidelines (PDF, August 2023)", url: "https://www2.gov.bc.ca/assets/download/A5CA90B9C45D40B4999109A7400A1A39", accessed: "2026-11-11" },
   ],
   related: ["bc-grade-6-math-and-reading", "bc-fsa-grade-4-and-7", "bc-proficiency-scale"],
 };

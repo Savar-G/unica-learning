@@ -194,7 +194,7 @@ export function Pricing() {
             "A program built from your child's level and gaps",
             "2 paper workbooks a month, mailed home",
             "The Unica Teaching Assistant: chat for Grade 3 and up",
-            "The parent dashboard on our website: instant answer checks, solutions and progress reports",
+            "The parent dashboard on our website: answer checks, solutions and progress reports",
             "Rewards for every page and every week",
             "Delivery included. Cancel anytime",
           ]}

@@ -41,6 +41,7 @@ export const meta: ResourceMeta = {
     { label: "BC Curriculum: English Language Arts, Grade 2 (Big Ideas, Curricular Competencies, Content)", url: "https://curriculum.gov.bc.ca/curriculum/english-language-arts/2", accessed: "2026-10-09" },
     { label: "BC Curriculum: Mathematics, Grade 3 (Content)", url: "https://curriculum.gov.bc.ca/curriculum/mathematics/3", accessed: "2026-10-09" },
     { label: "BC Ministry of Education and Child Care: K-12 Student Reporting, information for parents and caregivers (PDF)", url: "https://curriculum.gov.bc.ca/sites/curriculum.gov.bc.ca/files/pdf/reporting/K-12-student-reporting-one-pager-for-parents-and-caregivers.pdf", accessed: "2026-11-11" },
+    { label: "BC Ministry of Education and Child Care: K-12 Student Reporting Policy, Communicating Student Learning Guidelines (PDF, August 2023)", url: "https://www2.gov.bc.ca/assets/download/A5CA90B9C45D40B4999109A7400A1A39", accessed: "2026-11-11" },
   ],
   related: ["bc-grade-1-math-and-reading", "bc-grade-3-math-and-reading", "bc-proficiency-scale"],
 };
