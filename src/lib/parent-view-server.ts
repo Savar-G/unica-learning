@@ -240,7 +240,9 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
         admin.from("child_profiles").select("build_token").eq("parent_id", parent).eq("child_id", childId).maybeSingle(),
       ]);
       if (lastProfile.error || lastRevision !== revision || lastProfile.data?.build_token !== profile.data?.build_token) throw new Error("overview progress changed");
-      return { marks, history, statesReady: !!profile.data && !!status.data && status.data.revision === revision && status.data.profile_revision === revision };
+      // A child with no marking row has no published marks (the revision reads 0), so a saved profile is current.
+      const marksInProfile = status.data ? status.data.revision === revision && status.data.profile_revision === revision : revision === 0;
+      return { marks, history, statesReady: !!profile.data && marksInProfile };
     },
     async workbookStandards(workbookId) {
       const { data, error } = await session.from("workbook_questions").select("standard:package->skill->>standard").eq("workbook_id", workbookId);

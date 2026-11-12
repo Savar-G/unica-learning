@@ -50,7 +50,7 @@ export function ParentOverview({ overview }: { overview: OverviewView }) {
             <section className="po-card" aria-labelledby="po-skills">
               <p className="po-label" id="po-skills">Skills mastered</p>
               <p className="po-value">{skills.mastered} of {skills.total}</p>
-              {skills.moreThisMonth > 0 && <p className="po-sub">{skills.moreThisMonth} more this month</p>}
+              <p className="po-sub">At this level{skills.moreThisMonth > 0 ? `, ${skills.moreThisMonth} more this month` : ""}.</p>
             </section>
           )}
           {workbook && (
