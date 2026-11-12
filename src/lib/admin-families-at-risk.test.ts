@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { NEEDS_YOU_PATH, readRiskRows, riskFamilies, riskSummary, type RiskRow } from "@/lib/admin-families-at-risk";
+import { readRiskRows, riskFamilies, riskSummary, type RiskRow } from "@/lib/admin-families-at-risk";
 
 const NOW = new Date("2026-11-12T18:00:00Z");
 const ago = (d: number) => new Date(NOW.getTime() - d * 86_400_000).toISOString();
 const row = (o: Partial<RiskRow> = {}): RiskRow => ({
   parentId: "p1", parentName: "Ana Lee", childId: "c1", childName: "Mia", planKind: "free_month", endingFree: false,
-  nextChargeAt: ago(-20), endsAt: null, planSince: ago(10), lastActivityAt: ago(1), lastActivityKind: "scan",
+  nextChargeAt: ago(-20), endsAt: null, planSince: ago(60), lastActivityAt: ago(1), lastActivityKind: "scan",
   lastSignInAt: ago(1), heldBook: null, testFamily: false, ...o,
 });
 const one = (o: Partial<RiskRow>) => riskFamilies([row(o)], NOW)[0];
@@ -26,10 +26,10 @@ describe("Families at risk: the reasons", () => {
     expect(one({ lastActivityAt: null, lastActivityKind: null, planSince: ago(2) })).toMatchObject({ tone: "ok", quietDays: null });
   });
 
-  it("calls a failed payment at risk and sends the team to the Needs you list", () => {
+  it("calls a failed payment at risk and sends the team to the family page", () => {
     const f = one({ planKind: "payment_failed", nextChargeAt: null });
     expect(f.tone).toBe("bad");
-    expect(f.next).toMatchObject({ href: NEEDS_YOU_PATH });
+    expect(f.next).toMatchObject({ href: "/admin/parents/p1" });
     expect(f.reasons.map((r) => r.key)).toEqual(["payment_failed"]);
   });
 
@@ -43,6 +43,15 @@ describe("Families at risk: the reasons", () => {
     expect(f.tone).toBe("bad");
     expect(f.reasons[0].text).toContain("Book 2 is held");
     expect(f.next?.href).toBe("/admin/workbooks");
+  });
+
+  it("ignores activity from before this plan started, and counts nothing when the start is unknown", () => {
+    // restarted yesterday, last scan 40 days ago: a new plan, not 40 quiet days
+    expect(one({ planSince: ago(1), lastActivityAt: ago(40) })).toMatchObject({ tone: "ok", quietDays: null, reasons: [] });
+    // same restart 9 days ago: quiet since the plan started
+    expect(one({ planSince: ago(9), lastActivityAt: ago(40) })).toMatchObject({ tone: "warn", quietDays: 9 });
+    expect(one({ planSince: null, lastActivityAt: null, lastActivityKind: null })).toMatchObject({ tone: "ok", quietDays: null });
+    expect(one({ planSince: null, lastActivityAt: ago(20) })).toMatchObject({ tone: "bad", quietDays: 20 });
   });
 
   it("does not count quiet days for a plan that is not running", () => {
