@@ -25,10 +25,14 @@ const cards = [
 export const PATTERN_PRACTICE: PracticeCase[] = cards.map((card, i) => {
   const p = PATTERN_FIXTURES[fixtures[i]];
   const numbers = [...new Set(valuesIn(JSON.stringify([p.steps, p.easierExample])).flatMap(v => v.type === "number" ? [v.value] : []))];
+  // The numbers printed in the question: the child sees them on the page. An evaluate package's operands are
+  // expressions, so the validity check does not allow them by itself. Never the answer.
+  const answer = p.answer.value.type === "number" ? p.answer.value.value : null;
+  const printed = [...new Set(valuesIn(p.text).flatMap(v => v.type === "number" && v.value !== answer ? [v.value] : []))];
   return { id: card.id, title: card.expected, fixture: card.fixture,
     persona: { name: "Leo", age: i === 2 ? 8 : 10, question: p.text, knows: card.knows, behaviour: card.behaviour },
     expected: card.expected, dimensions: ["J01", "J02", "J03", "J04", "J05", "J06"], reasons: ["solved"],
-    validity: { stages: [{ name: "known work", opens: "start", numbers: i === 1 ? [52] : i === 0 ? [80] : i === 3 ? [72] : [] },
+    validity: { stages: [{ name: "known work", opens: "start", numbers: [...printed, ...(i === 1 ? [52] : i === 0 ? [80] : i === 3 ? [72] : [])] },
       { name: "after help", opens: "help", numbers }], mustSay: [{ pattern: i === 2 ? /stuck/i : /\d/, within: 1, what: "gives the required first turn" }] },
     fakeScript: card.fakeScript };
 });

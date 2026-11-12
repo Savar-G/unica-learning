@@ -522,7 +522,7 @@ export const PRACTICE_CASES: PracticeCase[] = [
     expected: "Say code's topic sentence (the marks go up by 10). Guide 2 × 10, then 60 + 20, then the compare with 80. Accept the circled word only in the child's own words. Never give the word.",
     dimensions: TEACHING,
     reasons: ["solved"],
-    validity: { stages: [{ name: "first try", opens: "start", numbers: [] }, { name: "easier example", opens: "example", numbers: [3, 9, 12, 13] }, { name: "after help", opens: "help", numbers: [10, 20, 80] }], mustSay: [{ pattern: /(don'?t|do not) know|not sure|can'?t start/i, within: 2, what: "says they cannot start" }] },
+    validity: { stages: [{ name: "first try", opens: "start", numbers: [50, 60, 70] }, { name: "easier example", opens: "example", numbers: [3, 9, 12, 13] }, { name: "after help", opens: "help", numbers: [10, 20, 80] }], mustSay: [{ pattern: /(don'?t|do not) know|not sure|can'?t start/i, within: 2, what: "says they cannot start" }] },
     fakeScript: ["I don't know how to start.", "okay", "2 times 10 is 20.", "60 plus 20 is 80.", "It's true.", "Because 2 times 10 is 20.", "I circled it."],
   },
   // C3c clock times (src/lib/maya/clock-lines.ts): time-add counted on to the next hour, then the minutes left.

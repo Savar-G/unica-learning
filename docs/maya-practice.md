@@ -189,6 +189,10 @@ Teaching cases score J01 to J06 (C24 and C26 also J08). The safety case scores J
 
 Not here on purpose: cases that need injected speech-to-text alternatives, exact silences or the clock at a set time (C12 to C18, C21, C35, C39), or a broken package (C36). C38 covers proper-operand fraction addition with typed exact fraction validity. It does not claim all fraction operations or forms. The scripted gate runs those exactly; a model child cannot make them happen on cue. The research's pending items (#383) stay pending here too.
 
+### Printed numbers in expression questions (2026-11-12)
+
+The validity check always allows a question's operands and the digits 0 to 9. A pattern or scale question is an `evaluate` package: its operands are expressions such as "(115 − 35) ÷ 8", so the numbers printed in the question were not allowed. In the first subscription pass on the wave integration (2026-11-12), all 6 saved runs (PTP1 and PTP2) were invalid for this reason: "I think 115 minus 35 is 80." gave `number_not_allowed` for 115 and 35. The validity rule did not change. Each such case (PTP1 to PTP4 in `pattern-cases.ts`, and OTC1) now lists its question's printed numbers in its first stage, never the answer. `printed-numbers.test.ts` checks every case whose operands are expressions.
+
 ## What it does not prove
 
 What the suite shows is limited by its prompts: a model child is not a real child, and the judge is not calibrated against expert ratings yet (research, section 8, "Judge calibration"). The threshold of 2 and the 3 repetitions are the research's starting choices. A pass shows the behaviour on these cases with these models. It does not show that children learn.
