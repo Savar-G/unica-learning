@@ -15,34 +15,51 @@ const expected: ExpectedItem = {
 const event = { key: `marking:${createHash("sha256").update(`${book}:${revision}:${page}:item`).digest("hex")}`, parentId: parent, childId: child, source: "marking", question: { source: "workbook", workbookId: book, page: 1, question: 1 }, skill: { standard: "2.4", skills: [] } };
 const mark = (result: "right" | "wrong") => ({ id: "row", expected, observation: { ...firstObservation(expected, "photo"), state: "parent-checked", method: "parent", actor: "admin", result, resultVersion: 2 }, original_event: event, event_id: "event", evidence_at: "2026-11-01T00:00:00Z", model: null, prompt: null });
 
-function reader(items: ReturnType<typeof mark>[], questionId = "item", secondTries: { result: string }[] = [], marking: { revision: number; status: { revision: number; profile_revision: number } | null } = { revision: 1, status: { revision: 1, profile_revision: 1 } }) {
+function reader(items: ReturnType<typeof mark>[], questionId = "item", secondTries: { result: string }[] = [], marking: { revision: number; status: { revision: number; profile_revision: number } | null } = { revision: 1, status: { revision: 1, profile_revision: 1 } }, revisions: number[] = []) {
   const requests: string[] = [];
+  const selects: string[] = [];
   const db = createClient<never>("https://fixture.invalid", "key", { auth: { persistSession: false }, global: { fetch: async (input, init) => {
     const url = new URL(String(input)), table = url.pathname.replace("/rest/v1/", "");
     requests.push(table);
+    if (url.searchParams.has("select")) selects.push(`${table}?${url.searchParams.get("select")}`);
     if (table === "rpc/scan_marking_command") {
       const body = JSON.parse(String(init?.body));
-      return Response.json(body.p_action === "revision" ? marking.revision : body.p_data.after ? [] : items);
+      // A queued revision answers first, so a test can move the revision between the reads.
+      return Response.json(body.p_action === "revision" ? revisions.shift() ?? marking.revision : body.p_data.after ? [] : items);
     }
     if (table === "children") return Response.json([{ id: child }]);
     if (table === "workbooks") return Response.json([{ id: book, printed_revision: revision }]);
-    if (table === "child_profiles") return Response.json([{ build_token: "token" }]);
+    if (table === "child_profiles") return Response.json([{ build_token: "token", assessment_id: "test-1" }]);
     if (table === "scan_marking_revisions") return Response.json(marking.status ? [marking.status] : []);
-    if (table === "workbook_questions") return Response.json(url.searchParams.has("id") ? [] : [{ id: "question-row", page_id: page, question_number: 1, package: { id: questionId, skill: { standard: "2.4" } } }]);
+    if (table === "workbook_questions") return Response.json(url.searchParams.has("id") ? [] : [{ id: "question-row", page_id: page, question_number: 1, qid: questionId, standard: "2.4" }]);
     if (table === "skill_state_history") return Response.json([]);
     if (table === "workbook_second_tries") return Response.json(secondTries);
     throw new Error(`Unexpected ${table}`);
   } } }) as never;
-  return { value: parentViewReader(db, parent, db, {}), requests };
+  return { value: parentViewReader(db, parent, db, {}), requests, selects };
 }
 
 describe("stored overview marks", () => {
   it("treats the stored states as current only when the profile includes every published mark", async () => {
-    const ready = async (marking: Parameters<typeof reader>[3]) => (await reader([], "item", [], marking).value.overviewProgress(child))?.statesReady;
-    expect(await ready({ revision: 0, status: null })).toBe(true);
-    expect(await ready({ revision: 1, status: { revision: 1, profile_revision: 1 } })).toBe(true);
-    expect(await ready({ revision: 2, status: { revision: 2, profile_revision: 1 } })).toBe(false);
-    expect(await ready({ revision: 1, status: null })).toBe(false);
+    const built = async (marking: Parameters<typeof reader>[3]) => (await reader([], "item", [], marking).value.overviewProgress(child))?.historyAssessment;
+    expect(await built({ revision: 0, status: null })).toBe("test-1");
+    expect(await built({ revision: 1, status: { revision: 1, profile_revision: 1 } })).toBe("test-1");
+    expect(await built({ revision: 2, status: { revision: 2, profile_revision: 1 } })).toBeNull();
+    expect(await built({ revision: 1, status: null })).toBeNull();
+  });
+  it("reads again when the marking revision moves between the reads, and gives up after three tries", async () => {
+    const moved = reader([mark("right")], "item", [], undefined, [1, 2]);
+    expect((await moved.value.overviewProgress(child))?.marks).toEqual([{ area: "number", level: 2, correct: true }]);
+    expect(moved.requests.filter((t) => t === "rpc/scan_marking_command" ).length).toBeGreaterThan(3);
+    await expect(reader([], "item", [], undefined, [1, 2, 3, 4, 5, 6]).value.overviewProgress(child)).rejects.toThrow("overview progress changed");
+  });
+  it("reads no workbook question with no marked item, and only two package fields with one", async () => {
+    const none = reader([]);
+    expect((await none.value.overviewProgress(child))?.marks).toEqual([]);
+    expect(none.requests).not.toContain("workbook_questions");
+    const one = reader([mark("right")]);
+    expect((await one.value.overviewProgress(child))?.skillMarks).toEqual([{ standard: "2.4", right: true, review: false, at: expect.any(String) }]);
+    expect([...new Set(one.selects.filter((q) => q.startsWith("workbook_questions?")))]).toEqual(["workbook_questions?id,page_id,question_number,qid:package->>id,standard:package->skill->>standard"]);
   });
   it("uses the effective correction for the original and leaves second tries outside the score", async () => {
     const r = reader([mark("wrong")], "item", [{ result: "right" }]);

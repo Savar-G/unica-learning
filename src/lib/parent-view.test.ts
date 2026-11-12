@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AreaAnswer, ReportModel } from "@/lib/assessment";
-import { listChildren, readChild, readMonthlySummary, readOverview, readProgress, readWorkbooks } from "@/lib/parent-view";
+import { BC_SKILL_MAP, type AreaAnswer, type ReportModel } from "@/lib/assessment";
+import { listChildren, readChild, readMonthlySummary, readOverview, readProgress, readWorkbooks, type OverviewProgress } from "@/lib/parent-view";
 import { memoryParentViewReaders, type MemoryParentViewTables, type MemoryResult, type MemoryTest, type MemoryWorkbook } from "@/lib/parent-view-memory";
 
 // The parent view module (spec #544), through its public interface, over the in-memory reader, which keeps the
@@ -110,7 +110,7 @@ describe("what a parent reads", () => {
     const readers = memoryParentViewReaders({ children: [younger, omar, leah] });
     const list = await listChildren(readers.parent("parent-1"), NOW);
     expect(list.map((c) => c.firstName)).toEqual(["Leah", "Ana"]);
-    expect(readers.reads).toEqual({ children: 1, tests: 1, reports: 1, cards: 1, deliveries: 1, workbooks: 1, plans: 1, switches: 1, corrections: 0, dispatches: 0, family: 0, results: 0, scans: 0, pages: 0, learning: 0, pin: 0, maya: 0, skillTests: 0, questions: 0 });
+    expect(readers.reads).toEqual({ children: 1, tests: 1, reports: 1, cards: 1, deliveries: 1, workbooks: 1, plans: 1, switches: 1, corrections: 0, dispatches: 0, family: 0, results: 0, scans: 0, pages: 0, learning: 0, pin: 0, maya: 0, skillTests: 0, questions: 0, overviewProgress: 0 });
   });
   it("lists a child's reports, the newest test first", async () => {
     const reader = parent({ tests: [test("old", { completedAt: NOW - 90 * HOUR }), test("new", { completedAt: NOW - 10 * HOUR })], reports: [report("old"), report("new")] });
@@ -385,8 +385,10 @@ describe("the Overview (#560)", () => {
     ]);
   });
 
+  const progress = (over: Partial<OverviewProgress> = {}) => ({ ...own, marks: [], skillMarks: [], history: [], historyAssessment: "t", ...over });
+
   it("combines stored page results with the test and keeps the assessment level", async () => {
-    const data = { ...own, marks: at("number", 4, 4, 0), history: [], statesReady: true };
+    const data = progress({ marks: at("number", 4, 4, 0) });
     const view = await read({ ...tested, results: [result("t", { answers: at("number", 3, 4, 0) })], overviewProgress: [data] });
     expect(view?.level?.working).toBe(3);
     expect(view?.areas[0]).toMatchObject({ level: 4, label: "ahead" });
@@ -395,15 +397,52 @@ describe("the Overview (#560)", () => {
     expect((await read({ ...tested, results: [result("t", { answers: [], unreliable: true })], overviewProgress: [data] }))?.areas).toEqual([]);
   });
 
-  it("counts stored skill states at the family month boundary and hides unavailable states", async () => {
-    const data = { ...own, marks: [], statesReady: true, history: [
+  it("a failed marking read keeps the bars from the test alone and hides Skills mastered", async () => {
+    const tables = { ...tested, switches: { progress: true, maya: false, scanPages: false }, results: [result("t", { answers: at("number", 3, 4, 0) })], skillTests: [{ ...own, assessmentId: "t", standard: "3.1", correct: 4, total: 4, at: "2026-11-01T18:00:00Z" }] };
+    const view = await read({ ...tables, overviewProgress: [progress({ marks: at("number", 4, 4, 0) })], fail: ["overviewProgress"] });
+    expect(view?.areas[0]).toMatchObject({ level: 3, label: "at-grade" });
+    expect(view?.areasIncludeMarks).toBe(false);
+    expect(view?.skills).toBeNull();
+  });
+
+  describe("Skills mastered", () => {
+    const tally = (standard: string, at = "2026-11-01T18:00:00Z") => ({ ...own, assessmentId: "t", standard, correct: 4, total: 4, at });
+    const history = [
       { standard: "3.1", state: "mastered" as const, changedAt: "2026-11-01T06:30:00Z" },
       { standard: "3.2", state: "mastered" as const, changedAt: "2026-11-01T07:30:00Z" },
-    ] };
-    const tables = { ...tested, switches: { progress: true, maya: false, scanPages: false }, results: [result("t")], overviewProgress: [data] };
-    const view = await read(tables);
-    expect(view?.skills).toMatchObject({ mastered: 2, moreThisMonth: 1 });
-    expect((await read({ ...tables, overviewProgress: [{ ...data, statesReady: false }] }))?.skills).toBeNull();
+    ];
+    const tables = { ...tested, switches: { progress: true, maya: false, scanPages: false }, results: [result("t")], skillTests: [tally("3.1"), tally("3.2")] };
+    const grade3 = BC_SKILL_MAP.standards.filter((s) => s.grade === 3).length;
+
+    it("counts the rule's states and the recorded changes since the start of the family month", async () => {
+      // 06:30 UTC on November 1 is October 31 in Vancouver; 07:30 UTC is November 1.
+      const view = await read({ ...tables, family: { timeZone: "America/Vancouver", postal: null }, overviewProgress: [progress({ history })] });
+      expect(view?.skills).toEqual({ mastered: 2, total: grade3, moreThisMonth: 1 });
+    });
+
+    it("counts no change this month while the stored history is not from the newest test and every mark", async () => {
+      for (const historyAssessment of [null, "older-test"]) {
+        const view = await read({ ...tables, family: { timeZone: "America/Vancouver", postal: null }, overviewProgress: [progress({ history, historyAssessment })] });
+        expect(view?.skills).toEqual({ mastered: 2, total: grade3, moreThisMonth: 0 });
+      }
+    });
+
+    it("counts marked items as the Progress tab does, so the tile and the map agree", async () => {
+      const page = (right: boolean, at: string, review = false) => ({ standard: "3.3", right, review, at });
+      const skillMarks = [page(true, "2026-11-01T18:00:00Z"), page(true, "2026-11-02T18:00:00Z"), page(true, "2026-11-02T19:00:00Z"),
+        page(true, "2026-11-03T18:00:00Z"), page(false, "2026-11-03T19:00:00Z"), page(true, "2026-11-04T10:00:00Z", true)];
+      const withMarks = { ...tables, overviewProgress: [progress({ skillMarks })] };
+      const tile = (await read(withMarks))?.skills;
+      const map = (await readProgress(parent({ children: [leahAnswered, omar], ...card, ...withMarks }), "child-1", NOW))?.areas.flatMap((a) => a.tiles);
+      expect(map?.find((t) => t.code === "3.3")?.state).toBe("mastered");
+      expect(tile?.mastered).toBe(3);
+      expect(map?.filter((t) => t.state === "mastered")).toHaveLength(3);
+      expect(tile?.total).toBe(map?.length);
+    });
+
+    it("shows only with the Progress tab", async () => {
+      expect((await read({ ...tables, switches: { progress: false, maya: false, scanPages: false }, overviewProgress: [progress({ history })] }))?.skills).toBeNull();
+    });
   });
 
   it("an area with no answers has no bar; Kindergarten to Grade 2 show no fractions", async () => {

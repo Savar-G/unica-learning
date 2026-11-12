@@ -2,14 +2,15 @@ import "server-only";
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { answersAddUp, reportShowsPlacement } from "@/lib/area-level-check";
-import { BC_SKILL_MAP, REPORTED_STRAND, profileSkillResults, reportCallsUnreliable, restoreSession, testAreaAnswers, type AreaAnswer, type Grade } from "@/lib/assessment";
+import { BC_SKILL_MAP, REPORTED_STRAND, profileSkillResults, reportCallsUnreliable, restoreSession, testAreaAnswers, type AreaAnswer, type Grade, type SkillState } from "@/lib/assessment";
 import type { Database } from "@/lib/database";
 import { LEARNING_COLUMNS } from "@/lib/learning-style";
 import { childPauseMailing } from "@/lib/plan-controls-server";
-import type { ParentViewReader } from "@/lib/parent-view";
+import type { OverviewProgress, ParentViewReader } from "@/lib/parent-view";
 import { pinIsSet } from "@/lib/parent-pin-server";
 import { familyOpenPlanChildren } from "@/lib/plan-access";
 import { scanMarkingReader, markingCommand } from "@/lib/scan-marking-reader";
+import { effectiveSkillMarks } from "@/lib/scan-marking";
 import { itemKey, markingEvent } from "@/lib/scan-observation";
 import { scanReleased } from "@/lib/scan-pages-access";
 import { withAnswers } from "@/lib/test-attempt";
@@ -44,6 +45,26 @@ import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 // A database error throws, and so does a missing secret key: an empty read would show a paying family "Start the test".
 
 /** The reader of this parent, from their session and the secret key. */
+const RECORDED_STATES: readonly string[] = ["mastered", "working_on", "needs_review", "not_started"] satisfies readonly SkillState[];
+
+/** The skill standard of each question of the named workbooks, by `<workbook>:<page>:<number>:<question id>`. */
+async function markedQuestions(admin: SupabaseClient<Database>, parent: string, workbooks: readonly string[]): Promise<Map<string, string>> {
+  const questions = new Map<string, string>();
+  for (const book of workbooks) {
+    for (let after: string | null = null; ;) {
+      let query = admin.from("workbook_questions").select("id, page_id, question_number, qid:package->>id, standard:package->skill->>standard")
+        .eq("parent_id", parent).eq("workbook_id", book).order("id").limit(1000);
+      if (after !== null) query = query.gt("id", after);
+      const rows = await query;
+      if (rows.error) throw new Error("overview questions read failed");
+      if (!rows.data.length) break;
+      for (const row of rows.data) if (row.qid && row.standard) questions.set(`${book}:${row.page_id}:${row.question_number}:${row.qid}`, row.standard);
+      after = rows.data[rows.data.length - 1].id;
+    }
+  }
+  return questions;
+}
+
 export function parentViewReader(session: SupabaseClient<Database>, parent: string, admin: SupabaseClient<Database> | null, env: Readonly<Record<string, string | undefined>> = process.env): ParentViewReader {
   return {
     async children() {
@@ -179,70 +200,63 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
       if (owner.error) throw new Error("overview progress owner read failed");
       if (!owner.data) return null;
       const command = markingCommand(admin);
-      const revision = await command("revision", parent, null, null, { child: childId });
-      if (typeof revision !== "number") throw new Error("overview marking revision unavailable");
-      const [items, profile, status, books] = await Promise.all([
-        scanMarkingReader(admin).effective(parent, childId),
-        admin.from("child_profiles").select("build_token").eq("parent_id", parent).eq("child_id", childId).maybeSingle(),
-        admin.from("scan_marking_revisions").select("revision, profile_revision").eq("parent_id", parent).eq("child_id", childId).maybeSingle(),
-        session.from("workbooks").select("id, printed_revision").eq("child_id", childId).eq("status", "shipped"),
-      ]);
-      if (profile.error || status.error || books.error) throw new Error("overview progress read failed");
-      const shipped = new Map(books.data.map((book) => [book.id, book.printed_revision]));
-      const standards = new Map(BC_SKILL_MAP.standards.map((standard) => [standard.code, standard]));
-      const questions = new Map<string, string>();
-      for (const book of shipped.keys()) {
-        for (let after: string | null = null; ;) {
-          let query = admin.from("workbook_questions").select("id, page_id, question_number, package").eq("parent_id", parent).eq("workbook_id", book).order("id").limit(1000);
-          if (after !== null) query = query.gt("id", after);
-          const rows = await query;
-          if (rows.error) throw new Error("overview questions read failed");
+      const reads = scanMarkingReader(admin);
+      const profileRow = () => admin.from("child_profiles").select("build_token, assessment_id").eq("parent_id", parent).eq("child_id", childId).maybeSingle();
+      // One consistent moment: the marking revision and the profile token are the same before and after the reads. A
+      // marking ack or a rebuild in between makes it read again, three times at most, as the profile rebuild does.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const revision = await command("revision", parent, null, null, { child: childId });
+        if (typeof revision !== "number") throw new Error("overview marking revision unavailable");
+        const [items, profile, status, books] = await Promise.all([
+          reads.effective(parent, childId),
+          profileRow(),
+          admin.from("scan_marking_revisions").select("revision, profile_revision").eq("parent_id", parent).eq("child_id", childId).maybeSingle(),
+          session.from("workbooks").select("id, printed_revision").eq("child_id", childId).eq("status", "shipped"),
+        ]);
+        if (profile.error || status.error || books.error) throw new Error("overview progress read failed");
+        const shipped = new Map(books.data.map((book) => [book.id, book.printed_revision]));
+        // Only an eligible original of a shipped page of its current print revision counts in the bars.
+        const originals = items.flatMap((item) => {
+          const id = item.expected.identity, decision = markingEvent(item.expected, item.observation);
+          const counts = shipped.has(id.workbookId) && shipped.get(id.workbookId) === id.printedRevision && item.originalEvent && item.eventId && decision.publish;
+          return counts ? [{ item, event: item.originalEvent!, right: decision.result === "right" }] : [];
+        });
+        const questions = await markedQuestions(admin, parent, [...new Set(originals.map(({ item }) => item.expected.identity.workbookId))]);
+        const standards = new Map(BC_SKILL_MAP.standards.map((standard) => [standard.code, standard]));
+        const seen = new Set<string>();
+        const marks: AreaAnswer[] = [];
+        for (const { item, event, right } of originals) {
+          const id = item.expected.identity;
+          const key = itemKey(id);
+          if (seen.has(key)) throw new Error("duplicate original result");
+          seen.add(key);
+          const standard = standards.get(questions.get(`${id.workbookId}:${id.pageId}:${item.expected.number}:${id.itemId}`) ?? "");
+          if (!standard) continue;
+          if (event.parentId !== parent || event.childId !== childId || event.source !== "marking" ||
+              event.key !== `marking:${createHash("sha256").update(key, "utf8").digest("hex")}` ||
+              event.question.source !== "workbook" || event.question.workbookId !== id.workbookId ||
+              event.question.question !== item.expected.number || event.skill.standard !== standard.code) throw new Error("overview mark source mismatch");
+          marks.push({ area: REPORTED_STRAND[standard.strand], level: standard.grade, correct: right });
+        }
+        const history: OverviewProgress["history"] = [];
+        for (let after = 0; ;) {
+          const rows = await admin.from("skill_state_history").select("id, standard, state, changed_at").eq("parent_id", parent).eq("child_id", childId).gt("id", after).order("id").limit(1000);
+          if (rows.error) throw new Error("overview skill history read failed");
           if (!rows.data.length) break;
           for (const row of rows.data) {
-            const pkg = row.package;
-            if (!pkg || typeof pkg !== "object" || Array.isArray(pkg) || typeof pkg.id !== "string" || !pkg.skill || typeof pkg.skill !== "object" || Array.isArray(pkg.skill) || typeof pkg.skill.standard !== "string") continue;
-            questions.set(`${book}:${row.page_id}:${row.question_number}:${pkg.id}`, pkg.skill.standard);
+            if (!RECORDED_STATES.includes(row.state) || !Number.isFinite(Date.parse(row.changed_at))) throw new Error("overview skill history invalid");
+            history.push({ standard: row.standard, state: row.state as SkillState, changedAt: row.changed_at });
           }
           after = rows.data[rows.data.length - 1].id;
         }
+        const [lastRevision, lastProfile] = await Promise.all([command("revision", parent, null, null, { child: childId }), profileRow()]);
+        if (lastProfile.error) throw new Error("overview progress read failed");
+        if (lastRevision !== revision || lastProfile.data?.build_token !== profile.data?.build_token) continue;
+        // A child with no marking row has no published marks (the revision reads 0), so a saved profile includes them all.
+        const marksInProfile = status.data ? status.data.revision === revision && status.data.profile_revision === revision : revision === 0;
+        return { marks, skillMarks: effectiveSkillMarks(items), history, historyAssessment: profile.data && marksInProfile ? profile.data.assessment_id : null };
       }
-      const seen = new Set<string>();
-      const marks: AreaAnswer[] = [];
-      for (const item of items) {
-        const id = item.expected.identity;
-        const decision = markingEvent(item.expected, item.observation);
-        if (!shipped.has(id.workbookId) || shipped.get(id.workbookId) !== id.printedRevision || !decision.publish || !item.originalEvent || !item.eventId) continue;
-        const key = itemKey(id);
-        if (seen.has(key)) throw new Error("duplicate original result");
-        seen.add(key);
-        const standard = standards.get(questions.get(`${id.workbookId}:${id.pageId}:${item.expected.number}:${id.itemId}`) ?? "");
-        if (!standard) continue;
-        const event = item.originalEvent;
-        if (event.parentId !== parent || event.childId !== childId || event.source !== "marking" ||
-            event.key !== `marking:${createHash("sha256").update(key, "utf8").digest("hex")}` ||
-            event.question.source !== "workbook" || event.question.workbookId !== id.workbookId ||
-            event.question.question !== item.expected.number || event.skill.standard !== standard.code) throw new Error("overview mark source mismatch");
-        marks.push({ area: REPORTED_STRAND[standard.strand], level: standard.grade, correct: decision.result === "right" });
-      }
-      const history: { standard: string; state: "mastered" | "working_on" | "needs_review" | "not_started"; changedAt: string }[] = [];
-      for (let after = 0; ;) {
-        const rows = await admin.from("skill_state_history").select("id, standard, state, changed_at").eq("parent_id", parent).eq("child_id", childId).gt("id", after).order("id").limit(1000);
-        if (rows.error) throw new Error("overview skill history read failed");
-        if (!rows.data.length) break;
-        for (const row of rows.data) {
-          if (!["mastered", "working_on", "needs_review", "not_started"].includes(row.state) || !Number.isFinite(Date.parse(row.changed_at))) throw new Error("overview skill history invalid");
-          history.push({ standard: row.standard, state: row.state as typeof history[number]["state"], changedAt: row.changed_at });
-        }
-        after = rows.data[rows.data.length - 1].id;
-      }
-      const [lastRevision, lastProfile] = await Promise.all([
-        command("revision", parent, null, null, { child: childId }),
-        admin.from("child_profiles").select("build_token").eq("parent_id", parent).eq("child_id", childId).maybeSingle(),
-      ]);
-      if (lastProfile.error || lastRevision !== revision || lastProfile.data?.build_token !== profile.data?.build_token) throw new Error("overview progress changed");
-      // A child with no marking row has no published marks (the revision reads 0), so a saved profile is current.
-      const marksInProfile = status.data ? status.data.revision === revision && status.data.profile_revision === revision : revision === 0;
-      return { marks, history, statesReady: !!profile.data && marksInProfile };
+      throw new Error("overview progress changed");
     },
     async workbookStandards(workbookId) {
       const { data, error } = await session.from("workbook_questions").select("standard:package->skill->>standard").eq("workbook_id", workbookId);

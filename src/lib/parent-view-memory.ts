@@ -2,10 +2,10 @@
 // a parent reads only their own rows of each table, and only shipped workbooks. It hands back whole rows, with any extra
 // field a test puts on them, so a test can tell that the module copies only the fields it names. It counts the reads of
 // each table, and a table in `fail` throws when read.
-import type { AreaAnswer, AttemptStatus, Grade, ReportModel, SkillState } from "@/lib/assessment";
+import type { AreaAnswer, AttemptStatus, Grade, ReportModel } from "@/lib/assessment";
 import type { TabSwitches } from "@/lib/child-stage";
 import type { LearningRow } from "@/lib/learning-style";
-import type { ParentViewReader, PlanRecord } from "@/lib/parent-view";
+import type { OverviewProgress, ParentViewReader, PlanRecord } from "@/lib/parent-view";
 import type { CurriculumId } from "@/lib/signup";
 
 interface Owned {
@@ -113,7 +113,7 @@ export interface MemoryWorkbookQuestion {
   standard: string | null;
 }
 
-const TABLES = ["children", "tests", "reports", "cards", "deliveries", "workbooks", "plans", "switches", "corrections", "dispatches", "family", "results", "scans", "pages", "learning", "pin", "maya", "skillTests", "questions"] as const;
+const TABLES = ["children", "tests", "reports", "cards", "deliveries", "workbooks", "plans", "switches", "corrections", "dispatches", "family", "results", "scans", "pages", "learning", "pin", "maya", "skillTests", "questions", "overviewProgress"] as const;
 type Table = (typeof TABLES)[number];
 
 export interface MemoryParentViewTables {
@@ -139,7 +139,7 @@ export interface MemoryParentViewTables {
   maya?: MemoryMayaCall[];
   skillTests?: MemorySkillTest[];
   questions?: MemoryWorkbookQuestion[];
-  overviewProgress?: (Owned & { marks: AreaAnswer[]; history: { standard: string; state: SkillState; changedAt: string }[]; statesReady: boolean })[];
+  overviewProgress?: (Owned & OverviewProgress)[];
   fail?: Table[];
 }
 
@@ -240,8 +240,10 @@ export function memoryParentViewReaders(tables: MemoryParentViewTables) {
         return own(tables.skillTests).filter((t) => t.childId === childId && reported.has(t.assessmentId)).map((t) => ({ ...t, unreliable: unreliable.has(t.assessmentId) }));
       },
       async overviewProgress(childId) {
+        read("overviewProgress");
         const row = own(tables.overviewProgress).find((r) => r.childId === childId);
-        return row ?? { marks: [], history: [], statesReady: false };
+        if (!own(tables.children).some((c) => c.id === childId)) return null;
+        return row ?? { marks: [], skillMarks: [], history: [], historyAssessment: null };
       },
       async workbookStandards(workbookId) {
         read("questions");

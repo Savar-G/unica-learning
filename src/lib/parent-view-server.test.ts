@@ -322,7 +322,7 @@ describe("the Supabase reader of the Overview (#560)", () => {
     expect((await r.reader.learningCards())[0]).toMatchObject({ childId: CHILD, interests: ["space"] });
     await readOverview(r.reader, CHILD, NOW);
     expect(tables(r.session)).toEqual(["card_setups", "children", "parents", "reports", "scan_photos", "workbook_delivery_corrections", "workbook_delivery_receipts", "workbook_pages", "workbooks"]);
-    expect(tables(r.admin)).toEqual(["admin_users", "answers", "assessments", "child_plan_states", "child_profiles", "rpc/scan_marking_command", "scan_marking_revisions", "skill_state_history", "test_accounts", "workbook_questions"]);
+    expect(tables(r.admin)).toEqual(["admin_users", "answers", "assessments", "child_plan_states", "child_profiles", "rpc/scan_marking_command", "scan_marking_revisions", "skill_state_history", "test_accounts"]);
   });
 });
 
