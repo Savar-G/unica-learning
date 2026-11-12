@@ -174,11 +174,15 @@ export function useDeskVoice(initial: { usage: VoiceUsage } | null, at: { book: 
 
   /** Back to the page after a call. */
   const done = () => {
+    const id = live.current.id;
     forget();
     setFlow("idle");
+    // The call has ended by now: read the week again, so the page shows its real time left.
+    if (id) void post({ type: "read", id }).then((r) => { if (r?.usage) setUsage(r.usage); });
   };
 
-  const counting = base !== null && (flow === "starting" || flow === "call" || (flow === "after" && call?.ended !== true));
+  // Also on the after-call screen: a read made as the call ended can still count it at its whole limit.
+  const counting = base !== null && (flow === "starting" || flow === "call" || flow === "after");
   /** Seconds of the week left now, while this call runs (null when no call runs: then `usage` holds the week). */
   const liveLeft = counting && base ? leftWhileLive(base, room.seconds) : null;
   const screen = voiceScreen({ flow, phase: room.phase, callEnded: call?.ended === true, hungUp, error: room.error });

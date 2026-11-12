@@ -146,9 +146,13 @@ it("goes from the microphone check to a live call and back to the page", async (
   await act(async () => { await new Promise((r) => setTimeout(r, 450)); });
   expect(sent.some((b) => b.type === "read" && b.id === sent[0].id)).toBe(true);
   expect(host.textContent).toContain("Hi! Let us start.");
-  expect(host.textContent).toContain("18 minutes left this week");
+  // Until the child is back on the page, the time left counts from the week before the call.
+  expect(host.textContent).toContain("20 minutes left this week");
 
   await f.click("Back to my page");
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  // Back on the page, the week is read again: the ended call counts its real time.
+  expect(host.textContent).toContain("Calls18 minutes left this week");
   expect(host.textContent).toContain("Call Maya");
   expect(host.textContent).not.toContain("Hi! Let us start.");
   expect(host.querySelector("#voice-board")).toBeNull();
