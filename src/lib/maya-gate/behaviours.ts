@@ -2179,28 +2179,29 @@ export const BEHAVIOURS: Behaviour[] = [
     },
   },
   // First-ship practice at 6de7e777 (J06, conversational response): the child said a column right, and Maya asked the step
-  // again or ignored a question. check.stated was removed (controller stop rule after the review of 673b012e): a column
-  // said in other words keeps Maya on that step with no credit, as before. These cases show what holds without it: a turn
-  // in other words gets no credit and no "Every part is done", a reply that passes over a step the child said in words
-  // code credits is refused (so code credits it and goes on, never asking it again), a question about the carry is
-  // answered, a question about a secret gets code's reply, and a right method is not doubted. `{ throws: true }` repairs
-  // leave the turn to code. Each fails on the 6de7e777 controller for a behaviour reason.
+  // again or ignored a question. check.stated was removed (controller stop rule after the review of 673b012e). These cases
+  // show what holds without it: a turn in other words gets no credit and no "Every part is done", a reply that passes over
+  // or asks again for a step code credits is refused (so code credits it and goes on, never asking it again), a question
+  // about the carry is answered, a question about a secret gets code's reply, and a right method is not doubted.
+  // `{ throws: true }` repairs leave the turn to code. Each fails on the 6de7e777 controller for a behaviour reason.
+  // J1 follows the sentence-level commit rule (approved 2026-11-12): one sentence with the step's value and harmless others
+  // ("I added the ones first.") credits the step, so Maya goes to the tens.
   {
     id: "J1",
-    title: "C07: 'I added the ones first. Seven and nine is sixteen.' keeps Maya on the ones with no credit; 'Seven and nine is sixteen.' next is the ones, and a reply asking for them again is refused",
+    title: "C07: 'I added the ones first. Seven and nine is sixteen.' credits the ones (sentence-level rule, 2026-11-12) and Maya goes to the tens; a reply asking for the ones again is refused",
     fixture: "A",
     status: "passing",
     steps: [
-      child("I added the ones first. Seven and nine is sixteen.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"], repair: { throws: true } }]),
-      child("Seven and nine is sixteen.", undefined, [{ act: "guide", step: "ones", level: 0, lines: ["step.invite"], repair: { throws: true } }]),
+      child("I added the ones first. Seven and nine is sixteen.", { start: "has_work", answers: [[16, "ones", "right"]] }, [{ act: "guide", step: "tens", level: 0, lines: ["check.right_step", "step.invite"] }]),
+      child("Okay.", undefined, [{ act: "guide", step: "ones", level: 0, lines: ["step.invite"], repair: { act: "guide", step: "tens", level: 0, lines: ["step.invite"] } }]),
       child("2 plus 3 plus 1 is 6, so 66.", { answers: [[66, "result", "right"]] }),
       ...solvedEnd(),
     ],
     expect: {
       outcome: { reason: "solved", assistance: "independent" },
       acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
-      refused: ["answer_not_committed", "invalid_proposal"],
-      outputs: [{ mayaTurn: 1, lines: [inviteOnes] }, { mayaTurn: 2, lines: [rightOnes, inviteTens] }],
+      refused: ["wrong_step"],
+      outputs: [{ mayaTurn: 1, lines: [rightOnes, inviteTens] }, { mayaTurn: 2, lines: [inviteTens] }],
       counts: { hints: 0 },
     },
   },

@@ -60,11 +60,20 @@ describe("after check.stated, only an exact bare yes moves Maya past the column 
 });
 
 describe("a total in a named place is never said back as the column (P1-b)", () => {
-  it.each(["16 in the tens.", "The tens make 16.", "7 plus 9 is 16 hundreds.", "9 plus 7 is 16, so 6 in the tens.", "I added the ones. I got 16.", "Sixteen ones."])("gives %j no check.stated", async (text) => {
+  it.each(["16 in the tens.", "The tens make 16.", "7 plus 9 is 16 hundreds.", "9 plus 7 is 16, so 6 in the tens.", "Sixteen ones."])("gives %j no check.stated", async (text) => {
     const { told } = await play([named(text, { start: "has_work", answers: [[16, "ones", "right"]] })]);
     expect(told[1].lines).not.toContain("check.stated");
     expect(told[1].say).not.toMatch(/ones make 16|16 for the ones|said 16|heard 16/);
     expect(told[1].step ?? "ones").toBe("ones");
+  });
+
+  // Sentence-level commit rule (approved 2026-11-12): the method sentence is harmless, so the ones are credited as the ones,
+  // and the total is never said back as another column.
+  it("credits the ones for 'I added the ones. I got 16.' and goes to the tens", async () => {
+    const { told } = await play([named("I added the ones. I got 16.", { start: "has_work", answers: [[16, "ones", "right"]] })]);
+    expect(told[1]).toMatchObject({ act: "guide", step: "tens", lines: ["check.right_step", "step.invite"] });
+    expect(told[1].lines).not.toContain("check.stated");
+    expect(told[1].say).not.toMatch(/16 for the tens|tens make 16|16 tens/);
   });
 
   it("then a yes moves nothing on", async () => {

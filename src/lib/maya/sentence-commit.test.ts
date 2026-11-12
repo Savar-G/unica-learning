@@ -54,6 +54,8 @@ const CREDITED = [
   "I add 7 and 9. That's 16.",
   "Like I said, I start with the ones. I got 16.",
   "Like you showed me, it's 16.",
+  "I added the ones first. 7 + 9 is 16.",
+  "I added the ones. I got 16.",
 ];
 
 describe("sentence-level commit: one committing sentence and harmless others", () => {

@@ -2576,11 +2576,10 @@ function stepStatement(pkg: OperationPackage, step: Extract<WorkedStep, { kind: 
  * sentence-level commit rule): how the child worked ("I add the ones first", "Like you showed me", "I start with the
  * ones"). An allow-list, fail-closed: no other speaker ("my", "mom", "she", "they"), no hedge ("maybe", "think", "guess",
  * "know", "or"), no negation ("not", "don't"), no "is" or "are" that could state a value, and no question (a question mark
- * never reaches a clause: stepStatement refuses it first). "Added" is not here: the J1 gate behaviour and j06-review P1-b
- * keep "I added the ones first. Seven and nine is sixteen." and "I added the ones. I got 16." with no credit (reported
- * 2026-11-12 for a decision).
+ * never reaches a clause: stepStatement refuses it first). The past tense "added" is here too (decision 2026-11-12: J1 and
+ * j06-review P1-b follow the sentence-level rule).
  */
-const HARMLESS_WORDS = new Set(["i", "me", "you", "like", "showed", "show", "shown", "taught", "said", "add", "adding", "start", "started",
+const HARMLESS_WORDS = new Set(["i", "me", "you", "like", "showed", "show", "shown", "taught", "said", "add", "added", "adding", "start", "started",
   "with", "first", "the", "column", "digits", "numbers", "together", "and", "so", "then", "now", "okay", "ok", "um", "uh", "oh", "well", "plus", "+",
   "ones", "tens", "hundreds", "thousands", "tenths", "hundredths", "thousandths"]);
 const PLACE_WORDS = new Set(["ones", "tens", "hundreds", "thousands", "tenths", "hundredths", "thousandths"]);
