@@ -101,6 +101,21 @@ it("says the week is used, with the day it starts again, and offers no call", as
   expect(f.button("Call Maya")).toBeUndefined();
 });
 
+it("counts the live call once: the week before the call minus the call's own time, not the server's reserved count", async () => {
+  // The server counts a live call at its whole limit (10 minutes), so its usage during the call is 1200 - 600 = 600.
+  answer = (body) => body.type === "start"
+    ? { call: call(), ticket: { url: "ws://fake", token: "t-start", room: "r", identity: "child", expiresAt: "x" }, usage: { ...USAGE, usedSeconds: 1200, leftSeconds: 600 } }
+    : { call: call({ started: true }), usage: { ...USAGE, usedSeconds: 1200, leftSeconds: 600 } };
+  const f = await mount();
+  await f.click("Call Maya");
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  await f.click("Start the call");
+  await join(rooms[0]);
+  expect(host.textContent).toContain("On the call");
+  expect(host.textContent).toContain("20 minutes left this week");
+  expect(host.textContent).not.toContain("10 minutes left this week");
+});
+
 it("goes from the microphone check to a live call and back to the page", async () => {
   answer = (body) => body.type === "start"
     ? { call: call(), ticket: { url: "ws://fake", token: "t-start", room: "r", identity: "child", expiresAt: "x" }, usage: USAGE }

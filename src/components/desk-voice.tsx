@@ -44,6 +44,9 @@ export function useDeskVoice(initial: { usage: VoiceUsage } | null, at: { book: 
   const [hungUp, setHungUp] = useState(false);
   const [board, setBoard] = useState(EMPTY_BOARD);
   const [shown, setShown] = useState(0);
+  // The week as it was before this call: the server counts a live call at its whole limit, so the time left during
+  // the call is this minus the call's own seconds, never the server's count minus them again.
+  const [base, setBase] = useState<VoiceUsage | null>(null);
   const mic = useMicCheck();
   const ticket = useRef<VoiceTicket | null>(null);
   const live = useRef({ id: "", hungUp: false });
@@ -98,6 +101,7 @@ export function useDeskVoice(initial: { usage: VoiceUsage } | null, at: { book: 
     setCall(null);
     setBoard(EMPTY_BOARD);
     setShown(0);
+    setBase(null);
   };
 
   /** Opens the microphone check. `before` runs first (the desk ends an open chat); false from it stops here. */
@@ -123,6 +127,7 @@ export function useDeskVoice(initial: { usage: VoiceUsage } | null, at: { book: 
   const begin = async () => {
     if (flow !== "mic" || mic.state !== "working" || at.question === null) return;
     const id = callId;
+    setBase(usage);
     setFlow("starting");
     mic.release();
     const r = await post({ type: "start", id, question: { source: "workbook", workbookId: at.book, page: at.page, question: at.question } });
@@ -173,9 +178,12 @@ export function useDeskVoice(initial: { usage: VoiceUsage } | null, at: { book: 
     setFlow("idle");
   };
 
+  const counting = base !== null && (flow === "starting" || flow === "call" || (flow === "after" && call?.ended !== true));
+  /** Seconds of the week left now, while this call runs (null when no call runs: then `usage` holds the week). */
+  const liveLeft = counting && base ? leftWhileLive(base, room.seconds) : null;
   const screen = voiceScreen({ flow, phase: room.phase, callEnded: call?.ended === true, hungUp, error: room.error });
   return {
-    enabled: initial !== null, usage, flow, screen, call, mic, room: { phase: room.phase, maya: room.maya, error: room.error, seconds: room.seconds, fakeSpeech: room.fakeSpeech, sending: room.sending, say: room.say },
+    enabled: initial !== null, usage, liveLeft, flow, screen, call, mic, room: { phase: room.phase, maya: room.maya, error: room.error, seconds: room.seconds, fakeSpeech: room.fakeSpeech, sending: room.sending, say: room.say },
     audioHost: room.audioHost, startError, board, shown,
     /** A call is under way or just ended: the desk's own controls give way to the call's. */
     engaged: flow !== "idle",
@@ -190,7 +198,7 @@ export type DeskVoiceState = ReturnType<typeof useDeskVoice>;
 /** The Calls limit in the desk header: the minutes left this week, or that the week is used. */
 export function VoiceLimit({ state }: { state: DeskVoiceState }) {
   if (!state.enabled || !state.usage) return null;
-  return <div><dt><Icon name="phone" size={14} />Calls</dt><dd>{voiceLeftLine(state.usage.leftSeconds) ?? "Used this week"}</dd></div>;
+  return <div><dt><Icon name="phone" size={14} />Calls</dt><dd>{voiceLeftLine(state.liveLeft ?? state.usage.leftSeconds) ?? "Used this week"}</dd></div>;
 }
 
 /** The call's talk, as chat shows it: Maya's lines and the child's, in order. */
@@ -234,7 +242,7 @@ export function VoiceControls({ state, beforeOpen }: { state: DeskVoiceState; be
   const [said, setSaid] = useState("");
   if (!state.enabled) return null;
   const used = voiceWeekUsed(usage);
-  const left = usage ? voiceLeftLine(leftWhileLive(usage, room.seconds)) ?? "Less than a minute left this week" : null;
+  const left = usage ? voiceLeftLine(state.liveLeft ?? usage.leftSeconds) ?? "Less than a minute left this week" : null;
   const error = roomErrorLine(room.error);
 
   const say = async (event: FormEvent) => {
