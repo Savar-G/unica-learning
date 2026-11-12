@@ -2526,7 +2526,8 @@ function stepStatement(pkg: OperationPackage, step: Extract<WorkedStep, { kind: 
   const operands = (step.carryIn > 0 ? [...step.digits, step.carryIn] : step.digits).slice().sort((a, b) => a - b).join(",");
   const lead = new RegExp(`^(?:for the ${place}|(?:the )?${place} first)$`);
   const already = new RegExp(`^i (?:already did (?:that|that one|this one|it|the ${place})|did (?:that|that one|it) already)$`);
-  const result = new RegExp(`^(?:i (?:already )?(?:got|get)|it's|it is)\\s+(.+?)(?: for the ${place})?$`);
+  // "That's 16" and "I already got 16 for that" are the child's own first-person claims of the value (2026-11-12).
+  const result = new RegExp(`^(?:i (?:already )?(?:got|get)|it's|it is|that's|that is|that makes)\\s+(.+?)(?: for (?:the ${place}|that|that one|this one|it))?$`);
   const placeResult = new RegExp(`^for the ${place},? i (?:already )?(?:got|get) (.+)$`);
   const clauses = said.flatMap((x, n) => {
     const sentence = x.trim().replace(/[.!]+$/, "").toLowerCase();
@@ -2559,11 +2560,52 @@ function stepStatement(pkg: OperationPackage, step: Extract<WorkedStep, { kind: 
     // The written digit comes after the total.
     const w = /^(?:i )?wrote (?:the )?(.+)$/.exec(c);
     if (w && totals === 1 && plainNumber(w[1]) === step.write) continue;
+    // Sentence-level commit (2026-11-12): any other clause must be harmless.
+    if (harmlessClause(step, c, totals === 0)) continue;
     return false;
   }
   if (totals !== 1) return false;
   // The same written-digit check every reading of a column gets.
   return checkColumnClaims(pkg, step, pkg.steps, step, said.join(" ")) === "right";
+}
+
+/**
+ * The only words a harmless clause of a step statement may hold besides the step's own operands (2026-11-12, the
+ * sentence-level commit rule): how the child worked ("I add the ones first", "Like you showed me", "I start with the
+ * ones"). An allow-list, fail-closed: no other speaker ("my", "mom", "she", "they"), no hedge ("maybe", "think", "guess",
+ * "know", "or"), no negation ("not", "don't"), no "is" or "are" that could state a value, and no question (a question mark
+ * never reaches a clause: stepStatement refuses it first). "Added" is not here: the J1 gate behaviour and j06-review P1-b
+ * keep "I added the ones first. Seven and nine is sixteen." and "I added the ones. I got 16." with no credit (reported
+ * 2026-11-12 for a decision).
+ */
+const HARMLESS_WORDS = new Set(["i", "me", "you", "like", "showed", "show", "shown", "taught", "said", "add", "adding", "start", "started",
+  "with", "first", "the", "column", "digits", "numbers", "together", "and", "so", "then", "now", "okay", "ok", "um", "uh", "oh", "well", "plus", "+",
+  "ones", "tens", "hundreds", "thousands", "tenths", "hundredths", "thousandths"]);
+const PLACE_WORDS = new Set(["ones", "tens", "hundreds", "thousands", "tenths", "hundredths", "thousandths"]);
+
+/**
+ * A clause of a step statement that commits nothing and withdraws nothing (sentence-level commit rule, 2026-11-12): every
+ * word is on HARMLESS_WORDS or is a number; the only place it names is the step's own; its numbers are some of the step's
+ * own operands (and its carry-in), never the total, another number or a number twice, and only before the committing
+ * clause (`numbers`: "I add 7 and 9. That's 16." but not "9 and 7 is 16, 9 and 7."); and a clause that names "you" (Maya)
+ * holds no number and is not what she said, so "Like you showed me" is harmless and "like you said" and "You said 16"
+ * are not: that is Maya's number, not the child's. The committing clause is the caller's: a harmless clause alone never
+ * credits.
+ */
+function harmlessClause(step: Extract<WorkedStep, { kind: "add-column" }>, clause: string, numbers: boolean): boolean {
+  const words = clause.replace(/\+/g, " + ").split(/\s+/).filter(Boolean);
+  if (words.length === 0 || !words.every((w) => HARMLESS_WORDS.has(w) || plainNumber(w) !== null)) return false;
+  if (words.some((w) => PLACE_WORDS.has(w) && w !== step.place)) return false;
+  const r = readNumbers(clause);
+  if (r.unreadable) return false;
+  if (words.includes("you") && words.includes("said")) return false;
+  if (r.values.length === 0) return true;
+  if (!numbers || words.includes("you")) return false;
+  const left = step.carryIn > 0 ? [...step.digits, step.carryIn] : [...step.digits];
+  return r.values.every((v) => {
+    const at = v.type === "number" ? left.indexOf(v.value) : -1;
+    return at >= 0 && left.splice(at, 1).length === 1;
+  });
 }
 
 /** The steps the ladder is past: done by the child, or passed after Maya showed them at H3 (copiedStep). */
@@ -2808,7 +2850,26 @@ function stepConfirmable(s: Session): AnswerValue | null {
   const opts = readOptionsFor(s.package);
   const values = valuesIn(s.turn.text, opts);
   const total = number(st.total);
+  if (statementAsked(s.package, st, s.turn.text)) return total;
   return values.length === 1 && readAnswer(s.turn.text, opts).kept.length === 1 && saidAs(values[0], total) && confirmWordsOnly(s.turn.text) ? total : null;
+}
+
+/** A question that only checks the value the child just said: "Is that right?", "Am I right?", "Is it correct?", "Right?". */
+const VALUE_CHECK = /^(?:(?:so|okay|ok|um|uh|oh)\b[,\s]*)?(?:is (?:that|it|this) (?:right|correct)|am i right|right|correct|did i get it right|did i do it right)$/;
+
+/**
+ * The turn is a step statement (stepStatement, with the sentence-level commit rule) followed only by questions that check
+ * its value (VALUE_CHECK): "7 + 9 is 16. Is that right?" (2026-11-12). It is not credited as it is: it goes to the step's
+ * confirm question ("Did you say 16?"), whose plain yes credits it (stepAsked). Any other question, or a value check
+ * before the statement, is not this.
+ */
+function statementAsked(pkg: OperationPackage, step: Extract<WorkedStep, { kind: "add-column" }>, text: string): boolean {
+  const t = text.trim().replace(/’/g, "'");
+  if (t.includes("\n")) return false;
+  const sentences = t.split(/(?<=[.!?])\s+/).filter(Boolean);
+  let end = sentences.length;
+  while (end > 0 && sentences[end - 1].trim().endsWith("?") && VALUE_CHECK.test(sentences[end - 1].trim().toLowerCase().replace(/[?]+$/, "").trim())) end--;
+  return end > 0 && end < sentences.length && stepStatement(pkg, step, sentences.slice(0, end).join(" "));
 }
 
 /**
@@ -3025,7 +3086,11 @@ export function fallbacks(given: Session, refused: readonly unknown[] = []): Pro
   const solved = s.solved !== null || rightResult;
   // A step a model named, in a turn that is not heard: the confirm question comes before more help. Only that refusal: a
   // claim judged wrong is not a hearing problem (review of fec3dac4).
-  const unheard = refused.flatMap(answersOf).some((a) => !answers.some((k) => k.step === a.step) && checkAnswers(session, [a], [])?.unheard === true);
+  // With no model reading, a step statement followed by a check of its value ("7 + 9 is 16. Is that right?", statementAsked)
+  // goes to the same confirm question (sentence-level commit rule, 2026-11-12).
+  const column = currentColumn(session);
+  const askedStatement = !!column && answers.length === 0 && !!pkg && !!session.turn && statementAsked(pkg, column, session.turn.text) && stepSaidUnheard(session);
+  const unheard = askedStatement || refused.flatMap(answersOf).some((a) => !answers.some((k) => k.step === a.step) && checkAnswers(session, [a], [])?.unheard === true);
   const rank = (a: Act) => ((solved && a === "ask_write") || ((doubtful || unheard) && a === "confirm") ? FALLBACK_ORDER.indexOf("guide") - 0.5 : a === wayOut ? FALLBACK_ORDER.indexOf("guide") : FALLBACK_ORDER.indexOf(a));
   const order = [...new Set(unheard && s.opened && s.turn && s.confirmTries < 2 && s.solved === null && !rightResult ? [...acts, "confirm" as Act] : acts)].sort((a, b) => rank(a) - rank(b)).filter((a) => a !== "accept_answer" || rightResult);
   const make = (act: Act, offers: LineOffer[], extra: Partial<Proposal> = {}): Proposal => ({
