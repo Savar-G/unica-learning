@@ -144,13 +144,13 @@ The work review, the report text, the learner and child profiles and Maya run li
 
 ## Book 1 baseline recovery (#870)
 
-After an admin approves a Book 1 draft, the site saves its starting record (the Book 1 baseline) from the plan input that the run frame keeps. The site cannot save it in two cases, and the admin run page then says "Not saved" and names the recovery script:
+After an admin approves a Book 1 draft, the site saves its starting record (the Book 1 baseline) from the plan input that the run frame keeps. The site cannot save it in three cases. The admin run page then says "Not saved", and `/admin/next-steps` (Plans and delivery, "Book 1 starting records") lists the child, the draft, the version and the exact command. It also lists a revision that the site tried 3 times and could not save:
 
 - The run was made before #472, so its frame kept no plan input (`planning-capture-missing`).
 - The curriculum changed in a deploy after the book was planned (`curriculum-version-changed`). The record must copy the skills and steps of the version the book was planned on.
 - The site runs another commit than the one that planned the book (`planned-on-another-build`). Code outside the curriculum version (the watch-out check) shapes the steps, so only the planning build can prove that it copies the planned steps.
 
-Both need the frame's own build: the original planner and its curriculum, built from this repository's Git objects. On the Mac, from a checkout that has the frame's build commit:
+All three need the frame's own build: the original planner and its curriculum, built from this repository's Git objects. On the Mac, from a checkout that has the frame's build commit:
 
 1. Run `npm run workbooks:book1-recover -- --run <run id>`. It saves nothing. It runs every step of the save: the planning proof or recovery, the record, and the database save in a transaction that is always rolled back. It prints each result, whether book 2 can be planned on today's curriculum (#812), and the verdict.
 2. If the verdict says the save would store it, run it again with `--save`. It never replaces a baseline that exists.

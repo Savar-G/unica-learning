@@ -27,7 +27,18 @@ export function book1CaptureDeps(db: SupabaseClient<Database>): Omit<Book1Captur
 
 /** The site's capture deps: book1CaptureDeps and this deploy's commit, the same source a run frame's versions.build uses. */
 export function book1SiteDeps(db: SupabaseClient<Database>): Book1SiteDeps {
-  return { ...book1CaptureDeps(db), build: process.env.VERCEL_GIT_COMMIT_SHA || null };
+  return { ...book1CaptureDeps(db), build: process.env.VERCEL_GIT_COMMIT_SHA || null, activity: (draftId) => book1HasActivity(db, draftId) };
+}
+
+/** Whether any mark, learning event or scan receipt of the book exists (the baseline save refuses after the first). */
+export async function book1HasActivity(db: SupabaseClient<Database>, draftId: string): Promise<boolean> {
+  const counts = await Promise.all([
+    db.from("scan_marking_items").select("id", { count: "exact", head: true }).eq("workbook_id", draftId),
+    db.from("learning_events").select("id", { count: "exact", head: true }).eq("workbook_id", draftId),
+    db.from("workbook_scan_receipts").select("id", { count: "exact", head: true }).eq("workbook_id", draftId),
+  ]);
+  if (counts.some(c => c.error || c.count === null)) throw new Error("book1-activity-read");
+  return counts.some(c => (c.count ?? 0) > 0);
 }
 
 export function book1PendingStore(db: SupabaseClient<Database>): Book1PendingStore {

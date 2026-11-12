@@ -64,9 +64,10 @@ function memoryDb(o: { failSave?: "before" | "after-store" } = {}) {
 }
 /** The commit that planned the synthetic book, and the deploy's commit when the test does not say otherwise. */
 const BUILD = "b".repeat(40);
-function deps(sql: Book1BaselineSql, o: { legacy?: boolean; draftThrows?: boolean; curricula?: Book1CaptureDeps["curricula"]; build?: string | null } = {}): Book1SiteDeps {
+function deps(sql: Book1BaselineSql, o: { legacy?: boolean; draftThrows?: boolean; curricula?: Book1CaptureDeps["curricula"]; build?: string | null; activity?: boolean } = {}): Book1SiteDeps {
   return {
     build: o.build === undefined ? BUILD : o.build,
+    activity: async () => o.activity ?? false,
     curricula: o.curricula,
     draft: async run => {
       if (o.draftThrows) throw Error("draft read failed");
@@ -299,5 +300,29 @@ describe("the site captures only on the build that planned the book (review roun
     db.approved.push(target());
     await reconcileBook1Baselines(deps(db.sql, { legacy: true, build: "c".repeat(40) }), db.store, { limit: 3 });
     expect(db.pending.map(p => p.reason)).toEqual(["planning-capture-missing"]);
+  });
+});
+
+describe("the most specific permanent reason is recorded (review round 3 on #885)", () => {
+  it("a book with marks says activity-before-boundary, not the build", async () => {
+    // Wrong if: the build reason hides that the record can no longer be saved by anyone.
+    const db = memoryDb();
+    db.approved.push(target());
+    await reconcileBook1Baselines(deps(db.sql, { build: "c".repeat(40), activity: true }), db.store, { limit: 3 });
+    expect(db.pending.map(p => p.reason)).toEqual(["activity-before-boundary"]);
+    expect(db.saves).toHaveLength(0);
+  });
+  it("a refusal before the save (the curriculum) is recorded before the build reason", async () => {
+    const db = memoryDb();
+    db.approved.push(target());
+    const today = { version: () => "0".repeat(28), curriculum: curriculumFor };
+    await reconcileBook1Baselines(deps(db.sql, { build: "c".repeat(40), curricula: today }), db.store, { limit: 3 });
+    expect(db.pending.map(p => p.reason)).toEqual(["curriculum-version-changed"]);
+  });
+  it("the build reason is recorded only when nothing else refuses", async () => {
+    const db = memoryDb();
+    db.approved.push(target());
+    await reconcileBook1Baselines(deps(db.sql, { build: "c".repeat(40) }), db.store, { limit: 3 });
+    expect(db.pending.map(p => p.reason)).toEqual(["planned-on-another-build"]);
   });
 });

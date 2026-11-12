@@ -5,6 +5,7 @@ import { expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
 import { PlansView, type PlanCard } from "@/components/admin-plans";
+import type { Book1BaselineLoad } from "@/lib/admin-book1-baselines";
 
 const at = "2026-11-01T18:00:00Z";
 const now = new Date("2026-11-10T18:00:00Z");
@@ -30,7 +31,14 @@ const cards = [
 ];
 const holds = { rows: [{ workbookId: "wb-h", childId: "child-Waiting", parentId: pid(2), number: 1, testFamily: false }], unavailable: false, more: false };
 const isTest = (id: string) => id === pid(9);
-const render = (show: boolean) => renderToStaticMarkup(createElement(PlansView, { cards, waitlist: [], holds, show, isTest, now, cardsMore: false, waitMore: false }));
+const RUN = "00000000-0000-4000-8000-0000000000aa";
+const baselines: Book1BaselineLoad = { rows: [
+  { draftId: "90559915-cc4b-46c6-bc00-d9ee80876b48", revision: 7, runId: RUN, parentId: pid(2), childId: "child-Waiting", childName: "Waiting", kind: "pending" as const, reason: "planned-on-another-build", tries: null, testFamily: false },
+  { draftId: "11111111-cc4b-46c6-bc00-d9ee80876b48", revision: 2, runId: null, parentId: pid(3), childId: "child-Stuck", childName: "Stuck", kind: "failing" as const, reason: null, tries: 5, testFamily: false },
+  { draftId: "22222222-cc4b-46c6-bc00-d9ee80876b48", revision: 3, runId: "00000000-0000-4000-8000-0000000000bb", parentId: pid(4), childId: "child-Mail", childName: "Mail", kind: "pending" as const, reason: "activity-before-boundary", tries: null, testFamily: false },
+], unavailable: false, more: false };
+const none: Book1BaselineLoad = { rows: [], unavailable: false, more: false };
+const render = (show: boolean, b = none) => renderToStaticMarkup(createElement(PlansView, { cards, waitlist: [], holds, baselines: b, show, isTest, now, cardsMore: false, waitMore: false }));
 const count = (html: string, text: string) => html.split(text).length - 1;
 
 it("shows each card's plan start and workbook emails once: in Needs you when it is there, else in its row", () => {
@@ -65,4 +73,30 @@ it("names the child of a book on hold and links to it", () => {
   expect(html).toContain("Waiting · Book 2");
   expect(html).toContain("Open child and workbook 1");
   expect(html).toContain("book 2 is on hold until the family scans");
+});
+
+const view = (b: Book1BaselineLoad, cardsIn: PlanCard[] = []) => renderToStaticMarkup(createElement(PlansView, { cards: cardsIn, waitlist: [], holds: { rows: [], unavailable: false, more: false }, baselines: b, show: false, isTest, now, cardsMore: false, waitMore: false }));
+
+it("lists each Book 1 record the site could not save, with the child, the draft, the version and the exact command (#870)", () => {
+  // Wrong if: a pending row or a failing revision is not on the page, or the command lacks its run id or --save.
+  const html = render(false, baselines);
+  expect(html).toContain("Book 1 starting records");
+  expect(html).toContain(`npm run workbooks:book1-recover -- --run ${RUN} --save`);
+  expect(html).toContain("Draft 90559915, version 7");
+  expect(html).toContain("cannot prove it copies the planned steps");
+  expect(html).toContain("Keeps failing");
+  expect(html).toContain("The site tried 5 times to save this record and could not.");
+  // A failing revision with no run found has no command; a book with marks cannot be saved, so it has none either.
+  expect(count(html, "workbooks:book1-recover")).toBe(1);
+  expect(html).toContain("Pages of this book were marked before the record was saved.");
+  expect(html).toContain(`href="/admin/workbooks/runs/${RUN}"`);
+});
+
+it("counts the Book 1 records in Needs you and keeps the calm line only when there are none", () => {
+  expect(view(none)).toContain("Nothing waits for us.");
+  const one = view({ ...baselines, rows: [baselines.rows[0]] });
+  expect(one).not.toContain("Nothing waits for us.");
+  expect(one).toContain('aria-label="1 item"');
+  expect(view({ rows: [], unavailable: true, more: false })).toContain("Some Book 1 records could not be read.");
+  expect(view({ ...baselines, more: true })).toContain("More Book 1 records may need saving.");
 });

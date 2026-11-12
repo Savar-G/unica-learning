@@ -12,7 +12,8 @@
 //   (frame.versions.build equals this deploy's commit). The record copies the planned steps as curriculumFor gives them,
 //   and code outside the curriculum version (the watch-out check, watch-out.ts) shapes them: another build could copy
 //   other steps under the same version. Another build records planned-on-another-build; the local recovery copies the
-//   steps of the frame's own build.
+//   steps of the frame's own build. The build check runs last: every other proof refuses first, and a book that already
+//   has activity says activity-before-boundary, so the pending reason is the most specific one.
 // - A frame with no planning capture needs the pinned planner and Git (src/lib/workbook-book1-pinned.ts), which a Vercel
 //   function does not have: the reconcile records it once as pending recovery (public.workbook_book1_baseline_pending),
 //   and scripts/book1-baseline-recover.ts recovers it on a Mac.
@@ -41,7 +42,11 @@ export interface Book1PendingStore {
 }
 
 /** The site's capture: today's code, and the commit of this deploy (null when unknown: nothing is saved). */
-export type Book1SiteDeps = Omit<Book1CaptureDeps, "recovery"> & { build: string | null };
+export type Book1SiteDeps = Omit<Book1CaptureDeps, "recovery" | "beforeSave"> & {
+  build: string | null;
+  /** Whether any mark, learning event or scan receipt of the book exists: the save would refuse activity-before-boundary. */
+  activity?(draftId: string): Promise<boolean>;
+};
 
 export type Book1Settled =
   | { status: "saved" | "duplicate" | "existing"; baseline: StoredBook1Baseline }
@@ -80,7 +85,8 @@ export async function settleBook1Baseline(deps: Book1SiteDeps, store: Book1Pendi
     // A baseline binds the key but cannot be read now: store nothing, try again later.
     return baseline ? { status: "existing", baseline } : { status: "retry", reason: "existing-baseline-unreadable" };
   }
-  const result = await siteBuildRefusal(deps, t.runId) ?? await captureBook1Baseline({ draft: deps.draft, frame: deps.frame, repository: deps.repository, curricula: deps.curricula },
+  const result = await captureBook1Baseline({ draft: deps.draft, frame: deps.frame, repository: deps.repository, curricula: deps.curricula,
+    beforeSave: () => siteGate(deps, t) },
     { id: book1BaselineId(t.draftId, t.revision), actorId: t.actorId, parentId: t.parentId, childId: t.childId, runId: t.runId, revision: t.revision });
   if (result.status !== "refused") return result;
   if (RETRY.has(result.reason)) return { status: "retry", reason: result.reason };
@@ -96,14 +102,14 @@ export async function settleBook1Baseline(deps: Book1SiteDeps, store: Book1Pendi
 }
 
 /**
- * Why the site may not copy the planned steps for this run, or null. Only a frame with a planning capture is judged:
- * the capture refuses any other frame with its own reason (planning-capture-missing).
+ * The site's last checks before a save, after the planning proof and the record held: a book with activity cannot be
+ * saved by anyone, so that reason comes first; then the build that planned the book must be this deploy's.
  */
-async function siteBuildRefusal(deps: Book1SiteDeps, runId: string): Promise<{ status: "refused"; reason: string } | null> {
-  const framed = await deps.frame(runId);
-  if (!framed?.frame.planning) return null;
-  if (!deps.build) return { status: "refused", reason: "deploy-build-unknown" };
-  if (framed.frame.versions.build !== deps.build) return { status: "refused", reason: "planned-on-another-build" };
+async function siteGate(deps: Book1SiteDeps, t: Book1CaptureTarget): Promise<string | null> {
+  if (await deps.activity?.(t.draftId)) return "activity-before-boundary";
+  const framed = await deps.frame(t.runId);
+  if (!deps.build) return "deploy-build-unknown";
+  if (framed?.frame.versions.build !== deps.build) return "planned-on-another-build";
   return null;
 }
 

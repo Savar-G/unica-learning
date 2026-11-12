@@ -119,6 +119,8 @@ export interface Book1CaptureDeps {
   recovery?: { sources(runId: string): Promise<Book1RecoverySources | null>; engine(pin: string): Promise<PinnedPlanningEngine | null> };
   /** The curriculum the record copies (createBook1Baseline). Today's by default; the local recovery passes the pinned build's. */
   curricula?: Book1CurriculumSource;
+  /** A last permanent check before the save, after every proof held: a refusal reason, or null. The site's build gate. */
+  beforeSave?(o: Book1CaptureRequest): Promise<string | null>;
   repository: Book1BaselineRepository;
 }
 export type Book1CaptureResult = { status: "saved" | "duplicate"; baseline: StoredBook1Baseline }
@@ -165,6 +167,8 @@ export async function captureBook1Baseline(deps: Book1CaptureDeps, o: Book1Captu
   const prepared = await prepareBook1Baseline(deps, o);
   if (prepared.status === "refused") return prepared;
   const { scope, record } = prepared;
+  const stop = await deps.beforeSave?.(o);
+  if (stop) return { status: "refused", reason: stop };
   const status = await deps.repository.save(o.actorId, scope, o.id, record);
   if (typeof status === "object") return { status: "refused", reason: status.refused };
   if (status !== "saved" && status !== "duplicate") return { status: "refused", reason: status };
