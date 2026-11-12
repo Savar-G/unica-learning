@@ -89,6 +89,8 @@ A run's folder: `plan.json` (the planned runs, every model and prompt version, t
 
 ## When a run passes
 
+Besides the pass rules below, the report counts Maya's model calls whose proposal the OpenRouter client read from inside one Markdown code fence (a request sent without `response_format`; see `docs/maya-schema-compat-report.md`): `fencedJson` in report.json (calls, fenced, and the count per run) and a "Fenced JSON" line in report.md. It is not a gate result: it shows how often the fence is read.
+
 A run passes only when all of these hold:
 
 1. Its trace, child log and judgement are saved and readable. A missing trace is **missing**. A missing or broken judgement is **unjudgeable**.
