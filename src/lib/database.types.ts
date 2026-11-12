@@ -7574,6 +7574,20 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      admin_book1_baseline_items: {
+        Args: { p_hide?: string[]; p_limit?: number }
+        Returns: {
+          child_id: string
+          child_name: string
+          draft_id: string
+          kind: string
+          parent_id: string
+          reason: string
+          revision: number
+          run_id: string
+          tries: number
+        }[]
+      }
       admin_card_setups: {
         Args: never
         Returns: {
@@ -7622,6 +7636,27 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      admin_families_at_risk_v1: {
+        Args: { p_with_tests?: boolean }
+        Returns: {
+          child_id: string
+          child_name: string
+          ending_free: boolean
+          ends_at: string
+          held_at: string
+          held_book: number
+          held_workbook_id: string
+          last_activity_at: string
+          last_activity_kind: string
+          last_sign_in_at: string
+          next_charge_at: string
+          parent_id: string
+          parent_name: string
+          plan_kind: string
+          plan_since: string
+          test_family: boolean
+        }[]
       }
       admin_health_v1: {
         Args: { p_with_tests?: boolean }

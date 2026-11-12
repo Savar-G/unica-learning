@@ -8,6 +8,7 @@ describe("the admin sidebar", () => {
     expect(ADMIN_NAV.map((e) => (isFolder(e) ? [e.folder, e.items.map((i) => i.label)] : e.label))).toEqual([
       "Home",
       "What to fix",
+      "Families at risk",
       ["Families", ["Families", "Tests", "Feedback"]],
       ["Workbooks", ["Production", "Plans and delivery", "Marking"]],
       ["Maya", ["Calls"]],
@@ -19,7 +20,7 @@ describe("the admin sidebar", () => {
 
   it("keeps every old address", () => {
     expect(ADMIN_NAV_ITEMS.map((i) => i.href)).toEqual([
-      "/admin", "/admin/health", "/admin/parents", "/admin/tests", "/admin/feedback", "/admin/workbooks", "/admin/next-steps", "/admin/scans",
+      "/admin", "/admin/health", "/admin/families-at-risk", "/admin/parents", "/admin/tests", "/admin/feedback", "/admin/workbooks", "/admin/next-steps", "/admin/scans",
       "/admin/maya", "/admin/flyers", "/admin/emails", "/admin/templates", "/admin/skill-map", "/admin/reviews", "/admin/dashboard", "/admin/export",
     ]);
   });
