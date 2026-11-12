@@ -48,7 +48,9 @@ function Harness({ voice, question = 2 }: { voice: { usage: VoiceUsage } | null;
     createElement("footer", { className: state.engaged ? "is-calling" : "" }, createElement(VoiceControls, { state })));
 }
 
-async function mount(opts: { voice?: { usage: VoiceUsage } | null; mic?: "ok" | "blocked" | "none"; question?: number | null } = {}) {
+let heldMic: ((stream: unknown) => void) | null = null;
+let audioContexts = 0;
+async function mount(opts: { voice?: { usage: VoiceUsage } | null; mic?: "ok" | "blocked" | "none" | "held"; question?: number | null } = {}) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("requestAnimationFrame", vi.fn(() => 1));
   vi.stubGlobal("cancelAnimationFrame", vi.fn());
@@ -59,6 +61,7 @@ async function mount(opts: { voice?: { usage: VoiceUsage } | null; mic?: "ok" | 
     return { json: async () => answer(body) };
   }));
   vi.stubGlobal("AudioContext", class {
+    constructor() { audioContexts++; }
     createAnalyser() { return { fftSize: 512, getByteTimeDomainData: (a: Uint8Array) => a.fill(128) }; }
     createMediaStreamSource() { return { connect() {} }; }
     async close() {}
@@ -68,6 +71,7 @@ async function mount(opts: { voice?: { usage: VoiceUsage } | null; mic?: "ok" | 
     getUserMedia: async () => {
       if (mic === "blocked") throw new DOMException("no", "NotAllowedError");
       if (mic === "none") throw new DOMException("no", "NotFoundError");
+      if (mic === "held") return new Promise((resolve) => { heldMic = resolve; });
       return { getTracks: () => [{ stop() {} }] };
     },
   } });
@@ -124,6 +128,20 @@ it("counts the live call once: the week before the call minus the call's own tim
   await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
   expect(host.textContent).toContain("Calls20 minutes left this week");
   expect(host.textContent).not.toContain("10 minutes left this week");
+});
+
+it("stops a microphone that is granted after the child tapped Not now, and starts no level reader", async () => {
+  audioContexts = 0;
+  const f = await mount({ mic: "held" });
+  await f.click("Call Maya");
+  expect(heldMic).not.toBeNull();
+  await f.click("Not now");
+  expect(host.textContent).toContain("Call Maya");
+  const stopTrack = vi.fn();
+  await act(async () => { heldMic!({ getTracks: () => [{ stop: stopTrack }] }); await new Promise((r) => setTimeout(r, 0)); });
+  expect(stopTrack).toHaveBeenCalledTimes(1);
+  expect(audioContexts).toBe(0);
+  expect(host.textContent).not.toContain("Your microphone works.");
 });
 
 it("goes from the microphone check to a live call and back to the page", async () => {

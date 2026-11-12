@@ -245,6 +245,15 @@ describe("a desk voice request", () => {
     expect(plenty.store.rows()[0].live!.text.session.limits).toBeUndefined();
   });
 
+  it("runs one call at a time: two starts at once with different ids cannot both spend the week's last minute (review P1)", async () => {
+    const s = setup({ used: 1740 });
+    const [a, b] = await Promise.all([s.run(start()), s.run(start("66666666-6666-4666-8666-666666666666"))]);
+    const tickets = [a, b].filter((r) => r.ticket);
+    expect(tickets).toHaveLength(1);
+    expect([a, b].find((r) => !r.ticket)).toMatchObject({ call: null, error: "busy" });
+    expect(s.store.rows().filter((r) => r.status === "live")).toHaveLength(1);
+  });
+
   it("starts the same call again as that call, with a fresh ticket, and refuses another question for it", async () => {
     const s = setup();
     const first = await s.run(start());

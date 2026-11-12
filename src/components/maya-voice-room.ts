@@ -42,13 +42,21 @@ export function useMicCheck() {
   const [state, setState] = useState<MicState>("idle");
   const [level, setLevel] = useState(0);
   const stop = useRef<(() => void) | null>(null);
+  // Each check and each release takes a new number. A check whose permission answer comes after a release (the child
+  // tapped "Not now" or left the page) stops the tracks it got and starts nothing.
+  const generation = useRef(0);
 
   const check = useCallback(async () => {
     stop.current?.();
+    const mine = ++generation.current;
     if (!navigator.mediaDevices?.getUserMedia) return setState("failed");
     setState("asking");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      if (mine !== generation.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
       const audio = new AudioContext();
       const analyser = audio.createAnalyser();
       analyser.fftSize = 512;
@@ -71,11 +79,12 @@ export function useMicCheck() {
       };
       setState("working");
     } catch (e) {
-      setState(micError(e));
+      if (mine === generation.current) setState(micError(e));
     }
   }, []);
 
   const release = useCallback(() => {
+    generation.current++;
     stop.current?.();
     stop.current = null;
   }, []);

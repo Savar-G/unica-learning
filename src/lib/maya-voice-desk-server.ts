@@ -165,6 +165,9 @@ export async function runVoice(ctx: ChatContext, action: VoiceAction, deps: Voic
     // A second request with the same id may have made the call first: that call is the answer.
     const raced = await deps.store.get(action.id);
     if (owned(raced)) return answer(raced);
+    // Another call of this child is live (a second tab, or two starts at once): one call at a time (index
+    // maya_calls_one_live_family_call), so the weekly time cannot be spent twice.
+    if (e instanceof Error && e.message.includes("maya_calls_one_live_family_call")) return reply(null, { error: "busy" });
     throw e;
   }
   if (!started.ok) return reply(null, { error: started.error === "not_test_family" ? "unavailable" : started.error });

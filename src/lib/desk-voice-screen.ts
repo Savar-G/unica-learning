@@ -82,7 +82,8 @@ export function startErrorLine(code: string | undefined, usage: Pick<VoiceUsage,
     case "voice_week_used": return usage ? voiceWeekUsedLine(usage) : "You've used Maya's call time for this week.";
     case "not_found":
     case "invalid_question": return "Maya cannot call about this question. Pick another question.";
-    case "cap": return "Maya cannot take a call right now. Try again later.";
+    case "cap":
+    case "busy": return "Maya cannot take a call right now. Try again later.";
     case "unavailable": return UNAVAILABLE;
     default: return "The call did not start. Try again in a moment.";
   }
