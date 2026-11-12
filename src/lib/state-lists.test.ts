@@ -12,6 +12,7 @@ import { FLAG_LEVELS } from "@/lib/maya-call";
 import { ASSISTANCE } from "@/lib/maya/session";
 import { DELIVERY_TYPES } from "@/lib/resend-webhook";
 import { SCAN_BLOCKED_REASONS, SCAN_CALIBRATION_STATES, SCAN_JOB_STATES, SCAN_PHOTO_STATES } from "@/lib/scan-states";
+import { GATE_OUTCOMES } from "@/lib/workbook-run-gates";
 
 const LISTS: { name: string; list: readonly string[]; table: string; column: string }[] = [
   { name: "AD_STEPS", list: AD_STEPS, table: "ad_visit_steps", column: "step" },
@@ -31,6 +32,7 @@ const LISTS: { name: string; list: readonly string[]; table: string; column: str
   { name: "LEARNING_GOALS", list: LEARNING_GOALS.map((g) => g.id), table: "children", column: "learning_goal" },
   { name: "MATH_FEELINGS", list: MATH_FEELINGS.map((f) => f.id), table: "children", column: "math_feeling" },
   { name: "MATH_HELPS", list: MATH_HELPS.map((h) => h.id), table: "children", column: "math_help" },
+  { name: "GATE_OUTCOMES", list: GATE_OUTCOMES, table: "workbook_run_gates", column: "outcome" },
 ];
 
 describe("state lists equal the database checks", () => {

@@ -66,6 +66,7 @@ import { instructionsEmpty, type WorkbookInstructions } from "@/lib/workbook-ins
 import { skillUnits } from "@/lib/workbook-teaching-frame";
 import type { WorkbookPlan, PlanInput } from "@/lib/workbook-plan";
 import type { SolveLog, Solver, SolveVerdict } from "@/lib/workbook-solve-check";
+import { openQuestionGateRun, type QuestionGateChecker, type StoredQuestionGate } from "@/lib/workbook-run-gates";
 import { IMAGE_SCALE, PRINT_PAGE, proofPages, renderedPages, renderWorkbook, type DraftPage, type PrintEngine, type RenderProblem, type WorkbookTemplate } from "@/lib/workbook-render";
 
 /** Attempts of one run in all: the first and one retry. */
@@ -203,6 +204,10 @@ export interface WorkbookRunStore {
   saveSolves(runId: string, lease: string, solves: RunSolve[]): Promise<boolean>;
   /** The verdicts of the run's solve checks that have a call key, by that key (R379-8-1). */
   solves(runId: string): Promise<Map<string, SolveVerdict>>;
+  /** Stores quality-gate results (the first row at a call key stays). False when the lease is lost. */
+  saveGates(runId: string, lease: string, gates: StoredQuestionGate[]): Promise<boolean>;
+  /** Every stored quality-gate result of the run. */
+  gates(runId: string): Promise<StoredQuestionGate[]>;
   /** The run's plan, as its first job call stored it (R379-8-2); null before. */
   frame(runId: string): Promise<RunFrame | null>;
   /** Whether any page, counted attempt, call or solve check exists, including old solve checks without a call key. */
@@ -293,6 +298,8 @@ export interface RunFrame {
     /** The AI model and the solve check's model. */
     model: string;
     solveModel: string;
+    /** The quality-gate model, or null when this run asks no gates. Absent on a frame stored before gates. */
+    gateModel?: string | null;
     /** The deployed code's version (WorkbookJobDeps.build); null where none is known (development). */
     build: string | null;
   };
@@ -363,6 +370,8 @@ export interface WorkbookJobDeps {
   ai: AiClient | null;
   /** The solve check's reader (#380), from the same switch as `ai`: null when the AI is off. */
   solver: Solver | null;
+  /** The quality gates (spec #850). Null or absent: this run asks none. */
+  gates?: QuestionGateChecker | null;
   /** The cost of one solve check in US dollars, when the reader's provider said it; none: not known. */
   solveCost?(log: SolveLog): number | null;
   /** The page templates: the real ones (#310) in live use. */
@@ -672,10 +681,11 @@ export const frameInput = (t: FrameTarget, frame: RunFrame, name: string): Gener
   workbookId: t.workbookId, childId: t.childId, book: { child: name }, number: t.number,
   profileBuild: frame.profileRevision !== null ? `child profile revision ${frame.profileRevision}` : null,
   plan: frame.plan, curriculum: curriculumFor(frame.curriculum)!, itemPolicy: frame.itemPolicy,
+  schoolGrade: frame.grade,
 });
 
 /** The deps a plan is made and checked with. */
-export type FrameDeps = Pick<WorkbookJobDeps, "source" | "fit" | "build" | "itemPolicy"> & { ai: Pick<AiClient, "model">; solver: Pick<Solver, "model"> };
+export type FrameDeps = Pick<WorkbookJobDeps, "source" | "fit" | "build" | "itemPolicy" | "gates"> & { ai: Pick<AiClient, "model">; solver: Pick<Solver, "model"> };
 
 /**
  * Plans a workbook from the child's inputs read now (R379-8-2): the profile refreshed, the report's signals, the admin's
@@ -701,7 +711,7 @@ export async function makeRunFrame(t: FrameTarget, deps: FrameDeps, name: string
   const made: RunFrame = {
     version: RUN_FRAME_VERSION, ...(deps.itemPolicy === "legacy" ? {} : { itemPolicy: "approved-v1" as const }), curriculum: key, units: skillUnits(curriculum), grade: inputs.grade, profileRevision: inputs.profile?.revision ?? null, countsCallEvents: WORKBOOK_COUNTS_CALL_EVENTS, workbooks: inputs.workbooks,
     ...(input ? { planning: { version: 1 as const, input, placement } } : {}),
-    plan: deps.itemPolicy === "legacy" ? planned.plan : workbookCapacityPlan(curriculum, planned.plan), versions: { curriculum: "", outline: "", model: deps.ai.model, solveModel: deps.solver.model, build: deps.build ?? null },
+    plan: deps.itemPolicy === "legacy" ? planned.plan : workbookCapacityPlan(curriculum, planned.plan), versions: { curriculum: "", outline: "", model: deps.ai.model, solveModel: deps.solver.model, gateModel: deps.gates?.model ?? null, build: deps.build ?? null },
   };
   if (made.itemPolicy === "approved-v1") made.plan = await prepareWorkbookCapacity(frameInput(t, made, name), deps.fit(t.parentId));
   made.versions.curriculum = curriculumVersion(key)!;
@@ -723,6 +733,7 @@ export function frameProblem(t: FrameTarget, frame: RunFrame, deps: FrameDeps, n
     if ((deps.build ?? null) !== frame.versions.build) return changed("the site's code", frame.versions.build, deps.build ?? null);
     if (deps.ai.model !== frame.versions.model) return changed("the AI model", frame.versions.model, deps.ai.model);
     if (deps.solver.model !== frame.versions.solveModel) return changed("the solve check's model", frame.versions.solveModel, deps.solver.model);
+    if ((frame.versions.gateModel ?? null) !== (deps.gates?.model ?? null)) return changed("the quality gate's model", frame.versions.gateModel ?? null, deps.gates?.model ?? null);
     const outline = bookOutline(frameInput(t, frame, name));
     if (outline !== frame.versions.outline) return changed("the planned book (its pages, layouts or rooms)", frame.versions.outline, outline);
     return null;
@@ -896,6 +907,9 @@ async function write(
     concurrency: deps.concurrency ?? PAGE_CONCURRENCY, stop: () => isLost() || outOfTime(), timeLimitMs: deps.timeLimitMs,
     progress: (done, total) => { void progress({ step: "write", done, total }); },
     solver: guardedSolver, now: deps.now,
+    ...(deps.gates ? { questionGates: openQuestionGateRun(deps.gates, await deps.runs.gates(run.id), async (row) => {
+      if (isLost() || !(await deps.runs.saveGates(run.id, lease, [row]))) lose();
+    }) } : {}),
   });
   if (isLost()) throw new Stopped("the run was taken up by another call");
   if (result.status === "paused") return "paused";
