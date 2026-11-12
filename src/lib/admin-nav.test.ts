@@ -11,7 +11,7 @@ describe("the admin sidebar", () => {
       ["Families", ["Families", "Tests", "Feedback"]],
       ["Workbooks", ["Production", "Plans and delivery", "Marking"]],
       ["Maya", ["Calls"]],
-      ["Marketing", ["Flyers", "Emails"]],
+      ["Marketing", ["Traffic", "Flyers", "Emails"]],
       ["Quality", ["Templates", "Skill map", "AI reviews", "AI usage"]],
       ["Team tools", ["Parent app preview", "Budget", "Export"]],
     ]);
@@ -20,7 +20,7 @@ describe("the admin sidebar", () => {
   it("keeps every old address", () => {
     expect(ADMIN_NAV_ITEMS.map((i) => i.href)).toEqual([
       "/admin", "/admin/health", "/admin/parents", "/admin/tests", "/admin/feedback", "/admin/workbooks", "/admin/next-steps", "/admin/scans",
-      "/admin/maya", "/admin/flyers", "/admin/emails", "/admin/templates", "/admin/skill-map", "/admin/reviews", "/admin/ai", "/admin/dashboard", "/admin/budget", "/admin/export",
+      "/admin/maya", "/admin/traffic", "/admin/flyers", "/admin/emails", "/admin/templates", "/admin/skill-map", "/admin/reviews", "/admin/ai", "/admin/dashboard", "/admin/budget", "/admin/export",
     ]);
   });
 

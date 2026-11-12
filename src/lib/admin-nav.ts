@@ -4,7 +4,7 @@
 
 export type AdminNavKey =
   | "home" | "health" | "families" | "tests" | "feedback" | "production" | "delivery" | "marking" | "calls"
-  | "flyers" | "emails" | "templates" | "skillmap" | "reviews" | "ai" | "preview" | "budget" | "export";
+  | "traffic" | "flyers" | "emails" | "templates" | "skillmap" | "reviews" | "ai" | "preview" | "budget" | "export";
 
 export interface AdminNavItem {
   key: AdminNavKey;
@@ -40,6 +40,7 @@ export const ADMIN_NAV: readonly AdminNavEntry[] = [
     { key: "calls", label: "Calls", href: "/admin/maya" },
   ] },
   { folder: "Marketing", items: [
+    { key: "traffic", label: "Traffic", href: "/admin/traffic" },
     { key: "flyers", label: "Flyers", href: "/admin/flyers" },
     { key: "emails", label: "Emails", href: "/admin/emails" },
   ] },
@@ -80,6 +81,7 @@ const SEGMENT: Record<string, AdminNavKey> = {
   "next-steps": "delivery",
   scans: "marking",
   maya: "calls",
+  traffic: "traffic",
   flyers: "flyers",
   emails: "emails",
   templates: "templates",

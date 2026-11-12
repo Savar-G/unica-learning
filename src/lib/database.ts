@@ -135,6 +135,8 @@ type NullArgs = KnownArgs<{
   finish_workbook_edit: "p_content" | "p_rendering" | "p_error";
   finish_workbook_layout_edit: "p_rendering" | "p_results" | "p_error";
   admin_template_stats_v2: "school_grade" | "curriculum";
+  // All time on the Traffic tab sends no day count. Omitting it would use the function's 7-day default.
+  admin_site_traffic: "p_days";
   // An idle worker has no run; a worker outside git has no build.
   beat_workbook_worker: "p_build" | "p_run" | "p_note";
   save_child_profile_and_skill_changes: "p_assessment" | "p_expected";
