@@ -46,11 +46,13 @@ export function BudgetLedger({ entries, categories, rate, today, cut }: { entrie
 
   const catName = useMemo(() => new Map(categories.map((c) => [c.id, c.name])), [categories]);
   const months = useMemo(() => [...new Set(shown.map((e) => monthOf(e.date)))].sort().reverse(), [shown]);
+  // A month with no entry left (the last one was deleted or moved) shows as "All" and filters nothing.
+  const month = months.includes(filters.month) ? filters.month : "all";
   const rows = shown.filter((e) =>
     (filters.kind === "all" || e.kind === filters.kind) && (filters.category === "all" || e.categoryId === filters.category) &&
-    (filters.month === "all" || monthOf(e.date) === filters.month) && (filters.paidBy === "all" || e.paidBy === filters.paidBy) &&
+    (month === "all" || monthOf(e.date) === month) && (filters.paidBy === "all" || e.paidBy === filters.paidBy) &&
     (!filters.unsettled || (e.kind === "expense" && !e.settled)));
-  const filtered = JSON.stringify(filters) !== JSON.stringify(NO_FILTER);
+  const filtered = JSON.stringify({ ...filters, month }) !== JSON.stringify(NO_FILTER);
   const expenseSum = rows.filter((e) => e.kind === "expense").reduce((s, e) => s + e.amountCadCents, 0);
   const revenueSum = rows.filter((e) => e.kind === "revenue").reduce((s, e) => s + e.amountCadCents, 0);
   const setFilter = <K extends keyof Filters>(k: K, v: Filters[K]) => setFilters((f) => ({ ...f, [k]: v }));
@@ -105,7 +107,7 @@ export function BudgetLedger({ entries, categories, rate, today, cut }: { entrie
           </select>
         </label>
         <label>Month
-          <select value={filters.month} onChange={(e) => setFilter("month", e.target.value)}>
+          <select value={month} onChange={(e) => setFilter("month", e.target.value)}>
             <option value="all">All</option>
             {months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
           </select>

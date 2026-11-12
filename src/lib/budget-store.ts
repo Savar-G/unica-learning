@@ -69,7 +69,8 @@ const fail = (error: { code?: string; message: string }, what: string): { ok: fa
 const writeRow = (v: EntryInput) => ({
   entry_date: v.date, kind: v.kind, category_id: v.categoryId, description: v.description, party: v.party, amount: v.amount,
   currency: v.currency, usd_to_cad: v.currency === "USD" ? v.rate : null, paid_by: v.paidBy, savar_share_pct: v.savarSharePct,
-  split_settled: v.settled, notes: v.notes,
+  // An edit that did not touch the tick leaves it as it is, so it never undoes a tick made in the meantime.
+  ...(v.settled === undefined ? {} : { split_settled: v.settled }), notes: v.notes,
 });
 
 export async function createEntry(a: AdminSession, v: EntryInput): Promise<WriteResult<{ id: string }>> {
@@ -114,7 +115,7 @@ export async function renameCategory(a: AdminSession, id: string, name: string):
 }
 
 export async function setDefaultRate(a: AdminSession, rate: number): Promise<WriteResult> {
-  const { data, error } = await a.db.from("budget_settings").update({ usd_to_cad: rate, updated_at: new Date().toISOString() }).eq("id", true).select("id");
+  const { data, error } = await a.db.from("budget_settings").update({ usd_to_cad: rate, updated_at: new Date().toISOString(), updated_by: a.userId }).eq("id", true).select("id");
   if (error) return fail(error, "set rate");
   return data.length === 1 ? { ok: true, value: null } : { ok: false, status: 503, error: "The rate could not be saved." };
 }

@@ -43,12 +43,14 @@ describe("money", () => {
   it("reads a rate between 0 and 100, to four decimals", () => {
     expect(parseRate("1.4240")).toBe(1.424);
     expect(parseRate(1.42399)).toBe(1.424);
-    for (const bad of ["0", 0, "100", 100, "-1", "x", "", null]) expect(parseRate(bad)).toBeNull();
+    for (const bad of ["0", 0, "100", 100, "99.99995", "-1", "x", "", null]) expect(parseRate(bad)).toBeNull();
   });
 
   it("converts USD to CAD cents as the database does", () => {
     expect(cadCentsOf(1181, "USD", 1.424)).toBe(1682);
     expect(cadCentsOf(1181, "CAD", null)).toBe(1181);
+    // USD 250.00 at 1.2003 is exactly CA$300.075, which Postgres rounds up to 300.08.
+    expect(cadCentsOf(25000, "USD", 1.2003)).toBe(30008);
   });
 });
 
@@ -90,6 +92,12 @@ describe("the balance", () => {
     expect(balanceOf([entry({ amountCadCents: 1000, paidBy: "cedric" })]).net).toEqual({ from: "savar", to: "cedric", cents: 500 });
     expect(balanceOf([entry({ amountCadCents: 1000, paidBy: "cedric" }), entry({ amountCadCents: 1000, paidBy: "savar" })]).net).toBeNull();
     expect(balanceOf([]).net).toBeNull();
+  });
+
+  it("nets the exact parts, not the two rounded sides", () => {
+    // Savar paid 1 cent at 50% (Cedric owes 0.5 cent); Cedric paid 1 cent at a 40% Savar share (Savar owes 0.4 cent).
+    const b = balanceOf([entry({ amountCadCents: 1, paidBy: "savar" }), entry({ amountCadCents: 1, paidBy: "cedric", savarSharePct: 40 })]);
+    expect(b.net).toBeNull();
   });
 
   it("matches the old Sheet: Cedric owed Savar about $203.28 on 2026-11-09", () => {
@@ -142,6 +150,15 @@ describe("the summary", () => {
     expect(summarize([], CAT, "2026-11").netCents).toBe(0);
   });
 
+  it("keeps a wrong year out of the columns and counts the entry as outside", () => {
+    const far = entry({ date: "2062-10-08" });
+    const sum = summarize([entry({ date: "2026-10-08" }), far], CAT, "2026-11");
+    expect(sum.months).toEqual(["2026-10", "2026-11"]);
+    expect(sum.outsideMonths).toBe(1);
+    expect(sum.expenseCents).toBe(2000);
+    expect(monthsFor([entry({ date: "2027-06-15" })], "2026-11").at(-1)).toBe("2027-06");
+  });
+
   it("goes past a year end and keeps at most 36 months", () => {
     expect(monthsFor([entry({ date: "2026-11-30" })], "2027-02")).toEqual(["2026-11", "2026-12", "2027-01", "2027-02"]);
     expect(monthsFor([entry({ date: "2020-01-05" })], "2026-12")).toHaveLength(36);
@@ -152,7 +169,17 @@ describe("the summary", () => {
 describe("the checks of an entry", () => {
   it("accepts a good expense and trims the text", () => {
     const r = parseEntry({ ...validBody, description: "  Meta ads, B2  ", party: " ", notes: "" });
-    expect(r).toEqual({ ok: true, value: expect.objectContaining({ description: "Meta ads, B2", party: null, notes: null, amount: 17.35, rate: null, savarSharePct: 50, settled: false }) });
+    expect(r).toEqual({ ok: true, value: expect.objectContaining({ description: "Meta ads, B2", party: null, notes: null, amount: 17.35, rate: null, savarSharePct: 50 }) });
+  });
+
+  it("leaves the settled tick alone unless the form sends it", () => {
+    expect(parseEntry(validBody)).toMatchObject({ ok: true, value: { settled: undefined } });
+    expect(parseEntry({ ...validBody, settled: false })).toMatchObject({ ok: true, value: { settled: false } });
+    expect(parseEntry({ ...validBody, kind: "revenue", paidBy: null, settled: true })).toMatchObject({ ok: true, value: { settled: false } });
+  });
+
+  it("refuses an empty share on an expense", () => {
+    for (const empty of ["", "  "]) expect(parseEntry({ ...validBody, savarSharePct: empty })).toMatchObject({ ok: false });
   });
 
   it("needs a rate for USD and drops it for CAD", () => {

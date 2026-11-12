@@ -82,12 +82,12 @@ export function parseRate(input: unknown): number | null {
   const n = typeof input === "number" ? input : typeof input === "string" && /^\d+(\.\d+)?$/.test(input.trim()) ? Number(input.trim()) : NaN;
   if (!Number.isFinite(n) || n <= 0 || n >= 100) return null;
   const r = Math.round(n * 10_000) / 10_000;
-  return r > 0 ? r : null;
+  return r > 0 && r < 100 ? r : null;
 }
 
 /** The CAD amount of a row in cents, the way the database computes it. */
 export const cadCentsOf = (amountCents: number, currency: Currency, rate: number | null): number =>
-  currency === "CAD" || rate === null ? amountCents : Math.round(amountCents * rate);
+  currency === "CAD" || rate === null ? amountCents : Math.round((amountCents * Math.round(rate * 10_000)) / 10_000);
 
 // ---------- the split ----------
 
@@ -122,7 +122,7 @@ export function balanceOf(entries: readonly BudgetEntry[]): Balance {
     else savarX += savarPart;
   }
   const cedricOwes = Math.round(cedricX / 10_000), savarOwes = Math.round(savarX / 10_000);
-  const diff = cedricOwes - savarOwes;
+  const diff = Math.round((cedricX - savarX) / 10_000);
   const net = diff === 0 ? null : diff > 0 ? { from: "cedric" as Person, to: "savar" as Person, cents: diff } : { from: "savar" as Person, to: "cedric" as Person, cents: -diff };
   return { cedricOwes, savarOwes, net, open };
 }
@@ -144,11 +144,19 @@ const nextMonth = (m: string): string => {
 /** The most month columns the summary shows. */
 export const MONTHS_MAX = 36;
 
-/** The months from the first entry to the latest entry or the current month, whichever is later, newest last. At least the current month. */
+/** How many months after the current month the table still shows. A date further out is probably a typo, so it stays out of the columns. */
+export const MONTHS_AHEAD = 12;
+
+/**
+ * The months from the first entry to the current month, newest last, and past it only as far as an entry within
+ * MONTHS_AHEAD months of it. At least the current month. `outsideMonths` in the summary counts the entries that no column holds.
+ */
 export function monthsFor(entries: readonly BudgetEntry[], currentMonth: string): string[] {
+  let limit = currentMonth;
+  for (let i = 0; i < MONTHS_AHEAD; i++) limit = nextMonth(limit);
   const dates = entries.map((e) => monthOf(e.date));
   const first = dates.reduce((a, b) => (b < a ? b : a), currentMonth);
-  const last = dates.reduce((a, b) => (b > a ? b : a), currentMonth);
+  const last = dates.filter((m) => m <= limit).reduce((a, b) => (b > a ? b : a), currentMonth);
   const months: string[] = [];
   for (let m = first; m <= last && months.length < 400; m = nextMonth(m)) months.push(m);
   return months.slice(-MONTHS_MAX);
@@ -170,6 +178,8 @@ export interface BudgetSummary {
   share: Record<Person, number>;
   balance: Balance;
   entryCount: number;
+  /** Entries whose month is in no column (a date far in the future, or older than the last 36 months). Their money is in every total. */
+  outsideMonths: number;
 }
 
 /** The totals, the category by month tables and the balance. The months cover every entry; only the last MONTHS_MAX show. */
@@ -207,6 +217,7 @@ export function summarize(entries: readonly BudgetEntry[], categories: readonly 
     months, revenueCents, expenseCents, netCents: revenueCents - expenseCents,
     expenses: all.filter((r) => r.category.kind === "expense"), revenue: all.filter((r) => r.category.kind === "revenue"),
     expenseByMonth, revenueByMonth, netByMonth, paid, share, balance: balanceOf(entries), entryCount: entries.length,
+    outsideMonths: entries.filter((e) => !months.includes(monthOf(e.date))).length,
   };
 }
 
@@ -224,7 +235,8 @@ export interface EntryInput {
   rate: number | null;
   paidBy: Person | null;
   savarSharePct: number;
-  settled: boolean;
+  /** Undefined: leave the tick as it is (an edit that did not touch it). Revenue is always false. */
+  settled?: boolean;
   notes: string | null;
 }
 
@@ -274,12 +286,13 @@ export function parseEntry(body: unknown): Parsed<EntryInput> {
   if (paidBy === undefined) return { ok: false, error: "Choose Savar or Cedric." };
   if (kind === "expense" && !paidBy) return { ok: false, error: "Choose who paid." };
   let savarSharePct = 50;
-  let settled = false;
+  let settled: boolean | undefined = false;
   if (kind === "expense") {
-    const pct = typeof b.savarSharePct === "number" ? b.savarSharePct : typeof b.savarSharePct === "string" && b.savarSharePct.trim() !== "" ? Number(b.savarSharePct) : 50;
+    if (b.savarSharePct === "" || (typeof b.savarSharePct === "string" && b.savarSharePct.trim() === "")) return { ok: false, error: "Enter Savar's share as a percent from 0 to 100." };
+    const pct = typeof b.savarSharePct === "number" ? b.savarSharePct : typeof b.savarSharePct === "string" ? Number(b.savarSharePct) : 50;
     if (!Number.isFinite(pct) || pct < 0 || pct > 100 || Math.abs(pct * 100 - Math.round(pct * 100)) > 1e-6) return { ok: false, error: "Savar's share is a percent from 0 to 100 with at most two decimals." };
     savarSharePct = pct;
-    settled = b.settled === true;
+    settled = typeof b.settled === "boolean" ? b.settled : undefined;
   }
   return { ok: true, value: { kind, date: b.date, categoryId: b.categoryId, description, party, amount: cents / 100, currency, rate, paidBy, savarSharePct, settled, notes } };
 }

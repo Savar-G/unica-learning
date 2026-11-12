@@ -131,6 +131,7 @@ export function BudgetPage({ data, today, error }: { data: BudgetData | null; to
 
       <section className="ap-card" aria-labelledby="bt-month">
         <SectionHead id="bt-month" title="By month" count={`${s.months.length} ${s.months.length === 1 ? "month" : "months"}`} line="CAD. Revenue and expenses for each month, and the table under it." />
+        {s.outsideMonths > 0 && <p className="bt-line">{s.outsideMonths} {s.outsideMonths === 1 ? "transaction has" : "transactions have"} a date outside these months (far ahead, or older than 36 months). {s.outsideMonths === 1 ? "It is" : "They are"} in every total. Check the date{s.outsideMonths === 1 ? "" : "s"} in the list.</p>}
         {data.entries.length === 0 ? <Empty>Add a transaction to see the months.</Empty> : (
           <figure className="bt-figure">
             <div className="bt-chart-wrap"><MonthChart s={s} /></div>

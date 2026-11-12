@@ -49,11 +49,13 @@ export function EntryForm({ categories, rate, today, entry, onDone, onCancel }: 
   const [f, setF] = useState<FormState>(() => initialState(categories, rate, today, entry));
   const [state, setState] = useState<"idle" | "saving">("idle");
   const [error, setError] = useState<string | null>(null);
+  // A category made by an earlier try of this form: kept here, so a retry uses it and never makes it again.
+  const [made, setMade] = useState<BudgetCategory | null>(null);
   const first = useRef<HTMLSelectElement>(null);
   useEffect(() => { first.current?.focus(); }, []);
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => { setF((s) => ({ ...s, [k]: v })); setError(null); };
-  const ofKind = categories.filter((c) => c.kind === f.kind);
+  const ofKind = [...categories, ...(made ? [made] : [])].filter((c) => c.kind === f.kind);
   const expense = f.kind === "expense";
 
   function setKind(kind: Kind) {
@@ -74,14 +76,17 @@ export function EntryForm({ categories, rate, today, entry, onDone, onCancel }: 
     setError(null);
     let categoryId = f.categoryId;
     if (categoryId === NEW_CATEGORY) {
-      const made = await send("/api/admin/budget/categories", "POST", { kind: f.kind, name: f.newCategory });
-      const created = made.ok ? (made.category as { id?: string } | undefined) : undefined;
-      if (!created?.id) { setState("idle"); setError(made.error ?? "The category was not saved."); return; }
+      const res0 = await send("/api/admin/budget/categories", "POST", { kind: f.kind, name: f.newCategory });
+      const created = res0.ok ? (res0.category as { id?: string } | undefined) : undefined;
+      if (!created?.id) { setState("idle"); setError(res0.error ?? "The category was not saved."); return; }
       categoryId = created.id;
+      setMade({ id: created.id, kind: f.kind, name: f.newCategory.trim(), sortOrder: 0 });
+      setF((s) => ({ ...s, categoryId: created.id as string, newCategory: "" }));
     }
     const body = {
       kind: f.kind, date: f.date, categoryId, description: f.description, party: f.party, amount: f.amount, currency: f.currency,
-      rate: f.currency === "USD" ? f.rate : null, paidBy: f.paidBy || null, savarSharePct: expense ? f.savarSharePct : 50, settled: expense && f.settled, notes: f.notes,
+      rate: f.currency === "USD" ? f.rate : null, paidBy: f.paidBy || null, savarSharePct: expense ? f.savarSharePct : 50, notes: f.notes,
+      ...(!expense ? { settled: false } : entry && f.settled === entry.settled ? {} : { settled: f.settled }),
     };
     const res = entry ? await send(`/api/admin/budget/entries/${entry.id}`, "PATCH", body) : await send("/api/admin/budget/entries", "POST", body);
     setState("idle");
@@ -129,7 +134,7 @@ export function EntryForm({ categories, rate, today, entry, onDone, onCancel }: 
         </label>
         {expense && (
           <>
-            <label>Savar&apos;s share (%)<input type="text" inputMode="decimal" value={f.savarSharePct} onChange={(e) => set("savarSharePct", e.target.value)} /></label>
+            <label>Savar&apos;s share (%)<input type="text" inputMode="decimal" required value={f.savarSharePct} onChange={(e) => set("savarSharePct", e.target.value)} /></label>
             <label className="bt-check"><input type="checkbox" checked={f.settled} onChange={(e) => set("settled", e.target.checked)} /><span><b>Split settled</b><small>The other partner has paid their share back.</small></span></label>
           </>
         )}
