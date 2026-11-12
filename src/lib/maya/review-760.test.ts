@@ -2,6 +2,8 @@
 // review named and the output it asked for, through the text adapter and the gate's scripted model.
 import { describe, expect, it, vi } from "vitest";
 import { createTextSession } from "@/lib/maya-text";
+import { createSession, step } from "@/lib/maya";
+import { committedValue } from "@/lib/maya/session";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
 import { scenarioModel } from "@/lib/maya-gate/gate";
 
@@ -38,4 +40,21 @@ describe("review of 9884b94e (#760)", () => {
     expect(text.session.assistance).toContain("worked_example");
     expect(text.session.outcome?.reason).toBe("child_stopped");
   });
+
+  /** The session right after the child's turn, before Maya answers it. */
+  const after = (id: keyof typeof FIXTURES, text: string) => {
+    let s = createSession({ callId: `review-760-${id}`, package: FIXTURES[id] });
+    s = step(s, { type: "start", at: 1000 }).session;
+    s = step(s, { type: "proposal", at: 1000, proposal: { version: 2, act: "open", parts: [{ line: "open.hello" }, { line: "question.problem" }] } }).session;
+    return step(s, { type: "child_turn", at: 5000, text }).session;
+  };
+  const miss = (id: keyof typeof FIXTURES, text: string, value: number) => {
+    const s = after(id, text);
+    return committedValue(s, { value: { type: "number", value }, step: s.ladder.step, verdict: "wrong" });
+  };
+
+  it.each([["5.", true], ["The digit is 5.", true], ["5 ten thousands", true], ["Help, 5.", false], ["I think the digit is 5.", false]] as const)(
+    "P2: %j on the ten thousands digit of 785243 is a miss: %s", (text, counts) => {
+      expect(miss("PVV", text, 5)).toBe(counts);
+    });
 });

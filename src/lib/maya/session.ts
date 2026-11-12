@@ -56,8 +56,8 @@ import { patternOf, patternRows } from "./pattern";
 import { frameOwed, topicQuestion } from "./topic-frame";
 import { clockAnswers, clockValues } from "./clock-lines";
 import { isPlaceValue, placeAutoDraw, placeBoardOffers, WHY_KEYS } from "./place-value-lines";
-import { asksPlace, placeStepHeard } from "./place-value-turns";
-import { partsStepHeard, partsStepTotal } from "./place-value-parts-turns";
+import { asksPlace, digitTemplate, placeStepHeard } from "./place-value-turns";
+import { biggerTemplate, partsStepHeard, partsStepTotal, worthTemplate } from "./place-value-parts-turns";
 import { partsChartFits } from "./place-value-parts-lines";
 import { isPartsOperation } from "@/lib/question-package-place-parts";
 import { claimActs, claimAnswers, claimCommitted, claimConfirm, claimQuestionAsked, claimRead, claimResultDone, claimReveals, claimSaid, claimStepConfirmable, claimStepHeard, claimSessionPackage, claimUnclear, sessionClaim, type ClaimTurn } from "./claim";
@@ -602,8 +602,20 @@ function committedTurn(s: Session, step = "result"): boolean {
   if (copiesShownTry(s) || ((place || topic) && copiesShown(s))) return false;
   const opts = readOptionsIn(s);
   if (takenBack(text, opts) !== null) return false;
+  // A place-value step's own committed forms count as its answer ("The digit is 5.", "5 ten thousands"): the templates
+  // that credit it (place-value-turns.ts, place-value-parts-turns.ts), whatever number they hold (review of 9884b94e, P2).
+  if (place && placeTemplate(s, step, wholeTurn(text)!)) return true;
   const read = readAnswer(text, opts);
   return read.final !== null && read.sure;
+}
+
+/** The whole turn is one of this place-value step's own templates, with any number (a committed answer, right or wrong). */
+function placeTemplate(s: Session, step: string, body: string): boolean {
+  const at = s.package ? workSteps(s.package).find((x) => x.id === step) : undefined;
+  if (at?.kind === "read-digit") return digitTemplate(body, at.place) !== null;
+  if (at?.kind === "bigger") return biggerTemplate(body, at) !== null;
+  if (at?.kind === "place-worth") return worthTemplate(body, at) !== null;
+  return false;
 }
 
 /** The sentences of a turn: an end mark not inside a decimal ("3.45 plus 2.38 is 5.83." is one). */
