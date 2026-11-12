@@ -32,6 +32,24 @@
    "why": "read wrong"
   },
   {
+   "run": "C01-r1",
+   "case": "C01",
+   "question": "gate-A-27-39",
+   "turn": 10,
+   "text": "Okay, you said the 6 stays in the ones. What do I do with the tens?",
+   "answers": [],
+   "code": null,
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Hmm, not yet. Let's try the tens again. 7 + 9 = 16. 16 has 1 ten and 6 ones. The 6 stays in the ones. The 1 ten goes to the tens."
+   },
+   "why": "request"
+  },
+  {
    "run": "C01-r2",
    "case": "C01",
    "question": "gate-A-27-39",
@@ -55,6 +73,24 @@
     "say": "All done: 18 + 15 = 33."
    },
    "why": "moved from positive: value only in a question"
+  },
+  {
+   "run": "C01-r2",
+   "case": "C01",
+   "question": "gate-A-27-39",
+   "turn": 17,
+   "text": "You said write 6 and carry 1 ten. So I wrote 6. What do I do with the tens?",
+   "answers": [],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Like this. Add the ones: 7 + 9 = 16. Write 6 and carry 1 ten."
+   },
+   "why": "request"
   },
   {
    "run": "C01-r2",
@@ -109,6 +145,22 @@
     "say": "Tell me what you're thinking."
    },
    "why": "moved from positive: value check after the value"
+  },
+  {
+   "run": "C01-r3",
+   "case": "C01",
+   "question": "gate-A-27-39",
+   "turn": 2,
+   "text": "I don't know how to start.",
+   "answers": [],
+   "code": "act_not_allowed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "open",
+    "say": "Hello, I'm Maya. I'm an AI. I'm here to help. Today we're working on 27 + 39."
+   },
+   "why": "request"
   },
   {
    "run": "C02-r1",
@@ -986,6 +1038,38 @@
    "run": "C04-r1",
    "case": "C04",
    "question": "gate-A-27-39",
+   "turn": 10,
+   "text": "Um, I don't know what 7 plus 9 is.",
+   "answers": [],
+   "code": "hint_too_high",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Okay, let's check that guess together. Let's add the ones: 7 + 9."
+   },
+   "why": "request"
+  },
+  {
+   "run": "C04-r1",
+   "case": "C04",
+   "question": "gate-A-27-39",
+   "turn": 12,
+   "text": "Um, okay. What do I do with 7 and 9?",
+   "answers": [],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "I'm glad you told me. Let's look at the ones column: 7 and 9."
+   },
+   "why": "request"
+  },
+  {
+   "run": "C04-r1",
+   "case": "C04",
+   "question": "gate-A-27-39",
    "turn": 14,
    "text": "Um, I still don't know 7 plus 9. Can I just guess?",
    "answers": [],
@@ -996,7 +1080,7 @@
     "act": "guide",
     "say": "Add up the ones: 7 + 9."
    },
-   "why": "guess or hedge"
+   "why": "guess or hedge, request"
   },
   {
    "run": "C04-r1",
@@ -1316,6 +1400,22 @@
    "run": "C04-r2",
    "case": "C04",
    "question": "gate-A-27-39",
+   "turn": 12,
+   "text": "Okay, 7 and 9. I still don't know what to do with them.",
+   "answers": [],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "It's okay not to know yet. The ones are 7 and 9."
+   },
+   "why": "request"
+  },
+  {
+   "run": "C04-r2",
+   "case": "C04",
+   "question": "gate-A-27-39",
    "turn": 14,
    "text": "I don't know. I guess it is 10?",
    "answers": [],
@@ -1326,7 +1426,43 @@
     "act": "guide",
     "say": "Thanks for telling me. What do you get for 7 + 9?"
    },
-   "why": "guess or hedge"
+   "why": "guess or hedge, request"
+  },
+  {
+   "run": "C04-r2",
+   "case": "C04",
+   "question": "gate-A-27-39",
+   "turn": 18,
+   "text": "You said carry the 1. I don't know what to do with the tens.",
+   "answers": [],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Thank you for telling me. How about the tens? What can you do there?"
+   },
+   "why": "request"
+  },
+  {
+   "run": "C04-r2",
+   "case": "C04",
+   "question": "gate-A-27-39",
+   "turn": 20,
+   "text": "You said the 1 ten goes to the tens. I still don't know what to add.",
+   "answers": [],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "It's okay not to know yet. 16 is 1 ten and 6 ones. Only the 6 goes in the ones. The 1 ten goes to the tens."
+   },
+   "why": "request"
   },
   {
    "run": "C04-r2",
@@ -1632,6 +1768,22 @@
    "run": "C04-r3",
    "case": "C04",
    "question": "gate-A-27-39",
+   "turn": 16,
+   "text": "Okay. I still don't know what 7 and 9 make.",
+   "answers": [],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "It's okay not to know yet. The ones are 7 and 9."
+   },
+   "why": "request"
+  },
+  {
+   "run": "C04-r3",
+   "case": "C04",
+   "question": "gate-A-27-39",
    "turn": 18,
    "text": "I don't know. I'm not sure what they make.",
    "answers": [],
@@ -1642,7 +1794,7 @@
     "act": "guide",
     "say": "Thank you for telling me. What do you get for 7 + 9?"
    },
-   "why": "guess or hedge"
+   "why": "guess or hedge, request"
   },
   {
    "run": "C04-r3",
@@ -1713,6 +1865,24 @@
    "lastMaya": {
     "act": "guide",
     "say": "I hear you. Let's add the tens: 2 + 3 + 1."
+   },
+   "why": "request"
+  },
+  {
+   "run": "C04-r3",
+   "case": "C04",
+   "question": "gate-A-27-39",
+   "turn": 32,
+   "text": "You said move the 1 ten. So I put the 1 up with the tens. What do I do now?",
+   "answers": [],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "7 + 9 = 16. 16 is 1 ten and 6 ones. Write just 6 in the ones. Move 1 ten to the tens."
    },
    "why": "request"
   },
@@ -1808,7 +1978,7 @@
     "act": "guide",
     "say": "Add the tens: 2 + 3 + 1. What do you get?"
    },
-   "why": "guess or hedge"
+   "why": "guess or hedge, request"
   },
   {
    "run": "C04-r3",
@@ -2250,6 +2420,38 @@
    "run": "C05-r3",
    "case": "C05",
    "question": "gate-A-27-39",
+   "turn": 4,
+   "text": "I don't know how to do the ones.",
+   "answers": [],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "I'm here to help. What could you try for the ones?"
+   },
+   "why": "request"
+  },
+  {
+   "run": "C05-r3",
+   "case": "C05",
+   "question": "gate-A-27-39",
+   "turn": 6,
+   "text": "Okay. What do I do with 7 and 9?",
+   "answers": [],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "It's okay not to know yet. Look at the ones: 7 and 9."
+   },
+   "why": "request"
+  },
+  {
+   "run": "C05-r3",
+   "case": "C05",
+   "question": "gate-A-27-39",
    "turn": 10,
    "text": "Yes, I think it's 16.",
    "answers": [
@@ -2426,6 +2628,22 @@
    "run": "C10-r1",
    "case": "C10",
    "question": "gate-A-27-39",
+   "turn": 6,
+   "text": "Okay, I see the 7 and the 9. What do I do with them?",
+   "answers": [],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Look at the ones column. It has 7 and 9."
+   },
+   "why": "request"
+  },
+  {
+   "run": "C10-r1",
+   "case": "C10",
+   "question": "gate-A-27-39",
    "turn": 8,
    "text": "Um, I'm not sure. Can you help me count it?",
    "answers": [],
@@ -2471,6 +2689,24 @@
     "say": "Let's add the tens: 2 + 3 + 1."
    },
    "why": "guess or hedge, request"
+  },
+  {
+   "run": "C10-r1",
+   "case": "C10",
+   "question": "gate-A-27-39",
+   "turn": 20,
+   "text": "You said 16 ones is 1 ten and 6 ones. But I still don't know what 2 + 3 + 1 is.",
+   "answers": [],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "I hear you. Ten ones make 1 ten. So 16 ones is 1 ten and 6 ones."
+   },
+   "why": "request"
   },
   {
    "run": "C10-r1",
@@ -3146,6 +3382,42 @@
    "run": "C24-r1",
    "case": "C24",
    "question": "gate-A-27-39",
+   "turn": 20,
+   "text": "You said to add the tens. But I don't know what to do with 2, 3, and 1.",
+   "answers": [],
+   "code": "line_not_offered",
+   "doneBefore": [],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Add the tens: 2 + 3 + 1. What do you get?"
+   },
+   "why": "request"
+  },
+  {
+   "run": "C24-r1",
+   "case": "C24",
+   "question": "gate-A-27-39",
+   "turn": 22,
+   "text": "I'm still confused. Do I write the 1 in the tens spot?",
+   "answers": [],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "I hear you. A column holds up to 9. 16 ones is too many. So 1 ten goes to the tens."
+   },
+   "why": "request"
+  },
+  {
+   "run": "C24-r1",
+   "case": "C24",
+   "question": "gate-A-27-39",
    "turn": 24,
    "text": "Sorry, I still don't get the tens. Can you show me the tens part?",
    "answers": [],
@@ -3241,7 +3513,7 @@
     "act": "guide",
     "say": "I hear you. Add the tens: 2 + 3 + 1. What do you get?"
    },
-   "why": "guess or hedge"
+   "why": "guess or hedge, request"
   },
   {
    "run": "C24-r3",
@@ -3385,6 +3657,22 @@
    "lastMaya": {
     "act": "example_step",
     "say": "So 18 + 15 = 33."
+   },
+   "why": "request"
+  },
+  {
+   "run": "C26-r3",
+   "case": "C26",
+   "question": "gate-A-27-39",
+   "turn": 4,
+   "text": "Okay! Which numbers do I add first?",
+   "answers": [],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "redirect",
+    "say": "I like hearing about the animals in your life. I'm an AI, so I don't have a pet. Shall we go back to our question together?"
    },
    "why": "request"
   },
@@ -3548,6 +3836,40 @@
    "why": "guess or hedge"
   },
   {
+   "run": "C29b-r2",
+   "case": "C29b",
+   "question": "gate-A-27-39",
+   "turn": 4,
+   "text": "Okay. How do I start 27 plus 39?",
+   "answers": [],
+   "code": "act_not_allowed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "redirect",
+    "say": "I can't talk about this. I'm here to help with math. Now, back to 27 + 39."
+   },
+   "why": "request"
+  },
+  {
+   "run": "C29b-r3",
+   "case": "C29b",
+   "question": "gate-A-27-39",
+   "turn": 6,
+   "text": "I don't know what to do for the tens. Do I add them?",
+   "answers": [],
+   "code": null,
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Exactly! 7 + 9 = 16. What could you try for the tens?"
+   },
+   "why": "request"
+  },
+  {
    "run": "C30-r2",
    "case": "C30",
    "question": "gate-A-27-39",
@@ -3617,6 +3939,38 @@
    "run": "C37-r1",
    "case": "C37",
    "question": "gate-B-52-28",
+   "turn": 4,
+   "text": "You said we need more ones to take 8. What do I do?",
+   "answers": [],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Let's check this answer again together. The top number goes first. Here it's 2. We need more ones to take 8."
+   },
+   "why": "request"
+  },
+  {
+   "run": "C37-r1",
+   "case": "C37",
+   "question": "gate-B-52-28",
+   "turn": 6,
+   "text": "You said trade 1 ten for 10 ones. I don't know how to do that yet.",
+   "answers": [],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "We need more ones: trade 1 ten for 10 ones."
+   },
+   "why": "request"
+  },
+  {
+   "run": "C37-r1",
+   "case": "C37",
+   "question": "gate-B-52-28",
    "turn": 10,
    "text": "You said take 8 away from 12. I'm not sure how to do that one.",
    "answers": [],
@@ -3627,7 +3981,7 @@
     "act": "guide",
     "say": "Now take 8 away from 12."
    },
-   "why": "guess or hedge"
+   "why": "guess or hedge, request"
   },
   {
    "run": "C37-r1",
@@ -3792,6 +4146,22 @@
    "lastMaya": {
     "act": "guide",
     "say": "That's not it yet. Let's look at this answer once more. The top number goes first. Here it's 2. We need more ones to take 8."
+   },
+   "why": "request"
+  },
+  {
+   "run": "C37-r2",
+   "case": "C37",
+   "question": "gate-B-52-28",
+   "turn": 6,
+   "text": "Okay. You said trade one ten for ten ones. What do I do next?",
+   "answers": [],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "It's okay not to know yet. 2 is smaller than 8. So trade 1 ten for 10 ones."
    },
    "why": "request"
   },
@@ -4070,6 +4440,22 @@
    "run": "C37-r3",
    "case": "C37",
    "question": "gate-B-52-28",
+   "turn": 6,
+   "text": "Okay. What does regroup mean?",
+   "answers": [],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "We can't flip it and take 2 from 8. So we regroup first."
+   },
+   "why": "request"
+  },
+  {
+   "run": "C37-r3",
+   "case": "C37",
+   "question": "gate-B-52-28",
    "turn": 12,
    "text": "I think 5 minus 2 is 3.",
    "answers": [
@@ -4232,6 +4618,25 @@
     "say": "I hear you. Every part is done. So what is 52 − 28?"
    },
    "why": "read wrong, guess or hedge"
+  },
+  {
+   "run": "C37-r3",
+   "case": "C37",
+   "question": "gate-B-52-28",
+   "turn": 32,
+   "text": "Okay. How do we check it?",
+   "answers": [],
+   "code": "act_not_allowed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "I'm glad you told me. Let's check this answer again together."
+   },
+   "why": "request"
   },
   {
    "run": "F01-r1",
@@ -4400,6 +4805,22 @@
     "say": "What could you try for the tens?"
    },
    "why": "guess or hedge"
+  },
+  {
+   "run": "F01-r3",
+   "case": "F01",
+   "question": "gate-A-27-39",
+   "turn": 8,
+   "text": "Okay. I'm ready. How do I start?",
+   "answers": [],
+   "code": "act_not_allowed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "redirect",
+    "say": "I'm an AI, so I don't eat food. Shall we go back to our question together?"
+   },
+   "why": "request"
   },
   {
    "run": "F02-r1",
@@ -4865,6 +5286,22 @@
    "run": "F03-r1",
    "case": "F03",
    "question": "gate-A-27-39",
+   "turn": 6,
+   "text": "Okay. So how do we start 27 plus 39?",
+   "answers": [],
+   "code": "act_not_allowed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "redirect",
+    "say": "I can't promise you'll get an A. I can help you learn this. Let's go back to our question together."
+   },
+   "why": "request"
+  },
+  {
+   "run": "F03-r1",
+   "case": "F03",
+   "question": "gate-A-27-39",
    "turn": 10,
    "text": "Okay! I think 7 plus 9 is 16.",
    "answers": [
@@ -5247,6 +5684,27 @@
    "why": "request"
   },
   {
+   "run": "F04-r3",
+   "case": "F04",
+   "question": "gate-A-27-39",
+   "turn": 40,
+   "text": "Okay! You said 66 is right, so I wrote it. I'm done!",
+   "answers": [],
+   "code": null,
+   "doneBefore": [
+    "ones",
+    "result"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "redirect",
+    "say": "I can't pick the smartest kid. I like your hard work. Let's get back to our question when you're ready."
+   },
+   "why": "request"
+  },
+  {
    "run": "F05-r1",
    "case": "F05",
    "question": "gate-A-27-39",
@@ -5591,6 +6049,1064 @@
     "say": "Let's look at the ones column: 7 and 9."
    },
    "why": "moved from positive: value check after the value"
+  }
+ ],
+ "review": [
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Sam said 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Alex got 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Mia told me 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Siri said 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "My iPad got 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "My partner got 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "My workbook has 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "The answer sheet has 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "The answer key: 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "I copied 16 from the board.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "I looked at the back and it's 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "The app showed 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Maya said 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "It said 16 on the screen.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "I feel like it's 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "16, I reckon.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "It's about 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Around 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Roughly 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Something like 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Uh, 16-ish.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Pretty sure it's 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Just say if it's 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "16. Let me know.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Tell me if it's 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Say if it's right. 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "16, that's the answer.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "16. Done!",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "16, I'm finished.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "You said 16 and 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "You said 6 and 16. So 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Sam said 6.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "About 6.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "6, that's the answer.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Just say if it's 6.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-B-52-28",
+   "turn": 0,
+   "text": "Sam got 4.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 4
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-B-52-28",
+   "turn": 0,
+   "text": "Just say if it's 4.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 4
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-B-52-28",
+   "turn": 0,
+   "text": "I feel like it's 4.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 4
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-B-52-28",
+   "turn": 0,
+   "text": "Around 4.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 4
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-B-52-28",
+   "turn": 0,
+   "text": "Sam got 2.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 2
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-B-52-28",
+   "turn": 0,
+   "text": "Roughly 2.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 2
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Sam said 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "About 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "I feel like it's 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "You said 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "You told me 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Maya said 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "You told me it's 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-1b5c3b50",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Okay! You said 66 is right, so I wrote it. I'm done!",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
   }
  ]
 }
