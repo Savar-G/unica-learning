@@ -176,6 +176,12 @@ export function openRouterDecisionClient({
       };
       for (let attempt = 0; ; attempt++) {
         if (request.signal.aborted) throw new DecisionError("timeout", "time is up", charged, unpriced);
+        // The caller's last check, right before this attempt sends the input (after the price wait and any retry wait).
+        if (request.beforeSend) {
+          const go = await request.beforeSend().catch(() => false);
+          if (go !== true) throw new DecisionError("cancelled", "the caller stopped the request before it was sent", charged, unpriced);
+          if (request.signal.aborted) throw new DecisionError("timeout", "time is up", charged, unpriced);
+        }
         try {
           const result = await once(fetch, init, request, timeout);
           count(result.usd);

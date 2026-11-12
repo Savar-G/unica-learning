@@ -78,8 +78,8 @@ describe("the preview route", () => {
 
   it("runs the job for a marked family, with no AI dispatch", async () => {
     vi.stubEnv("OPENROUTER_API_KEY", "synthetic-configured-key");
-    expect(await (await post()).json()).toEqual({ preview: { status: "busy" } });
-    expect(await (await GET(new Request(url), { params })).json()).toEqual({ preview: { status: "not-started" } });
+    expect(await (await post()).json()).toEqual({ preview: { status: "busy" }, photoCheck: null });
+    expect(await (await GET(new Request(url), { params })).json()).toEqual({ preview: { status: "not-started" }, photoCheck: null });
     expect(ai).not.toHaveBeenCalled();
     vi.unstubAllEnvs();
   });

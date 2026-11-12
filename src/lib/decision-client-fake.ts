@@ -1,6 +1,6 @@
 // A fake decision client (spec #850): no network. Tests give it the answers for each request from a script and read the
 // requests it got. Its model is a model of the pinned table (default Jev), so the cost bound applies to it as to a live client.
-import type { DecisionAnswer, DecisionClient, DecisionRequest, DecisionResult } from "@/lib/decision-client";
+import { DecisionError, type DecisionAnswer, type DecisionClient, type DecisionRequest, type DecisionResult } from "@/lib/decision-client";
 
 export function fakeDecisionClient({
   model = "typesafe/jev-1.14",
@@ -19,6 +19,8 @@ export function fakeDecisionClient({
     maxAttempts: 1,
     requests,
     async decide(request): Promise<DecisionResult> {
+      // As the live client: the caller's last check comes right before the send.
+      if (request.beforeSend && await request.beforeSend().catch(() => false) !== true) throw new DecisionError("cancelled", "the caller stopped the request before it was sent");
       requests.push(request);
       return { answers: await answer(request), usd, unpricedAttempts: usd === null ? 1 : 0, costKnown: usd !== null, provider: "fake", id: null };
     },
