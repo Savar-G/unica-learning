@@ -31,7 +31,7 @@ No hosted recipient is approved yet. Keep delivery off until the existing safe t
 
 ## Parent projection and UI ownership
 
-The read-only GET /api/account/scans/progress binds its live parent session to child, workbook and printed revision. It returns printed-day required/accepted/gap page numbers, separate marking/review state and confirmed-delivery/backstop state. It never returns raw receipts, photo IDs, audit IDs, answers or cost records. Its canonical server reader can also supply server-rendered views without a self-HTTP request.
+There is no parent progress route: GET /api/account/scans/progress had no caller and was removed on 2026-11-11. The canonical server reader (`readWorkbookScanProgress` in `src/lib/workbook-scan-progress-reader.ts`) supplies server-rendered views, today the admin scan progress. A parent view built on it must bind the live parent session to child, workbook and printed revision, and must never show raw receipts, photo IDs, audit IDs, answers or cost records.
 
 The generator owns the follow-up Schedule binding adopted from the dashboard lane. Extend the existing Scanned pages cell/day details, preserving the stored printed Day/Topic/Pages/Required time fields. Keep marking/review and correction links in Workbooks. Add no duplicate Progress tab or poller. Visible changes still require /design and normal UI approval. That UI is not implemented by this backend candidate.
 

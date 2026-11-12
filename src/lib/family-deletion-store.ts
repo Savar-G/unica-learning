@@ -84,20 +84,6 @@ function paymentOptions(deadline: number, execution?: FamilyDeletionExecution) {
   return { timeout: Math.min(timeRemaining(deadline, execution), execution?.paymentRequestTimeoutMs ?? Infinity), maxNetworkRetries: 0 };
 }
 
-/** Stable keyset RPC paging, including jobs whose Auth deletion succeeded before the worker stopped. */
-export async function deletionCandidates(db: SupabaseClient<Database>): Promise<string[]> {
-  const ids: string[] = [];
-  let after: string | null = null;
-  for (;;) {
-    const page: { parent_id: string }[] = await rpc(db, "family_deletion_candidates", { after_id: after, page_size: 100 });
-    if (page.length === 0) return ids;
-    ids.push(...page.map((r) => r.parent_id));
-    const next = page.at(-1)!.parent_id;
-    if (next === after) throw new Error("Deletion pagination did not advance");
-    after = next;
-  }
-}
-
 const isFamilyCard = (c: unknown): c is FamilyCard => typeof c === "object" && c !== null
   && (typeof (c as FamilyCard).customer === "string" || (c as FamilyCard).customer === null) && typeof (c as FamilyCard).saved === "boolean"
   && ((c as FamilyCard).booking === undefined || (c as FamilyCard).booking === null

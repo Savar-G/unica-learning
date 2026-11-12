@@ -56,25 +56,6 @@ export interface CardSetup {
 export const cardTerms = (price: number) =>
   `Nothing is charged today. ${w.freeMonth} ${w.insideWindow} ${w.afterWindow} ${w.ceiling(price)} ${w.siblingPrice} ${w.cancel}`;
 
-/**
- * Creates the Stripe customer and a hosted Checkout page in setup mode: it saves the card and charges nothing.
- * When the first workbook arrives at your home, start a CAD `price` monthly subscription on this customer with the free first month
- * (a 30-day trial, TRIAL_DAYS; D-053, D-139). Stripe emails the reminder 7 days before the trial ends, with the link to manage or cancel the plan (Billing settings, 2026-10-24).
- * Returns the customer and Checkout page URL so the booking can durably release its hold.
- */
-export async function cardSetupUrl(s: Stripe, p: CardSetup): Promise<{ customer: string; url: string | null }> {
-  const metadata = cardMetadata(p);
-  const description = cardDescription(p);
-  const options = { timeout: 15_000, maxNetworkRetries: 0 };
-  const customer = await s.customers.create({ email: p.email, name: p.name, description, metadata }, options);
-  if (!customer.id) throw Error("Booking customer unavailable");
-  const url = await checkoutUrl(s, customer.id, p, metadata, description, {
-    success: `${p.origin}/thank-you?session_id={CHECKOUT_SESSION_ID}`,
-    cancel: `${p.origin}/?card=cancelled`,
-  }, options);
-  return { customer: customer.id, url };
-}
-
 /** The metadata keys every card setup carries; the report path adds its own (D-053). */
 const cardMetadata = (p: CardSetup): Record<string, string> => ({
   ref: p.ref, plan: p.plan, subject: p.subject, grade: String(p.grade), price: String(p.price),

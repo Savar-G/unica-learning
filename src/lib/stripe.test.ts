@@ -1,6 +1,6 @@
 import Stripe from "stripe";
 import { describe, expect, it, vi } from "vitest";
-import { cardSetupUrl, reportCardSetupUrl, type ReportCardSetup } from "@/lib/stripe";
+import { reportCardSetupUrl, type ReportCardSetup } from "@/lib/stripe";
 
 vi.mock("server-only", () => ({}));
 
@@ -12,7 +12,7 @@ const setup: ReportCardSetup = {
 };
 
 describe("shipping at card setup", () => {
-  it.each(["booking", "report"] as const)("collects and saves a Canadian shipping address without starting a charge for %s", async (path) => {
+  it("collects and saves a Canadian shipping address without starting a charge", async () => {
     const requests: { url: string; body: URLSearchParams }[] = [];
     const client = new Stripe("sk_test_shipping", {
       httpClient: Stripe.createFetchHttpClient(async (url, init) => {
@@ -22,8 +22,7 @@ describe("shipping at card setup", () => {
           : { id: "cs_test_shipping", url: "https://checkout.stripe.com/test-shipping" }), { status: 200 });
       }),
     });
-    if (path === "booking") await cardSetupUrl(client, setup);
-    else await reportCardSetupUrl(client, "cus_shipping", setup);
+    await reportCardSetupUrl(client, "cus_shipping", setup);
 
     const checkout = requests.find((r) => r.url.endsWith("/checkout/sessions"))?.body;
     expect(checkout).toBeDefined();

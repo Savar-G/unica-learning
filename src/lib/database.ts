@@ -143,9 +143,7 @@ type NullArgs = KnownArgs<{
   complete_test: "p_help";
   create_family: "p_postal";
   // Paging: null asks for the first page.
-  family_deletion_candidates: "after_id";
   family_retention_candidates: "after_id";
-  finish_booking_signup: "customer";
   // A parent's demo minutes have no child (#330).
   grant_maya_minutes: "p_child";
   reserve_maya_spend: "p_parent" | "p_child" | "p_call" | "p_week" | "p_week_cap";

@@ -11,7 +11,7 @@ The approved comment pins, pending list, Send all comments, before/after view an
 | R428-5 | Resume with a changed build, writer model or solve model | The batch fails and returns its comments to pending. Unframed legacy partial results also fail. |
 | R428-6 | `admin-workbook-lists.test.ts` | The workbook and child lists use the latest counts and render problems. |
 | R428-7 | Both runners: response save failures, lost dispatch and result replies, eight recoveries | Dispatch rows retain spent attempts. Saved writer responses replay. Three storage attempts precede recovery. No batch can dispatch more than five writer requests per page. |
-| R428-8 | `scripts/workbook-edit-browser-check.mjs` in Aside | The tag and pin do not overlap. Restoring the old CSS rule makes the same assertion fail. |
+| R428-8 | A one-off Aside REPL check (the script was removed on 2026-11-11; it is in git history at `484f7950`) | The tag and pin do not overlap. Restoring the old CSS rule makes the same assertion fail. |
 | R428-10 | Both runners: a manual edit passes its solve, then the image checkpoint fails | Recovery reuses the saved solve log. The solver receives one call. No batch can dispatch more than five solve requests per question. |
 | R428-9 | Position tests and keyboard Enter in Aside | Pointer fractions stay in [0, 1]. The saved keyboard comment has x=0.5 and y=0.5. |
 
