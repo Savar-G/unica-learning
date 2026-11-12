@@ -24,7 +24,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { callsOn } from "@/lib/maya-call-seams";
 import { mayaCallStore } from "@/lib/maya-call-store";
-import { asksWordTimings, callOfRoom, checkJoiner, JOIN_WAIT_MS, VOICE_AGENT_NAME, voiceProviders, type VoiceCallFacts } from "@/lib/maya-voice";
+import { asksWordTimings, callKeyterms, callOfRoom, checkJoiner, GREETING_TEXT, JOIN_WAIT_MS, VOICE_AGENT_NAME, voiceProviders, type VoiceCallFacts } from "@/lib/maya-voice";
 import { VoiceCallRun, voiceSession, type CallUpdate } from "./agent";
 import { voiceTurnReport, type VoiceTurnSample } from "./turn-timing";
 import { makeProviders } from "./providers";
@@ -105,8 +105,13 @@ export default defineAgent({
       log("the call could not be opened", callId, opened.error);
       return ctx.shutdown("call not opened");
     }
-    const made = await makeProviders(providers);
-    const session = voiceSession(made);
+    // The call's question is known now: its answer and its likely wrong answers go to the speech-to-text as keyterms
+    // (numbers only, never the question's text or a name).
+    const made = await makeProviders(providers, { keyterms: callKeyterms(opened.call.session.package) });
+    // The turn delay and interruption settings are for real providers. The fakes keep LiveKit's defaults, as the tests do.
+    const { tuning } = providers;
+    const session = voiceSession(made, made.fake ? {} : { turn: tuning });
+    const patience = made.patience;
     const encoder = new TextEncoder();
     const notify = (update: CallUpdate) => {
       ctx.room.localParticipant?.publishData(encoder.encode(JSON.stringify(update)), { reliable: true, topic: "maya.call", destination_identities: [child.identity] }).catch(() => {});
@@ -119,7 +124,9 @@ export default defineAgent({
     } });
     const turnSamples: VoiceTurnSample[] = [];
     const ackLimit = Number(process.env.MAYA_ACK_LIMIT_MS);
-    const run = new VoiceCallRun(session, opened.call, { board, notify,
+    const run = new VoiceCallRun(session, opened.call, { board, notify, greeting: GREETING_TEXT,
+      ...(made.fake ? {} : { numberContinueMs: tuning.numberContinueMs }),
+      ...(patience ? { patience: { normalMs: tuning.sttMaxSilenceMs, numberMs: tuning.sttNumberSilenceMs, set: (ms: number) => patience.setMaxSilenceMs(ms) } } : {}),
       ...(process.env.MAYA_ACK_LIMIT_MS?.trim() && Number.isFinite(ackLimit) && ackLimit >= 0 ? { ackLimitMs: ackLimit } : {}),
       measureTurn: sample => {
         turnSamples.push(sample);
@@ -171,7 +178,7 @@ export default defineAgent({
     run.attachTurnTiming();
     await run.childJoined();
     // Word timings are asked for, not known to arrive: the "board cue" lines show `word` or `sentence` for each batch.
-    log("call running", callId, providers.ids.speechToText, providers.ids.voice, { wordTimings: asksWordTimings(providers.voice) ? "requested" : "sentence ends only" });
+    log("call running", callId, providers.ids.speechToText, providers.ids.voice, { wordTimings: asksWordTimings(providers.voice) ? "requested" : "sentence ends only", tuning: made.fake ? "fake providers: LiveKit defaults" : tuning });
   },
 });
 

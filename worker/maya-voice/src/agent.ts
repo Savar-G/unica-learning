@@ -28,7 +28,7 @@ import { CuePlaybackOutput } from "./cue-playback";
 import { boardAudio, countedSynthesis } from "./speech-audio";
 import { VOICE_METER_TICK_MS } from "@/lib/maya-spend";
 import { limitsOf } from "@/lib/maya";
-import { CONNECTION_RENEW_MS, childTurnFrom, nextTickAt, RECONNECT_GRACE_MS, type Heard } from "@/lib/maya-voice";
+import { asksForNumber, CONNECTION_RENEW_MS, childTurnFrom, endsInOpenNumber, GREETING_ID, nextTickAt, RECONNECT_GRACE_MS, type Heard, type VoiceTuning } from "@/lib/maya-voice";
 import { ACK_HOLD_LIMIT_MS, ACK_LIMIT_MS, nextAcknowledgement } from "@/lib/maya-voice-ack";
 import { TurnClock, type AckSkip, type TurnOutcome, type VoiceTurnSample } from "./turn-timing";
 
@@ -40,11 +40,16 @@ const stoppedSpeakingAt = (ctx: llm.ChatContext) => {
   return last?.type === "message" ? last.metrics?.stoppedSpeakingAt : undefined;
 };
 
+/** The turn and interruption settings a real call sets (src/lib/maya-voice.ts `VoiceTuning`). */
+export type TurnTuning = Pick<VoiceTuning, "turnMinDelayMs" | "interruptMinMs" | "interruptMinWords">;
+
 /**
  * A session for a voice call: LiveKit's pipeline with Maya's agent. `fake` turns off voice activity detection. `tuning`
- * is for tests (shorter endpointing, no echo warm-up).
+ * is for tests (shorter endpointing, no echo warm-up) and for a real call's `turn` settings: the endpointing `minDelay`
+ * LiveKit adds after the speech-to-text end of turn (its default is 500 ms), and when the child's speech stops Maya
+ * (`minDuration`, `minWords`). A test's `endpointingMs` wins over `turn.turnMinDelayMs`.
  */
-export function voiceSession(providers: { stt: stt.STT; tts: tts.TTS; fake: boolean }, tuning: { endpointingMs?: number; aecWarmupDuration?: number } = {}) {
+export function voiceSession(providers: { stt: stt.STT; tts: tts.TTS; fake: boolean }, tuning: { endpointingMs?: number; aecWarmupDuration?: number; turn?: TurnTuning } = {}) {
   return new voice.AgentSession({
     stt: providers.stt,
     tts: providers.tts,
@@ -56,7 +61,11 @@ export function voiceSession(providers: { stt: stt.STT; tts: tts.TTS; fake: bool
     turnHandling: {
       turnDetection: "stt",
       preemptiveGeneration: { enabled: false },
-      ...(tuning.endpointingMs !== undefined ? { endpointing: { minDelay: tuning.endpointingMs, maxDelay: tuning.endpointingMs } } : {}),
+      ...(tuning.endpointingMs !== undefined ? { endpointing: { minDelay: tuning.endpointingMs, maxDelay: tuning.endpointingMs } }
+        : tuning.turn ? { endpointing: { minDelay: tuning.turn.turnMinDelayMs } } : {}),
+      // Speech this long stops Maya, and (with `minWords` above 0) only once the speech-to-text has heard that many words.
+      // The other options (the false interruption timeout and its resume) keep LiveKit's defaults.
+      ...(tuning.turn ? { interruption: { minDuration: tuning.turn.interruptMinMs, minWords: tuning.turn.interruptMinWords } } : {}),
     },
     ...(tuning.aecWarmupDuration !== undefined ? { aecWarmupDuration: tuning.aecWarmupDuration } : {}),
     // The session's own pause policy (src/lib/maya) decides about silence, not LiveKit's away timer.
@@ -64,15 +73,26 @@ export function voiceSession(providers: { stt: stt.STT; tts: tts.TTS; fake: bool
   });
 }
 
+/** What the run gives the agent around a turn: the greeting to wait for, and the wait for a number that may go on. */
+interface AgentHooks {
+  /** Resolves when the greeting is over (at once when there is none). The opening is staged after it. */
+  greetingOver(): Promise<void>;
+  /** True when the child went on speaking within the wait; `text` ends in a number word that can go on. */
+  childWentOn(text: string): Promise<boolean>;
+}
+
 export class MayaVoiceAgent extends voice.Agent {
   private seen = 0;
   private opened = false;
   private finals: Heard[][] = [];
+  /** The held words were already waited on once, so the turn that joins them is not waited on again. */
+  private extended = false;
   constructor(
     private readonly call: VoiceCall,
     private readonly onTurn: (turn: VoiceTurn) => Promise<boolean>,
     private readonly board: { sync: BoardSpeech; scope(): SpeechScope | null } | undefined,
     private readonly reply: (stoppedAt: number | undefined, work: () => Promise<VoiceTurn[]>) => ReadableStream<string | FlushSentinel>,
+    private readonly hooks: AgentHooks = { greetingOver: async () => {}, childWentOn: async () => false },
   ) {
     super({ instructions: "Maya's words come from her session through the text adapter, not from these instructions." });
   }
@@ -107,12 +127,23 @@ export class MayaVoiceAgent extends voice.Agent {
   /** Opens the call (the first reply), then answers each finished child turn with what the call's session said. */
   override async llmNode(...[chatCtx]: Parameters<voice.Agent["llmNode"]>): ReturnType<voice.Agent["llmNode"]> {
     const users = userTexts(chatCtx);
+    const before = this.seen;
     const fresh = users.slice(this.seen).filter((t) => t.trim());
     this.seen = users.length;
     const opening = !this.opened;
     this.opened = true;
     if (fresh.length > 0) {
-      const heard = childTurnFrom(this.finals.splice(0)) ?? { text: fresh.join(" "), uncertain: false, alternatives: [] };
+      const held = this.finals.splice(0);
+      const heard = childTurnFrom(held) ?? { text: fresh.join(" "), uncertain: false, alternatives: [] };
+      // A transcript that ends in "fifty" may be the start of "fifty six": wait once for more words (one extension). If
+      // they come, these words are not answered: the child's next turn is read with them, as one answer.
+      if (opening === false && !this.extended && await this.hooks.childWentOn(heard.text)) {
+        this.seen = before;
+        this.finals.unshift(...held);
+        this.extended = true;
+        return null;
+      }
+      this.extended = false;
       return this.reply(stoppedSpeakingAt(chatCtx), async () => [
         ...(opening ? [await this.call.start()] : []),
         await this.call.child(heard.text, heard.uncertain ? { uncertain: true, alternatives: heard.alternatives } : undefined),
@@ -120,6 +151,8 @@ export class MayaVoiceAgent extends voice.Agent {
     }
     if (!opening) return null;
     const turn = await this.call.start();
+    // A new board plan takes the audio from the old one, so the opening's board is staged after the greeting has played.
+    await this.hooks.greetingOver();
     const text = (await this.onTurn(turn)) ? turn.say.join(" ") : "";
     if (!text) return null;
     return new ReadableStream<string>({
@@ -173,6 +206,9 @@ interface TurnPace {
   end(): void;
 }
 
+/** The greeting's own wait for its end of playback, if the audio never reports one (its words take about 8 s at a calm pace). */
+export const GREETING_HOLD_LIMIT_MS = 20_000;
+
 const timeOf = (turns: readonly VoiceTurn[]) => ({
   modelMs: turns.reduce((sum, t) => sum + (t.time?.modelMs ?? 0), 0),
   repairMs: turns.reduce((sum, t) => sum + (t.time?.repairMs ?? 0), 0),
@@ -203,6 +239,14 @@ export class VoiceCallRun {
   private guidanceOwed: string | null = null;
   /** The last words of a call that ended while the child was away. They come first when the child is back, and then the stored call ends. */
   private finalOwed: VoiceTurn | null = null;
+  /** The greeting's playout, while it is being said: the opening waits for it. */
+  private greeted: Promise<void> | null = null;
+  private greetStarted = false;
+  /** Words (transcripts, interim or final) the speech-to-text gave so far, and who waits for the next one. */
+  private wordCount = 0;
+  private wordWaiter: (() => void) | null = null;
+  /** The speech-to-text now waits the longer limit, because Maya asked for a number. */
+  private numberWait = false;
   readonly agent: MayaVoiceAgent;
   /** Immutable revision claimed when this worker opened the call. */
   readonly segment: number;
@@ -219,12 +263,26 @@ export class VoiceCallRun {
       ackLimitMs?: number;
       /** One sample per child turn (./turn-timing.ts). */
       measureTurn?(sample: VoiceTurnSample): void;
+      /**
+       * The words said once before Maya's first line (GREETING_TEXT). Said at most once per call: it is saved under
+       * GREETING_ID in the call's acknowledged list before it is queued. Absent: no greeting.
+       */
+      greeting?: string;
+      /**
+       * The speech-to-text's silence limit while Maya waits for a number (`numberMs`) and otherwise (`normalMs`), set
+       * through `set` while the call runs. Absent: the limit set at the start stays.
+       */
+      patience?: { normalMs: number; numberMs: number; set(ms: number): void };
+      /** How long to wait once more when a transcript ends in a number word that can go on (ms). 0 or absent: no wait. */
+      numberContinueMs?: number;
     },
   ) {
     this.segment = call.revision;
     this.agent = new MayaVoiceAgent(call, turn => this.after(turn), options.board ? { sync: options.board, scope: () => this.boardScope } : undefined,
-      (stoppedAt, work) => this.reply(stoppedAt, work));
+      (stoppedAt, work) => this.reply(stoppedAt, work),
+      { greetingOver: () => this.greetingOver(), childWentOn: text => this.childWentOn(text) });
     call.onGuidance(turn => this.guidanceNow(turn));
+    session.on(voice.AgentSessionEventTypes.UserInputTranscribed, ev => { if (ev.transcript.trim()) this.wordsHeard(); });
     session.on(voice.AgentSessionEventTypes.UserStateChanged, ev => {
       if (ev.newState === "speaking") {
         if (this.pace) this.cutAck(this.pace);
@@ -264,8 +322,70 @@ export class VoiceCallRun {
     });
   }
 
+  /** The speech-to-text gave words: a child who went on speaking ends the wait of `childWentOn`. */
+  private wordsHeard() {
+    this.wordCount++;
+    this.wordWaiter?.();
+  }
+
+  /**
+   * A transcript ends in a number word that can go on ("fifty"): waits at most `numberContinueMs` for more words. True
+   * when some came (the turn is then read again with them); false when none did, and the turn goes on as it is.
+   */
+  private async childWentOn(text: string): Promise<boolean> {
+    const ms = this.options.numberContinueMs ?? 0;
+    if (ms <= 0 || !endsInOpenNumber(text) || this.finishing || !this.childHere) return false;
+    const seen = this.wordCount;
+    await new Promise<void>(resolve => {
+      const timer = this.timers.set(ms, () => { this.wordWaiter = null; resolve(); });
+      this.wordWaiter = () => { this.timers.clear(timer); this.wordWaiter = null; resolve(); };
+    });
+    return this.wordCount > seen && !this.finishing && this.childHere;
+  }
+
+  /** The speech-to-text's silence limit for the child's next turn: longer when Maya asked for a number. */
+  private setPatience(number: boolean) {
+    const patience = this.options.patience;
+    if (!patience || this.numberWait === number) return;
+    this.numberWait = number;
+    // A live update that fails changes nothing: the limit set at the start stays.
+    try { patience.set(number ? patience.numberMs : patience.normalMs); } catch { /* keep the limit as it is */ }
+  }
+
+  /** After words Maya was accepted to say: does she ask for a number? Then the next child turn may wait longer. */
+  private expectNumber(turn: VoiceTurn) {
+    if (!turn.say.length) return;
+    this.setPatience(!turn.ended && asksForNumber(turn.say.join(" "), this.call.session.state));
+  }
+
+  /** The greeting is over (or there was none, or it never started). */
+  private greetingOver(): Promise<void> { return this.greeted ?? Promise.resolve(); }
+
+  /**
+   * Says the greeting once, before the opening. It is a code line with an empty board plan, like an acknowledgement: it
+   * sends no batch and is not in the transcript. A save under GREETING_ID comes first, so a worker that takes the call
+   * over, or a child who rejoins before the opening is saved, never hears it twice. Never throws: no greeting is better
+   * than none of Maya.
+   */
+  private async greet(generation: number) {
+    const text = this.options.greeting;
+    if (!text || this.greetStarted || this.call.acknowledged.includes(GREETING_ID) || this.call.session.startedAt !== null) return;
+    // Set before the first await: a child who rejoins while the greeting is being staged must not start a second one.
+    this.greetStarted = true;
+    const stale = () => this.finishing !== null || generation !== this.generation || !this.childHere;
+    try { await this.stageBoard({}); } catch { return; }
+    if (stale()) return;
+    if (!(await this.call.acknowledge(GREETING_ID))) return;
+    if (stale()) return;
+    const speech = this.session.say(text, { addToChatCtx: true });
+    // A speech whose playback never ends holds LiveKit's queue, and the opening with it: stop it after the longest wait.
+    const hold = this.timers.set(GREETING_HOLD_LIMIT_MS, () => speech.interrupt(true));
+    this.greeted = speech.waitForPlayout().catch(() => {}).then(() => { this.timers.clear(hold); });
+  }
+
   /** The stream of a child turn's reply. It is returned at once: the turn runs behind it. */
   private reply(stoppedAt: number | undefined, work: () => Promise<VoiceTurn[]>) {
+    this.setPatience(false);
     this.closeTurn();
     const heardAt = this.timers.now();
     // LiveKit's mark is on the system clock, and can be earlier than its user state change. Keep only how long ago it was.
@@ -605,8 +725,12 @@ export class VoiceCallRun {
         const speech = final.say.length ? this.session.say(final.say.join(" "), { addToChatCtx: true }) : null;
         await this.after(final, speech, () => false);
       } catch { await this.finish({ detail: "the saved final speech failed" }); }
-    } else if (this.call.session.startedAt === null) this.session.generateReply();
-    else {
+    } else if (this.call.session.startedAt === null) {
+      // The greeting is queued first, so the opening's speech follows it.
+      await this.greet(generation);
+      if (generation !== this.generation || !this.childHere || this.finishing) return;
+      this.session.generateReply();
+    } else {
       this.schedule();
       // A new worker took over after the guidance: the close call the old one waited for is gone.
       const { state, safety, outcome } = this.call.session;
@@ -677,6 +801,7 @@ export class VoiceCallRun {
     }
     if (this.finishing || generation !== this.generation || !this.childHere) { this.finalDropped(turn); return false; }
     this.options.notify({ revision: this.call.revision, segment: this.segment, ended: false });
+    this.expectNumber(turn);
     this.scheduleLimit();
     if (turn.ended) {
       // Do not await inside llmNode: the speech handle needs its text before it can finish.

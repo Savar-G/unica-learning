@@ -7,6 +7,7 @@ import {
   CANDIDATES,
   kitConfig,
   makeVoice,
+  operatorReport,
   readAnswers,
   renderLine,
   score,
@@ -14,6 +15,7 @@ import {
   sentenceProblems,
   spokenMath,
   wav,
+  withStartTime,
   wordCoverage,
   type Measure,
 } from "./listening-test";
@@ -152,6 +154,54 @@ describe("rendering with the fake voice", () => {
   });
 });
 
+describe("the operator report", () => {
+  const key = {
+    seed: 1, fake: false, madeAt: "2026-11-12T00:00:00.000Z",
+    voices: [
+      { key: "inworld/Ashley", name: "Inworld TTS-2", voice: "Ashley", route: "LiveKit Inference" },
+      { key: "cartesia/v1", name: "Cartesia Sonic 3.6", voice: "v1", route: "LiveKit Inference" },
+    ],
+  };
+  const measure = (voice: string, sentence: string, extra: Partial<Measure>): Measure => ({
+    voice, part: "voice", sentence, timedWords: 8, startedWords: 8, matched: 8, expected: 8, firstAudioMs: 200, audioMs: 3000, error: null, timedText: "", ...extra,
+  });
+
+  it("counts the words that came back with a start time, and records the first audio, for every voice", async () => {
+    // A voice that returns start times, and one that returns only end times (the board then has no word starts).
+    const full = await renderLine(new FakeTTS(5, true), "Was it thirteen or thirty?");
+    expect(full.startedWords).toBe(full.timedWords);
+    expect(full.startedWords).toBeGreaterThan(0);
+    expect(withStartTime([{ text: "a", endTime: 1 }, { text: "b", startTime: 0, endTime: 1 }, { text: "c", startTime: Number.NaN, endTime: 2 }])).toBe(1);
+    const none = await renderLine(new FakeTTS(5, false), "Was it thirteen or thirty?");
+    expect(none.startedWords).toBe(0);
+
+    const report = operatorReport(key, [
+      measure("inworld/Ashley", "s01", { firstAudioMs: 120 }), measure("inworld/Ashley", "s02", { firstAudioMs: 480 }), measure("inworld/Ashley", "s03", { firstAudioMs: 200 }),
+      measure("cartesia/v1", "s01", { startedWords: 0, firstAudioMs: 90 }), measure("cartesia/v1", "s02", { startedWords: 0, firstAudioMs: 110 }),
+    ]);
+    const rows = report.split("\n").filter(l => l.startsWith("| Inworld") || l.startsWith("| Cartesia")).map(l => l.split("|").map(c => c.trim()));
+    const header = report.split("\n").find(l => l.startsWith("| Voice"))!.split("|").map(c => c.trim());
+    const col = (row: string[], name: string) => row[header.indexOf(name)];
+    expect(col(rows[0], "Files with word start times")).toBe("3 of 3");
+    expect(col(rows[0], "First audio, median (ms)")).toBe("200");
+    expect(col(rows[0], "First audio, slowest (ms)")).toBe("480");
+    expect(col(rows[1], "Files with word start times")).toBe("0 of 2");
+    expect(col(rows[1], "First audio, median (ms)")).toBe("90");
+    expect(col(rows[1], "First audio, slowest (ms)")).toBe("110");
+  });
+
+  it("shows '-' for what was not measured: a measures file from before start times, or a voice with no first audio", () => {
+    const old: Measure = { ...measure("inworld/Ashley", "s01", {}), firstAudioMs: null };
+    delete old.startedWords;
+    const report = operatorReport(key, [old]);
+    const row = report.split("\n").find(l => l.startsWith("| Inworld"))!.split("|").map(c => c.trim());
+    const header = report.split("\n").find(l => l.startsWith("| Voice"))!.split("|").map(c => c.trim());
+    expect(row[header.indexOf("Files with word start times")]).toBe("-");
+    expect(row[header.indexOf("First audio, median (ms)")]).toBe("-");
+    expect(row[header.indexOf("First audio, slowest (ms)")]).toBe("-");
+  });
+});
+
 describe("answers and the score", () => {
   const voices = (kitConfig({}, { fake: true }) as Extract<ReturnType<typeof kitConfig>, { ok: true }>).voices;
   const plan = blindPlan(voices, 3);
@@ -162,7 +212,7 @@ describe("answers and the score", () => {
     ...SENTENCES.filter(s => s.math).map(s => `${listener},math,${s.id},,${misread[s.id] ? letterOf("math", s.id, misread[s.id]) : ""}`),
   ].join("\n");
   const measures = (matchedOnCheck: boolean): Measure[] => plan.map(p => ({
-    voice: p.voice, part: p.part, sentence: p.sentence, timedWords: 5, matched: p.sentence === "s04" && !matchedOnCheck && p.voice === "cartesia/fake-1" ? 3 : 10, expected: 10,
+    voice: p.voice, part: p.part, sentence: p.sentence, timedWords: 5, startedWords: 5, matched: p.sentence === "s04" && !matchedOnCheck && p.voice === "cartesia/fake-1" ? 3 : 10, expected: 10,
     firstAudioMs: 100, audioMs: 1000, error: null, timedText: "",
   }));
 
