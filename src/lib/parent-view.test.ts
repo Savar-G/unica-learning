@@ -408,8 +408,8 @@ describe("the Overview (#560)", () => {
   describe("Skills mastered", () => {
     const tally = (standard: string, at = "2026-11-01T18:00:00Z") => ({ ...own, assessmentId: "t", standard, correct: 4, total: 4, at });
     const history = [
-      { standard: "3.1", state: "mastered" as const, changedAt: "2026-11-01T06:30:00Z" },
-      { standard: "3.2", state: "mastered" as const, changedAt: "2026-11-01T07:30:00Z" },
+      { standard: "3.1", state: "mastered" as const, changedAt: "2026-11-01T06:30:00Z", evidenceAt: "2026-11-01T06:00:00Z" },
+      { standard: "3.2", state: "mastered" as const, changedAt: "2026-11-01T07:30:00Z", evidenceAt: "2026-11-01T07:00:00Z" },
     ];
     const tables = { ...tested, switches: { progress: true, maya: false, scanPages: false }, results: [result("t")], skillTests: [tally("3.1"), tally("3.2")] };
     const grade3 = BC_SKILL_MAP.standards.filter((s) => s.grade === 3).length;
@@ -418,6 +418,16 @@ describe("the Overview (#560)", () => {
       // 06:30 UTC on November 1 is October 31 in Vancouver; 07:30 UTC is November 1.
       const view = await read({ ...tables, family: { timeZone: "America/Vancouver", postal: null }, overviewProgress: [progress({ history })] });
       expect(view?.skills).toEqual({ mastered: 2, total: grade3, moreThisMonth: 1 });
+    });
+
+    it("counts no old mastery as new when the history's first rows are recorded this month", async () => {
+      // A test on October 20; the first rebuild with the history records both states on November 3.
+      const first = history.map((row) => ({ ...row, changedAt: "2026-11-03T18:00:00Z", evidenceAt: "2026-10-20T18:00:00Z" }));
+      const vancouver = { family: { timeZone: "America/Vancouver", postal: null } };
+      expect((await read({ ...tables, ...vancouver, overviewProgress: [progress({ history: first })] }))?.skills).toEqual({ mastered: 2, total: grade3, moreThisMonth: 0 });
+      // A later row that rests on a mark from this month is new.
+      const later = [{ ...first[0], state: "working_on" as const }, { ...first[1] }, { ...first[0], changedAt: "2026-11-04T10:00:00Z", evidenceAt: "2026-11-04T09:00:00Z" }];
+      expect((await read({ ...tables, ...vancouver, overviewProgress: [progress({ history: later })] }))?.skills).toEqual({ mastered: 2, total: grade3, moreThisMonth: 1 });
     });
 
     it("counts no change this month while the stored history is not from the newest test and every mark", async () => {

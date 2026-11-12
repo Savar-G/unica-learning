@@ -194,7 +194,7 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
         return at && reported.has(p.assessment_id) ? profileSkillResults(p.profile, at, unreliable.has(p.assessment_id)) : [];
       });
     },
-    async overviewProgress(childId) {
+    async overviewProgress(childId, options = {}) {
       if (!admin) throw new Error("overview progress: no secret key");
       const owner = await session.from("children").select("id").eq("id", childId).maybeSingle();
       if (owner.error) throw new Error("overview progress owner read failed");
@@ -239,13 +239,13 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
           marks.push({ area: REPORTED_STRAND[standard.strand], level: standard.grade, correct: right });
         }
         const history: OverviewProgress["history"] = [];
-        for (let after = 0; ;) {
-          const rows = await admin.from("skill_state_history").select("id, standard, state, changed_at").eq("parent_id", parent).eq("child_id", childId).gt("id", after).order("id").limit(1000);
+        for (let after = 0; options.history; ) {
+          const rows = await admin.from("skill_state_history").select("id, standard, state, changed_at, evidence_at").eq("parent_id", parent).eq("child_id", childId).gt("id", after).order("id").limit(1000);
           if (rows.error) throw new Error("overview skill history read failed");
           if (!rows.data.length) break;
           for (const row of rows.data) {
-            if (!RECORDED_STATES.includes(row.state) || !Number.isFinite(Date.parse(row.changed_at))) throw new Error("overview skill history invalid");
-            history.push({ standard: row.standard, state: row.state as SkillState, changedAt: row.changed_at });
+            if (!RECORDED_STATES.includes(row.state) || !Number.isFinite(Date.parse(row.changed_at)) || (row.evidence_at !== null && !Number.isFinite(Date.parse(row.evidence_at)))) throw new Error("overview skill history invalid");
+            history.push({ standard: row.standard, state: row.state as SkillState, changedAt: row.changed_at, evidenceAt: row.evidence_at });
           }
           after = rows.data[rows.data.length - 1].id;
         }

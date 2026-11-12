@@ -77,8 +77,11 @@ export interface OverviewProgress {
   marks: AreaAnswer[];
   /** Each marked item's effective original result, as the profile rebuild reads them (`effectiveSkillMarks`). */
   skillMarks: SkillMark[];
-  /** The recorded skill state changes (`skill_state_history`), oldest first. */
-  history: { standard: string; state: SkillState; changedAt: string }[];
+  /**
+   * The recorded skill state changes (`skill_state_history`), oldest first: when a rebuild recorded each one, and the
+   * time of the test or mark it rests on (null for a workbook or no evidence). Empty unless asked for.
+   */
+  history: { standard: string; state: SkillState; changedAt: string; evidenceAt: string | null }[];
   /** The test the stored child profile was built on, when that profile includes every published mark; else null. */
   historyAssessment: string | null;
 }
@@ -122,7 +125,7 @@ export interface ParentViewReader {
   /** Each finished test's tally of each standard it asked, for one child: what the skill state rule reads, and nothing else. */
   skillTests(childId: string): Promise<SkillTestResult[]>;
   /** One child's saved page results and recorded skill changes; null for a child that is not the parent's. */
-  overviewProgress(childId: string): Promise<OverviewProgress | null>;
+  overviewProgress(childId: string, options?: { history?: boolean }): Promise<OverviewProgress | null>;
   /** The BC standards of one of the family's shipped workbooks. */
   workbookStandards(workbookId: string): Promise<string[]>;
 }
@@ -387,7 +390,7 @@ export async function readOverview(reader: ParentViewReader, childId: string, no
     .reduce<TestRecord | null>((best, t) => (!best || t.completedAt! > best.completedAt! ? t : best), null);
   const reportReady = latest !== null && reports.some((r) => r.assessmentId === latest.id);
   // A failed marking read leaves the bars from the test alone, and they say so; the tile needs the marks, so it hides.
-  const progress = await reader.overviewProgress(child.id).catch(() => null);
+  const progress = await reader.overviewProgress(child.id, { history: child.tabs.includes("progress") }).catch(markingReadFailed);
   const { level, areas } = reportReady ? await testLevel(reader, latest, child.schoolGrade, zone, progress?.marks ?? []) : { level: null, areas: [] };
 
   const book = workbooks.filter((w) => w.childId === child.id).sort((a, b) => b.number - a.number)[0];
@@ -412,7 +415,10 @@ export async function readOverview(reader: ParentViewReader, childId: string, no
         for (const row of progress.history) {
           if (!codes.has(row.standard) || Date.parse(row.changedAt) > now) continue;
           current.set(row.standard, row.state);
-          if (localMonth(row.changedAt, zone) < month) before.set(row.standard, row.state);
+          // A row recorded this month can rest on an older test or mark: the first rebuild after the history began
+          // records every state at once. The state at the month start is the last one that rests on evidence from
+          // before it, so an old mastery never counts as new. The count is net: one skill lost and one gained shows 0.
+          if (localMonth(row.evidenceAt ?? row.changedAt, zone) < month || localMonth(row.changedAt, zone) < month) before.set(row.standard, row.state);
         }
         const count = (states: Map<string, SkillState>) => [...states.values()].filter((state) => state === "mastered").length;
         moreThisMonth = Math.max(0, Math.min(mastered, count(current) - count(before)));
@@ -482,6 +488,12 @@ export interface ProgressView {
   areas: SkillAreaView[];
 }
 
+/** A failed marking read hides the marks and the tile; the log says so, so a lasting fault is seen. */
+const markingReadFailed = (e: unknown) => {
+  console.error("[parent-view] marking read failed", e instanceof Error ? e.message : "failed");
+  return null;
+};
+
 /** Field by field: a tally reaches the rule, and nothing else of the record does. */
 const tallies = (results: readonly SkillTestResult[]): SkillTestResult[] =>
   results.map((r) => ({ standard: r.standard, correct: r.correct, total: r.total, at: r.at, unreliable: r.unreliable }));
@@ -497,7 +509,7 @@ export async function readProgress(reader: ParentViewReader, childId: string, no
   const [children, family, tests, reports, workbooks, results, progress] = await Promise.all([
     reader.children(), reader.family(), reader.tests(), reader.reports(), reader.shippedWorkbooks(), reader.skillTests(child.id),
     // A failed marking read shows the states from the tests and the workbook alone, and the Overview hides its tile.
-    reader.overviewProgress(child.id).catch(() => null),
+    reader.overviewProgress(child.id).catch(markingReadFailed),
   ]);
   const zone = familyZone({ timeZone: family.timeZone, postal: family.postal, province: children[0]?.province ?? null });
   const latest = tests

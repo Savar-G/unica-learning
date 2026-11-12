@@ -53,6 +53,14 @@ describe("stored overview marks", () => {
     expect(moved.requests.filter((t) => t === "rpc/scan_marking_command" ).length).toBeGreaterThan(3);
     await expect(reader([], "item", [], undefined, [1, 2, 3, 4, 5, 6]).value.overviewProgress(child)).rejects.toThrow("overview progress changed");
   });
+  it("reads the skill history only when asked for", async () => {
+    const without = reader([]);
+    expect((await without.value.overviewProgress(child))?.history).toEqual([]);
+    expect(without.requests).not.toContain("skill_state_history");
+    const withHistory = reader([]);
+    await withHistory.value.overviewProgress(child, { history: true });
+    expect(withHistory.requests).toContain("skill_state_history");
+  });
   it("reads no workbook question with no marked item, and only two package fields with one", async () => {
     const none = reader([]);
     expect((await none.value.overviewProgress(child))?.marks).toEqual([]);
