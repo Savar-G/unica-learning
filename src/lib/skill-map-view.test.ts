@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BC_SKILL_MAP, REPORTED_STRAND, type SkillTestResult, type StandardSkillState } from "@/lib/assessment";
-import { skillMapView, skillWhy, type SkillMapViewInput } from "@/lib/skill-map-view";
+import { shownSkillStates, skillMapView, skillWhy, type SkillMapViewInput } from "@/lib/skill-map-view";
 
 // What a parent reads on the skill map: which standards show, under which area, and the plain line on each state.
 
@@ -8,7 +8,7 @@ const NEWER = "2026-10-30T18:00:00Z";
 const OLDER = "2026-09-01T18:00:00Z";
 const tally = (standard: string, correct: number, total: number, at = NEWER, unreliable = false): SkillTestResult => ({ standard, correct, total, at, unreliable });
 const input = (over: Partial<SkillMapViewInput> = {}): SkillMapViewInput => ({
-  firstName: "Leah", schoolGrade: 3, workingLevel: 3, tests: [], workbookStandards: [], workbookNumber: null, day: () => "October 30", ...over,
+  firstName: "Leah", schoolGrade: 3, workingLevel: 3, tests: [], workbookStandards: [], workbookNumber: null, marks: [], day: () => "October 30", ...over,
 });
 const tiles = (over: Partial<SkillMapViewInput> = {}) => skillMapView(input(over)).flatMap((a) => a.tiles);
 const tile = (code: string, over: Partial<SkillMapViewInput> = {}) => tiles(over).find((t) => t.code === code)!;
@@ -153,5 +153,19 @@ describe("the panel's sections", () => {
   it("names no skill as what comes next, for any state", () => {
     const every = tiles({ tests: [tally("3.1", 2, 2), tally("3.2", 0, 4)], workbookStandards: ["3.3"], workbookNumber: 1 });
     for (const t of every) expect(Object.keys(t), t.code).not.toContain("next");
+  });
+});
+
+describe("marked pages on the map (#880)", () => {
+  // The same inputs the profile rebuild reads: page results that hold on a later review make a skill mastered.
+  const page = (right: boolean, at: string, review = false) => ({ standard: "3.1", right, review, at });
+  const marks = [page(true, "2026-11-01T18:00:00Z"), page(true, "2026-11-02T18:00:00Z"), page(true, "2026-11-03T18:00:00Z"),
+    page(true, "2026-11-04T18:00:00Z"), page(false, "2026-11-05T18:00:00Z"), page(true, "2026-11-07T18:00:00Z", true)];
+  it("counts marked items in the state, so the map and the Overview tile agree", () => {
+    expect(tile("3.1").state).not.toBe("mastered");
+    expect(tile("3.1", { marks }).state).toBe("mastered");
+    const shown = shownSkillStates(input({ marks }));
+    expect(shown.find((s) => s.standard === "3.1")?.state).toBe("mastered");
+    expect(new Set(shown.map((s) => s.standard))).toEqual(new Set(tiles({ marks }).map((t) => t.code)));
   });
 });

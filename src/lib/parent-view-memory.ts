@@ -5,7 +5,7 @@
 import type { AreaAnswer, AttemptStatus, Grade, ReportModel } from "@/lib/assessment";
 import type { TabSwitches } from "@/lib/child-stage";
 import type { LearningRow } from "@/lib/learning-style";
-import type { ParentViewReader, PlanRecord } from "@/lib/parent-view";
+import type { OverviewProgress, ParentViewReader, PlanRecord } from "@/lib/parent-view";
 import type { CurriculumId } from "@/lib/signup";
 
 interface Owned {
@@ -113,7 +113,7 @@ export interface MemoryWorkbookQuestion {
   standard: string | null;
 }
 
-const TABLES = ["children", "tests", "reports", "cards", "deliveries", "workbooks", "plans", "switches", "corrections", "dispatches", "family", "results", "scans", "pages", "learning", "pin", "maya", "skillTests", "questions"] as const;
+const TABLES = ["children", "tests", "reports", "cards", "deliveries", "workbooks", "plans", "switches", "corrections", "dispatches", "family", "results", "scans", "pages", "learning", "pin", "maya", "skillTests", "questions", "overviewProgress"] as const;
 type Table = (typeof TABLES)[number];
 
 export interface MemoryParentViewTables {
@@ -139,6 +139,7 @@ export interface MemoryParentViewTables {
   maya?: MemoryMayaCall[];
   skillTests?: MemorySkillTest[];
   questions?: MemoryWorkbookQuestion[];
+  overviewProgress?: (Owned & OverviewProgress)[];
   fail?: Table[];
 }
 
@@ -237,6 +238,11 @@ export function memoryParentViewReaders(tables: MemoryParentViewTables) {
         const reported = new Set(own(tables.reports).map((r) => r.assessmentId));
         const unreliable = new Set(own(tables.results).filter((r) => r.unreliable).map((r) => r.assessmentId));
         return own(tables.skillTests).filter((t) => t.childId === childId && reported.has(t.assessmentId)).map((t) => ({ ...t, unreliable: unreliable.has(t.assessmentId) }));
+      },
+      async overviewProgress(childId) {
+        read("overviewProgress");
+        if (!own(tables.children).some((c) => c.id === childId)) return null;
+        return own(tables.overviewProgress).find((r) => r.childId === childId) ?? { marks: [], skillMarks: [] };
       },
       async workbookStandards(workbookId) {
         read("questions");
