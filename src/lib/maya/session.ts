@@ -2531,17 +2531,24 @@ function stepStatement(pkg: OperationPackage, step: Extract<WorkedStep, { kind: 
   // "That's 16" and "I already got 16 for that" are the child's own first-person claims of the value (2026-11-12).
   const result = new RegExp(`^(?:i (?:already )?(?:got|get)|it's|it is|that's|that is|that makes)\\s+(.+?)(?: for (?:the ${place}|that|that one|this one|it))?$`);
   const placeResult = new RegExp(`^for the ${place},? i (?:already )?(?:got|get) (.+)$`);
+  // Each clause, and the words it came with: a lead such as "then" says the verb after it is no request (asksMaya).
+  const asSaid = new Map<number, string>();
   const clauses = said.flatMap((x, n) => {
     const sentence = x.trim().replace(/[.!]+$/, "").toLowerCase();
     // The turn's first words as wholeTurn takes them; a later sentence may go on with one "so", "and" or "then".
     const opened = n === 0 ? sentence.replace(/^(?:so|okay|ok|um|oh)\b[,.\s]*/, "") : sentence.replace(/^(?:so|and|then)\b,?\s*/, "");
-    return opened.split(STATEMENT_JOIN).map((c, i) => (i === 0 ? c : c.replace(/^(?:so|and|then)\b\s*/, "")).trim());
+    const lead = sentence.slice(0, sentence.length - opened.length);
+    return opened.split(STATEMENT_JOIN).map((c, i) => {
+      const clause = (i === 0 ? c : c.replace(/^(?:so|and|then)\b\s*/, "")).trim();
+      asSaid.set(asSaid.size, `${i === 0 ? lead : ""}${c}`.trim());
+      return clause;
+    });
   });
   let totals = 0;
   // One pool of the step's operands for the whole turn (review P1, 2026-11-12): each operand is described at most once, so
   // "I add 9. I add 9. That's 16." (9 + 9) is no description of 7 + 9. The sum clause is the commit and takes none.
   const pool = step.carryIn > 0 ? [...step.digits, step.carryIn] : [...step.digits];
-  for (const c of clauses) {
+  for (const [k, c] of clauses.entries()) {
     if (c === "") return false;
     if (lead.test(c) || already.test(c) || /^(?:that's|that is) what i got$/.test(c)) continue;
     const add = /^i added (.+?) (?:and|plus|\+) (.+?)(?: (?:and|plus|\+) (.+?))?$/.exec(c);
@@ -2566,7 +2573,7 @@ function stepStatement(pkg: OperationPackage, step: Extract<WorkedStep, { kind: 
     const w = /^(?:i )?wrote (?:the )?(.+)$/.exec(c);
     if (w && totals === 1 && plainNumber(w[1]) === step.write) continue;
     // Sentence-level commit (2026-11-12): any other clause must be harmless.
-    if (harmlessClause(step, c, totals === 0, pool)) continue;
+    if (harmlessClause(step, c, totals === 0, pool, asSaid.get(k) ?? c)) continue;
     return false;
   }
   if (totals !== 1) return false;
@@ -2582,7 +2589,7 @@ function stepStatement(pkg: OperationPackage, step: Extract<WorkedStep, { kind: 
  * never reaches a clause: stepStatement refuses it first). The past tense "added" is here too (decision 2026-11-12: J1 and
  * j06-review P1-b follow the sentence-level rule).
  */
-const HARMLESS_WORDS = new Set(["i", "me", "you", "like", "showed", "show", "shown", "taught", "said", "add", "added", "adding", "start", "started",
+const HARMLESS_WORDS = new Set(["i", "me", "you", "like", "showed", "show", "shown", "taught", "said", "add", "added", "adding", "start", "started", "this",
   "with", "first", "the", "column", "digits", "numbers", "together", "and", "so", "then", "now", "okay", "ok", "um", "uh", "oh", "well", "plus", "+",
   "ones", "tens", "hundreds", "thousands", "tenths", "hundredths", "thousandths"]);
 const PLACE_WORDS = new Set(["ones", "tens", "hundreds", "thousands", "tenths", "hundredths", "thousandths"]);
@@ -2597,38 +2604,38 @@ const PLACE_WORDS = new Set(["ones", "tens", "hundreds", "thousands", "tenths", 
  * are not: that is Maya's number, not the child's. The committing clause is the caller's: a harmless clause alone never
  * credits.
  */
-function harmlessClause(step: Extract<WorkedStep, { kind: "add-column" }>, clause: string, numbers: boolean, pool: number[]): boolean {
+function harmlessClause(step: Extract<WorkedStep, { kind: "add-column" }>, clause: string, numbers: boolean, pool: number[], said = clause): boolean {
   const words = clause.replace(/\+/g, " + ").split(/\s+/).filter(Boolean);
   if (words.length === 0 || !words.every((w) => HARMLESS_WORDS.has(w) || plainNumber(w) !== null)) return false;
   if (words.some((w) => PLACE_WORDS.has(w) && w !== step.place)) return false;
   const r = readNumbers(clause);
   if (r.unreadable) return false;
   if (words.includes("you") && words.includes("said")) return false;
-  if (asksMaya(words)) return false;
+  if (asksMaya(said.replace(/,/g, " ").split(/\s+/).filter(Boolean))) return false;
   if (r.values.length === 0) return true;
   if (!numbers || words.includes("you")) return false;
   return r.values.every((v) => v.type === "number") && takeOperands(pool, r.values.map((v) => (v as { value: number }).value));
 }
 
-/** The verbs of HARMLESS_WORDS. */
-const HARMLESS_VERBS = new Set(["showed", "show", "shown", "taught", "said", "add", "added", "adding", "start", "started"]);
+/** Bare present imperatives: a clause that starts with one of them, with no subject, asks Maya to do it. */
+const IMPERATIVES = new Set(["show", "add", "start", "help", "do", "tell", "check", "explain", "give"]);
+/** Words a request may start with before its imperative ("Now show me."). */
+const REQUEST_LEAD = new Set(["now", "okay", "ok", "um", "uh", "oh", "well"]);
 
 /**
- * The clause asks Maya to do or show something (review P2, 2026-11-12): "you" before any verb but a past "showed" or
- * "taught" ("You show me.", "Now you add."), or a verb with no subject before it ("Show me.", "Add 9."). Such a clause is
- * a request, never a harmless description: "Like you showed me" and "I add the ones first" are not requests.
+ * The clause asks Maya to do or show something (review P2 and its re-review, 2026-11-12): (a) "you" before any word but a
+ * past "showed" or "taught" ("You show me.", "Now you add."), or (b) the clause starts, after at most a few filler words
+ * (REQUEST_LEAD), with a bare present imperative (IMPERATIVES: "Show me.", "Now show me."). A past or -ing form ("Added 7
+ * and 9.", "Adding 7 and 9") and a verb after "then", "and", "first", "so" or "next" ("then add 9") are the child's own
+ * description, never a request. "Like you showed me" and "I add the ones first" are not requests.
  */
 function asksMaya(words: readonly string[]): boolean {
-  let subject = false;
   for (let i = 0; i < words.length; i++) {
-    const w = words[i];
-    if (w === "you") {
-      if (words[i + 1] !== "showed" && words[i + 1] !== "taught") return true;
-      subject = true;
-    } else if (w === "i") subject = true;
-    else if (HARMLESS_VERBS.has(w) && !subject) return true;
+    if (words[i] === "you" && words[i + 1] !== "showed" && words[i + 1] !== "taught") return true;
   }
-  return false;
+  let i = 0;
+  while (i < words.length && REQUEST_LEAD.has(words[i])) i++;
+  return i < words.length && IMPERATIVES.has(words[i]);
 }
 
 /** Takes these numbers out of the turn's operand pool, each once; false (and the pool unchanged) when one is not left. */
