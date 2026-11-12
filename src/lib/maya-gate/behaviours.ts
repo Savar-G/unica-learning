@@ -645,7 +645,7 @@ export const BEHAVIOURS: Behaviour[] = [
     expect: { outcome: { reason: "solved" }, refused: ["answer_not_committed"], never: ["redirect", "example_step", "give_answer"] },
   },
   {
-    id: "OT13", title: "Die 8 at grade 3: help only through the easier example, then 'Maybe 1?' gets a confirm, then 'I'm stuck.': the honest close is the child stopping, not a technical issue (re-review of #731, P1)", fixture: "DIE", grade: 3, status: "passing",
+    id: "OT13", title: "Die 8 at grade 3: help only through the easier example, then 'Maybe 1?' gets a confirm, then 'I'm stuck.': the honest close is Maya's own close (maya_closed, 2026-11-12), not a technical issue (re-review of #731, P1)", fixture: "DIE", grade: 3, status: "passing",
     steps: [
       child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 0 }]),
       child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 1 }]),
@@ -655,7 +655,7 @@ export const BEHAVIOURS: Behaviour[] = [
       child("I'm stuck.", { help: "more" }, [{ act: "close" }]),
     ],
     expect: {
-      outcome: { reason: "child_stopped" },
+      outcome: { reason: "maya_closed" },
       acts: [OPEN, "guide", "guide", "guide", "example_step", "example_step", "example_step", "confirm", "close"],
       outputs: [{ mayaTurn: 8, lines: [variants(dieLines.closeHonest(), "close.topic")] }],
       never: ["give_answer", "redirect"],
@@ -664,7 +664,7 @@ export const BEHAVIOURS: Behaviour[] = [
   // Re-review of #731 at b97f3741: one help-only test for the honest close (P1), its line always said (P2, lessons from
   // review 10), and a question about the step is not work (P3).
   {
-    id: "OT13b", title: "Die 8 at grade 3: as OT13, but the last turn is 'Help me.' (read as help): the honest close is still the child stopping (re-review of #731, P1)", fixture: "DIE", grade: 3, status: "passing",
+    id: "OT13b", title: "Die 8 at grade 3: as OT13, but the last turn is 'Help me.' (read as help): the honest close is still Maya's own close (maya_closed, 2026-11-12) (re-review of #731, P1)", fixture: "DIE", grade: 3, status: "passing",
     steps: [
       child("I'm stuck.", { start: "has_work", help: "more" }, [{ act: "guide", level: 0 }]),
       child("I'm stuck.", { help: "more" }, [{ act: "guide", level: 1 }]),
@@ -674,7 +674,7 @@ export const BEHAVIOURS: Behaviour[] = [
       child("Help me.", { help: "more" }, [{ act: "close" }]),
     ],
     expect: {
-      outcome: { reason: "child_stopped" },
+      outcome: { reason: "maya_closed" },
       acts: [OPEN, "guide", "guide", "guide", "example_step", "example_step", "example_step", "confirm", "close"],
       outputs: [{ mayaTurn: 8, lines: [variants(dieLines.closeHonest(), "close.topic")] }],
       never: ["give_answer", "redirect"],
@@ -690,7 +690,7 @@ export const BEHAVIOURS: Behaviour[] = [
       child("I'm stuck.", { help: "more" }, [{ act: "close", lines: [] }]),
     ],
     expect: {
-      outcome: { reason: "child_stopped" },
+      outcome: { reason: "maya_closed" },
       acts: [OPEN, "guide", "guide", "guide", "example_step", "example_step", "example_step", "close"],
       outputs: [{ mayaTurn: 7, lines: [variants(dieLines.closeHonest(), "close.topic")] }],
       never: ["give_answer", "redirect"],
@@ -3065,7 +3065,7 @@ export const BEHAVIOURS: Behaviour[] = [
       child("I'm stuck.", { help: "more" }, [{ act: "close", lines: ["close.honest"] }]),
     ],
     expect: {
-      outcome: { reason: "child_stopped", assistance: "hint", highestHint: 2 },
+      outcome: { reason: "maya_closed", assistance: "hint", highestHint: 2 },
       acts: [OPEN, "guide", "guide", "guide", "close"],
       counts: { refusals: 0 },
       never: ["give_answer", "accept_answer"],
@@ -3085,7 +3085,7 @@ export const BEHAVIOURS: Behaviour[] = [
       child("I'm stuck.", { help: "more" }, [{ act: "close" }]),
     ],
     expect: {
-      outcome: { reason: "child_stopped", assistance: "guided", highestHint: 3 },
+      outcome: { reason: "maya_closed", assistance: "guided", highestHint: 3 },
       // The model's close had only warm talk: refused, and code's fallback says the honest close.
       refused: ["line_not_offered"],
       never: ["give_answer", "accept_answer"],
@@ -3174,7 +3174,7 @@ export const BEHAVIOURS: Behaviour[] = [
       child("I'm stuck.", { help: "more" }),
     ],
     expect: {
-      outcome: { reason: "child_stopped", assistance: "guided", highestHint: 3 },
+      outcome: { reason: "maya_closed", assistance: "guided", highestHint: 3 },
       acts: [OPEN, "guide", "guide", "guide", "guide", "example_step", "example_step", "example_step", "try_target", "guide", "close"],
       // #698's loop guard refuses a help the child just heard (same_hint_again) before any line check.
       refused: ["act_not_allowed", "same_hint_again", "same_hint_again", "same_hint_again"],
@@ -3192,7 +3192,7 @@ export const BEHAVIOURS: Behaviour[] = [
       ...Array.from({ length: 6 }, () => child("I'm stuck.", undefined, [{ throws: true }])),
     ],
     expect: {
-      outcome: { reason: "child_stopped", assistance: "guided", highestHint: 3 },
+      outcome: { reason: "maya_closed", assistance: "guided", highestHint: 3 },
       acts: [OPEN, "example_step", "example_step", "example_step", "try_target", "guide", "guide", "guide", "guide", "close"],
       outputs: [{ mayaTurn: 9, lines: [TEMPLATES_CLOSE_HONEST] }],
       never: ["give_answer", "accept_answer"],
@@ -3240,7 +3240,7 @@ export const BEHAVIOURS: Behaviour[] = [
           ...Array.from({ length: 4 }, () => child("I'm stuck.", undefined, [{ throws: true }])),
         ],
         expect: {
-          outcome: { reason: "child_stopped", assistance: "guided", highestHint: 3 },
+          outcome: { reason: "maya_closed", assistance: "guided", highestHint: 3 },
           acts: [...acts],
           outputs: [{ mayaTurn: acts.length - 1, lines: [TEMPLATES_CLOSE_HONEST] }],
           never: ["give_answer", "accept_answer"],
@@ -3486,7 +3486,7 @@ export const BEHAVIOURS: Behaviour[] = [
       child("Okay.", undefined, [{ act: "close", lines: ["close.honest"] }]),
     ],
     expect: {
-      outcome: { reason: "child_stopped", assistance: "worked_example" },
+      outcome: { reason: "maya_closed", assistance: "worked_example" },
       acts: [OPEN, "guide", "guide", "guide", "guide", "example_step", "example_step", "example_step", "close"],
       outputs: [{ mayaTurn: 8, lines: [TEMPLATES_CLOSE_HONEST] }],
       refused: ["act_not_allowed"],
@@ -3505,7 +3505,7 @@ export const BEHAVIOURS: Behaviour[] = [
       child("Okay.", undefined, [{ throws: true }]),
     ],
     expect: {
-      outcome: { reason: "child_stopped", assistance: "worked_example" },
+      outcome: { reason: "maya_closed", assistance: "worked_example" },
       acts: [OPEN, "guide", "guide", "example_step", "example_step", "example_step", "close"],
       outputs: [{ mayaTurn: 6, lines: [TEMPLATES_CLOSE_HONEST] }],
       never: ["accept_answer", "give_answer"],
@@ -3547,7 +3547,7 @@ export const BEHAVIOURS: Behaviour[] = [
       child("Okay.", undefined, [{ act: "close", lines: ["close.honest"] }]),
     ],
     expect: {
-      outcome: { reason: "child_stopped", assistance: "worked_example" },
+      outcome: { reason: "maya_closed", assistance: "worked_example" },
       acts: [OPEN, "guide", "guide", "guide", "example_step", "example_step", "example_step", "close"],
       outputs: [{ mayaTurn: 7, lines: [TEMPLATES_CLOSE_HONEST] }],
       refused: ["act_not_allowed", "act_not_allowed"],
@@ -3568,7 +3568,7 @@ export const BEHAVIOURS: Behaviour[] = [
       child("I'm stuck.", { help: "more" }, [{ act: "give_answer" }]),
     ],
     expect: {
-      outcome: { reason: "child_stopped", assistance: "guided", highestHint: 3 },
+      outcome: { reason: "maya_closed", assistance: "guided", highestHint: 3 },
       acts: [OPEN, "example_step", "example_step", "example_step", "try_target", "guide", "guide", "guide", "close"],
       outputs: [{ mayaTurn: 8, lines: [TEMPLATES_CLOSE_HONEST] }],
       refused: ["act_not_allowed", "act_not_allowed", "act_not_allowed", "act_not_allowed", "act_not_allowed", "act_not_allowed"],

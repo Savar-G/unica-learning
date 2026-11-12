@@ -111,19 +111,19 @@ export const PATTERN_BEHAVIOURS: Behaviour[] = [
   {
     id: "PT10", title: "Model failing: a wrong answer at the first part's top help (H3): the easier pattern, then on another wrong answer the honest close", fixture: "PT_MISSING", status: "passing", grade: 3,
     steps: [...stuck(4), wrongRefused(15, "e1"), wrongRefused(15, "e1")],
-    expect: { outcome: { reason: "child_stopped", highestHint: 3 }, never: ["give_answer", "accept_answer"],
+    expect: { outcome: { reason: "maya_closed", highestHint: 3 }, never: ["give_answer", "accept_answer"],
       acts: ["open", "guide", "guide", "guide", "guide", ...EXAMPLE_THEN_CLOSE] },
   },
   {
     id: "PT11", title: "Model failing: a wrong answer at the last part's top help (H2): the easier pattern, then the honest close", fixture: "PT_MISSING", status: "passing", grade: 3,
     steps: [firstRight, ...stuck(2), wrongRefused(8, "result"), wrongRefused(8, "result")],
-    expect: { outcome: { reason: "child_stopped", assistance: "worked_example", highestHint: 2 }, never: ["give_answer", "accept_answer"],
+    expect: { outcome: { reason: "maya_closed", assistance: "worked_example", highestHint: 2 }, never: ["give_answer", "accept_answer"],
       acts: ["open", "guide", "guide", "guide", ...EXAMPLE_THEN_CLOSE] },
   },
   {
     id: "PT12", title: "Model failing: 'I'm stuck.' on every hint of the last part: H1, H2, the easier pattern, then the honest close", fixture: "PT_MISSING", status: "passing", grade: 3,
     steps: [firstRight, ...stuck(4)],
-    expect: { outcome: { reason: "child_stopped", assistance: "worked_example", highestHint: 2 }, never: ["give_answer", "accept_answer"],
+    expect: { outcome: { reason: "maya_closed", assistance: "worked_example", highestHint: 2 }, never: ["give_answer", "accept_answer"],
       acts: ["open", "guide", "guide", "guide", ...EXAMPLE_THEN_CLOSE] },
   },
   {

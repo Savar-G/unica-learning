@@ -52,7 +52,7 @@ const wrongRefused = (value: number, step: string): Step => child(String(value),
 }]);
 /** The opening "I'm stuck." with the child's start read, then more "I'm stuck." turns. */
 const stuckFromStart = (n: number): Step[] => stuck(n).map((s, i) => (i === 0 ? { ...s, read: { start: "has_work" as const, help: "more" as const } } : s));
-const EXAMPLE_THEN_CLOSE = { outcome: { reason: "child_stopped" as const, assistance: "worked_example" as const }, never: ["give_answer" as const, "accept_answer" as const] };
+const EXAMPLE_THEN_CLOSE = { outcome: { reason: "maya_closed" as const, assistance: "worked_example" as const }, never: ["give_answer" as const, "accept_answer" as const] };
 /** The compare's three steps said right, one turn each: the thousands digit, the hundreds digit, the bigger one. */
 const compareSteps: Step[] = [
   child("8", { start: "has_work", answers: [[8, "digit-1", "right"]] }, [{ act: "guide", step: "digit-2", level: 0, lines: ["check.right_step", "step.invite"] }]),
@@ -123,7 +123,7 @@ export const PLACE_PARTS_BEHAVIOURS: Behaviour[] = [
     id: "PVC08", title: "Compare: 'I'm stuck.' four times on the last step; the easier example, then an honest close, never the word", fixture: "PVC", status: "passing",
     steps: [...compareSteps, ...stuck(4)],
     expect: {
-      outcome: { reason: "child_stopped", assistance: "worked_example" }, never: ["give_answer", "accept_answer"],
+      outcome: { reason: "maya_closed", assistance: "worked_example" }, never: ["give_answer", "accept_answer"],
       acts: [OPEN, "guide", "guide", "guide", "guide", "guide", "example_step", "example_step", "example_step", "example_step", "close"],
       outputs: [{ mayaTurn: 10, lines: [texts(lines("PVC").closeUnsolved(), "close.hard")] }],
     },
@@ -212,7 +212,7 @@ export const PLACE_PARTS_BEHAVIOURS: Behaviour[] = [
       child("40", { answers: [[40, "worth-2", "right"]] }, [{ act: "guide", step: "result", level: 0, lines: ["check.right_step", "step.invite"] }]),
       ...stuck(4),
     ],
-    expect: { outcome: { reason: "child_stopped", assistance: "worked_example" }, acts: [OPEN, "guide", "guide", "guide", "guide", "example_step", "example_step", "example_step", "close"], never: ["give_answer", "accept_answer"] },
+    expect: { outcome: { reason: "maya_closed", assistance: "worked_example" }, acts: [OPEN, "guide", "guide", "guide", "guide", "example_step", "example_step", "example_step", "close"], never: ["give_answer", "accept_answer"] },
   },
   {
     id: "PVSJ1", title: "J06, sum: 'Why do I add them?' on the last step gets code's answer first", fixture: "PVSUM", status: "passing",
@@ -255,7 +255,7 @@ export const PLACE_PARTS_BEHAVIOURS: Behaviour[] = [
   {
     id: "PVB03", title: "Build: 'I'm stuck.' four times; H0 to H2, the easier example, then an honest close, never the decimal", fixture: "PVB", status: "passing",
     steps: [...stuck(4).map((s, i) => (i === 0 ? { ...s, read: { start: "has_work" as const, help: "more" as const } } : s)), ...stuck(2)],
-    expect: { outcome: { reason: "child_stopped", assistance: "worked_example" }, acts: [OPEN, "guide", "guide", "guide", "example_step", "close"], never: ["give_answer", "accept_answer"] },
+    expect: { outcome: { reason: "maya_closed", assistance: "worked_example" }, acts: [OPEN, "guide", "guide", "guide", "example_step", "close"], never: ["give_answer", "accept_answer"] },
   },
   {
     id: "PVBJ1", grade: 3, title: "J06, build, grade 3: 'Why does the point go there?' gets code's answer first, within 25 words", fixture: "PVB", status: "passing",

@@ -38,7 +38,7 @@ describe("committed final misses with the model down", () => {
     }
     expect(text.session.assistance).not.toContain("answer_given");
     if (policy === "example") expect(text.session.assistance).toContain("worked_example");
-    expect(text.session.outcome?.reason).toBe("child_stopped");
+    expect(text.session.outcome?.reason).toBe("maya_closed");
   }, 60_000);
 });
 
@@ -60,7 +60,7 @@ for (const [id, work, wrong] of cases.slice(0, 2)) {
     }
     expect(text.session.assistance).toContain("worked_example");
     expect(text.session.assistance).not.toContain("answer_given");
-    expect(text.session.outcome?.reason).toBe("child_stopped");
+    expect(text.session.outcome?.reason).toBe("maya_closed");
   }, 60_000);
 }
 

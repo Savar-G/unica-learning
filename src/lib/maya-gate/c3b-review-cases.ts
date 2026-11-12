@@ -61,7 +61,7 @@ export const C3B_REVIEW_BEHAVIOURS: Behaviour[] = [
       status: "passing",
       steps: [...steps, child("I'm stuck.", { help: "more" }, DOWN)],
       expect: {
-        outcome: { reason: "child_stopped" },
+        outcome: { reason: "maya_closed" },
         acts: [OPEN, ...acts, ...Array.from({ length: turns }, () => "example_step" as const), "try_target", "close"],
         never: ["accept_answer", "give_answer"],
       },

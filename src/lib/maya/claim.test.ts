@@ -239,7 +239,7 @@ describe("a claim question's session (A4)", () => {
     expect(step(s, { type: "proposal", at: at, proposal: { version: 2, act: "close", parts: [{ warm: "closing" }] } }).refusal?.code).toBe("line_not_offered");
     const r = step(s, { type: "proposal", at: at++, proposal: { version: 2, act: "close", parts: [{ line: "close.honest" }] } });
     expect(r.refusal).toBeNull();
-    expect(r.session.outcome).toMatchObject({ reason: "child_stopped", assistance: "hint" });
+    expect(r.session.outcome).toMatchObject({ reason: "maya_closed", assistance: "hint" });
     expect(learningEvent(r.session, { parentId: "p", childId: "c" })).toMatchObject({ source: "call", result: "blank", stuckStep: "result", hints: 2 });
   });
 
@@ -263,7 +263,7 @@ describe("a claim question's session (A4)", () => {
         s = step(s, { type: "child_turn", at: at++, text }).session;
         maya();
       }
-      expect(s.outcome).toMatchObject({ reason: "child_stopped" });
+      expect(s.outcome).toMatchObject({ reason: "maya_closed" });
       expect(s.exampleShown).toBe(s.package!.easierExample.steps.length);
       expect(s.turns.at(-1)?.text).toMatch(/\b(?:stop|stopping)\b/i);
       expect(learningEvent(s, { parentId: "p", childId: "c" })?.stuckStep).toBeTruthy();

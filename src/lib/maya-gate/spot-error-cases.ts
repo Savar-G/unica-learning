@@ -136,7 +136,7 @@ export const SPOT_BEHAVIOURS: Behaviour[] = [
       child("I don't know.", undefined, [{ throws: true }]),
     ],
     expect: {
-      outcome: { reason: "child_stopped", assistance: "worked_example", highestHint: 2 }, never: ["give_answer", "accept_answer"],
+      outcome: { reason: "maya_closed", assistance: "worked_example", highestHint: 2 }, never: ["give_answer", "accept_answer"],
     },
   },
   {
@@ -193,7 +193,7 @@ export const SPOT_BEHAVIOURS: Behaviour[] = [
     fixture: "SPOT_MUL", status: "passing",
     steps: [...Array.from({ length: 7 }, () => down("I'm stuck.")), down("It's right.")],
     expect: {
-      outcome: { reason: "child_stopped", assistance: "guided", highestHint: 3 },
+      outcome: { reason: "maya_closed", assistance: "guided", highestHint: 3 },
       acts: [OPEN, ...examples(11), "try_target", "guide", "guide", "guide", "guide", "close"],
       outputs: [{ mayaTurn: 17, lines: [closeTexts("SPOT_MUL")] }], never: ["give_answer", "accept_answer"],
     },
@@ -203,7 +203,7 @@ export const SPOT_BEHAVIOURS: Behaviour[] = [
     fixture: "SPOT_MUL", status: "passing",
     steps: [down("7 times 640 is 4480.", { start: "has_work" }), down("I'm stuck."), down("I'm stuck."), down("It's right."), down("Okay."), down("I'm stuck.")],
     expect: {
-      outcome: { reason: "child_stopped", assistance: "worked_example", highestHint: 2 },
+      outcome: { reason: "maya_closed", assistance: "worked_example", highestHint: 2 },
       acts: [OPEN, "guide", "guide", "guide", ...examples(11), "close"],
       outputs: [{ mayaTurn: 15, lines: [closeTexts("SPOT_MUL")] }], never: ["give_answer", "accept_answer"],
     },
@@ -213,7 +213,7 @@ export const SPOT_BEHAVIOURS: Behaviour[] = [
     fixture: "SPOT_MISS", status: "passing",
     steps: [...Array.from({ length: 6 }, () => down("I'm stuck.")), down("It's right.")],
     expect: {
-      outcome: { reason: "child_stopped", assistance: "guided", highestHint: 3 },
+      outcome: { reason: "maya_closed", assistance: "guided", highestHint: 3 },
       acts: [OPEN, "example_step", "example_step", "example_step", "example_step", "try_target", "guide", "guide", "guide", "guide", "close"],
       outputs: [{ mayaTurn: 10, lines: [closeTexts("SPOT_MISS")] }], never: ["give_answer", "accept_answer"],
     },
@@ -223,7 +223,7 @@ export const SPOT_BEHAVIOURS: Behaviour[] = [
     fixture: "SPOT_MISS", status: "passing",
     steps: [down("680 divided by 4 is 170.", { start: "has_work" }), down("I'm stuck."), down("I'm stuck."), down("It's right."), down("I'm stuck.")],
     expect: {
-      outcome: { reason: "child_stopped", assistance: "worked_example", highestHint: 2 },
+      outcome: { reason: "maya_closed", assistance: "worked_example", highestHint: 2 },
       acts: [OPEN, "guide", "guide", "guide", "example_step", "example_step", "example_step", "example_step", "close"],
       outputs: [{ mayaTurn: 8, lines: [closeTexts("SPOT_MISS")] }], never: ["give_answer", "accept_answer"],
     },

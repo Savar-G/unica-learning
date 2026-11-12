@@ -38,7 +38,7 @@ describe("review of 9884b94e (#760)", () => {
     expect(text.session.solved).toBeNull();
     expect(text.session.assistance).not.toContain("answer_given");
     expect(text.session.assistance).toContain("worked_example");
-    expect(text.session.outcome?.reason).toBe("child_stopped");
+    expect(text.session.outcome?.reason).toBe("maya_closed");
   });
 
   /** The session right after the child's turn, before Maya answers it. */

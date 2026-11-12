@@ -120,7 +120,7 @@ describe("place value in the controller", () => {
     // The close: hard, fine to stop, one next step, from code's lines, with no hint at the answer (3).
     expect(packageLines(DIGIT as OperationPackage).closeUnsolved().flatMap((o) => o.texts)).toContain(last);
     expect(last).not.toMatch(/\b3\b|three/i);
-    expect(s.outcome).toMatchObject({ reason: "child_stopped", assistance: "worked_example" });
+    expect(s.outcome).toMatchObject({ reason: "maya_closed", assistance: "worked_example" });
     expect(learningEvent(s, { parentId: "parent-1", childId: "child-1" })).toMatchObject({
       key: "call:pv", source: "call", question: DIGIT.ref, skill: DIGIT.skill, result: "blank", stuckStep: "result", mistake: null,
     });

@@ -102,7 +102,7 @@ describe("spot the error in the controller", () => {
         expect(t).not.toMatch(new RegExp(`\\b${fix}\\b`));
         expect(t).not.toMatch(/\btick (?:no|yes)\b(?! or)/i);
       }
-      expect(s.outcome).toMatchObject({ reason: "child_stopped" });
+      expect(s.outcome).toMatchObject({ reason: "maya_closed" });
       expect(learningEvent(s, FAMILY)).toMatchObject({ source: "call", result: "blank", stuckStep: stuck, mistake: null });
     }
   });
@@ -116,7 +116,7 @@ describe("spot the error in the controller", () => {
       expect(acts.at(-1), p.text).toBe("close");
       expect(acts).toContain("example_step");
       expect(acts).not.toContain("give_answer");
-      expect(s.outcome).toMatchObject({ reason: "child_stopped" });
+      expect(s.outcome).toMatchObject({ reason: "maya_closed" });
       expect(learningEvent(s, FAMILY)).toMatchObject({ source: "call", stuckStep: work });
     }
     for (const [p, fix] of [[MUL, "7 times 640 is 4480."], [MISS, "680 divided by 4 is 170."]] as const) {
@@ -127,7 +127,7 @@ describe("spot the error in the controller", () => {
       expect(acts.slice(word + 1).every((a) => a === "example_step" || a === "close"), acts.join(" ")).toBe(true);
       expect(acts.slice(word + 1)).toContain("example_step");
       expect(acts.at(-1)).toBe("close");
-      expect(s.outcome).toMatchObject({ reason: "child_stopped" });
+      expect(s.outcome).toMatchObject({ reason: "maya_closed" });
       expect(learningEvent(s, FAMILY)).toMatchObject({ source: "call", stuckStep: "result" });
     }
   });

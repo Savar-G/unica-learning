@@ -143,7 +143,7 @@ export const PLACE_VALUE_BEHAVIOURS: Behaviour[] = [
       child("1", { answers: [[1, "result", "wrong"]] }),
       child("I still don't get it."),
     ],
-    expect: { outcome: { reason: "child_stopped", assistance: "worked_example" }, acts: [OPEN, "guide", "example_step", "close"], never: ["give_answer", "accept_answer"] },
+    expect: { outcome: { reason: "maya_closed", assistance: "worked_example" }, acts: [OPEN, "guide", "example_step", "close"], never: ["give_answer", "accept_answer"] },
   },
   {
     id: "PV14", title: "Which digit: cannot start; the easier example of the same shape, then the child's own digit", fixture: "PVD", status: "passing",
@@ -302,7 +302,7 @@ export const PLACE_VALUE_BEHAVIOURS: Behaviour[] = [
       child("I don't know.", undefined, [{ throws: true }]),
     ],
     expect: {
-      outcome: { reason: "child_stopped", assistance: "worked_example", highestHint: 2 }, acts: [OPEN, "guide", "guide", "guide", "example_step", "close"],
+      outcome: { reason: "maya_closed", assistance: "worked_example", highestHint: 2 }, acts: [OPEN, "guide", "guide", "guide", "example_step", "close"],
       never: ["give_answer", "accept_answer"],
       // The honest close (brief lesson 10): hard, fine to stop, one next step, never the answer.
       outputs: [{ mayaTurn: 5, lines: [texts(lines("PVD").closeUnsolved(), "close.later")] }],

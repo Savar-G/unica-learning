@@ -35,7 +35,7 @@ export const C3C_REVIEW_BEHAVIOURS: Behaviour[] = [
       status: "passing",
       steps: [child("I'm stuck.", undefined, DOWN), child(`It's ${wrong}.`, undefined, DOWN), child("I'm stuck.", undefined, DOWN)],
       expect: {
-        outcome: { reason: "child_stopped" },
+        outcome: { reason: "maya_closed" },
         acts: [OPEN, ...example(turns), "try_target", "close"],
         never: ["give_answer", "accept_answer"],
       },
@@ -47,7 +47,7 @@ export const C3C_REVIEW_BEHAVIOURS: Behaviour[] = [
       status: "passing",
       steps: [guideAt(0), guideAt(1), guideAt(2), child(`It's ${wrong}.`, undefined, DOWN), child("I'm stuck.", undefined, DOWN), child("I'm stuck.", undefined, DOWN)],
       expect: {
-        outcome: { reason: "child_stopped" },
+        outcome: { reason: "maya_closed" },
         acts: [OPEN, "guide", "guide", "guide", "guide", ...example(turns), "close"],
         never: ["give_answer", "accept_answer"],
       },
