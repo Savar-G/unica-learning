@@ -349,3 +349,17 @@ Approved by Savar on 2026-11-08 ("approve maya lines"), with the short wording b
 | Id | Old wording | New wording (approved 2026-11-08) | Savar's original phrasing |
 |---|---|---|---|
 | `held.cannot.0` | No line at this id (line set 11 removed the earlier `held.cannot`). | Sorry, I can't teach this question yet. | "Sorry, I don't have the capabilities to teach this question yet." Something like that. |
+
+## Approved by Savar 2026-11-12 (#884, D-329)
+
+Status: approved by Savar on 2026-11-12 (#884). Values in braces come from the checked question package. `close.safety` is not built: the close after safety guidance stays silent (#698).
+
+### A right answer with a wrong reason (check.fix)
+
+Said once the child's final answer stands and the child explains a step wrongly ("7 plus 9 is 15"), only after code checked that step wrong. The answer stays right, the step gets code's checked equation, and the reason gets no praise. Example: "Your answer is right. One part needs a fix: 7 + 9 = 16."
+
+| Id | Wording |
+|---|---|
+| check.fix.0 | Your answer is right. One part needs a fix: {eq}. |
+| check.fix.1 | The answer is right. But check {where}: {eq}. |
+| check.fix.2 | You have the right answer. One part is off: {eq}. |

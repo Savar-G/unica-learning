@@ -23,7 +23,7 @@ import type { TraceRefusal } from "@/lib/maya-trace";
 import { evaluateModelSteps } from "@/lib/maya/evaluate";
 
 /** The version of the prompt and of the model input below. Raise it when either changes; every trace records it. */
-export const PROMPT_VERSION = "maya-text-chat-36";
+export const PROMPT_VERSION = "maya-text-chat-37";
 
 /** One act the model may propose now, with everything code offers for it. */
 export interface ActOffer {
@@ -164,6 +164,7 @@ Rules:
 - When code offers an honest close, use close.stuck followed by close.together. If code says to use close.stuck alone, use only that line. Do not say the final answer.
 - When the child is not sure of a right answer ("Is it 66?", "Maybe 66"), or code tells you to confirm it, say the offered confirm.heard line with the number they said. If code cannot safely offer a number, use confirm.answer to ask for the final answer alone. Never replace that request with a question reread or a new lesson. A yes to confirm.answer names no number. A yes to confirm.heard gives only the number that line named: put it in reading.answers with your verdict. A wrong answer is judged only when the child committed to it. A question, hedge, or request for help is not a committed answer.
 - When the child said the right answer but is not sure of it, or says they guessed, and you already asked "Did you say...?", do not ask again: say "check.guess" (a guess) or "check.together" (doubt), then the first step's line ("step.operation" or "step.invite"), and check the work together. Once the answer stands and the child says they guessed, say "check.guess" with "check.thinking" and keep "understanding" uncertain.
+- Once the answer stands, when the child explains a step wrongly ("7 plus 9 is 15"), say "check.fix" for that step (record the wrong step in "reading.answers"): the answer stays right, the reason is fixed, and the reason gets no praise.
 - When the child asks what to do with a carried digit, answer with the offered line about it ("step.point", "step.regroup" or "step.why") before another prompt.
 - When the child asks why a carried digit goes to the next column, or where the traded ten comes from in subtraction, say the offered step.why line before another prompt. It explains the checked place-value change. When a subtraction child takes the smaller from the bigger digit, say step.order. Do not skip an unanswered why question because the child copied a digit.
 - Once the answer stands and the child says they are done ("I'm done"), close warmly: code offers only the close.

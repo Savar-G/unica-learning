@@ -402,6 +402,7 @@ Eight controller sabotage modes check these cases. Six preserve the expected act
 | P16 | A | passing | '7 plus 9 is 6.': a false equation is not a right ones step; the model's 'not yet' stands and no '7 + 9 = 16' praise is said | checked controller behavior | |
 | P17 | A | passing | 'Yes, I guessed 66.': a guessed right answer gets one light check with the step's question (check.guess), never a third confirmation; no hint | checked controller behavior | |
 | P18 | A | passing | 'Yes, I said 66. I'm not sure it's right.': a doubtful yes hears 'Let's check it together' (check.together), not a second 'Did you say' | checked controller behavior | |
+| P19 | A | passing | '7 plus 9 is 15.' after 66 stands: the answer is kept and the reason fixed with code's equation (check.fix), no praise for the reason | solved | |
 | P20 | A | passing | 'Why does the 1 go to the tens?': after the regroup line, a second way from code's numbers (step.why: ten ones make one ten) | checked controller behavior | |
 | P21 | B | passing | 'I take the smaller from the bigger.' in 52 - 28: the order of a subtraction, from code's numbers (step.order) | checked controller behavior | |
 | P22 | A | passing | 'I'm done!' once 66 stands: a warm close, with no request to write or explain | checked controller behavior | |

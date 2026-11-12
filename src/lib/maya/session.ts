@@ -4200,7 +4200,9 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
       // "How do you know?" after another person's claim result ("My mom said 1440.") asks about work the child did not do:
       // the step's invite asks for their own (claim.ts, #737 review P3).
       const thinking = sessionClaim(pkg) && claimResultUnconfirmable(s) ? [] : l.thinking();
-      return [...check, ...view.steps.flatMap((id) => regroupHelp(l, id, view, framing, turnWordLimit(s) === 25)), ...own, ...right, ...[...l.stepIds, "result"].flatMap(l.notYet), ...l.question(), ...thinking];
+      // Once the answer stands, a step the child explains wrongly is fixed with code's equation (check.fix, D-329).
+      const fixes = solved ? l.stepIds.flatMap(l.fix) : [];
+      return [...check, ...view.steps.flatMap((id) => regroupHelp(l, id, view, framing, turnWordLimit(s) === 25)), ...own, ...right, ...fixes, ...[...l.stepIds, "result"].flatMap(l.notYet), ...l.question(), ...thinking];
     }
     case "accept_answer": {
       const form = view.checked.find((c) => c.problem === "target" && c.answer.step === "result" && c.answer.verdict === "right")?.answer.value ?? s.answerForm ?? undefined;
@@ -4221,7 +4223,9 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
       const allShown = l.stepIds.length > 0 && l.stepIds.every((id) => view.done.includes(id));
       // A child who says they guessed hears one light check (#605); a wrong step after the answer stands is fixed.
       const guessed = main === "CHECK" && s.turn && saysGuess(s.turn.text) ? l.guess() : [];
-      return [...guessed, ...write, ...(solved ? l.answerRight(form) : []), ...(main === "CHECK" ? [...(allShown && !guessed.length ? [] : l.thinking()), ...l.explain().filter((o) => !shown(o))] : [])];
+      // A wrong step after the answer stands is fixed (check.fix, D-329).
+      const fixes = main === "CHECK" ? l.stepIds.flatMap(l.fix) : [];
+      return [...guessed, ...fixes, ...write, ...(solved ? l.answerRight(form) : []), ...(main === "CHECK" ? [...(allShown && !guessed.length ? [] : l.thinking()), ...l.explain().filter((o) => !shown(o))] : [])];
     }
     case "close":
       // An unsolved close after the easier example may say the honest close (#735): it holds no answer.

@@ -2604,6 +2604,22 @@ export const BEHAVIOURS: Behaviour[] = [
     },
   },
   {
+    id: "P19",
+    title: "'7 plus 9 is 15.' after 66 stands: the answer is kept and the reason fixed with code's equation (check.fix), no praise for the reason",
+    fixture: "A",
+    status: "passing",
+    steps: [
+      child("I got 66.", { start: "has_work", answers: [[66, "result", "right"]] }),
+      child("7 plus 9 is 15.", { answers: [[15, "ones", "wrong"]] }, [{ act: "ask_write", lines: ["check.fix", "write.answer"] }]),
+      child("I wrote 66.", { paper: "written" }, [{ act: "close" }]),
+    ],
+    expect: {
+      outcome: { reason: "solved", paperStatus: "child_confirmed", understanding: "uncertain" },
+      acts: [OPEN, "accept_answer", "ask_write", "close"],
+      counts: { refusals: 0 },
+    },
+  },
+  {
     id: "P20",
     title: "'Why does the 1 go to the tens?': after the regroup line, a second way from code's numbers (step.why: ten ones make one ten)",
     fixture: "A",

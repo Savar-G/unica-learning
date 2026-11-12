@@ -62,8 +62,9 @@ const operationText = (op: Parameters<typeof baseOperationText>[0]) => clockExpr
  * Version 18: pattern lines combined with spot-the-error and Wave C.
  * Version 19: the waves combined with #698: close.stuck (the honest close after help alone, #735), check.method (C09),
  * held.cannot; a question type with its own honest close (closeUnsolved) says it in place of close.stuck.
+ * Version 20 (#884, D-329, Savar 2026-11-12): check.fix, a right answer with a wrong reason.
  */
-export const LINES_VERSION = 19;
+export const LINES_VERSION = 20;
 
 export const LINE_IDS = [
   "about.ai",
@@ -91,6 +92,7 @@ export const LINE_IDS = [
   "check.together",
   "check.guess",
   "check.method",
+  "check.fix",
   "step.why",
   "step.order",
   "answer.right",
@@ -464,6 +466,12 @@ export const TEMPLATES = {
     "Lucky guess? Let's check it together.", "A guess is a good start. Let's check it.",
     "Let's see if your guess works. We'll check it together.", "Okay, let's check that guess together.",
     "Guesses can be right! Let's check this one together.",
+  ],
+  // A right final answer with a wrong reason (#624, D-329, Savar 2026-11-12): the answer stays, the step is fixed with its
+  // checked equation, and the reason gets no praise.
+  "check.fix": [
+    "Your answer is right. One part needs a fix: {eq}.", "The answer is right. But check {where}: {eq}.",
+    "You have the right answer. One part is off: {eq}.",
   ],
   "answer.right": [
     "Yes! {expr} = {answer}.", "That's right: {expr} = {answer}.", "You got it! {expr} = {answer}.", "Yes, {expr} = {answer}!",
@@ -1079,6 +1087,12 @@ function sharedLines(given: OperationPackage) {
     together: (): LineOffer[] => [offer("check.together", "check.together", {})],
     /** A check of a right answer the child says they guessed (#605). */
     guess: (): LineOffer[] => [offer("check.guess", "check.guess", {})],
+    /** "Your answer is right. One part needs a fix: 7 + 9 = 16.": only after code checked the child's wrong step (#624, D-329). */
+    fix: (id: string): LineOffer[] => {
+      const step = find(id);
+      const eq = step ? equationOf(step, pkg, "target") : null;
+      return step && eq ? [offer("check.fix", "check.fix", { eq, where: whereOf(step) }, { slots: { step: id }, requires: { answer: "wrong", step: id }, board: eq })] : [];
+    },
     thinking: (): LineOffer[] => [offer("check.thinking", "check.thinking", {})],
     /** "Yes! 3/4 + 1/8 = 7/8.", in the form the child gave when it is an equal form code accepted ("= 14/16", #407). */
     answerRight: (form: AnswerValue = pkg.answer.value): LineOffer[] => {
@@ -1216,7 +1230,7 @@ export function allLineTexts(given: OperationPackage, heardValues: readonly Answ
     ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id, "due"), ...l.help(id, "heard"), ...l.help(id, "done"), ...l.help(id, "due", true), ...l.help(id, "heard", true), ...l.regroupOut(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.help("result"), ...l.notYet("result"), ...l.explain(),
     ...l.thinking(), ...l.answerRight(), ...l.answerGive(), ...l.answerParts(), ...l.writeAnswer(), ...l.writeYours(), ...l.heard(heard, heard.flatMap((a) => heard.map((b) => [a, b] as [AnswerValue, AnswerValue]))),
     ...l.answerOnly(), ...l.otherInput(), ...l.redirect(), ...l.workbook(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("child", false), ...l.closeSolved("maya"), ...l.closeHonest(), ...l.closeUnsolved(), ...l.closeStuck(), ...l.closeGiven(), ...l.method(), ...l.repair(),
-    ...l.together(), ...l.guess(), ...l.patternClose(), ...(pkg.steps.some((st) => st.kind === "claim-compare") ? l.stepIds.flatMap((id) => l.rightStepShort(id)) : []), ...l.which(), ...l.honestClose(), ...(pkg.item?.regions.flatMap((r) => (r.kind === "choice" ? r.choices : [])) ?? []).flatMap(l.said),
+    ...l.together(), ...l.guess(), ...l.stepIds.flatMap(l.fix), ...l.patternClose(), ...(pkg.steps.some((st) => st.kind === "claim-compare") ? l.stepIds.flatMap((id) => l.rightStepShort(id)) : []), ...l.which(), ...l.honestClose(), ...(pkg.item?.regions.flatMap((r) => (r.kind === "choice" ? r.choices : [])) ?? []).flatMap(l.said),
   ];
   const extra = [...fixedOffers(), ...areaOffers(pkg), ...heldOffers(true)];
   return [...new Set([...offers, ...offers.map(spokenOffer), ...extra].flatMap((o) => o.texts.map(sentence)))];

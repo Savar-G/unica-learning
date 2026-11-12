@@ -804,6 +804,23 @@ describe("#605 Maya's new lines (Savar 2026-11-06: conversational and human-like
     expect(c.session.understanding).toBe("uncertain");
   });
 
+  it("a right answer with a wrong reason keeps the answer and fixes the step with code's equation", () => {
+    const c = call();
+    c.child("I got 66.");
+    c.maya(accept);
+    c.child("7 plus 9 is 15.");
+    const words = c.maya({ act: "ask_write", parts: [ln("check.fix", { step: "ones" }), ln("write.answer")], understanding: "uncertain", reading: { answers: [ans(15, "ones", "wrong")] } });
+    expect(words).toContain("7 + 9 = 16");
+    expect(words).toMatch(/right/);
+    expect(c.session.solved).toBe("child");
+    // Only after code checked that step wrong.
+    const d = call();
+    d.child("I got 66.");
+    d.maya(accept);
+    d.child("Okay.");
+    expect(d.propose({ act: "ask_write", parts: [ln("check.fix", { step: "ones" }), ln("write.answer")], understanding: "uncertain" }).refusal).not.toBeNull();
+  });
+
   it("explains a carry a second way (ten ones make one ten) only after the regroup line was said", () => {
     const c = call();
     c.child("16.");
