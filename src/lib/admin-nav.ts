@@ -4,7 +4,7 @@
 
 export type AdminNavKey =
   | "home" | "health" | "families" | "tests" | "feedback" | "production" | "delivery" | "marking" | "calls"
-  | "flyers" | "emails" | "templates" | "skillmap" | "reviews" | "ai" | "preview" | "export";
+  | "flyers" | "emails" | "templates" | "skillmap" | "reviews" | "ai" | "preview" | "budget" | "export";
 
 export interface AdminNavItem {
   key: AdminNavKey;
@@ -51,6 +51,7 @@ export const ADMIN_NAV: readonly AdminNavEntry[] = [
   ] },
   { folder: "Team tools", items: [
     { key: "preview", label: "Parent app preview", href: "/admin/dashboard" },
+    { key: "budget", label: "Budget", href: "/admin/budget" },
     { key: "export", label: "Export", href: "/admin/export" },
   ] },
 ];
@@ -87,6 +88,7 @@ const SEGMENT: Record<string, AdminNavKey> = {
   ai: "ai",
   dashboard: "preview",
   "parent-dashboard": "preview",
+  budget: "budget",
   export: "export",
 };
 
