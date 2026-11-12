@@ -75,12 +75,15 @@ function reason(p: Pattern, index: number): string {
 }
 
 const ORDINAL: Record<number, string> = { 1: "1st", 2: "2nd", 3: "3rd", 4: "4th", 8: "8th", 9: "9th" };
+/** Any term's ordinal ("9th", "11th", "22nd"). */
+const ordinal = (n: number) => ORDINAL[n] ?? `${n}${n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
 
 /** Why this part comes now, in code's words, with the part's own numbers ("Why do I subtract the start?"). */
 function why(p: Pattern, index: number, part: string): string {
   if (p.missing) return index === 0
     ? `The ${ORDINAL[p.count + 1]} term is ${p.count} equal steps past the start. ${part} is what they add.`
-    : `Each step adds the same amount. So the ${p.count} equal steps share the increase: ${part}.`;
+    // F2: not the plan line in other words ("Share the increase across 8 equal steps."): the jumps between the two terms.
+    : `From the 1st term to the ${ordinal(p.count + 1)} term there are ${p.count} jumps. Each jump adds the same amount: ${part}.`;
   if (p.form === "pair") return [
     `The 8th term is 7 steps after the 1st term: ${part}.`, `The 7 steps come after the start, so add the start: ${part}.`,
     `The 2nd term is 1 step after the start: ${part}.`, `The question asks for the two terms together: ${part}.`][index];

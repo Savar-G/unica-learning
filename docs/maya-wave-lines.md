@@ -851,3 +851,17 @@ The Opus line review of #892 found 10 P2 lines. These rewordings wait for Savar'
 - "colored" is "coloured" (DESIGN.md, Canadian spelling).
 - `example.intro.spot`: Wave C (spot the error), not Wave A.
 - Still for Savar: the `about.no_secret` wordings end with "A grown-up you trust can help.", which the free-talk rule `NOT_OK_TALK` counts as advice. Code lines do not go through that review, so nothing is refused today, but the two rules disagree.
+
+## Pending line review
+
+Added 2026-11-12 for F2 (practice pass 2026-11-12, judge J06): the why answer of a pattern's share step said the plan
+line again in other words. One code-written `{why}` text replaces it, for a missing-step pattern's second part only. It
+says no answer (D-326), uses grade 3 words, and holds nothing on the `NEVER_SAY` list (no claim about Maya, no fact
+about the world, no promise, no advice). It is said through the approved `pattern.why` wordings.
+
+| Key | Text | Where | Replaces |
+|---|---|---|---|
+| `pattern.why` `{why}`, missing pattern, part 2 | From the 1st term to the {nth} term there are {count} jumps. Each jump adds the same amount: {part}. | `src/lib/maya/pattern-lines.ts`, `why()` | Each step adds the same amount. So the {count} equal steps share the increase: {part}. |
+
+Also: on a pattern question any "why" question now gets this `step.why` answer before another prompt (`asksWhyIn`), on
+the model's repair and on code's fallback.

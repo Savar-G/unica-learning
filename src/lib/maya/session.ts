@@ -1055,7 +1055,10 @@ function copiesShown(s: Session): boolean {
   return !!st && s.ladder.hint >= 3 && s.turn !== null && valuesIn(s.turn.text, readOptionsFor(s.package)).some((v) => stepAnswers(st).some((a) => equivalent(a, v)));
 }
 /** The child asks why (asksWhy), or, on a place-value question, which place is which (asksPlace, J06). */
-const asksWhyIn = (s: Session): boolean => s.turn !== null && (asksWhy(s.turn.text) || (isPlaceValue(s.package) && asksPlace(s.turn.text)));
+// F2 (practice 2026-11-12): on a pattern question any "why" ("Why do I divide by eight?", "Why only three steps?") asks
+// for code's step.why, never the plan line again.
+const asksWhyIn = (s: Session): boolean => s.turn !== null && (asksWhy(s.turn.text) || (isPlaceValue(s.package) && asksPlace(s.turn.text)) ||
+  (!!s.package && !!patternOf(s.package) && /\bwhy\b/i.test(s.turn.text)));
 
 /**
  * The top help level Maya can say on the ladder's step now: the highest level of the guide lines code offers for it,
