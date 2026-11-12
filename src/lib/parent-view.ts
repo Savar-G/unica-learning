@@ -102,8 +102,9 @@ export interface ParentViewReader {
   /** Whether the parent has a PIN; null when it cannot be read. */
   pinSet(): Promise<boolean | null>;
   /**
-   * How many of the child's Maya calls that counted minutes (a call that used no time is not one) started from `from`
-   * up to, not including, `to` (epoch ms). Only a number: never a call's words, notes or outcome.
+   * How many of the child's Maya chats ended from `from` up to, not including, `to` (epoch ms). A chat counts when the
+   * child sent Maya at least one message; an admin test call never counts. Only a number: never a call's words, notes or
+   * outcome.
    */
   mayaCalls(childId: string, from: number, to: number): Promise<number>;
   /** Each finished test's tally of each standard it asked, for one child: what the skill state rule reads, and nothing else. */
@@ -479,7 +480,7 @@ export interface MonthlySummaryView {
   mailed: { number: number; shippedOn: string }[];
   /** Days of work scanned in the month: a day of a shipped workbook whose every page has a saved photo, counted in the month of its last photo. */
   daysScanned: number;
-  /** The child's Maya calls that started in the month. */
+  /** The child's Maya chats that ended in the month, with at least one message from the child. */
   mayaCalls: number;
   /** The next book's range today; null when there is no range to show. */
   next: { earliest: string; latest: string } | null;

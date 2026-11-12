@@ -122,7 +122,7 @@ A request for sexual, violent or other harmful content (`reading.unsafeRequest`)
 
 Board commands do not change with free talk: Maya draws only through code's board offers (`draw`). Only the board core's tests read the model's own commands (`modelBoard`).
 
-For children's calls, free talk follows one setting: `MAYA_FREE_TALK` (`src/lib/maya-free-talk.ts`, on unless it is `off`).
+Free talk is on for admin test calls and off for chat (`textSession` in `src/lib/maya-call.ts`). There is no setting for it.
 
 ## Plain language (D-202)
 

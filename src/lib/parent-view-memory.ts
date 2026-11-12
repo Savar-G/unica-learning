@@ -82,12 +82,14 @@ export interface MemoryScan extends Owned {
   /** Defaults to 2026-01-01. */
   takenAt?: string;
 }
-/** A Maya minutes grant (public.maya_minute_grants): a call counts only as a child's, settled with time used. */
-export interface MemoryMayaGrant extends Owned {
-  kind: "child" | "parent_demo";
-  createdAt: string;
-  /** Null while the call is open. */
-  usedSeconds: number | null;
+/** A Maya call (public.maya_calls): it counts only as a family chat that ended, with a message from the child. */
+export interface MemoryMayaCall extends Owned {
+  kind: "admin_test" | "chat";
+  status: "live" | "ended";
+  /** Null while the call is live. */
+  endedAt: string | null;
+  /** The child's messages, written when the call ends; null while it is live. */
+  childTurns: number | null;
 }
 export interface MemoryPage {
   parentId: string;
@@ -134,7 +136,7 @@ export interface MemoryParentViewTables {
   pages?: MemoryPage[];
   /** One value for every parent; true when left out. */
   pinSet?: boolean | null;
-  maya?: MemoryMayaGrant[];
+  maya?: MemoryMayaCall[];
   skillTests?: MemorySkillTest[];
   questions?: MemoryWorkbookQuestion[];
   fail?: Table[];
@@ -225,8 +227,8 @@ export function memoryParentViewReaders(tables: MemoryParentViewTables) {
       },
       async mayaCalls(childId, from, to) {
         read("maya");
-        return own(tables.maya).filter((g) => g.kind === "child" && g.childId === childId && g.usedSeconds !== null && g.usedSeconds > 0
-          && Date.parse(g.createdAt) >= from && Date.parse(g.createdAt) < to).length;
+        return own(tables.maya).filter((c) => c.kind === "chat" && c.childId === childId && c.status === "ended" && (c.childTurns ?? 0) > 0
+          && c.endedAt !== null && Date.parse(c.endedAt) >= from && Date.parse(c.endedAt) < to).length;
       },
       async skillTests(childId) {
         read("skillTests");

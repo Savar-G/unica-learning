@@ -65,6 +65,6 @@ The parent report reader reads `parents.postal` separately with the parent's ses
 
 ## Maya integration
 
-The weekly recap uses the shared calendar functions for Monday 7 a.m. release, call-week grouping, the final Sunday and Monday-midnight expiry. The minutes ledger uses the same layer for Monday-midnight weekly resets and the separate 120-second daily demo cap. Parent home passes one resolved zone to its date labels and minutes reader. Browser-zone capture still writes once.
+The weekly recap uses the shared calendar functions for Monday 7 a.m. release, call-week grouping, the final Sunday and Monday-midnight expiry. Maya's spending cap uses the same layer for its Monday-midnight week, and chat uses it for the family day of its message count. Parent home passes one resolved zone to its date labels. Browser-zone capture still writes once.
 
 The weekly, reminder and report readers load the stored browser zone with the postal code. The parent report reader still reads its parent row separately under its session. No report parent join or new grant is needed.
