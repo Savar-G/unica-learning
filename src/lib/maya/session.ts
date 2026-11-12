@@ -2621,21 +2621,41 @@ function harmlessClause(step: Extract<WorkedStep, { kind: "add-column" }>, claus
 const IMPERATIVES = new Set(["show", "add", "start", "help", "do", "tell", "check", "explain", "give"]);
 /** Words a request may start with before its imperative ("Now show me."). */
 const REQUEST_LEAD = new Set(["now", "okay", "ok", "um", "uh", "oh", "well"]);
+/** Words that carry on the child's own steps ("then add 9"): after one, add or start with what it works on is narration. */
+const STEP_LEAD = new Set(["then", "so", "and", "first", "next"]);
+/** Verbs a step lead may carry on as narration, when what they work on follows. */
+const NARRATED = new Set(["add", "added", "adding", "start", "started"]);
 
 /**
- * The clause asks Maya to do or show something (review P2 and its re-review, 2026-11-12): (a) "you" before any word but a
- * past "showed" or "taught" ("You show me.", "Now you add."), or (b) the clause starts, after at most a few filler words
- * (REQUEST_LEAD), with a bare present imperative (IMPERATIVES: "Show me.", "Now show me."). A past or -ing form ("Added 7
- * and 9.", "Adding 7 and 9") and a verb after "then", "and", "first", "so" or "next" ("then add 9") are the child's own
- * description, never a request. "Like you showed me" and "I add the ones first" are not requests.
+ * The clause asks Maya to do or show something (review P2 and its re-checks, 2026-11-12). It does when:
+ * (a) "you" comes before a word other than a past "showed" or "taught" ("You show me.", "Now you add.");
+ * (b) it holds "show me", "show us", "help", "tell me", "give me", "explain" or "please" anywhere, with or without a lead
+ *     word ("Then show me.", "7 and 9, then show me.");
+ * (c) it starts, after filler (REQUEST_LEAD) and step leads (STEP_LEAD), with a bare present imperative (IMPERATIVES),
+ *     except that after a step lead "add" or "start" followed by a number, a place, "the" or "with" is narration ("then
+ *     add 9", "then add the ones", "then start with 7"); a bare "So add." stays a request.
+ * A past or -ing form at the start ("Added 7 and 9.", "Adding 7 and 9") is never a request. `words` is the clause as the
+ * child said it, with its lead word.
  */
 function asksMaya(words: readonly string[]): boolean {
   for (let i = 0; i < words.length; i++) {
     if (words[i] === "you" && words[i + 1] !== "showed" && words[i + 1] !== "taught") return true;
+    if (["show", "tell", "give"].includes(words[i]) && (words[i + 1] === "me" || words[i + 1] === "us")) return true;
+    if (["help", "explain", "please"].includes(words[i])) return true;
   }
   let i = 0;
-  while (i < words.length && REQUEST_LEAD.has(words[i])) i++;
-  return i < words.length && IMPERATIVES.has(words[i]);
+  let led = false;
+  for (; i < words.length; i++) {
+    if (STEP_LEAD.has(words[i])) led = true;
+    else if (!REQUEST_LEAD.has(words[i])) break;
+  }
+  const verb = words[i];
+  if (verb === undefined) return false;
+  if (led && NARRATED.has(verb)) {
+    const next = words[i + 1];
+    return !(next !== undefined && (plainNumber(next) !== null || PLACE_WORDS.has(next) || next === "the" || next === "with"));
+  }
+  return IMPERATIVES.has(verb);
 }
 
 /** Takes these numbers out of the turn's operand pool, each once; false (and the pool unchanged) when one is not left. */
