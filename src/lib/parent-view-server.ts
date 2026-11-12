@@ -4,6 +4,7 @@ import { answersAddUp, reportShowsPlacement } from "@/lib/area-level-check";
 import { profileSkillResults, reportCallsUnreliable, restoreSession, testAreaAnswers, type AreaAnswer, type Grade } from "@/lib/assessment";
 import type { Database } from "@/lib/database";
 import { LEARNING_COLUMNS } from "@/lib/learning-style";
+import { chatFamilyGate } from "@/lib/maya-chat";
 import { childPauseMailing } from "@/lib/plan-controls-server";
 import type { ParentViewReader } from "@/lib/parent-view";
 import { pinIsSet } from "@/lib/parent-pin-server";
@@ -181,10 +182,12 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
         familyOpenPlanChildren({ parentId: parent }, { db: admin }),
         admin?.from("test_accounts").select("parent_id").eq("parent_id", parent).maybeSingle(),
       ]);
+      const test = !testFamily?.error && testFamily?.data?.parent_id === parent;
+      const enabled = env.MAYA_CHAT_ENABLED !== "off";
       return {
         progress: env.PROGRESS_TAB_ENABLED === "on",
-        // Test families only until a child can call Maya (#337), as Parent home shows the minutes today.
-        maya: !testFamily?.error && testFamily?.data?.parent_id === parent,
+        maya: enabled && chatFamilyGate({ test, listed: false }, env) === "test",
+        mayaPlanChildren: enabled && chatFamilyGate({ test: false, listed: false, planOpen: true }, env) === "open_plan" ? scanPlanChildren : new Set<string>(),
         scanPages,
         scanPlanChildren,
       };
