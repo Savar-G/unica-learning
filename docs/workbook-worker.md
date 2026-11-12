@@ -148,6 +148,7 @@ After an admin approves a Book 1 draft, the site saves its starting record (the 
 
 - The run was made before #472, so its frame kept no plan input (`planning-capture-missing`).
 - The curriculum changed in a deploy after the book was planned (`curriculum-version-changed`). The record must copy the skills and steps of the version the book was planned on.
+- The site runs another commit than the one that planned the book (`planned-on-another-build`). Code outside the curriculum version (the watch-out check) shapes the steps, so only the planning build can prove that it copies the planned steps.
 
 Both need the frame's own build: the original planner and its curriculum, built from this repository's Git objects. On the Mac, from a checkout that has the frame's build commit:
 

@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 import { ACTOR, BASELINE, CHILD, PARENT, baselineOf, id, jobBook } from "./workbook-book1.fixture";
-import { book1BaselineId, pendingReason, reconcileBook1Baselines, settleBook1Baseline, type Book1CaptureTarget, type Book1PendingStore } from "./workbook-book1-capture";
+import { book1BaselineId, pendingReason, reconcileBook1Baselines, settleBook1Baseline, type Book1CaptureTarget, type Book1PendingStore, type Book1SiteDeps } from "./workbook-book1-capture";
 import { book1BaselineRepository, type Book1BaselineSql, type Book1CaptureDeps } from "./workbook-book1-store";
 import { curriculumFor, type Curriculum } from "./workbook-curriculum";
 
@@ -62,8 +62,11 @@ function memoryDb(o: { failSave?: "before" | "after-store" } = {}) {
   };
   return { sql, store, baselines, pending, saves, approved, lastTried };
 }
-function deps(sql: Book1BaselineSql, o: { legacy?: boolean; draftThrows?: boolean; curricula?: Book1CaptureDeps["curricula"] } = {}): Omit<Book1CaptureDeps, "recovery"> {
+/** The commit that planned the synthetic book, and the deploy's commit when the test does not say otherwise. */
+const BUILD = "b".repeat(40);
+function deps(sql: Book1BaselineSql, o: { legacy?: boolean; draftThrows?: boolean; curricula?: Book1CaptureDeps["curricula"]; build?: string | null } = {}): Book1SiteDeps {
   return {
+    build: o.build === undefined ? BUILD : o.build,
     curricula: o.curricula,
     draft: async run => {
       if (o.draftThrows) throw Error("draft read failed");
@@ -72,6 +75,7 @@ function deps(sql: Book1BaselineSql, o: { legacy?: boolean; draftThrows?: boolea
     frame: async run => {
       if (run !== made.runId) return null;
       const frame = structuredClone(made.frame);
+      frame.versions.build = BUILD;
       if (o.legacy) delete frame.planning;
       return { reference: `workbook_run_frames:${made.runId}`, createdAt: "2026-11-04T18:00:00.000Z", frame };
     },
@@ -187,7 +191,7 @@ describe("capture after approval, and the reconcile", () => {
     const db = memoryDb();
     const other: Book1CaptureTarget = { ...target(), runId: id(0x777), draftId: id(0x778) };
     db.approved.push(other, target());
-    const failing: Omit<Book1CaptureDeps, "recovery"> = { ...deps(db.sql), draft: async run => {
+    const failing: Book1SiteDeps = { ...deps(db.sql), draft: async run => {
       if (run === other.runId) throw Error("draft read failed");
       return structuredClone(made.final);
     } };
@@ -241,7 +245,7 @@ describe("the due list never stalls (review on #885)", () => {
     const db = memoryDb();
     const stuck = [1, 2, 3].map(n => ({ ...target(), runId: id(0x900 + n), draftId: id(0x910 + n) }));
     db.approved.push(...stuck, target());
-    const failing: Omit<Book1CaptureDeps, "recovery"> = { ...deps(db.sql), draft: async run => {
+    const failing: Book1SiteDeps = { ...deps(db.sql), draft: async run => {
       if (stuck.some(t => t.runId === run)) throw Error("draft read failed");
       return structuredClone(made.final);
     } };
@@ -257,5 +261,43 @@ describe("the due list never stalls (review on #885)", () => {
     db.approved.push(other, target());
     const store = { ...db.store, tried: async (t: Book1CaptureTarget) => { if (t.draftId === other.draftId) throw Error("note failed"); } };
     expect(await reconcileBook1Baselines(deps(db.sql), store, { limit: 3 })).toMatchObject({ due: 2, saved: 1, failed: 1 });
+  });
+});
+
+describe("the site captures only on the build that planned the book (review round 2 on #885)", () => {
+  it("the same build saves", async () => {
+    // Wrong if: the site refuses a frame its own deploy planned.
+    const db = memoryDb();
+    expect((await settleBook1Baseline(deps(db.sql, { build: BUILD }), db.store, target(), { recordPending: true })).status).toBe("saved");
+    expect(db.baselines).toHaveLength(1);
+  });
+  it("another build with the same curriculum version records pending and stores no baseline", async () => {
+    // Wrong if: the site copies today's steps (shaped by code outside the version, such as watch-out.ts) into a record
+    // labelled with the frame's version, or tries the revision again every run.
+    const db = memoryDb();
+    db.approved.push(target());
+    const sameVersion = { version: () => made.frame.versions.curriculum, curriculum: curriculumFor };
+    const other = deps(db.sql, { build: "c".repeat(40), curricula: sameVersion });
+    expect(await reconcileBook1Baselines(other, db.store, { limit: 3 })).toMatchObject({ due: 1, saved: 0, pending: 1 });
+    expect(db.pending).toEqual([{ draftId: made.final.draftId, revision: made.final.revision, reason: "planned-on-another-build" }]);
+    expect(db.baselines).toHaveLength(0);
+    expect(db.saves).toHaveLength(0);
+  });
+  it("a missing deploy commit refuses: nothing is stored or recorded, and a later run tries again", async () => {
+    // Wrong if: a deploy with no commit saves a record, or marks the revision pending for good.
+    const db = memoryDb();
+    db.approved.push(target());
+    expect(await settleBook1Baseline(deps(db.sql, { build: null }), db.store, target(), { recordPending: true }))
+      .toEqual({ status: "retry", reason: "deploy-build-unknown" });
+    expect(await reconcileBook1Baselines(deps(db.sql, { build: null }), db.store, { limit: 3 })).toMatchObject({ due: 1, saved: 0, pending: 0, retry: 1 });
+    expect(db.baselines).toHaveLength(0);
+    expect(db.pending).toHaveLength(0);
+    expect(db.saves).toHaveLength(0);
+  });
+  it("a frame with no planning capture keeps its own reason on any build", async () => {
+    const db = memoryDb();
+    db.approved.push(target());
+    await reconcileBook1Baselines(deps(db.sql, { legacy: true, build: "c".repeat(40) }), db.store, { limit: 3 });
+    expect(db.pending.map(p => p.reason)).toEqual(["planning-capture-missing"]);
   });
 });

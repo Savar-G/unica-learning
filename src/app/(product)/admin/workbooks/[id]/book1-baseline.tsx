@@ -5,6 +5,7 @@ export type Book1BaselineStatus = { revision: number } & ({ state: "saved" | "no
 export function book1PendingText(reason: string): string {
   if (reason === "planning-capture-missing") return "This run did not keep its plan input, so the site cannot save the record. Run the recovery script on the Mac (docs/workbook-worker.md).";
   if (reason === "curriculum-version-changed") return "The curriculum changed after this book was planned. Run the recovery script on the Mac: it uses the curriculum of the book's build (docs/workbook-worker.md).";
+  if (reason === "planned-on-another-build") return "The site was updated after this book was planned, so it cannot prove it copies the planned steps. Run the recovery script on the Mac: it uses the book's own build (docs/workbook-worker.md).";
   if (reason === "activity-before-boundary") return "Pages of this book were marked before the record was saved. The record cannot be saved now.";
   if (reason === "revision-changed") return "The draft has a newer version than the approved one.";
   return `The save was refused (${reason}).`;

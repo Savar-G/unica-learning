@@ -8,9 +8,14 @@
 // - One baseline per (draft, revision). Its id comes from that key (book1BaselineId), so a retry after a lost answer is a
 //   duplicate of the same record. When a baseline already binds the key (whatever its id, for example an exact-recovery
 //   baseline made by hand), nothing is stored and that baseline is returned. A baseline is never replaced.
-// - Here the capture uses only the run frame's planning capture (#472). A frame with no capture needs the pinned planner
-//   and Git (src/lib/workbook-book1-pinned.ts), which a Vercel function does not have: the reconcile records it once as
-//   pending recovery (public.workbook_book1_baseline_pending), and scripts/book1-baseline-recover.ts recovers it on a Mac.
+// - Here the capture uses only the run frame's planning capture (#472), and only on the build that planned the book
+//   (frame.versions.build equals this deploy's commit). The record copies the planned steps as curriculumFor gives them,
+//   and code outside the curriculum version (the watch-out check, watch-out.ts) shapes them: another build could copy
+//   other steps under the same version. Another build records planned-on-another-build; the local recovery copies the
+//   steps of the frame's own build.
+// - A frame with no planning capture needs the pinned planner and Git (src/lib/workbook-book1-pinned.ts), which a Vercel
+//   function does not have: the reconcile records it once as pending recovery (public.workbook_book1_baseline_pending),
+//   and scripts/book1-baseline-recover.ts recovers it on a Mac.
 // - A refusal that can change by itself (the service is unavailable, a race) is not recorded: the next run tries again.
 //   Every other refusal is recorded once with its reason, so the run does not try it every 15 minutes. Each try is
 //   counted before it starts, and the due list puts the least recently tried first: a revision that never settles
@@ -35,6 +40,9 @@ export interface Book1PendingStore {
   pending(target: Book1CaptureTarget, reason: string): Promise<"saved" | "duplicate" | "baseline" | "refused">;
 }
 
+/** The site's capture: today's code, and the commit of this deploy (null when unknown: nothing is saved). */
+export type Book1SiteDeps = Omit<Book1CaptureDeps, "recovery"> & { build: string | null };
+
 export type Book1Settled =
   | { status: "saved" | "duplicate" | "existing"; baseline: StoredBook1Baseline }
   /** Not stored, and not recorded: the next reminders run tries again. */
@@ -43,7 +51,7 @@ export type Book1Settled =
   | { status: "pending" | "refused"; reason: string };
 
 /** Refusals that can change with no one acting: the service, the admin row or a race. They are tried again. */
-const RETRY = new Set(["unavailable", "conflict", "saved-baseline-unavailable"]);
+const RETRY = new Set(["unavailable", "conflict", "saved-baseline-unavailable", "deploy-build-unknown"]);
 
 /** The baseline id of (draft, revision): the same key always gives the same id. */
 export function book1BaselineId(draftId: string, revision: number): string {
@@ -63,7 +71,7 @@ export function pendingReason(refusal: string): string {
  * Binds one approved Book 1 revision to its baseline, from the run frame's planning capture. `deps` must not hold
  * recovery: recovery is local. With `recordPending`, a refusal that does not change by itself is recorded once.
  */
-export async function settleBook1Baseline(deps: Omit<Book1CaptureDeps, "recovery">, store: Book1PendingStore, t: Book1CaptureTarget,
+export async function settleBook1Baseline(deps: Book1SiteDeps, store: Book1PendingStore, t: Book1CaptureTarget,
   o: { recordPending: boolean }): Promise<Book1Settled> {
   const bound = await store.existing(t.draftId, t.revision);
   if (bound) {
@@ -72,7 +80,7 @@ export async function settleBook1Baseline(deps: Omit<Book1CaptureDeps, "recovery
     // A baseline binds the key but cannot be read now: store nothing, try again later.
     return baseline ? { status: "existing", baseline } : { status: "retry", reason: "existing-baseline-unreadable" };
   }
-  const result = await captureBook1Baseline({ draft: deps.draft, frame: deps.frame, repository: deps.repository, curricula: deps.curricula },
+  const result = await siteBuildRefusal(deps, t.runId) ?? await captureBook1Baseline({ draft: deps.draft, frame: deps.frame, repository: deps.repository, curricula: deps.curricula },
     { id: book1BaselineId(t.draftId, t.revision), actorId: t.actorId, parentId: t.parentId, childId: t.childId, runId: t.runId, revision: t.revision });
   if (result.status !== "refused") return result;
   if (RETRY.has(result.reason)) return { status: "retry", reason: result.reason };
@@ -87,13 +95,25 @@ export async function settleBook1Baseline(deps: Omit<Book1CaptureDeps, "recovery
   return { status: "pending", reason };
 }
 
+/**
+ * Why the site may not copy the planned steps for this run, or null. Only a frame with a planning capture is judged:
+ * the capture refuses any other frame with its own reason (planning-capture-missing).
+ */
+async function siteBuildRefusal(deps: Book1SiteDeps, runId: string): Promise<{ status: "refused"; reason: string } | null> {
+  const framed = await deps.frame(runId);
+  if (!framed?.frame.planning) return null;
+  if (!deps.build) return { status: "refused", reason: "deploy-build-unknown" };
+  if (framed.frame.versions.build !== deps.build) return { status: "refused", reason: "planned-on-another-build" };
+  return null;
+}
+
 export interface Book1ReconcileResult { due: number; saved: number; existing: number; pending: number; retry: number; failed: number }
 
 /**
  * The repair step of the reminders run: up to `limit` due revisions, one after the other. One revision's failure (a
  * throw) is counted and never stops the others or the run.
  */
-export async function reconcileBook1Baselines(deps: Omit<Book1CaptureDeps, "recovery">, store: Book1PendingStore,
+export async function reconcileBook1Baselines(deps: Book1SiteDeps, store: Book1PendingStore,
   o: { limit: number; inTime?: () => boolean }): Promise<Book1ReconcileResult> {
   const due = await store.due(o.limit);
   const r: Book1ReconcileResult = { due: due.length, saved: 0, existing: 0, pending: 0, retry: 0, failed: 0 };

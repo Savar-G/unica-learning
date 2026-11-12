@@ -4,7 +4,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./database";
 import { isUuid } from "./workbook-content";
-import { reconcileBook1Baselines, settleBook1Baseline, type Book1PendingStore, type Book1ReconcileResult, type Book1Settled } from "./workbook-book1-capture";
+import { reconcileBook1Baselines, settleBook1Baseline, type Book1PendingStore, type Book1ReconcileResult, type Book1Settled, type Book1SiteDeps } from "./workbook-book1-capture";
 import { book1BaselineRepository, book1BaselineSql, type Book1CaptureDeps } from "./workbook-book1-store";
 import { workbookShipStore } from "./workbook-ship-store";
 
@@ -23,6 +23,11 @@ export function book1CaptureDeps(db: SupabaseClient<Database>): Omit<Book1Captur
     },
     repository: book1BaselineRepository(book1BaselineSql(db)),
   };
+}
+
+/** The site's capture deps: book1CaptureDeps and this deploy's commit, the same source a run frame's versions.build uses. */
+export function book1SiteDeps(db: SupabaseClient<Database>): Book1SiteDeps {
+  return { ...book1CaptureDeps(db), build: process.env.VERCEL_GIT_COMMIT_SHA || null };
 }
 
 export function book1PendingStore(db: SupabaseClient<Database>): Book1PendingStore {
@@ -61,7 +66,7 @@ export async function captureBook1AfterApproval(db: SupabaseClient<Database>, o:
     if (error) throw new Error("book1-run-read");
     if (!run || run.number !== 1 || !run.draft_id) return { status: "skipped" };
     const target = { runId: o.runId, draftId: run.draft_id, revision: o.revision, parentId: run.parent_id, childId: run.child_id, actorId: o.actorId };
-    const settled = await settleBook1Baseline(book1CaptureDeps(db), book1PendingStore(db), target, { recordPending: false });
+    const settled = await settleBook1Baseline(book1SiteDeps(db), book1PendingStore(db), target, { recordPending: false });
     if (settled.status === "retry" || settled.status === "refused") console.info("[book1 baseline] not captured at approval", o.runId, settled.reason);
     return settled;
   } catch (e) {
@@ -73,7 +78,7 @@ export async function captureBook1AfterApproval(db: SupabaseClient<Database>, o:
 /** The reminders run's repair step. Never throws: a failure is one count in the answer. */
 export async function reconcileBook1BaselinesNow(db: SupabaseClient<Database>, o: { inTime?: () => boolean } = {}): Promise<Book1ReconcileResult | { error: "run_failed" }> {
   try {
-    return await reconcileBook1Baselines(book1CaptureDeps(db), book1PendingStore(db), { limit: BOOK1_RECONCILE_LIMIT, inTime: o.inTime });
+    return await reconcileBook1Baselines(book1SiteDeps(db), book1PendingStore(db), { limit: BOOK1_RECONCILE_LIMIT, inTime: o.inTime });
   } catch (e) {
     console.error("[book1 baseline] reconcile failed", e instanceof Error ? e.message : String(e));
     return { error: "run_failed" };
