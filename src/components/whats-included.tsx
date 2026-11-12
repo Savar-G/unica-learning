@@ -113,7 +113,7 @@ function Sources() {
       </ol>
       <div className="wi-cvw">
         <NextCover changes={COVER_CHANGES} zoom={1.12} />
-        <p className="wi-cvn">It arrives before this workbook runs out. Pause or skip one in the app.</p>
+        <p className="wi-cvn">It arrives before this workbook runs out. You can pause it from your account.</p>
       </div>
     </div>
   );

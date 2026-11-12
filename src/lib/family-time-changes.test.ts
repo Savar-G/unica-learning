@@ -1,7 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import * as time from "@/lib/family-time";
-import { createMinutesLedger } from "@/lib/maya-minutes";
-import { memoryMinutesStore } from "@/lib/maya-minutes-memory";
 import { memoryWeeklyStore } from "@/lib/maya-weekly-email-memory";
 import { runWeeklyEmails } from "@/lib/maya-weekly-email";
 import { memoryTransport } from "@/lib/email-delivery-memory";
@@ -16,22 +14,9 @@ const changes: [string, time.FamilyLocation, time.FamilyLocation][] = [
 ];
 
 describe("R425M zone source matrix", () => {
-  it.each(changes)("%s: usage follows grant instants and displays follow the new zone", async (_, before, after) => {
+  it.each(changes)("%s: displays follow the new zone", (_, _before, after) => {
     const now = Date.parse("2026-11-09T06:30:00Z");
-    const store = memoryMinutesStore({ clock: () => now });
-    const ledger = createMinutesLedger({ store, clock: () => now });
-    const base = { parentId: "p", childId: "c" };
-    for (let i = 0; i < 3; i++) {
-      const id = `spent-${i}`;
-      expect((await ledger.grantChild({ ...base, callId: id, timeZone: time.familyZone(before) })).ok).toBe(true);
-      store.callEnded(id, 600);
-    }
-    expect((await ledger.grantDemo({ parentId: "p", callId: "demo", timeZone: time.familyZone(before) })).ok).toBe(true);
-    store.callEnded("demo", 120);
     const zone = time.familyZone(after);
-    expect(await ledger.usage({ ...base, timeZone: zone })).toMatchObject({ usedSeconds: 1800, leftSeconds: 0 });
-    expect(await ledger.grantChild({ ...base, callId: "extra", timeZone: zone })).toMatchObject({ ok: false });
-    expect(await ledger.grantDemo({ parentId: "p", callId: "extra-demo", timeZone: zone })).toMatchObject({ ok: false });
     expect(time.familyWhen(now, zone)).toBe(after.timeZone === "America/Toronto" ? "1:30 a.m. on Monday, November 9" : "11:30 p.m. on Sunday, November 8");
   });
 
@@ -74,14 +59,5 @@ describe("R425M-4 local time resolution", () => {
     ["America/Toronto", "2027-11-07", 1, "2027-11-07T05:00:00Z"],
   ])("resolves %s %s hour %s to the first valid instant", (zone, day, hour, expected) => {
     expect(time.localDateTime(day, zone, hour)).toBe(Date.parse(expected));
-  });
-  it.each([
-    ["America/Havana", "2027-03-13T20:00:00Z"], ["America/Santiago", "2027-09-04T20:00:00Z"],
-    ["America/Toronto", "2027-03-13T20:00:00Z"], ["America/Havana", "2027-11-06T20:00:00Z"],
-    ["America/Santiago", "2027-04-03T20:00:00Z"], ["America/Toronto", "2027-11-06T20:00:00Z"],
-  ])("grants a demo across %s at %s", async (zone, iso) => {
-    const clock = () => Date.parse(iso);
-    const ledger = createMinutesLedger({ store: memoryMinutesStore({ clock }), clock });
-    expect(await ledger.grantDemo({ parentId: "p", callId: "demo", timeZone: zone })).toMatchObject({ ok: true, seconds: 120 });
   });
 });

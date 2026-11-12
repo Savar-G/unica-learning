@@ -41,7 +41,7 @@ function view(isRight: Script, { grade = 4, province = "BC", name = "Maya" }: { 
     completedAt: "2026-10-10T19:30:00Z",
     questions: 36,
     minutes: 34,
-    model: reportModel(placement, { completedTestsInGrade: 0, workReviews: [] }),
+    model: reportModel(placement, { workReviews: [] }),
   };
 }
 

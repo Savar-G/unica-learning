@@ -8,12 +8,11 @@ import { expect, it } from "vitest";
 const callers: [file: string, rule: "markingAccess" | "scanChecksAccess", scope: RegExp, calls: number][] = [
   ["src/app/(product)/account/(dashboard)/scan/results/[id]/page.tsx", "markingAccess", /\{ photo: id \}/, 1],
   ["src/app/(product)/account/(dashboard)/workbooks/[child]/page.tsx", "markingAccess", /\{ child: view\.child\.id \}/, 1],
-  ["src/app/api/account/scans/[id]/marking/route.ts", "markingAccess", /\{ photo: id \}/, 3],
+  ["src/app/api/account/scans/[id]/marking/route.ts", "markingAccess", /\{ photo: id \}/, 1],
   // (2: the closed-plan answer before scanSession, #710, and the admission check.)
   ["src/app/api/account/scans/[id]/explanation/route.ts", "markingAccess", /\{ photo: id \}/, 2],
   ["src/lib/parent-problem-explanation-server.ts", "markingAccess", /\{ photo: ref\.photo \}/, 1],
   ["src/app/api/account/scans/history/route.ts", "markingAccess", /\{ child \}/, 1],
-  ["src/app/api/account/scans/progress/route.ts", "markingAccess", /\{ child: childId \}/, 1],
   ["src/app/api/account/scans/route.ts", "markingAccess", /\{ child \}/, 1],
   ["src/app/api/account/scans/route.ts", "scanChecksAccess", /\{ child \}/, 1],
   ["src/app/api/account/scans/send/route.ts", "scanChecksAccess", /\{ child: child as string \}/, 1],

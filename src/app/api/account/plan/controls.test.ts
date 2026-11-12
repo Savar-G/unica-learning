@@ -4,7 +4,7 @@ vi.mock("server-only",()=>({}));
 vi.mock("@/lib/supabase-auth",()=>({sessionClient:async()=>({}),parentId:f.parent}));
 vi.mock("@/lib/parent-dashboard-access",()=>({parentDashboardAccess:f.access,planManagementAccess:f.access}));
 vi.mock("@/lib/plan-controls-server",()=>({livePauses:()=>({store:{context:f.context}}),restartFamilyPlan:f.restart}));
-vi.mock("@/lib/plan-pause",()=>({previewPause:f.preview,confirmPause:f.confirm}));
+vi.mock("@/lib/plan-pause",async(original)=>({...await original<typeof import("@/lib/plan-pause")>(),previewPause:f.preview,confirmPause:f.confirm}));
 import {POST as pause} from "./pause/route";
 import {POST as restart} from "./restart/route";
 const card="11111111-1111-4111-8111-111111111111",token="a".repeat(64);
