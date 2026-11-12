@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import type { ScanPreview as Preview, ScanRefusal } from "@/lib/scan-crops";
+import { PHOTO_CHECK_POLL_MS, PHOTO_CHECK_WAIT_MS, PHOTO_PROBLEM_TEXT, type PhotoCheckView, type PhotoProblem } from "@/lib/scan-photo-check-text";
 
 /** The longest a parent waits for another call's work, in tries, two seconds apart. */
 const WAIT_TRIES = 15;
@@ -33,9 +34,20 @@ const listed = (numbers: number[]) => (numbers.length < 2 ? `${numbers[0]}` : `$
 /**
  * The straightened page and numbered answer crops of one photo, for test families and admins (D-236). Images arrive only
  * through the checked image route, live as object URLs, and are revoked when this view goes away.
+ * The photo check (#855): while it is pending, the view asks again every second for at most 6 s. A problem shows one
+ * sentence with "Take again" (main) and "Send anyway" (second); nothing is blocked. A later result is not shown.
  */
-export function ScanPreview({ photo, child }: { photo: string; child?: string }) {
+export function ScanPreview({ photo, child, onRetake, onSendAnyway, onProblem }: {
+  photo: string; child?: string;
+  /** Take the photo again. Without it, the problem tells the parent to use the phone. */
+  onRetake?: () => void;
+  /** Send this photo for marking as it is. */
+  onSendAnyway?: () => void;
+  /** Told the problem shown on this photo, or null. Keep it stable (useCallback). */
+  onProblem?: (photo: string, problem: PhotoProblem | null) => void;
+}) {
   const [preview, setPreview] = useState<Preview | null>(null);
+  const [check, setCheck] = useState<PhotoCheckView>(null);
   const [images, setImages] = useState<Record<string, string>>({});
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -51,13 +63,43 @@ export function ScanPreview({ photo, child }: { photo: string; child?: string })
   useEffect(() => {
     let live = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let checkTimer: ReturnType<typeof setTimeout> | undefined;
+    let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+    let stopWaiting: (() => void) | undefined;
     const base = `/api/account/scans/${photo}/preview`;
     const load = async (tries: number) => {
       const response = await fetch(base, { method: "POST", cache: "no-store" });
       if (!live) return;
       if (!response.ok) { setFailed(true); return; }
-      const answer: Preview = (await response.json()).preview;
+      const body: { preview: Preview; photoCheck?: PhotoCheckView } = await response.json();
+      const answer = body.preview;
       if (!live) return;
+      setCheck(body.photoCheck ?? null);
+      // While the check is pending, ask the preview again every second, until one fixed deadline 6 s from now. At the
+      // deadline the screen stops waiting and shows no problem; an answer that comes later is not shown (the server
+      // still stores its result).
+      if (answer.status === "ready" && body.photoCheck?.state === "pending") {
+        const waiting = new AbortController();
+        stopWaiting = () => waiting.abort();
+        deadlineTimer = setTimeout(() => {
+          waiting.abort();
+          if (live) setCheck((held) => (held?.state === "pending" ? { state: "unknown" } : held));
+        }, PHOTO_CHECK_WAIT_MS);
+        const poll = async () => {
+          for (;;) {
+            await new Promise<void>((resolve) => { checkTimer = setTimeout(resolve, PHOTO_CHECK_POLL_MS); });
+            if (!live || waiting.signal.aborted) return;
+            const again = await fetch(base, { cache: "no-store", signal: waiting.signal }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+            if (!live || waiting.signal.aborted) return;
+            const view: PhotoCheckView = again?.photoCheck ?? null;
+            if (view?.state === "pending") continue;
+            clearTimeout(deadlineTimer);
+            setCheck(view);
+            return;
+          }
+        };
+        void poll();
+      }
       if (answer.status === "busy" && tries > 0) { timer = setTimeout(() => { void load(tries - 1).catch(() => { if (live) setFailed(true); }); }, 2000); return; }
       if (answer.status === "busy") { setFailed(true); return; }
       setPreview(answer);
@@ -77,8 +119,11 @@ export function ScanPreview({ photo, child }: { photo: string; child?: string })
     void load(WAIT_TRIES).catch(() => { if (live) setFailed(true); });
     const hide = () => { live = false; clear(); };
     window.addEventListener("pagehide", hide);
-    return () => { live = false; if (timer) clearTimeout(timer); window.removeEventListener("pagehide", hide); clear(); };
+    return () => { live = false; if (timer) clearTimeout(timer); if (checkTimer) clearTimeout(checkTimer); if (deadlineTimer) clearTimeout(deadlineTimer); stopWaiting?.(); window.removeEventListener("pagehide", hide); clear(); };
   }, [photo, attempt, clear]);
+
+  const problem = check?.state === "done" ? check.problem : null;
+  useEffect(() => { onProblem?.(photo, problem); }, [photo, problem, onProblem]);
 
   const heading = <h3>How we read this page</h3>;
   if (failed) {
@@ -96,7 +141,16 @@ export function ScanPreview({ photo, child }: { photo: string; child?: string })
       {preview.status === "refused" && preview.reason === "check-timeout" && <button type="button" className="btn ghost" disabled={!canRetry} onClick={() => { setCanRetry(false); setPreview(null); setAttempt((n) => n + 1); }}>Try again</button>}
     </section>;
   }
-  return <section className="scan-preview" aria-label="How we read this page">{heading}
+  return <section className="scan-preview" aria-label="How we read this page">
+    {problem && <div className="scan-check-problem" role="alert">
+      <p>{PHOTO_PROBLEM_TEXT[problem]}</p>
+      <div className="scan-check-actions">
+        {onRetake ? <button type="button" className="btn" onClick={onRetake}>Take again</button> : <p className="small">Take it again with your phone. The page waits there.</p>}
+        {onSendAnyway && <button type="button" className="btn ghost" onClick={onSendAnyway}>Send anyway</button>}
+      </div>
+    </div>}
+    {heading}
+    {check?.state === "pending" && <p role="status" className="small">Checking the photo...</p>}
     <p className="small">No marks yet. This shows what we would check.</p>
     <div className="scan-preview-layout">
       <figure className="scan-straight">

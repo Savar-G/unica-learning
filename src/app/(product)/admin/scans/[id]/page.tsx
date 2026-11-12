@@ -14,9 +14,20 @@ import { Table } from "@/components/admin";
 import { AdminFrame } from "@/components/admin-frame";
 import { MarkHead, ResultChip, actorText, readText } from "@/components/admin-marking";
 import { ScanPrivateImages } from "@/components/scan-private-images";
+import { PHOTO_CHECK_THRESHOLDS, PHOTO_PROBLEMS, readPhotoCheck, type PhotoCheck } from "@/lib/scan-photo-check";
 
 const pl = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 /** A result or reading state, in words, for a change. */
+/** The photo check's values in words (#855). */
+function photoCheckText(check: PhotoCheck | null): string {
+  if (!check) return "Not run. It runs on a ready page, for test families and admins only, with the decision key set.";
+  if (check.state === "pending") return `Checking since ${when(check.at)}.`;
+  if (check.state === "unknown") return `No result (${check.error}) · ${check.model} · thresholds version ${check.version} · ${when(check.at)}. The parent saw no problem.`;
+  const values = PHOTO_PROBLEMS.filter((p) => check.probabilities[p] !== undefined)
+    .map((p) => `${p} ${check.probabilities[p]!.toFixed(2)} (threshold ${PHOTO_CHECK_THRESHOLDS[p] ?? "off"})`).join(", ");
+  return `${check.problem ? `Problem: ${check.problem}` : "No problem"} · ${values || "no values"} · ${check.model} · thresholds version ${check.version} · ${check.ms} ms · ${when(check.at)}`;
+}
+
 const resultText = (r: string | null | undefined) => r === "right" ? "Right" : r === "wrong" ? "Wrong" : r === "blank" ? "Blank" : r === "unscored" ? "Not scored" : "Not marked";
 
 // One marked page (D-313, D-315): the photo large, the answers for our team to mark beside it, every answer's reading as
@@ -32,6 +43,8 @@ export default async function AdminScanPage({ params, searchParams }: { params: 
   if (!result) notFound();
   const after = (await searchParams).after ?? "0";
   if (!/^\d{1,15}$/.test(after)) notFound();
+  const checkRow = await db.from("scan_photos").select("photo_check").eq("id", id).eq("parent_id", row.data.parent_id).maybeSingle();
+  const photoCheck = checkRow.error || !checkRow.data ? null : readPhotoCheck(checkRow.data.photo_check);
   const history = await scanMarkChanges(markingCommand(db), row.data.parent_id, id, Number(after));
   const waiting = result.marks.filter(waitsForTeam);
   // The team mark names the item's row. Read the row ids of this page's waiting items with the server key.
@@ -68,6 +81,10 @@ export default async function AdminScanPage({ params, searchParams }: { params: 
           </li>)}</ul>}
       </section>
     </div>
+    <section className="adm-mk" aria-labelledby="mk-check">
+      <MarkHead id="mk-check" title="Photo check">Whether the answers in the photo look readable, checked at upload. The parent sees a problem with &quot;Take again&quot; and &quot;Send anyway&quot;. Times are Pacific.</MarkHead>
+      <p className="adm-mk-empty">{photoCheckText(photoCheck)}</p>
+    </section>
     <section className="adm-mk" aria-labelledby="mk-items">
       <MarkHead id="mk-items" title="Every answer on this page" count={result.items.length}>What the AI read and the mark now. Times are Pacific.</MarkHead>
       {result.items.length === 0 ? <p className="adm-mk-empty">No readings yet.</p>

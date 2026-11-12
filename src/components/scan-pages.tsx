@@ -115,6 +115,11 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const [acknowledged, setAcknowledged] = useState(noticeAcknowledged);
   const [message, setMessage] = useState<{ text: string; failed: boolean } | null>(null);
   const [sending, setSending] = useState(false);
+  // The photo check's problem on the open photo (#855): it changes the sheet's heading.
+  const [checkProblem, setCheckProblem] = useState<{ photo: string; problem: string } | null>(null);
+  const onCheckProblem = useCallback((photo: string, problem: string | null) => {
+    setCheckProblem((held) => (problem ? (held?.photo === photo && held.problem === problem ? held : { photo, problem }) : held?.photo === photo ? null : held));
+  }, []);
   const [loadFailed, setLoadFailed] = useState(initial?.loadFailed ?? false);
   const camera = useRef<HTMLInputElement>(null);
   const library = useRef<HTMLInputElement>(null);
@@ -391,8 +396,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const thumbOf = (t: StackTile) => thumbs[t.photoId ?? t.uploadKey ?? ""];
   const empty = listing !== null && tiles.length === 0;
 
-  async function send() {
-    const ids = stack.readyIds;
+  async function send(ids: string[] = stack.readyIds) {
     if (!ids.length || sending || !sessionCurrent.current) return;
     const version = epoch.current;
     setSending(true); setMessage(null);
@@ -447,11 +451,14 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
         : phone && <button type="button" className="btn" onClick={() => open(openTile.uploadKey ? "library" : "camera", retakeKey(openTile))}>{openTile.uploadKey ? "Choose another photo" : "Take another photo"}</button>}
       {!phone && <p className="small">Take it again with your phone. The page waits there.</p>}
     </> : <>
-      <h2>{openTile.status === "ready" ? "We can read this page." : openTile.status === "sent" ? "Sent for marking." : openTile.status === "unavailable" ? "We cannot check pages of this printing yet." : openTile.status === "saved" ? "Photo saved." : "We are checking this page."}</h2>
+      <h2>{openTile.status === "ready" ? (checkProblem?.photo === openTile.photoId ? "Check this photo." : "We can read this page.") : openTile.status === "sent" ? "Sent for marking." : openTile.status === "unavailable" ? "We cannot check pages of this printing yet." : openTile.status === "saved" ? "Photo saved." : "We are checking this page."}</h2>
       {openTile.status === "unavailable" && <p>The photo stays here.</p>}
       {openTile.status === "sent" && (listing?.marking && openTile.photoId ? <Link className="btn ghost" href={`/account/scan/results/${openTile.photoId}`}>View page results</Link> : <p>Marking is not ready yet. The page waits here.</p>)}
     </>}
-    {checks && openTile.photoId && openTile.status === "ready" && <ScanPreview key={openTile.photoId} photo={openTile.photoId} child={name} />}
+    {checks && openTile.photoId && openTile.status === "ready" && <ScanPreview key={openTile.photoId} photo={openTile.photoId} child={name}
+      onRetake={phone ? () => open(openTile.uploadKey ? "library" : "camera", retakeKey(openTile)) : undefined}
+      onSendAnyway={sending ? undefined : () => { const id = openTile.photoId!; setSheet(null); void send([id]); }}
+      onProblem={onCheckProblem} />}
     <div className="scan-sheet-actions">
       {(openTile.photoId || openTile.uploadKey) && openTile.status !== "adding" && <button type="button" className="scan-link" onClick={() => void remove(openTile)}>Delete this photo</button>}
       <button type="button" className="scan-link" data-first-focus={openTile.status === "refused" ? undefined : true} onClick={() => setSheet(null)}>Close</button>
