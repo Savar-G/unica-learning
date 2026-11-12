@@ -32,6 +32,10 @@ export function ParentOverview({ overview }: { overview: OverviewView }) {
   // D-293: this is a link to saved notes, not a claim that new chats or calls are available.
   const maya = child.tabs.includes("maya");
   const tiles = level || skills || workbook || maya;
+  // On the three-column desktop grid the Level tile takes two columns and the others one: Maya fills the rest of its
+  // row (D-328), or takes a full row when the row before it is full.
+  const used = ((level ? 2 : 0) + (skills ? 1 : 0) + (workbook ? 1 : 0)) % 3;
+  const mayaSpan = used === 0 ? "po-maya" : `po-maya po-maya-${3 - used}`;
   return (
     <div className="po">
       {resultPreparing && (
@@ -62,7 +66,7 @@ export function ParentOverview({ overview }: { overview: OverviewView }) {
             </section>
           )}
           {maya && (
-            <section className="po-card po-maya" aria-labelledby="po-maya">
+            <section className={`po-card ${mayaSpan}`} aria-labelledby="po-maya">
               <p className="po-label" id="po-maya">Maya</p>
               <p className="po-sub">Read {child.firstName}&apos;s saved notes and transcripts.</p>
               <Link className="po-more" href={`/account/notes/${encodeURIComponent(child.id)}`}>Notes from Maya <span aria-hidden="true">→</span></Link>

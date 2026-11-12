@@ -17,8 +17,11 @@
 
 /* The Level tile's ruler: the report's ruler, small. */
 .po-level { grid-column: span 2; }
-/* Maya is a link, not a number: it takes its own full row, so no row is half empty (D-328). */
+/* Maya is a link, not a number: it fills the rest of its row on the three-column desktop grid, so no row is half empty
+   (D-328). The component picks the span from the tiles before it. */
 .po-maya { grid-column: 1 / -1; }
+.po-maya-1 { grid-column: span 1; }
+.po-maya-2 { grid-column: span 2; }
 .support-page .po-sub-tight { margin-top: 2px; }
 .po-ruler {
   position: relative; display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); align-items: center;
@@ -60,6 +63,7 @@
 @media (max-width: 699px) {
   .po { margin-top: 20px; }
   .po-level { grid-column: auto; }
+  .po-maya-1, .po-maya-2 { grid-column: 1 / -1; }
   .po-card { padding: 18px 16px; }
   .po-axis, .po-bar { grid-template-columns: 1fr; gap: 8px; }
   .po-axis > span:first-child { display: none; }
