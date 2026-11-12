@@ -16,9 +16,9 @@ function part(p: AiPart) {
 }
 
 export interface OpenRouterProvider {
-  only: string[];
-  order: string[];
-  allow_fallbacks: false;
+  only?: string[];
+  order?: string[];
+  allow_fallbacks?: boolean;
   require_parameters: true;
   ignore?: string[];
   zdr?: true;
