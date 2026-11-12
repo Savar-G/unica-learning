@@ -51,6 +51,8 @@ vi.mock("@/lib/supabase-auth", () => ({
           parents: [{ name: "Alex Family", email: "alex@example.com", postal: family.postal, time_zone: family.timeZone }],
           children: [{ id: "c1", parent_id: "p1", created_at: "2021-01-01", first_name: "Asha", grade: 3, province: "BC" }, ...(family.olderChild ? [{ id: "z-old", parent_id: "p1", created_at: "2020-01-01", first_name: "Sam", grade: 4, province: "ON" }] : [])],
           reports: family.report ? [{ id: "r1", child_id: "c1" }] : [],
+          // Both children have a test, so the goals step (D-325) does not stop the start screen.
+          assessments: [{ child_id: "c1" }, { child_id: "z-old" }],
           card_setups: family.card ? [{ card_saved_at: "2026-11-01T00:00:00Z" }] : [{ card_saved_at: null }],
         };
         let data = (rows[table] ?? []).map((row) => Object.fromEntries(Object.entries(row).filter(([key]) => columns.split(/,\s*/).includes(key))));
@@ -58,6 +60,7 @@ vi.mock("@/lib/supabase-auth", () => ({
           order: (key: string) => { if (key === "created_at") data.sort((a, b) => String(a[key]).localeCompare(String(b[key]))); return query; },
           eq: (key: string, value: string) => { if (key === "id") data = data.filter((r) => r.id === value); return query; },
           limit: (n: number) => { data = data.slice(0, n); return query; },
+          in: (key: string, values: unknown[]) => { data = data.filter((r) => values.includes(r[key])); return query; },
           maybeSingle: async () => ({ data: data[0] ?? null }),
           then: (resolve: (result: { data: typeof data }) => unknown) => resolve({ data }),
         };
