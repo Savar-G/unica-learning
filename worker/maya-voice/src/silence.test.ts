@@ -502,7 +502,8 @@ describe("the acknowledgement in one call (#532)", () => {
 describe("the parts of one turn (#532)", () => {
   it("add up to the total, each part exact, against the test's own stopwatch", async () => {
     // Each fake moves the clock by its own known amount, so a part given to the wrong place fails its exact value. The
-    // first proposal is refused, so a repair runs, and the repair's free talk needs a review.
+    // first proposal is refused, so a repair runs, and the repair's free talk needs a review. The talk is calm: D-310
+    // refuses a cheerful exclamation before any review, which would leave no review to time.
     const inner = ruleMayaModel();
     let clockMove = (ms: number) => void ms;
     let asked = 0;
@@ -514,7 +515,7 @@ describe("the parts of one turn (#532)", () => {
         asked++;
         if (asked === 1) { clockMove(2000); return { version: PROPOSAL_VERSION, act: "accept_answer", parts: [] }; }
         clockMove(700);
-        return { version: PROPOSAL_VERSION, act: "clarify", parts: [{ talk: "Oh, I like dogs too!" }] };
+        return { version: PROPOSAL_VERSION, act: "clarify", parts: [{ talk: "Oh, I like dogs too." }] };
       },
     };
     const reviewer = fakeTalkReviewer(() => ({ verdict: "pass" }));
