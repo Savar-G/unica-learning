@@ -46,7 +46,9 @@ LiveKit's page says: "LiveKit Inference is zero data retention (ZDR) by default"
 2. Use no custom voice: `MAYA_VOICE` is one of the provider's own voices.
 3. Keep the models on the allow list (`INFERENCE_STT_MODELS`, `INFERENCE_TTS_MODELS`). Each is listed on the Inference page. The worker refuses any other.
 
-Before `child-use-approved`: get a written answer from LiveKit (and, through it, the providers of the chosen models) that a service for children aged 6 to 12 may use them, with parent consent, under the agreed processing locations. ZDR is not that answer. Keep real providers off until it arrives. This marker is still open.
+Before `child-use-approved`: get a written answer from LiveKit (and, through it, the providers of the chosen models) that a service for children aged 6 to 12 may use them, with parent consent, under the agreed processing locations. ZDR is not that answer.
+
+**Decision for `child-use-approved` (D-336).** Savar's statement, 2026-11-12: an executive at LiveKit gave approval for child use (verbal). No written answer was asked for. Set `child-use-approved` only together with `livekit-inference-zdr`, after step 1 above is done and the LiveKit CLI is linked to the project. The marker records Savar's decision; it cannot verify an external contract.
 
 ### AssemblyAI and Inworld direct
 
