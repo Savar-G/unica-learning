@@ -18,7 +18,7 @@ export const PATTERN_TEMPLATES = {
     "{reason} We get {part} = {value}.", "{reason} Watch: {part} = {value}.",
   ],
   // A question about the part ("Why do I subtract the start?"): code's answer, with the part's own numbers.
-  "pattern.why": ["{why}", "Here's why. {why}", "Let's see. {why}", "Look at the steps. {why}", "This is how it works. {why}"],
+  "pattern.why": ["{why}", "Here's why. {why}", "Let's see. {why}", "Look closely. {why}", "Here's how. {why}"],
   // The last part, a division: its multiplication fact ("2 × ? = 14."), never the value.
   "pattern.fact": [
     "{reason} {fact} What number makes it true?", "{reason} Think: {fact} Which number fits?", "{reason} {fact} What is the missing number?",

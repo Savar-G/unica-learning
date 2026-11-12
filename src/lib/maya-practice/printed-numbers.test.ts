@@ -18,7 +18,7 @@ describe("cases with expression operands allow the numbers printed on the page",
   for (const c of exprCases) {
     it(`${c.id} allows every printed number of its question at the start, and not the answer`, () => {
       const pkg = practicePackage(c);
-      const answer = pkg.answer.value.type === "number" ? pkg.answer.value.value : null;
+      const answer = pkg.answer?.value.type === "number" ? pkg.answer.value.value : null;
       const printed = valuesIn(pkg.text).flatMap((v) => (v.type === "number" ? [v.value] : []));
       const start = c.validity.stages.filter((s) => s.opens === "start").flatMap((s) => s.numbers);
       // 0 to 9 are always allowed.

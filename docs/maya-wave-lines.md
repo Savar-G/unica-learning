@@ -835,8 +835,8 @@ Counts: 6 approved by Savar 2026-11-12 (#884, D-329); 608 approved by Savar thro
 | `pattern.why#0` | {why} | `src/lib/maya/pattern-lines.ts:21` | C1 patterns (#754) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `pattern.why#1` | Here's why. {why} | `src/lib/maya/pattern-lines.ts:21` | C1 patterns (#754) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 | `pattern.why#2` | Let's see. {why} | `src/lib/maya/pattern-lines.ts:21` | C1 patterns (#754) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
-| `pattern.why#3` | Look at the steps. {why} | `src/lib/maya/pattern-lines.ts:21` | C1 patterns (#754) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
-| `pattern.why#4` | This is how it works. {why} | `src/lib/maya/pattern-lines.ts:21` | C1 patterns (#754) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
+| `pattern.why#3` | Look closely. {why} | `src/lib/maya/pattern-lines.ts:21` | C1 patterns (#754) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
+| `pattern.why#4` | Here's how. {why} | `src/lib/maya/pattern-lines.ts:21` | C1 patterns (#754) | approved by Savar through the Chief of Staff, 2026-11-11, with review |
 
 ## Changes after the line review (2026-11-12, for Savar's approval with Wave A)
 
@@ -844,7 +844,7 @@ The Opus line review of #892 found 10 P2 lines. These rewordings wait for Savar'
 
 - `check.fix#0`: "Your answer is right. One part needs a fix. It should be {eq}." (was "...needs a fix: {eq}.", which can read as if the right equation is the wrong part).
 - `check.fix#2`: "You have the right answer. One part is off. It should be {eq}." (was "...is off: {eq}.").
-- `pattern.why`: "Good question." and "Good thinking." removed (said after "I'm stuck." too); two neutral wordings added: "Look at the steps. {why}", "This is how it works. {why}".
+- `pattern.why`: "Good question." and "Good thinking." removed (said after "I'm stuck." too); two neutral wordings added: "Look closely. {why}", "Here's how. {why}".
 - `where.place#0`, `why.bigger#0`: "Good question." removed.
 - `answer.digit.zero#1`: "That's right. The {place} digit of {number} is 0." (was "There are 0 {place} in {number}.", which is false for 530,172).
 - `answer.give.claim` (5 wordings): removed. They said the claim word for the child; nothing offered them after D-326.
