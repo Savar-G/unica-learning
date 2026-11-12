@@ -10,7 +10,7 @@ import { chatGate, type ChatContext } from "@/lib/maya-chat-server";
 import { mayaNotice, type MayaNotice } from "@/lib/maya-notice";
 import { noticeStore } from "@/lib/maya-notice-store";
 import { livekitProject } from "@/lib/maya-voice";
-import { deskVoiceCall, voiceCallLimitMs, voiceSwitchOpen, voiceUsage, voiceUsedSeconds, voiceWeekLeft, type DeskVoiceReply, type VoiceAction, type VoiceUsage } from "@/lib/maya-voice-desk";
+import { deskVoiceCall, VOICE_WEEK_SECONDS, voiceCallLimitMs, voiceSwitchOpen, voiceUsage, voiceUsedSeconds, voiceWeekLeft, type DeskVoiceReply, type VoiceAction, type VoiceUsage } from "@/lib/maya-voice-desk";
 import { mintVoiceToken } from "@/lib/maya-voice-token";
 import { adminClient } from "@/lib/supabase-auth";
 import type { WorkbookStore } from "@/lib/workbook-content";
@@ -173,6 +173,13 @@ export async function runVoice(ctx: ChatContext, action: VoiceAction, deps: Voic
   if (!started.ok) return reply(null, { error: started.error === "not_test_family" ? "unavailable" : started.error });
   const made = await deps.store.get(started.view.id);
   if (!made) return reply(null, { error: "unavailable" });
+  // The week read again, now that this call is the child's only live call (index maya_calls_one_live_family_call) and
+  // counts at its whole limit (R904-1). A start that read the week before another call ended, and inserted after it,
+  // can be over the week here: that call ends before it gets a ticket, as a call Maya never joined.
+  if (await deps.usedSeconds() > VOICE_WEEK_SECONDS) {
+    await end(made).catch(() => undefined);
+    return reply(await deps.store.get(made.id), { error: "busy" });
+  }
   const t = await ticket(made);
   if ("ticket" in t) return reply(made, { ticket: t.ticket });
   // A call with no ticket would stay live until the sweep: end it now, as a call Maya never joined.

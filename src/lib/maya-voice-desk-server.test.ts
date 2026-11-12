@@ -254,6 +254,22 @@ describe("a desk voice request", () => {
     expect(s.store.rows().filter((r) => r.status === "live")).toHaveLength(1);
   });
 
+  it("ends a call that read the week before another call ended, when the week is now over (review R904-1)", async () => {
+    // B read 1680 s used (120 s left), waited, and inserted after a 10 s call ended: the week is now 1690 + 120 = 1810 s.
+    const late = setup({ used: 1680 });
+    const reads = [1680, 1810];
+    late.deps.usedSeconds = async () => reads.shift() ?? 1810;
+    const r = await late.run(start());
+    expect(r).toMatchObject({ error: "busy", call: { status: "ended" } });
+    expect(r.ticket).toBeUndefined();
+    expect(late.store.rows().filter((row) => row.status === "live")).toHaveLength(0);
+    // The same start with no call in between: 1680 + 120 = 1800 s, exactly the week, so it starts.
+    const ontime = setup({ used: 1680 });
+    const reads2 = [1680, 1800];
+    ontime.deps.usedSeconds = async () => reads2.shift() ?? 1800;
+    expect((await ontime.run(start())).ticket).toBeTruthy();
+  });
+
   it("starts the same call again as that call, with a fresh ticket, and refuses another question for it", async () => {
     const s = setup();
     const first = await s.run(start());
