@@ -7107,6 +7107,330 @@
    "doneBefore": [],
    "shownBefore": [],
    "why": "review: must be refused"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "We got 16 in class.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Sam: 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "16, according to Sam.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "From the board, 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "On the poster it's 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "I peeked, 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Most likely 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Let's say 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "16 is the whole answer.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "16, the end.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "16, Sam said.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "16. Sam says so.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "66, like you said.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "66, as you said.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "66, you told me.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [],
+   "why": "review: must be refused"
   }
  ]
 }

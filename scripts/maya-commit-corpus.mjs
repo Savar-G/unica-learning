@@ -108,7 +108,8 @@ for (const file of files) {
 
 mkdirSync(out, { recursive: true });
 const meta = { source: dir.replace(/^.*\/traces\//, "traces/"), runs, childTurns, generated: "scripts/maya-commit-corpus.mjs" };
-writeFileSync(join(out, "positive.json"), `${JSON.stringify({ ...meta, moved: moved.map(({ run, turn, text, reason }) => ({ run, turn, text, reason })), turns: positive }, null, 1)}\n`);
+const previousPositive = existsSync(join(out, "positive.json")) ? JSON.parse(readFileSync(join(out, "positive.json"), "utf8")) : {};
+writeFileSync(join(out, "positive.json"), `${JSON.stringify({ ...meta, moved: moved.map(({ run, turn, text, reason }) => ({ run, turn, text, reason })), turns: positive, ...(previousPositive.review ? { review: previousPositive.review } : {}) }, null, 1)}\n`);
 // The hand-added review set (turns a review found credited) is kept as it is: it is not extracted from the traces.
 const previous = existsSync(join(out, "negative.json")) ? JSON.parse(readFileSync(join(out, "negative.json"), "utf8")) : {};
 writeFileSync(join(out, "negative.json"), `${JSON.stringify({ ...meta, turns: negative, ...(previous.review ? { review: previous.review } : {}) }, null, 1)}\n`);

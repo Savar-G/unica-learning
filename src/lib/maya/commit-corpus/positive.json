@@ -6344,5 +6344,357 @@
     "say": "I think I heard 6. Is that it?"
    }
   }
+ ],
+ "review": [
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "7 and 9 gives 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Adding them gives 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "That gives 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "The ones have 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "The ones got 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "The ones column has 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "I'm done with the ones, it's 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "The ones are done. 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "16. Now the tens, then the answer.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "It has to be 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "2 plus 3 plus 1 gives 6.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "The tens have 6.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "The tens got 6.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "That gives 6.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "27 plus 39 gives 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "That gives 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  }
  ]
 }
