@@ -703,7 +703,7 @@ function shorterLimits(limitMs: number | undefined): Pick<Session, "limits"> {
 /** Whose turn it is, and the acts Maya may propose now (before any reading of the child's turn). */
 export function nextActs(session: Session): { expect: Expect; acts: Act[] } {
   if (session.expect !== "maya") return { expect: session.expect, acts: [] };
-  return { expect: "maya", acts: (gate(session, {}) ?? teachingActs(session, {}, false, undefined, undefined, true)).acts };
+  return { expect: "maya", acts: (gate(session, {}) ?? actsNow(session, {}, false, undefined, undefined, true)).acts };
 }
 
 /**
@@ -1111,9 +1111,10 @@ function stuckWayOut(s: Session, reading: Reading, rightResult: boolean): "examp
   return s.exampleShown < steps && !exampleRevealsAnswer(s) ? "example" : "close";
 }
 
-function teachingActs(s: Session, reading: Reading, rightResult: boolean, progress = s.done.length > 0, misses = s.finalMisses ?? 0, offering = false): Allowed {
+/** The acts allowed now (teachingActs), with a claim question's own adjustments (claim.ts). */
+function actsNow(s: Session, reading: Reading, rightResult: boolean, progress = s.done.length > 0, misses = s.finalMisses ?? 0, offering = false): Allowed {
   // A claim question gives its word only as D-199 gives a number (claim.ts).
-  const allowed = teachingActsOf(s, reading, rightResult, progress, misses, offering);
+  const allowed = teachingActs(s, reading, rightResult, progress, misses, offering);
   if (!sessionClaim(s.package)) return allowed;
   // ...except after two real wrong words once every work step is done: Maya gives the word, as D-199 gives a number (Savar
   // Brain P6, #737 review). Only a committed word is a miss (committedTurn, the one rule).
@@ -1137,14 +1138,14 @@ function claimHelpOnly(s: Session, reading: Reading, rightResult: boolean): bool
 
 /**
  * A claim question whose easier example is not worked yet, and whose child has done no step of their own. A place-value
- * compare (a claim too, place-value-claim.ts) has its own way out, the place-value rule of teachingActsOf: the steps'
+ * compare (a claim too, place-value-claim.ts) has its own way out, the place-value rule of teachingActs: the steps'
  * help up to the top help, then the easier example, then the honest close (B1b, PVC07, PVC09).
  */
 function claimExampleDue(s: Session): boolean {
   return !!s.package && !!sessionClaim(s.package) && !isPlaceValue(s.package) && s.exampleShown < s.package.easierExample.steps.length && s.done.length === 0 && s.solved === null;
 }
 
-function teachingActsOf(s: Session, reading: Reading, rightResult: boolean, progress: boolean, misses: number, offering: boolean): Allowed {
+function teachingActs(s: Session, reading: Reading, rightResult: boolean, progress: boolean, misses: number, offering: boolean): Allowed {
   // Maya may check what she heard before she goes on, but not a third time in a row (practice run 6, F06: "16 or
   // 60?" eleven times after the child said 16 each time), and not once the answer is accepted (run 5, F05: "Just
   // checking, was that 66?" after "You got it!"). An unclear turn still gets its two confirmations (gate).
@@ -1276,7 +1277,7 @@ function teachingActsOf(s: Session, reading: Reading, rightResult: boolean, prog
   // After the whole easier example, a committed wrong answer on a missing number is answered on the step (guide), as a
   // right one is: never a dead end (review of #732, MN14).
   if (isMissingNumber(s.package) && main === "MODEL_EXAMPLE" && s.exampleShown === steps && realMissNow(s, reading) && !acts.includes("guide")) acts = [...acts, "guide"];
-  const missed = reading.answers?.some(a => (a.problem ?? "target") === "target" && a.verdict === "wrong" && committedMiss(s, a));
+  const missed = reading.answers?.some(a => (a.problem ?? "target") === "target" && a.verdict === "wrong" && committedValue(s, a));
   if (s.solved === null && !rightResult && !rightHere && s.turn !== null && s.ladder.step !== "result" && copiedStep(s) === null &&
       s.ladder.hint >= 3 && missed && (!noStart || s.retried) && !ownWayOut(s.package)) {
     return { acts: ["close"], code: "act_not_allowed", reason: "Close honestly without giving the answer." };
@@ -1509,7 +1510,7 @@ export function step(session: Session, event: SessionEvent): StepResult {
       end(s, "child_stopped", effects, true);
       break;
     case "proposal":
-      if (shape) return { session: s, effects, refusal: { code: "invalid_proposal", reason: shape, allowed: (gate(s, {}) ?? teachingActs(s, {}, false)).acts } };
+      if (shape) return { session: s, effects, refusal: { code: "invalid_proposal", reason: shape, allowed: (gate(s, {}) ?? actsNow(s, {}, false)).acts } };
       return propose(s, raw as Proposal, effects, reviewsOf(event.talkReviews), event.fallback === true);
     default:
       return refuse(session, "invalid_event", "Unknown event type.");
@@ -1548,7 +1549,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   // A spot-the-error word before its fix is known is no answer yet (spot-error.ts).
   const claimed = yes ? heard.answers : spotAnswers(pkg, claimAnswers(claimTurn(s), heard.answers, s.solved !== null && s.lastResult === "right"), s.done);
   const reading: Reading = sessionClaim(pkg) ? { ...heard, answers: claimed } : heard;
-  if (p.act === "give_answer") return no("act_not_allowed", "The answer is not offered.", (gate(s, reading) ?? teachingActs(s, reading, false)).acts);
+  if (p.act === "give_answer") return no("act_not_allowed", "The answer is not offered.", (gate(s, reading) ?? actsNow(s, reading, false)).acts);
   // Before the words: Maya never asks for what the child said they wrote or would not write (#605).
   if (reading.paper) s.paper = reading.paper === "written" ? "child_confirmed" : "declined";
 
@@ -1568,7 +1569,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   const checked: Checked[] = [];
   if (!blocked && SCORING_ACTS.includes(p.act) && (reading.answers ?? []).length > 0) {
     const problem = checkAnswers(s, reading.answers!, checked);
-    if (problem) return no(problem.code, problem.reason, teachingActs(s, reading, false).acts);
+    if (problem) return no(problem.code, problem.reason, actsNow(s, reading, false).acts);
   } else if (blocked?.code === "stop_first" && p.act === "close" && (reading.answers ?? []).length > 0) {
     // The close after a stop still records the child's final answer when it checks; a bad reading never blocks a stop.
     const finals: Checked[] = [];
@@ -1590,7 +1591,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   const progress = s.done.length > 0 || equal !== null || checked.some((c) => c.problem === "target" && c.answer.verdict === "right");
   if (progress) s.noStart = false;
   const misses = finalMisses(s, checked);
-  const teaching = blocked ? null : teachingActs(s, reading, rightResult, progress, misses);
+  const teaching = blocked ? null : actsNow(s, reading, rightResult, progress, misses);
   const allowedNow = blocked ? blocked.acts : teaching!.acts;
   const backupClose = !blocked && !rightResult && s.solved === null && allowedNow.length === 1 && allowedNow[0] === "close";
   if (teaching && !allowedNow.includes(p.act)) return no(teaching.code, teaching.reason, teaching.acts);
@@ -1610,13 +1611,13 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     const copied = copiedStep(s);
     if (copied && !passed.includes(copied)) passed.push(copied);
     // On a missing number and a claim's word only a committed answer in an allowed form is a failed attempt
-    // (committedTurn, the one rule; committedMiss).
+    // (committedTurn, the one rule; committedValue).
     for (const { answer: a, problem } of checked) {
       if (problem !== "target") continue;
       if (a.verdict === "right" && a.step !== "result" && !done.includes(a.step)) done.push(a.step);
       // An equal fraction is not a failed attempt (#407), and neither is a turn that does not commit to its answer
-      // (committedMiss: help, a hedge, a copy of what H3 showed, lesson 13).
-      if (a.verdict === "wrong" && committedMiss(s, a) && !(a.step === "result" && isEqualForm(pkg, a.value))) failed = true;
+      // (committedValue: help, a hedge, a copy of what H3 showed, lesson 13).
+      if (a.verdict === "wrong" && committedValue(s, a) && !(a.step === "result" && isEqualForm(pkg, a.value))) failed = true;
     }
     // An equal fraction shows every work step done: the final step simplifies the child's own fraction (#407).
     if (equal || claimResultDone(pkg, done)) for (const st of workSteps(pkg)) if (!done.includes(st.id)) done.push(st.id);
@@ -2445,8 +2446,8 @@ const claimTurn = (s: Session): ClaimTurn => ({
   pkg: s.package, text: s.turn?.text ?? null, heardAsked: s.heardAsked != null, wordAsked: s.wordAsked ?? null, claimAsked: s.claimAsked === true,
 });
 
-/** Whether this turn commits to a value for counting a miss or releasing an answer. */
-export function committedValue(s: Session, a: ChildAnswer): boolean {
+/** #698's numeric form of a committed value (committedValue): the whole turn is that one number in an allowed form. */
+function committedNumber(s: Session, a: ChildAnswer): boolean {
   if (!s.package || !s.turn || !heardOneWay(s)) return false;
   const pkg = s.package;
   const at = problemOf(pkg, a.problem ?? "target").steps.find((step) => step.id === a.step);
@@ -2505,9 +2506,9 @@ function ownWayOut(pkg: OperationPackage | null): boolean {
  * other question and a claim's operation columns, #698's numeric form (committedNumber). Both fail closed: help, a
  * hedge, a question or a copy is never a miss.
  */
-function committedMiss(s: Session, a: ChildAnswer): boolean {
+export function committedValue(s: Session, a: ChildAnswer): boolean {
   if (!heardOneWay(s)) return false;
-  return ownMissRule(s, a.step) ? committedTurn(s, a.step) : committedValue(s, a);
+  return ownMissRule(s, a.step) ? committedTurn(s, a.step) : committedNumber(s, a);
 }
 
 /**
@@ -2621,7 +2622,7 @@ function finalMisses(s: Session, checked: readonly Checked[]): number {
   // Only a committed answer in an allowed form is a wrong final answer (committedTurn: missing numbers and claims).
   if (!committedTurn(s)) return before;
   // An equal fraction is not a wrong final answer (#407).
-  if (!pkg || !checked.some((c) => c.problem === "target" && c.answer.step === "result" && c.answer.verdict === "wrong" && committedMiss(s, c.answer) && !isEqualForm(pkg, c.answer.value))) return before;
+  if (!pkg || !checked.some((c) => c.problem === "target" && c.answer.step === "result" && c.answer.verdict === "wrong" && committedValue(s, c.answer) && !isEqualForm(pkg, c.answer.value))) return before;
   const done = closeParts(pkg, [...behind(s), ...checked.filter((c) => c.problem === "target" && c.answer.verdict === "right").map((c) => c.answer.step)]);
   return currentStep(pkg, done) === "result" ? before + 1 : before;
 }
@@ -3477,8 +3478,10 @@ function heardAnswers(session: Session): ChildAnswer[] {
   }
   // Read a committed wrong final number after all work is complete, including when the model fails.
   // Claim words are read separately by claimAnswers. Do not turn copied help, another speaker or unresolved speech (alternatives) into a miss.
-  if (session.solved === null && currentStep(pkg, closeParts(pkg, session.done)) === "result" && !sessionClaim(pkg) &&
-      read.final && read.sure && !rightForQuestion(pkg, read.final) && committedTurn(session) && !notClear(session, {}) &&
+  // A value of a step Maya showed and the child copied (passed) is no miss either (#698).
+  const copiedValue = read.final && workSteps(pkg).some((st) => (session.passed ?? []).includes(st.id) && stepAnswers(st).some((value) => equivalent(value, read.final!)));
+  if (session.solved === null && currentStep(pkg, closeParts(pkg, behind(session))) === "result" && !sessionClaim(pkg) &&
+      read.final && read.sure && !rightForQuestion(pkg, read.final) && !copiedValue && committedValue(session, { value: read.final, step: "result", verdict: "wrong" }) && !notClear(session, {}) &&
       wholeTurn(session.turn.text) !== null && sentenceCount(session.turn.text) === 1 && !helpInWords(session.turn.text) &&
       !hedgedTurn(session) && takenBack(session.turn.text, readOptionsIn(session)) === null && !copiesShown(session) && !copiesShownTry(session)) {
     found.push({ value: read.final, step: "result", verdict: "wrong" });
@@ -3489,11 +3492,6 @@ function heardAnswers(session: Session): ChildAnswer[] {
   const equated = body !== null && /^(.+?)\s+(?:is|equals|makes?)\s+(.+)$/.exec(body);
   const twoNumbers = !!equated && plainNumber(equated[1]) !== null && plainNumber(equated[2]) !== null;
   if (session.solved === null && read.final && read.sure && !twoNumbers && !notClear(session, {}) && !saysGuess(session.turn.text) && rightForQuestion(pkg, read.final)) found.push({ value: read.final, step: "result", verdict: "right" });
-  // A plain final number on the last step is a committed miss, even when the model is unavailable.
-  const copiedValue = read.final && workSteps(pkg).some((st) => (session.passed ?? []).includes(st.id) && stepAnswers(st).some((value) => equivalent(value, read.final!)));
-  if (session.solved === null && session.ladder.step === "result" && body !== null && plainNumber(body) !== null && read.final && read.sure && !copiedValue && committedValue(session, { value: read.final, step: "result", verdict: "wrong" }) && !rightForQuestion(pkg, read.final)) {
-    found.push({ value: read.final, step: "result", verdict: "wrong" });
-  }
   return found.filter((a) => checkAnswers(session, [a], []) === null);
 }
 
@@ -3576,7 +3574,7 @@ export function fallbacks(given: Session, refused: readonly unknown[] = []): Pro
   // top help left only guide offers, which the place-value rule refuses, and the call ended with no safe line).
   const actsReading: Reading = { ...(reading ?? {}), ...(answers.length > 0 ? { answers } : {}) };
   const misses = finalMisses(s, checked);
-  const allowedActs = (gate(s, {}) ?? teachingActs(s, actsReading, rightResult, done.length > 0, misses)).acts;
+  const allowedActs = (gate(s, {}) ?? actsNow(s, actsReading, rightResult, done.length > 0, misses)).acts;
   // The loop guard at the top help: after the same prompt (the show once), code takes the way out teachingActs offers, the
   // easier example or the honest close, never the same help again or a lower one (loopGuard, P1 e).
   // It takes the guide's place, so a confirm of a doubtful right answer still comes first.
