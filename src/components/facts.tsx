@@ -27,12 +27,19 @@ type View =
 const OP: Record<FactOp, string> = { "+": "+", "-": "−", "×": "×", "÷": "÷" };
 const SAY: Record<FactOp, string> = { "+": "plus", "-": "minus", "×": "times", "÷": "divided by" };
 
+/** The longest the screen waits for one request, as on the test screen (test.tsx): a server that hangs must not hold the child. */
+const REQUEST_LIMIT_MS = 45_000;
+
 async function call(url: string, init?: RequestInit): Promise<FactsStepResult> {
+  const limit = new AbortController();
+  const timer = setTimeout(() => limit.abort(), REQUEST_LIMIT_MS);
   try {
-    const res = await fetch(url, { ...init, headers: { "Content-Type": "application/json" }, cache: "no-store" });
+    const res = await fetch(url, { ...init, signal: limit.signal, headers: { "Content-Type": "application/json" }, cache: "no-store" });
     return (await res.json()) as FactsStepResult;
   } catch {
     return { ok: false, error: "store_failed" };
+  } finally {
+    clearTimeout(timer);
   }
 }
 

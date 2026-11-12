@@ -312,7 +312,7 @@ export async function excludeRunProvider(admin: SupabaseClient<Database>, runId:
   }
 }
 
-/** Stores AI calls of a run through save_workbook_run_ai_calls. */
+/** Stores AI calls of a run through save_workbook_run_ai_calls_v2. */
 export const saveRunAiCalls = (admin: SupabaseClient<Database>, runId: string) => async (calls: RunAiCall[]) => {
   for (let i = 0; i < calls.length; i += AI_CALL_BATCH) {
     const chunk = calls.slice(i, i + AI_CALL_BATCH);
