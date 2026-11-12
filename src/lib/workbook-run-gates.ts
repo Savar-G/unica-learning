@@ -2,6 +2,7 @@
 // A failed gate rewrites the question once. After that, or when the request errors, the question stays and is flagged.
 // After 10 requests, more than 20% errors stop later requests for that run.
 import { decisionClient } from "@/lib/decision-client";
+import type { AiUsageTag } from "@/lib/ai-usage";
 import { activeQuestionGates, GATE_THRESHOLDS, GATE_THRESHOLD_VERSION, gateFlags, questionGateProbabilities, type GateInput, type QuestionGate } from "@/lib/workbook-gates";
 
 export const GATE_OUTCOMES = ["pass", "flag", "unknown"] as const;
@@ -73,8 +74,8 @@ export function gateMark(row: StoredQuestionGate): QuestionGateMark | null {
  * The live checker: the decision client, asking only the gates the report marks on for its model. Null when decisions
  * are off or no gate is on. An errored request is `unknown`, not a throw, so the run can flag it and go on.
  */
-export function decisionGateChecker(env: Record<string, string | undefined>): QuestionGateChecker | null {
-  const client = decisionClient(env);
+export function decisionGateChecker(env: Record<string, string | undefined>, usage?: AiUsageTag): QuestionGateChecker | null {
+  const client = decisionClient(env, undefined, { usage: usage ?? { feature: "workbook_gate" } });
   if (!client) return null;
   const only = activeQuestionGates(client.model);
   if (!only.length) return null;

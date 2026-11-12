@@ -31,9 +31,18 @@ const h = vi.hoisted(() => ({
   scanRuns: 0,
   scanFails: false,
   reportRuns: [] as { dry: boolean; startedAt: number }[],
+  book1Throws: false,
+  book1Runs: 0,
 }));
 
 vi.mock("@/lib/account-server", () => ({ linkOrigin: () => "https://unicalearning.com" }));
+vi.mock("@/lib/workbook-book1-capture-server", () => ({
+  reconcileBook1BaselinesNow: async () => {
+    h.book1Runs++;
+    if (h.book1Throws) throw new Error("book1 step failed");
+    return { due: 0, saved: 0, existing: 0, pending: 0, retry: 0, failed: 0 };
+  },
+}));
 vi.mock("@/lib/supabase-auth", () => ({ adminClient: () => ({}) }));
 vi.mock("@/lib/workbook-scan-maintenance-server", () => ({
   scanMaintenanceRelease: () => h.scanEnabled ? { parents: ["synthetic"], delivery: false } : null,
@@ -155,6 +164,8 @@ beforeEach(() => {
   h.scanRuns = 0;
   h.scanFails = false;
   h.reportRuns = [];
+  h.book1Throws = false;
+  h.book1Runs = 0;
 });
 
 afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers(); });
@@ -305,4 +316,17 @@ it("retries the report jobs on the shared transport from the run's start, and on
   expect(h.transports.size).toBe(1);
   expect(await (await call("?dry=1")).json()).toMatchObject({ ok: true, dry: true, reports: { due: 2 } });
   expect(h.reportRuns.map((r) => r.dry)).toEqual([false, true]);
+});
+
+it("a Book 1 baseline step that throws hides nothing else: the emails still go and the run answers (#870)", async () => {
+  // Wrong if: the failed step fails the run (500) or stops the weekly email, or a dry run starts the step.
+  expect(await (await call("?dry=1")).json()).toMatchObject({ ok: true, dry: true });
+  expect(h.book1Runs).toBe(0);
+  h.book1Throws = true;
+  h.weeklySend = true;
+  const res = await call();
+  expect(res.status).toBe(200);
+  expect(await res.json()).toMatchObject({ ok: true, maya: { due: 1, sent: 1 }, book1: { error: "run_failed" } });
+  expect(h.mail.delivered.map((m) => m.to)).toContain("weekly@family.ca");
+  expect(h.book1Runs).toBe(1);
 });

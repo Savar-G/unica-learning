@@ -30,5 +30,5 @@ export async function explanationPlanOpen(db: SupabaseClient<Database>, parent: 
 export async function parentProblemExplanation(db: SupabaseClient<Database>, ref: ExplanationRef, sessionActive: () => Promise<boolean>, signal: AbortSignal) {
   // SCAN_PAGES_ENABLED opens nothing here. Explanations follow marking admission (D-236, D-300), or this photo's child's open plan.
   const active = async () => await sessionActive() && (await markingAccess(db, ref.parent, process.env, { photo: ref.photo }) || await explanationPlanOpen(db, ref.parent, ref.photo));
-  return explainParentProblem(parentExplanationStore(db), ref, crypto.randomUUID(), explanationAiClient(), { active, signal });
+  return explainParentProblem(parentExplanationStore(db), ref, crypto.randomUUID(), explanationAiClient(process.env, undefined, { feature: "explain", parentId: ref.parent, source: { kind: "scan_photo", id: ref.photo } }), { active, signal });
 }

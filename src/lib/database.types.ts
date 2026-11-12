@@ -7535,6 +7535,7 @@ export type Database = {
       admin_ai_usage: {
         Args: {
           p_cad_per_usd?: number
+          p_day_starts?: string[]
           p_from: string
           p_to: string
           p_with_tests?: boolean
@@ -7573,6 +7574,20 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      admin_book1_baseline_items: {
+        Args: { p_hide?: string[]; p_limit?: number }
+        Returns: {
+          child_id: string
+          child_name: string
+          draft_id: string
+          kind: string
+          parent_id: string
+          reason: string
+          revision: number
+          run_id: string
+          tries: number
+        }[]
       }
       admin_card_setups: {
         Args: never

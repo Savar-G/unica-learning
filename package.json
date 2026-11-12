@@ -29,6 +29,7 @@
     "workbooks:samples": "node scripts/workbook-samples.mjs",
     "scan:photo-set": "node scripts/scan-photo-set.mjs",
     "workbook:fast": "node scripts/workbook-samples.mjs --fake --no-store --check-only --levels U4,U16 --days 1,5,10 --concurrency 3",
+    "workbooks:book1-recover": "node scripts/book1-baseline-recover.mjs",
     "workbooks:worker": "node scripts/workbook-worker.mjs",
     "generate:family-zones": "node scripts/generate-family-zones.mjs",
     "test:family-zones": "node --expose-gc supabase/tests/maya_window_zones.cjs --bootstrap"

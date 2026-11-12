@@ -476,7 +476,7 @@ function DraftThumb({ page, detail, href = `#page-${page.number}` }: { page: Gen
  * draft's pages as thumbnails with their check marks; then the comment reviewer and the question data; AI calls and
  * costs and the audit log closed. `only`: only the pages that need attention in the question data.
  */
-export function AdminWorkbookRun({ email, detail, now, only, worker, why }: { email: string; detail: RunDetail; now: Date; only: boolean; worker: WorkerStatus | null; why?: ReactNode }) {
+export function AdminWorkbookRun({ email, detail, now, only, worker, why, book1 }: { email: string; detail: RunDetail; now: Date; only: boolean; worker: WorkerStatus | null; why?: ReactNode; book1?: ReactNode }) {
   const { run, child, draft } = detail;
   const state = runState(run, now);
   const name = child?.first_name ?? "Child";
@@ -554,6 +554,7 @@ export function AdminWorkbookRun({ email, detail, now, only, worker, why }: { em
         </div>}
       </section>}
       {!draft && detail.oldFormat === null && state === "done" && <div className="adm-row adm-wb-pdf"><DraftPdfLink runId={run.id} draft={false} rendering={null} pages={0} /></div>}
+      {book1}
 
       {draft && counts && <>
         {solveResult && <SolveFailures pages={pages} solves={solves} summary={solveResult} />}

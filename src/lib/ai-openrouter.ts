@@ -37,6 +37,8 @@ function body(model: string, request: AiJsonRequest, provider?: OpenRouterProvid
     ],
     response_format: { type: "json_schema", json_schema: { name: request.name, strict: true, schema: request.schema } },
     provider: provider ?? { require_parameters: true },
+    // Usage accounting: the answer reports its tokens and cost (the AI usage ledger, src/lib/ai-usage.ts).
+    usage: { include: true },
     ...(request.effort ? { reasoning: { effort: request.effort, exclude: true } } : {}),
   };
 }
@@ -48,7 +50,16 @@ interface ErrorBody {
   code?: number | string;
   message?: string;
 }
+/** What one answer says it used: OpenRouter's generation id, the tokens and the cost in US dollars (null when absent). */
+export interface OpenRouterUsage {
+  id: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  costUsd: number | null;
+}
 interface Completion {
+  id?: unknown;
+  usage?: { prompt_tokens?: unknown; completion_tokens?: unknown; cost?: unknown } | null;
   error?: ErrorBody;
   choices?: {
     finish_reason?: string | null;
@@ -58,11 +69,19 @@ interface Completion {
   }[];
 }
 
+const tokens = (n: unknown) => (typeof n === "number" && Number.isSafeInteger(n) && n >= 0 ? n : null);
+function usageOf(data: Completion): OpenRouterUsage | null {
+  const u = data.usage;
+  if (!u || typeof u !== "object") return null;
+  const cost = typeof u.cost === "number" && Number.isFinite(u.cost) && u.cost >= 0 ? u.cost : null;
+  return { id: typeof data.id === "string" && data.id ? data.id : null, inputTokens: tokens(u.prompt_tokens), outputTokens: tokens(u.completion_tokens), costUsd: cost };
+}
+
 const short = (s: unknown) => String(s ?? "").slice(0, 160);
 const retryableStatus = (status: number) => status === 408 || status === 429 || status >= 500;
 
 /** One try: the parsed JSON output, or an error. Error messages hold codes and OpenRouter's words, never the output. */
-async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: AbortSignal, timeout: number, onDispatch?: () => void): Promise<unknown> {
+async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: AbortSignal, timeout: number, onDispatch?: () => void, onUsage?: (u: OpenRouterUsage) => void): Promise<unknown> {
   let res: Response;
   try {
     const options = { ...init, signal: AbortSignal.any([signal, AbortSignal.timeout(timeout)]) };
@@ -85,6 +104,12 @@ async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: A
     throw retryableStatus(res.status) ? new Retryable(error) : new Error(error);
   }
   if (!data) throw new Error("OpenRouter answered 200 with a body that is not JSON");
+  // The call was made and billed even when its output is refused or cut off below, so the usage goes first.
+  // The observer never throws into the call.
+  const used = usageOf(data);
+  if (used && onUsage) {
+    try { onUsage(used); } catch { /* recording never fails a call */ }
+  }
   // After the provider accepts the request, OpenRouter reports a failure inside a 200 answer.
   if (data.error) throw new Error(`OpenRouter error ${short(data.error.code)}: ${short(data.error.message)}`);
   const choice = data.choices?.[0];
@@ -110,6 +135,7 @@ export function openRouterClient({
   timeout = AI_REQUEST_TIMEOUT_MS,
   onRequest,
   onDispatch,
+  onUsage,
   provider,
 }: {
   apiKey: string;
@@ -121,6 +147,8 @@ export function openRouterClient({
   onRequest?: () => Promise<void>;
   /** Synchronous observation immediately before fetch, after the durable permission and abort check. */
   onDispatch?: () => void;
+  /** Called once for each answer that reports usage, a refused or cut-off one included (the AI usage ledger). */
+  onUsage?: (usage: OpenRouterUsage) => void;
   /** Optional feature-owned route. The default route is unchanged. */
   provider?: OpenRouterProvider;
 }): AiClient {
@@ -137,7 +165,7 @@ export function openRouterClient({
         await onRequest?.();
         if (signal.aborted) throw new Error("time is up");
         try {
-          return await once(fetch, init, signal, timeout, onDispatch);
+          return await once(fetch, init, signal, timeout, onDispatch, onUsage);
         } catch (e) {
           if (!(e instanceof Retryable) || attempt >= maxRetries || signal.aborted) throw e instanceof Retryable ? new Error(e.message) : e;
         }

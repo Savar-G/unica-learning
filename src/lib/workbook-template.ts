@@ -568,7 +568,7 @@ const CSS = `
 .circ.words{flex-direction:column;align-items:center;justify-content:flex-start;gap:12px;min-height:0;min-width:var(--box);padding:0;align-self:flex-start}
 .circ.words .co{display:inline-flex;align-items:center;justify-content:center;min-height:28px;min-width:var(--box);padding:0 8px;line-height:1}
 .circ.words.likelihood{flex-direction:row;gap:12px;min-width:0}.circ.words.likelihood .co{min-width:0;min-height:44px;padding:0 6px}
-.q .rgs:has(>.circ.words){align-self:flex-start}
+.q .rgs:has(.circ.words){align-self:flex-start}
 .tc>.q{flex-wrap:nowrap;align-items:flex-start}.tc>.q>.qb{flex:1 1 0;min-width:0}.tc>.q>.rgs{margin-left:auto;flex:none;align-self:flex-start}
 .pg.consistent [data-slot="word-problems"] .story{padding-bottom:14px}
 .pg.consistent .mx .stp{flex-wrap:wrap}
@@ -604,13 +604,13 @@ const CSS = `
 .pg.consistent :is(.two,.list)>.q>:is(.n,.qb){padding-top:0;align-self:baseline}
 /* Circle targets on the question's first line: true or false, yes or no, letters or numbers share its baseline (on a
    test card too, its number with them). */
-.pg.consistent :is(.two,.list)>.q>.rgs:has(>.circ){align-self:baseline}
-.pg.consistent .tc>.q>:is(.badge,.qb,.rgs:has(>.circ)){align-self:baseline}
+.pg.consistent :is(.two,.list)>.q>.rgs:has(.circ){align-self:baseline}
+.pg.consistent .tc>.q>:is(.badge,.qb,.rgs:has(.circ)){align-self:baseline}
 .pg.consistent .q .circ:not(.words){min-height:var(--box);padding:0 18px;align-items:baseline}
-.pg.consistent :is(.two,.list,.tc)>.q>.rgs>.circ:not(.words) .co{font-size:var(--body)}
+.pg.consistent :is(.two,.list,.tc)>.q>.rgs .circ:not(.words) .co{font-size:var(--body)}
 .pg.consistent .circ.words .co{align-items:flex-start}
 /* (The likelihood words in their own row under the question's text, from its left edge.) */
-.pg.consistent :is(.two,.list)>.q>.full:has(>.circ.likelihood){padding-left:34px}
+.pg.consistent :is(.two,.list)>.q>.full:has(.circ.likelihood){padding-left:34px}
 /* A fact's number in the page's one number style, on the fact's baseline. */
 .pg.consistent .facts .fl{display:flex;align-items:baseline;gap:10px;flex:1 1 auto;min-width:0}
 .pg.consistent .facts .fl>.n{min-width:22px}
@@ -1104,7 +1104,7 @@ export function reviewLayout(page: DraftPage): ReviewLayout[] {
   if (c?.kind !== "day") return [];
   const parent = bandOf(c.level).name === "parent";
   const present = new Set(page.questions.map(q => q.number));
-  let open = !/\breview\b/i.test(reviewTitle(c.title));
+  let open = !/\breview(?:s|ing)?\b/i.test(reviewTitle(c.title));
   return c.blocks.map((b, i) => {
     const start = open;
     const firstOfPage = i === 0 && (page.type === "remember-these" || page.type === "remember-these-mixed-set");
@@ -1185,6 +1185,8 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
         ? items()
         : `<div class="outl"><div class="lab" data-measure="heading-${i}">Now it's your turn${b.label ? `: ${escape(b.label)}` : ""}</div><div class="two">${qs.map((q, k) => lineItem(q, band, null, 80, b.figures?.[k])).join("")}</div></div>`;
     case "spot-the-error": {
+      const fallbackChoice = `<span class="strip"><span class="ch"><i class="tb"></i>Yes</span><span class="ch"><i class="tb"></i>No</span></span>`
+        + (isWarmUpPage(c) ? `<span class="t1"><span>Tick one</span><i>✓</i></span>` : "");
       if (!c.consistentLayout) {
 
       // Full width at every level: Sam's work, the yes/no strip and the fix box do not fit a half-width parent card.
@@ -1195,7 +1197,7 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
           const box = names.find(x => x.region.kind === "box");
           return `<div class="list" ${mark.question(q.number)}><div class="q"><span class="n">${questionNumber(q.number)}</span>${text(q)}</div>`
             + `<div class="wk">${(b.lines ?? []).map(worked).join("<br>")}</div>`
-            + `<div class="q"><span>Is it right?</span>${choice?.region.kind === "choice" ? regionHtml(q, { ...choice.region, label: null }, choice.name, { band, noTick: true }) : `<span class="strip"><span class="ch"><i class="tb"></i>Yes</span><span class="ch"><i class="tb"></i>No</span></span>`}</div>`
+            + `<div class="q"><span>Is it right?</span>${choice?.region.kind === "choice" ? regionHtml(q, { ...choice.region, label: null }, choice.name, { band, noTick: !isWarmUpPage(c) }) : fallbackChoice}</div>`
             + `<div>If it's not right, fix it:</div>${box ? regionHtml(q, box.region, box.name, { band }) : ""}</div>`;
         }).join("") + `</div>`;
 
@@ -1207,7 +1209,7 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
           const names = regionNames(q);
           const choice = names.find(x => x.region.kind === "choice");
           const box = names.find(x => x.region.kind === "box");
-          return `<div class="error-item" ${mark.question(q.number)}><div class="q"><span class="n">${questionNumber(q.number)}</span><span class="wk" ${mark.questionContent(q.number)}>${(b.lines ?? []).map(worked).join("<br>")}</span></div><div class="q ans"><span>Is it right?</span>${choice?.region.kind === "choice" ? regionHtml(q, { ...choice.region, label: null }, choice.name, { band, noTick: true }) : `<span class="strip"><span class="ch"><i class="tb"></i>Yes</span><span class="ch"><i class="tb"></i>No</span></span>`}`
+          return `<div class="error-item" ${mark.question(q.number)}><div class="q"><span class="n">${questionNumber(q.number)}</span><span class="wk" ${mark.questionContent(q.number)}>${(b.lines ?? []).map(worked).join("<br>")}</span></div><div class="q ans"><span>Is it right?</span>${choice?.region.kind === "choice" ? regionHtml(q, { ...choice.region, label: null }, choice.name, { band, noTick: !isWarmUpPage(c) }) : fallbackChoice}`
             + `<span class="fix">If not, fix it:</span>${box ? regionHtml(q, box.region, box.name, { band }) : ""}</div></div>`;
         }).join("") + `</div>`;
     }
