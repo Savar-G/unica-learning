@@ -76,8 +76,8 @@ export interface OverviewProgress {
   /** Each eligible original result of a shipped page of its current print revision, as an area answer (D-303). */
   marks: AreaAnswer[];
   /**
-   * Each marked item's effective original result (`effectiveSkillMarks`), dated by its original event (when the child
-   * did the item), not by its last change as the profile rebuild dates it.
+   * Each marked item's effective original result (`effectiveSkillMarks`), dated by its original event (when its first
+   * result was saved), not by its last change as the profile rebuild dates it.
    */
   skillMarks: SkillMark[];
 }

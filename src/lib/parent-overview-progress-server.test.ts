@@ -50,6 +50,10 @@ describe("stored overview marks", () => {
     const changed = { ...mark("right"), evidence_at: "2026-11-02T18:00:00Z" };
     expect((await reader([changed]).value.overviewProgress(child))?.skillMarks).toEqual([{ standard: "2.4", right: true, review: false, at: "2026-10-04T18:00:00Z" }]);
   });
+  it("keeps the database's own time format of the original event", async () => {
+    const team = { ...mark("right"), original_event: { ...event, occurredAt: "2026-11-01T06:59:59.999999+00:00" } };
+    expect((await reader([team]).value.overviewProgress(child))?.skillMarks[0].at).toBe("2026-11-01T06:59:59.999999+00:00");
+  });
   it("reads no workbook question with no marked item, and only two package fields with one", async () => {
     const none = reader([]);
     expect((await none.value.overviewProgress(child))?.marks).toEqual([]);

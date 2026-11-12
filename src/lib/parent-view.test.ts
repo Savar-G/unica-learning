@@ -435,6 +435,14 @@ describe("the Overview (#560)", () => {
       expect(tile).toEqual({ mastered: 3, total: map?.length, moreThisMonth: 1 });
     });
 
+    it("reads a mark's database time at the family month edge", async () => {
+      const page = (at: string, review = false) => ({ standard: "3.3", right: true, review, at });
+      const pages = ["2026-10-01T18:00:00Z", "2026-10-02T18:00:00Z", "2026-10-02T19:00:00Z", "2026-10-03T18:00:00Z", "2026-10-03T19:00:00Z"].map((at) => page(at));
+      const edge = async (at: string) => (await read({ ...base, skillTests: [], overviewProgress: [progress({ skillMarks: [...pages, page(at, true)] })] }))?.skills?.moreThisMonth;
+      expect(await edge("2026-11-01T06:59:59.999999+00:00")).toBe(0);
+      expect(await edge("2026-11-01T07:00:00.000001+00:00")).toBe(1);
+    });
+
     it("counts net: a skill lost and another gained this month show no change", async () => {
       // 3.1 was mastered in October; a wrong answer this month makes it Needs review. 3.2 becomes mastered this month.
       const lost = { ...tally("3.1", "2026-11-02T18:00:00Z"), correct: 0 };
