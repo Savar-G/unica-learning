@@ -52,9 +52,6 @@ const gtLines = claimLinesOf("CLAIM_GT");
 const wideLines = claimLinesOf("CLAIM_WIDE");
 /** The honest close's approved wordings (claim.ts, pending Savar's approval under D-202). */
 const TEMPLATES_CLOSE_HONEST = [...CLAIM_TEMPLATES["close.honest"]];
-/** The given word of a claim (D-199), each wording with the fixture's values. */
-const giveOf = (id: "CLAIM_TF" | "CLAIM_GT") => packageLines(claimView(FIXTURES[id] as OperationPackage)).answerGive()[0]?.texts ?? [];
-const tfGive = giveOf("CLAIM_TF");
 /** "My mom said 1440.": the model proposes the confirm; code refuses it, and the yes after it credits nothing (#737 P1). */
 const otherSpeaker = (id: string, fixture: "CLAIM_GT" | "CLAIM_DEC", said: string, heard: string, title: string): Behaviour => ({
   id, title, fixture, status: "passing",
@@ -3460,7 +3457,7 @@ export const BEHAVIOURS: Behaviour[] = [
   // never misses (claimNotAMiss), and a child who only asks for help still gets the easier example, then the honest close.
   {
     id: "CL63",
-    title: "The work done, then 'It's false.' twice: Maya gives the word with code's comparison (D-199), then closes",
+    title: "The work done, then 'It's false.' twice: no given word (D-306); the easier example, then the honest close (review of 9884b94e, P1)",
     fixture: "CLAIM_TF",
     status: "passing",
     steps: [
@@ -3468,19 +3465,20 @@ export const BEHAVIOURS: Behaviour[] = [
       child("I write the 4.", { answers: [[4, "r1-tens", "right"]] }, [{ act: "guide", level: 0 }]),
       child("48.", { answers: [[48, "claim", "right"]] }, [{ act: "guide", level: 0 }]),
       child("It's false.", undefined, [{ act: "guide", level: 0 }]),
-      child("It's false.", undefined, [{ act: "give_answer" }]),
-      child("Okay.", undefined, [{ act: "close" }]),
+      child("It's false.", undefined, [{ act: "give_answer", repair: { act: "example_step" } }]),
+      child("Okay.", undefined, [{ act: "close", lines: ["close.honest"] }]),
     ],
     expect: {
-      outcome: { reason: "solved", assistance: "answer_given" },
-      acts: [OPEN, "guide", "guide", "guide", "guide", "give_answer", "close"],
-      outputs: [{ mayaTurn: 5, lines: [tfGive] }],
-      never: ["accept_answer"],
+      outcome: { reason: "child_stopped", assistance: "worked_example" },
+      acts: [OPEN, "guide", "guide", "guide", "guide", "example_step", "example_step", "example_step", "close"],
+      outputs: [{ mayaTurn: 8, lines: [TEMPLATES_CLOSE_HONEST] }],
+      refused: ["act_not_allowed"],
+      never: ["accept_answer", "give_answer"],
     },
   },
   {
     id: "CL64",
-    title: "The model down: the product, then 'It's no.' twice: code's fallback gives the word (D-199), never the honest close",
+    title: "The model down: the product, then 'It's no.' twice: code's fallback shows the easier example, then the honest close, never the word (review of 9884b94e, P1)",
     fixture: "CLAIM_GT",
     status: "passing",
     steps: [
@@ -3490,9 +3488,10 @@ export const BEHAVIOURS: Behaviour[] = [
       child("Okay.", undefined, [{ throws: true }]),
     ],
     expect: {
-      outcome: { reason: "solved", assistance: "answer_given" },
-      acts: [OPEN, "guide", "guide", "give_answer", "close"],
-      never: ["accept_answer"],
+      outcome: { reason: "child_stopped", assistance: "worked_example" },
+      acts: [OPEN, "guide", "guide", "example_step", "example_step", "example_step", "close"],
+      outputs: [{ mayaTurn: 6, lines: [TEMPLATES_CLOSE_HONEST] }],
+      never: ["accept_answer", "give_answer"],
     },
   },
   ...([
@@ -3520,21 +3519,22 @@ export const BEHAVIOURS: Behaviour[] = [
   })),
   {
     id: "CL67",
-    title: "'It's no.', then 'I'm stuck, but it's no.', then 'It's no.': the help turn is no miss, so the word comes only after the second real one",
+    title: "'It's no.', then 'I'm stuck, but it's no.', then 'It's no.': the help turn is no miss, so the easier example comes only after the second real one, then the honest close",
     fixture: "CLAIM_GT",
     status: "passing",
     steps: [
       child("360 times 4 is 1440.", { start: "has_work", answers: [[1440, "claim", "right"]] }, [{ act: "guide", level: 0 }]),
       child("It's no.", undefined, [{ act: "guide", level: 1 }]),
       child("I'm stuck, but it's no.", { help: "more" }, [{ act: "give_answer", repair: { act: "guide", level: 2 } }]),
-      child("It's no.", undefined, [{ act: "give_answer" }]),
-      child("Okay.", undefined, [{ act: "close" }]),
+      child("It's no.", undefined, [{ act: "give_answer", repair: { act: "example_step" } }]),
+      child("Okay.", undefined, [{ act: "close", lines: ["close.honest"] }]),
     ],
     expect: {
-      outcome: { reason: "solved", assistance: "answer_given" },
-      acts: [OPEN, "guide", "guide", "guide", "give_answer", "close"],
-      refused: ["act_not_allowed"],
-      never: ["accept_answer"],
+      outcome: { reason: "child_stopped", assistance: "worked_example" },
+      acts: [OPEN, "guide", "guide", "guide", "example_step", "example_step", "example_step", "close"],
+      outputs: [{ mayaTurn: 7, lines: [TEMPLATES_CLOSE_HONEST] }],
+      refused: ["act_not_allowed", "act_not_allowed"],
+      never: ["accept_answer", "give_answer"],
     },
   },
   {

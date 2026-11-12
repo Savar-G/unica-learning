@@ -5,18 +5,21 @@ import { scenarioModel } from "./gate";
 
 vi.mock("server-only", () => ({}));
 
+// No answer is given after two misses (D-306). A question type with its own way out (a pattern, spot the error, a missing
+// number, a claim, place value) shows its easier example, then its honest close (review of 9884b94e, P1); every other
+// question (an evaluate question) gets #698's backup close (D-326).
 const cases = [
-  ["PT_LONG", ["115 minus 35 is 80."], "It's 5.", false],
-  ["SPOT_MUL", ["7 times 640 is 4480."], "It's yes.", false],
-  ["EV_TWO", ["7 times 640 is 4480.", "7 times 30 is 210.", "0", "9", "6", "4"], "It's 5.", true],
-  ["M_TRY", ["236 times 6 is 1416."], "It's 5.", true],
-  ["CLAIM_TF", ["6 times 8 is 48."], "It's false.", true],
-  ["PVC", ["8", "4", "8 is bigger."], "It's false.", false],
-  ["AREA_TF", ["6 times 3 is 18."], "It's false.", true],
+  ["PT_LONG", ["115 minus 35 is 80."], "It's 5.", "example"],
+  ["SPOT_MUL", ["7 times 640 is 4480."], "It's yes.", "example"],
+  ["EV_TWO", ["7 times 640 is 4480.", "7 times 30 is 210.", "0", "9", "6", "4"], "It's 5.", "close"],
+  ["M_TRY", ["236 times 6 is 1416."], "It's 5.", "example"],
+  ["CLAIM_TF", ["6 times 8 is 48."], "It's false.", "example"],
+  ["PVC", ["8", "4", "8 is bigger."], "It's false.", "example"],
+  ["AREA_TF", ["6 times 3 is 18."], "It's false.", "example"],
 ] as const;
 
 describe("committed final misses with the model down", () => {
-  it.each(cases)("%s counts two misses and follows its answer policy", async (id, work, wrong, gives) => {
+  it.each(cases)("%s counts two misses and follows its answer policy", async (id, work, wrong, policy) => {
     const model = scenarioModel();
     const text = createTextSession({ callId: `final-miss-${id}`, package: FIXTURES[id], model, clock: () => 1000, random: 1 });
     model.next([], undefined);
@@ -28,15 +31,14 @@ describe("committed final misses with the model down", () => {
       await text.child(wrong);
       expect(text.session.finalMisses).toBe(n);
     }
-    expect(text.session.solved === "maya").toBe(gives);
-    if (!gives) {
-      for (let i = 0; i < 12 && !text.session.outcome; i++) {
-        model.next([{ throws: true }], undefined);
-        await text.child("I'm stuck.");
-      }
-      expect(text.session.assistance).toContain("worked_example");
-      expect(text.session.outcome?.reason).toBe("child_stopped");
+    expect(text.session.solved).toBeNull();
+    for (let i = 0; i < 12 && !text.session.outcome; i++) {
+      model.next([{ throws: true }], undefined);
+      await text.child("I'm stuck.");
     }
+    expect(text.session.assistance).not.toContain("answer_given");
+    if (policy === "example") expect(text.session.assistance).toContain("worked_example");
+    expect(text.session.outcome?.reason).toBe("child_stopped");
   }, 60_000);
 });
 

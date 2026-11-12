@@ -1116,9 +1116,6 @@ function actsNow(s: Session, reading: Reading, rightResult: boolean, progress = 
   // A claim question gives its word only as D-199 gives a number (claim.ts).
   const allowed = teachingActs(s, reading, rightResult, progress, misses, offering);
   if (!sessionClaim(s.package)) return allowed;
-  // ...except after two real wrong words once every work step is done: Maya gives the word, as D-199 gives a number (Savar
-  // Brain P6, #737 review). Only a committed word is a miss (committedTurn, the one rule).
-  if (allowed.acts[0] === "give_answer" && backupCloseDue(s, rightResult, misses)) return allowed;
   // A child who only asks for help at the top of a claim's final step closes honestly (claim.ts, lesson 10).
   const helpOnly = claimHelpOnly(s, reading, rightResult);
   const stuck = s.ladder.step === "result" && s.ladder.hint >= 2 && helpOnly;
@@ -1285,6 +1282,11 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
   // Two wrong final answers once every column is done: the final step has only its gentlest help, already given, so
   // Maya closes without the answer (D-326). Never over a right answer.
   if (backupCloseDue(s, rightResult, misses)) {
+    // A question type with its own way out (ownWayOut) gets its easier example first, then its honest close, never the
+    // answer or a claim's word (review of 9884b94e, P1: "It's no." twice on 4 × 360 > 1436 got "The answer is yes.").
+    if (ownWayOut(s.package) && s.exampleShown < steps && !exampleRevealsAnswer(s)) {
+      return { acts: ["example_step"], code: "act_not_allowed", reason: "Two committed wrong answers: show the easier example, step by step (example_step), never the answer." };
+    }
     return {
       acts: ["close"], code: "act_not_allowed",
       reason: "Close honestly without giving the answer.",

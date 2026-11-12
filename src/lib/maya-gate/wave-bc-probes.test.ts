@@ -49,7 +49,7 @@ describe("cross-wave claim and topic probes", () => {
     expect(text.session.finalMisses ?? 0).toBe(0);
     expect(text.session.ladder.failures).toBe(0);
   });
-  it("allows the answer after two committed wrong area words once the work is done", async () => {
+  it("gives no word after two committed wrong area words once the work is done: the easier example comes (D-306)", async () => {
     const { text, model } = await start("AREA_TF");
     model.next([{ throws: true }], { start: "has_work" });
     await text.child("6 times 3 is 18.");
@@ -59,8 +59,9 @@ describe("cross-wave claim and topic probes", () => {
     model.next([{ throws: true }], undefined);
     await text.child("It's false.");
     expect(text.session.finalMisses).toBe(2);
-    expect(text.session.solved).toBe("maya");
-    expect(text.session.assistance).toContain("answer_given");
+    expect(text.session.solved).toBeNull();
+    expect(text.session.assistance).not.toContain("answer_given");
+    expect(text.session.assistance).toContain("worked_example");
   });
   it.each([
     ["MINUTE after example", C3B_REVIEW_BEHAVIOURS.find((b) => b.id === "OTWM4d")!],
