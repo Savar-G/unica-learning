@@ -11,7 +11,7 @@ export const meta: ResourceMeta = {
     "Kumon alternatives in BC: private tutors, other learning centres, online apps, free library programs and workbooks at home, with October 2026 prices.",
   category: "Comparing options",
   lead: "If Kumon is not the right fit, BC families can choose from tutors, other learning centres, apps, free library programs and workbooks at home.",
-  updated: "2026-11-01",
+  updated: "2026-11-11",
   faqs: [
     {
       q: "What is a good alternative to Kumon for reading?",
@@ -179,7 +179,7 @@ export default function Body() {
         <p>
           Unica is one example. A free online math assessment finds your child&apos;s math level. We mail personalized math
           workbooks for ages 5 to 14 home; the program follows the BC curriculum at your child&apos;s level. The plan is 15-30
-          minutes a day, 5 days a week. A parent app lets you scan a problem to see the steps and check answers.{" "}
+          minutes a day, 5 days a week. On our website, you scan a page with your phone to check answers and see the steps.{" "}
           <strong>Cost:</strong> CAD 79.99 a month for math, delivery included, with the first month
           free and cancel anytime. See <Link href="/pricing">program pricing, sibling prices and free-month terms</Link>.
         </p>

@@ -1,7 +1,8 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { answersAddUp, reportShowsPlacement } from "@/lib/area-level-check";
-import { profileSkillResults, reportCallsUnreliable, restoreSession, testAreaAnswers, type AreaAnswer, type Grade } from "@/lib/assessment";
+import { BC_SKILL_MAP, REPORTED_STRAND, profileSkillResults, reportCallsUnreliable, restoreSession, testAreaAnswers, type AreaAnswer, type Grade } from "@/lib/assessment";
 import type { Database } from "@/lib/database";
 import { LEARNING_COLUMNS } from "@/lib/learning-style";
 import { chatFamilyGate } from "@/lib/maya-chat";
@@ -9,6 +10,9 @@ import { childPauseMailing } from "@/lib/plan-controls-server";
 import type { ParentViewReader } from "@/lib/parent-view";
 import { pinIsSet } from "@/lib/parent-pin-server";
 import { familyOpenPlanChildren } from "@/lib/plan-access";
+import { scanMarkingReader, markingCommand } from "@/lib/scan-marking-reader";
+import { effectiveSkillMarks } from "@/lib/scan-marking";
+import { itemKey, markingEvent } from "@/lib/scan-observation";
 import { scanReleased } from "@/lib/scan-pages-access";
 import { withAnswers } from "@/lib/test-attempt";
 import { attemptStore } from "@/lib/test-attempt-server";
@@ -42,6 +46,24 @@ import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 // A database error throws, and so does a missing secret key: an empty read would show a paying family "Start the test".
 
 /** The reader of this parent, from their session and the secret key. */
+/** The skill standard of each question of the named workbooks, by `<workbook>:<page>:<number>:<question id>`. */
+async function markedQuestions(admin: SupabaseClient<Database>, parent: string, workbooks: readonly string[]): Promise<Map<string, string>> {
+  const questions = new Map<string, string>();
+  for (const book of workbooks) {
+    for (let after: string | null = null; ;) {
+      let query = admin.from("workbook_questions").select("id, page_id, question_number, qid:package->>id, standard:package->skill->>standard")
+        .eq("parent_id", parent).eq("workbook_id", book).order("id").limit(1000);
+      if (after !== null) query = query.gt("id", after);
+      const rows = await query;
+      if (rows.error) throw new Error("overview questions read failed");
+      if (!rows.data.length) break;
+      for (const row of rows.data) if (row.qid && row.standard) questions.set(`${book}:${row.page_id}:${row.question_number}:${row.qid}`, row.standard);
+      after = rows.data[rows.data.length - 1].id;
+    }
+  }
+  return questions;
+}
+
 export function parentViewReader(session: SupabaseClient<Database>, parent: string, admin: SupabaseClient<Database> | null, env: Readonly<Record<string, string | undefined>> = process.env): ParentViewReader {
   return {
     async children() {
@@ -170,6 +192,55 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
         const at = finished.get(p.assessment_id);
         return at && reported.has(p.assessment_id) ? profileSkillResults(p.profile, at, unreliable.has(p.assessment_id)) : [];
       });
+    },
+    async overviewProgress(childId) {
+      if (!admin) throw new Error("overview progress: no secret key");
+      const owner = await session.from("children").select("id").eq("id", childId).maybeSingle();
+      if (owner.error) throw new Error("overview progress owner read failed");
+      if (!owner.data) return null;
+      const command = markingCommand(admin);
+      const reads = scanMarkingReader(admin);
+      // One consistent moment: the marking revision is the same before and after the reads. A marking ack or a correction
+      // in between makes it read again, three times at most, as the profile rebuild does.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const revision = await command("revision", parent, null, null, { child: childId });
+        if (typeof revision !== "number") throw new Error("overview marking revision unavailable");
+        const [items, books] = await Promise.all([
+          reads.effective(parent, childId),
+          session.from("workbooks").select("id, printed_revision").eq("child_id", childId).eq("status", "shipped"),
+        ]);
+        if (books.error) throw new Error("overview progress read failed");
+        const shipped = new Map(books.data.map((book) => [book.id, book.printed_revision]));
+        // Only an eligible original of a shipped page of its current print revision counts in the bars.
+        const originals = items.flatMap((item) => {
+          const id = item.expected.identity, decision = markingEvent(item.expected, item.observation);
+          const counts = shipped.has(id.workbookId) && shipped.get(id.workbookId) === id.printedRevision && item.originalEvent && item.eventId && decision.publish;
+          return counts ? [{ item, event: item.originalEvent!, right: decision.result === "right" }] : [];
+        });
+        const questions = await markedQuestions(admin, parent, [...new Set(originals.map(({ item }) => item.expected.identity.workbookId))]);
+        const standards = new Map(BC_SKILL_MAP.standards.map((standard) => [standard.code, standard]));
+        const seen = new Set<string>();
+        const marks: AreaAnswer[] = [];
+        for (const { item, event, right } of originals) {
+          const id = item.expected.identity;
+          const key = itemKey(id);
+          if (seen.has(key)) throw new Error("duplicate original result");
+          seen.add(key);
+          const standard = standards.get(questions.get(`${id.workbookId}:${id.pageId}:${item.expected.number}:${id.itemId}`) ?? "");
+          if (!standard) continue;
+          if (event.parentId !== parent || event.childId !== childId || event.source !== "marking" ||
+              event.key !== `marking:${createHash("sha256").update(key, "utf8").digest("hex")}` ||
+              event.question.source !== "workbook" || event.question.workbookId !== id.workbookId ||
+              event.question.question !== item.expected.number || event.skill.standard !== standard.code) throw new Error("overview mark source mismatch");
+          marks.push({ area: REPORTED_STRAND[standard.strand], level: standard.grade, correct: right });
+        }
+        if (await command("revision", parent, null, null, { child: childId }) !== revision) continue;
+        // Each mark is dated by its original event, when its first result was saved, not by its last change: a correction
+        // or a re-saved result replaces the result where it was, so it cannot move a mastery into another month.
+        const dated = items.map((item) => (item.originalEvent ? { ...item, at: item.originalEvent.occurredAt } : item));
+        return { marks, skillMarks: effectiveSkillMarks(dated) };
+      }
+      throw new Error("overview progress changed");
     },
     async workbookStandards(workbookId) {
       const { data, error } = await session.from("workbook_questions").select("standard:package->skill->>standard").eq("workbook_id", workbookId);

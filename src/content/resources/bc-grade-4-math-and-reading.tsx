@@ -9,7 +9,7 @@ export const meta: ResourceMeta = {
   description: "Grade 4 math and reading in the BC curriculum: topics, practice questions, FSA facts and how to help at home. Plain words for parents.",
   category: "BC curriculum",
   lead: "A plain-language guide to the BC curriculum for Grade 4 math and English language arts, with practice questions and ways to help at home.",
-  updated: "2026-10-09",
+  updated: "2026-11-11",
   faqs: [
     {
       q: "What math does my child learn in Grade 4 in BC?",
@@ -27,12 +27,18 @@ export const meta: ResourceMeta = {
       q: "Where can I find Grade 4 math worksheets for BC?",
       a: "The BC curriculum site lists what is taught but does not publish worksheets. The practice questions on this page show the style of question at this level. For more, ask your child’s teacher what the class is working on.",
     },
+    {
+      q: "How will I hear about my Grade 4 child's progress this year?",
+      a: "BC schools must share at least five reports of learning a year: three written and two informal, such as a parent-teacher conference. The last written one is the Summary of Learning at the end of the school year. From Kindergarten to Grade 9, written reports use the proficiency scale: Emerging, Developing, Proficient and Extending. Each school sets its own dates. In Grade 4, your child also writes the Foundation Skills Assessment (FSA) in the fall.",
+    },
   ],
   sources: [
     { label: "BC curriculum: Mathematics, Grade 4 (Big Ideas, Content, Curricular Competencies)", url: "https://curriculum.gov.bc.ca/curriculum/mathematics/4", accessed: "2026-10-09" },
     { label: "BC curriculum: English Language Arts, Grade 4 (Big Ideas, Content, Curricular Competencies)", url: "https://curriculum.gov.bc.ca/curriculum/english-language-arts/4", accessed: "2026-10-09" },
     { label: "Province of British Columbia: Foundation Skills Assessment (FSA)", url: "https://www2.gov.bc.ca/gov/content/education-training/k-12/administration/program-management/assessment/foundation-skills-assessment", accessed: "2026-10-09" },
     { label: "BC Ministry of Education and Child Care: All about the Foundation Skills Assessment, information for parents and caregivers (PDF)", url: "https://curriculum.gov.bc.ca/sites/curriculum.gov.bc.ca/files/pdf/assessment/fsa/en-foundation-skills-assessment-for-parents-and-caregivers.pdf", accessed: "2026-10-09" },
+    { label: "BC Ministry of Education and Child Care: K-12 Student Reporting, information for parents and caregivers (PDF)", url: "https://curriculum.gov.bc.ca/sites/curriculum.gov.bc.ca/files/pdf/reporting/K-12-student-reporting-one-pager-for-parents-and-caregivers.pdf", accessed: "2026-11-11" },
+    { label: "BC Ministry of Education and Child Care: K-12 Student Reporting Policy, Communicating Student Learning Guidelines (PDF, August 2023)", url: "https://www2.gov.bc.ca/assets/download/A5CA90B9C45D40B4999109A7400A1A39", accessed: "2026-11-11" },
   ],
   related: ["bc-grade-3-math-and-reading", "bc-grade-5-math-and-reading", "bc-fsa-grade-4-and-7"],
 };

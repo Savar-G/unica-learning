@@ -80,8 +80,13 @@ describe("insertUsageRow", () => {
     const logged: unknown[][] = [];
     const orig = console.error; console.error = (...a: unknown[]) => { logged.push(a); };
     try {
-      await insertUsageRow(row, { url: "u", key: "k", fetch: (async () => new Response("dup", { status: 409 })) as unknown as typeof globalThis.fetch });
+      const withId = { ...row, generation_id: "gen-1" };
+      await insertUsageRow(withId, { url: "u", key: "k", fetch: (async () => new Response("dup", { status: 409 })) as unknown as typeof globalThis.fetch });
       expect(logged).toHaveLength(0);
+      // With no generation id a 409 cannot be a repeat: a wrong tag must show.
+      await insertUsageRow({ ...row, generation_id: null }, { url: "u", key: "k", fetch: (async () => new Response("fk", { status: 409 })) as unknown as typeof globalThis.fetch });
+      expect(logged).toEqual([["[ai-usage] write failed: 409"]]);
+      logged.length = 0;
       await insertUsageRow(row, { url: "u", key: "k", fetch: (async () => new Response("{\"message\":\"secret-ish\"}", { status: 500 })) as unknown as typeof globalThis.fetch });
       expect(logged).toEqual([["[ai-usage] write failed: 500"]]);
     } finally { console.error = orig; }

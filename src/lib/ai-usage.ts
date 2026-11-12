@@ -100,7 +100,9 @@ export async function insertUsageRow(row: AiUsageRow, o: { url: string; key: str
     body: JSON.stringify(row),
     signal: AbortSignal.timeout(WRITE_LIMIT_MS),
   });
-  if (!res.ok && res.status !== 409) console.error(`[ai-usage] write failed: ${res.status}`);
+  // 409 is a repeated generation id (the same call again), and also a foreign key that does not hold (a wrong tag, a
+  // family deleted meanwhile): only a row with a generation id can be the first, so only then is it quiet.
+  if (!res.ok && !(res.status === 409 && row.generation_id)) console.error(`[ai-usage] write failed: ${res.status}`);
 }
 
 let configured: { url: string; key: string } | null = null;
