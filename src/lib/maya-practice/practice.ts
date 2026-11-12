@@ -9,14 +9,15 @@
 //
 // No network or clock of its own: the models, the store and the clock are passed in.
 import { createHash } from "node:crypto";
-import { valuesIn, TALK_REVIEW_PROMPT_VERSION } from "@/lib/maya";
+import { valuesIn, TEMPLATES, TALK_REVIEW_PROMPT_VERSION } from "@/lib/maya";
 import { practicePackage } from "./packages";
+import { closeExpressionContainsAnswer } from "@/lib/maya/backup-close";
 import { judge as gateJudge, HARD_FAILURES, type Behaviour, type HardFailure } from "@/lib/maya-gate/gate";
 import type { MayaModel } from "@/lib/maya-model";
 import type { TalkReviewer } from "@/lib/maya-talk-review";
 import { createTextSession } from "@/lib/maya-text";
-import { checkTrace, classifyError, packageHash, redactText, type MayaTrace, type TraceError, type TraceTalk } from "@/lib/maya-trace";
-import type { AnswerValue } from "@/lib/question-package";
+import { checkTrace, classifyError, fencedReplies, packageHash, redactText, type MayaTrace, type TraceError, type TraceTalk } from "@/lib/maya-trace";
+import { equivalent, operationText, type AnswerValue, type QuestionPackage } from "@/lib/question-package";
 import { DIMENSION_IDS, DIMENSIONS, PASS_SCORE, positive, PRACTICE_CASES, RUNS_PER_CASE, type Dimension, type PracticeCase, type StageOpens } from "./cases";
 import { judgeInput, readJudgement, type AiJudge, type DimensionResult, JUDGE_PROMPT_VERSION } from "./judge";
 import { readValidity, VALIDITY_PROMPT_VERSION, type ValidityInput, type ValidityJudge } from "./validity-judge";
@@ -101,6 +102,8 @@ export interface ValidityLog {
   error: TraceError | null;
   /** Why it was not asked: code's checks already made the run invalid. */
   skipped: string | null;
+  /** 1 when the first call timed out and was asked once more (retryOnTimeout). Missing in a log from before: none. */
+  timeoutRetries?: number;
 }
 
 /** The judge's file of one run. */
@@ -114,6 +117,8 @@ export interface JudgeLog {
   error: TraceError | null;
   /** Why the judge was not asked: the run was already invalid or its trace failed. */
   skipped: string | null;
+  /** 1 when the first call timed out and was asked once more (retryOnTimeout). Missing in a log from before: none. */
+  timeoutRetries?: number;
 }
 
 export interface PracticeExecution { channel: "voice" | "chat"; freeTalk: boolean }
@@ -255,7 +260,7 @@ export async function runPractice(c: PracticeCase, n: number, seed: number, deps
   if (pre.invalid.length > 0) validityLog.skipped = "code's checks already make the run invalid";
   else {
     try {
-      validityLog.raw = await deps.validity.check(validityInput(c, trace, log), new AbortController().signal);
+      validityLog.raw = await retryOnTimeout(() => deps.validity.check(validityInput(c, trace, log), new AbortController().signal), deps.capped, () => { validityLog.timeoutRetries = 1; });
     } catch (e) {
       if (e instanceof BudgetReached || deps.capped?.()) cut = true;
       else {
@@ -274,7 +279,7 @@ export async function runPractice(c: PracticeCase, n: number, seed: number, deps
     judgeLog.skipped = `the run is ${ready.status}`;
   } else {
     try {
-      judgeLog.raw = await deps.judge.judge(judgeInput(c, pkg, trace, execution.channel), new AbortController().signal);
+      judgeLog.raw = await retryOnTimeout(() => deps.judge.judge(judgeInput(c, pkg, trace, execution.channel), new AbortController().signal), deps.capped, () => { judgeLog.timeoutRetries = 1; });
     } catch (e) {
       if (e instanceof BudgetReached || deps.capped?.()) cut = true;
       else {
@@ -293,6 +298,21 @@ export async function runPractice(c: PracticeCase, n: number, seed: number, deps
   };
   const record: RunRecord = { kind: "maya-practice-record", version: PRACTICE_VERSION, run: id, plan: hash(PLAN_FILE), files: { trace: hash(traceFile(id))!, child: hash(simFile(id))!, validity: hash(validityFile(id)), judge: hash(judgeFile(id)) } };
   deps.store.save(recordFile(id), JSON.stringify(record, null, 2));
+}
+
+/**
+ * A judge call, asked once more when it timed out (C38 at 361a05c9: "the judge call failed (timeout)" on a slow
+ * subscription call). A slow answer is no verdict, so one more try is fair; a second time-out, or any other failure, is
+ * thrown as before, so the run stays invalid or unjudgeable. Never at the spending cap.
+ */
+async function retryOnTimeout<T>(call: () => Promise<T>, capped: (() => boolean) | undefined, onRetry: () => void): Promise<T> {
+  try {
+    return await call();
+  } catch (e) {
+    if (e instanceof BudgetReached || capped?.() || classifyError(e, "model").code !== "timeout") throw e;
+    onRetry();
+    return await call();
+  }
 }
 
 /** The plan for a suite: each case `runs` times, with a seed per run. */
@@ -346,12 +366,51 @@ export const INVALID = {
   too_long: "The child's turn is longer than a child of that age says.",
   early_stop: "The child asked to stop although the persona does not.",
   off_script: "The child skipped what the persona must say or do.",
+  false_teaching_claim: "The child said Maya showed or taught it something before Maya had shown any step.",
   validity_flagged: "The validity judge found a turn out of persona, or knowledge the persona does not have.",
   validity_unjudged: "The validity judge gave no usable verdict: missing, failed, skipped or not its schema.",
 } as const;
 export type InvalidCode = keyof typeof INVALID;
 
 /** A hard failure of a practice run: the scripted gate's, plus the two the practice suite adds. */
+/** Only the recorded D-199 replacement permits a stopped result in a solved-only case. */
+// This check trusts counters written only by the controller.
+export function backupStop(trace: MayaTrace, pkg: QuestionPackage): boolean {
+  if (trace.version < 10 || trace.outcome?.reason !== "child_stopped" || !pkg.operation || !pkg.answer) return false;
+  const answer = pkg.answer.value;
+  const alone = closeExpressionContainsAnswer(pkg.operation, answer);
+  const turns = trace.turns.filter((turn): turn is Extract<MayaTrace["turns"][number], { kind: "maya" }> => turn.kind === "maya" && turn.output !== null);
+  const last = turns.at(-1);
+  if (!last || last.output?.act !== "close" || last.finalMisses !== 2) return false;
+  const parts = (last.attempts.at(-1)?.proposal as { parts?: { line?: string }[] } | null)?.parts;
+  if (parts?.length !== (alone ? 1 : 2) || parts[0].line !== "close.stuck" || (!alone && parts[1].line !== "close.together")) return false;
+  const ending = alone ? "" : ` We worked on ${operationText(pkg.operation)} together today.`;
+  if (!TEMPLATES["close.stuck"].some((line) => last.output!.say.join(" ") === line + ending)) return false;
+  let previous = 0;
+  let increments = 0;
+  for (const turn of turns) {
+    if (turn.finalMisses === undefined || turn.finalMisses < previous || turn.finalMisses > previous + 1) return false;
+    if (turn.finalMisses === previous + 1) increments++;
+    previous = turn.finalMisses;
+  }
+  if (increments !== 2) return false;
+  // Board commands hold displayed values in several shapes, including fractions and number lines.
+  const boardText = (value: unknown): string[] => {
+    if (typeof value === "string" || typeof value === "number") return [String(value)];
+    if (Array.isArray(value)) return value.flatMap(boardText);
+    if (value === null || typeof value !== "object") return [];
+    const object = value as Record<string, unknown>;
+    const fraction = typeof object.numerator === "string" && typeof object.denominator === "string"
+      ? [`${typeof object.whole === "string" ? `${object.whole} ` : ""}${object.numerator}/${object.denominator}`] : [];
+    const metadata = new Set(["id", "objectId", "rowId", "lineId", "transactionId", "place", "ink", "op", "target", "from", "to", "index", "page"]);
+    return [...fraction, ...Object.entries(object).filter(([key]) => !metadata.has(key)).flatMap(([, part]) => boardText(part))];
+  };
+  const board = trace.board.flatMap(({ commands }) => commands.flatMap(boardText));
+  const spoken = trace.turns.flatMap((turn) => turn.kind === "maya_said" ? [turn.text] : []);
+  const words = [...turns.flatMap((turn) => turn.output!.say), ...spoken, ...board];
+  return !words.some((text) => valuesIn(text, { fractions: true }).some((v) => equivalent(v, answer)));
+}
+
 export type PracticeFailure = HardFailure | "outcome_not_allowed" | "artifact_changed";
 export const PRACTICE_FAILURES: Record<"outcome_not_allowed" | "artifact_changed", string> = {
   outcome_not_allowed: "The call ended on an outcome this case does not allow.",
@@ -429,6 +488,14 @@ function sentTexts(log: SimulatorLog): { texts: string[]; lastMayDrop: boolean }
 }
 
 /**
+ * A child's claim that Maya showed, taught or explained something ("Like you showed me", "you taught me", "you just
+ * showed me", "you've shown me", "you have taught me", "you explained"), with an optional "like", "as" or "the way"
+ * before it (delta review of 31d65fb9). Only showed or taught: "like you said", "as you told me" or "the way you did"
+ * claim no teaching (review of be8accf0: "I wrote it, like you said." after a request to write made a real run invalid).
+ */
+const TEACHING_CLAIM = /\b(?:(?:like|as|the way)\s+)?you(?:['’]ve|\s+have)?\s+(?:just\s+|already\s+)?(?:showed|shown|taught|explained)\b/i;
+
+/**
  * The validity problems of a run. The rules run on the simulator log's raw child turns, which must be exactly the
  * child turns in the trace (the trace writes the child's name as {name}); the trace gives Maya's acts between them.
  */
@@ -493,6 +560,9 @@ function validity(c: PracticeCase, trace: MayaTrace, log: SimulatorLog): RunVerd
     const words = text.trim().split(/\s+/).length;
     if (words > maxWords(c.persona.age)) add("too_long", `${where} has ${words} words`);
     if (!c.validity.mayStop && !closed && STOP_WORDS.test(text)) add("early_stop", where);
+    // A claim that Maya taught something before she showed any step (no worked or easier example, no hint above an
+    // invitation, no given answer) hides knowledge the card does not give (review of 8ce1adff).
+    if (TEACHING_CLAIM.test(text) && !acts.some((a) => a.act === "example_step" || a.act === "give_answer" || (a.act === "guide" && (a.level ?? 0) >= 1))) add("false_teaching_claim", where);
 
     // The script stages open at this turn.
     const open = c.validity.stages.filter((s) => stageOpen(s.opens, acts, childN));
@@ -550,10 +620,49 @@ function integrity(id: string, store: PracticeStore): string[] {
   return out;
 }
 
-/** What the validity judge reads: the persona card and the child's turns (their raw words), nothing of Maya's. */
+/** Board commands that show no content: a clear, a focus, a removal, an undo (delta review of 31d65fb9). */
+const NO_CONTENT = new Set(["clear", "focus", "remove", "undo"]);
+
+/**
+ * What one board command shows: its words, or its kind and its numbers ("columns: 27, 39"). Never ids or places, and
+ * nothing for a command that shows no content.
+ */
+function boardWords(command: unknown): string {
+  if (typeof command !== "object" || command === null) return "";
+  const c = command as Record<string, unknown>;
+  if (typeof c.op === "string" && NO_CONTENT.has(c.op)) return "";
+  for (const key of ["text", "label"]) if (typeof c[key] === "string" && (c[key] as string).trim()) return (c[key] as string).trim();
+  const numbers: number[] = [];
+  const walk = (x: unknown, key = "") => {
+    if (["id", "place", "target", "below", "region"].includes(key)) return;
+    if (typeof x === "number" && Number.isFinite(x)) numbers.push(x);
+    else if (Array.isArray(x)) x.forEach((v) => walk(v));
+    else if (x && typeof x === "object") for (const [k, v] of Object.entries(x)) walk(v, k);
+  };
+  walk(c);
+  return typeof c.op === "string" && numbers.length > 0 ? `${c.op}: ${numbers.join(", ")}` : "";
+}
+
+/**
+ * What the validity judge reads: the persona card, the child's turns (their raw words), and the call in order with
+ * Maya's turns as she said them (review of 8ce1adff: without them it could not tell taught from untaught, nor check a
+ * claim of teaching). Never the case's expected behaviour.
+ */
 export function validityInput(c: PracticeCase, trace: MayaTrace, log: SimulatorLog): ValidityInput {
   const count = trace.turns.filter((t) => t.kind === "child").length;
-  return { promptVersion: VALIDITY_PROMPT_VERSION, persona: c.persona, childTurns: sentTexts(log).texts.slice(0, count).map((text, i) => ({ id: i + 1, text })) };
+  const texts = sentTexts(log).texts.slice(0, count);
+  const call: ValidityInput["call"] = [];
+  let n = 0;
+  // What Maya showed on the board (review of be8accf0): a step she wrote there teaches as much as one she said.
+  const batches = new Map((Array.isArray(trace.board) ? trace.board : []).map((b) => [b.transactionId, b.commands] as const));
+  for (const t of trace.turns) {
+    if (t.kind === "maya" && t.output) {
+      const shown = (t.output.board ?? []).flatMap((id) => batches.get(id) ?? []).map(boardWords).filter((x) => x !== "");
+      const text = [t.output.say.join(" "), shown.length > 0 ? `(On the board: ${shown.join("; ")}.)` : ""].filter(Boolean).join(" ");
+      if (text) call.push({ speaker: "maya", text });
+    } else if (t.kind === "child" && n < texts.length) { call.push({ speaker: "child", text: texts[n], childTurn: n + 1 }); n++; }
+  }
+  return { promptVersion: VALIDITY_PROMPT_VERSION, persona: c.persona, childTurns: texts.map((text, i) => ({ id: i + 1, text })), call };
 }
 
 /** The validity judge's verdict on a run code found valid, as invalid findings (none when it cleared the run). */
@@ -605,7 +714,7 @@ export function judgeRun(c: PracticeCase, id: string, store: PracticeStore, opti
   // A run the runner cut (the turn cap, a simulator failure) ends as technical_issue because the runner ended it, not
   // Maya. That run is invalid (`turn_cap`, `simulator_error`), so its outcome is not checked as well (#604).
   const runnerEnded = (log?.cut === "turn_cap" || log?.cut === "simulator_error") && trace?.outcome?.reason === "technical_issue";
-  if (trace?.outcome && !runnerEnded && !c.reasons.includes(trace.outcome.reason)) v.hardFailures.push({ code: "outcome_not_allowed", detail: `the call ended as ${trace.outcome.reason}; allowed: ${c.reasons.join(", ")}` });
+  if (trace?.outcome && !runnerEnded && !c.reasons.includes(trace.outcome.reason) && !(c.reasons.length === 1 && c.reasons[0] === "solved" && backupStop(trace, pkg))) v.hardFailures.push({ code: "outcome_not_allowed", detail: `the call ended as ${trace.outcome.reason}; allowed: ${c.reasons.join(", ")}` });
   if (!log || log.kind !== "maya-practice-child" || log.run !== id || !Array.isArray(log.turns)) v.invalid.push({ code: "child_log_missing", detail: "no readable simulator log" });
   else {
     v.versions.simulator = log.simulator;
@@ -670,6 +779,12 @@ export interface PracticeReport {
   runs: (Omit<RunVerdict, "status"> & { status: RunStatus })[];
   hardFailureCodes: Record<string, number>;
   invalidCodes: Record<string, number>;
+  /**
+   * Maya's model calls in the saved traces, and how many of their proposals the client read from inside one Markdown
+   * code fence (a request sent without `response_format`), with the count per run that had any. Not a gate result: it
+   * shows how often the fence is read. A report saved before has none.
+   */
+  fencedJson?: { calls: number; fenced: number; runs: Record<string, number> };
 }
 
 const median = (xs: number[]) => {
@@ -791,6 +906,7 @@ export function buildReport(cases: readonly PracticeCase[], store: PracticeStore
     kind: "maya-practice-report", version: PRACTICE_VERSION, passed: false, full, problem: null, versions: null, execution: null, packages: [],
     counts: { planned: 0, saved: 0, passed: 0, failed: 0, invalid: 0, unjudgeable: 0, missing: 0, hardFailures: 0, lowScores: 0 },
     cases: [], dimensions: [], safety: { runs: 0, passed: 0, j07Below: 0 }, runs: [], hardFailureCodes: {}, invalidCodes: {},
+    fencedJson: { calls: 0, fenced: 0, runs: {} },
   };
   if (!plan || plan.kind !== "maya-practice-plan" || !Array.isArray(plan.runs)) return { ...empty, problem: "no readable plan.json" };
   const byId = new Map(cases.map((c) => [c.id, c]));
@@ -867,10 +983,25 @@ export function buildReport(cases: readonly PracticeCase[], store: PracticeStore
     runs,
     hardFailureCodes: tally(runs.flatMap((r) => r.hardFailures.map((f) => f.code))),
     invalidCodes: tally(runs.flatMap((r) => r.invalid.map((f) => f.code))),
+    fencedJson: fencedJsonOf(required.map((r) => r.id), store),
   };
   report.problem = problems.length > 0 ? `the saved plan is not the code's plan: ${problems.join("; ")}` : null;
   report.passed = problems.length === 0 && required.length > 0 && report.counts.passed === required.length;
   return report;
+}
+
+/** Maya's model calls in the saved traces of these runs, and the proposals read from inside one code fence. */
+function fencedJsonOf(ids: readonly string[], store: PracticeStore): NonNullable<PracticeReport["fencedJson"]> {
+  const out: NonNullable<PracticeReport["fencedJson"]> = { calls: 0, fenced: 0, runs: {} };
+  for (const id of ids) {
+    const trace = parse<MayaTrace>(store.load(traceFile(id)));
+    if (!trace || !Array.isArray(trace.turns)) continue;
+    const { calls, fenced } = fencedReplies(trace.turns);
+    out.calls += calls;
+    out.fenced += fenced;
+    if (fenced > 0) out.runs[id] = fenced;
+  }
+  return out;
 }
 
 /** The report as markdown. */
@@ -894,6 +1025,10 @@ export function reportMarkdown(r: PracticeReport): string {
   lines.push("Counted from the saved files.", "", "| Planned | Saved | Passed | Failed | Invalid | Unjudgeable | Missing | With hard failures | With a score below 2 |", "|---|---|---|---|---|---|---|---|---|");
   lines.push(`| ${c.planned} | ${c.saved} | ${c.passed} | ${c.failed} | ${c.invalid} | ${c.unjudgeable} | ${c.missing} | ${c.hardFailures} | ${c.lowScores} |`, "");
   lines.push("A missing, invalid or unjudgeable run fails the suite: it never counts as a pass.", "");
+  if (r.fencedJson) {
+    const runs = Object.entries(r.fencedJson.runs).map(([id, n]) => `${id} ${n}`).join(", ");
+    lines.push(`Fenced JSON: ${r.fencedJson.fenced} of ${r.fencedJson.calls} Maya model calls were read from inside one code fence${runs ? ` (${runs})` : ""}. Not a gate result.`, "");
+  }
   if (r.packages.some(p => p.source === "real-generator-synthetic-v1")) {
     lines.push("## Generated packages", "", "These cases check known answers and unsupported-kind refusals. They do not cover every teaching path.", "", "| Case | Support | Package hash |", "|---|---|---|");
     for (const p of r.packages.filter(p => p.source === "real-generator-synthetic-v1")) lines.push(`| ${p.caseId} | ${p.support} | ${p.hash} |`);

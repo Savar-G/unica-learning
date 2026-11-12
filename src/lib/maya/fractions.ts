@@ -36,7 +36,24 @@ export const teachSteps = (pkg: OperationPackage): WorkedStep[] =>
 export const isFractionQuestion = (pkg: OperationPackage) => FRACTION_KINDS.includes(pkg.operation.kind);
 
 /** How the child's turns are read in this call: spoken fractions only in a fraction call (numbers.ts). */
-export const readOptionsFor = (pkg: OperationPackage | null): ReadOptions => ({ fractions: pkg !== null && isFractionQuestion(pkg) });
+export const readOptionsFor = (pkg: OperationPackage | null): ReadOptions => ({
+  fractions: pkg !== null && isFractionQuestion(pkg),
+  known: pkg === null ? [] : knownNumbers(pkg),
+  carries: pkg === null ? [] : pkg.steps.flatMap((st) => ("carryOut" in st && st.carryOut > 0 ? [st.carryOut] : [])),
+});
+
+/** The question's own numbers: its printed operands and every number in its worked steps (PR #624 review). */
+function knownNumbers(pkg: OperationPackage): number[] {
+  const out = new Set<number>();
+  const walk = (x: unknown) => {
+    if (typeof x === "number") out.add(x);
+    else if (Array.isArray(x)) x.forEach(walk);
+    else if (x && typeof x === "object") Object.values(x).forEach(walk);
+  };
+  walk(pkg.operation.operands);
+  walk(pkg.steps);
+  return [...out];
+}
 
 /** The words a question uses to ask for the simplest form. */
 const ASKS_SIMPLEST = /\b(?:simplest|lowest terms|simplify|simplified)\b/i;

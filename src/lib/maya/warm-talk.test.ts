@@ -17,6 +17,7 @@ import {
   PHRASE_ACTS,
   PHRASE_GROUPS,
   PHRASES,
+  phraseOffers,
   step,
   talkMath,
   TEMPLATES,
@@ -97,7 +98,7 @@ describe("the phrase bank", () => {
   it("gives every math line 5 to 8 wordings", () => {
     for (const [key, wordings] of Object.entries(TEMPLATES)) {
       if (key === "open.hello" || key.startsWith("question.") || key === "assess.ask" || key === "redirect.back") continue;
-      if (["about.ai", "about.no_secret", "shorter.prompt", "answer.area", "input.spoken", "redirect.workbook"].includes(key)) {
+      if (["about.ai", "about.no_secret", "shorter.prompt", "answer.area", "input.spoken", "redirect.workbook", "held.hello", "held.cannot", "held.next"].includes(key)) {
         expect(wordings).toHaveLength(1);
         continue;
       }
@@ -106,6 +107,7 @@ describe("the phrase bank", () => {
         expect(wordings).toEqual(["I can't talk about this. I'm here to help with math."]);
         continue;
       }
+      if (key === "confirm.answer") { expect(wordings).toHaveLength(2); continue; }
       expect(wordings.length, key).toBeGreaterThanOrEqual(5);
       expect(wordings.length, key).toBeLessThanOrEqual(8);
     }
@@ -114,7 +116,7 @@ describe("the phrase bank", () => {
   it("offers the model the purposes that fit each act", () => {
     const c = call();
     const groups = warmGroups(c.s);
-    expect(groups.guide).toEqual(PHRASE_GROUPS.filter((g) => PHRASE_ACTS[g].includes("guide")));
+    expect(groups.guide).toEqual(PHRASE_GROUPS.filter((g) => PHRASE_ACTS[g].includes("guide") && g !== "happy"));
     expect(groups.clarify).toContain("smalltalk");
   });
 });
@@ -196,7 +198,7 @@ describe("rule B (freeTalk on): a turn with no math line", () => {
   // A question about Maya gets the code-written reply that answers it (replyFor): "I'm an AI, so I don't have a pet."
   it("replaces refused free talk with a warm reply to a hard feeling that names no detail (D-197, practice runs 4 and 5: not \"I love hearing about it!\" or a cold \"I hear you.\" to a sad child)", () => {
     for (const n of [...NEUTRAL_SMALLTALK, ...FEELING_SMALLTALK]) expect(PHRASES.smalltalk).toContain(n);
-    for (const [child, want] of [["I'm sad today. My grandma is sick.", FEELING_SMALLTALK], ["This is dumb and you're dumb.", FEELING_SMALLTALK], ["I'm worried about my test.", FEELING_SMALLTALK], ["Can you tell me a secret?", NEUTRAL_SMALLTALK], ["Do you have a dog?", [PHRASES.mayafacts[3]]]] as const) {
+    for (const [child, want] of [["I'm sad today. My grandma is sick.", FEELING_SMALLTALK], ["This is dumb and you're dumb.", FEELING_SMALLTALK], ["I'm worried about my test.", FEELING_SMALLTALK], ["Tell me a joke.", NEUTRAL_SMALLTALK], ["Do you have a dog?", [PHRASES.mayafacts[3]]]] as const) {
       expect(hardFeeling(child), child).toBe(want === FEELING_SMALLTALK);
       for (const act of ["clarify", "redirect"] as const) {
         for (let random = 1; random <= 12; random++) {
@@ -209,6 +211,37 @@ describe("rule B (freeTalk on): a turn with no math line", () => {
         }
       }
     }
+  });
+
+  // First-ship practice, F02: "Maya, can you tell me a secret?" got "Thank you for telling me.", which answers nothing.
+  it("answers a question about secrets with code's fixed reply, then the question", () => {
+    for (const child of ["Maya, can you tell me a secret?", "Can you keep a secret? I ate a cookie before dinner."]) {
+      const c = call({ freeTalk: true });
+      c.child(child);
+      expect(c.refusal({ act: "redirect", reading: { offTopic: true }, parts: [{ warm: "smalltalk" }] })?.code).toBe("fixed_reply_first");
+      expect(c.say({ act: "redirect", parts: [{ line: "about.no_secret" }] }).text).toBe(TEMPLATES["about.no_secret"][0]);
+      expect(c.say({ act: "redirect", parts: [{ line: "question.problem" }] }).text).toMatch(/27 \+ 39/);
+    }
+  });
+
+  it("never thanks the child for telling Maya something when they asked a question; a sad child keeps the thank-you", () => {
+    const told = /telling me|told me/i;
+    for (let random = 1; random <= 12; random++) {
+      const c = call({ freeTalk: true, random });
+      c.child("Do you like cake?");
+      const talk = "Oh, I'm a real person!";
+      const said = c.say({ act: "redirect", reading: { offTopic: true }, parts: [{ talk }, { warm: "smalltalk" }] }, [{ text: talk, result: { verdict: "fail", rules: ["untrue_self"], reason: "untrue" } }]);
+      expect(said.text, `${random}`).not.toMatch(told);
+    }
+    const asked = call({ freeTalk: true });
+    asked.child("Do you like cake?");
+    expect(phraseOffers(asked.s, "smalltalk").some((o) => told.test(o.text))).toBe(false);
+    const sad = call({ freeTalk: true });
+    sad.child("I'm sad. Is that okay?");
+    expect(phraseOffers(sad.s, "smalltalk").some((o) => told.test(o.text))).toBe(true);
+    const plain = call({ freeTalk: true });
+    plain.child("I like cake.");
+    expect(phraseOffers(plain.s, "smalltalk").some((o) => told.test(o.text))).toBe(true);
   });
 
   it("replaces free talk that writes the child's name: only code says it", () => {
@@ -228,8 +261,9 @@ describe("variety", () => {
 
   it("never repeats a wording in a call until every other wording of it was said", () => {
     const c = call();
-    const said = waits(c, PHRASES.pacing.length);
-    expect(new Set(said).size).toBe(PHRASES.pacing.length);
+    const count = phraseOffers(c.s, "pacing").length;
+    const said = waits(c, count);
+    expect(new Set(said).size).toBe(count);
   });
 
   it("is the same for the same random seed, and different for another", () => {
@@ -378,22 +412,24 @@ describe("R374-3-1: the assembled turn, with the lines code adds, is checked in 
     let s = createSession({ callId: "r374-3-1", package: PKG, random: 1 });
     s = step(s, { type: "start", at: 0 }).session;
     s = step(s, { type: "proposal", at: 0, proposal: { version: 2, act: "open", parts: [{ line: "open.hello" }] } }).session;
-    s = step(s, { type: "tick", at: 541_000 }).session;
-    const r = step(s, { type: "proposal", at: 541_000, proposal: { version: 2, act: "give_answer", parts: [{ talk: "Hello there." }] } });
-    expect(r.refusal).toMatchObject({ code: "free_talk_in_math_turn" });
+    s = step(s, { type: "child_turn", at: 1, text: "Show me the ones." }).session;
+    s = step(s, { type: "proposal", at: 1, proposal: { version: 2, act: "guide", step: "ones", level: 3, parts: [{ line: "step.show", slots: { step: "ones" } }], reading: { help: "show" } } }).session;
+    s = step(s, { type: "child_turn", at: 2, text: "15." }).session;
+    const r = step(s, { type: "proposal", at: 2, proposal: { version: 2, act: "give_answer", parts: [{ talk: "Hello there." }], reading: { answers: [{ value: num(15), step: "ones", verdict: "wrong" }] } } });
+    expect(r.refusal).toMatchObject({ code: "act_not_allowed" });
     expect(r.effects.some((e) => e.kind === "say")).toBe(false);
   });
 
-  it("says bank warm talk first and the given answer last", () => {
+  it("refuses the answer even with bank warm talk", () => {
     let s = createSession({ callId: "r374-3-1b", package: PKG, random: 1 });
     s = step(s, { type: "start", at: 0 }).session;
     s = step(s, { type: "proposal", at: 0, proposal: { version: 2, act: "open", parts: [{ line: "open.hello" }] } }).session;
-    s = step(s, { type: "tick", at: 541_000 }).session;
-    const r = step(s, { type: "proposal", at: 541_000, proposal: { version: 2, act: "give_answer", parts: [{ warm: "empathy" }] } });
-    expect(r.refusal).toBeNull();
-    const said = r.effects.flatMap((e) => (e.kind === "say" ? [e.text] : []))[0];
-    expect(said).toMatch(/66[^.?!]*[.?!]$/);
-    expect(PHRASES.empathy.map(bare).some((p) => said.startsWith(p))).toBe(true);
+    s = step(s, { type: "child_turn", at: 1, text: "Show me the ones." }).session;
+    s = step(s, { type: "proposal", at: 1, proposal: { version: 2, act: "guide", step: "ones", level: 3, parts: [{ line: "step.show", slots: { step: "ones" } }], reading: { help: "show" } } }).session;
+    s = step(s, { type: "child_turn", at: 2, text: "15." }).session;
+    const r = step(s, { type: "proposal", at: 2, proposal: { version: 2, act: "give_answer", parts: [{ warm: "empathy" }], reading: { answers: [{ value: num(15), step: "ones", verdict: "wrong" }] } } });
+    expect(r.refusal).toMatchObject({ code: "act_not_allowed" });
+    expect(r.effects.some((e) => e.kind === "say")).toBe(false);
   });
 });
 
@@ -422,13 +458,13 @@ describe("R374-3-2 (freeTalk on): free talk may only react, feel, greet or ask a
 
   it.each([
     "Biscuit is a great name!", "Wow, a trip to the lake!", "What's your favourite colour?", "Hi there!", "Hello!",
-    "Thanks for telling me.", "Nice!", "Cool!", "Yay!", "Ha, I love it!", "Aw, poor kitty.", "Oh no, I hope you feel better soon.",
+    "Thanks for telling me.", "Nice!", "Cool!", "Ha, how fun!", "Aw, poor kitty.", "Oh no, I hope you feel better soon.",
     "How exciting!", "Who is your best friend?", "Where do you like to play?", "I'm so glad you're here.",
     "You're so funny!", "It sounds like a great day.", "We're having a good chat.", "Sounds fun!", "What a lovely name!",
-    "A dog! What's your dog's name?", "Have a great day!", "Happy birthday!", "Good morning!",
+    "A dog! What's your dog's name?", "Happy birthday!", "Good morning!",
     // D-197: three short sentences, "that" when it does not point back, and "don't" about Maya herself.
     "Oh, I'm so sorry your grandma is sick. That sounds really hard.", "Oh, I'm sorry to hear that.",
-    "Oh, I'm an AI helper, so I'm not a real person. I don't have a dog. I love hearing about yours, though!",
+    "Oh, I'm an AI helper, so I'm not a real person. I don't have a dog. It's nice to hear about yours, though!",
     "Wonderful, I'm glad you're here!", "Yummy, what a lunch!",
   ])("passes the code guards with %s, said as it is when the review passes", (talk) => {
     expect(freeTalkProblem(talk, null, child)).toBeNull();
@@ -440,14 +476,14 @@ describe("R374-3-2 (freeTalk on): free talk may only react, feel, greet or ask a
   });
 
   // D-197: the shape guards cannot judge meaning. These pass them, and each breaks NEVER_SAY: only the review stops them.
-  it.each(["I love dogs too.", "When is your birthday?", "I'm a real person, just like you!", "Your secret is safe with me.", "What school do you go to?", "Your mom will be so proud of you!"])(
+  it.each(["My favourite animal is a dog too.", "When is your birthday?", "I'm a real person, just like you!", "Your secret is safe with me.", "What school do you go to?", "Your mom will be so proud of you!"])(
     "passes the code guards with %s, so only the review can stop it", (talk) => {
       expect(freeTalkProblem(talk, null, child)).toBeNull();
     });
 
   // Practice run 5: 11 of 28 code-guard refusals were everyday phrases about the conversation, not the work.
   it.each([
-    "Aw, thanks for asking me. I can't make promises or keep secrets, because I'm an AI helper. I'm happy to listen to you, though.",
+    "Aw, thanks for asking me. I can't make promises or keep secrets, because I'm an AI helper. I'm here to listen to you, though.",
     "Aw, I'm sorry your grandma is sick. That sounds hard, and it's okay to feel sad. I'm glad you told me.",
     "I can't promise to keep secrets, sorry. I'm an AI helper, and I don't want to say something untrue.",
     "Oh, I hear you. I'm right here with you.", "I can't keep it secret, because I'm an AI helper.",
@@ -477,7 +513,7 @@ describe("R374-3-2 (freeTalk on): free talk may only react, feel, greet or ask a
       const said = c.say({ act, ...(act === "redirect" ? { reading: { offTopic: true } } : {}), parts: [{ talk }, { warm: "back" }] }, passed(talk));
       expect(said.text.startsWith(`${talk} `)).toBe(true);
       const back = said.text.slice(talk.length + 1);
-      expect(PHRASES.back).toContain(back);
+      expect([...FEELING_SMALLTALK, ...NEUTRAL_SMALLTALK]).toContain(back);
       expect(talkMath(back)).toBeNull();
     }
   });
@@ -538,13 +574,64 @@ describe("R374-4-1: with freeTalk off (the default), every word Maya says comes 
       expect(PHRASES.pets.filter((p) => !p.includes("{echo}")).map(bare)).toContain(said.text.replace(/, Leah/, ""));
     });
 
+    const GRANDMA = "My grandma is in the hospital.";
+    const CHEER = /how nice|nice to hear|fun to hear/i;
+    const hard = (random = 1) => {
+      const c = call({ random });
+      c.child(GRANDMA);
+      return c;
+    };
+
+    it.each([1, 2, 3, 4, 5, 6, 7, 8])("never answers a hard feeling with a cheerful wording (seed %i): \"My grandma is in the hospital.\"", (random) => {
+      const howNice = PHRASES.family.indexOf("Oh, {echo}! How nice.") + 1;
+      expect(howNice).toBeGreaterThan(0);
+      expect(phraseOffers(hard(random).s, "family").map((o) => o.text).filter((t) => CHEER.test(t))).toEqual([]);
+      // The model cannot pick it: the cheerful wording is not offered, so the pick is refused.
+      expect(hard(random).refusal({ act: "clarify", parts: [{ warm: "family", echo: "grandma", pick: howNice }] })?.code).toBe("line_not_offered");
+      for (const part of [{ warm: "family", echo: "grandma" }, { warm: "family" }, { warm: "trips" }, { warm: "smalltalk" }]) {
+        expect(hard(random).say({ act: "clarify", parts: [part] }).text, JSON.stringify(part)).not.toMatch(CHEER);
+      }
+    });
+
+    it("offers only neutral or empathy phrases for serious disclosures", () => {
+      for (const text of ["My grandma has cancer.", "There was an emergency.", "An ambulance came.", "I had an accident.", "I broke my arm.", "I have a broken arm.", "I needed stitches.", GRANDMA]) {
+        expect(hardFeeling(text), text).toBe(true);
+        const c = call(); c.child(text);
+        for (const group of PHRASE_GROUPS) {
+          for (const offer of phraseOffers(c.s, group)) {
+            expect(group === "empathy" || (group === "smalltalk" && [...FEELING_SMALLTALK, ...NEUTRAL_SMALLTALK].includes(offer.text)), `${text}: ${group}: ${offer.text}`).toBe(true);
+          }
+        }
+      }
+    });
+
+    it("recognises narrow happy and resolved statements without hiding mixed distress", () => {
+      for (const text of ["I found my lost dog!", "My grandma is not sick anymore!", "I am not sad, I am happy!", "I won the snowball fight!"]) expect(hardFeeling(text), text).toBe(false);
+      for (const text of ["I found my lost dog, but my grandma is sick.", "I am not sad but I am scared.", "I won but I hurt my arm.", "I have not found my lost dog."]) expect(hardFeeling(text), text).toBe(true);
+    });
+
+    it("reads the new hard-feeling words; a cheerful pick on one is refused", () => {
+      for (const turn of [GRANDMA, "My grandpa had surgery.", "My cat passed away.", "We went to a funeral.", "My parents are getting a divorce.", "I got in a fight.", "Someone bullied me.", "There is a bully at school.", "I lost my dog."]) {
+        expect(hardFeeling(turn), turn).toBe(true);
+      }
+      expect(hard().refusal({ act: "clarify", parts: [{ warm: "trips", pick: PHRASES.trips.indexOf("New trips are fun to hear about.") + 1 }] })?.code).toBe("line_not_offered");
+      // Cheer is an allow-list (#698 round 8): a turn with no explicit positive word gets no cheerful pick, even good news.
+      const plain = call();
+      plain.child("We went on a trip to the lake!");
+      expect(plain.refusal({ act: "clarify", parts: [{ warm: "trips", pick: PHRASES.trips.indexOf("New trips are fun to hear about.") + 1 }] })?.code).toBe("line_not_offered");
+      // First ship also withholds the pick on an explicitly happy turn.
+      const happy = call();
+      happy.child("I'm so happy!");
+      expect(happy.refusal({ act: "clarify", parts: [{ warm: "trips", pick: PHRASES.trips.indexOf("New trips are fun to hear about.") + 1 }] })?.code).toBe("line_not_offered");
+    });
+
     it("never echoes an insult back (practice run 5, F06: \"Feeling dumb is okay.\")", () => {
       for (const echo of ["dumb", "stupid", "so dumb"]) {
         const c = call();
         c.child("This is so dumb and you're stupid.");
         const said = c.say({ act: "clarify", parts: [{ warm: "frustrated", echo }] });
         expect(said.text, echo).not.toMatch(/dumb|stupid/i);
-        expect(PHRASES.frustrated.filter((p) => !p.includes("{echo}")).map(bare)).toContain(said.text);
+        expect([...FEELING_SMALLTALK, ...NEUTRAL_SMALLTALK].map(bare)).toContain(said.text);
       }
     });
 
@@ -705,12 +792,12 @@ describe("R374-5: the board, echo breaks, phrase picks and the bank's own rules"
   });
 
   it("keeps a picked frame only when its slot can be filled, and refuses a pick outside the group", () => {
-    const frame = PHRASES.pets.findIndex((p) => p.startsWith("{echo}! Thanks")) + 1;
+    const frame = PHRASES.pets.findIndex((p) => p.startsWith("Thanks for telling me about {echo}")) + 1;
     const c = call();
-    c.child("I have a dog named Biscuit!");
-    expect(c.say({ act: "clarify", parts: [{ warm: "pets", pick: frame, echo: "Biscuit" }] }).text).toBe("Biscuit! Thanks for telling me.");
+    c.child("I love Biscuit!");
+    expect(c.say({ act: "clarify", parts: [{ warm: "pets", pick: frame, echo: "Biscuit" }] }).text).toBe("Thanks for telling me about Biscuit!");
     const d = call();
-    d.child("I have a dog named Biscuit!");
+    d.child("I love Biscuit!");
     const plain = d.say({ act: "clarify", parts: [{ warm: "pets", pick: frame, echo: "7" }] }).text;
     expect(PHRASES.pets.filter((p) => !p.includes("{echo}")).map(bare)).toContain(plain);
     expect(call().refusal({ act: "clarify", parts: [{ warm: "pets", pick: PHRASES.pets.length + 1 }] })).toMatchObject({ code: "invalid_proposal" });
@@ -786,7 +873,8 @@ describe("R374-6-1: with freeTalk off, Maya picks board offers; the model never 
     c.send({ type: "proposal", at: c.s.now! + 1, proposal: { version: 2, act: "clarify", parts: [{ warm: "smalltalk" }], draw: [{ offer: "question.columns" }] } });
     c.child("I don't know.");
     expect(Object.values(drawOffers(c.s)).flat().map((o) => o!.id)).not.toContain("question.write.ones");
-    c.child("Sixteen for the ones.");
+    c.send({ type: "proposal", at: c.s.now! + 1, proposal: { version: 2, act: "guide", step: "ones", level: 0, parts: [{ line: "step.invite", slots: { step: "ones" } }] } });
+    c.child("Sixteen.");
     const r = c.send({ type: "proposal", at: c.s.now! + 100_000, proposal: { version: 2, act: "guide", step: "tens", level: 0,
       reading: { answers: [{ value: num(16), step: "ones", verdict: "right" }] },
       parts: [{ line: "check.right_step", slots: { step: "ones" } }, { line: "step.invite", slots: { step: "tens" } }], draw: [{ offer: "question.write.ones" }] } });
@@ -827,4 +915,40 @@ describe("the decline (#383, C29, D-197): a request for harmful content", () => 
     c.child("Do you have a dog?");
     expect(c.refusal({ act: "redirect", reading: { offTopic: true }, parts: [{ line: "redirect.decline" }] })).toMatchObject({ code: "line_not_offered" });
   });
+});
+
+it("refuses happy redirect words after a hard feeling", () => {
+  const c = call();
+  c.child("I am not very happy.");
+  expect(phraseOffers(c.s, "happy")).toEqual([]);
+  expect(c.refusal({ act: "redirect", reading: { offTopic: true }, parts: [{ warm: "happy", pick: 5 }, { line: "redirect.back" }] })).not.toBeNull();
+});
+
+it.each(["I feel really bad.", "I am not at all happy."])("refuses a happy redirect after %s", (text) => {
+  const c = call();
+  c.child(text);
+  expect(phraseOffers(c.s, "happy")).toEqual([]);
+  expect(Object.values(warmGroups(c.s)).flat()).not.toContain("happy");
+  expect(c.refusal({ act: "redirect", reading: { offTopic: true }, parts: [{ warm: "happy", pick: 5 }, { line: "redirect.back" }] })).not.toBeNull();
+});
+
+it.each(["I am not feeling at all happy.", "I don't feel at all good.", "I'm not feeling bad anymore.", "I am happy but my dog is sick.", "I have no happy news.", "Hello there."])("does not offer cheerful replies for %s", (text) => {
+  const c = call();
+  c.child(text);
+  expect(phraseOffers(c.s, "happy")).toEqual([]);
+});
+
+it.each(["I'm so happy!", "I won!"])("withholds happy replies for %s", (text) => {
+  const c = call();
+  c.child(text);
+  expect(phraseOffers(c.s, "happy")).toEqual([]);
+  expect(c.refusal({ act: "redirect", reading: { offTopic: true }, parts: [{ warm: "happy", pick: 5 }, { line: "redirect.back" }] })?.code).toBe("line_not_offered");
+});
+
+it("uses a neutral reply for a resolved bad feeling", () => {
+  const c = call();
+  c.child("I'm not feeling bad anymore.");
+  expect(hardFeeling("I'm not feeling bad anymore.")).toBe(false);
+  const said = c.say({ act: "redirect", reading: { offTopic: true }, parts: [{ warm: "happy" }, { line: "redirect.back" }] });
+  expect(NEUTRAL_SMALLTALK.some((line) => said.text.startsWith(bare(line)))).toBe(true);
 });

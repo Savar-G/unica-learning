@@ -8,7 +8,8 @@ export {
   runSuite, simFile, traceFile, PRACTICE_VERSION, freeTalkMarkdown, freeTalkReport, type FreeTalkPiece, type FreeTalkReport,
   type InvalidCode, type RunRecord, type ValidityLog, type PracticeDeps, type PracticePlan, type PracticeReport, type PracticeStore, type PracticeVersions, type RunStatus, type RunVerdict,
 } from "./practice";
-export { cappedClient, estimateCost, meteredFetch, MARGIN, OUTPUT_TOKENS, ROLES, Spending, type ByRole, type CostEstimate, type Price, type Role } from "./cost";
+export { cappedClient, estimateCost, MAX_OUTPUT_TOKENS, meteredFetch, MARGIN, OUTPUT_TOKENS, ROLES, Spending, worstReviewUsd, type ByRole, type CostEstimate, type Price, type Role } from "./cost";
+export { capProblem, checkCredits, DEFAULT_CONCURRENCY, inFlightNeed, OPENROUTER_CONCURRENCY, practiceConcurrency, type CreditCheck } from "./credits";
 export { aiValidityJudge, fakeValidityJudge, readValidity, VALIDITY_PROMPT_VERSION, VALIDITY_SYSTEM, type ValidityInput, type ValidityJudge } from "./validity-judge";
 export { timedTurns, turnTimeMarkdown, type CallTimes, type TurnTimeReport } from "./turn-time";
 

@@ -53,7 +53,8 @@ describe("first ship public Maya copy", () => {
     };
     const violations: string[] = [];
     for (const path of publicSources()) {
-      const relative = path.slice(root.length + 1);
+      // Windows paths use backslashes; the allow-list keys use slashes.
+      const relative = path.slice(root.length + 1).replace(/\\/g, "/");
       if (relative.startsWith("lib/") && relative.slice(4).includes("/")) continue;
       readFileSync(path, "utf8").split("\n").forEach((line, index) => {
         if (/^\s*(?:\/\/|\/\*|\*)/.test(line)) return;

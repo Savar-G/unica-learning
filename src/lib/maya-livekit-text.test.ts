@@ -19,7 +19,7 @@ describe("LiveKit text mode", () => {
           ? { version: 2, act: "open", parts: [{ line: "open.hello" }] }
           : n === 1
             ? wrong
-            : { version: 2, act: "guide", step: "ones", level: 0, parts: [{ line: "step.invite", slots: { step: "ones" } }], reading: { answers: [{ value: num(56), step: "result", verdict: "wrong" }] } },
+            : { version: 2, act: "guide", step: "ones", level: 0, parts: [{ line: "check.not_yet", slots: { step: "result" } }, { line: "step.invite", slots: { step: "ones" } }], reading: { answers: [{ value: num(56), step: "result", verdict: "wrong" }] } },
     });
     let now = Date.UTC(2026, 9, 31, 16);
     const text = createTextSession({ callId: "lk-1", package: SAMPLE_PACKAGES["add-27-39"], model, clock: () => (now += 1000), random: 1, runner: "livekit-text" });

@@ -22,6 +22,41 @@ export function parseWorkbookReference(text: unknown): { page: number; question:
   return page >= 1 && page <= 1000 && question >= 1 && question <= 1000 ? { page, question } : null;
 }
 
+/** Family selection reads only summaries and page existence before the one requested package (#677). */
+export interface FamilyWorkbookReader {
+  books: Pick<WorkbookStore, "childWorkbooks" | "question">;
+  pageExists(workbookId: string, page: number): Promise<boolean>;
+}
+export type FamilyWorkbookSelection = { ok: true; ref: WorkbookQuestionRef; package: QuestionPackage } |
+  { ok: false; error: "not_found" | "invalid_question" | "reference_again"; say: string };
+
+/** The authenticated desk supplies the parent and child. No request field can replace them. */
+export async function familyWorkbookIsShipped(parent: string, child: string, workbook: string, reader: FamilyWorkbookReader): Promise<boolean> {
+  if (![parent, child, workbook].every(isUuid)) return false;
+  return (await reader.books.childWorkbooks(child)).some(b => b.id === workbook && b.parentId === parent && b.childId === child && b.status === "shipped");
+}
+
+export async function selectFamilyWorkbookQuestion(parent: string, child: string, input: Omit<WorkbookSelectionInput, "childId">, reader: FamilyWorkbookReader): Promise<FamilyWorkbookSelection> {
+  const refuseFamily = (error: "not_found" | "invalid_question" | "reference_again", say = WORKBOOK_REFERENCE_REFUSED): FamilyWorkbookSelection => ({ ok: false, error, say });
+  const typed = input.reference !== undefined;
+  const at = typed ? parseWorkbookReference(input.reference) : { page: input.page, question: input.question };
+  if ((typed && (input.page !== undefined || input.question !== undefined)) || !at ||
+    !Number.isInteger(at.page) || !Number.isInteger(at.question) || Number(at.page) < 1 || Number(at.page) > 1000 || Number(at.question) < 1 || Number(at.question) > 1000) return refuseFamily("reference_again", WORKBOOK_REFERENCE_AGAIN);
+  if (!isUuid(input.workbookId)) return refuseFamily("not_found");
+  const workbookId = input.workbookId.toLowerCase();
+  if (!await familyWorkbookIsShipped(parent, child, workbookId, reader)) return refuseFamily("not_found");
+  if (!await reader.pageExists(workbookId, Number(at.page))) return refuseFamily("not_found", `Page ${at.page} is not in this workbook.`);
+  const ref: WorkbookQuestionRef = { source: "workbook", workbookId, page: Number(at.page), question: Number(at.question) };
+  const found = await reader.books.question(ref);
+  if (found.status !== "found") return refuseFamily("invalid_question", `Page ${at.page} has no available number ${at.question}.`);
+  const checked = checkQuestionPackage(found.package);
+  if (!checked.ok || checked.package.ref.source !== "workbook" || checked.package.ref.workbookId !== workbookId || checked.package.ref.page !== ref.page || checked.package.ref.question !== ref.question) return refuseFamily("invalid_question");
+  // Selection may have waited for storage. A book taken out of shipment in that interval cannot start teaching.
+  if (!await familyWorkbookIsShipped(parent, child, workbookId, reader)) return refuseFamily("not_found");
+  // Valid but unsupported packages reach the controller's D-279 held path. It invents no alternate question.
+  return { ok: true, ref, package: checked.package };
+}
+
 export interface WorkbookSelectionInput {
   childId: unknown;
   workbookId: unknown;

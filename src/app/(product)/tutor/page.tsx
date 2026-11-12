@@ -107,6 +107,7 @@ export default async function DeskPage({ searchParams }: PageProps<"/tutor">) {
         text: x.text,
         crop: image ? questionCrop(page, x.number) : null,
         board: questionBoard(x.columns),
+        held: x.held,
       }))}
       picked={view.picked}
       openPicker={pick === "1" || from === "qr"}

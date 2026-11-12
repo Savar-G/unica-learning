@@ -98,6 +98,9 @@ export interface NumbersRead {
  * "negative" before a number makes it negative; "minus" or "-" after a number in the same sentence is a subtraction.
  * A sentence end or a new line (between two turns) ends a number, so "27. -66." is 27 and -66.
  */
+/** The words after "to the" that name a place on the page, never a value: "to the tens", "to the top", "to the next column". */
+const TO_THE_PLACE = /^(?:ones?|tens?|hundreds?|thousands?|tenths?|hundredths?|thousandths?|top|bottom|left|right|next|column|columns|side|front|end|row|board|paper|page)$/;
+
 export function readNumbers(text: string, options?: ReadOptions): NumbersRead {
   text = prepared(text, options);
   if (text.includes(UNREAD_MARK)) return { values: [], unreadable: true, lastInOperation: false, notAnswer: [], operand: [] };
@@ -174,8 +177,19 @@ export function readNumbers(text: string, options?: ReadOptions): NumbersRead {
       else unreadable = true;
       continue;
     }
+    // "6 in the ones", "16 for the ones": the digits of a column, as above. A bigger number is left as it is.
+    if ((token === "in" || token === "for") && next === "the" && PLACE.test(tokens[i + 2] ?? "") && (afterNumber || last !== null)) {
+      flush();
+      const at = items.length - 1;
+      const n = items[at];
+      if (typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= PLACED_MAX) placed.add(at);
+      i += 2;
+      continue;
+    }
+    // "66 to the power of 2" is a form code does not read. "Carry the 1 to the tens" names a place (#605: a clear
+    // carry was confirmed as if unclear): "to the" before a place or position word is a location, read as nothing.
     if (token === "to" && next === "the" && (afterNumber || last !== null)) {
-      unreadable = true;
+      if (!TO_THE_PLACE.test(tokens[i + 2] ?? "")) unreadable = true;
       continue;
     }
     if (FILLER.test(token)) continue;
@@ -245,7 +259,8 @@ export function readNumbers(text: string, options?: ReadOptions): NumbersRead {
       continue;
     }
     if (startsNewNumber(last, kind)) flush();
-    if (last === null) pointedAt = POINTER.test(tokens[i - 1] ?? "");
+    // "a ten", "the carry ten", "carried one": a digit the child points at. "a hundred" is still a number.
+    if (last === null) pointedAt = POINTER.test(tokens[i - 1] ?? "") || (/^(?:an?|carry|carried)$/.test(tokens[i - 1] ?? "") && (token === "ten" || token === "one"));
     switch (kind) {
       case "unit":
       case "teen":
@@ -301,12 +316,27 @@ export const valuesIn = (text: string, options?: ReadOptions): AnswerValue[] => 
 /** How a turn is read: `fractions` reads the exact spoken fraction forms, in a call about a fraction question. */
 export interface ReadOptions {
   fractions?: boolean;
+  /**
+   * The question's own numbers: its printed operands and every number of its worked steps (digits, carries, column
+   * totals). Working the child drops after an answer may hold these and single digits only (PR #624 review).
+   */
+  known?: number[];
   /** Scope reads complete operands too. Answer reading still rejects unfinished fraction calculations. */
   operands?: boolean;
+  /** The carries of the question's worked steps: the only numbers a carry sentence may point back at ("I carry 1."). */
+  carries?: number[];
+  /** Numbers from the child's earlier turns and done steps: the only ones "I already said" may point back at. */
+  saidBefore?: number[];
 }
 
 /** The text as the readers take it: in a fraction call, with its spoken fractions written (writtenFractions). */
-const prepared = (text: string, options?: ReadOptions) => (options?.fractions ? writtenFractions(text, options).replace(MIXED, `$1${MIX_MARK}$2/$3`) : text);
+const prepared = (text: string, options?: ReadOptions) => (options?.fractions ? writtenFractions(text.replace(POINTING_ONE, "$1"), options).replace(MIXED, `$1${MIX_MARK}$2/$3`) : text);
+/**
+ * "that one" or "this one" at the end of a clause is the question, not a number ("I got 7/8 for that one."). In a fraction
+ * call the stray "one" made the turn unreadable, so Maya asked for an answer the child had just given (first-ship practice,
+ * C38-r1). "that one third" goes on to a fraction and stays as it is.
+ */
+const POINTING_ONE = /\b(that|this)\s+one\b(?=\s*(?:[.,;:!?\n]|$))/gi;
 
 /** The denominator words code reads, one word each, singular and plural: "half" and "halves" are 2. */
 const DENOMINATORS = new Map<string, { value: number; plural: boolean }>();
@@ -373,7 +403,12 @@ export function writtenFractions(text: string, options?: ReadOptions): string {
     const d = bar ? integer(k + 1, 1) : { from: k, to: k, value: den!.value };
     // Ordinals and clock wording stay ordinary words: "a third time", "a quarter past 3".
     if (!bar && !n) {
-      if (den!.plural) invalid(k);
+      // "I used eighths." names a method, not an incomplete amount. Ignore only
+      // this complete nonnumeric sentence; keep doubt, corrections and numeric work.
+      const method = den!.plural && /(?:^|[.!?;\n])\s*i\s+used\s+$/.test(low.slice(0, words[k].at)) &&
+        /^\s*(?:[.!?;\n]|$)/.test(low.slice(words[k].end));
+      if (method) spans.push({ from: k, to: k, text: "", anchor: k });
+      else if (den!.plural) invalid(k);
       continue;
     }
     const following = k + 1 < words.length ? low.slice(words[k + 1].at) : "";
@@ -414,17 +449,17 @@ export function writtenFractions(text: string, options?: ReadOptions): string {
   // Recognize local fraction forms before classifying corrections. Reuse these
   // exact spans so article fractions and digit fractions have the same grammar.
   // Their source offsets stay unchanged, even when the written form is shorter.
-  const fractionStarts = new Set(spans.filter((span) => span.text !== UNREAD_MARK).map((span) => words[span.from].at));
+  const fractionStarts = new Set(spans.filter((span) => span.text && span.text !== UNREAD_MARK).map((span) => words[span.from].at));
   const corrections = correctionRuns(low, (at) => fractionStarts.has(at)).filter((run) => run.clean);
   const expressionBoundary = (at: number) => {
     const word = words[at];
     return (options?.operands && /^(?:minus|-)$/i.test(word.t)) || /^[.!?;:\n]$/.test(word.t) || RESULT.test(word.t) || OPERATION.test(word.t) || EXPLANATION.test(word.t) ||
       /^(?:so|then)$/.test(word.t) || corrections.some((run) => word.at >= run.index && word.end <= run.end);
   };
-  const recognizedNumbers = new Set(spans.filter(span => span.text !== UNREAD_MARK).flatMap(span =>
+  const recognizedNumbers = new Set(spans.filter(span => span.text && span.text !== UNREAD_MARK).flatMap(span =>
     Array.from({ length: span.to - span.from + 1 }, (_, i) => span.from + i)));
   for (const span of spans) {
-    if (span.text === UNREAD_MARK) continue;
+    if (!span.text || span.text === UNREAD_MARK) continue;
     let expressionFrom = span.from;
     let expressionTo = span.to;
     while (expressionFrom > 0 && !expressionBoundary(expressionFrom - 1)) expressionFrom -= 1;
@@ -518,16 +553,66 @@ function correctionRuns(text: string, numberStartsAt?: (at: number) => boolean):
 const takeBacks = (text: string) => correctionRuns(text);
 
 /**
- * A negative anywhere in the turn ("It is not 66", "66 isn't right", "that's wrong", "I don't think it's 66"): a number
- * near it may be rejected rather than given, so the turn holds no answer and Maya asks (R391-3). No reading of what the
- * negative applies to is tried, because none is reliable in children's speech.
+ * A negative word ("It is not 66", "66 isn't right", "that's wrong", "I don't think it's 66"). It takes back a number in
+ * its own sentence (withoutNegated), and one it points back to (POINTS_BACK). A number beside any negative is never sure
+ * (R391-3): Maya confirms it before she accepts it.
  */
 const NEGATIVE = /\b(?:not|never|wrong|nope|nah|false|untrue|doubt|doubts|withdraw|withdrawn|retract|incorrect|mistake|mistaken|reject|rejected|ruled|scratch|forget|ignore|undo|cancel|dont|doesnt|didnt|isnt|wasnt|arent|werent|cant|wont|couldnt|shouldnt|aint)\b|\w+n['’]t\b|\b(?:take|taking|took|takes) (?:that|it|this|my answer|it all)? ?back\b|\b(?:erase|erased|delete|deleted|rub out|cross out|crossed out|start over|redo|different answer)\b|\b(?:change|changed|changing) (?:my|the) answer\b|\b(?:changed?|changing) my mind\b|\bnever ?mind\b/i;
 /**
- * Words of doubt, and a question mark (R391-5): "maybe 66", "is it 66?", "66 or something", "66, I am unsure". The
- * number may still be judged wrong, but it is never accepted as right: Maya confirms it first.
+ * A negative that points back at what the child said, in a sentence of its own: "That is wrong", "That's not it", "I
+ * don't think so", "Not really", "I take it back" (#605). Every other negative ("I don't know what to do with it", "I
+ * can't remember why") says nothing about the number before it, and the number stays. "My teacher says 56. You are wrong."
+ * counts as pointing back: the 56 is not the child's own answer, so no number is kept and Maya asks on (C10).
  */
-const DOUBT = /\b(?:maybe|perhaps|probably|possibly|guess|guessing|unsure|sure|or something|or so|ish|dunno|idk|kinda|sorta)\b|\?/i;
+const POINTS_BACK = /\b(?:wrong|nope|nah|false|untrue|doubts?|withdraw|withdrawn|retract|incorrect|mistake|mistaken|reject|rejected|ruled|scratch|forget|ignore|undo|cancel)\b|\b(?:take|taking|took|takes) (?:that|it|this|my answer|it all)? ?back\b|\b(?:erase|erased|delete|deleted|rub out|cross out|crossed out|start over|redo|different answer)\b|\b(?:change|changed|changing) (?:my|the) answer\b|\b(?:changed?|changing) my mind\b|\bnever ?mind\b|\b(?:that|it|this|those|these|mine|answer)(?:['’]?s| is| was| are| were)?\s+(?:not|never)\b|\b(?:that|it|this|those|these|mine|answer)\s+(?:isn['’]?t|wasn['’]?t|aren['’]?t|weren['’]?t)\b|\b(?:isn['’]?t|wasn['’]?t|aren['’]?t|not|never)\s+(?:right|correct|true|it|the answer|that|so)\b|\b(?:don['’]?t|do not|didn['’]?t|did not)\s+(?:think|believe|mean|want)\b|^[\s\W]*(?:not|never)(?:\s+(?:really|quite|at all))?[\s\W]*$/i;
+/**
+ * The clauses a negative can reach: a sentence end, a semicolon, "but" or ", so" ends one ("16 but I don't know what to
+ * do", "The one is not a big deal, so it's still 56": practice run 1 of #605, C10-r1).
+ */
+const CLAUSE_END = /(?<=[.!?…])\s+|;|\bbut\b|,\s*so\b/i;
+
+/**
+ * The text with what the child's negatives take back left out (#605, R391-3, R391-4-1, R391-6-2): the numbers in a
+ * negative's own clause, the same numbers said before it, and every number before a negative that points back. A line
+ * with no sentence end runs on into the next one ("I reject this answer:" then "66"). `taken`: a number was taken back.
+ */
+function withoutNegated(text: string): { text: string; taken: boolean } {
+  if (!NEGATIVE.test(text)) return { text, taken: false };
+  const kept: { line: number; clause: string }[] = [];
+  let taken = false;
+  let runsOn = false;
+  const holds = (x: string) => { const r = readNumbers(x); return r.values.length > 0 || r.unreadable; };
+  turnLines(text).forEach((line, n) => {
+    const clauses = line.split(CLAUSE_END);
+    clauses.forEach((clause, i) => {
+      if (!NEGATIVE.test(clause) && !(i === 0 && runsOn)) {
+        kept.push({ line: n, clause });
+        return;
+      }
+      if (holds(clause)) {
+        taken = true;
+        const rejected = readNumbers(clause).values.map((v) => JSON.stringify(v));
+        for (let k = kept.length - 1; k >= 0; k--) if (readNumbers(kept[k].clause).values.some((v) => rejected.includes(JSON.stringify(v)))) kept.splice(k, 1);
+      }
+      if (POINTS_BACK.test(clause.replace(/’/g, "'")) && kept.some((x) => holds(x.clause))) {
+        taken = true;
+        kept.length = 0;
+      }
+    });
+    runsOn = !/[.!?…]\s*$/.test(line) && NEGATIVE.test(clauses[clauses.length - 1]);
+  });
+  // The kept clauses, with a boundary between them, so "sixty but six" does not read as one number.
+  const lines = new Map<number, string[]>();
+  for (const k of kept) lines.set(k.line, [...(lines.get(k.line) ?? []), k.clause]);
+  return { text: [...lines.values()].map((x) => x.join(" ; ")).join("\n"), taken };
+}
+
+/**
+ * Words of doubt, and a question mark (R391-5): "maybe 66", "is it 66?", "66 or something", "66, I am unsure". The
+ * number may still be judged wrong, but it is never accepted as right: Maya confirms it first. "I'm sure it's 66" is no
+ * doubt (#605); "I'm not sure" is a negative beside the number, so it is not sure either.
+ */
+const DOUBT = /\b(?:maybe|perhaps|probably|possibly|guess|guessing|unsure|or something|or so|ish|dunno|idk|kinda|sorta)\b|\?/i;
 
 /** The child's turn lines, blank lines left out ("Maybe", "", "66" reads as "Maybe" then "66", R391-7-3). */
 const turnLines = (text: string) => text.split("\n").filter((line) => line.trim() !== "");
@@ -536,10 +621,9 @@ const turnLines = (text: string) => text.split("\n").filter((line) => line.trim(
 const runsOn = (lines: string[], first: number) => (first > 0 && !/[.!?]\s*$/.test(lines[first - 1]) ? first - 1 : first);
 
 /**
- * A negative in the child's first turn that holds a number, the turn just before it ("I reject this answer:" then
- * "66", R391-6-2), or any turn after it (a line is one child turn: "I don't
- * know." then "Sixteen for the ones." keeps 16, but "It is not 66.", or "66" then "That is wrong", keeps nothing:
- * R391-3, R391-4-1).
+ * A negative in the child's first turn that holds a number, the turn just before it ("I reject this answer:" then "66",
+ * R391-6-2), or any turn after it (a line is one child turn: "I don't know." then "Sixteen for the ones." has none). The
+ * final answer is then never sure (R391-3); what the negative takes back is withoutNegated's.
  */
 const negativeNearAnswer = (text: string) => {
   const lines = turnLines(text);
@@ -613,6 +697,171 @@ export function withoutExplanations(text: string): string {
   }).join("\n");
 }
 
+/**
+ * The clause is pure working, how the child got there, and states no answer (#605, PR #624 review): it holds an
+ * operation, every number in it is a plain number, the last is an operand of that operation ("I added 2 and 3") or its
+ * result ("7 plus 9 is 16", "2 plus 3 plus 1 is 6", "12 minus 8 is 4"), and it has no answer word. Any other clause
+ * with a number ("I added 2 and 3 so my answer is 56") is kept, so it can be the final answer.
+ */
+function isWorking(clause: string): boolean {
+  const r = readNumbers(clause);
+  if (r.unreadable || r.values.length < 2 || !r.operand.some(Boolean) || ANSWER_WORD.test(clause)) return false;
+  if (r.values.some((v) => v.type !== "number")) return false;
+  const xs = r.values.map((v) => (v as { value: number }).value);
+  if (r.operand[xs.length - 1]) return true;
+  // The clause's own operation, and only one kind: "2 plus 3 is 6" is not working (2 × 3 is not what it says).
+  const kinds = [WORK_ADD.test(clause), WORK_SUBTRACT.test(clause), WORK_MULTIPLY.test(clause)];
+  if (kinds.filter(Boolean).length !== 1) return false;
+  const before = xs.slice(0, -1);
+  const last = xs[xs.length - 1];
+  const result = kinds[0] ? before.reduce((a, b) => a + b, 0)
+    : kinds[1] ? before.slice(1).reduce((a, b) => a - b, before[0])
+    : before.reduce((a, b) => a * b, 1);
+  return last === result;
+}
+const WORK_ADD = /\b(?:plus|and|add|added|adding|adds)\b|\+/i;
+const WORK_SUBTRACT = /\b(?:minus|take away|takeaway|subtract|subtracted|subtracting)\b|[−-]\s*\d/i;
+const WORK_MULTIPLY = /\b(?:times|multiplied|multiply)\b|[×*]/i;
+const ANSWER_WORD = /\b(?:answer|final|got|get|gets|total|equals? to)\b/i;
+
+/**
+ * The text with the child's working after an answer left out (#605): "I got 66. 7 plus 9 is 16, so I carry the ten." keeps
+ * "I got 66.". A clause with an operation before any answer stays ("7 plus 9 is 16."), and so does a new answer after the
+ * working ("I got 66. 2 plus 3 is 5, so 56." has the final answer 56).
+ */
+/** The text with its working after an answer left out (`kept`), and the clauses left out (`dropped`). */
+function workingSplit(text: string): { kept: string; dropped: string[] } {
+  const keep = answerClauses();
+  const dropped: string[] = [];
+  const kept = text.split("\n").map((line) => line.split(/(?<=[.!?…,;:])\s+/).filter((clause) => {
+    if (!holdsAnswer(clause) || keep(clause)) return true;
+    dropped.push(clause);
+    return false;
+  }).join(" ")).join("\n");
+  return { kept, dropped };
+}
+
+/** The result a clause of working makes: its stated result, or its operation over every number when it states none. */
+function workingResult(clause: string): number | null {
+  const r = readNumbers(clause);
+  if (r.values.some((v) => v.type !== "number")) return null;
+  const xs = r.values.map((v) => (v as { value: number }).value);
+  const kinds = [WORK_ADD.test(clause), WORK_SUBTRACT.test(clause), WORK_MULTIPLY.test(clause)];
+  if (kinds.filter(Boolean).length !== 1 || xs.length < 2) return null;
+  if (!r.operand[xs.length - 1]) return xs[xs.length - 1];
+  return kinds[0] ? xs.reduce((a, b) => a + b, 0) : kinds[1] ? xs.slice(1).reduce((a, b) => a - b, xs[0]) : xs.reduce((a, b) => a * b, 1);
+}
+
+/**
+ * Dropped working cannot hide another answer (PR #624 review, fails closed on the outcome): each dropped clause holds
+ * only single digits and the question's own numbers (`known`), or its working makes the kept final itself ("I got 66. I
+ * added 20 and 40 and 6."). Any other dropped clause ("I added 20 and 30 and 6 so my final is 56") leaves the final
+ * not sure, so Maya asks.
+ */
+function workingHidesAnswer(dropped: string[], final: AnswerValue | null, known: number[]): boolean {
+  return dropped.some((clause) => {
+    // A writing claim inside working can name a new answer. Its role must be confirmed, even for a known number.
+    if (/\b(?:wrote|write|put)\b/i.test(clause)) return true;
+    const r = readNumbers(clause);
+    const plain = !r.unreadable && r.values.every((v) => v.type === "number" && ((Number.isInteger(v.value) && v.value >= 0 && v.value <= 9) || known.includes(v.value)));
+    if (plain) return false;
+    const made = workingResult(clause);
+    return !(final?.type === "number" && made !== null && made === final.value);
+  });
+}
+
+/**
+ * The results of false equations the child keeps (PR #624 review rounds 2 and 3): a result word ("is", "are",
+ * "equals", "makes", "gives", "=") with the number right after it, after a chain of numbers joined by operation words
+ * right before it ("7 plus 9 is 6 and I carry the 1", "seven and nine make sixteen"), where the result is not that
+ * operation's true result. Read on the words a take-back or a negative left (retainedText), word by word: a number on
+ * its own before a result word ("16 is 1 ten") is no equation.
+ */
+export function falseEquationResults(text: string, options?: ReadOptions): AnswerValue[] {
+  const out: AnswerValue[] = [];
+  const tokens = numberTokens(retainedText(text, options));
+  tokens.forEach((t, i) => {
+    if (t.kind !== "result") return;
+    const after = tokens[i + 1];
+    if (!after || after.kind !== "number") return;
+    // The chain right before the result word: number (op number)+.
+    const chain: number[] = [];
+    let op: "add" | "subtract" | "multiply" | null = null;
+    let j = i - 1;
+    while (j >= 0 && tokens[j].kind === "number") {
+      chain.unshift((tokens[j] as { value: number }).value);
+      const before = tokens[j - 1];
+      if (!before || before.kind !== "op") break;
+      if (op !== null && op !== before.op) return;
+      op = before.op;
+      j -= 2;
+    }
+    if (op === null || chain.length < 2) return;
+    const truth = op === "add" ? chain.reduce((x, y) => x + y, 0) : op === "subtract" ? chain.slice(1).reduce((x, y) => x - y, chain[0]) : chain.reduce((x, y) => x * y, 1);
+    if (after.value !== truth) out.push({ type: "number", value: after.value });
+  });
+  return out;
+}
+
+type NumberToken = { kind: "number"; value: number } | { kind: "op"; op: "add" | "subtract" | "multiply" } | { kind: "result" } | { kind: "word" };
+const OP_WORDS: Record<string, "add" | "subtract" | "multiply"> = { plus: "add", "+": "add", and: "add", minus: "subtract", "−": "subtract", "-": "subtract", times: "multiply", "×": "multiply", x: "multiply" };
+const RESULT_WORDS = new Set(["is", "are", "equals", "equal", "make", "makes", "gives", "give", "="]);
+
+/** The words of a text as numbers ("twenty six" is 26), operation words, result words and other words. */
+function numberTokens(text: string): NumberToken[] {
+  const words = text.toLowerCase().replace(/[’]/g, "'")
+    .replace(/\b(?:is|are)\s+equal\s+to\b|\bequals?\s+to\b/g, " equals ")
+    .replace(/\badded\s+to\b/g, " plus ")
+    .replace(/(\d)\s*([+=×−])\s*/g, "$1 $2 ").replace(/([+=×−])\s*(\d)/g, "$1 $2")
+    .replace(/(?<=[a-z])-(?=[a-z])/g, " ").split(/[^a-z0-9+=×−'.-]+/).filter(Boolean).map((w) => w.replace(/[.']+$/, ""));
+  const out: NumberToken[] = [];
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (/^\d+$/.test(w)) { out.push({ kind: "number", value: Number(w) }); continue; }
+    const v = wordValue(w);
+    // "1 ten", "6 ones": a place word after a number names its place, so it joins no chain.
+    if (/^(?:ten|tens|one|ones|hundred|hundreds)$/.test(w) && out.at(-1)?.kind === "number") { out.push({ kind: "word" }); continue; }
+    if (v !== null) {
+      // "twenty six": a ten word and a unit word make one number.
+      const next = words[i + 1] !== undefined ? wordValue(words[i + 1]) : null;
+      if (kindOf(w) === "ten" && next !== null && next < 10) { out.push({ kind: "number", value: v + next }); i++; continue; }
+      out.push({ kind: "number", value: v });
+      continue;
+    }
+    if (w === "take" && words[i + 1] === "away") { out.push({ kind: "op", op: "subtract" }); i++; continue; }
+    if (OP_WORDS[w]) { out.push({ kind: "op", op: OP_WORDS[w] }); continue; }
+    if (RESULT_WORDS.has(w)) { out.push({ kind: "result" }); continue; }
+    out.push({ kind: "word" });
+  }
+  return out;
+}
+
+/** Where a sentence ends: an end mark before a space or the end ("0.85" is one number), a semicolon or a new line. */
+const SENTENCE_END = /[.!?]+(?=\s|$)|[;\n]+/;
+
+/** The words the child kept: after the last take-back, without what their negatives take back (#605). */
+export function retainedText(said: string, options?: ReadOptions): string {
+  return withoutNegated(committedText(prepared(said, options))).text;
+}
+
+/**
+ * The child's sentences that hold a number, in the words they kept (retainedText): a turn commits a final answer only
+ * when it has exactly one (PR #624 review round 3), so no clause can hide another answer.
+ */
+export function numberSentences(said: string, options?: ReadOptions): string[] {
+  return retainedText(said, options).split(SENTENCE_END).filter((x) => { const r = readNumbers(x); return r.values.length > 0 || r.unreadable; });
+}
+
+/** Reads clauses in order: whether each clause that holds an answer stands as one, or is working after an answer. */
+function answerClauses(): (clause: string) => boolean {
+  let seen = false;
+  return (clause) => {
+    if (isWorking(clause)) return !seen;
+    seen = true;
+    return true;
+  };
+}
+
 export interface AnswerRead {
   /**
    * The numbers the child kept, in order, after the last word that takes something back: a step answer is one of them.
@@ -654,6 +903,8 @@ const ANSWER_WORDS = new Set([
   "said", "just", "really", "actually", "wait", "no", "point", "zero",
   // Where the answer went, and how a child ends a turn ("I got 66. I wrote it on my paper.", "I'm done. Thanks, Maya!").
   "paper", "page", "board", "sheet", "notebook", "finished", "thanks", "yay", "hooray", "woohoo", "yippee", "maya",
+  // "I'm sure it's 66.", "It's 66. I already wrote it." (#605).
+  "sure", "already",
 ]);
 /** Words of ordinary math talk after an answer ("I carried the ten", "I added the ones first", "I counted on my fingers"). */
 const MATH_WORDS = new Set([
@@ -662,7 +913,7 @@ const MATH_WORDS = new Set([
   "multiplied", "divided", "shared", "grouped", "drew", "dots", "blocks", "fingers", "line", "head", "with", "from", "by",
   "me", "them", "they", "these", "those", "this", "column", "columns", "top", "bottom", "under", "above", "extra", "more",
   "less", "other", "both", "times", "again", "too", "also", "checked", "check", "know", "knew", "remember", "remembered",
-  "away", "fine", "alright",
+  "away", "fine", "alright", "carrying", "adding", "regrouping", "borrowing", "counting", "subtracting", "multiplying", "dividing",
 ]);
 const UNIT_WORD = /^(?:mm|cm|dm|m|km|g|kg|mg|ml|l|(?:milli|centi|deci|kilo)?(?:metre|meter|gram|litre|liter)s?|metres?|meters?|grams?|litres?|liters?|dollars?|cents?|seconds?|minutes?|hours?|days?|weeks?|months?|years?|o'clock|am|pm|a\.m\.|p\.m\.|degrees?|percent|\$|¢|%)$/i;
 
@@ -687,18 +938,24 @@ function committedFinal(text: string): boolean {
   const lines = turnLines(text);
   // The final answer's line and sentence: a digit the child points at ("I added the one I carried.") or a column's
   // digits after it are not the answer, so they do not move the check off the answer's own sentence.
-  const at = lines.map(holdsAnswer).lastIndexOf(true);
+  // Where the final answer stands: working after it is not a new answer (workingSplit).
+  const keep = answerClauses();
+  let at = -1;
+  let inLine = -1;
+  lines.forEach((line, n) => line.split(/[.!?]+/).forEach((sentence, i) => {
+    for (const clause of sentence.split(/[,;:]+/)) if (holdsAnswer(clause) && keep(clause)) { at = n; inLine = i; }
+  }));
   if (at < 0) return false;
   // The line before counts when it runs on into the answer ("Maybe" then "66", "I reject this answer:" then "66"); one
   // that ends a sentence ("I don't know." then "66") does not.
   const before = at > 0 && !/[.!?]\s*$/.test(lines[at - 1]) ? `${lines[at - 1]}: ` : "";
   const sentences = `${before}${lines[at]}`.split(/[.!?]+/);
-  const last = sentences.map(holdsAnswer).lastIndexOf(true);
+  const last = inLine + before.split(/[.!?]+/).length - 1;
   // The final number's sentence, with whatever introduces it in that sentence ("Suppose: 66", "I would say 66"), and
   // every sentence after it.
   // Every later line too ("66" then "I changed my mind", R391-7-1).
   const later = lines.slice(at + 1).join(". ").split(/[.!?]+/);
-  return last >= 0 && [...sentences.slice(last), ...later].every((x) => x.split(/[,;:]+/).every(plainClause));
+  return [...sentences.slice(last), ...later].every((x) => x.split(/[,;:]+/).every(plainClause));
 }
 
 /** Every explanation in the text ("because six tens and six ones") is plain too: math talk, numbers, answer words. */
@@ -720,22 +977,264 @@ const EXPLANATION_ALL = /\b(?:because|since|cause|cuz|coz)\b/gi;
  * explanation runs to the end of the turn), so Maya asks again rather than guess.
  */
 export function readAnswer(said: string, options?: ReadOptions): AnswerRead {
-  const text = prepared(said, options);
-  const committed = committedText(text);
-  if (offersChoice(committed)) return { kept: [], final: null, choice: true, sure: false, outside: [] };
-  const all = readNumbers(committed);
-  const answer = readNumbers(withoutExplanations(committed));
-  // A correction word in an unclear shape after a number, or a negative anywhere, leaves no final answer: Maya asks
-  // (R391-2, R391-3).
-  const unsure = unclearCorrection(text) || negativeNearAnswer(text);
-  const final = unsure || answer.unreadable ? null : finalOf(answer);
-  // An unclear correction keeps no number at all, so no step answer is taken from the turn either (R391-2).
-  const kept = unsure ? [] : all.unreadable ? answer.values : all.values;
-  // Sure: no doubt anywhere from the first number on, and the final answer stands only among plain answer words.
-  // The explanation is read too, so nothing can hide behind "because" (R391-8-2).
-  const sure = !unsure && (!options?.fractions || !answer.unreadable) && !doubtNearAnswer(text) && committedFinal(withoutExplanations(committed)) && plainExplanations(committed);
-  return { kept, final, choice: false, sure, outside: unsure ? [] : answer.values };
+  return readAnswerParts(said, options).read;
 }
+
+/**
+ * readAnswer, and whether the final answer would be sure apart from the one-sentence rule (`sureApart`): a correction
+ * that restates the accepted answer with its working ("Actually 66. 7 plus 9 is 16.") keeps that answer standing, and
+ * never commits a new one (takenBack).
+ */
+function readAnswerParts(said: string, options?: ReadOptions): { read: AnswerRead; sureApart: boolean } {
+  const text = prepared(withoutSource(said), options);
+  const committed = committedText(text);
+  if (offersChoice(committed)) return { read: { kept: [], final: null, choice: true, sure: false, outside: [] }, sureApart: false };
+  // What a negative takes back is gone (#605): the rest of the turn is read as usual.
+  const stated = withoutNegated(committed).text;
+  const all = readNumbers(stated);
+  const reasonless = withoutExplanations(stated);
+  const answer = readNumbers(reasonless);
+  // A correction word in an unclear shape after a number leaves no final answer: Maya asks (R391-2).
+  const unclear = unclearCorrection(text);
+  // Working after the answer does not replace it (#605).
+  const working = workingSplit(reasonless);
+  const final = unclear || answer.unreadable ? null : finalOf(readNumbers(working.kept));
+  // An unclear correction keeps no number at all, so no step answer is taken from the turn either (R391-2).
+  const kept = unclear ? [] : all.unreadable ? answer.values : all.values;
+  // Sure: no negative beside a number (R391-3), no doubt anywhere from the first number on, and the final answer stands
+  // only among plain answer words. The explanation is read too, so nothing can hide behind "because" (R391-8-2).
+  const sureApart = !unclear && !workingHidesAnswer(working.dropped, final, options?.known ?? []) && !negativeNearAnswer(text) && (!options?.fractions || !answer.unreadable) && !doubtNearAnswer(text) && committedFinal(withoutExplanations(committed)) && plainExplanations(committed);
+  // PR #624 review round 3: a turn commits a final answer only with exactly one sentence that holds a number, in the
+  // words the child kept. Any other turn with numbers is confirmed in code's words, or Maya asks which one they mean.
+  // A sentence before the last that only points back at work done is no second answer (first-ship practice, C28-r1, C29-r1).
+  const numeric = stated.split(SENTENCE_END).filter((x) => { const r = readNumbers(x); return r.values.length > 0 || r.unreadable; });
+  // A sentence before the last that only tells how the child worked ("I did 27 plus 40, then took away one.") is no
+  // second answer either (practice at 361a05c9, C09).
+  const sure = sureApart && numeric.filter((x, i) => i === numeric.length - 1 || !(pointsBack(x, options) || methodSentence(x))).length === 1;
+  return { read: { kept, final, choice: false, sure, outside: unclear ? [] : answer.values }, sureApart };
+}
+
+/**
+ * Where the answer came from, after it, as an exact allow-list (PR #698 practice: "Yes, it's 66. I got it from the steps
+ * you showed me." was not sure): a last sentence "I got it from the steps you showed me.", "I followed the steps.",
+ * "That's what I got.", or a last clause "because you showed me the steps". It holds no number, hedge, question or other
+ * speaker, so it says nothing about the answer: it is left out before the turn is read, but only when what is left is
+ * one declared answer (DECLARED_ANSWER): "Yes, it's 66.", "It's 66.", "I said 66.", "My answer is 66.", "66.". Any other
+ * answer keeps the whole turn as it was, so it stays not sure: a question in any punctuation ("Is it 66. I followed the
+ * steps.", "Is it 66 because you showed me the steps."), a hedge ("Maybe 66.", "I think it's 66."), "66 right", "66 or 56".
+ * Fail-closed review of the round-1 fix (#698, P1 c).
+ */
+const SOURCE_SENTENCE = /^(?:i got (?:it|that|this) from (?:the|your) steps(?: (?:you showed me|you did|we did))?|i (?:did|followed|used) (?:the|your) steps(?: (?:you showed me|we did))?|(?:that's|that is) what i got)$/;
+const SOURCE_REASON = /,?\s+because\s+(?:you showed me(?: the steps| how)?|of the steps(?: you showed me)?|i (?:did|followed|used) (?:the|your) steps(?: you showed me)?)([.!]?)$/;
+/** One declared answer, with at most a yes before it: the number is checked by plainNumber. */
+const DECLARED_ANSWER = /^(?:(?:yes|yeah|yep)[,\s]+)?(?:(?:it's|it is|i said|i got|my answer is|the answer is)\s+)?(.+?)[.!]?$/;
+function withoutSource(said: string): string {
+  const t = said.trim().replace(/’/g, "'");
+  if (t.includes("\n") || t.includes("?")) return said;
+  const sentences = t.split(/(?<=[.!])\s+/).filter(Boolean).map((x) => x.toLowerCase());
+  if (sentences.length === 0) return said;
+  while (sentences.length > 1 && SOURCE_SENTENCE.test(sentences.at(-1)!.replace(/[.!]+$/, "").trim())) sentences.pop();
+  const last = sentences.length - 1;
+  sentences[last] = sentences[last].replace(SOURCE_REASON, "$1");
+  const kept = sentences.join(" ");
+  if (kept === t.toLowerCase()) return said;
+  // Only one declared answer is left: anything else keeps the turn as the child said it.
+  const declared = sentences.length === 1 ? DECLARED_ANSWER.exec(sentences[0].trim()) : null;
+  return declared && plainNumber(declared[1]) !== null ? kept : said;
+}
+
+/**
+ * The sentence only says what the child did or said before, as an exact allow-list. "I carry the one", "I carried the ten",
+ * or a carry of the question's own worked steps ("I carry 1."): never another number ("I carry 6."). "I already said 16.":
+ * only numbers from the child's earlier turns or done steps. Any other sentence with a number is a second answer.
+ */
+function pointsBack(sentence: string, options?: ReadOptions): boolean {
+  const s = sentence.trim().replace(/’/g, "'").replace(/[.!]+$/, "").toLowerCase();
+  const start = "^(?:(?:so|and|okay|ok|well)\\b[,\\s]*)*(?:i|we)\\s+";
+  const carried = new RegExp(`${start}(?:carry|carried)\\s+(.+)$`).exec(s);
+  if (carried) {
+    if (/^the\s+(?:one|ten)$/.test(carried[1])) return true;
+    const n = plainNumber(carried[1]);
+    return n !== null && (options?.carries ?? []).includes(n);
+  }
+  const said = new RegExp(`${start}already\\s+(?:said|got|told\\s+you)\\s+(.+)$`).exec(s);
+  if (!said) return false;
+  const n = plainNumber(said[1]);
+  return n !== null && (options?.saidBefore ?? []).includes(n);
+}
+
+/** Words a sentence that only tells how the child worked may hold besides numbers: no result word, speaker, hedge or negation. */
+const METHOD_ONLY = new Set(["i", "did", "added", "add", "made", "make", "changed", "change", "rounded", "round", "up", "used", "use", "took", "take",
+  "away", "subtracted", "subtract", "minus", "plus", "and", "then", "so", "first", "it", "into", "to", "from", "the", "a", "more", "less", "back", "off"]);
+
+/**
+ * The sentence only tells, in the first person, the operations the child did, as an exact allow-list: "I did 27 plus 40,
+ * then took away one", "Then I took away one", "I made 39 into 40". It starts with "I" (after "so", "and", "first" or
+ * "then") and an action word, holds a number, and every other word is on METHOD_ONLY: no "is", "got", "answer", other
+ * speaker, hedge or negation, so it states no result.
+ */
+function methodSentence(sentence: string): boolean {
+  const words = sentence.toLowerCase().replace(/’/g, "'").replace(/[.!,;]+/g, " ").split(/\s+/).filter(Boolean);
+  let i = 0;
+  while (i < words.length && ["so", "and", "first", "then"].includes(words[i])) i++;
+  if (words[i] !== "i" || !["did", "added", "add", "made", "changed", "rounded", "used", "took", "subtracted"].includes(words[i + 1] ?? "")) return false;
+  const numbers = words.filter((w) => plainNumber(w) !== null);
+  return numbers.length > 0 && words.every((w) => METHOD_ONLY.has(w) || plainNumber(w) !== null);
+}
+
+/** The whole text is one plain whole number, in digits or words ("16", "sixteen", "twenty-six"), or null. */
+export function plainNumber(text: string): number | null {
+  const words = text.trim().toLowerCase().split(/[\s-]+/);
+  if (!(words.length === 1 && /^\d+$/.test(words[0])) && !words.every((w) => kindOf(w) !== null)) return null;
+  const r = readNumbers(text);
+  const v = r.values[0];
+  return !r.unreadable && r.values.length === 1 && v.type === "number" ? v.value : null;
+}
+
+/**
+ * The child's whole turn when it can be one step template (stepTurnHeard): trimmed, with at most one leading "so", "okay",
+ * "um" or "oh" and one final full stop or "!". Null for any turn with a question mark or more than one line. Whether the rest is
+ * one template is for the readers below: a second sentence fits none of them.
+ */
+export function wholeTurn(text: string): string | null {
+  const t = text.trim().replace(/’/g, "'");
+  if (t.includes("?") || t.includes("\n")) return null;
+  return t.replace(/^(?:so|okay|ok|um|oh)\b[,.\s]*/i, "").replace(/[.!]$/, "").trim().toLowerCase() || null;
+}
+
+/**
+ * The whole text is one value, alone or in the child's own words: "16", "it's 16", "I got 16", "I already got 16", "I got
+ * 16, like I said". Else null. "Like you said" is not here: that is Maya's number, not the child's.
+ */
+export function wholeValue(body: string): number | null {
+  const m = /^(?:it's|i got|i already got)\s+(.+?)(?:,?\s+like i said)?$/.exec(body) ?? /^(?:it's|i got)\s+(.+)$/.exec(body);
+  return plainNumber(m ? m[1] : body);
+}
+
+/** Sentence-level filler before a step sentence or a next-step question: "So", "Okay", "Um", "Oh", "And", "Then". */
+const SENTENCE_LEAD = /^(?:(?:so|okay|ok|um|uh|oh|and|then)\b[,\s]*)*/;
+
+/**
+ * The sentence is one next-step question from a closed list (first-ship practice, C01: "I got 16, like I said. What do I
+ * do next?"): "What do I do next?", "What do I do now?", "What do I do with the 1?", "Where does the 1 go?", "Do I write the
+ * 1 at the top of the tens?", "Is the 1 the carry?", "What about the tens?", "Now what?", "What's next?". The only number it may hold is `carry`,
+ * the step's own carry, as "the 1", "the one" or "the ten" (or "the carried 1"); no other speaker, hedge, negation or check
+ * of a value ("Is it 16?", "Is that right?") is on the list. A step with no carry has only the forms with no number.
+ */
+export function nextStepQuestion(sentence: string, carry: number): boolean {
+  const s = sentence.trim().replace(/’/g, "'").toLowerCase().replace(/[?.!]+$/, "").trim().replace(SENTENCE_LEAD, "").replace(/\s+/g, " ");
+  // "Then what?": its "then" is no filler here.
+  if (/^(?:(?:and |so |okay |ok )?then what)$/.test(sentence.trim().replace(/[?.!,]+/g, "").trim().toLowerCase())) return true;
+  if (/^(?:what do i do (?:next|now)|what do we do (?:next|now)|now what|what's next|what is next|what about the tens(?: column)?|what do i do with the tens(?: column)?)$/.test(s)) return true;
+  const ref = (phrase: string) => {
+    if (phrase === "the carry") return carry > 0;
+    const m = /^the (?:carried |carry )?(\w+)(?: i carried)?$/.exec(phrase);
+    return !!m && carry > 0 && (m[1] === "ten" || plainNumber(m[1]) === carry);
+  };
+  const what = /^what do i do with (the .+)$/.exec(s);
+  if (what) return ref(what[1]);
+  const where = /^where (?:does|do) (the .+?) go$/.exec(s);
+  if (where) return ref(where[1]);
+  const carried = /^is (the .+?) (?:the|a) carry$/.exec(s);
+  if (carried) return ref(carried[1]);
+  const put = /^do i (?:write|put|carry) (the (?:carried |carry )?\w+)(?: (?:in|at|on|to|into|over) the (?:top(?: of the tens(?: column)?)?|tens(?: column| place)?))?$/.exec(s);
+  return !!put && ref(put[1]);
+}
+
+/**
+ * The one sentence of a turn that may be a step template, as wholeTurn gives it (stepTurnHeard): the whole turn, or, when
+ * the turn also holds next-step questions (nextStepQuestion), the one other sentence beside them. A lone filler sentence
+ * ("Okay.") is no second sentence. Null when two sentences are left, or none, or the turn has more than one line.
+ */
+export function stepTurnBody(text: string, carry: number): string | null {
+  const t = text.trim().replace(/’/g, "'");
+  if (t.includes("\n")) return null;
+  const parts = t.split(/(?<=[.!?])\s+/).filter(Boolean);
+  if (!parts.some((p) => nextStepQuestion(p, carry))) return wholeTurn(t);
+  const rest = parts.filter((p) => !nextStepQuestion(p, carry) && !/^(?:so|okay|ok|um|uh|oh)[.!]?$/i.test(p.trim()));
+  return rest.length === 1 ? wholeTurn(rest[0]) : null;
+}
+
+/**
+ * The text without its next-step questions (nextStepQuestion), for the claim checks: "Do I put the 1 in the tens?" asks,
+ * it claims nothing written. Every other sentence stays as it was.
+ */
+export function withoutNextStepQuestions(text: string, carry: number): string {
+  const parts = text.trim().split(/(?<=[.!?])\s+/).filter(Boolean);
+  return parts.some((p) => nextStepQuestion(p, carry)) ? parts.filter((p) => !nextStepQuestion(p, carry)).join(" ") : text;
+}
+
+/** The turn is only next-step questions (nextStepQuestion), with at most a filler sentence ("Okay. Where does the 1 go?"). */
+export function onlyNextStepQuestions(text: string, carry: number): boolean {
+  const t = text.trim().replace(/’/g, "'");
+  if (t.includes("\n")) return false;
+  const parts = t.split(/(?<=[.!?])\s+/).filter(Boolean);
+  return parts.some((p) => nextStepQuestion(p, carry)) && parts.every((p) => nextStepQuestion(p, carry) || /^(?:so|okay|ok|um|uh|oh)[.!]?$/i.test(p.trim()));
+}
+
+/**
+ * The child's claim about their own paper, after Maya's number: "you said 16, so I wrote 6 and carried 1", "like you said, I
+ * wrote 6 and carried 1". The number Maya said, or null when "like you said" names none, and the claim. Null for any other
+ * text: "You said 16." alone, or "You said 16, so it's 16.", is a copy, and the claim is checked as a claim by its caller.
+ */
+export function echoedClaim(body: string): { said: number | null; claim: string } | null {
+  const m = /^(?:you said\s+(.+?),?\s+so|like you said,?)\s+(i\s.+)$/.exec(body);
+  if (!m) return null;
+  if (m[1] === undefined) return { said: null, claim: m[2] };
+  const said = plainNumber(m[1]);
+  return said === null ? null : { said, claim: m[2] };
+}
+
+/**
+ * A whole turn (as wholeTurn gives it) that only says back what Maya just showed, with the step's total `total`: "You
+ * said 16.", "You said 16, so it's 16.", "Like you said, it's 16.", or a plain "I see", "Got it", "I get it", "I
+ * understand". A bare "yes" or "okay" is not here: it says nothing about what Maya showed.
+ */
+export function echoesShown(body: string, total: number): boolean {
+  if (/^(?:(?:oh|okay|ok)[,\s]+)?(?:i see|got it|i get it(?: now)?|i understand(?: now)?)$/.test(body)) return true;
+  const m = /^(?:you said\s+(.+?)(?:,?\s+so\s+(?:it's|it is)\s+(.+))?|like you said,?\s+(?:it's\s+|it is\s+)?(.+))$/.exec(body);
+  if (!m) return false;
+  return [m[1], m[2], m[3]].filter((x) => x !== undefined).every((x) => plainNumber(x!) === total);
+}
+
+/**
+ * The whole text is a plain yes, with at most the number it confirms: "yes", "yeah", "yep", "yes 16", "yes, it's 16". The
+ * number is null when none is said. Null for anything else: "yes I think 16" is not a plain yes.
+ */
+export function wholeYes(body: string): { value: number | null } | null {
+  const m = /^(?:yes|yeah|yep)(?:[,\s]+(?:it's\s+)?(.+))?$/.exec(body);
+  if (!m) return null;
+  if (m[1] === undefined) return { value: null };
+  const value = plainNumber(m[1]);
+  return value === null ? null : { value };
+}
+
+/** The only words a step's confirm may stand on beside its number: no place, column, verb, speaker or "answer". */
+const CONFIRM_ONLY = new Set(["is", "it", "it's", "its", "i", "got", "get", "think", "maybe", "guess", "so", "okay", "ok", "oh", "um", "uh", "hmm"]);
+
+/** After the number, every word of the text is on the step confirm's short list ("Is it 16?", "I got 16, I think."). */
+export const confirmWordsOnly = (text: string) =>
+  text.toLowerCase().replace(/’/g, "'").split(/[\s,.?!]+/).filter(Boolean).every((w) => CONFIRM_ONLY.has(w) || plainNumber(w) !== null);
+
+/** The whole text is one sum: "a plus|and|+ b [plus|and|+ c] is|equals|makes|make|= d", in digits or words, or null. */
+export function wholeSum(body: string): { operands: number[]; sum: number } | null {
+  const m = /^(.+?)\s*(?:\s(?:is|equals|makes|make)\s|=)\s*(.+)$/.exec(body);
+  if (!m) return null;
+  const operands = m[1].split(/\s*\+\s*|\s+(?:plus|and)\s+/).map(plainNumber);
+  const sum = plainNumber(m[2]);
+  return sum !== null && operands.length >= 2 && operands.every((n) => n !== null) ? { operands: operands as number[], sum } : null;
+}
+
+/** Words a first-person written-digit or carry claim may hold besides numbers. No other subject, hedge or negation is here. */
+const CLAIM_ONLY = new Set(["i", "write", "wrote", "written", "writing", "put", "putting", "have", "am", "it", "as", "down", "the", "a", "digit", "number", "and", "then",
+  "carry", "carried", "carrying", "in", "into", "under", "at", "on", "for", "to", "from", "ones", "tens", "hundreds", "thousands", "tenths", "hundredths", "thousandths"]);
+
+/** Every word of the whole text is a claim word or a number. */
+export const claimWordsOnly = (body: string) => body.split(/[\s,]+/).filter(Boolean).every((w) => CLAIM_ONLY.has(w) || plainNumber(w) !== null);
+
+/** The child's turn shows doubt about its answer: a doubt word or a question mark from its first number on (R391-5). */
+export const showsDoubt = (said: string, options?: ReadOptions) =>
+  doubtNearAnswer(prepared(said, options)) || /\b(?:not (?:so |really |very )?sure|no (?:idea|clue)|don'?t know if)\b/i.test(said.replace(/’/g, "'"));
 
 /**
  * The final answer among the numbers read: the last one that can be an answer (not a column's digits, "6 tens", and
@@ -774,7 +1273,7 @@ export function takenBack(said: string, options?: ReadOptions): { kept: AnswerVa
   const erasure = erased.exec(plain);
   const beforeErasure = erasure ? plain.slice(0, erasure.index).split(/[,.!?;\n]|\bbut\b/i).at(-1) ?? "" : "";
   const erasedAnswer = erasure !== null && !NEGATIVE.test(beforeErasure);
-  if (withdrawal.test(plain) || erasedAnswer || denied.test(plain) || negativeNearAnswer(text)) return { kept: null };
+  if (withdrawal.test(plain) || erasedAnswer || denied.test(plain) || withoutNegated(text).taken) return { kept: null };
   const parts = splitTakeBacks(text);
   if (parts.length === 1) return null;
   const last = parts[parts.length - 1];
@@ -785,8 +1284,113 @@ export function takenBack(said: string, options?: ReadOptions): { kept: AnswerVa
   });
   if (!before && after.values.length === 0 && !after.unreadable) return null;
   // An unclear correction anywhere puts nothing in place: what was said is taken back, and Maya asks (R391-2).
-  const read = readAnswer(last);
-  return { kept: unclearCorrection(text) || negativeNearAnswer(text) || !read.sure ? null : read.final };
+  // Read with the question's own numbers (PR #624 review round 3), and sure apart from the one-sentence rule: a
+  // restatement keeps the answer only when it is right for the question (the caller), so it never commits a new one.
+  const { read, sureApart } = readAnswerParts(last, options);
+  return { kept: unclearCorrection(text) || negativeNearAnswer(text) || !sureApart ? null : read.final };
+}
+
+/** Plain yes words, as a whole turn: "Yes.", "Yep, that's it.", "Uh huh." A number, a question mark or any doubt is not one. */
+const YES_WORD = "(?:yes|yeah|yea|yep|yup|uh[- ]huh|mm[- ]?hmm|mhm|right|correct|exactly|that['’]?s (?:right|it|what i said)|it is|i did|i said (?:that|it))";
+const YES_TURN = new RegExp(`^[\\s,.!]*(?:(?:um+|uh+|oh|okay|ok|well)[\\s,.!]+)*${YES_WORD}(?:[\\s,.!]+${YES_WORD})*[\\s,.!]*$`, "i");
+
+/** The whole turn is a plain yes (#605): it answers Maya's "Did you say 66?". */
+export const saysYes = (text: string) => YES_TURN.test(text);
+
+/**
+ * The child says the writing is done (#605): "I wrote 66", "66 is on my paper", "I'm done writing". Not "I'm writing",
+ * "I will write it", or any negative beside it ("I didn't write it yet"): that child keeps their time.
+ */
+export function saysWritten(text: string): boolean {
+  const plain = text.replace(/’/g, "'");
+  if (NEGATIVE.test(plain)) return false;
+  if (/\b(?:done|finished)\s+writing\b/i.test(plain)) return true;
+  if (/\b(?:i'?m|am|are|still|keep|will|gonna|going to|need to|have to|let me|can i|should i|i'?ll)\b[^.!?\n]*\b(?:writ|put)/i.test(plain)) return false;
+  return /\b(?:wrote|written)\b|\bput (?:it|that|\w+) (?:down|on)\b|\b(?:is|it's|its|that's) (?:on|in) my (?:paper|page|sheet|notebook)\b/i.test(plain);
+}
+
+/**
+ * One sentence in which the child says, in the first person, that they are stuck: "I don't know", "I don't know about
+ * the ten", "I don't get it", "I don't understand", "I'm stuck", "I have no idea", "I'm confused" (#605 practice run 2:
+ * C24-r2; PR #624 review). The words after "about", "how", "what", "where" or "why" hold no negative.
+ */
+const STUCK_SENTENCE = /^(?:(?:um+|uh+|oh|well|hmm+|okay|ok)[\s,]+)*(?:i (?:don'?t|do not) (?:know|get it|understand(?: it)?)(?: (about|how|what|where|why)((?: [a-z']+){1,6}))?|i(?:'m| am) stuck|i have no idea|i(?:'m| am) (?:really |so )?confused)$/;
+const NEGATIVE_WORD = /\b(?:not|no|never|nothing)\b|n't\b/;
+
+/**
+ * The child's turn says they are stuck, and nothing else that could move Maya on: at least one STUCK_SENTENCE, no
+ * question mark, no number in any other sentence, no negative outside the stuck sentence, and no answer in the turn.
+ * Any other turn keeps the old reading (no change in help). Code reads it as a request for one more level of help.
+ */
+export function saysStuck(text: string): boolean {
+  if (text.includes("?") || readAnswer(text).final !== null) return false;
+  const sentences = text.toLowerCase().replace(/[’]/g, "'").split(/[.!\n]+/).map((x) => x.trim().replace(/\s+/g, " ")).filter(Boolean);
+  let stuck = false;
+  for (const sentence of sentences) {
+    const m = STUCK_SENTENCE.exec(sentence);
+    if (m) {
+      if (m[2] && NEGATIVE_WORD.test(m[2])) return false;
+      stuck = true;
+      continue;
+    }
+    if (NEGATIVE.test(sentence) || readNumbers(sentence).values.length > 0 || readNumbers(sentence).unreadable) return false;
+  }
+  return stuck;
+}
+
+/**
+ * The sentence is exactly an addition of single numbers, as a child sets up a column: "2 plus 3 plus 1", "So 1 plus 2
+ * plus 3", "I add the 2 and the 3 and the 1" (#605, PR #624 review). Its operands in order, or null for every other
+ * form: another operation, a negative, a result ("is 6"), any other word.
+ */
+const SETUP_LEAD = new Set(["oh", "so", "um", "uh", "okay", "ok", "then", "now", "i", "add", "yes", "yeah", "is", "it"]);
+export function additionSetup(sentence: string): number[] | null {
+  const tokens = sentence.toLowerCase().replace(/[’]/g, "'").replace(/[?,]/g, " ").replace(/\+/g, " plus ").split(/\s+/).filter(Boolean);
+  let i = 0;
+  while (i < tokens.length && SETUP_LEAD.has(tokens[i])) i++;
+  const operands: number[] = [];
+  for (;;) {
+    if (tokens[i] === "the") i++;
+    const t = tokens[i];
+    const value = t === undefined ? null : /^\d$/.test(t) ? Number(t) : wordValue(t);
+    if (value === null || value > 9) return null;
+    operands.push(value);
+    i++;
+    if (i === tokens.length) break;
+    if (tokens[i] !== "plus" && tokens[i] !== "and") return null;
+    i++;
+  }
+  return operands.length >= 2 ? operands : null;
+}
+
+/**
+ * The child says they are done (#605, Savar 2026-11-06), in a sentence of its own: "I'm done", "I'm finished", "All
+ * done!", "Okay, I'm done with it". Every other sentence holds no number but the answer that stands; the turn has no
+ * question and no negative. Any other turn is not read as done.
+ */
+const DONE_SENTENCE = /^(?:(?:okay|ok|yay|yes|yeah|um+|so|and|well|alright|all right|hooray|woohoo)[\s,!]+)*(?:(?:i'?m|i am|we'?re|we are) )?(?:all )?(?:done|finished)(?: (?:now|with (?:it|this|that|this one|that one|the question|my question|the problem)))?$/;
+export function saysDone(text: string, options?: ReadOptions, answer?: AnswerValue): boolean {
+  if (text.includes("?") || NEGATIVE.test(text)) return false;
+  const sentences = text.toLowerCase().replace(/[’]/g, "'").split(/[.!,\n]+/).map((x) => x.trim().replace(/\s+/g, " ")).filter(Boolean);
+  let done = false;
+  for (const sentence of sentences) {
+    if (DONE_SENTENCE.test(sentence)) {
+      done = true;
+      continue;
+    }
+    const r = readNumbers(prepared(sentence, options));
+    if (r.unreadable || r.values.some((v) => !answer || JSON.stringify(v) !== JSON.stringify(answer))) return false;
+  }
+  return done;
+}
+
+/**
+ * The child says, in the first person, that they guessed: "I guessed", "I just guessed it", "It was a guess", "I'm just
+ * guessing" (#605). "I guess it's 66" is a hedge, not a guess. A sentence with a negative ("I didn't guess") is not one.
+ */
+const GUESS_SENTENCE = /\b(?:i|i've|i have|i'm|i am)\s+(?:just\s+|only\s+|kind of\s+|kinda\s+)?(?:guessed|guessing)\b|\b(?:it was|that was|just)\s+a\s+(?:lucky\s+)?guess\b/;
+export function saysGuess(text: string): boolean {
+  return text.toLowerCase().replace(/[’]/g, "'").split(/[.!?\n]+/).some((x) => GUESS_SENTENCE.test(x) && !NEGATIVE.test(x));
 }
 
 /** The text offers numbers as a choice ("is it 66 or 56?"): none of them is the child's answer yet. */
