@@ -43,3 +43,20 @@ describe("a question that holds the child's name (F1)", () => {
     expect(child.text).toBe("Hi, I'm {name}. 8 times 9 is 72.");
   });
 });
+
+// Re-review: only a whole question sentence said word for word keeps the name; a name-only clause ("Ana, Ben and Cy",
+// "Mia:") never lets the name through in Maya's other words.
+import { redactTrace } from "@/lib/maya-trace";
+describe("the trace keeps the name only inside a whole question sentence (F1 re-review)", () => {
+  const trace = (question: string, say: string[]) => ({ kind: "maya-trace", question: { text: question }, turns: [{ kind: "maya", attempts: [], output: { act: "open", say, board: [] } }] }) as never;
+  const said = (t: unknown) => (t as { turns: { output: { say: string[] } }[] }).turns[0].output.say;
+  it.each([
+    ["Ana", "Ana, Ben and Cy share 12 apples. How many does each get?", ["Hi Ana! Let's read it.", "It says: Ana, Ben and Cy share 12 apples.", "Good work, Ana."]],
+    ["Mia", "Mia: 4 boxes of 6 pens. How many pens?", ["Hi Mia! Let's read it.", "It says: Mia: 4 boxes of 6 pens.", "Good work, Mia."]],
+  ])("%s", (name, question, say) => {
+    const out = said(redactTrace(trace(question, say), name));
+    expect(out[0]).toBe("Hi {name}! Let's read it.");
+    expect(out[1]).toContain(question.split(/(?<=[.?!])\s+/)[0]);
+    expect(out[2]).toBe("Good work, {name}.");
+  });
+});
