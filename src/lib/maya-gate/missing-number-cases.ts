@@ -15,7 +15,8 @@ const trial = packageLines(FIXTURES.M_TRY as OperationPackage);
 const subtract = packageLines(FIXTURES.M_SUBTRACT as OperationPackage);
 /** One example_step act per worked step of a fixture's easier example (the whole example after one turn). */
 const exampleActs = (pkg: QuestionPackage) => (pkg.easierExample?.steps ?? []).map(() => "example_step" as const);
-const CLOSE_LINES = (l: ReturnType<typeof packageLines>) => l.closeUnsolved().flatMap((o) => o.texts);
+/** A missing number's honest close (#735, as planned when the waves met #698): close.stuck, then close.together's "We worked on ..." wording. */
+const CLOSE_LINES = (l: ReturnType<typeof packageLines>) => [l.closeStuck().flatMap((o) => o.texts), l.closeGiven().flatMap((o) => o.texts)];
 const tryLine = (heard: string) => trial.notYet("result").filter((o) => o.slots.heard === heard).flatMap((o) => o.texts);
 
 export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
@@ -404,13 +405,13 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
       child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
       child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
       child("236 times 5 is 1180.", { answers: [[5, "try", "wrong"]] }, [{ act: "example_step" }]),
-      child("I'm stuck.", { help: "more" }, [{ act: "close" }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "close", lines: ["close.stuck", "close.together"] }]),
     ],
     expect: {
       outcome: { reason: "child_stopped", highestHint: 3 },
       acts: [OPEN, "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "close"],
       counts: { refusals: 0 },
-      outputs: [{ mayaTurn: 7, lines: [CLOSE_LINES(trial)] }],
+      outputs: [{ mayaTurn: 7, lines: CLOSE_LINES(trial) }],
       never: ["give_answer", "redirect", "accept_answer"],
     },
   },
@@ -474,13 +475,13 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
       child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
       child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
       child("5.", { answers: [[5, "try", "wrong"]] }, [{ act: "example_step" }]),
-      child("I'm stuck.", { help: "more" }, [{ act: "close" }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "close", lines: ["close.stuck", "close.together"] }]),
     ],
     expect: {
       outcome: { reason: "child_stopped", highestHint: 3 },
       acts: [OPEN, "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "close"],
       counts: { refusals: 0 },
-      outputs: [{ mayaTurn: 7, lines: [CLOSE_LINES(trial)] }],
+      outputs: [{ mayaTurn: 7, lines: CLOSE_LINES(trial) }],
       never: ["give_answer", "redirect"],
     },
   },
@@ -495,13 +496,13 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
       child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
       child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
       child("5.", { answers: [[5, "try", "wrong"]] }, [{ act: "example_step" }]),
-      child("5.", { answers: [[5, "try", "wrong"]] }, [{ act: "close" }]),
+      child("5.", { answers: [[5, "try", "wrong"]] }, [{ act: "close", lines: ["close.stuck", "close.together"] }]),
     ],
     expect: {
       outcome: { reason: "child_stopped", highestHint: 3 },
       acts: [OPEN, "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "close"],
       counts: { refusals: 0 },
-      outputs: [{ mayaTurn: 7, lines: [CLOSE_LINES(trial)] }],
+      outputs: [{ mayaTurn: 7, lines: CLOSE_LINES(trial) }],
       never: ["give_answer", "redirect"],
     },
   },
@@ -543,7 +544,8 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
     ],
     expect: {
       outcome: { reason: "child_stopped", highestHint: 3 },
-      acts: [OPEN, "guide", "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "close"],
+      // #698's loop guard: H3 is never said again after a miss on it, so the easier example comes at once.
+      acts: [OPEN, "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "close"],
       refused: ["act_not_allowed", "act_not_allowed"],
       never: ["give_answer", "redirect"],
     },
@@ -586,7 +588,8 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
     ],
     expect: {
       outcome: { reason: "child_stopped", highestHint: 3 },
-      acts: [OPEN, "guide", "guide", "guide", "guide", ...exampleActs(FIXTURES.M_DIVIDE), "close"],
+      // #698's loop guard: H3 is never said again after a miss on it, so the easier example comes at once.
+      acts: [OPEN, "guide", "guide", "guide", ...exampleActs(FIXTURES.M_DIVIDE), "close"],
       refused: ["act_not_allowed", "act_not_allowed"],
       never: ["give_answer", "redirect"],
     },
@@ -629,7 +632,8 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
     ],
     expect: {
       outcome: { reason: "child_stopped", highestHint: 3 },
-      acts: [OPEN, "guide", "guide", "guide", "guide", ...exampleActs(FIXTURES.M_SUBTRACT), "close"],
+      // #698's loop guard: H3 is never said again after a miss on it, so the easier example comes at once.
+      acts: [OPEN, "guide", "guide", "guide", ...exampleActs(FIXTURES.M_SUBTRACT), "close"],
       refused: ["act_not_allowed", "act_not_allowed"],
       never: ["give_answer", "redirect"],
     },
@@ -637,7 +641,7 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
   {
     // D-199 stands: two real wrong numbers at H3 (not copies, not help) still reach the given answer.
     id: "MN10",
-    title: "236 × ? = 1416, after H3, two real wrong tries ('7.' then '8.'): 'Not quite' and H3 again after the first, the second reaches the given answer (D-199)",
+    title: "236 × ? = 1416, after H3, two real wrong tries ('7.' then '8.'): the loop guard shows the easier example after the first, the second closes honestly; never the answer (D-306)",
     fixture: "M_TRY",
     status: "passing",
     steps: [
@@ -645,14 +649,13 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
       child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
       child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
       child("7.", { answers: [[7, "try", "wrong"]] }, [{ act: "guide", level: 3, lines: ["check.not_yet", "step.show"] }]),
-      child("8.", { answers: [[8, "try", "wrong"]] }, [{ act: "give_answer" }]),
-      child("Okay.", undefined, [{ act: "close" }]),
+      child("8.", { answers: [[8, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "close", lines: ["close.stuck", "close.together"] } }]),
     ],
     expect: {
-      outcome: { reason: "solved", assistance: "answer_given" },
-      acts: [OPEN, "guide", "guide", "guide", "guide", "give_answer", "close"],
-      counts: { refusals: 0 },
-      never: ["example_step", "redirect"],
+      outcome: { reason: "child_stopped" },
+      acts: [OPEN, "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "close"],
+      outputs: [{ mayaTurn: 7, lines: CLOSE_LINES(trial) }],
+      never: ["give_answer", "redirect"],
     },
   },
   {
@@ -667,11 +670,12 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
       child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
       child("7.", { answers: [[7, "try", "wrong"]] }, [{ act: "guide", level: 3, lines: ["check.not_yet", "step.show"], heard: "7" }]),
       child("5.", { answers: [[5, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "example_step" } }]),
-      child("I'm stuck.", { help: "more" }, [{ act: "give_answer", repair: { act: "close" } }]),
+      child("I'm stuck.", { help: "more" }, [{ act: "give_answer", repair: { act: "close", lines: ["close.stuck", "close.together"] } }]),
     ],
     expect: {
       outcome: { reason: "child_stopped", highestHint: 3 },
-      acts: [OPEN, "guide", "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "close"],
+      // #698's loop guard: H3 is never said again after a miss on it, so the easier example comes at once.
+      acts: [OPEN, "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "close"],
       refused: ["act_not_allowed", "act_not_allowed"],
       never: ["give_answer", "redirect"],
     },
@@ -760,7 +764,7 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
   {
     // D-199 stands for committed numbers in other forms: "It's 7." and a wrong product ("5 times 236 is 1170.").
     id: "MN10c",
-    title: "236 × ? = 1416, after H3, two committed wrong numbers ('It's 7.' then '5 times 236 is 1170.'): the second reaches the given answer (D-199)",
+    title: "236 × ? = 1416, after H3, two committed wrong numbers ('It's 7.' then '5 times 236 is 1170.'): the easier example after the first, the honest close after the second; never the answer (D-306)",
     fixture: "M_TRY",
     status: "passing",
     steps: [
@@ -768,14 +772,13 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
       child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
       child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
       child("It's 7.", { answers: [[7, "try", "wrong"]] }, [{ act: "guide", level: 3, lines: ["check.not_yet", "step.show"] }]),
-      child("5 times 236 is 1170.", { answers: [[5, "try", "wrong"]] }, [{ act: "give_answer" }]),
-      child("Okay.", undefined, [{ act: "close" }]),
+      child("5 times 236 is 1170.", { answers: [[5, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "close", lines: ["close.stuck", "close.together"] } }]),
     ],
     expect: {
-      outcome: { reason: "solved", assistance: "answer_given" },
-      acts: [OPEN, "guide", "guide", "guide", "guide", "give_answer", "close"],
-      counts: { refusals: 0 },
-      never: ["example_step", "redirect"],
+      outcome: { reason: "child_stopped" },
+      acts: [OPEN, "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "close"],
+      outputs: [{ mayaTurn: 7, lines: CLOSE_LINES(trial) }],
+      never: ["give_answer", "redirect"],
     },
   },
   {
@@ -822,7 +825,7 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
     // Round 10 of #732 (review at f6262b16): the numbers of a checked right step equation are never stray. A child who
     // says the credited try again is asked for the missing number, never sent to the easier example or the close.
     id: "MN15",
-    title: "236 × ? = 1416, stuck to H2, then '236 times 6 is 1416.' three times: the try is credited once, Maya asks for the missing number each time (no example, no close), then 6 is accepted",
+    title: "236 × ? = 1416, stuck to H2, then '236 times 6 is 1416.' three times: the try is credited once, Maya asks for the missing number twice, then #698's loop guard takes the easier example (never the same prompt a third time, never a close), then 6 is accepted",
     fixture: "M_TRY",
     status: "passing",
     steps: [
@@ -830,19 +833,16 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
       child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
       child("236 times 6 is 1416.", { answers: [[6, "try", "right"]] }, [{ act: "guide", level: 0, lines: ["check.right_step", "step.invite"] }]),
       child("236 times 6 is 1416.", undefined, [{ act: "guide", level: 0, lines: ["step.invite"] }]),
-      child("236 times 6 is 1416.", undefined, [{ act: "guide", level: 0, lines: ["step.invite"] }]),
+      child("236 times 6 is 1416.", undefined, [{ act: "guide", level: 0, lines: ["step.invite"], repair: { act: "example_step" } }]),
       child("6.", { answers: [[6, "result", "right"]] }),
       ...wrote,
     ],
     expect: {
       outcome: { reason: "solved", highestHint: 2 },
-      acts: [OPEN, "guide", "guide", "guide", "guide", "guide", "accept_answer", "ask_write", "close"],
-      counts: { refusals: 0 },
-      outputs: [
-        { mayaTurn: 4, lines: [variants(trial.help("result"), "invite.result.try")] },
-        { mayaTurn: 5, lines: [variants(trial.help("result"), "invite.result.try")] },
-      ],
-      never: ["give_answer", "example_step"],
+      acts: [OPEN, "guide", "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "accept_answer", "ask_write", "close"],
+      refused: ["same_hint_again", "wrong_step"],
+      outputs: [{ mayaTurn: 4, lines: [variants(trial.help("result"), "invite.result.try")] }],
+      never: ["give_answer"],
     },
   },
   {
@@ -879,8 +879,9 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
     expect: {
       outcome: { reason: "child_stopped", highestHint: 3 },
       acts: [OPEN, "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "close"],
-      // The negation or the correction takes the number back, so the model's reading of it is refused (answer_not_heard).
-      refused: ["answer_not_heard"],
+      // give_answer is refused before any reading is checked (#698, D-306), so the refusals are all act_not_allowed; the
+      // negation or the correction still takes the number back: no miss.
+      refused: ["act_not_allowed", "act_not_allowed", "act_not_allowed", "act_not_allowed"],
       never: ["give_answer", "redirect"],
     },
   },
@@ -900,8 +901,9 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
     expect: {
       outcome: { reason: "child_stopped", highestHint: 3 },
       acts: [OPEN, "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "close"],
-      // The negation or the correction takes the number back, so the model's reading of it is refused (answer_not_heard).
-      refused: ["answer_not_heard"],
+      // give_answer is refused before any reading is checked (#698, D-306), so the refusals are all act_not_allowed; the
+      // negation or the correction still takes the number back: no miss.
+      refused: ["act_not_allowed", "act_not_allowed", "act_not_allowed", "act_not_allowed"],
       never: ["give_answer", "redirect"],
     },
   },
@@ -928,7 +930,7 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
   {
     // The allow-list's plain answer words: "I got 7." is a committed answer, so two of them reach the given answer (D-199).
     id: "MN10d",
-    title: "236 × ? = 1416, after H3, 'I got 7.' then 'I got 8.' (committed wrong answers): the second reaches the given answer (D-199)",
+    title: "236 × ? = 1416, after H3, 'I got 7.' then 'I got 8.' (committed wrong answers): the easier example after the first, the honest close after the second; never the answer (D-306)",
     fixture: "M_TRY",
     status: "passing",
     steps: [
@@ -936,21 +938,20 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
       child("I still don't get it.", { help: "more" }, [{ act: "guide", level: 2 }]),
       child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
       child("I got 7.", { answers: [[7, "try", "wrong"]] }, [{ act: "guide", level: 3, lines: ["check.not_yet", "step.show"] }]),
-      child("I got 8.", { answers: [[8, "try", "wrong"]] }, [{ act: "give_answer" }]),
-      child("Okay.", undefined, [{ act: "close" }]),
+      child("I got 8.", { answers: [[8, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "close", lines: ["close.stuck", "close.together"] } }]),
     ],
     expect: {
-      outcome: { reason: "solved", assistance: "answer_given" },
-      acts: [OPEN, "guide", "guide", "guide", "guide", "give_answer", "close"],
-      counts: { refusals: 0 },
-      never: ["example_step", "redirect"],
+      outcome: { reason: "child_stopped" },
+      acts: [OPEN, "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "close"],
+      outputs: [{ mayaTurn: 7, lines: CLOSE_LINES(trial) }],
+      never: ["give_answer", "redirect"],
     },
   },
   {
     // Mixed: a turn outside the allow-list is no miss (the easier example); two later clean answers are, and only then
     // does the given answer come (D-199).
     id: "MN14",
-    title: "236 × ? = 1416, after H3, 'I'm stuck I mean 7' (no miss: the easier example), then 'It's 8.' and 'It's 9.' (two committed misses): the given answer only after the second",
+    title: "236 × ? = 1416, after H3, 'I'm stuck I mean 7' (no miss: the easier example), then 'It's 8.' and 'It's 9.' (two committed misses): the honest close only after the second, never the answer (D-306)",
     fixture: "M_TRY",
     status: "passing",
     steps: [
@@ -959,14 +960,13 @@ export const MISSING_NUMBER_BEHAVIOURS: Behaviour[] = [
       child("Can you show me?", { help: "more" }, [{ act: "guide", level: 3 }]),
       child("I'm stuck I mean 7", { answers: [[7, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "example_step" } }]),
       child("It's 8.", { answers: [[8, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "guide", level: 3, lines: ["check.not_yet", "step.show"] } }]),
-      child("It's 9.", { answers: [[9, "try", "wrong"]] }, [{ act: "give_answer" }]),
-      child("Okay.", undefined, [{ act: "close" }]),
+      child("It's 9.", { answers: [[9, "try", "wrong"]] }, [{ act: "give_answer", repair: { act: "close", lines: ["close.stuck", "close.together"] } }]),
     ],
     expect: {
-      outcome: { reason: "solved", assistance: "answer_given" },
-      acts: [OPEN, "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "guide", "give_answer", "close"],
-      refused: ["answer_not_heard", "act_not_allowed"],
-      never: ["redirect"],
+      outcome: { reason: "child_stopped" },
+      acts: [OPEN, "guide", "guide", "guide", ...exampleActs(FIXTURES.M_TRY), "guide", "close"],
+      outputs: [{ mayaTurn: 8, lines: CLOSE_LINES(trial) }],
+      never: ["give_answer", "redirect"],
     },
   },
   {
