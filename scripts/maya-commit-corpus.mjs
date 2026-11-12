@@ -24,6 +24,7 @@ const OR = /\bor\b/i;
 const OTHER_PERSON = /\b(?:my (?:mom|mum|dad|teacher|brother|sister|friend|grandma|grandpa|aunt|uncle|cousin|parents?|tutor|class)|mom|mum|dad|teacher|she|he|they|her|his|their|someone|somebody)\b/i;
 const ECHO = /\b(?:you said|like you said|you showed|like you showed|you told|you did|your example|like you did)\b/i;
 const REQUEST = /\b(?:help|show me|tell me|just tell|give me|explain|stop|can you|can we|could you|i quit|i want to stop|i don't want)\b/i;
+const NEXT_QUESTION = /^(?:(?:so|okay|ok|um|uh|oh|and|but|then|now)\b[,\s]*)*(?:what do (?:i|we) do (?:with|about|next|now)|where (?:does|do|should) |do (?:i|we) (?:write|put|carry|keep) |how do (?:i|we) write |what happens to |what about )/;
 const VALUE_CHECK = /\b(?:is (?:that|it|this) (?:right|correct)|am i right|right\?|correct\?|did i get it right|did i do it right)/i;
 
 const num = (v) => (v && v.type === "number" ? v.value : v && v.type === "fraction" ? `${v.numerator}/${v.denominator}` : JSON.stringify(v));
@@ -71,25 +72,32 @@ for (const file of files) {
     if (target.length > 0 && target.every((a) => a.verdict === "right") && answers.every((a) => a.verdict === "right") && code === "answer_not_committed") {
       // True blockers move the turn to the negative set.
       const values = target.map((a) => String(num(a.value)));
-      const questions = text.split(/(?<=[.!?])\s+/).filter((x) => x.trim().endsWith("?"));
-      const inQuestion = questions.some((q) => values.some((v) => new RegExp(`(?:^|[^\\d/.])${v.replace(/[/.]/g, "\\$&")}(?![\\d/])`).test(q)));
+      const parts = text.split(/(?<=[.!?])\s+/);
+      const holds = (x) => values.some((v) => new RegExp(`(?:^|[^\\d/.])${v.replace(/[/.]/g, "\\$&")}(?![\\d/])`).test(x));
+      const inQuestion = parts.some((q) => q.trim().endsWith("?") && holds(q)) && !parts.some((q) => !q.trim().endsWith("?") && holds(q));
+      // A question that holds the value and is not about the next step ("Is it 66?", not "What do I do with the 16?").
+      const asksIt = parts.some((q) => q.trim().endsWith("?") && holds(q) && !NEXT_QUESTION.test(q.trim().toLowerCase()));
       const steps = target.map((a) => a.step);
       let reason = null;
       if (HEDGE.test(text)) reason = "hedge";
       else if (OR.test(text)) reason = "hedge (or)";
-      else if (inQuestion) reason = "value in a question";
+      else if (inQuestion) reason = "value only in a question";
       else if (VALUE_CHECK.test(text)) reason = "value check after the value";
+      else if (asksIt) reason = "a question about the value";
       else if (OTHER_PERSON.test(text)) reason = "another person";
       else if (ECHO.test(text) && steps.some((s) => shown.has(s))) reason = "echo after a show";
       if (reason) {
         moved.push({ ...base, reason });
-        negative.push({ ...base, why: `moved from positive: ${reason}` });
+        // An echo after a show blocks only the steps Maya showed; the other steps of the turn may stand.
+        const blocked = reason === "echo after a show" ? { blocked: steps.filter((s) => shown.has(s)) } : {};
+        negative.push({ ...base, why: `moved from positive: ${reason}`, ...blocked });
       } else positive.push(base);
       continue;
     }
     const wrong = answers.some((a) => a.verdict === "wrong");
     const hedged = HEDGE.test(text) || reading?.start === "guess";
-    const request = REQUEST.test(text) || reading?.help === "more" || reading?.help === "show" || reading?.stop === true || code === "act_not_allowed";
+    // A request in the child's own words (help, show me, just tell me, stop), whatever the refusal (act_not_allowed too).
+    const request = REQUEST.test(text);
     const why = [wrong && "read wrong", hedged && "guess or hedge", request && "request"].filter(Boolean);
     if (why.length > 0) negative.push({ ...base, why: why.join(", ") });
   }

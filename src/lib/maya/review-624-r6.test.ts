@@ -44,10 +44,10 @@ function call(column: Column = "ones") {
 }
 
 /**
- * A turn with a sum and a claim is two templates, so a right one is not heard (the whole-turn rule, review of 771d2127), and
- * code still tells it from a wrong one: the checks of this file stay what they were, only the credit moved.
+ * Rule A (2026-11-12): a turn with a sum and a right claim is the child's own and is credited; code still tells it from a
+ * wrong one. The checks of this file stay what they were, only the credit moved (it was answer_not_committed).
  */
-const expectJudged = (refusal: { code: string } | null, right: boolean) => expect(refusal?.code).toBe(right ? "answer_not_committed" : "accepts_wrong_answer");
+const expectJudged = (refusal: { code: string } | null, right: boolean) => expect(refusal?.code).toBe(right ? undefined : "accepts_wrong_answer");
 
 describe("PR624 round 6: writing modifiers and column locations", () => {
   const forms = ["wrote the number", "wrote it as", "put the digit"];
@@ -58,21 +58,21 @@ describe("PR624 round 6: writing modifiers and column locations", () => {
     const c = call(column);
     c.child(`${column === "ones" ? "8 plus 5 is 13" : "1 plus 2 plus 1 is 4"}, I ${verb} ${digit} in the ${column}.`);
     expectJudged(c.judge().refusal, right);
-    expect(c.session.done.includes(column)).toBe(false);
+    expect(c.session.done.includes(column)).toBe(right);
   });
 
   it.each(["in", "into", "under", "at", "for", "on"].flatMap((place) => [false, true].map((right) => ({ place, right }))))("checks another column $place the ones, correct=$right", ({ place, right }) => {
     const c = call("tens");
     c.child(`I wrote ${right ? 3 : 4} ${place} the ones, then 1 plus 2 plus 1 is 4.`);
     expectJudged(c.judge().refusal, right);
-    expect(c.session.done.includes("tens")).toBe(false);
+    expect(c.session.done.includes("tens")).toBe(right);
   });
 
   it.each([false, true])("checks both written digits in one clause, correct=%s", (right) => {
     const c = call("tens");
     c.child(`I wrote 3 in the ones and ${right ? 4 : 2} in the tens, then 1 plus 2 plus 1 is 4.`);
     expectJudged(c.judge().refusal, right);
-    expect(c.session.done.includes("tens")).toBe(false);
+    expect(c.session.done.includes("tens")).toBe(right);
   });
 
   it.each(["right", "wrong"] as const)("does not judge an unreadable column relation as %s", (verdict) => {
@@ -93,7 +93,7 @@ describe("PR624 round 6: writing modifiers and column locations", () => {
     const c = call("tens");
     c.child(`I wrote ${right ? "3.0" : "4.0"} under the ones, then 1 plus 2 plus 1 is 4.`);
     expectJudged(c.judge().refusal, right);
-    expect(c.session.done.includes("tens")).toBe(false);
+    expect(c.session.done.includes("tens")).toBe(right);
   });
 
   it.each(["two", "three"].flatMap((digit) => (["right", "wrong"] as const).map((verdict) => ({ digit, verdict }))))("does not judge an unreadable writing claim $digit as $verdict", ({ digit, verdict }) => {
@@ -109,8 +109,8 @@ describe("PR624 round 6: carry sources and destinations", () => {
   it.each(cases)("checks $route in $column with verdict $verdict", ({ route, column, verdict }) => {
     const c = call(column);
     c.child(column === "ones" ? `8 plus 5 is 13, I carried one ${route} and wrote 3.` : `I carried one ${route}, and 1 plus 2 plus 1 is 4.`);
-    expect(c.judge(verdict).refusal?.code).toBe(verdict === "right" ? "answer_not_committed" : "rejects_right_answer");
-    expect(c.session.done.includes(column)).toBe(false);
+    expect(c.judge(verdict).refusal?.code).toBe(verdict === "right" ? undefined : "rejects_right_answer");
+    expect(c.session.done.includes(column)).toBe(verdict === "right");
   });
 
   it.each(["from the tens to the ones", "from the ones to the ones", "from the ones to the hundreds"])("does not approve a wrong carry %s", (route) => {

@@ -42,6 +42,10 @@ describe("fault A: one step template with next-step questions from a closed list
     ["Okay. I got 16. What do I do next?", 16], ["I got 16. So what do I do next?", 16],
     ["You said 16, so I wrote 6 and carried 1.", 6], ["You said 16 so I wrote 6 and carried 1.", 6], ["Like you said, I wrote 6 and carried 1.", 6],
     ["You said 16, so I wrote 6 and carried 1. What do I do next?", 6],
+    // Rule A and C (2026-11-12): Maya's own number said back before any show is the child's echo, the next-step doubt is
+    // no hedge, and the value said twice is still the child's own.
+    ["You said 16.", 16], ["I got 16. I don't know what to do next.", 16], ["I got 16, like you said. What do I do next?", 16], ["You said 16, so it's 16.", 16],
+    ["Like you said, it's 16.", 16], ["You said 16. What do I do next?", 16], ["I got 16. I got 16. What do I do next?", 16], ["You said 16, so I wrote 6.", 16],
   ];
   it.each(HEARD)("credits the ones for %j on both paths", async (text, value) => {
     for (const s of [down(text), named(text, value)]) {
@@ -54,15 +58,15 @@ describe("fault A: one step template with next-step questions from a closed list
   const REFUSED: [string, number][] = [
     // The near-misses the brief names.
     ["I got 16. My mom said where the 1 goes?", 16], ["I got 16. Is that right?", 16], ["I think I got 16. What do I do next?", 16],
-    ["I got 16. What do I do with the 15?", 16], ["You said 16.", 16], ["I didn't get 16. What do I do next?", 16],
+    ["I got 16. What do I do with the 15?", 16], ["I didn't get 16. What do I do next?", 16],
     // More near-misses: a check of the value, another number or speaker, a hedge, a negation, Maya's number as the value.
     ["I got 16. Is it 16?", 16], ["I got 16. Right?", 16], ["I got 16. What do I do next? Is it 16?", 16], ["I got 16. Where does the 6 go?", 16],
     ["I got 16. Where does the 2 go?", 16], ["I got 16. What do I do with the 7?", 16], ["My mom got 16. What do I do next?", 16], ["I got 16. Maybe what do I do next?", 16],
-    ["I got 16. Mom, what do I do next?", 16], ["I got 16. What does my mom do next?", 16], ["I got 16. I don't know what to do next.", 16], ["I got 16. What do I not do next?", 16],
-    ["I got 16, like you said. What do I do next?", 16], ["You said 16, so it's 16.", 16], ["Like you said, it's 16.", 16], ["You said 16. What do I do next?", 16],
-    ["I got 16. I got 16. What do I do next?", 16], ["Is it 16? What do I do next?", 16], ["I got 16? What do I do next?", 16], ["I got 15. What do I do next?", 16],
+    ["I got 16. Mom, what do I do next?", 16], ["I got 16. What does my mom do next?", 16], ["I got 16. What do I not do next?", 16],
+    
+    ["Is it 16? What do I do next?", 16], ["I got 16? What do I do next?", 16], ["I got 15. What do I do next?", 16],
     ["You said 15, so I wrote 6 and carried 1.", 6], ["You said 16, so my mom wrote 6 and carried 1.", 6], ["You said 16, so I think I wrote 6 and carried 1.", 6],
-    ["You said 16, so I wrote 6.", 6], ["You said 16, so I didn't write 6 and carried 1.", 6], ["You said 16, so I wrote 5 and carried 1.", 6],
+    ["You said 16, so I didn't write 6 and carried 1.", 6], ["You said 16, so I wrote 5 and carried 1.", 6],
   ];
   it.each(REFUSED)("gives no ones credit for %j on both paths", async (text, value) => {
     for (const s of [down(text), named(text, value)]) {

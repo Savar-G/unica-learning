@@ -5,22 +5,28 @@
 // NEGATIVE: turns read wrong, guesses, hedges, requests, and the positives with a true blocker. None may be credited.
 // Each turn runs on a fresh call of its question, with every step before it done (the probe pattern, through the text
 // adapter and the scripted model, as the behaviour gate runs).
-import { readFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { createTextSession } from "@/lib/maya-text";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
 import { CHILD_MS, GATE_T0, scenarioModel, type Plan, type Read } from "@/lib/maya-gate/gate";
 import { PRACTICE_CASES } from "@/lib/maya-practice/cases";
+import { valuesIn } from "@/lib/maya/numbers";
 import type { AnswerValue, QuestionPackage, WorkedStep } from "@/lib/question-package";
 
 interface CorpusAnswer { value: AnswerValue; step: string; verdict: "right" | "wrong"; problem?: string }
 interface CorpusTurn {
   run: string; case: string; question: string; turn: number; text: string; answers: CorpusAnswer[]; code: string | null;
-  doneBefore: string[]; shownBefore: string[]; why?: string;
+  doneBefore: string[]; shownBefore: string[]; why?: string; blocked?: string[];
 }
 interface Corpus { runs: number; turns: CorpusTurn[]; moved?: { run: string; turn: number; text: string; reason: string }[] }
 const load = (name: string) => JSON.parse(readFileSync(new URL(`./commit-corpus/${name}.json`, import.meta.url), "utf8")) as Corpus;
 const POSITIVE = load("positive");
+/** COMMIT_CORPUS_REPORT=<file> also writes each summary there (vitest hides the console of a passing test). */
+const report = (text: string) => {
+  console.log(text);
+  if (process.env.COMMIT_CORPUS_REPORT) appendFileSync(process.env.COMMIT_CORPUS_REPORT, `${text}\n`);
+};
 const NEGATIVE = load("negative");
 
 /** The question each run worked on: its practice case's own package, or the case's fixture. */
@@ -45,7 +51,7 @@ function plainValue(st: WorkedStep): number | null {
 
 /** The step's right values, by the package's own math (for a reading the model called wrong). */
 function rightValues(pkg: QuestionPackage, step: string): number[] {
-  if (step === "result") return pkg.answer.value.type === "number" ? [pkg.answer.value.value] : [];
+  if (step === "result") return pkg.answer?.value.type === "number" ? [pkg.answer.value.value] : [];
   const st = pkg.steps.find((x) => x.id === step);
   if (!st) return [];
   const v = plainValue(st);
@@ -98,14 +104,16 @@ function setupFor(pkg: QuestionPackage, t: CorpusTurn): WorkedStep[] {
   return steps.slice(0, had.length ? Math.max(...had) + 1 : 0);
 }
 
-/** Every step the model read right is credited, and a right final answer is accepted. */
+/** Every step the model read right, with a value the child said, is credited, and a right final answer is accepted. */
 const creditedAll = (t: CorpusTurn, p: Played) =>
-  t.answers.filter((a) => !a.problem && a.verdict === "right").every((a) => (a.step === "result" ? p.solved : p.done.includes(a.step)));
+  t.answers.filter((a) => !a.problem && a.verdict === "right" && valuesIn(t.text).some((v) => JSON.stringify(v) === JSON.stringify(a.value)))
+    .every((a) => (a.step === "result" ? p.solved : p.done.includes(a.step)));
 
 /** Nothing new is credited at or after the first step this turn says wrong (or at all, for a guess, hedge or request). */
 function creditedWrongly(pkg: QuestionPackage, t: CorpusTurn, p: Played): string[] {
   const steps = order(pkg).map((s) => s.id);
   const gained = p.done.filter((id) => !p.before.includes(id));
+  if (t.blocked) return [...gained.filter((id) => t.blocked!.includes(id)), ...(p.solved && t.blocked.includes("result") ? ["result"] : [])];
   const wrong = t.answers.filter((a) => !a.problem && a.verdict === "wrong");
   if (wrong.length === 0 || (t.why ?? "").startsWith("moved") || /hedge|request/.test(t.why ?? "")) return [...gained, ...(p.solved ? ["result"] : [])];
   const first = Math.min(...wrong.map((a) => (a.step === "result" ? steps.length : steps.indexOf(a.step))));
@@ -132,7 +140,7 @@ describe("the commit-rule corpus (practice pass 2026-11-12T16-17-39-955Z)", () =
       if (paths.length > 0) refused.push(`${t.run}#${t.turn} [${paths.join(",")}] ${t.answers.map((a) => `${a.step}=${JSON.stringify(a.value.type === "number" ? (a.value as { value: number }).value : a.value)}`).join(" ")}: ${t.text}`);
     }
     const share = (n - refused.length) / n;
-    console.log(`POSITIVE credited ${n - refused.length}/${n} (${(share * 100).toFixed(1)}%)\n${refused.join("\n")}`);
+    report(`POSITIVE credited ${n - refused.length}/${n} (${(share * 100).toFixed(1)}%)\n${refused.join("\n")}`);
     expect(n).toBeGreaterThan(0);
     expect(share).toBeGreaterThanOrEqual(0.95);
   }, 600_000);
@@ -150,14 +158,15 @@ describe("the commit-rule corpus (practice pass 2026-11-12T16-17-39-955Z)", () =
       }
       n += 1;
       const setup = setupFor(pkg, t);
-      const show = (t.why ?? "").includes("echo after a show") ? (t.answers.find((a) => t.shownBefore.includes(a.step))?.step ?? null) : null;
+      // An echo after a show: Maya shows the step first, as she did in the run before this turn.
+      const show = t.blocked?.[0] ?? null;
       const named = await play(pkg, setup, t.text, t.answers.length ? t.answers : [], show);
       const down = await play(pkg, setup, t.text, null, show);
       expect(named.setupOk && down.setupOk, `setup for ${t.run}#${t.turn}`).toBe(true);
       const bad = [...creditedWrongly(pkg, t, named).map((x) => `model:${x}`), ...creditedWrongly(pkg, t, down).map((x) => `fallback:${x}`)];
       if (bad.length > 0) credited.push(`${t.run}#${t.turn} (${t.why}) [${bad.join(",")}]: ${t.text}`);
     }
-    console.log(`NEGATIVE refused ${n - credited.length}/${n} (${(((n - credited.length) / n) * 100).toFixed(1)}%); skipped as model misreads: ${skipped.length}\n${credited.join("\n")}\nSKIPPED\n${skipped.join("\n")}`);
+    report(`NEGATIVE refused ${n - credited.length}/${n} (${(((n - credited.length) / n) * 100).toFixed(1)}%); skipped as model misreads: ${skipped.length}\n${credited.join("\n")}\nSKIPPED\n${skipped.join("\n")}`);
     expect(n).toBeGreaterThan(0);
     expect(credited).toEqual([]);
   }, 600_000);

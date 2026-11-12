@@ -8,7 +8,7 @@
    "run": "C01-r2",
    "turn": 7,
    "text": "Okay. You said add the ones first. So 7 + 9 is 16?",
-   "reason": "value in a question"
+   "reason": "value only in a question"
   },
   {
    "run": "C01-r2",
@@ -21,18 +21,6 @@
    "turn": 27,
    "text": "I added the tens, 2 + 3 + 1, and got 6. So I wrote 6 under the tens. Is that right?",
    "reason": "value check after the value"
-  },
-  {
-   "run": "C01-r3",
-   "turn": 24,
-   "text": "I got 6. Do I write the 6 in the tens?",
-   "reason": "value in a question"
-  },
-  {
-   "run": "C01-r3",
-   "turn": 28,
-   "text": "Yes, I got 6. Do I write the 6 in the tens spot?",
-   "reason": "value in a question"
   },
   {
    "run": "C02-r1",
@@ -68,7 +56,7 @@
    "run": "C02-r3",
    "turn": 10,
    "text": "Oh! You said the 1 goes with 2 and 3. So the tens are 6?",
-   "reason": "value in a question"
+   "reason": "value only in a question"
   },
   {
    "run": "C03-r3",
@@ -86,7 +74,7 @@
    "run": "C04-r1",
    "turn": 28,
    "text": "You said write 6, so I wrote 6. Is it 66?",
-   "reason": "value in a question"
+   "reason": "value only in a question"
   },
   {
    "run": "C04-r1",
@@ -110,7 +98,7 @@
    "run": "C04-r2",
    "turn": 28,
    "text": "You said write 6, so I wrote the 6. Is it 66?",
-   "reason": "value in a question"
+   "reason": "value only in a question"
   },
   {
    "run": "C04-r2",
@@ -128,7 +116,7 @@
    "run": "C04-r3",
    "turn": 10,
    "text": "Yes, I said 66. Is it 66?",
-   "reason": "value in a question"
+   "reason": "a question about the value"
   },
   {
    "run": "C04-r3",
@@ -146,7 +134,7 @@
    "run": "C04-r3",
    "turn": 46,
    "text": "You said write 6. So I wrote the 6 in the tens. Is that my 66?",
-   "reason": "value in a question"
+   "reason": "value only in a question"
   },
   {
    "run": "C04-r3",
@@ -164,7 +152,7 @@
    "run": "C05-r1",
    "turn": 11,
    "text": "Okay. Now what do I do with the 16?",
-   "reason": "value in a question"
+   "reason": "value only in a question"
   },
   {
    "run": "C05-r1",
@@ -230,7 +218,7 @@
    "run": "C10-r2",
    "turn": 18,
    "text": "Oh, so 2 plus 3 is 5, and the 1 makes it 6?",
-   "reason": "value in a question"
+   "reason": "value only in a question"
   },
   {
    "run": "C10-r2",
@@ -260,7 +248,7 @@
    "run": "C10-r2",
    "turn": 36,
    "text": "Okay, you said 18 plus 15 is 33. So my answer is still 66, right?",
-   "reason": "value in a question"
+   "reason": "value only in a question"
   },
   {
    "run": "C10-r2",
@@ -278,7 +266,7 @@
    "run": "C10-r3",
    "turn": 14,
    "text": "Oh, so I add the 2, the 3, and the 1 you carried. That makes 6?",
-   "reason": "value in a question"
+   "reason": "value only in a question"
   },
   {
    "run": "C10-r3",
@@ -314,19 +302,13 @@
    "run": "C24-r1",
    "turn": 10,
    "text": "Okay. So what do I do with the 16?",
-   "reason": "value in a question"
+   "reason": "value only in a question"
   },
   {
    "run": "C26-r2",
    "turn": 6,
    "text": "Um, 7 plus 9 is 16, I think.",
    "reason": "hedge"
-  },
-  {
-   "run": "C26-r2",
-   "turn": 10,
-   "text": "Um, I still got 16 for the ones. What do I do with the 16?",
-   "reason": "value in a question"
   },
   {
    "run": "C26-r2",
@@ -464,13 +446,13 @@
    "run": "F02-r3",
    "turn": 29,
    "text": "It's 6, like I said. So the answer is 66, right?",
-   "reason": "value in a question"
+   "reason": "value check after the value"
   },
   {
    "run": "F02-r3",
    "turn": 41,
    "text": "Okay. Is my 66 right for 27 plus 39?",
-   "reason": "value in a question"
+   "reason": "value only in a question"
   },
   {
    "run": "F03-r1",
@@ -482,7 +464,7 @@
    "run": "F03-r1",
    "turn": 26,
    "text": "Okay, 2 plus 3 plus 1 is 6 again. So my answer is still 66, right?",
-   "reason": "value in a question"
+   "reason": "value check after the value"
   },
   {
    "run": "F03-r1",
@@ -512,19 +494,13 @@
    "run": "F04-r3",
    "turn": 32,
    "text": "Okay, I get it now. Can we check my 66 again?",
-   "reason": "value in a question"
+   "reason": "value only in a question"
   },
   {
    "run": "F05-r1",
    "turn": 6,
    "text": "Okay. Seven plus nine is sixteen, I think.",
    "reason": "hedge"
-  },
-  {
-   "run": "F05-r3",
-   "turn": 10,
-   "text": "Yes, I got 16. What do I do with the 16?",
-   "reason": "value in a question"
   },
   {
    "run": "F05-r3",
@@ -536,13 +512,13 @@
    "run": "F05-r3",
    "turn": 20,
    "text": "Is it 6? What do I write for the tens?",
-   "reason": "value in a question"
+   "reason": "value only in a question"
   },
   {
    "run": "F05-r3",
    "turn": 28,
    "text": "Okay. So is my answer 66? I already wrote it.",
-   "reason": "value in a question"
+   "reason": "value only in a question"
   },
   {
    "run": "F05-r3",
@@ -1078,6 +1054,58 @@
    "lastMaya": {
     "act": "guide",
     "say": "Add the ones: 7 + 9. What do you get?"
+   }
+  },
+  {
+   "run": "C01-r3",
+   "case": "C01",
+   "question": "gate-A-27-39",
+   "turn": 24,
+   "text": "I got 6. Do I write the 6 in the tens?",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Can you add 2 + 3 + 1?"
+   }
+  },
+  {
+   "run": "C01-r3",
+   "case": "C01",
+   "question": "gate-A-27-39",
+   "turn": 28,
+   "text": "Yes, I got 6. Do I write the 6 in the tens spot?",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "So you said 6?"
    }
   },
   {
@@ -2667,6 +2695,30 @@
    "lastMaya": {
     "act": "guide",
     "say": "In the ones we have 7 and 9."
+   }
+  },
+  {
+   "run": "C26-r2",
+   "case": "C26",
+   "question": "gate-A-27-39",
+   "turn": 10,
+   "text": "Um, I still got 16 for the ones. What do I do with the 16?",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Let's add the ones: 7 + 9."
    }
   },
   {
@@ -5690,6 +5742,30 @@
    "lastMaya": {
     "act": "guide",
     "say": "Next up, the ones. What would you do?"
+   }
+  },
+  {
+   "run": "F05-r3",
+   "case": "F05",
+   "question": "gate-A-27-39",
+   "turn": 10,
+   "text": "Yes, I got 16. What do I do with the 16?",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Just checking, was that 16?"
    }
   },
   {

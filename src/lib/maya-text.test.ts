@@ -235,9 +235,9 @@ describe("a twice-refused proposal keeps what code can check of its reading (#38
     await session.start();
     const out = await session.child("Seven plus nine is sixteen. Two plus three is five.");
     expect(sources(session)).toEqual(["model", "repair", "fallback"]);
-    // Two sentences are no whole-turn template, so the ones get no credit either.
-    expect(session.session.done).toEqual([]);
-    expect(lastMayaTurn(session).attempts[2].proposal).not.toHaveProperty("reading.answers");
+    // Rule A (2026-11-12): each step is checked on its own, so the right ones are credited and the wrong tens dropped.
+    expect(session.session.done).toEqual(["ones"]);
+    expect((lastMayaTurn(session).attempts[2].proposal as { reading?: { answers?: { step: string }[] } }).reading?.answers?.map((a) => a.step)).toEqual(["ones"]);
     expect(said(out)).not.toMatch(/2 \+ 3 = 5|\b66\b/);
 
     // A reading with only a wrong step read as right keeps nothing: no reading, no step done, no "Yes".

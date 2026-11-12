@@ -71,16 +71,22 @@ describe("PR624 round 5: explicit answers and column roles", () => {
     expect(c.session.done).not.toContain("tens");
   });
 
+  // Rule A (2026-11-12): right working in the child's own words is credited (it was "not one whole-turn template").
   it.each([
     "Seven added to nine is sixteen.", "7 plus 9 is equal to 16.",
     "7 plus 9 is 16, I wrote 6 and carried 1.",
     "Seven plus nine is sixteen, so I wrote six in the ones.",
     "7 plus 9 is 16, I put 6 in the ones and carry 1 to the tens.",
     "7 plus 9 is 16, I carry the ten.",
-    "7 plus 9 is 6. No, I mean 7 plus 9 is 16, I wrote 6.",
-  ])("asks about correct working that is not one whole-turn template: %s", (text) => {
+  ])("credits correct working in the child's own words: %s", (text) => {
     const c = call(); c.child(text);
-    expect(rightOnes(c).refusal?.code).toBe("answer_not_committed");
-    expect(c.session.done).not.toContain("ones");
+    expect(rightOnes(c).refusal).toBeNull();
+    expect(c.session.done).toContain("ones");
+  });
+
+  it("credits a false equation the child corrects in the same turn: 7 plus 9 is 6. No, I mean 7 plus 9 is 16, I wrote 6.", () => {
+    const c = call(); c.child("7 plus 9 is 6. No, I mean 7 plus 9 is 16, I wrote 6.");
+    expect(rightOnes(c).refusal).toBeNull();
+    expect(c.session.done).toContain("ones");
   });
 });

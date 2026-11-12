@@ -53,7 +53,8 @@ const PKG: QuestionPackage = {
 /** The easier example first, then the child's own question with hints, solved (scripts/maya-text/no-start.txt). */
 const NO_START = ["I don't know how to start.", "Okay.", "Is it 56?", "Can you help me?", "16", "66", "Because the ones made a ten, so I carried it.", "I wrote it."];
 /** The child answers each step at once (scripts/maya-text/solves-alone.txt shape). */
-const ALONE = ["I think it's 66.", "Because 7 and 9 make 16, so I carried the one.", "I wrote it."];
+// Rule A (2026-11-12): "I think" is a hedge, so the solved-alone script says the answer plainly.
+const ALONE = ["It's 66.", "Because 7 and 9 make 16, so I carried the one.", "I wrote it."];
 
 type Ended = { call: CallRecord; package: QuestionPackage; event: NewLearningEvent | null };
 

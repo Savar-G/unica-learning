@@ -104,17 +104,10 @@ describe("repairs from the full subscription practice", () => {
     expect(c.s.solved).toBeNull();
   });
 
-  it("asks for the answer alone when an unsupported method prevents confirmation", () => {
+  it("accepts the answer after a true method with its own result (rule A, 2026-11-12)", () => {
     const c = call();
-    // A second result in the working ("27 plus 40 is 67") is a second answer: Maya asks for the final answer alone.
+    // "27 plus 40 is 67" is true working, then one taken away: the child's own 66 (it asked for the answer alone before).
     c.child("I did 27 plus 40 is 67, then took away one. I got 66.");
-    expect(c.propose({ act: "accept_answer", parts: [line("answer.right")], reading: { answers: [answer(66, "result")] } }).refusal).not.toBeNull();
-    expect(lineOffers(c.s).confirm?.some(o => o.line === "confirm.answer")).toBe(true);
-    expect(c.propose({ act: "confirm", parts: [line("question.read", { sentence: 0 })] }).refusal).not.toBeNull();
-    c.ok({ act: "confirm", parts: [line("confirm.answer")] });
-    expect(c.s.heardAsked).toBeNull();
-    expect(c.s.solved).toBeNull();
-    c.child("66.");
     c.ok({ act: "accept_answer", parts: [line("answer.right")], reading: { answers: [answer(66, "result")] } });
     expect(c.s.solved).toBe("child");
   });

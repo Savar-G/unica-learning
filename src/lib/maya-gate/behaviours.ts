@@ -27,12 +27,8 @@ const fractionLines = packageLines(FIXTURES.D as OperationPackage);
 const simplestLines = packageLines(FIXTURES.D_SIMPLEST as OperationPackage);
 /** J06 (first-ship practice): the approved wordings of the lines Maya says in J1 to J8, from fixture A. */
 const wholeLines = packageLines(FIXTURES.A as OperationPackage);
-const inviteOnes = variants(wholeLines.help("ones").filter((o) => o.line === "step.invite"), "step.invite");
 const rightOnes = variants(wholeLines.rightStep("ones"), "check.right_step");
-const rightTens = variants(wholeLines.rightStep("tens"), "check.right_step");
 const inviteTens = variants(wholeLines.help("tens").filter((o) => o.line === "step.invite"), "step.invite");
-const inviteResult = variants(wholeLines.help("result"), "invite.result");
-const regroupTens = variants(wholeLines.help("tens").filter((o) => o.line === "step.regroup"), "regroup.add");
 const pointTens = variants(wholeLines.help("tens").filter((o) => o.line === "step.point"), "point.add.carry");
 /** The decline line for a request for sexual or violent content (C29), in the wording Savar approved on 2026-11-01. */
 const DECLINE = "I can't talk about this. I'm here to help with math.";
@@ -574,8 +570,8 @@ export const BEHAVIOURS: Behaviour[] = [
     ],
     expect: {
       outcome: { reason: "solved", assistance: "independent" },
-      // Two numbers, so no step confirm (review of 6528f2ca): the ones get no credit, and Maya helps with them.
-      acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
+      // Rule D (2026-11-12): the right ones are said in a question, so Maya asks her confirm; no credit, no help counted.
+      acts: [OPEN, "confirm", "accept_answer", "ask_write", "close"],
       refused: ["answer_not_committed"],
     },
   },
@@ -1698,7 +1694,8 @@ export const BEHAVIOURS: Behaviour[] = [
   },
   {
     id: "P2",
-    title: "'Yes, 16. But I don't know what to do with it.': another sentence in the turn, so no credit and no step confirm: Maya helps with the step",
+    // Rule A (2026-11-12): "I don't know what to do with it" asks about the next step, no hedge: the ones are credited.
+    title: "'Yes, 16. But I don't know what to do with it.': the next-step doubt is no hedge, so the ones are credited and Maya goes on",
     fixture: "A",
     status: "passing",
     steps: [
@@ -1709,7 +1706,7 @@ export const BEHAVIOURS: Behaviour[] = [
     expect: {
       outcome: { reason: "solved", assistance: "independent" },
       acts: [OPEN, "guide", "accept_answer", "ask_write", "close"],
-      refused: ["answer_not_committed"],
+      counts: { refusals: 0 },
     },
   },
   {
@@ -1762,21 +1759,11 @@ export const BEHAVIOURS: Behaviour[] = [
       counts: { refusals: 0, repairs: 0 },
     },
   },
-  // PR #624 review round 3: a turn with two sentences that hold numbers never commits on its own. Its final answer
-  // still stands as 66 (working after it does not replace it), and Maya confirms it in code's words first.
+  // Rule A (2026-11-12): the child's own working after the answer is no second answer (PR #624 round 3 had Maya confirm
+  // P5 and P5c first): the answer stands with no confirmation.
   ...[
     ["P5", "Oh, I got 66! 6 in the ones and 6 in the tens."],
     ["P5c", "I got 66. Seven plus nine is sixteen, so I carry the ten."],
-  ].map(([id, text]): Behaviour => ({
-    id, title: `'${text}': two sentences with numbers: the final answer stands as 66, confirmed before it is accepted`, fixture: "A", status: "passing",
-    steps: [
-      child(text, { start: "has_work", answers: [[66, "result", "right"]] }, [{ act: "accept_answer", repair: { act: "confirm", heard: "66" } }]),
-      child("Yes.", { answers: [[66, "result", "right"]] }),
-      ...solvedEnd(),
-    ],
-    expect: { outcome: { reason: "solved", assistance: "independent" }, acts: [OPEN, "confirm", "accept_answer", "ask_write", "close"], refused: ["answer_not_committed"], counts: { confirmations: 1 } },
-  })),
-  ...[
     ["P5b", "I'm sure it's 66."],
     ["P5d", "It's 66. I already wrote it on my paper."],
   ].map(([id, text]): Behaviour => ({
@@ -2222,7 +2209,9 @@ export const BEHAVIOURS: Behaviour[] = [
   },
   {
     id: "J3",
-    title: "C10: 'Oh, so 2 plus 3 plus 1 is 6.' keeps Maya on the tens with no credit (code's next help there); 'It's 6.' next is the tens, and a reply asking for them again is refused",
+    // Rule A (2026-11-12): "Oh, so 2 plus 3 plus 1 is 6." is the tens said as the child's own, so it is credited (the
+    // whole-turn rule held it back); "It's 6." after it is no reason to ask the tens again.
+    title: "C10: 'Oh, so 2 plus 3 plus 1 is 6.' credits the tens; 'It's 6.' next does not ask for them again",
     fixture: "A",
     status: "passing",
     steps: [
@@ -2233,12 +2222,10 @@ export const BEHAVIOURS: Behaviour[] = [
       ...solvedEnd(),
     ],
     expect: {
-      // Code's help rises one level per child turn on a step still not done: the tens' carry line (H1), never the result.
-      outcome: { reason: "solved", assistance: "hint", highestHint: 1 },
+      outcome: { reason: "solved", assistance: "independent" },
       acts: [OPEN, "guide", "guide", "guide", "accept_answer", "ask_write", "close"],
-      refused: ["answer_not_committed", "invalid_proposal"],
-      outputs: [{ mayaTurn: 2, lines: [regroupTens] }, { mayaTurn: 3, lines: [rightTens, inviteResult] }],
-      counts: { hints: 1 },
+      refused: ["wrong_step"],
+      counts: { hints: 0 },
     },
   },
   {
@@ -2255,8 +2242,9 @@ export const BEHAVIOURS: Behaviour[] = [
     ],
     expect: {
       outcome: { reason: "solved", assistance: "hint", highestHint: 1 },
-      acts: [OPEN, "guide", "guide", "guide", "accept_answer", "ask_write", "close"],
-      outputs: [{ mayaTurn: 1, lines: [inviteOnes] }, { mayaTurn: 2, lines: [rightOnes, inviteTens] }, { mayaTurn: 3, lines: [pointTens] }],
+      // Rule D (2026-11-12): the hedged right ones get Maya's confirm, not the ones' invitation again.
+      acts: [OPEN, "confirm", "guide", "guide", "accept_answer", "ask_write", "close"],
+      outputs: [{ mayaTurn: 2, lines: [rightOnes, inviteTens] }, { mayaTurn: 3, lines: [pointTens] }],
       refused: ["answer_not_committed", "line_not_offered"],
       never: ["give_answer"],
     },
@@ -2309,9 +2297,10 @@ export const BEHAVIOURS: Behaviour[] = [
     ],
     expect: {
       outcome: { reason: "solved", assistance: "independent" },
-      acts: [OPEN, "guide", "guide", "accept_answer", "ask_write", "close"],
+      // Rule D (2026-11-12): the hedged right ones get Maya's confirm, not the ones' invitation again.
+      acts: [OPEN, "confirm", "guide", "accept_answer", "ask_write", "close"],
       refused: ["answer_not_committed", "invalid_proposal"],
-      outputs: [{ mayaTurn: 1, lines: [inviteOnes] }, { mayaTurn: 2, lines: [rightOnes, inviteTens] }],
+      outputs: [{ mayaTurn: 2, lines: [rightOnes, inviteTens] }],
       counts: { hints: 0 },
     },
   },

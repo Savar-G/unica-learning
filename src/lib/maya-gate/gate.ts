@@ -387,6 +387,17 @@ export const CHILD_MS = 4_000;
 /** The package a behaviour runs on. */
 export const packageOf = (b: Behaviour): QuestionPackage => FIXTURES[b.fixture];
 
+/**
+ * The judge's own reading of rule A for a final answer: the turn says `value` in a sentence that is no question, outside an
+ * explanation, and holds no hedge ("think", "maybe", "guess", "probably", "or", "not sure"), no other person and no
+ * request for help.
+ */
+function gateOwnAnswer(text: string, value: AnswerValue, opts: ReturnType<typeof readOptionsFor>): boolean {
+  const t = text.toLowerCase().replace(/[’‘]/g, "'");
+  if (/\b(?:think|maybe|guess|guessed|probably|perhaps|or|not sure|unsure|would say|mom|dad|teacher|brother|sister|friend|she|he|they|says|help|show me|tell me)\b/.test(t)) return false;
+  return t.split(/(?<=[.!?])\s+/).some((x) => !x.trim().endsWith("?") && valuesIn(x.split(/\b(?:because|since|cause|cuz|coz)\b/)[0], opts).some((v) => sameValue(v, value) || equivalent(v, value)));
+}
+
 /** A plain yes, as a whole child turn. The judge's own reading, apart from the controller's (#605). */
 const GATE_YES = /^[\s,.!]*(?:(?:um+|uh+|oh|okay|ok|well)[\s,.!]+)*(?:yes|yeah|yea|yep|yup|uh[- ]huh|mm[- ]?hmm|mhm|right|correct|exactly|that['’]?s (?:right|it|what i said)|it is|i did|i said (?:that|it))(?:[\s,.!]+(?:yes|yeah|yep|right|correct|exactly|that['’]?s (?:right|it|what i said)|it is|i did|i said (?:that|it)))*[\s,.!]*$/i;
 
@@ -744,8 +755,12 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
       // worded (#407: an equal fraction when the question does not ask for the simplest form).
       const read = readAnswer(lastChild, opts);
       const yes = askedHeard !== null && GATE_YES.test(lastChild) ? askedHeard : null;
-      const final = yes ?? read.final;
-      if (!final || (yes === null && !read.sure) || !rightForQuestion(op, final)) fail("accepted_wrong_answer", `Maya turn ${i} accepted an answer after "${lastChild}"`);
+      // The commit rule (rule A, 2026-11-12): the right answer said as the child's own, with no hedge, no other person and
+      // no question about it, even with the child's working beside it ("I got 66. I put the 6 and the 6 together."). The
+      // judge's own reading, apart from the controller's.
+      const own = yes === null && !read.sure && !read.choice ? read.kept.find((v) => rightForQuestion(op, v) && gateOwnAnswer(lastChild, v, opts)) ?? null : null;
+      const final = yes ?? own ?? read.final;
+      if (!final || (yes === null && own === null && !read.sure) || !rightForQuestion(op, final)) fail("accepted_wrong_answer", `Maya turn ${i} accepted an answer after "${lastChild}"`);
     }
     // Wrong final answers once every work step is done (D-199), read from the accepted readings: a step counts done when
     // the judge finds the reading's value right for it, and a final answer counts wrong by isRightAnswer.

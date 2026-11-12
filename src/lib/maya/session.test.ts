@@ -151,9 +151,10 @@ describe("the main path", () => {
 
   it("allows only accepting a right answer the child said, not skipping past it", () => {
     const c = opened();
-    c.child("I think it's 66.");
+    // Rule A (2026-11-12): "I think" is a hedge, so the plain answer is used here.
+    c.child("It's 66.");
     const r = c.refused({ act: "example_step", step: "ones", parts: [ln("example.intro")], reading: { answers: [right66] } });
-    expect(r).toMatchObject({ code: "act_not_allowed", allowed: ["accept_answer", "confirm"] });
+    expect(r).toMatchObject({ code: "act_not_allowed", allowed: ["accept_answer"] });
   });
 
   it("guides the result after every column is right, with the right-step line and the question (practice run 8)", () => {
@@ -1000,8 +1001,9 @@ describe("the child's final answer, with an explanation after it (D-199)", () =>
   it.each([
     "So I got 66, because six tens and six ones.",
     "So I got sixty-six, because six tens and six ones.",
-    "I think it's 66 because seven and nine make sixteen.",
-    "I think it's sixty-six, because 7 plus 9 is 16 and I carried the 1.",
+    // Rule A (2026-11-12): "I think" is a hedge, so these two say the answer plainly.
+    "It's 66 because seven and nine make sixteen.",
+    "It's sixty-six, because 7 plus 9 is 16 and I carried the 1.",
     "66 'cause I carried the one.",
     "66 cause the ones made 16.",
     "Sixty-six cuz the ones made a ten.",

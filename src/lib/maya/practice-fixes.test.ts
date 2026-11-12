@@ -210,7 +210,8 @@ describe("steps the child already did are never asked again", () => {
     c.child("I think the tens make 66.");
     expect(c.propose({ act: "guide", step: "tens", level: 1, parts: [ln("check.not_yet", { step: "tens" }), ln("step.point", { step: "tens" })], reading: { answers: [ans(66, "tens", "wrong")] } }).refusal)
       .toMatchObject({ code: "rejects_right_answer" });
-    expect(c.propose({ act: "accept_answer", parts: [ln("answer.right")], reading: { answers: [ans(66, "result", "right")] } }).refusal).toBeNull();
+    // Rule A (2026-11-12): "I think" is a hedge, so the answer goes to the confirm before it is accepted.
+    expect(c.propose({ act: "accept_answer", parts: [ln("answer.right")], reading: { answers: [ans(66, "result", "right")] } }).refusal).toMatchObject({ code: "answer_not_committed" });
   });
 
   it("does not ask how the child did a step they worked out aloud", () => {

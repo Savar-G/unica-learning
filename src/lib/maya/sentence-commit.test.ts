@@ -73,6 +73,15 @@ describe("sentence-level commit: one committing sentence and harmless others", (
   });
 });
 
+// Rule A (2026-11-12): these turns were refused by the allow-list; each states the ones as the child's own with no blocker
+// (3 is the tens' own operand, the tens' 6 is right in order, the value said twice is still the child's own).
+describe("rule A: turns the allow-list refused that the block-list credits", () => {
+  it.each(["7 + 9 is 16. I add 3 first.", "7 + 9 is 16. The tens are 6.", "That's 16. I got 16."])("credits the ones for %j", async (text) => {
+    expect(probe(text)).toBe("credited");
+    for (const first of [named(text), down(text)]) expect((await play([first])).told[1].lines, text).toContain("check.right_step");
+  });
+});
+
 describe("sentence-level commit: a trailing question about the value goes to the confirm question", () => {
   const ASKED = ["7 + 9 is 16. Is that right?", "I got 16. Is that right?", "7 plus 9 is 16. Am I right?", "I add the ones first. 7 + 9 is 16. Is that correct?"];
 
@@ -98,8 +107,6 @@ describe("sentence-level commit: a turn with any harmful sentence is not credite
     ["another person in a lead", "Like my teacher showed me, 7 + 9 is 16."],
     ["another person after a claim", "I add the ones, 7 and 9, that's 16. My mom told me."],
     ["another number as an operand", "I add the ones, 7 and 8, that's 16."],
-    ["another number in a sentence", "7 + 9 is 16. I add 3 first."],
-    ["another column's value", "7 + 9 is 16. The tens are 6."],
     ["a hedge before", "I add the ones first. Maybe 7 + 9 is 16."],
     ["a hedge after", "7 + 9 is 16. I don't know."],
     ["another value offered", "7 + 9 is 16, or 17."],
@@ -109,7 +116,6 @@ describe("sentence-level commit: a turn with any harmful sentence is not credite
     ["a wrong claim, then the right claim", "That's 15. I already got 16 for that."],
     ["another column named", "I add the tens first. 7 + 9 is 16."],
     ["a negation", "I don't add the ones. 7 + 9 is 16."],
-    ["the value twice", "That's 16. I got 16."],
   ])("never credits %s: %j", async (_name, text) => {
     expect(probe(text)).not.toBe("credited");
     for (const first of [named(text), down(text)]) {
