@@ -217,8 +217,8 @@ export interface Session {
 }
 
 /**
- * What the server stores when a test starts. Never sent to the browser: it holds the answers. D-145: two tests from
- * before the extra round was removed (#190) also hold that round's questions under `extra`; no code reads them.
+ * What the server stores when a test starts. Never sent to the browser: it holds the answers. D-145: migration
+ * drop_extra_round_data removed the extra round's questions (`extra`, #190) from every stored test.
  */
 export type StoredTest = Pick<Session, "profile" | "seed" | "stage1" | "stage2" | "stage3" | "adaptive">;
 

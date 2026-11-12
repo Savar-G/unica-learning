@@ -87,7 +87,7 @@ const differences = new Map<string, string>();
 
 function liveTest(row: LiveRow, markChanged: string[]): CheckedTest {
   const id = anonymous(row.id);
-  const answers = row.answers.filter((a) => !fromRemovedRound(a.question_id));
+  const { answers } = row;
   const session = restoreSession(row.test, answers.map((a) => ({ questionId: a.question_id, response: a.response, timeMs: a.time_ms })), row.route, row.stage3_route);
   if (session.answers.some((a, i) => a.correct !== answers[i].correct)) markChanged.push(id);
   const difference = storedDifference(row.placement, answers.length);
@@ -96,6 +96,7 @@ function liveTest(row: LiveRow, markChanged: string[]): CheckedTest {
 }
 
 function copyTest(row: CopyRow): CheckedTest {
+  // D-145: a copy saved before the extra round's removal (version 1) can still hold the round's questions.
   const questions = [...row.questions].filter((q) => q.correct !== null && !fromRemovedRound(q.questionId)).sort((a, b) => a.position - b.position);
   // An unknown time does not prove rushing, so it can never count as fast.
   const out = leftOutOfScore(questions.map((q) => ({ questionId: q.questionId, timeMs: q.timeMs ?? Number.MAX_SAFE_INTEGER, correct: q.correct === true })));

@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { answersAddUp, reportShowsPlacement } from "@/lib/area-level-check";
-import { fromRemovedRound, profileSkillResults, reportCallsUnreliable, restoreSession, testAreaAnswers, type AreaAnswer, type Grade } from "@/lib/assessment";
+import { profileSkillResults, reportCallsUnreliable, restoreSession, testAreaAnswers, type AreaAnswer, type Grade } from "@/lib/assessment";
 import type { Database } from "@/lib/database";
 import { LEARNING_COLUMNS } from "@/lib/learning-style";
 import { childPauseMailing } from "@/lib/plan-controls-server";
@@ -110,8 +110,7 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
       if (!loaded || !report.data) return null;
       let answers: AreaAnswer[] | null = null;
       try {
-        // D-145: the removed extra round's answers are left out, as the test attempt module leaves them out.
-        const replay = testAreaAnswers(restoreSession(loaded.test, loaded.answers.filter((a) => !fromRemovedRound(a.questionId)), loaded.route ?? null, loaded.stage3Route ?? null));
+        const replay = testAreaAnswers(restoreSession(loaded.test, loaded.answers, loaded.route ?? null, loaded.stage3Route ?? null));
         // Bars that count other answers than the report did would tell a second story beside the Level tile: the replay
         // must add up to the stored score, and the stored report must show that score.
         const placement = stored.data?.placement;

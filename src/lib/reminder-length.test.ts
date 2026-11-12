@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
-import { createSession, storedTest, type Route } from "@/lib/assessment";
+import { createAdaptiveSession, createSession, lockAdaptiveBlock, nextQuestion, storedTest, submitAnswer, type Route, type Session, type StoredTest } from "@/lib/assessment";
 import { reminderMessage, reminderStore } from "@/lib/reminder-store";
 import { dueReminders } from "@/lib/reminders";
 
@@ -79,13 +79,13 @@ async function remindersFor(tables: Tables) {
 }
 
 describe("a stopped test, as the reminder job reads it", () => {
-  it("on the up route with 36 of 42 answers is not complete: it gets the continue reminder, with the right total", async () => {
+  it("on the up route with 36 of 42 answers is not complete: it gets the continue reminder", async () => {
     const { stage1, stage2 } = storedTest(createSession(PROFILE, 7));
     expect(stage1.length + stage2.up.length).toBe(42); // the band says 36; this test's own length is 42
     const { state, due } = await remindersFor(mayaTables("up", 36));
     expect(due).toMatchObject([{ kind: "continue", childId: "c1", assessmentId: "a1" }]);
     const email = reminderMessage(due[0], "tok", state, ORIGIN);
-    expect(email?.text).toContain("answered 36 of 42 questions");
+    expect(email?.text).toContain("answered 36 questions");
   });
 
   it("on the up route with every one of its 42 answers in waits to be scored: no continue reminder", async () => {
@@ -96,7 +96,7 @@ describe("a stopped test, as the reminder job reads it", () => {
   it("falls back to the band length (36 for grade 4) while the route is not chosen", async () => {
     const { state, due } = await remindersFor(mayaTables(null, 10));
     expect(due).toMatchObject([{ kind: "continue" }]);
-    expect(reminderMessage(due[0], "tok", state, ORIGIN)?.text).toContain("answered 10 of 36 questions");
+    expect(reminderMessage(due[0], "tok", state, ORIGIN)?.text).toContain("answered 10 questions");
   });
 });
 
@@ -107,4 +107,49 @@ it("R425M-3: a younger child's reminder uses the older inactive sibling's provin
   tables.children.push({ id: "z-old", parent_id: "p1", first_name: "Older", grade: 5, province: "ON", created_at: "2020-01-01T00:00:00Z" });
   const { state, due } = await remindersFor(tables);
   expect(reminderMessage(due[0], "tok", state, ORIGIN)?.text).toContain("2:00 p.m. on Saturday, October 17");
+});
+
+/** Maya's block (adaptive) test, as stored after `blocks` blocks locked, with every drawn question answered; complete when no block follows. */
+function adaptiveTest(blocks: number | "all"): { test: StoredTest; answered: number } {
+  let s: Session = createAdaptiveSession(PROFILE, 7);
+  for (let locked = 0; blocks === "all" ? !s.adaptive!.complete : locked <= blocks; ) {
+    const q = nextQuestion(s);
+    if (q) s = submitAnswer(s, { questionId: q.id, response: q.answer, timeMs: 20_000 });
+    else if (blocks === "all" || locked < blocks) { s = lockAdaptiveBlock(s); locked++; }
+    else break;
+  }
+  return { test: storedTest(s), answered: s.answers.length };
+}
+
+function adaptiveTables(blocks: number | "all"): Tables {
+  const { test, answered } = adaptiveTest(blocks);
+  const tables = mayaTables("stay", answered);
+  tables.assessments[0].test = test;
+  return tables;
+}
+
+describe("a block (adaptive) test stopped on a block boundary", () => {
+  it("with every question of its drawn blocks answered, gets the continue reminder: the next block is not drawn yet", async () => {
+    for (const blocks of [0, 1]) {
+      const tables = adaptiveTables(blocks);
+      expect(tables.answers).toHaveLength(6 * (blocks + 1));
+      const { state, due } = await remindersFor(tables);
+      expect(due).toMatchObject([{ kind: "continue", childId: "c1", assessmentId: "a1" }]);
+      expect(reminderMessage(due[0], "tok", state, ORIGIN)?.text).toContain(`Maya answered ${6 * (blocks + 1)} questions on the free math placement test, and those answers are saved.`);
+    }
+  });
+
+  it("gets the come back reminder once its 24 hours ended", async () => {
+    const now = lastAnswer + 25 * HOUR;
+    const state = await reminderStore(fakeAdmin(adaptiveTables(1))).load(now);
+    expect(dueReminders(state, now)).toMatchObject([{ kind: "come_back", childId: "c1", assessmentId: "a1" }]);
+  });
+
+  it("gets no reminder when its stored state says it is complete: it waits to be scored", async () => {
+    const tables = adaptiveTables("all");
+    expect((tables.assessments[0].test as StoredTest).adaptive!.complete).toBe(true);
+    expect((await remindersFor(tables)).due).toEqual([]);
+    const now = lastAnswer + 25 * HOUR;
+    expect(dueReminders(await reminderStore(fakeAdmin(tables)).load(now), now)).toEqual([]);
+  });
 });

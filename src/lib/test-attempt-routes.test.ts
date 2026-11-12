@@ -443,7 +443,7 @@ describe("GET /api/account/assessments/[id]/facts (where the facts section is)",
   it("answers 502 store_failed when the store fails, and 500 when the stored section cannot be rebuilt", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     atBreak();
-    memory.fail.load = new StoreError("load failed", "down");
+    memory.fail.factsOwner = new StoreError("load failed", "down");
     const failed = await readFactsRoute(TEST);
     expect(failed.headers.get("cache-control")).toBeNull();
     expect(await sent(failed)).toEqual({ status: 502, body: { ok: false, error: "store_failed" } });
@@ -510,7 +510,7 @@ describe("POST /api/account/assessments/[id]/facts (start the section)", () => {
     memory.fail.insertFacts = new StoreError("start failed", "down");
     expect(await sent(await startFactsRoute(TEST))).toEqual({ status: 502, body: { ok: false, error: "store_failed" } });
     atBreak();
-    memory.fail.load = new StoreError("load failed", "down");
+    memory.fail.factsOwner = new StoreError("load failed", "down");
     expect(await sent(await startFactsRoute(TEST))).toEqual({ status: 502, body: { ok: false, error: "store_failed" } });
     atBreak();
     brokenFacts();
@@ -591,7 +591,7 @@ describe("POST /api/account/assessments/[id]/facts/answers (answer one fact)", (
     expect(await sent(await answerFactRoute(TEST, rightFact(0)))).toEqual({ status: 502, body: { ok: false, error: "store_failed" } });
     expect(memory.facts[0].answers).toEqual([]);
     atBreak();
-    memory.fail.load = new StoreError("load failed", "down");
+    memory.fail.factsOwner = new StoreError("load failed", "down");
     expect(await sent(await answerFactRoute(TEST, rightFact(0)))).toEqual({ status: 502, body: { ok: false, error: "store_failed" } });
     atBreak();
     brokenFacts();

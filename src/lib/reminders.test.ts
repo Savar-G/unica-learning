@@ -349,7 +349,7 @@ describe("the reminder job", () => {
       { id: "c1", parentId: "p1", createdAt: T0 - 3 * DAY, firstName: "Maya", grade: 3 },
       { id: "c2", parentId: "p1", createdAt: T0 - DAY, firstName: "Arjun", grade: 5 },
     ],
-    tests: [{ ...stopped("a1", T0 - 2 * HOUR), answered: 12, total: 36 }],
+    tests: [{ ...stopped("a1", T0 - 2 * HOUR), answered: 12 }],
     log: [],
   };
   /** Only Maya's "continue" is due at T0. */
