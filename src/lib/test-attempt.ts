@@ -149,7 +149,7 @@ export interface AnswerTimeline {
 
 /**
  * The store seam. Each operation keeps one database guard. Reads return only the given parent's rows. An attempt the
- * store returns has no `answeredAll`: the module works it out from the answers. A database error throws (a StoreError).
+ * store returns has no derived completion flags: the module reads them from the stored session. A database error throws (a StoreError).
  * The operations of the timed facts section are in FactsStore; the serve times of the answer timeline in ShownStore;
  * the test context (#185) in ContextStore.
  */
@@ -161,7 +161,7 @@ export interface AttemptStore extends FactsStore, ShownStore, ContextStore {
   attempts(parent: string, childId?: string): Promise<StoredAttempt[]>;
   /** One of the parent's tests with its questions and answers; null when the parent has no test with this id. */
   load(parent: string, id: string): Promise<LoadedAttempt | null>;
-  /** Marks the test expired, only while it is in progress and its deadline ended before `now`. A late answer cannot undo it. */
+  /** Expires only an in-progress test whose deadline ended or whose stored adaptive state cannot produce a report. */
   expire(id: string, now: number): Promise<void>;
   /**
    * Opens the answer window for an answer at `now`: moves the deadline to `until`, only while the test is in progress
@@ -344,8 +344,8 @@ async function startFor(
 
 /**
  * The parent's tests (of one child, or of all), each one in progress with `answeredAll` from its answers: a test with
- * every answer in waits to be scored, and never expires. Throws on a store failure, once every read has ended, so no
- * read outlives the request.
+ * every answer in and enough evidence waits to be scored, and never expires. Throws on a store failure after every
+ * read ends, so no read outlives the request.
  */
 export async function withAnswers(store: AttemptStore, parent: string, childId?: string): Promise<StoredAttempt[]> {
   return (await withReads(store, parent, childId)).attempts;
@@ -361,7 +361,7 @@ async function withReads(store: AttemptStore, parent: string, childId?: string):
     if (!read) return a;
     if (!read.ok) throw new Error("open test read failed");
     reads.set(a.id, read);
-    return { ...a, answeredAll: read.attempt.answeredAll };
+    return { ...a, answeredAll: read.attempt.answeredAll, ...(read.attempt.insufficientEvidence ? { insufficientEvidence: true } : {}) };
   });
   return { attempts: withAll, reads };
 }
@@ -420,7 +420,7 @@ export type StepOutcome = { ok: true; step: TestStep; break?: BreakResume } | Re
 
 /**
  * The next question of the parent's test, without its answer, or "complete". A test that ran out of time at `now` is
- * "expired", and is marked expired if it was still in progress. A test with every answer in never expires.
+ * "expired", and is marked expired if it was still in progress. A scorable test with every answer in never expires.
  */
 export async function nextStep(store: AttemptStore, parent: string, id: string, now: number): Promise<StepOutcome> {
   const open = await openTest(store, parent, id, now);
@@ -895,10 +895,11 @@ async function readTest(store: AttemptStore, parent: string, id: string): Promis
     console.error("[test] restore failed", id, messageOf(e));
     return { ok: false, error: "store_failed", unreadable: true };
   }
-  // A test with every answer in never expires: it only waits to be scored.
+  // Complete answers protect a scoring retry; a terminal test with insufficient evidence cannot be scored.
   return {
     ok: true,
-    attempt: { ...loaded.attempt, answeredAll: allAnswered(session) },
+    attempt: { ...loaded.attempt, answeredAll: allAnswered(session),
+      ...(session.adaptive?.complete === true && session.adaptive.sufficientEvidence === false ? { insufficientEvidence: true } : {}) },
     session,
     ...(loaded.break && { break: loaded.break }),
     help: loaded.help ?? null,

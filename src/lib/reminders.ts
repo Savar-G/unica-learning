@@ -84,12 +84,12 @@ function ruleReminder(child: ReminderChild, tests: readonly ReminderTest[], now:
     const dueAt = (test.lastAnswerAt ?? test.startedAt) + CONTINUE_AFTER_MS;
     if (now >= dueAt) return { kind: "continue", parentId: child.parentId, childId: child.id, assessmentId: test.id, dueAt };
   }
-  // The start screen offers "Start again" for this test: its window ended, nothing newer was started, and a test with
-  // every answer in never gets here (it never expires).
+  // The start screen offers Start again. A terminal unscorable test can close early; its reminder still waits
+  // until the normal resume deadline. A scorable test awaiting its report never gets here.
   if (screen.kind === "expired") {
     const test = tests.find((t) => t.id === screen.attemptId)!;
     const dueAt = test.resumeUntil;
-    if (now - dueAt <= LATE_LIMIT_MS) return { kind: "come_back", parentId: child.parentId, childId: child.id, assessmentId: test.id, dueAt };
+    if (now >= dueAt && now - dueAt <= LATE_LIMIT_MS) return { kind: "come_back", parentId: child.parentId, childId: child.id, assessmentId: test.id, dueAt };
   }
   return null;
 }
