@@ -1384,13 +1384,15 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   // 4. Maya's words and board: lines code writes for this act, step and level, and warm talk with no math in it.
   const view: View = { steps: [ladder.step], done, checked, rightResult, equal, regroup: pendingRegroup(regroup), regroupSaid: regroup.said, regroupTimes: regroup.times };
   const forcedOpening = p.act === "open" && s.confirmWorkbook && pkg ? workbookOpening(pkg) : null;
+  // The fixed safety guidance is complete. The following close adds no model or bank words.
+  const safetyClose = p.act === "close" && s.state === "SAFETY" && s.safety.guided;
   // Do not select or record model wordings that this fixed opening will not say.
   const spoken: Spoken | { code: RefusalCode; reason: string } = forcedOpening
     ? { text: forcedOpening, lines: [], boards: [], replaced: 0, talk: [], segments: [{ kind: "math", text: forcedOpening }], chosen: [] }
-    : p.act === "safety" ? { text: "", lines: [], boards: [], replaced: 0, talk: [], segments: [], chosen: [] } : speak(s, p, view, reviews);
+    : p.act === "safety" || safetyClose ? { text: "", lines: [], boards: [], replaced: 0, talk: [], segments: [], chosen: [] } : speak(s, p, view, reviews);
   if ("code" in spoken) return no(spoken.code, spoken.reason, allowedNow);
   const say = spoken.text;
-  if (say === "" && !["wait", "safety"].includes(p.act)) return no("invalid_proposal", "Maya needs words for this act.", allowedNow);
+  if (say === "" && !safetyClose && !["wait", "safety"].includes(p.act)) return no("invalid_proposal", "Maya needs words for this act.", allowedNow);
   if (s.noBoard && (p.draw?.length || p.board?.length)) return no("board_not_allowed", "The child cannot see the board. Use spoken help.", allowedNow);
   const role: Problem = p.act === "example_step" ? "example" : "target";
   // The board (R374-6-1, D-197): Maya picks board offers by id (`draw`) and code builds every command from the checked
@@ -2987,7 +2989,9 @@ export function fallbacks(given: Session, refused: readonly unknown[] = []): Pro
   const answers = [...kept, ...heard];
   const keptFields = keptReading(session, refused, answers);
   const reading: Reading | undefined = answers.length > 0 || Object.keys(keptFields).length > 0 ? { ...keptFields, ...(answers.length > 0 ? { answers } : {}) } : undefined;
-  const checked: Checked[] = answers.map((answer) => ({ answer, problem: answer.problem ?? "target" }));
+  // A valid reading can carry no credit, for example a copied H3 step. Use the controller's checked results.
+  const checked: Checked[] = [];
+  if (pkg && answers.length > 0) checkAnswers(session, answers, checked);
   const rightResult = checked.some((c) => c.problem === "target" && c.answer.step === "result" && c.answer.verdict === "right");
   // The session after the reading, as `step` will see it: a checked wrong final answer takes back the solution that
   // stood, and right steps are done; the ladder is on the first step still not done.
