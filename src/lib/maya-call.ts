@@ -93,7 +93,7 @@ export const NOTE_SWEEP = 3;
 /** The version of the call record's shape (record_version). */
 export const CALL_RECORD_VERSION = 1;
 
-export type CallKind = "admin_test" | "chat";
+export type CallKind = "admin_test" | "chat" | "family";
 export type CallStatus = "live" | "ended";
 
 /**
@@ -271,6 +271,8 @@ export interface CallSeams {
   isTestFamily(parentId: string): Promise<boolean>;
   /** Server authorization for a child chat. Absent means refused. */
   canChat?(parentId: string, childId: string): Promise<boolean>;
+  /** Server authorization for a child's voice call from the family desk (kind "family"). Absent means refused. */
+  canCallVoice?(parentId: string, childId: string): Promise<boolean>;
   /**
    * The parent's note of an ended call (#331, src/lib/maya-call-note.ts), run after the learning event. Optional.
    * "done" when the note is stored or refused for good (the note module refuses test calls and test families itself);
@@ -389,7 +391,7 @@ export interface StartInput {
   startedBy: string | null;
   /** The call's id when the caller made it first (a desk chat names its call before it exists). */
   id?: string;
-  /** The call's end when it is shorter than 10 minutes (ms). No production caller passes it; tests use it for short calls. */
+  /** The call's end when it is shorter than 10 minutes (ms). A family voice call passes it when the child's week has less than 10 minutes left; tests use it for short calls. */
   limitMs?: number;
 }
 
@@ -823,7 +825,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
     return createTextSession({
       onGuidance,
       callId: record.id, channel: record.kind === "chat" ? "chat" : undefined, package: pkg, model, clock: seams.clock, random: seed, history, childName, runner: "text", resume: saved, limitMs, grade, confirmWorkbook,
-      freeTalk: record.kind !== "chat", reviewer: seams.reviewer?.(model.id, spendCall(record)) ?? null,
+      freeTalk: record.kind !== "chat" && record.kind !== "family", reviewer: seams.reviewer?.(model.id, spendCall(record)) ?? null,
     });
   }
 
@@ -981,11 +983,14 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
   async function newCall(input: Parameters<MayaCalls["start"]>[0], mode: CallRecord["mode"]): Promise<{ ok: true; record: CallRecord; session: TextSession; pkg: QuestionPackage } | Extract<CallResult, { ok: false }>> {
     if (input.kind === "chat") {
       if (mode !== "text" || !(await seams.canChat?.(input.parentId, input.childId))) return { ok: false, error: "not_test_family" };
+    } else if (input.kind === "family") {
+      // A child's own voice call from the family desk: voice only, and only where the server says this child may call.
+      if (mode !== "voice" || !(await seams.canCallVoice?.(input.parentId, input.childId))) return { ok: false, error: "not_test_family" };
     } else if (!(await seams.isTestFamily(input.parentId))) return { ok: false, error: "not_test_family" };
     const check = checkQuestionPackage(input.package);
     if (!check.ok) return { ok: false, error: "invalid_question" };
     const pkg = check.package;
-    if (input.kind === "chat" && pkg.ref.source !== "workbook") return { ok: false, error: "invalid_question" };
+    if ((input.kind === "chat" || input.kind === "family") && pkg.ref.source !== "workbook") return { ok: false, error: "invalid_question" };
     const id = input.id ?? seams.newId();
     const call: SpendCall = { id, kind: input.kind, parentId: input.parentId, childId: input.childId };
     if (seams.spend) {

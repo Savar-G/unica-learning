@@ -18,6 +18,8 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/maya/
   try {
     const call = await voiceCallFacts(id);
     if (!call) return new Response("Not found", { status: 404 });
+    // Only a test call: an admin never joins a family's call as the child (a family call has its own desk route).
+    if (call.kind !== "admin_test") return new Response("Not found", { status: 404 });
     // An admin test call acts as the call's own child: the family comes from the call, never from the request.
     const minted = await mintVoiceToken({ call, notice: serverMayaNotice(), parentId: call.parentId, childId: call.childId, project, name: await childFirstName(call.childId) });
     if (!minted.ok) return Response.json({ ok: false, error: minted.error }, { status: 409 });

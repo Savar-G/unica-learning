@@ -332,7 +332,7 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
           {live ? <span className="adm-chip is-info">Live</span> : <span className="adm-chip is-muted">Finished</span>}
           {voice && <span className="adm-chip is-muted">Spoken call</span>}
           <ModelChip model={view.model} />
-          <span className="adm-chip is-muted">{view.kind === "chat" ? "Chat: no voice minutes used" : "Test family: no minutes used, no parent emails"}</span>
+          <span className="adm-chip is-muted">{view.kind === "chat" ? "Chat: no voice minutes used" : view.kind === "family" ? "Family call: counts toward the child's weekly voice time" : "Test family: no minutes used, no parent emails"}</span>
         </div>
         {!live && view.outcome && <OutcomeStrip view={view} />}
       </div>
@@ -347,7 +347,7 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
             <img className="mc-avatar" src="/desk/maya.webp" alt="" width={40} height={40} />
             <div>
               <h2>Maya</h2>
-              <p>{live && view.kind === "chat" ? "The child chats on the desk. This view is read-only." : live ? (voice ? `You speak as ${childName ?? "the child"}.` : busy ? "Maya is thinking…" : `You type as ${childName ?? "the child"}.`) : "The call has ended."}</p>
+              <p>{live && view.kind === "chat" ? "The child chats on the desk. This view is read-only." : live && view.kind === "family" ? "The child is on a call from the desk. This view is read-only." : live ? (voice ? `You speak as ${childName ?? "the child"}.` : busy ? "Maya is thinking…" : `You type as ${childName ?? "the child"}.`) : "The call has ended."}</p>
             </div>
           </header>
 
@@ -366,7 +366,7 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
           </ol>
           {safety && <p className="mc-safety" role="status">{safety}</p>}
 
-          {live && voice ? (
+          {live && voice && view.kind === "admin_test" ? (
             <VoicePanel
               callId={view.id}
               childName={childName}
@@ -397,7 +397,7 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
               onCancel={() => void send({ type: "end" })}
               busy={busy}
             />
-          ) : live && view.kind !== "chat" ? (
+          ) : live && view.kind === "admin_test" ? (
             <form className="mc-say" onSubmit={submit}>
               <label className="mc-say-box">
                 <span className="sr-only">What {childName ?? "the child"} says</span>
@@ -562,7 +562,7 @@ function CallRecordFacts({ view, childName, onRetry, busy, error }: { view: Call
       )}
 
       <dl className="adm-facts">
-        <div><dt>Minutes used</dt><dd>0 <span className="adm-sub">{view.kind === "chat" ? "Chat does not use voice minutes." : "Test calls do not use the child’s minutes."}</span></dd></div>
+        <div><dt>Minutes used</dt><dd>0 <span className="adm-sub">{view.kind === "chat" ? "Chat does not use voice minutes." : view.kind === "family" ? "The weekly voice time is the connected time of family calls, shown below." : "Test calls do not use the child’s minutes."}</span></dd></div>
         {view.voice && <div><dt>Connected time</dt><dd>{view.voice.connectedSeconds === null ? "Not recorded" : clock(view.voice.connectedSeconds)}</dd></div>}
       </dl>
 
