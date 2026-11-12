@@ -13,6 +13,7 @@ import { TIME_LIMITS } from "@/lib/maya";
 import { childChatView, type ChatView } from "@/lib/maya-chat";
 import type { CallStatus, CallView } from "@/lib/maya-call";
 import type { VoiceTicket } from "@/lib/maya-voice";
+export type { VoiceTicket };
 import type { WorkbookQuestionRef } from "@/lib/question-package";
 
 /** The most voice time one child has in a family week (seconds). */

@@ -13,14 +13,17 @@ import { FamilyTime } from "@/components/family-time";
 import { Avatar, Icon } from "@/components/desk-icons";
 import { OurBoard } from "@/components/our-board";
 import { useDeskChat, ChatControls, ChatBoard } from "@/components/desk-chat";
+import { useDeskVoice, VoiceBoard, VoiceControls, VoiceLimit, VoiceTranscript } from "@/components/desk-voice";
 import { chatLimitLabel, type ChatUsage } from "@/lib/maya-chat";
+import type { VoiceUsage } from "@/lib/maya-voice-desk";
 import "./desk.css";
 
 // The child's desk (#301, D-184), as in the guidance demo video: a slim rail (the desk, the workbooks, progress, and the
 // lock that leaves with the parent's PIN), Maya's column (her name, the workbook and day, the limits, the conversation
-// and the picked question as a card cut from the printed page), the Chat / Call / Call + board tabs, and the shared
-// board. "Pick from my page" opens the page image with a tap area on each question. Chat (#358) and calls (#337) come
-// later: their controls are here, turned off, with one plain line that says so. Nothing on the desk shows an answer.
+// and the picked question as a card cut from the printed page), the chat tab, and the shared board. "Pick from my
+// page" opens the page image with a tap area on each question. Chat (#358) is in Maya's column; a voice call (the
+// `voice` prop, src/components/desk-voice.tsx) shows its control there only while voice is open for the child, and
+// Maya's board then shows read-only. Nothing on the desk shows an answer.
 
 const subscribeMotion = (change: () => void) => {
   const q = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -56,6 +59,8 @@ type DeskProps = {
   childId: string;
   notice?: string | null;
   chatUsage?: ChatUsage | null;
+  /** Voice calls (the week's time), or null when calls are closed for this child: then the desk shows no call control. */
+  voice?: { usage: VoiceUsage } | null;
   /** Why this child has no chat (a younger child), in place of "start soon". */
   /** Why chat is off until a parent agrees to the notice (#529), in place of "start soon". */
   noticeLine?: string | null;
@@ -95,6 +100,9 @@ export function Desk(props: DeskProps) {
   const talk = useRef<HTMLDivElement>(null);
   const still = useStill();
   const chat = useDeskChat(props.chatUsage ?? null, { book: ready?.book.id ?? "none", page: ready?.page.number ?? 0, question: picked }, props.childId);
+  const voice = useDeskVoice(props.voice ?? null, { book: ready?.book.id ?? "none", page: ready?.page.number ?? 0, question: picked });
+  // Out of chat messages for today still leaves the page, the picker and the call.
+  const chatOpen = chat.usage?.left !== 0 || voice.enabled;
 
   useEffect(() => {
     if (ready?.openPicker) picker.current?.showModal();
@@ -105,7 +113,7 @@ export function Desk(props: DeskProps) {
   // A new card goes to the end of the conversation: show it there (the column scrolls on a laptop or tablet only).
   useEffect(() => {
     if (picked !== null && talk.current) talk.current.scrollTop = talk.current.scrollHeight;
-  }, [picked, chat.chat?.transcript.length]);
+  }, [picked, chat.chat?.transcript.length, voice.call?.transcript.length]);
 
   const card = ready?.questions.find((q) => q.number === picked) ?? null;
   const where = ready ? `Workbook ${ready.book.number} · ${ready.page.dayLabel ?? `Page ${ready.page.number}`}` : null;
@@ -149,12 +157,13 @@ export function Desk(props: DeskProps) {
           <Avatar size={48} />
           <div className="desk-who"><h1>Maya</h1>{where && <p>{where}</p>}</div>
           <dl className="desk-limits" aria-label="Help from Maya">
-            {/* No Calls row while voice calls are closed (the Call button below is off): the desk never promises call minutes it cannot give. */}
+            {/* A Calls row only while voice calls are open for this child: the desk never promises call minutes it cannot give. */}
             <div><dt><Icon name="chat" size={14} />Chat</dt><dd>{chatLimitLabel(chat.usage, props.chatNote ?? null, props.chatPlanClosed === true)}</dd></div>
+            <VoiceLimit state={voice} />
           </dl>
         </header>
 
-        {(chat.usage?.left !== 0 || props.problem) && <div ref={talk} className="desk-talk" aria-live="polite">
+        {(chatOpen || props.problem) && <div ref={talk} className="desk-talk" aria-live="polite">
           {props.notice && <p className="desk-event warn">{props.notice}</p>}
           {ready?.fromQr && <p className="desk-event"><Icon name="qr" size={15} />Opened from Workbook {ready.book.number} · QR code</p>}
           {props.problem ? (
@@ -164,33 +173,33 @@ export function Desk(props: DeskProps) {
           )}
           {card && ready && <QuestionCard card={card} where={where!} image={ready.image} />}
           {chat.chat?.transcript.map((line, i) => <p key={`${chat.chat!.id}-${i}`} className={`desk-bubble${line.speaker === "child" ? " desk-child-bubble" : ""}`}><span className="sr-only">{line.speaker === "child" ? "You" : "Maya"}: </span>{line.text}</p>)}
+          <VoiceTranscript state={voice} />
           {!!chat.chat?.hint && <p className="desk-event">Hint {chat.chat.hint} of 3</p>}
           {!!chat.chat?.batches.length && <button className="desk-pick" type="button" onClick={() => document.getElementById("chat-board")?.scrollIntoView({ behavior: still ? "instant" : "smooth", block: "center" })}>Show me on the board</button>}
         </div>}
 
-        <footer className="desk-say">
-          {ready && chat.usage?.left !== 0 && (
+        <footer className={`desk-say${voice.engaged ? " is-calling" : ""}`}>
+          {ready && chatOpen && (
             <button type="button" className="desk-pick" onClick={() => picker.current?.showModal()}>
               <Icon name="page" />{card ? "Pick another question" : "Pick from my page"}
             </button>
           )}
           {props.chatUsage ? <ChatControls key={picked} state={chat} picked={picked !== null} /> : <>
-          <p className="desk-soon">{props.noticeLine ?? props.chatNote ?? "Chat and calls with Maya start soon."}</p>
+          <p className="desk-soon">{props.noticeLine ?? props.chatNote ?? (props.voice ? "Chat with Maya starts soon." : "Chat and calls with Maya start soon.")}</p>
           <div className="desk-compose">
             <input type="text" disabled placeholder="Write to Maya" aria-label="Write to Maya" />
             <button type="button" disabled aria-label="Send"><Icon name="send" size={20} /></button>
           </div></>}
+          <VoiceControls state={voice} beforeOpen={chat.chat && !chat.chat.ended ? () => chat.act("end") : undefined} />
         </footer>
       </section>
 
       <div className="desk-main">
-        {chat.usage?.left !== 0 && <div className="desk-modes" role="group" aria-label="How Maya helps">
+        {chatOpen && <div className="desk-modes" role="group" aria-label="How Maya helps">
           <button type="button" disabled={!props.chatUsage} aria-pressed={!!props.chatUsage}><Icon name="chat" size={18} />Chat</button>
-          <button type="button" disabled><Icon name="phone" size={18} />Call</button>
-          <button type="button" disabled aria-pressed={!props.chatUsage}><Icon name="board" size={18} />Call + board</button>
         </div>}
 
-        {chat.chat ? <ChatBoard chat={chat.chat} still={still} carry={{ book: ready?.book.id ?? "none", page: ready?.page.number ?? 0, question: card?.number ?? null }}
+        {voice.showBoard ? <VoiceBoard state={voice} still={still} /> : chat.chat ? <ChatBoard chat={chat.chat} still={still} carry={{ book: ready?.book.id ?? "none", page: ready?.page.number ?? 0, question: card?.number ?? null }}
           restore={chat.callInk?.id === chat.chat.id ? chat.callInk.log : null} onBoard={(h) => chat.saveBoard(chat.chat!.id, h)} /> : <OurBoard
           key={`${ready?.book.id ?? "none"}:${ready?.page.number ?? 0}:${card?.number ?? "none"}`}
           question={card?.board ?? null}
