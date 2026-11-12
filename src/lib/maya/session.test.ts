@@ -637,7 +637,10 @@ describe("TIME_CLOSE and the end", () => {
       expect(c.refused({ act: "give_answer", parts: [] }).code).toBe("act_not_allowed");
       const close = fallbacks(c.session).find((p) => p.act === "close" && p.parts.some((part) => "line" in part && part.line === "close.stuck"));
       expect(close).toBeDefined();
-      expect(step(c.session, { type: "proposal", at: T0 + 540_000, proposal: close }).refusal).toBeNull();
+      const closed = step(c.session, { type: "proposal", at: T0 + 540_000, proposal: close });
+      expect(closed.refusal).toBeNull();
+      // The time ran out: the call never reads as the child stopping (parent note, learning event).
+      expect(ended(closed.effects)).toMatchObject({ outcome: { reason: "time_limit" } });
     }
   });
 
@@ -1135,7 +1138,8 @@ describe("the final step after two wrong final answers (D-199)", () => {
     c.child("67."); c.maya({ ...finalHelp, reading: wrongFinal(67) });
     c.tick(540); c.child("65.");
     c.maya({ act: "close", parts: [ln("close.stuck"), ln("close.together")], reading: wrongFinal(65) });
-    expect(c.session).toMatchObject({ solved: null, finalMisses: 2, outcome: { reason: "child_stopped" } });
+    // In the closing minute the call ended because time ran out, not because the child stopped (#749).
+    expect(c.session).toMatchObject({ solved: null, finalMisses: 2, outcome: { reason: "time_limit" } });
   });
 
   it("never gives the answer sooner: not after one wrong final answer, nor before every column is done", () => {
