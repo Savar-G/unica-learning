@@ -91,10 +91,7 @@ export function skillWhy(s: StandardSkillState, { firstName: name, workbookNumbe
   }
 }
 
-/**
- * The standards the map shows (the working level's grade, plus the current workbook), each with its state by the rule.
- * The Overview's Skills mastered tile counts these, so the tile and the map always agree.
- */
+/** The standards the map shows (the working level's grade, plus the current workbook), each with its state by the rule. */
 export function shownSkillStates(input: Pick<SkillMapViewInput, "schoolGrade" | "workingLevel" | "tests" | "workbookStandards" | "marks">): StandardSkillState[] {
   const { schoolGrade, workingLevel, tests, workbookStandards, marks } = input;
   const stateOf = new Map(skillStates({ schoolGrade, tests, workbookStandards, marks }).map((s) => [s.standard, s]));

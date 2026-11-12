@@ -79,7 +79,7 @@ function overview(child: ChildView, state: string): OverviewView {
       { area: "number", name: "Number", level: 2, label: "building-up", earlySign: state === "early" },
       { area: "fractions", name: "Fractions", level: 3, label: "at-grade", earlySign: false },
       { area: "shapes", name: "Shapes and measurement", level: 4, label: "ahead", earlySign: false },
-    ], skills: empty ? null : { mastered: 12, total: 31, moreThisMonth: 3 }, areasIncludeMarks: !empty, resultPreparing: preparing, resultLate: state === "late", workbook: child.currentWorkbook ? { number: 3, scannedDays: 4, days: 10 } : null,
+    ], skills: empty ? null : { mastered: 12, atLevel: { grade: 2, mastered: 5, total: 14 }, moreThisMonth: 3 }, areasIncludeMarks: !empty, resultPreparing: preparing, resultLate: state === "late", workbook: child.currentWorkbook ? { number: 3, scannedDays: 4, days: 10 } : null,
     action: state === "payment_failed" || state === "no_pin" || state === "learning_card_empty" ? state : null, summaryMonth: child.stage === "active" || child.stage === "ended" ? "2026-10" : null };
 }
 

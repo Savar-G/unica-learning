@@ -17,6 +17,9 @@
 
 /* The Level tile's ruler: the report's ruler, small. */
 .po-level { grid-column: span 2; }
+/* Maya is a link, not a number: it takes its own full row, so no row is half empty (D-328). */
+.po-maya { grid-column: 1 / -1; }
+.support-page .po-sub-tight { margin-top: 2px; }
 .po-ruler {
   position: relative; display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); align-items: center;
   height: 44px; margin-top: 16px; border-radius: 10px; background: var(--soft); border: 1px solid var(--line-soft);

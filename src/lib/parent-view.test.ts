@@ -415,11 +415,16 @@ describe("the Overview (#560)", () => {
     it("counts the rule's states now, and as new only what the rule on earlier tests and marks did not hold", async () => {
       // 06:30 UTC on November 1 is October 31 in Vancouver; 18:00 UTC is November 1.
       expect(await skills([tally("3.1", "2026-10-20T18:00:00Z"), tally("3.2", "2026-11-01T06:30:00Z"), tally("3.3", "2026-11-01T18:00:00Z")]))
-        .toEqual({ mastered: 3, total: grade3, moreThisMonth: 1 });
+        .toEqual({ mastered: 3, atLevel: { grade: 3, mastered: 3, total: grade3 }, moreThisMonth: 1 });
+    });
+
+    it("counts a skill mastered at any grade in the big number, and only the working level's grade in the line", async () => {
+      expect(await skills([tally("2.1", "2026-10-20T18:00:00Z"), tally("3.1", "2026-10-20T18:00:00Z"), tally("4.1", "2026-11-02T18:00:00Z")]))
+        .toEqual({ mastered: 3, atLevel: { grade: 3, mastered: 1, total: grade3 }, moreThisMonth: 1 });
     });
 
     it("counts no skill as new when it was mastered before the month and mastered again this month", async () => {
-      expect(await skills([tally("3.1", "2026-10-20T18:00:00Z"), tally("3.1", "2026-11-01T18:00:00Z")])).toEqual({ mastered: 1, total: grade3, moreThisMonth: 0 });
+      expect(await skills([tally("3.1", "2026-10-20T18:00:00Z"), tally("3.1", "2026-11-01T18:00:00Z")])).toEqual({ mastered: 1, atLevel: { grade: 3, mastered: 1, total: grade3 }, moreThisMonth: 0 });
     });
 
     it("counts marked items as the Progress tab does, so the tile and the map agree", async () => {
@@ -432,7 +437,7 @@ describe("the Overview (#560)", () => {
       expect(map?.find((t) => t.code === "3.3")?.state).toBe("mastered");
       expect(map?.filter((t) => t.state === "mastered")).toHaveLength(3);
       // The review that held this month made 3.3 mastered: it is new; the tests from October are not.
-      expect(tile).toEqual({ mastered: 3, total: map?.length, moreThisMonth: 1 });
+      expect(tile).toEqual({ mastered: 3, atLevel: { grade: 3, mastered: 3, total: map?.length }, moreThisMonth: 1 });
     });
 
     it("reads a mark's database time at the family month edge", async () => {
@@ -446,7 +451,7 @@ describe("the Overview (#560)", () => {
     it("counts net: a skill lost and another gained this month show no change", async () => {
       // 3.1 was mastered in October; a wrong answer this month makes it Needs review. 3.2 becomes mastered this month.
       const lost = { ...tally("3.1", "2026-11-02T18:00:00Z"), correct: 0 };
-      expect(await skills([tally("3.1", "2026-10-20T18:00:00Z"), lost, tally("3.2", "2026-11-02T18:00:00Z")])).toEqual({ mastered: 1, total: grade3, moreThisMonth: 0 });
+      expect(await skills([tally("3.1", "2026-10-20T18:00:00Z"), lost, tally("3.2", "2026-11-02T18:00:00Z")])).toEqual({ mastered: 1, atLevel: { grade: 3, mastered: 1, total: grade3 }, moreThisMonth: 0 });
     });
 
     it("shows only with the Progress tab", async () => {

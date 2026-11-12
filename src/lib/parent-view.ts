@@ -1,8 +1,8 @@
 import "server-only";
 import { resultLate } from "@/lib/report-late";
 import {
-  REPORTED_STRAND_NAMES, areaLevels, attemptState, storedLevelCertainty,
-  type AreaAnswer, type AreaLabel, type Attempt, type Grade, type Level, type ReportModel, type ReportedStrand, type SkillMark, type SkillTestResult,
+  BC_SKILL_MAP, REPORTED_STRAND_NAMES, areaLevels, attemptState, skillStates, storedLevelCertainty,
+  type AreaAnswer, type AreaLabel, type Attempt, type Grade, type Level, type ReportModel, type ReportedStrand, type SkillMark, type SkillTestResult, type StandardSkillState,
 } from "@/lib/assessment";
 import { childStage, type StageView, type TabSwitches, type TestFact } from "@/lib/child-stage";
 import { addMonths, familyZone, formatCalendarDate, localDateTime, localDay, localMonth, type FamilyZone } from "@/lib/family-time";
@@ -11,7 +11,7 @@ import { firstDeliveryMonth, offeredSummaryMonth } from "@/lib/monthly-summary-o
 import { nextBook, type NextBook } from "@/lib/next-book";
 import type { ParentPlan } from "@/lib/parent-plan";
 import type { CurriculumId } from "@/lib/signup";
-import { shownSkillStates, skillMapView, type SkillAreaView } from "@/lib/skill-map-view";
+import { skillMapView, type SkillAreaView } from "@/lib/skill-map-view";
 import { confirmedWorkbookDelivery } from "@/lib/workbook-delivery-access";
 import { workbookDelivery } from "@/lib/workbook-email";
 
@@ -322,8 +322,12 @@ export interface OverviewView {
   level: LevelTileView | null;
   /** One bar per reported area with answers, from the same test; empty when `level` is null or unreliable. */
   areas: AreaBarView[];
-  /** Stored skill states, or null when the state data is unavailable. */
-  skills: { mastered: number; total: number; moreThisMonth: number } | null;
+  /**
+   * Skills mastered (D-328): every BC standard the rule calls mastered, at any grade; of them, the standards of the
+   * working level's grade ("0 of 19 at Grade 6 so far"); and the net gain this family month. Null when the inputs are
+   * unavailable.
+   */
+  skills: { mastered: number; atLevel: { grade: Level; mastered: number; total: number }; moreThisMonth: number } | null;
   /** Whether the area bars include marked pages. */
   areasIncludeMarks: boolean;
   /** The newest finished test's report is not ready, so no older result shows in its place. */
@@ -368,8 +372,8 @@ function scannedDays(pages: readonly WorkbookPageRecord[], scans: readonly Saved
  * one action card. Null for a child that is not the parent's, and for a child whose stage has no Overview. A panel with
  * no data is null or empty. The level comes from the newest finished test, scored by the assessment core; while its
  * report is not ready, it comes from no test. The bars add the saved original page results (`overviewProgress`) to that
- * test's answers; Skills mastered counts the skill state rule on the same inputs as the Progress tab, and its "more this
- * month" runs the same rule on the tests and marks from before the family month. Nothing comes from a raw
+ * test's answers; Skills mastered counts the skill state rule on the same inputs as the Progress tab, at any grade and at
+ * the working level, and its "more this month" runs the same rule on the tests and marks from before the family month. Nothing comes from a raw
  * profile, a Maya call, an AI finding or a parent's judgement (D-303).
  */
 export async function readOverview(reader: ParentViewReader, childId: string, now: number): Promise<OverviewView | null> {
@@ -398,18 +402,23 @@ export async function readOverview(reader: ParentViewReader, childId: string, no
     ]);
     if (workbookStandards && results) {
       const tests = tallies(results);
-      const shownAt = (input: { tests: SkillTestResult[]; marks: readonly SkillMark[] }) =>
-        shownSkillStates({ schoolGrade: child.schoolGrade, workingLevel: level.working, workbookStandards, ...input });
-      // The same rule and inputs as the Progress tab's map (shownSkillStates), so the two always agree.
-      const shown = shownAt({ tests, marks: progress.skillMarks });
-      const mastered = shown.filter((s) => s.state === "mastered").length;
-      // "This month" is net, over the same standards: the rule now, less the rule on only the tests and marks from before
-      // the family-local month began. The recorded history is not used: it holds when a rebuild saw each state, and a
-      // first rebuild this month records old states with this month's time.
+      // The same rule and inputs as the Progress tab's map, so a skill the map calls mastered counts here too.
+      const statesOf = (input: { tests: SkillTestResult[]; marks: readonly SkillMark[] }) =>
+        skillStates({ schoolGrade: child.schoolGrade, workbookStandards, ...input });
+      const masteredOf = (states: readonly StandardSkillState[]) => states.filter((s) => s.state === "mastered").length;
+      const current = statesOf({ tests, marks: progress.skillMarks });
+      const gradeOf = new Map(BC_SKILL_MAP.standards.map((s) => [s.code, s.grade]));
+      const atLevel = current.filter((s) => gradeOf.get(s.standard) === level.working);
+      // "This month" is net, over every standard: the rule now, less the rule on only the tests and marks from before the
+      // family-local month began. The recorded history is not used: it holds when a rebuild saw each state, and a first
+      // rebuild this month records old states with this month's time.
       const month = localMonth(now, zone);
-      const before = shownAt({ tests: tests.filter((t) => localMonth(t.at, zone) < month), marks: progress.skillMarks.filter((m) => localMonth(m.at, zone) < month) });
-      const moreThisMonth = Math.max(0, mastered - before.filter((s) => s.state === "mastered").length);
-      skills = { mastered, total: shown.length, moreThisMonth };
+      const before = statesOf({ tests: tests.filter((t) => localMonth(t.at, zone) < month), marks: progress.skillMarks.filter((m) => localMonth(m.at, zone) < month) });
+      skills = {
+        mastered: masteredOf(current),
+        atLevel: { grade: level.working, mastered: masteredOf(atLevel), total: atLevel.length },
+        moreThisMonth: Math.max(0, masteredOf(current) - masteredOf(before)),
+      };
     }
   }
   const bookScans = book ? scans.filter((s) => s.workbookId === book.id) : [];

@@ -49,8 +49,9 @@ export function ParentOverview({ overview }: { overview: OverviewView }) {
           {skills && (
             <section className="po-card" aria-labelledby="po-skills">
               <p className="po-label" id="po-skills">Skills mastered</p>
-              <p className="po-value">{skills.mastered} of {skills.total}</p>
-              <p className="po-sub">At this level{skills.moreThisMonth > 0 ? `, ${skills.moreThisMonth} more this month` : ""}.</p>
+              <p className="po-value">{skills.mastered}</p>
+              <p className="po-sub">{skills.atLevel.mastered} of {skills.atLevel.total} at {gradeLabel(skills.atLevel.grade)} so far</p>
+              {skills.moreThisMonth > 0 && <p className="po-sub po-sub-tight">{skills.moreThisMonth} more this month</p>}
             </section>
           )}
           {workbook && (
@@ -61,7 +62,7 @@ export function ParentOverview({ overview }: { overview: OverviewView }) {
             </section>
           )}
           {maya && (
-            <section className="po-card" aria-labelledby="po-maya">
+            <section className="po-card po-maya" aria-labelledby="po-maya">
               <p className="po-label" id="po-maya">Maya</p>
               <p className="po-sub">Read {child.firstName}&apos;s saved notes and transcripts.</p>
               <Link className="po-more" href={`/account/notes/${encodeURIComponent(child.id)}`}>Notes from Maya <span aria-hidden="true">→</span></Link>
