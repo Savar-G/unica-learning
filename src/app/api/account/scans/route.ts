@@ -24,12 +24,14 @@ export async function POST(request: Request) {
  * whatever the Scan pages switch says (D-252).
  */
 export async function GET(request: Request) {
-  const session = await scanSession();
+  // The page polls this every few seconds: the family's marked and plan answers are read once for this request and reused
+  // by the four checks below (shareReads), never kept for the next request.
+  const session = await scanSession({ shareReads: true });
   const child = new URL(request.url).searchParams.get("child");
   if (!child || !isUuid(child)) return scanJson({ error: "refused" }, 400);
   if (!await session.childOpen(child)) return scanJson({ error: "refused" }, 404);
   try {
-    const checks = await scanChecksAccess(session.admin, session.parent, process.env, { child });
-    return scanJson({ checks, marking: await markingAccess(session.admin, session.parent, process.env, { child }), ...await readScanStack(session.admin, session.parent, child, checks) });
+    const checks = await scanChecksAccess(session.admin, session.parent, process.env, { child }, undefined, session.reads);
+    return scanJson({ checks, marking: await markingAccess(session.admin, session.parent, process.env, { child }, undefined, session.reads), ...await readScanStack(session.admin, session.parent, child, checks) });
   } catch { return scanJson({ error: "unavailable" }, 503); }
 }

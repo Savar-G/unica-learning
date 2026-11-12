@@ -1,6 +1,6 @@
 "use client";
 // Live test progress on the admin pages (admin-progress.ts): a small cell for the families table and a panel for the
-// family drawer and the test page. One poll per page for every test on it: /api/admin/progress, every POLL_MS, only while
+// family drawer and the test page. One poll per page for every test on it: a POST to /api/admin/progress, every POLL_MS, only while
 // the tab is visible and a test on the page is still open. The child's test page is not touched by any of this.
 import { useEffect, useSyncExternalStore } from "react";
 import type { ProgressSnapshot, TestProgress } from "@/lib/admin-progress";
@@ -44,7 +44,9 @@ async function poll() {
   try {
     // Only tests that can still change: a finished or closed test stays as it is.
     const ids = [...watched.keys()].filter((id) => !(id in snapshot.tests) || snapshot.tests[id]?.open === true);
-    const res = await fetch(`/api/admin/progress?ids=${ids.join(",")}`, { cache: "no-store" });
+    // In the body, not the address: up to PROGRESS_MAX ids would make a request URL too long, and a refused poll would
+    // stop the updates with no sign.
+    const res = await fetch("/api/admin/progress", { method: "POST", cache: "no-store", headers: { "content-type": "application/json" }, body: JSON.stringify({ ids }) });
     if (res.ok) {
       const next = (await res.json()) as ProgressSnapshot;
       snapshot = { now: next.now, tests: { ...snapshot.tests, ...Object.fromEntries(ids.map((id) => [id, next.tests[id] ?? null])) } };

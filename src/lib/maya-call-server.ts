@@ -273,18 +273,32 @@ export async function readCall(a: AdminSession, id: string): Promise<{ view: Cal
   return { view, childName: child?.first_name ?? null };
 }
 
-/** All stored refusals for this child, across calls and chats. Keyset pages avoid the API row cap. Admin RLS applies. */
+/** One keyset page of a child's calls with a trace (`traced`) or without one: the id and the refusal list only. */
+async function refusalPage(a: AdminSession, childId: string, traced: boolean, after: string | null) {
+  const withTrace = a.db.from("maya_calls").select("id, refusals:trace->scopeRefusals").eq("child_id", childId).not("trace", "is", null);
+  const noTrace = a.db.from("maya_calls").select("id, refusals:live->text->session->scopeRefusals").eq("child_id", childId).is("trace", null);
+  const { data, error } = traced
+    ? await (after ? withTrace.gt("id", after) : withTrace).order("id").limit(200)
+    : await (after ? noTrace.gt("id", after) : noTrace).order("id").limit(200);
+  if (error) throw new Error(`[admin] scope counts: ${error.message}`);
+  return data;
+}
+
+/**
+ * All stored refusals for this child, across calls and chats, as callRefusals counts them: a call with a trace counts the
+ * trace's list, a call with none the live session's. Only those JSON paths are read, never the whole trace or live state
+ * (each holds the transcript, the board and the saved session). PostgREST stores a JSON null as SQL null, so `trace is
+ * null` is exactly a call with no trace. Keyset pages avoid the API row cap. Admin RLS applies.
+ */
 export async function childScopeSummary(a: AdminSession, childId: string) {
-  const records: Parameters<typeof scopeSummary>[0][number][] = [];
-  let cursor: string | null = null;
-  for (;;) {
-    let query = a.db.from("maya_calls").select("id, trace, live").eq("child_id", childId).order("id").limit(200);
-    if (cursor) query = query.gt("id", cursor);
-    const { data, error } = await query;
-    if (error) throw new Error(`[admin] scope counts: ${error.message}`);
-    if (!data?.length) break;
-    records.push(...data);
-    cursor = data[data.length - 1].id;
+  const records: Awaited<ReturnType<typeof refusalPage>> = [];
+  for (const traced of [true, false]) {
+    for (let cursor: string | null = null; ;) {
+      const rows = await refusalPage(a, childId, traced, cursor);
+      if (!rows.length) break;
+      records.push(...rows);
+      cursor = rows[rows.length - 1].id;
+    }
   }
-  return scopeSummary(records);
+  return scopeSummary(records.sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0)));
 }
