@@ -356,7 +356,7 @@ export interface WorkbookPlan {
     why?: import("./workbook-why").WorkbookWhy;
     /** Whole Extra blocks were exhausted. Keep the book and report the remaining required minutes to the admin. */
     timeShortfalls?: RequiredTimeShortfall[];
-    notReviewed?: { unit: string; skills: string[]; reason: "not reviewed: taught in a later book" }[];
+    notReviewed?: { unit: string; skills: string[]; reason: "not reviewed: taught in a later book" | "not reviewed: secure on the assessment; no review scheduled in this book" }[];
     reviewFallbacks?: ReviewFallback[];
   };
   level: number;
@@ -1313,7 +1313,10 @@ function planWith(input: PlanInput, carried: readonly InstructionOutcome[]): Pla
   const notReviewed = personal ? [...new Set([...input.profile.standards.map(s => s.code), ...level.units.map(u => u.code)])].flatMap(unit => {
     const skills = (STANDARDS.get(unit)?.skills ?? []).map(s => s.id).filter(skill => (level.skillLevels?.[skill] ?? 0) >= n
       && levelSkills.find(s => s.id === skill)?.delivery !== "warm-up" && taughtStep(skill, DAYS + 1) === 0 && !teachLess.has(unit));
-    return skills.length ? [{ unit, skills, reason: "not reviewed: taught in a later book" as const }] : [];
+    const reason = secureUnits.includes(unit) && skills.some(skill => level.skillLevels?.[skill] === n)
+      ? "not reviewed: secure on the assessment; no review scheduled in this book" as const
+      : "not reviewed: taught in a later book" as const;
+    return skills.length ? [{ unit, skills, reason }] : [];
   }) : [];
   if (personal) {
     for (const d of days) {

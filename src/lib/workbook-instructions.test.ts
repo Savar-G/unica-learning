@@ -165,6 +165,19 @@ describe("book instructions in the plan", () => {
     expect(firstDay(p, "5.1")).toBe(1);
   });
 
+  it("explains why a secure own-level unit has no review in book 1 (#755)", () => {
+    const profile = profileWith([["5.1", 4, 4]], 5, 5);
+    const p = plan({ profile, grade: 5 });
+    expect(p.level).toBe(16);
+    expect(p.newSteps.some(s => s.unit === "5.1")).toBe(false);
+    expect(p.personal?.notReviewed?.find(x => x.unit === "5.1")).toMatchObject({
+      reason: "not reviewed: secure on the assessment; no review scheduled in this book",
+    });
+    const skipped = p.personal!.notReviewed!.find(x => x.unit === "5.1")!.skills;
+    const reviews = p.days.flatMap(d => d.pages.flatMap(pg => pg.parts.flatMap(part => part.reviewSteps ?? [])));
+    expect(reviews.some(review => skipped.includes(review.skill))).toBe(false);
+  });
+
   it("teach more and teach less refuse units outside the level, warm-up units and a unit in both", () => {
     const p = plan({ instructions: set({ teachMore: ["4.5", "5.8", "5.10"], teachLess: ["5.10"] }) });
     expect(outcome(p, "teach-more", "4.5")).toMatchObject({ applied: false, note: expect.stringMatching(/not a unit of this book's level, U16/) });
