@@ -1,6 +1,7 @@
 import { inference, initializeLogger } from "@livekit/agents";
 import { describe, expect, it } from "vitest";
-import { voiceProviders } from "@/lib/maya-voice";
+import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
+import { callKeyterms, voiceProviders } from "@/lib/maya-voice";
 import { FakeSTT, FakeTTS } from "./fake-providers";
 import { makeProviders } from "./providers";
 
@@ -67,6 +68,62 @@ describe("the worker's providers", () => {
     expect(cartesia.providers.tts.capabilities.alignedTranscript).toBe(true);
     await cartesia.providers.tts.close();
     await cartesia.providers.stt.close();
+  });
+
+  it("send the silence limits and the call's keyterms to AssemblyAI through Inference, and change the limit during the call", async () => {
+    const lk = { MAYA_STT: "inference", LIVEKIT_API_KEY: "test-key", LIVEKIT_API_SECRET: "test-secret" };
+    const config = voiceProviders({ MAYA_VOICE_PRIVACY_CONFIRMED: "livekit-inference-zdr,child-use-approved", ...lk });
+    if (!config.ok) throw new Error(config.problems.join("; "));
+    const keyterms = callKeyterms(SAMPLE_PACKAGES["add-27-39"]);
+    const providers = await makeProviders(config, { keyterms });
+    // The options as the SDK holds them for the connection: `settings.extra` of the session.create message (inference/stt.js).
+    const options = () => (providers.stt as unknown as { opts: { modelOptions: Record<string, unknown>; language: string } }).opts;
+    expect(options().language).toBe("en");
+    expect(options().modelOptions).toEqual({ min_turn_silence: 512, max_turn_silence: 3000, keyterms_prompt: keyterms });
+    expect(providers.patience).not.toBeNull();
+    providers.patience!.setMaxSilenceMs(4500);
+    expect(options().modelOptions).toMatchObject({ min_turn_silence: 512, max_turn_silence: 4500, keyterms_prompt: keyterms });
+    providers.patience!.setMaxSilenceMs(3000);
+    expect(options().modelOptions).toMatchObject({ max_turn_silence: 3000 });
+    await providers.stt.close();
+
+    // The settings and no keyterms when the call's question is not known; the configuration's own numbers.
+    const set = voiceProviders({ MAYA_VOICE_PRIVACY_CONFIRMED: "livekit-inference-zdr,child-use-approved", MAYA_STT_MIN_SILENCE_MS: "256", MAYA_STT_MAX_SILENCE_MS: "2500", ...lk });
+    if (!set.ok) throw new Error(set.problems.join("; "));
+    const other = await makeProviders(set);
+    expect((other.stt as unknown as { opts: { modelOptions: unknown } }).opts.modelOptions).toEqual({ min_turn_silence: 256, max_turn_silence: 2500 });
+    await other.stt.close();
+
+    // Deepgram Flux has no such limit: only its keyterms go, and there is no live silence limit to change.
+    const flux = voiceProviders({ MAYA_VOICE_PRIVACY_CONFIRMED: "livekit-inference-zdr,child-use-approved", MAYA_STT_MODEL: "deepgram/flux-general-en", ...lk });
+    if (!flux.ok) throw new Error(flux.problems.join("; "));
+    const fluxed = await makeProviders(flux, { keyterms });
+    expect((fluxed.stt as unknown as { opts: { modelOptions: unknown } }).opts.modelOptions).toEqual({ keyterm: keyterms });
+    expect(fluxed.patience).toBeNull();
+    await fluxed.stt.close();
+  });
+
+  it("build the direct AssemblyAI plugin with the silence limits, the keyterms and a live limit", async () => {
+    const config = voiceProviders({ MAYA_VOICE_PRIVACY_CONFIRMED: "assemblyai-optout,child-use-approved", MAYA_STT: "assemblyai", ASSEMBLYAI_API_KEY: "test-key" });
+    if (!config.ok) throw new Error(config.problems.join("; "));
+    const providers = await makeProviders(config, { keyterms: ["sixty-six", "fifty-six"] });
+    // The plugin keeps its options private: the constructor accepted them (it refuses a Universal-3 Pro-only option on
+    // other models), and the live update is accepted too.
+    expect(providers.stt.model).toBe("universal-3-6-pro");
+    expect(providers.patience).not.toBeNull();
+    expect(() => providers.patience!.setMaxSilenceMs(4500)).not.toThrow();
+    await providers.stt.close();
+    // A model with no Universal-3 Pro options still builds: no language codes are sent to it.
+    const streaming = voiceProviders({ MAYA_VOICE_PRIVACY_CONFIRMED: "assemblyai-optout,child-use-approved", MAYA_STT: "assemblyai", ASSEMBLYAI_API_KEY: "test-key", MAYA_STT_MODEL: "universal-streaming-english" });
+    if (!streaming.ok) throw new Error(streaming.problems.join("; "));
+    const old = await makeProviders(streaming, { keyterms: ["sixty-six"] });
+    expect(old.stt.model).toBe("universal-streaming-english");
+    await old.stt.close();
+  });
+
+  it("have no live silence limit with the fakes", async () => {
+    const { providers } = await build({});
+    expect(providers.patience).toBeNull();
   });
 
   it("a voice Inference serves without the timing option would have no word timings: the board then uses sentence ends", () => {
