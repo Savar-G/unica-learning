@@ -63,8 +63,9 @@ const operationText = (op: Parameters<typeof baseOperationText>[0]) => clockExpr
  * Version 19: the waves combined with #698: close.stuck (the honest close after help alone, #735), check.method (C09),
  * held.cannot; a question type with its own honest close (closeUnsolved) says it in place of close.stuck.
  * Version 20 (#884, D-329, Savar 2026-11-12): check.fix, a right answer with a wrong reason.
+ * Version 21 (#884, D-329): three more about.no_secret wordings.
  */
-export const LINES_VERSION = 20;
+export const LINES_VERSION = 21;
 
 export const LINE_IDS = [
   "about.ai",
@@ -168,7 +169,13 @@ export interface LineOffer {
  */
 export const TEMPLATES = {
   "about.ai": ["I'm not a real person. I'm an AI helper."],
-  "about.no_secret": ["I can't be a secret friend. I don't keep secrets. A grown-up you trust is a good person to talk to."],
+  // Kind, and points to a grown-up the child trusts. Wordings 1 to 3 are from #624 (#884, D-329, Savar 2026-11-12).
+  "about.no_secret": [
+    "I can't be a secret friend. I don't keep secrets. A grown-up you trust is a good person to talk to.",
+    "I'm an AI. I can't keep secrets. A grown-up you trust can help.",
+    "I can't keep secrets, but I'm glad you told me. You can tell a grown-up you trust.",
+    "I can't be a secret friend. A grown-up you trust is great to talk to.",
+  ],
   "shorter.prompt": ["What part should we try again?"],
   "answer.area": ["So the area is {answer} {unit}."],
   "input.spoken": ["You can say your answer again."],

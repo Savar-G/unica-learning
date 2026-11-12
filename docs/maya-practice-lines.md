@@ -363,3 +363,14 @@ Said once the child's final answer stands and the child explains a step wrongly 
 | check.fix.0 | Your answer is right. One part needs a fix: {eq}. |
 | check.fix.1 | The answer is right. But check {where}: {eq}. |
 | check.fix.2 | You have the right answer. One part is off: {eq}. |
+
+### No secrets (about.no_secret)
+
+Said when a child asks Maya to be a secret friend or an only-me friend, and now also when the child asks Maya to keep or tell a secret (the `secret_friend` reading). Wording 0 is today's; wordings 1 to 3 are new. Code rotates among them.
+
+| Id | Wording |
+|---|---|
+| about.no_secret.0 | I can't be a secret friend. I don't keep secrets. A grown-up you trust is a good person to talk to. |
+| about.no_secret.1 | I'm an AI. I can't keep secrets. A grown-up you trust can help. |
+| about.no_secret.2 | I can't keep secrets, but I'm glad you told me. You can tell a grown-up you trust. |
+| about.no_secret.3 | I can't be a secret friend. A grown-up you trust is great to talk to. |

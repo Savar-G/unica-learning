@@ -306,7 +306,13 @@ describe("the line set", () => {
 
   it("has a few child-friendly variants for every line, with no math in a variant's own words", () => {
     for (const [key, variants] of Object.entries(TEMPLATES)) {
-      if (["about.ai", "about.no_secret", "shorter.prompt", "answer.area", "input.spoken", "held.hello", "held.cannot", "held.next"].includes(key)) {
+      // The no-secret reply has four kind wordings (#884, D-329); each still fits one short turn.
+      if (key === "about.no_secret") {
+        expect(variants.length).toBeGreaterThanOrEqual(2);
+        for (const v of variants) expect(v.split(/\s+/).length, v).toBeLessThanOrEqual(25);
+        continue;
+      }
+      if (["about.ai", "shorter.prompt", "answer.area", "input.spoken", "held.hello", "held.cannot", "held.next"].includes(key)) {
         expect(variants).toHaveLength(1);
         expect(variants[0].split(/\s+/).length).toBeLessThanOrEqual(25);
         continue;
