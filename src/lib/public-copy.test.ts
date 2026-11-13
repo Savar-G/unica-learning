@@ -111,9 +111,10 @@ describe("the plain-text summaries for AI assistants", () => {
 });
 
 describe("a space follows every full stop and colon in public copy", () => {
-  // A word, then "." or ":", then a letter: "Canada.The", "for you:scan". Web and email addresses are removed first.
+  // A word, then "." or ":", then a letter: "Canada.The", "for you:scan". Web and email addresses, and provider names
+  // spelled with a dot (Cal.com, named in the privacy disclosure), are removed first.
   const glued = /[a-z][.:][A-Za-z]/;
-  const words = (text: string) => text.replace(/https?:\/\/\S+/g, " ").replace(/\S+@\S+/g, " ");
+  const words = (text: string) => text.replace(/https?:\/\/\S+/g, " ").replace(/\S+@\S+/g, " ").replace(/\bCal\.com\b/g, " ");
 
   it("in the FAQ, the parent section and the plain-text summaries", () => {
     const texts = [...FAQ.flatMap((f) => [f.question, f.answer]), PARENT_TITLE, PARENT_LEAD, ...PARENT_NOT_YOURS.flat(), ...PARENT_YOURS, PARENT_NOTE, llmsTxt(), pricingMarkdown()];
