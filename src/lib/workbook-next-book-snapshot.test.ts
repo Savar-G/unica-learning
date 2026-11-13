@@ -165,7 +165,16 @@ describe("next book after a curriculum change", () => {
       issuedSkills: [...new Set(baseline.initialIssues.map(i => i.selection.skill))] };
     const unchanged = planNextBookFromSnapshot({ sources, snapshot });
     expect(unchanged.ok, JSON.stringify(unchanged)).toBe(true);
-    expect(planNextBookFromSnapshot({ sources, snapshot }, { curricula: templates })).toEqual(unchanged);
+    // The saved plan records the curriculum it was planned on: today's version, not Book 1's label.
+    if (!unchanged.ok) return;
+    expect(unchanged.planningInput.curriculum).toEqual({ key: "bc", version: curriculumVersion("bc") });
+    const relabelled = planNextBookFromSnapshot({ sources, snapshot }, { curricula: templates });
+    expect(relabelled.ok, JSON.stringify(relabelled)).toBe(true);
+    if (!relabelled.ok) return;
+    expect(relabelled.planningInput.curriculum).toEqual({ key: "bc", version: LATER });
+    expect(relabelled.planHash).not.toBe(unchanged.planHash);
+    const unlabelled = (r: typeof unchanged & { ok: true }) => ({ ...r, planHash: "", planningInput: { ...r.planningInput, curriculum: undefined } });
+    expect(unlabelled(relabelled)).toEqual(unlabelled(unchanged));
 
     // Structural changes: each is refused with its first difference, by both planning paths.
     const issued = baseline.initialIssues.map(i => i.selection).find(s => s.step === 2)!;
