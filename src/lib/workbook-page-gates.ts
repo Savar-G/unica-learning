@@ -20,8 +20,8 @@ export const PAGE_GATE_THRESHOLDS: Readonly<Record<string, PageGateTerms>> = {
   "typesafe/jev-1.14": { text_cut_off: NOT_CALIBRATED, overlap: NOT_CALIBRATED, box_too_small: NOT_CALIBRATED },
 };
 
-/** The longest side of the image the model reads. A rendered page is scaled down to it, never up. */
-export const PAGE_GATE_MAX_SIDE = 1600;
+/** The longest side of the image the model reads (TypeSafe refuses larger, "Invalid image dimensions"; the photo check uses the same). A page is scaled down to it, never up. */
+export const PAGE_GATE_MAX_SIDE = 1568;
 
 const QUESTIONS: Record<PageGate, DecisionQuestion> = {
   text_cut_off: { type: "noul", instructions: "Is any printed text on this workbook page cut off: clipped at an edge of the page, of a box or of a card, or hidden under something else?" },
@@ -173,20 +173,46 @@ export interface PageGateCase { id: string; source: string; gate: PageGate | nul
 /** One model answer: the probability of each gate's fault on that page. */
 export interface PageGateCaseRow { id: string; probabilities: Record<PageGate, number> }
 
-/** Pages in source order to alternate halves; a changed copy goes to its source page's half, so no fold sees both. */
+/**
+ * Two halves, without reading any answer. A changed copy goes to its source page's half, so no fold sees a page and its
+ * copy apart. Each gate's source pages alternate between the halves in set order, so every fold has copies of every
+ * gate; the other pages then fill the smaller half, in source order.
+ */
 export function splitPageGateCases(cases: readonly PageGateCase[]): Map<string, 0 | 1> {
-  const sources = [...new Set(cases.map((c) => c.source))];
-  const side = new Map(sources.map((s, i) => [s, (i % 2) as 0 | 1]));
+  const side = new Map<string, 0 | 1>();
+  const count = [0, 0];
+  const n = new Map<PageGate, number>();
+  for (const c of cases) {
+    if (c.gate === null || side.has(c.source)) continue;
+    const k = n.get(c.gate) ?? 0;
+    n.set(c.gate, k + 1);
+    side.set(c.source, (k % 2) as 0 | 1);
+    count[k % 2] += 1;
+  }
+  for (const source of new Set(cases.map((c) => c.source))) {
+    if (side.has(source)) continue;
+    const s = (count[0] <= count[1] ? 0 : 1) as 0 | 1;
+    side.set(source, s);
+    count[s] += 1;
+  }
   return new Map(cases.map((c) => [c.id, side.get(c.source)!]));
 }
 
-/** The lowest threshold (most caught) that flags at most 5% of unchanged pages; null when no cut-off meets that. */
+/**
+ * The threshold that catches the most changed pages while it flags at most 5% of unchanged pages (then the fewest false
+ * flags). Several thresholds often tie; the middle of the tied range is chosen, the most room on both sides: the highest
+ * one (the first rule, 2026-11-13) sat just under the fitted half's lowest changed page and missed the other half's.
+ * Null when no cut-off meets the false-flag limit.
+ */
 export function calibratePageGate(unchanged: readonly number[], changed: readonly number[]): { threshold: number; caught: number; falseFlags: number } | null {
   if (!unchanged.length || !changed.length || [...unchanged, ...changed].some((p) => !Number.isFinite(p) || p < 0 || p > 1)) throw new Error("invalid page gate probabilities");
   const choices = Array.from({ length: 101 }, (_, n) => n / 100).map((t) => ({ threshold: t, caught: changed.filter((p) => p >= t).length, falseFlags: unchanged.filter((p) => p >= t).length }))
-    .filter((x) => x.falseFlags / unchanged.length <= 0.05)
-    .sort((a, b) => b.caught - a.caught || a.falseFlags - b.falseFlags || b.threshold - a.threshold);
-  return choices[0] ?? null;
+    .filter((x) => x.falseFlags / unchanged.length <= 0.05);
+  if (!choices.length) return null;
+  const best = choices.reduce((a, b) => (b.caught > a.caught || (b.caught === a.caught && b.falseFlags < a.falseFlags) ? b : a));
+  const tied = choices.filter((x) => x.caught === best.caught && x.falseFlags === best.falseFlags).map((x) => x.threshold);
+  const threshold = Math.round(((Math.min(...tied) + Math.max(...tied)) / 2) * 100) / 100;
+  return { threshold, caught: best.caught, falseFlags: best.falseFlags };
 }
 
 /**

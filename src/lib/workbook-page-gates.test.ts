@@ -108,20 +108,26 @@ describe("calibrating the page layout gate", () => {
   const sources = Array.from({ length: 8 }, (_, i) => `U16-p${i + 3}`);
   const cases = [
     ...sources.map((s) => ({ id: s, source: s, gate: null })),
-    ...(["text_cut_off", "overlap"] as const).flatMap((gate) => sources.slice(0, 4).map((s) => ({ id: `${s}-${gate}`, source: s, gate }))),
+    ...(["text_cut_off", "overlap"] as const).flatMap((gate, g) => [0, 2, 4, 6].map((i) => sources[i + g]).map((s) => ({ id: `${s}-${gate}`, source: s, gate }))),
   ];
   const rows = (fault: number, clean: number) => cases.map((c) => ({ id: c.id, probabilities: {
     text_cut_off: c.gate === "text_cut_off" ? fault : clean, overlap: c.gate === "overlap" ? fault : clean, box_too_small: clean } }));
 
-  it("keeps a changed copy in its source page's half", () => {
+  it("keeps a changed copy in its source page's half and puts each gate's copies in both halves", () => {
     const split = splitPageGateCases(cases);
     for (const c of cases) expect(split.get(c.id)).toBe(split.get(c.source));
     expect([0, 1].map((side) => sources.filter((s) => split.get(s) === side).length)).toEqual([4, 4]);
+    for (const gate of ["text_cut_off", "overlap"]) {
+      // (Copies from every other source page, as the set script picks them, still split evenly.)
+      const copies = cases.filter((c) => c.gate === gate);
+      expect([0, 1].map((side) => copies.filter((c) => split.get(c.id) === side).length)).toEqual([2, 2]);
+    }
   });
 
   it("fits the threshold that catches the most changed pages with at most 5% false flags", () => {
     expect(calibratePageGate([0.1, 0.2, 0.1], [0.9, 0.8])).toMatchObject({ caught: 2, falseFlags: 0 });
-    expect(calibratePageGate([0.1, 0.2, 0.1], [0.9, 0.8])!.threshold).toBeGreaterThan(0.2);
+    // (Thresholds 0.21 to 0.80 all catch both with no false flag: the middle, not the edge next to a changed page.)
+    expect(calibratePageGate([0.1, 0.2, 0.1], [0.9, 0.8])!.threshold).toBe(0.51);
     expect(() => calibratePageGate([0.1], [2])).toThrow(/invalid/);
   });
 
