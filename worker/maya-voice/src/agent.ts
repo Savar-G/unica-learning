@@ -95,10 +95,10 @@ export interface PrepareHint {
 }
 
 /**
- * The worker's view of the call: the call module (src/lib/maya-call.ts) may add `prepare` later. Until then there is no
- * hint, and nothing changes. A prepare must not change the call: only a finished child turn does (D-341).
+ * The worker uses the call's synchronous prepare result. False leaves the same interim eligible for a later hint.
+ * A prepare must not change the call: only a finished child turn does (D-341).
  */
-export type PreparingCall = VoiceCall & { prepare?(hint: PrepareHint): unknown };
+export type PreparingCall = VoiceCall;
 
 export type { FinalMark } from "./turn-timing";
 
@@ -517,17 +517,16 @@ export class VoiceCallRun {
   /**
    * Gives the call the prepare hint (V2b) when it has `prepare`: never while a child turn of this call runs (its input in
    * the call, or its reply not ready), never after the end or while the child is away. A prepare that fails changes
-   * nothing. True when the hint was given.
+   * nothing. True only when the call accepted the hint.
    */
   private prepareHint(text: string): boolean {
     const call = this.call as PreparingCall;
     if (typeof call.prepare !== "function" || this.finishing || !this.childHere || this.call.ended) return false;
     if (this.call.working || (this.pace !== null && !this.pace.ready)) return false;
     try {
-      const out = call.prepare({ text, reason: "interim" });
-      if (out instanceof Promise) out.catch(() => {});
+      return call.prepare({ text, reason: "interim" });
     } catch { /* a prepare is a hint: the turn does not depend on it */ }
-    return true;
+    return false;
   }
 
   /** The speech-to-text gave words: a child who went on speaking ends the wait of `childWentOn`. */

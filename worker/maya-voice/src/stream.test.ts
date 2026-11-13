@@ -238,11 +238,11 @@ async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; speec
   return { clock, say, said, session, speaker, receiver, board, samples, run, id: started.view.id, calls, call: opened.call, store, microphone };
 }
 
-const FIRST = "Let's think about the ones together.";
+const FIRST = "Let's look at the ones.";
 /** A hard feeling: its reply never streams (`hardFeeling` in src/lib/maya). */
 const FEELING = "I feel really bad today.";
 // Round 4: both sentences are math-only by the closed vocabulary, so they stream with no review (`mathOnly`).
-const SECOND = "What do the ones make?";
+const SECOND = "What can you do in the ones?";
 const ACKS = new Set(ACK_PHRASES.map((p) => p.text));
 const count = (said: readonly string[], text: string) => said.filter((t) => t === text).length;
 const sum = (s: VoiceTurnSample) => TURN_PARTS.reduce((total, k) => total + s.parts![k], 0);
@@ -457,10 +457,10 @@ describe("the parts of a turn as the worker hears them (VoiceSay)", () => {
       return realStage(id, cues);
     });
     const before = c.said().length;
-    // The cue is at "seven" (word 15 of the whole reply): 6 words were said early, so it is word 9 of the rest.
+    // The cue is at "seven" (word 16 of the whole reply): 5 words were said early, so it is word 11 of the rest.
     const words = `${FIRST} ${SECOND} ${third}`.split(/\s+/);
-    expect(words.indexOf("seven.") + 1).toBe(15);
-    const finish = playedTurn(c, (say) => { say.part!(FIRST, 0); }, { say: [`${FIRST} ${SECOND} ${third}`], newBatches: 1, boardCues: [{ batch: note, word: 15 }], safetyMessage: null, ended: false });
+    expect(words.indexOf("seven.") + 1).toBe(16);
+    const finish = playedTurn(c, (say) => { say.part!(FIRST, 0); }, { say: [`${FIRST} ${SECOND} ${third}`], newBatches: 1, boardCues: [{ batch: note, word: 16 }], safetyMessage: null, ended: false });
     c.say("I got 56.");
     await waitFor(() => c.said().slice(before).includes(FIRST), "the first sentence");
     finish();
@@ -469,7 +469,7 @@ describe("the parts of a turn as the worker hears them (VoiceSay)", () => {
     await waitFor(() => c.session.agentState === "listening", "the rest to play");
     await c.board.settled();
     // Speech A had an empty plan; speech B's plan holds the batch at its moved word, staged after A was said.
-    expect(sends).toEqual([`${note.transactionId}@9`]);
+    expect(sends).toEqual([`${note.transactionId}@11`]);
     expect(c.said().slice(before)).toEqual([FIRST, SECOND, third]);
     const shown = c.receiver.snapshot().events.flatMap((e) => (e.kind === "batch" ? [e.batchId] : []));
     expect(shown).toEqual([question.transactionId, note.transactionId]);
@@ -687,7 +687,7 @@ describe("the prepare signal (V2b)", () => {
     const speech = new ProbeSTT();
     const v = fakeVad();
     const c = await voiceCall({ model: ruleConversationalModel(), speech, heardVad: v.vad });
-    const prepare = vi.fn();
+    const prepare = vi.fn(() => true);
     (c.call as PreparingCall).prepare = prepare;
     await speak(c, speech, v);
     speech.send(stt.SpeechEventType.INTERIM_TRANSCRIPT, "twelve minus eight is four");
@@ -716,7 +716,7 @@ describe("the prepare signal (V2b)", () => {
     const v = fakeVad();
     const m = steppedModel(guideTurn(`${FIRST} ${SECOND}`));
     const c = await voiceCall({ model: m.model, speech, heardVad: v.vad });
-    const prepare = vi.fn();
+    const prepare = vi.fn(() => true);
     (c.call as PreparingCall).prepare = prepare;
     speech.send(stt.SpeechEventType.START_OF_SPEECH);
     speech.send(stt.SpeechEventType.FINAL_TRANSCRIPT, "I got 56.");
@@ -739,10 +739,11 @@ describe("the prepare signal (V2b)", () => {
     expect(prepare).toHaveBeenCalledWith({ text: "sixty six", reason: "interim" });
   });
 
-  it("changes nothing for a call with no prepare", async () => {
+  it.each([false, true])("does not count a refused or unsupported preparation, unsupported=%s", async (unsupported) => {
     const speech = new ProbeSTT();
     const v = fakeVad();
     const c = await voiceCall({ model: ruleConversationalModel(), speech, heardVad: v.vad });
+    if (unsupported) delete (c.call as Partial<PreparingCall>).prepare;
     await speak(c, speech, v);
     speech.send(stt.SpeechEventType.INTERIM_TRANSCRIPT, "sixty six");
     await pause();
@@ -751,6 +752,27 @@ describe("the prepare signal (V2b)", () => {
     speech.send(stt.SpeechEventType.END_OF_SPEECH);
     await waitFor(() => c.samples.length === 1, "the sample");
     expect(c.samples[0]).toMatchObject({ outcome: "answered", interimWordsAtEnd: 2, interimEqualsFinal: false, prepares: 0 });
+  });
+  it("retries the same interim after a temporary refusal and counts only the accepted hint", async () => {
+    const speech = new ProbeSTT();
+    const v = fakeVad();
+    const c = await voiceCall({ model: ruleConversationalModel(), speech, heardVad: v.vad });
+    const prepare = vi.fn(() => true).mockReturnValueOnce(false);
+    c.call.prepare = prepare;
+    await speak(c, speech, v);
+    speech.send(stt.SpeechEventType.INTERIM_TRANSCRIPT, "55");
+    await pause();
+    await v.send(VADEventType.END_OF_SPEECH, 400, false, 250);
+    expect(prepare).toHaveBeenCalledTimes(1);
+    speech.send(stt.SpeechEventType.INTERIM_TRANSCRIPT, "55");
+    await waitFor(() => prepare.mock.calls.length === 2, "a retried refused hint");
+    speech.send(stt.SpeechEventType.INTERIM_TRANSCRIPT, "55.");
+    await pause();
+    expect(prepare).toHaveBeenCalledTimes(2);
+    speech.send(stt.SpeechEventType.FINAL_TRANSCRIPT, "55");
+    speech.send(stt.SpeechEventType.END_OF_SPEECH);
+    await waitFor(() => c.samples.length === 1, "the sample");
+    expect(c.samples[0]).toMatchObject({ prepares: 1 });
   });
 });
 

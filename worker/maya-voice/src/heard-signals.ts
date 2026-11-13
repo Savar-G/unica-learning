@@ -206,7 +206,7 @@ export interface PrepareStats {
   interimEqualsFinal: boolean | null;
   /** The detector's report of the end (`detectorHeard`) to the final transcript (ms). Null: no end before the final. */
   prepareLeadMs: number | null;
-  /** Hints given to the call. */
+  /** Interim hints the call accepted. Excludes automatic preparation and does not prove provider dispatch. */
   prepares: number;
   /** When the first hint was given (system clock), for the `prepare` clock mark. */
   firstPrepareAt: number | null;
@@ -216,8 +216,8 @@ export interface PrepareStats {
  * The prepare signal (V2b, the interface agreed with the Maya lead, 2026-11-13): when the detector reports the end of
  * the child's speech, the call is given the newest partial transcript as it came (`send`), so the controller can start
  * its reply before the final transcript. Once per end of speech, and again only for a newer partial that differs after
- * `normalizeTranscript`; never the same text twice before the final. A detector start of speech stops further hints
- * until the next end. `send` decides whether the hint goes (false: dropped, as while a child turn runs).
+ * `normalizeTranscript`; never the same accepted text twice before the final. A detector start of speech stops further
+ * hints until the next end. `send` decides whether the hint goes. False leaves that text eligible for a later hint.
  */
 export class PrepareSignal {
   private interim = "";
