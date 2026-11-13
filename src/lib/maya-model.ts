@@ -274,6 +274,11 @@ function turnNotes(session: Session): string[] {
     if (next) notes.push(`If you work the easier example now, show its next step yourself, with its result, and ask nothing until the example ends: ${stepText(next, session.package.easierExample.operation)}${session.exampleShown === 0 && !session.exampleIntroduced ? " Say first that it is a new, easier problem." : ""}`);
   }
   if (session.noBoard) notes.push("The child cannot see the board: say everything in words.");
+  const main = session.state === "ASSESS" || session.resume === "ASSESS";
+  if (main && session.done.length === 0 && session.turn && /\b(?:help|don'?t get|don'?t know|stuck|no idea|how (?:do|to) (?:i )?start)\b/i.test(session.turn.text)) {
+    notes.push("A child who cannot start gets the easier example first (act \"example_step\", reading start \"no_start\"), then the question back (act \"try_target\").");
+  }
+  if (session.state === "MODEL_EXAMPLE" && session.package && session.exampleShown >= session.package.easierExample.steps.length) notes.push("The easier example is done: hand our question back now (act \"try_target\").");
   if ((session.thinking ?? 0) > 0) notes.push("The child took time to think before this turn: be patient, do not push, and answer what they say now.");
   if (session.solved !== null && session.turn && saysWritten(session.turn.text)) notes.push("The child wrote the answer: close warmly now (act \"close\"), and ask nothing.");
   return notes;
