@@ -2560,7 +2560,6 @@ function ownSubject(clause: string): boolean {
   if (/^(?:like |as )?you\b/.test(c)) return true;
   return /^(?:(?:together\s+)?they|both(?: of them)?|all(?: of them)?|the two|these two|those two)\s+(?:together\s+)?(?:make|makes|made|add up to|adds up to|added up to|are|were|equal|equals|give|gives|is|come to|comes to)\b/.test(c);
 }
-const NOT_A_PERSON = /^(?:that|it|this|they|these|those|them|the numbers?|adding(?:\s+\w+)*|(?:the\s+)?(?:ones|tens|hundreds|thousands|ten thousands|hundred thousands|tenths|hundredths|thousandths)(?:\s+(?:column|place|part|digit|side))?|\d+(?:\s*(?:,|\+|×|\*|plus|and|times|minus|x)\s*\d+)+)$/;
 /** Near the value, not the value (review of 1b5c3b50, P1-2). */
 const NEAR = new RegExp(`\\b(?:about|around|almost|approximately|roughly|nearly|close to)\\s+(?:\\d|(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)\\b)|-ish\\b|\\bish\\b|\\bfeel like\\b|\\breckon\\b|\\bsomething like\\b|\\bi suppose\\b|\\bi bet\\b|\\bpretty sure\\b|\\bapproximately\\b|\\broughly\\b|\\b(?:most )?likely\\b|\\blet'?s say\\b|\\blet'?s go with\\b|\\bsay,\\s*\\S|\\bsay\\s+\\S+\\s*\\?`);
 /** Another person, or another source, of a number. Maya herself is "you": rule C reads her. */
