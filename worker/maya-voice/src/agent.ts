@@ -27,7 +27,7 @@ import type { VoiceCall, VoiceSay, VoiceTurn } from "@/lib/maya-call";
 import { speechWords, type BoardSpeech, type SpeechScope } from "@/lib/board-speech";
 import { CuePlaybackOutput } from "./cue-playback";
 import { earlyRest, type EarlyRest } from "./early-speech";
-import { HeardSignals, silentFinal } from "./heard-signals";
+import { detectorVad, HeardSignals, PrepareSignal, silentFinal } from "./heard-signals";
 import { mark, markLast, resetMarks } from "./marks";
 import { boardAudio, countedSynthesis, type SilentSpeech } from "./speech-audio";
 import { VOICE_METER_TICK_MS } from "@/lib/maya-spend";
@@ -83,7 +83,22 @@ interface AgentHooks {
   greetingOver(): Promise<void>;
   /** True when the child went on speaking within the wait; `text` ends in a number word that can go on. */
   childWentOn(text: string): Promise<boolean>;
+  /** Gives the call a prepare hint (`PrepareSignal`). False: dropped (no `prepare`, or a child turn runs). */
+  prepare?(text: string): boolean;
 }
+
+/** The hint the worker gives the call when the child's speech ends (V2b, agreed with the Maya lead, 2026-11-13). */
+export interface PrepareHint {
+  /** The newest partial transcript as it came, not normalized. */
+  text: string;
+  reason: "interim";
+}
+
+/**
+ * The worker's view of the call: the call module (src/lib/maya-call.ts) may add `prepare` later. Until then there is no
+ * hint, and nothing changes. A prepare must not change the call: only a finished child turn does (D-341).
+ */
+export type PreparingCall = VoiceCall & { prepare?(hint: PrepareHint): unknown };
 
 export type { FinalMark } from "./turn-timing";
 
@@ -95,6 +110,8 @@ export class MayaVoiceAgent extends voice.Agent {
   private marks: FinalMark[] = [];
   /** The held words were already waited on once, so the turn that joins them is not waited on again. */
   private extended = false;
+  /** The prepare signal of this call's speech (V2b). */
+  private readonly prepareSignal = new PrepareSignal(text => this.hooks.prepare?.(text) ?? false);
   constructor(
     private readonly call: VoiceCall,
     private readonly onTurn: (turn: VoiceTurn) => Promise<boolean>,
@@ -115,8 +132,16 @@ export class MayaVoiceAgent extends voice.Agent {
     let inputStartedAt: number | null = null;
     // The signals of each final transcript, for the worker log; one rule drops a transcript on them (./heard-signals.ts).
     let vad: VAD | undefined = this.hearing.vad;
-    if (!vad) { try { vad = this.session.vad; } catch { vad = undefined; } }
+    if (!vad) {
+      let sessionVad: VAD | undefined;
+      try { sessionVad = this.session.vad; } catch { sessionVad = undefined; }
+      // A VAD of its own with its own minimum silence; the session's VAD (interruptions) keeps LiveKit's settings.
+      vad = detectorVad(sessionVad, this.hearing.detectorMinSilenceMs ?? null);
+    }
     const signals = new HeardSignals(vad);
+    const prepare = this.prepareSignal;
+    signals.onSpeechEnd = end => prepare.speechEnd(end.heardAt);
+    signals.onSpeechStart = () => prepare.speechStart();
     const limit = this.hearing.dropSilentPeakDbfs;
     const input = "pipeThrough" in audio
       ? audio.pipeThrough(new TransformStream<AudioFrame, AudioFrame>({
@@ -147,10 +172,14 @@ export class MayaVoiceAgent extends voice.Agent {
           // transcript then never raises the child's "speaking" state, and never stops Maya's speech by its words.
           if (type === stt.SpeechEventType.START_OF_SPEECH && signals.quiet(limit)) { heldStart = event; return; }
           if ((type === stt.SpeechEventType.INTERIM_TRANSCRIPT || type === stt.SpeechEventType.PREFLIGHT_TRANSCRIPT) && signals.quiet(limit)) return;
+          if ((type === stt.SpeechEventType.INTERIM_TRANSCRIPT || type === stt.SpeechEventType.PREFLIGHT_TRANSCRIPT) && event.alternatives?.[0]) prepare.partial(event.alternatives[0].text);
           if (type === stt.SpeechEventType.END_OF_SPEECH && heldStart) { heldStart = null; return; }
           if (type === stt.SpeechEventType.FINAL_TRANSCRIPT && event.alternatives) {
-            const detectorEndAt = signals.speechEndAt;
+            const detectorEnd = signals.speechEnd;
+            const detectorEndAt = detectorEnd?.endAt ?? null;
             const heard = signals.final(event.alternatives);
+            const finalAt = Date.now();
+            const prepared = prepare.final(event.alternatives[0]?.text ?? "", finalAt);
             if (silentFinal(heard, limit)) {
               // Words in digital silence: not a child turn, never answered. The signals go in the log, no words.
               console.warn("[maya voice] dropped transcript", callId, heard);
@@ -158,10 +187,17 @@ export class MayaVoiceAgent extends voice.Agent {
             }
             finals.push(event.alternatives.map((a) => ({ text: a.text, confidence: a.confidence })));
             // The last word's end, never the transcript's own end time, which can hold the turn's end (`finalMark`).
-            marks.push(finalMark(event.alternatives[0], inputStartedAt, Date.now(), detectorEndAt));
+            marks.push({ ...finalMark(event.alternatives[0], inputStartedAt, finalAt, detectorEndAt), prepare: prepared });
             resetMarks();
-            mark("sttFinal");
-            if (detectorEndAt !== null && detectorEndAt !== undefined) markLast("detectorEnd", detectorEndAt);
+            mark("sttFinal", finalAt);
+            if (prepared.firstPrepareAt !== null) markLast("prepare", prepared.firstPrepareAt);
+            // The detector's end of speech (put back by its minimum silence), when it reported it, and the last loud input
+            // frame before it: the browser's audio end lines up with `levelEnd` (docs/maya-voice.md, "Clock marks").
+            if (detectorEnd) {
+              markLast("detectorEnd", detectorEnd.endAt);
+              markLast("detectorHeard", detectorEnd.heardAt);
+              if (detectorEnd.levelEndAt !== null) markLast("levelEnd", detectorEnd.levelEndAt);
+            }
             console.info("[maya voice] final transcript", callId, heard);
           }
           // Kept speech: a start held back goes first.
@@ -189,7 +225,7 @@ export class MayaVoiceAgent extends voice.Agent {
    * The silent-transcript rule (`silentFinal`): its peak limit (null: off, the default here; a call sets it from its
    * tuning), and the detector to read, when it is not the session's own (tests).
    */
-  hearing: { dropSilentPeakDbfs: number | null; vad?: VAD } = { dropSilentPeakDbfs: null };
+  hearing: { dropSilentPeakDbfs: number | null; vad?: VAD; detectorMinSilenceMs?: number | null } = { dropSilentPeakDbfs: null };
 
   /** One-shot: the next speech's audio does not wait for its (empty) board plan to be sent (the worker's own opening). */
   ungatedNext = false;
@@ -423,13 +459,15 @@ export class VoiceCallRun {
       dropSilentPeakDbfs?: number | null;
       /** The detector for that rule when it is not the session's own (tests). */
       heardVad?: VAD;
+      /** The worker's detector's minimum silence (VoiceTuning.detectorMinSilenceMs). Absent: the session's VAD as it is. */
+      detectorMinSilenceMs?: number;
     },
   ) {
     this.segment = call.revision;
     this.agent = new MayaVoiceAgent(call, turn => this.after(turn), options.board ? { sync: options.board, scope: () => this.boardScope } : undefined,
       (stoppedAt, work, mark) => this.reply(stoppedAt, work, mark),
-      { greetingOver: () => this.greetingOver(), childWentOn: text => this.childWentOn(text) });
-    this.agent.hearing = { dropSilentPeakDbfs: options.dropSilentPeakDbfs ?? null, ...(options.heardVad ? { vad: options.heardVad } : {}) };
+      { greetingOver: () => this.greetingOver(), childWentOn: text => this.childWentOn(text), prepare: text => this.prepareHint(text) });
+    this.agent.hearing = { dropSilentPeakDbfs: options.dropSilentPeakDbfs ?? null, ...(options.heardVad ? { vad: options.heardVad } : {}), detectorMinSilenceMs: options.detectorMinSilenceMs ?? null };
     this.agent.onSilent = speech => this.silentSpeech(speech);
     call.onGuidance(turn => this.guidanceNow(turn));
     session.on(voice.AgentSessionEventTypes.UserInputTranscribed, ev => { if (ev.transcript.trim()) this.wordsHeard(); });
@@ -474,6 +512,22 @@ export class VoiceCallRun {
     audio?.on(voice.AudioOutput.EVENT_PLAYBACK_FINISHED, () => {
       if (this.pace?.clock.ackHeard) this.cutAck(this.pace);
     });
+  }
+
+  /**
+   * Gives the call the prepare hint (V2b) when it has `prepare`: never while a child turn of this call runs (its input in
+   * the call, or its reply not ready), never after the end or while the child is away. A prepare that fails changes
+   * nothing. True when the hint was given.
+   */
+  private prepareHint(text: string): boolean {
+    const call = this.call as PreparingCall;
+    if (typeof call.prepare !== "function" || this.finishing || !this.childHere || this.call.ended) return false;
+    if (this.call.working || (this.pace !== null && !this.pace.ready)) return false;
+    try {
+      const out = call.prepare({ text, reason: "interim" });
+      if (out instanceof Promise) out.catch(() => {});
+    } catch { /* a prepare is a hint: the turn does not depend on it */ }
+    return true;
   }
 
   /** The speech-to-text gave words: a child who went on speaking ends the wait of `childWentOn`. */
@@ -613,7 +667,7 @@ export class VoiceCallRun {
     // LiveKit's first end of speech if it came before the final transcript (`heardMarks`).
     const heard = heardMarks(mark, this.speechEndSeenAt, sinceThen);
     const pace: TurnPace = {
-      clock: new TurnClock(this.timers.now, speechEndedAt, heardAt, heard), generation: this.generation,
+      clock: new TurnClock(this.timers.now, speechEndedAt, heardAt, heard, { prepare: mark?.prepare ?? null }), generation: this.generation,
       writable: true, ready: false, closed: false, handle: this.speech, guided: false, ackStopped: false, ackWritten: false, ownSpeech: false, limit: null, hold: null, ack: null, ackOver: null, write: () => {}, end: () => {},
       early: noEarly(), measured: false, plan: null, ackLimitAt: null,
     };

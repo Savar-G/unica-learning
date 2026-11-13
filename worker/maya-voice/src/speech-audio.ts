@@ -5,6 +5,7 @@ import { speechKey } from "@/lib/maya/speech";
 import { mark } from "./marks";
 import { SPEECH_SCOPE_DATA, speechSentences, speechWords, type BoardSpeech, type SpeechScope } from "@/lib/board-speech";
 import { spokenStream, spokenWords } from "@/lib/maya-voice-spoken";
+import { delivery, deliveryLog, LeadTrim } from "./voice-delivery";
 
 /**
  * Passes text to the voice provider and its audio back, and tells `count` the text once when audio came back, also when
@@ -109,7 +110,13 @@ export function boardAudio(
         controller.close();
         return true;
       };
-      const synthesizeSentence = (spoken: string) => synthesize(new ReadableStream<string>({ start(c) { c.enqueue(spoken); c.close(); } }));
+      /** When each sentence's audio was asked for (for the "voice lead" log line). */
+      const requested = new Map<number, number>();
+      const synthesizeSentence = (index: number) => {
+        requested.set(index, Date.now());
+        const spoken = spokenSentences[index].join(" ");
+        return synthesize(new ReadableStream<string>({ start(c) { c.enqueue(spoken); c.close(); } }));
+      };
       let full = "";
       let heardAny = false;
       /**
@@ -134,7 +141,7 @@ export function boardAudio(
         spokenSentences.push(...spoken);
         // A sentence that came while the one before it plays is made now, as one known at the start would be.
         if (!ahead && playing >= 0 && playing + 1 < sentences.length && !abort.signal.aborted) {
-          ahead = synthesizeSentence(spokenSentences[playing + 1].join(" "));
+          ahead = synthesizeSentence(playing + 1);
           void ahead.catch(() => {});
         }
         waiter.wake?.();
@@ -194,7 +201,8 @@ export function boardAudio(
           if (stale()) return;
           if (sentence === null) break;
           playing = index;
-          const pending = ahead ?? synthesizeSentence(spokenSentences[index].join(" "));
+          const madeAhead = !!ahead;
+          const pending = ahead ?? synthesizeSentence(index);
           ahead = null;
           const frames = await pending;
           if (stale()) {
@@ -217,7 +225,7 @@ export function boardAudio(
           }
           // The next sentence's audio is made while this one is read out.
           if (index + 1 < sentences.length) {
-            ahead = synthesizeSentence(spokenSentences[index + 1].join(" "));
+            ahead = synthesizeSentence(index + 1);
             // Its failure is read when its turn comes (below), not as an unhandled rejection while this one plays.
             void ahead.catch(() => {});
           }
@@ -234,43 +242,60 @@ export function boardAudio(
             speechKey(spokenSentence.slice(0, i + 1).join(" ")),
             speechKey(expectedWords.slice(0, i + 1).join(" ")),
           ]);
+          // The near-silence at the start of this sentence is measured and trimmed (./voice-delivery.ts `LeadTrim`): its
+          // word times come out moved back with it, so a cue still meets its word.
+          const trim = new LeadTrim(delivery());
+          let firstFrameAt: number | null = null;
+          let leadLogged = false;
+          const logLead = () => {
+            if (leadLogged || trim.leadMs === null) return;
+            leadLogged = true;
+            const asked = requested.get(index);
+            deliveryLog("voice lead", { sentence: index, leadMs: trim.leadMs, trimmedMs: trim.trimmedMs, allSilent: trim.allSilent,
+              firstFrameMs: asked !== undefined && firstFrameAt !== null ? firstFrameAt - asked : null, madeAhead });
+          };
           try {
-            for (;;) {
-              const { value: frame, done } = await reader.read();
+            for (let ended = false; !ended;) {
+              const { value: raw, done } = await reader.read();
               if (stale()) { void reader.cancel(scope).catch(() => {}); return; }
-              if (done) break;
-              const times = frame.userdata[USERDATA_TIMED_TRANSCRIPT] as voice.TimedString[] | undefined;
-              let changed = false;
-              for (const t of times ?? []) {
-                if (t.endTime === undefined || !Number.isFinite(t.endTime) || t.endTime <= 0) continue;
-                const key = JSON.stringify([t.startTime, t.endTime, speechKey(t.text)]);
-                if (!alignment.has(key)) { alignment.set(key, t); changed = true; }
-              }
-              if (changed) {
-                let aligned = "";
-                let matchedWords = 0;
-                const ordered = [...alignment.values()].sort((a, b) => (a.startTime ?? a.endTime!) - (b.startTime ?? b.endTime!) || a.endTime! - b.endTime!);
-                for (const t of ordered) {
-                  aligned += ` ${t.text.trim()}`;
-                  const heard = speechKey(aligned);
-                  const before = matchedWords;
-                  for (let n = matchedWords + 1; n <= expectedWords.length; n++) {
-                    if (prefixes[n - 1].some(expected => expected && (heard === expected || heard.startsWith(`${expected} `)))) matchedWords = n;
-                  }
-                  if (matchedWords > before) {
-                    await board.timing(scope, words + matchedWords, offsetMs + t.endTime! * 1000, "word");
-                    if (stale()) { void reader.cancel(scope).catch(() => {}); return; }
+              if (!done && firstFrameAt === null) firstFrameAt = Date.now();
+              ended = !!done;
+              const out = done ? trim.end() : trim.push(raw);
+              logLead();
+              for (const frame of out) {
+                const times = frame.userdata[USERDATA_TIMED_TRANSCRIPT] as voice.TimedString[] | undefined;
+                let changed = false;
+                for (const t of times ?? []) {
+                  if (t.endTime === undefined || !Number.isFinite(t.endTime) || t.endTime <= 0) continue;
+                  const key = JSON.stringify([t.startTime, t.endTime, speechKey(t.text)]);
+                  if (!alignment.has(key)) { alignment.set(key, t); changed = true; }
+                }
+                if (changed) {
+                  let aligned = "";
+                  let matchedWords = 0;
+                  const ordered = [...alignment.values()].sort((a, b) => (a.startTime ?? a.endTime!) - (b.startTime ?? b.endTime!) || a.endTime! - b.endTime!);
+                  for (const t of ordered) {
+                    aligned += ` ${t.text.trim()}`;
+                    const heard = speechKey(aligned);
+                    const before = matchedWords;
+                    for (let n = matchedWords + 1; n <= expectedWords.length; n++) {
+                      if (prefixes[n - 1].some(expected => expected && (heard === expected || heard.startsWith(`${expected} `)))) matchedWords = n;
+                    }
+                    if (matchedWords > before) {
+                      await board.timing(scope, words + matchedWords, offsetMs + t.endTime! * 1000, "word");
+                      if (stale()) { void reader.cancel(scope).catch(() => {}); return; }
+                    }
                   }
                 }
+                if (times?.length) frame.userdata[USERDATA_TIMED_TRANSCRIPT] = times.map(t => voice.createTimedString({ ...t,
+                  startTime: t.startTime === undefined ? undefined : t.startTime + offsetMs / 1000,
+                  endTime: t.endTime === undefined ? undefined : t.endTime + offsetMs / 1000,
+                }));
+                durationMs += frame.samplesPerChannel / frame.sampleRate * 1000;
+                frame.userdata[SPEECH_SCOPE_DATA] = scope;
+                if (frame.samplesPerChannel > 0) heardAny = true;
+                controller.enqueue(frame);
               }
-              if (times?.length) frame.userdata[USERDATA_TIMED_TRANSCRIPT] = times.map(t => voice.createTimedString({ ...t,
-                startTime: t.startTime === undefined ? undefined : t.startTime + offsetMs / 1000,
-                endTime: t.endTime === undefined ? undefined : t.endTime + offsetMs / 1000,
-              }));
-              durationMs += frame.samplesPerChannel / frame.sampleRate * 1000;
-              frame.userdata[SPEECH_SCOPE_DATA] = scope;
-              if (frame.samplesPerChannel > 0) heardAny = true;
-              controller.enqueue(frame);
             }
           } finally {
             reader.releaseLock();

@@ -119,6 +119,7 @@ Agents create no accounts. Create these, then set the values below.
 | `SUPABASE_SECRET_KEY` | Already set | Yes | The worker's own key `maya_voice_worker` (step 4), not the web app's. |
 | `MAYA_ACK_LIMIT_MS` | No | Optional | The child's turn reaching the worker to the acknowledgement, for a reply that can stream, in ms. Default 2600 (1500 before 2026-11-13). `0` turns it off. A turn that cannot stream gets the phrase at once. |
 | `MAYA_DROP_SILENT_PEAK_DBFS` | No | Optional | The silent-transcript rule ("Words heard in silence" below): a final transcript with no detector speech and an input peak below this level is dropped. Default -50. A level from -120 to 0, or `off`. |
+| `MAYA_DETECTOR_MIN_SILENCE_MS` | No | Optional | The minimum silence of the worker's own detector ("Clock marks" below): how long it waits after speech before it reports the end. Default 250 (LiveKit Agents 1.9.5's own default). 100 to 2000. The session's VAD, which decides when speech stops Maya, is not changed. |
 | `MAYA_VOICE_LOAD_LIMIT` | No | Optional | 0 to 1: the machine load above which the worker takes no new call. LiveKit's default otherwise. |
 | `MAYA_STT_MIN_SILENCE_MS` | No | Optional | AssemblyAI `min_turn_silence` for a normal turn. Default 400. Whole number, 0 to 2000. |
 | `MAYA_STT_MAX_SILENCE_MS` | No | Optional | AssemblyAI `max_turn_silence` for a normal turn. Default 1600. 100 to 10000, not less than the minimum. |
@@ -262,6 +263,28 @@ What the code can see, and what it cannot. From LiveKit Agents 1.9.5 (`voice/aud
 
 **The held turn (2026-11-13).** On real calls the browser measured Maya's first sound 7028 ms after the child's audio ended while the worker logged `waitMs` 3186, and 4377 ms against 1269, both with `speechEnd: 'stt_words'`. Other turns agreed (3979 against 3974). The gap was the time the speech-to-text held the turn. The cause: the worker read the transcript's own end time, not the last word's. Through LiveKit Inference the transcript's end time is `start + duration` of the turn (`processTranscript` in `inference/stt.js`), and that can run on to the end of the turn, so a held turn put the child's "end of speech" near the final itself. The direct AssemblyAI plugin already sets a transcript's end time to its last word's end (its `stt.js`). The worker now reads the last word's end time (`finalMark` in `worker/maya-voice/src/turn-timing.ts`) and never the transcript's own. That the gateway's `duration` includes the held silence is read from the code and the two calls; the gateway's source is not public. A real call confirms it when `sttWaitMs` and `sttHoldMs` agree on a held turn, and `waitMs` agrees with the browser. `outcome` is `answered`, `no_words` (the session said nothing) or `interrupted`; only `answered` has parts.
 
+**Clock marks (2026-11-13).** Each `voice turn` line has `clock`: the times of the turn's marks on the worker's clock (`worker/maya-voice/src/marks.ts`), as ms after the earliest (`t0` is that time, in ms since 1970). The marks of the child's end of speech:
+
+| Mark | What it is |
+|---|---|
+| `levelEnd` | The last input frame at or above -40 dBFS (`LEVEL_END_DBFS`) before the detector's end. The child's audio end by level alone, as a browser meter reads it, plus the network from the browser to the worker. |
+| `detectorEnd` | The worker's detector's end of speech, put back by the silence it waited for. Silero's probability falls below its threshold a little after the sound stops, so this is after `levelEnd`. |
+| `detectorHeard` | When the detector reported that end: `detectorEnd` plus its minimum silence (`MAYA_DETECTOR_MIN_SILENCE_MS`) and one 32 ms step. The worker can act on the end of speech from here on. |
+| `sttFinal` | The final transcript reached the worker. |
+
+To line the browser up with the worker, compare the browser's audio end to Maya's first sound with `levelEnd` to `firstFramePublished`: the difference is the network both ways. `detectorEnd` minus `levelEnd` is Silero's own lag.
+
+The detector has a VAD of its own (`detectorVad` in `worker/maya-voice/src/heard-signals.ts`): LiveKit's local Silero with the call's minimum silence. Before, it was a second stream of the session's VAD. The session's VAD stays as LiveKit makes it (minimum silence 250 ms), because it decides when the child's speech stops Maya (interruptions); the tests check that it keeps 250 ms. The minimum silence does not move `detectorEnd` (that mark is put back by it). It moves `detectorHeard` and the prepare signal. LiveKit Agents 1.9.5's local VAD already waits 250 ms (`defaultVADOptions` in `inference/vad.js`), not the 550 ms of the Python plugin, so the 0.45 to 0.55 s from the browser's audio end to `detectorEnd` on the calls of 2026-11-13 is not this wait. It is the network and Silero's lag: `levelEnd` shows which.
+
+**The prepare signal (V2b, agreed with the Maya lead, 2026-11-13).** When the worker's detector reports the end of the child's speech (`detectorHeard`), the worker gives the call the newest partial transcript as it came: `call.prepare({ text, reason: "interim" })` (`PrepareSignal` in `worker/maya-voice/src/heard-signals.ts`, `prepareHint` in `agent.ts`). The controller can then start its reply before the final transcript. A prepare must not change the call: only a finished child turn does.
+
+- Once per end of speech. A newer partial before the final gives a new hint only when its words differ after `normalizeTranscript` (`src/lib/maya-voice.ts`: lower case, a hyphen as a space, no other punctuation). The same words never go twice before the final.
+- A detector start of speech stops the hints until the next end.
+- No hint while a child turn of the call runs (its input in the call, or its reply not ready), after the call ends, or while the child is away. A dropped hint is not counted, and the next partial can give it.
+- The call module has no `prepare` yet (`PreparingCall` is the worker's own view of the call). With none, nothing is given and nothing changes.
+- The `voice turn` line holds, with no words: `interimWordsAtEnd` (words of the partial at the end of speech), `interimEqualsFinal` (the final equals it after normalizing), `prepareLeadMs` (`detectorHeard` to the final) and `prepares` (hints given). The clock has a `prepare` mark at the first hint. The report counts the prepared turns and the equal ones.
+- A partial says number words, and the formatted final says digits ("twelve minus eight is four" against "12 minus 8 is 4."). The normalizing does not join them, so on a math answer `interimEqualsFinal` is false. A commit rule that needs equal text must read numbers as numbers.
+
 **What the fakes prove, and what they do not.** `worker/maya-voice/src/silence.test.ts` runs a whole call through LiveKit's pipeline with the fake speech-to-text and voice on a frozen clock. It proves the order: a fast turn has no phrase, a slow turn has the phrase at the limit and then the answer, a child who talks cancels it, the phrase sends no board batch, no phrase comes twice, and the parts match exact known delays. The R577 tests delay the board and the save to prove that a late answer cannot replace a newer board, that danger known during a delay stops the phrase, and that a replacement worker reads a phrase already heard. They also measure, on the clock the hold runs on, the time from a finished safety or deadline turn to its words being queued. It proves nothing about real times, because no real model, speech-to-text or voice ran. These stay open until the accounts exist:
 
 - Whether 2600 ms is the right limit, and how often a real turn passes it. On real calls of 2026-11-13 the first streamed sentence came 1.6 to 2.2 s after the child stopped, so the old 1500 ms limit put a phrase just before it and held the answer back 1 to 1.4 s (the answer at 3.0 to 3.8 s with the phrase, 2.0 to 2.6 s without).
@@ -347,6 +370,26 @@ Rules to know:
 - `spokenMath` never throws, and it gives the same text when it is applied again.
 
 **What the tests prove.** `src/lib/maya-voice-spoken.test.ts` checks each form above, the text that must not change, idempotence, and that streamed text is the same as the whole text for every chunk break. `speech-audio.test.ts` runs `boardAudio` through `countedSynthesis`, as `ttsNode` does, with a fake voice. It proves that the voice and the spend count receive the spoken text, that a cue on "24" in "52 − 28 = 24" and a cue on a fraction fire at the word time of their spoken words, that the word count stays correct in a later sentence, and that the sentence end is used when there are no word times. Without the spoken prefixes, the two fraction cue tests fail. Without the change, 9 worker tests fail. **Not verified:** how Cartesia reads each spoken form. Nobody listened to it yet.
+
+## Voice delivery (latency plan V4, 2026-11-13)
+
+On real calls, the voice gave its first audio frame 150 to 210 ms after the request. From that frame to the first sound in the browser took 130 ms on some turns and 300 to 450 ms on others. The module `worker/maya-voice/src/voice-delivery.ts` holds the settings and the log lines of this section.
+
+### Leading silence is measured and trimmed
+
+A sentence's audio can start with near-silence. The child hears nothing during it, so it adds to the delay.
+
+- `boardAudio` gives each sentence's frames to a `LeadTrim`. A sample at or above the level (`MAYA_VOICE_TRIM_DBFS`, default -50 dBFS) is sound. Every sample before the first sound is near-silence.
+- Near-silent frames at the start are held until the first sound comes. Then the near-silence is dropped, except the last `MAYA_VOICE_TRIM_FLOOR_MS` (default 20 ms), so the start of the first word is not cut.
+- Only the start of a sentence is trimmed. A pause after the first sound stays. The trailing silence of the sentence before also stays, so there is still a pause between sentences.
+- The word times on every frame, held frames included, move back by the trimmed time. So a board cue fires at its word, and the sentence-end time is the length of the audio that played.
+- A sentence that is all silence plays as it came. Silence longer than `MAYA_VOICE_TRIM_HOLD_MS` (default 1000 ms) is not held: it plays whole, with nothing trimmed.
+- A trimmed frame is a new frame with its own copy of the samples (the crackle of #904 came from views).
+- `MAYA_VOICE_TRIM_LEAD=off` turns the trim off. The measure and its log line stay, and no frame is held.
+
+Each sentence logs one line: `[maya voice] voice lead`, the call id, then `sentence` (its index in the speech), `leadMs` (the measured near-silence), `trimmedMs`, `allSilent`, `firstFrameMs` (the request to the first frame of that sentence) and `madeAhead` (the sentence was made while the one before it played, so its `firstFrameMs` includes that wait). No words are logged. The lines start only when a job names its call (`configureDelivery`), so tests print nothing.
+
+**What the tests prove.** `voice-delivery.test.ts` proves the level, the floor, the shift of word times (held frames included), that a pause inside a sentence stays, that an all-silent sentence plays as it came, the hold limit, the setting that turns the trim off, and that trimmed frames are copies. With the fake voice (200 ms of near-silence before each text), a board cue on "27" in "Write 27 now." fires at 100 ms, not at 280 ms. Without the shift of word times, that test and the shift test fail. **Not verified:** how much near-silence Cartesia gives at the start of a sentence. The log line measures it on real calls.
 
 ## Interim words on the call screen
 
