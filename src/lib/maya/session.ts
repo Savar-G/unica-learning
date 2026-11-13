@@ -64,7 +64,7 @@ import { claimActs, claimAnswers, claimCommitted, claimConfirm, claimQuestionAsk
 import { closeParts, compareEquationSaid, currentPart, evaluateSteps, evaluateTeaching, partBoards, partCovered, partEquationSaid, partIdOf, stepsBeforeLastPart, withEvaluateExample } from "./evaluate";
 import { isSpot, spotAnswers, spotReveals, spotSessionPackage, spotStepHeard } from "./spot-error";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, isModelOutput, readModelOutput, withoutDefaults, withoutNulls, type Act, type ChildAnswer, type HintLevel, type ModelOutput, type Proposal, type Reading, type Severity } from "./proposal";
-import { checkSay, trimSay, equationKeysOf, equationsOf, sentencesOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, type SayReason, type SayRules, type SayValue } from "./say-check";
+import { checkSay, checkSentence, trimSay, equationKeysOf, equationsOf, sentencesOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, type SayReason, type SayRules, type SayValue } from "./say-check";
 import type { TalkReviewResult } from "./talk-review";
 
 /** Closing starts 9 minutes into the call; the call ends at 10 minutes. */
@@ -145,7 +145,7 @@ export type SessionEvent =
    * replaced by a bank phrase. `fallback`: code's own proposal after the model's were refused (`fallbacks`). The adapter
    * sets it, never the model. A fallback may raise help one level on a step the child is still stuck on (#605).
    */
-  | { type: "proposal"; at: number; proposal: unknown; talkReviews?: TalkReview[]; fallback?: boolean }
+  | { type: "proposal"; at: number; proposal: unknown; talkReviews?: TalkReview[]; fallback?: boolean; sent?: string[] }
   | { type: "tick"; at: number }
   /** The child starts or stops writing on the board. */
   | { type: "writing"; at: number; status: "started" | "done" }
@@ -1564,8 +1564,12 @@ export function step(session: Session, event: SessionEvent): StepResult {
       break;
     case "proposal":
       if (shape) return { session: s, effects, refusal: { code: "invalid_proposal", reason: shape, allowed: (gate(s, {}) ?? actsNow(s, {}, false)).acts } };
-      if (v3) return proposeV3(s, raw as ModelOutput, effects, event.talkReviews === undefined ? undefined : reviewsOf(event.talkReviews));
-      return propose(s, raw as Proposal, effects, reviewsOf(event.talkReviews), event.fallback === true);
+      {
+        // D-341: sentences already streamed to the child (onSayPart) stay said: the turn's words start with them.
+        const sent = Array.isArray(event.sent) ? event.sent.filter((x): x is string => typeof x === "string" && x.trim() !== "") : [];
+        if (v3) return proposeV3(s, raw as ModelOutput, effects, event.talkReviews === undefined ? undefined : reviewsOf(event.talkReviews), sent);
+        return withSent(propose(s, raw as Proposal, effects, reviewsOf(event.talkReviews), event.fallback === true), sent);
+      }
     default:
       return refuse(session, "invalid_event", "Unknown event type.");
   }
@@ -4618,7 +4622,7 @@ const PLAN_REFUSALS: readonly RefusalCode[] = ["line_not_offered", "free_talk_in
  * the outside-work redirect and the fixed AI replies. A failed check is a refusal with its typed reason: the adapter
  * asks the model once more, then says code's plan (fallbacks).
  */
-function proposeV3(base: Session, out: ModelOutput, effects: Effect[], reviews: readonly TalkReview[] | undefined): StepResult {
+function proposeV3(base: Session, out: ModelOutput, effects: Effect[], reviews: readonly TalkReview[] | undefined, sent: readonly string[] = []): StepResult {
   const reading = out.reading ?? {};
   const acts = () => (gate(base, reading) ?? actsNow(base, reading, false)).acts;
   const no = (code: RefusalCode, reason: string, allowed: Act[], say?: SayReason | "review"): StepResult => ({ session: base, effects, refusal: { code, reason, allowed, ...(say ? { say } : {}) } });
@@ -4661,8 +4665,9 @@ function proposeV3(base: Session, out: ModelOutput, effects: Effect[], reviews: 
   const planned = (r.effects[at] as Extract<Effect, { kind: "say" }>).text;
   const codeWords = p.act === "safety" || base.state === "CONTENT_HOLD" || (p.act === "close" && base.state === "SAFETY") ||
     p.parts.some((x) => "line" in x && CODE_WORD_LINES.includes(x.line)) || (p.act === "open" && !!base.confirmWorkbook);
-  if (codeWords) return r;
+  if (codeWords) return withSent(r, sent);
   const rules = sayRules(base, r.session, p, planned);
+  if (sent.length > 0) return withStreamed(base, r, at, planned, out.say, sent, rules);
   // Too long is cut, not repaired: the leading sentences that fit are kept, each still checked (round 2).
   const say = trimSay(out.say, rules.wordLimit);
   const verdict = checkSay(say, rules);
@@ -4685,6 +4690,87 @@ function proposeV3(base: Session, out: ModelOutput, effects: Effect[], reviews: 
   const last = turns.findLastIndex((t) => t.speaker === "maya" && t.text === planned);
   if (last !== -1) turns[last] = { ...turns[last], text, planned };
   return { session: { ...r.session, turns }, effects: effectsOut, refusal: null };
+}
+
+/** A turn whose first sentences were already said (streamed): they lead its words, whatever code's plan says after them. */
+function withSent(r: StepResult, sent: readonly string[]): StepResult {
+  if (r.refusal || sent.length === 0) return r;
+  const lead = sent.join(" ");
+  const at = r.effects.findLastIndex((e) => e.kind === "say");
+  if (at === -1) return r;
+  const said = (r.effects[at] as Extract<Effect, { kind: "say" }>).text;
+  const text = said.startsWith(lead) ? said : `${lead} ${said}`;
+  const turns = [...r.session.turns];
+  const last = turns.findLastIndex((t) => t.speaker === "maya" && t.text === said);
+  if (last !== -1) turns[last] = { ...turns[last], text, planned: turns[last].planned ?? said };
+  return { ...r, session: { ...r.session, turns }, effects: r.effects.map((e, i) => (i === at && e.kind === "say" ? { ...e, text } : e)) };
+}
+
+/**
+ * A version 3 reply whose first sentences were streamed (D-341): those stay said. The rest of the reply follows them as
+ * far as the checks pass on the whole; anything after the first failing sentence is dropped, never said. A rest that
+ * needs the review (not plain math talk) is dropped too: the streamed sentences passed the stream's own checks.
+ */
+function withStreamed(base: Session, r: StepResult, at: number, planned: string, say: string, sent: readonly string[], rules: SayRules): StepResult {
+  const all = sentencesOf(say);
+  const rest = all.slice(0, sent.length).join(" ") === sent.join(" ") ? all.slice(sent.length) : [];
+  let keep = rest.length;
+  while (keep > 0 && (!checkSay([...sent, ...rest.slice(0, keep)].join(" "), rules).ok || PERSONAL.test(rest.slice(0, keep).join(" ")))) keep--;
+  const text = [...sent, ...rest.slice(0, keep)].join(" ");
+  const turns = [...r.session.turns];
+  const last = turns.findLastIndex((t) => t.speaker === "maya" && t.text === planned);
+  if (last !== -1) turns[last] = { ...turns[last], text, planned };
+  void base;
+  return { session: { ...r.session, turns }, effects: r.effects.map((e, i) => (i === at && e.kind === "say" ? { ...e, text, planned } : e)), refusal: null };
+}
+
+/**
+ * The checks of a sentence streamed before the model's whole reply is in (D-341): code's own read of the turn, with no
+ * plan yet. Numbers only from the question, the credited steps, the child and code's facts (nothing a plan may show);
+ * no value code has not credited. Null when the turn may not stream: safety, a content hold, the closing minute, a
+ * fixed reply or an outside request due, a stop, or a child turn that is not plain math talk (the review needs the
+ * whole reply).
+ */
+export function streamRules(s: Session): (SayRules & { credits: boolean }) | null {
+  const pkg = s.package;
+  if (!pkg || !s.turn || s.safety.flagged || s.stopRequested || s.scopeDue || s.replies?.length) return null;
+  if (!isTeaching(s.state) || hardFeeling(s.turn.text) || PERSONAL.test(s.turn.text)) return null;
+  const credits = heardAnswers(s);
+  const released = s.solved !== null || s.lastResult === "right" || credits.some((a) => a.step === "result" && a.verdict === "right");
+  const done = [...s.done, ...credits.filter((a) => a.step !== "result" && a.verdict === "right").map((a) => a.step)];
+  const view = { ...s, done };
+  const credited = workSteps(pkg).filter((st) => done.includes(st.id) || (s.passed ?? []).includes(st.id)).flatMap((st) => [...stepAnswers(st).flatMap(sayValues), ...valuesOf(stepText(st, pkg.operation))]);
+  const { forbidden, answer, hidden } = hiddenOf(view, released);
+  const facts = turnFacts(s);
+  const example = s.exampleIntroduced || s.exampleShown > 0
+    ? [...valuesOf(operationText(pkg.easierExample.operation)), ...valuesOf(pkg.easierExample.text), ...pkg.easierExample.steps.slice(0, s.exampleShown).flatMap((st) => valuesOf(stepText(st, pkg.easierExample.operation)))] : [];
+  return {
+    allowed: [...printedValues(pkg), ...credited, ...example, ...s.turns.filter((t) => t.speaker === "child").flatMap((t) => valuesOf(t.text)), ...valuesOf(s.turn.text), ...facts.flatMap((f) => f.numbers), ...(released ? sayValues(pkg.answer.value) : [])],
+    shown: [], shownEquations: [], forbidden, answer, hidden,
+    wrong: released ? [] : facts.flatMap((f) => (f.wrong ? [f.wrong] : [])),
+    wordLimit: s.shorter ? 25 : 35,
+    noBoard: s.noBoard === true,
+    accepting: released,
+    noIntro: s.conversational === true && s.opened,
+    credits: credits.some((a) => a.verdict === "right"),
+  };
+}
+
+/**
+ * Whether one sentence may be streamed now (D-341): its own checks pass, it is among the first SAY_SENTENCES and within
+ * the word limit with the sentences before it, it holds no personal word (the review would read it), and it starts with
+ * no yes unless code itself credited the child's answer in this turn.
+ */
+export function streamSentenceOk(sentence: string, rules: NonNullable<ReturnType<typeof streamRules>>, index: number, wordsBefore: number): boolean {
+  if (index >= 3 || wordsBefore + sentence.split(/\s+/).filter(Boolean).length > rules.wordLimit) return false;
+  if (PERSONAL.test(sentence) || (!rules.credits && /^(?:yes|yep|yeah|right|correct|exactly|that'?s (?:right|correct|it)|good job|well done|nice)\b/i.test(sentence.trim()))) return false;
+  return checkSentence(sentence, rules, index).ok;
+}
+
+/** What code itself heard in the child's turn (D-341): the answers its own strict read credits, before any model call. */
+export function codeVerdicts(s: Session): string[] {
+  if (!s.package || !s.turn) return [];
+  return heardAnswers(s).map((a) => `Code heard ${valueText(a.value)} as the child's clear answer for ${a.step === "result" ? "the whole question" : `the step "${a.step}"`}: it is ${a.verdict}.`);
 }
 
 /** What the model's brief says about the help now (D-341): the step, the level reached, and what each level may show. */

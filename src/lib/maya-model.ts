@@ -16,6 +16,7 @@ import {
   helpBrief,
   numbersBrief,
   turnFacts,
+  codeVerdicts,
   MODEL_OUTPUT_SCHEMA,
   PROPOSAL_SCHEMA,
   PROPOSAL_VERSION,
@@ -81,7 +82,7 @@ export interface MayaModel {
    * One proposal (untrusted). Throws when the model gives none. A version 3 model (`output: 3`) gets a TurnBrief here
    * (see conversationalMayaModel and conversationalFake).
    */
-  propose(input: ModelInput, signal: AbortSignal): Promise<unknown>;
+  propose(input: ModelInput, signal: AbortSignal, onText?: (soFar: string) => void): Promise<unknown>;
 }
 
 const TRANSCRIPT_TURNS = 12;
@@ -301,7 +302,7 @@ export function turnBrief(session: Session, repair: TurnBrief["repair"] = null):
     childTurn: session.turn?.text ?? null,
     acts: nextActs(session).acts.filter((a) => a !== "give_answer"),
     help: { step: help.step, levelNow: help.level, levels: help.levels },
-    facts: turnFacts(session).map((f) => f.text),
+    facts: [...codeVerdicts(session), ...turnFacts(session).map((f) => f.text)],
     numbers: numbersBrief(session),
     notes: turnNotes(session),
     draw,
@@ -342,6 +343,9 @@ The rest of the reply (code reads it to keep track; it is never said):
 - "draw": board offers by id from "draw" for your act, or [].
 - If "repair" is set, code refused your last reply for the reason given: fix exactly that.`;
 
+/** D-341: how much conversational Maya thinks first (measured in round 2; see docs/maya-conversational.md). */
+export const CONVERSATION_EFFORT: "none" | "low" = "low";
+
 /** The version 3 output schema as sent to the model. */
 const outputSchema = MODEL_OUTPUT_SCHEMA as unknown as Record<string, unknown>;
 
@@ -349,17 +353,17 @@ const outputSchema = MODEL_OUTPUT_SCHEMA as unknown as Record<string, unknown>;
  * Conversational Maya through the AI client (OpenRouter, D-341): one strict structured-output request per turn, with
  * the turn brief as the user content. `output: 3` tells the text adapter to send a brief and read `say`.
  */
-export function conversationalMayaModel(client: AiClient, options: { timeoutMs?: number; effort?: "low" | "medium" | "high" } = {}): MayaModel {
+export function conversationalMayaModel(client: AiClient, options: { timeoutMs?: number; effort?: "none" | "minimal" | "low" | "medium" | "high" } = {}): MayaModel {
   const timeoutMs = options.timeoutMs ?? 30_000;
   return {
     id: client.model,
     promptVersion: CONVERSATION_PROMPT_VERSION,
     output: 3,
-    propose: (input: unknown, signal: AbortSignal) =>
+    propose: (input: unknown, signal: AbortSignal, onText?: (soFar: string) => void) =>
       withTimeLimit(timeoutMs, (limit) => {
         const both = AbortSignal.any([signal, limit]);
         return client.json(
-          { name: "maya_reply", system: CONVERSATION_PROMPT, content: [{ type: "text", text: JSON.stringify(input) }], schema: outputSchema, effort: options.effort ?? "low", maxTokens: 1_500 },
+          { name: "maya_reply", system: CONVERSATION_PROMPT, content: [{ type: "text", text: JSON.stringify(input) }], schema: outputSchema, effort: options.effort ?? CONVERSATION_EFFORT, maxTokens: 1_500, ...(onText ? { onText } : {}) },
           both,
         );
       }),

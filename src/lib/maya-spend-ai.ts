@@ -82,6 +82,27 @@ export function meteredAi(make: (hooks: MeterHooks) => AiClient, meter: Meter, w
           if (id) await settle(id, null);
           throw e;
         }
+        const costOf = (cost: unknown) => (typeof cost === "number" && Number.isFinite(cost) && cost >= 0 ? cost : res.ok ? null : 0);
+        // D-341: a streamed answer goes back at once, so Maya's first sentence is not held; its cost is in the last
+        // event of the stream, read beside it and settled when the stream ends.
+        if (res.ok && (res.headers.get("content-type") ?? "").includes("text/event-stream")) {
+          attempt.id = null;
+          const copy = res.clone();
+          void copy.text().then((text) => {
+            let cost: unknown;
+            for (const line of text.split("\n")) {
+              if (!line.startsWith("data:")) continue;
+              try {
+                const usage = (JSON.parse(line.slice(5).trim()) as { usage?: { cost?: unknown } }).usage;
+                if (usage?.cost !== undefined) cost = usage.cost;
+              } catch {
+                // Not JSON ([DONE]).
+              }
+            }
+            return id ? settle(id, costOf(cost)) : undefined;
+          }, () => (id ? settle(id, null) : undefined));
+          return res;
+        }
         let cost: unknown;
         try {
           cost = (JSON.parse(await res.clone().text()) as { usage?: { cost?: unknown } }).usage?.cost;
@@ -89,7 +110,7 @@ export function meteredAi(make: (hooks: MeterHooks) => AiClient, meter: Meter, w
           cost = undefined;
         }
         attempt.id = null;
-        if (id) await settle(id, typeof cost === "number" && Number.isFinite(cost) && cost >= 0 ? cost : res.ok ? null : 0);
+        if (id) await settle(id, costOf(cost));
         return res;
       };
       try {

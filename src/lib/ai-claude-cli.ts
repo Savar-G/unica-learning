@@ -141,7 +141,7 @@ function cliArgs(model: string, request: AiJsonRequest): string[] {
   return [
     "-p", "--output-format", "json", "--safe-mode", "--tools", "", "--no-session-persistence",
     "--model", model, "--system-prompt", request.system, "--json-schema", JSON.stringify(request.schema),
-    ...(request.effort ? ["--effort", request.effort] : []),
+    ...(request.effort && request.effort !== "none" && request.effort !== "minimal" ? ["--effort", request.effort] : []),
   ];
 }
 

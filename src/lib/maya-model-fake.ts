@@ -136,10 +136,16 @@ export function reply(say: string, act: Act, extra: { step?: string; level?: num
 export function conversationalFake({
   id = "fake-v3",
   answer,
+  stream,
 }: {
   id?: string;
   /** The reply for a brief (`call` counts from 0); throw to act as a failed model call. */
   answer: (brief: TurnBrief, call: number) => unknown | Promise<unknown>;
+  /**
+   * D-341: stream the reply's JSON text through `onText`, a few characters at a time, then wait for `beforeEnd` (when
+   * given) before the reply resolves, so a test sees what reached the child while the reply was still coming in.
+   */
+  stream?: { chunk?: number; beforeEnd?: () => Promise<void> };
 }): MayaModel & { briefs: TurnBrief[] } {
   const briefs: TurnBrief[] = [];
   return {
@@ -147,10 +153,16 @@ export function conversationalFake({
     promptVersion: CONVERSATION_PROMPT_VERSION,
     output: 3,
     briefs,
-    propose: async (input) => {
+    propose: async (input, _signal, onText) => {
       const brief = structuredClone(input) as unknown as TurnBrief;
       briefs.push(brief);
-      return answer(brief, briefs.length - 1);
+      const out = await answer(brief, briefs.length - 1);
+      if (stream && onText) {
+        const text = JSON.stringify(out);
+        for (let i = stream.chunk ?? 7; i < text.length + (stream.chunk ?? 7); i += stream.chunk ?? 7) onText(text.slice(0, i));
+        await stream.beforeEnd?.();
+      }
+      return out;
     },
   };
 }

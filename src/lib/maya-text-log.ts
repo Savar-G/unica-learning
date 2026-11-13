@@ -17,7 +17,7 @@ export interface TextLogInitial {
 export type TextLogEvent =
   | { kind: "input"; at: number; event: SessionEvent; error?: TraceError }
   | { kind: "request"; at: number; requestId: number; source: "model" | "repair" }
-  | { kind: "response"; at: number; requestId: number; proposal?: unknown; error?: TraceError; ms: number; fenced?: true }
+  | { kind: "response"; at: number; requestId: number; proposal?: unknown; error?: TraceError; ms: number; fenced?: true; sent?: string[]; firstSayMs?: number }
   | { kind: "review"; at: number; requestId: number; reviews: TalkReview[]; reviewMs?: number }
   | { kind: "fallback"; at: number; proposal: unknown }
   | { kind: "recover"; at: number }
@@ -42,7 +42,9 @@ export interface TextFold {
   obligations: TraceObligation[];
   childState: "listening" | "child_speaking";
   request: { id: number; source: "model" | "repair" } | null;
-  candidate: { requestId: number; proposal: unknown; ms: number; source: "model" | "repair"; fenced?: true } | null;
+  candidate: { requestId: number; proposal: unknown; ms: number; source: "model" | "repair"; fenced?: true; firstSayMs?: number } | null;
+  /** D-341: sentences of the current Maya turn already streamed to the child; every later attempt of the turn starts with them. */
+  sent?: string[];
   attempts: TraceAttempt[];
   deferred: { event: SessionEvent; childId: number | null }[];
   pending: PendingOutput[];
@@ -134,6 +136,7 @@ function cancel(s: TextFold, reason: string, urgent = false, revoke = true) {
   s.request = null;
   s.candidate = null;
   s.attempts = [];
+  delete s.sent;
   // These controller outputs are debts, not speculative state. Cancellation never undoes them.
   const keep = urgent ? ["safety"] : ["open", "repair", "safety"];
   s.pending = s.pending.filter((p) => {
@@ -254,7 +257,7 @@ function flushDeferred(s: TextFold) {
 }
 function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt, reviews?: TalkReview[]) {
   const before = s.session.state;
-  const event: SessionEvent = { type: "proposal", at: Math.max(at, s.session.now ?? 0), proposal: value, talkReviews: reviews, ...(attempt.source === "fallback" ? { fallback: true } : {}) };
+  const event: SessionEvent = { type: "proposal", at: Math.max(at, s.session.now ?? 0), proposal: value, talkReviews: reviews, ...(attempt.source === "fallback" ? { fallback: true } : {}), ...(s.sent?.length ? { sent: [...s.sent] } : {}) };
   let r = step(s.session, event);
   let controlEvent = event;
   let scene = s.scene;
@@ -280,6 +283,7 @@ function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt
   s.scene = scene;
   takeEffects(s, r.effects, at, s.attempts, before);
   s.attempts = [];
+  delete s.sent;
   flushDeferred(s);
 }
 export function initialTextState(initial: TextLogInitial): TextFold {
@@ -350,11 +354,12 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
     case "response": {
       if (s.request?.id !== e.requestId) break;
       const source = s.request.source;
+      if (e.sent?.length) s.sent = [...(s.sent ?? []), ...e.sent];
       if (e.error) {
-        s.attempts.push({ source, proposal: null, refusal: null, error: e.error, ms: e.ms });
+        s.attempts.push({ source, proposal: null, refusal: null, error: e.error, ms: e.ms, ...(e.firstSayMs !== undefined ? { firstSayMs: e.firstSayMs } : {}) });
         s.request = null;
       } else {
-        s.candidate = { requestId: e.requestId, proposal: e.proposal, ms: e.ms, source, ...(e.fenced ? { fenced: true as const } : {}) };
+        s.candidate = { requestId: e.requestId, proposal: e.proposal, ms: e.ms, source, ...(e.fenced ? { fenced: true as const } : {}), ...(e.firstSayMs !== undefined ? { firstSayMs: e.firstSayMs } : {}) };
         const reading = e.proposal && typeof e.proposal === "object" ? (e.proposal as { reading?: unknown }).reading : undefined;
         receiveReading(s, reading, e.at);
       }
@@ -364,7 +369,7 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
       if (s.request?.id !== e.requestId || s.candidate?.requestId !== e.requestId) break;
       const candidate = s.candidate;
       s.request = null; s.candidate = null;
-      proposal(s, candidate.proposal, e.at, { source: candidate.source, proposal: candidate.proposal, refusal: null, ms: candidate.ms, ...(candidate.fenced ? { fenced: true as const } : {}), ...(e.reviewMs !== undefined ? { reviewMs: e.reviewMs } : {}) }, e.reviews);
+      proposal(s, candidate.proposal, e.at, { source: candidate.source, proposal: candidate.proposal, refusal: null, ms: candidate.ms, ...(candidate.fenced ? { fenced: true as const } : {}), ...(candidate.firstSayMs !== undefined ? { firstSayMs: candidate.firstSayMs } : {}), ...(e.reviewMs !== undefined ? { reviewMs: e.reviewMs } : {}) }, e.reviews);
       break;
     }
     case "fallback": proposal(s, e.proposal, e.at, { source: "fallback", proposal: e.proposal, refusal: null }); break;

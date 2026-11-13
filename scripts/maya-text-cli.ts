@@ -18,6 +18,7 @@
 //   --list                   list the sample questions
 //   --real-clock             the real clock with a script, so the trace times each model call
 //   --legacy                 Maya's version 2 model (code-written lines), for a before-and-after comparison
+//   --effort <level>         none, minimal, low (default), medium or high: how much the model thinks first
 //
 // Script lines: a child turn, or "/wait <seconds>" (the clock moves on and the pause policy runs), "/write start",
 // "/write done", "/quit" (the child hangs up: child_stopped). "#" starts a comment. With --script or piped input the
@@ -51,10 +52,12 @@ interface Options {
   realClock: boolean;
   /** Maya's version 2 model (code-written lines), for a before-and-after comparison. */
   legacy: boolean;
+  /** How much the model thinks first (D-341 latency checks); default CONVERSATION_EFFORT. */
+  effort: "none" | "minimal" | "low" | "medium" | "high" | null;
 }
 
 function parse(argv: string[]): Options {
-  const o: Options = { question: "add-27-39", model: "fake", freeTalk: true, script: null, runner: "livekit", trace: null, seed: 1, name: null, list: false, realClock: false, legacy: false };
+  const o: Options = { question: "add-27-39", model: "fake", freeTalk: true, script: null, runner: "livekit", trace: null, seed: 1, name: null, list: false, realClock: false, legacy: false, effort: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const v = () => {
@@ -80,6 +83,11 @@ function parse(argv: string[]): Options {
     else if (a === "--list") o.list = true;
     else if (a === "--real-clock") o.realClock = true;
     else if (a === "--legacy") o.legacy = true;
+    else if (a === "--effort") {
+      const e = v();
+      if (!["none", "minimal", "low", "medium", "high"].includes(e)) throw new Error("--effort is none, minimal, low, medium or high");
+      o.effort = e as Options["effort"];
+    }
     else throw new Error(`unknown option ${a}`);
   }
   return o;
@@ -135,7 +143,7 @@ function model(o: Options, root: string): MayaModel {
   }
   const client = aiClient(env);
   if (!client) throw new Error("--model openrouter needs OPENROUTER_API_KEY (in the environment or .env.local). The AI is off without it.");
-  return o.legacy ? aiMayaModel(client) : conversationalMayaModel(client);
+  return o.legacy ? aiMayaModel(client) : conversationalMayaModel(client, o.effort ? { effort: o.effort } : {});
 }
 
 async function main() {
@@ -156,6 +164,8 @@ async function main() {
   const text = createTextSession({
     callId, package: pkg, model: m, clock, random: o.seed, childName: o.name, runner: o.runner === "livekit" ? "livekit-text" : "text",
     freeTalk: o.freeTalk, reviewer: o.freeTalk ? reviewer : null,
+    // D-341: stream each checked sentence as it arrives, as the voice worker does; the trace times the first one.
+    onSayPart: () => {},
     onError: (e, where) => console.error(`[maya-text] ${typeof where === "string" ? where : `turn ${where.turn} ${where.source}`}: ${e instanceof Error ? e.message : String(e)}`),
   });
   console.log(`-- Maya text session ${callId}: ${typeof pkg.text === "string" ? pkg.text : o.question} (model ${m.id}, runner ${o.runner}, free talk ${o.freeTalk ? `on, review ${reviewer.id}` : "off"})`);

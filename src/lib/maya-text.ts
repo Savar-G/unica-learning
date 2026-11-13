@@ -32,6 +32,8 @@ import {
   fallbacks,
   nextActs,
   step,
+  streamRules,
+  streamSentenceOk,
   LINES_VERSION,
   PROPOSAL_VERSION,
   type Outcome,
@@ -42,6 +44,33 @@ import {
 } from "@/lib/maya";
 import { modelInput, turnBrief, type MayaModel, type ModelInput } from "@/lib/maya-model";
 import { sentencesOf } from "@/lib/maya/say-check";
+
+/**
+ * The `say` string at the start of a version 3 reply as it streams in (D-341: `say` is the first key): its text so far,
+ * with JSON escapes read, and whether its closing quote has come. Null before the key.
+ */
+export function partialSay(soFar: string): { text: string; complete: boolean } | null {
+  const m = /^\s*\{\s*"say"\s*:\s*"/.exec(soFar);
+  if (!m) return null;
+  let text = "";
+  for (let i = m[0].length; i < soFar.length; i++) {
+    const c = soFar[i];
+    if (c === '"') return { text, complete: true };
+    if (c !== "\\") { text += c; continue; }
+    const e = soFar[i + 1];
+    if (e === undefined) break;
+    if (e === "u") {
+      const hex = soFar.slice(i + 2, i + 6);
+      if (hex.length < 4) break;
+      text += String.fromCharCode(parseInt(hex, 16));
+      i += 5;
+      continue;
+    }
+    text += ({ n: "\n", t: "\t", r: "\r", b: "\b", f: "\f" } as Record<string, string>)[e] ?? e;
+    i += 1;
+  }
+  return { text, complete: false };
+}
 import { reviewInput, runReview, REVIEW_TIME_LIMIT_MS, type TalkReviewer } from "@/lib/maya-talk-review";
 import { readFromFence } from "@/lib/ai-fenced";
 import { classifyError, packageHash, redactText, redactTrace, traceCounts, TRACE_KIND, TRACE_VERSION, type MayaTrace, type TraceBoardBatch, type TraceTurn, type TraceObligation } from "@/lib/maya-trace";
@@ -236,6 +265,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   let queue: Promise<unknown> = Promise.resolve();
   let turnEndsAt = Number.POSITIVE_INFINITY;
   let quietOpening = false;
+  /** Sentences streamed for the output being built (D-341), in the order they were sent. */
+  const streamedThisOutput: string[] = [];
   const newOutput = (): TextOutput => ({ say: [], board: [], ended: null, safetyMessage: null, cancelled: false });
   const now = () => {
     let at = 0;
@@ -278,21 +309,48 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     const left = Math.max(0, turnEndsAt - Date.now());
     let budgetTimer: ReturnType<typeof setTimeout> | undefined;
     const budget = new Promise<"budget">((resolve) => { budgetTimer = setTimeout(() => resolve("budget"), left); });
+    // D-341: on a plain math turn, each sentence of `say` that passes the stream's checks goes to the child as it arrives.
+    const sent: string[] = [];
+    let firstSayMs: number | undefined;
+    const rules = model.output === 3 && options.onSayPart && !folded.sent?.length && folded.pending.length === 0 ? streamRules(folded.session) : null;
+    let streamDone = false;
+    let words = 0;
+    const onText = rules ? (soFar: string) => {
+      if (streamDone || folded.request?.id !== requestId || controller.signal.aborted) return;
+      const said = partialSay(soFar);
+      if (!said) return;
+      const parts = sentencesOf(said.text);
+      const complete = said.complete ? parts : parts.slice(0, -1);
+      for (const sentence of complete.slice(sent.length)) {
+        if (!streamSentenceOk(sentence, rules, sent.length, words)) { streamDone = true; return; }
+        firstSayMs ??= now() - at;
+        options.onSayPart!(sentence, sent.length, []);
+        sent.push(sentence);
+        words += sentence.split(/\s+/).filter(Boolean).length;
+      }
+    } : undefined;
+    const streamed = () => {
+      streamedThisOutput.push(...sent);
+      return sent.length ? { sent: [...sent], firstSayMs } : {};
+    };
     // The handler logs even a late response from a provider that ignores abort; a response after the budget is stale.
-    const answered = Promise.resolve().then(() => model.propose(input, controller.signal)).then((proposal) => ({ proposal }), (error: unknown) => ({ error }));
+    const answered = Promise.resolve().then(() => model.propose(input, controller.signal, onText)).then((proposal) => ({ proposal }), (error: unknown) => ({ error }));
     const response = Promise.race([answered, budget]).then((got) => {
       clearTimeout(budgetTimer);
       if (got === "budget") {
-        if (folded.request?.id === requestId) append({ kind: "response", at: now(), requestId, error: classifyError(new Error("the turn's time is up"), "model"), ms: now() - at });
+        streamDone = true;
+        if (folded.request?.id === requestId) append({ kind: "response", at: now(), requestId, error: classifyError(new Error("the turn's time is up"), "model"), ms: now() - at, ...streamed() });
         return;
       }
       if ("proposal" in got) {
         // A proposal the client read from inside one code fence is counted in the trace (`fenced`), never told apart otherwise.
-        append({ kind: "response", at: now(), requestId, proposal: got.proposal, ...(readFromFence(got.proposal) ? { fenced: true as const } : {}), ms: now() - at });
+        streamDone = true;
+        append({ kind: "response", at: now(), requestId, proposal: got.proposal, ...(readFromFence(got.proposal) ? { fenced: true as const } : {}), ms: now() - at, ...streamed() });
         return;
       }
+      streamDone = true;
       const stale = folded.request?.id !== requestId;
-      append({ kind: "response", at: now(), requestId, error: classifyError(got.error, "model"), ms: now() - at });
+      append({ kind: "response", at: now(), requestId, error: classifyError(got.error, "model"), ms: now() - at, ...streamed() });
       if (!stale) options.onError?.(got.error, { turn: folded.turns.length, source });
     });
     if (await wait(response, controller) === stopped || controller.signal.aborted) return;
@@ -303,7 +361,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     if (!candidate) return;
     const requestId = candidate.requestId;
     // Priority readings are already folded before any external free-talk review.
-    const first = step(folded.session, { type: "proposal", at: now(), proposal: candidate.proposal });
+    const first = step(folded.session, { type: "proposal", at: now(), proposal: candidate.proposal, ...(folded.sent?.length ? { sent: [...folded.sent] } : {}) });
     const texts = [...new Set(first.refusal ? [] : first.effects.flatMap((e) => e.kind === "say" ? e.talk ?? [] : []).filter((t) => t.code === null && t.review === "not_run").map((t) => t.proposed))];
     const t0 = now();
     const before = folded.session;
@@ -346,7 +404,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       if (controller.signal.aborted) break;
       // With the danger known, a refused proposal gets code's guidance now, not a second model call.
       const safetyDue = folded.session.safety.flagged && !folded.session.safety.guided;
-      if (folded.attempts.at(-1)?.source === "model" && folded.attempts.at(-1)?.refusal && !folded.session.outcome && !safetyDue && Date.now() < turnEndsAt) await request("repair", controller);
+      // Words already streamed cannot be taken back: a refusal then goes straight to code's line after them.
+      if (folded.attempts.at(-1)?.source === "model" && folded.attempts.at(-1)?.refusal && !folded.session.outcome && !safetyDue && Date.now() < turnEndsAt && !folded.sent?.length) await request("repair", controller);
       if (controller.signal.aborted) break;
       if (folded.attempts.length && !folded.session.outcome) {
         const refused = folded.attempts.filter((a) => a.refusal !== null).map((a) => a.proposal);
@@ -375,8 +434,10 @@ export function createTextSession(options: TextSessionOptions): TextSession {
           return out;
         }
         const out = textOutput(folded);
+        const streamedNow = [...streamedThisOutput];
+        streamedThisOutput.length = 0;
         append({ kind: "delivered", at: now() });
-        sayParts(out);
+        sayParts(out, streamedNow);
         return out;
       } catch (error) {
         options.onError?.(error, "session");
@@ -388,11 +449,16 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     return next;
   }
   /** The streaming hooks (D-341): each sentence in order, once the whole reply passed its checks, then the end. */
-  function sayParts(out: TextOutput) {
+  function sayParts(out: TextOutput, streamedSentences: readonly string[] = []) {
     if (quietOpening) { quietOpening = false; return; }
     if (!options.onSayPart && !options.onSayEnd) return;
+    // Sentences streamed while the reply came in were sent already, in order: the rest follow them.
+    const queue = [...streamedSentences];
     let index = 0;
-    for (const [k, said] of out.say.entries()) for (const sentence of sentencesOf(said)) options.onSayPart?.(sentence, index++, k === 0 && index === 1 ? out.board : []);
+    for (const [k, said] of out.say.entries()) for (const sentence of sentencesOf(said)) {
+      if (queue[0] === sentence) { queue.shift(); index++; continue; }
+      options.onSayPart?.(sentence, index++, k === 0 && index === 1 ? out.board : []);
+    }
     options.onSayEnd?.();
   }
   function receive(event: SessionEvent, respond = true): Promise<TextOutput> {

@@ -63,3 +63,80 @@ describe("B: a long reply is cut, not repaired", () => {
     expect(sources(lastMaya(session))).toEqual(["model", "repair"]);
   });
 });
+
+describe("A: the first sentence streams as it arrives", () => {
+  function streamed(answer: (b: TurnBrief, n: number) => unknown) {
+    let now = T0;
+    const parts: [string, number][] = [];
+    const atEnd: [string, number][][] = [];
+    const model = conversationalFake({ answer, stream: { chunk: 5, beforeEnd: async () => { atEnd.push([...parts]); } } });
+    const session = createTextSession({ callId: "r2s", package: PKG, model, clock: () => (now += 100), random: 3, childName: "Leo", reviewer: fakeTalkReviewer(), onSayPart: (x, i) => parts.push([x, i]) });
+    return { session, parts, atEnd };
+  }
+  it("sends each checked sentence before the reply ends, and never again at delivery", async () => {
+    const say = "2 minus 8 isn't 6; 6 is 8 minus 2. 2 is smaller than 8, so we take a ten. What is 12 minus 8?";
+    const { session, parts, atEnd } = streamed(() => reply(say, "guide", { step: "ones", level: 2 }));
+    await session.start();
+    parts.length = 0;
+    const out = await session.child("Is 2 minus 8, 6?");
+    expect(atEnd[0].map(([x]) => x)).toEqual(["2 minus 8 isn't 6; 6 is 8 minus 2.", "2 is smaller than 8, so we take a ten.", "What is 12 minus 8?"]);
+    expect(parts.map(([, i]) => i)).toEqual([0, 1, 2]);
+    expect(out.say).toEqual([say]);
+    const t = lastMaya(session);
+    expect(t?.kind === "maya" && typeof t.attempts[0].firstSayMs).toBe("number");
+  });
+  it("holds back a sentence that fails, drops the rest, and keeps what was sent", async () => {
+    const { session, atEnd, parts } = streamed(() => reply("Let's look at the ones. The answer is 24. What is on top?", "guide", { step: "ones" }));
+    await session.start();
+    parts.length = 0;
+    const out = await session.child("Help me.");
+    expect(atEnd[0].map(([x]) => x)).toEqual(["Let's look at the ones."]);
+    expect(out.say).toEqual(["Let's look at the ones."]);
+  });
+  it("after a refused act, code's line follows the streamed sentence, with no repair", async () => {
+    const { session, atEnd, parts } = streamed(() => reply("Let's look at the ones together.", "accept_answer"));
+    await session.start();
+    parts.length = 0;
+    const out = await session.child("Help me.");
+    expect(atEnd[0].map(([x]) => x)).toEqual(["Let's look at the ones together."]);
+    expect(out.say[0].startsWith("Let's look at the ones together. ")).toBe(true);
+    expect(sources(lastMaya(session))).toEqual(["model", "fallback"]);
+  });
+  it("does not stream a turn that is not plain math talk", async () => {
+    const { session, atEnd } = streamed(() => reply("A dog sounds fun. Let's look at the ones now.", "redirect", { reading: { offTopic: true } }));
+    await session.start();
+    await session.child("I have a dog.");
+    expect(atEnd).toEqual([]);
+  });
+});
+
+describe("A: the OpenRouter client streams", () => {
+  it("sends stream: true when asked, calls onText as the text grows, and returns the parsed JSON", async () => {
+    const { openRouterClient } = await import("@/lib/ai-openrouter");
+    const text = JSON.stringify({ say: "Hi. What is 12 minus 8?", act: "guide" });
+    const chunks = [text.slice(0, 12), text.slice(12, 30), text.slice(30)];
+    const events = [...chunks.map((c) => `data: ${JSON.stringify({ choices: [{ delta: { content: c } }] })}\n\n`), `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }], usage: { cost: 0.001 } })}\n\n`, "data: [DONE]\n\n"];
+    let sentBody: Record<string, unknown> = {};
+    const fetch = (async (_url: unknown, init?: RequestInit) => {
+      sentBody = JSON.parse(String(init?.body));
+      const body = new ReadableStream({ start(c) { for (const e of events) c.enqueue(new TextEncoder().encode(e)); c.close(); } });
+      return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
+    }) as typeof globalThis.fetch;
+    const seen: string[] = [];
+    const out = await openRouterClient({ apiKey: "k", model: "anthropic/claude-sonnet-5.5", fetch }).json({ name: "maya_reply", system: "s", content: [], schema: { type: "object" }, onText: (x) => seen.push(x) }, new AbortController().signal);
+    expect(sentBody.stream).toBe(true);
+    expect(seen).toEqual([chunks[0], chunks[0] + chunks[1], text]);
+    expect(out).toEqual({ say: "Hi. What is 12 minus 8?", act: "guide" });
+  });
+  it("turns thinking off with effort none", async () => {
+    const { openRouterClient } = await import("@/lib/ai-openrouter");
+    let sentBody: Record<string, unknown> = {};
+    const fetch = (async (_url: unknown, init?: RequestInit) => {
+      sentBody = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: "{}" } }] }), { status: 200 });
+    }) as typeof globalThis.fetch;
+    await openRouterClient({ apiKey: "k", model: "m", fetch }).json({ name: "x", system: "s", content: [], schema: { type: "object" }, effort: "none" }, new AbortController().signal);
+    expect(sentBody.reasoning).toEqual({ enabled: false });
+    expect(sentBody.stream).toBe(false);
+  });
+});

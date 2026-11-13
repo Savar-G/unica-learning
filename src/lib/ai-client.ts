@@ -30,8 +30,13 @@ export interface AiJsonRequest {
   content: AiPart[];
   /** A JSON Schema for the output: an object, with additionalProperties false and every property required. */
   schema: Record<string, unknown>;
-  /** How much the model thinks first; omitted means the model's default. */
-  effort?: "low" | "medium" | "high";
+  /** How much the model thinks first; omitted means the model's default. "none" turns thinking off (D-341, latency). */
+  effort?: "none" | "minimal" | "low" | "medium" | "high";
+  /**
+   * D-341: the output text so far, each time more of it arrives. A client that can stream sends the request as a stream
+   * and calls this as the text grows; one that cannot ignores it. The result is the same parsed JSON either way.
+   */
+  onText?: (soFar: string) => void;
   /** The most output tokens, thinking included. */
   maxTokens?: number;
 }
