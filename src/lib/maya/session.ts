@@ -4647,8 +4647,30 @@ const PERSONAL = /\b(?:mom|mum|dad|family|brother|sister|grandma|grandpa|granny|
 /** A turn the review reads: the child's turn was off topic, about feelings, about Maya or personal, or the reply holds more than math and encouragement. */
 function needsReview(s: Session, p: Proposal, say: string): boolean {
   const r = p.reading ?? {};
+  // A stop needs no review: its reply is a short goodbye, read by code's own patterns (round 3).
+  if ((r.stop || p.act === "close") && !r.safety && !r.unsafeRequest && !PERSONAL.test(say)) return false;
+  // Sentences that are code's strict reactions or plain math need no review either (round 3, strictReply).
+  if (!r.safety && !r.unsafeRequest && !r.outsideScope && r.aboutMaya !== "secret_friend" && !hardFeeling(s.turn?.text) && strictReply(say)) return false;
   return !!(r.offTopic || r.aboutMaya || r.outsideScope || r.unsafeRequest || r.safety || r.stop) || p.act === "redirect" || p.act === "check_in" ||
     hardFeeling(s.turn?.text) || PERSONAL.test(say) || (s.turn !== null && PERSONAL.test(s.turn.text));
+}
+
+/**
+ * The strict reactions Maya may say with no review (round 3): short (at most 15 words) and of a fixed form. A warm word
+ * about what the child said ("Max sounds like a good name for a dog."), a thank-you, a sorry, or the truth about Maya
+ * ("I'm an AI, so I have no pet."). Anything else, a question to the child or a claim about the world, goes to the review.
+ */
+const STRICT_FORMS: readonly RegExp[] = [
+  /^(?:oh,?\s+|aw,?\s+|wow,?\s+)?(?:that|it|[a-z]+(?:\s[a-z]+){0,3})\s+sounds?\s+(?:like\s+)?(?:a\s+|an\s+|so\s+|really\s+)?(?:nice|good|fun|great|lovely|cool|kind|tasty|yummy|hard|tough|exciting)\b[a-z ,']*[.!]$/i,
+  /^(?:thanks|thank you)(?:,? [a-z]+)? for telling me\b[a-z ,']*[.!]$/i,
+  /^i'?m an ai(?: math)?(?: helper)?,? so i (?:don'?t|do not|can'?t|cannot|have no|am not)\b[a-z ,']*[.!]$/i,
+  /^i'?m not a real person[.!]$/i,
+  /^i'?m an ai(?: math)? helper[.!]$/i,
+];
+const strictSentence = (x: string) => x.split(/\s+/).length <= 15 && STRICT_FORMS.some((re) => re.test(x.replace(/[’]/g, "'").trim()));
+/** Every sentence is a strict reaction, or plain math talk with no personal word. */
+function strictReply(say: string): boolean {
+  return sentencesOf(say).every((x) => strictSentence(x) || (!PERSONAL.test(x) && (MATH_WORD.test(x) || valuesOf(x).length > 0 || /\?\s*$/.test(x) && /\b(?:ones|tens|hundreds|column|step|question)\b/i.test(x))));
 }
 
 /** Lines code says in its own words whatever the model wrote: the decline, the outside-work redirect and the fixed AI replies. */
@@ -4791,7 +4813,7 @@ function withStreamed(base: Session, r: StepResult, at: number, planned: string,
   const all = sentencesOf(say);
   const rest = all.slice(0, sent.length).join(" ") === sent.join(" ") ? all.slice(sent.length) : [];
   let keep = rest.length;
-  const fits = (more: readonly string[]) => checkSay([...sent, ...more].join(" "), rules).ok && !PERSONAL.test(more.join(" "));
+  const fits = (more: readonly string[]) => checkSay([...sent, ...more].join(" "), rules).ok && !more.some((x) => PERSONAL.test(x) && !strictSentence(x));
   while (keep > 0 && !fits(rest.slice(0, keep))) keep--;
   // The closing question, when it was cut, still follows the sentences already said if it fits after them.
   const question = rest.at(-1);
@@ -4811,12 +4833,16 @@ function withStreamed(base: Session, r: StepResult, at: number, planned: string,
  * fixed reply or an outside request due, a stop, or a child turn that is not plain math talk (the review needs the
  * whole reply).
  */
-export function streamRules(s: Session): (SayRules & { credits: boolean }) | null {
+export function streamRules(s: Session): (SayRules & { credits: boolean; strict: boolean }) | null {
   const pkg = s.package;
   if (!pkg || !s.turn || s.safety.flagged || s.stopRequested || s.scopeDue || s.replies?.length) return null;
-  // A request for help often turns into the easier example: its first words wait for the whole reply, so a question
-  // streamed before it cannot be followed by the example's code words.
-  if (!isTeaching(s.state) || hardFeeling(s.turn.text) || PERSONAL.test(s.turn.text) || helpInWords(s.turn.text) || saysStuck(s.turn.text)) return null;
+  if (!isTeaching(s.state) || hardFeeling(s.turn.text)) return null;
+  // A turn about the child's life or Maya streams only code's strict reactions and plain math (round 3): anything else in
+  // it waits for the review.
+  const personal = PERSONAL.test(s.turn.text) || /\b(?:you|your)\b/i.test(s.turn.text) && !/\b(?:help|show|tell me)\b/i.test(s.turn.text);
+  // A request for help may turn into the easier example (round 3): it streams, but asks nothing before code knows the act.
+  const main = isTeaching(s.state) ? s.state : s.resume;
+  const exampleLikely = main === "ASSESS" && s.done.length === 0 && (helpInWords(s.turn.text) || saysStuck(s.turn.text));
   const credits = heardAnswers(s);
   const released = s.solved !== null || s.lastResult === "right" || credits.some((a) => a.step === "result" && a.verdict === "right");
   const done = [...s.done, ...credits.filter((a) => a.step !== "result" && a.verdict === "right").map((a) => a.step)];
@@ -4835,6 +4861,8 @@ export function streamRules(s: Session): (SayRules & { credits: boolean }) | nul
     accepting: released,
     noIntro: s.conversational === true && s.opened,
     credits: credits.some((a) => a.verdict === "right"),
+    noQuestion: exampleLikely,
+    strict: personal,
   };
 }
 
@@ -4846,8 +4874,9 @@ export function streamRules(s: Session): (SayRules & { credits: boolean }) | nul
 export function streamSentenceOk(sentence: string, rules: NonNullable<ReturnType<typeof streamRules>>, index: number, wordsBefore: number): boolean {
   if (index >= 3 || wordsBefore + sentence.split(/\s+/).filter(Boolean).length > rules.wordLimit) return false;
   // A bare question ("What can you do there?") waits: code may put its own step question in its place.
-  if (/\?\s*$/.test(sentence) && !MATH_WORD.test(sentence) && valuesOf(sentence).length === 0) return false;
-  if (PERSONAL.test(sentence) || (!rules.credits && /^(?:yes|yep|yeah|right|correct|exactly|that'?s (?:right|correct|it)|good job|well done|nice)\b/i.test(sentence.trim()))) return false;
+  if (/\?\s*$/.test(sentence) && (rules.noQuestion || (!MATH_WORD.test(sentence) && valuesOf(sentence).length === 0))) return false;
+  if (rules.strict && !strictSentence(sentence) && (PERSONAL.test(sentence) || !(MATH_WORD.test(sentence) || valuesOf(sentence).length > 0))) return false;
+  if ((PERSONAL.test(sentence) && !(rules.strict && strictSentence(sentence))) || (!rules.credits && /^(?:yes|yep|yeah|right|correct|exactly|that'?s (?:right|correct|it)|good job|well done|nice)\b/i.test(sentence.trim()))) return false;
   return checkSentence(sentence, rules, index).ok;
 }
 
