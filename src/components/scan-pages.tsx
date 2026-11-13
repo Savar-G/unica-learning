@@ -129,6 +129,8 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const camera = useRef<HTMLInputElement>(null);
   const library = useRef<HTMLInputElement>(null);
   const epoch = useRef(0);
+  const listRequest = useRef(0);
+  const appliedList = useRef(0);
   const sessionCurrent = useRef(true);
   const uploadsRef = useRef<Local[]>([]);
   /** The uploads in flight (at most UPLOAD_SLOTS), and the waits for room that Send or a delete cuts short. */
@@ -170,9 +172,12 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const load = useCallback(async () => {
     const version = epoch.current;
     if (!sessionCurrent.current) return null;
+    const request = ++listRequest.current;
     let data: ScanListing;
-    try { data = await api(`/api/account/scans?child=${child}`); } catch (error) { if (version !== epoch.current || !sessionCurrent.current) return null; throw error; }
-    if (version !== epoch.current || !sessionCurrent.current) return null;
+    try { data = await api(`/api/account/scans?child=${child}`); } catch (error) { if (version !== epoch.current || !sessionCurrent.current || request < appliedList.current) return null; throw error; }
+    if (version !== epoch.current || !sessionCurrent.current || request < appliedList.current) return null;
+    // Concurrent uploads can finish their list reads in either order. An older snapshot cannot remove a newer photo.
+    appliedList.current = request;
     setListing(data); setLoadFailed(false);
     return data;
   }, [child]);

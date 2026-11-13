@@ -107,6 +107,31 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
+it("keeps both saved photos when the older concurrent list reply arrives last", async () => {
+  checks = false;
+  const server = global.fetch;
+  let releaseOld!: () => void, releaseSecond!: () => void, captured = false;
+  const oldReply = new Promise<void>((resolve) => { releaseOld = resolve; });
+  const secondUpload = new Promise<void>((resolve) => { releaseSecond = resolve; });
+  vi.stubGlobal("fetch", async (path: string, init?: RequestInit) => {
+    if (init?.method === "PUT" && await (init.body as Blob).text() === "p11.jpg") await secondUpload;
+    const response = await server(path, init);
+    if (path.startsWith("/api/account/scans?child=")) {
+      const data = await response.clone().json();
+      if (!captured && data.photos.length === 1) { captured = true; releaseSecond(); await oldReply; }
+    }
+    return response;
+  });
+  await render();
+  await choose("library", "p10.jpg", "p11.jpg");
+  expect(captured).toBe(true);
+  expect(text()).toContain("2 photos saved.");
+  await act(async () => releaseOld()); await settle();
+  expect(photos.size).toBe(2);
+  expect(text()).toContain("2 photos saved.");
+  expect(text()).not.toContain("1 photo saved.");
+});
+
 it("starts with the tips, Take photos and Choose from your photos, and shows the photo notice once before the first photo", async () => {
   acknowledged = false;
   await render();
