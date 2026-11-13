@@ -93,8 +93,9 @@ import type { StepDeclaration, StepReference } from "@/lib/workbook-print-contra
 
 /** A replacement must retain the practice page's own-step minimum before it can borrow review work. */
 function needsOwnPractice(input: GenerateInput, w: PageWork, slot: Slot): boolean {
-  // A New Idea page's examples and questions stay on the taught step, even when a shorter review would fit.
-  if (input.plan.level === 16 && w.page.type === "new-idea" && slot.part.step) return true;
+  // #759: a U16 lesson's questions stay on the taught step, even when a shorter review would fit. When its small task pool
+  // cannot keep them there (lessonReviewAllowed), the lesson takes review as before.
+  if (input.plan.level === 16 && w.page.type === "new-idea" && !w.lessonReviewAllowed && slot.part.step) return true;
   // Four likelihood questions give a full pair in each U4 practice block before its earlier-step review rows.
   const youngLikelihood = input.plan.level === 4 && !!slot.part.step && /likelihood/.test(slot.part.step.skill);
   if ((input.plan.level < 10 && !youngLikelihood) || w.page.extraPractice || !["practice", "practice-2"].includes(w.page.type)) return false;
@@ -1695,6 +1696,8 @@ function remember(memory: BookMemory, page: number, questions: GeneratedQuestion
 }
 
 interface PageWork {
+  /** #759: a U16 lesson whose questions could not all be kept on its taught step takes review as main does; see needsOwnPractice. */
+  lessonReviewAllowed?: boolean;
   number: number;
   day: number;
   page: PlannedPage;
@@ -3391,6 +3394,8 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         if (input.plan.level === 16 && !holes.length && w.slots.some(s => s.contract?.template && s.part.step
           && (s.contract.template.skill !== s.part.step.skill || s.contract.template.step !== s.part.step.step) && needsOwnPractice(input, w, s))) {
           if (await restoreOwnPractice(input, w, work, fitCheck)) continue;
+          // (A lesson keeps a review question it cannot replace, as before #759; its own-step minimum is the book check's.)
+          if (w.page.type === "new-idea" && !w.lessonReviewAllowed) { w.lessonReviewAllowed = true; continue; }
           return `Page ${w.number}: cannot restore its own-step minimum in complete rows within the page and day limits`;
         }
         const holeSlot = holes.length ? w.slots[holes[0] - 1] : undefined;
