@@ -43,6 +43,8 @@ export interface SayRules {
   shown: readonly SayValue[];
   /** Equations code's own plan says, as "a op b = c" keys (equationKey). */
   shownEquations: readonly string[];
+  /** Exact sentences from code's plan. They may state an authorized regroup fact, never an invented result. */
+  shownSentences?: readonly string[];
   /** Values of steps the child has not been credited with: never said unless the plan shows them. */
   forbidden: readonly SayValue[];
   /** Equations of uncredited steps and of the whole question while its answer is open (equationKey): never said. */
@@ -506,10 +508,13 @@ export function checkSentence(sentence: string, rules: SayRules, index = 0): Say
   const literal = literalValues(literalText);
   for (const st of rules.openSteps ?? []) {
     if (!literal.some((value) => sameSayValue(value, st.result))) continue;
-    if (!st.current && !(st.place && new RegExp(`\\b${st.place}\\b`, "i").test(text))) continue;
+    const placeNamed = st.place && (new RegExp(`\\b${st.place}\\b`, "i").test(text) ||
+      places.some(([value, place]) => place === st.place && sameSayValue(numberValue(value), st.result)));
+    if (!st.current && !placeNamed) continue;
     const heard = rules.confirming ?? rules.mustAsk;
     const confirmation = heard && question && sameSayValue(heard, st.result) && literal.every((value) => sameSayValue(value, heard)) && /^(?:did you say|are you saying|do you mean)\b/i.test(text.trim());
-    if (!confirmation && !operandQuestion(literalText, literal, st.operands)) {
+    const planned = rules.shownSentences?.some((line) => line.replace(/[’]/g, "'").trim() === text.trim());
+    if (!planned && !confirmation && !operandQuestion(literalText, literal, st.operands)) {
       return no("reveals_step", `"${sentence}" states or assigns a result the child has not found yet. Ask only about the step's operands.`);
     }
   }

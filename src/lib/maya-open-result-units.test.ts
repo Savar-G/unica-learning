@@ -15,6 +15,7 @@ describe("open results written as place counts", () => {
   for (const stream of [false, true]) for (const prepared of [false, true]) {
     it.each([
       { pkg: subtraction, step: "tens", bad: "Write 1 ten. What is the whole answer?", creditOnes: true },
+      { pkg: subtraction, step: "ones", bad: "Write 1 ten for the answer. What can you do in the ones?", creditOnes: false },
       { pkg: addition, step: "ones", bad: "Write 10 ones. What can you do in the ones?", creditOnes: false },
     ])("withholds $bad, stream=" + stream + ", prepared=" + prepared, async ({ pkg, step, bad, creditOnes }) => {
       const parts: string[] = [];

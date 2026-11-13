@@ -101,6 +101,19 @@ describe("checkSay", () => {
     expect(checkSay("Write one.", one)).toMatchObject({ ok: false, reason: "reveals_step" });
     expect(checkSay("Write one hundred.", one).ok).toBe(true);
   });
+  it("preserves an exact code-planned regroup sentence without permitting an answer assignment", () => {
+    const regroup = "So regroup 1 ten as 10 ones.";
+    const open = rules({ allowed: valuesOf("42 28 12 8"), forbidden: [], wrong: [], answer: valuesOf("14"),
+      shownSentences: [regroup], openSteps: [
+        { operands: valuesOf("12 8"), result: numberValue(4), place: "ones", current: true },
+        { operands: valuesOf("3 2"), result: numberValue(1), place: "tens", current: false },
+      ] });
+    expect(checkSay(regroup, open).ok).toBe(true);
+    expect(checkSay(regroup, { ...open, shownSentences: [] })).toMatchObject({ ok: false, reason: "reveals_step" });
+    for (const text of ["Write 1 ten.", "So regroup 1 ten as 10 ones, and write 1 ten.", "Write one ten for the answer."]) {
+      expect(checkSay(text, open)).toMatchObject({ ok: false, reason: "reveals_step" });
+    }
+  });
   it("refuses a yes to a wrong answer", () => {
     expect(checkSay("Yes! Now the tens.", rules())).toMatchObject({ ok: false, reason: "affirms_wrong" });
     expect(checkSay("6 is right.", rules())).toMatchObject({ ok: false, reason: "affirms_wrong" });

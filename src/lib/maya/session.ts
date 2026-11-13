@@ -4673,6 +4673,7 @@ function sayRules(before: Session, after: Session, p: Proposal, planned: string)
     ],
     shown: valuesOf(planned),
     shownEquations: equationKeysOf(planned),
+    shownSentences: sentencesOf(planned),
     forbidden, answer, hidden,
     wrong: released ? [] : wrong,
     mustAsk: asked,
