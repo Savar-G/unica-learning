@@ -63,6 +63,8 @@ export interface SayRules {
   accepting?: boolean;
   /** The act ends the call: the reply asks nothing. */
   closing?: boolean;
+  /** Maya goes on with no child turn after this reply (a step of the easier example): it asks nothing. */
+  noQuestion?: boolean;
 }
 
 export type SayVerdict =
@@ -429,6 +431,9 @@ export function checkSay(say: string, rules: SayRules): SayVerdict {
   }
   if (rules.closing && sentences.some((x) => /\?\s*$/.test(x) || /^(?:tell me|can you|could you|what|which|how)\b/i.test(x))) {
     return { ok: false, reason: "close_asks", detail: "This reply ends the call: say a short goodbye and ask nothing.", sentence: sentences.length - 1 };
+  }
+  if (rules.noQuestion && sentences.some((x) => /\?\s*$/.test(x))) {
+    return { ok: false, reason: "close_asks", detail: "Show this step of the easier example yourself, with its result: ask the child nothing until the example ends.", sentence: sentences.length - 1 };
   }
   if (rules.mustAsk && !sayNumbers(say).some((t) => sameSayValue(t, rules.mustAsk!))) {
     return { ok: false, reason: "missing_number", detail: `Ask if the child said ${rules.mustAsk.key}.`, sentence: 0 };

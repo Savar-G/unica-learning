@@ -4610,7 +4610,8 @@ function sayRules(before: Session, after: Session, p: Proposal, planned: string)
   const released = after.solved !== null || after.lastResult === "right";
   const children = before.turns.filter((t) => t.speaker === "child").map((t) => t.text);
   const example = pkg && (after.exampleIntroduced || after.exampleShown > 0)
-    ? [...valuesOf(operationText(pkg.easierExample.operation)), ...valuesOf(pkg.easierExample.text), ...pkg.easierExample.steps.slice(0, after.exampleShown).flatMap((st) => valuesOf(stepText(st, pkg.easierExample.operation)))] : [];
+    ? [...valuesOf(operationText(pkg.easierExample.operation)), ...valuesOf(pkg.easierExample.text), ...pkg.easierExample.steps.slice(0, after.exampleShown).flatMap((st) => [...valuesOf(stepText(st, pkg.easierExample.operation)), ...stepAnswers(st).flatMap(sayValues)]),
+      ...(after.exampleShown >= pkg.easierExample.steps.length ? sayValues(pkg.easierExample.answer) : [])] : [];
   const credited = pkg ? workSteps(pkg).filter((st) => after.done.includes(st.id) || (after.passed ?? []).includes(st.id))
     .flatMap((st) => [...stepAnswers(st).flatMap(sayValues), ...valuesOf(stepText(st, pkg.operation))]) : [];
   const { forbidden, answer, hidden } = pkg ? hiddenOf(after, released) : { forbidden: [], answer: [], hidden: [] };
@@ -4633,6 +4634,8 @@ function sayRules(before: Session, after: Session, p: Proposal, planned: string)
     noBoard: after.noBoard === true,
     accepting: p.act === "accept_answer" || released,
     closing: p.act === "close",
+    // A step of the easier example with more to come is shown, not asked: Maya goes on with no child turn between.
+    noQuestion: p.act === "example_step" && !!pkg && after.exampleShown < pkg.easierExample.steps.length,
     noIntro: before.conversational === true && before.opened && !p.reading?.aboutMaya,
   };
 }

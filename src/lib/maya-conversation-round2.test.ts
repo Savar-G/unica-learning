@@ -215,3 +215,12 @@ describe("A: a request for help does not stream", () => {
     expect(parts).toEqual(["Sure.", "Let's look at the ones."]);
   });
 });
+
+describe("the easier example is shown, not asked", () => {
+  it("refuses a question in a step of the example with more steps to come", async () => {
+    const { session } = call((b, n) => (n === 0 ? reply("Here is an easier one: 42 minus 7. What is 12 minus 7?", "example_step", { reading: { start: "no_start" } }) : reply("Here is an easier one: 42 minus 7. We take a ten, so 2 ones become 12, and 12 minus 7 is 5.", "example_step", { reading: { start: "no_start" } })));
+    await session.start();
+    await session.child("I don't know how to start.");
+    expect(session.trace().counts.sayRefusals).toMatchObject({ close_asks: 1 });
+  });
+});

@@ -271,7 +271,7 @@ function turnNotes(session: Session): string[] {
   if (acts.length === 1 && acts[0] === "close" && session.solved === null) notes.push("Close honestly: this one is hard, it is fine to stop here, and what to try next on paper. Never the answer.");
   if (acts.includes("example_step") && session.package) {
     const next = session.package.easierExample.steps[session.exampleShown];
-    if (next) notes.push(`If you work the easier example now, say its next step: ${stepText(next, session.package.easierExample.operation)}${session.exampleShown === 0 && !session.exampleIntroduced ? " Say first that it is a new, easier problem." : ""}`);
+    if (next) notes.push(`If you work the easier example now, show its next step yourself, with its result, and ask nothing until the example ends: ${stepText(next, session.package.easierExample.operation)}${session.exampleShown === 0 && !session.exampleIntroduced ? " Say first that it is a new, easier problem." : ""}`);
   }
   if (session.noBoard) notes.push("The child cannot see the board: say everything in words.");
   if ((session.thinking ?? 0) > 0) notes.push("The child took time to think before this turn: be patient, do not push, and answer what they say now.");

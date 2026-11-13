@@ -206,8 +206,9 @@ function ruleReply(brief: TurnBrief): unknown {
   if ((reading.paper === "written" || /\b(i'?m done|done)\b/.test(lower)) && has("close")) return reply("Thanks for writing it. Bye for now.", "close", { reading });
   if (has("ask_write") && (stands || !has("guide"))) return reply("Please write your answer on your paper.", "ask_write", { reading });
   const example = brief.notes.find((n) => n.startsWith("If you work the easier example now"));
+  const exampleStep = example?.replace(/^If you work the easier example now, show its next step yourself, with its result, and ask nothing until the example ends: /, "");
   if (has("example_step") && (reading.start === "no_start" || !has("guide")) && example) {
-    return reply(example.replace(/^If you work the easier example now, say its next step: /, "").replace(/ Say first that it is a new, easier problem\.$/, ""), "example_step", { reading });
+    return reply((exampleStep ?? "").replace(/ Say first that it is a new, easier problem\.$/, ""), "example_step", { reading });
   }
   if (has("guide")) {
     const want = reading.help === "more" ? brief.help.levelNow + 1 : 0;
