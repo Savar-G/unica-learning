@@ -15,6 +15,7 @@ import { workbookTemplate } from "@/lib/workbook-template";
 import { workbookWorker } from "@/lib/workbook-worker";
 import { keySolver, type Solver } from "@/lib/workbook-solve-check";
 import { firstCustomerProfile } from "@/lib/workbook-sample-profiles";
+import { pageGateKey, type PageGateChecker } from "@/lib/workbook-page-gates";
 
 // "Prepare next workbook" (#312) through its public interface: the in-memory runs, drafts and files, the fake AI client
 // with fixed JSON, the fake print engine and the real page templates (#310). The clock is fake: each AI call takes
@@ -38,7 +39,7 @@ const pageCalls = (requests: AiJsonRequest[]) => requests.filter((r) => r.name =
 
 function setup(o: {
   itemPolicy?: WorkbookJobDeps["itemPolicy"]; inputs?: ChildInputs; ai?: WorkbookJobDeps["ai"]; files?: WorkbookJobDeps["files"]; budgetMs?: number; handOff?: WorkbookJobDeps["handOff"];
-  solver?: WorkbookJobDeps["solver"]; solveCost?: WorkbookJobDeps["solveCost"]; concurrency?: number;
+  solver?: WorkbookJobDeps["solver"]; solveCost?: WorkbookJobDeps["solveCost"]; concurrency?: number; pageGates?: WorkbookJobDeps["pageGates"];
 } = {}) {
   let clock = new Date("2026-10-31T17:00:00.000Z");
   let ids = 0;
@@ -53,7 +54,7 @@ function setup(o: {
     // These recovery cases pin the old policy. The approved-policy case below exercises new frames.
     itemPolicy: o.itemPolicy ?? "legacy",
     runs, drafts, files: o.files ?? files, ai, template: workbookTemplate(), fit: () => fits, engine: fakePrintEngine(),
-    solver: o.solver === undefined ? keySolver() : o.solver, ...(o.solveCost ? { solveCost: o.solveCost } : {}),
+    solver: o.solver === undefined ? keySolver() : o.solver, ...(o.solveCost ? { solveCost: o.solveCost } : {}), ...(o.pageGates ? { pageGates: o.pageGates } : {}),
     source: {
       inputs: async (id) => (id === CHILD ? (o.inputs ?? child()) : null),
       prepareProfile: async () => ({ ok: true, profile: o.inputs?.profile ?? null }),
@@ -84,6 +85,32 @@ async function started(s: ReturnType<typeof setup>) {
 }
 
 describe("a run", () => {
+  it("checks each rendered page with the page layout gate once, stores it at page:<page> and marks a flagged page (#859)", async () => {
+    const asked: number[] = [];
+    const pageGates: PageGateChecker = {
+      model: "typesafe/jev-1.14",
+      check: async (n, png) => {
+        asked.push(n);
+        expect(png.length).toBeGreaterThan(0);
+        const flag = n === 2;
+        return { callKey: pageGateKey(n), questionId: `page-${n}`, model: "typesafe/jev-1.14", thresholdVersion: 1, outcome: flag ? "flag" : "pass", flags: flag ? ["overlap"] : [], probabilities: { overlap: flag ? 0.9 : 0.1 }, reason: flag ? "The page layout gate flagged this page: parts of the page may overlap." : null };
+      },
+    };
+    const s = setup({ pageGates });
+    const id = await started(s);
+    expect(await runWorkbookJob(id, s.deps)).toBe("done");
+    const [revision] = s.runs.revisions;
+    const rendered = revision.rendering!.pages.filter((p) => !p.proof).map((p) => p.number);
+    expect(rendered.length).toBeGreaterThan(1);
+    // Only the pages that rendered: a proof page failed already.
+    expect(asked).toEqual(rendered);
+    const stored = (await s.runs.gates(id)).filter((r) => r.callKey.startsWith("page:"));
+    expect(stored.map((r) => r.callKey)).toEqual(rendered.map((n) => `page:${n}`));
+    const marked = revision.rendering!.pages.filter((p) => p.layoutGate);
+    expect(marked.map((p) => p.number)).toEqual([2]);
+    expect(marked[0].layoutGate).toMatchObject({ outcome: "flag", flags: ["overlap"], reason: expect.stringContaining("overlap") });
+  });
+
   it("stores a draft with its progress, its check results and revision 1 with an image of every page", async () => {
     const s = setup();
     const id = await started(s);

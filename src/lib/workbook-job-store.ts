@@ -9,6 +9,9 @@ import { firstPagesCandidates } from "@/lib/first-pages-store";
 import { readPaged, SLOT_ATTEMPTS, STALE_SECONDS, type ReadyFirstPages, type RunFrame, type RunRunner, type WorkbookJobSource, type WorkbookRun, type WorkbookRunStore } from "@/lib/workbook-job";
 import type { WorkerCandidate, WorkerQueue } from "@/lib/workbook-worker";
 import type { SolveVerdict } from "@/lib/workbook-solve-check";
+import { QUESTION_GATES, type QuestionGate } from "@/lib/workbook-gates";
+import { PAGE_GATES, type PageGate, type StoredPageGate } from "@/lib/workbook-page-gates";
+import type { StoredQuestionGate } from "@/lib/workbook-run-gates";
 import { workbookInstructions } from "@/lib/workbook-instructions";
 import { workbookPlanRefusal } from "@/lib/workbook-plan-refusal";
 
@@ -113,10 +116,15 @@ export function workbookRunStore(admin: SupabaseClient<Database>): WorkbookRunSt
     async gates(id) {
       const rows = await readPaged(async (from, to) =>
         must(await admin.from("workbook_run_gates").select("call_key, question_id, model, threshold_version, outcome, flags, probabilities, reason").eq("run_id", id).order("id").range(from, to), "quality gates load") ?? []);
-      return rows.flatMap((r) => r.call_key ? [{
-        callKey: r.call_key, questionId: r.question_id, model: r.model, thresholdVersion: r.threshold_version,
-        outcome: r.outcome, flags: r.flags, probabilities: r.probabilities, reason: r.reason,
-      }] : []);
+      // (A row at "page:<page>" is the page layout gate's, #859; the others are question gates. Each keeps its own flags.)
+      return rows.flatMap((r): (StoredQuestionGate | StoredPageGate)[] => {
+        if (!r.call_key) return [];
+        const base = { callKey: r.call_key, questionId: r.question_id, model: r.model, thresholdVersion: r.threshold_version, outcome: r.outcome, reason: r.reason };
+        const probabilities = r.probabilities as Record<string, number>;
+        return r.call_key.startsWith("page:")
+          ? [{ ...base, flags: r.flags.filter((f): f is PageGate => (PAGE_GATES as readonly string[]).includes(f)), probabilities }]
+          : [{ ...base, flags: r.flags.filter((f): f is QuestionGate => (QUESTION_GATES as readonly string[]).includes(f)), probabilities }];
+      });
     },
     async frame(id) {
       const row = must(await admin.from("workbook_run_frames").select("frame").eq("run_id", id).maybeSingle(), "plan load");
