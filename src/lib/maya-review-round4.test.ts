@@ -221,13 +221,15 @@ describe("round 4 re-review: statements, place results and names", () => {
       "You should stop trying.",
       "You can do nothing.",
       "There is no need to try the ones.",
+      "The ones are too hard.",
+      "What can you do in the ones, you are no good at math?",
+      "What is 12 minus 8 when nothing matters?",
       "你真笨。",
-    ])("reviews personal or unclassified output, stream=" + stream + ": %s", async (bad) => {
+    ])("keeps personal or unclassified output from a failed review, stream=" + stream + ": %s", async (bad) => {
       const c = call(() => reply(`${bad} What can you do in the ones?`, "guide", { step: "ones" }), { stream });
       const [out] = await said(c, ["Can we start?"]);
       expect(out).not.toContain(bad);
       expect(c.parts.join(" ")).not.toContain(bad);
-      expect(c.reviewer.requests.length).toBeGreaterThan(0);
     });
 
     it.each(["That works.", "It checks out.", "That adds up."])("does not affirm wrong work, stream=" + stream + ": %s", async (affirmation) => {

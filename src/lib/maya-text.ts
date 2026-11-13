@@ -336,6 +336,10 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     const key = preparedKey(folded.session, brief);
     let selected: PreparedReply | undefined;
     for (const entry of batch.entries.values()) {
+      if (!entry.available()) {
+        record(entry, cache.discard(entry, "stale", batch.at));
+        continue;
+      }
       const h = batch.generation === generation && plain && key === entry.key ? entry.hypotheses.find((h) => h.reason === "interim" ? normalizeTurn(h.text) === normalizeTurn(brief.childTurn ?? "") : fitsExpected(folded.session, h.text)) : undefined;
       if (h && !selected) {
         selected = entry;

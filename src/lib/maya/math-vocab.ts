@@ -102,6 +102,24 @@ export function wordsOf(sentence: string): string[] {
 /** The words of a second-person question that make it about the math: a question about "you" must name one. */
 const MATH_OBJECT = /\b(?:ones|tens|hundreds|thousands|column|digit|number|answer|step|sum|difference|plus|minus|times|divided|total|top|bottom|regroup\w*|carr\w+|fraction|example|question|problem)\b|\d/i;
 
+/** A complete question about the child's next math action, with no unmatched clause. */
+const TASK_NUMBER = `(?:\\d+(?:\\.\\d+)?|${NUMBER_WORDS.join("|")})`;
+const TASK_OBJECT = `(?:the )?(?:ones|tens|hundreds|thousands|column|step|numbers?|fraction|${TASK_NUMBER}(?: (?:and|plus|minus|times|divided by) (?:the )?${TASK_NUMBER}){0,3})`;
+const TASK_QUESTION = new RegExp(`^what (?:do|did|can|could|would|will) you (?:do|try|write|see|notice|find|add|subtract|count)(?: (?:next|now))? (?:in|with|for|on) ${TASK_OBJECT}\\?$`, "i");
+/** Words of a question about the math itself. Personal observations and evaluations are not math questions. */
+const QUESTION_WORDS = new Set([
+  ...NUMBER_WORDS, ...MATH_WORDS.filter((w) => w !== "nothing"),
+  "what", "which", "how", "many", "much", "is", "are", "it", "this", "that", "the", "a", "an", "and", "or",
+  "to", "in", "on", "of", "from", "with", "for", "as", "than", "will", "be", "next", "now", "here", "there",
+  "can", "could", "do", "does",
+]);
+/** Words that establish a concrete math action or fact, without an evaluation of the child or the task. */
+const DIRECT_MATH_WORDS = new Set([
+  ...QUESTION_WORDS, "yes", "so", "since", "because", "then", "still", "again", "just", "only", "all", "not", "no",
+  "let's", "look", "at", "check", "try", "write", "find", "see", "notice", "work", "out", "start", "begin", "trade", "we", "you", "together",
+  "did", "would", "should", "right", "isn't", "aren't", "doesn't", "don't", "we're", "you're",
+]);
+
 /**
  * A math sentence that code can send without review: classified words in a concrete math statement, question or
  * positive instruction. General personal statements need review. The child's name is the token {name}.
@@ -113,6 +131,7 @@ export function mathOnly(sentence: string, extra: ReadonlySet<string> = new Set(
   const words = wordsOf(text);
   if (!words.every((w) => MATH_VOCAB.has(w) || extra.has(w))) return false;
   if (/^(?:hi|hello|hey)(?:\s+(?:\{name\}|there))?[.!]*$/i.test(text)) return true;
+  if (!words.every((word) => DIRECT_MATH_WORDS.has(word))) return false;
   const concrete = MATH_OBJECT.test(text) || words.some((w) => NUMBER_WORDS.includes(w));
   if (!concrete) return false;
   // A word list does not make a personal statement safe. Only a math question or positive math instruction
@@ -123,11 +142,11 @@ export function mathOnly(sentence: string, extra: ReadonlySet<string> = new Set(
   // This exact regroup action describes the math, rather than the people in the call.
   const personalText = text.replace(/\bwe (?:can )?(?:take|trade|regroup) (?:a|one|1) ten\b/gi, "a ten");
   if (personal.test(personalText)) {
-    if (question && /^(?:what|which|how many|how much)\b/i.test(text) && /\b(?:do|did|can|could|would|will) you\b/i.test(text) && !/\b(?:you're|yourself|your|we|us|our|i|me|my)\b/i.test(text)) return true;
+    if (question && TASK_QUESTION.test(text.replace(/,?\s+\{name\}(?=\?$)/, ""))) return true;
     if (!instruction || personal.test(text.slice(instruction[0].length))) return false;
   }
   if (instruction) return !/\b(?:no|not|nothing|stop|never)\b/i.test(text);
-  if (question) return /^(?:what|which|how|where|is|are|can|could|do|does)\b/i.test(text);
+  if (question) return words.every((word) => QUESTION_WORDS.has(word)) && /^(?:what|which|how|where|is|are|can|could|do|does)\b/i.test(text);
   // Plain number/place statements stream. General observations and acknowledgements need a review.
   const statement = text.replace(/^(?:yes[,!]?|so|since|because|now|then)\s+/i, "");
   return /^(?:[0-9]|zero\b|one\b|two\b|three\b|four\b|five\b|six\b|seven\b|eight\b|nine\b|ten\b|eleven\b|twelve\b|thirteen\b|fourteen\b|fifteen\b|sixteen\b|seventeen\b|eighteen\b|nineteen\b|twenty\b|thirty\b|forty\b|fifty\b|sixty\b|seventy\b|eighty\b|ninety\b|(?:the )?(?:ones|tens|hundreds|thousands|top|bottom|number|digit|fraction|numerator|denominator)\b)/i.test(statement);

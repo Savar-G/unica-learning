@@ -158,6 +158,29 @@ describe("prepare then commit", () => {
       expect(session.trace().preparations).toMatchObject([{ status: "discarded", estimated: true }]);
     } finally { vi.useRealTimers(); }
   });
+  it("settles an expired equal-key prepare once and calls the live model", async () => {
+    vi.useFakeTimers();
+    try {
+      const spend = memorySpendSeam(20);
+      const live = conversationalFake({ answer: response });
+      let requests = 0;
+      const model: MayaModel = { ...live, propose: (brief, signal, onText, onCost) => requests++ === 0
+        ? new Promise(() => {}) : live.propose(brief, signal, onText, onCost) };
+      const { session } = setup({ model, spend });
+      await session.start();
+      expect(session.prepare("6")).toBe(true);
+      await vi.advanceTimersByTimeAsync(6_001);
+      const out = await session.child("6");
+      expect(out.prepared).toBe("miss");
+      expect(requests).toBe(2);
+      expect(spend.settled).toHaveLength(1);
+      expect(spend.settled[0].usd).toBeGreaterThan(0);
+      expect(spend.givenBack).toEqual([]);
+      await session.finish();
+      expect(spend.settled).toHaveLength(1);
+      expect(session.trace().preparations).toMatchObject([{ status: "discarded", reason: "stale", estimated: true }]);
+    } finally { vi.useRealTimers(); }
+  });
   it("does not prepare while child runs; concurrent input cancels a prepared hit without late output", async () => {
     let complete!: (reply: unknown) => void;
     const brief: TurnBrief[] = [];

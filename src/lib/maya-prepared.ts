@@ -83,6 +83,8 @@ export interface PreparedReply {
   /** The hypotheses this request serves (equal keys share it), oldest first. */
   readonly hypotheses: (PrepareHypothesis & { at: number })[];
   readonly startedAt: number;
+  /** False after use, abort or the request timeout. Unavailable entries must be discarded before selection. */
+  available(): boolean;
   /** The reply for the real turn: `onText` gets the text so far at once, then as it grows. Single-use. */
   use(onText: ((soFar: string) => void) | undefined, signal: AbortSignal): Promise<unknown>;
   /** The cost, once known. */
@@ -133,8 +135,12 @@ export function preparedReplies(model: MayaModel, spend: SpendSeam, clock: () =>
       };
       const entry: Entry = {
         key, hypotheses: [{ ...hypothesis, at: clock() }], startedAt: clock(),
+        available: () => !used && !controller.signal.aborted,
         use(onText, signal) {
-          if (used || controller.signal.aborted || signal.aborted) return Promise.reject(new Error("prepared reply is unavailable"));
+          if (used || controller.signal.aborted || signal.aborted) {
+            entry.discard();
+            return Promise.reject(new Error("prepared reply is unavailable"));
+          }
           used = true;
           decision = true;
           settle();
