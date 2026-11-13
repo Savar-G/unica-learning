@@ -51,8 +51,8 @@ describe("B: a long reply is cut, not repaired", () => {
     const { session, model } = call(() => reply("Hi Leo. Let's look at the ones. There is a 2 on top and an 8 below it in the column. What can you do there?", "guide", { step: "ones" }));
     await session.start();
     const out = await session.child("Hi");
-    // The closing question takes the place of the third sentence: the child gets something to answer.
-    expect(out.say).toEqual(["Hi Leo. Let's look at the ones. What can you do there?"]);
+    // The first sentence and the closing question stay; the bare question gets code's named step question (round 3).
+    expect(out.say).toEqual(["Hi Leo. Next up, the ones. What would you do?"]);
     expect(model.briefs).toHaveLength(1);
     expect(sources(lastMaya(session))).toEqual(["model"]);
   });
@@ -222,5 +222,23 @@ describe("the easier example is shown, not asked", () => {
     await session.start();
     await session.child("I don't know how to start.");
     expect(session.trace().counts.sayRefusals).toMatchObject({ close_asks: 1 });
+  });
+});
+
+describe("round 3: a guiding reply ends with a named question", () => {
+  it("puts code's step question in place of a bare one", async () => {
+    const { session } = call(() => reply("Hi Mia! What can you do there?", "guide", { step: "ones" }));
+    await session.start();
+    const out = await session.child("Hi");
+    expect(out.say[0].startsWith("Hi Mia! ")).toBe(true);
+    expect(out.say[0]).toMatch(/\bones\b/);
+    expect(out.say[0]).toMatch(/\?$/);
+  });
+  it("adds code's step question to a reply with none", async () => {
+    const { session } = call(() => reply("2 minus 8 can't work, because 2 is smaller than 8. So we take a ten.", "guide", { step: "ones", level: 2 }));
+    await session.start();
+    const out = await session.child("I can't do 2 minus 8");
+    expect(out.say[0]).toContain("2 minus 8 can't work, because 2 is smaller than 8.");
+    expect(out.say[0]).toMatch(/\?$/);
   });
 });

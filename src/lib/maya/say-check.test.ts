@@ -153,8 +153,22 @@ describe("the close", () => {
 describe("trimSay", () => {
   it("keeps the leading sentences that fit, and the closing question in place of a middle one", async () => {
     const { trimSay } = await import("./say-check");
-    expect(trimSay("One. Two. Three. Four?", 30)).toBe("One. Two. Four?");
+    expect(trimSay("One. Two. Three. Four?", 30)).toBe("One. Four?");
     expect(trimSay("One two three four five. Six seven eight nine ten. What now?", 11)).toBe("One two three four five. What now?");
     expect(trimSay("Short one. Short two.", 30)).toBe("Short one. Short two.");
+  });
+});
+
+describe("round 3: a reply answers and asks", () => {
+  it("refuses praise alone on a math turn", () => {
+    expect(checkSay("You worked through that step on your own, Mia.", rules({ wrong: [], needsSubstance: true }))).toMatchObject({ ok: false, reason: "empty_reply" });
+    expect(checkSay("Are you saying 4 for the ones?", rules({ wrong: [], needsSubstance: true, forbidden: [], allowed: [...valuesOf("4 52 28")] })).ok).toBe(true);
+  });
+  it("knows a named ask from a bare one", async () => {
+    const { endsWithAsk } = await import("./say-check");
+    expect(endsWithAsk("Hi Mia! What can you do there?")).toBe(false);
+    expect(endsWithAsk("Let's look at the ones. What can you do there?")).toBe(true);
+    expect(endsWithAsk("So we take a ten.")).toBe(false);
+    expect(endsWithAsk("Now try the tens.")).toBe(true);
   });
 });

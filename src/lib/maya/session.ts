@@ -64,7 +64,7 @@ import { claimActs, claimAnswers, claimCommitted, claimConfirm, claimQuestionAsk
 import { closeParts, compareEquationSaid, currentPart, evaluateSteps, evaluateTeaching, partBoards, partCovered, partEquationSaid, partIdOf, stepsBeforeLastPart, withEvaluateExample } from "./evaluate";
 import { isSpot, spotAnswers, spotReveals, spotSessionPackage, spotStepHeard } from "./spot-error";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, isModelOutput, readModelOutput, withoutDefaults, withoutNulls, type Act, type ChildAnswer, type HintLevel, type ModelOutput, type Proposal, type Reading, type Severity } from "./proposal";
-import { checkSay, checkSentence, trimSay, equationKeysOf, equationsOf, sentencesOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, type SayReason, type SayRules, type SayValue } from "./say-check";
+import { checkSay, checkSentence, endsWithAsk, INSTRUCTION, MATH_WORD, trimSay, equationKeysOf, equationsOf, sentencesOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, type SayReason, type SayRules, type SayValue } from "./say-check";
 import type { TalkReviewResult } from "./talk-review";
 
 /** Closing starts 9 minutes into the call; the call ends at 10 minutes. */
@@ -4536,7 +4536,7 @@ export function turnFacts(s: Session): TurnFact[] {
       // Code's own strict read decides whether the child gave it as an answer (round 2): a question or a hedge did not.
       const heard = heardAnswers(s).some((a) => a.step === fits.id && equivalent(a.value, v));
       facts.push({ text: heard ? `${vt} is right for the step "${fits.id}", and the child said it as their answer.`
-        : `${vt} would be right for the step "${fits.id}", but the child asked it or was not sure: ask them to say it as their answer, and do not say it is right yet.`, numbers: [sv], step: fits.id });
+        : `${vt} would be right for the step "${fits.id}", but the child asked it or was not sure: confirm it warmly in your own words, naming the step and ${vt} ("Are you saying ${vt} for ...?"), and do not say it is right yet.`, numbers: [sv], step: fits.id });
       continue;
     }
     if (valueIn(sv, printed)) continue;
@@ -4636,6 +4636,7 @@ function sayRules(before: Session, after: Session, p: Proposal, planned: string)
     closing: p.act === "close",
     // A step of the easier example with more to come is shown, not asked: Maya goes on with no child turn between.
     noQuestion: p.act === "example_step" && !!pkg && after.exampleShown < pkg.easierExample.steps.length,
+    needsSubstance: !!before.turn && valuesOf(before.turn.text).length > 0 && ["guide", "confirm", "accept_answer", "try_target"].includes(p.act),
     noIntro: before.conversational === true && before.opened && !p.reading?.aboutMaya,
   };
 }
@@ -4732,12 +4733,39 @@ function proposeV3(base: Session, out: ModelOutput, effects: Effect[], reviews: 
       talk = [{ proposed: say, code: null, review: "pass", shown: say }];
     }
   }
-  const text = p.act === "open" ? `${planned} ${say}` : say;
+  const text = p.act === "open" ? `${planned} ${say}` : withAsk(say, p, planned, 0, r.session, p.level ?? 0);
   const effectsOut = r.effects.map((e, i) => (i === at && e.kind === "say" ? { ...e, text, planned, ...(talk ? { talk } : {}) } : e));
   const turns = [...r.session.turns];
   const last = turns.findLastIndex((t) => t.speaker === "maya" && t.text === planned);
   if (last !== -1) turns[last] = { ...turns[last], text, planned };
   return { session: { ...r.session, turns }, effects: effectsOut, refusal: null };
+}
+
+/**
+ * A guiding reply ends with one clear question or instruction about the step (round 3). When the model's ends with none,
+ * or with a bare one that names nothing ("What can you do there?" after "Hi Mia!"), code's own step question from the plan
+ * takes its place, with no model call. A sentence already streamed (index below `sent`) is never removed.
+ */
+function withAsk(text: string, p: Pick<Proposal, "act">, planned: string, sent: number, after?: Session, level = 0): string {
+  if (!["guide", "accept_answer", "try_target", "clarify"].includes(p.act)) return text;
+  const named = p.act !== "accept_answer";
+  if (endsWithAsk(text, named)) return text;
+  const plan = sentencesOf(planned);
+  // Code's question with what names it: the question alone, or with the plan's sentence before it ("Next up, the ones.
+  // What would you do?"), or an instruction of the plan.
+  const q = plan.findLastIndex((x) => /\?\s*$/.test(x));
+  const asks = q === -1 ? [] : !named || endsWithAsk(plan[q]) ? [plan[q]] : q > 0 && endsWithAsk(plan.slice(q - 1, q + 1).join(" ")) ? plan.slice(q - 1, q + 1) : [];
+  // Else the step's own question at this help level or below, from code's help lines ("Subtract the ones: 12 − 8. What
+  // do you get?").
+  const own = after ? helpBrief(after).levels.filter((l) => l.level <= Math.max(level, 0)).reverse().flatMap((l) => l.mayShow.split(" / ")).find((w) => endsWithAsk(w)) : undefined;
+  const ownAsk = own ? sentencesOf(own).slice(-2).filter((x, i, all) => i === all.length - 1 || !endsWithAsk(all.at(-1)!)) : [];
+  const ask = asks.length ? asks : plan.some((x) => INSTRUCTION.test(x)) ? plan.filter((x) => INSTRUCTION.test(x)).slice(-1) : ownAsk;
+  if (!ask.length) return text;
+  const xs = sentencesOf(text);
+  const last = xs.at(-1);
+  const bare = !!last && xs.length - 1 >= sent && (/\?\s*$/.test(last) || INSTRUCTION.test(last));
+  const lead = bare ? xs.slice(0, -1) : xs;
+  return [...lead, ...ask.filter((x) => !lead.includes(x))].join(" ");
 }
 
 /** A turn whose first sentences were already said (streamed): they lead its words, whatever code's plan says after them. */
@@ -4768,7 +4796,7 @@ function withStreamed(base: Session, r: StepResult, at: number, planned: string,
   // The closing question, when it was cut, still follows the sentences already said if it fits after them.
   const question = rest.at(-1);
   const tail = keep < rest.length && question && /\?\s*$/.test(question) && fits([question]) && !fits([...rest.slice(0, keep), question]) ? [question] : keep < rest.length && question && /\?\s*$/.test(question) && fits([...rest.slice(0, keep), question]) ? [...rest.slice(0, keep), question] : rest.slice(0, keep);
-  const text = [...sent, ...tail].join(" ");
+  const text = withAsk([...sent, ...tail].join(" "), r.effects[at]?.kind === "say" ? { act: (r.effects[at] as Extract<Effect, { kind: "say" }>).act } : { act: "guide" }, planned, sent.length, r.session, r.session.ladder.hint);
   const turns = [...r.session.turns];
   const last = turns.findLastIndex((t) => t.speaker === "maya" && t.text === planned);
   if (last !== -1) turns[last] = { ...turns[last], text, planned };
@@ -4817,6 +4845,8 @@ export function streamRules(s: Session): (SayRules & { credits: boolean }) | nul
  */
 export function streamSentenceOk(sentence: string, rules: NonNullable<ReturnType<typeof streamRules>>, index: number, wordsBefore: number): boolean {
   if (index >= 3 || wordsBefore + sentence.split(/\s+/).filter(Boolean).length > rules.wordLimit) return false;
+  // A bare question ("What can you do there?") waits: code may put its own step question in its place.
+  if (/\?\s*$/.test(sentence) && !MATH_WORD.test(sentence) && valuesOf(sentence).length === 0) return false;
   if (PERSONAL.test(sentence) || (!rules.credits && /^(?:yes|yep|yeah|right|correct|exactly|that'?s (?:right|correct|it)|good job|well done|nice)\b/i.test(sentence.trim()))) return false;
   return checkSentence(sentence, rules, index).ok;
 }

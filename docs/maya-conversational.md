@@ -41,7 +41,7 @@ Code also tells the model facts about the child's numbers. For 52 - 28 and "Is 2
 - **A long reply is cut, not sent back.** Code keeps the first sentences that fit (and the closing question, in place of a middle sentence), with no second model call. Only a first sentence that alone breaks a limit is refused. The prompt asks for 1 or 2 short sentences under 25 words, with the question last.
 - **A clear answer is accepted in its turn.** "The tens are 4 minus 2, that's 2. 24!" is the answer, never a confirm.
 - **Off-topic turns get the model's own words.** "Do you like dogs?" gets an honest, warm reply (Maya is an AI and has no dog) and a short way back to the step; the review checks it. Only the safety guidance, the reply about secrets, the decline of harmful content, the redirect of outside math work and the held close stay code's.
-- **A child who is thinking** ("um", "wait", "I'm thinking") hears one short patient line from code, at most twice in a row, then Maya stays quiet until the child speaks or the silence rule comes. These turns count as no help and no miss. For Savar's approval, the two lines: "Take your time, {name}." and "No rush. I'm here when you're ready."
+- **A child who is thinking** ("um", "wait", "I'm thinking") hears one short patient line from code, at most twice in a row, then Maya stays quiet until the child speaks or the silence rule comes. These turns count as no help and no miss. The two lines, approved by Savar, 2026-11-12: "Take your time, {name}." and "No rush. I'm here when you're ready."
 - **The fallback** never asks "Did you say...?" on its own; it gives the step's neutral help. Once the answer stands and the child says it is written, Maya closes warmly.
 
 ## The prompt
