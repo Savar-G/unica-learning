@@ -139,7 +139,7 @@ describe("a reservation for every paid request, settled after it", () => {
     await held.release();
     await held.release();
     expect(t.store.rows()).toMatchObject([{ what: "model", reserved: t.room, cost: 0, settled: true }]);
-    expect(t.store.log().filter((x) => x !== "used")).toEqual(["reserve", "settle"]);
+    expect(t.store.log()).toEqual(["reserve", "settle"]);
     // Released: the next request of the call reserves its own.
     await client(t, vi.fn(async () => answer(0.02)) as typeof globalThis.fetch).json(request, signal());
     expect(t.store.rows()).toHaveLength(2);

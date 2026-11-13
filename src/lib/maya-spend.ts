@@ -290,7 +290,8 @@ export function createSpendLedger(seams: SpendSeams): SpendLedger {
       if (i < 0) return;
       held.splice(i, 1);
       try {
-        await settled(id, 0);
+        // Nothing cannot carry the month past the alert amount: no read of the month's total after it.
+        await store.settle(id, 0);
       } catch (e) {
         // Unsettled, it stops counting after RESERVATION_TTL_MS.
         console.error("[maya spend] a held reservation not given back", id, e instanceof Error ? e.message : String(e));
