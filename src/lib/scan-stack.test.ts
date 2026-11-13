@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildStack, dayPages, refusalCopy, sendLabel, stackSummary, waitingNote, type StackPhoto, type StackUpload } from "@/lib/scan-stack";
+import { addingCount, buildStack, dayPages, refusalCopy, roomNote, sendLabel, stackSummary, waitingNote, type StackPhoto, type StackUpload } from "@/lib/scan-stack";
 
 const BOOK = "book-1";
 // Workbook 1: a cover, Day 4 with pages 10 to 13, Day 5 with pages 14 to 16.
@@ -138,6 +138,43 @@ describe("words", () => {
     expect(refusalCopy("ambiguous-page").action).toContain("Fold the book back");
     expect(refusalCopy("marks-missing").short).toBe("Cut off");
     expect(refusalCopy("page-mismatch").short).toBe("Wrong page");
+  });
+});
+
+it("tells the parent what to fix when the page's QR code cannot be read (#915)", () => {
+  for (const reason of ["qr", "qr-mismatch"] as const) {
+    const { action } = refusalCopy(reason);
+    expect(action).toContain("QR code in view and sharp");
+    expect(action).toContain("no shadow");
+    expect(action).toContain("closer");
+  }
+  expect(refusalCopy("qr").short).toBe("Not a workbook page");
+});
+
+describe("photos waiting to send (#915)", () => {
+  const stackOf = (uploads: StackUpload[], ready = 0) => buildStack({ photos: Array.from({ length: ready }, (_, i) => photo(`r${i}`, 10 + i)), uploads, pages, checks: true });
+
+  it("shows queued and held photos as waiting, and counts them beside the ones sending", () => {
+    const stack = stackOf([{ key: "a", status: "uploading" }, { key: "b", status: "uploading", held: true }, { key: "c", status: "waiting" }]);
+    expect(stack.addingTiles.map((t) => [t.status, t.reason])).toEqual([["adding", null], ["waiting", "Waiting for room"], ["waiting", null]]);
+    expect([stack.adding, stack.waiting, stack.held]).toEqual([3, 2, 1]);
+    expect(addingCount(stack)).toBe("Sending 1 photo, 2 waiting");
+    expect(addingCount(stackOf([{ key: "a", status: "uploading" }, { key: "b", status: "uploading" }]))).toBe("Sending 2 photos");
+    expect(addingCount(stackOf([{ key: "c", status: "waiting" }]))).toBe("1 photo waiting");
+  });
+
+  it("says nothing about room until a photo is held", () => {
+    expect(roomNote(stackOf([{ key: "a", status: "uploading" }, { key: "c", status: "waiting" }], 2))).toBeNull();
+  });
+
+  it("asks the parent to send ready pages first when photos wait for room", () => {
+    expect(roomNote(stackOf([{ key: "a", status: "uploading", held: true }, { key: "b", status: "waiting", held: true }], 2)))
+      .toBe("There is no room for more photos yet. Send these pages for marking first, then add more. The waiting photos keep their place.");
+  });
+
+  it("with no ready page to send, says the photo goes on its own", () => {
+    expect(roomNote(stackOf([{ key: "a", status: "uploading", held: true }])))
+      .toBe("There is no room for more photos yet. The waiting photo keeps its place and goes when there is room.");
   });
 });
 
