@@ -226,14 +226,15 @@ describe("the turn and interruption settings of a session", () => {
 });
 
 describe("the greeting", () => {
-  it("is said once, first, with no board batch, and is not in the transcript", async () => {
+  it("is said once, after the opening, with no board batch, and is not in the transcript", async () => {
     const c = await voiceCall({ greeting: true });
-    // The greeting is the first words of the call, and the opening follows it.
-    expect(heard(c.said()).startsWith(GREETING_TEXT)).toBe(true);
+    await waitFor(() => heard(c.said()).includes(GREETING_TEXT), "the greeting");
+    // The opening is Maya's first sound (Savar, 2026-11-13), and the greeting follows it.
+    expect(heard(c.said()).startsWith(GREETING_TEXT)).toBe(false);
+    expect(heard(c.said()).endsWith(GREETING_TEXT)).toBe(true);
     expect(times(heard(c.said()), GREETING_TEXT)).toBe(1);
-    expect(heard(c.said()).length).toBeGreaterThan(GREETING_TEXT.length);
-    // It has an empty plan (as an acknowledgement does), and the opening's own plan is staged after it.
-    expect(c.stage.mock.calls[0][1]).toEqual([]);
+    // It has an empty plan (as an acknowledgement does), staged after the opening's own plan.
+    expect(c.stage.mock.calls.at(-1)![1]).toEqual([]);
     expect(c.stage.mock.calls.length).toBeGreaterThan(1);
     // It is saved before it is said, in the call's acknowledged list, as the acknowledgement phrases are.
     expect(c.call.acknowledged).toContain(GREETING_ID);
@@ -255,7 +256,7 @@ describe("the greeting", () => {
     cleanup = null;
 
     const c = await voiceCall({ greeting: true });
-    expect(heard(c.said()).startsWith(GREETING_TEXT)).toBe(true);
+    await waitFor(() => heard(c.said()).includes(GREETING_TEXT), "the greeting");
     await c.call.settled();
     // The first worker is gone. A new one opens the saved call: the greeting is saved as said, and the call has started.
     const opened = await c.calls.openVoice(c.id, { speechToText: "fake", voice: "fake" }, null);
@@ -278,6 +279,7 @@ describe("the greeting", () => {
 
   it("is not said twice when the child rejoins while it is being staged", async () => {
     const c = await voiceCall({ greeting: true });
+    await waitFor(() => heard(c.said()).includes(GREETING_TEXT), "the greeting");
     await c.run.childLeft("dropped");
     await c.run.childJoined();
     await pause();

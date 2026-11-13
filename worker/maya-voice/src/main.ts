@@ -18,11 +18,13 @@ import { createBoardSender } from "@/lib/board-protocol";
 import { boardRpcTransport } from "@/lib/board-rpc";
 import { createBoardSpeech, cueReport, type CueMeasurement } from "@/lib/board-speech";
 import { fileURLToPath } from "node:url";
-import { cli, defineAgent, ServerOptions, type JobContext } from "@livekit/agents";
+import { cli, defineAgent, ServerOptions, voice, type JobContext } from "@livekit/agents";
 import { DisconnectReason, RoomEvent, RpcError, type RemoteParticipant, type Room } from "@livekit/rtc-node";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
-import { callsOn } from "@/lib/maya-call-seams";
+import { callSeams } from "@/lib/maya-call-seams";
+import { mayaCalls } from "@/lib/maya-call";
+import { codeOpening } from "@/lib/maya-voice-opening";
 import { mayaCallStore } from "@/lib/maya-call-store";
 import { asksWordTimings, callKeyterms, callOfRoom, checkJoiner, GREETING_TEXT, JOIN_WAIT_MS, turnSilences, VOICE_AGENT_NAME, voiceProviders, type TurnSilence, type VoiceCallFacts } from "@/lib/maya-voice";
 import { VoiceCallRun, voiceSession, type CallUpdate } from "./agent";
@@ -63,6 +65,7 @@ function waitForChild(room: Room, call: VoiceCallFacts): Promise<RemoteParticipa
 
 export default defineAgent({
   entry: async (ctx: JobContext) => {
+    const jobAt = Date.now();
     let selection = null;
     try { selection = referenceJob(JSON.parse(ctx.job.metadata || "{}").reference); } catch { /* Not a reference job. */ }
     if (selection) {
@@ -96,22 +99,37 @@ export default defineAgent({
 
     await ctx.connect();
     const child = await waitForChild(ctx.room, facts);
+    const childAt = Date.now();
+    const marks: Record<string, number> = {};
+    const mark = (name: string) => { marks[name] = Date.now() - childAt; };
     if (!child) {
       log("the child did not join", callId);
       return ctx.shutdown("the child did not join");
     }
-    const opened = await callsOn(db).openVoice(callId, providers.ids, null);
+    // The opening needs no model call: code answers that one request (src/lib/maya-voice-opening.ts).
+    const seams = callSeams(db);
+    const calls = mayaCalls({ ...seams, model: (...args) => { const model = seams.model(...args); return model ? codeOpening(model) : model; } });
+    const opened = await calls.openVoice(callId, providers.ids, null);
     if (!opened.ok) {
       log("the call could not be opened", callId, opened.error);
       return ctx.shutdown("call not opened");
     }
+    mark("opened");
     // The call's question is known now: its answer and its likely wrong answers go to the speech-to-text as keyterms
     // (numbers only, never the question's text or a name).
     const made = await makeProviders(providers, { keyterms: callKeyterms(opened.call.session.package) });
     // The turn delay and interruption settings are for real providers. The fakes keep LiveKit's defaults, as the tests do.
+    mark("providers");
     const { tuning } = providers;
     const session = voiceSession(made, made.fake ? {} : { turn: tuning });
     const patience = made.patience;
+    // The opening's speed: the child in the room (or the job, when the child was there first) to Maya's first sound.
+    let firstSound = false;
+    session.on(voice.AgentSessionEventTypes.AgentStateChanged, ev => {
+      if (firstSound || ev.newState !== "speaking") return;
+      firstSound = true;
+      log("opening first sound", { callId, sinceChildMs: Date.now() - childAt, sinceJobMs: Date.now() - jobAt, marks });
+    });
     const encoder = new TextEncoder();
     const notify = (update: CallUpdate) => {
       ctx.room.localParticipant?.publishData(encoder.encode(JSON.stringify(update)), { reliable: true, topic: "maya.call", destination_identities: [child.identity] }).catch(() => {});
@@ -164,7 +182,9 @@ export default defineAgent({
       if (checkJoiner({ room: roomName, call: facts, identity: p.identity, attributes: p.attributes }).ok) void run.childJoined();
     });
 
+    mark("setup");
     await run.agentJoined();
+    mark("agentJoined");
     if (run.done) { await run.done; return; }
     await session.start({
       agent: run.agent,
@@ -174,9 +194,11 @@ export default defineAgent({
       // Disable session recording. Direct-provider retention needs separate verified settings (docs/maya-voice.md).
       record: false,
     });
+    mark("sessionStarted");
     run.attachBoardAudio();
     run.attachTurnTiming();
     await run.childJoined();
+    mark("childJoined");
     // Word timings are asked for, not known to arrive: the "board cue" lines show `word` or `sentence` for each batch.
     log("call running", callId, providers.ids.speechToText, providers.ids.voice, { wordTimings: asksWordTimings(providers.voice) ? "requested" : "sentence ends only", tuning: made.fake ? "fake providers: LiveKit defaults" : tuning });
   },

@@ -183,8 +183,6 @@ export class MayaVoiceAgent extends voice.Agent {
     }
     if (!opening) return null;
     const turn = await this.call.start();
-    // A new board plan takes the audio from the old one, so the opening's board is staged after the greeting has played.
-    await this.hooks.greetingOver();
     const text = (await this.onTurn(turn)) ? turn.say.join(" ") : "";
     if (!text) return null;
     return new ReadableStream<string>({
@@ -415,7 +413,9 @@ export class VoiceCallRun {
    */
   private async greet(generation: number) {
     const text = this.options.greeting;
-    if (!text || this.greetStarted || this.call.acknowledged.includes(GREETING_ID) || this.call.session.startedAt !== null) return;
+    if (!text || this.greetStarted || this.call.acknowledged.includes(GREETING_ID)) return;
+    // The child is already talking or being answered: a new plan would take that reply's audio. No greeting this call.
+    if (this.pace || this.session.userState === "speaking") return;
     // Set before the first await: a child who rejoins while the greeting is being staged must not start a second one.
     this.greetStarted = true;
     const stale = () => this.finishing !== null || generation !== this.generation || !this.childHere;
@@ -796,10 +796,13 @@ export class VoiceCallRun {
         await this.after(final, speech, () => false);
       } catch { await this.finish({ detail: "the saved final speech failed" }); }
     } else if (this.call.session.startedAt === null) {
-      // The greeting is queued first, so the opening's speech follows it.
-      await this.greet(generation);
-      if (generation !== this.generation || !this.childHere || this.finishing) return;
-      this.session.generateReply();
+      // The opening is Maya's first sound (Savar, 2026-11-13). The greeting follows it, unless the child cut the opening:
+      // a new board plan takes the audio from the old one, so it is staged only after the opening has played.
+      const opening = this.session.generateReply() as voice.SpeechHandle | undefined;
+      void Promise.resolve(opening?.waitForPlayout()).catch(() => {}).then(() => {
+        if (generation !== this.generation || !this.childHere || this.finishing || opening?.interrupted) return;
+        return this.greet(generation);
+      });
     } else {
       this.schedule();
       // A new worker took over after the guidance: the close call the old one waited for is gone.
