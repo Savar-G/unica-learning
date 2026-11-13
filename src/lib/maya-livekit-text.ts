@@ -26,8 +26,6 @@ const userTexts = (ctx: llm.ChatContext) =>
 
 class MayaTextAgent extends voice.Agent {
   last: TextOutput | null = null;
-  /** Resolved when a turn's output is silent (D-341: a thinking child gets no words): LiveKit has nothing to play. */
-  silent: (() => void) | null = null;
   private seen = 0;
   constructor(private readonly text: TextSession) {
     super({ instructions: "Maya's words come from the text adapter, not from these instructions." });
@@ -40,9 +38,10 @@ class MayaTextAgent extends voice.Agent {
     this.last = output;
     const said = output.say.join(" ");
     if (!said) {
-      this.silent?.();
-      // An empty reply, so LiveKit closes this turn's speech and the next turn is not held behind it.
-      return new ReadableStream<string>({ start(controller) { controller.close(); } });
+      // D-341, round 3: a silent turn (a thinking child) still ends LiveKit's run. With no reply at all its test run
+      // waits for one forever, and the next turn is refused as a nested run. A single space is spoken as nothing and
+      // carried as no words (take).
+      return new ReadableStream<string>({ start(controller) { controller.enqueue(" "); controller.close(); } });
     }
     return new ReadableStream<string>({
       start(controller) {
@@ -67,7 +66,7 @@ export async function livekitTextSession(text: TextSession): Promise<LivekitText
   });
   await session.start({ agent });
   const take = () => {
-    const out = { output: agent.last ?? { say: [], board: [], ended: null, safetyMessage: null }, carried };
+    const out = { output: agent.last ?? { say: [], board: [], ended: null, safetyMessage: null }, carried: carried?.trim() ? carried : null };
     agent.last = null;
     carried = null;
     return out;
@@ -78,10 +77,7 @@ export async function livekitTextSession(text: TextSession): Promise<LivekitText
       return take();
     },
     async say(childText) {
-      // A silent output leaves LiveKit's test run waiting for a reply that never comes: the turn ends with it.
-      const quiet = new Promise<void>((resolve) => { agent.silent = resolve; });
-      await Promise.race([session.run({ userInput: childText }).wait(), quiet]);
-      agent.silent = null;
+      await session.run({ userInput: childText }).wait();
       return take();
     },
     close: () => session.close(),
