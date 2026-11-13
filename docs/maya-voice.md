@@ -82,7 +82,7 @@ These plugins connect directly to AssemblyAI and Inworld. LiveKit Inference rete
 
 ElevenLabs (a listening-test candidate) is not on LiveKit Inference, and the worker has no ElevenLabs route. If it wins the listening test, its direct route needs its own settings, marker and checks first.
 
-Voice sessions have no name personalization. Their saved variety state has no child name. The voice provider (through LiveKit Inference or directly) receives Maya's accepted speech text. This does not remove names that a child supplies in free speech; the privacy gate still applies.
+Maya may say the child's first name on a voice call, as in chat (Savar, 2026-11-12). The call's start gives the session the name from the server (`startVoice`, the desk's own read of `children.first_name`), and the live session keeps it on the server, as a chat's does. The worker reads the first name from the database (`children.first_name` for the call's child and parent), never from the LiveKit room, where a participant's name is the browser's to set. Every trace the call stores hides the name as `{name}`: the worker's end, the deadline, the cap's close, and an end by the sweep or an admin, which pass no name, use the name the saved session says (`savedName` in `src/lib/maya-call.ts`). Parent notes hide every form of the name as `{child}` (`src/lib/maya-call-note.ts`). Board cues count the spoken name's own words: a two-word name is two words, though the trace holds one `{name}`. The voice provider (through LiveKit Inference or directly) receives Maya's accepted speech text, with the name in it. This does not remove names that a child supplies in free speech; the privacy gate still applies.
 
 ## Accounts and settings Savar must create
 

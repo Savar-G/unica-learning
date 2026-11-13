@@ -11,7 +11,8 @@ import { memoryLearningEventStore } from "@/lib/learning-events-memory";
 import { limitsOf, memoryWordingHistoryStore, TIME_LIMITS } from "@/lib/maya";
 import { mayaCalls, recordView, boardHistoryOf, type CallResult, type CallSeams } from "@/lib/maya-call";
 import { memoryCallStore, memoryConnectionLog } from "@/lib/maya-call-memory";
-import { ruleMayaModel } from "@/lib/maya-model-fake";
+import { ruleConversationalModel, ruleMayaModel } from "@/lib/maya-model-fake";
+import { VOICE_CALL_STALE_MS } from "@/lib/maya-voice";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { checkTrace } from "@/lib/maya-trace";
 import type { QuestionPackage } from "@/lib/question-package";
@@ -331,25 +332,47 @@ describe("R408 recovery and privacy", () => {
     expect(s.rebuild).not.toHaveBeenCalled();
   });
 
-  it("R408-5: excludes the child's name from every saved voice session and opening", async () => {
+  // Savar, 2026-11-12 (replaces R408-5's "no name on voice"): Maya may say the child's first name on a voice call, as in
+  // chat. The live session keeps it on the server, as a chat's does; every trace the call stores hides it as {name}.
+  it("R408-5: keeps the child's first name in the live voice session, as chat does, and the stored trace hides it", async () => {
     const s = setup();
     s.seams.seed = () => 1;
     const view = await newVoiceCall(s);
-    expect(JSON.stringify(s.store.rows()[0].live)).not.toContain("Leah");
+    expect(s.store.rows()[0].live?.text.initial?.session.variety.name).toBe("Leah");
     const call = await open(s, view.id);
-    expect((await call.start()).say.join(" ")).not.toContain("Leah");
-    await call.settled();
-    expect(JSON.stringify(s.store.rows()[0].live)).not.toContain("Leah");
+    await call.start();
+    await call.child("I got 56.");
+    await call.end({ reason: "child_stopped" });
+    const [row] = s.store.rows();
+    expect(row.status).toBe("ended");
+    expect(JSON.stringify(row.trace)).not.toContain("Leah");
+    expect(JSON.stringify(row.notePending)).not.toContain("Leah");
   });
 
-  it("R408-5: removes personalization when an older saved voice call is opened", async () => {
+  it("R408-5: a voice call the sweep ends (no name given) still hides the name its session says", async () => {
     const s = setup();
+    s.seams.model = (id) => (id === null || id === "fake" ? ruleConversationalModel() : null);
     const view = await newVoiceCall(s);
-    const row = s.store.rows()[0];
-    row.live!.text.session.variety.name = "Leah";
-    await s.store.update(row.id, row.revision, { live: row.live });
     const call = await open(s, view.id);
-    expect(s.store.rows()[0].live?.text.session.variety.name).toBeNull();
+    await call.start();
+    // A thinking child hears code's patient line with the name (D-341).
+    expect((await call.child("Um, let me think.")).say).toEqual(["Take your time, Leah."]);
+    await call.settled();
+    // The worker stopped without an end: the sweep ends the call, and passes no name.
+    s.advance(VOICE_CALL_STALE_MS / 1000 + 1);
+    const row = s.store.rows()[0];
+    ok(await s.calls.input(view.id, row.revision, { type: "end" }, null));
+    const ended = s.store.rows()[0];
+    expect(ended.status).toBe("ended");
+    expect(JSON.stringify(ended.trace)).not.toContain("Leah");
+    expect(JSON.stringify(ended.trace)).toContain("Take your time, {name}.");
+  });
+
+  it("R408-5: an older saved voice call with no name stays without one", async () => {
+    const s = setup();
+    const view = ok(await s.calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: null, package: PKG, startedBy: "admin-1" })).view;
+    const call = await open(s, view.id);
+    expect(call.session.variety.name).toBeNull();
     expect((await call.start()).say.join(" ")).not.toContain("Leah");
   });
 

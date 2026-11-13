@@ -183,7 +183,7 @@ class ProbeStream extends stt.SpeechStream {
   }
 }
 
-async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; speech?: ProbeSTT; numberContinueMs?: number; dropSilentPeakDbfs?: number; heardVad?: VAD }) {
+async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; speech?: ProbeSTT; numberContinueMs?: number; dropSilentPeakDbfs?: number; heardVad?: VAD; childName?: string | null; note?: CallSeams["note"] }) {
   const clock = handClock();
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
@@ -199,13 +199,14 @@ async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; speec
     clock: () => Date.now(),
     newId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`,
     seed: () => 42,
+    ...(options.note ? { note: options.note } : {}),
   };
   const calls = mayaCalls(seams);
-  const started = await calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: PKG, startedBy: "admin-1" });
+  const started = await calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: options.childName === undefined ? "Leah" : options.childName, package: PKG, startedBy: "admin-1" });
   if (!started.ok) throw new Error(started.error);
   const config = voiceProviders({});
   if (!config.ok) throw new Error("fake providers");
-  const opened = await calls.openVoice(started.view.id, config.ids, "Leah");
+  const opened = await calls.openVoice(started.view.id, config.ids, options.childName === undefined ? "Leah" : options.childName);
   if (!opened.ok) throw new Error(opened.error);
   const providers = await makeProviders(config, { fakeMsPerChar: 1 });
   const session = voiceSession({ ...providers, stt: options.speech ?? providers.stt }, { endpointingMs: 20, aecWarmupDuration: 0 });
@@ -544,7 +545,7 @@ describe("when the thinking phrase comes (D-341)", () => {
     await pause();
     const after = c.said().slice(before);
     expect(after.filter((t) => ACKS.has(t))).toEqual([]);
-    expect(after).toEqual(["Take your time."]);
+    expect(after).toEqual(["Take your time, Leah."]);
     expect(m.asked).toBe(0);
   });
 });
@@ -622,5 +623,54 @@ describe("a final transcript heard in silence (the drop rule)", () => {
     await waitFor(() => asked.mock.calls.length === 1, "the child's turn");
     expect(asked.mock.calls[0][0]).toBe("Six.");
     await waitFor(() => c.said().length > before, "Maya's answer");
+  });
+});
+
+describe("the child's first name on a voice call (Savar, 2026-11-12)", () => {
+  it("is in the spoken words, and hidden in the stored trace and the note's inputs", async () => {
+    const note = vi.fn(async () => "pending" as const);
+    const c = await voiceCall({ model: ruleConversationalModel(), note });
+    const before = c.said().length;
+    c.say("Um, let me think.");
+    await waitFor(() => c.said().length > before, "the patient line");
+    expect(c.said().slice(before)).toEqual(["Take your time, Leah."]);
+    await c.run.hangUp();
+    const row = (await c.store.get(c.id))!;
+    expect(row.status).toBe("ended");
+    expect(JSON.stringify(row.trace)).not.toContain("Leah");
+    expect(row.trace!.turns.some((t) => t.kind === "maya" && t.output?.say.includes("Take your time, {name}."))).toBe(true);
+    expect(note).toHaveBeenCalled();
+    expect(row.notePending).not.toBeNull();
+    expect(JSON.stringify(row.notePending)).not.toContain("Leah");
+    expect(JSON.stringify(note.mock.calls)).not.toContain("Leah");
+    const view = (await c.calls.view(c.id))!;
+    expect(JSON.stringify(view.transcript)).not.toContain("Leah");
+  });
+
+  it("keeps the board cue on the right spoken word when the name has two words", async () => {
+    // A reply that does not stream (a request for help), with the name in its first sentence and a board offer drawn.
+    const say = "Mary Ann, let's look at the ones column. What can you do there?";
+    const m = steppedModel((brief) => brief.childTurn === "Can you help me?"
+      ? reply(say, "guide", { step: brief.help.step, level: 0, reading: { help: "more" }, draw: (brief.draw.guide ?? []).slice(0, 1).map((o) => ({ offer: o.id, place: "main" })) })
+      : null);
+    const c = await voiceCall({ model: m.model, childName: "Mary Ann" });
+    const cues: number[] = [];
+    const realStage = c.board.stage.bind(c.board);
+    vi.spyOn(c.board, "stage").mockImplementation((id, staged) => { cues.push(...staged.map((q) => q.word)); return realStage(id, staged); });
+    const before = c.said().length;
+    c.say("Can you help me?");
+    await waitFor(() => m.running, "the model call");
+    m.finish();
+    await waitFor(() => c.said().slice(before).join(" ").includes("What can you do there?"), "the reply");
+    await c.call.settled();
+    // The voice says both words of the name, and the math as words.
+    expect(c.said().slice(before).join(" ")).toBe(spokenMath(say));
+    // The batch's cue is the last spoken word of the reply: word 13, not the 12 of "{name}, let's look ...".
+    expect(c.call.session.batches).toBe(2);
+    expect(cues).toEqual([say.split(/\s+/).length]);
+    await c.run.hangUp();
+    const row = (await c.store.get(c.id))!;
+    expect(JSON.stringify(row.trace)).not.toContain("Mary Ann");
+    expect(JSON.stringify(row.trace)).toContain("{name}, let's look at the ones column.");
   });
 });

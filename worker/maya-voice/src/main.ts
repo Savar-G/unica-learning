@@ -103,7 +103,11 @@ export default defineAgent({
     // The opening needs no model call (D-341): the worker speaks code's own line, and the call's start records it
     // (`start({ openingSpoken: true })`, ./opening.ts).
     const calls = mayaCalls(callSeams(db));
-    const opened = await calls.openVoice(callId, providers.ids, null);
+    // The child's first name from the database, never from the room (a participant's name is the browser's to set).
+    // Maya says the name her session's start was given; this one hides the name in what the call stores (openVoice).
+    const childName = await db.from("children").select("first_name").eq("id", record.childId).eq("parent_id", record.parentId).maybeSingle()
+      .then(({ data }) => data?.first_name?.trim() || null, () => null);
+    const opened = await calls.openVoice(callId, providers.ids, childName);
     if (!opened.ok) {
       log("the call could not be opened", callId, opened.error);
       return ctx.shutdown("call not opened");

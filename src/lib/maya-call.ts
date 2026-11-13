@@ -814,6 +814,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
     return { record: ended, say: heeded.guidance, safetyMessage: safety.flagged && safety.severity ? SAFETY_GUIDANCE[safety.severity] : null };
   }
 
+  /** The child's name a saved voice session says (its start's), so a trace stored from it hides that name. */
+  const savedName = (text: SavedTextSession): string | null => text.initial?.session.variety.name?.trim() || text.session.variety.name?.trim() || null;
+
   /** The model, telling `refused` when the ledger refuses one of its requests in the middle of a turn. */
   const watched = (model: MayaModel, refused: (state: Exclude<SpendState, "open">) => void): MayaModel => ({
     ...model,
@@ -1026,7 +1029,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
     }
     const model = seams.model(null, call);
     if (!model) return { ok: false, error: "model_unavailable" };
-    const session = textSession({ id, kind: input.kind, parentId: input.parentId, childId: input.childId }, pkg, model, mode === "voice" ? null : input.childName, undefined, seams.seed(), await readHistory(input.childId), input.limitMs, input.grade, input.confirmWorkbook);
+    const session = textSession({ id, kind: input.kind, parentId: input.parentId, childId: input.childId }, pkg, model, input.childName, undefined, seams.seed(), await readHistory(input.childId), input.limitMs, input.grade, input.confirmWorkbook);
     const empty = session.trace();
     const record: CallRecord = {
       id,
@@ -1093,7 +1096,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       return result(made.record, made.session.trace(), null);
     },
 
-    async openVoice(id, providers) {
+    async openVoice(id, providers, childName) {
       const log = seams.connections;
       if (!log) return { ok: false, error: "unavailable" };
       const found = await store.get(id);
@@ -1105,8 +1108,10 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       if (!asked) return { ok: false, error: "model_unavailable" };
       const model = watched(asked, (state) => { refusal = state; });
       const restored = structuredClone(found.live.text);
-      restored.session.variety.name = null;
-      restored.session.variety.nameAt = null;
+      // Savar, 2026-11-12: Maya may say the child's first name on a voice call, as in chat. The session keeps the name
+      // its start was given (startVoice, from the server). Every trace this handle stores hides it as {name}: the name
+      // the session says, else the one the worker read from the database (`childName`).
+      const name = savedName(restored) ?? childName?.trim() ?? null;
       const claim: CallChange = { speechToText: providers.speechToText, voice: providers.voice, live: { ...found.live, text: restored } };
       if (!(await store.update(found.id, found.revision, claim))) return { ok: false, error: "conflict" };
       let record: CallRecord = { ...found, ...claim, revision: found.revision + 1 };
@@ -1118,7 +1123,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       let told = 0;
       /** The worker's ear on the child turn that runs now (VoiceSay). Other inputs give their words with their turn. */
       let listener: VoiceSay | null = null;
-      const session = textSession(record, pkg, model, null, restored, undefined, undefined, undefined, undefined, undefined, (out) => {
+      const session = textSession(record, pkg, model, name, restored, undefined, undefined, undefined, undefined, undefined, (out) => {
         persist(out);
         const from = told;
         told = session.trace().turns.length;
@@ -1187,7 +1192,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
             time.reviewMs += a.reviewMs ?? 0;
           }
           if (!t.output) continue;
-          word += speechWords(t.output.say.join(" ")).length;
+          // The trace hides the name as {name}, one word; the voice says the name, which can be two ("Mary Ann").
+          word += speechWords(name ? t.output.say.join(" ").replaceAll("{name}", name) : t.output.say.join(" ")).length;
           for (const id of t.output.board) ends.set(id, word);
         }
         const boardCues = out.board.map(batch => ({ batch, word: ends.get(batch.transactionId) ?? speechWords(out.say.join(" ")).length }));
@@ -1212,7 +1218,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         let closed: Awaited<ReturnType<typeof closeAtCap>> = null;
         later(async () => {
           if (lost || record.status === "ended" || !record.live) return;
-          closed = await closeAtCap(record, state, null, connected, childText);
+          closed = await closeAtCap(record, state, name, connected, childText);
           if (!closed) { lost = true; replaced = true; }
           else record = closed.record;
         });
@@ -1348,7 +1354,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           later(async () => {
             if (lost || record.status === "ended" || !record.live) return;
             // Restore only accepted, saved work. An outstanding model answer cannot delay the deadline.
-            const final = textSession(record, pkg, idleModel(record), null, record.live.text);
+            const final = textSession(record, pkg, idleModel(record), name, record.live.text);
             await final.tick();
             const ended = await end(record, pkg, final, {}, connected, record.startedAt === null);
             if (!ended) { lost = true; replaced = true; }
@@ -1389,7 +1395,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           if (record.status === "live") {
             later(async () => {
               // A fatal close or hang-up must not wait for an unfinished model turn.
-              const final = textSession(record, pkg, idleModel(record), null, record.live!.text);
+              const final = textSession(record, pkg, idleModel(record), name, record.live!.text);
               const ended = await end(record, pkg, final, how, connected, record.startedAt === null);
               if (!ended) { lost = true; replaced = true; }
               else record = ended;
@@ -1425,7 +1431,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         // be running (the worker stopped without ending it).
         const started = record.startedAt === null ? null : Date.parse(record.startedAt);
         if (input.type !== "end" || (started !== null && seams.clock() - started < VOICE_CALL_STALE_MS)) return { ok: false, error: "voice_call" };
-        const session = textSession(record, record.live.package, idleModel(record), childName, record.live.text);
+        const session = textSession(record, record.live.package, idleModel(record), savedName(record.live.text) ?? childName, record.live.text);
         const detail = started === null ? "Maya did not join the voice call" : "the voice call stopped without an end";
         // Connection times that cannot be read refuse the end (the read throws), so a later end stores the connected
         // seconds from them rather than 0 seconds (#528 review). As in the worker's own end, the room time counts through the last
