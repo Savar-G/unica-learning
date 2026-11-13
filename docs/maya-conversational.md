@@ -63,6 +63,24 @@ Code also tells the model facts about the child's numbers. For 52 - 28 and "Is 2
 - **The child's name never goes to a model.** The brief and the review read {name}; code fills the name after the checks, about one turn in three.
 - **Code plans the turn before anything streams.** The model writes "kind" first (math, help, offtopic, stop, safety, other). A math or help turn streams under code's own plan; any other kind reviews each sentence first; safety streams nothing. Once a sentence is out, code's plan wins, so no sent sentence is ever followed by a refused act; a sentence said before a safety turn stays first in the saved turn, before the guidance.
 
+## Independent round 4 review repairs (2026-11-13)
+
+The review at `50ed9178` found four defects through the public text adapter. The repairs require review of personal statements, general acknowledgements and characters the word parser cannot classify. A closed word list alone does not establish a safe meaning. Concrete math statements, math questions, positive math instructions and exact safe sentences keep their streaming path.
+
+An uncredited place's result stays hidden even when its digit is also a printed operand. The checks read place declarations in either order, the whole reply and each streaming prefix. A final answer cannot be disclosed one place per sentence.
+
+Model briefs and review inputs now use the same Unicode name filter as parent notes. The filter has no AI or note dependency. It covers accented, decomposed, full-width and unspaced names. These repairs have synthetic public-interface tests. They need the final practice pass and live checks before release.
+
+## Prepared replies (C2)
+
+`TextSession.prepare(text)` can start a reply to an interim transcript. The session can also prepare the expected value and a known wrong value after it delivers a turn. Preparation requires an explicit spend seam. It is off for callers that have none. The voice worker does not yet pass that seam into the text session.
+
+Preparation copies the controller fold through its checkpoint serializer. It changes no real log, saved state, output or credit. At most three requests start for one child turn. A prepared reply belongs to that turn and can be used once. A final turn must have the same code-derived key and pass the plain-math guard. An interim also needs equal normalized text. All output checks and credit decisions run from the real final turn.
+
+The caller supplies synchronous `take`, `settle` and `giveBack` methods. A used reply stays a speculative attempt and settles with `used: true`. An unused sent request is aborted and charged. A provider that ignores abort cannot send late speech. If no price returns within the bounded request time, the settlement keeps at least the reserved allowance. The caller must enforce its cap and keep two live attempts free.
+
+The output reports `prepared`, `preparedLeadMs` and `preparedKind`. The trace records committed use and discard metadata. Saved sessions contain no prepared promises or hypotheses. Local tests do not establish a live latency improvement or acceptance of the caller's budget implementation.
+
 ## The prompt
 
 `CONVERSATION_PROMPT` in `src/lib/maya-model.ts`, version `maya-conversation-3`. It is 3,832 characters; the version 2 prompt was 15,396, and its input with the line offers 24,954 against 3,016 for the turn brief (52 - 28, the second turn).

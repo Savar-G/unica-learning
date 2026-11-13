@@ -71,7 +71,7 @@ export interface SayRules {
    * Round 4, P1-3: the steps the child has no credit for (and code's plan does not show): no sentence holds a step's
    * operands together with its result, in any wording.
    */
-  openSteps?: readonly { operands: readonly SayValue[]; result: SayValue }[];
+  openSteps?: readonly { operands: readonly SayValue[]; result: SayValue; place?: string }[];
   /** Round 4, P1-3: the open answer's digits with their places ([2, "tens"], [4, "ones"]): never all said as places. */
   answerPlaces?: readonly [number, string][];
   /**
@@ -409,6 +409,10 @@ function placed(text: string): [number, string][] {
     const n = /\d/.test(m[1]) ? Number(m[1]) : ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"].indexOf(m[1]);
     out.push([n, plural(m[2])]);
   }
+  for (const m of text.toLowerCase().matchAll(new RegExp(`\\b(${PLACES})\\s*(?:(?:is|are|equals|gets|has)\\s+|:\\s*)(\\d+|zero|one|two|three|four|five|six|seven|eight|nine)\\b`, "g"))) {
+    const n = /\d/.test(m[2]) ? Number(m[2]) : ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"].indexOf(m[2]);
+    out.push([n, plural(m[1])]);
+  }
   return out;
 }
 
@@ -468,6 +472,9 @@ export function checkSentence(sentence: string, rules: SayRules, index = 0): Say
   const tokens = sayNumbers(text);
   if ((rules.openSteps ?? []).some((st) => stepLeak(tokens, st))) return no("reveals_step", `"${sentence}" works out a step the child has not done: never say its result.`);
   const places = placed(text);
+  if ((!question || tokens.length === 1) && (rules.openSteps ?? []).some((st) => st.place && places.some(([n, p]) => p === st.place && sameSayValue(numberValue(n), st.result)))) {
+    return no("reveals_step", `"${sentence}" states the result of a place the child has not done.`);
+  }
   if (rules.answerPlaces?.length && rules.answerPlaces.every(([d, p]) => places.some(([n, q]) => n === d && q === p))) {
     return no("reveals_answer", `"${sentence}" says the answer as its places: the child has not found it yet.`);
   }
@@ -504,6 +511,10 @@ export function checkSay(say: string, rules: SayRules): SayVerdict {
   for (const [i, x] of sentences.entries()) {
     const v = checkSentence(x, rules, i);
     if (!v.ok) return v;
+  }
+  const places = placed(say);
+  if (rules.answerPlaces?.length && rules.answerPlaces.every(([d, p]) => places.some(([n, q]) => n === d && q === p))) {
+    return { ok: false, reason: "reveals_answer", detail: "The reply says the open answer as its places across sentences.", sentence: sentences.length - 1 };
   }
   if (rules.closing && sentences.some((x) => /\?\s*$/.test(x) || /^(?:tell me|can you|could you|what|which|how)\b/i.test(x))) {
     return { ok: false, reason: "close_asks", detail: "This reply ends the call: say a short goodbye and ask nothing.", sentence: sentences.length - 1 };

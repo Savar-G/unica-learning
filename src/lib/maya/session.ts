@@ -67,6 +67,7 @@ import { ACTS, PART_LIMITS, PROPOSAL_VERSION, isModelOutput, readModelOutput, wi
 import { checkSay, checkSentence, endsWithAsk, INSTRUCTION, MATH_WORD, PRAISE_WORDS, trimSay, equationKeysOf, equationsOf, sentencesOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, type SayReason, type SayRules, type SayValue } from "./say-check";
 import type { TalkReviewResult } from "./talk-review";
 import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
+import { hideName as redactChildName } from "../child-name-redaction";
 
 /** Closing starts 9 minutes into the call; the call ends at 10 minutes. */
 export const TIME_LIMITS = { closingAtMs: 9 * 60_000, endAtMs: 10 * 60_000 } as const;
@@ -4709,7 +4710,7 @@ function leakRules(before: Session, after: Session, planned: string, released: b
   const openSteps = open.flatMap((st) => {
     const result = stepAnswers(st).flatMap(sayValues)[0];
     const operands = leakOperands(st);
-    return result && operands.length ? [{ operands: operands.map(numberValue), result }] : [];
+    return result && operands.length ? [{ operands: operands.map(numberValue), result, ...("place" in st && typeof st.place === "string" ? { place: st.place } : {}) }] : [];
   });
   const answer = pkg.answer.value;
   const digits = answer.type === "number" && Number.isInteger(answer.value) && answer.value >= 10 ? String(answer.value).split("").map(Number) : [];
@@ -4760,8 +4761,7 @@ function reviewNeeded(sentence: string, s: Session, rules: Pick<SayRules, "stanc
 /** The child's name hidden as {name}: no model reads it (round 4, P2-6). */
 export function hideName(text: string, name: string | null | undefined): string {
   const n = name?.trim();
-  if (!n) return text;
-  return text.replace(new RegExp(`\\b${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "gi"), "{name}");
+  return n ? redactChildName(text, n, "{name}") : text;
 }
 
 /** The {name} the model wrote, filled with the child's name after the checks; left out right after a turn that said it. */
@@ -5000,10 +5000,11 @@ export function streamPlan(s: Session): { rules: SayRules; act: Act; stance: "wr
  * first (any other sentence, or every sentence on a turn the model did not read as math or help), or "stop" (a check
  * fails, a bare question, past the limits): the rest waits for the whole reply.
  */
-export function streamSentence(sentence: string, plan: NonNullable<ReturnType<typeof streamPlan>>, index: number, wordsBefore: number, reviewAll: boolean): "send" | "review" | "stop" {
+export function streamSentence(sentence: string, plan: NonNullable<ReturnType<typeof streamPlan>>, index: number, wordsBefore: number, reviewAll: boolean, previous: readonly string[] = []): "send" | "review" | "stop" {
   if (index >= 3 || wordsBefore + sentence.split(/\s+/).filter(Boolean).length > plan.rules.wordLimit) return "stop";
   if (/\?\s*$/.test(sentence) && (plan.rules.noQuestion || !endsWithAsk(sentence))) return "stop";
   if (!checkSentence(sentence, plan.rules, index).ok) return "stop";
+  if (!checkSay([...previous, sentence].join(" "), { ...plan.rules, needsSubstance: false, mustAsk: null }).ok) return "stop";
   if (exactSafe(sentence)) return "send";
   return reviewAll || !mathOnly(sentence, plan.extra) || (plan.rules.stance === "wrong" && PRAISE_WORDS.test(sentence)) ? "review" : "send";
 }

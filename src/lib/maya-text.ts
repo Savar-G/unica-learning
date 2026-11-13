@@ -426,7 +426,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       const parts = sentencesOf(said.text);
       const complete = said.complete ? parts : parts.slice(0, -1);
       for (const sentence of complete.slice(seen)) {
-        const how = streamSentence(sentence, plan, seen, words, reviewAll);
+        const how = streamSentence(sentence, plan, seen, words, reviewAll, complete.slice(0, seen));
         if (how === "stop" || (how === "review" && !options.reviewer)) { streamDone = true; return; }
         seen++;
         words += sentence.split(/\s+/).filter(Boolean).length;

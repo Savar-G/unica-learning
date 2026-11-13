@@ -212,3 +212,59 @@ describe("a hello streams like a math turn", () => {
     expect(c.reviewer.requests).toHaveLength(0);
   });
 });
+
+describe("round 4 re-review: statements, place results and names", () => {
+  for (const stream of [false, true]) {
+    it.each([
+      "You are nothing.",
+      "You are no good at math.",
+      "You should stop trying.",
+      "You can do nothing.",
+      "There is no need to try the ones.",
+      "你真笨。",
+    ])("reviews personal or unclassified output, stream=" + stream + ": %s", async (bad) => {
+      const c = call(() => reply(`${bad} What can you do in the ones?`, "guide", { step: "ones" }), { stream });
+      const [out] = await said(c, ["Can we start?"]);
+      expect(out).not.toContain(bad);
+      expect(c.parts.join(" ")).not.toContain(bad);
+      expect(c.reviewer.requests.length).toBeGreaterThan(0);
+    });
+
+    it.each(["That works.", "It checks out.", "That adds up."])("does not affirm wrong work, stream=" + stream + ": %s", async (affirmation) => {
+      const c = call(() => reply(`${affirmation} What is 12 minus 8?`, "guide", { step: "ones", level: 2, reading: { answers: [ans(5, "ones", "wrong")] } }), { stream });
+      const [out] = await said(c, ["12 minus 8 is 5."]);
+      expect(out).not.toContain(affirmation);
+      expect(c.parts.join(" ")).not.toContain(affirmation);
+    });
+
+    it.each([
+      "The tens are 2. The ones are 4. What is the whole answer?",
+      "Two tens. Four ones. What is the whole answer?",
+      "Write 2 in the tens. What is the whole answer?",
+    ])("keeps an open place result hidden, stream=" + stream + ": %s", async (bad) => {
+      const c = call((b) => /12 minus 8/.test(b.childTurn ?? "")
+        ? reply("Yes, 12 minus 8 is 4. What is 4 minus 2?", "guide", { step: "tens", reading: { answers: [ans(4, "ones")] } })
+        : reply(bad, "guide", { step: "tens" }), { stream });
+      await said(c, ["12 minus 8 is 4."]);
+      c.parts.length = 0;
+      const out = await c.session.child("I don't know the tens.");
+      expect(out.say.join(" ")).not.toContain(bad);
+      expect(c.parts.join(" ")).not.toMatch(/(?:tens are 2|two tens|2 in the tens)/i);
+    });
+  }
+
+  it.each([
+    ["José", "José"], ["Élodie", "Élodie"], ["李明", "李明"],
+    ["José", "Jose\u0301"], ["Zoë", "Ｚｏｅ"], ["李明", "我叫李明"],
+  ])("hides the name %s as written %s from briefs and reviews", async (name, written) => {
+    const c = call(() => reply("I hear you. What can you do in the ones?", "guide", { step: "ones" }), { name });
+    await said(c, [`Hi, I am ${written}. Can we start?`]);
+    const modelText = JSON.stringify(c.model.briefs);
+    const reviewText = JSON.stringify(c.reviewer.requests);
+    for (const text of [modelText, reviewText]) {
+      expect(text).not.toContain(name);
+      expect(text).not.toContain(written);
+      expect(text).toContain("{name}");
+    }
+  });
+});

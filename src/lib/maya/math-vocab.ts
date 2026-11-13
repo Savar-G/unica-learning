@@ -1,6 +1,7 @@
 // The closed vocabulary of math-only sentences (D-341, round 4): a sentence Maya says with no review must use only
 // these words, the question's own words and the child's name token. Any other word sends the sentence to the review.
-// An allow-list, not a block-list: a new kind of unsafe sentence needs a new word, and a new word goes to the review.
+// The vocabulary is only the first check. Personal statements, general acknowledgements and unclassified characters
+// also need a review. A word list alone cannot establish the meaning of a sentence.
 // Exact safe sentences that are not math (EXACT_SAFE) also skip the review; nothing else does.
 
 /** Words of numbers, written out. Digits are numbers already. */
@@ -102,11 +103,32 @@ export function wordsOf(sentence: string): string[] {
 const MATH_OBJECT = /\b(?:ones|tens|hundreds|thousands|column|digit|number|answer|step|sum|difference|plus|minus|times|divided|total|top|bottom|regroup\w*|carr\w+|fraction|example|question|problem)\b|\d/i;
 
 /**
- * A math-only sentence (round 4): every word in MATH_VOCAB or the question's own words (`extra`), and a question to the
- * child ("you", "your") names the math it asks about. The child's name is the token {name}.
+ * A math sentence that code can send without review: classified words in a concrete math statement, question or
+ * positive instruction. General personal statements need review. The child's name is the token {name}.
  */
 export function mathOnly(sentence: string, extra: ReadonlySet<string> = new Set()): boolean {
-  if (!wordsOf(sentence).every((w) => MATH_VOCAB.has(w) || extra.has(w))) return false;
-  if (/\?\s*$/.test(sentence) && /\b(?:you|your|you're)\b/i.test(sentence) && !MATH_OBJECT.test(sentence)) return false;
-  return true;
+  const text = sentence.replace(/[’]/g, "'").trim();
+  // A parser that reads ASCII words cannot establish the meaning of other letters or symbols.
+  if (/[^a-z0-9\s.,?!:;()'"+*=<>%/\-×÷−]/i.test(text.replace(/\{name\}/g, " "))) return false;
+  const words = wordsOf(text);
+  if (!words.every((w) => MATH_VOCAB.has(w) || extra.has(w))) return false;
+  if (/^(?:hi|hello|hey)(?:\s+(?:\{name\}|there))?[.!]*$/i.test(text)) return true;
+  const concrete = MATH_OBJECT.test(text) || words.some((w) => NUMBER_WORDS.includes(w));
+  if (!concrete) return false;
+  // A word list does not make a personal statement safe. Only a math question or positive math instruction
+  // can address the child without review. Other personal statements always go to the independent review.
+  const personal = /\b(?:you|your|you're|yourself|we|us|our|we're|i|me|my|i'm)\b/i;
+  const question = /\?\s*$/.test(text);
+  const instruction = /^(?:(?:let's|can you|could you|will you|would you|you can|you could|you should|we can|we could|we should)\s+)?(?:look at|check|try|add|subtract|multiply|divide|count|write|regroup|carry|trade|find|work out|start with|begin with|take)\b/i.exec(text);
+  // This exact regroup action describes the math, rather than the people in the call.
+  const personalText = text.replace(/\bwe (?:can )?(?:take|trade|regroup) (?:a|one|1) ten\b/gi, "a ten");
+  if (personal.test(personalText)) {
+    if (question && /^(?:what|which|how many|how much)\b/i.test(text) && /\b(?:do|did|can|could|would|will) you\b/i.test(text) && !/\b(?:you're|yourself|your|we|us|our|i|me|my)\b/i.test(text)) return true;
+    if (!instruction || personal.test(text.slice(instruction[0].length))) return false;
+  }
+  if (instruction) return !/\b(?:no|not|nothing|stop|never)\b/i.test(text);
+  if (question) return /^(?:what|which|how|where|is|are|can|could|do|does)\b/i.test(text);
+  // Plain number/place statements stream. General observations and acknowledgements need a review.
+  const statement = text.replace(/^(?:yes[,!]?|so|since|because|now|then)\s+/i, "");
+  return /^(?:[0-9]|zero\b|one\b|two\b|three\b|four\b|five\b|six\b|seven\b|eight\b|nine\b|ten\b|eleven\b|twelve\b|thirteen\b|fourteen\b|fifteen\b|sixteen\b|seventeen\b|eighteen\b|nineteen\b|twenty\b|thirty\b|forty\b|fifty\b|sixty\b|seventy\b|eighty\b|ninety\b|(?:the )?(?:ones|tens|hundreds|thousands|top|bottom|number|digit|fraction|numerator|denominator)\b)/i.test(statement);
 }
