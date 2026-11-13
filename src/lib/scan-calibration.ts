@@ -51,6 +51,20 @@ export interface Calibration {
   quarterTurns: 0 | 1 | 2 | 3;
   /** The share of the page's dark printed cells that the photo holds in the same place. */
   pageFit: number;
+  /**
+   * A bent, curled or bowed sheet (#912): where the printed page sits from where `transform` alone puts it, in page image
+   * pixels, as quadratic coefficients over the page's position (`bendAt`). Absent for a flat sheet.
+   */
+  bend?: Bend;
+}
+
+/** A sheet's bend: coefficients of 1, u, v, u², uv, v² for each direction, u and v from -0.5 to 0.5 across the page. */
+export interface Bend { dx: number[]; dy: number[] }
+
+/** Where a bent sheet puts a page point, in page image pixels, before the map. */
+export function bendAt(bend: Bend, page: { width: number; height: number }, x: number, y: number): Point {
+  const u = x / page.width - 0.5, v = y / page.height - 0.5, terms = [1, u, v, u * u, u * v, v * v];
+  return { x: x + terms.reduce((sum, t, i) => sum + t * bend.dx[i], 0), y: y + terms.reduce((sum, t, i) => sum + t * bend.dy[i], 0) };
 }
 
 /**
@@ -317,6 +331,14 @@ const FIT_CELL = 16;
 const FIT_SHIFT = 2;
 /** How closely a cell's grey must follow the printed cell, as a correlation, for it to count as this page's cell. */
 const CELL_MATCH = 0.6;
+/** A bent sheet (#912): how far, in grid pixels, the middle of the page may sit from where the four marks put it. */
+const BEND_REACH = 10;
+/** A cell that matches this well within BEND_REACH says where the sheet's bend puts that part of the page. */
+const BEND_ANCHOR = 0.8;
+/** The share of the page's cells that must say where the bend is before a bend is fitted. */
+const BEND_MIN_ANCHORS = 0.5;
+/** A map that misses more than this share of cells is not a bent sheet of this page: no bend is tried. */
+const BEND_MAX_MISSES = 0.6;
 /** A printed cell whose grey varies less than this (a standard deviation of 8 grey levels, squared) is one even shade. */
 const FLAT_SPREAD = 64;
 /**
@@ -427,7 +449,7 @@ function fitGrids(printed: Pick<PreparedPrinted, "width" | "height" | "greySums"
  * out thin or missing, and the same page would pass from close up and fail from further away. A correlation does not care
  * about shade or contrast.
  */
-function pageFit(printed: PrintedInk, photoSums: Uint32Array, photo: { width: number; height: number }, t: Transform, atLeast = MIN_PAGE_FIT): number {
+function pageFit(printed: PrintedInk, photoSums: Uint32Array, photo: { width: number; height: number }, t: Transform, atLeast = MIN_PAGE_FIT, found?: { bend?: Bend }): number {
   const { width, cells } = printed;
   if (cells.length === 0) return 0;
   const { a, b } = fitGrids(printed, photoSums, photo, t);
@@ -443,23 +465,90 @@ function pageFit(printed: PrintedInk, photoSums: Uint32Array, photo: { width: nu
     if (spreadA >= n * n * FLAT_SPREAD) shaped.push({ ...c, sumA, spreadA });
   }
   if (shaped.length === 0) return 0;
-  const allowedMisses = Math.floor(shaped.length * (1 - atLeast));
-  let misses = 0;
-  for (const { x, y, sumA, spreadA } of shaped) {
-    let held = false;
-    for (let dy = -FIT_SHIFT; dy <= FIT_SHIFT && !held; dy++) for (let dx = -FIT_SHIFT; dx <= FIT_SHIFT && !held; dx++) {
-      if (y + dy < 0 || x + dx < 0 || y + dy + FIT_CELL > height || x + dx + FIT_CELL > width) continue;
+  /** The best correlation of a cell with the photo around (ox, oy), within `reach` grid pixels, and where it was found. */
+  const bestNear = (c: typeof shaped[number], ox: number, oy: number, reach: number) => {
+    let best = -1, bx = 0, by = 0;
+    for (let dy = oy - reach; dy <= oy + reach; dy++) for (let dx = ox - reach; dx <= ox + reach; dx++) {
+      if (c.y + dy < 0 || c.x + dx < 0 || c.y + dy + FIT_CELL > height || c.x + dx + FIT_CELL > width) continue;
       let sumB = 0, sumBB = 0, sumAB = 0;
       for (let j = 0; j < FIT_CELL; j++) for (let i = 0; i < FIT_CELL; i++) {
-        const p = a[(y + j) * width + x + i], q = b[(y + dy + j) * width + x + dx + i];
+        const p = a[(c.y + j) * width + c.x + i], q = b[(c.y + dy + j) * width + c.x + dx + i];
         sumB += q; sumBB += q * q; sumAB += p * q;
       }
       const spreadB = n * sumBB - sumB * sumB;
-      if (spreadB > 0 && (n * sumAB - sumA * sumB) >= CELL_MATCH * Math.sqrt(spreadA * spreadB)) held = true;
+      const r = spreadB > 0 ? (n * sumAB - c.sumA * sumB) / Math.sqrt(c.spreadA * spreadB) : -1;
+      if (r > best) { best = r; bx = dx; by = dy; }
     }
-    if (!held && ++misses > allowedMisses) return 0;
+    return { r: best, dx: bx, dy: by };
+  };
+  const allowedMisses = Math.floor(shaped.length * (1 - atLeast));
+  const missed: typeof shaped = [];
+  for (const c of shaped) {
+    if (bestNear(c, 0, 0, FIT_SHIFT).r >= CELL_MATCH) continue;
+    missed.push(c);
+    // Far from this page in this map: no bend of the sheet makes it fit (#912), so stop early as before.
+    if (missed.length > allowedMisses && (atLeast !== MIN_PAGE_FIT || missed.length > shaped.length * BEND_MAX_MISSES)) return 0;
   }
+  if (missed.length <= allowedMisses) return 1 - missed.length / shaped.length;
+  return bentPageFit(shaped, missed.length, bestNear, width, height, allowedMisses, found);
+}
+
+/**
+ * The fit of a page whose sheet is bent, curled or bowed (#912): its four marks place the corners, but the middle of the
+ * printed page sits a few grid pixels away from where a flat sheet would put it. The cells that match well far from their
+ * flat place give a smooth bend (a quadratic in the page's position, for each direction); every cell is then compared
+ * again at its bent place with the usual small reach. A different page has no smooth bend that holds its print, so it
+ * still fails, and the QR code stays required.
+ */
+function bentPageFit<C extends { x: number; y: number }>(shaped: readonly C[], flatMisses: number,
+  bestNear: (c: C, ox: number, oy: number, reach: number) => { r: number; dx: number; dy: number }, width: number, height: number, allowedMisses: number,
+  found?: { bend?: Bend }): number {
+  const anchors: { u: number; v: number; dx: number; dy: number }[] = [];
+  for (const c of shaped) {
+    const f = bestNear(c, 0, 0, BEND_REACH);
+    if (f.r >= BEND_ANCHOR) anchors.push({ u: (c.x + FIT_CELL / 2) / width - 0.5, v: (c.y + FIT_CELL / 2) / height - 0.5, dx: f.dx, dy: f.dy });
+  }
+  if (anchors.length < shaped.length * BEND_MIN_ANCHORS) return 1 - flatMisses / shaped.length;
+  const fx = smoothFit(anchors, (a) => a.dx), fy = smoothFit(anchors, (a) => a.dy);
+  if (!fx || !fy) return 1 - flatMisses / shaped.length;
+  const bend = { dx: (u: number, v: number) => fx.at(u, v), dy: (u: number, v: number) => fy.at(u, v) };
+  let misses = 0;
+  for (const c of shaped) {
+    const u = (c.x + FIT_CELL / 2) / width - 0.5, v = (c.y + FIT_CELL / 2) / height - 0.5;
+    const ox = Math.round(bend.dx(u, v)), oy = Math.round(bend.dy(u, v));
+    if (Math.abs(ox) > BEND_REACH || Math.abs(oy) > BEND_REACH || bestNear(c, ox, oy, FIT_SHIFT).r < CELL_MATCH) misses++;
+    if (misses > allowedMisses) return 1 - Math.min(flatMisses, misses) / shaped.length;
+  }
+  // In page image pixels: the grid is half the page image, and u, v are the same share of the page on both.
+  if (found) found.bend = { dx: fx.weights.map((w) => w * 2), dy: fy.weights.map((w) => w * 2) };
   return 1 - misses / shaped.length;
+}
+
+/** A least-squares quadratic surface in (u, v) through the anchors' values, refit once without its worst outliers. */
+function smoothFit<T extends { u: number; v: number }>(points: readonly T[], value: (p: T) => number): { weights: number[]; at: (u: number, v: number) => number } | null {
+  const terms = (u: number, v: number) => [1, u, v, u * u, u * v, v * v];
+  const solve = (ps: readonly T[]) => {
+    const k = 6, m = Array.from({ length: k }, () => new Array(k + 1).fill(0));
+    for (const p of ps) {
+      const t = terms(p.u, p.v), y = value(p);
+      for (let i = 0; i < k; i++) { for (let j = 0; j < k; j++) m[i][j] += t[i] * t[j]; m[i][k] += t[i] * y; }
+    }
+    for (let i = 0; i < k; i++) m[i][i] += 1e-6;
+    for (let col = 0; col < k; col++) {
+      let pivot = col;
+      for (let r = col + 1; r < k; r++) if (Math.abs(m[r][col]) > Math.abs(m[pivot][col])) pivot = r;
+      if (Math.abs(m[pivot][col]) < 1e-12) return null;
+      [m[col], m[pivot]] = [m[pivot], m[col]];
+      for (let r = 0; r < k; r++) if (r !== col) { const f = m[r][col] / m[col][col]; for (let c = col; c <= k; c++) m[r][c] -= f * m[col][c]; }
+    }
+    const weights = m.map((row, i) => row[k] / row[i]);
+    return { weights, at: (u: number, v: number) => terms(u, v).reduce((sum, t, i) => sum + t * weights[i], 0) };
+  };
+  if (points.length < 12) return null;
+  const first = solve(points);
+  if (!first) return null;
+  const kept = points.filter((p) => Math.abs(value(p) - first.at(p.u, p.v)) <= FIT_SHIFT);
+  return kept.length >= 12 ? solve(kept) : first;
 }
 
 // ---------- One sheet, this page ----------
@@ -911,7 +1000,7 @@ export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: Ph
   const stored = SCAN_MARKS.map((m) => contract.marks.points[m]);
   const pageSize = contract.coordinates.image;
   let refusal: CalibrationRefusal = "marks-inconsistent";
-  const followers: { order: MarkShape[]; t: Transform; turns: 0 | 1 | 2 | 3; fit: number; next: number | null }[] = [];
+  const followers: { order: MarkShape[]; t: Transform; turns: 0 | 1 | 2 | 3; fit: number; bend?: Bend; next: number | null }[] = [];
   for (const quad of quads) {
     const sides = quad.map((m, i) => distance(m.corner, quad[(i + 1) % 4].corner));
     if (Math.min(sides[0], sides[2]) / Math.max(sides[0], sides[2]) < MIN_SIDE_RATIO || Math.min(sides[1], sides[3]) / Math.max(sides[1], sides[3]) < MIN_SIDE_RATIO) continue;
@@ -925,7 +1014,9 @@ export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: Ph
       const order = stored.map((_, i) => quad[(i + turns) % 4]);
       const t = perspectiveTransform(stored, order.map((m) => m.corner));
       if (!t || !armsFit(order, t)) return [];
-      return [{ turns, order, t, fit: pageFit(ink, greySums, photo, t) }];
+      const found: { bend?: Bend } = {};
+      const fit = pageFit(ink, greySums, photo, t, MIN_PAGE_FIT, found);
+      return [{ turns, order, t, fit, ...(found.bend ? { bend: found.bend } : {}) }];
     }).sort((a, b) => b.fit - a.fit);
     if (ways.length === 0) continue;
     const best = ways[0];
@@ -945,6 +1036,7 @@ export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: Ph
       version: CALIBRATION_VERSION, revision, photo: { width: photo.width, height: photo.height },
       marks: Object.fromEntries(SCAN_MARKS.map((m, i) => [m, best.order[i].corner])) as Record<ScanMark, Point>,
       transform: best.t, quarterTurns: best.turns, pageFit: Math.round(best.fit * 1000) / 1000,
+      ...(best.bend ? { bend: best.bend } : {}),
     },
   };
 }
@@ -956,14 +1048,15 @@ export const calibrationForPhoto = (c: Calibration, photo: { printedRevision: st
 // ---------- Cutting the page ----------
 
 /** A box of the page image, cut from the photo through the map, at `out` pixels. Pixels off the photo are white. */
-export function warpBox(photo: Raster, t: Transform, box: Box, out: { width: number; height: number }): Raster {
+export function warpBox(photo: Raster, t: Transform, box: Box, out: { width: number; height: number }, bent?: { bend: Bend; page: { width: number; height: number } }): Raster {
   const { channels, width: w, height: h, data } = photo;
   const result = new Uint8Array(out.width * out.height * channels);
   const sx = box.width / out.width, sy = box.height / out.height;
   for (let oy = 0; oy < out.height; oy++) {
-    const py = box.y + (oy + 0.5) * sy;
+    const by = box.y + (oy + 0.5) * sy;
     for (let ox = 0; ox < out.width; ox++) {
-      const px = box.x + (ox + 0.5) * sx;
+      const bx = box.x + (ox + 0.5) * sx;
+      const { x: px, y: py } = bent ? bendAt(bent.bend, bent.page, bx, by) : { x: bx, y: by };
       const d = t[6] * px + t[7] * py + t[8];
       const u = (t[0] * px + t[1] * py + t[2]) / d - 0.5;
       const v = (t[3] * px + t[4] * py + t[5]) / d - 0.5;
@@ -987,7 +1080,7 @@ export function warpBox(photo: Raster, t: Transform, box: Box, out: { width: num
 /** The whole page, straightened, at the size the contract says it printed. */
 export function straightenedPage(photo: Raster, c: Calibration, contract: PagePrintContract): Raster {
   const { width, height } = contract.coordinates.image;
-  return warpBox(photo, c.transform, { x: 0, y: 0, width, height }, { width, height });
+  return warpBox(photo, c.transform, { x: 0, y: 0, width, height }, { width, height }, c.bend ? { bend: c.bend, page: { width, height } } : undefined);
 }
 
 /** How much space a crop keeps around its box, as a part of the box's shorter side, with a limit in image pixels. */
@@ -1007,7 +1100,8 @@ export function cropBox(photo: Raster, c: Calibration, contract: PagePrintContra
   const a = applyTransform(c.transform, { x: x0, y: y0 }), b = applyTransform(c.transform, { x: x1, y: y0 }), d = applyTransform(c.transform, { x: x0, y: y1 });
   const scale = Math.min(CROP_MAX_SCALE, Math.max(1, Math.max(distance(a, b) / cut.width, distance(a, d) / cut.height)));
   const fit = Math.min(1, CROP_MAX_SIDE / (Math.max(cut.width, cut.height) * scale));
-  return warpBox(photo, c.transform, cut, { width: Math.max(1, Math.round(cut.width * scale * fit)), height: Math.max(1, Math.round(cut.height * scale * fit)) });
+  return warpBox(photo, c.transform, cut, { width: Math.max(1, Math.round(cut.width * scale * fit)), height: Math.max(1, Math.round(cut.height * scale * fit)) },
+    c.bend ? { bend: c.bend, page: { width: iw, height: ih } } : undefined);
 }
 
 // ---------- What can be cropped today ----------
