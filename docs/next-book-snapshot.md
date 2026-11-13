@@ -117,9 +117,17 @@ The answer is stored as the planner gives it: `planHash`, `planningInput`, the p
 question has a `null` key), and `consumed` with `version` (the planner's `effectiveVersion`), `firstVersion` and
 `correctionIds`. `consumed` is checked against the ledger by key and version, in code and in `save_next_book_plan`.
 
-The planner refuses a Book 1 record made on another curriculum digest (`curriculum-version-changed` in
-`src/lib/workbook-book1-baseline.ts`; the planner's sentence is "The Book 1 starting plan is unavailable."). That chain
-stays frozen and due until the planner accepts it.
+**The plan's curriculum version (#812).** Book 2 is planned on today's curriculum, templates included (Book 1's
+structure must still hold, `docs/next-book-curriculum-history.md`). The only version label inside the progress decisions
+is Book 1's, so `planNextBookFromSnapshot` sets `planningInput.curriculum` to `{ key, version: curriculumVersion(key) }`
+at planning time; `planHash` covers it, and `save_next_book_plan` stores it inside `plan_input` (any object), so no
+migration is needed. The worker reads the plan with `nextBookRunPlan(store, snapshotId, curriculumVersion)`
+(`src/lib/next-book-snapshot.ts`): it refuses `curriculum-changed` when the version it runs on differs, and
+`curriculum-unrecorded` for a plan saved before this field existed. Nothing is planned again on a refusal.
+
+The planner refuses a Book 1 record whose curriculum structure changed since, or whose version is not in the archive
+(`nextBookCurriculumCompat`, `docs/next-book-curriculum-history.md`). That chain stays frozen and due until the planner
+accepts it.
 
 **The automatic step.** Its own cron route, `POST /api/next-book-prepare` (`src/app/api/next-book-prepare/route.ts`).
 Supabase `pg_cron` posts to it every 15 minutes (job `next-book-prepare`, migration `20261109173906_next_book_prepare_cron.sql`), with the
@@ -206,7 +214,8 @@ The database functions are service-only:
 
 ## Not built yet
 
-- The worker does not read `plan_input` yet. The planner owner adds that for runs with a `snapshot_id`.
+- The worker does not read `plan_input` yet. The planner owner adds that for runs with a `snapshot_id`, through
+  `nextBookRunPlan`, which refuses a plan made on another curriculum version.
 - The real planner is wired. Until the worker reads `plan_input`, both callers prepare test families only
   (`NEXT_BOOK_REAL_FAMILIES` is `false`).
 - The run is not routed to the Mac worker. A queued run stays on the default runner until a caller routes it.

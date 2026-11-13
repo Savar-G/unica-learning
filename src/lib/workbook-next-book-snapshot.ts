@@ -9,7 +9,7 @@ import { readFrozenWorkbookProgressHistory, readFrozenWorkbookReviewHistory, typ
 import { validateCatalog, type FrozenWorkbookSourcesV2, type WorkbookPreviewRequest } from "./workbook-progress-source";
 import { previewMultipleWorkbookSkills, type WorkbookPlanPreviewInput } from "./workbook-progress-plan";
 import { reviewInputsFromMarks, sourceReviewDay, type PrintedReviewEvidence, type PrintedReviewQuestion, type ReviewHeld } from "./workbook-review-from-marks";
-import type { CurriculumCompatSource } from "./workbook-curriculum/compat";
+import { CURRENT_CURRICULUM, type CurriculumCompatSource } from "./workbook-curriculum/compat";
 import type { CurriculumKey } from "./workbook-curriculum/types";
 import type { RunFrame } from "./workbook-job";
 import { planWorkbook, type PlanInput, type SpacedReview, type StepRef, type WorkbookPlan } from "./workbook-plan";
@@ -291,6 +291,10 @@ export function planNextBookFromSnapshot(input: { sources: FrozenWorkbookSources
     held.push(...heldCorrections.values());
     const consumed = [...used.values()].sort((a, b) => a.key.localeCompare(b.key));
     held.sort(compareValue);
+    // The version this plan was made on (today's, not Book 1's label): a run from the saved plan checks it (#812).
+    const key = baseline.curriculum.key as CurriculumKey, version = (options.curricula ?? CURRENT_CURRICULUM).version(key);
+    if (!version) return refuse("The curriculum the plan uses has no version.");
+    planningInput = { ...planningInput, curriculum: { key, version } };
     const planHash = sourceHash(JSON.parse(JSON.stringify({ planningInput, plan })));
     return { ok: true, planHash, planningInput, plan, consumed, held };
   } catch (error) {

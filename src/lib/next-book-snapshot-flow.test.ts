@@ -7,7 +7,7 @@ import type { FrozenWorkbookSourcesV2 } from "./workbook-progress-source";
 import { readWorkbookProgressHistory } from "./workbook-progress-history";
 import { historyFixture, historyId, historyTime } from "./workbook-progress-history.fixture";
 import { sourceHash } from "./workbook-progress-hash";
-import { itemKey, newEvidenceSince, prepareNextBook, readNextBookSnapshot, refreshNextBookSnapshot, type NextBookCapture, type NextBookDeps,
+import { itemKey, newEvidenceSince, nextBookRunPlan, prepareNextBook, readNextBookSnapshot, refreshNextBookSnapshot, type NextBookCapture, type NextBookDeps,
   type NextBookPlanner, type PrepareOutcome } from "./next-book-snapshot";
 import { memoryNextBookSnapshots } from "./next-book-snapshot-memory";
 import { snapshotRecord } from "./next-book-snapshot-store";
@@ -106,6 +106,34 @@ describe("prepareNextBook", () => {
     expect(w.calls).toHaveLength(1);
     const read = await readNextBookSnapshot(w.m.store, row.id);
     expect(read).toMatchObject({ ok: true, planInput: { workbook: { number: 2 } }, runId: done.runId, snapshot: { reason: "day7_scanned", sourceWorkbookId: BOOK, sourcePrintedRevision: REV } });
+  });
+
+  // Falsifier (#812): the run uses a plan made on another curriculum version, or a plan that never recorded one.
+  it("gives the run its saved plan only on the curriculum version the plan was made on", async () => {
+    const TODAY = "1".repeat(28), LATER = "2".repeat(28);
+    const w = world(), base = w.planner();
+    const recorded = (curriculum?: PlanInput["curriculum"]): NextBookPlanner => ({
+      async plan(input) {
+        const a = await base.plan(input);
+        return a.ok ? { ...a, planningInput: { ...a.planningInput, ...(curriculum ? { curriculum } : {}) } } : a;
+      },
+    });
+    expect(await nextBookRunPlan(w.m.store, historyId(77), () => TODAY)).toEqual({ ok: false, reason: "not-found" });
+    queued(await prepareNextBook(w.claim(), w.deps(recorded({ key: "bc", version: TODAY })), T0 + MIN));
+    const row = w.rows()[0];
+    expect(await nextBookRunPlan(w.m.store, row.id, key => key === "bc" ? TODAY : null))
+      .toEqual({ ok: true, snapshotId: row.id, planHash: row.plan!.planHash, planInput: { workbook: { number: 2 }, curriculum: { key: "bc", version: TODAY } } });
+    expect(await nextBookRunPlan(w.m.store, row.id, () => LATER)).toEqual({ ok: false, reason: "curriculum-changed" });
+    expect(await nextBookRunPlan(w.m.store, row.id, () => null)).toEqual({ ok: false, reason: "curriculum-changed" });
+
+    const old = world();
+    queued(await prepareNextBook(old.claim(), old.deps(recorded()), T0 + MIN));
+    expect(await nextBookRunPlan(old.m.store, old.rows()[0].id, () => TODAY)).toEqual({ ok: false, reason: "curriculum-unrecorded" });
+
+    const unplanned = world();
+    unplanned.m.state.jobs.set("photo-3", "waiting");
+    expect((await prepareNextBook(unplanned.claim(), unplanned.deps(), T0 + MIN)).status).toBe("waiting");
+    expect(await nextBookRunPlan(unplanned.m.store, unplanned.rows()[0].id, () => TODAY)).toEqual({ ok: false, reason: "not-frozen" });
   });
 
   it("freezes at the 30-minute deadline with a job still blocked, and labels the wait", async () => {

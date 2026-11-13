@@ -429,6 +429,26 @@ export async function readNextBookSnapshot(store: NextBookSnapshotStore, snapsho
     consumed: row.plan?.consumed ?? null, plannerHeld: row.plan?.held ?? null, runId: row.runId };
 }
 
+export type NextBookRunPlan =
+  | { ok: true; snapshotId: string; planHash: string; planInput: PlanInput }
+  | { ok: false; reason: Extract<NextBookSnapshotRead, { ok: false }>["reason"] | "not-planned" | "curriculum-unrecorded" | "curriculum-changed" };
+
+/**
+ * #812. The saved plan_input a run with this snapshot_id is made from, only on the curriculum version the plan was made
+ * on: a plan from before the version was recorded, or a worker on another version (`version(key)`, the worker's own
+ * curriculumVersion), is refused and nothing is planned again. The plan names its version; Book 1's label is not it.
+ */
+export async function nextBookRunPlan(store: NextBookSnapshotStore, snapshotId: string,
+  version: (key: string) => string | null): Promise<NextBookRunPlan> {
+  const read = await readNextBookSnapshot(store, snapshotId);
+  if (!read.ok) return read;
+  if (!read.planInput || !read.planHash) return { ok: false, reason: "not-planned" };
+  const c = read.planInput.curriculum;
+  if (!c || typeof c.key !== "string" || typeof c.version !== "string" || !c.version) return { ok: false, reason: "curriculum-unrecorded" };
+  if (version(c.key) !== c.version) return { ok: false, reason: "curriculum-changed" };
+  return { ok: true, snapshotId, planHash: read.planHash, planInput: read.planInput };
+}
+
 export type NewEvidence = { ok: true; days: number[]; pages: number; items: number } | { ok: false; reason: "not-found" | "not-frozen" | "evidence-regressed" | "invalid-evidence" };
 
 /**
