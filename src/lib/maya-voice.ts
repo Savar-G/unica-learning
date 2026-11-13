@@ -212,6 +212,14 @@ export interface VoiceTuning {
    * louder peak, and is kept.
    */
   dropSilentPeakDbfs: number | null;
+  /**
+   * The minimum silence (ms) of the worker's own detector (`detectorVad`, worker/maya-voice/src/heard-signals.ts): how
+   * long it waits after speech before it reports the end of speech. Its end-of-speech time is put back by this wait, so
+   * the `detectorEnd` mark does not move with it; the time the worker knows the speech ended does (the `detectorHeard`
+   * mark, and the prepare signal). The session's own VAD, which decides when the child's speech stops Maya, is not
+   * changed.
+   */
+  detectorMinSilenceMs: number;
 }
 
 /**
@@ -236,6 +244,8 @@ export const VOICE_TUNING_DEFAULTS: VoiceTuning = {
   interruptMinWords: 0,
   // Real speech in two real calls peaked at -2.7 and -2.9 dBFS (mean level -26 and -29.3): -50 is far below any voice.
   dropSilentPeakDbfs: -50,
+  // LiveKit Agents 1.9.5's local VAD default (inference/vad.js), set here so a call can change it (2026-11-13).
+  detectorMinSilenceMs: 250,
 };
 
 /** Each setting: its variable, the field it sets, and its bounds (both inclusive). */
@@ -248,6 +258,7 @@ const TUNING_SETTINGS = [
   { env: "MAYA_NUMBER_CONTINUE_MS", field: "numberContinueMs", min: 0, max: 3000 },
   { env: "MAYA_INTERRUPT_MIN_MS", field: "interruptMinMs", min: 0, max: 2000 },
   { env: "MAYA_INTERRUPT_MIN_WORDS", field: "interruptMinWords", min: 0, max: 5 },
+  { env: "MAYA_DETECTOR_MIN_SILENCE_MS", field: "detectorMinSilenceMs", min: 100, max: 2000 },
 ] as const satisfies readonly { env: string; field: Exclude<keyof VoiceTuning, "dropSilentPeakDbfs">; min: number; max: number }[];
 
 /** AssemblyAI's two end-of-turn silences (ms): `min_turn_silence` and `max_turn_silence`. */
@@ -411,6 +422,15 @@ export function childTurnFrom(finals: readonly (readonly Heard[])[]): { text: st
   const unsure = finals.filter((alts) => alts[0] && alts[0].text.trim() && typeof alts[0].confidence === "number" && alts[0].confidence < UNSURE_CONFIDENCE);
   const alternatives = [...new Set(unsure.flatMap((alts) => alts.slice(1).map((h) => h.text.trim()).filter(Boolean)))].slice(0, 4);
   return { text: best.map((h) => h.text.trim()).join(" "), uncertain: unsure.length > 0, alternatives };
+}
+
+/**
+ * A transcript as the prepare signal compares it (V2b, 2026-11-13): lower case, a hyphen or dash as a space, no other
+ * punctuation, one space between words. "Twelve-minus eight, is FOUR." and "twelve minus eight is four" are the same.
+ * Number words and digits are not the same: a speech-to-text partial says "four" where its formatted final says "4".
+ */
+export function normalizeTranscript(text: string): string {
+  return text.toLowerCase().replace(/[-‐-―]+/g, " ").replace(/[^\p{L}\p{N}\s]+/gu, "").replace(/\s+/g, " ").trim();
 }
 
 /**

@@ -1,7 +1,7 @@
 import { inference, initializeLogger, normalizeLanguage, stt, VADEventType, voice, type VAD, type VADEvent } from "@livekit/agents";
 import { AudioFrame } from "@livekit/rtc-node";
 import { describe, expect, it } from "vitest";
-import { finalSignals, HeardSignals, silentFinal } from "./heard-signals";
+import { detectorVad, finalSignals, HeardSignals, LEVEL_END_DBFS, PrepareSignal, silentFinal } from "./heard-signals";
 
 initializeLogger({ pretty: false, level: "silent" });
 
@@ -94,6 +94,74 @@ describe("the signals of a final transcript (worker log only)", () => {
   });
 });
 
+describe("the prepare signal (V2b)", () => {
+  function signal(accept = () => true) {
+    const sent: string[] = [];
+    let now = 1000;
+    const p = new PrepareSignal((text) => { if (!accept()) return false; sent.push(text); return true; }, () => now);
+    return { p, sent, at: (t: number) => { now = t; } };
+  }
+
+  it("gives the newest partial as it came, once at the end of speech, and again only for different words", () => {
+    const { p, sent, at } = signal();
+    p.partial("twelve minus");
+    // Before the end of speech: no hint.
+    expect(sent).toEqual([]);
+    p.partial("Twelve minus eight is four");
+    at(1200);
+    p.speechEnd(1200);
+    expect(sent).toEqual(["Twelve minus eight is four"]);
+    // Case, spaces and punctuation are not new words.
+    p.partial("twelve  minus eight, is four.");
+    expect(sent).toHaveLength(1);
+    p.partial("twelve minus eight is four apples");
+    expect(sent).toEqual(["Twelve minus eight is four", "twelve minus eight is four apples"]);
+    const stats = p.final("12 minus 8 is 4.", 2400);
+    expect(stats).toEqual({ interimWordsAtEnd: 5, interimEqualsFinal: false, prepareLeadMs: 1200, prepares: 2, firstPrepareAt: 1200 });
+  });
+
+  it("says whether the final equals the partial at the end of speech, after normalizing", () => {
+    const { p } = signal();
+    p.partial("I don't know");
+    p.speechEnd(500);
+    expect(p.final("I don't know.", 900)).toMatchObject({ interimWordsAtEnd: 3, interimEqualsFinal: true, prepareLeadMs: 400, prepares: 1 });
+  });
+
+  it("stops at a new start of speech until the next end, and never gives the same words twice", () => {
+    const { p, sent } = signal();
+    p.partial("twenty");
+    p.speechEnd(100);
+    p.speechStart();
+    p.partial("twenty four");
+    expect(sent).toEqual(["twenty"]);
+    p.speechEnd(900);
+    expect(sent).toEqual(["twenty", "twenty four"]);
+    p.speechStart();
+    p.speechEnd(1500);
+    expect(sent).toHaveLength(2);
+  });
+
+  it("does not count a dropped hint, and tries it again at the next partial", () => {
+    let open = false;
+    const { p, sent } = signal(() => open);
+    p.partial("four");
+    p.speechEnd(100);
+    expect(sent).toEqual([]);
+    open = true;
+    p.partial("four.");
+    expect(sent).toEqual(["four."]);
+    expect(p.final("4.", 300).prepares).toBe(1);
+  });
+
+  it("has nothing to say with no end of speech before the final, and starts fresh after it", () => {
+    const { p, sent } = signal();
+    p.partial("six");
+    expect(p.final("6.", 100)).toEqual({ interimWordsAtEnd: null, interimEqualsFinal: null, prepareLeadMs: null, prepares: 0, firstPrepareAt: null });
+    p.speechEnd(200);
+    expect(sent).toEqual([]);
+  });
+});
+
 describe("the detector's own end of speech (the hold's check, 2026-11-13)", () => {
   it("is when the speech ended: the time the end came, less the silence the detector waited for", async () => {
     let now = 10_000;
@@ -129,6 +197,47 @@ describe("the detector's own end of speech (the hold's check, 2026-11-13)", () =
 
   it("is unknown with no detector (the fakes)", () => {
     expect(new HeardSignals(undefined).speechEndAt).toBeNull();
+  });
+});
+
+describe("the worker's own detector (V2, 2026-11-13)", () => {
+  it("is a VAD of its own with the call's minimum silence: the session's VAD keeps LiveKit's", () => {
+    const session = new inference.VAD({ model: "silero" });
+    const own = detectorVad(session, 300) as inference.VAD;
+    expect(own).not.toBe(session);
+    expect(own).toBeInstanceOf(inference.VAD);
+    expect(own.minSilenceDuration).toBe(300);
+    // LiveKit Agents 1.9.5's own default, which the session keeps for its interruptions.
+    expect(session.minSilenceDuration).toBe(250);
+  });
+
+  it("is the session's VAD with no setting, and none with no session VAD (the fakes)", () => {
+    const session = new inference.VAD({ model: "silero" });
+    expect(detectorVad(session, null)).toBe(session);
+    expect(detectorVad(undefined, 300)).toBeUndefined();
+    const other = { stream: () => { throw new Error("unused"); } } as unknown as VAD;
+    expect(detectorVad(other, 300)).toBe(other);
+  });
+
+  it("marks the end of speech, when the detector reported it, and the last loud frame before it", async () => {
+    let now = 20_000;
+    const v = fakeVad();
+    const signals = new HeardSignals(v.vad, () => now);
+    const ends: unknown[] = [];
+    signals.onSpeechEnd = (end) => ends.push(end);
+    signals.frame(frame(3000));
+    now = 20_400;
+    signals.frame(frame(3000));
+    now = 20_420;
+    // Below the level: a quiet room after the child stopped.
+    signals.frame(frame(50));
+    await v.send(VADEventType.START_OF_SPEECH, 60, true);
+    now = 20_700;
+    await v.send(VADEventType.END_OF_SPEECH, 600, false, 250);
+    const end = { endAt: 20_450, heardAt: 20_700, levelEndAt: 20_400 };
+    expect(signals.speechEnd).toEqual(end);
+    expect(ends).toEqual([end]);
+    expect(20 * Math.log10(50 / 32768)).toBeLessThan(LEVEL_END_DBFS);
   });
 });
 
