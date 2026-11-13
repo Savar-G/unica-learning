@@ -18,7 +18,11 @@ import {
   callOfRoom,
   checkJoiner,
   childIdentity,
+  childPresence,
   childTurnFrom,
+  JOIN_WAIT_MS,
+  MIC_WAIT_MS,
+  VOICE_TOKEN_TTL_SECONDS,
   connectedSeconds,
   livekitProject,
   nextTickAt,
@@ -159,6 +163,26 @@ describe("rooms and joiners", () => {
     expect(checkJoiner({ room: voiceRoom(CALL), call, identity: childIdentity(CHILD), attributes: { ...attrs, [ATTR.call]: OTHER_CALL } })).toEqual({ ok: false, reason: "wrong_family" });
     expect(checkJoiner({ room: voiceRoom(CALL), call: { ...call, status: "ended" }, identity: childIdentity(CHILD), attributes: attrs })).toEqual({ ok: false, reason: "ended" });
     expect(checkJoiner({ room: voiceRoom(CALL), call: { ...call, mode: "text" }, identity: childIdentity(CHILD), attributes: attrs })).toEqual({ ok: false, reason: "not_voice" });
+  });
+
+  it("counts the call's child as here only with a microphone published: in the room before the tap is not here", () => {
+    // The SDK's source values (rtc-node: 2 is the microphone, 1 the camera, 3 the screen share).
+    const MIC = 2;
+    const presence = (tracks: Iterable<{ source?: unknown }>, over: Partial<{ identity: string; attributes: Record<string, string> }> = {}) =>
+      childPresence({ room: voiceRoom(CALL), call, identity: childIdentity(CHILD), attributes: attrs, tracks, microphone: MIC, ...over });
+    expect(presence([])).toBe("joined");
+    expect(presence([{ source: 1 }, { source: 3 }, {}])).toBe("joined");
+    expect(presence([{ source: 1 }, { source: MIC }])).toBe("here");
+    // Another joiner is never the child, with or without a microphone.
+    expect(presence([{ source: MIC }], { identity: childIdentity(OTHER_CHILD), attributes: { ...attrs, [ATTR.child]: OTHER_CHILD } })).toBe("other");
+    expect(presence([{ source: MIC }], { attributes: { ...attrs, [ATTR.parent]: OTHER_PARENT } })).toBe("other");
+    // The tracks may be any iterable, such as a participant's publications.
+    expect(presence(new Map([["TR_1", { source: MIC }]]).values())).toBe("here");
+  });
+
+  it("waits for a child's microphone as long as a ticket admits a join, longer than for a join", () => {
+    expect(MIC_WAIT_MS).toBe(VOICE_TOKEN_TTL_SECONDS * 1000);
+    expect(MIC_WAIT_MS).toBeGreaterThan(JOIN_WAIT_MS);
   });
 });
 

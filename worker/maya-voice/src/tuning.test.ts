@@ -16,6 +16,9 @@ import { ruleMayaModel } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { asksForNumber, GREETING_ID, GREETING_TEXT, turnSilences, VOICE_TUNING_DEFAULTS, voiceProviders, type TurnSilence } from "@/lib/maya-voice";
 import type { QuestionPackage } from "@/lib/question-package";
+import { voiceOpening } from "@/lib/maya-voice-opening";
+import { spokenMath } from "@/lib/maya-voice-spoken";
+import type { VoiceCall } from "@/lib/maya-call";
 import { VoiceCallRun, voiceSession, type Timers } from "./agent";
 import { FakeTTS } from "./fake-providers";
 import { makeProviders } from "./providers";
@@ -142,7 +145,7 @@ const GREETED = { greeting: GREETING_TEXT } as const;
 const heard = (said: readonly string[]) => said.join(" ");
 const times = (text: string, part: string) => text.split(part).length - 1;
 
-async function voiceCall(options: { greeting?: boolean; numberContinueMs?: number; patience?: { normal: TurnSilence; number: TurnSilence; set(limits: TurnSilence): void }; speech?: ProbeSTT; opening?: boolean } = {}) {
+async function voiceCall(options: { greeting?: boolean; numberContinueMs?: number; patience?: { normal: TurnSilence; number: TurnSilence; set(limits: TurnSilence): void }; speech?: ProbeSTT; opening?: boolean; workerOpening?: boolean; beforeJoin?(call: VoiceCall): void } = {}) {
   const clock = handClock();
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
@@ -175,11 +178,13 @@ async function voiceCall(options: { greeting?: boolean; numberContinueMs?: numbe
   const sender = createBoardSender({ sessionId: started.view.id, senderId: "worker", transport: createMemoryTransport(receiver) });
   const board = createBoardSpeech({ sender, now: () => Date.now(), observe: (snapshot) => opened.call.observeBoard(snapshot) });
   const stage = vi.spyOn(board, "stage");
+  const workerOpening = options.workerOpening ? voiceOpening(opened.call.session) : null;
   const run = new VoiceCallRun(session, opened.call, {
     board, timers: clock.timers, notify: () => {},
     ...(options.greeting ? GREETED : {}),
     ...(options.numberContinueMs !== undefined ? { numberContinueMs: options.numberContinueMs } : {}),
     ...(options.patience ? { patience: options.patience } : {}),
+    ...(workerOpening ? { opening: workerOpening } : {}),
   });
   await run.agentJoined();
   await session.start({ agent: run.agent });
@@ -188,9 +193,10 @@ async function voiceCall(options: { greeting?: boolean; numberContinueMs?: numbe
   microphone.push();
   cleanup = async () => { await run.finish({ detail: "test over" }); };
   const said = () => (providers.tts as FakeTTS).spoken;
+  options.beforeJoin?.(opened.call);
   await run.childJoined();
   if (options.opening !== false) await waitFor(() => heard(said()).length > (options.greeting ? GREETING_TEXT.length : 0) && session.agentState === "listening", "the opening");
-  return { clock, said, session, run, stage, board, calls, call: opened.call, store, id: started.view.id, providers };
+  return { clock, said, session, run, stage, board, calls, call: opened.call, store, id: started.view.id, providers, workerOpening };
 }
 
 describe("the turn and interruption settings of a session", () => {
@@ -284,6 +290,99 @@ describe("the greeting", () => {
     await c.run.childJoined();
     await pause();
     expect(times(heard(c.said()), GREETING_TEXT)).toBe(1);
+  });
+});
+
+describe("the worker's own opening (the opening's speed, Savar 2026-11-13)", () => {
+  /** Holds the call's start until `release`, or makes it fail. Records the words the start gave. */
+  const heldStart = (fail = false) => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const started: string[][] = [];
+    const hold = (call: VoiceCall) => {
+      const real = call.start.bind(call);
+      vi.spyOn(call, "start").mockImplementation(async () => {
+        await gate;
+        if (fail) throw new Error("the database is down");
+        const turn = await real();
+        started.push(turn.say);
+        return turn;
+      });
+    };
+    return { hold, release: () => release(), started };
+  };
+
+  it("is the first words in the voice, said once, and the start's own words are not said again", async () => {
+    const start = heldStart();
+    const c = await voiceCall({ workerOpening: true, opening: false, beforeJoin: start.hold });
+    const opening = spokenMath(c.workerOpening!);
+    // Said before the call's start is saved: the start is still held.
+    await waitFor(() => heard(c.said()).length >= opening.length, "the opening");
+    expect(heard(c.said())).toBe(opening);
+    expect(c.call.session.startedAt).toBeNull();
+    start.release();
+    await waitFor(() => c.call.session.startedAt !== null && c.session.agentState === "listening", "the start");
+    await c.call.settled();
+    await pause();
+    expect(heard(c.said())).toBe(opening);
+    expect(times(heard(c.said()), opening)).toBe(1);
+    // The start gave its own words; none of them reached the voice.
+    expect(start.started).toHaveLength(1);
+    for (const line of start.started[0]) expect(heard(c.said())).not.toContain(spokenMath(line));
+  });
+
+  it("is followed by the greeting", async () => {
+    const c = await voiceCall({ workerOpening: true, greeting: true, opening: false });
+    const opening = spokenMath(c.workerOpening!);
+    await waitFor(() => heard(c.said()).includes(GREETING_TEXT), "the greeting");
+    expect(heard(c.said()).startsWith(opening)).toBe(true);
+    expect(heard(c.said())).toBe(`${opening} ${GREETING_TEXT}`);
+  });
+
+  it("makes a child turn that comes while the start is still saving wait for the start, and then answers it", async () => {
+    const start = heldStart();
+    const c = await voiceCall({ workerOpening: true, opening: false, beforeJoin: start.hold });
+    const opening = spokenMath(c.workerOpening!);
+    await waitFor(() => heard(c.said()) === opening && c.session.agentState === "listening", "the opening");
+    const asked = vi.spyOn(c.call, "child");
+    c.providers.fakeSpeech!.say("I got 56.");
+    await pause();
+    await pause();
+    // The turn waits for the start: nothing goes to the call's session, and Maya says nothing more.
+    expect(asked).not.toHaveBeenCalled();
+    expect(heard(c.said())).toBe(opening);
+    start.release();
+    await waitFor(() => asked.mock.calls.length === 1, "the turn after the start");
+    expect(asked.mock.calls[0][0]).toBe("I got 56.");
+    await waitFor(() => heard(c.said()).length > opening.length && c.session.agentState === "listening", "the answer");
+    expect(c.call.session.startedAt).not.toBeNull();
+  });
+
+  it("is not said twice to a child who drops and rejoins before the start is saved", async () => {
+    const start = heldStart();
+    const c = await voiceCall({ workerOpening: true, opening: false, beforeJoin: start.hold });
+    const opening = spokenMath(c.workerOpening!);
+    await waitFor(() => heard(c.said()) === opening && c.session.agentState === "listening", "the opening");
+    await c.run.childLeft("dropped");
+    await c.run.childJoined();
+    start.release();
+    await waitFor(() => c.call.session.startedAt !== null, "the start");
+    await c.call.settled();
+    await pause();
+    expect(times(heard(c.said()), opening)).toBe(1);
+    expect(heard(c.said())).toBe(opening);
+    expect(start.started).toHaveLength(1);
+  });
+
+  it("ends the call with a technical outcome when the start fails", async () => {
+    const start = heldStart(true);
+    const c = await voiceCall({ workerOpening: true, opening: false, beforeJoin: start.hold });
+    start.release();
+    await waitFor(() => c.run.done !== null, "the end");
+    await c.run.done;
+    const record = (await c.store.get(c.id))!;
+    expect(record.status).toBe("ended");
+    expect(record.outcome?.reason).toBe("technical_issue");
   });
 });
 

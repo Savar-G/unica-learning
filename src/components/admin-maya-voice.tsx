@@ -54,7 +54,7 @@ export function VoicePanel({ callId, childName, started, onUpdate, onEnded, onCa
 }) {
   const mic = useMicCheck();
   const [said, setSaid] = useState("");
-  const { phase: call, maya, error: errorCode, seconds, fakeSpeech, sending, hearing, audioHost, connect: join, hangUp, say: sendSaid } = useMayaVoiceRoom({
+  const { phase: call, maya, error: errorCode, seconds, fakeSpeech, sending, hearing, audioHost, prepare, leave, connect: join, hangUp, say: sendSaid } = useMayaVoiceRoom({
     callId,
     async getTicket() {
       const res = await fetch(`/api/admin/maya/calls/${callId}/token`, { method: "POST" });
@@ -71,6 +71,19 @@ export function VoicePanel({ callId, childName, started, onUpdate, onEnded, onCa
   const live = call === "live";
   useEffect(() => { onHearing?.(live ? hearing : null); }, [onHearing, live, hearing]);
   useEffect(() => () => onHearing?.(null), [onHearing]);
+  // The room is joined while the microphone is checked, so Maya speaks at once after Connect (docs/maya-voice.md, "The
+  // child joins the room before the Connect tap"). Only for a call that has not started: a started call may be live in
+  // another tab, which a second join with the same identity would push out of the room.
+  useEffect(() => {
+    if (started) return;
+    void prepare();
+    return leave;
+  }, [started, prepare, leave]);
+
+  function cancel() {
+    leave();
+    onCancel();
+  }
 
   function connect() {
     mic.release();
@@ -105,7 +118,7 @@ export function VoicePanel({ callId, childName, started, onUpdate, onEnded, onCa
               {call === "connecting" ? "Connecting…" : started ? "Connect again" : "Connect"}
             </button>
             {!started && (
-              <button type="button" className="btn sm ghost adm-btn mv-hang" onClick={onCancel} disabled={busy || call === "connecting"}>Cancel the call</button>
+              <button type="button" className="btn sm ghost adm-btn mv-hang" onClick={cancel} disabled={busy || call === "connecting"}>Cancel the call</button>
             )}
           </div>
         </div>

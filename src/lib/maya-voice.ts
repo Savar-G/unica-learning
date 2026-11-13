@@ -27,6 +27,11 @@ export const CONNECTION_LEASE_MS = 15_000;
 export const CONNECTION_RENEW_MS = 5_000;
 /** How long the worker waits for the child to join a new room before it gives up (ms). */
 export const JOIN_WAIT_MS = 2 * 60_000;
+/**
+ * How long the worker waits for the microphone of a child who is in the room without one (ms): the ticket's life. The
+ * child's screen joins before the Connect tap and publishes the microphone at the tap (docs/maya-voice.md).
+ */
+export const MIC_WAIT_MS = VOICE_TOKEN_TTL_SECONDS * 1000;
 /** A transcript the speech-to-text is less sure of than this is uncertain: Maya confirms a number in it. */
 export const UNSURE_CONFIDENCE = 0.6;
 /** A started voice call cannot still be running after this long (ms): the admin may end it by hand. */
@@ -102,6 +107,20 @@ export function checkJoiner(input: { room: string; call: VoiceCallFacts; identit
   if (input.identity !== childIdentity(call.childId) || input.attributes[ATTR.child] !== call.childId) return { ok: false, reason: "wrong_child" };
   if (input.attributes[ATTR.parent] !== call.parentId || input.attributes[ATTR.call] !== call.id) return { ok: false, reason: "wrong_family" };
   return { ok: true };
+}
+
+/** Where the call's child is for Maya's worker: not this call's child, in the room with no microphone yet, or here. */
+export type ChildPresence = "other" | "joined" | "here";
+
+/**
+ * The call's child is here when the joiner fits the call (`checkJoiner`) and has a microphone track published. A child
+ * in the room with no microphone is "joined": the screen joins before the Connect tap and publishes the microphone at
+ * the tap, so nothing of the call starts until then. `microphone` is the SDK's value for the microphone source.
+ */
+export function childPresence(input: Parameters<typeof checkJoiner>[0] & { tracks: Iterable<{ source?: unknown }>; microphone: unknown }): ChildPresence {
+  if (!checkJoiner(input).ok) return "other";
+  for (const t of input.tracks) if (t.source === input.microphone) return "here";
+  return "joined";
 }
 
 // ---------- providers by configuration ----------

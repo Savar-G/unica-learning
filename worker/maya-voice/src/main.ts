@@ -3,7 +3,9 @@
 // agent name maya-voice, the call id in the job's metadata). For each job it:
 //
 // 1. checks that the room is the call's own and the call is a live voice call;
-// 2. waits for the call's own child (checkJoiner: identity and the token's family attributes) and ignores anyone else;
+// 2. waits for the call's own child (checkJoiner: identity and the token's family attributes) and ignores anyone else.
+//    The child is here when their microphone is published (`childPresence`): the screen joins the room before the
+//    Connect tap and turns the microphone on at the tap;
 // 3. opens the call (src/lib/maya-call.ts `openVoice`), which records the speech-to-text and voice ids on it;
 // 4. runs Maya there with the configured speech-to-text and voice (src/lib/maya-voice.ts `voiceProviders`): the child's
 //    microphone only, no typed chat, no recording; stores when the child and Maya join and leave;
@@ -19,15 +21,16 @@ import { boardRpcTransport } from "@/lib/board-rpc";
 import { createBoardSpeech, cueReport, type CueMeasurement } from "@/lib/board-speech";
 import { fileURLToPath } from "node:url";
 import { cli, defineAgent, ServerOptions, voice, type JobContext } from "@livekit/agents";
-import { DisconnectReason, RoomEvent, RpcError, type RemoteParticipant, type Room } from "@livekit/rtc-node";
+import { DisconnectReason, RoomEvent, RpcError, type RemoteParticipant } from "@livekit/rtc-node";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { callSeams } from "@/lib/maya-call-seams";
 import { mayaCalls } from "@/lib/maya-call";
 import { codeOpening, voiceOpening } from "@/lib/maya-voice-opening";
 import { mayaCallStore } from "@/lib/maya-call-store";
-import { asksWordTimings, callKeyterms, callOfRoom, checkJoiner, childIdentity, GREETING_TEXT, JOIN_WAIT_MS, turnSilences, VOICE_AGENT_NAME, voiceProviders, type TurnSilence, type VoiceCallFacts } from "@/lib/maya-voice";
+import { asksWordTimings, callKeyterms, callOfRoom, childIdentity, GREETING_TEXT, turnSilences, VOICE_AGENT_NAME, voiceProviders, type TurnSilence, type VoiceCallFacts } from "@/lib/maya-voice";
 import { VoiceCallRun, voiceSession, type CallUpdate } from "./agent";
+import { presenceOf, waitForChild } from "./child-wait";
 import { voiceTurnReport, type VoiceTurnSample } from "./turn-timing";
 import { makeProviders } from "./providers";
 import { referenceJob, referenceRoomName } from "@/lib/maya-workbook-speech";
@@ -49,26 +52,6 @@ function database() {
     return response;
   };
   return createClient<Database>(url, key, { auth: { persistSession: false, autoRefreshToken: false }, ...(process.env.MAYA_DB_TIMING === "on" ? { global: { fetch: timed } } : {}) });
-}
-
-/** The call's child once they are in the room (any other joiner is ignored), or null after JOIN_WAIT_MS. */
-function waitForChild(room: Room, call: VoiceCallFacts): Promise<RemoteParticipant | null> {
-  const fits = (p: RemoteParticipant) => checkJoiner({ room: room.name ?? "", call, identity: p.identity, attributes: p.attributes }).ok;
-  const already = [...room.remoteParticipants.values()].find(fits);
-  if (already) return Promise.resolve(already);
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      room.off(RoomEvent.ParticipantConnected, on);
-      resolve(null);
-    }, JOIN_WAIT_MS);
-    const on = (p: RemoteParticipant) => {
-      if (!fits(p)) return log("ignored a joiner that is not the call's child", call.id);
-      clearTimeout(timer);
-      room.off(RoomEvent.ParticipantConnected, on);
-      resolve(p);
-    };
-    room.on(RoomEvent.ParticipantConnected, on);
-  });
 }
 
 export default defineAgent({
@@ -108,7 +91,8 @@ export default defineAgent({
     await ctx.connect();
     // The worker is sent to the room when the ticket is made, before the child connects (src/lib/maya-voice-token.ts),
     // so the call is opened and the voice session built while the child checks the microphone. Nothing that counts
-    // time, minutes or spend starts before the child is here: the call starts (`startedAt`) with the opening.
+    // time, minutes or spend starts before the child is here (in the room with the microphone published): the call
+    // starts (`startedAt`) with the opening.
     const identity = childIdentity(record.childId);
     let childAt = Date.now();
     const marks: Record<string, number> = {};
@@ -131,7 +115,7 @@ export default defineAgent({
     const { tuning } = providers;
     const session = voiceSession(made, made.fake ? {} : { turn: tuning });
     const patience = made.patience;
-    // The opening's speed: the child in the room (or the job, when the child was there first) to Maya's first sound.
+    // The opening's speed: the child's microphone published (or the job, when it was there first) to Maya's first sound.
     let firstSound = false;
     session.on(voice.AgentSessionEventTypes.AgentStateChanged, ev => {
       if (firstSound || ev.newState !== "speaking") return;
@@ -183,13 +167,20 @@ export default defineAgent({
       });
     }
     ctx.room.on(RoomEvent.ParticipantDisconnected, (p: RemoteParticipant) => {
-      if (p.identity !== identity) return;
+      // Before the child was first here (microphone published), a leave changes nothing: the screen joined before the
+      // Connect tap and closed or was cancelled before it. `waitForChild` waits for a join again.
+      if (!live || p.identity !== identity) return;
       void run.childLeft(p.disconnectReason === DisconnectReason.CLIENT_INITIATED ? "hang_up" : "dropped");
     });
-    ctx.room.on(RoomEvent.ParticipantConnected, (p: RemoteParticipant) => {
-      // The first join is taken below, after the session has started.
-      if (live && checkJoiner({ room: roomName, call: facts, identity: p.identity, attributes: p.attributes }).ok) void run.childJoined();
-    });
+    // A child who comes back is here again with the same rule as the first time: in the room with the microphone
+    // published. The first time is taken below, after the session has started. A child who unpublishes the microphone
+    // but stays in the room stays here: the screen never does that during a call, and the call's limits still end it.
+    const back = (p: RemoteParticipant) => {
+      if (live && presenceOf(ctx.room, facts, p) === "here") void run.childJoined();
+    };
+    ctx.room.on(RoomEvent.ParticipantConnected, back);
+    ctx.room.on(RoomEvent.TrackPublished, (_publication, p: RemoteParticipant) => back(p));
+    ctx.room.on(RoomEvent.TrackSubscribed, (_track, _publication, p: RemoteParticipant) => back(p));
 
     // The session starts before the child is here, so its audio track is published and the voice is connected when
     // they come. It hears only the call's child, and nothing is said until they connect.
@@ -205,21 +196,25 @@ export default defineAgent({
     run.attachTurnTiming();
     made.tts.prewarm();
     const readyAt = Date.now();
-    const child = await waitForChild(ctx.room, facts);
-    if (!child) {
-      // The call stays live for its ticket: a child who connects later gets a new worker through the token.
-      log("the child did not join", callId);
+    const waited = await waitForChild(ctx.room, facts, { log: message => log(message, callId) });
+    if (!waited.child) {
+      // The call stays live for its ticket: a child who connects later gets a new worker through the token. Nothing was
+      // counted: the connection rows, the minutes and the call's start all wait for the microphone.
+      const why = waited.why === "no_join" ? "the child did not join" : "the child joined but never turned on the microphone";
+      log(why, callId);
       await run.standDown();
-      return ctx.shutdown("the child did not join");
+      return ctx.shutdown(why);
     }
+    // The child is here: their microphone is published. `sinceChildMs` in "opening first sound" counts from now.
     childAt = Date.now();
     marks.readyBeforeChild = childAt - readyAt;
     ctx.addShutdownCallback(() => run.finish({ detail: "the voice worker stopped" }));
     // The connection rows and the session start do not wait for each other.
     const joined = run.agentJoined().then(() => mark("agentJoined"));
     live = true;
-    // A child who left while the session started opens the call when they are back (the handler above).
-    await Promise.all([joined, ctx.room.remoteParticipants.has(identity) ? run.childJoined().then(() => mark("childJoined")) : null]);
+    // A child who left since opens the call when they are back (the handlers above).
+    const stillHere = ctx.room.remoteParticipants.get(identity);
+    await Promise.all([joined, stillHere && presenceOf(ctx.room, facts, stillHere) === "here" ? run.childJoined().then(() => mark("childJoined")) : null]);
     if (run.done) { await run.done; return; }
     // Word timings are asked for, not known to arrive: the "board cue" lines show `word` or `sentence` for each batch.
     log("call running", callId, providers.ids.speechToText, providers.ids.voice, { wordTimings: asksWordTimings(providers.voice) ? "requested" : "sentence ends only", tuning: made.fake ? "fake providers: LiveKit defaults" : tuning });
