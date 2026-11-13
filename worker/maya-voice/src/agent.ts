@@ -501,6 +501,10 @@ export class VoiceCallRun {
       // The question's batch is known only now, while the opening is being said: it is shown under the opening's own plan.
       await this.openingBoard(openingScope, turn);
       await this.after({ ...turn, say: [] }, speech, () => false);
+      // The opening states the math question, so the child's first turn is the one most likely to be a number that
+      // goes on ("fifty... six"): it gets the long limits. `after` cannot see it, as the start gives no words.
+      // A child turn already under way (it waits for this start) keeps the limits its own start set.
+      if (!turn.ended && !this.call.lost && !this.pace) this.setPatience(true);
     })().catch(() => { if (generation === this.generation && this.childHere) void this.finish({ detail: "the opening could not be saved" }); });
     this.agent.openedByWorker(starting);
     return speech;

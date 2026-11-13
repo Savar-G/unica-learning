@@ -12,7 +12,8 @@ import { memoryLearningEventStore } from "@/lib/learning-events-memory";
 import { memoryWordingHistoryStore, openingLine } from "@/lib/maya";
 import { mayaCalls, type CallSeams } from "@/lib/maya-call";
 import { memoryCallStore, memoryConnectionLog } from "@/lib/maya-call-memory";
-import { ruleConversationalModel, ruleMayaModel } from "@/lib/maya-model-fake";
+import { reply, ruleConversationalModel, ruleMayaModel } from "@/lib/maya-model-fake";
+import type { MayaModel } from "@/lib/maya-model";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { asksForNumber, GREETING_ID, GREETING_TEXT, turnSilences, VOICE_TUNING_DEFAULTS, voiceProviders, type TurnSilence } from "@/lib/maya-voice";
 import type { QuestionPackage } from "@/lib/question-package";
@@ -145,7 +146,7 @@ const GREETED = { greeting: GREETING_TEXT } as const;
 const heard = (said: readonly string[]) => said.join(" ");
 const times = (text: string, part: string) => text.split(part).length - 1;
 
-async function voiceCall(options: { greeting?: boolean; numberContinueMs?: number; patience?: { normal: TurnSilence; number: TurnSilence; set(limits: TurnSilence): void }; speech?: ProbeSTT; opening?: boolean; workerOpening?: boolean; beforeJoin?(call: VoiceCall): void } = {}) {
+async function voiceCall(options: { greeting?: boolean; numberContinueMs?: number; patience?: { normal: TurnSilence; number: TurnSilence; set(limits: TurnSilence): void }; speech?: ProbeSTT; opening?: boolean; workerOpening?: boolean; model?: MayaModel; beforeJoin?(call: VoiceCall): void } = {}) {
   const clock = handClock();
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
@@ -157,7 +158,7 @@ async function voiceCall(options: { greeting?: boolean; numberContinueMs?: numbe
     events: learningEvents(memoryLearningEventStore({ children: [{ id: CHILD, parentId: PARENT }], tests: [{ id: TEST, childId: CHILD }] })),
     rebuild: vi.fn(async () => true),
     // The worker speaks the opening itself only in a conversational call (D-341), as every real call is now.
-    model: (id) => (id === null || id === "fake" ? (options.workerOpening ? ruleConversationalModel() : ruleMayaModel()) : null),
+    model: (id) => (id === null || id === "fake" ? options.model ?? (options.workerOpening ? ruleConversationalModel() : ruleMayaModel()) : null),
     isTestFamily: async (p) => p === PARENT,
     clock: () => Date.now(),
     newId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`,
@@ -447,6 +448,31 @@ describe("the speech-to-text's silence limit while Maya asks for a number", () =
     // After her answer, the limits are the number ones only if her last words ask for a number.
     const asks = asksForNumber(c.said().join(" "), c.call.session.state);
     expect(log.sets.at(-1)).toEqual(asks ? number : normal);
+  });
+
+  it("are the number limits for the child's first turn after the worker's own opening, and normal again after a line that asks for no number", async () => {
+    const log = patienceLog();
+    const speech = new ProbeSTT();
+    // An off-topic turn gets a line that asks for no number.
+    const rule = ruleConversationalModel();
+    const model: MayaModel = { ...rule, propose: async (input, signal, onText) =>
+      (input as { childTurn?: string | null }).childTurn === "I have a dog."
+        ? reply("Dogs are lovely. Let's keep going with our question.", "redirect", { reading: { offTopic: true } })
+        : rule.propose(input, signal, onText) };
+    const c = await voiceCall({ patience: log.patience, speech, workerOpening: true, opening: false, model });
+    // The opening states the question (D-341, code's own line): its child turn may be "fifty... six".
+    await waitFor(() => log.sets.length === 1 && c.call.session.startedAt !== null, "the opening's limits");
+    expect(log.sets).toEqual([number]);
+    // The child's turn sets the normal limits at once, and Maya's line that asks for no number leaves them normal.
+    speech.says("I have a dog.");
+    await waitFor(() => log.sets.length >= 2, "the turn");
+    expect(log.sets[1]).toEqual(normal);
+    await waitFor(() => c.session.agentState === "listening" && c.said().length > 1, "the answer");
+    await c.call.settled();
+    await pause();
+    const last = c.call.session.turns.filter((t) => t.speaker === "maya").at(-1)!.text;
+    expect(asksForNumber(last, c.call.session.state)).toBe(false);
+    expect(log.sets.at(-1)).toEqual(normal);
   });
 
   it("is untouched when the route has no live update", async () => {
