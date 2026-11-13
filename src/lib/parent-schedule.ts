@@ -3,6 +3,8 @@ import type { DraftRendering } from "@/lib/workbook-job";
 import { isPrintedRevision, manifestProblem, pageContentFingerprint, printedRevision, type PagePrintContract, type RevisionSource, type ScanManifest } from "@/lib/workbook-print-contract";
 import { savedScheduleV1, type SavedScheduleRow } from "@/lib/parent-schedule-v1";
 import { canonical } from "@/lib/workbook-digest";
+import type { EffectiveMark } from "@/lib/scan-marking";
+import { pageCompletion, waitsForTeam } from "@/lib/scan-observation";
 
 export const SCHEDULE_PATH = "/account/schedule";
 export const schedulePath = (child: string) => `${SCHEDULE_PATH}?child=${encodeURIComponent(child)}`;
@@ -27,9 +29,19 @@ export interface ScheduleStore {
   revision(parent: string, child: string, book: string, revision: number): Promise<ScheduleRevision | null>;
   pages(parent: string, child: string, book: string): Promise<SchedulePage[]>;
   receipts(parent: string, child: string, book: string, revision: string): Promise<ScheduleReceipt[]>;
+  /** The child's effective marks (the same projection as page results). Read-only. */
+  marks(parent: string, child: string): Promise<EffectiveMark[]>;
 }
-export type ScheduleScanState = { kind: "known"; accepted: number; required: number } | { kind: "unknown" };
-export interface ScheduleRow extends SavedScheduleRow { scan: ScheduleScanState }
+/** `missing`: printed page numbers of the day with no recorded scan. */
+export type ScheduleScanState = { kind: "known"; accepted: number; required: number; missing: number[] } | { kind: "unknown" };
+/**
+ * Marks of the day's required pages, apart from scans (#475). A page counts as marked only when every question on it has
+ * a finished mark. "checking": our team is checking an answer the AI was unsure of (D-303). "unknown": the read failed.
+ */
+export type ScheduleMarkState =
+  | { kind: "all" | "checking" | "none" | "some"; marked: number; total: number }
+  | { kind: "unknown" };
+export interface ScheduleRow extends SavedScheduleRow { scan: ScheduleScanState; marks: ScheduleMarkState }
 export type ScheduleView =
   | { kind: "not-found" }
   | { kind: "waiting"; child: ScheduleChild | null }
@@ -82,6 +94,18 @@ export async function readSchedule(store: ScheduleStore, parent: string, request
     })) return { kind: "unavailable", child };
     let receipts: ScheduleReceipt[] | null;
     try { receipts = await store.receipts(parent, child.id, book.id, book.printedRevision); } catch { receipts = null; }
+    let marks: EffectiveMark[] | null;
+    try { marks = await store.marks(parent, child.id); } catch { marks = null; }
+    const pageMark = (number: number): "marked" | "checking" | "waiting" => {
+      const page = pages.find(p => p.number === number)!;
+      const own = (marks ?? []).filter(m => m.expected.identity.workbookId === book.id && m.expected.identity.printedRevision === book.printedRevision
+        && m.expected.identity.pageId === page.id && m.observation.identity.pageId === page.id);
+      const items = new Set(own.map(m => m.expected.identity.itemId));
+      if (own.some(waitsForTeam)) return "checking";
+      // Every printed question needs its own finished mark. A page with fewer marks than questions is not marked.
+      return page.questions.length > 0 && page.questions.every(q => items.has(q.package.id))
+        && pageCompletion(own.map(m => m.expected), own.map(m => m.observation)).status === "complete" ? "marked" : "waiting";
+    };
     const rows = saved.rows.map(r => {
       const required = book.manifest!.days.find(d => d.day === r.day)!.pages;
       const accepted = new Set<number>();
@@ -92,7 +116,11 @@ export async function readSchedule(store: ScheduleStore, parent: string, request
           && s.status === "accepted" && page && required.includes(page.number)) accepted.add(page.number);
       }
       // Receipts have no historical backfill. Absence cannot prove that a page was never scanned.
-      return { ...r, scan: accepted.size ? { kind: "known" as const, accepted: accepted.size, required: required.length } : { kind: "unknown" as const } };
+      const scan: ScheduleScanState = accepted.size ? { kind: "known", accepted: accepted.size, required: required.length, missing: required.filter(n => !accepted.has(n)).sort((a, b) => a - b) } : { kind: "unknown" };
+      const states = required.map(pageMark), marked = states.filter(s => s === "marked").length;
+      const state: ScheduleMarkState = marks === null ? { kind: "unknown" } : { total: required.length, marked,
+        kind: states.includes("checking") ? "checking" : marked === required.length ? "all" : marked > 0 ? "some" : "none" };
+      return { ...r, scan, marks: state };
     });
     // Only the safe projection leaves this module. No draft, PDF path, questions or contracts.
     return { kind: "ready", child, book: { id: book.id, number: book.number }, rows, dailyTime: saved.dailyTime };

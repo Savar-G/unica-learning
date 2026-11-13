@@ -2,7 +2,7 @@
 // The AI owns readings only. No model identity, score, key or eligibility claim enters a result.
 import { createHash } from "node:crypto";
 import type { AiClient, AiJsonRequest } from "@/lib/ai-client";
-import { expectedItems, firstObservation, itemKey, markingEvent, MAX_READ_TEXT, MODEL_READING_ISSUES, pageCompletion, PHOTO_ISSUES, readingIssueText, type ReadingIssue, type RegionReading, type ExpectedItem, type MarkResult, type Observation, type PageForObservation } from "@/lib/scan-observation";
+import { expectedItems, firstObservation, waitsForTeam, itemKey, markingEvent, MAX_READ_TEXT, MODEL_READING_ISSUES, pageCompletion, PHOTO_ISSUES, readingIssueText, type ReadingIssue, type RegionReading, type ExpectedItem, type MarkResult, type Observation, type PageForObservation } from "@/lib/scan-observation";
 import { markingRegions, type MarkingRegion } from "@/lib/scan-marking-regions";
 import { checkFractionReading } from "@/lib/scan-marking-fractions";
 import { checkMethodReading, differentStrategies, METHOD_JUDGMENTS, type MethodJudgment } from "@/lib/scan-marking-methods";
@@ -311,14 +311,7 @@ export function effectiveSkillMarks(marks: readonly EffectiveMark[]): SkillMark[
     return d.publish && m.originalEvent && m.eventId ? [{ standard: m.originalEvent.skill.standard, right: d.result === "right", review: ["friday-5", "mixed-set", "show-what-you-know"].includes(m.expected.teaching?.part ?? ""), at: m.originalEvent.occurredAt }] : [];
   });
 }
-/**
- * An item with no result that waits for our team (#715): an old format a person marks, or anything the AI read (or
- * tried to read) without a sure result. An item not read yet is not the team's. A stored row that apply wrote always has
- * a model, which is the rule admin_scan_team_queue uses; a reading in hand counts too.
- */
-export const waitsForTeam = (m: Pick<EffectiveMark, "observation" | "model">) =>
-  m.observation.result === null && (m.observation.state === "parent-pending"
-    || (m.observation.state === "pending" && (m.model !== null || m.observation.certainty !== "not-read")));
+export { waitsForTeam };
 /** What a parent sees for one item. It never asks the parent to judge an answer: the AI and our team mark. */
 function itemLabel(m: EffectiveMark): string {
   const o = m.observation;
