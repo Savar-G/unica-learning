@@ -174,3 +174,23 @@ describe("P3: thinking, the cut and the addition question", () => {
     expect(out.say.join(" ")).toMatch(/\?$/);
   });
 });
+
+describe("each turn is judged on its own (real voice calls on 0be41ec5)", () => {
+  it("after two off-topic turns, a math turn streams its first sentence", async () => {
+    const c = call((b) => (/dog|food/.test(b.childTurn ?? "")
+      ? { ...reply("I'm an AI, so I don't eat. What can you do in the ones?", "redirect", { reading: { offTopic: true } }), kind: "offtopic" }
+      : reply("Yes, 12 minus 8 is 4. What is 4 minus 2?", "guide", { step: "tens", reading: { answers: [ans(4, "ones")] } })), { stream: true, reviewer: fakeTalkReviewer() });
+    await said(c, ["Do you like dogs? I have a dog named Max.", "What's your favourite food?"]);
+    c.parts.length = 0;
+    await c.session.child("Okay. The ones are 12 minus 8, 4.");
+    expect(c.parts[0]).toBe("Yes, 12 minus 8 is 4.");
+    const t = c.session.trace().turns.filter((x) => x.kind === "maya").at(-1);
+    expect(t?.kind === "maya" && typeof t.attempts[0].firstSayMs).toBe("number");
+  });
+  it("an exact safe answer to an off-topic question streams with no review (the bridge after it, on an off-topic turn, is reviewed)", async () => {
+    const c = call(() => ({ ...reply("I'm an AI, so I don't eat. What can you do in the ones?", "redirect", { reading: { offTopic: true } }), kind: "offtopic" }), { stream: true });
+    await said(c, ["What's your favourite food?"]);
+    expect(c.parts[0]).toBe("I'm an AI, so I don't eat.");
+    expect(c.reviewer.requests.map((r) => r.line)).not.toContain("I'm an AI, so I don't eat.");
+  });
+});
