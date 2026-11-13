@@ -203,3 +203,12 @@ describe("the review of a streamed reply's rest (real runs of round 4)", () => {
     expect(out).toContain("That sounds like a plan you can be proud of.");
   });
 });
+
+describe("a hello streams like a math turn", () => {
+  it("'Hi, Maya' with kind other still streams its math-only first sentence", async () => {
+    const c = call(() => ({ ...reply("Hi {name}! Let's start with the ones. What can you do in the ones?", "guide", { step: "ones" }), kind: "other" }), { stream: true });
+    await said(c, ["Hi, Maya"]);
+    expect(c.parts[0]).toBe("Hi Ava!");
+    expect(c.reviewer.requests).toHaveLength(0);
+  });
+});

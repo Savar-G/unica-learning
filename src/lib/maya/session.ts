@@ -4983,14 +4983,16 @@ function withStreamed(base: Session, r: StepResult, at: number, planned: string,
  * before the call, and its say rules. Null when nothing may stream: no plan, a plan in code's own words, safety, a stop,
  * a fixed reply due, or the content hold.
  */
-export function streamPlan(s: Session): { rules: SayRules; act: Act; stance: "wrong" | "right" | "none"; extra: ReadonlySet<string> } | null {
+export function streamPlan(s: Session): { rules: SayRules; act: Act; stance: "wrong" | "right" | "none"; extra: ReadonlySet<string>; greeting: boolean } | null {
   if (!s.package || !s.turn || s.safety.flagged || s.stopRequested || s.replies?.length || !isTeaching(s.state) || s.scopeDue === "outside_work") return null;
   const plan = codePlan(s);
   if (!plan || plan.codeWords) return null;
   // A request for help may turn into the easier example: it streams, but asks nothing before the act is known.
   const main = isTeaching(s.state) ? s.state : s.resume;
   const exampleLikely = main === "ASSESS" && s.done.length === 0 && (helpInWords(s.turn.text) || saysStuck(s.turn.text));
-  return { rules: { ...plan.rules, ...(exampleLikely ? { noQuestion: true } : {}) }, act: plan.p.act, stance: codeStance(s), extra: vocabExtra(s) };
+  // A plain hello ("Hi, Maya") answers the opening: it streams like a math turn, whatever kind the model names it.
+  const greeting = /^(?:hi|hello|hey|hiya|good (?:morning|afternoon|evening))(?:,?\s+maya)?[\s!.,]*$/i.test(s.turn.text.trim());
+  return { rules: { ...plan.rules, ...(exampleLikely ? { noQuestion: true } : {}) }, act: plan.p.act, stance: codeStance(s), extra: vocabExtra(s), greeting };
 }
 
 /**

@@ -349,7 +349,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       const said = partialSay(soFar);
       if (!said || !said.kind) return;
       if (said.kind === "safety") { streamDone = true; return; }
-      const reviewAll = said.kind !== "math" && said.kind !== "help";
+      const reviewAll = said.kind !== "math" && said.kind !== "help" && !plan.greeting;
       const parts = sentencesOf(said.text);
       const complete = said.complete ? parts : parts.slice(0, -1);
       for (const sentence of complete.slice(seen)) {
