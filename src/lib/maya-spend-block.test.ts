@@ -282,6 +282,8 @@ describe("the seam the text session gets (agreed with the Maya lead)", () => {
     b.newTurn();
     const s = [b.seam.take("speculative"), b.seam.take("speculative")];
     expect(s.every(Boolean)).toBe(true);
+    expect(b.attempts()).toBe(2);
+    expect(b.seam.take("speculative")).toBeNull();
     expect(b.seam.take("model")).not.toBeNull();
     // 1 attempt is free: fewer than 2, so no speculation; the last live attempt is the child's.
     expect(b.attempts()).toBe(1);

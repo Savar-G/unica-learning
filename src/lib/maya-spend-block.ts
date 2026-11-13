@@ -34,7 +34,7 @@ export const BLOCK_RENEW_MS = 7 * 60_000;
 export const BLOCK_RETIRE_MS = 8 * 60_000;
 /** Speculative attempts a turn may take (the Maya lead's prepared replies). */
 export const SPECULATIVE_PER_TURN = 3;
-/** A speculative attempt is refused when fewer than this many attempts are free: speculation never takes the last live attempts. */
+/** A speculative attempt must leave this many attempts free for live work. */
 export const SPECULATIVE_KEEP = 2;
 
 /** What an attempt from the block is: Maya's model, a prepared reply that may not be used, or a free-talk review. */
@@ -50,7 +50,7 @@ export interface Handle {
 /**
  * The seam the text session gets (agreed with the Maya lead, 2026-11-13). `take` is synchronous and answers null when
  * there is no room. The block enforces the rules: at most SPECULATIVE_PER_TURN speculative takes a turn, none when
- * fewer than SPECULATIVE_KEEP attempts are free, and the week's cap. `settle` gives the attempt's real cost in US
+ * SPECULATIVE_KEEP or fewer attempts are free, and the week's cap. `settle` gives the attempt's real cost in US
  * dollars; `{ used: true }` marks a speculative attempt whose reply was used (it stays kind "speculative"). `giveBack`:
  * the attempt was never sent and costs nothing. Each handle is settled or given back once; a second call changes nothing.
  */
@@ -236,7 +236,7 @@ export function createBudget(seams: BudgetSeams): CallBudget {
     seam: {
       take(kind) {
         if (kind === "model") return budget.claim(m) ?? budget.take("model", m);
-        if (speculated >= SPECULATIVE_PER_TURN || attempts() < SPECULATIVE_KEEP) return null;
+        if (speculated >= SPECULATIVE_PER_TURN || attempts() <= SPECULATIVE_KEEP) return null;
         const h = budget.take("speculative", m);
         if (h) speculated++;
         return h;

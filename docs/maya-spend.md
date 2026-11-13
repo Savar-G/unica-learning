@@ -56,7 +56,7 @@ settle(handle: Handle, usd: number, how?: { used?: boolean }): void; // the atte
 giveBack(handle: Handle): void; // never sent: costs nothing
 ```
 
-- The block enforces the rules, not the caller: at most 3 `speculative` takes a turn (the call module calls `budget.newTurn()` when it admits a turn); a `speculative` take is refused when fewer than 2 attempts are free, so speculation never takes the last live attempts; and the week's cap, as above.
+- The block enforces the rules, not the caller: at most 3 `speculative` takes a turn (the call module calls `budget.newTurn()` when it admits a turn); a `speculative` take is refused when 2 or fewer attempts are free, so speculation leaves at least 2 attempts for live work; and the week's cap, as above.
 - A `model` take is the turn's admitted attempt first, then a fresh one.
 - A speculative attempt whose reply is used stays kind `speculative`: `settle(handle, usd, { used: true })` marks it. Nothing is re-labelled `model`.
 - `budget.totals()` gives the settled costs per kind in micros (`model`, `speculative`, `speculativeUsed`, `review`). The database keeps one row per block (what `model`); the detail per attempt is in `ai_usage_events`. A separate `what` for speculation in `maya_spend` would need a migration.
