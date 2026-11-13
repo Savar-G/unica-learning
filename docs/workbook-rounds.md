@@ -55,3 +55,9 @@ The checks must pass. The scoped Codex review must have no P0 or P1 findings. Sa
 ## Story text is code-only
 
 The AI must never edit printed story text. Code owns that text. A reworded story could keep a wrong answer key. See D-231 in the [decision log](../.design/decisions.md).
+
+## Capacity checks share the printable grid (#764)
+
+The row-swap check, retained-grid spacing retry and final empty-cell check intentionally use `budgetPage` with the current slots and layout. They must agree on which questions exist. An absent approved contract stays missing; it cannot become a made-up stand-in just for a row check. Existing writer slots still use their measured stand-ins. The spacing retry changes only the permitted gaps, not those rules.
+
+`workbook-generator-grid-fallback.test.ts` pins the missing-contract decision both with an already-fitting grid and with the bounded spacing retry. It also checks that a retry keeps the same questions, stops on overflow, and never exceeds 48 px. This keeps #730's shared builder; restoring its old stand-ins for row swaps or the final check would hide missing approved questions. This decision changes no generated pages.

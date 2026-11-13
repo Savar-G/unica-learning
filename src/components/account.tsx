@@ -8,6 +8,8 @@ import Link from "next/link";
 import { CURRICULA, EMAIL, type CurriculumId } from "@/lib/signup";
 import type { StartState } from "@/lib/assessment";
 import { gradeLabel, gradeShort } from "@/lib/assessment/grades";
+import { normalizePhone } from "@/lib/phone-number";
+import { goalsPath } from "@/lib/child-goals";
 import { GRADES, gradeHint, PASSWORD_MAX, PASSWORD_MIN, signInFailure, validPassword, type AccountError, type SignInFailure, type AccountResult, type ChildInput } from "@/lib/account";
 import { browserClient } from "@/lib/supabase-browser";
 import type { PinFormResult } from "@/lib/parent-pin-server";
@@ -127,7 +129,7 @@ function Submit({ busy, children }: { busy: boolean; children: ReactNode }) {
   );
 }
 
-type SignupErrors = Partial<Record<"name" | "email" | "password" | "child" | "province", boolean>>;
+type SignupErrors = Partial<Record<"name" | "email" | "telephone" | "password" | "child" | "province", boolean>>;
 
 /** What the email-code step shows under the button (#82). */
 type CodeNote = null | "sent_again" | "wait" | "bad" | "expired" | "too_many" | "check_failed" | "send_failed";
@@ -178,6 +180,7 @@ export function AccountSignup({ phone = false }: { phone?: boolean }) {
   const form = useRef<HTMLFormElement>(null);
   const codeInput = useRef<HTMLInputElement>(null);
   const [name, setName] = useState("");
+  const [telephone, setTelephone] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -215,7 +218,7 @@ export function AccountSignup({ phone = false }: { phone?: boolean }) {
   const finish = async () => {
     setBusy(true);
     const res = await post("/api/account/finish", {
-      name: name.trim(), child: { ...child, firstName: child.firstName.trim() }, source: collectSource(),
+      name: name.trim(), phone: telephone, child: { ...child, firstName: child.firstName.trim() }, source: collectSource(),
       ...(phone ? {} : { password }),
     });
     if (!res.ok) {
@@ -246,7 +249,8 @@ export function AccountSignup({ phone = false }: { phone?: boolean }) {
       router.replace("/account?existing=1");
     } else {
       track("account_created", { curriculum: child.province });
-      router.replace(res.linkSent ? "/account?sent=1" : "/account");
+      // D-325: the goals step comes first, then Parent home.
+      router.replace(goalsPath(res.linkSent ? "/account?sent=1" : "/account"));
     }
     router.refresh();
   };
@@ -256,6 +260,7 @@ export function AccountSignup({ phone = false }: { phone?: boolean }) {
     if (busy) return;
     const next: SignupErrors = {
       name: name.trim().length < 2,
+      telephone: !normalizePhone(telephone),
       email: !EMAIL.test(email.trim()),
       password: !phone && !validPassword(password),
       child: !child.firstName.trim(),
@@ -263,7 +268,7 @@ export function AccountSignup({ phone = false }: { phone?: boolean }) {
     };
     setErrors(next);
     setFailure(null);
-    const firstBad = (["name", "email", "password", "child", "province"] as const).find((k) => next[k]);
+    const firstBad = (["name", "email", "telephone", "password", "child", "province"] as const).find((k) => next[k]);
     if (firstBad) {
       const at = firstBad === "child" ? "c-first" : firstBad === "province" ? "c-province" : firstBad;
       form.current?.querySelector<HTMLElement>(`#a-${at}`)?.focus();
@@ -393,6 +398,9 @@ export function AccountSignup({ phone = false }: { phone?: boolean }) {
         </Field>
         <Field id="a-email" label="Email" bad={errors.email} error="Enter a valid email." hint={phone ? "We email you a code to confirm it, then the link for the laptop or tablet." : "We email you a code to confirm it."}>
           <input id="a-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} aria-invalid={!!errors.email} aria-describedby={described("a-email", errors.email, true)} />
+        </Field>
+        <Field id="a-telephone" label="Phone number" bad={errors.telephone} error="Enter a valid Canadian or US phone number.">
+          <input id="a-telephone" type="tel" autoComplete="tel" required value={telephone} onChange={(e) => setTelephone(e.target.value)} aria-invalid={!!errors.telephone} aria-describedby={described("a-telephone", errors.telephone)} />
         </Field>
         {!phone && <>
           <Field id="a-password" label="Password" bad={errors.password} error={failure === "weak_password" ? "Choose a different password." : `Use ${PASSWORD_MIN} to ${PASSWORD_MAX} characters.`} hint={`At least ${PASSWORD_MIN} characters.`}>
@@ -655,7 +663,8 @@ export function AddChild({ province }: { province: CurriculumId }) {
     track("child_added", { curriculum: child.province });
     setChild({ firstName: "", grade: 4, province: child.province });
     setOpen(false);
-    router.refresh();
+    // D-325: the new child's goals step, then back to Parent home.
+    router.push(goalsPath("/account"));
   };
 
   return (
@@ -679,7 +688,7 @@ function startView(state: Exclude<StartState, { kind: "wait" }>, name: string, w
     case "finish":
       return { label: "Finish test", note: <>All of {name}&apos;s answers are in, but the test was not sent. Open it to finish. The report then comes by email.</>, status: "finish" };
     case "expired":
-      return { label: "Start again", note: "The last test was not finished within 24 hours, so it closed. The new test has new questions.", status: "expired" };
+      return { label: "Start again", note: "The last test closed before a report could be made. The new test has new questions.", status: "expired" };
     case "start":
       return state.retake
         ? { label: "Start test", note: "The next test is open. It has new questions.", status: "retake" }
@@ -806,6 +815,7 @@ export function FinishAccount({ name: googleName, email, needsPassword }: { name
   const router = useRouter();
   const form = useRef<HTMLFormElement>(null);
   const [name, setName] = useState(googleName);
+  const [telephone, setTelephone] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [child, setChild] = useState<ChildInput>(FIRST_CHILD);
@@ -819,13 +829,14 @@ export function FinishAccount({ name: googleName, email, needsPassword }: { name
     if (busy) return;
     const next: SignupErrors = {
       name: name.trim().length < 2,
+      telephone: !normalizePhone(telephone),
       password: needsPassword && !validPassword(password),
       child: !child.firstName.trim(),
       province: !child.province,
     };
     setErrors(next);
     setFailure(null);
-    const firstBad = (["name", "password", "child", "province"] as const).find((k) => next[k]);
+    const firstBad = (["name", "telephone", "password", "child", "province"] as const).find((k) => next[k]);
     if (firstBad) {
       const at = firstBad === "child" ? "c-first" : firstBad === "province" ? "c-province" : firstBad;
       form.current?.querySelector<HTMLElement>(`#f-${at}`)?.focus();
@@ -833,7 +844,7 @@ export function FinishAccount({ name: googleName, email, needsPassword }: { name
     }
     setBusy(true);
     const res = await post("/api/account/finish", {
-      name: name.trim(), child: { ...child, firstName: child.firstName.trim() }, source: collectSource(),
+      name: name.trim(), phone: telephone, child: { ...child, firstName: child.firstName.trim() }, source: collectSource(),
       ...(needsPassword ? { password } : {}),
     });
     if (!res.ok) {
@@ -847,7 +858,8 @@ export function FinishAccount({ name: googleName, email, needsPassword }: { name
       return;
     }
     if (!res.existing) track("account_created", { curriculum: child.province, channel });
-    router.replace(res.linkSent ? "/account?sent=1" : "/account");
+    // D-325: the goals step comes first, then Parent home.
+    router.replace(goalsPath(res.linkSent ? "/account?sent=1" : "/account"));
     router.refresh();
   };
 
@@ -860,6 +872,9 @@ export function FinishAccount({ name: googleName, email, needsPassword }: { name
         <p className="small">Signed in as <b>{email}</b>.</p>
         <Field id="f-name" label="Your name" bad={errors.name} error="Enter your name.">
           <input id="f-name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} aria-invalid={!!errors.name} aria-describedby={described("f-name", errors.name)} />
+        </Field>
+        <Field id="f-telephone" label="Phone number" bad={errors.telephone} error="Enter a valid Canadian or US phone number.">
+          <input id="f-telephone" type="tel" autoComplete="tel" required value={telephone} onChange={(e) => setTelephone(e.target.value)} aria-invalid={!!errors.telephone} aria-describedby={described("f-telephone", errors.telephone)} />
         </Field>
         {needsPassword && (
           <Field id="f-password" label="Choose a password" bad={errors.password} error={failure === "weak_password" ? "Choose a different password." : `Use ${PASSWORD_MIN} to ${PASSWORD_MAX} characters.`} hint={`At least ${PASSWORD_MIN} characters. You sign in with it next time.`}>

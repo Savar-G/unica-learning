@@ -3,24 +3,36 @@ import { act, createElement, Suspense, use, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AdminFrame } from "@/components/admin";
+import { AdminShell } from "@/components/admin-shell";
 import { RunRefresh } from "@/components/admin-run-refresh";
 
 const refresh = vi.fn<() => void>();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }), usePathname: () => "/admin", useSearchParams: () => new URLSearchParams() }));
 vi.mock("next/link", () => ({
-  default: ({ href, prefetch, children }: { href: string; prefetch?: boolean; children: unknown }) =>
-    createElement("a", { href, "data-prefetch": String(prefetch) }, children as never),
+  default: ({ href, prefetch, children, ...rest }: { href: string; prefetch?: boolean; children: unknown }) =>
+    createElement("a", { ...rest, href, "data-prefetch": String(prefetch) }, children as never),
 }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-describe("the admin bar", () => {
+describe("the admin sidebar", () => {
+  const sidebar = () => renderToStaticMarkup(createElement(AdminShell, { email: "a@b.c", showTests: false, badges: Promise.resolve({}), pending: null }, createElement("main", null, "page")));
+
   it("loads no admin page before a click", () => {
-    const html = renderToStaticMarkup(createElement(AdminFrame, { email: "a@b.c", section: "workbooks", title: "T" } as Parameters<typeof AdminFrame>[0], null));
-    const links = html.match(/<a [^>]*>/g) ?? [];
+    const links = sidebar().match(/<a [^>]*>/g) ?? [];
     expect(links.length).toBeGreaterThan(10);
     expect(links.filter((l) => !l.includes('data-prefetch="false"'))).toEqual([]);
+  });
+
+  it("marks the page's own item, renders every folder open, and has the switch off by default", () => {
+    const html = sidebar();
+    expect(html.match(/aria-current="page"/g)).toHaveLength(1);
+    expect(html).toMatch(/<a(?=[^>]*href="\/admin")(?=[^>]*aria-current="page")[^>]*>/);
+    expect(html).not.toContain("is-shut");
+    expect(html.match(/aria-expanded="true"/g)?.length).toBeGreaterThanOrEqual(6);
+    expect(html).toMatch(/<input type="checkbox" role="switch"(?![^>]*checked)/);
+    expect(html).toContain('action="/admin/parents"');
+    for (const gone of ["Maya board", "Maya chat", "Cards and waitlist", "Scan pages", "Parent dashboard", ">Children<", ">Activity<"]) expect(html).not.toContain(gone);
   });
 });
 

@@ -22,7 +22,7 @@ The post is not an ad. Mention Unica only where it is the honest next step, at m
 - **Body:** 4-7 `Section` blocks. Phrase each H2 as the follow-up question a parent asks next. Short paragraphs (2-4 sentences). Bullets for steps and lists. A `DataTable` when the reader compares options, prices or grades. A `Callout` for one practical tip.
 - **Middle CTA:** one `AssessmentCta`, after the section where knowing the child's level matters, with one line of text that fits that section.
 - **Links:** at least one `Link` to another page on the site (a `/resources` guide, another post, `/compare` or `/sample-report`). List 2-4 of them in `related`.
-- **FAQ:** 3-6 questions in `meta.faqs`, taken from "People also ask" and autocomplete phrasing. Plain-text answers of 2-4 sentences that make sense alone (they become FAQPage structured data).
+- **FAQ:** 3-6 questions in `meta.faqs`, taken from "People also ask" and autocomplete phrasing. Plain-text answers of 2-4 sentences that make sense alone (they show on the page; there is no FAQPage structured data).
 - **Sources:** at least 3 in `meta.sources`, each cited in the body with `<Cite n={...} />`. Prefer the primary source: the BC Ministry of Education, a school district, Statistics Canada, a provider's own price page, a peer-reviewed study. Give each source its accessed date.
 - **Length:** 1,200-2,000 words in the body. Longer only when the query needs it (a comparison of many options).
 

@@ -252,6 +252,53 @@
 .support-page .rpt .rpt-next .rpt-small { margin: 0; color: var(--ink); }
 [id="rpt-next"] { scroll-margin-top: 96px; }
 
+/* progress preview (round r-progress-preview-5, P2): the prediction, the skill table, how. Book colours by grade. */
+.rpt-goal { scroll-margin-top: 96px; padding: var(--row-pad) 0; border-top: 1px solid var(--line); }
+[data-look="warm"] .rpt .rpt-goal h2 { max-width: 17em; margin: 12px auto 0; text-align: center; font-size: clamp(30px, 4.4vw, 52px); font-weight: 300; line-height: 1.06; letter-spacing: -0.04em; }
+[data-look="warm"] .rpt .rpt-goal h2 b { font-weight: 500; }
+.rpt-goal-t { width: 100%; margin-top: clamp(24px, 4vw, 40px); border-collapse: separate; border-spacing: 0; border-radius: 16px; background: #fff; box-shadow: 0 0 0 1px var(--line), 0 24px 40px -30px rgba(0, 0, 0, 0.35); overflow: hidden; }
+.rpt-goal-t th, .rpt-goal-t td { padding: 16px 20px; border-top: 1px solid var(--line-soft); text-align: left; vertical-align: middle; font-size: 17px; font-weight: 400; }
+.rpt-goal-t thead th, .rpt-goal-t thead td { border-top: 0; background: var(--soft); }
+.rpt-goal-t thead th b { display: block; margin-top: 2px; font-size: 20px; font-weight: 400; letter-spacing: -0.02em; }
+.rpt-goal-t thead .rpt-k { color: var(--ink-2); }
+.rpt-goal-t tbody th { width: 210px; font: 400 12px/1.3 var(--mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); }
+.rpt-goal-t .is-goal { position: relative; width: 44%; padding-left: 34px; background: #fff8dc; font-weight: 500; }
+.rpt-goal-t thead .is-goal { background: #ffe999; }
+.rpt-goal-not { color: var(--ink-2); font-style: italic; }
+.rpt-goal-arrow { position: absolute; top: 50%; left: 0; z-index: 1; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: #fff; color: var(--ink); box-shadow: 0 0 0 1px #e8dca6, 0 2px 6px rgba(0, 0, 0, 0.08); transform: translate(-50%, -50%); }
+.rpt-goal-arrow svg { display: block; }
+.support-page .rpt .rpt-goal-how-k, .rpt .rpt-goal-how-k { margin-top: clamp(28px, 4vw, 44px); }
+.rpt .rpt-goal-how { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 12px 0 0; padding: 0; list-style: none; }
+.rpt .rpt-goal-how li { margin: 0; display: grid; gap: 6px; align-content: start; padding: 20px 20px 22px; border-radius: 14px; background: var(--card); }
+.rpt-goal-how li b { margin-top: 6px; font-size: 19px; font-weight: 500; letter-spacing: -0.01em; }
+.rpt-goal-how li > span { font-size: 15px; line-height: 1.5; color: var(--ink-2); }
+.rpt-goal-how .rpt-goal-books { display: flex; gap: 3px; margin-top: 8px; }
+.rpt-goal-books i { flex: 1 1 0; height: 18px; border-radius: 3px; }
+.rpt-goal-how .rpt-goal-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font: 400 12px/1.3 var(--mono); }
+.rpt-goal-legend i { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 2px; vertical-align: -1px; }
+.rpt-goal i.is-g0 { background: var(--tang); }
+.rpt-goal i.is-g1 { background: var(--sun); }
+.rpt-goal i.is-g2 { background: var(--leaf); }
+.rpt-goal i.is-g3 { background: var(--sky); }
+/* grades 4 to 7 (and 8, 9): the same four colours, lighter, so a path over 4 grades never repeats one */
+.rpt-goal i.is-g4 { background: #ffb59e; }
+.rpt-goal i.is-g5 { background: #ffe29a; }
+.rpt-goal i.is-g6 { background: #8ad9b9; }
+.rpt-goal i.is-g7 { background: #a9c6f6; }
+@media (max-width: 860px) {
+  .rpt .rpt-goal-how { grid-template-columns: 1fr; }
+}
+/* phone: today and the goal side by side under each area; no arrows */
+@media (max-width: 599px) {
+  .rpt-goal-t thead td { display: none; }
+  .rpt-goal-t tr { display: grid; grid-template-columns: 1fr 1fr; }
+  .rpt-goal-t tbody th { grid-column: 1 / -1; width: auto; padding: 12px 14px 0; border-top: 1px solid var(--line-soft); }
+  .rpt-goal-t th, .rpt-goal-t td { padding: 10px 14px; font-size: 16px; }
+  .rpt-goal-t tbody td { border-top: 0; }
+  .rpt-goal-t .is-goal { width: auto; padding-left: 14px; }
+  .rpt-goal-arrow { display: none; }
+}
+
 /* closing line */
 .support-page .rpt .rpt-meta { padding-top: 28px; border-top: 1px solid var(--line); font: 400 12.5px/1.6 var(--mono); color: var(--ink-2); }
 
@@ -277,5 +324,37 @@
   .rpt-plans .btn { min-width: 0; flex: 1 1 100%; }
 }
 
-/* The free results call (BookCall): a quieter card under the plan choice. */
-.rpt-next.rpt-call { margin-top: 16px; background: #fff; border: 1px solid var(--line); }
+/* The free results call (BookCall): its own row after the working level. */
+.rpt-next.rpt-call { background: #fff; border: 1px solid var(--line); }
+.rpt-next.rpt-call a.btn { color: #fff; }
+
+/* The first pages of workbook 1 (docs/first-pages.md, round r-first-pages option B): four real pages, the cover larger. */
+.rpt-fp { display: grid; gap: 16px; }
+.support-page .rpt .rpt-fp-lead, .rpt .rpt-fp-lead { margin: 0; max-width: 62ch; font-size: 15px; line-height: 1.5; color: var(--ink-2); }
+.rpt-fp-pages { display: grid; grid-template-columns: 1.35fr 1fr 1fr 1fr; align-items: end; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.rpt-fp-pages li { min-width: 0; }
+.rpt-fp-pages figure { display: grid; gap: 6px; margin: 0; }
+.rpt-fp-pages button { display: block; width: 100%; padding: 0; border: 0; background: none; border-radius: 6px; cursor: zoom-in; }
+.rpt-fp-pages button:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+.rpt-fp-pages img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 6px; background: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / 0.06); transition: transform 0.15s ease, box-shadow 0.15s ease; }
+.rpt-fp-pages button:hover img { transform: translateY(-2px); box-shadow: 0 6px 16px rgb(0 0 0 / 0.08); }
+.rpt-fp-pages figcaption { font-size: 12.5px; line-height: 1.35; color: var(--ink-2); }
+.rpt-fp-pages figcaption b { display: block; font-weight: 600; color: var(--ink); }
+.rpt-fp-cta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.support-page .rpt .rpt-fp-cta p, .rpt .rpt-fp-cta p { margin: 0; font-size: 13.5px; color: var(--ink-2); }
+.rpt-fp-dialog { width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--paper, #fff); }
+.rpt-fp-dialog::backdrop { background: rgb(12 12 14 / 0.55); }
+.rpt-fp-dialog-in { display: grid; gap: 8px; padding: 12px; }
+.rpt-fp-dialog-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.rpt-fp-dialog-bar p { margin: 0; font-size: 14px; }
+.rpt-fp-dialog-bar div { display: flex; gap: 6px; }
+.rpt-fp-dialog img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 4px; }
+@media (max-width: 699px) {
+  .rpt-fp-pages { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 12px; padding-bottom: 6px; }
+  .rpt-fp-pages li { flex: 0 0 72%; scroll-snap-align: start; }
+}
+@media (prefers-reduced-motion: reduce) { .rpt-fp-pages img { transition: none; } .rpt-fp-pages button:hover img { transform: none; } }
+.rpt-calendar { display: block; width: 100%; height: 650px; border: 1px solid var(--line); border-radius: 10px; margin-top: 20px; }
+.rpt-calendar-consent { margin-top: 18px; padding: 20px; background: #f5f4f2; border-radius: 8px; }
+.rpt-calendar-link { display: inline-block; margin-top: 16px; text-decoration: underline; }
+@media (max-width: 520px) { .rpt-calendar { height: 760px; } }

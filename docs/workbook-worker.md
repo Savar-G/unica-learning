@@ -142,6 +142,21 @@ When there are many more customers, the API becomes the default again (D-200):
 The work review, the report text, the learner and child profiles and Maya run live for parents and children. They always use the API (`src/lib/ai-client.ts`). Only workbook generation uses the subscription.
 
 
+## Book 1 baseline recovery (#870)
+
+After an admin approves a Book 1 draft, the site saves its starting record (the Book 1 baseline) from the plan input that the run frame keeps. The site cannot save it in three cases. The admin run page then says "Not saved", and `/admin/next-steps` (Plans and delivery, "Book 1 starting records") lists the child, the draft, the version and the exact command. It also lists a revision that the site tried 3 times and could not save. The list shows only a draft's newest approved version that has no baseline: an older version, or a version that a baseline now binds, is left out. A pending reason `revision-changed` (a newer draft version than the approved one) shows no command: approve the newest version again.
+
+- The run was made before #472, so its frame kept no plan input (`planning-capture-missing`).
+- The curriculum changed in a deploy after the book was planned (`curriculum-version-changed`). The record must copy the skills and steps of the version the book was planned on.
+- The site runs another commit than the one that planned the book (`planned-on-another-build`). Code outside the curriculum version (the watch-out check) shapes the steps, so only the planning build can prove that it copies the planned steps.
+
+All three need the frame's own build: the original planner and its curriculum, built from this repository's Git objects. On the Mac, from a checkout that has the frame's build commit:
+
+1. Run `npm run workbooks:book1-recover -- --run <run id>`. It saves nothing. It runs every step of the save: the planning proof or recovery, the record, and the database save in a transaction that is always rolled back. It prints each result, whether book 2 can be planned on today's curriculum (#812), and the verdict.
+2. If the verdict says the save would store it, run it again with `--save`. It never replaces a baseline that exists.
+
+Do this before any page of the book is marked: after the first mark, the save refuses (`activity-before-boundary`). Recovery also refuses when the child's profile was rebuilt after the run's frame.
+
 ## Draft review comments (#313)
 
 The draft page has a comment reviewer. Click a question or a place on the page. You can also select a question from the list. Enter saves a comment. Esc cancels it. Saved comments survive a reload and do not change the workbook. Use **Edit myself** inside a question comment to change its exact fields. Code calculates its answer and worked steps.
@@ -158,3 +173,7 @@ A lost commit response has an unknown outcome. The job keeps its files because t
 Each finished review page is checkpointed under the batch lease before the next page starts. A server call lets go after two minutes, then uses the existing protected resume route. The next call reuses those pages and their images. A worker restart can also read them. It does not ask the writer or render those pages again. Failed pages are checkpointed too; their comments can be edited and submitted in a later batch.
 
 The review schema was applied through the Management API in this order: `workbook_edit`, `workbook_comments`, `workbook_comment_checks`, `workbook_comment_results`, `workbook_comment_resume`, `workbook_comment_send`. The matching SQL files are under `supabase/migrations/`. Keep this order when setting up another database. The repository uses date-only migration filenames; alphabetical filename order is not the dependency order.
+
+## First pages
+
+The worker also makes the first pages of Workbook 1 that wait for the Mac (`public.workbook_first_pages` with runner `mac`, docs/first-pages.md), after the runs and edits of its queue. They use the same AI settings. Nothing queues them while `FIRST_PAGES_ENABLED` is off, except an admin's one test.

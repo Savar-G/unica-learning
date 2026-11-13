@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin, option A: Today</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;450;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="shared.css">
+<style>
+  /* ---------- Home: page head ---------- */
+  .today-head { margin-bottom: var(--s6); }
+  .today-head .eyebrow { margin-bottom: var(--s3); }
+  .label-mono { font: 400 11px/1.2 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+
+  /* KPI strip: secondary, one slim row */
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); border-radius: var(--r); background: var(--soft); margin-bottom: var(--s6); }
+  .kpi { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: var(--s1) var(--s3); padding: var(--s3) var(--s4); min-width: 0; }
+  .kpi + .kpi { border-left: 1px solid var(--line); }
+  .kpi .label-mono { grid-column: 1 / -1; }
+  .kpi-val { display: flex; align-items: baseline; gap: var(--s2); }
+  .kpi-val b { font: 300 26px/1 var(--sans); letter-spacing: -0.03em; }
+  .delta { font: 500 12px/1 var(--sans); color: var(--ink-2); white-space: nowrap; }
+  .delta.up { color: #13744a; }
+  .spark { width: 72px; height: 24px; display: block; }
+
+  /* ---------- Home: the four jobs ---------- */
+  .job { display: grid; grid-template-columns: 232px minmax(0, 1fr); gap: var(--s6); padding: var(--s6) 0; border-top: 1px solid var(--line); }
+  .job-sum h2 { margin: var(--s2) 0 var(--s4); font: 400 19px/1.25 var(--sans); letter-spacing: -0.02em; }
+  .big { display: block; font: 300 52px/1 var(--sans); letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
+  .job-sum p { margin: var(--s2) 0 0; color: var(--ink-2); font-size: 14px; max-width: 30ch; }
+  .job-sum .viz { margin-top: var(--s4); }
+  .job-body { display: grid; gap: var(--s3); align-content: start; min-width: 0; }
+
+  .rows { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--r); background: #fff; }
+  .row { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; gap: var(--s3) var(--s4); padding: var(--s4); }
+  .row + .row { border-top: 1px solid var(--line-soft); }
+  .row .avatar { width: 32px; height: 32px; }
+  .row-main { min-width: 0; }
+  .row-title { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s2); font-weight: 500; }
+  .row-sub { margin-top: 2px; color: var(--ink-2); font-size: 13.5px; }
+  .row-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--s2); }
+  .row-act { display: flex; align-items: center; gap: var(--s3); justify-content: flex-end; }
+  .row-act .btn { height: 40px; }
+  .quiet { margin: 0; padding: 0 var(--s1); color: var(--ink-2); font-size: 13.5px; }
+  .quiet a { text-decoration-color: var(--line); text-underline-offset: 3px; }
+
+  /* progress bar for a book being made */
+  .prog { display: grid; gap: 6px; width: 200px; }
+  .prog-bar { height: 6px; border-radius: 999px; background: var(--card); overflow: hidden; }
+  .prog-bar i { display: block; height: 100%; border-radius: inherit; background: var(--sky); }
+  .prog-txt { display: flex; justify-content: space-between; gap: var(--s2); font-size: 12.5px; color: var(--ink-2); }
+  .live { width: 7px; height: 7px; border-radius: 50%; background: var(--leaf); box-shadow: 0 0 0 3px var(--ok); }
+
+  /* signups chart and marking ring */
+  .bars { display: block; width: 100%; max-width: 220px; height: auto; }
+  .bars-axis { display: flex; justify-content: space-between; max-width: 220px; margin-top: 6px; font: 400 10.5px/1 var(--mono); color: var(--ink-3); }
+  .ring { display: flex; align-items: center; gap: var(--s3); }
+  .ring svg { width: 56px; height: 56px; flex: none; }
+  .ring span { font-size: 13px; color: var(--ink-2); line-height: 1.35; }
+
+  /* empty state */
+  .empty { display: flex; align-items: center; gap: var(--s4); padding: var(--s5); border: 1px dashed var(--line); border-radius: var(--r); background: var(--soft); }
+  .empty svg { width: 40px; height: 40px; flex: none; }
+  .empty b { display: block; font-weight: 500; }
+  .empty span { color: var(--ink-2); font-size: 13.5px; }
+
+  /* earlier today */
+  .feed { list-style: none; margin: 0; padding: 0; }
+  .feed li { display: grid; grid-template-columns: 72px 10px minmax(0, 1fr); gap: var(--s3); align-items: baseline; padding: var(--s2) 0; font-size: 14px; }
+  .feed time { font: 400 12px/1 var(--mono); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+  .feed .dot { width: 8px; height: 8px; border-radius: 2px; transform: translateY(-1px); }
+  .feed a { text-decoration: none; font-weight: 500; }
+  .feed a:hover { text-decoration: underline; }
+
+  /* ---------- Production ---------- */
+  .pills { display: flex; flex-wrap: wrap; gap: var(--s2); margin-bottom: var(--s5); }
+  .pill { display: inline-flex; align-items: center; gap: var(--s2); min-height: 40px; padding: 0 var(--s4); border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--ink-2); font: 450 13.5px/1 var(--sans); cursor: pointer; }
+  .pill:hover { border-color: var(--ink-3); color: var(--ink); }
+  .pill[aria-pressed="true"] { background: var(--btn); border-color: var(--btn); color: #fff; }
+  .pill .n { font: 500 11.5px/1 var(--mono); opacity: .7; }
+  .kids { display: grid; gap: var(--s4); }
+  .kid { padding: var(--s5); }
+  .kid-head { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
+  .kid-head .avatar { width: 36px; height: 36px; font-size: 13px; }
+  .kid-name { font: 400 18px/1.2 var(--sans); letter-spacing: -0.02em; margin: 0; }
+  .kid-name small { font: 400 13.5px/1 var(--sans); color: var(--ink-2); letter-spacing: 0; margin-left: var(--s2); }
+  .kid-head .btn { margin-left: auto; height: 40px; }
+  .steps { list-style: none; display: grid; grid-template-columns: repeat(6, 1fr); margin: var(--s5) 0 var(--s4); padding: 0; }
+  .step { position: relative; display: grid; justify-items: start; gap: var(--s2); font-size: 12.5px; color: var(--ink-3); }
+  .step::before { content: ""; position: absolute; top: 7px; left: 16px; right: 0; height: 2px; background: var(--line); }
+  .step:last-child::before { display: none; }
+  .step.done::before { background: var(--leaf); }
+  .step i { position: relative; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line); background: #fff; display: grid; place-items: center; }
+  .step.done i { border-color: var(--leaf); background: var(--leaf); }
+  .step.done i::after { content: ""; width: 6px; height: 3px; border: solid #fff; border-width: 0 0 1.6px 1.6px; transform: rotate(-45deg) translate(1px, -1px); }
+  .step.now i { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+  .step.done { color: var(--ink-2); }
+  .step.now { color: var(--ink); font-weight: 500; }
+  .kid-detail { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s4); padding: var(--s3) var(--s4); border-radius: 6px; background: var(--soft); font-size: 14px; }
+  .kid-detail .prog { width: 240px; }
+  details.hist { margin-top: var(--s4); }
+  details.hist summary { display: inline-flex; align-items: center; min-height: 40px; cursor: pointer; color: var(--ink-2); font-size: 13.5px; }
+  details.hist ul { list-style: none; margin: 0; padding: 0 0 0 var(--s4); border-left: 2px solid var(--line); display: grid; gap: var(--s2); font-size: 13.5px; }
+  details.hist li span { color: var(--ink-3); font-family: var(--mono); font-size: 12px; margin-right: var(--s2); }
+
+  /* ---------- phone ---------- */
+  @media (max-width: 1080px) {
+    .job { grid-template-columns: 1fr; gap: var(--s4); }
+    .job-sum { display: grid; grid-template-columns: auto 1fr; gap: 0 var(--s4); align-items: end; }
+    .job-sum .eyebrow, .job-sum h2, .job-sum .viz { grid-column: 1 / -1; }
+    .job-sum p { margin: 0 0 6px; max-width: none; }
+  }
+  @media (max-width: 860px) {
+    .kpis { grid-template-columns: 1fr 1fr; }
+    .kpi:nth-child(3) { border-left: 0; }
+    .kpi:nth-child(n+3) { border-top: 1px solid var(--line); }
+    .spark { width: 56px; }
+    .row { grid-template-columns: 32px minmax(0, 1fr); }
+    .row-act { grid-column: 1 / -1; justify-content: flex-start; flex-wrap: wrap; }
+    .row-act .btn { flex: 1 1 auto; justify-content: center; }
+    .prog, .kid-detail .prog { width: 100%; }
+    .big { font-size: 44px; }
+    .kid { padding: var(--s4); }
+    .kid-head .btn { width: 100%; margin-left: 0; justify-content: center; }
+    .step span { display: none; }
+    .step.now span { display: block; position: absolute; top: 24px; left: 0; white-space: nowrap; }
+    .step:nth-last-child(-n+2).now span { left: auto; right: 0; }
+    .steps { margin-bottom: var(--s6); }
+    .feed li { grid-template-columns: 64px 10px minmax(0, 1fr); }
+  }
+</style>
+</head>
+<body>
+<script src="shared.js"></script>
+<script>
+(function () {
+  // ---------- small helpers ----------
+  const initials = (name) => name.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const andList = (xs) => xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`;
+  // "#/home?empty" shows every Home section in its empty state, for review.
+  const real = (xs) => xs.filter((x) => !x.test);
+  const when = (s) => s.replace(/^(Today|Yesterday),/, (m, d) => d.toLowerCase() + " at").replace(/^(Today|Yesterday)/, (m) => m.toLowerCase());
+  const forceEmpty = () => /[?&]empty\b/.test(location.hash);
+  const testChip = (x) => (x && x.test ? ' <span class="chip test">test</span>' : "");
+  const avatar = (ctx, f, label) => `<span class="avatar" style="background:${ctx.esc(f ? f.color : "#eee")}" aria-hidden="true">${ctx.esc(initials(label))}</span>`;
+  const toast = (label, msg) => `<button class="btn" type="button" data-toast="${msg}">${label}</button>`;
+  const ghost = (label, msg) => `<button class="btn ghost" type="button" data-toast="${msg}">${label}</button>`;
+
+  const CALM = '<svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="19" fill="var(--ok)"/><circle cx="20" cy="20" r="12" fill="#fff"/><path d="m14.5 20.5 4 4 7-8" fill="none" stroke="var(--leaf)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const empty = (title, line) => `<div class="empty">${CALM}<div><b>${title}</b><span>${line}</span></div></div>`;
+
+  function spark(values, label) {
+    const w = 72, h = 24, max = Math.max(1, ...values), step = w / (values.length - 1);
+    const pts = values.map((v, i) => `${(i * step).toFixed(1)},${(h - 3 - (v / max) * (h - 6)).toFixed(1)}`);
+    const last = pts[pts.length - 1].split(",");
+    return `<svg class="spark" viewBox="0 0 ${w} ${h}" role="img" aria-label="${label}"><polyline points="${pts.join(" ")}" fill="none" stroke="var(--ink-3)" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"/><circle cx="${last[0]}" cy="${last[1]}" r="2.4" fill="var(--accent)"/></svg>`;
+  }
+  function bars(values, days) {
+    const w = 220, h = 56, gap = 4, bw = (w - gap * (values.length - 1)) / values.length, max = Math.max(1, ...values);
+    const total = values.reduce((a, b) => a + b, 0);
+    const r = values.map((v, i) => {
+      const bh = v ? Math.max(4, (v / max) * (h - 2)) : 2;
+      const today = i === values.length - 1;
+      return `<rect x="${(i * (bw + gap)).toFixed(1)}" y="${(h - bh).toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="2" fill="${today ? "var(--accent)" : v ? "var(--g3)" : "var(--line)"}"><title>${days[i]}: ${v}</title></rect>`;
+    }).join("");
+    return `<svg class="bars" viewBox="0 0 ${w} ${h}" role="img" aria-label="Signups per day for the last 14 days: ${total} in total, ${values[values.length - 1]} today">${r}</svg><div class="bars-axis"><span>${days[0]}</span><span>Today</span></div>`;
+  }
+  function ring(done, of) {
+    const r = 22, c = 2 * Math.PI * r, f = done / of;
+    return `<svg viewBox="0 0 56 56" role="img" aria-label="${done} of ${of} pages marked"><circle cx="28" cy="28" r="${r}" fill="none" stroke="var(--card)" stroke-width="6"/><circle cx="28" cy="28" r="${r}" fill="none" stroke="var(--leaf)" stroke-width="6" stroke-linecap="round" stroke-dasharray="${(c * f).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 28 28)"/><text x="28" y="32" text-anchor="middle" font-family="Geist" font-size="12" font-weight="500" fill="var(--ink)">${Math.round(f * 100)}%</text></svg>`;
+  }
+  function progress(b) {
+    return `<div class="prog"><div class="prog-bar" role="progressbar" aria-valuenow="${b.progress}" aria-valuemin="0" aria-valuemax="100" aria-label="Book ${b.n} for ${b.child}"><i style="width:${b.progress}%"></i></div><div class="prog-txt"><span class="num">${b.progress}%</span><span>${b.eta}</span></div></div>`;
+  }
+  // A draft's check results, in plain words.
+  function checkWords(c) {
+    const out = [];
+    if (c.fix) out.push(["bad", `${plural(c.fix, "question", "questions")} to fix`]);
+    if (c.missing) out.push(["bad", `${plural(c.missing, "question", "questions")} missing`]);
+    if (c.byHand) out.push(["warn", `${plural(c.byHand, "answer", "answers")} to check by hand`]);
+    if (c.fit) out.push(["warn", `${plural(c.fit, "page is", "pages are")} too full`]);
+    if (c.mathOk === c.mathAll) out.push(["ok", `All ${c.mathAll} answers are right`]);
+    return out.map(([t, w]) => `<span class="chip ${t}">${w}</span>`).join("");
+  }
+
+  function section(n, title, count, line, viz, body) {
+    const id = "job-" + n;
+    return `<section class="job" aria-labelledby="${id}">
+      <div class="job-sum"><span class="eyebrow">0${n}</span><h2 id="${id}">${title}</h2><span class="big">${count}</span><p>${line}</p>${viz ? `<div class="viz">${viz}</div>` : ""}</div>
+      <div class="job-body">${body}</div>
+    </section>`;
+  }
+
+  // ---------- Home ----------
+  function renderHome(ctx) {
+    const E = ctx.esc, none = forceEmpty();
+    const bookOf = (kidId) => ctx.books.filter((b) => b.childId === kidId).sort((a, b) => b.n - a.n)[0];
+
+    // 1. New customers
+    const fresh = none ? [] : ctx.families.filter((f) => f.isNew);
+    const custRows = fresh.map((f) => {
+      const kidBooks = f.kids.map((k) => ({ k, b: bookOf(k.id) }));
+      const waiting = kidBooks.filter((x) => !x.b || x.b.state === "none");
+      const making = kidBooks.find((x) => x.b && x.b.state === "making");
+      let act = "";
+      if (waiting.length) act = toast(waiting.length > 1 ? `Prepare ${waiting.length} first workbooks` : "Prepare first workbook", E(`Workbook queued for ${andList(waiting.map((x) => x.k.name))}`));
+      else if (making) act = progress(making.b);
+      return `<li class="row">${avatar(ctx, f, f.parent)}
+        <div class="row-main"><div class="row-title"><a href="#/families">${E(f.parent)}</a>${testChip(f)}</div>
+          <div class="row-sub">${E(f.kids.map((k) => `${k.name}, ${k.grade}`).join(" · "))}</div>
+          <div class="row-meta"><span class="chip ok">Card saved ${E(when(f.stageAt))}</span>${making ? '<span class="chip info">Book 1 is being made</span>' : ""}</div></div>
+        <div class="row-act">${act}</div></li>`;
+    }).join("");
+    const s1 = section(1, "New customers", real(fresh).length,
+      fresh.length ? `${plural(real(fresh).length, "family", "families")} saved a card since yesterday. Their free month starts when the first workbook arrives.` : "No new cards since yesterday.",
+      "", fresh.length ? `<ul class="rows">${custRows}</ul>` : empty("No new customers yet today", "The last card was saved yesterday. <a href=\"#/delivery\">See all plans</a>"));
+
+    // 2. Workbook production
+    const review = none ? [] : ctx.books.filter((b) => b.state === "review");
+    const fresh2 = none ? [] : ctx.books.filter((b) => b.state === "none");
+    const running = none ? [] : ctx.books.filter((b) => b.state === "making");
+    const byFam = {};
+    fresh2.forEach((b) => (byFam[b.family] = byFam[b.family] || []).push(b));
+    const prodRows = [
+      ...review.map((b) => `<li class="row">${avatar(ctx, ctx.family(b.family), b.child)}
+        <div class="row-main"><div class="row-title">${E(b.child)}, Book ${b.n} is ready to review${testChip(b)}</div>
+          <div class="row-sub">Made ${E(when(b.made))}. ${E(b.detail)}</div>
+          <div class="row-meta">${checkWords(b.checks)}</div></div>
+        <div class="row-act">${toast("Review draft", E(`Opening ${b.child}'s Book ${b.n}`))}</div></li>`),
+      ...Object.values(byFam).map((bs) => { const f = ctx.family(bs[0].family), names = andList(bs.map((b) => b.child));
+        return `<li class="row">${avatar(ctx, f, f.parent)}
+        <div class="row-main"><div class="row-title">${E(names)} ${bs.length > 1 ? "have" : "has"} no workbook${testChip(f)}</div>
+          <div class="row-sub">${E(f.parent)} saved a card ${E(when(f.stageAt))}.</div></div>
+        <div class="row-act">${toast(bs.length > 1 ? `Prepare ${bs.length} workbooks` : "Prepare workbook", E(`Workbook queued for ${names}`))}</div></li>`; }),
+      ...running.map((b) => `<li class="row">${avatar(ctx, ctx.family(b.family), b.child)}
+        <div class="row-main"><div class="row-title"><span class="live" aria-hidden="true"></span>${E(b.child)}, Book ${b.n} is being made${testChip(b)}</div>
+          <div class="row-sub">${E(b.detail)}</div></div>
+        <div class="row-act">${progress(b)}</div></li>`),
+    ].join("");
+    const needs = real(review).length + real(fresh2).length;
+    const shipped = none ? [] : real(ctx.books).filter((b) => b.state === "shipped");
+    const delivered = none ? [] : real(ctx.books).filter((b) => b.state === "delivered");
+    const arrives = shipped.map((b) => (b.detail.match(/Expected ([^.]+)/) || [])[1]).filter(Boolean)[0];
+    const quiet = shipped.length || delivered.length ? `<p class="quiet">${[shipped.length ? `${shipped.length} shipped${arrives ? `, arrives ${E(arrives)}` : ""}` : "", delivered.length ? `${delivered.length} delivered this week` : ""].filter(Boolean).join(" · ")}. <a href="#/production">All workbooks</a></p>` : "";
+    const s2 = section(2, "Workbook production", needs,
+      needs ? `${plural(needs, "workbook needs", "workbooks need")} you${real(running).length ? `. ${plural(real(running).length, "more is", "more are")} being made now.` : "."}` : "Nothing waits for you.",
+      "", (prodRows ? `<ul class="rows">${prodRows}</ul>` : empty("No workbook needs you", "Every draft is reviewed and every customer child has a book.")) + quiet);
+
+    // 3. New signups
+    const funnel = none ? [] : ctx.families.filter((f) => ["signed", "testing", "tested"].includes(f.stage));
+    const stageOf = (k) => ctx.STAGES.find((s) => s.key === k);
+    const nudge = (f) => !f.test && f.stage === "tested" && !/^Today/.test(f.stageAt);
+    const order = { tested: 0, testing: 1, signed: 2 };
+    funnel.sort((a, b) => (nudge(b) - nudge(a)) || (order[a.stage] - order[b.stage]));
+    const nudges = funnel.filter(nudge);
+    const signRows = funnel.map((f) => { const s = stageOf(f.stage), k = f.kids[0];
+      return `<li class="row">${avatar(ctx, f, f.parent)}
+        <div class="row-main"><div class="row-title"><a href="#/families">${E(f.parent)}</a>${testChip(f)}</div>
+          <div class="row-sub">${E(k.name)}, ${E(k.grade)}. ${E(f.note)}</div>
+          <div class="row-meta"><span class="chip ${s.tone}">${f.live ? '<span class="live" aria-hidden="true"></span>' : ""}${E(s.label)}${f.live ? ", live now" : ""}</span>${nudge(f) ? '<span class="chip warn">Might need a nudge</span>' : ""}</div></div>
+        <div class="row-act">${nudge(f) ? ghost(`Email ${E(f.parent.split(" ")[0])}`, E(`Draft email to ${f.parent}`)) : ""}</div></li>`; }).join("");
+    const wk = ctx.KPIS.find((k) => k.key === "signups");
+    const s3 = section(3, "New signups", real(funnel).length,
+      funnel.length ? `${plural(real(funnel).length, "family has", "families have")} not saved a card yet. ${wk.value} signed up ${wk.period}${nudges.length ? `; ${nudges.length} might need a nudge` : ""}.` : "Every family who signed up has saved a card or left.",
+      bars(ctx.SERIES.signups, ctx.DAYS), funnel.length ? `<ul class="rows">${signRows}</ul>` : empty("No one waits on a test or report", "New signups show here."));
+
+    // 4. Marking
+    const waiting = none ? [] : ctx.marking;
+    const groups = {};
+    waiting.forEach((m) => (groups[m.child + "|" + m.family] = groups[m.child + "|" + m.family] || []).push(m));
+    const markRows = Object.values(groups).map((ms) => { const f = ctx.family(ms[0].family), reasons = {};
+      ms.forEach((m) => (reasons[m.reason] = (reasons[m.reason] || 0) + 1));
+      const oldest = ms.slice().sort((a, b) => b.sinceMin - a.sinceMin)[0];
+      return `<li class="row">${avatar(ctx, f, ms[0].child)}
+        <div class="row-main"><div class="row-title">${E(ms[0].child)}, ${E(ms[0].book)}${testChip(ms[0])}</div>
+          <div class="row-sub">Oldest has waited ${E(oldest.since)}.</div>
+          <div class="row-meta">${Object.entries(reasons).map(([r, n]) => `<span class="chip ${/blurry/.test(r) ? "warn" : "info"}">${E(r)}${n > 1 ? ` <span class="num">×${n}</span>` : ""}</span>`).join("")}</div></div>
+        <div class="row-act">${toast(ms.length > 1 ? `Mark ${ms.length} answers` : "Mark 1 answer", E(`Opening ${ms[0].child}'s answers`))}</div></li>`; }).join("");
+    const M = ctx.MARKED;
+    const s4 = section(4, "Marking", real(waiting).length,
+      waiting.length ? `${plural(real(waiting).length, "answer waits", "answers wait")} for our team. The AI marked the rest.` : "No answers wait for our team.",
+      `<div class="ring">${ring(M.pages, M.of)}<span>${M.pages} of ${M.of} pages of ${E(M.child)}'s Book 1 marked. ${M.today} today.</span></div>`,
+      waiting.length ? `<ul class="rows">${markRows}</ul>` : empty("No answers waiting", "Last page marked 1 h ago."));
+
+    // Earlier today
+    const kindColor = { signup: "var(--g3)", book: "var(--sky)", test: "var(--sun)", customer: "var(--leaf)", marking: "var(--g2)" };
+    const today = ctx.ACTIVITY.filter((a) => a.at !== "Yesterday" && (ctx.showTests || !(ctx.family(a.family) || {}).test));
+    const feed = `<section class="job" aria-labelledby="job-feed"><div class="job-sum"><span class="eyebrow">Log</span><h2 id="job-feed">Earlier today</h2></div>
+      <div class="job-body">${today.length ? `<ul class="feed">${today.map((a) => `<li><time>${E(a.at)}</time><span class="dot" style="background:${kindColor[a.kind] || "var(--line)"}" aria-hidden="true"></span><span><a href="#/families">${E(a.who)}</a> ${E(a.what)}. <span class="faint">${E(a.detail)}</span></span></li>`).join("")}</ul>` : '<p class="quiet">Nothing yet today.</p>'}</div></section>`;
+
+    // KPI strip
+    const sparkFor = { customers: ctx.SERIES.cards, signups: ctx.SERIES.signups, tests: ctx.SERIES.finished };
+    const kpis = `<div class="kpis" role="list">${ctx.KPIS.map((k) => { const d = k.value - k.prev;
+      const delta = d === 0 ? "Same as last week" : `${d > 0 ? "▲ +" : "▼ "}${d} vs last week`;
+      return `<div class="kpi" role="listitem" title="${E(k.hint)}"><span class="label-mono">${E(k.label)}, ${E(k.period)}</span>
+        <div class="kpi-val"><b class="num">${k.value}</b><span class="delta ${d > 0 ? "up" : ""}">${delta}</span></div>
+        ${sparkFor[k.key] ? spark(sparkFor[k.key], `${k.label}, last 14 days`) : `<span class="delta">${E(k.hint.split(",")[0])}</span>`}</div>`; }).join("")}</div>`;
+
+    const todo = real(fresh).filter((f) => f.kids.some((k) => { const b = bookOf(k.id); return !b || b.state === "none"; })).length + real(review).length + nudges.length + Object.values(groups).filter((ms) => !ms[0].test).length;
+    return `${ctx.testbar}
+      <header class="page-head today-head"><div><span class="eyebrow">Tuesday, 10 November</span><h1>Today</h1>
+        <p>${todo ? `${plural(todo, "thing needs", "things need")} you, in the order to do them.` : "Nothing needs you right now."}</p></div></header>
+      ${kpis}${s1}${s2}${s3}${s4}${feed}`;
+  }
+
+  // ---------- Workbooks › Production ----------
+  let filter = "needs";
+  const FILTERS = [
+    { key: "needs", label: "Needs you", states: ["review", "none"] },
+    { key: "progress", label: "In progress", states: ["making", "approved", "printed", "shipped"] },
+    { key: "done", label: "Done", states: ["delivered"] },
+    { key: "all", label: "All", states: null },
+  ];
+  const RANK = { review: 0, none: 1, making: 2, approved: 3, printed: 4, shipped: 5, delivered: 6 };
+  const NEXT = {
+    none: ["Prepare workbook", "Workbook queued"],
+    making: null,
+    review: ["Review draft", "Opening the draft"],
+    approved: ["Mark printed", "Marked as printed"],
+    printed: ["Mark shipped", "Marked as shipped"],
+    shipped: ["Confirm delivery", "Delivery confirmed. Free month started"],
+    delivered: null,
+  };
+
+  function renderWorkbooks(ctx) {
+    const E = ctx.esc;
+    const kids = {};
+    ctx.books.forEach((b) => (kids[b.childId] = kids[b.childId] || []).push(b));
+    const list = Object.values(kids).map((bs) => { bs.sort((a, b) => b.n - a.n); return { cur: bs[0], older: bs.slice(1) }; })
+      .sort((a, b) => RANK[a.cur.state] - RANK[b.cur.state]);
+    const count = (f) => list.filter((k) => !f.states || f.states.includes(k.cur.state)).length;
+    const active = FILTERS.find((f) => f.key === filter);
+    const shown = list.filter((k) => !active.states || active.states.includes(k.cur.state));
+
+    const card = ({ cur: b, older }) => {
+      const f = ctx.family(b.family), idx = ctx.BOOK_STEPS.findIndex((s) => s.key === b.state);
+      const next = NEXT[b.state];
+      const act = next ? `<button class="btn" type="button" data-toast="${E(next[1])} for ${E(b.child)}">${next[0]}</button>`
+        : b.state === "delivered" ? `<button class="btn ghost" type="button" data-toast="Book ${b.n + 1} queued for ${E(b.child)}">Prepare Book ${b.n + 1}</button>` : "";
+      const steps = b.state === "none" ? "" : `<ol class="steps" aria-label="Book ${b.n} progress">${ctx.BOOK_STEPS.map((s, i) => {
+        const cls = i < idx || b.state === "delivered" ? "done" : i === idx ? "now" : "";
+        return `<li class="step ${cls}" ${i === idx ? 'aria-current="step"' : ""}><i aria-hidden="true"></i><span>${E(s.label)}</span></li>`; }).join("")}</ol>`;
+      const detail = b.state === "none" ? `<div class="kid-detail" style="margin-top:var(--s4)"><b style="font-weight:500">No workbook yet.</b><span class="muted">${E(b.detail.replace(/\s*No workbook yet\.?/, ""))}</span></div>`
+        : b.state === "making" ? `<div class="kid-detail"><span>${E(b.detail)}</span>${progress(b)}</div>`
+        : b.state === "review" ? `<div class="kid-detail"><span>Made ${E(when(b.made))}. ${E(b.detail)}</span><span class="row-meta" style="margin:0">${checkWords(b.checks)}</span></div>`
+        : `<div class="kid-detail"><span>${E(b.detail)}</span></div>`;
+      const hist = [
+        ...(b.history || []).map((h) => `<li><span>${E(h.when)}</span>${E(h.what === "Failed" ? "A run failed." : "A run was stopped.")} ${E(h.why)}</li>`),
+        ...older.flatMap((o) => [
+          `<li><span>${E(o.done || o.made || "")}</span>Book ${o.n}: ${E(o.detail)}</li>`,
+          ...(o.history || []).map((h) => `<li><span>${E(h.when)}</span>Book ${o.n}: ${E(h.why)}</li>`)]),
+      ];
+      return `<article class="card kid" aria-labelledby="kid-${b.childId}">
+        <div class="kid-head">${avatar(ctx, f, b.child)}
+          <h2 class="kid-name" id="kid-${b.childId}">${E(b.child)}<small>${b.state === "none" ? "" : `Book ${b.n} · `}${E(f.parent)}</small></h2>${testChip(b)}
+          ${act}</div>
+        ${steps}${detail}
+        ${hist.length ? `<details class="hist"><summary>History (${hist.length})</summary><ul>${hist.join("")}</ul></details>` : ""}
+      </article>`;
+    };
+
+    return `${ctx.testbar}
+      <header class="page-head"><div><span class="eyebrow">Workbooks</span><h1>Production</h1><p>Each child's current workbook, from draft to delivery.</p></div></header>
+      <div class="pills" role="group" aria-label="Show">${FILTERS.map((f) => `<button class="pill" type="button" data-filter="${f.key}" aria-pressed="${f.key === filter}">${f.label}<span class="n">${count(f)}</span></button>`).join("")}</div>
+      ${shown.length ? `<div class="kids">${shown.map(card).join("")}</div>` : empty(filter === "needs" ? "No workbook needs you" : "No workbooks here", "Try another filter.")}`;
+  }
+
+  window.OPTION = {
+    renderHome,
+    renderWorkbooks,
+    after(main) {
+      main.querySelectorAll("[data-filter]").forEach((b) => b.addEventListener("click", () => { filter = b.dataset.filter; window.ADMIN.render(); }));
+    },
+  };
+})();
+</script>
+</body>
+</html>

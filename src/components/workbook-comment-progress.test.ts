@@ -14,7 +14,7 @@ function detail(stalled = false): RunDetail {
     run: { id: "run", parentId: "parent", childId: "child", number: 1, status: "done", step: null, attempts: 1, maxAttempts: 2,
       donePages: 12, totalPages: 12, createdAt: at, heartbeatAt: at, startedAt: at, finishedAt: at, error: null, errors: [],
       draftId: "draft", draftKey: "draft", resumes: 0, startedBy: { id: "admin", email: "synthetic@example.invalid" }, runner: "mac" },
-    child: null, oldFormat: null, images: {}, edits: [], versions: [], adminNames: {}, audit: [], solves: [], aiCalls: summarizeAiCalls([]), approved: null,
+    child: null, oldFormat: null, images: {}, edits: [], versions: [], shownRevision: null, adminNames: {}, audit: [], solves: [], aiCalls: summarizeAiCalls([]), approved: null,
     draft: { revision: 1, rendering: null, problems: [], workbook: { id: "draft", childId: "child", number: 1, levels: [16],
       profileBuild: null, model: "synthetic", pages: Array.from({ length: 12 }, (_, n) => ({ number: n + 1, type: "practice", day: 1,
         dayLabel: "Day 1", pageOfDay: n + 1, qrToken: `synthetic-${n}`, fit: { status: "fits" }, attempts: 1, questions: [] })),

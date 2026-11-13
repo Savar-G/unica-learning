@@ -21,6 +21,8 @@ import "./scan-pages.css";
 type Mode = "phone" | "desktop";
 /** `reservation`: the photo id asked for at admission. It stays with the queued photo, so a lost answer takes no second upload slot. */
 type Local = StackUpload & { file: File; replaces?: string; reservation?: string };
+const GUIDE_WORDS = { done: "done", retake: "needs another photo", todo: "not scanned yet" } as const;
+
 export type ScanListing = { marking?: boolean; checks: boolean; photos: StackPhoto[]; pages: DayPage[] };
 
 const UPLOAD_REFUSALS: readonly string[] = ["qr", "page", "duplicate", "image", "size", "frequency", "quota"];
@@ -56,7 +58,7 @@ const STATUS_WORDS: Record<StackTile["status"], string> = {
   adding: "Sending", checking: "Checking", ready: "Ready", saved: "Saved", refused: "Needs another photo", unavailable: "Cannot be checked", sent: "Sent for marking",
 };
 
-/** A bottom sheet on a phone, a centred dialog on a wider screen. Esc and the backdrop close it. */
+/** A bottom sheet on a phone, a centred dialog on a wider screen. A Close button, Esc and the backdrop close it. */
 function Sheet({ label, onClose, children }: { label: string; onClose: () => void; children: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -68,6 +70,7 @@ function Sheet({ label, onClose, children }: { label: string; onClose: () => voi
     return () => { if (d.open && typeof d.close === "function") d.close(); };
   }, []);
   return <dialog ref={ref} className="scan-sheet" aria-label={label} onCancel={(e) => { e.preventDefault(); onClose(); }} onClick={(e) => { if (e.target === ref.current) onClose(); }}>
+    <div className="scan-sheet-bar"><button type="button" className="scan-sheet-x" aria-label="Close" onClick={onClose}><span aria-hidden="true">×</span></button></div>
     <div className="scan-sheet-body">{children}</div>
   </dialog>;
 }
@@ -103,7 +106,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   parent: string;
   noticeAcknowledged: boolean;
   mode?: Mode;
-  /** The page a QR code opened (D-276 build note): its child and its name, "Day 4 · Page 2". */
+  /** The page a QR code opened (D-276 build note): its child and its name, "Page 17 · Day 4". */
   focus?: { childId: string; label: string } | null;
 }) {
   const [child, setChild] = useState(focus?.childId ?? childrenList[0]?.id ?? "");
@@ -115,6 +118,11 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const [acknowledged, setAcknowledged] = useState(noticeAcknowledged);
   const [message, setMessage] = useState<{ text: string; failed: boolean } | null>(null);
   const [sending, setSending] = useState(false);
+  // The photo check's problem on the open photo (#855): it changes the sheet's heading.
+  const [checkProblem, setCheckProblem] = useState<{ photo: string; problem: string } | null>(null);
+  const onCheckProblem = useCallback((photo: string, problem: string | null) => {
+    setCheckProblem((held) => (problem ? (held?.photo === photo && held.problem === problem ? held : { photo, problem }) : held?.photo === photo ? null : held));
+  }, []);
   const [loadFailed, setLoadFailed] = useState(initial?.loadFailed ?? false);
   const camera = useRef<HTMLInputElement>(null);
   const library = useRef<HTMLInputElement>(null);
@@ -391,8 +399,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const thumbOf = (t: StackTile) => thumbs[t.photoId ?? t.uploadKey ?? ""];
   const empty = listing !== null && tiles.length === 0;
 
-  async function send() {
-    const ids = stack.readyIds;
+  async function send(ids: string[] = stack.readyIds) {
     if (!ids.length || sending || !sessionCurrent.current) return;
     const version = epoch.current;
     setSending(true); setMessage(null);
@@ -447,11 +454,14 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
         : phone && <button type="button" className="btn" onClick={() => open(openTile.uploadKey ? "library" : "camera", retakeKey(openTile))}>{openTile.uploadKey ? "Choose another photo" : "Take another photo"}</button>}
       {!phone && <p className="small">Take it again with your phone. The page waits there.</p>}
     </> : <>
-      <h2>{openTile.status === "ready" ? "We can read this page." : openTile.status === "sent" ? "Sent for marking." : openTile.status === "unavailable" ? "We cannot check pages of this printing yet." : openTile.status === "saved" ? "Photo saved." : "We are checking this page."}</h2>
+      <h2>{openTile.status === "ready" ? (checkProblem?.photo === openTile.photoId ? "Check this photo." : "We can read this page.") : openTile.status === "sent" ? "Sent for marking." : openTile.status === "unavailable" ? "We cannot check pages of this printing yet." : openTile.status === "saved" ? "Photo saved." : "We are checking this page."}</h2>
       {openTile.status === "unavailable" && <p>The photo stays here.</p>}
       {openTile.status === "sent" && (listing?.marking && openTile.photoId ? <Link className="btn ghost" href={`/account/scan/results/${openTile.photoId}`}>View page results</Link> : <p>Marking is not ready yet. The page waits here.</p>)}
     </>}
-    {checks && openTile.photoId && openTile.status === "ready" && <ScanPreview key={openTile.photoId} photo={openTile.photoId} child={name} />}
+    {checks && openTile.photoId && openTile.status === "ready" && <ScanPreview key={openTile.photoId} photo={openTile.photoId} child={name}
+      onRetake={phone ? () => open(openTile.uploadKey ? "library" : "camera", retakeKey(openTile)) : undefined}
+      onSendAnyway={sending ? undefined : () => { const id = openTile.photoId!; setSheet(null); void send([id]); }}
+      onProblem={onCheckProblem} />}
     <div className="scan-sheet-actions">
       {(openTile.photoId || openTile.uploadKey) && openTile.status !== "adding" && <button type="button" className="scan-link" onClick={() => void remove(openTile)}>Delete this photo</button>}
       <button type="button" className="scan-link" data-first-focus={openTile.status === "refused" ? undefined : true} onClick={() => setSheet(null)}>Close</button>
@@ -530,6 +540,12 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     {listing && <p className="lead scan-summary">{stackSummary(stack, checks)}</p>}
     {focusLine}
     {status}
+    {stack.guide && <section className="scan-guide" aria-label={`${stack.guide.day} pages`}>
+      <p className="scan-guide-next">{stack.guide.next ? <><b>Next:</b> {stack.guide.next.title}</> : stack.guide.stillText}</p>
+      {stack.guide.next && <p>{stack.guide.stillText}</p>}
+      <ul>{stack.guide.pages.map((g) => <li key={g.pageId} className={`is-${g.status}`}>{g.title}: {GUIDE_WORDS[g.status]}</li>)}</ul>
+      <p className="small">Scan the pages in any order.</p>
+    </section>}
     {!listing && <p className="small" role="status">Loading photos...</p>}
     {!phone && empty && <p className="scan-empty">Your pages show here as you take them.</p>}
 
@@ -540,7 +556,6 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       <div className="scan-one-t">
         <p className="scan-one-id"><b>{one.title}</b><span>{name}</span></p>
         <p className={`scan-state is-${one.status}`}>{one.status === "ready" ? <><i>{ICONS.check}</i>We can read this page.</> : one.status === "refused" ? one.reason : STATUS_WORDS[one.status]}</p>
-        {stack.days[0]?.missingText && <p className="small">{stack.days[0].missingText}</p>}
       </div>
     </section> : <>
       {stack.refused.length > 0 && <section className="scan-need" aria-label="Pages that need another photo">

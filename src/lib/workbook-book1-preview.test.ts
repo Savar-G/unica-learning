@@ -113,6 +113,22 @@ describe("book 2 preview from the baseline", () => {
     expect(r.plan.days.length).toBeGreaterThan(0);
     expect(r.baseline).toMatchObject({ id: baseline.id, draftRevision: 2, planningKind: "prospective-capture" });
   });
+  it("one saved mark changes what the planner sees and plans (#870)", async () => {
+    // Wrong if: the preview plans from anything but the frozen saved marks, so one changed mark leaves the plan the same.
+    const { b, items } = marked(0);
+    b.items = []; b.events = [];
+    const right = Math.ceil(items.length * 0.9);
+    items.forEach((e, i) => mark(b, e, i < right ? "right" : "wrong"));
+    const flipped = fresh();
+    items.forEach((e, i) => mark(flipped, e, i < right - 1 ? "right" : "wrong"));
+    expect(flipped.items.filter((m, i) => JSON.stringify(m.observation) !== JSON.stringify(b.items[i].observation))).toHaveLength(1);
+    const before = complete(await preview(b)), after = complete(await preview(flipped));
+    expect(before.decision.action).toBe("advance");
+    expect(after.decision.action).toBe("repeat-new-numbers");
+    expect(before.planningInput.passed[SELECTION.skill]).toBe(1);
+    expect(after.planningInput.passed[SELECTION.skill] ?? 0).toBe(0);
+    expect(after.plan).not.toEqual(before.plan);
+  });
   it("repeats from 75 to under 90 with no phantom earlier repeat", async () => {
     const { b, items } = marked(0);
     b.items = []; b.events = [];

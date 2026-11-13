@@ -10,6 +10,7 @@ import { createHash } from "node:crypto";
 import { Module } from "node:module";
 import path from "node:path";
 import { promisify } from "node:util";
+import type { Curriculum } from "./workbook-curriculum";
 import type { PlanInput } from "./workbook-plan";
 import type { PinnedPlanningEngine } from "./workbook-book1-recovery";
 
@@ -72,6 +73,7 @@ function engineOf(pin: string, tree: string, placementBlob: string, api: PinnedE
   return {
     pin, tree, placementBlob,
     curriculumVersion: key => api.curriculumVersion(key),
+    curriculum: key => api.curriculumFor(key) as Curriculum | null,
     plan(o) {
       const calls = api.__calls;
       if (!Array.isArray(calls)) throw Error("planner-interception-missing");

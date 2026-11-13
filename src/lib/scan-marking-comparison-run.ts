@@ -159,7 +159,7 @@ export async function runComparisonPhoto(options: {
       throw new Error(current!.error);
     }
   };
-  const factory = markingAiClient(options.env, captured, { model: model.model, provider: comparisonProvider(model, evidence), maxRetries: batch === 1 ? 0 : (options.maxAttempts ?? 1) - 1 });
+  const factory = markingAiClient(options.env, captured, { model: model.model, provider: comparisonProvider(model, evidence), maxRetries: batch === 1 ? 0 : (options.maxAttempts ?? 1) - 1 }, { feature: "other" });
   const store: MarkingStore = {
     frame: async () => photo.frame,
     claim: async () => ({ token: "synthetic", extraction: null, items: expectedItems(photo.frame).map(expected => ({ expected, observation: firstObservation(expected, photo.id), originalEvent: null, eventId: null, at: "2000-01-01T00:00:00.000Z", model: null, prompt: null })) }),

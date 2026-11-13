@@ -104,16 +104,13 @@ function source() {
 /** A wrong answer the screen offers: another choice, or a number. */
 const wrongOf = (q: Question) => q.wrong[0]?.value ?? (q.answer === "0" ? "1" : "0");
 
-/** The removed extra round's whole time line (#190): offered after the last main answer (42 x 30 s), started 3 s later. */
-const OFFERED = 1_262_000, STARTED = OFFERED + 3_000, FINISHED = STARTED + 8 * 20_000 + 30_000;
-
 /**
- * D-145: a test from before the extra round (#190, D-116) was removed, as the database still hands it to the copy:
- * Asha's test (grade 4, BC, seed 1, her first answer wrong), then an 8-question round stored under `extra` (ids x-0 to
- * x-7), of which `answered` have an answer and `served` were shown, the round's four times, and (`counted`) a placement
- * that records the round, as a round finished during the test did.
+ * D-145: a test from before the extra round (#190, D-116) was removed, with the round's record as it was stored before
+ * migration drop_extra_round_data: Asha's test (grade 4, BC, seed 1, her first answer wrong), an 8-question round under
+ * `extra` (ids x-0 to x-7) in the stored test, and a placement that records the round. The migration deleted the round's
+ * answers and serves (no test has any now), so the source has none.
  */
-function legacySource({ answered = 8, served = answered, counted = true }: { answered?: number; served?: number; counted?: boolean } = {}) {
+function legacySource() {
   let session = createSession({ grade: 4, province: "BC" }, 1);
   for (let q = nextQuestion(session); q; q = nextQuestion(session)) {
     session = checked(submitAnswer(session, { questionId: q.id, response: session.answers.length === 0 ? wrongOf(q) : q.answer, timeMs: 20_000 }));
@@ -121,26 +118,22 @@ function legacySource({ answered = 8, served = answered, counted = true }: { ans
   const main = session.answers.length;
   const other = (["up", "stay", "down"] as const).find((r) => r !== session.route)!;
   const extra = session.stage2[other].slice(0, 8).map((q, i) => ({ ...q, id: `x-${i}`, showWork: false }));
-  const questions: Question[] = [...session.stage1, ...session.stage2[session.route!], ...extra];
-  const answers = [
-    ...session.answers,
-    ...extra.slice(0, answered).map((q, i) => ({ questionId: q.id, response: i === 0 ? wrongOf(q) : q.answer, timeMs: 15_000, correct: i !== 0, misconception: null })),
-  ];
-  const shownAt = (i: number) => (i < main ? 10_000 + 30_000 * i : STARTED + 20_000 * (i - main));
+  const questions: Question[] = [...session.stage1, ...session.stage2[session.route!]];
+  const shownAt = (i: number) => 10_000 + 30_000 * i;
   const placement = finish(session, null, "no");
   return {
     id: TEST, copied: false, testFamily: false, grade: 4, province: "BC", status: "completed", route: session.route, help: "no",
-    startedAt: START, completedAt: at(FINISHED), breakStartedAt: null, breakEndedAt: null, breakSkipped: null, breakMs: null, device: null,
+    startedAt: START, completedAt: at(shownAt(main)), breakStartedAt: null, breakEndedAt: null, breakSkipped: null, breakMs: null, device: null,
     stored: { ...storedTest(session), extra },
-    placement: counted ? { ...placement, extraRound: { questions: 8, strands: ["number"] } } : placement,
-    answers: answers.map((a, i) => ({
+    placement: { ...placement, extraRound: { questions: 8, strands: ["number"] } },
+    answers: session.answers.map((a, i) => ({
       position: i, questionId: a.questionId, templateId: questions[i].templateId, values: questions[i].values,
       response: a.response, correct: a.correct, misconception: a.misconception, timeMs: a.timeMs,
       workRequired: questions[i].showWork === true, drawing: false, typed: false, strokes: false,
       shownAt: at(shownAt(i)), answeredAt: at(shownAt(i) + a.timeMs),
       changes: [{ value: a.response, atMs: a.timeMs - 100 }], readAloudCount: 0, readAloudAtMs: [], awayCount: 0, awayMs: 0,
     })),
-    shows: questions.slice(0, main + served).map((q, i) => ({ position: i, questionId: q.id, shownAt: at(shownAt(i)) })),
+    shows: questions.map((q, i) => ({ position: i, questionId: q.id, shownAt: at(shownAt(i)) })),
     facts: null, profile: null, learning: null,
   };
 }
@@ -311,13 +304,10 @@ describe("the copy without names", () => {
 });
 
 // D-145: the optional extra round (#190, D-116) is removed. The copy of a test from before keeps the main test alone: not
-// the round's questions (answered or only shown), not its record, not the placement's note of it.
+// the round's stored questions, not its record, not the placement's note of it.
 describe("a test from before the extra round was removed", () => {
-  it.each([
-    { state: "taken and finished during the test", options: {} },
-    { state: "stopped part way, one more question shown", options: { answered: 3, served: 4, counted: false } },
-  ])("keeps the main test alone: $state", ({ options }) => {
-    const s = legacySource(options);
+  it("keeps the main test alone", () => {
+    const s = legacySource();
     const copy = anonymousTestCopy(s);
     expect(Object.keys(copy)).toEqual([...COPY_FIELDS.test]);
     expect(copy.questions).toHaveLength(42);

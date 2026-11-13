@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AreaAnswer, ReportModel } from "@/lib/assessment";
-import { listChildren, readChild, readMonthlySummary, readOverview, readProgress, readWorkbooks } from "@/lib/parent-view";
+import { BC_SKILL_MAP, type AreaAnswer, type ReportModel } from "@/lib/assessment";
+import { listChildren, readChild, readMonthlySummary, readOverview, readProgress, readWorkbooks, type OverviewProgress } from "@/lib/parent-view";
 import { memoryParentViewReaders, type MemoryParentViewTables, type MemoryResult, type MemoryTest, type MemoryWorkbook } from "@/lib/parent-view-memory";
 
 // The parent view module (spec #544), through its public interface, over the in-memory reader, which keeps the
@@ -110,7 +110,7 @@ describe("what a parent reads", () => {
     const readers = memoryParentViewReaders({ children: [younger, omar, leah] });
     const list = await listChildren(readers.parent("parent-1"), NOW);
     expect(list.map((c) => c.firstName)).toEqual(["Leah", "Ana"]);
-    expect(readers.reads).toEqual({ children: 1, tests: 1, reports: 1, cards: 1, deliveries: 1, workbooks: 1, plans: 1, switches: 1, corrections: 0, dispatches: 0, family: 0, results: 0, scans: 0, pages: 0, learning: 0, pin: 0, maya: 0, skillTests: 0, questions: 0 });
+    expect(readers.reads).toEqual({ children: 1, tests: 1, reports: 1, cards: 1, deliveries: 1, workbooks: 1, plans: 1, switches: 1, corrections: 0, dispatches: 0, family: 0, results: 0, scans: 0, pages: 0, learning: 0, pin: 0, maya: 0, skillTests: 0, questions: 0, overviewProgress: 0 });
   });
   it("lists a child's reports, the newest test first", async () => {
     const reader = parent({ tests: [test("old", { completedAt: NOW - 90 * HOUR }), test("new", { completedAt: NOW - 10 * HOUR })], reports: [report("old"), report("new")] });
@@ -325,7 +325,7 @@ describe("the Overview (#560)", () => {
 
   it("before the first test: no tile, no bar, and Start the test as the one thing to do", async () => {
     expect(await read({})).toEqual({
-      child: expect.objectContaining({ id: "child-1", stage: "first_book_coming" }), level: null, areas: [], resultPreparing: false, resultLate: false, workbook: null, action: "start_test", summaryMonth: null,
+      child: expect.objectContaining({ id: "child-1", stage: "first_book_coming" }), level: null, areas: [], skills: null, areasIncludeMarks: false, resultPreparing: false, resultLate: false, workbook: null, action: "start_test", summaryMonth: null,
     });
   });
 
@@ -383,6 +383,80 @@ describe("the Overview (#560)", () => {
       { area: "algebra", name: "Patterns and algebra", level: 2, label: "building-up", earlySign: false },
       { area: "shapes", name: "Shapes, measurement and data", level: 4, label: "ahead", earlySign: false },
     ]);
+  });
+
+  const progress = (over: Partial<OverviewProgress> = {}) => ({ ...own, marks: [], skillMarks: [], ...over });
+
+  it("combines stored page results with the test and keeps the assessment level", async () => {
+    const data = progress({ marks: at("number", 4, 4, 0) });
+    const view = await read({ ...tested, results: [result("t", { answers: at("number", 3, 4, 0) })], overviewProgress: [data] });
+    expect(view?.level?.working).toBe(3);
+    expect(view?.areas[0]).toMatchObject({ level: 4, label: "ahead" });
+    expect(view?.areasIncludeMarks).toBe(true);
+    expect((await read({ ...tested, results: [result("t", { answers: null })], overviewProgress: [data] }))?.areas).toEqual([]);
+    expect((await read({ ...tested, results: [result("t", { answers: [], unreliable: true })], overviewProgress: [data] }))?.areas).toEqual([]);
+  });
+
+  it("a failed marking read keeps the bars from the test alone and hides Skills mastered", async () => {
+    const tables = { ...tested, switches: { progress: true, maya: false, scanPages: false }, results: [result("t", { answers: at("number", 3, 4, 0) })], skillTests: [{ ...own, assessmentId: "t", standard: "3.1", correct: 4, total: 4, at: "2026-11-01T18:00:00Z" }] };
+    const view = await read({ ...tables, overviewProgress: [progress({ marks: at("number", 4, 4, 0) })], fail: ["overviewProgress"] });
+    expect(view?.areas[0]).toMatchObject({ level: 3, label: "at-grade" });
+    expect(view?.areasIncludeMarks).toBe(false);
+    expect(view?.skills).toBeNull();
+  });
+
+  describe("Skills mastered", () => {
+    const tally = (standard: string, at: string) => ({ ...own, assessmentId: "t", standard, correct: 4, total: 4, at });
+    const vancouver = { family: { timeZone: "America/Vancouver", postal: null } };
+    const base = { ...tested, ...vancouver, switches: { progress: true, maya: false, scanPages: false }, results: [result("t")], overviewProgress: [progress()] };
+    const grade3 = BC_SKILL_MAP.standards.filter((s) => s.grade === 3).length;
+    const skills = async (skillTests: ReturnType<typeof tally>[], over = {}) => (await read({ ...base, skillTests, ...over }))?.skills;
+
+    it("counts the rule's states now, and as new only what the rule on earlier tests and marks did not hold", async () => {
+      // 06:30 UTC on November 1 is October 31 in Vancouver; 18:00 UTC is November 1.
+      expect(await skills([tally("3.1", "2026-10-20T18:00:00Z"), tally("3.2", "2026-11-01T06:30:00Z"), tally("3.3", "2026-11-01T18:00:00Z")]))
+        .toEqual({ mastered: 3, atLevel: { grade: 3, mastered: 3, total: grade3 }, moreThisMonth: 1 });
+    });
+
+    it("counts a skill mastered at any grade in the big number, and only the working level's grade in the line", async () => {
+      expect(await skills([tally("2.1", "2026-10-20T18:00:00Z"), tally("3.1", "2026-10-20T18:00:00Z"), tally("4.1", "2026-11-02T18:00:00Z")]))
+        .toEqual({ mastered: 3, atLevel: { grade: 3, mastered: 1, total: grade3 }, moreThisMonth: 1 });
+    });
+
+    it("counts no skill as new when it was mastered before the month and mastered again this month", async () => {
+      expect(await skills([tally("3.1", "2026-10-20T18:00:00Z"), tally("3.1", "2026-11-01T18:00:00Z")])).toEqual({ mastered: 1, atLevel: { grade: 3, mastered: 1, total: grade3 }, moreThisMonth: 0 });
+    });
+
+    it("counts marked items as the Progress tab does, so the tile and the map agree", async () => {
+      const page = (right: boolean, at: string, review = false) => ({ standard: "3.3", right, review, at });
+      const skillMarks = [page(true, "2026-10-01T18:00:00Z"), page(true, "2026-10-02T18:00:00Z"), page(true, "2026-10-02T19:00:00Z"),
+        page(true, "2026-10-03T18:00:00Z"), page(false, "2026-10-03T19:00:00Z"), page(true, "2026-11-02T10:00:00Z", true)];
+      const withMarks = { ...base, skillTests: [tally("3.1", "2026-10-20T18:00:00Z"), tally("3.2", "2026-10-20T18:00:00Z")], overviewProgress: [progress({ skillMarks })] };
+      const tile = (await read(withMarks))?.skills;
+      const map = (await readProgress(parent({ children: [leahAnswered, omar], ...card, ...withMarks }), "child-1", NOW))?.areas.flatMap((a) => a.tiles);
+      expect(map?.find((t) => t.code === "3.3")?.state).toBe("mastered");
+      expect(map?.filter((t) => t.state === "mastered")).toHaveLength(3);
+      // The review that held this month made 3.3 mastered: it is new; the tests from October are not.
+      expect(tile).toEqual({ mastered: 3, atLevel: { grade: 3, mastered: 3, total: map?.length }, moreThisMonth: 1 });
+    });
+
+    it("reads a mark's database time at the family month edge", async () => {
+      const page = (at: string, review = false) => ({ standard: "3.3", right: true, review, at });
+      const pages = ["2026-10-01T18:00:00Z", "2026-10-02T18:00:00Z", "2026-10-02T19:00:00Z", "2026-10-03T18:00:00Z", "2026-10-03T19:00:00Z"].map((at) => page(at));
+      const edge = async (at: string) => (await read({ ...base, skillTests: [], overviewProgress: [progress({ skillMarks: [...pages, page(at, true)] })] }))?.skills?.moreThisMonth;
+      expect(await edge("2026-11-01T06:59:59.999999+00:00")).toBe(0);
+      expect(await edge("2026-11-01T07:00:00.000001+00:00")).toBe(1);
+    });
+
+    it("counts net: a skill lost and another gained this month show no change", async () => {
+      // 3.1 was mastered in October; a wrong answer this month makes it Needs review. 3.2 becomes mastered this month.
+      const lost = { ...tally("3.1", "2026-11-02T18:00:00Z"), correct: 0 };
+      expect(await skills([tally("3.1", "2026-10-20T18:00:00Z"), lost, tally("3.2", "2026-11-02T18:00:00Z")])).toEqual({ mastered: 1, atLevel: { grade: 3, mastered: 1, total: grade3 }, moreThisMonth: 0 });
+    });
+
+    it("shows only with the Progress tab", async () => {
+      expect(await skills([tally("3.1", "2026-10-20T18:00:00Z")], { switches: { progress: false, maya: false, scanPages: false } })).toBeNull();
+    });
   });
 
   it("an area with no answers has no bar; Kindergarten to Grade 2 show no fractions", async () => {
@@ -584,8 +658,8 @@ describe("the monthly summary (#562)", () => {
       pages,
       scans: [scan("d1a", "2026-10-20T18:00:00Z"), scan("d1b", "2026-10-21T18:00:00Z"), scan("d2a", "2026-10-25T18:00:00Z")],
       maya: [
-        { ...own, kind: "child", createdAt: "2026-10-02T18:00:00Z", usedSeconds: 300 },
-        { ...own, kind: "child", createdAt: "2026-10-30T18:00:00Z", usedSeconds: 60 },
+        { ...own, kind: "chat", status: "ended", endedAt: "2026-10-02T18:00:00Z", childTurns: 5 },
+        { ...own, kind: "chat", status: "ended", endedAt: "2026-10-30T18:00:00Z", childTurns: 1 },
       ],
     });
     expect(view).toEqual({
@@ -617,7 +691,7 @@ describe("the monthly summary (#562)", () => {
     const view = await summary({
       workbooks: [{ ...delivered.workbooks[0], shippedAt: "2026-10-01T03:00:00Z" }],
       pages, scans: [{ ...own, workbookId: "wb-1", pageId: "p", state: "saved", expiresAt: "2027-01-01T00:00:00Z", takenAt: late }],
-      maya: [{ ...own, kind: "child", createdAt: late, usedSeconds: 30 }, { ...own, kind: "child", createdAt: "2026-10-01T06:30:00Z", usedSeconds: 30 }],
+      maya: [{ ...own, kind: "chat", status: "ended", endedAt: late, childTurns: 2 }, { ...own, kind: "chat", status: "ended", endedAt: "2026-10-01T06:30:00Z", childTurns: 2 }],
     });
     // Shipped on September 30 in Vancouver, so not in October; the late scan and call are October's; the early call is September's.
     expect(view).toMatchObject({ mailed: [], daysScanned: 1, mayaCalls: 1 });
@@ -638,15 +712,17 @@ describe("the monthly summary (#562)", () => {
     expect((await summary({ pages, scans: [scan("a", "2026-09-29T18:00:00Z"), scan("b", "2026-09-30T18:00:00Z")] }))?.daysScanned).toBe(0);
   });
 
-  it("counts only the child's own calls that used time, never a parent's demo call or another child's", async () => {
+  it("counts only the child's own ended chats with a message from the child, never an admin test call, a live chat or another child's", async () => {
+    const ended = { status: "ended" as const, endedAt: "2026-10-02T18:00:00Z" };
     const maya = [
-      { ...own, kind: "child" as const, createdAt: "2026-10-02T18:00:00Z", usedSeconds: 0 },
-      { ...own, kind: "child" as const, createdAt: "2026-10-02T18:00:00Z", usedSeconds: null },
-      { ...own, kind: "parent_demo" as const, createdAt: "2026-10-02T18:00:00Z", usedSeconds: 200 },
-      { parentId: "parent-1", childId: "child-3", kind: "child" as const, createdAt: "2026-10-02T18:00:00Z", usedSeconds: 200 },
-      { parentId: "parent-2", childId: "child-1", kind: "child" as const, createdAt: "2026-10-02T18:00:00Z", usedSeconds: 200 },
+      { ...own, kind: "chat" as const, ...ended, childTurns: 0 },
+      { ...own, kind: "chat" as const, status: "live" as const, endedAt: null, childTurns: null },
+      { ...own, kind: "admin_test" as const, ...ended, childTurns: 4 },
+      { parentId: "parent-1", childId: "child-3", kind: "chat" as const, ...ended, childTurns: 4 },
+      { parentId: "parent-2", childId: "child-1", kind: "chat" as const, ...ended, childTurns: 4 },
     ];
     expect((await summary({ maya }))?.mayaCalls).toBe(0);
+    expect((await summary({ maya: [...maya, { ...own, kind: "chat" as const, ...ended, childTurns: 1 }] }))?.mayaCalls).toBe(1);
   });
 
   it("copies only the fields it names, whatever a row holds", async () => {
@@ -654,7 +730,7 @@ describe("the monthly summary (#562)", () => {
     const raw = { learner_profile: SECRET, transcript: SECRET, ai: { findings: [SECRET] }, model: { summary: SECRET } };
     const view = await summary({
       results: [{ ...result("t", { answers: answers("number", 3, 4) }), level: { ...level(), ...raw } as never, ...raw }],
-      maya: [{ ...own, kind: "child", createdAt: "2026-10-02T18:00:00Z", usedSeconds: 60, ...raw } as never],
+      maya: [{ ...own, kind: "chat", status: "ended", endedAt: "2026-10-02T18:00:00Z", childTurns: 2, ...raw } as never],
       children: [{ ...leah, ...raw }, omar],
     });
     expect(JSON.stringify(view)).not.toContain(SECRET);

@@ -136,6 +136,11 @@ export interface TraceAttempt {
   talk?: TraceTalk[];
   /** Version 3: how long the free-talk reviews of this attempt took, by the passed-in clock. */
   reviewMs?: number;
+  /**
+   * The client read this proposal from inside one Markdown code fence (a request sent without `response_format`, first
+   * ship practice at 6de7e777). Absent otherwise, and in traces from before. Counted by `fencedReplies`.
+   */
+  fenced?: true;
 }
 
 /** One piece of the model's own words in a trace (D-197): the session's TalkCheck. */
@@ -240,6 +245,12 @@ export function traceCounts(turns: readonly TraceTurn[]): TraceCounts {
   };
 }
 
+/** The model calls of a trace, and how many of their proposals the client read from inside one code fence. */
+export function fencedReplies(turns: readonly TraceTurn[]): { calls: number; fenced: number } {
+  const attempts = turns.flatMap((t) => (t.kind === "maya" ? t.attempts : [])).filter((a) => a.source === "model" || a.source === "repair");
+  return { calls: attempts.length, fenced: attempts.filter((a) => a.fenced === true).length };
+}
+
 /** JSON with sorted keys, so the same package always gives the same hash. */
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
@@ -316,6 +327,7 @@ function checkAttempt(a: unknown, path: string) {
   need(!(x.error !== undefined && x.refusal !== null), `${path}`, "an attempt with an error has no refusal");
   need(!(x.source === "fallback" && x.refusal !== null), `${path}`, "a fallback attempt is recorded only when it was accepted");
   need(x.reviewMs === undefined || (isNum(x.reviewMs) && x.reviewMs >= 0), `${path}.reviewMs`, "a duration");
+  need(x.fenced === undefined || (x.fenced === true && (x.source === "model" || x.source === "repair") && x.proposal !== null && x.error === undefined), `${path}.fenced`, "true on a model or repair proposal, or absent");
   if (x.talk !== undefined) {
     need(Array.isArray(x.talk) && x.talk.length > 0, `${path}.talk`, "a list of free-talk checks");
     need(x.refusal === null && x.error === undefined, `${path}.talk`, "only on an accepted attempt");

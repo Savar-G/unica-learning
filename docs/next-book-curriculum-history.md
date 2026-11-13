@@ -13,7 +13,7 @@ New-book planning (`book2Planning` and `planNextBookFromSnapshot`) calls `nextBo
 
 The structure (`src/lib/workbook-curriculum/structure.ts`) contains:
 
-- the levels in order (id, number);
+- the levels in order (id, number, school grade);
 - each level's units in order;
 - each unit's skills in order (id, order, position code, level);
 - each skill's steps (number, position code, name). The name is the step's identity, which `house-templates.ts` checks the same way.
@@ -31,6 +31,8 @@ The fields that decide pages are not part of the structure: a skill's delivery a
 No Book 1 record, baseline row or migration changed.
 
 ## The archive
+
+Archive format `curriculum-structure/2` includes each level’s school grade because placement reads it. Format 1 records are refused; regenerate an existing entry from its recorded source commit with the script below. This changes the archive, not the frozen Book 1 baseline or its fingerprint.
 
 `src/lib/workbook-curriculum/history/<key>-<digest>.json` holds one curriculum version's structure. The file names the commit and the Git blob of `bc.ts` it came from. `history/index.ts` registers each file. `archivedCurriculumStructure(key, digest)` reads a file through `readCurriculumStructureRecord`, which refuses a malformed file, a file for another key or digest, and two files for one digest.
 
@@ -62,6 +64,6 @@ The check read baseline `d018b981-dea5-49f8-9fd8-792ad0ae80e5` and its run frame
 
 `src/lib/workbook-next-book-snapshot.test.ts` keeps the earlier proof that the stored structural fields alone cannot detect a reorder of unit 5.16 before 5.2. The new tests on the same U16 fixture show:
 
-- a template-only change plans the same next book;
+- a version-label change with identical data plans the same next book; Book 2 plans on today’s templates, which can change the plan;
 - that reorder, a removed issued skill and a renumbered issued step are each `curriculum-incompatible`;
 - an unknown frozen version is `curriculum-history-missing`.

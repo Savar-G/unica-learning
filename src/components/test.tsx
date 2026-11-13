@@ -558,7 +558,7 @@ export function TakeTest({ childId, name, breakAfter, ready, done, mode: firstMo
           onGo={(n) => void leaveScreen.current?.({ go: n })} />
       )}
       <main id="main" className="test-main">
-        {screen.name === "insufficient" && <MessageScreen><h1 className="test-title">Please ask your grown-up to help with the next step.</h1><p className="test-lead">Your answers are saved. We need more information before we can choose a starting level.</p><a href={SUPPORT_HREF}>Contact us</a><Link href="/account">Back to your account</Link></MessageScreen>}
+        {screen.name === "insufficient" && <MessageScreen><h1 className="test-title">Please ask your grown-up to start a new test.</h1><p className="test-lead">Your answers are saved, but there was not enough information to choose a starting level. You can try again from your account.</p><a href={SUPPORT_HREF}>Contact us</a><Link href="/account">Back to your account</Link></MessageScreen>}
         {screen.name === "intro" && <Intro name={name} ready={ready} busy={busy} onStart={() => start()} failure={failure} mode={mode} afterBreak={afterBreak} checkGrid={checkGrid} />}
         {screen.name === "question" && (
           <Question key={`${(viewed?.question ?? screen.question).id}:${visit}`} testId={screen.testId} typing={typing}
@@ -632,7 +632,7 @@ function Problem({ error }: { error: TestError | null }) {
   const text =
     error === "signed_out" ? <>The sign-in ended. Ask your grown-up to <Link href="/sign-in">sign in</Link> again. Your earlier answers are saved.</>
     : error === "not_ready" ? "The test for this grade is not ready yet."
-    : error === "expired" ? "The last test was not finished within 24 hours, so it closed."
+    : error === "expired" ? "This test has closed. You can start again from your account."
     : error === "retake_closed" ? <>A new test opens 30 days after the last one. <Link href="/account">Your account</Link> shows the date.</>
     : error === "work_too_big" ? "Your work is too big to save. Clear some of it, then press Next again."
     : <>Something went wrong. Check the internet connection and try again. If this keeps happening, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>.</>;

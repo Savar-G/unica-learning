@@ -3,15 +3,16 @@
 // The report's next step (#66): a BC parent chooses a plan and goes to the payment page to save a card; a parent in
 // any other province joins the waitlist with one click. The report email links here (links only), with the step.
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { Province } from "@/lib/assessment";
-import { BOOKING_URL, SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
+import { BOOKING_URL, SUPPORT_EMAIL, SUPPORT_HREF, safeBookingUrl } from "@/lib/contact";
 import { CARD_CHECK_ROUTE, CARD_ROUTE, WAITLIST_ROUTE, type CardCheckResult, type CardRequest, type CardResult, type ReportSrc, type WaitlistRequest, type WaitlistResult } from "@/lib/next-step";
 import type { FreeMonthWords } from "@/lib/parent-assessment";
 import type { NextStep, PlanOption } from "@/lib/report-view";
 import { CURRICULA } from "@/lib/signup";
 import type { PlanId } from "@/lib/site";
 import { track } from "@/lib/track";
+import { getConsent, subscribeConsent, openConsentSettings } from "@/lib/consent";
 
 export interface NextStepStart {
   /** The plan of a card that is already saved, from card_setups. */
@@ -224,18 +225,24 @@ export function ReportNextView({ step, childName, province, asked, start, words,
 }
 
 /**
- * A free 15-minute call with a founder about the results, next to the plan choice and quieter than it. Opens Calendly
- * in a new tab; nothing about the child goes in the link. Hidden when no booking page is set (BOOKING_URL).
+ * The free 15-minute results call with a founder, high on the report: right after the working level, before workbook 1,
+ * because the call is where most families decide. Opens Cal.com in a new tab; nothing about the child goes in the
+ * link. The words come from resultsCall (report-view), shared with the report email. Hidden when no booking page is set.
  */
-export function BookCall({ childName }: { childName: string }) {
-  if (!BOOKING_URL) return null;
+export function BookCall({ call }: { call: { title: string; text: string; button: string } }) {
+  const consent = useSyncExternalStore(subscribeConsent, getConsent, () => "unset");
+  const booking = safeBookingUrl(BOOKING_URL);
   return (
     <div className="rpt-next rpt-call">
-      <h3>Questions about {childName}&apos;s results?</h3>
-      <p>Book a free 15-minute call with Savar or Cedric, Unica&apos;s founders. We go through the report with you, explain where {childName} starts, and answer your questions.</p>
-      <a className="btn ghost" href={BOOKING_URL} target="_blank" rel="noopener" onClick={() => track("book_call", { src: "report" })}>
-        Book a call <span className="arr">→</span>
-      </a>
+      <h3>{call.title}</h3>
+      <p>{call.text}</p>
+      {booking ? <>
+        {consent === "granted" ? <iframe className="rpt-calendar" title="Book a results call" src={booking} referrerPolicy="no-referrer" />
+          : <div className="rpt-calendar-consent"><p>To show the calendar here, accept optional cookies. You can also book in a new tab.</p><button type="button" onClick={openConsentSettings}>Cookie settings</button></div>}
+        <a className="rpt-calendar-link" href={booking} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer" onClick={() => track("book_call", { src: "report" })}>
+          Book your 15-minute results call in a new tab <span className="arr">→</span>
+        </a>
+      </> : <p>Email us to arrange your results call. <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a></p>}
     </div>
   );
 }

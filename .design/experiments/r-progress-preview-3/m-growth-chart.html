@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en-CA">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>M. Growth chart</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono&family=Caveat:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shell.css">
+<style>
+.gc { display: grid; grid-template-columns: minmax(280px, 5fr) minmax(0, 6fr); gap: clamp(20px, 4vw, 56px); margin-top: 24px; padding: clamp(20px, 4vw, 48px); border-radius: 20px; background: #f6f1e7; background-image: radial-gradient(#00000008 1px, transparent 1px); background-size: 6px 6px; }
+@media (max-width: 760px) { .gc { grid-template-columns: 1fr; } }
+.gc svg { display: block; width: 100%; height: auto; overflow: visible; }
+.pen { font-family: "Caveat", cursive; }
+.mark { stroke-dasharray: 260; stroke-dashoffset: 260; animation: draw .7s var(--d) ease-out forwards; }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+.fade { opacity: 0; animation: fi .4s var(--d) forwards; } @keyframes fi { to { opacity: 1; } }
+.side h3 { margin: 0; font-size: clamp(26px, 3vw, 38px); font-weight: 300; letter-spacing: -.03em; line-height: 1.1; }
+.side .pace { margin-top: 18px; }
+.steps { margin: 22px 0 0; padding: 0; list-style: none; }
+.steps li { position: relative; padding: 12px 0 12px 22px; border-top: 1px solid #0000001a; }
+.steps li::before { content: ""; position: absolute; left: 0; top: 19px; width: 10px; height: 10px; border-radius: 50%; background: var(--c); }
+.steps b { font-weight: 500; }
+.steps span { display: block; margin-top: 2px; font-size: 14px; color: var(--ink-2); }
+</style>
+</head>
+<body>
+<div class="chrome"><span class="v">M. Growth chart</span><div class="cases" data-cases></div><a href="board.html">All options</a></div>
+<main class="page">
+  <div class="stub">Report: "Where Leah is", "What's in workbook 1" (unchanged)</div>
+  <section class="section" id="out"></section>
+  <div class="stub">Next step: card and plan button (unchanged)</div>
+</main>
+<script src="levels.js"></script><script src="pace.js"></script><script src="covers.js"></script>
+<script>
+// A door-frame growth chart: a measuring strip in grades, the child's pencil mark today, and dotted marks to come.
+mount((p, setPace) => {
+  const lo = Math.max(0, p.c.working - 1), hi = Math.min(9, p.goal + 1);
+  const W = 460, H = 620, top = 30, bot = 590, sx = 70, sw = 70;
+  const y = (g) => bot - (g - lo) / (hi - lo) * (bot - top);
+  let ticks = "";
+  for (let g = lo; g <= hi; g++) {
+    ticks += `<line x1="${sx}" x2="${sx + sw * 0.55}" y1="${y(g)}" y2="${y(g)}" stroke="#0c0c0e" stroke-width="2"/><text x="${sx + 6}" y="${y(g) - 6}" font-size="13" font-family="Geist Mono" fill="#0c0c0e">${g === 0 ? "K" : g}</text>`;
+    if (g < hi) for (let k = 1; k < 4; k++) { const yy = y(g) - k * (y(g) - y(g + 1)) / 4; ticks += `<line x1="${sx}" x2="${sx + (k === 2 ? 26 : 16)}" y1="${yy}" y2="${yy}" stroke="#0c0c0e" stroke-width="1"/>`; }
+  }
+  const strip = `<rect x="${sx}" y="${top - 16}" width="${sw}" height="${bot - top + 32}" rx="4" fill="#ffd36b" stroke="#0c0c0e" stroke-width="1.5"/>
+    <text x="${sx + sw - 14}" y="${(top + bot) / 2}" transform="rotate(-90 ${sx + sw - 14} ${(top + bot) / 2})" text-anchor="middle" font-size="11" font-family="Geist Mono" letter-spacing="2" fill="#0c0c0e">GRADES · UNICA LEARNING</text>`;
+  const pencil = (g, label, sub, i, solid, color) => `<g style="--d:${(0.3 + i * 0.35).toFixed(2)}s">
+    <path class="mark" d="M${sx - 18} ${y(g)} L${sx + sw + 70} ${y(g) + (i % 2 ? 2 : -2)}" stroke="${color}" stroke-width="${solid ? 3 : 2}" stroke-linecap="round" ${solid ? "" : 'stroke-dasharray="2 7"'}/>
+    <text class="pen fade" x="${sx + sw + 80}" y="${y(g) + 6}" font-size="${solid ? 30 : 26}" font-weight="700" fill="${color}">${label}</text>
+    <text class="pen fade" x="${sx + sw + 82}" y="${y(g) + 28}" font-size="20" fill="#44444c">${sub}</text></g>`;
+  let marks = pencil(p.c.working, `${p.c.name}`, `today, ${monthShort(REPORT_DATE)} ${REPORT_DATE.getFullYear()}`, 0, true, "#1d3a8a");
+  p.grades.slice(1).forEach((s, i) => { const goal = i === p.grades.length - 2; marks += pencil(s.grade, goal ? `${gradeName(s.grade)}! ★` : gradeName(s.grade), `about ${monthShort(s.date)} ${s.date.getFullYear()}`, i + 1, goal, goal ? "#c2410c" : "#1d3a8a"); });
+  const cls = p.c.grade !== p.c.working && p.c.grade >= lo && p.c.grade <= hi ? `<text class="fade" x="${sx - 24}" y="${y(p.c.grade) + 4}" text-anchor="end" font-size="11" font-family="Geist Mono" fill="#a8360f" style="--d:2s">class now →</text>` : "";
+  const svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${headline(p)}">${strip}${ticks}${marks}${cls}</svg>`;
+  const steps = p.grades.map((s, i) => i === 0
+    ? `<li style="--c:#1d3a8a"><b>Today: ${gradeName(s.grade)} work</b><span>${s.levels.map((l) => l.title).join("; ")}</span></li>`
+    : i === p.grades.length - 1 ? `<li style="--c:#c2410c"><b>About ${monthYear(s.date)}: ${gradeName(s.grade)} level</b><span>The goal, after ${p.books.length} books.</span></li>`
+    : `<li style="--c:#1d3a8a"><b>About ${monthYear(s.date)}: ${gradeName(s.grade)} work</b><span>${s.levels.map((l) => l.title).join("; ")}</span></li>`).join("");
+  const out = document.getElementById("out");
+  out.innerHTML = `
+    <div class="gc">
+      <div>${svg}</div>
+      <div class="side"><p class="k">Where ${p.c.name} can go</p><h3>${headline(p)}</h3>${paceSwitch(p)}<ul class="steps">${steps}</ul><p class="basis">${basis(p)}</p></div>
+    </div>`;
+  wirePace(out, setPace);
+});
+</script>
+</body>
+</html>

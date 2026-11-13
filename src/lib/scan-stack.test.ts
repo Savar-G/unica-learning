@@ -24,19 +24,19 @@ describe("buildStack", () => {
   it("groups pages by day in page order and names each page of the day with no photo yet", () => {
     const stack = buildStack({ photos: [photo("b", 12), photo("a", 10), photo("c", 15)], uploads: [], pages, checks: true });
     expect(stack.days.map((d) => d.label)).toEqual(["Day 4", "Day 5"]);
-    expect(stack.days[0].tiles.map((t) => t.label)).toEqual(["Page 1", "Page 3"]);
-    expect(stack.days[0].missing).toEqual([2, 4]);
-    expect(stack.days[0].missingText).toBe("No photo yet: pages 2 and 4");
-    expect(stack.days[1].missingText).toBe("No photo yet: pages 1 and 3");
+    expect(stack.days[0].tiles.map((t) => t.label)).toEqual(["Page 10", "Page 12"]);
+    expect(stack.days[0].missing).toEqual([11, 13]);
+    expect(stack.days[0].missingText).toBe("No photo yet: pages 11 and 13");
+    expect(stack.days[1].missingText).toBe("No photo yet: pages 14 and 16");
   });
 
   it("puts refused pages first with their short reason, and a refused upload as an unknown page", () => {
     const uploads: StackUpload[] = [{ key: "u1", status: "refused", reason: "qr" }];
     const stack = buildStack({ photos: [photo("a", 10), photo("b", 12, { check: "refused", reason: "ambiguous-page" })], uploads, pages, checks: true });
-    expect(stack.refused.map((t) => [t.label, t.reason])).toEqual([["Day 4 · Page 3", "Two pages"], ["Unknown page", "Not a workbook page"]]);
-    expect(stack.days[0].tiles.map((t) => t.label)).toEqual(["Page 1"]);
+    expect(stack.refused.map((t) => [t.label, t.reason])).toEqual([["Page 12 · Day 4", "Two pages"], ["Unknown page", "Not a workbook page"]]);
+    expect(stack.days[0].tiles.map((t) => t.label)).toEqual(["Page 10"]);
     // A refused page still has a photo: it is not a gap.
-    expect(stack.days[0].missing).toEqual([2, 4]);
+    expect(stack.days[0].missing).toEqual([11, 13]);
   });
 
   it("counts only ready pages for Send, and leaves checking, refused and unchecked pages in the stack", () => {
@@ -63,9 +63,9 @@ describe("buildStack", () => {
 
   it("moves sent pages out of the days into their own group; they are neither ready nor gaps", () => {
     const stack = buildStack({ photos: [photo("a", 10), photo("s", 11, { sentAt: "2026-11-05T11:00:00Z" })], uploads: [], pages, checks: true });
-    expect(stack.sent.map((t) => [t.label, t.status])).toEqual([["Day 4 · Page 2", "sent"]]);
+    expect(stack.sent.map((t) => [t.label, t.status])).toEqual([["Page 11 · Day 4", "sent"]]);
     expect(stack.readyIds).toEqual(["a"]);
-    expect(stack.days[0].missing).toEqual([3, 4]);
+    expect(stack.days[0].missing).toEqual([12, 13]);
     expect(stack.counts.photos).toBe(2);
   });
 
@@ -147,4 +147,65 @@ it("names the sheet check's refusals in their own words (#456)", () => {
   expect(refusalCopy("faint").title).toBe("Part of the page is too bright or faint to read.");
   expect(refusalCopy("faint").action).toBe("Take another photo without glare.");
   expect(refusalCopy("check-timeout").action).toBe("Try again in a minute.");
+});
+
+describe("the scan guide", () => {
+  const named = dayPages([
+    { id: "n1", workbookId: BOOK, book: 1, pageNumber: 1, day: "Day 1", type: "warm-up" },
+    { id: "n2", workbookId: BOOK, book: 1, pageNumber: 2, day: "Day 1", type: "new-idea" },
+    { id: "n3", workbookId: BOOK, book: 1, pageNumber: 3, day: "Day 1", type: "remember-these-mixed-set" },
+    { id: "n4", workbookId: BOOK, book: 1, pageNumber: 4, day: "Day 1", type: "parent-led" },
+    { id: "m1", workbookId: BOOK, book: 1, pageNumber: 5, day: "Day 2", type: "challenge" },
+  ]);
+  const shot = (n: number, o: Partial<StackPhoto> = {}) => ({ ...photo(`s${n}`, n, o), pageId: n === 5 ? "m1" : `n${n}` });
+
+  it("names the next page by its kind and lists each page's standing", () => {
+    const guide = buildStack({ photos: [shot(1), shot(2, { check: "refused", reason: "faint" })], uploads: [], pages: named, checks: true }).guide;
+    expect(guide?.next?.title).toBe("Page 3 · Day 1, Mixed review");
+    expect(guide?.pages.map((p) => [p.title, p.status])).toEqual([
+      ["Page 1 · Day 1, Warm-up", "done"], ["Page 2 · Day 1, New idea", "retake"],
+      ["Page 3 · Day 1, Mixed review", "todo"], ["Page 4 · Day 1", "todo"],
+    ]);
+  });
+
+  it("has no next page when every page of the day has a photo, and no guide with no photo", () => {
+    const all = buildStack({ photos: [1, 2, 3, 4].map((n) => shot(n)), uploads: [], pages: named, checks: true }).guide;
+    expect(all?.next).toBeNull();
+    expect(buildStack({ photos: [], uploads: [], pages: named, checks: true }).guide).toBeNull();
+  });
+
+  it("follows the newest photo's day, and ignores sent pages", () => {
+    const later = shot(5, { createdAt: "2026-11-06T10:00:00Z" });
+    expect(buildStack({ photos: [shot(1), later], uploads: [], pages: named, checks: true }).guide?.day).toBe("Day 2");
+    expect(buildStack({ photos: [shot(1), { ...later, sentAt: "2026-11-06T11:00:00Z" }], uploads: [], pages: named, checks: true }).guide?.day).toBe("Day 1");
+  });
+
+  it("names the workbook when the stack spans more than one", () => {
+    const two = dayPages([{ id: "a", workbookId: "b1", book: 1, pageNumber: 1, day: "Day 1" }, { id: "b", workbookId: "b2", book: 2, pageNumber: 1, day: "Day 1" }]);
+    const g = buildStack({ photos: [{ ...photo("x", 1), pageId: "a", workbookId: "b1" }, { ...photo("y", 1), pageId: "b", workbookId: "b2", book: 2 }], uploads: [], pages: two, checks: true }).guide;
+    expect(g?.pages[0].title).toBe("Page 1 · Workbook 1 · Day 1");
+  });
+
+  const day1 = named.filter((p) => p.day === "Day 1");
+  const withDay2 = [...named, { ...named[4], id: "m2", pageNumber: 6, pageOfDay: 2, pagesInDay: 2, name: "Practice" }];
+
+  it("says plainly what is still to scan, counting pages not scanned or needing another photo", () => {
+    const guide = buildStack({ photos: [shot(1), shot(2, { check: "refused", reason: "faint" })], uploads: [], pages: day1, checks: true }).guide;
+    expect(guide?.stillText).toBe("Still to scan: 3 pages (Page 2, Page 3, Page 4)");
+  });
+
+  it("names the day with each page when the missing pages span days, and uses the singular for one", () => {
+    const one = buildStack({ photos: [1, 2, 3, 4, 5].map((n) => shot(n)), uploads: [], pages: withDay2, checks: true }).guide;
+    expect(one?.stillText).toBe("Still to scan: 1 page (Page 6)");
+    const spanning = buildStack({ photos: [shot(2), shot(5)], uploads: [], pages: withDay2, checks: true }).guide;
+    expect(spanning?.stillText).toBe("Still to scan: 4 pages (Page 1 · Day 1, Page 3 · Day 1, Page 4 · Day 1, Page 6 · Day 2)");
+  });
+
+  it("leaves out days with no photo yet", () => {
+    expect(buildStack({ photos: [shot(1)], uploads: [], pages: withDay2, checks: true }).guide?.stillText).toBe("Still to scan: 3 pages (Page 2, Page 3, Page 4)");
+  });
+
+  it("says all pages are scanned when none are left", () => {
+    expect(buildStack({ photos: [1, 2, 3, 4].map((n) => shot(n)), uploads: [], pages: named.filter((p) => p.day === "Day 1"), checks: true }).guide?.stillText).toBe("All pages of Day 1 are scanned");
+  });
 });

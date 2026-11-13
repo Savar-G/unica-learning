@@ -12,6 +12,9 @@ export interface PauseQuote {
   /** Server context for atomic admission. This never comes from the browser. */
   shippedAt: string; deliveredAt: string | null; today: string;
 }
+/** A family may pause its plan this many weeks in a calendar year. The SQL side holds the same number. */
+export const PAUSE_WEEKS_PER_YEAR = 8;
+
 export type PauseRefusal = "invalid_weeks" | "allowance" | "not_delivered" | "unavailable" | "stale" | "pending" | "unsupported" | "not_found";
 
 /** Whole local calendar weeks retain the charge's local clock time through seasonal changes and dated overrides. */
@@ -23,8 +26,8 @@ export function shiftCharge(at: string, weeks: number, zone: FamilyZone): string
 export function pauseQuote({ weeks, used, now, zone, book, plan, mailingWeeks = 0, firstDelivered = !!book?.deliveredAt, location }: {
   weeks: number; used: number; now: number; zone: FamilyZone; book: PauseBook | null; plan: PausePlan; mailingWeeks?: number; firstDelivered?: boolean; location?: PauseLocation;
 }): { ok: true; quote: PauseQuote } | { ok: false; error: PauseRefusal } {
-  if (!Number.isInteger(weeks) || weeks < 1 || weeks > 8) return { ok: false, error: "invalid_weeks" };
-  if (used + weeks > 8) return { ok: false, error: "allowance" };
+  if (!Number.isInteger(weeks) || weeks < 1 || weeks > PAUSE_WEEKS_PER_YEAR) return { ok: false, error: "invalid_weeks" };
+  if (used + weeks > PAUSE_WEEKS_PER_YEAR) return { ok: false, error: "allowance" };
   if (!book || !firstDelivered) return { ok: false, error: "not_delivered" };
   if (!Number.isFinite(Date.parse(plan.chargeAt)) || Date.parse(plan.chargeAt) <= now) return { ok: false, error: "unavailable" };
   const today = localDay(now, zone), shippedOn = localDay(book.shippedAt, zone);

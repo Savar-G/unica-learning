@@ -22,6 +22,7 @@ import { CODEX_SUBSCRIPTION_MODEL, codexCliClient, codexCliPreflight } from "@/l
 import { isAbsolute } from "node:path";
 import { fallbackAiClient, newGate, type AiCallRecord, type AiProvider, type ProviderGate } from "@/lib/ai-fallback";
 import { costingFetch, openRouterClient } from "@/lib/ai-openrouter";
+import { recordAiUsage, type AiFeature, type AiUsageTag } from "@/lib/ai-usage";
 import { aiSolver, type SolveLog, type Solver } from "@/lib/workbook-solve-check";
 
 type Env = Record<string, string | undefined>;
@@ -96,6 +97,8 @@ export interface WorkbookAiOptions {
   onExclude?: (provider: AiProvider, reason: string) => unknown | Promise<unknown>;
   gate?: ProviderGate;
   now?: () => number;
+  /** Whose run this is, for the AI usage ledger (D-330). Without it the calls are stored with no family. */
+  usage?: { parentId: string | null; childId: string | null; runId: string; kind?: "workbook_run" | "first_pages" };
 }
 
 /** The API's time limit for one workbook call: the page writer's calls can be long. */
@@ -116,16 +119,19 @@ export function workbookAi(env: Env, o: WorkbookAiOptions): WorkbookAi {
   const apiKey = codex ? undefined : env.OPENROUTER_API_KEY?.trim();
   const base = o.fetch ?? globalThis.fetch;
   const timeout = Number(env.WORKBOOK_CLAUDE_TIMEOUT_MS) > 0 ? Number(env.WORKBOOK_CLAUDE_TIMEOUT_MS) : CLAUDE_CLI_TIMEOUT_MS;
-  const cli = (model: string) => o.subscription
+  const tagOf = (feature: AiFeature): AiUsageTag => ({ feature, parentId: o.usage?.parentId, childId: o.usage?.childId, source: o.usage ? { kind: o.usage.kind ?? "workbook_run", id: o.usage.runId } : null });
+  const cli = (model: string, feature: AiFeature) => o.subscription
     ? codex
       ? codexCliClient({ configDir: env.WORKBOOK_CODEX_HOME!.trim(), spawn: o.spawn, env })
-      : claudeCliClient({ model, command: env.WORKBOOK_CLAUDE_COMMAND?.trim() || "claude", spawn: o.spawn, env, configDir: env.WORKBOOK_CLAUDE_CONFIG_DIR, timeout })
+      : claudeCliClient({ model, command: env.WORKBOOK_CLAUDE_COMMAND?.trim() || "claude", spawn: o.spawn, env, configDir: env.WORKBOOK_CLAUDE_CONFIG_DIR, timeout,
+          onUsage: (u) => recordAiUsage(tagOf(feature), { provider: "subscription", model, inputTokens: u.inputTokens, outputTokens: u.outputTokens }) })
     : null;
-  const api = (model: string, ms: number) => apiKey
-    ? (onCost: (usd: number) => void, onRequest: () => Promise<void>, onDispatch: () => void) => openRouterClient({ apiKey, model, fetch: costingFetch(onCost, base), timeout: ms, maxRetries: o.singleDispatch ? 0 : 1, onRequest, onDispatch })
+  const api = (model: string, ms: number, feature: AiFeature) => apiKey
+    ? (onCost: (usd: number) => void, onRequest: () => Promise<void>, onDispatch: () => void) => openRouterClient({ apiKey, model, fetch: costingFetch(onCost, base), timeout: ms, maxRetries: o.singleDispatch ? 0 : 1, onRequest, onDispatch,
+        onUsage: (u) => recordAiUsage(tagOf(feature), { provider: "openrouter", model, inputTokens: u.inputTokens, outputTokens: u.outputTokens, costUsd: u.costUsd, generationId: u.id }) })
     : null;
-  const writeCli = cli(models.cli);
-  const writeApi = api(models.api, API_TIMEOUT_MS);
+  const writeCli = cli(models.cli, "workbook");
+  const writeApi = api(models.api, API_TIMEOUT_MS, "workbook");
   if (!writeCli && !writeApi) return { ai: null, solve: null, gate };
   const ai = fallbackAiClient({
     primary, singleDispatch: o.singleDispatch, subscription: writeCli, api: writeApi, model: models.write, gate, now: o.now,
@@ -133,8 +139,8 @@ export function workbookAi(env: Env, o: WorkbookAiOptions): WorkbookAi {
     ...(o.onStart ? { onStart: (r: AiCallRecord) => o.onStart!("write", r) } : {}),
     onExclude: o.onExclude,
   });
-  const solveCli = cli(models.cliSolve);
-  const solveApi = api(models.apiSolve, API_SOLVE_TIMEOUT_MS);
+  const solveCli = cli(models.cliSolve, "solve_check");
+  const solveApi = api(models.apiSolve, API_SOLVE_TIMEOUT_MS, "solve_check");
   // Each check's cost (#312 round 3), kept until the job asks for it with the check's log, matched by what the reader
   // was shown: a check that was late gets none (its answer's cost goes to the next check of the same words, or none).
   const costs = new Map<string, number[]>();

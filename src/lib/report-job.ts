@@ -2,10 +2,10 @@ import "server-only";
 import type { AiClient } from "@/lib/ai-client";
 import { reportModel } from "@/lib/assessment";
 import { SUPPORT_EMAIL } from "@/lib/contact";
-import { adminTestPath } from "@/lib/admin-view";
 import { loadComparisonInput } from "@/lib/comparison-store";
 import { sendEmail, sendEmailOnce, type MailTransport, type Sender } from "@/lib/email-delivery";
 import { rebuildChildProfileNow } from "@/lib/child-profile-server";
+import { queueFirstPagesNow } from "@/lib/first-pages-server";
 import { addProfileAi, storeProfileFacts, type LearnerProfileStore, type ProfileBuild } from "@/lib/learner-profile";
 import { profileAiClient } from "@/lib/learner-profile-ai";
 import { learnerProfileStore } from "@/lib/learner-profile-store";
@@ -40,6 +40,9 @@ import { aiReport, aiReviewer, type AiOutcome, type WorkReviewer } from "@/lib/w
 //   7. Last, the child's profile (#303, src/lib/child-profile.ts) is built again from the test's stored profile and
 //      the child's learning events, then, with the AI on and events to link, its AI findings (#304), which stop after at
 //      most CHILD_PROFILE_AI_MS (20 s). A failure is logged; the facts stay stored.
+//   8. Very last, only with FIRST_PAGES_ENABLED "on" and an email this run may send: the first pages of Workbook 1 are
+//      queued (docs/first-pages.md). One database call; the pages are made elsewhere and never hold up the report, its
+//      emails or this job. The database refuses a test that does not qualify. A failure is logged.
 // #771: the /api/reminders run retries a test that still has no report, or whose parent email was refused
 // (src/lib/report-retry.ts), through the retry route, with `failureAlert` off and, past 48 hours or for a test family or
 // a team account, `email` off.
@@ -90,6 +93,12 @@ export interface ReportJobOptions {
   /** #771: false sends no "Report FAILED" alert (a retry: the retries send one alert after the last). Default true. */
   failureAlert?: boolean;
   /**
+   * Queues the first pages of Workbook 1 (docs/first-pages.md). By default queueFirstPagesNow (off unless
+   * FIRST_PAGES_ENABLED is "on") when the learner profiles are Supabase too; none when `profiles` is given (in memory).
+   * Not called when `email` is false.
+   */
+  firstPages?: ((assessmentId: string, origin: string) => Promise<unknown>) | null;
+  /**
    * #771: asked right before the parent email is claimed (a retry: report_retry_may_email, by the database's clock).
    * False, or a throw: no parent email and no report alert; the report stays stored. None (the finish route): no check.
    */
@@ -124,6 +133,7 @@ export async function runReportJob(assessmentId: string, origin: string, options
   const rebuildChild = options.rebuildChild ?? (options.profiles ? null : rebuildChildProfileNow);
   let profile: ProfileBuild | null = null;
   let childId: string | null = null;
+  let parentId: string | null = null;
   try {
     const inputs = await loadReportInputs(db.reader, assessmentId, db.comparison);
     if (!inputs) {
@@ -132,7 +142,8 @@ export async function runReportJob(assessmentId: string, origin: string, options
     }
     const { assessment } = inputs;
     childId = assessment.childId;
-    const { report, ai } = await storeReport(store, inputs, reviewer === undefined ? aiReviewer() : reviewer);
+    parentId = assessment.parentId;
+    const { report, ai } = await storeReport(store, inputs, reviewer === undefined ? aiReviewer(process.env, { feature: "report", parentId, childId, source: { kind: "assessment", id: assessmentId } }) : reviewer);
     profile = await profileStep(assessmentId, () => storeProfileFacts(db.profiles, inputs));
     if (!email) {
       console.info("[report] built with no email", assessmentId);
@@ -157,7 +168,7 @@ export async function runReportJob(assessmentId: string, origin: string, options
       // sends (or sent) the alert. A retry whose email may no longer go sends neither.
       if (parentEmail === "not_allowed") console.info("[report] email no longer allowed: built with no email", assessmentId);
       else if (parentEmail !== "busy") {
-        await alertSavar(book, transport, report.id, reportAlert({ view, parent, url: `${origin}${adminTestPath(assessment.id)}`, flags: assessment.placement.flags ?? [], help: assessment.help, parentEmail, ai }), parent.email);
+        await alertSavar(book, transport, report.id, reportAlert({ view, parent, url: `${origin}/admin/reports/${report.id}/deck`, flags: assessment.placement.flags ?? [], help: assessment.help, parentEmail, ai }), parent.email, parent.phone ?? null);
       }
     }
   } catch (e) {
@@ -165,9 +176,12 @@ export async function runReportJob(assessmentId: string, origin: string, options
     if (failureAlert) await alertFailure(transport, assessmentId, message(e));
   }
   // Step 6, after the emails: the profile's AI parts, over the facts this run stored.
-  if (profile) await profileStep(assessmentId, () => addProfileAi(db.profiles, profile, { ai: profileAi === undefined ? profileAiClient() : profileAi }));
+  if (profile) await profileStep(assessmentId, () => addProfileAi(db.profiles, profile, { ai: profileAi === undefined ? profileAiClient(process.env, { feature: "learner_profile", parentId, childId, source: { kind: "assessment", id: assessmentId } }) : profileAi }));
   // Step 7: the child's profile, from what is stored now.
   if (childId && rebuildChild) await profileStep(assessmentId, () => rebuildChild(childId!));
+  // Step 8: the first pages, queued only; made elsewhere.
+  const firstPages = options.firstPages === undefined ? (options.profiles ? null : (id: string, o: string) => queueFirstPagesNow(id, o, "report")) : options.firstPages;
+  if (childId && email && firstPages) await profileStep(assessmentId, () => firstPages(assessmentId, origin));
 }
 
 /**
@@ -239,7 +253,7 @@ async function emailParent(
     { report: reportId, email: "parent" },
     {
       // The founders sign the report (D-225).
-      sender: { to: "parent", from: "founders" },
+      sender: { to: "parent", from: "results-founders" },
       to: parent.email,
       replyTo: SUPPORT_EMAIL,
       // RFC 8058 one-click: mail apps POST here from their own Unsubscribe button.
@@ -267,10 +281,14 @@ async function emailParent(
 
 // One alert per report. A run that stops between the claim and the send loses this one alert; the parent email above is
 // the one that matters.
-async function alertSavar(ledger: ReportLedger, transport: MailTransport | undefined, reportId: string, alert: { subject: string; text: string }, replyTo: string) {
+async function alertSavar(ledger: ReportLedger, transport: MailTransport | undefined, reportId: string, alert: { subject: string; text: string; html: string }, replyTo: string, phone: string | null) {
   const to = process.env.SIGNUP_NOTIFY_EMAIL;
   if (!to) return;
-  const outcome = await sendEmailOnce(ledger, { report: reportId, email: "alert" }, { sender: TO_SAVAR, to, replyTo, ...alert }, { transport });
+  const safeLedger: ReportLedger = { ...ledger, ...(ledger.keepCopy && { keepCopy: async (handle, key, copy) => {
+    const redact = (value: string | undefined) => value && phone ? value.replaceAll(phone, "[phone removed]") : value;
+    await ledger.keepCopy!(handle, key, { ...copy, message: { ...copy.message, text: redact(copy.message.text) ?? "", html: redact(copy.message.html) } });
+  } }) };
+  const outcome = await sendEmailOnce(safeLedger, { report: reportId, email: "alert" }, { sender: TO_SAVAR, to, replyTo, ...alert }, { transport });
   if (outcome.status === "sent") console.info("[report] alert sent", reportId);
   else if (outcome.status !== "busy") console.error("[report] alert failed", reportId, outcome.status, outcome.error);
 }

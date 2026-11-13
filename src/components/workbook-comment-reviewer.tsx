@@ -1,7 +1,7 @@
 "use client";
 import { author, authorCounts, changedPages, commentPlan, commentResult, historyGroups, pageCounts, pendingComments, sendableComments, sendLabel, vancouverTime, versionStatus } from "@/lib/workbook-review-display";
 import { watchWorkbookEditProgress, type EditProgress } from "@/lib/workbook-edit-progress";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { RunDetail } from "@/lib/admin-store";
 import type { ReviewComment } from "@/lib/workbook-edit";
@@ -55,11 +55,12 @@ function preview(value: unknown): string {
 
 export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail; history: { id: number; text: string }[] }) {
   const router = useRouter(), draft = detail.draft!;
-  const [versionNumber, setVersionNumber] = useState<number | null>(null);
+  // Only the version on screen is loaded: choosing another loads the page again with ?version= (the newest has none).
+  const [choosing, startChoosing] = useTransition(), [chosen, setChosen] = useState<number | null>(null);
   const [before, setBefore] = useState(false), [changedOnly, setChangedOnly] = useState(false);
-  const version = detail.versions.find(v => v.revision === (versionNumber ?? draft.revision)) ?? detail.versions[0];
+  const version = detail.versions.find(v => v.revision === (detail.shownRevision ?? draft.revision)) ?? detail.versions[0];
   const previous = detail.versions.find(v => v.revision === version?.revision - 1);
-  const pages = version?.workbook.pages ?? draft.workbook.pages;
+  const pages = version?.workbook?.pages ?? draft.workbook.pages;
   const readOnly = !!version && version.revision !== draft.revision;
   const changedPageNumbers = version ? changedPages(version, previous) : [];
   const historyData = historyGroups(detail.comments, detail.edits);
@@ -117,6 +118,11 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
   useEffect(() => { if (anchor) input.current?.focus(); }, [anchor]);
   useEffect(() => { composing.current = !!anchor && note.trim().length > 0; }, [anchor, note]);
   useEffect(() => { if (!anchor && refreshDue.current) { refreshDue.current = false; router.refresh(); } }, [anchor, router]);
+  function chooseVersion(n: number) {
+    const url = new URL(window.location.href);
+    if (n === draft.revision) url.searchParams.delete("version"); else url.searchParams.set("version", String(n));
+    setChosen(n); startChoosing(() => router.push(`${url.pathname}${url.search}`, { scroll: false }));
+  }
   function select(a: Anchor, comment?: ReviewComment) {
     if (locked || working || readOnly) return;
     setSelected(a.page); setAnchor({ ...a, requestKey: a.requestKey ?? crypto.randomUUID() }); setNote(comment?.note ?? ""); setExact(!!comment?.item); setItem(comment?.item ?? null); setError("");
@@ -146,17 +152,17 @@ export function WorkbookCommentReviewer({ detail, history }: { detail: RunDetail
     page: selected, question: question.number, level: question.package.level, skills: question.package.skill.skills }) : null;
   const changed = new Set(detail.comments.filter((c) => c.page === selected && c.status === "done" && detail.edits.some(e => e.id === c.batchId && e.revision === version?.revision)).map((c) => c.question));
   const workingPages = [...new Set(detail.comments.filter((c) => c.status === "sent").map((c) => c.page))];
-  const phaseText: Record<EditProgress["phase"], string> = { waiting: "Waiting for your Mac", working: "Applying comments",
+  const phaseText: Record<EditProgress["phase"], string> = { waiting: "Waiting for the workbook computer", working: "Applying comments",
     retrying: "Retrying with saved work", stalled: "The edit stopped", saving: "Saving the new revision",
     done: "Changes saved. Loading the new revision", failed: "The edit stopped. Loading the comment results" };
   const state = active && currentProgress ? phaseText[currentProgress.phase]
-    : working ? detail.editBatch?.status === "queued" && detail.editBatch.runner === "mac" ? "Waiting for your Mac"
+    : working ? detail.editBatch?.status === "queued" && detail.editBatch.runner === "mac" ? "Waiting for the workbook computer"
       : `Applying comments to ${workingPages.length} ${workingPages.length === 1 ? "page" : "pages"}` : "Comment mode";
   return <section className="wbr" aria-label="Workbook review">
     <header className="wbr-bar"><div><strong>Review workbook</strong>
       {version?.rendering?.pdfPath && detail.images[version.rendering.pdfPath] && <a href={detail.images[version.rendering.pdfPath]} target="_blank" rel="noopener">Open PDF of this version</a>}
       <span>{status?.line ?? `Version ${draft.revision}`}</span>
-      <label>Version <select aria-label="Choose version" value={version?.revision ?? draft.revision} onChange={e => { setVersionNumber(Number(e.target.value)); setAnchor(null); setBefore(false); setChangedOnly(false); }}>
+      <label>Version <select aria-label="Choose version" value={(choosing ? chosen : null) ?? version?.revision ?? draft.revision} disabled={choosing} onChange={e => { chooseVersion(Number(e.target.value)); setAnchor(null); setBefore(false); setChangedOnly(false); }}>
         {detail.versions.map(v => <option key={v.revision} value={v.revision}>Version {v.revision}</option>)}</select></label></div>
       <div className="wbr-progress"><button className="btn adm-btn" disabled={readOnly || locked || working || saving || (!sendableComments(pending).length && !stalled)} onClick={() => post({ send: true })}>
         {loadingResult ? "Loading results..." : stalled ? "Try again" : working ? "Applying comments..." : sendLabel(pending, detail.adminNames)}</button>

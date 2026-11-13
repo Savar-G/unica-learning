@@ -1,13 +1,18 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { answersAddUp, reportShowsPlacement } from "@/lib/area-level-check";
-import { fromRemovedRound, profileSkillResults, reportCallsUnreliable, restoreSession, testAreaAnswers, type AreaAnswer, type Grade } from "@/lib/assessment";
+import { BC_SKILL_MAP, REPORTED_STRAND, profileSkillResults, reportCallsUnreliable, restoreSession, testAreaAnswers, type AreaAnswer, type Grade } from "@/lib/assessment";
 import type { Database } from "@/lib/database";
 import { LEARNING_COLUMNS } from "@/lib/learning-style";
+import { chatFamilyGate } from "@/lib/maya-chat";
 import { childPauseMailing } from "@/lib/plan-controls-server";
 import type { ParentViewReader } from "@/lib/parent-view";
 import { pinIsSet } from "@/lib/parent-pin-server";
 import { familyOpenPlanChildren } from "@/lib/plan-access";
+import { scanMarkingReader, markingCommand } from "@/lib/scan-marking-reader";
+import { effectiveSkillMarks } from "@/lib/scan-marking";
+import { itemKey, markingEvent } from "@/lib/scan-observation";
 import { scanReleased } from "@/lib/scan-pages-access";
 import { withAnswers } from "@/lib/test-attempt";
 import { attemptStore } from "@/lib/test-attempt-server";
@@ -30,8 +35,9 @@ import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 // compared with the stored score with the same check, and the stored score with the stored report: a replay that differs
 // from either gives no answers, so no bars. A test scored again after its report was made keeps the report's level and
 // shows no bars, as the bars would rest on the new score.
-// The monthly summary (#562) counts Maya calls in the minutes ledger (maya_minute_grants, which a parent reads): the
-// database counts one child's calls that used time in the month, so no row leaves it and no page of rows can hide one.
+// The monthly summary (#562) counts the child's Maya chats with the secret key, filtered on the parent and the child
+// (maya_calls stays closed to parents, #295): a chat counts when it ended in the month and the child sent Maya at least
+// one message. The database counts them, so no row leaves it and no page of rows can hide one.
 // The Progress tab (#561): the skill states read each finished test's stored learner profile with the secret key, filtered
 // on the parent and the child; only each standard's tally leaves this read (profileSkillResults), with whether the test's
 // stored report calls it unreliable (only the report's reliability note is read, not its model). A test with no report
@@ -40,6 +46,24 @@ import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 // A database error throws, and so does a missing secret key: an empty read would show a paying family "Start the test".
 
 /** The reader of this parent, from their session and the secret key. */
+/** The skill standard of each question of the named workbooks, by `<workbook>:<page>:<number>:<question id>`. */
+async function markedQuestions(admin: SupabaseClient<Database>, parent: string, workbooks: readonly string[]): Promise<Map<string, string>> {
+  const questions = new Map<string, string>();
+  for (const book of workbooks) {
+    for (let after: string | null = null; ;) {
+      let query = admin.from("workbook_questions").select("id, page_id, question_number, qid:package->>id, standard:package->skill->>standard")
+        .eq("parent_id", parent).eq("workbook_id", book).order("id").limit(1000);
+      if (after !== null) query = query.gt("id", after);
+      const rows = await query;
+      if (rows.error) throw new Error("overview questions read failed");
+      if (!rows.data.length) break;
+      for (const row of rows.data) if (row.qid && row.standard) questions.set(`${book}:${row.page_id}:${row.question_number}:${row.qid}`, row.standard);
+      after = rows.data[rows.data.length - 1].id;
+    }
+  }
+  return questions;
+}
+
 export function parentViewReader(session: SupabaseClient<Database>, parent: string, admin: SupabaseClient<Database> | null, env: Readonly<Record<string, string | undefined>> = process.env): ParentViewReader {
   return {
     async children() {
@@ -110,8 +134,7 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
       if (!loaded || !report.data) return null;
       let answers: AreaAnswer[] | null = null;
       try {
-        // D-145: the removed extra round's answers are left out, as the test attempt module leaves them out.
-        const replay = testAreaAnswers(restoreSession(loaded.test, loaded.answers.filter((a) => !fromRemovedRound(a.questionId)), loaded.route ?? null, loaded.stage3Route ?? null));
+        const replay = testAreaAnswers(restoreSession(loaded.test, loaded.answers, loaded.route ?? null, loaded.stage3Route ?? null));
         // Bars that count other answers than the report did would tell a second story beside the Level tile: the replay
         // must add up to the stored score, and the stored report must show that score.
         const placement = stored.data?.placement;
@@ -141,11 +164,12 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
       return pinIsSet(parent);
     },
     async mayaCalls(childId, from, to) {
-      // The minutes ledger, which a parent reads: one grant per child call, settled with the seconds it used. Only the
-      // count leaves this read; maya_calls itself stays closed to parents (#295).
-      const { count, error } = await session.from("maya_minute_grants").select("child_id", { count: "exact", head: true })
-        .eq("kind", "child").eq("child_id", childId).gt("used_seconds", 0)
-        .gte("created_at", new Date(from).toISOString()).lt("created_at", new Date(to).toISOString());
+      if (!admin) throw new Error("maya calls read: no secret key");
+      // A family chat (never an admin test call) that ended in the window, with at least one message from the child.
+      // child_turns is written when the call ends. Only the count leaves this read.
+      const { count, error } = await admin.from("maya_calls").select("id", { count: "exact", head: true })
+        .eq("parent_id", parent).eq("child_id", childId).eq("kind", "chat").eq("status", "ended").gt("child_turns", 0)
+        .gte("ended_at", new Date(from).toISOString()).lt("ended_at", new Date(to).toISOString());
       if (error) throw new Error(`maya calls read: ${error.message}`);
       if (count === null) throw new Error("maya calls read: no count");
       return count;
@@ -169,6 +193,52 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
         return at && reported.has(p.assessment_id) ? profileSkillResults(p.profile, at, unreliable.has(p.assessment_id)) : [];
       });
     },
+    async overviewProgress(childId) {
+      if (!admin) throw new Error("overview progress: no secret key");
+      const owner = await session.from("children").select("id").eq("id", childId).maybeSingle();
+      if (owner.error) throw new Error("overview progress owner read failed");
+      if (!owner.data) return null;
+      const command = markingCommand(admin);
+      const reads = scanMarkingReader(admin);
+      // One consistent moment: the marking revision is the same before and after the reads. A marking ack or a correction
+      // in between makes it read again, three times at most, as the profile rebuild does.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const revision = await command("revision", parent, null, null, { child: childId });
+        if (typeof revision !== "number") throw new Error("overview marking revision unavailable");
+        const [items, books] = await Promise.all([
+          reads.effective(parent, childId),
+          session.from("workbooks").select("id, printed_revision").eq("child_id", childId).eq("status", "shipped"),
+        ]);
+        if (books.error) throw new Error("overview progress read failed");
+        const shipped = new Map(books.data.map((book) => [book.id, book.printed_revision]));
+        // Only an eligible original of a shipped page of its current print revision counts in the bars.
+        const originals = items.flatMap((item) => {
+          const id = item.expected.identity, decision = markingEvent(item.expected, item.observation);
+          const counts = shipped.has(id.workbookId) && shipped.get(id.workbookId) === id.printedRevision && item.originalEvent && item.eventId && decision.publish;
+          return counts ? [{ item, event: item.originalEvent!, right: decision.result === "right" }] : [];
+        });
+        const questions = await markedQuestions(admin, parent, [...new Set(originals.map(({ item }) => item.expected.identity.workbookId))]);
+        const standards = new Map(BC_SKILL_MAP.standards.map((standard) => [standard.code, standard]));
+        const seen = new Set<string>();
+        const marks: AreaAnswer[] = [];
+        for (const { item, event, right } of originals) {
+          const id = item.expected.identity;
+          const key = itemKey(id);
+          if (seen.has(key)) throw new Error("duplicate original result");
+          seen.add(key);
+          const standard = standards.get(questions.get(`${id.workbookId}:${id.pageId}:${item.expected.number}:${id.itemId}`) ?? "");
+          if (!standard) continue;
+          if (event.parentId !== parent || event.childId !== childId || event.source !== "marking" ||
+              event.key !== `marking:${createHash("sha256").update(key, "utf8").digest("hex")}` ||
+              event.question.source !== "workbook" || event.question.workbookId !== id.workbookId ||
+              event.question.question !== item.expected.number || event.skill.standard !== standard.code) throw new Error("overview mark source mismatch");
+          marks.push({ area: REPORTED_STRAND[standard.strand], level: standard.grade, correct: right });
+        }
+        if (await command("revision", parent, null, null, { child: childId }) !== revision) continue;
+        return { marks, skillMarks: effectiveSkillMarks(items) };
+      }
+      throw new Error("overview progress changed");
+    },
     async workbookStandards(workbookId) {
       const { data, error } = await session.from("workbook_questions").select("standard:package->skill->>standard").eq("workbook_id", workbookId);
       if (error) throw new Error(`workbook standards read: ${error.message}`);
@@ -180,10 +250,12 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
         familyOpenPlanChildren({ parentId: parent }, { db: admin }),
         admin?.from("test_accounts").select("parent_id").eq("parent_id", parent).maybeSingle(),
       ]);
+      const test = !testFamily?.error && testFamily?.data?.parent_id === parent;
+      const enabled = env.MAYA_CHAT_ENABLED !== "off";
       return {
         progress: env.PROGRESS_TAB_ENABLED === "on",
-        // Test families only until a child can call Maya (#337), as Parent home shows the minutes today.
-        maya: !testFamily?.error && testFamily?.data?.parent_id === parent,
+        maya: enabled && chatFamilyGate({ test, listed: false }, env) === "test",
+        mayaPlanChildren: enabled && chatFamilyGate({ test: false, listed: false, planOpen: true }, env) === "open_plan" ? scanPlanChildren : new Set<string>(),
         scanPages,
         scanPlanChildren,
       };

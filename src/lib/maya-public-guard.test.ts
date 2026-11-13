@@ -4,7 +4,6 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { SHOW_VOICE_DEMO as SHOW_HOME_VOICE_DEMO } from "@/components/guidance-demo";
-import { SHOW_OLD_SAMPLE_PLANS } from "@/lib/maya-public-images";
 import Home from "@/app/(site)/page";
 
 vi.mock("@/components/card-return", () => ({ CardReturn: () => null }));
@@ -64,15 +63,28 @@ describe("first ship public Maya copy", () => {
     expect(violations).toEqual([]);
   });
 
-  it("keeps the first ship image and voice flags off", () => {
-    expect([SHOW_OLD_SAMPLE_PLANS, SHOW_HOME_VOICE_DEMO]).toEqual([false, false]);
+  it("renders the workbook spread on the home page", () => {
+    const html = renderToStaticMarkup(createElement(Home));
+    expect(html).toContain("/whats-included/wb/leah-02-plan.jpg");
+    expect(html).toContain("/whats-included/wb/leah-03-d1p1.jpg");
   });
 
-  it("does not render the hidden images on the home page", () => {
+  it("renders the Maya demo on the home page", () => {
+    const html = renderToStaticMarkup(createElement(Home));
+    expect(html).toContain("/video/guidance-demo.mp4");
+    expect(html).toContain("/video/guidance-demo-board.mp4");
+    expect(html).toContain('aria-label="What happens in the demo"');
+  });
+
+  it("shows the home demo", () => {
+    expect(SHOW_HOME_VOICE_DEMO).toBe(true);
+  });
+
+  it("does not render unrelated hidden images on the home page", () => {
     // Savar 2026-11-09: What's included stays exactly as before #778
     for (const page of [Home]) {
       const html = renderToStaticMarkup(createElement(page));
-      expect(html).not.toMatch(/(?:leah|mateo)-02-plan\.jpg|app-marked\.png|dash-main\.jpg|dash-side\.png|dash\.jpg|app-callnotes\.png|Companion calls|Call with Maya|call notes|Numbers on this page are made up|Every scan updates your dashboard/i);
+      expect(html).not.toMatch(/app-marked\.png|dash-main\.jpg|dash-side\.png|dash\.jpg|app-callnotes\.png|Companion calls|Call with Maya|call notes|Numbers on this page are made up|Every scan updates your dashboard/i);
     }
   });
 });

@@ -14,6 +14,8 @@ import { valueText } from "@/lib/question-package";
 import type { Database } from "@/lib/database";
 import { adminClient } from "@/lib/supabase-auth";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
+import { notIn } from "@/lib/admin-test-families";
+import type { CallStatRow } from "@/lib/admin-pages";
 
 // Maya's admin test calls on the server (#323): the call module (src/lib/maya-call.ts) with its seams
 // (src/lib/maya-call-seams.ts, shared with the voice worker). Writes use the secret key; the admin pages read with the
@@ -132,6 +134,8 @@ export async function demoChildren(a: AdminSession): Promise<DemoChild[]> {
 
 export interface CallListRow {
   id: string;
+  /** The family the call belongs to. */
+  parentId?: string;
   kind?: CallView["kind"];
   createdAt: string;
   childId: string;
@@ -174,8 +178,12 @@ const callCursor = (value?: string): CallCursor | null => {
   } catch { return null; }
 };
 
-/** Calls by flag level, then newest, with a saved place for each direction. No database offset or total-size cap. */
-export async function listCalls(a: AdminSession, limit = 50, token?: string): Promise<CallListPage> {
+/**
+ * Calls by flag level, then newest, with a saved place for each direction. No database offset or total-size cap.
+ * `hide`: the parent ids left out (the test families, while the admin's "Show test families" switch is off).
+ */
+export async function listCalls(a: AdminSession, limit = 50, token?: string, hide: readonly string[] = []): Promise<CallListPage> {
+  const out = notIn(hide);
   const cursor = callCursor(token);
   const backwards = cursor?.direction === "newer";
   const filters = [
@@ -190,9 +198,10 @@ export async function listCalls(a: AdminSession, limit = 50, token?: string): Pr
       const comparison = backwards ? "gt" : "lt";
       filter = `and(or(${filter}),or(created_at.${comparison}.${cursor.at},and(created_at.eq.${cursor.at},id.${comparison}.${cursor.id})))`;
     }
+    const read = a.db.from("maya_calls").select("id, kind, created_at, parent_id, child_id, question_text, status, model, outcome_reason, assistance, call_seconds, learning_event_id, mode, connected_seconds, mishearing_confirmations, mishearing_corrections, flag, safety_severity, safety_flag")
+      .or(filter);
     const rows = must<Database["public"]["Tables"]["maya_calls"]["Row"][]>(
-      await a.db.from("maya_calls").select("id, kind, created_at, child_id, question_text, status, model, outcome_reason, assistance, call_seconds, learning_event_id, mode, connected_seconds, mishearing_confirmations, mishearing_corrections, flag, safety_severity, safety_flag")
-        .or(filter).order("created_at", { ascending: backwards }).order("id", { ascending: backwards }).limit(limit + 1),
+      await (out ? read.not("parent_id", "in", out) : read).order("created_at", { ascending: backwards }).order("id", { ascending: backwards }).limit(limit + 1),
       "maya calls",
     );
     return rows.map((row) => ({ row, group }));
@@ -212,6 +221,7 @@ export async function listCalls(a: AdminSession, limit = 50, token?: string): Pr
   const names = ids.length ? must<{ id: string; first_name: string }[]>(await a.db.rpc("admin_children").select("id, first_name").in("id", ids), "children") : [];
   const calls = rows.map((r) => ({
     id: r.id,
+    parentId: r.parent_id,
     kind: r.kind,
     createdAt: r.created_at,
     childId: r.child_id,
@@ -234,6 +244,20 @@ export async function listCalls(a: AdminSession, limit = 50, token?: string): Pr
 }
 
 /** One call for the admin call page, with the child's first name. */
+/** The most calls the summary tiles read for one window; more is said as "or more". */
+export const CALL_STATS_MAX = 5000;
+
+/**
+ * The calls since `from`, for the summary tiles of the calls page: one read, without the families in `leaveOut` (the
+ * test and team families, never counted), left out in the query so the cap holds real calls only.
+ */
+export async function callStats(a: AdminSession, from: Date, leaveOut: readonly string[]): Promise<{ rows: CallStatRow[]; capped: boolean }> {
+  const out = notIn(leaveOut);
+  const read = a.db.from("maya_calls").select("created_at, parent_id, call_seconds, flag, safety_severity, safety_flag").gte("created_at", from.toISOString());
+  const rows = must<CallStatRow[]>(await (out ? read.not("parent_id", "in", out) : read).order("created_at", { ascending: false }).limit(CALL_STATS_MAX + 1), "maya call stats");
+  return { rows: rows.slice(0, CALL_STATS_MAX), capped: rows.length > CALL_STATS_MAX };
+}
+
 export async function readCall(a: AdminSession, id: string): Promise<{ view: CallView; childName: string | null } | null> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return null;
   const row = must<Database["public"]["Tables"]["maya_calls"]["Row"] | null>(await a.db.from("maya_calls").select("*").eq("id", id.toLowerCase()).maybeSingle(), "maya call");
@@ -249,18 +273,36 @@ export async function readCall(a: AdminSession, id: string): Promise<{ view: Cal
   return { view, childName: child?.first_name ?? null };
 }
 
-/** All stored refusals for this child, across calls and chats. Keyset pages avoid the API row cap. Admin RLS applies. */
+/** One keyset page of a child's calls with a trace (`traced`) or without one: the id and the refusal list only. */
+async function refusalPage(a: AdminSession, childId: string, traced: boolean, after: string | null) {
+  const withTrace = a.db.from("maya_calls").select("id, refusals:trace->scopeRefusals").eq("child_id", childId).not("trace", "is", null);
+  const noTrace = a.db.from("maya_calls").select("id, refusals:live->text->session->scopeRefusals").eq("child_id", childId).is("trace", null);
+  const { data, error } = traced
+    ? await (after ? withTrace.gt("id", after) : withTrace).order("id").limit(200)
+    : await (after ? noTrace.gt("id", after) : noTrace).order("id").limit(200);
+  if (error) throw new Error(`[admin] scope counts: ${error.message}`);
+  return data;
+}
+
+/**
+ * All stored refusals for this child, across calls and chats, as callRefusals counts them: a call with a trace counts the
+ * trace's list, a call with none the live session's. Only those JSON paths are read, never the whole trace or live state
+ * (each holds the transcript, the board and the saved session). PostgREST stores a JSON null as SQL null, so `trace is
+ * null` is exactly a call with no trace. Keyset pages avoid the API row cap. Admin RLS applies.
+ *
+ * The live read runs first. A call that ends between the two reads is in both, and its trace replaces the live list.
+ * The other order drops that call: the traced read misses it while `trace` is null, and the live read misses it once
+ * the trace is saved.
+ */
 export async function childScopeSummary(a: AdminSession, childId: string) {
-  const records: Parameters<typeof scopeSummary>[0][number][] = [];
-  let cursor: string | null = null;
-  for (;;) {
-    let query = a.db.from("maya_calls").select("id, trace, live").eq("child_id", childId).order("id").limit(200);
-    if (cursor) query = query.gt("id", cursor);
-    const { data, error } = await query;
-    if (error) throw new Error(`[admin] scope counts: ${error.message}`);
-    if (!data?.length) break;
-    records.push(...data);
-    cursor = data[data.length - 1].id;
+  const byId = new Map<string, NonNullable<Awaited<ReturnType<typeof refusalPage>>>[number]>();
+  for (const traced of [false, true]) {
+    for (let cursor: string | null = null; ;) {
+      const rows = await refusalPage(a, childId, traced, cursor);
+      if (!rows.length) break;
+      for (const row of rows) byId.set(row.id, row);
+      cursor = rows[rows.length - 1].id;
+    }
   }
-  return scopeSummary(records);
+  return scopeSummary([...byId.values()].sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0)));
 }

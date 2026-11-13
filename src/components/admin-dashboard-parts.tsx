@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { RANGES, STAGE_SHORT, type Dashboard, type RangeKey, type Stage } from "@/lib/admin-dashboard";
+import { TESTS_SHOWING_NOTE } from "@/lib/admin-test-families";
 import "./admin-dashboard.css";
 
 /** The page's own path and query. `demo`: made-up families in local dev (admin-demo.ts). */
@@ -50,21 +51,15 @@ export const Card = ({ title, aside, children, className = "" }: { title?: React
   </section>
 );
 
-/** Shown above the numbers: made-up data, the Stripe status, and the team and test families when they are counted. */
+/** Shown above the numbers: made-up data, the Stripe status, and the test families while they show. */
 export function Notes({ ctx, d }: { ctx: Ctx; d: Dashboard }) {
-  const n = d.tests.count;
-  const families = `${n} team or test ${n === 1 ? "family" : "families"}`;
   return <>
     {ctx.demo && <p className="dash-note">Demo data: made-up families, not your database. Local development only.</p>}
     {d.stripeNote ? <p className="dash-note">{d.stripeNote}</p> : d.stripeMode && <p className="dash-foot dash-tests">Payments: read from Stripe ({d.stripeMode} mode) just now.{d.cardsFoundInStripe > 0 ? ` ${d.cardsFoundInStripe} saved card${d.cardsFoundInStripe === 1 ? " was" : "s were"} found in Stripe that the site had not recorded; they are counted.` : ""}{d.stripeMode === "test" && !ctx.demo ? " Test mode shows test payments only, not real ones." : ""}</p>}
-    {/* test families are always left out; a family page's link (?tests=1) is the only way in, and says so here */}
-    {d.tests.shown && n > 0 && (
-      <p className="dash-foot dash-tests">
-        Counting {families} (marked <span className="dash-test">Test</span>). <Link href={href(ctx, { tests: null })}>Leave them out</Link>
-      </p>
-    )}
+    {/* the "Show test families" switch: they are listed and tagged, never counted */}
+    {d.tests.shown && d.tests.count > 0 && <p className="adm-testbar" role="note"><span className="adm-chip is-test">test</span>{TESTS_SHOWING_NOTE}</p>}
   </>;
 }
 
-/** Beside a family's name when team and test families are counted. */
-export const TestMark = ({ test }: { test: boolean }) => (test ? <span className="dash-test">Test</span> : null);
+/** Beside a family's name while test families show. */
+export const TestMark = ({ test }: { test: boolean }) => (test ? <span className="dash-test" title="A test or team family: left out of every number">test</span> : null);

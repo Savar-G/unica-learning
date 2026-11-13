@@ -27,11 +27,16 @@ const scaleTop = (o: OverviewView) => Math.max(8, o.child.schoolGrade, o.level?.
 const tick = (l: number) => (l === 0 ? "K" : String(l));
 
 export function ParentOverview({ overview }: { overview: OverviewView }) {
-  const { child, level, areas, resultPreparing, resultLate, workbook, action, summaryMonth } = overview;
+  const { child, level, areas, skills, areasIncludeMarks, resultPreparing, resultLate, workbook, action, summaryMonth } = overview;
   const n = scaleTop(overview) + 1;
   // D-293: this is a link to saved notes, not a claim that new chats or calls are available.
   const maya = child.tabs.includes("maya");
-  const tiles = level || workbook || maya;
+  const tiles = level || skills || workbook || maya;
+  // Maya fills the rest of its row (D-328), or takes a full row when the row before it is full. At 3 columns Level takes
+  // two and the others one; at 2 columns Level takes a full row and the others one (parent-overview.css).
+  const singles = (skills ? 1 : 0) + (workbook ? 1 : 0);
+  const used3 = ((level ? 2 : 0) + singles) % 3;
+  const mayaSpan = ["po-maya", used3 ? `po-maya-3c-${3 - used3}` : "", singles % 2 ? "po-maya-2c-1" : ""].filter(Boolean).join(" ");
   return (
     <div className="po">
       {resultPreparing && (
@@ -46,6 +51,14 @@ export function ParentOverview({ overview }: { overview: OverviewView }) {
       {tiles && (
         <div className="po-tiles">
           {level && <LevelTile working={level.working} grade={child.schoolGrade} earlySign={level.earlySign} testedOn={level.testedOn} n={n} />}
+          {skills && (
+            <section className="po-card" aria-labelledby="po-skills">
+              <p className="po-label" id="po-skills">Skills mastered</p>
+              <p className="po-value">{skills.mastered}</p>
+              <p className="po-sub">{skills.atLevel.mastered} of {skills.atLevel.total} at {gradeLabel(skills.atLevel.grade)} so far</p>
+              {skills.moreThisMonth > 0 && <p className="po-sub po-sub-tight">{skills.moreThisMonth} more this month</p>}
+            </section>
+          )}
           {workbook && (
             <section className="po-card" aria-labelledby="po-book">
               <p className="po-label" id="po-book">This workbook</p>
@@ -54,7 +67,7 @@ export function ParentOverview({ overview }: { overview: OverviewView }) {
             </section>
           )}
           {maya && (
-            <section className="po-card" aria-labelledby="po-maya">
+            <section className={`po-card ${mayaSpan}`} aria-labelledby="po-maya">
               <p className="po-label" id="po-maya">Maya</p>
               <p className="po-sub">Read {child.firstName}&apos;s saved notes and transcripts.</p>
               <Link className="po-more" href={`/account/notes/${encodeURIComponent(child.id)}`}>Notes from Maya <span aria-hidden="true">→</span></Link>
@@ -72,7 +85,7 @@ export function ParentOverview({ overview }: { overview: OverviewView }) {
       {level && !level.unreliable && areas.length > 0 && (
         <section className="po-card po-areas" aria-labelledby="po-areas">
           <h2 id="po-areas">Level by area</h2>
-          <p className="po-sub">From the test on {date(level.testedOn)}. The line marks {child.firstName}&apos;s school grade, {gradeLabel(child.schoolGrade)}.</p>
+          <p className="po-sub">{areasIncludeMarks ? "From the test and marked pages." : `From the test on ${date(level.testedOn)}.`} The line marks {child.firstName}&apos;s school grade, {gradeLabel(child.schoolGrade)}.</p>
           <div className="po-bars" style={{ "--n": n, "--grade": child.schoolGrade } as CSSProperties}>
             <div className="po-axis" aria-hidden="true">
               <span />

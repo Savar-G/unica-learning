@@ -1,7 +1,6 @@
 import "server-only";
 import {
   MISCONCEPTIONS,
-  fromRemovedRound,
   everyQuestion,
   isGrade,
   reportFindings,
@@ -165,12 +164,9 @@ export type ComparisonRead = (assessmentId: string) => Promise<ComparisonInput>;
 export async function loadReportInputs(reader: ReportReader, assessmentId: string, comparison: ComparisonRead): Promise<ReportInputs | null> {
   const a = await reader.assessment(assessmentId);
   if (!a || a.status !== "completed" || !a.completedAt || !a.placement) return null;
-  const stored = await reader.answers(a.id);
+  const answers = await reader.answers(a.id);
   // The question map: every question the test could ask, from every stage and path.
   const questions = new Map(everyQuestion(a.test).map((q) => [q.id, q]));
-  // D-145: the answers to the removed extra round's questions (#190), which two tests still store, are left out: no
-  // report part, learner profile or count reads them.
-  const answers = stored.filter((x) => !fromRemovedRound(x.questionId));
   const withWork = answers.filter((x) => x.workPath !== null || x.workText !== null);
   return {
     assessment: {
@@ -269,7 +265,7 @@ async function findingsOf(reader: ReportReader, row: ReportRecord, model: Report
 export async function loadReportView(reader: ReportReader, id: string): Promise<LoadedReport | null> {
   const row = await reader.report(id);
   if (!row?.assessment || !row.child) return null;
-  // Only the work the stored model shows today is signed (D-145: not the removed extra round's).
+  // Only the work the stored model shows is signed.
   const model = storedReportModel(row.model);
   const paths = (model.work ?? []).flatMap((w) => (w.image ? [w.image] : []));
   const [workImages, { findings, book }] = await Promise.all([reader.sign(paths), findingsOf(reader, row, model)]);

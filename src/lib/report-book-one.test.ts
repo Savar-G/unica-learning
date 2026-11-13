@@ -7,6 +7,12 @@ describe("bookOne (D-305)", () => {
   const view = sampleReportView();
   const book = bookOne({ profile: sampleLearnerProfile()!, grade: 3, assessmentId: "sample", completedAt: view.completedAt, minutes: view.minutes, howWeHelp: view.model.howWeHelp })!;
 
+  it("counts what the book is made of from the plan's items, teaching first", () => {
+    expect(book.mix[0]).toMatchObject({ kind: "main", code: "2.4" });
+    expect(book.mix.map((p) => p.kind)).toEqual(expect.arrayContaining(["main", "review", "challenge"]));
+    expect(book.mix.every((p) => p.items > 0)).toBe(true);
+  });
+
   it("names the units the plan teaches as the main work", () => {
     expect(book.main.map((u) => [u.code, u.title, u.grade])).toEqual([["2.4", "Adding and subtracting", 2]]);
     expect(book.main[0].skills).toEqual(expect.arrayContaining(["Add and subtract tens", "Make the next ten"]));

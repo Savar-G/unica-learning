@@ -41,7 +41,7 @@ function view(isRight: Script, { grade = 4, province = "BC", name = "Maya" }: { 
     completedAt: "2026-10-10T19:30:00Z",
     questions: 36,
     minutes: 34,
-    model: reportModel(placement, { completedTestsInGrade: 0, workReviews: [] }),
+    model: reportModel(placement, { workReviews: [] }),
   };
 }
 
@@ -409,7 +409,7 @@ describe("strengths, gaps, next topics and workbook 1 (#198, D-305)", () => {
 
   // Workbook 1 as report-book-one.ts gives it: grade 3 adding and subtracting taught, grade 2 facts reviewed.
   const BOOK: BookOne = {
-    days: 10, minutes: 25,
+    level: 10, pagesADay: { min: 8, max: 8 }, days: 10, minutes: 25,
     main: [{ code: "3.3", title: "Adding and subtracting", grade: 3, skills: ["Add 3-digit numbers", "Subtract with regrouping"] }],
     review: [{ code: "2.3", title: "Facts to 20", grade: 2, skills: ["Near doubles", "Make a ten", "Doubles", "Count on"] }],
     warmUp: ["Facts to 20"],
@@ -417,7 +417,7 @@ describe("strengths, gaps, next topics and workbook 1 (#198, D-305)", () => {
     next: { grade: 3, titles: ["Fractions", "Time"] },
     then: { grade: 4, titles: ["Numbers to 10 000", "Decimals"] },
     covers: { "3.3": "main", "2.3": "review" },
-    later: ["3.2", "3.10"],
+    later: ["3.2", "3.10"], mix: [],
   };
   // A gap at grade 3 (the working level) that workbook 1 teaches.
   const GAP = { ...FINDINGS.struggles[0], code: "3.3", text: "addition and subtraction to 1000", grade: 3 as const, correct: 0, total: 2, certainty: "clear" as const };

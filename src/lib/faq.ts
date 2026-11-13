@@ -1,4 +1,4 @@
-// FAQ copy, shared by the FAQ section (sections.tsx), the FAQPage structured data and /llms.txt.
+// FAQ copy, shared by the FAQ section (sections.tsx) and /llms.txt.
 import { ADDITIONAL_CHILD_PRICE, BRAND, PLANS, cad } from "@/lib/site";
 
 export const FAQ = [
@@ -17,7 +17,7 @@ export const FAQ = [
   ["How does the free assessment work?", "Your child takes the free math assessment online, on a laptop or tablet, alone and in one sitting. The questions adapt to how your child does. The report shows their math level and gaps. We email it to you, and it stays in your account. The assessment is open across Canada. BC-curriculum families can choose a plan after the report. Other curricula can join the workbook waitlist."],
   ["What do the books cover?", "Numbers, math facts, fractions and decimals, measurement and word problems. The free math assessment shows where your child starts, which can be behind, at or ahead of their grade."],
   ["Does it follow our school curriculum?", "Workbooks follow the British Columbia curriculum today. Each book is matched to your child's level and gaps, not just their grade. The free assessment is available across Canada. After the report, BC-curriculum families can choose a plan. Other curricula can join the workbook waitlist. We are expanding province-specific curriculum alignment."],
-  ["Can we take a break?", "Yes. Contact us to arrange a pause of up to two months a year. Workbooks pause only when you ask. The next book starts where your child left off."],
+  ["Can we take a break?", "Yes. Once your first workbook arrives, you can pause from your account for up to 8 weeks a year, or contact us to arrange a pause. Workbooks pause only when you ask. The next book starts where your child left off."],
   ["What if we miss a few days?", "The next book picks up where your child is. Nothing is lost."],
   ["What if we forget to send photos?", "We send a reminder. Until new pages arrive, the next book reviews what your child last worked on."],
   ["What happens to my child's work?", "We use it to plan your child's next book and show their progress. We do not sell it, and you can ask us to delete it at any time."],

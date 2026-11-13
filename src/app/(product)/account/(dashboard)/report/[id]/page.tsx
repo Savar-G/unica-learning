@@ -10,6 +10,8 @@ import { parentReportReader } from "@/lib/report-loading-server";
 import { reportReturnPath } from "@/lib/report-view";
 import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 import { recordReportEmailClick } from "@/lib/email-clicks";
+import { firstPagesForReport } from "@/lib/first-pages-server";
+import { progressPreview } from "@/lib/progress-preview";
 import { TrackOnce } from "@/components/account";
 import { ParentReport } from "@/components/parent-assessment";
 import { ReportCard, type NewTestOffer, type ReportNextContext } from "@/components/report";
@@ -52,11 +54,14 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
 
   // The dashboard (#551, #552), for the families its switch opens to; everyone else gets the page below, as it was.
   const shown = (await parentDashboard())?.children.find((c) => c.id === childId) ?? null;
-  const [start, learning, newTest] = await Promise.all([
+  const [start, learning, newTest, pages] = await Promise.all([
     nextStepStart(db, childId),
     learningStart(db, childId),
     view.model.reliability || shown ? newTestOffer(parent, childId) : null,
+    // The first pages of workbook 1 (docs/first-pages.md), only for a report that offers the plan.
+    view.model.callToAction === "card" ? firstPagesForReport(parent, report.assessmentId) : null,
   ]);
+  const firstPages = pages ? { pages } : null;
   // Back from the payment page without a card: not a new report open.
   const cancelled = query.card === "cancelled";
   // The click on the report email's button (D-105), counted after the page is sent. Only for this parent's own report.
@@ -75,13 +80,13 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/a
   };
   if (shown) {
     const alerts = { password: query.password === "1", pin: query.pin === "1", deskError: query.desk === "error", existing: query.existing === "1" };
-    return <ParentReport view={view} child={shown} next={next} newTest={newTest} learning={learning} alerts={alerts} tracked={!cancelled} src={src} />;
+    return <ParentReport view={view} child={shown} next={next} newTest={newTest} learning={learning} alerts={alerts} tracked={!cancelled} src={src} firstPages={firstPages} progress={progressPreview(view)} />;
   }
   return (
     <SupportPage label="" title="" wide>
       {!cancelled && <TrackOnce event="report_open" props={{ src }} />}
       <p className="small rpt-back"><Link href="/account">← Your account</Link></p>
-      <ReportCard view={view} next={next} newTest={newTest} />
+      <ReportCard view={view} next={next} newTest={newTest} firstPages={firstPages} progress={progressPreview(view)} />
     </SupportPage>
   );
 }

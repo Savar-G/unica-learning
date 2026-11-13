@@ -7,6 +7,7 @@
 // (src/lib/learner-profile.ts) calls it. No "server-only" import so that its tests can run, as src/lib/work-review-ai.ts.
 // What it sends: the profile facts, which hold no name, no family or account id, no drawing and no typed working.
 import { aiClient, withTimeLimit, type AiClient } from "@/lib/ai-client";
+import type { AiUsageTag } from "@/lib/ai-usage";
 import {
   PROFILE_AI_SCHEMA,
   PROFILE_AI_TEXT_MAX,
@@ -53,10 +54,10 @@ Rules for likely_cause and how_to_help:
  * AI_MODEL, as for the work review). In development (never in a production build), AI_REVIEW_FAKE=sure or unsure gives
  * the fake, for a profile with AI parts without a key.
  */
-export function profileAiClient(env: Record<string, string | undefined> = process.env): AiClient | null {
+export function profileAiClient(env: Record<string, string | undefined> = process.env, usage?: AiUsageTag): AiClient | null {
   const fake = env.AI_REVIEW_FAKE;
   if (env.NODE_ENV !== "production" && (fake === "sure" || fake === "unsure")) return fakeProfileAi(fake);
-  return aiClient(env);
+  return aiClient(env, undefined, { usage: usage ?? { feature: "learner_profile" } });
 }
 
 /**

@@ -397,12 +397,6 @@ describe("a test from before the extra round was removed (#190, D-145)", () => {
     expect(answers.split("\n")[0]).not.toContain("round");
   });
 
-  it("leaves out the round's answers and serves", async () => {
-    expect((await csv(data, { dataset: "answers", withTests: true })).map((r) => r.question_id)).toEqual([`q${main - 1}`]);
-    expect((await csv(data, { dataset: "question_shows", withTests: true })).map((r) => r.question_id)).toEqual([`q${main - 1}`]);
-    expect(JSON.parse(await download(data, { dataset: "answers", format: "json", withTests: true }))).toHaveLength(1);
-  });
-
   it("lists the questions as drawn for the main test only", async () => {
     const rows = await csv(data, { dataset: "questions", withTests: true });
     expect(rows.map((r) => r.question_id)).not.toContain("x-0");

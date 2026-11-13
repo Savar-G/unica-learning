@@ -103,7 +103,7 @@ export function workbookWorker(deps: WorkerDeps) {
   }
 
   /**
-   * Runs until `stop` aborts or an update asks it to exit: a turn, then `pollMs` of rest when idle. The heartbeat runs
+   * Runs until `stop` aborts or an update asks it to exit: a turn, then `pollMs` of rest when idle or when the job threw. The heartbeat runs
    * on its own timer, every `heartbeatMs`.
    */
   async function run(o: { stop: AbortSignal; pollMs: number; heartbeatMs: number; sleep?: (ms: number, signal: AbortSignal) => Promise<void> }): Promise<"stopped" | "exit"> {
@@ -123,7 +123,9 @@ export function workbookWorker(deps: WorkerDeps) {
       while (!o.stop.aborted) {
         const r = await tick();
         if (r === "exit") return "exit";
-        if (r === "idle") await sleep(o.pollMs, o.stop);
+        // A job that threw (a lost login, a database error) rests too: the same run is first in the queue again, and
+        // a turn with no rest would repeat it without a pause.
+        if (r === "idle" || r.outcome === null) await sleep(o.pollMs, o.stop);
       }
       return "stopped";
     } finally {

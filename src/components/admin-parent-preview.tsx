@@ -4,7 +4,7 @@ import { AppRouterContext, type AppRouterInstance } from "next/dist/shared/lib/a
 import { PathnameContext, SearchParamsContext } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
 import { renderToStaticMarkup } from "react-dom/server.browser";
 import { FeedbackFormView } from "@/components/feedback-form";
-import { AdminFrame } from "@/components/admin";
+import { AdminPage } from "@/components/admin";
 import { AdminFeedbackList } from "@/components/admin-feedback";
 import { FEEDBACK_MESSAGES, type FeedbackError } from "@/lib/feedback";
 import { ParentShell } from "@/components/parent-shell";
@@ -79,7 +79,7 @@ function overview(child: ChildView, state: string): OverviewView {
       { area: "number", name: "Number", level: 2, label: "building-up", earlySign: state === "early" },
       { area: "fractions", name: "Fractions", level: 3, label: "at-grade", earlySign: false },
       { area: "shapes", name: "Shapes and measurement", level: 4, label: "ahead", earlySign: false },
-    ], resultPreparing: preparing, resultLate: state === "late", workbook: child.currentWorkbook ? { number: 3, scannedDays: 4, days: 10 } : null,
+    ], skills: empty ? null : { mastered: 12, atLevel: { grade: 2, mastered: 5, total: 14 }, moreThisMonth: 3 }, areasIncludeMarks: !empty, resultPreparing: preparing, resultLate: state === "late", workbook: child.currentWorkbook ? { number: 3, scannedDays: 4, days: 10 } : null,
     action: state === "payment_failed" || state === "no_pin" || state === "learning_card_empty" ? state : null, summaryMonth: child.stage === "active" || child.stage === "ended" ? "2026-10" : null };
 }
 
@@ -143,7 +143,7 @@ function planControl(name: string, state: string, cardId: string) {
 
 function scanListing(state: string): ScanListing | null {
   if (state === "loading" || state === "unavailable") return null;
-  return { checks: true, marking: true, pages: [{ id: "sample-page", workbookId: "sample-book", book: 3, pageNumber: 4, day: "Day 1", pageOfDay: 1, pagesInDay: 2 }],
+  return { checks: true, marking: true, pages: [{ id: "sample-page", workbookId: "sample-book", book: 3, pageNumber: 4, day: "Day 1", pageOfDay: 1, pagesInDay: 2, name: "Warm-up" }],
     photos: state === "empty" ? [] : [{ id: "sample-photo", pageId: "sample-page", workbookId: "sample-book", book: 3, pageNumber: 4, state: "saved", check: state === "refused" ? "refused" : "ready", reason: state === "refused" ? "marks-missing" : null, sentAt: state === "sent" ? "2026-11-05T20:00:00Z" : null, createdAt: "2026-11-05T19:00:00Z" }] };
 }
 
@@ -165,10 +165,10 @@ function previewContent(selection: PreviewSelection, child: ChildView | undefine
   if (!child && selection.view === "plan") return <ParentPlanView plans={[]} zone={zone} controls />;
   if (!child && selection.view === "scan") return <SupportPage label="Your account" title="Scan pages"><ScanPages childrenList={[]} parent="sample-parent" noticeAcknowledged initial={{ listing: scanListing("empty") }} /></SupportPage>;
   if (selection.view === "feedback") {
-    if (state === "admin_rows") return <AdminFrame email="admin@example.invalid" section="feedback" title="Feedback"><AdminFeedbackList product={null} rows={[
+    if (state === "admin_rows") return <div className="look-root adm-root" data-look="warm"><AdminPage title="Feedback"><AdminFeedbackList product={null} rows={[
       { id: "sample-1", parent_id: "sample-parent-1", child_id: null, product: "workbook", text: "The space for the written answer was helpful.\nCould you add more room for working?", source: "/account/workbooks", created_at: "2026-11-05T19:00:00Z", status: "new" },
       { id: "sample-2", parent_id: "sample-parent-2", child_id: null, product: "parent_dashboard", text: "I found the report quickly on my phone.", source: "/account", created_at: "2026-11-05T18:00:00Z", status: "read" },
-    ]} /></AdminFrame>;
+    ]} /></AdminPage></div>;
     const error = Object.hasOwn(FEEDBACK_MESSAGES, state) ? state as FeedbackError : null;
     return <SupportPage label="Your account" title="Feedback"><p className="lead">Tell us what worked well or what we can improve.</p>
       <FeedbackFormView product={state === "form" || state === "no_product" || state.startsWith("stage_") ? "" : "workbook"} text={state === "too_long" ? "Thank you for the workbook. ".repeat(193) : state === "unavailable" || state === "no_product" ? "Could you add more room for working?" : ""}
@@ -204,7 +204,7 @@ function previewContent(selection: PreviewSelection, child: ChildView | undefine
       })),
     }} />;
     case "progress": {
-      const areas = state === "empty" ? [] : skillMapView({ firstName: child.firstName, schoolGrade: child.schoolGrade, workingLevel: 2, tests: [{ standard: "2.1", correct: 4, total: 4, unreliable: false, at: "2026-11-04T20:00:00Z" }, { standard: "2.3", correct: 0, total: 4, unreliable: false, at: "2026-11-04T20:00:00Z" }], workbookStandards: ["2.1", "2.2"], workbookNumber: 3, day: at => at.slice(0, 10) });
+      const areas = state === "empty" ? [] : skillMapView({ firstName: child.firstName, schoolGrade: child.schoolGrade, workingLevel: 2, tests: [{ standard: "2.1", correct: 4, total: 4, unreliable: false, at: "2026-11-04T20:00:00Z" }, { standard: "2.3", correct: 0, total: 4, unreliable: false, at: "2026-11-04T20:00:00Z" }], workbookStandards: ["2.1", "2.2"], workbookNumber: 3, marks: [], day: at => at.slice(0, 10) });
       return <ParentProgress child={child} level={state === "empty" ? null : { working: 2, earlySign: false, testedOn: "2026-11-04", unreliable: state === "unreliable" }} workbookNumber={3} areas={areas}
         panel={state === "panel" && areas[0]?.tiles[0] ? <dialog open className="pp-panel" aria-labelledby="pp-panel-title"><SkillPanel tile={areas[0].tiles[0]} onClose={noAction} /></dialog> : undefined} />;
     }

@@ -7,6 +7,7 @@ import type { RenderProblem } from "@/lib/workbook-render";
 import { draftProblem, type GeneratedPage, type StoredCall, type WorkbookDraftStore } from "@/lib/workbook-generator";
 import { READ_PAGE, readPaged, SLOT_ATTEMPTS, SOLVE_BATCH, type ChildInputs, type DraftRendering, type RunActor, type RunFrame, type RunSolve, type WorkbookJobSource, type WorkbookRun, type WorkbookRunStore } from "@/lib/workbook-job";
 import type { SolveVerdict } from "@/lib/workbook-solve-check";
+import type { StoredQuestionGate } from "@/lib/workbook-run-gates";
 
 /** The job's child reads and profile preparation in memory. Tests can use the real profile builds behind this seam. */
 export function memoryWorkbookJobSource(children: Record<string, ChildInputs>, prepareProfile: WorkbookJobSource["prepareProfile"]): WorkbookJobSource {
@@ -37,11 +38,20 @@ export function memoryRunStore(o: {
   children: Record<string, string>; workbooks?: Record<string, number[]>; now: () => Date; newId: () => string; drafts: WorkbookDraftStore;
   /** The most rows one read answers, as the database's row limit: reads page through it like the Supabase adapter. */
   rowLimit?: number;
+  /**
+   * The first pages a Workbook 1 run keeps (docs/first-pages.md), as adopt_workbook_first_pages decides: their Workbook
+   * 1 id, day pages and attempts, or why not. `kept` marks them kept by the run. None: no run can keep first pages.
+   */
+  firstPages?: {
+    take(firstPagesId: string, run: WorkbookRun, runs: readonly WorkbookRun[]): { workbookId: string; pages: GeneratedPage[]; attempts: Map<string, number> } | { refused: string };
+    kept(firstPagesId: string, runId: string): void;
+  };
 }) {
   const runs = new Map<string, WorkbookRun & { lease: string | null }>();
   const pages = new Map<string, Map<number, GeneratedPage>>();
   const attempts = new Map<string, Map<string, number>>();
   const solves = new Map<string, RunSolve[]>();
+  const gates = new Map<string, StoredQuestionGate[]>();
   const calls = new Map<string, Map<string, { page: number; seq: number; call: StoredCall }>>();
   const frames = new Map<string, RunFrame>();
   // The database keeps JSON (jsonb): a stored call comes back as JSON does.
@@ -162,6 +172,21 @@ export function memoryRunStore(o: {
       for (const x of solves.get(id) ?? []) if (x.callKey !== undefined) verdicts.set(x.callKey, json(x.log.verdict));
       return verdicts;
     },
+    async saveGates(id, lease, batch) {
+      if (batch.length > SOLVE_BATCH) throw new Error(`workbook run quality gates save: ${batch.length} results in one write`);
+      const bad = batch.find((x) => !/^[0-9]{1,4}:[0-9]:([0-9]{1,3}\.[0-9]{1,3}|e[0-9]{1,3})$/.test(x.callKey));
+      if (bad) throw new Error(`workbook run quality gates save: the call key ${bad.callKey} breaks workbook_run_gates_call_key_check`);
+      const r = holding(id, lease);
+      if (!r) return false;
+      r.heartbeatAt = iso();
+      const had = gates.get(id) ?? [];
+      const fresh = batch.filter((x, k) => !had.some((y) => y.callKey === x.callKey) && !batch.slice(0, k).some((y) => y.callKey === x.callKey));
+      gates.set(id, [...had, ...json(fresh)]);
+      return true;
+    },
+    async gates(id) {
+      return json(gates.get(id) ?? []);
+    },
     async frame(id) {
       const f = frames.get(id);
       return f ? json(f) : null;
@@ -170,7 +195,7 @@ export function memoryRunStore(o: {
       const r = runs.get(id);
       if (!r) return true;
       return (pages.get(id)?.size ?? 0) > 0 || (attempts.get(id)?.size ?? 0) > 0 ||
-        (calls.get(id)?.size ?? 0) > 0 || (solves.get(id)?.length ?? 0) > 0 ||
+        (calls.get(id)?.size ?? 0) > 0 || (solves.get(id)?.length ?? 0) > 0 || (gates.get(id)?.length ?? 0) > 0 ||
         (r.donePages ?? 0) > 0 || (r.errors?.length ?? 0) > 0 || r.draftId !== null;
     },
     async saveFrame(id, lease, frame) {
@@ -179,6 +204,24 @@ export function memoryRunStore(o: {
       r.heartbeatAt = iso();
       if (!frames.has(id)) frames.set(id, json(frame));
       return true;
+    },
+    async adoptFirstPages(id, lease, firstPagesId, frame) {
+      const r = holding(id, lease);
+      if (!r) return "lost";
+      if (!o.firstPages) return { refused: "this store keeps no first pages" };
+      if (frames.has(id) || (pages.get(id)?.size ?? 0) > 0 || (attempts.get(id)?.size ?? 0) > 0) return { refused: "the run already has stored work" };
+      if (r.number !== 1) return { refused: "only Workbook 1 keeps first pages" };
+      const taken = o.firstPages.take(firstPagesId, view(r), [...runs.values()].filter((x) => x.id !== id).map(view));
+      if ("refused" in taken) return taken;
+      if (await o.drafts.draft(taken.workbookId)) return { refused: "a draft with the first pages' workbook id exists" };
+      r.draftKey = taken.workbookId;
+      r.heartbeatAt = iso();
+      pages.set(id, new Map(taken.pages.map((p) => [p.number, json(p)])));
+      attempts.set(id, new Map(taken.attempts));
+      frames.set(id, json(frame));
+      o.firstPages.kept(firstPagesId, id);
+      log(id, "first-pages-kept", { firstPages: firstPagesId });
+      return "adopted";
     },
     async savePage(id, lease, page) {
       const r = holding(id, lease);

@@ -113,7 +113,7 @@ function Sources() {
       </ol>
       <div className="wi-cvw">
         <NextCover changes={COVER_CHANGES} zoom={1.12} />
-        <p className="wi-cvn">It arrives before this workbook runs out. Pause or skip one in the app.</p>
+        <p className="wi-cvn">It arrives before this workbook runs out. You can pause it from your account.</p>
       </div>
     </div>
   );
@@ -196,11 +196,11 @@ export function WhatsIncluded() {
           </Section>
 
           <Section className="wi-gd" aria-labelledby="wiTa">
-            <StepHead id="wiTa" eyebrow="AI Teaching Assistant" title="If they get stuck, Maya helps them work it out." lead="Maya, the Unica AI Teaching Assistant, opens the exact question from the workbook on a whiteboard they both see. Maya explains each step out loud and draws it. Your child answers, asks why, or picks up the pen." />
+            <StepHead id="wiTa" eyebrow="AI Teaching Assistant" title="If they get stuck, Maya helps them work it out." lead="Maya, the Unica AI Teaching Assistant, opens the exact question from the workbook on a whiteboard they both see. Children in Grade 3 and up type to Maya about the question. Maya gives hints and can show an easier example on the board. Your child answers, asks why, or picks up the pen." />
             <Rise className="gd-media">
               <DemoVideo className="gd-wide" src="/video/guidance-demo.mp4" poster="/video/guidance-demo-poster.jpg" label={MAYA_LABEL} />
               <DemoVideo className="gd-board" src="/video/guidance-demo-board.mp4" poster="/video/guidance-demo-board-poster.jpg" label={MAYA_LABEL} />
-              <p className="gd-cap">Shown without sound. The captions show what Maya says.</p>
+              <p className="gd-cap">This demo shows a planned voice call. Voice calls are not available yet; Maya is available by typed chat.</p>
             </Rise>
           </Section>
 

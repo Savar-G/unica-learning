@@ -3,7 +3,6 @@
 // Leah's sample workbook pages and her next cover (public/whats-included, whats-included-parts.tsx).
 /* eslint-disable @next/next/no-img-element -- fixed-size crops of the sample workbook pages inside the card picture */
 import type { ReactNode } from "react";
-import { SHOW_OLD_SAMPLE_PLANS } from "@/lib/maya-public-images";
 import Link from "next/link";
 import { Section, SectionHeader, StepCard, StepGrid } from "@/ds";
 import { ASSETS, MarkedPage, NextCover } from "@/components/whats-included-parts";
@@ -25,7 +24,7 @@ const STEPS: { n: string; title: string; text: ReactNode; vis: ReactNode; label:
     n: "02",
     title: "Their workbook arrives",
     text: "Made from the report, for your child only, and mailed home. Two a month. The first month is free.",
-    vis: SHOW_OLD_SAMPLE_PLANS && (
+    vis: (
       <div className="how-v how-v-open">
         <img src={`${ASSETS}/wb/leah-02-plan.jpg`} alt="" />
         <img src={`${ASSETS}/wb/leah-03-d1p1.jpg`} alt="" />

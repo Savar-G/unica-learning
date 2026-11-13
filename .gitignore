@@ -63,3 +63,7 @@ supabase/.temp/
 # Maya text session traces (npm run maya:text)
 /traces/
 /worker/maya-voice/dist/
+/.first-pages-example/
+
+# gstack browse tool logs
+.gstack/

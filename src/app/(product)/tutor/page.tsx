@@ -45,7 +45,7 @@ export default async function DeskPage({ searchParams }: PageProps<"/tutor">) {
   if (!lock || lock.parentId !== parent) redirect("/account");
 
   const { w, p, q, pick, from } = await searchParams;
-  const [{ data: child }, { data: family }, view] = await Promise.all([
+  const [{ data: child }, { data: family }, view, province] = await Promise.all([
     db.from("children").select("id, first_name, grade, province").eq("id", lock.childId).maybeSingle(),
     db.from("parents").select("postal, time_zone").maybeSingle(),
     // A failed read still shows the desk, with Leave, and says the workbook cannot be shown.
@@ -55,9 +55,9 @@ export default async function DeskPage({ searchParams }: PageProps<"/tutor">) {
       console.error("[desk] workbook load failed", error instanceof Error ? error.message : error);
       return null;
     }),
+    loadFamilyProvince(db, parent),
   ]);
   const name = child?.first_name ?? null;
-  const province = await loadFamilyProvince(db, parent);
   const timeZone = familyZone({ timeZone: family?.time_zone, postal: family?.postal, province });
 
   // Without a parent's agreement (#529), the desk shows chat as off and says who can turn it on.

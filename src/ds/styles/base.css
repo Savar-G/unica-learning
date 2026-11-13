@@ -247,6 +247,12 @@ main > *{position:relative;z-index:1}
 .pen-price small{font:600 22px/1 var(--pen)}
 .plan-then{margin:0;font-size:15px;color:var(--ink-2)}
 .plan-price-note{margin:0;font-size:14px;color:var(--ink-3)}
+/* Sibling price as a family line in the price block (variant A, Savar 2026-11-11) */
+.plan-family{display:flex;align-items:center;gap:12px;margin-top:6px;padding:12px 14px;background:#fff;border:1px solid var(--line);border-radius:14px;font-size:16px;line-height:1.35;color:var(--ink)}
+.plan-family svg{flex:none;width:34px;height:34px}
+.plan-family svg *{stroke:var(--ink);stroke-width:1.6}
+.plan-family b{font-weight:600}
+.plan-family-save{display:block;font-size:14px;color:var(--ink-2)}
 .plan-feats{display:grid;gap:18px}
 .plan-more{margin:0;font-size:16px}
 .plan ul{list-style:none;margin:0;padding:0;display:grid;gap:9px}

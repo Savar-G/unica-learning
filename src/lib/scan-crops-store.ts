@@ -4,10 +4,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/database";
 import { scanPath, SCAN_BUCKET } from "@/lib/scan-photo-server";
 import { isFenceRefusal, SCAN_LEASE_MS, scanPartPath, type BeginAnswer, type FinishAnswer, type ScanCropStore } from "@/lib/scan-crops";
-import { storedQuestion } from "@/lib/workbook-content";
+import { storedQuestion, WORKBOOK_FILES_BUCKET } from "@/lib/workbook-content";
 import { storedPrintContract } from "@/lib/workbook-print-contract";
 
-const WORKBOOK_BUCKET = "workbook-pages";
 /** How many of the other pages one read asks for. Only their paths: the job reads the images themselves a few at a time. */
 const OTHER_PAGES_READ = 500;
 /** The crop job's store, on the secret key: every read names the family, and Storage's fence holds the write rules. */
@@ -105,7 +104,7 @@ export function scanCropStore(db: SupabaseClient<Database>): ScanCropStore {
       return new Uint8Array(await data.arrayBuffer());
     },
     async printedBytes(path) {
-      const { data, error } = await db.storage.from(WORKBOOK_BUCKET).download(path);
+      const { data, error } = await db.storage.from(WORKBOOK_FILES_BUCKET).download(path);
       return error ? null : new Uint8Array(await data.arrayBuffer());
     },
     async put({ parent, photo, token, part, bytes }) {

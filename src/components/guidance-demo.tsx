@@ -20,8 +20,8 @@ const STEPS: Step[] = [
 
 const LABEL = "Demo: Maya, the Unica AI Teaching Assistant, works through 27 + 39 with a child on a shared board, showing how to carry the 1 to get 66. Captions show what is said.";
 
-// #535: Voice is for a later ship.
-export const SHOW_VOICE_DEMO = false;
+// Savar restored the existing home-page demo; its caption states that voice is not available yet.
+export const SHOW_VOICE_DEMO = true;
 
 type Kind = "wide" | "board";
 

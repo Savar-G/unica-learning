@@ -5,7 +5,7 @@ const SIGNED = "Thank you,\nSavar & Cedric\nCo-founders, Unica Learning";
 
 describe("the founders' emails (D-225)", () => {
   const welcome = welcomeEmail({ parentName: "Priya Shah", childName: "Asha", url: "https://unicalearning.com/account/start/c1" });
-  const wait = waitlistEmail({ parentName: "Priya Shah", childName: "Asha", curriculum: "Ontario", reportUrl: "https://unicalearning.com/account/report/r1", bookingUrl: "https://calendly.com/x" });
+  const wait = waitlistEmail({ parentName: "Priya Shah", childName: "Asha", curriculum: "Ontario", reportUrl: "https://unicalearning.com/account/report/r1", bookingUrl: "https://cal.com/x" });
 
   it("are signed by the founders, greet the parent by first name, and keep the CASL footer", () => {
     for (const e of [welcome, wait]) {
@@ -25,7 +25,7 @@ describe("the founders' emails (D-225)", () => {
   it("waitlist: names the curriculum, links the report and the call; 'other' names none", () => {
     expect(wait.subject).toBe("You're on the list for Ontario workbooks");
     expect(wait.text).toContain("See Asha's report: https://unicalearning.com/account/report/r1");
-    expect(wait.text).toContain("with one of us: https://calendly.com/x");
+    expect(wait.text).toContain("with one of us: https://cal.com/x");
     const other = waitlistEmail({ parentName: "Priya", childName: "Asha", curriculum: null, reportUrl: "https://x.test/r", bookingUrl: null });
     expect(other.subject).toBe("You're on the workbook waitlist");
     expect(other.text).not.toContain("15-minute");

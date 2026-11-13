@@ -3,7 +3,7 @@ import { loadFamilyChildren } from "@/lib/family-time-server";
 import { familyProvince } from "@/lib/family-time";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
-import { bandFor, testLength, type Grade, type Route, type Stage3Route } from "@/lib/assessment";
+import { adaptiveAnsweredAll, bandFor, testLength, type Grade, type Route, type Stage3Route } from "@/lib/assessment";
 import { toAttempt, type AttemptRow } from "@/lib/assessment-store";
 import { SUPPORT_EMAIL } from "@/lib/contact";
 import { saveEmailCopy } from "@/lib/email-copies";
@@ -37,8 +37,8 @@ export interface LoadedChild extends ReminderChild {
   grade: Grade;
   province?: string | null;
 }
-/** A test, with how many questions it has and how many the child answered. */
-export type LoadedTest = ReminderTest & { answered: number; total: number };
+/** A test, with how many questions the child answered. */
+export type LoadedTest = ReminderTest & { answered: number };
 export interface LoadedState extends ReminderState {
   parents: LoadedParent[];
   children: LoadedChild[];
@@ -168,24 +168,34 @@ export function emailLogLedger(admin: SupabaseClient<Database>): SendLedger<DueR
   };
 }
 
-/** The test's length as stored: stage 1 plus the stored route's form (#214). The band's length only while the route is not chosen. */
-async function lengthOf(admin: SupabaseClient<Database>, row: TestRow): Promise<number> {
+/**
+ * Whether every question of an in-progress test with `answered` stored answers is in, by the test module's rule, so the
+ * job and the start screen agree. A terminal test without enough evidence instead offers Start again. A block test
+ * asks the assessment core (adaptiveAnsweredAll): the questions of the blocks drawn so far are not the test's length, as the next block is
+ * drawn when one locks. A staged test: stage 1 plus the stored route's form (#214); the band's length while the route is
+ * not chosen.
+ */
+async function completionOf(admin: SupabaseClient<Database>, row: TestRow, answered: number): Promise<{ answeredAll: boolean; insufficientEvidence?: true }> {
   const band = bandFor(row.grade as Grade).length;
-  // A test the child can no longer continue is never named in an email, so its (large) stored test is not read.
-  if (!row.route || (row.status !== "in_progress" && row.status !== "expired")) return band;
+  if (!row.route) return { answeredAll: answered >= band };
   const { data, error } = await admin.from("assessments").select("test").eq("id", row.id).maybeSingle();
   if (error) throw new Error(`test load: ${error.message}`);
-  return data?.test ? testLength(data.test, row.route, row.stage3_route) : band;
+  if (!data?.test) return { answeredAll: answered >= band };
+  const adaptive = data.test.adaptive;
+  return adaptive ? { answeredAll: adaptiveAnsweredAll(adaptive, answered),
+    ...(adaptive.complete === true && adaptive.sufficientEvidence === false ? { insufficientEvidence: true as const } : {}) }
+    : { answeredAll: answered >= testLength(data.test, row.route, row.stage3_route) };
 }
 
 /** A test row in the rules' terms. One in progress counts its answers: with every answer in, it waits to be scored. */
 async function withAnswers(admin: SupabaseClient<Database>, row: TestRow): Promise<LoadedTest> {
-  const total = await lengthOf(admin, row);
-  if (row.status !== "in_progress") return { ...toAttempt(row), childId: row.child_id, answered: 0, total };
+  // A test the child can no longer continue is never named in an email, so its (large) stored test is not read.
+  if (row.status !== "in_progress") return { ...toAttempt(row), childId: row.child_id, answered: 0 };
   const { count, error } = await admin.from("answers").select("id", { count: "exact", head: true }).eq("assessment_id", row.id);
   if (error) throw new Error(`answers count: ${error.message}`);
   const answered = count ?? 0;
-  return { ...toAttempt(row, answered >= total), childId: row.child_id, answered, total };
+  const completion = await completionOf(admin, row, answered);
+  return { ...toAttempt(row, completion.answeredAll), ...(completion.insufficientEvidence ? { insufficientEvidence: true } : {}), childId: row.child_id, answered };
 }
 
 /**
@@ -214,10 +224,9 @@ export function reminderMessage(r: DueReminder, token: string, state: LoadedStat
   let email: ReturnType<typeof reminderEmail>;
   if (r.kind === "continue") {
     if (!test) return null;
-    email = reminderEmail({ ...common, kind: "continue", total: test.total, answered: test.answered, resumeUntil: test.resumeUntil });
+    email = reminderEmail({ ...common, kind: "continue", answered: test.answered, resumeUntil: test.resumeUntil });
   } else {
-    // A new test: its length at the child's grade today (a new test is drawn at the child's current grade).
-    email = reminderEmail({ ...common, kind: r.kind, total: bandFor(child.grade).length });
+    email = reminderEmail({ ...common, kind: r.kind });
   }
 
   return {

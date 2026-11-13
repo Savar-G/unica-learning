@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en-CA">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>P. Today and the goal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono&family=Gochi+Hand&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shell.css">
+<style>
+.head { text-align: center; padding-top: clamp(16px, 3vw, 32px); }
+.say { max-width: 17em; margin: 12px auto 0; font-size: clamp(32px, 4.6vw, 56px); font-weight: 300; line-height: 1.05; letter-spacing: -.04em; }
+.say b { font-weight: 500; }
+.ba { display: grid; grid-template-columns: minmax(0, 1fr) 200px minmax(0, 1fr); align-items: center; margin-top: clamp(24px, 4vw, 40px); }
+@media (max-width: 760px) { .ba { grid-template-columns: 1fr; } }
+.sheet { padding: 22px 24px 26px; border-radius: 14px; background-color: #fff; background-image: linear-gradient(#eef3ff 1px, transparent 1px), linear-gradient(90deg, #eef3ff 1px, transparent 1px); background-size: 22px 22px; box-shadow: 0 0 0 1px var(--line), 0 24px 40px -30px rgba(0,0,0,.4); }
+.sheet.goal { box-shadow: 0 0 0 2px var(--ink), 0 30px 50px -30px rgba(0,0,0,.5); }
+.sheet .when { font: 500 12px/1.3 var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--ink-2); }
+.sheet h3 { margin: 6px 0 0; font-size: 32px; font-weight: 300; letter-spacing: -.03em; line-height: 1.05; }
+.sheet .ex { margin-top: 16px; font: 400 clamp(30px, 3.4vw, 40px)/1 "Gochi Hand", cursive; color: #1d3a8a; white-space: nowrap; }
+.sheet .ex b { font-weight: 400; color: #c2410c; }
+.sheet .t { margin-top: 10px; color: var(--ink-2); font-size: 15px; }
+.mid { display: grid; justify-items: center; gap: 8px; padding: 0 12px; text-align: center; font: 400 13px/1.35 var(--mono); color: var(--ink-2); }
+.mid svg { width: 120px; height: 24px; }
+@media (max-width: 760px) { .mid { padding: 16px 0; } .mid svg { transform: rotate(90deg); width: 40px; } }
+.how { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: clamp(28px, 4vw, 44px); }
+@media (max-width: 760px) { .how { grid-template-columns: 1fr; } }
+.how > p.k { grid-column: 1 / -1; }
+.do { padding: 20px 20px 22px; border-radius: 14px; background: var(--card); }
+.do .num { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--ink); color: #fff; font: 600 13px/1 var(--mono); }
+.do b { display: block; margin-top: 14px; font-size: 19px; font-weight: 500; letter-spacing: -.01em; }
+.do span { display: block; margin-top: 6px; color: var(--ink-2); font-size: 15px; }
+.bar { display: flex; gap: 3px; margin-top: 14px; }
+.bar i { flex: 1 1 0; height: 18px; border-radius: 3px; background: var(--c); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 8px; font: 400 12px/1.3 var(--mono); color: var(--ink-2); }
+.legend i { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 2px; background: var(--c); vertical-align: -1px; }
+</style>
+</head>
+<body>
+<div class="chrome"><span class="v">P. Today and the goal</span><div class="cases" data-cases></div><a href="board.html">All options</a></div>
+<main class="page">
+  <div class="stub">Report: "Where Leah is", "What's in workbook 1" (unchanged)</div>
+  <section class="section" id="out"></section>
+  <div class="stub">Next step: card and plan button (unchanged)</div>
+</main>
+<script src="levels.js"></script><script src="covers.js"></script><script src="plan.js"></script>
+<script>
+// The outcome as a before and after (real math today and at the goal), then how Unica gets there in three steps.
+mount((p) => {
+  const n = p.c.name, sheet = (cls, when, g, word, t) => `<div class="sheet ${cls}"><p class="when">${when}</p><h3>${gradeName(g)} ${word}</h3><p class="ex">${EX[g][0]}<b>${EX[g][1]}</b></p><p class="t">${t}</p></div>`;
+  const books = p.books.map((b) => `<i style="--c:${gradeColor(b.grade)}" title="Workbook ${b.n}"></i>`).join("");
+  const legend = p.stages.map((s) => `<span><i style="--c:${gradeColor(s.grade)}"></i>${gradeName(s.grade)}: ${monthShort(s.from)} to ${monthShort(s.to)} ${s.to.getFullYear()}</span>`).join("");
+  document.getElementById("out").innerHTML = `
+    <div class="head">
+      <p class="k">Our prediction for ${n}</p>
+      <p class="say">We predict ${n} can reach a <b>${gradeName(p.goal)} level</b> by <b>${monthYear(p.goalDate)}</b>.</p>
+    </div>
+    <div class="ba">
+      ${sheet("", "Today", p.c.working, "level", `${n} works on problems like this.`)}
+      <div class="mid"><svg viewBox="0 0 120 24" aria-hidden="true"><path d="M2 12h110m-10-9 10 9-10 9" fill="none" stroke="#0c0c0e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>${p.books.length} workbooks<br>5 days a week</span></div>
+      ${sheet("goal", `By ${monthYear(p.goalDate)}`, p.goal, "level", `${n} is ready for problems like this.`)}
+    </div>
+    <div class="how">
+      <p class="k">How we get ${n} there</p>
+      <div class="do"><span class="num">1</span><b>A new workbook every 2 weeks</b><span>Printed for ${n} and mailed home. ${p.books.length} workbooks take ${n} from ${gradeName(p.c.working)} to ${gradeName(p.goal)}.</span><div class="bar">${books}</div><div class="legend">${legend}</div></div>
+      <div class="do"><span class="num">2</span><b>${p.day.pages} pages a day, 5 days a week</b><span>About ${p.day.min} minutes a day, in pencil. Each day teaches one new step, then practice, review and a challenge.</span></div>
+      <div class="do"><span class="num">3</span><b>Every page is marked</b><span>You scan the finished pages. We mark them, and the next workbook adds what ${n} needs and moves faster where ${n} is secure.</span></div>
+    </div>
+    <p class="basis">${basis(p)}</p>`;
+});
+</script>
+</body>
+</html>

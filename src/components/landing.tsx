@@ -2,6 +2,7 @@ import { CardReturn } from "@/components/card-return";
 import { Guidance } from "@/components/guidance";
 import { Motion } from "@/components/motion";
 import { Parent } from "@/components/parent";
+import { ParentReviews } from "@/components/parent-reviews";
 import { Personalization } from "@/components/personalization";
 import { StartLink, StartNote } from "@/components/start-link";
 import { How } from "@/components/how-it-works";
@@ -16,6 +17,7 @@ export function Landing({ look = "primer" }: { look?: Look }) {
         <main id="main">
           <Hero />
           <Statement />
+          <ParentReviews />
           <How />
           <Personalization />
           <Guidance />

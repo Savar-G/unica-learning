@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en-CA">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>P1. Skill cards</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shell.css"><link rel="stylesheet" href="p.css">
+<style>
+
+.ba { display: grid; grid-template-columns: minmax(0, 1fr) 150px minmax(0, 1fr); align-items: stretch; }
+@media (max-width: 760px) { .ba { grid-template-columns: 1fr; } }
+.card { padding: 22px 24px 10px; border-radius: 14px; background: #fff; box-shadow: 0 0 0 1px var(--line), 0 24px 40px -30px rgba(0,0,0,.4); }
+.card.goal { box-shadow: 0 0 0 2px var(--ink), 0 30px 50px -30px rgba(0,0,0,.5); }
+.card h3 { margin: 6px 0 12px; font-size: 32px; font-weight: 300; letter-spacing: -.03em; line-height: 1.05; }
+.card ul { margin: 0; padding: 0; list-style: none; }
+.card li { display: grid; gap: 2px; min-height: 66px; padding: 10px 0; border-top: 1px solid var(--line-soft); }
+.card li small { font: 400 11px/1.2 var(--mono); color: var(--ink-3); text-transform: uppercase; letter-spacing: .04em; }
+.card li span { font-size: 17px; }
+.card.goal li span { font-weight: 500; }
+.mid { display: grid; place-items: center; align-content: center; gap: 8px; text-align: center; font: 400 13px/1.35 var(--mono); color: var(--ink-2); }
+.mid svg { width: 100px; height: 24px; }
+@media (max-width: 760px) { .mid { padding: 16px 0; } .mid svg { transform: rotate(90deg); width: 40px; } }
+</style>
+</head>
+<body>
+<div class="chrome"><span class="v">P1. Skill cards</span><div class="cases" data-cases></div><a href="board.html">All options</a></div>
+<main class="page">
+  <div class="stub">Report: "Where Leah is", "What's in workbook 1" (unchanged)</div>
+  <section class="section" id="out"></section>
+  <div class="stub">Next step: card and plan button (unchanged)</div>
+</main>
+<script src="levels.js"></script><script src="covers.js"></script><script src="plan.js"></script><script src="skills.js"></script><script src="p.js"></script>
+<script>
+
+mount((p) => {
+  const rows = skillRows(p.c.working, p.goal);
+  const card = (cls, when, g, key) => `<div class="card ${cls}"><p class="when">${when}</p><h3>${gradeName(g)} level</h3><ul>${rows.map((r) => `<li><small>${r.area}</small>${r[key] ? `<span>${r[key]}</span>` : `<span class="notyet">Not started yet</span>`}</li>`).join("")}</ul></div>`;
+  renderP(p, `<div class="ba">${card("", "Today", p.c.working, "today")}
+    <div class="mid"><svg viewBox="0 0 100 24" aria-hidden="true"><path d="M2 12h90m-10-9 10 9-10 9" fill="none" stroke="#0c0c0e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>${p.books.length} workbooks<br>5 days a week</span></div>
+    ${card("goal", `By ${monthYear(p.goalDate)}`, p.goal, "goal")}</div>`);
+});
+</script>
+</body>
+</html>

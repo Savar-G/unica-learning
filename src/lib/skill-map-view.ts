@@ -1,6 +1,6 @@
 import {
   BC_SKILL_MAP, REPORTED_STRAND, REPORTED_STRAND_NAMES, skillStates,
-  type Grade, type Level, type ReportedStrand, type SkillMapGrade, type SkillState, type SkillTestResult, type StandardSkillState,
+  type Grade, type Level, type ReportedStrand, type SkillMapGrade, type SkillMark, type SkillState, type SkillTestResult, type StandardSkillState,
 } from "@/lib/assessment";
 
 // The Progress tab's skill map (#561, spec #544): one tile per BC standard of the working level's grade, plus any standard
@@ -8,10 +8,11 @@ import {
 // Kindergarten to Grade 2 belongs only to the area bars. Each tile has its state and a plain line on why. Pure: no
 // network, database or clock.
 //
-// The states come from the rule (skillStates), from the same inputs the profile rebuild reads, not from the last row of
-// the history. The history records what each rebuild saw, and a rebuild runs after a finished test and a learning card
-// change, not when a workbook ships; a child with no rebuild since the rule shipped has no rows, and no row means Not
-// started. Here a parent reads what the rule says now. Whatever counts or orders changes by time still reads the history.
+// The states come from the rule (skillStates), from the inputs the profile rebuild reads (the tests, the current workbook
+// and each marked item's effective original result), not from the last row of the history. The history records what each
+// rebuild saw, and a rebuild runs after a finished test and a learning card change, not when a workbook ships; a child with
+// no rebuild since the rule shipped has no rows, and no row means Not started. Here a parent reads what the rule says now.
+// The Overview's "N more this month" runs the same rule on the tests and marks from before the family month (#880).
 //
 // A panel section with no data is empty, and the page leaves it out. Nothing here says what comes next: the skill map's
 // prerequisite links are not a child's next step. A skill in the current workbook says so as a plain fact.
@@ -47,6 +48,8 @@ export interface SkillMapViewInput {
   /** The standards of the latest shipped workbook; empty with none. */
   workbookStandards: readonly string[];
   workbookNumber: number | null;
+  /** Each marked item's effective original result (`effectiveSkillMarks`), as the profile rebuild reads them. */
+  marks: readonly SkillMark[];
   /** A time as a day the family reads, in family time. */
   day: (at: string) => string;
 }
@@ -88,13 +91,20 @@ export function skillWhy(s: StandardSkillState, { firstName: name, workbookNumbe
   }
 }
 
+/** The standards the map shows (the working level's grade, plus the current workbook), each with its state by the rule. */
+export function shownSkillStates(input: Pick<SkillMapViewInput, "schoolGrade" | "workingLevel" | "tests" | "workbookStandards" | "marks">): StandardSkillState[] {
+  const { schoolGrade, workingLevel, tests, workbookStandards, marks } = input;
+  const stateOf = new Map(skillStates({ schoolGrade, tests, workbookStandards, marks }).map((s) => [s.standard, s]));
+  const inWorkbook = new Set(workbookStandards);
+  return BC_SKILL_MAP.standards.filter((s) => inWorkbook.has(s.code) || s.grade === workingLevel).map((s) => stateOf.get(s.code)!);
+}
+
 /** The child's map, by area. An area with no tile does not appear; with no level and no workbook, the map is empty. */
 export function skillMapView(input: SkillMapViewInput): SkillAreaView[] {
-  const { schoolGrade, workingLevel, tests, workbookStandards, workbookNumber } = input;
-  const states = skillStates({ schoolGrade, tests, workbookStandards, marks: [] });
-  const stateOf = new Map(states.map((s) => [s.standard, s]));
+  const { workbookStandards, workbookNumber } = input;
+  const stateOf = new Map(shownSkillStates(input).map((s) => [s.standard, s]));
   const inWorkbook = new Set(workbookStandards);
-  const shown = BC_SKILL_MAP.standards.filter((s) => inWorkbook.has(s.code) || s.grade === workingLevel);
+  const shown = BC_SKILL_MAP.standards.filter((s) => stateOf.has(s.code));
   return AREA_ORDER.flatMap((area) => {
     const tiles = shown.filter((s) => REPORTED_STRAND[s.strand] === area).map((s): SkillTileView => {
       const state = stateOf.get(s.code)!;

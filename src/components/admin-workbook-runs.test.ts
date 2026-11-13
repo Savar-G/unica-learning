@@ -5,7 +5,9 @@ import type { RunDetail } from "@/lib/admin-store";
 import type { RunSolve } from "@/lib/workbook-job";
 import { workedSteps, type QuestionPackage } from "@/lib/question-package";
 import { solveReason, toSolve } from "@/lib/workbook-solve-check";
-import { AdminWorkbookList, AdminWorkbookRun, ChildRunsTable } from "@/components/admin-workbook-runs";
+import { AdminWorkbookRun, ChildRunsTable } from "@/components/admin-workbook-runs";
+import { ProductionBoard } from "@/components/admin-production";
+import { buildBooks } from "@/lib/admin-production";
 import { buildQuestion } from "@/lib/workbook-generator-items";
 import { memoryDraftStore } from "@/lib/workbook-draft-memory";
 import { summarizeAiCalls } from "@/lib/workbook-ai";
@@ -13,6 +15,8 @@ import { summarizeAiCalls } from "@/lib/workbook-ai";
 // Navigation feedback is outside this server component's check and cost labels.
 vi.mock("server-only", () => ({}));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => undefined, push: () => undefined }), usePathname: () => "/admin/workbooks", useSearchParams: () => new URLSearchParams() }));
+// The frame reads the request (the test families switch, the sidebar counts); these tests check the page inside it.
+vi.mock("@/components/admin-frame", () => ({ AdminFrame: ({ children }: { children: unknown }) => children }));
 
 // FIXTURE_START: copied into a temporary local route for the browser check.
 export function runDetail(state: "agreed" | "disagreed" | "failed" | "not-checked"): RunDetail {
@@ -54,7 +58,7 @@ export function runDetail(state: "agreed" | "disagreed" | "failed" | "not-checke
     audit: [{ id: 1, at, actor_email: null, action: "draft-stored", detail: { pages: 1, rendered: false, renderProblems: 1, ignored_private_key: "private-value" } }],
     solves: state === "not-checked" ? [] : [solve],
     aiCalls: summarizeAiCalls([]),
-    approved: null, comments: [], editBatch: null, edits: [], versions: [], adminNames: {},
+    approved: null, comments: [], editBatch: null, edits: [], versions: [], shownRevision: null, adminNames: {},
   };
 }
 // FIXTURE_END
@@ -162,6 +166,28 @@ describe("admin workbook cost and plain labels", () => {
   });
 });
 
+describe("admin workbook quality gates (#858)", () => {
+  it("shows each flag and the outage, and still offers approval when the checks passed", () => {
+    const d = runDetail("agreed");
+    d.draft!.workbook.gatesUnavailable = true;
+    d.draft!.workbook.pages[0].questions[0].gate = {
+      outcome: "flag", flags: ["one_right_answer"], reason: "A quality gate flagged this question: it may have more than one right answer.",
+    };
+    const text = visible(markup(d));
+    const flagAt = text.indexOf("1 question is flagged by a quality gate.");
+    const blockedAt = text.indexOf("Not ready to approve");
+    expect(flagAt).toBeGreaterThan(-1);
+    expect(blockedAt).toBeGreaterThan(flagAt);
+    const reasons = text.slice(blockedAt, text.indexOf("Pages", blockedAt));
+    expect(reasons).toContain("not laid out with the real templates");
+    expect(reasons).toContain("The draft has no PDF");
+    expect(reasons).not.toContain("quality gate");
+    expect(text).toContain("Quality gates unavailable for this run.");
+    expect(text).toContain("Quality gate flagged this question");
+    expect(text).toContain("1 flagged by a quality gate");
+  });
+});
+
 describe("admin workbook questions left out for room (#380)", () => {
   it("lists each question a page left out to fit, with its text, and marks the page to check", () => {
     const d = runDetail("agreed");
@@ -195,24 +221,26 @@ describe("admin workbook run progress", () => {
     }
   });
 
-  it("says a queued run waits for the Mac, and whether the Mac is online", () => {
+  it("says a queued run waits for the workbook computer, and whether it is online", () => {
     const queued = running({ status: "queued", step: null, donePages: null, totalPages: null, heartbeatAt: null });
     const seen = { id: "w", seenAt: ago(5), startedAt: ago(100), build: null, runId: null, primaryAi: "subscription" as const };
-    expect(onChildPage(queued, { ...seen, online: true })).toContain("Waiting for the Mac. The workbook worker is online.");
-    expect(onChildPage(queued, { ...seen, online: false })).toContain("Waiting for the Mac. It is offline, last seen");
-    expect(onChildPage(queued)).toContain("Waiting for the Mac.");
-    expect(onRunPage(queued)).toContain("The workbook worker has never run.");
+    expect(onChildPage(queued, { ...seen, online: true })).toContain("Waiting for the workbook computer. It is online.");
+    expect(onChildPage(queued, { ...seen, online: false })).toContain("Waiting for the workbook computer. It is offline, last seen");
+    expect(onChildPage(queued)).toContain("Waiting for the workbook computer.");
+    expect(onRunPage(queued)).toContain("The workbook computer has never run.");
   });
 
   it.each([null, "another-run"])("makes no start-time promise with worker run %s on any page", (runId) => {
     const run = running({ status: "queued", step: null, donePages: null, totalPages: null, heartbeatAt: null });
     const worker = { id: "w", seenAt: ago(5), startedAt: ago(100), build: null, runId, primaryAi: "subscription" as const, online: true };
-    const list = visible(renderToStaticMarkup(createElement(AdminWorkbookList, { email: "admin@example.com", runs: [{ run, counts: null, notRendered: null, oldFormat: false }], now, worker, more: false, workbooks: [], childNames: new Map(), filter: "all" })));
-    for (const text of [onRunPage(run, worker), onChildPage(run, worker), list]) {
+    const books = buildBooks({ runs: [{ run }], workbooks: [], deliveries: [], cards: [], plans: [], tests: { show: false, isTest: () => false } }, now);
+    const board = visible(renderToStaticMarkup(createElement(ProductionBoard, { books, now, worker, runner: "mac" })));
+    for (const text of [onRunPage(run, worker), onChildPage(run, worker), board]) {
       expect(text).not.toMatch(/starts in a few seconds|starts this run in a few seconds/);
-      expect(text).toContain(runId ? "It is making another workbook" : "The workbook worker is online");
-      expect(text).toContain("Stop this run");
+      expect(text).toContain(runId ? "It is making another workbook" : "workbook computer. It is online");
     }
+    // The Production card has one action (open the run); Stop stays on the run and child pages.
+    for (const text of [onRunPage(run, worker), onChildPage(run, worker)]) expect(text).toContain("Stop this run");
   });
 
   it("shows the Stop button only while the run can be stopped, also when it has gone quiet", () => {
@@ -235,7 +263,7 @@ describe("admin workbook run progress", () => {
       expect(text).not.toContain("This run stopped");
       expect(text).toContain("Stop this run");
     }
-    for (const text of [onChildPage(queued), onRunPage(queued)]) expect(text).toContain("Waiting for the Mac");
+    for (const text of [onChildPage(queued), onRunPage(queued)]) expect(text).toContain("Waiting for the workbook computer");
     for (const text of [onChildPage(running({ status: "stale" })), onRunPage(running({ status: "stale" }))]) expect(text).toContain("Stopped");
   });
 
