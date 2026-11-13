@@ -9,7 +9,7 @@ export async function GET(request: Request) {
   if (!child || !isUuid(child) || (workbook && !isUuid(workbook)) || (after && !isUuid(after)) || !["all", "review", "failed"].includes(status)) return scanJson({ error: "invalid" }, 400);
   if (!await markingAccess(session.admin, session.parent, process.env, { child })) return scanJson({ error: "refused" }, 404);
   try {
-    const result = await readScanHistory(scanHistoryStore(session.admin, { parent: session.parent }), { child, workbook, after, status: status as "all" | "review" | "failed" }, Date.now());
+    const result = await readScanHistory(scanHistoryStore(session.admin, { parent: session.parent }), { child, workbook, after, status: status as "all" | "review" | "failed", scannedOnly: true }, Date.now());
     if (!result || !await session.active()) return scanJson({ error: "refused" }, 404);
     // Parent projection has no dispatch ledger, global budget, raw marks or answer text.
     return scanJson({ pages: result.pages, counts: result.counts, after: result.after });
