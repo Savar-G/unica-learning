@@ -118,7 +118,7 @@ export class LeadTrim {
       this.held.push(frame);
       this.heldSamples += frame.samplesPerChannel;
       if (times?.length) this.heldTimes.push(...times);
-      if (this.ms(this.heldSamples, frame.sampleRate) > this.options.trimHoldMs) {
+      if (this.heldSamples > frame.sampleRate * this.options.trimHoldMs / 1000) {
         // Too long to be a lead: this is a pause the voice meant, or silence. Nothing is trimmed.
         this.leadMs = this.ms(this.heldSamples, frame.sampleRate);
         this.allSilent = true;
@@ -129,6 +129,11 @@ export class LeadTrim {
     const lead = this.heldSamples + first;
     this.leadMs = this.ms(lead, frame.sampleRate);
     this.leading = false;
+    // The complete lead can cross the hold limit inside this frame. Preserve it regardless of frame boundaries.
+    if (lead > frame.sampleRate * this.options.trimHoldMs / 1000) {
+      this.allSilent = true;
+      return this.release(frame);
+    }
     const floor = Math.round(frame.sampleRate * this.options.trimFloorMs / 1000);
     const drop = this.options.trim ? Math.max(0, lead - floor) : 0;
     if (drop === 0) return this.release(frame);

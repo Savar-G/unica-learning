@@ -77,12 +77,14 @@ describe("what the child's screen gets", () => {
   it("is the chat's child-safe view with the state of the voice call, and no diagnostics", () => {
     const view = {
       id: "call", kind: "family", mode: "voice", status: "live", revision: 3, startedAt: null,
+      question: { source: "workbook", workbookId: "book", page: 1, question: 1 },
       transcript: [{ speaker: "maya", text: "Hi.", second: 1 }, { speaker: "note", text: "internal", second: 2 }], batches: [],
       outcome: null, model: { id: "secret-model", fake: false, promptVersion: "v" }, technicalNotes: ["detail"], flag: null, alerts: [],
     } as unknown as CallView;
     const shown = deskVoiceCall(view);
     expect(shown).toMatchObject({ id: "call", revision: 3, ended: false, mode: "voice", started: false, status: "live", hint: 0, safetyMessage: null });
     expect(shown.transcript).toEqual([{ speaker: "maya", text: "Hi.", second: 1 }]);
+    expect(shown.question).toEqual(view.question);
     expect(JSON.stringify(shown)).not.toMatch(/secret-model|detail|internal|alerts/);
   });
 });

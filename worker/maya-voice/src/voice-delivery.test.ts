@@ -112,6 +112,34 @@ describe("the leading-silence trim (LeadTrim)", () => {
     expect(trim.trimmedMs).toBe(0);
   });
 
+  it.each([
+    { lead: RATE * 1.01, sound: RATE * 0.01 },
+    { lead: RATE * 1.2, sound: RATE * 0.04 },
+    { lead: RATE + 1, sound: RATE * 0.01 },
+  ])("preserves a lead beyond the hold bound for every frame layout (%o)", ({ lead, sound }) => {
+    const data = new Int16Array(lead + sound);
+    data.fill(SOUND, lead);
+    for (const chunk of [RATE * 0.01, RATE * 0.02, data.length]) {
+      const input: AudioFrame[] = [];
+      for (let i = 0; i < data.length; i += chunk) {
+        const part = data.slice(i, i + chunk);
+        input.push(new AudioFrame(part, RATE, 1, part.length));
+      }
+      const trim = new LeadTrim(DELIVERY_DEFAULTS);
+      const out = run(trim, input);
+      expect(trim.trimmedMs).toBe(0);
+      expect(out.reduce((n, f) => n + f.samplesPerChannel, 0)).toBe(data.length);
+      expect(new Int16Array(out.flatMap(f => Array.from(f.data)))).toEqual(data);
+    }
+  });
+
+  it("still trims a lead exactly at the hold bound", () => {
+    const trim = new LeadTrim(DELIVERY_DEFAULTS);
+    const out = run(trim, [frame(1000), frame(10, SOUND)]);
+    expect(trim.trimmedMs).toBe(980);
+    expect(ms(out)).toBe(30);
+  });
+
   it("with the trim off, measures only and holds nothing", () => {
     const trim = new LeadTrim({ ...DELIVERY_DEFAULTS, trim: false });
     const a = frame(100);
