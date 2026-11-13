@@ -656,9 +656,10 @@ function questionPhrases(trace: MayaTrace, childName: string | null): string[] {
   const text = (trace as { question?: { text?: string } | null }).question?.text ?? "";
   if (!name || !text) return [];
   const holds = new RegExp(`(?<![\\p{L}\\p{N}])${escape(name)}(?![\\p{L}\\p{N}])`, "iu");
-  // Whole sentences, and each clause of them, longest first, so a line that says part of a sentence keeps it too.
+  // Whole sentences only, with or without their end mark, longest first: a name-only clause ("Ana, Ben and Cy", "Mia:")
+  // would let the name through in Maya's other words ("Hi Ana!"), so it is never kept on its own (re-review).
   const sentences = text.split(/(?<=[.?!])\s+/).map((x) => x.trim()).filter(Boolean);
-  const pieces = sentences.flatMap((x) => [x, x.replace(/[.?!]+$/, ""), ...x.replace(/[.?!]+$/, "").split(/\s*[,;:]\s*/)]);
+  const pieces = sentences.flatMap((x) => [x, x.replace(/[.?!]+$/, "")]).filter((x) => x.replace(holds, "").replace(/[^\p{L}\p{N}]+/gu, "").length > 0);
   return [...new Set(pieces.filter((x) => holds.test(x)))].sort((a, b) => b.length - a.length);
 }
 

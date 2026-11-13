@@ -2911,7 +2911,9 @@ function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue, earlier
   if (step.kind === "claim-compare") {
     if (partsClaim(pkg)) return compareTurnHeard(s, step, value);
     if (!saidAs(number(step.value), value)) return false;
-    const heard = { text: s.turn.text, uncertain: s.turn.uncertain, operation: pkg.operation, value: step.value, resultAsked: s.resultAsked ?? null, shown: s.ladder.step === step.id && s.ladder.hint >= 3 };
+    // Re-review: a step Maya showed with the claim's value ("6 × 8 = 48" shown, then "48.") makes the result a copy too.
+    const shownValue = workSteps(pkg).some((st) => st.id !== step.id && shownStep(s, st) && stepAnswers(st).some((v) => saidAs(v, value)));
+    const heard = { text: s.turn.text, uncertain: s.turn.uncertain, operation: pkg.operation, value: step.value, resultAsked: s.resultAsked ?? null, shown: (s.ladder.step === step.id && s.ladder.hint >= 3) || shownValue };
     return claimStepHeard(heard) || spotStepHeard({ ...heard, pkg });
   }
   if (step.kind === "operate" || step.kind === "count-on" || step.kind === "try-factor") {
