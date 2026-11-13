@@ -122,6 +122,11 @@ export interface WorkbookRun {
   runner: RunRunner;
   /** The admin who stopped the run with the Stop button; its time is `finishedAt`. */
   stoppedBy?: string | null;
+  /**
+   * The next-book snapshot the run was admitted from (#476, admit_next_book_run): its first job call makes the book from
+   * the snapshot's saved plan input, never from the child read now. Absent or null: an ordinary run.
+   */
+  snapshotId?: string | null;
 }
 
 /** Where a run is made: "server" (the site, on Vercel) or "mac" (the workbook worker, src/lib/workbook-worker.ts). */
@@ -283,6 +288,8 @@ export interface RunFrame {
    * It holds the frozen child profile the plan read, because the current profile changes and cannot prove it later.
    */
   planning?: RunPlanningCapture;
+  /** A next-book run (#476): the snapshot whose saved plan input made this plan, and that plan's hash. */
+  nextBook?: { snapshotId: string; planHash: string };
   workbooks: { number: number; levels: number[] }[];
   plan: WorkbookPlan;
   /**
@@ -322,7 +329,19 @@ export interface RunPlanningCapture {
   };
 }
 
+/**
+ * The saved plan of a next-book snapshot, as a run with that snapshot_id makes its book from it (#476): the plan input the
+ * snapshot's planner saved and the plan it makes, checked against the saved hash, only on the curriculum version the plan
+ * was made on (nextBookRunBook in src/lib/next-book-snapshot.ts). Else the reason: curriculum-changed,
+ * curriculum-unrecorded, plan-mismatch, or why the snapshot cannot be read.
+ */
+export type NextBookRunBook =
+  | { ok: true; snapshotId: string; planHash: string; planInput: PlanInput; plan: WorkbookPlan }
+  | { ok: false; reason: string };
+
 export interface WorkbookJobSource {
+  /** A next-book run's saved plan (#476). Absent: this place cannot make a run that has a snapshot (refused). */
+  nextBookPlan?(snapshotId: string): Promise<NextBookRunBook>;
   /** Read only the report recommendation, test duration and device for this plan's assessment. */
   planningMetadata?(assessmentId: string): Promise<Pick<import("./workbook-signals").BookSignalsInput, "report" | "device">>;
   /** Null when there is no such child. */
@@ -719,6 +738,43 @@ export async function makeRunFrame(t: FrameTarget, deps: FrameDeps, name: string
   return made;
 }
 
+/** The plain error of a next-book run whose saved plan cannot be used (#476). Nothing is planned again. */
+export function nextBookRefusal(reason: string): string {
+  if (reason === "curriculum-changed") return "The next book's saved plan was made on another version of the workbook curriculum, so the book cannot be made from it. Prepare the next book from the snapshot again.";
+  if (reason === "curriculum-unrecorded") return "The next book's saved plan does not record the curriculum version it was made on, so the book cannot be made from it.";
+  if (reason === "plan-mismatch") return "The next book's saved plan does not make the plan it was saved with, so the book cannot be made from it.";
+  return `The next book's saved plan cannot be read (${reason}), so the book cannot be made from it.`;
+}
+
+/**
+ * A next-book run's plan (#476): the plan the snapshot's saved plan input makes, never the child read now (no profile
+ * refresh, no placement, no instructions read again: the saved input holds what the planner used). Then the same capacity
+ * steps and fingerprints as makeRunFrame. Throws a refusal, before any AI call, when the saved plan cannot be used.
+ */
+export async function makeNextBookFrame(t: FrameTarget, snapshotId: string, deps: FrameDeps, name: string, inputs: ChildInputs): Promise<RunFrame> {
+  if (!deps.source.nextBookPlan) throw new Refusal("This place cannot read the next book's saved plan. Run it on the workbook worker.");
+  const key = CURRICULUM_KEYS[inputs.province];
+  const curriculum = key ? curriculumFor(key) : null;
+  if (!key || !curriculum) throw new Refusal(`There is no workbook curriculum for ${inputs.province} yet. Only BC has one.`);
+  const saved = await deps.source.nextBookPlan(snapshotId);
+  if (!saved.ok) throw new Refusal(nextBookRefusal(saved.reason));
+  if (saved.snapshotId !== snapshotId) throw new Refusal(nextBookRefusal("not-found"));
+  if (saved.planInput.curriculum?.key !== key) throw new Refusal(`The next book's saved plan is for another curriculum (${saved.planInput.curriculum?.key ?? "none"}) than ${name}'s (${key}).`);
+  const grade = saved.planInput.grade;
+  if (!isGrade(grade)) throw new Refusal(nextBookRefusal("plan-mismatch"));
+  const made: RunFrame = {
+    version: RUN_FRAME_VERSION, ...(deps.itemPolicy === "legacy" ? {} : { itemPolicy: "approved-v1" as const }), curriculum: key, units: skillUnits(curriculum), grade,
+    profileRevision: inputs.profile?.revision ?? null, countsCallEvents: WORKBOOK_COUNTS_CALL_EVENTS, workbooks: inputs.workbooks,
+    nextBook: { snapshotId, planHash: saved.planHash },
+    plan: deps.itemPolicy === "legacy" ? saved.plan : workbookCapacityPlan(curriculum, saved.plan),
+    versions: { curriculum: "", outline: "", model: deps.ai.model, solveModel: deps.solver.model, gateModel: deps.gates?.model ?? null, build: deps.build ?? null },
+  };
+  if (made.itemPolicy === "approved-v1") made.plan = await prepareWorkbookCapacity(frameInput(t, made, name), deps.fit(t.parentId));
+  made.versions.curriculum = curriculumVersion(key)!;
+  made.versions.outline = bookOutline(frameInput(t, made, name));
+  return made;
+}
+
 /**
  * Why a stored plan cannot be used by this call (R379-8-2), or null: its shape, the call event policy, the curriculum,
  * the deployed code, the AI or solve model, or the planned book changed since it was made.
@@ -756,8 +812,12 @@ async function runFrame(run: WorkbookRun, deps: WorkbookJobDeps & { ai: AiClient
     if (await deps.runs.hasStoredWork(run.id)) {
       throw new Refusal("This run has no stored plan, so it cannot resume safely. Start a new run.");
     }
-    const sample = run.number === 1 ? await deps.source.firstPages?.(run.childId) ?? null : null;
-    if (sample && sample.decision !== "drop") {
+    const sample = run.number === 1 && !run.snapshotId ? await deps.source.firstPages?.(run.childId) ?? null : null;
+    if (run.snapshotId) {
+      // #476: a next-book run is made from its snapshot's saved plan only.
+      const made = await makeNextBookFrame(targetOf(run), run.snapshotId, deps, name, inputs);
+      if (!(await deps.runs.saveFrame(run.id, lease, made))) throw new Stopped("the run was taken up by another call");
+    } else if (sample && sample.decision !== "drop") {
       await adoptFirstPages(run, deps, lease, name, inputs, sample);
     } else {
       const made = await makeRunFrame(targetOf(run), deps, name, inputs);

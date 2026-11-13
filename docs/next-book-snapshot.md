@@ -74,9 +74,11 @@ Two callers run `prepareNextBook`. Both use one planner resolver, `nextBookPlann
 With no planner (`null`), neither caller reads or writes anything: no claim becomes a chain, no hold row is written, no
 run starts.
 
-**Test families only, for now.** The worker still plans a run with `planNextWorkbook` and does not read the saved
-`plan_input`, so a book 2 run would not use the marks. Until it does, `NEXT_BOOK_REAL_FAMILIES` (`src/lib/next-book-planner.ts`)
-is `false`, and both callers prepare only families in `public.test_accounts`, whatever `NEXT_BOOK_PREPARE_ENABLED` says:
+**Test families only, for now.** `NEXT_BOOK_REAL_FAMILIES` (`src/lib/next-book-planner.ts`) is `false`, so both callers
+prepare only families in `public.test_accounts`, whatever `NEXT_BOOK_PREPARE_ENABLED` says. The worker now makes a
+snapshot run from its saved `plan_input` ("The run" below); what is left before the flip is listed under "Not built yet".
+
+While it is `false`:
 
 - the admin button refuses any other family before any write, with "Only test families can get the next book for now.";
 - the automatic step admits a family only when it is listed in `WORKBOOK_SCAN_TEST_PARENT_IDS` and still marked as a
@@ -87,7 +89,27 @@ with `test-families-only` unless the family is still in `public.test_accounts`. 
 (migration `20261109195323_next_book_admit_row_lock.sql`), so a removal of the mark, by any path, waits for the
 admission, and a removal that came first leaves no row to admit. A family unmarked while its plan runs gets no run. The admin page then shows "Only test families can get the next book for now."
 
-Set it to `true` in the change that makes the worker read `plan_input`.
+## The run
+
+**Routed to the runner (D-200).** `admit_next_book_run` starts the run through `start_workbook_run`, which leaves it on
+the column default runner `'server'`, and the Mac worker claims only `'mac'` runs. `prepareNextBook` therefore calls
+`deps.route(runId)` after each admission, and again whenever a chain that already has a run is prepared, so a route that
+failed is tried again. The server wiring (`nextBookSnapshotServer`) routes with `route_workbook_run` to `workbookRunner()`,
+the same runner "Prepare next workbook" uses: the Mac worker unless `WORKBOOK_RUNNER` is `server`. `route_workbook_run`
+changes nothing for a run already on that runner or one being worked on. No migration: the function exists
+(`20261101_workbook_mac_runner.sql`, `20261101_workbook_route_lease.sql`). With `WORKBOOK_RUNNER=server` nothing starts
+the job of a next-book run on Vercel; an admin starts it from the run page.
+
+**Made from the saved plan (#476).** A run with a `snapshot_id` makes its plan, on its first job call, only from the
+snapshot's saved plan (`makeNextBookFrame` in `src/lib/workbook-job.ts`, through `WorkbookJobSource.nextBookPlan`).
+The Supabase source calls `nextBookRunBook(store, snapshotId, curriculumVersion)` (`src/lib/next-book-snapshot.ts`):
+`nextBookRunPlan` reads `plan_input` on the curriculum version it was made on, then the pure `planWorkbook` plans that
+input again, and the result must hash to the saved `plan_hash` (as `planNextBookFromSnapshot` made it), else
+`plan-mismatch`. The child is not read again for the plan: no profile refresh, no placement, no book instructions. The
+frame keeps `nextBook: { snapshotId, planHash }` and then takes the same capacity steps and fingerprints as any run; a
+resume uses the stored frame. A refusal (`curriculum-changed`, `curriculum-unrecorded`, `plan-mismatch`, or a snapshot
+that cannot be read) fails the run with a plain error before any AI call, and nothing is planned again. A run without a
+`snapshot_id` is planned as before.
 
 ## The planner
 
@@ -183,7 +205,7 @@ line, with times in the family's time zone:
 | queued | Next book queued. |
 | refused, next book exists | This book already has a next book. |
 | no planner | The planner is not ready yet. |
-| not a test family (until the worker reads `plan_input`) | Only test families can get the next book for now. |
+| not a test family (while `NEXT_BOOK_REAL_FAMILIES` is `false`) | Only test families can get the next book for now. |
 
 **The admin page "Snapshot plan" (#473).** `/admin/children/<id>/snapshot-plan`, linked from "Plan the next book" on the
 admin child page. It reads the child's latest snapshot row with the admin's session and writes nothing. For each skill it
@@ -222,8 +244,8 @@ The database functions are service-only:
 
 ## Not built yet
 
-- The worker does not read `plan_input` yet. The planner owner adds that for runs with a `snapshot_id`, through
-  `nextBookRunPlan`, which refuses a plan made on another curriculum version.
-- The real planner is wired. Until the worker reads `plan_input`, both callers prepare test families only
-  (`NEXT_BOOK_REAL_FAMILIES` is `false`).
-- The run is not routed to the Mac worker. A queued run stays on the default runner until a caller routes it.
+- `NEXT_BOOK_REAL_FAMILIES` is still `false`. The worker reads `plan_input` and the run is routed to the Mac worker
+  (above). Before the flip: one test family's book 2 made end to end on the Mac worker from a snapshot (the run page
+  shows it on the Mac, its frame has `nextBook`), the D-308 screens ("New marks since this draft", "Update with new
+  marks", "Update first?" on approval), and Savar's go-ahead with `NEXT_BOOK_PREPARE_ENABLED`.
+- A source book after Book 1 answers `unsupported-source-book`.

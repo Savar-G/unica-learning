@@ -8,7 +8,7 @@ import "server-only";
 import type { ProgressHistory, ProgressOriginal, ProgressSnapshot } from "./workbook-progress";
 import type { FrozenWorkbookSourcesV2 } from "./workbook-progress-source";
 import type { HistoryFence } from "./workbook-progress-history";
-import type { PlanInput, WorkbookPlan } from "./workbook-plan";
+import { planWorkbook, type PlanInput, type WorkbookPlan } from "./workbook-plan";
 import type { ItemIdentity } from "./scan-observation";
 import { sourceHash } from "./workbook-progress-hash";
 
@@ -294,6 +294,13 @@ export interface NextBookDeps {
   capture: NextBookCapture;
   planner: NextBookPlanner;
   run: RunLimits;
+  /**
+   * Moves the chain's queued run to the runner that makes it (#476, D-200): admit_next_book_run starts it on the default
+   * runner ('server'), and the Mac worker claims only 'mac' runs. Called after each admission and again whenever a
+   * chain that has a run is prepared, so a route that failed is tried again; route_workbook_run changes nothing for a run
+   * already on that runner or being worked on. Absent: the run stays where admission put it.
+   */
+  route?(runId: string): Promise<unknown>;
 }
 
 const refusedOutcome = (reason: string, snapshotId?: string): PrepareOutcome => snapshotId ? { status: "refused", reason, snapshotId } : { status: "refused", reason };
@@ -377,7 +384,10 @@ async function planOnce(row: NextBookSnapshotRecord, deps: NextBookDeps): Promis
 }
 
 async function advance(row: NextBookSnapshotRecord, deps: NextBookDeps, now: number, by: SnapshotActor | null): Promise<PrepareOutcome> {
-  if (row.runId) return { status: "queued", snapshotId: row.id, runId: row.runId };
+  if (row.runId) {
+    await deps.route?.(row.runId);
+    return { status: "queued", snapshotId: row.id, runId: row.runId };
+  }
   const frozen = await freeze(row, deps, now);
   if (!frozen.ok) return frozen.outcome;
   const planned = await planOnce(frozen.row, deps);
@@ -385,7 +395,10 @@ async function advance(row: NextBookSnapshotRecord, deps: NextBookDeps, now: num
   const r = planned.row;
   if (r.revision > 1) return { status: "planned", snapshotId: r.id, revision: r.revision, admission: "refresh" };
   const admitted = await deps.store.admit(r.id, by ?? r.actor, deps.run);
-  if (admitted.status === "started") return { status: "queued", snapshotId: r.id, runId: admitted.runId };
+  if (admitted.status === "started") {
+    await deps.route?.(admitted.runId);
+    return { status: "queued", snapshotId: r.id, runId: admitted.runId };
+  }
   if (admitted.status === "refused") return refusedOutcome(admitted.reason, r.id);
   // The child's active run (or a stalled one start_workbook_run takes up) comes first; prepare again after it.
   return { status: "planned", snapshotId: r.id, revision: r.revision, admission: admitted.status };
@@ -447,6 +460,28 @@ export async function nextBookRunPlan(store: NextBookSnapshotStore, snapshotId: 
   if (!c || typeof c.key !== "string" || typeof c.version !== "string" || !c.version) return { ok: false, reason: "curriculum-unrecorded" };
   if (version(c.key) !== c.version) return { ok: false, reason: "curriculum-changed" };
   return { ok: true, snapshotId, planHash: read.planHash, planInput: read.planInput };
+}
+
+export type NextBookRunBook =
+  | { ok: true; snapshotId: string; planHash: string; planInput: PlanInput; plan: WorkbookPlan }
+  | { ok: false; reason: Extract<NextBookRunPlan, { ok: false }>["reason"] | "plan-mismatch" };
+
+/**
+ * #476. What a run with this snapshot_id makes its book from: nextBookRunPlan's saved plan input, planned again with the
+ * pure planWorkbook, and refused (plan-mismatch) unless the input and that plan hash to the saved plan_hash, as
+ * planNextBookFromSnapshot made it. The child is never read again: the input holds what the planner used.
+ */
+export async function nextBookRunBook(store: NextBookSnapshotStore, snapshotId: string,
+  version: (key: string) => string | null): Promise<NextBookRunBook> {
+  const saved = await nextBookRunPlan(store, snapshotId, version);
+  if (!saved.ok) return saved;
+  let planned: ReturnType<typeof planWorkbook>;
+  try { planned = planWorkbook(structuredClone(saved.planInput)); } catch { return { ok: false, reason: "plan-mismatch" }; }
+  if (!planned.ok) return { ok: false, reason: "plan-mismatch" };
+  let hash: string;
+  try { hash = sourceHash(plainJson({ planningInput: saved.planInput, plan: planned.plan })); } catch { return { ok: false, reason: "plan-mismatch" }; }
+  if (hash !== saved.planHash) return { ok: false, reason: "plan-mismatch" };
+  return { ...saved, plan: plainJson(planned.plan) };
 }
 
 export type NewEvidence = { ok: true; days: number[]; pages: number; items: number } | { ok: false; reason: "not-found" | "not-frozen" | "evidence-regressed" | "invalid-evidence" };

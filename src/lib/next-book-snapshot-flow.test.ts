@@ -7,7 +7,10 @@ import type { FrozenWorkbookSourcesV2 } from "./workbook-progress-source";
 import { readWorkbookProgressHistory } from "./workbook-progress-history";
 import { historyFixture, historyId, historyTime } from "./workbook-progress-history.fixture";
 import { sourceHash } from "./workbook-progress-hash";
-import { itemKey, newEvidenceSince, nextBookRunPlan, prepareNextBook, readNextBookSnapshot, refreshNextBookSnapshot, type NextBookCapture, type NextBookDeps,
+import { curriculumFor, curriculumVersion } from "./workbook-curriculum";
+import { planWorkbook } from "./workbook-plan";
+import { planNextWorkbook } from "./workbook-placement";
+import { itemKey, newEvidenceSince, nextBookRunBook, nextBookRunPlan, prepareNextBook, readNextBookSnapshot, refreshNextBookSnapshot, type NextBookCapture, type NextBookDeps,
   type NextBookPlanner, type PrepareOutcome } from "./next-book-snapshot";
 import { memoryNextBookSnapshots } from "./next-book-snapshot-memory";
 import { snapshotRecord } from "./next-book-snapshot-store";
@@ -134,6 +137,44 @@ describe("prepareNextBook", () => {
     unplanned.m.state.jobs.set("photo-3", "waiting");
     expect((await prepareNextBook(unplanned.claim(), unplanned.deps(), T0 + MIN)).status).toBe("waiting");
     expect(await nextBookRunPlan(unplanned.m.store, unplanned.rows()[0].id, () => TODAY)).toEqual({ ok: false, reason: "not-frozen" });
+  });
+
+  // Falsifier (#476): the run makes a plan other than the one the snapshot saved, or a tampered saved input passes.
+  it("gives the run the plan its saved input makes, checked against the saved hash", async () => {
+    const VERSION = curriculumVersion("bc")!;
+    let input: PlanInput | undefined;
+    const made = planNextWorkbook({ curriculum: curriculumFor("bc")!, grade: 3, profile: null, workbooks: [{ number: 1, levels: [9] }], number: 2 }, c => { input = c; });
+    if (!made.ok || !input) throw Error("no plan");
+    const planningInput: PlanInput = { ...input, curriculum: { key: "bc", version: VERSION } };
+    const real = (hash = sourceHash(json({ planningInput, plan: made.plan }))): NextBookPlanner => ({
+      async plan(i) {
+        return { ok: true, consumed: i.frozen.evidence.map(({ key, version }) => ({ key, version })), held: i.frozen.heldForLater.map(h => ({ key: h.key, reason: h.reason })),
+          planHash: hash, planningInput, plan: made.plan };
+      },
+    });
+    const w = world();
+    queued(await prepareNextBook(w.claim(), w.deps(real()), T0 + MIN));
+    const row = w.rows()[0];
+    const book = await nextBookRunBook(w.m.store, row.id, curriculumVersion);
+    const again = planWorkbook(json(planningInput) as unknown as PlanInput);
+    if (!again.ok) throw Error(again.reason);
+    expect(book).toEqual({ ok: true, snapshotId: row.id, planHash: row.plan!.planHash, planInput: json(planningInput), plan: json(again.plan) });
+    expect(book.ok && book.plan).toEqual(json(made.plan));
+    expect(await nextBookRunBook(w.m.store, row.id, () => "0".repeat(28))).toEqual({ ok: false, reason: "curriculum-changed" });
+
+    const tampered = world();
+    queued(await prepareNextBook(tampered.claim(), tampered.deps(real("e".repeat(64))), T0 + MIN));
+    expect(await nextBookRunBook(tampered.m.store, tampered.rows()[0].id, curriculumVersion)).toEqual({ ok: false, reason: "plan-mismatch" });
+  });
+
+  // Falsifier (#476, D-200): an admitted run stays on the default runner, so the Mac worker never takes it.
+  it("routes the admitted run, and routes it again when prepared again", async () => {
+    const w = world(), routed: string[] = [];
+    const deps = { ...w.deps(), route: async (runId: string) => { routed.push(runId); } };
+    const done = queued(await prepareNextBook(w.claim(), deps, T0 + MIN));
+    expect(routed).toEqual([done.runId]);
+    queued(await prepareNextBook({ kind: "snapshot", snapshotId: w.rows()[0].id }, deps, T0 + 2 * MIN));
+    expect(routed).toEqual([done.runId, done.runId]);
   });
 
   it("freezes at the 30-minute deadline with a job still blocked, and labels the wait", async () => {
