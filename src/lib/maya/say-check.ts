@@ -196,7 +196,7 @@ export function sayNumbers(raw: string): SayToken[] {
     if (!free(w.at, w.end)) continue;
     const after = text.slice(w.end).toLowerCase();
     const den = /^[\s-]+([a-z]+)/.exec(after);
-    const denominator = den ? DENOMINATORS[den[1]] : undefined;
+    const denominator = den && Object.hasOwn(DENOMINATORS, den[1]) ? DENOMINATORS[den[1]] : undefined;
     if (denominator !== undefined) {
       const end = w.end + den![0].length;
       push({ ...fractionValue(w.value, denominator), at: w.at, end, text: text.slice(w.at, end) });

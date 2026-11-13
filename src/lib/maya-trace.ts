@@ -434,7 +434,7 @@ function checkTurn(t: unknown, path: string, version: number): Record<string, un
         const exact = o?.act === "safety" ? Object.values(SAFETY_GUIDANCE) as string[] : o?.act === "close" ? [held] : [];
         // D-341: the code-written opening of a conversational call, with the question staged on the board.
         const opening = o?.act === "open" && Array.isArray(o?.say) && o.say.length === 1 && typeof o.say[0] === "string" &&
-          (/^Hi there! I'm Maya, an AI math helper\. We're doing .+ today\.$/.test(o.say[0]) || /^Hi, I'm Maya, an AI helper\. Let's do page /.test(o.say[0])) &&
+          (/^Hi there! I'm Maya, an AI math helper\. We're doing .+ today\.$/.test(o.say[0]) || /^Hi there! I'm Maya, an AI math helper\. We're doing page \d+, number \d+ today: .+\.$/.test(o.say[0])) &&
           Array.isArray(o?.board) && o.board.length <= 1;
         need(attempts.length === 1 && attempts[0].proposal === null && attempts[0].refusal === null && attempts[0].error === undefined && Array.isArray(o?.say) && o.say.length === 1 && (opening || (exact.includes(o.say[0] as string) && Array.isArray(o?.board) && o.board.length === 0)), path, "controller output is exact safety guidance, the exact held lines or the code opening only");
       }

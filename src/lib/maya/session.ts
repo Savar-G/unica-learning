@@ -4392,7 +4392,8 @@ function outputProblem(raw: unknown): string | null {
  */
 function openConversation(s: Session, effects: Effect[]) {
   const pkg = s.package!;
-  const text = (s.confirmWorkbook ? workbookOpening(pkg) : null) ?? openingLine(pkg);
+  // A workbook session (it confirms the printed reference) names the page and the question number.
+  const text = openingLine(pkg, s.confirmWorkbook && pkg.ref.source === "workbook" ? { page: pkg.ref.page, number: pkg.ref.question } : undefined);
   effects.push({ kind: "say", act: "open", text });
   s.turns.push({ at: s.now!, speaker: "maya", text, state: "OPEN", act: "open" });
   const columns = s.noBoard ? null : columnsOf(s, "target");

@@ -699,7 +699,7 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
     // D-341: a conversational call says the model's own words. Code's own words (the opening, the safety guidance) must
     // be exact; every other sentence may be the model's, and its math is judged on its numbers and its equations.
     if (conversational) {
-      if (last?.source === "controller" && m.output.act === "open" && op && m.output.say.join(" ") !== openingLine(op) && !/^Hi, I'm Maya, an AI helper\. Let's do page /.test(m.output.say.join(" "))) {
+      if (last?.source === "controller" && m.output.act === "open" && op && m.output.say.join(" ") !== openingLine(op) && !(op.ref.source === "workbook" && m.output.say.join(" ") === openingLine(op, { page: op.ref.page, number: op.ref.question }))) {
         fail("unchecked_output", `Maya turn ${i} changed code's opening`);
       }
       const heardSoFar = t.turns.filter((turn) => turn.kind === "child" && turn.at <= m.at).flatMap((turn) => (turn.kind === "child" ? valuesOf(turn.text) : []));

@@ -978,10 +978,20 @@ export function spokenQuestion(text: string): string {
  * chat starts and before the child speaks, with no model call. It carries the AI disclosure. Chat and voice say the
  * same line; the voice worker speaks it itself (start with openingSpoken).
  */
-export function openingLine(pkg: OperationPackage): string {
-  const expr = pkg.operation.kind === "place-value" ? placeOpeningText(pkg.operation) : questionExpr(pkg);
-  return `Hi there! I'm Maya, an AI math helper. We're doing ${spokenQuestion(expr)} today.`;
+export function openingLine(pkg: OperationPackage, workbook?: { page: number; number: number }): string {
+  const expr = spokenQuestion(pkg.operation.kind === "place-value" ? placeOpeningText(pkg.operation) : questionExpr(pkg));
+  const template = workbook ? OPENING_LINES.workbook : OPENING_LINES.plain;
+  return template.replace("{page}", String(workbook?.page ?? "")).replace("{number}", String(workbook?.number ?? "")).replace("{question}", expr);
 }
+
+/**
+ * The two openings (D-341), approved by Savar and the Chief of Staff on 2026-11-12: a call on a workbook page names the
+ * page and the question number; any other call names the question only.
+ */
+export const OPENING_LINES = {
+  plain: "Hi there! I'm Maya, an AI math helper. We're doing {question} today.",
+  workbook: "Hi there! I'm Maya, an AI math helper. We're doing page {page}, number {number} today: {question}.",
+} as const;
 
 /** The question as Maya names it: as the page prints it for a missing number or a missing-number evaluate, else its operation. */
 const questionExpr = (pkg: OperationPackage) =>
