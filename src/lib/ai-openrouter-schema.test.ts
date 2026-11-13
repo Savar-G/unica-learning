@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { AiJsonRequest } from "@/lib/ai-client";
 import { fakeAiClient } from "@/lib/ai-client-fake";
 import { costingFetch, openRouterClient } from "@/lib/ai-openrouter";
-import { createSession, NEVER_SAY } from "@/lib/maya";
-import { aiMayaModel, modelInput, PROMPT_VERSION } from "@/lib/maya-model";
+import { createSession, MODEL_OUTPUT_SCHEMA, NEVER_SAY } from "@/lib/maya";
+import { aiMayaModel, conversationalMayaModel, CONVERSATION_PROMPT, modelInput, PROMPT_VERSION } from "@/lib/maya-model";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
 import { aiChildSimulator, aiJudge, aiValidityJudge, DIMENSION_IDS, DIMENSIONS, PRACTICE_CASES, readJudgement, readValidity } from "@/lib/maya-practice";
 import { readSimulatorTurn } from "@/lib/maya-practice/simulator";
@@ -89,7 +89,16 @@ describe("OpenRouter schema compatibility through public callers and fake HTTP",
     expect(wire.messages[0].content).toContain(JSON.stringify(actual.schema));
     expect(wire.messages[1]).toEqual({ role: "user", content: [{ type: "text", text: JSON.stringify(input()) }] });
     expect(wire).toMatchObject({ model: MODEL, stream: false, max_tokens: 4000, provider: { require_parameters: true }, reasoning: { effort: "low", exclude: true } });
-    expect(PROMPT_VERSION).toBe("maya-text-chat-36");
+    expect(PROMPT_VERSION).toBe("maya-text-chat-38");
+  });
+
+  it("D-341: sends conversational Maya's version 3 schema as strict structured output (#903)", async () => {
+    const p = provider({ say: "Hi.", act: "guide", step: "", level: 0, reading: {}, draw: [] });
+    await conversationalMayaModel(p.client).propose(input(), signal());
+    const wire = p.sent[0].body;
+    expect(audit(MODEL_OUTPUT_SCHEMA)).toMatchObject({ unions: 2, optional: 0, constraints: [] });
+    expect(wire.response_format).toMatchObject({ type: "json_schema", json_schema: { name: "maya_reply", strict: true } });
+    expect(wire.messages[0]).toEqual({ role: "system", content: CONVERSATION_PROMPT });
   });
 
   it("keeps feature routing and admission hooks when the shared schema adapter uses instructions", async () => {

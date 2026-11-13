@@ -455,9 +455,9 @@ describe("the proposal schema", () => {
     expect(r.effects[0]).toMatchObject({ kind: "say", text: expect.stringMatching(/^[^0-9]+[.!?] .*7.*9\.$/) });
   });
 
-  it("refuses version 1, with its free-text say", () => {
+  it("refuses version 1, with its free-text say (a say with no version is version 3 since D-341)", () => {
     const c = call();
-    expect(step(c.s, { type: "proposal", at: 0, proposal: { act: "guide", step: "ones", level: 0, say: "Look at the 7." } }).refusal).toMatchObject({ code: "invalid_proposal" });
+    expect(step(c.s, { type: "proposal", at: 0, proposal: { version: 1, act: "guide", step: "ones", level: 0, say: "Look at the 7." } }).refusal).toMatchObject({ code: "invalid_proposal" });
   });
 });
 
