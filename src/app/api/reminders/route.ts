@@ -16,6 +16,8 @@ import { newToken } from "@/lib/sign-in-link";
 import { runFirstPagesEmails } from "@/lib/first-pages-email";
 import { firstPagesEmailStore } from "@/lib/first-pages-email-store";
 import { firstPagesEmailEnabled, restartFirstPagesNow } from "@/lib/first-pages-server";
+import { runScanTeamEmail } from "@/lib/scan-team-email";
+import { scanTeamEmailStore } from "@/lib/scan-team-email-store";
 import { stripe } from "@/lib/stripe";
 import { adminClient } from "@/lib/supabase-auth";
 import { reconcileBook1BaselinesNow } from "@/lib/workbook-book1-capture-server";
@@ -175,7 +177,17 @@ export async function POST(request: Request) {
         scans = { error: "run_failed" };
       }
     }
-    return Response.json({ ok: true, ...result, maya, monthly, firstPages, book1: await book1, sweep: await sweep, cards: await cards, cancels: await cancels, reports: await reports,
+    // The team's daily "answers wait for a mark" email (#718, src/lib/scan-team-email.ts): a count and a link, once per Pacific day.
+    // A failure never hides the other results.
+    let scanTeam: Awaited<ReturnType<typeof runScanTeamEmail>>;
+    try {
+      scanTeam = await runScanTeamEmail(scanTeamEmailStore(admin), now, { to: process.env.SIGNUP_NOTIFY_EMAIL, origin, transport });
+      if (scanTeam.status !== "too_early" && scanTeam.status !== "none_waiting" && scanTeam.status !== "already_sent") console.info("[scan team email] run", JSON.stringify(scanTeam));
+    } catch (e) {
+      console.error("[scan team email] run failed", e instanceof Error ? e.message : e);
+      scanTeam = { status: "failed" };
+    }
+    return Response.json({ ok: true, ...result, maya, scanTeam, monthly, firstPages, book1: await book1, sweep: await sweep, cards: await cards, cancels: await cancels, reports: await reports,
       ...(scans ? { scans } : {}) });
   } catch (e) {
     console.error("[reminders] run failed", e instanceof Error ? e.message : e);
