@@ -4301,7 +4301,9 @@ function codeProposals(given: Session, refused: readonly unknown[] = [], plan?: 
   const doubt = given.conversational ? session.turn?.uncertain === true : doubtful || unheard;
   const writtenNow = given.conversational && solved && !!session.turn && saysWritten(session.turn.text);
   const rank = (a: Act) => (writtenNow && a === "close" ? -2 : exampleFirst && a === "example_step" ? -1 : (solved && a === "ask_write") || (doubt && a === "confirm") ? FALLBACK_ORDER.indexOf("guide") - 0.5 : a === wayOut ? FALLBACK_ORDER.indexOf("guide") : FALLBACK_ORDER.indexOf(a));
-  const order = plan ? [plan.act] : [...new Set(unheard && !given.conversational && s.opened && s.turn && s.confirmTries < 2 && s.solved === null && !rightResult ? [...acts, "confirm" as Act] : acts)].sort((a, b) => rank(a) - rank(b)).filter((a) => a !== "accept_answer" || rightResult);
+  // A conversational fallback never asks a confirm of its own: only when the confirm is the one act allowed (round 2, F).
+  const offered = given.conversational && acts.some((a) => a !== "confirm") ? acts.filter((a) => a !== "confirm") : acts;
+  const order = plan ? [plan.act] : [...new Set(unheard && !given.conversational && s.opened && s.turn && s.confirmTries < 2 && s.solved === null && !rightResult ? [...offered, "confirm" as Act] : offered)].sort((a, b) => rank(a) - rank(b)).filter((a) => a !== "accept_answer" || rightResult);
   const make = (act: Act, offers: LineOffer[], extra: Partial<Proposal> = {}): Proposal => ({
     version: PROPOSAL_VERSION, act, parts: offers.map((o) => ({ line: o.line, slots: o.slots })), ...extra, ...(reading ? { reading } : {}),
     ...(plan?.draw ? { draw: plan.draw } : {}),
@@ -4531,7 +4533,10 @@ export function turnFacts(s: Session): TurnFact[] {
     }
     const fits = steps.find((st) => !credited.has(st.id) && stepAnswers(st).some((a) => equivalent(a, v)));
     if (fits) {
-      facts.push({ text: `${vt} is right for the step "${fits.id}".`, numbers: [sv], step: fits.id });
+      // Code's own strict read decides whether the child gave it as an answer (round 2): a question or a hedge did not.
+      const heard = heardAnswers(s).some((a) => a.step === fits.id && equivalent(a.value, v));
+      facts.push({ text: heard ? `${vt} is right for the step "${fits.id}", and the child said it as their answer.`
+        : `${vt} would be right for the step "${fits.id}", but the child asked it or was not sure: ask them to say it as their answer, and do not say it is right yet.`, numbers: [sv], step: fits.id });
       continue;
     }
     if (valueIn(sv, printed)) continue;

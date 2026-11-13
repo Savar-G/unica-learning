@@ -183,7 +183,7 @@ function ruleReply(brief: TurnBrief): unknown {
   let rightFinal = false;
   for (const fact of brief.facts) {
     const final = /^(.+?) is the right final answer\.$/.exec(fact);
-    const step = /^(.+?) is right for the step "([^"]+)"\.$/.exec(fact);
+    const step = /^(.+?) is right for the step "([^"]+)", and the child said it as their answer\.$/.exec(fact);
     const value = Number((final ?? step)?.[1]);
     if (final && Number.isFinite(value)) { answers.push({ value: { type: "number", value }, step: "result", problem: "target", verdict: "right" }); rightFinal = true; }
     else if (step && Number.isFinite(value)) answers.push({ value: { type: "number", value }, step: step[2], problem: "target", verdict: "right" });

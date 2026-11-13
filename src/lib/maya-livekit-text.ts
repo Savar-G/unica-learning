@@ -26,6 +26,8 @@ const userTexts = (ctx: llm.ChatContext) =>
 
 class MayaTextAgent extends voice.Agent {
   last: TextOutput | null = null;
+  /** Resolved when a turn's output is silent (D-341: a thinking child gets no words): LiveKit has nothing to play. */
+  silent: (() => void) | null = null;
   private seen = 0;
   constructor(private readonly text: TextSession) {
     super({ instructions: "Maya's words come from the text adapter, not from these instructions." });
@@ -37,7 +39,11 @@ class MayaTextAgent extends voice.Agent {
     const output = fresh.length === 0 ? await this.text.start() : await this.text.child(fresh.join("\n"));
     this.last = output;
     const said = output.say.join(" ");
-    if (!said) return null;
+    if (!said) {
+      this.silent?.();
+      // An empty reply, so LiveKit closes this turn's speech and the next turn is not held behind it.
+      return new ReadableStream<string>({ start(controller) { controller.close(); } });
+    }
     return new ReadableStream<string>({
       start(controller) {
         controller.enqueue(said);
@@ -72,7 +78,10 @@ export async function livekitTextSession(text: TextSession): Promise<LivekitText
       return take();
     },
     async say(childText) {
-      await session.run({ userInput: childText }).wait();
+      // A silent output leaves LiveKit's test run waiting for a reply that never comes: the turn ends with it.
+      const quiet = new Promise<void>((resolve) => { agent.silent = resolve; });
+      await Promise.race([session.run({ userInput: childText }).wait(), quiet]);
+      agent.silent = null;
       return take();
     },
     close: () => session.close(),
