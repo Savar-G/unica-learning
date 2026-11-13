@@ -10,10 +10,12 @@ The model writes every word Maya says, in its own words, for this child and this
 
 Code says the opening the moment the call or chat starts, before the child speaks, with no model call. It carries the AI disclosure. Chat and voice say the same line (`openingLine` in `src/lib/maya/lines.ts`). Approved by Savar and the Chief of Staff, 2026-11-12.
 
-- Any call: "Hi there! I'm Maya, an AI math helper. We're doing {question} today." ({question} is the question in spoken words, for example "52 minus 28".)
-- A call on a workbook page: "Hi there! I'm Maya, an AI math helper. We're doing page {page}, number {number} today: {question}."
+- Any call: "Hi there! I'm Maya, an AI math helper. We're doing {question} today. Where do you want to start?" ({question} is the question in spoken words, for example "52 minus 28".)
+- A call on a workbook page: "Hi there! I'm Maya, an AI math helper. We're doing page {page}, number {number} today: {question}. Where do you want to start?"
 
-The model's first turn comes after the child's first words. It answers what the child said ("Hi, Maya!" gets a short warm hello, then the first step). It never introduces Maya again or repeats the question line, unless the child asks who or what Maya is.
+The closing question was approved by Savar, 2026-11-12. The model's first turn answers the child's reply to it (a column, "I don't know", "Hi, Maya!" gets a short warm hello, then the first step). It never asks where to start again, never introduces Maya again and never repeats the question line, unless the child asks who or what Maya is.
+
+Maya says the child's first name sometimes, in chat and in voice: a reply right after a turn that said it leaves it out, so it comes about one turn in three (approved by Savar, 2026-11-12). Saved traces and notes keep hiding the name.
 
 ## The limits, in plain words
 
@@ -41,8 +43,16 @@ Code also tells the model facts about the child's numbers. For 52 - 28 and "Is 2
 - **A long reply is cut, not sent back.** Code keeps the first sentences that fit (and the closing question, in place of a middle sentence), with no second model call. Only a first sentence that alone breaks a limit is refused. The prompt asks for 1 or 2 short sentences under 25 words, with the question last.
 - **A clear answer is accepted in its turn.** "The tens are 4 minus 2, that's 2. 24!" is the answer, never a confirm.
 - **Off-topic turns get the model's own words.** "Do you like dogs?" gets an honest, warm reply (Maya is an AI and has no dog) and a short way back to the step; the review checks it. Only the safety guidance, the reply about secrets, the decline of harmful content, the redirect of outside math work and the held close stay code's.
-- **A child who is thinking** ("um", "wait", "I'm thinking") hears one short patient line from code, at most twice in a row, then Maya stays quiet until the child speaks or the silence rule comes. These turns count as no help and no miss. For Savar's approval, the two lines: "Take your time, {name}." and "No rush. I'm here when you're ready."
+- **A child who is thinking** ("um", "wait", "I'm thinking") hears one short patient line from code, at most twice in a row, then Maya stays quiet until the child speaks or the silence rule comes. These turns count as no help and no miss. The two lines, approved by Savar, 2026-11-12: "Take your time, {name}." and "No rush. I'm here when you're ready."
 - **The fallback** never asks "Did you say...?" on its own; it gives the step's neutral help. Once the answer stands and the child says it is written, Maya closes warmly.
+
+## Round 3 (2026-11-12)
+
+- **Every guiding reply ends with a question or instruction that names the step.** The prompt asks for at most 2 short sentences plus one question. When a reply is cut, the first sentence and the closing question stay. When it ends with no question, or with a bare one ("What can you do there?" after "Hi Mia!"), code's own step question takes its place, with no model call. Praise alone on a math turn is refused.
+- **A right value asked as a question** ("Um, 12 minus 8... is it 4?") gets a warm confirm in the model's words ("Are you saying 4 for the ones step?").
+- **A plain stop** ("I want to stop", "bye", "can we stop") closes at once in code's approved close words, with no model call: the model's goodbye took 1.83 s to its first sentence (p50), above the 1.2 s bar. A stop with a feeling or a hurt still goes to the model and the safety path.
+- **Help and off-topic turns stream too.** A help request streams but asks nothing before code knows the act. On an off-topic or about-Maya turn, a short reaction of a fixed form ("Max sounds like a good name for a dog.", "I'm an AI, so I have no pet.") and plain math stream with no review; any other sentence waits for the review. Why this rule and not a per-sentence review: the review's p95 was about 1.8 s, so a 1.2 s limit would fail about a third of good replies. NEVER_SAY is unchanged; the strict forms are a short allow-list, and everything outside it is reviewed.
+- **The review** of a whole reply has 4 s and runs at minimal effort with 400 tokens: on the 88 OK_TALK, NOT_OK_TALK and NEVER_SAY lines it gave the same verdicts as before (86 of 88, the same two cautious fails), p50 0.85 s.
 
 ## The prompt
 
