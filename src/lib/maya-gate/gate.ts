@@ -34,7 +34,8 @@ import {
   type TalkReviewResult,
 } from "@/lib/maya";
 import { gateWordCount } from "./word-count";
-import { packageLines, TEMPLATES } from "@/lib/maya/lines";
+import { openingLine, packageLines, TEMPLATES } from "@/lib/maya/lines";
+import { equationHolds, equationsOf, numberValue, sameSayValue, valuesOf } from "@/lib/maya/say-check";
 import { patternRows } from "@/lib/maya/pattern";
 import { withEvaluateExample } from "@/lib/maya/evaluate";
 import { claimFinal, claimSaid, claimView } from "@/lib/maya/claim";
@@ -669,6 +670,13 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
   const fromBank = (s: string) => bankSentences.has(s) || echoPatterns.some((p) => p.test(s));
   const claimAt = new Set(t.turns.flatMap(turn => turn.kind === "child" && b.steps.some(s => "child" in s && s.mathClaim && s.child === turn.text) ? [turn.at] : []));
 
+  // D-341: the numbers any of Maya's own sentences may hold: the question's and the easier example's own numbers (with
+  // every digit and place value of a whole operand), and the numbers of code's lines for this question.
+  const conversational = t.model.promptVersion.startsWith("maya-conversation") || (maya[0]?.attempts[0]?.source === "controller" && maya[0]?.output?.act === "open");
+  const digitsOf = (n: unknown) => typeof n === "number" ? String(Math.trunc(Math.abs(n))).split("").flatMap((d, k, all) => [Number(d), Number(d) * 10 ** (all.length - 1 - k)]) : [];
+  const sayAllowed = op ? [...valuesOf(JSON.stringify(op.steps).replace(/[{}[\]":,]/g, " ")), ...valuesOf(JSON.stringify(op.easierExample.steps).replace(/[{}[\]":,]/g, " ")), ...valuesOf(op.text), ...valuesOf(op.easierExample.text),
+    ...[...op.operation.operands as unknown[], ...op.easierExample.operation.operands as unknown[]].flatMap(digitsOf).map(numberValue), ...[...lineSentences].flatMap(valuesOf), numberValue(10), numberValue(1)] : [];
+
   // 1. Every output is an accepted attempt's, made of code's sentences or free talk that passed both checks (D-197);
   // math only from code's lines.
   for (const [i, m] of maya.entries()) {
@@ -688,6 +696,21 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
       else sentences(x.shown).forEach((s) => free.add(s));
     }
     const said = m.output.say.flatMap(sentences);
+    // D-341: a conversational call says the model's own words. Code's own words (the opening, the safety guidance) must
+    // be exact; every other sentence may be the model's, and its math is judged on its numbers and its equations.
+    if (conversational) {
+      if (last?.source === "controller" && m.output.act === "open" && op && m.output.say.join(" ") !== openingLine(op) && !/^Hi, I'm Maya, an AI helper\. Let's do page /.test(m.output.say.join(" "))) {
+        fail("unchecked_output", `Maya turn ${i} changed code's opening`);
+      }
+      const heardSoFar = t.turns.filter((turn) => turn.kind === "child" && turn.at <= m.at).flatMap((turn) => (turn.kind === "child" ? valuesOf(turn.text) : []));
+      for (const x of said) {
+        if (safety.has(x) || lineSentences.has(x)) continue;
+        const stray = valuesOf(x).find((v) => !sayAllowed.some((a) => sameSayValue(a, v)) && !heardSoFar.some((a) => sameSayValue(a, v)));
+        if (stray) fail("math_not_from_code", `Maya turn ${i} said a number outside the question and the child's words: "${x}" (${stray.key})`);
+        if (!/\?\s*$/.test(x) && equationsOf(x).some((e) => equationHolds(e) === !!e.negated)) fail("math_not_from_code", `Maya turn ${i} said a false equation: "${x}"`);
+      }
+      continue;
+    }
     for (const s of said) {
       const known = lineSentences.has(s) || fromBank(s) || safety.has(s) || free.has(s);
       if (!known) fail("unchecked_output", `Maya turn ${i} said "${s}"`);

@@ -190,8 +190,9 @@ function ruleReply(brief: TurnBrief): unknown {
   if (reading.stop && has("close")) return reply("Okay, we can stop here. Bye for now.", "close", { reading });
   if (reading.writing && has("wait")) return reply("Take your time.", "wait", { reading });
   if (rightFinal && has("accept_answer")) return reply("Yes, that's right. How did you work it out?", "accept_answer", { reading });
-  if (reading.paper === "written" && has("close")) return reply("Thanks for writing it. Bye for now.", "close", { reading });
-  if (has("ask_write") && !has("guide")) return reply("Please write your answer on your paper.", "ask_write", { reading });
+  const stands = brief.notes.some((n) => n.startsWith("The child's answer stands"));
+  if ((reading.paper === "written" || /\b(i'?m done|done)\b/.test(lower)) && has("close")) return reply("Thanks for writing it. Bye for now.", "close", { reading });
+  if (has("ask_write") && (stands || !has("guide"))) return reply("Please write your answer on your paper.", "ask_write", { reading });
   const example = brief.notes.find((n) => n.startsWith("If you work the easier example now"));
   if (has("example_step") && (reading.start === "no_start" || !has("guide")) && example) {
     return reply(example.replace(/^If you work the easier example now, say its next step: /, "").replace(/ Say first that it is a new, easier problem\.$/, ""), "example_step", { reading });

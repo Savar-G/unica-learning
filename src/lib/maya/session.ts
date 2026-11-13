@@ -4470,6 +4470,7 @@ export function turnFacts(s: Session): TurnFact[] {
   const facts: TurnFact[] = [];
   const seen: SayValue[] = [];
   const known = steps.flatMap((st) => [...stepAnswers(st).flatMap(sayValues), ...valuesOf(stepText(st, pkg.operation))]);
+  const spoken = valuesOf(s.turn.text);
   const equations = sentencesOf(s.turn.text).flatMap((x) => equationsOf(x));
   const results = equations.map((e) => e.result);
   const said = equations.flatMap((e) => e.operands.filter((o) => !results.some((r) => sameSayValue(r, o))).map(({ key, q }) => ({ key, q })));
@@ -4483,6 +4484,8 @@ export function turnFacts(s: Session): TurnFact[] {
     // no answer, unless it is the child's whole turn.
     const bare = valuesIn(s.turn.text, readOptionsFor(pkg)).length === 1;
     if (!bare && (valueIn(sv, printed) || valueIn(sv, said))) continue;
+    // A place said as a count ("I traded a ten", "this one") is no number the child gave.
+    if (!valueIn(sv, spoken)) continue;
     if (rightForQuestion(pkg, v)) {
       facts.push({ text: `${vt} is the right final answer.`, numbers: [sv] });
       continue;

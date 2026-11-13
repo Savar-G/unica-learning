@@ -6,7 +6,7 @@
 import type { AiClient, AiJsonRequest } from "@/lib/ai-client";
 import { PROPOSAL_SCHEMA, TALK_REVIEW_SCHEMA, TALK_REVIEW_SYSTEM } from "@/lib/maya";
 import { SYSTEM_PROMPT, type MayaModel } from "@/lib/maya-model";
-import { ruleMayaModel } from "@/lib/maya-model-fake";
+import { ruleConversationalModel } from "@/lib/maya-model-fake";
 import { DIMENSION_IDS, type PracticeCase } from "./cases";
 import { fakeJudge, judgeSchema, JUDGE_SYSTEM, type AiJudge } from "./judge";
 import { BudgetReached, memoryPracticeStore, planSuite, runSuite, type ExecutionOptions } from "./practice";
@@ -61,8 +61,8 @@ export async function measureSuite(cases: readonly PracticeCase[], runs: number,
   };
   const validity0 = fakeValidityJudge();
   const validity: ValidityJudge = { id: "estimate", promptVersion: validity0.promptVersion, check: (input, s) => { measure("validity", fixed.validity + JSON.stringify(input).length); return validity0.check(input, s); } };
-  const rule = ruleMayaModel();
-  const maya: MayaModel = { id: "estimate", promptVersion: rule.promptVersion, propose: (input, s) => { measure("maya", fixed.maya + JSON.stringify(input).length); return rule.propose(input, s); } };
+  const rule = ruleConversationalModel();
+  const maya: MayaModel = { id: "estimate", promptVersion: rule.promptVersion, ...(rule.output ? { output: rule.output } : {}), propose: (input, s) => { measure("maya", fixed.maya + JSON.stringify(input).length); return rule.propose(input, s); } };
   const judge0 = fakeJudge();
   const judge: AiJudge = { id: "estimate", promptVersion: judge0.promptVersion, judge: (input, s) => { measure("judge", fixed.judge + JSON.stringify(input).length); return judge0.judge(input, s); } };
   for (const c of cases) {
