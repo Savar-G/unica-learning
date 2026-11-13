@@ -84,3 +84,20 @@ it("the real RPC adapter uses parent/Admin scopes and shared persisted-mark vali
   raw.marks[0].observation.resultVersion = 0;
   await expect(readScanHistory(scanHistoryStore(db, { parent: P }), { child: C }, now)).rejects.toThrow("marking_observation");
 });
+
+it("lists every photographed page of a book in printed order, however the stored page ids sort (#920)", async () => {
+  // 60 printed pages whose ids run against page order; pages 3 to 22 have photos and marks.
+  const book = Array.from({ length: 60 }, (_, n) => {
+    const r = record(n + 1); r.id = id(1000 - n);
+    if (n + 1 < 3 || n + 1 > 22) { r.marks = []; r.photos = []; r.jobs = []; r.spend = []; }
+    return r;
+  }).sort((a, b) => a.id.localeCompare(b.id));
+  const all = (await readScanHistory(source(book, 100), { child: C, workbook: W, scannedOnly: true }, now))!;
+  expect(all.pages.map((p) => p.pageNumber)).toEqual(Array.from({ length: 20 }, (_, n) => n + 3));
+  expect(all.pages.every((p) => p.status === "ready")).toBe(true); expect(all.after).toBeNull();
+  // Without the photo filter the first 25 are the first 25 printed pages, not the first 25 ids, and the cursor continues in page order.
+  const first = (await readScanHistory(source(book), { child: C, workbook: W }, now))!;
+  expect(first.pages.map((p) => p.pageNumber)).toEqual(Array.from({ length: 25 }, (_, n) => n + 1));
+  const second = (await readScanHistory(source(book), { child: C, workbook: W, after: first.after! }, now))!;
+  expect(second.pages.map((p) => p.pageNumber)).toEqual(Array.from({ length: 25 }, (_, n) => n + 26));
+});
