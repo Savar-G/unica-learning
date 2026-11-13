@@ -65,7 +65,9 @@ export async function readScanHistory(store: HistoryStore, filter: HistoryFilter
   // every stored page, then order and cap them here, so a 25-page list holds the first 25 pages in printed order (#920).
   // Without either scope (the Admin list across families) the stored UUID order and cursor stay as they were.
   const ordered = Boolean(filter.child || filter.workbook);
-  const matches: { r: HistoryRecord; p: HistoryPage }[] = [];
+  let matches: { r: HistoryRecord; p: HistoryPage }[] = [];
+  const inFilter = (p: HistoryPage) => (filter.status !== "review" || p.status === "review")
+    && (filter.status !== "failed" || p.failedJob) && (!scannedOnly || p.status !== "never-scanned");
   let after = ordered ? undefined : filter.after, budget: HistoryBudget | null = null, more = false;
   for (;;) {
     const batch = await store.read({ ...storeFilter, after });
@@ -77,9 +79,7 @@ export async function readScanHistory(store: HistoryStore, filter: HistoryFilter
       after = r.id;
       if ((filter.child && r.childId !== filter.child) || (filter.workbook && r.workbookId !== filter.workbook) || skipChildren.has(r.childId)) continue;
       const p = historyPage(r, now);
-      if (filter.status === "review" && p.status !== "review") continue;
-      if (filter.status === "failed" && !p.failedJob) continue;
-      if (scannedOnly && p.status === "never-scanned") continue;
+      if (!ordered && !inFilter(p)) continue;
       if (!ordered && matches.length === limit) { more = true; break; }
       matches.push({ r, p });
     }
@@ -90,8 +90,10 @@ export async function readScanHistory(store: HistoryStore, filter: HistoryFilter
     matches.sort((a, b) => a.p.childId.localeCompare(b.p.childId) || b.p.book - a.p.book || a.p.pageNumber - b.p.pageNumber || a.p.id.localeCompare(b.p.id));
     let start = 0;
     if (filter.after) { start = matches.findIndex((m) => m.p.id === filter.after) + 1; if (!start) throw new Error("history_cursor"); }
-    more = matches.length > start + limit;
-    matches.splice(0, start); matches.length = Math.min(matches.length, limit);
+    // Find the printed cursor before mutable filters: a team mark can remove the cursor page from its old status.
+    matches = matches.slice(start).filter(({ p }) => inFilter(p));
+    more = matches.length > limit;
+    matches.length = Math.min(matches.length, limit);
   }
   const records = matches.map((m) => m.r), pages = matches.map((m) => m.p);
   // Do not consume the first matching row of the next page.

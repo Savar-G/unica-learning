@@ -101,3 +101,21 @@ it("lists every photographed page of a book in printed order, however the stored
   const second = (await readScanHistory(source(book), { child: C, workbook: W, after: first.after! }, now))!;
   expect(second.pages.map((p) => p.pageNumber)).toEqual(Array.from({ length: 25 }, (_, n) => n + 26));
 });
+
+it.each(["review", "failed", "scanned"] as const)("keeps the printed cursor when its page leaves the %s filter", async (kind) => {
+  const book = Array.from({ length: 60 }, (_, n) => {
+    const r = kind === "failed" ? unread(record(n + 1, null)) : record(n + 1, kind === "review" ? null : "right");
+    if (kind === "failed") r.jobs[0].blocked = "attempts";
+    return r;
+  });
+  const filter = { child: C, workbook: W, ...(kind === "scanned" ? { scannedOnly: true } : { status: kind }) };
+  const first = (await readScanHistory(source(book), filter, now))!;
+  expect(first.after).toBe(id(25));
+  // A team mark or a removed last photo changes the cursor page, while its printed position stays the same.
+  book[24] = record(25);
+  if (kind === "scanned") { book[24].marks = []; book[24].photos = []; book[24].jobs = []; }
+  const second = (await readScanHistory(source(book), { ...filter, after: first.after! }, now))!;
+  expect(second.pages.map((p) => p.pageNumber)).toEqual(Array.from({ length: 25 }, (_, n) => n + 26));
+  expect(second.counted).toBe(25);
+  expect(second.costs.reported).toBe(50_000);
+});
