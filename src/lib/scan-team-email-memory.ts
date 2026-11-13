@@ -12,7 +12,7 @@ export function memoryScanTeamEmailStore(initialWaiting = 0) {
       return true;
     },
     async sent(day, emailId) { Object.assign(days.get(day)!, { state: "sent", emailId, error: null }); },
-    async released(day) { if (days.get(day)?.state === "claimed") days.delete(day); },
+    async released(day) { if (days.get(day)?.state === "claimed") days.delete(day); return true; },
     async unknown(day, error) { days.get(day)!.error = error; },
   };
   return { store, days, setWaiting: (n: number) => { state.waiting = n; } };

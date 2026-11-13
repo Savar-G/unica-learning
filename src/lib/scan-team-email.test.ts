@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { memoryTransport } from "@/lib/email-delivery-memory";
+import { pacedTransport } from "@/lib/email-delivery";
 import { runScanTeamEmail, scanTeamEmail } from "@/lib/scan-team-email";
 import { memoryScanTeamEmailStore } from "@/lib/scan-team-email-memory";
 
@@ -19,6 +20,43 @@ function setup(waiting: number) {
 }
 
 describe("the team's daily scan email", () => {
+  it("claims nothing when a reminders run has no time for a complete send", async () => {
+    const { mail, db } = setup(3), start = pst(13, 9);
+    const count = vi.spyOn(db.store, "waitingCount");
+    expect(await runScanTeamEmail(db.store, start, { to: TO, origin: ORIGIN, transport: mail.transport,
+      time: { now: () => start + 55_000, endAt: start + 55_000 } })).toMatchObject({ status: "out_of_time" });
+    expect(count).not.toHaveBeenCalled();
+    expect(db.days.size).toBe(0); expect(mail.delivered).toHaveLength(0);
+  });
+
+  it("stops waiting for a stalled count without claiming or sending", async () => {
+    vi.useFakeTimers();
+    try {
+      const { mail, db } = setup(3), start = pst(13, 9); vi.setSystemTime(start);
+      db.store.waitingCount = async () => new Promise<number>(() => {});
+      const result = runScanTeamEmail(db.store, start, { to: TO, origin: ORIGIN, transport: mail.transport,
+        time: { now: () => Date.now(), endAt: start + 55_000 } });
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(await result).toMatchObject({ status: "out_of_time" });
+      expect(db.days.size).toBe(0); expect(mail.delivered).toHaveLength(0);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("returns the claim when pacing leaves too little time for the request", async () => {
+    vi.useFakeTimers();
+    try {
+      const { db } = setup(3), start = pst(13, 9); vi.setSystemTime(start);
+      const delivered: string[] = [];
+      const transport = pacedTransport({ send: async (m) => { delivered.push(m.subject); return { status: "sent", emailId: "test" }; } }, 40_000);
+      await transport.send({ sender: { to: "savar" }, to: TO, subject: "Other reminder", text: "Other reminder" });
+      const result = runScanTeamEmail(db.store, start, { to: TO, origin: ORIGIN, transport,
+        time: { now: () => Date.now(), endAt: start + 55_000 } });
+      await vi.advanceTimersByTimeAsync(40_000);
+      expect(await result).toMatchObject({ status: "out_of_time" });
+      expect(db.days.size).toBe(0); expect(delivered).toEqual(["Other reminder"]);
+    } finally { vi.useRealTimers(); }
+  });
+
   it("sends nothing when no answer waits", async () => {
     const { mail, db, run } = setup(0);
     expect((await run(pst(13, 9))).status).toBe("none_waiting");
