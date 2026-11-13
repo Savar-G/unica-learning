@@ -1198,6 +1198,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       };
       const turn = async (run: () => Promise<TextOutput>, childText?: string): Promise<VoiceTurn> => {
         if (inactive()) return none;
+        // This read stays before the input: beside it, a paid request went out at the cap and the safety read lost its
+        // guidance (tried 2026-11-13, src/lib/maya-spend-call.test.ts).
         const capped = await capNow();
         if (capped !== "open") return capClose(capped, null, childText);
         let input = run;
@@ -1228,6 +1230,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         let out: TextOutput;
         try { out = await input(); } finally { working--; hearing = undefined; }
         persist(out);
+        // The cap's read after the turn runs beside the save. A request refused in the turn decides without it.
+        const capAfter = session.ended || refusal ? null : capNow();
+        void capAfter?.catch(() => {});
         await queue;
         if (inactive()) return none;
         const from = Math.max(before, told);
@@ -1237,7 +1242,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           // The words this input chose are said; then the cap closes the call when it is reached. A request refused in
           // the middle of the turn left the child's words unread, so they get the safety read.
           const stopped: Exclude<SpendState, "open"> | null = refusal;
-          const after = stopped ?? await capNow();
+          const after = stopped ?? await (capAfter ?? capNow());
           if (after !== "open") return capClose(after, said, stopped ? childText : undefined);
         }
         return said;

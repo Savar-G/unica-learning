@@ -47,6 +47,8 @@ export function codeOpening(model: MayaModel): MayaModel {
 export function voiceOpening(session: Session): string | null {
   const pkg = session.package;
   if (!pkg || session.startedAt !== null || !("operation" in pkg)) return null;
+  // The Chief of Staff's wording for a workbook call (2026-11-13): the page and number check stays in the opening.
+  if (session.confirmWorkbook && pkg.ref.source === "workbook") return `Hi there! I'm Maya, an AI math helper. We're doing page ${pkg.ref.page}, number ${pkg.ref.question} today: ${operationText(pkg.operation)}.`;
   if (session.confirmWorkbook) return workbookOpening(pkg);
   return `Hi there! I'm Maya, an AI math helper. We're doing ${operationText(pkg.operation)} today.`;
 }
