@@ -34,6 +34,7 @@ import { mark as clockMark, markedFetch, takeMarks } from "./marks";
 import { presenceOf, waitForChild } from "./child-wait";
 import { voiceTurnReport, type VoiceTurnSample } from "./turn-timing";
 import { makeProviders } from "./providers";
+import { configureDelivery } from "./voice-delivery";
 import { referenceJob, referenceRoomName } from "@/lib/maya-workbook-speech";
 import { runWorkbookReference } from "./workbook-reference";
 
@@ -81,6 +82,7 @@ export default defineAgent({
       log("refused a job whose room is not its call's");
       return ctx.shutdown("not a call room");
     }
+    configureDelivery({ callId });
     const providers = voiceProviders(process.env);
     if (!providers.ok) {
       log("the speech-to-text or voice is not set up:", providers.problems.join("; "));
@@ -147,7 +149,7 @@ export default defineAgent({
     const turnSamples: VoiceTurnSample[] = [];
     const ackLimit = Number(process.env.MAYA_ACK_LIMIT_MS);
     const run = new VoiceCallRun(session, opened.call, { board, notify, greeting: GREETING_TEXT, ...(openingText ? { opening: openingText, openingMark: mark } : {}),
-      ...(made.fake ? {} : { numberContinueMs: tuning.numberContinueMs, dropSilentPeakDbfs: tuning.dropSilentPeakDbfs }),
+      ...(made.fake ? {} : { numberContinueMs: tuning.numberContinueMs, dropSilentPeakDbfs: tuning.dropSilentPeakDbfs, detectorMinSilenceMs: tuning.detectorMinSilenceMs }),
       ...(patience ? { patience: { ...turnSilences(tuning), set: (limits: TurnSilence) => patience.setSilence(limits) } } : {}),
       ...(process.env.MAYA_ACK_LIMIT_MS?.trim() && Number.isFinite(ackLimit) && ackLimit >= 0 ? { ackLimitMs: ackLimit } : {}),
       measureTurn: sample => {

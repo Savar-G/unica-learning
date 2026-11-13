@@ -91,6 +91,10 @@ export class FakeTTS extends tts.TTS {
   /** For tests: this many next texts give no audio at all (a voice provider that fails quietly). They go to `silenced`. */
   silentNext = 0;
   readonly silenced: string[] = [];
+  /** For tests: near-silent audio at the start of each text, as a real voice can give (ms). Word times include it. */
+  leadMs = 0;
+  /** For tests: the sample value of the speech after the lead (0: all silence, as before). */
+  amplitude = 0;
   constructor(readonly msPerChar = 60, readonly timestamps = true) {
     super(FAKE_SAMPLE_RATE, 1, { streaming: true, alignedTranscript: timestamps });
   }
@@ -125,11 +129,15 @@ class FakeSynthesizeStream extends tts.SynthesizeStream {
     this.fake.spoken.push(text.trim());
     const id = `fake-${++this.segment}`;
     const samples = (FAKE_SAMPLE_RATE * FRAME_MS) / 1000;
-    const frames = Math.max(1, Math.ceil((text.length * this.fake.msPerChar) / FRAME_MS));
+    const lead = Math.ceil(this.fake.leadMs / FRAME_MS);
+    const leadS = (lead * FRAME_MS) / 1000;
+    const frames = lead + Math.max(1, Math.ceil((text.length * this.fake.msPerChar) / FRAME_MS));
     for (let i = 0; i < frames; i++) {
-      this.queue.put({ requestId: id, segmentId: id, frame: new AudioFrame(new Int16Array(samples), FAKE_SAMPLE_RATE, 1, samples), final: i === frames - 1, ...(i === 0 ? { deltaText: text, ...(this.fake.timestamps ? {
+      const data = new Int16Array(samples);
+      if (i >= lead && this.fake.amplitude) data.fill(this.fake.amplitude);
+      this.queue.put({ requestId: id, segmentId: id, frame: new AudioFrame(data, FAKE_SAMPLE_RATE, 1, samples), final: i === frames - 1, ...(i === 0 ? { deltaText: text, ...(this.fake.timestamps ? {
         timedTranscripts: [...text.matchAll(/\S+/g)].map(m => voice.createTimedString({ text: `${m[0]} `,
-          startTime: m.index * this.fake.msPerChar / 1000, endTime: (m.index + m[0].length) * this.fake.msPerChar / 1000 })),
+          startTime: leadS + m.index * this.fake.msPerChar / 1000, endTime: leadS + (m.index + m[0].length) * this.fake.msPerChar / 1000 })),
       } : {}) } : {}) });
     }
   }
