@@ -124,6 +124,7 @@ describe("the review, the time budget and the hooks", () => {
     expect(reviewer.requests).toHaveLength(0);
     const out = await session.child("I have a dog.");
     expect(reviewer.requests).toHaveLength(1);
+    expect(reviewer.requests[0].conversation).toBe(true);
     expect(out.say).toEqual(["A dog sounds fun. Let's look at the ones now. What do you see?"]);
   });
   it("a refused review is repaired, then code's line", async () => {
@@ -152,5 +153,14 @@ describe("the review, the time budget and the hooks", () => {
     await session.child("Help me.");
     expect(parts.slice(-2)).toEqual([["Let's look at the ones.", 0], ["What is on top?", 1]]);
     expect(ended).toBe(2);
+  });
+});
+
+describe("the review prompt of a conversational reply", () => {
+  it("leaves out the math rule: code checks the math", async () => {
+    const { CONVERSATION_REVIEW_SYSTEM, TALK_REVIEW_SYSTEM } = await import("@/lib/maya");
+    expect(TALK_REVIEW_SYSTEM).toContain("- math:");
+    expect(CONVERSATION_REVIEW_SYSTEM).not.toContain("- math:");
+    expect(CONVERSATION_REVIEW_SYSTEM).toContain("- secrecy:");
   });
 });

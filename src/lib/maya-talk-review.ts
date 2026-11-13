@@ -6,7 +6,7 @@
 // The live reviewer goes through the AI client (OpenRouter on the site, MAYA_REVIEW_MODEL, default Claude Haiku 5.5:
 // small and fast, and another model than Maya's). Tests use the fake below.
 import { withTimeLimit, type AiClient } from "@/lib/ai-client";
-import { readTalkReview, TALK_REVIEW_PROMPT_VERSION, TALK_REVIEW_SCHEMA, TALK_REVIEW_SYSTEM, type Session, type TalkReviewInput, type TalkReviewResult } from "@/lib/maya";
+import { CONVERSATION_REVIEW_SYSTEM, readTalkReview, TALK_REVIEW_PROMPT_VERSION, TALK_REVIEW_SCHEMA, TALK_REVIEW_SYSTEM, type Session, type TalkReviewInput, type TalkReviewResult } from "@/lib/maya";
 import { classifyError } from "@/lib/maya-trace";
 
 /** The review model when MAYA_REVIEW_MODEL is not set: an OpenRouter model id with structured output. */
@@ -27,6 +27,7 @@ export interface TalkReviewer {
 /** What the review reads for one line now: the line, the child's words Maya answers, and the last turns. */
 export function reviewInput(session: Session, line: string): TalkReviewInput {
   return {
+    ...(session.conversational ? { conversation: true as const } : {}),
     promptVersion: TALK_REVIEW_PROMPT_VERSION,
     line,
     childTurn: session.turn?.text ?? null,
@@ -41,7 +42,7 @@ export function aiTalkReviewer(client: AiClient, options: { effort?: "low" | "me
     promptVersion: TALK_REVIEW_PROMPT_VERSION,
     review: async (input, signal) =>
       readTalkReview(await client.json(
-        { name: "maya_talk_review", system: TALK_REVIEW_SYSTEM, content: [{ type: "text", text: JSON.stringify(input) }], schema: TALK_REVIEW_SCHEMA as unknown as Record<string, unknown>, effort: options.effort ?? "low", maxTokens: 2_000 },
+        { name: "maya_talk_review", system: input.conversation ? CONVERSATION_REVIEW_SYSTEM : TALK_REVIEW_SYSTEM, content: [{ type: "text", text: JSON.stringify(input) }], schema: TALK_REVIEW_SCHEMA as unknown as Record<string, unknown>, effort: options.effort ?? "low", maxTokens: 2_000 },
         signal,
       )),
   };
