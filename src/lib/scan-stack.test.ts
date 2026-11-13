@@ -148,3 +148,41 @@ it("names the sheet check's refusals in their own words (#456)", () => {
   expect(refusalCopy("faint").action).toBe("Take another photo without glare.");
   expect(refusalCopy("check-timeout").action).toBe("Try again in a minute.");
 });
+
+describe("the scan guide", () => {
+  const named = dayPages([
+    { id: "n1", workbookId: BOOK, book: 1, pageNumber: 1, day: "Day 1", type: "warm-up" },
+    { id: "n2", workbookId: BOOK, book: 1, pageNumber: 2, day: "Day 1", type: "new-idea" },
+    { id: "n3", workbookId: BOOK, book: 1, pageNumber: 3, day: "Day 1", type: "remember-these-mixed-set" },
+    { id: "n4", workbookId: BOOK, book: 1, pageNumber: 4, day: "Day 1", type: "parent-led" },
+    { id: "m1", workbookId: BOOK, book: 1, pageNumber: 5, day: "Day 2", type: "challenge" },
+  ]);
+  const shot = (n: number, o: Partial<StackPhoto> = {}) => ({ ...photo(`s${n}`, n, o), pageId: n === 5 ? "m1" : `n${n}` });
+
+  it("names the next page by its kind and lists each page's standing", () => {
+    const guide = buildStack({ photos: [shot(1), shot(2, { check: "refused", reason: "faint" })], uploads: [], pages: named, checks: true }).guide;
+    expect(guide?.next?.title).toBe("Day 1 · Page 3, Mixed review");
+    expect(guide?.pages.map((p) => [p.title, p.status])).toEqual([
+      ["Day 1 · Page 1, Warm-up", "done"], ["Day 1 · Page 2, New idea", "retake"],
+      ["Day 1 · Page 3, Mixed review", "todo"], ["Day 1 · Page 4", "todo"],
+    ]);
+  });
+
+  it("has no next page when every page of the day has a photo, and no guide with no photo", () => {
+    const all = buildStack({ photos: [1, 2, 3, 4].map((n) => shot(n)), uploads: [], pages: named, checks: true }).guide;
+    expect(all?.next).toBeNull();
+    expect(buildStack({ photos: [], uploads: [], pages: named, checks: true }).guide).toBeNull();
+  });
+
+  it("follows the newest photo's day, and ignores sent pages", () => {
+    const later = shot(5, { createdAt: "2026-11-06T10:00:00Z" });
+    expect(buildStack({ photos: [shot(1), later], uploads: [], pages: named, checks: true }).guide?.day).toBe("Day 2");
+    expect(buildStack({ photos: [shot(1), { ...later, sentAt: "2026-11-06T11:00:00Z" }], uploads: [], pages: named, checks: true }).guide?.day).toBe("Day 1");
+  });
+
+  it("names the workbook when the stack spans more than one", () => {
+    const two = dayPages([{ id: "a", workbookId: "b1", book: 1, pageNumber: 1, day: "Day 1" }, { id: "b", workbookId: "b2", book: 2, pageNumber: 1, day: "Day 1" }]);
+    const g = buildStack({ photos: [{ ...photo("x", 1), pageId: "a", workbookId: "b1" }, { ...photo("y", 1), pageId: "b", workbookId: "b2", book: 2 }], uploads: [], pages: two, checks: true }).guide;
+    expect(g?.pages[0].title).toBe("Workbook 1 · Day 1 · Page 1");
+  });
+});

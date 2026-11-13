@@ -46,6 +46,38 @@ export interface DayPage {
   day: string;
   pageOfDay: number;
   pagesInDay: number;
+  /** What kind of page it is, in plain words ("Mixed review"); null when the stored type has no plain name (the parent-led pages of U1 to U3). */
+  name: string | null;
+}
+
+/**
+ * The plain name of each stored page type (`workbook_pages.page_type`). The printed title of a page is made when the book
+ * is built and is not stored, so the scan screen names a page by its kind. A page type not listed here has no name.
+ */
+const PAGE_KIND_NAMES: Readonly<Record<string, string>> = {
+  "warm-up": "Warm-up", "remember-these": "Review", "new-idea": "New idea", practice: "Practice", "practice-2": "Practice",
+  "word-problems": "Word problems", "math-in-the-world": "Math in the world", "unit-b": "Practice",
+  "remember-these-mixed-set": "Mixed review", "friday-5": "Friday 5", challenge: "Challenge",
+  "show-what-you-know": "Show what you know", "level-test": "Level test",
+};
+export const pageKindName = (type: string | null | undefined): string | null => (type && Object.hasOwn(PAGE_KIND_NAMES, type) ? PAGE_KIND_NAMES[type] : null);
+
+/** Where a page of the day stands for the parent. */
+export type GuideStatus = "done" | "retake" | "todo";
+
+export interface GuidePage {
+  pageId: string;
+  /** "Day 1 · Page 5, Mixed review" (no name when the page has none). */
+  title: string;
+  status: GuideStatus;
+}
+
+/** Which page to scan next, and where each page of that day stands. Guidance only: any page can be scanned in any order. */
+export interface StackGuide {
+  day: string;
+  /** The first page of the day with no photo yet, or null when every page has one. */
+  next: GuidePage | null;
+  pages: GuidePage[];
 }
 
 export type TileStatus = "adding" | "checking" | "ready" | "saved" | "refused" | "unavailable" | "sent";
@@ -84,10 +116,12 @@ export interface Stack {
   counts: { photos: number; ready: number; refused: number; checking: number };
   /** The one tile of a stack of one, shown large (D-269). */
   one: StackTile | null;
+  /** The day the parent is scanning (the one with the newest unsent photo): its next page and every page's standing. */
+  guide: StackGuide | null;
 }
 
 /** Each page with a day, numbered within its day in book order. Pages with no day (a cover, the answers) are left out. */
-export function dayPages(pages: readonly { id: string; workbookId: string; book: number; pageNumber: number; day: string | null }[]): DayPage[] {
+export function dayPages(pages: readonly { id: string; workbookId: string; book: number; pageNumber: number; day: string | null; type?: string | null }[]): DayPage[] {
   const byDay = new Map<string, typeof pages[number][]>();
   for (const p of pages) {
     if (!p.day) continue;
@@ -97,7 +131,7 @@ export function dayPages(pages: readonly { id: string; workbookId: string; book:
   const out: DayPage[] = [];
   for (const group of byDay.values()) {
     const sorted = [...group].sort((a, b) => a.pageNumber - b.pageNumber);
-    sorted.forEach((p, i) => out.push({ id: p.id, workbookId: p.workbookId, book: p.book, pageNumber: p.pageNumber, day: p.day!, pageOfDay: i + 1, pagesInDay: sorted.length }));
+    sorted.forEach((p, i) => out.push({ id: p.id, workbookId: p.workbookId, book: p.book, pageNumber: p.pageNumber, day: p.day!, pageOfDay: i + 1, pagesInDay: sorted.length, name: pageKindName(p.type) }));
   }
   return out.sort((a, b) => a.book - b.book || a.pageNumber - b.pageNumber);
 }
@@ -129,6 +163,23 @@ export const refusalCopy = (reason: StackReason) => REFUSALS[reason] ?? REFUSALS
 
 /** "2", "2 and 4", "2, 4 and 5". */
 const listed = (n: readonly number[]) => (n.length < 2 ? `${n[0]}` : `${n.slice(0, -1).join(", ")} and ${n[n.length - 1]}`);
+
+type Built = { photo: StackPhoto; tile: StackTile }[];
+
+/** The guide for the day of the newest photo not yet sent: a page with a photo is done unless refused (retake); the rest are to do. */
+function guideOf(o: { photos: readonly StackPhoto[]; pages: readonly DayPage[] }, tiles: Built, dayLabel: (p: DayPage) => string): StackGuide | null {
+  const pageById = new Map(o.pages.map((p) => [p.id, p]));
+  const current = tiles.filter((t) => t.tile.status !== "sent" && pageById.has(t.photo.pageId))
+    .sort((a, b) => b.photo.createdAt.localeCompare(a.photo.createdAt))[0];
+  const anchor = current && pageById.get(current.photo.pageId);
+  if (!anchor) return null;
+  const standing = new Map(tiles.map((t) => [t.photo.pageId, t.tile.status === "refused" ? "retake" as const : "done" as const]));
+  const pages = o.pages.filter((p) => p.workbookId === anchor.workbookId && p.day === anchor.day).map((p): GuidePage => {
+    const where = `${dayLabel(p)} · Page ${p.pageOfDay}`;
+    return { pageId: p.id, title: p.name ? `${where}, ${p.name}` : where, status: standing.get(p.id) ?? "todo" };
+  });
+  return { day: dayLabel(anchor), next: pages.find((p) => p.status === "todo") ?? null, pages };
+}
 
 export function buildStack(o: { photos: readonly StackPhoto[]; uploads: readonly StackUpload[]; pages: readonly DayPage[]; checks: boolean }): Stack {
   const pageById = new Map(o.pages.map((p) => [p.id, p]));
@@ -196,6 +247,7 @@ export function buildStack(o: { photos: readonly StackPhoto[]; uploads: readonly
     readyIds: ready.map((t) => t.photo.id),
     counts: { photos: o.photos.length + o.uploads.length, ready: ready.length, refused: refused.length, checking },
     // A refused page keeps its card and its retake, even alone.
+    guide: guideOf(o, tiles, dayLabel),
     one: open.length === 1 && open[0].photoId && open[0].status !== "refused" ? open[0] : null,
   };
 }
