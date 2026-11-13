@@ -68,6 +68,27 @@ Before "Approve for print", an admin can refresh the draft when more pages were 
   no new mark. A refresh that started before an approval cannot freeze after it.
 - Marks that arrive after approval are not used by that book. They stay for the profile and the book after next.
 
+**The admin screens** (`src/lib/next-book-refresh.ts`, `next-book-refresh-server.ts`, `src/components/workbook-ship-actions.tsx`).
+On the admin run page of a next-book draft not yet approved:
+
+- `draftNewMarks` reads the chain's latest revision for the draft and `newEvidenceSince`. With new marks the page shows
+  "New marks since this draft: Days 8-9 (2 pages)." and an "Update with new marks" button (disabled with "The planner is
+  not ready yet." when no planner is wired). A read that fails shows "New marks status is unavailable."
+- "Update with new marks" posts to `POST /api/admin/workbooks/runs/<id>/update-marks` (admins only, 404 for everyone
+  else): `updateDraftWithNewMarks` calls `refreshNextBookSnapshot`, then `prepareNextBook({ kind: "snapshot" })` to plan
+  the new revision. It starts no run. Its line: "Plan updated with the new marks (plan version n). The pages are not drawn
+  again yet.", or the refusal ("No new marks since this draft.", "This draft is already approved for print.", "Book 1
+  changed, so this draft can no longer be updated."). Pressing it again after a failed plan plans the same revision.
+- "Approve for print" runs the same check on the server (`approveCheckingNewMarks` in the approve route). With new marks
+  and no `despiteNewMarks: true` it approves nothing and answers `{ ok: false, askUpdate }` (409); the page asks "Update
+  first?" with "Update with new marks", "Approve anyway" and "Cancel". A check that cannot be read does not hold the
+  approval. "Approve anyway" approves through the usual `approve_workbook_draft` (its `workbook-approved` audit entry), then
+  writes an `approved-with-new-marks` audit entry with the snapshot revision, days, pages and items, through the
+  service-only `note_workbook_approved_with_new_marks` (migration `20261113233859_workbook_approved_with_new_marks.sql`).
+  When the note cannot be written the approval stands and the route logs it.
+- Not built: drawing again only the pages whose plan changed. Until the planner owner builds it, an update stores the new
+  plan beside the draft and the printed pages stay those of the first plan.
+
 ## Who calls it
 
 Two callers run `prepareNextBook`. Both use one planner resolver, `nextBookPlanner()` in `src/lib/next-book-planner.ts`.
@@ -246,6 +267,6 @@ The database functions are service-only:
 
 - `NEXT_BOOK_REAL_FAMILIES` is still `false`. The worker reads `plan_input` and the run is routed to the Mac worker
   (above). Before the flip: one test family's book 2 made end to end on the Mac worker from a snapshot (the run page
-  shows it on the Mac, its frame has `nextBook`), the D-308 screens ("New marks since this draft", "Update with new
-  marks", "Update first?" on approval), and Savar's go-ahead with `NEXT_BOOK_PREPARE_ENABLED`.
+  shows it on the Mac, its frame has `nextBook`), drawing again the pages an "Update with new marks" changed, and
+  Savar's go-ahead with `NEXT_BOOK_PREPARE_ENABLED`.
 - A source book after Book 1 answers `unsupported-source-book`.
