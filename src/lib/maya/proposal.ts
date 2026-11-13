@@ -265,6 +265,8 @@ export const MODEL_OUTPUT_VERSION = 3;
  * checks `say` against them (say-check.ts); the model picks no line.
  */
 export interface ModelOutput {
+  /** Round 4, P2-7: the model's read of the child's turn: math, help, offtopic, stop, safety or other. */
+  kind?: "math" | "help" | "offtopic" | "stop" | "safety" | "other";
   say: string;
   act: Act;
   step?: string;
@@ -290,8 +292,10 @@ const answerValueV3 = {
 export const MODEL_OUTPUT_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["say", "act", "step", "level", "reading", "draw"],
+  required: ["kind", "say", "act", "step", "level", "reading", "draw"],
   properties: {
+    // Round 4, P2-7: the model's read of the child's turn, before its words, so a stream knows what kind of turn it is.
+    kind: { enum: ["math", "help", "offtopic", "stop", "safety", "other"] },
     say: { type: "string" },
     act: { enum: ACTS.filter((act) => act !== "give_answer") },
     step: { type: "string" },
@@ -363,6 +367,7 @@ export const isModelOutput = (raw: unknown): raw is Record<string, unknown> => i
 export function readModelOutput(raw: unknown): ModelOutput | null {
   if (!isModelOutput(raw)) return null;
   const out: Record<string, unknown> = { say: raw.say, act: raw.act };
+  if (typeof raw.kind === "string") out.kind = raw.kind;
   if (typeof raw.step === "string" && raw.step !== "") out.step = raw.step;
   if (raw.level !== undefined && raw.level !== null) out.level = raw.level;
   const reading = withoutDefaults(withoutNulls(raw.reading));

@@ -6,7 +6,7 @@
 // The live reviewer goes through the AI client (OpenRouter on the site, MAYA_REVIEW_MODEL, default Claude Haiku 5.5:
 // small and fast, and another model than Maya's). Tests use the fake below.
 import { withTimeLimit, type AiClient } from "@/lib/ai-client";
-import { CONVERSATION_REVIEW_SYSTEM, readTalkReview, TALK_REVIEW_PROMPT_VERSION, TALK_REVIEW_SCHEMA, TALK_REVIEW_SYSTEM, type Session, type TalkReviewInput, type TalkReviewResult } from "@/lib/maya";
+import { CONVERSATION_REVIEW_SYSTEM, hideName, readTalkReview, TALK_REVIEW_PROMPT_VERSION, TALK_REVIEW_SCHEMA, TALK_REVIEW_SYSTEM, type Session, type TalkReviewInput, type TalkReviewResult } from "@/lib/maya";
 import { classifyError } from "@/lib/maya-trace";
 
 /** The review model when MAYA_REVIEW_MODEL is not set: an OpenRouter model id with structured output. */
@@ -18,9 +18,10 @@ export const CONVERSATION_REVIEW_TIME_LIMIT_MS = 4_000;
 /**
  * D-341, round 3: the conversational review thinks as little as Haiku allows. Measured on the 88 OK_TALK, NOT_OK_TALK and
  * NEVER_SAY lines (2026-11-12): minimal with 400 tokens gave the same verdicts as low with 2,000 (86 of 88, the same two
- * cautious fails), p50 0.85 s against 0.97 s; 200 tokens cut off four answers, which then counted as errors.
+ * cautious fails), p50 0.85 s against 0.97 s; 200 tokens cut off four answers, which then counted as errors. The real
+ * runs of round 4 cut off some at 400 too, so the limit is 1,000 (a short answer stops well before it).
  */
-export const CONVERSATION_REVIEW_REQUEST = { effort: "minimal" as const, maxTokens: 400 };
+export const CONVERSATION_REVIEW_REQUEST = { effort: "minimal" as const, maxTokens: 1_000 };
 /** The turns of the call the review reads, besides the line. */
 const REVIEW_TURNS = 6;
 
@@ -33,13 +34,16 @@ export interface TalkReviewer {
 }
 
 /** What the review reads for one line now: the line, the child's words Maya answers, and the last turns. */
-export function reviewInput(session: Session, line: string): TalkReviewInput {
+export function reviewInput(session: Session, line: string, verdict: "wrong" | "right" | "none" = "none"): TalkReviewInput {
+  // Round 4, P2-6: the child's name never reaches the review model either.
+  const hide = (text: string) => hideName(text, session.variety.name);
   return {
     ...(session.conversational ? { conversation: true as const } : {}),
+    ...(session.conversational && verdict === "wrong" ? { verdict } : {}),
     promptVersion: TALK_REVIEW_PROMPT_VERSION,
-    line,
-    childTurn: session.turn?.text ?? null,
-    transcript: session.turns.slice(-REVIEW_TURNS).map((t) => ({ speaker: t.speaker, text: t.text })),
+    line: hide(line),
+    childTurn: session.turn ? hide(session.turn.text) : null,
+    transcript: session.turns.slice(-REVIEW_TURNS).map((t) => ({ speaker: t.speaker, text: hide(t.text) })),
   };
 }
 

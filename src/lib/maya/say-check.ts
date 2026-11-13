@@ -17,7 +17,7 @@ import { feelingClaim, plainLanguageProblem } from "./phrases";
 /** Why a reply was refused. */
 export const SAY_REASONS = [
   "empty", "too_long", "too_many_sentences", "long_sentence", "number_not_allowed", "reveals_answer", "reveals_step",
-  "false_equation", "affirms_wrong", "missing_number", "hard_words", "never_say", "hype", "board_words", "reintroduces", "close_asks", "empty_reply",
+  "false_equation", "affirms_wrong", "missing_number", "hard_words", "never_say", "hype", "board_words", "reintroduces", "close_asks", "empty_reply", "wrong_stance",
 ] as const;
 export type SayReason = (typeof SAY_REASONS)[number];
 
@@ -67,6 +67,20 @@ export interface SayRules {
   noQuestion?: boolean;
   /** A math turn: the reply must hold some math (a number or a place) or a question, never only praise. */
   needsSubstance?: boolean;
+  /**
+   * Round 4, P1-3: the steps the child has no credit for (and code's plan does not show): no sentence holds a step's
+   * operands together with its result, in any wording.
+   */
+  openSteps?: readonly { operands: readonly SayValue[]; result: SayValue }[];
+  /** Round 4, P1-3: the open answer's digits with their places ([2, "tens"], [4, "ones"]): never all said as places. */
+  answerPlaces?: readonly [number, string][];
+  /**
+   * Round 4, P1-4: code's verdict on the child's turn. "wrong": no affirmation and no move to a later step; "none" (no
+   * credit): no yes and no move to a later step; "right": no negation.
+   */
+  stance?: "wrong" | "none" | "right";
+  /** The places of the steps after the current one ("tens"): a reply on a wrong or uncredited turn does not move there. */
+  laterPlaces?: readonly string[];
 }
 
 export type SayVerdict =
@@ -372,6 +386,49 @@ const NEVER: [RegExp, string][] = [
 export const MATH_WORD = /\b(?:ones|tens|hundreds|thousands|column|columns|digit|digits|regroup\w*|carr(?:y|ied)|plus|minus|times|divided|equals|subtract\w*|add\w*|multiply\w*|fraction\w*|numerator|denominator|ten|answer|example)\b/i;
 const AFFIRM = /^(?:yes|yep|yeah|right|correct|exactly|that'?s (?:right|correct|it)|good job|well done|nice)\b/i;
 
+// ---------- Leaks and stance (round 4) ----------
+
+/** A step's operands and its result in one sentence, whatever words join them ("4 take away 2 leaves 2"). */
+function stepLeak(tokens: readonly SayToken[], step: { operands: readonly SayValue[]; result: SayValue }): boolean {
+  const need = [...step.operands, step.result];
+  const pool = [...tokens];
+  for (const v of need) {
+    const at = pool.findIndex((t) => sameSayValue(t, v));
+    if (at === -1) return false;
+    pool.splice(at, 1);
+  }
+  return true;
+}
+
+const PLACES = "ones|tens|hundreds|thousands|one|ten|hundred|thousand";
+/** The digits a sentence names with a place ("2 tens", "4 in the ones"), as [digit, place in the plural]. */
+function placed(text: string): [number, string][] {
+  const out: [number, string][] = [];
+  const plural = (p: string) => (p.endsWith("s") ? p : `${p}s`);
+  for (const m of text.toLowerCase().matchAll(new RegExp(`\\b(\\d+|zero|one|two|three|four|five|six|seven|eight|nine)\\s+(?:(?:is|are)\\s+)?(?:in\\s+the\\s+)?(${PLACES})\\b`, "g"))) {
+    const n = /\d/.test(m[1]) ? Number(m[1]) : ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"].indexOf(m[1]);
+    out.push([n, plural(m[2])]);
+  }
+  return out;
+}
+
+/** Words that mark an answer right or a step done. */
+export const AFFIRM_WORDS = /\b(?:yes|yep|yeah|right|correct|exactly|perfect|done|you got|got it|that'?s it)\b|\b(?:nice|good|great|well)\s+(?:work|job|thinking|done)\b/i;
+/** A yes at the start of a reply on a turn with no credit ("Yes, let's start" is still fine). */
+const AFFIRM_START = /^(?:yes|yep|yeah|right|correct|exactly|perfect|that'?s it|you got)\b(?!,?\s+let'?s\b)/i;
+/** Words that mark an answer wrong. */
+export const NEGATE_WORDS = /\b(?:not quite|not yet|wrong|incorrect|try again|that'?s not|not right)\b|^no\b/i;
+/** Praise whose stance code cannot read from words alone: on a wrong verdict, the review decides. */
+export const PRAISE_WORDS = /\b(?:good|great|nice|well|awesome|smart|brilliant|wow|cool|lovely|super)\b/i;
+
+/** The sentence moves on to a later place ("Now the tens.", "What do you do in the tens?"). */
+function movesTo(text: string, places: readonly string[]): boolean {
+  if (places.length === 0) return false;
+  const p = places.join("|");
+  return new RegExp(`\\b(?:now|next|move (?:on )?to|on to|let'?s do|go to|over to)\\b[^.?!]*\\b(?:${p})\\b`, "i").test(text) ||
+    (/\?\s*$/.test(text) && new RegExp(`\\b(?:${p})\\b`, "i").test(text));
+}
+
 // ---------- The checks ----------
 
 /** The checks of one sentence (numbers, equations, words, patterns). `index` is its place in the reply. */
@@ -407,6 +464,21 @@ export function checkSentence(sentence: string, rules: SayRules, index = 0): Say
     }
   }
   const claims = /\b(?:answer|result|equals|makes|gives|you get|you got|it'?s)\b|=/i.test(text);
+  // Round 4, P1-3: an open step's operands with its result, in any words; the open answer's digits as places.
+  const tokens = sayNumbers(text);
+  if ((rules.openSteps ?? []).some((st) => stepLeak(tokens, st))) return no("reveals_step", `"${sentence}" works out a step the child has not done: never say its result.`);
+  const places = placed(text);
+  if (rules.answerPlaces?.length && rules.answerPlaces.every(([d, p]) => places.some(([n, q]) => n === d && q === p))) {
+    return no("reveals_answer", `"${sentence}" says the answer as its places: the child has not found it yet.`);
+  }
+  // Round 4, P1-4: the stance code's verdict sets.
+  if ((rules.stance === "wrong" && AFFIRM_WORDS.test(text)) || (rules.stance === "none" && index === 0 && AFFIRM_START.test(text.trim()))) {
+    return no("wrong_stance", "The child's answer is not right this turn: do not call it right or the step done.");
+  }
+  if ((rules.stance === "wrong" || rules.stance === "none") && movesTo(text, rules.laterPlaces ?? [])) {
+    return no("wrong_stance", "The step is not done yet: stay on it, do not move to the next one.");
+  }
+  if (rules.stance === "right" && NEGATE_WORDS.test(text.trim())) return no("wrong_stance", "The child's answer is right this turn: do not say it is wrong.");
   for (const t of sayNumbers(text)) {
     if (within(t, rules.answer)) return no("reveals_answer", `"${t.text}" is the answer: the child has not found it yet.`);
     if (within(t, rules.forbidden) && !(within(t, rules.shown) && !claims)) return no("reveals_step", `"${t.text}" is the value of a step the child has not done: never say it.`);
@@ -469,7 +541,10 @@ export function trimSay(say: string, wordLimit: number): string {
   const question = sentences.at(-1)!;
   const q = wordsIn(question).length;
   if (kept.length < sentences.length && /\?\s*$/.test(question) && q <= SENTENCE_WORDS && wordsIn(kept[0]).length + q <= wordLimit) {
-    return [kept[0], question].join(" ");
+    // A sentence that carries the correction ("2 minus 8 isn't 6.") stays beside them when it fits (round 4, P3-9).
+    const correction = sentences.slice(1, -1).find((x) => /\b(?:not|isn't|aren't|no)\b|n't\b/i.test(x));
+    const n = correction ? wordsIn(correction).length : 0;
+    return [kept[0], ...(correction && wordsIn(kept[0]).length + n + q <= wordLimit && n <= SENTENCE_WORDS ? [correction] : []), question].join(" ");
   }
   return kept.join(" ");
 }

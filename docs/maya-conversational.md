@@ -54,6 +54,15 @@ Code also tells the model facts about the child's numbers. For 52 - 28 and "Is 2
 - **Help and off-topic turns stream too.** A help request streams but asks nothing before code knows the act. On an off-topic or about-Maya turn, a short reaction of a fixed form ("Max sounds like a good name for a dog.", "I'm an AI, so I have no pet.") and plain math stream with no review; any other sentence waits for the review. Why this rule and not a per-sentence review: the review's p95 was about 1.8 s, so a 1.2 s limit would fail about a third of good replies. NEVER_SAY is unchanged; the strict forms are a short allow-list, and everything outside it is reviewed.
 - **The review** of a whole reply has 4 s and runs at minimal effort with 400 tokens: on the 88 OK_TALK, NOT_OK_TALK and NEVER_SAY lines it gave the same verdicts as before (86 of 88, the same two cautious fails), p50 0.85 s.
 
+## Round 4 (2026-11-13): the limits after the Opus review
+
+- **Every sentence is math-only or reviewed.** A sentence Maya says with no review uses only the words of a closed math vocabulary (`src/lib/maya/math-vocab.ts`: numbers, operations, places, plain tutoring verbs, small words), the question's own words and the name token; a question to the child must name the math it asks about. Any other sentence is reviewed on its own, the review started the moment the sentence is complete, and a sentence the review does not pass is never said. A short list of exact sentences also needs no review ("I'm an AI, so I don't eat.", "I'm not a real person."). Every other reaction is reviewed.
+- **No step value in any wording.** A sentence never holds an open step's numbers together with its result ("4 take away 2 leaves 2"), nor the open answer as its places ("2 tens and 4 ones").
+- **The stance follows code's verdict.** After a wrong answer: no "yes", "right", "you got it", "done" and no move to the next step; praise words go to the review with the verdict. After a right step: no "not quite" or "wrong".
+- **A plain stop** is a whole turn from a closed list ("bye", "I want to stop", "Can we stop, Maya?"). "I'm done with the ones" is no stop.
+- **The child's name never goes to a model.** The brief and the review read {name}; code fills the name after the checks, about one turn in three.
+- **Code plans the turn before anything streams.** The model writes "kind" first (math, help, offtopic, stop, safety, other). A math or help turn streams under code's own plan; any other kind reviews each sentence first; safety streams nothing. Once a sentence is out, code's plan wins, so no sent sentence is ever followed by a refused act; a sentence said before a safety turn stays first in the saved turn, before the guidance.
+
 ## The prompt
 
 `CONVERSATION_PROMPT` in `src/lib/maya-model.ts`, version `maya-conversation-3`. It is 3,832 characters; the version 2 prompt was 15,396, and its input with the line offers 24,954 against 3,016 for the turn brief (52 - 28, the second turn).

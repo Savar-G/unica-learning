@@ -122,7 +122,7 @@ function rulePropose(input: ModelInput): unknown {
 /** A version 3 reply with every reading field at its default, for tests and scripted fakes. */
 export function reply(say: string, act: Act, extra: { step?: string; level?: number; reading?: Record<string, unknown>; draw?: { offer: string; place: string }[] } = {}) {
   return {
-    say, act, step: extra.step ?? "", level: extra.level ?? 0,
+    kind: "math", say, act, step: extra.step ?? "", level: extra.level ?? 0,
     reading: {
       answers: [], help: "none", unclear: false, stop: false, safety: "none", writing: false, offTopic: false, mathClaim: false, mathRequests: [],
       outsideScope: "none", scopeSkill: "", unsafeRequest: false, noBoard: false, shorter: false, aboutMaya: "none", start: "none", paper: "none",
