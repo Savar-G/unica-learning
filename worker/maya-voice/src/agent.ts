@@ -19,17 +19,18 @@
 // hang-up, a dropped connection (the call ends if the child is not back within RECONNECT_GRACE_MS), and the end. It
 // takes its clock and timers, so a test drives it without waiting.
 import { ReadableStream, TransformStream } from "node:stream/web";
-import { FlushSentinel, stt, voice, type llm, type tts } from "@livekit/agents";
+import { FlushSentinel, stt, voice, type llm, type tts, type VAD } from "@livekit/agents";
 import type { AudioFrame } from "@livekit/rtc-node";
 import type { FinishOptions } from "@/lib/maya-text";
 import type { VoiceCall, VoiceTurn } from "@/lib/maya-call";
-import type { BoardSpeech, SpeechScope } from "@/lib/board-speech";
+import { speechWords, type BoardSpeech, type SpeechScope } from "@/lib/board-speech";
 import { CuePlaybackOutput } from "./cue-playback";
-import { boardAudio, countedSynthesis } from "./speech-audio";
+import { HeardSignals } from "./heard-signals";
+import { boardAudio, countedSynthesis, type SilentSpeech } from "./speech-audio";
 import { VOICE_METER_TICK_MS } from "@/lib/maya-spend";
 import { limitsOf } from "@/lib/maya";
-import { asksForNumber, CONNECTION_RENEW_MS, childTurnFrom, endsInOpenNumber, GREETING_ID, nextTickAt, RECONNECT_GRACE_MS, type Heard, type TurnSilence, type VoiceTuning } from "@/lib/maya-voice";
-import { ACK_HOLD_LIMIT_MS, ACK_LIMIT_MS, nextAcknowledgement } from "@/lib/maya-voice-ack";
+import { asksForNumber, CONNECTION_RENEW_MS, childTurnFrom, endsInOpenNumber, GREETING_ID, GREETING_TEXT, nextTickAt, RECONNECT_GRACE_MS, type Heard, type TurnSilence, type VoiceTuning } from "@/lib/maya-voice";
+import { ACK_HOLD_LIMIT_MS, ACK_LIMIT_MS, ACK_PHRASES, nextAcknowledgement } from "@/lib/maya-voice-ack";
 import { TurnClock, type AckSkip, type HeardMarks, type TurnOutcome, type VoiceTurnSample } from "./turn-timing";
 
 const userTexts = (ctx: llm.ChatContext) =>
@@ -115,18 +116,25 @@ export class MayaVoiceAgent extends voice.Agent {
    */
   override async sttNode(audio: ReadableStream<AudioFrame> | AsyncIterable<AudioFrame>, settings: voice.ModelSettings) {
     let inputStartedAt: number | null = null;
+    // The signals of each final transcript, for the worker log only: nothing is dropped on them (./heard-signals.ts).
+    let vad: VAD | undefined;
+    try { vad = this.session.vad; } catch { vad = undefined; }
+    const signals = new HeardSignals(vad);
     const input = "pipeThrough" in audio
       ? audio.pipeThrough(new TransformStream<AudioFrame, AudioFrame>({
         transform(frame, controller) {
           inputStartedAt ??= Date.now() - (frame.samplesPerChannel / frame.sampleRate) * 1000;
+          signals.frame(frame);
           controller.enqueue(frame);
         },
+        flush() { signals.close(); },
       }))
       : audio;
     const stream = await voice.Agent.default.sttNode(this, input, settings);
     if (!stream) return null;
     const finals = this.finals;
     const marks = this.marks;
+    const callId = this.call.id;
     return stream.pipeThrough(
       new TransformStream<stt.SpeechEvent | string, stt.SpeechEvent | string>({
         transform(event, controller) {
@@ -137,6 +145,7 @@ export class MayaVoiceAgent extends voice.Agent {
             const wordEndAt = inputStartedAt !== null && end > 0 ? inputStartedAt + end * 1000 : null;
             // A word that "ends" after its transcript came is a clock that does not fit: no mark rather than a wrong one.
             marks.push({ finalAt, wordEndAt: wordEndAt !== null && wordEndAt <= finalAt ? wordEndAt : null });
+            console.info("[maya voice] final transcript", callId, signals.final(event.alternatives));
           }
           controller.enqueue(event);
         },
@@ -165,12 +174,14 @@ export class MayaVoiceAgent extends voice.Agent {
     if (!this.board) return synthesize(text);
     const scope = this.board.scope();
     if (!scope || !this.board.sync.owns(scope)) return null;
-    return boardAudio(text, synthesize, this.board.sync, scope);
+    return boardAudio(text, synthesize, this.board.sync, scope, speech => this.onSilent?.(speech));
   }
 
   /** One-shot: the next speech goes to the voice with no board plan (the worker's own opening). */
   plainNext = false;
   onOpeningMark: ((name: string) => void) | null = null;
+  /** A speech with a board plan whose voice gave no audio (./speech-audio.ts `boardAudio`). */
+  onSilent: ((speech: SilentSpeech) => void) | null = null;
   private starting: Promise<unknown> | null = null;
   /** The worker spoke the opening itself, and the call starts behind it: no opening reply, and a child turn waits for the start. */
   openedByWorker(starting: Promise<unknown>) {
@@ -268,6 +279,9 @@ interface TurnPace {
 /** The greeting's own wait for its end of playback, if the audio never reports one (its words take about 8 s at a calm pace). */
 export const GREETING_HOLD_LIMIT_MS = 20_000;
 
+/** Lines with no teaching in them: when their audio does not come, they are not said again. */
+const FILLERS = new Set([GREETING_TEXT, ...ACK_PHRASES.map(p => p.text)]);
+
 const timeOf = (turns: readonly VoiceTurn[]) => ({
   modelMs: turns.reduce((sum, t) => sum + (t.time?.modelMs ?? 0), 0),
   repairMs: turns.reduce((sum, t) => sum + (t.time?.repairMs ?? 0), 0),
@@ -297,6 +311,8 @@ export class VoiceCallRun {
    */
   private speechEndSeenAt: number | null = null;
   private pace: TurnPace | null = null;
+  /** The plans of words said again after a silent speech: a second silence is not said a third time. */
+  private resaid = new Set<string>();
   /** The guidance on its way to the child. */
   private guidance: { speech: voice.SpeechHandle; over: Promise<void>; scope: SpeechScope | null; cut: boolean; repeated: boolean } | null = null;
   /** Guidance cut while the child was away. They hear it when they are back. */
@@ -352,6 +368,7 @@ export class VoiceCallRun {
     this.agent = new MayaVoiceAgent(call, turn => this.after(turn), options.board ? { sync: options.board, scope: () => this.boardScope } : undefined,
       (stoppedAt, work, mark) => this.reply(stoppedAt, work, mark),
       { greetingOver: () => this.greetingOver(), childWentOn: text => this.childWentOn(text) });
+    this.agent.onSilent = speech => this.silentSpeech(speech);
     call.onGuidance(turn => this.guidanceNow(turn));
     session.on(voice.AgentSessionEventTypes.UserInputTranscribed, ev => { if (ev.transcript.trim()) this.wordsHeard(); });
     session.on(voice.AgentSessionEventTypes.UserStateChanged, ev => {
@@ -748,6 +765,34 @@ export class VoiceCallRun {
     else board.detach(scope);
   }
 
+  /**
+   * A speech whose voice gave no audio: its batches are already on the board (`boardAudio`). The worker log shows it,
+   * and when none of it was heard the words are said once more, with a fresh speech and an empty plan, if nothing came
+   * after it. A filler (a thinking phrase, the greeting) is not said again, and a repeat that is silent too is only logged.
+   */
+  private silentSpeech(speech: SilentSpeech) {
+    const { scope, text, heardAny, failed } = speech;
+    const repeat = this.resaid.has(`${scope.utteranceId}:${scope.generation}`);
+    console.warn("[maya voice] speech had no audio", this.call.id, { words: speechWords(text).length, heardAny, failed, repeat });
+    if (heardAny || repeat || !text.trim() || FILLERS.has(text.trim())) return;
+    const current = this.boardScope;
+    const fresh = () => this.childHere && !this.finishing && !this.guidance && this.session.userState !== "speaking";
+    if (current?.utteranceId !== scope.utteranceId || current.generation !== scope.generation || !fresh()) return;
+    const generation = this.generation;
+    const silentHandle = this.speech;
+    void (async () => {
+      // After the silent speech is over: LiveKit lets its "thinking" state go only when no speech waits behind it.
+      await silentHandle?.waitForPlayout();
+      if (generation !== this.generation || this.boardScope !== current || !fresh()) return;
+      const staging = this.stageBoard({});
+      const mine = this.boardScope;
+      await staging;
+      if (!mine || this.boardScope !== mine || generation !== this.generation || !fresh()) return;
+      this.resaid.add(`${mine.utteranceId}:${mine.generation}`);
+      this.session.say(text, { addToChatCtx: false });
+    })().catch(() => {});
+  }
+
   /** The trace keeps a fixed detail; the reason goes to the worker's log. */
   private boardFailed(error: unknown) {
     console.warn("[maya voice] board stage failed", this.call.id, error instanceof Error ? error.message : String(error));
@@ -757,6 +802,8 @@ export class VoiceCallRun {
     if (!this.options.board) return;
     const id = `speech-${this.segment}-${++this.utterance}`;
     const staging = this.options.board.stage(id, turn.boardCues ?? []);
+    // A batch the board core refused is not drawn, and the call goes on (board-speech.ts `stage`). Ids and codes only.
+    void staging.then(r => { if (r.refused.length) console.warn("[maya voice] board batch refused", this.call.id, r.refused); }, () => {});
     const scope = this.options.board.capture(id);
     this.boardScope = scope;
     if (wait) await staging;
