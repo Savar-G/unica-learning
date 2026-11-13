@@ -17,7 +17,7 @@ import { feelingClaim, plainLanguageProblem } from "./phrases";
 /** Why a reply was refused. */
 export const SAY_REASONS = [
   "empty", "too_long", "too_many_sentences", "long_sentence", "number_not_allowed", "reveals_answer", "reveals_step",
-  "false_equation", "affirms_wrong", "missing_number", "hard_words", "never_say", "hype", "board_words", "reintroduces", "close_asks",
+  "false_equation", "affirms_wrong", "missing_number", "hard_words", "never_say", "hype", "board_words", "reintroduces", "close_asks", "empty_reply",
 ] as const;
 export type SayReason = (typeof SAY_REASONS)[number];
 
@@ -65,6 +65,8 @@ export interface SayRules {
   closing?: boolean;
   /** Maya goes on with no child turn after this reply (a step of the easier example): it asks nothing. */
   noQuestion?: boolean;
+  /** A math turn: the reply must hold some math (a number or a place) or a question, never only praise. */
+  needsSubstance?: boolean;
 }
 
 export type SayVerdict =
@@ -366,6 +368,8 @@ const NEVER: [RegExp, string][] = [
   [/\byour (?:mom|mum|dad|parents?|teacher) (?:will|would|must|is going to)\b/i, "a claim about the child's family"],
   [/\b(?:grammar|grammatical|correct english|proper english)\b/i, "a grammar correction"],
 ];
+/** A word of the math itself: a place, a step or an operation. */
+export const MATH_WORD = /\b(?:ones|tens|hundreds|thousands|column|columns|digit|digits|regroup\w*|carr(?:y|ied)|plus|minus|times|divided|equals|subtract\w*|add\w*|multiply\w*|fraction\w*|numerator|denominator|ten|answer|example)\b/i;
 const AFFIRM = /^(?:yes|yep|yeah|right|correct|exactly|that'?s (?:right|correct|it)|good job|well done|nice)\b/i;
 
 // ---------- The checks ----------
@@ -383,7 +387,7 @@ export function checkSentence(sentence: string, rules: SayRules, index = 0): Say
   if (plain) return no("hard_words", `${plain}: use the plain words of the workbook.`);
   const long = wordsIn(text).map((w) => w.replace(/[^\p{L}]/gu, "").toLowerCase()).find((w) => w.length > 12 && !LONG_OK.has(w));
   if (long) return no("hard_words", `"${long}" is a hard word for a young child.`);
-  if (rules.noIntro && /\b(?:i'?m maya|i am maya|my name is maya)\b|\bwe'?re doing\b.*\btoday\b/i.test(text)) {
+  if (rules.noIntro && /\b(?:i'?m maya|i am maya|my name is maya)\b|\bwe'?re doing\b.*\btoday\b|\bwhere do you want to start\b/i.test(text)) {
     return no("reintroduces", "The opening already said who Maya is and the question: answer what the child said instead.");
   }
   if (rules.noBoard && /\b(?:board|look|watch|see|show me|follow along)\b/i.test(text)) return no("board_words", "The child cannot see the board: use spoken words only.");
@@ -432,6 +436,9 @@ export function checkSay(say: string, rules: SayRules): SayVerdict {
   if (rules.closing && sentences.some((x) => /\?\s*$/.test(x) || /^(?:tell me|can you|could you|what|which|how)\b/i.test(x))) {
     return { ok: false, reason: "close_asks", detail: "This reply ends the call: say a short goodbye and ask nothing.", sentence: sentences.length - 1 };
   }
+  if (rules.needsSubstance && !sentences.some((x) => /\?\s*$/.test(x) || MATH_WORD.test(x) || sayNumbers(x).length > 0)) {
+    return { ok: false, reason: "empty_reply", detail: "Answer the child's math: say what is right or wrong about it, or ask about the step. Praise alone answers nothing.", sentence: 0 };
+  }
   if (rules.noQuestion && sentences.some((x) => /\?\s*$/.test(x))) {
     return { ok: false, reason: "close_asks", detail: "Show this step of the easier example yourself, with its result: ask the child nothing until the example ends.", sentence: sentences.length - 1 };
   }
@@ -457,13 +464,28 @@ export function trimSay(say: string, wordLimit: number): string {
     words += n;
   }
   if (kept.length === 0) return say.trim();
-  // The reply's closing question is what the child answers: when it was cut, it takes the place of the sentences before
-  // it that leave no room for it (the first sentence always stays).
+  // The reply's closing question is what the child answers: when the reply is cut, the first sentence and the closing
+  // question stay and the middle goes (round 3).
   const question = sentences.at(-1)!;
-  if (kept.length < sentences.length && /\?\s*$/.test(question) && wordsIn(question).length <= SENTENCE_WORDS) {
-    const q = wordsIn(question).length;
-    while (kept.length > 1 && (kept.length >= SAY_SENTENCES || words + q > wordLimit)) words -= wordsIn(kept.pop()!).length;
-    if (kept.length < SAY_SENTENCES && words + q <= wordLimit) kept.push(question);
+  const q = wordsIn(question).length;
+  if (kept.length < sentences.length && /\?\s*$/.test(question) && q <= SENTENCE_WORDS && wordsIn(kept[0]).length + q <= wordLimit) {
+    return [kept[0], question].join(" ");
   }
   return kept.join(" ");
+}
+
+/** A sentence that tells the child what to do now ("Try the tens.", "Tell me what 12 minus 8 is."). */
+export const INSTRUCTION = /^(?:now\s+|so\s+|okay,?\s+|next,?\s+|please\s+|can you\s+)?(?:try|tell me|say|write|look at|take|find|work out|subtract|add|count|put|show me|let'?s (?:try|work|find|subtract|add|do|look))\b/i;
+
+/**
+ * A guiding reply ends with one clear question or instruction about the step (round 3). It names what it asks about (a
+ * place, a number or the math), or the sentence before it does. Returns whether `text` already does.
+ */
+export function endsWithAsk(text: string, named = true): boolean {
+  const xs = sentencesOf(text);
+  const last = xs.at(-1);
+  if (!last || !(/\?\s*$/.test(last) || INSTRUCTION.test(last))) return false;
+  if (!named) return true;
+  const names = (x: string | undefined) => !!x && (MATH_WORD.test(x) || sayNumbers(x).length > 0);
+  return names(last) || names(xs.at(-2));
 }

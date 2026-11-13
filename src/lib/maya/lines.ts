@@ -985,12 +985,13 @@ export function openingLine(pkg: OperationPackage, workbook?: { page: number; nu
 }
 
 /**
- * The two openings (D-341), approved by Savar and the Chief of Staff on 2026-11-12: a call on a workbook page names the
- * page and the question number; any other call names the question only.
+ * The two openings (D-341), approved by Savar and the Chief of Staff on 2026-11-12, each ending with a question (approved
+ * by Savar, 2026-11-12): a call on a workbook page names the page and the question number; any other call names the
+ * question only. The child's answer to the question is the model's first turn.
  */
 export const OPENING_LINES = {
-  plain: "Hi there! I'm Maya, an AI math helper. We're doing {question} today.",
-  workbook: "Hi there! I'm Maya, an AI math helper. We're doing page {page}, number {number} today: {question}.",
+  plain: "Hi there! I'm Maya, an AI math helper. We're doing {question} today. Where do you want to start?",
+  workbook: "Hi there! I'm Maya, an AI math helper. We're doing page {page}, number {number} today: {question}. Where do you want to start?",
 } as const;
 
 /** The question as Maya names it: as the page prints it for a missing number or a missing-number evaluate, else its operation. */

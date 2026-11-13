@@ -34,6 +34,8 @@ import {
   step,
   streamRules,
   streamSentenceOk,
+  withoutName,
+  clearStop,
   LINES_VERSION,
   PROPOSAL_VERSION,
   type Outcome,
@@ -71,7 +73,7 @@ export function partialSay(soFar: string): { text: string; complete: boolean } |
   }
   return { text, complete: false };
 }
-import { reviewInput, runReview, REVIEW_TIME_LIMIT_MS, type TalkReviewer } from "@/lib/maya-talk-review";
+import { reviewInput, runReview, CONVERSATION_REVIEW_TIME_LIMIT_MS, REVIEW_TIME_LIMIT_MS, type TalkReviewer } from "@/lib/maya-talk-review";
 import { readFromFence } from "@/lib/ai-fenced";
 import { classifyError, packageHash, redactText, redactTrace, traceCounts, TRACE_KIND, TRACE_VERSION, type MayaTrace, type TraceBoardBatch, type TraceTurn, type TraceObligation } from "@/lib/maya-trace";
 
@@ -324,7 +326,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       if (streamDone || folded.request?.id !== requestId || controller.signal.aborted) return;
       const said = partialSay(soFar);
       if (!said) return;
-      const parts = sentencesOf(said.text);
+      const parts = sentencesOf(rules.dropName ? withoutName(said.text, rules.dropName) : said.text);
       const complete = said.complete ? parts : parts.slice(0, -1);
       for (const sentence of complete.slice(sent.length)) {
         if (!streamSentenceOk(sentence, rules, sent.length, words)) { streamDone = true; return; }
@@ -370,7 +372,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     const texts = [...new Set(first.refusal ? [] : first.effects.flatMap((e) => e.kind === "say" ? e.talk ?? [] : []).filter((t) => t.code === null && t.review === "not_run").map((t) => t.proposed))];
     const t0 = now();
     const before = folded.session;
-    const reviews = options.reviewer ? Promise.all(texts.map(async (text) => ({ text, result: await runReview(options.reviewer!, reviewInput(before, text), options.reviewTimeLimitMs ?? REVIEW_TIME_LIMIT_MS, (error) => options.onError?.(error, { turn: folded.turns.length, source: "review" })) }))) : Promise.resolve([]);
+    const reviews = options.reviewer ? Promise.all(texts.map(async (text) => ({ text, result: await runReview(options.reviewer!, reviewInput(before, text), options.reviewTimeLimitMs ?? (before.conversational ? CONVERSATION_REVIEW_TIME_LIMIT_MS : REVIEW_TIME_LIMIT_MS), (error) => options.onError?.(error, { turn: folded.turns.length, source: "review" })) }))) : Promise.resolve([]);
     const reviewed = reviews.then((results) => {
       append({ kind: "review", at: now(), requestId, reviews: results, ...(texts.length && options.reviewer ? { reviewMs: now() - t0 } : {}) });
     });
@@ -402,6 +404,13 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       const { state, safety } = folded.session;
       if (options.channel === "chat" && state === "SAFETY" && safety.guided && !folded.candidate && !folded.attempts.length) {
         closeByCode();
+        break;
+      }
+      // D-341, round 3: a plain stop is closed in code's approved words at once, with no model call.
+      if (folded.session.conversational && folded.session.stopRequested && !safety.flagged && folded.session.turn && clearStop(folded.session.turn.text) && !folded.candidate && !folded.attempts.length) {
+        // The goodbye is two approved closing phrases: "Thanks for working on this with me. Bye for now!"
+        append({ kind: "fallback", at: now(), proposal: { version: PROPOSAL_VERSION, act: "close", parts: [{ warm: "closing", pick: 8 }, { warm: "closing", pick: 4 }] } });
+        if (!folded.session.outcome) closeByCode();
         break;
       }
       if (folded.candidate) await reviewCandidate(controller);

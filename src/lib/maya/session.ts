@@ -64,7 +64,7 @@ import { claimActs, claimAnswers, claimCommitted, claimConfirm, claimQuestionAsk
 import { closeParts, compareEquationSaid, currentPart, evaluateSteps, evaluateTeaching, partBoards, partCovered, partEquationSaid, partIdOf, stepsBeforeLastPart, withEvaluateExample } from "./evaluate";
 import { isSpot, spotAnswers, spotReveals, spotSessionPackage, spotStepHeard } from "./spot-error";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, isModelOutput, readModelOutput, withoutDefaults, withoutNulls, type Act, type ChildAnswer, type HintLevel, type ModelOutput, type Proposal, type Reading, type Severity } from "./proposal";
-import { checkSay, checkSentence, trimSay, equationKeysOf, equationsOf, sentencesOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, type SayReason, type SayRules, type SayValue } from "./say-check";
+import { checkSay, checkSentence, endsWithAsk, INSTRUCTION, MATH_WORD, trimSay, equationKeysOf, equationsOf, sentencesOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, type SayReason, type SayRules, type SayValue } from "./say-check";
 import type { TalkReviewResult } from "./talk-review";
 
 /** Closing starts 9 minutes into the call; the call ends at 10 minutes. */
@@ -1517,7 +1517,11 @@ export function step(session: Session, event: SessionEvent): StepResult {
           s.turns.push({ at: event.at, speaker: "maya", text, state: s.state, act: "wait" });
         }
         waitForChild(s);
-      } else if (s.conversational) delete s.thinking;
+      } else if (s.conversational) {
+        delete s.thinking;
+        // A plain stop ("I want to stop", "bye", "can we stop") closes in code's approved words, with no model call (round 3).
+        if (clearStop(event.text) && isTeaching(s.state) && !s.safety.flagged) s.stopRequested = true;
+      }
       break;
     }
     case "tick":
@@ -4399,6 +4403,34 @@ function codeProposals(given: Session, refused: readonly unknown[] = [], plan?: 
 
 // ---------- Conversational turns (D-341) ----------
 
+/** The child's name was said in one of Maya's last two turns: this turn leaves it out (round 3: about one turn in three). */
+export function nameRecent(s: Session): string | null {
+  const name = s.variety.name?.trim();
+  if (!name) return null;
+  const re = new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+  return s.turns.filter((t) => t.speaker === "maya").slice(-2).some((t) => re.test(t.text)) ? name : null;
+}
+
+/** A reply with the child's name left out, the words around it kept: "Yes, 4 is right, Leo." becomes "Yes, 4 is right." */
+export function withoutName(text: string, name: string): string {
+  const n = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return text
+    .replace(new RegExp(`(^|[.!?]\\s+)${n},\\s*([a-z])`, "gi"), (_m, lead: string, c: string) => `${lead}${c.toUpperCase()}`)
+    .replace(new RegExp(`\\s*,\\s*${n}(?=[.!?,;:])`, "gi"), "")
+    .replace(new RegExp(`\\s+${n}(?=[.!?,;:])`, "gi"), "")
+    .replace(/\s+,/g, ",").replace(/,([.!?])/g, "$1").replace(/\s{2,}/g, " ").trim();
+}
+
+/**
+ * A plain stop (round 3): the child asks to stop or says goodbye, with no number, no feeling, no question about the
+ * math and nothing personal (a child who is hurt or scared goes to the model and the safety path).
+ */
+export function clearStop(text: string): boolean {
+  const t = text.toLowerCase().replace(/[’]/g, "'");
+  if (valuesOf(t).length > 0 || PERSONAL.test(t) || hardFeeling(t) && !/\b(?:don'?t|do not) want to do (?:this|it|math) (?:any ?more)\b/.test(t)) return false;
+  return /\b(?:i (?:want|wanna) to stop|can we stop|let'?s stop|stop now|i'?m done|i am done|bye|goodbye|see you|i (?:don'?t|do not) want to do (?:this|it|math)(?: any ?more)?|i want to quit|can i go)\b/.test(t);
+}
+
 /** Code's patient lines for a child who is thinking (D-341, round 2): "{name}" is the child's name now and then. */
 export const PATIENT_LINES = ["Take your time, {name}.", "No rush. I'm here when you're ready."] as const;
 
@@ -4536,7 +4568,7 @@ export function turnFacts(s: Session): TurnFact[] {
       // Code's own strict read decides whether the child gave it as an answer (round 2): a question or a hedge did not.
       const heard = heardAnswers(s).some((a) => a.step === fits.id && equivalent(a.value, v));
       facts.push({ text: heard ? `${vt} is right for the step "${fits.id}", and the child said it as their answer.`
-        : `${vt} would be right for the step "${fits.id}", but the child asked it or was not sure: ask them to say it as their answer, and do not say it is right yet.`, numbers: [sv], step: fits.id });
+        : `${vt} would be right for the step "${fits.id}", but the child asked it or was not sure: confirm it warmly in your own words, naming the step and ${vt} ("Are you saying ${vt} for ...?"), and do not say it is right yet.`, numbers: [sv], step: fits.id });
       continue;
     }
     if (valueIn(sv, printed)) continue;
@@ -4636,6 +4668,7 @@ function sayRules(before: Session, after: Session, p: Proposal, planned: string)
     closing: p.act === "close",
     // A step of the easier example with more to come is shown, not asked: Maya goes on with no child turn between.
     noQuestion: p.act === "example_step" && !!pkg && after.exampleShown < pkg.easierExample.steps.length,
+    needsSubstance: !!before.turn && valuesOf(before.turn.text).length > 0 && ["guide", "confirm", "accept_answer", "try_target"].includes(p.act),
     noIntro: before.conversational === true && before.opened && !p.reading?.aboutMaya,
   };
 }
@@ -4646,8 +4679,30 @@ const PERSONAL = /\b(?:mom|mum|dad|family|brother|sister|grandma|grandpa|granny|
 /** A turn the review reads: the child's turn was off topic, about feelings, about Maya or personal, or the reply holds more than math and encouragement. */
 function needsReview(s: Session, p: Proposal, say: string): boolean {
   const r = p.reading ?? {};
+  // A stop needs no review: its reply is a short goodbye, read by code's own patterns (round 3).
+  if ((r.stop || p.act === "close") && !r.safety && !r.unsafeRequest && !PERSONAL.test(say)) return false;
+  // Sentences that are code's strict reactions or plain math need no review either (round 3, strictReply).
+  if (!r.safety && !r.unsafeRequest && !r.outsideScope && r.aboutMaya !== "secret_friend" && !hardFeeling(s.turn?.text) && strictReply(say)) return false;
   return !!(r.offTopic || r.aboutMaya || r.outsideScope || r.unsafeRequest || r.safety || r.stop) || p.act === "redirect" || p.act === "check_in" ||
     hardFeeling(s.turn?.text) || PERSONAL.test(say) || (s.turn !== null && PERSONAL.test(s.turn.text));
+}
+
+/**
+ * The strict reactions Maya may say with no review (round 3): short (at most 15 words) and of a fixed form. A warm word
+ * about what the child said ("Max sounds like a good name for a dog."), a thank-you, a sorry, or the truth about Maya
+ * ("I'm an AI, so I have no pet."). Anything else, a question to the child or a claim about the world, goes to the review.
+ */
+const STRICT_FORMS: readonly RegExp[] = [
+  /^(?:oh,?\s+|aw,?\s+|wow,?\s+)?(?:that|it|[a-z]+(?:\s[a-z]+){0,3})\s+sounds?\s+(?:like\s+)?(?:a\s+|an\s+|so\s+|really\s+)?(?:nice|good|fun|great|lovely|cool|kind|tasty|yummy|hard|tough|exciting)\b[a-z ,']*[.!]$/i,
+  /^(?:thanks|thank you)(?:,? [a-z]+)? for telling me\b[a-z ,']*[.!]$/i,
+  /^i'?m an ai(?: math)?(?: helper)?,? so i (?:don'?t|do not|can'?t|cannot|have no|am not)\b[a-z ,']*[.!]$/i,
+  /^i'?m not a real person[.!]$/i,
+  /^i'?m an ai(?: math)? helper[.!]$/i,
+];
+const strictSentence = (x: string) => x.split(/\s+/).length <= 15 && STRICT_FORMS.some((re) => re.test(x.replace(/[’]/g, "'").trim()));
+/** Every sentence is a strict reaction, or plain math talk with no personal word. */
+function strictReply(say: string): boolean {
+  return sentencesOf(say).every((x) => strictSentence(x) || (!PERSONAL.test(x) && (MATH_WORD.test(x) || valuesOf(x).length > 0 || /\?\s*$/.test(x) && /\b(?:ones|tens|hundreds|column|step|question)\b/i.test(x))));
 }
 
 /** Lines code says in its own words whatever the model wrote: the decline, the outside-work redirect and the fixed AI replies. */
@@ -4665,6 +4720,9 @@ const PLAN_REFUSALS: readonly RefusalCode[] = ["line_not_offered", "free_talk_in
  * asks the model once more, then says code's plan (fallbacks).
  */
 function proposeV3(base: Session, out: ModelOutput, effects: Effect[], reviews: readonly TalkReview[] | undefined, sent: readonly string[] = []): StepResult {
+  // The child's name about one turn in three: a reply right after a turn that said it leaves it out (round 3).
+  const recent = nameRecent(base);
+  if (recent) out = { ...out, say: withoutName(out.say, recent) };
   const reading = out.reading ?? {};
   const acts = () => (gate(base, reading) ?? actsNow(base, reading, false)).acts;
   const no = (code: RefusalCode, reason: string, allowed: Act[], say?: SayReason | "review"): StepResult => ({ session: base, effects, refusal: { code, reason, allowed, ...(say ? { say } : {}) } });
@@ -4685,7 +4743,9 @@ function proposeV3(base: Session, out: ModelOutput, effects: Effect[], reviews: 
     // Beside a clear right final answer, a step the turn does not say clearly is left out too: the answer stands
     // ("The tens are 4 minus 2, that's 2. 24!").
     const final = reading.answers.some((a) => a.step === "result" && a.verdict === "right" && (a.problem ?? "target") === "target" && checkAnswers(base, [a], []) === null);
-    const kept = reading.answers.filter((a) => (a.verdict === "right" && !(final && a.step !== "result")) || !unsaid(a));
+    // A second value for a step the turn already credits ("16. I write 6": 16 for the ones) is left out too.
+    const credited = (a: ChildAnswer) => reading.answers!.some((b) => b !== a && b.step === a.step && b.verdict === "right" && checkAnswers(base, [b], []) === null);
+    const kept = reading.answers.filter((a) => (a.verdict === "right" && !(final && a.step !== "result") && !credited(a)) || !unsaid(a));
     if (kept.length !== reading.answers.length) out = { ...out, reading: { ...reading, ...(kept.length ? { answers: kept } : { answers: undefined }) } };
   }
   const plans = codeProposals(base, [], out);
@@ -4732,12 +4792,41 @@ function proposeV3(base: Session, out: ModelOutput, effects: Effect[], reviews: 
       talk = [{ proposed: say, code: null, review: "pass", shown: say }];
     }
   }
-  const text = p.act === "open" ? `${planned} ${say}` : say;
+  const text = p.act === "open" ? `${planned} ${say}` : withAsk(say, p, planned, 0, r.session, p.level ?? 0);
   const effectsOut = r.effects.map((e, i) => (i === at && e.kind === "say" ? { ...e, text, planned, ...(talk ? { talk } : {}) } : e));
   const turns = [...r.session.turns];
   const last = turns.findLastIndex((t) => t.speaker === "maya" && t.text === planned);
   if (last !== -1) turns[last] = { ...turns[last], text, planned };
   return { session: { ...r.session, turns }, effects: effectsOut, refusal: null };
+}
+
+/**
+ * A guiding reply ends with one clear question or instruction about the step (round 3). When the model's ends with none,
+ * or with a bare one that names nothing ("What can you do there?" after "Hi Mia!"), code's own step question from the plan
+ * takes its place, with no model call. A sentence already streamed (index below `sent`) is never removed.
+ */
+function withAsk(text: string, p: Pick<Proposal, "act">, planned: string, sent: number, after?: Session, level = 0): string {
+  if (!["guide", "accept_answer", "try_target", "clarify"].includes(p.act)) return text;
+  const named = p.act !== "accept_answer";
+  if (endsWithAsk(text, named)) return text;
+  const plan = sentencesOf(planned);
+  // Code's question with what names it: the question alone, or with the plan's sentence before it ("Next up, the ones.
+  // What would you do?"), or an instruction of the plan.
+  const q = plan.findLastIndex((x) => /\?\s*$/.test(x));
+  const asks = q === -1 ? [] : !named || endsWithAsk(plan[q]) ? [plan[q]] : q > 0 && endsWithAsk(plan.slice(q - 1, q + 1).join(" ")) ? plan.slice(q - 1, q + 1) : [];
+  // Else the step's own question at this help level or below, from code's help lines ("Subtract the ones: 12 − 8. What
+  // do you get?").
+  const own = after && p.act !== "accept_answer" ? helpBrief(after).levels.filter((l) => l.level <= Math.max(level, 0)).reverse().flatMap((l) => l.mayShow.split(" / ")).find((w) => endsWithAsk(w)) : undefined;
+  const ownAsk = own ? sentencesOf(own).slice(-2).filter((x, i, all) => i === all.length - 1 || !endsWithAsk(all.at(-1)!)) : [];
+  const ask = asks.length ? asks : plan.some((x) => INSTRUCTION.test(x)) ? plan.filter((x) => INSTRUCTION.test(x)).slice(-1) : ownAsk;
+  if (!ask.length) return text;
+  const xs = sentencesOf(text);
+  const last = xs.at(-1);
+  const bare = !!last && xs.length - 1 >= sent && (/\?\s*$/.test(last) || INSTRUCTION.test(last));
+  const lead = bare ? xs.slice(0, -1) : xs;
+  // When the reply already names the step, code's question alone follows it, not its lead-in again.
+  const extra = ask.length > 1 && lead.some((x) => MATH_WORD.test(x)) ? ask.slice(-1) : ask;
+  return [...lead, ...extra.filter((x) => !lead.includes(x))].join(" ");
 }
 
 /** A turn whose first sentences were already said (streamed): they lead its words, whatever code's plan says after them. */
@@ -4747,7 +4836,9 @@ function withSent(r: StepResult, sent: readonly string[]): StepResult {
   const at = r.effects.findLastIndex((e) => e.kind === "say");
   if (at === -1) return r;
   const said = (r.effects[at] as Extract<Effect, { kind: "say" }>).text;
-  const text = said.startsWith(lead) ? said : `${lead} ${said}`;
+  // What was said already asks about the step: code's line adds nothing. Else only its closing question follows.
+  const question = sentencesOf(said).filter((x) => /\?\s*$/.test(x)).at(-1);
+  const text = said.startsWith(lead) ? said : endsWithAsk(lead) ? lead : `${lead} ${question ?? said}`;
   const turns = [...r.session.turns];
   const last = turns.findLastIndex((t) => t.speaker === "maya" && t.text === said);
   if (last !== -1) turns[last] = { ...turns[last], text, planned: turns[last].planned ?? said };
@@ -4763,12 +4854,12 @@ function withStreamed(base: Session, r: StepResult, at: number, planned: string,
   const all = sentencesOf(say);
   const rest = all.slice(0, sent.length).join(" ") === sent.join(" ") ? all.slice(sent.length) : [];
   let keep = rest.length;
-  const fits = (more: readonly string[]) => checkSay([...sent, ...more].join(" "), rules).ok && !PERSONAL.test(more.join(" "));
+  const fits = (more: readonly string[]) => checkSay([...sent, ...more].join(" "), rules).ok && !more.some((x) => PERSONAL.test(x) && !strictSentence(x));
   while (keep > 0 && !fits(rest.slice(0, keep))) keep--;
   // The closing question, when it was cut, still follows the sentences already said if it fits after them.
   const question = rest.at(-1);
   const tail = keep < rest.length && question && /\?\s*$/.test(question) && fits([question]) && !fits([...rest.slice(0, keep), question]) ? [question] : keep < rest.length && question && /\?\s*$/.test(question) && fits([...rest.slice(0, keep), question]) ? [...rest.slice(0, keep), question] : rest.slice(0, keep);
-  const text = [...sent, ...tail].join(" ");
+  const text = withAsk([...sent, ...tail].join(" "), r.effects[at]?.kind === "say" ? { act: (r.effects[at] as Extract<Effect, { kind: "say" }>).act } : { act: "guide" }, planned, sent.length, r.session, r.session.ladder.hint);
   const turns = [...r.session.turns];
   const last = turns.findLastIndex((t) => t.speaker === "maya" && t.text === planned);
   if (last !== -1) turns[last] = { ...turns[last], text, planned };
@@ -4783,12 +4874,16 @@ function withStreamed(base: Session, r: StepResult, at: number, planned: string,
  * fixed reply or an outside request due, a stop, or a child turn that is not plain math talk (the review needs the
  * whole reply).
  */
-export function streamRules(s: Session): (SayRules & { credits: boolean }) | null {
+export function streamRules(s: Session): (SayRules & { credits: boolean; strict: boolean; dropName: string | null }) | null {
   const pkg = s.package;
-  if (!pkg || !s.turn || s.safety.flagged || s.stopRequested || s.scopeDue || s.replies?.length) return null;
-  // A request for help often turns into the easier example: its first words wait for the whole reply, so a question
-  // streamed before it cannot be followed by the example's code words.
-  if (!isTeaching(s.state) || hardFeeling(s.turn.text) || PERSONAL.test(s.turn.text) || helpInWords(s.turn.text) || saysStuck(s.turn.text)) return null;
+  if (!pkg || !s.turn || s.safety.flagged || s.stopRequested || s.scopeDue === "outside_work" || s.replies?.length) return null;
+  if (!isTeaching(s.state) || hardFeeling(s.turn.text)) return null;
+  // A turn about the child's life or Maya streams only code's strict reactions and plain math (round 3): anything else in
+  // it waits for the review.
+  const personal = !!s.scopeDue || PERSONAL.test(s.turn.text) || /\b(?:you|your)\b/i.test(s.turn.text) && !/\b(?:help|show|tell me)\b/i.test(s.turn.text);
+  // A request for help may turn into the easier example (round 3): it streams, but asks nothing before code knows the act.
+  const main = isTeaching(s.state) ? s.state : s.resume;
+  const exampleLikely = main === "ASSESS" && s.done.length === 0 && (helpInWords(s.turn.text) || saysStuck(s.turn.text));
   const credits = heardAnswers(s);
   const released = s.solved !== null || s.lastResult === "right" || credits.some((a) => a.step === "result" && a.verdict === "right");
   const done = [...s.done, ...credits.filter((a) => a.step !== "result" && a.verdict === "right").map((a) => a.step)];
@@ -4807,6 +4902,9 @@ export function streamRules(s: Session): (SayRules & { credits: boolean }) | nul
     accepting: released,
     noIntro: s.conversational === true && s.opened,
     credits: credits.some((a) => a.verdict === "right"),
+    noQuestion: exampleLikely,
+    strict: personal,
+    dropName: nameRecent(s),
   };
 }
 
@@ -4817,7 +4915,10 @@ export function streamRules(s: Session): (SayRules & { credits: boolean }) | nul
  */
 export function streamSentenceOk(sentence: string, rules: NonNullable<ReturnType<typeof streamRules>>, index: number, wordsBefore: number): boolean {
   if (index >= 3 || wordsBefore + sentence.split(/\s+/).filter(Boolean).length > rules.wordLimit) return false;
-  if (PERSONAL.test(sentence) || (!rules.credits && /^(?:yes|yep|yeah|right|correct|exactly|that'?s (?:right|correct|it)|good job|well done|nice)\b/i.test(sentence.trim()))) return false;
+  // A bare question ("What can you do there?") waits: code may put its own step question in its place.
+  if (/\?\s*$/.test(sentence) && (rules.noQuestion || (!MATH_WORD.test(sentence) && valuesOf(sentence).length === 0))) return false;
+  if (rules.strict && !strictSentence(sentence) && (PERSONAL.test(sentence) || !(MATH_WORD.test(sentence) || valuesOf(sentence).length > 0))) return false;
+  if ((PERSONAL.test(sentence) && !(rules.strict && strictSentence(sentence))) || (!rules.credits && /^(?:yes|yep|yeah|right|correct|exactly|that'?s (?:right|correct|it)|good job|well done|nice)\b/i.test(sentence.trim()))) return false;
   return checkSentence(sentence, rules, index).ok;
 }
 
@@ -5147,7 +5248,8 @@ export function phraseOffers(session: Session, group: PhraseGroup): { pick: numb
   const ready = new Set([1, 2, 3, 4, 8, 12]);
   const closingEffort = new Set([2, 7, 10, 13, 14]);
   const asked = askedNow(session);
-  const hard = hardFeeling(childTurnText(session));
+  // A plain stop in a conversational call ("I don't want to do this anymore") gets the calm goodbye of the closing group.
+  const hard = hardFeeling(childTurnText(session)) && !(session.conversational && session.stopRequested && group === "closing");
   const turn = ([...session.turns].reverse().find((t) => t.speaker === "child")?.text ?? "").replace(/’/g, "'");
   const positive = CHEER_AT_FIRST_SHIP && !hard && !/[,]/.test(turn)
     && /^[^.!?]*[.!?]?$/.test(turn.trim())
@@ -5487,7 +5589,7 @@ function speak(s: Session, p: Proposal, view: View, reviews: readonly TalkReview
     return pool[chooseWording(s.variety, pool.map(id), s.now!)];
   };
   const phrase = (group: PhraseGroup, echoed: string | null = null, pick?: number, only?: readonly string[]): string => {
-    if (!only && hardFeeling(childTurnText(s)) && phraseOffers(s, group).length === 0) return phrase("smalltalk", null, undefined, FEELING_SMALLTALK);
+    if (!only && hardFeeling(childTurnText(s)) && phraseOffers(s, group).length === 0 && !(s.conversational && s.stopRequested && group === "closing")) return phrase("smalltalk", null, undefined, FEELING_SMALLTALK);
     if (!only && phraseOffers(s, group).length === 0) return phrase("smalltalk", null, undefined, NEUTRAL_SMALLTALK);
     const bank = PHRASES[group];
     const eligible = new Set(phraseOffers(s, group).map((o) => o.pick - 1));
@@ -5538,7 +5640,7 @@ function speak(s: Session, p: Proposal, view: View, reviews: readonly TalkReview
         : phrase(part.warm, part.echo === undefined ? null : echoOf(s, part.echo), part.pick);
       // A hard feeling gets FEELING_SMALLTALK, never a cheerful wording, whatever the model picked (phraseOffers already
       // leaves those out; this holds when a group has nothing else left).
-      add("warm", !s.mathClaim && hardFeeling(childTurnText(s)) && part.warm !== "empathy" && ![...FEELING_SMALLTALK, ...NEUTRAL_SMALLTALK].includes(warm) ? phrase("smalltalk", null, undefined, FEELING_SMALLTALK) : warm);
+      add("warm", !s.mathClaim && hardFeeling(childTurnText(s)) && part.warm !== "empathy" && !(s.conversational && s.stopRequested && part.warm === "closing") && ![...FEELING_SMALLTALK, ...NEUTRAL_SMALLTALK].includes(warm) ? phrase("smalltalk", null, undefined, FEELING_SMALLTALK) : warm);
       continue;
     }
     if ("talk" in part) {

@@ -13,6 +13,14 @@ import { classifyError } from "@/lib/maya-trace";
 export const REVIEW_DEFAULT_MODEL = "anthropic/claude-haiku-5.5";
 /** The adapter's time limit for one review; a review that takes longer counts as a fail. */
 export const REVIEW_TIME_LIMIT_MS = 8_000;
+/** D-341, round 3: the review of a conversational reply as a whole must answer within this, or it counts as a fail. */
+export const CONVERSATION_REVIEW_TIME_LIMIT_MS = 4_000;
+/**
+ * D-341, round 3: the conversational review thinks as little as Haiku allows. Measured on the 88 OK_TALK, NOT_OK_TALK and
+ * NEVER_SAY lines (2026-11-12): minimal with 400 tokens gave the same verdicts as low with 2,000 (86 of 88, the same two
+ * cautious fails), p50 0.85 s against 0.97 s; 200 tokens cut off four answers, which then counted as errors.
+ */
+export const CONVERSATION_REVIEW_REQUEST = { effort: "minimal" as const, maxTokens: 400 };
 /** The turns of the call the review reads, besides the line. */
 const REVIEW_TURNS = 6;
 
@@ -36,13 +44,15 @@ export function reviewInput(session: Session, line: string): TalkReviewInput {
 }
 
 /** The review through the AI client: one structured-output request per line. */
-export function aiTalkReviewer(client: AiClient, options: { effort?: "low" | "medium" | "high" } = {}): TalkReviewer {
+export function aiTalkReviewer(client: AiClient, options: { effort?: "minimal" | "low" | "medium" | "high"; conversation?: { effort: "minimal" | "low"; maxTokens: number } } = {}): TalkReviewer {
+  const conversation = options.conversation ?? CONVERSATION_REVIEW_REQUEST;
   return {
     id: client.model,
     promptVersion: TALK_REVIEW_PROMPT_VERSION,
     review: async (input, signal) =>
       readTalkReview(await client.json(
-        { name: "maya_talk_review", system: input.conversation ? CONVERSATION_REVIEW_SYSTEM : TALK_REVIEW_SYSTEM, content: [{ type: "text", text: JSON.stringify(input) }], schema: TALK_REVIEW_SCHEMA as unknown as Record<string, unknown>, effort: options.effort ?? "low", maxTokens: 2_000 },
+        { name: "maya_talk_review", system: input.conversation ? CONVERSATION_REVIEW_SYSTEM : TALK_REVIEW_SYSTEM, content: [{ type: "text", text: JSON.stringify(input) }], schema: TALK_REVIEW_SCHEMA as unknown as Record<string, unknown>,
+          ...(input.conversation ? { effort: conversation.effort, maxTokens: conversation.maxTokens } : { effort: options.effort ?? "low", maxTokens: 2_000 }) },
         signal,
       )),
   };

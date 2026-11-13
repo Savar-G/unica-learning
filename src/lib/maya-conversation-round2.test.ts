@@ -51,8 +51,8 @@ describe("B: a long reply is cut, not repaired", () => {
     const { session, model } = call(() => reply("Hi Leo. Let's look at the ones. There is a 2 on top and an 8 below it in the column. What can you do there?", "guide", { step: "ones" }));
     await session.start();
     const out = await session.child("Hi");
-    // The closing question takes the place of the third sentence: the child gets something to answer.
-    expect(out.say).toEqual(["Hi Leo. Let's look at the ones. What can you do there?"]);
+    // The first sentence and the closing question stay; the bare question gets code's named step question (round 3).
+    expect(out.say).toEqual(["Hi Leo. Next up, the ones. What would you do?"]);
     expect(model.briefs).toHaveLength(1);
     expect(sources(lastMaya(session))).toEqual(["model"]);
   });
@@ -101,14 +101,16 @@ describe("A: the first sentence streams as it arrives", () => {
     parts.length = 0;
     const out = await session.child("Let's do it.");
     expect(atEnd[0].map(([x]) => x)).toEqual(["Let's look at the ones together."]);
-    expect(out.say[0].startsWith("Let's look at the ones together. ")).toBe(true);
+    // What was sent already tells the child what to do about the step: code's line adds nothing after it.
+    expect(out.say).toEqual(["Let's look at the ones together."]);
     expect(sources(lastMaya(session))).toEqual(["model", "fallback"]);
   });
-  it("does not stream a turn that is not plain math talk", async () => {
-    const { session, atEnd } = streamed(() => reply("A dog sounds fun. Let's look at the ones now.", "redirect", { reading: { offTopic: true } }));
+  it("does not stream a personal sentence that is no strict reaction", async () => {
+    const { session, atEnd, parts } = streamed(() => reply("Dogs are the best pets in the world. Let's look at the ones now.", "redirect", { reading: { offTopic: true } }));
     await session.start();
+    parts.length = 0;
     await session.child("I have a dog.");
-    expect(atEnd).toEqual([]);
+    expect(atEnd[0]).toEqual([]);
   });
 });
 
@@ -201,26 +203,93 @@ describe("F and G: the fallback and the close", () => {
   });
 });
 
-describe("A: a request for help does not stream", () => {
-  it("waits for the whole reply when the child asks for help", async () => {
-    let now = T0;
-    const atEnd: number[] = [];
-    const model = conversationalFake({ answer: () => reply("Sure. Let's look at the ones.", "guide", { step: "ones" }), stream: { beforeEnd: async () => { atEnd.push(parts.length); } } });
-    const parts: string[] = [];
-    const session = createTextSession({ callId: "r2h", package: PKG, model, clock: () => (now += 100), onSayPart: (x) => parts.push(x) });
-    await session.start();
-    parts.length = 0;
-    await session.child("I don't get it. Can you help me?");
-    expect(atEnd).toEqual([]);
-    expect(parts).toEqual(["Sure.", "Let's look at the ones."]);
-  });
-});
-
 describe("the easier example is shown, not asked", () => {
   it("refuses a question in a step of the example with more steps to come", async () => {
     const { session } = call((b, n) => (n === 0 ? reply("Here is an easier one: 42 minus 7. What is 12 minus 7?", "example_step", { reading: { start: "no_start" } }) : reply("Here is an easier one: 42 minus 7. We take a ten, so 2 ones become 12, and 12 minus 7 is 5.", "example_step", { reading: { start: "no_start" } })));
     await session.start();
     await session.child("I don't know how to start.");
     expect(session.trace().counts.sayRefusals).toMatchObject({ close_asks: 1 });
+  });
+});
+
+describe("round 3: a guiding reply ends with a named question", () => {
+  it("puts code's step question in place of a bare one", async () => {
+    const { session } = call(() => reply("Hi Mia! What can you do there?", "guide", { step: "ones" }));
+    await session.start();
+    const out = await session.child("Hi");
+    expect(out.say[0].startsWith("Hi Mia! ")).toBe(true);
+    expect(out.say[0]).toMatch(/\bones\b/);
+    expect(out.say[0]).toMatch(/\?$/);
+  });
+  it("adds code's step question to a reply with none", async () => {
+    const { session } = call(() => reply("2 minus 8 can't work, because 2 is smaller than 8. So we take a ten.", "guide", { step: "ones", level: 2 }));
+    await session.start();
+    const out = await session.child("I can't do 2 minus 8");
+    expect(out.say[0]).toContain("2 minus 8 can't work, because 2 is smaller than 8.");
+    expect(out.say[0]).toMatch(/\?$/);
+  });
+});
+
+describe("round 3: the review only where it is needed", () => {
+  it("a strict reaction and a math bridge need no review, and stream", async () => {
+    let now = T0;
+    const parts: string[] = [];
+    const reviewer = fakeTalkReviewer();
+    const model = conversationalFake({ answer: () => reply("Max sounds like a good name for a dog. I'm an AI, so I have no pet. What can you do with the 2 and the 8?", "redirect", { reading: { offTopic: true } }), stream: {} });
+    const session = createTextSession({ callId: "r3o", package: PKG, model, clock: () => (now += 100), childName: "Leo", reviewer, onSayPart: (x) => parts.push(x) });
+    await session.start();
+    parts.length = 0;
+    const out = await session.child("Do you like dogs? I have a dog named Max.");
+    expect(reviewer.requests).toHaveLength(0);
+    expect(out.say).toEqual(["Max sounds like a good name for a dog. I'm an AI, so I have no pet. What can you do with the 2 and the 8?"]);
+    expect(parts[0]).toBe("Max sounds like a good name for a dog.");
+  });
+  it("any other reply to an off-topic turn is reviewed", async () => {
+    const { session } = call(() => reply("Dogs are the best pets in the world. Let's get back to the ones.", "redirect", { reading: { offTopic: true } }));
+    await session.start();
+    await session.child("I have a dog.");
+    const t = lastMaya(session);
+    expect(t?.kind === "maya" && t.attempts[0].talk?.[0]?.review).toBe("pass");
+  });
+  it("a plain stop closes at once in code's approved words, with no model call", async () => {
+    const { session, model } = call(() => reply("This should not be asked.", "close"));
+    await session.start();
+    const out = await session.child("I don't want to do this anymore. Can we stop?");
+    expect(model.briefs).toHaveLength(0);
+    expect(out.ended?.reason).toBe("child_stopped");
+    expect(out.say).toEqual(["Thanks for working on this with me. Bye for now!"]);
+    const { checkTrace } = await import("@/lib/maya-trace");
+    expect(checkTrace(await session.finish({ reason: "child_stopped" })).ok).toBe(true);
+  });
+  it("a stop with a feeling or a hurt goes to the model", async () => {
+    const { clearStop } = await import("@/lib/maya");
+    expect(clearStop("I want to stop. My dad hits me.")).toBe(false);
+    expect(clearStop("bye")).toBe(true);
+    expect(clearStop("I want to stop, I'm scared.")).toBe(false);
+  });
+  it("a help request streams, but asks nothing before the act is known", async () => {
+    let now = T0;
+    const parts: string[] = [];
+    const model = conversationalFake({ answer: () => reply("Sure, Leo. Here is a new, easier problem: 42 minus 7. We take a ten, so 2 ones become 12.", "example_step", { reading: { start: "no_start" } }), stream: {} });
+    const session = createTextSession({ callId: "r3h", package: PKG, model, clock: () => (now += 100), childName: "Leo", reviewer: fakeTalkReviewer(), onSayPart: (x) => parts.push(x) });
+    await session.start();
+    parts.length = 0;
+    await session.child("I don't get it. Can you help me?");
+    expect(parts[0]).toBe("Sure, Leo.");
+  });
+});
+
+describe("round 3: no repeated question after streamed words", () => {
+  it("a second value for a credited step is left out, so the turn needs no repair", async () => {
+    let now = T0;
+    const parts: string[] = [];
+    const model = conversationalFake({ answer: (b) => /16/.test(b.childTurn ?? "")
+      ? reply("Yes, 7 plus 9 is 16. Now the tens: what is 2 plus 3 plus the 1 you carried?", "guide", { step: "tens", reading: { answers: [ans(16, "ones"), ans(6, "ones")] } })
+      : reply("Let's look at the ones. What is 7 plus 9?", "guide", { step: "ones" }), stream: {} });
+    const session = createTextSession({ callId: "r3a", package: SAMPLE_PACKAGES["add-27-39"], model, clock: () => (now += 100), childName: "Leo", reviewer: fakeTalkReviewer(), onSayPart: (x) => parts.push(x) });
+    await session.start();
+    const out = await session.child("oh 16. I write 6 and carry the 1");
+    expect(out.say).toEqual(["Yes, 7 plus 9 is 16. Now the tens: what is 2 plus 3 plus the 1 you carried?"]);
+    expect(session.session.done).toEqual(["ones"]);
   });
 });
