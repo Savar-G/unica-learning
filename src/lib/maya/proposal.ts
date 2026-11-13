@@ -158,7 +158,7 @@ export const PROPOSAL_SCHEMA = {
   required: ["version", "act", "parts", "reading", "step", "level", "understanding", "draw", "board"],
   properties: {
     version: { const: PROPOSAL_VERSION },
-    act: { enum: [...ACTS] },
+    act: { enum: ACTS.filter((act) => act !== "give_answer") },
     parts: {
       type: "array",
       maxItems: PART_LIMITS.parts,
@@ -249,5 +249,126 @@ export const PROPOSAL_SCHEMA = {
 export function withoutNulls(raw: unknown): unknown {
   if (Array.isArray(raw)) return raw.map(withoutNulls);
   if (typeof raw !== "object" || raw === null) return raw;
-  return Object.fromEntries(Object.entries(raw).filter(([, v]) => v !== null).map(([k, v]) => [k, k === "board" ? v : withoutNulls(v)]));
+  // A clock time keeps its null period: the 24-hour clock with no period is its value (clock-times.ts, C3c).
+  const time = (raw as { type?: unknown }).type === "time";
+  return Object.fromEntries(Object.entries(raw).filter(([k, v]) => v !== null || (time && k === "period")).map(([k, v]) => [k, k === "board" ? v : withoutNulls(v)]));
+}
+
+// ---------- Version 3: conversational Maya (D-341) ----------
+
+/** The version of the model's conversational output. */
+export const MODEL_OUTPUT_VERSION = 3;
+
+/**
+ * The model's output in version 3 (D-341): Maya's words (`say`, the model's own), then the act, the step and the help
+ * level, the model's reading of the child's turn and the board offers to draw. Code plans the act's lines itself and
+ * checks `say` against them (say-check.ts); the model picks no line.
+ */
+export interface ModelOutput {
+  say: string;
+  act: Act;
+  step?: string;
+  level?: HintLevel;
+  reading?: Reading;
+  draw?: { offer: string; place?: string }[];
+}
+
+const answerValueV3 = {
+  anyOf: [
+    { type: "object", additionalProperties: false, required: ["type", "value"], properties: { type: { const: "number" }, value: { type: "number" } } },
+    { type: "object", additionalProperties: false, required: ["type", "numerator", "denominator"], properties: { type: { const: "fraction" }, numerator: { type: "integer" }, denominator: { type: "integer" } } },
+    { type: "object", additionalProperties: false, required: ["type", "whole", "numerator", "denominator"], properties: { type: { const: "mixed" }, whole: { type: "integer" }, numerator: { type: "integer" }, denominator: { type: "integer" } } },
+    { type: "object", additionalProperties: false, required: ["type", "quotient", "remainder"], properties: { type: { const: "remainder" }, quotient: { type: "integer" }, remainder: { type: "integer" } } },
+  ],
+};
+
+/**
+ * The version 3 output as a JSON schema for strict structured output. Every field is required, with a plain default
+ * ("none", false, "", 0 or []) in place of null, so the schema has only two unions (the answer value) and no bounds
+ * strict output refuses (#903). `say` comes first, so a streaming client gets Maya's words first.
+ */
+export const MODEL_OUTPUT_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["say", "act", "step", "level", "reading", "draw"],
+  properties: {
+    say: { type: "string" },
+    act: { enum: ACTS.filter((act) => act !== "give_answer") },
+    step: { type: "string" },
+    level: { enum: [0, 1, 2, 3, 4] },
+    reading: {
+      type: "object",
+      additionalProperties: false,
+      required: ["answers", "help", "unclear", "stop", "safety", "writing", "offTopic", "mathClaim", "mathRequests", "outsideScope", "scopeSkill", "unsafeRequest", "noBoard", "shorter", "aboutMaya", "start", "paper", "correctsHearing"],
+      properties: {
+        answers: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["value", "step", "problem", "verdict"],
+            properties: { value: answerValueV3, step: { type: "string" }, problem: { enum: ["target", "example"] }, verdict: { enum: ["right", "wrong"] } },
+          },
+        },
+        help: { enum: ["none", "more", "show"] },
+        unclear: { type: "boolean" },
+        stop: { type: "boolean" },
+        safety: { enum: ["none", "concern", "immediate"] },
+        writing: { type: "boolean" },
+        offTopic: { type: "boolean" },
+        mathClaim: { type: "boolean" },
+        mathRequests: {
+          type: "array",
+          items: {
+            type: "object", additionalProperties: false, required: ["text", "operation", "operands"],
+            properties: { text: { type: "string" }, operation: { enum: ["add", "subtract", "multiply", "divide", "pair"] }, operands: { type: "array", items: answerValueV3 } },
+          },
+        },
+        outsideScope: { enum: ["none", "outside_work", "other_person", "other_topic"] },
+        scopeSkill: { type: "string" },
+        unsafeRequest: { type: "boolean" },
+        noBoard: { type: "boolean" },
+        shorter: { type: "boolean" },
+        aboutMaya: { enum: ["none", "identity", "secret_friend"] },
+        start: { enum: ["none", "has_work", "no_start"] },
+        paper: { enum: ["none", "written", "declined"] },
+        correctsHearing: { type: "boolean" },
+      },
+    },
+    draw: {
+      type: "array",
+      items: { type: "object", additionalProperties: false, required: ["offer", "place"], properties: { offer: { type: "string" }, place: { type: "string" } } },
+    },
+  },
+} as const;
+
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+
+/**
+ * A reading with its plain defaults left out ("none", false, "", [] and null all read as a missing field), so the
+ * session reads a version 3 reading like a version 2 one.
+ */
+export function withoutDefaults(reading: unknown): unknown {
+  if (!isRecord(reading)) return reading;
+  return Object.fromEntries(Object.entries(reading).filter(([, v]) => v !== null && v !== false && v !== "none" && v !== "" && !(Array.isArray(v) && v.length === 0)));
+}
+
+/** A version 3 output: an object with `say` as a string. */
+export const isModelOutput = (raw: unknown): raw is Record<string, unknown> => isRecord(raw) && typeof raw.say === "string" && (raw.version === undefined || raw.version === MODEL_OUTPUT_VERSION);
+
+/**
+ * A version 3 output as the session reads it: defaults left out, the step and level only where they mean something,
+ * and the board offers without an empty place. Null when it is not version 3.
+ */
+export function readModelOutput(raw: unknown): ModelOutput | null {
+  if (!isModelOutput(raw)) return null;
+  const out: Record<string, unknown> = { say: raw.say, act: raw.act };
+  if (typeof raw.step === "string" && raw.step !== "") out.step = raw.step;
+  if (raw.level !== undefined && raw.level !== null) out.level = raw.level;
+  const reading = withoutDefaults(withoutNulls(raw.reading));
+  if (isRecord(reading) && Object.keys(reading).length > 0) out.reading = reading;
+  if (Array.isArray(raw.draw) && raw.draw.length > 0) {
+    out.draw = raw.draw.map((d) => (isRecord(d) ? Object.fromEntries(Object.entries(d).filter(([k, v]) => !(k === "place" && (v === "" || v === null)))) : d));
+  }
+  return out as unknown as ModelOutput;
 }

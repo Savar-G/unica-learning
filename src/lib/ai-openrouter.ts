@@ -31,7 +31,7 @@ function body(model: string, request: AiJsonRequest, provider?: OpenRouterProvid
   const output = openRouterJsonOutput(model, request);
   return {
     model,
-    stream: false,
+    stream: request.onText !== undefined,
     max_tokens: request.maxTokens ?? MAX_TOKENS,
     messages: [
       { role: "system", content: output.system },
@@ -42,7 +42,7 @@ function body(model: string, request: AiJsonRequest, provider?: OpenRouterProvid
     provider: provider ?? { require_parameters: true },
     // Usage accounting: the answer reports its tokens and cost (the AI usage ledger, src/lib/ai-usage.ts).
     usage: { include: true },
-    ...(request.effort ? { reasoning: { effort: request.effort, exclude: true } } : {}),
+    ...(request.effort && request.effort !== "none" ? { reasoning: { effort: request.effort, exclude: true } } : {}),
   };
 }
 
@@ -111,8 +111,70 @@ function readOutput(content: string, strict: boolean): unknown {
   throw new Error("the output is not valid JSON");
 }
 
+/**
+ * A streamed answer (server-sent events, D-341): each `data:` line is one chunk of the completion, and the output text
+ * is the chunks' `delta.content` in order. `onText` gets the text so far after each chunk. The end is the same checks
+ * as an answer sent whole: an error, a refusal, a finish reason other than "stop", or no output throws.
+ */
+async function readStream(res: Response, strict: boolean, onText: (soFar: string) => void, onUsage?: (u: OpenRouterUsage) => void): Promise<unknown> {
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error("no output");
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let content = "";
+  let finish: string | null = null;
+  let native: string | null = null;
+  let used: OpenRouterUsage | null = null;
+  const report = () => {
+    if (used && onUsage) { try { onUsage(used); } catch { /* recording never fails a call */ } }
+    used = null;
+  };
+  const take = (line: string) => {
+    if (!line.startsWith("data:")) return;
+    const data = line.slice(5).trim();
+    if (data === "" || data === "[DONE]") return;
+    let chunk: Completion & { choices?: { delta?: { content?: unknown; refusal?: string | null } }[] };
+    try {
+      chunk = JSON.parse(data);
+    } catch {
+      return;
+    }
+    // The usage comes in the stream's last chunk (the AI usage ledger): the call is billed whatever its end is.
+    used = usageOf(chunk) ?? used;
+    if (chunk.error) throw new Error(`OpenRouter error ${short(chunk.error.code)}: ${short(chunk.error.message)}`);
+    const choice = chunk.choices?.[0] as (NonNullable<Completion["choices"]>[number] & { delta?: { content?: unknown; refusal?: string | null } }) | undefined;
+    if (!choice) return;
+    if (choice.error) throw new Error(`OpenRouter error ${short(choice.error.code)}: ${short(choice.error.message)}`);
+    if (choice.delta?.refusal) throw new Error("the model refused");
+    if (typeof choice.delta?.content === "string" && choice.delta.content !== "") {
+      content += choice.delta.content;
+      onText(content);
+    }
+    if (choice.finish_reason) finish = choice.finish_reason;
+    if (choice.native_finish_reason) native = choice.native_finish_reason;
+  };
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (value) buffer += decoder.decode(value, { stream: true });
+      let at = buffer.indexOf("\n");
+      while (at !== -1) {
+        take(buffer.slice(0, at).replace(/\r$/, ""));
+        buffer = buffer.slice(at + 1);
+        at = buffer.indexOf("\n");
+      }
+      if (done) break;
+    }
+    if (buffer) take(buffer);
+  } finally { report(); }
+  if (native === "refusal") throw new Error("the model refused");
+  if (finish !== "stop") throw new Error(`the model stopped: ${short(finish)} (${short(native)})`);
+  if (!content.trim()) throw new Error("no output");
+  return readOutput(content, strict);
+}
+
 /** One try: the parsed JSON output, or an error. Error messages hold codes and OpenRouter's words, never the output. */
-async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: AbortSignal, timeout: number, strict: boolean, onDispatch?: () => void, onUsage?: (u: OpenRouterUsage) => void): Promise<unknown> {
+async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: AbortSignal, timeout: number, strict: boolean, onDispatch?: () => void, onUsage?: (u: OpenRouterUsage) => void, onText?: (soFar: string) => void): Promise<unknown> {
   let res: Response;
   try {
     const options = { ...init, signal: AbortSignal.any([signal, AbortSignal.timeout(timeout)]) };
@@ -122,6 +184,14 @@ async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: A
     if (signal.aborted) throw new Error("time is up");
     const timedOut = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
     throw new Retryable(timedOut ? `OpenRouter did not answer in time (${timeout} ms)` : `OpenRouter could not be reached: ${short(e instanceof Error ? e.message : e)}`);
+  }
+  if (onText && res.ok && (res.headers.get("content-type") ?? "").includes("text/event-stream")) {
+    try {
+      return await readStream(res, strict, onText, onUsage);
+    } catch (e) {
+      if (signal.aborted) throw new Error("time is up");
+      throw e;
+    }
   }
   const text = await res.text().catch(() => "");
   let data: Completion | null = null;
@@ -195,7 +265,7 @@ export function openRouterClient({
         await onRequest?.();
         if (signal.aborted) throw new Error("time is up");
         try {
-          return await once(fetch, init, signal, timeout, strict, onDispatch, onUsage);
+          return await once(fetch, init, signal, timeout, strict, onDispatch, onUsage, request.onText);
         } catch (e) {
           if (!(e instanceof Retryable) || attempt >= maxRetries || signal.aborted) throw e instanceof Retryable ? new Error(e.message) : e;
         }

@@ -11,7 +11,7 @@
 //   --cases <ids>            only these cases, comma-separated (default: every required case). A part of the suite
 //                            is never a gate result: the exit code is 1.
 //   --runs <n>               runs per case (default 3; anything else is not a gate result either)
-//   --concurrency <n>        runs at the same time (default 3)
+//   --concurrency <n>        runs at the same time (default 2 on paid OpenRouter calls, else 3)
 //   --out <dir>              where to save the run (default traces/maya-practice/<time>)
 //   --report <dir>           rebuild report.md and report.json from a saved run, and stop
 //   --maya-model <id>        Maya's model, the turn model (default AI_MODEL, else the AI client's default; with
@@ -38,6 +38,10 @@
 //
 // The key: OPENROUTER_API_KEY in the environment, or OPENROUTER_API_KEY_FILE (a file that holds only the key), or
 // .env.local. The exit code is 0 only when every planned run passed.
+//
+// Before a paid OpenRouter run, the credit check (src/lib/maya-practice/credits.ts) reads what is left on the account and
+// refuses the run when it is below the estimate plus the need of the runs in flight, or when it cannot be read. It uses the
+// run's own key (an ordinary key reads the credits route).
 import { execFileSync, execSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -46,8 +50,8 @@ import { anthropicClient } from "@/lib/ai-anthropic";
 import { claudeCliClient } from "@/lib/ai-claude-cli-practice";
 import { openRouterClient } from "@/lib/ai-openrouter";
 import { freeTalkProblem, NEVER_SAY, NOT_OK_TALK, OK_TALK, TALK_REVIEW_PROMPT_VERSION } from "@/lib/maya";
-import { aiMayaModel, type MayaModel } from "@/lib/maya-model";
-import { ruleMayaModel } from "@/lib/maya-model-fake";
+import { conversationalMayaModel, type MayaModel } from "@/lib/maya-model";
+import { ruleConversationalModel } from "@/lib/maya-model-fake";
 import { aiTalkReviewer, fakeTalkReviewer, REVIEW_DEFAULT_MODEL, runReview, type TalkReviewer } from "@/lib/maya-talk-review";
 import { redactText } from "@/lib/maya-trace";
 import { randomUUID } from "node:crypto";
@@ -56,8 +60,8 @@ import type { Database } from "@/lib/database";
 import { createSpendLedger, recordLocalSpend, spendConfig } from "@/lib/maya-spend";
 import { mayaSpendStore } from "@/lib/maya-spend-store";
 import {
-  generatedPracticeSet, practiceExecution, aiChildSimulator, aiJudge, aiValidityJudge, buildReport, fakeValidityJudge, fileHash, cappedClient, estimateCost, fakeJudge, freeTalkMarkdown, freeTalkReport, meteredFetch, planSuite, PRACTICE_CASES, reportMarkdown,
-  RUNS_PER_CASE, runSuite, scriptedSimulator, SIMULATOR_PROMPT_VERSION, Spending, timedTurns, turnTimeMarkdown,
+  generatedPracticeSet, practiceExecution, aiChildSimulator, aiJudge, aiValidityJudge, buildReport, capProblem, checkCredits, fakeValidityJudge, fileHash, cappedClient, estimateCost, fakeJudge, freeTalkMarkdown, freeTalkReport, inFlightNeed, meteredFetch, planSuite, practiceConcurrency, PRACTICE_CASES, reportMarkdown,
+  RUNS_PER_CASE, runSuite, scriptedSimulator, SIMULATOR_PROMPT_VERSION, Spending, timedTurns, turnTimeMarkdown, worstReviewUsd,
   type ExecutionOptions, type AiJudge, type ByRole, type ChildSimulator, type ValidityJudge, type CostEstimate, type PracticeCase, type PracticeStore, type Price, type Role,
 } from "@/lib/maya-practice";
 
@@ -78,7 +82,10 @@ const ANTHROPIC_PRICES: Record<string, Price> = {
 };
 /** The fewest output tokens a Claude API request gets: adaptive thinking counts in them, and a short limit cuts it off. */
 const ANTHROPIC_MIN_TOKENS = 6_000;
-/** With --subscription: the time limit of a Maya, child or validity call (the judge gets twice it), and of a review. */
+/**
+ * With --subscription: the time limit of a Maya, child or validity call, and of a review. The judge reads the whole call
+ * and gets three times it (C38 at 361a05c9 timed out at twice it); a timed-out judge call is asked once more.
+ */
 const SUBSCRIPTION_MAYA_MS = 120_000;
 const SUBSCRIPTION_REVIEW_MS = 60_000;
 
@@ -95,14 +102,15 @@ interface Options {
   maxUsd: number | null;
   cases: string[] | null;
   runs: number;
-  concurrency: number;
+  /** Null: the default for the provider (practiceConcurrency). */
+  concurrency: number | null;
   out: string | null;
   report: string | null;
   models: Partial<Record<Role, string>>;
 }
 
 function parse(argv: string[]): Options {
-  const o: Options = { fake: false, channel: "voice", generated: false, provider: "openrouter", freeTalk: true, reviewCheck: false, estimate: false, maxUsd: null, cases: null, runs: RUNS_PER_CASE, concurrency: 3, out: null, report: null, models: {} };
+  const o: Options = { fake: false, channel: "voice", generated: false, provider: "openrouter", freeTalk: true, reviewCheck: false, estimate: false, maxUsd: null, cases: null, runs: RUNS_PER_CASE, concurrency: null, out: null, report: null, models: {} };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const v = () => {
@@ -171,6 +179,7 @@ function apiKey(root: string): string {
   process.env.OPENROUTER_API_KEY = key;
   return key;
 }
+
 
 /**
  * The Claude API key for --anthropic: ANTHROPIC_API_KEY, else the macOS Keychain item anthropic-unica-tools. Put in
@@ -348,6 +357,7 @@ async function main() {
   const generated = o.generated ? await generatedPracticeSet() : null;
   const required = [...PRACTICE_CASES, ...(generated?.cases ?? [])];
   const execution = practiceExecution(o);
+  const concurrency = o.concurrency ?? practiceConcurrency(o.provider, o.fake);
   const cases = o.cases ? o.cases.map((id) => required.find((c) => c.id === id) ?? (() => { throw new Error(`no case ${id}`); })()) : required;
   if (o.report) process.exit(writeReport(cases, o.runs, resolve(o.report), execution) ? 0 : 1);
   // The fake rule player is always Maya with --fake: a model named here would be ignored without a word.
@@ -380,7 +390,7 @@ async function main() {
   const stopped = () => spending.reached || usageLimit !== null;
   if (o.reviewCheck && o.fake) throw new Error("--review-check needs a real review model: drop --fake.");
   if (o.fake) {
-    maya = ruleMayaModel();
+    maya = ruleConversationalModel();
     reviewer = o.freeTalk ? fakeTalkReviewer() : null;
     const scripts = new Map(cases.map((c) => [c.persona.name, c.fakeScript]));
     simulator = { id: "fake-child", promptVersion: SIMULATOR_PROMPT_VERSION, next: (input, s) => scriptedSimulator(scripts.get(input.persona.name) ?? []).next(input, s) };
@@ -407,23 +417,28 @@ async function main() {
     });
     // Each call starts a Claude Code process (about 3 s more than an API call), so Maya's 30 s limit and the review's 8 s
     // live limit are raised: this run checks her rules and words, not the live time limits.
-    maya = aiMayaModel(client("maya"), { timeoutMs: SUBSCRIPTION_MAYA_MS });
+    maya = conversationalMayaModel(client("maya"), { timeoutMs: SUBSCRIPTION_MAYA_MS });
     simulator = aiChildSimulator(client("simulator"), { timeoutMs: SUBSCRIPTION_MAYA_MS });
     validity = aiValidityJudge(client("validity"), { timeoutMs: SUBSCRIPTION_MAYA_MS });
-    judge = aiJudge(client("judge"), { timeoutMs: 2 * SUBSCRIPTION_MAYA_MS });
+    judge = aiJudge(client("judge"), { timeoutMs: 3 * SUBSCRIPTION_MAYA_MS });
     reviewer = o.freeTalk || o.reviewCheck ? aiTalkReviewer(client("reviewer")) : null;
   } else {
     const anthropic = o.provider === "anthropic";
     const price = anthropic ? anthropicPrices(models) : await prices(models);
+    let need: { estimateUsd: number; inFlightUsd: number };
     if (o.reviewCheck) {
       // About 70 short review calls: a cap of USD 2 is far above them.
       spending = new Spending(o.maxUsd ?? 2);
+      need = { estimateUsd: spending.maxUsd!, inFlightUsd: inFlightNeed(concurrency, worstReviewUsd(price.reviewer)) };
     } else {
       const estimate = await estimateCost(cases, o.runs, paid, price, execution);
       printEstimate(estimate, cases.length, o.runs);
+      need = { estimateUsd: estimate.usd, inFlightUsd: inFlightNeed(concurrency, estimate.largestRequest.usd) };
+      console.log(`-- in flight: ${concurrency} at once × the largest request (${estimate.largestRequest.role}, ${usd(estimate.largestRequest.usd)} at worst) = ${usd(need.inFlightUsd)}`);
       if (o.estimate) return;
       const cap = o.maxUsd ?? Math.ceil(estimate.usd * 2);
-      if (estimate.usd > cap) throw new Error(`The estimate (${usd(estimate.usd)}) is above the cap (${usd(cap)}). Raise --max-usd or run fewer cases.`);
+      const overCap = capProblem(estimate.usd, cap);
+      if (overCap) throw new Error(overCap);
       console.log(`-- spending cap: ${usd(cap)} (--max-usd). Runs the cap cuts are reported missing.`);
       spending = new Spending(cap);
     }
@@ -433,9 +448,13 @@ async function main() {
       client = (role) => anthropicRole(key, models[role], spending, price[role]);
     } else {
       const key = apiKey(root);
+      // Before any model call: a run the account cannot pay for ends in 402s and tells nothing about Maya (PR #698).
+      const credit = await checkCredits({ fetch: globalThis.fetch, key, ...need });
+      if (!credit.ok) throw new Error(credit.message);
+      console.log(`-- ${credit.message}`);
       client = (role) => cappedClient(openRouterClient({ apiKey: key, model: models[role], fetch: meteredFetch(globalThis.fetch, spending, price[role]) }), spending, price[role]);
     }
-    maya = aiMayaModel(client("maya"));
+    maya = conversationalMayaModel(client("maya"));
     simulator = aiChildSimulator(client("simulator"));
     validity = aiValidityJudge(client("validity"));
     judge = aiJudge(client("judge"));
@@ -444,7 +463,7 @@ async function main() {
 
   if (o.reviewCheck) {
     const dir = resolve(o.out ?? join(root, "traces/maya-practice", `review-check-${new Date().toISOString().replace(/[:.]/g, "-")}`));
-    const ok = await reviewCheck(reviewer!, dir, o.concurrency, o.provider === "subscription" ? SUBSCRIPTION_REVIEW_MS : 30_000);
+    const ok = await reviewCheck(reviewer!, dir, concurrency, o.provider === "subscription" ? SUBSCRIPTION_REVIEW_MS : 30_000);
     console.log(`-- provider: ${o.provider}; ${spent(o, spending)}`);
     await countMonthly(o, spending);
     if (usageLimit !== null) console.log("-- the Claude subscription's usage limit was reached: the check is incomplete. Run it again after the limit resets.");
@@ -473,7 +492,7 @@ async function main() {
   console.log(`-- ${plan.runs.length} runs into ${dir}`);
   let done = 0;
   await runSuite(cases, plan, {
-    maya, simulator, validity, judge, store, concurrency: o.concurrency, freeTalk: o.freeTalk, reviewer,
+    maya, simulator, validity, judge, store, concurrency, freeTalk: o.freeTalk, reviewer,
     ...(o.provider === "subscription" && !o.fake ? { reviewTimeLimitMs: SUBSCRIPTION_REVIEW_MS } : {}),
     capped: stopped,
     onRun: (id) => console.log(`   ${++done}/${plan.runs.length} ${id}${o.fake || o.provider === "subscription" ? "" : ` (spent ${usd(spending.spent)})`}`),

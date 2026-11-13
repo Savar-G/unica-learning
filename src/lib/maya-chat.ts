@@ -2,6 +2,7 @@ import { dayOf, familyWhen, formatInZone, localDateTime, type FamilyZone } from 
 import type { Batch } from "@/lib/board";
 import { SAFETY_GUIDANCE } from "@/lib/maya";
 import type { CallView, TranscriptLine } from "@/lib/maya-call";
+import type { WorkbookQuestionRef } from "@/lib/question-package";
 import { childSpendLine, type SpendState } from "@/lib/maya-spend";
 
 export const CHAT_MESSAGES = 60;
@@ -16,10 +17,11 @@ export const chatSpendLine = (usage: ChatUsage | null): string | null =>
   usage?.spend ? childSpendLine(usage.spend.state, usage.spend.resetsAt, usage.spend.zone) : null;
 export interface ChatView {
   id: string; revision: number; ended: boolean; transcript: TranscriptLine[]; batches: Batch[];
+  question?: WorkbookQuestionRef;
   pending?: boolean;
   hint: number; safetyMessage: string | null;
 }
-export interface ChatReply { usage: ChatUsage; chat: ChatView | null; error?: string; admission?: "accepted" | "refused" }
+export interface ChatReply { usage: ChatUsage; chat: ChatView | null; error?: string; errorLine?: string; admission?: "accepted" | "refused" }
 
 export function chatWindow(now: number, zone: FamilyZone) {
   const day = dayOf(now, zone);
@@ -36,6 +38,7 @@ export const chatCapLine = () => "You used all your messages for today. We can c
 export function childChatView(view: CallView): ChatView {
   return {
     id: view.id, revision: view.revision, ended: view.status === "ended",
+    ...(view.question.source === "workbook" ? { question: view.question } : {}),
     transcript: view.transcript.filter((t) => t.speaker !== "note"), batches: view.batches,
     hint: Math.min(3, view.outcome?.highestHint ?? 0),
     safetyMessage: view.outcome?.safetyFlag ? SAFETY_GUIDANCE[view.outcome.safetySeverity ?? "concern"] : null,

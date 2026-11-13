@@ -233,7 +233,7 @@ export const DATABASE_CHECKS: readonly { table: string; name: string; definition
   {"table":"maya_calls","name":"maya_calls_mode_check","definition":"CHECK ((mode = ANY (ARRAY['text'::text, 'voice'::text])))"},
   {"table":"maya_calls","name":"maya_calls_model_check","definition":"CHECK (((char_length(model) >= 1) AND (char_length(model) <= 200)))"},
   {"table":"maya_calls","name":"maya_calls_note_pending","definition":"CHECK (((note_pending IS NULL) OR ((status = 'ended'::text) AND (jsonb_typeof(note_pending) = 'object'::text) AND (pg_column_size(note_pending) < 2000000))))"},
-  {"table":"maya_calls","name":"maya_calls_outcome_reason_check","definition":"CHECK ((outcome_reason = ANY (ARRAY['solved'::text, 'child_stopped'::text, 'time_limit'::text, 'no_response'::text, 'technical_issue'::text, 'content_issue'::text, 'safety'::text])))"},
+  {"table":"maya_calls","name":"maya_calls_outcome_reason_check","definition":"CHECK ((outcome_reason = ANY (ARRAY['solved'::text, 'child_stopped'::text, 'time_limit'::text, 'no_response'::text, 'technical_issue'::text, 'content_issue'::text, 'safety'::text, 'maya_closed'::text])))"},
   {"table":"maya_calls","name":"maya_calls_package_hash_check","definition":"CHECK ((package_hash ~ '^sha256:[0-9a-f]{64}$'::text))"},
   {"table":"maya_calls","name":"maya_calls_package_id_check","definition":"CHECK (((char_length(package_id) >= 1) AND (char_length(package_id) <= 200)))"},
   {"table":"maya_calls","name":"maya_calls_paper_status_check","definition":"CHECK ((paper_status = ANY (ARRAY['child_confirmed'::text, 'declined'::text, 'unknown'::text])))"},

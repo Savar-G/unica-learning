@@ -6,7 +6,7 @@
 import type { AiClient, AiJsonRequest } from "@/lib/ai-client";
 import { PROPOSAL_SCHEMA, TALK_REVIEW_SCHEMA, TALK_REVIEW_SYSTEM } from "@/lib/maya";
 import { SYSTEM_PROMPT, type MayaModel } from "@/lib/maya-model";
-import { ruleMayaModel } from "@/lib/maya-model-fake";
+import { ruleConversationalModel } from "@/lib/maya-model-fake";
 import { DIMENSION_IDS, type PracticeCase } from "./cases";
 import { fakeJudge, judgeSchema, JUDGE_SYSTEM, type AiJudge } from "./judge";
 import { BudgetReached, memoryPracticeStore, planSuite, runSuite, type ExecutionOptions } from "./practice";
@@ -31,6 +31,8 @@ export const tokensOf = (chars: number) => Math.ceil(chars / 3.5);
 
 /** Output tokens a call of each role is assumed to take, reasoning included. */
 export const OUTPUT_TOKENS: Record<Role, number> = { maya: 1_500, simulator: 150, validity: 400, judge: 4_000, reviewer: 400 };
+/** The output limit each role's request sets (`maxTokens`): the most one call of that role can be billed for. */
+export const MAX_OUTPUT_TOKENS: Record<Role, number> = { maya: 4_000, simulator: 1_000, validity: 1_000, judge: 8_000, reviewer: 2_000 };
 /** The review's input besides its instructions: the line and the last turns (an upper bound). */
 const REVIEW_INPUT_CHARS = 2_000;
 /** The estimate assumes real calls are this much longer than the fake dry run (repairs, longer child turns). */
@@ -39,11 +41,18 @@ export const MARGIN = 1.5;
 export interface CostEstimate {
   roles: Partial<Record<Role, { model: string; calls: number; inputTokens: number; outputTokens: number; usd: number }>>;
   usd: number;
+  /** The largest single request of the run at its worst case: its biggest input, with the margin, and all its output limit. */
+  largestRequest: { role: Role; usd: number };
 }
 
 /** Runs the suite with the fakes and measures every request: calls and input size per role. */
-export async function measureSuite(cases: readonly PracticeCase[], runs: number, execution: ExecutionOptions = {}): Promise<Record<Role, { calls: number; inputChars: number }>> {
-  const m: Record<Role, { calls: number; inputChars: number }> = { maya: { calls: 0, inputChars: 0 }, simulator: { calls: 0, inputChars: 0 }, validity: { calls: 0, inputChars: 0 }, judge: { calls: 0, inputChars: 0 }, reviewer: { calls: 0, inputChars: 0 } };
+export async function measureSuite(cases: readonly PracticeCase[], runs: number, execution: ExecutionOptions = {}): Promise<Record<Role, { calls: number; inputChars: number; largestChars: number }>> {
+  const m: Record<Role, { calls: number; inputChars: number; largestChars: number }> = { maya: { calls: 0, inputChars: 0, largestChars: 0 }, simulator: { calls: 0, inputChars: 0, largestChars: 0 }, validity: { calls: 0, inputChars: 0, largestChars: 0 }, judge: { calls: 0, inputChars: 0, largestChars: 0 }, reviewer: { calls: 0, inputChars: 0, largestChars: 0 } };
+  const measure = (role: Role, chars: number) => {
+    m[role].calls++;
+    m[role].inputChars += chars;
+    m[role].largestChars = Math.max(m[role].largestChars, chars);
+  };
   const fixed = {
     maya: SYSTEM_PROMPT.length + JSON.stringify(PROPOSAL_SCHEMA).length,
     simulator: SIMULATOR_SYSTEM.length + JSON.stringify(SIMULATOR_SCHEMA).length,
@@ -51,14 +60,14 @@ export async function measureSuite(cases: readonly PracticeCase[], runs: number,
     judge: JUDGE_SYSTEM.length + JSON.stringify(judgeSchema(DIMENSION_IDS)).length,
   };
   const validity0 = fakeValidityJudge();
-  const validity: ValidityJudge = { id: "estimate", promptVersion: validity0.promptVersion, check: (input, s) => { m.validity.calls++; m.validity.inputChars += fixed.validity + JSON.stringify(input).length; return validity0.check(input, s); } };
-  const rule = ruleMayaModel();
-  const maya: MayaModel = { id: "estimate", promptVersion: rule.promptVersion, propose: (input, s) => { m.maya.calls++; m.maya.inputChars += fixed.maya + JSON.stringify(input).length; return rule.propose(input, s); } };
+  const validity: ValidityJudge = { id: "estimate", promptVersion: validity0.promptVersion, check: (input, s) => { measure("validity", fixed.validity + JSON.stringify(input).length); return validity0.check(input, s); } };
+  const rule = ruleConversationalModel();
+  const maya: MayaModel = { id: "estimate", promptVersion: rule.promptVersion, ...(rule.output ? { output: rule.output } : {}), propose: (input, s) => { measure("maya", fixed.maya + JSON.stringify(input).length); return rule.propose(input, s); } };
   const judge0 = fakeJudge();
-  const judge: AiJudge = { id: "estimate", promptVersion: judge0.promptVersion, judge: (input, s) => { m.judge.calls++; m.judge.inputChars += fixed.judge + JSON.stringify(input).length; return judge0.judge(input, s); } };
+  const judge: AiJudge = { id: "estimate", promptVersion: judge0.promptVersion, judge: (input, s) => { measure("judge", fixed.judge + JSON.stringify(input).length); return judge0.judge(input, s); } };
   for (const c of cases) {
     const sim0 = scriptedSimulator(c.fakeScript);
-    const simulator: ChildSimulator = { id: "estimate", promptVersion: sim0.promptVersion, next: (input, s) => { m.simulator.calls++; m.simulator.inputChars += fixed.simulator + JSON.stringify(input).length; return sim0.next(input, s); } };
+    const simulator: ChildSimulator = { id: "estimate", promptVersion: sim0.promptVersion, next: (input, s) => { measure("simulator", fixed.simulator + JSON.stringify(input).length); return sim0.next(input, s); } };
     const plan = planSuite([c], { maya: { model: "estimate", promptVersion: "" }, simulator: { model: "estimate", promptVersion: "" }, validity: { model: "estimate", promptVersion: "" }, judge: { model: "estimate", promptVersion: "" }, meta: {} }, { runs: 1, ...execution });
     await runSuite([c], plan, { maya, simulator, validity, judge, store: memoryPracticeStore() });
   }
@@ -71,17 +80,30 @@ export async function measureSuite(cases: readonly PracticeCase[], runs: number,
   for (const role of ["validity", "judge"] as const) {
     m[role].inputChars = Math.round((m[role].inputChars / Math.max(1, m[role].calls)) * cases.length * runs);
     m[role].calls = cases.length * runs;
+    // The fakes may skip every judged run of a small --cases list: a request still holds at least its instructions.
+    m[role].largestChars = Math.max(m[role].largestChars, fixed[role]);
   }
   // The fake Maya says no free talk, so the review is counted at its upper bound: one review for every Maya call.
-  m.reviewer = { calls: m.maya.calls, inputChars: m.maya.calls * (TALK_REVIEW_SYSTEM.length + JSON.stringify(TALK_REVIEW_SCHEMA).length + REVIEW_INPUT_CHARS) };
+  const reviewChars = REVIEW_FIXED_CHARS();
+  m.reviewer = { calls: m.maya.calls, inputChars: m.maya.calls * reviewChars, largestChars: reviewChars };
   return m;
 }
+
+/** One free-talk review's input at its upper bound: its instructions, its schema, the line and the last turns. */
+const REVIEW_FIXED_CHARS = () => TALK_REVIEW_SYSTEM.length + JSON.stringify(TALK_REVIEW_SCHEMA).length + REVIEW_INPUT_CHARS;
+
+/** One request's worst case: its input with the margin, and all the role's output limit. */
+const worstRequestUsd = (role: Role, chars: number, price: Price) => tokensOf(chars * MARGIN) * price.input + MAX_OUTPUT_TOKENS[role] * price.output;
+
+/** The worst case of one free-talk review request, for a run with no dry run (--review-check). */
+export const worstReviewUsd = (price: Price) => worstRequestUsd("reviewer", REVIEW_FIXED_CHARS(), price);
 
 /** The estimate for a real suite: the dry run's measures, the prices, the output assumptions and the margin. */
 export async function estimateCost(cases: readonly PracticeCase[], runs: number, models: ByRole<string>, prices: ByRole<Price>, execution: ExecutionOptions = {}): Promise<CostEstimate> {
   const m = await measureSuite(cases, runs, execution);
   const roles: CostEstimate["roles"] = {};
   let usd = 0;
+  let largestRequest: CostEstimate["largestRequest"] = { role: "maya", usd: 0 };
   for (const role of ROLES) {
     const model = models[role];
     const price = prices[role];
@@ -91,9 +113,14 @@ export async function estimateCost(cases: readonly PracticeCase[], runs: number,
     const outputTokens = calls * OUTPUT_TOKENS[role];
     const cost = inputTokens * price.input + outputTokens * price.output;
     roles[role] = { model, calls, inputTokens, outputTokens, usd: cost };
-    usd += cost;
+    // A price that is missing (NaN) or variable (-1) makes the whole estimate no amount, so the checks refuse it: a negative
+    // role must not hide inside a total that still looks right.
+    usd = cost >= 0 ? usd + cost : NaN;
+    const worst = worstRequestUsd(role, m[role].largestChars, price);
+    if (!(worst >= 0)) largestRequest = { role, usd: NaN };
+    else if (worst > largestRequest.usd) largestRequest = { role, usd: worst };
   }
-  return { roles, usd };
+  return { roles, usd, largestRequest };
 }
 
 /** The money spent so far, against a cap (null: no cap). Shared by every model of a suite. */

@@ -16,8 +16,8 @@ import { callAlerts } from "@/lib/maya-call-alert";
 import { mayaAlertLedger } from "@/lib/maya-call-alert-store";
 import { writeNoteAfterCall } from "@/lib/maya-call-note-server";
 import { mayaCallStore, mayaConnectionLog } from "@/lib/maya-call-store";
-import { aiMayaModel, type MayaModel } from "@/lib/maya-model";
-import { ruleMayaModel } from "@/lib/maya-model-fake";
+import { conversationalMayaModel, type MayaModel } from "@/lib/maya-model";
+import { ruleConversationalModel } from "@/lib/maya-model-fake";
 import { aiTalkReviewer, REVIEW_DEFAULT_MODEL, type TalkReviewer } from "@/lib/maya-talk-review";
 import { wordingHistoryStore } from "@/lib/maya-wording-history-store";
 import { chargeOf, type SpendLedger } from "@/lib/maya-spend";
@@ -43,9 +43,9 @@ const siteOrigin = (env: Env) => env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/+$/
  */
 export function callModel(id: string | null, env: Env = process.env, metered?: { ledger: SpendLedger; call: SpendCall; newId: () => string; safetyRead?: boolean }): MayaModel | null {
   const client = metered ? meteredClient(env, metered.ledger, { charge: chargeOf(metered.call), callId: metered.call.id, newId: metered.newId, safetyRead: metered.safetyRead }, "model") : mayaAiClient(env);
-  if (id === null) return client ? aiMayaModel(client) : ruleMayaModel();
-  if (id === FAKE_MODEL_ID) return ruleMayaModel();
-  return client && client.model === id ? aiMayaModel(client) : null;
+  if (id === null) return client ? conversationalMayaModel(client) : ruleConversationalModel();
+  if (id === FAKE_MODEL_ID) return ruleConversationalModel();
+  return client && client.model === id ? conversationalMayaModel(client) : null;
 }
 
 /**

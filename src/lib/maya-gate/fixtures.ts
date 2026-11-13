@@ -3,10 +3,38 @@
 // worked-steps code, with its wrong answers and an easier example, checked by `checkQuestionPackage` like any package.
 // `A_BAD_KEY` is fixture A with a wrong answer key (56 while the checked steps total 66), for the content hold (C36).
 // `D_SIMPLEST` is fixture D with a question that asks for the simplest form (C38c, #407). `G` is a fraction kind Maya does
-// not teach yet (equivalent fractions, C36b).
-import { checkQuestionPackage, workedSteps, type AnswerValue, type Operation, type QuestionPackage, type WrongAnswer } from "@/lib/question-package";
+// not teach yet (equivalent fractions, C36b). `M_DIVIDE`, `M_TRY` and `M_SUBTRACT` are missing numbers (Wave A),
+// made by Maya's session adapter from synthetic printed packages and checked by Maya's check (mayaPackageCheck).
+// `EV_TWO`, `EV_STORY` and `EV_MISSING` are evaluate questions (Wave A, A2):
+// a two-part expression, a story's two operations, and a missing number found by working the other side first. Synthetic
+// numbers, in the shapes of the workbook's multi-step templates. `EV_ADD_FIRST` has an addition part that is not last:
+// (47 + 38) × 3 (review of #734).
+import { mayaPackageCheck } from "@/lib/maya";
+import { deriveMissingNumber } from "@/lib/maya-teaching/missing-number";
+import { printedMissing, type PrintedMissing } from "@/lib/maya-teaching/missing-number-fixtures";
+import { teachingPackage } from "@/lib/maya-teaching";
+import { deriveDieCount } from "@/lib/maya-teaching/die-count";
+import { deriveSymmetry } from "@/lib/maya-teaching/symmetry";
+import { areaClaimPrinted, clockPrinted, diePrinted, marblesPrinted, minutePrinted, moneyPrinted, scalePrinted, symmetryPrinted } from "@/lib/maya-teaching/topic-samples";
+import { deriveClockTime, deriveTopicClaim } from "@/lib/maya-teaching/topic-derivers";
+import { workedSteps, type AnswerValue, type Operation, type QuestionPackage, type WrongAnswer } from "@/lib/question-package";
+import { CLAIM_DECIMAL, CLAIM_DIVIDE, CLAIM_GREATER, CLAIM_TRUE_FALSE, CLAIM_WIDE } from "./claim-fixtures";
+import { ONE_STEP_FIXTURES, type OneStepFixtureId } from "./one-step-cases";
+import { PATTERN_FIXTURES, type PatternFixtureId } from "./pattern-cases";
+import { PLACE_VALUE_FIXTURES, type PlaceValueFixtureId } from "./place-value-cases";
+import { SPOT_FIXTURES, type SpotFixtureId } from "./spot-error-cases";
+import { PLACE_PARTS_FIXTURES, type PlacePartsFixtureId } from "./place-value-parts-cases";
 
-export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY";
+export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | OneStepFixtureId
+  | "EV_TWO" | "EV_STORY" | "EV_MISSING" | "CLAIM_TF" | "CLAIM_GT" | "CLAIM_DEC" | "CLAIM_DIV" | "DIE" | "SHAPES" | "DIE12" | "SHAPES_LONG"
+  | "SCALE" | "MONEY" | "MINUTE" | "CLOCK1" | "CLOCK2" | "CLOCK_REVIEW" | "MARBLES" | "AREA_TF" | "AREA_REVIEW" | "CLAIM_WIDE" | "EV_ADD_FIRST" | "M_DIVIDE" | "M_TRY" | "M_SUBTRACT" | PlaceValueFixtureId | PlacePartsFixtureId | SpotFixtureId | PatternFixtureId;
+
+/** A claim question's teaching package (A4): the stored synthetic package through the session adapter (claimTeaching). */
+function claimFixture(raw: QuestionPackage): QuestionPackage {
+  const pkg = teachingPackage(raw) as QuestionPackage;
+  if (pkg === raw || pkg.operation === null) throw new Error(`fixtures: the claim ${raw.id} does not derive`);
+  return pkg;
+}
 
 const num = (value: number): AnswerValue => ({ type: "number", value });
 const frac = (numerator: number, denominator: number) => ({ type: "fraction" as const, numerator, denominator });
@@ -36,6 +64,14 @@ function fixture(input: {
     wrongAnswers: input.wrong,
     easierExample: { ...input.easier, steps: workedSteps(input.easier.operation) },
   };
+}
+
+/** A missing number as Maya teaches it: the adapter's package for a synthetic printed one. */
+function missing(p: PrintedMissing): QuestionPackage {
+  const printed = printedMissing(p);
+  const pkg = deriveMissingNumber(printed);
+  if (!pkg) throw new Error(`fixtures: no missing-number package for ${printed.text}`);
+  return pkg;
 }
 
 const D = fixture({
@@ -117,14 +153,102 @@ export const FIXTURES: Record<FixtureId, QuestionPackage> = {
     wrong: [{ value: frac(11, 12), cause: "F9", description: "Adds the same number to the top and the bottom", step: null }],
     easier: { text: "1/2 = ?/4", operation: { kind: "fraction-equivalent", operands: [frac(1, 2)], denominator: 4 }, answer: frac(2, 4) },
   }),
+  // Evaluate (Wave A, A2): each part in the order of operations, with an easier example of the same shape.
+  EV_TWO: fixture({
+    id: "gate-EV-7x640+7x30",
+    text: "What is 7 × 640 + 7 × 30?",
+    operation: { kind: "evaluate", operands: ["7 × 640 + 7 × 30"] },
+    answer: num(4690),
+    skill: "5.9-multiply-tens",
+    level: 16,
+    wrong: [{ value: num(4480), cause: "stops-early", description: "Works out only the first part", step: null }],
+    easier: { text: "2 × 40 + 2 × 5 = ?", operation: { kind: "evaluate", operands: ["2 × 40 + 2 × 5"] }, answer: num(90) },
+  }),
+  EV_STORY: fixture({
+    id: "gate-EV-4x260-590",
+    text: "A shop has 4 boxes with 260 beads in each. It sells 590 beads. How many beads does it have now?",
+    operation: { kind: "evaluate", operands: ["4 × 260 − 590"] },
+    answer: num(450),
+    skill: "5.9-multiply-tens",
+    level: 16,
+    wrong: [{ value: num(1630), cause: "wrong-operation", description: "Adds the beads sold", step: null }],
+    easier: { text: "3 × 20 − 16 = ?", operation: { kind: "evaluate", operands: ["3 × 20 − 16"] }, answer: num(44) },
+  }),
+  EV_MISSING: fixture({
+    id: "gate-EV-8x?=7360-400",
+    text: "8 × ? = 7360 − 400",
+    operation: { kind: "evaluate", operands: ["(7360 − 400) ÷ 8"] },
+    answer: num(870),
+    skill: "5.9-multiply-tens",
+    level: 16,
+    wrong: [{ value: num(6960), cause: "stops-early", description: "Works out the other side and stops", step: null }],
+    easier: { text: "(20 − 5) ÷ 3 = ?", operation: { kind: "evaluate", operands: ["(20 − 5) ÷ 3"] }, answer: num(5) },
+  }),
+  EV_ADD_FIRST: fixture({
+    id: "gate-EV-(47+38)x3",
+    text: "What is (47 + 38) × 3?",
+    operation: { kind: "evaluate", operands: ["(47 + 38) × 3"] },
+    answer: num(255),
+    skill: "5.9-multiply-tens",
+    level: 16,
+    wrong: [{ value: num(161), cause: "O-order", description: "Multiplies before working inside the brackets", step: null }],
+    easier: { text: "(2 + 4) × 2 = ?", operation: { kind: "evaluate", operands: ["(2 + 4) × 2"] }, answer: num(12) },
+  }),
   // C36: the package says 56 while its checked steps total 66. The package check refuses it, so the call is held.
   A_BAD_KEY: { ...A, id: "gate-A-bad-key", answer: { value: num(56), accepted: [], unit: null } },
+  ...SPOT_FIXTURES,
+  // Wave C "other-topic" (src/lib/maya-teaching): made by the derivers from synthetic printed packages. DIE: "Roll a die
+  // numbered 1 to 8. How many of the numbers are even?" as 8 ÷ 2; SHAPES: a regular hexagon and a regular pentagon,
+  // 6 + 5 lines of symmetry from code's table.
+  DIE: deriveDieCount(diePrinted(8, "even"))!,
+  SHAPES: deriveSymmetry(symmetryPrinted(4, 5))!,
+  ...ONE_STEP_FIXTURES,
+  // Missing numbers (Wave A): 30 × ? = 1620 by division after dropping a zero (162 ÷ 3), 236 × ? = 1416 by trying
+  // numbers, and 9000 − ? = 3000 by subtracting.
+  M_DIVIDE: missing({ id: "gate-M-30x?=1620", known: 30, missing: 54, sign: "×" }),
+  M_TRY: missing({ id: "gate-M-236x?=1416", known: 236, missing: 6, sign: "×" }),
+  M_SUBTRACT: missing({ id: "gate-M-9000-?=3000", known: 9000, missing: 6000, sign: "−" }),
+  // Claim questions (A4): "True or false: 6 × 8 = 48.", "Is 4 × 360 greater than 1436?", "True or false: 3.45 + 2.38 = 5.93."
+  CLAIM_TF: claimFixture(CLAIM_TRUE_FALSE),
+  CLAIM_GT: claimFixture(CLAIM_GREATER),
+  CLAIM_DEC: claimFixture(CLAIM_DECIMAL),
+  // "Mia says 6 × 8 = 56. Check with 56 ÷ 8. Is Mia right?": the claim checked by the division the question prints.
+  CLAIM_DIV: claimFixture(CLAIM_DIVIDE),
+  // Review of #731: die 12 (two division steps, 12 ÷ 2) and the longest shape names (a rectangle that is not a square and
+  // an isosceles triangle, 2 + 1), for grade 3 turns.
+  DIE12: deriveDieCount(diePrinted(12, "odd"))!,
+  SHAPES_LONG: deriveSymmetry(symmetryPrinted(1, 2))!,
+  ...PATTERN_FIXTURES,
+  // C3b: other-topic claims taught through A4's claim session. SCALE: "A scale's marks are 50, 60, 70. True or false: 2
+  // intervals above 60 is 80." (60 + 2 × 10, an evaluate); MONEY: "True or false: 2 $20 bills and 3 quarters is
+  // $40.75." (40 + 0.75; 2 quarters are held, review of #741 P2-1); MINUTE: "True or false: the minute hand 3 marks
+  // past the 7 shows 38 minutes." (7 × 5 + 3).
+  SCALE: deriveTopicClaim(scalePrinted(10, 60, 2, true))!,
+  MONEY: deriveTopicClaim(moneyPrinted(2, 3, true))!,
+  MINUTE: deriveTopicClaim(minutePrinted(3, 7, true))!,
+  // C3c: clock times (time-add). CLOCK1: "What time is 35 minutes after 8:00?" (one count, 8:35); CLOCK2: "What time
+  // is 50 minutes after 4:25?" (35 minutes to 5:00, then 15 more: 5:15).
+  CLOCK1: deriveClockTime(clockPrinted(8, 0, 35))!,
+  CLOCK2: deriveClockTime(clockPrinted(4, 25, 50))!,
+  CLOCK_REVIEW: deriveClockTime(clockPrinted(6, 13, 50))!,
+  // C3c: compare claims through A4's claim session. MARBLES: "with 1 red, 3 blue and 5 green marbles, red is more likely
+  // than the other colours together" (3 + 5 = 8, less than 1? false); AREA_TF: "6 by 3 squares is bigger than 4 by 4
+  // squares" (6 × 3 = 18, greater than 16? true).
+  MARBLES: deriveTopicClaim(marblesPrinted(1, 3, 5))!,
+  AREA_TF: deriveTopicClaim(areaClaimPrinted(6, 3, 4, 4))!,
+  AREA_REVIEW: deriveTopicClaim(areaClaimPrinted(5, 3, 4, 2))!,
+  // "Is 777 × 7 greater than 4662?": the longest spoken claim shape, for the 25-word turns (#737 review P2).
+  CLAIM_WIDE: claimFixture(CLAIM_WIDE),
+  // Place value (B1a and B1b).
+  ...PLACE_VALUE_FIXTURES,
+  ...PLACE_PARTS_FIXTURES,
 };
 
-/** Fixtures that must pass the package check; the bad key must fail it. */
+/** Fixtures that must pass Maya's package check (the default check, or hers for a missing number); the bad key must fail it. */
 export function fixtureProblems(): string[] {
   return (Object.entries(FIXTURES) as [FixtureId, QuestionPackage][]).flatMap(([id, pkg]) => {
-    const check = checkQuestionPackage(pkg);
+    // Maya's own check: her wider limits hold for the adapter-made fixtures (W5, W3, W6, and the missing numbers) only.
+    const check = mayaPackageCheck(pkg);
     if (id === "A_BAD_KEY") return check.ok ? [`${id}: the bad key passed the package check`] : [];
     return check.ok ? [] : [`${id}: ${check.reason}`];
   });

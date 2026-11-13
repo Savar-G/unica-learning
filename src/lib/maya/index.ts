@@ -5,7 +5,18 @@
 export {
   createSession,
   fallbacks,
+  helpBrief,
+  fillerTurn,
+  PATIENT_LINES,
+  numbersBrief,
+  streamRules,
+  streamSentenceOk,
+  codeVerdicts,
+  turnFacts,
+  type TurnFact,
   heardWordings,
+  heldReason,
+  mayaPackageCheck,
   learningEvent,
   drawOffers,
   lineOffers,
@@ -49,6 +60,12 @@ export {
   PROPOSAL_SCHEMA,
   PROPOSAL_VERSION,
   withoutNulls,
+  withoutDefaults,
+  isModelOutput,
+  readModelOutput,
+  MODEL_OUTPUT_SCHEMA,
+  MODEL_OUTPUT_VERSION,
+  type ModelOutput,
   type Act,
   type ChildAnswer,
   type HintLevel,
@@ -59,10 +76,10 @@ export {
   type Talk,
   type Warm,
 } from "./proposal";
-export { allLineTexts, LINE_IDS, LINES_VERSION, TEMPLATES, type LineChoice, type LineId, type LineOffer, type Slots, type TemplateKey } from "./lines";
+export { allLineTexts, heldSentences, openingLine, spokenQuestion, LINE_IDS, LINES_VERSION, TEMPLATES, type LineChoice, type LineId, type LineOffer, type Slots, type TemplateKey } from "./lines";
 export { talkMath } from "./claims";
 export { speechKey, speechWords } from "./speech";
-export { FEELING_SMALLTALK, FREE_TALK_LIMITS, hardFeeling, NEUTRAL_SMALLTALK, replyFor, type ReplyPick, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, freeTalkProblem, plainLanguageProblem, PLAIN_LANGUAGE_BANNED, workProblem, type PhraseGroup } from "./phrases";
+export { cheerful, FEELING_SMALLTALK, FREE_TALK_LIMITS, hardFeeling, NEUTRAL_SMALLTALK, replyFor, type ReplyPick, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, feelingClaim, freeTalkProblem, plainLanguageProblem, PLAIN_LANGUAGE_BANNED, workProblem, type PhraseGroup } from "./phrases";
 export {
   NEVER_SAY,
   NEVER_SAY_IDS,
@@ -72,6 +89,7 @@ export {
   TALK_REVIEW_PROMPT_VERSION,
   TALK_REVIEW_SCHEMA,
   TALK_REVIEW_SYSTEM,
+  CONVERSATION_REVIEW_SYSTEM,
   type NeverSay,
   type NeverSayId,
   type TalkReviewInput,
@@ -79,7 +97,8 @@ export {
 } from "./talk-review";
 export { NAME_GAP, type WordingHistory, type WordingId } from "./variety";
 export { MAX_WORDINGS, memoryWordingHistoryStore, mergeHistory, type WordingHistoryStore } from "./wording-history";
-export { readAnswer, readNumbers, unreadableAnswer, valuesIn, writtenFractions, type AnswerRead, type NumbersRead, type ReadOptions } from "./numbers";
+export { readAnswer, readNumbers, saysWritten, unreadableAnswer, valuesIn, writtenFractions, type AnswerRead, type NumbersRead, type ReadOptions } from "./numbers";
 export { asksSimplest, isEqualForm, readOptionsFor, rightForQuestion, teachSteps, TAUGHT_STEP_KINDS } from "./fractions";
 
 export { scopeReason, scopeSkills, SCOPE_LABELS, SCOPE_REASONS, type MathRequest, type ScopeReading, type OutsideReason, type ScopeReason, type ScopeRefusal } from "./scope";
+export { checkSay, checkSentence, sentencesOf, sayNumbers, SAY_REASONS, SAY_WORDS, type SayReason, type SayRules, type SayVerdict } from "./say-check";

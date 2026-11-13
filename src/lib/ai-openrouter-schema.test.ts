@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { AiJsonRequest } from "@/lib/ai-client";
 import { fakeAiClient } from "@/lib/ai-client-fake";
 import { costingFetch, openRouterClient } from "@/lib/ai-openrouter";
-import { createSession, NEVER_SAY } from "@/lib/maya";
-import { aiMayaModel, modelInput, PROMPT_VERSION } from "@/lib/maya-model";
+import { createSession, MODEL_OUTPUT_SCHEMA, NEVER_SAY } from "@/lib/maya";
+import { aiMayaModel, conversationalMayaModel, CONVERSATION_PROMPT, modelInput, PROMPT_VERSION } from "@/lib/maya-model";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
 import { aiChildSimulator, aiJudge, aiValidityJudge, DIMENSION_IDS, DIMENSIONS, PRACTICE_CASES, readJudgement, readValidity } from "@/lib/maya-practice";
 import { readSimulatorTurn } from "@/lib/maya-practice/simulator";
@@ -63,13 +63,19 @@ async function practiceRequests() {
   const fake = fakeAiClient({ answer: () => null });
   await aiMayaModel(fake).propose(input(), signal());
   await aiChildSimulator(fake).next({ promptVersion: "test", persona: PRACTICE_CASES[0].persona, maxWords: 25, transcript: [] }, signal());
-  await aiValidityJudge(fake).check({ promptVersion: "test", persona: PRACTICE_CASES[0].persona, childTurns: [{ id: 1, text: "Hello." }] }, signal());
+  await aiValidityJudge(fake).check({ promptVersion: "test", persona: PRACTICE_CASES[0].persona, childTurns: [{ id: 1, text: "Hello." }], call: [{ speaker: "child", text: "Hello.", childTurn: 1 }] }, signal());
   await aiJudge(fake).judge({ promptVersion: "test", channel: "chat", question: { text: "27 + 39 = ?", answer: "66", steps: [], easierExample: null }, child: { age: 7 }, expected: "test", rubric: DIMENSION_IDS.map((id) => ({ id, ...DIMENSIONS[id] })), turns: [], outcome: null }, signal());
   await aiTalkReviewer(fake).review({ promptVersion: "test", line: "Hello.", childTurn: null, transcript: [] }, signal());
   return fake.requests;
 }
 
 describe("OpenRouter schema compatibility through public callers and fake HTTP", () => {
+  it("permits the easier example after top help on a later step", async () => {
+    const [request] = await practiceRequests();
+    expect(request.system).toContain("after the top hint on a later step");
+    expect(request.system).not.toContain("Never after the child has done a step");
+  });
+
   it("dispatches the actual Maya 35-union schema once and keeps the complete schema in trusted instructions", async () => {
     const [actual] = await practiceRequests();
     expect(audit(actual.schema)).toMatchObject({ unions: 35, optional: 0 });
@@ -83,7 +89,31 @@ describe("OpenRouter schema compatibility through public callers and fake HTTP",
     expect(wire.messages[0].content).toContain(JSON.stringify(actual.schema));
     expect(wire.messages[1]).toEqual({ role: "user", content: [{ type: "text", text: JSON.stringify(input()) }] });
     expect(wire).toMatchObject({ model: MODEL, stream: false, max_tokens: 4000, provider: { require_parameters: true }, reasoning: { effort: "low", exclude: true } });
-    expect(PROMPT_VERSION).toBe("maya-text-23");
+    expect(PROMPT_VERSION).toBe("maya-text-chat-38");
+  });
+
+  it("D-341: sends conversational Maya's version 3 schema as strict structured output (#903)", async () => {
+    const p = provider({ say: "Hi.", act: "guide", step: "", level: 0, reading: {}, draw: [] });
+    await conversationalMayaModel(p.client).propose(input(), signal());
+    const wire = p.sent[0].body;
+    expect(audit(MODEL_OUTPUT_SCHEMA)).toMatchObject({ unions: 2, optional: 0, constraints: [] });
+    expect(wire.response_format).toMatchObject({ type: "json_schema", json_schema: { name: "maya_reply", strict: true } });
+    expect(wire.messages[0]).toEqual({ role: "system", content: CONVERSATION_PROMPT });
+  });
+
+  it("keeps feature routing and admission hooks when the shared schema adapter uses instructions", async () => {
+    const p = provider(), events: string[] = [];
+    const route = { only: ["google-vertex/global"], order: ["google-vertex/global"],
+      allow_fallbacks: false as const, require_parameters: true as const };
+    const client = openRouterClient({ apiKey: "fake-key", model: MODEL, fetch: p.fetch, provider: route,
+      onRequest: async () => { events.push("admitted"); }, onDispatch: () => { events.push("dispatched"); } });
+    await expect(aiMayaModel(client).propose(input(), signal())).resolves.toEqual(open);
+    expect(events).toEqual(["admitted", "dispatched"]);
+    expect(p.sent).toHaveLength(1);
+    expect(p.sent[0].body.provider).toEqual(route);
+    expect(p.sent[0].body).not.toHaveProperty("response_format");
+    const [actual] = await practiceRequests();
+    expect(p.sent[0].body.messages[0].content).toContain(JSON.stringify(actual.schema));
   });
 
   it("inventories and dispatches every practice role, with supported roles still structured", async () => {
@@ -93,7 +123,7 @@ describe("OpenRouter schema compatibility through public callers and fake HTTP",
       { name: "maya_proposal", unions: 35, optional: 0 },
       { name: "practice_child", unions: 2, optional: 0 },
       { name: "practice_validity", unions: 0, optional: 0 },
-      { name: "practice_judgement", unions: 8, optional: 0 },
+      { name: "practice_judgement", unions: 9, optional: 0 },
       { name: "maya_talk_review", unions: 0, optional: 0 },
     ]);
     expect([...new Set(inventory[0].constraints)].sort()).toEqual(["maxItems", "maxLength", "minItems", "minimum"]);

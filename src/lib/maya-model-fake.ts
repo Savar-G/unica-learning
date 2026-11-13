@@ -4,7 +4,7 @@
 // teacher; the session still checks every proposal it makes.
 import { readNumbers, PROPOSAL_VERSION, type Act } from "@/lib/maya";
 import { valueText } from "@/lib/question-package";
-import { PROMPT_VERSION, type ActOffer, type MayaModel, type ModelInput } from "@/lib/maya-model";
+import { CONVERSATION_PROMPT_VERSION, PROMPT_VERSION, type ActOffer, type MayaModel, type ModelInput, type TurnBrief } from "@/lib/maya-model";
 
 export function fakeMayaModel({
   id = "fake",
@@ -43,8 +43,9 @@ export function ruleMayaModel(): MayaModel {
 function rulePropose(input: ModelInput): unknown {
   const text = input.childTurn ?? "";
   const answer = input.question?.answer ?? null;
-  // In a fraction call the child's spoken fractions are read, as the session reads them (D-204).
-  const read = readNumbers(text, { fractions: true, operands: true });
+  // In a fraction call the child's spoken fractions are read, as the session reads them (D-204); in a clock-time call
+  // (an answer written as a clock time, C3c) its times are read in their exact forms, as the session reads them.
+  const read = readNumbers(text, { fractions: true, operands: true, ...(/^\d{2}:\d{2}$/.test(answer ?? "") ? { times: true } : {}) });
   const last = read.values.at(-1);
   // The child's answer: the right one if they said it anywhere, else their last number.
   // A number in an explanation ("so I carried a ten") is not an answer: only a short turn or "I got ..." gives one.
@@ -101,7 +102,8 @@ function rulePropose(input: ModelInput): unknown {
     ...(line ? [{ line: line.line, slots: fullSlots(line.slots) }] : []),
   ];
   // A line's own board offer only with that line; other offers draw the problem.
-  const draw = pick.draw.find((d) => !d.id.startsWith("line.") || (line && d.id === `line.${line.line}`));
+  // Never a written digit: this player does not track the board, and a digit written twice is refused.
+  const draw = pick.draw.find((d) => !d.id.startsWith("question.write.") && (!d.id.startsWith("line.") || (line && d.id === `line.${line.line}`)));
   return {
     version: PROPOSAL_VERSION,
     act: pick.act,
@@ -113,4 +115,109 @@ function rulePropose(input: ModelInput): unknown {
     draw: !input.repair && draw ? [{ offer: draw.id, place: null }] : null,
     board: null,
   };
+}
+
+// ---------- Version 3 (D-341) ----------
+
+/** A version 3 reply with every reading field at its default, for tests and scripted fakes. */
+export function reply(say: string, act: Act, extra: { step?: string; level?: number; reading?: Record<string, unknown>; draw?: { offer: string; place: string }[] } = {}) {
+  return {
+    say, act, step: extra.step ?? "", level: extra.level ?? 0,
+    reading: {
+      answers: [], help: "none", unclear: false, stop: false, safety: "none", writing: false, offTopic: false, mathClaim: false, mathRequests: [],
+      outsideScope: "none", scopeSkill: "", unsafeRequest: false, noBoard: false, shorter: false, aboutMaya: "none", start: "none", paper: "none",
+      correctsHearing: false, ...(extra.reading ?? {}),
+    },
+    draw: extra.draw ?? [],
+  };
+}
+
+/** A fake conversational model (D-341): answers each brief with what a test gives it, and records the briefs. */
+export function conversationalFake({
+  id = "fake-v3",
+  answer,
+  stream,
+}: {
+  id?: string;
+  /** The reply for a brief (`call` counts from 0); throw to act as a failed model call. */
+  answer: (brief: TurnBrief, call: number) => unknown | Promise<unknown>;
+  /**
+   * D-341: stream the reply's JSON text through `onText`, a few characters at a time, then wait for `beforeEnd` (when
+   * given) before the reply resolves, so a test sees what reached the child while the reply was still coming in.
+   */
+  stream?: { chunk?: number; beforeEnd?: () => Promise<void> };
+}): MayaModel & { briefs: TurnBrief[] } {
+  const briefs: TurnBrief[] = [];
+  return {
+    id,
+    promptVersion: CONVERSATION_PROMPT_VERSION,
+    output: 3,
+    briefs,
+    propose: async (input, _signal, onText) => {
+      const brief = structuredClone(input) as unknown as TurnBrief;
+      briefs.push(brief);
+      const out = await answer(brief, briefs.length - 1);
+      if (stream && onText) {
+        const text = JSON.stringify(out);
+        for (let i = stream.chunk ?? 7; i < text.length + (stream.chunk ?? 7); i += stream.chunk ?? 7) onText(text.slice(0, i));
+        await stream.beforeEnd?.();
+      }
+      return out;
+    },
+  };
+}
+
+/**
+ * A small deterministic conversational player (D-341) for the command line and the practice suite's --fake run: it
+ * reads the brief's facts and help levels and writes a plain `say` from them. It is not a teacher; the session checks
+ * every reply it makes, and refuses what breaks the limits.
+ */
+export function ruleConversationalModel(): MayaModel {
+  return conversationalFake({ id: "fake", answer: (brief) => ruleReply(brief) });
+}
+
+function ruleReply(brief: TurnBrief): unknown {
+  const text = brief.childTurn ?? "";
+  const lower = text.toLowerCase();
+  const answers: Record<string, unknown>[] = [];
+  let rightFinal = false;
+  for (const fact of brief.facts) {
+    const final = /^(.+?) is the right final answer\.$/.exec(fact);
+    const step = /^(.+?) is right for the step "([^"]+)", and the child said it as their answer\.$/.exec(fact);
+    const value = Number((final ?? step)?.[1]);
+    if (final && Number.isFinite(value)) { answers.push({ value: { type: "number", value }, step: "result", problem: "target", verdict: "right" }); rightFinal = true; }
+    else if (step && Number.isFinite(value)) answers.push({ value: { type: "number", value }, step: step[2], problem: "target", verdict: "right" });
+  }
+  const reading = {
+    answers,
+    stop: /\b(stop|bye|goodbye)\b/.test(lower),
+    writing: /\b(wait|writing|hold on)\b/.test(lower),
+    help: /\b(help|stuck|show me|don'?t know|dont know)\b/.test(lower) ? "more" : "none",
+    paper: /\b(wrote it|i wrote|written)\b/.test(lower) ? "written" : "none",
+    start: /\b(how to start|can'?t start)\b/.test(lower) ? "no_start" : "none",
+  };
+  const acts = brief.acts;
+  const has = (a: Act) => acts.includes(a);
+  const levels = brief.help.levels;
+  if (reading.stop && has("close")) return reply("Okay, we can stop here. Bye for now.", "close", { reading });
+  if (reading.writing && has("wait")) return reply("Take your time.", "wait", { reading });
+  if (rightFinal && has("accept_answer")) return reply("Yes, that's right. How did you work it out?", "accept_answer", { reading });
+  const stands = brief.notes.some((n) => n.startsWith("The child's answer stands"));
+  if ((reading.paper === "written" || /\b(i'?m done|done)\b/.test(lower)) && has("close")) return reply("Thanks for writing it. Bye for now.", "close", { reading });
+  if (has("ask_write") && (stands || !has("guide"))) return reply("Please write your answer on your paper.", "ask_write", { reading });
+  const example = brief.notes.find((n) => n.startsWith("If you work the easier example now"));
+  const exampleStep = example?.replace(/^If you work the easier example now, show its next step yourself, with its result, and ask nothing until the example ends: /, "");
+  if (has("example_step") && (reading.start === "no_start" || !has("guide")) && example) {
+    return reply((exampleStep ?? "").replace(/ Say first that it is a new, easier problem\.$/, ""), "example_step", { reading });
+  }
+  if (has("guide")) {
+    const want = reading.help === "more" ? brief.help.levelNow + 1 : 0;
+    const pick = levels.find((l) => l.level >= want) ?? levels.at(-1);
+    const lead = brief.facts.some((f) => /not right|smaller digit|leaves out/.test(f)) ? "Not quite. " : "";
+    return reply(`${lead}${pick?.mayShow.split(" / ")[0] ?? "Let's look at the next step."}`, "guide", { level: pick?.level ?? 0, reading });
+  }
+  if (has("close")) return reply("Thanks for working with me. Bye for now.", "close", { reading });
+  if (has("try_target")) return reply("Now try our question.", "try_target", { reading });
+  if (has("redirect")) return reply("Let's get back to our question.", "redirect", { reading });
+  return reply("Let's keep going.", acts[0] ?? "close", { reading });
 }

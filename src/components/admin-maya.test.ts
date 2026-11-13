@@ -32,11 +32,12 @@ describe("the calls list's safety label", () => {
 
 it("uses the same number-check words on the list and the call page", async () => {
   const fixture = await reviewFixture();
+  expect(fixture.text.outcome!.mishearing).toMatchObject({ confirmations: 1, corrections: 0 });
   const list = text([row({ mishearing: fixture.text.outcome!.mishearing })]);
   const call = renderToStaticMarkup(createElement(MayaCall, { initial: fixture.text, board: boardPlayback(fixture.text.batches), childName: "Iris" })).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
   for (const shown of [list, call]) {
     expect(shown).toContain("Numbers Maya checked");
-    expect(shown).toContain("0 checked, 0 fixed");
+    expect(shown).toContain("1 checked, 0 fixed");
     expect(shown).not.toContain("0 asked, 0 corrected");
   }
 });

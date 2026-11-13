@@ -33,9 +33,11 @@ import {
   operationText,
   valueText,
   workedSteps,
+  type OperationLimits,
   type SameNumberWrongRule,
 } from "@/lib/question-package-math";
 
+export type { OperationLimits } from "@/lib/question-package-math";
 export { operationProblem, operationResult, operationText, stepText, valueText, workedSteps } from "@/lib/question-package-math";
 export { coinGiven, type CoinGiven, type CoinGivenSource, type CoinName } from "@/lib/question-package-givens";
 
@@ -155,7 +157,12 @@ export type Operation =
   | { kind: "time-add"; operands: [ClockTime, Duration] }
   | { kind: "clock-convert"; operands: [ClockTime] }
   | { kind: "evaluate"; operands: [string]; values?: Record<string, number> }
-  | { kind: "solve"; operands: [string] };
+  | { kind: "solve"; operands: [string] }
+  /** Place value (Maya's session adapter only, never stored): the digit in a place of a whole number, or its value. */
+  | { kind: "place-value"; operands: [number]; ask: "digit" | "value"; place: Place }
+  /** B1b (question-package-place-parts.ts): two digits compared, two digits' values added, or wholes and tenths as a decimal. */
+  | { kind: "place-value"; operands: [number]; ask: "compare" | "sum"; place: Place; second: Place }
+  | { kind: "place-value"; operands: [number, number]; ask: "build"; place: "tenths" };
 
 /** One operation shape for each kind, so a kind picks its shape. */
 type KindsOf<K extends string, O> = K extends string ? { kind: K; operands: O } : never;
@@ -337,7 +344,40 @@ export type WorkedStep =
       expression: string;
       total: number;
     }
+  | MissingNumberStep
+  /** The digit in one place of a place-value number (question-package-place-value.ts); `worth` is that place's value. */
+  | { id: string; kind: "read-digit"; place: Place; digit: number; worth: number }
+  /** B1b: which of two digits is bigger (they differ), and one digit's value in its place (question-package-place-parts.ts). */
+  | { id: "bigger"; kind: "bigger"; a: number; b: number; bigger: number }
+  | { id: string; kind: "place-worth"; place: Place; digit: number; worth: number; value: number }
+  | MissingNumberStep
+  | {
+      /**
+       * A printed claim checked against its computed side (Maya only, src/lib/maya/claim.ts; never a stored step of an
+       * operation): the value the operation makes, the printed number it is compared with, the relation the claim states
+       * ("equal": the same number; "greater": more than the printed number; "less": less than it, an other-topic claim
+       * of C3c), and whether the claim holds.
+       */
+      id: "claim";
+      kind: "claim-compare";
+      relation: "equal" | "greater" | "less";
+      value: number;
+      shown: number;
+      holds: boolean;
+    }
   | { id: "result"; kind: "result"; value: AnswerValue };
+
+/**
+ * Maya-only steps of a missing number (src/lib/maya/missing-number.ts): never stored in a workbook or made by the
+ * generator, so the default check refuses them; Maya's check computes each one again from the printed equation.
+ * - missing-frame: the printed equation turned into the operation that finds the ? (244 × ? = 1464 is 1464 ÷ 244).
+ * - drop-zeros: the same zeros taken off both numbers of a division (16200 ÷ 30 is 1620 ÷ 3).
+ * - try-factor: a missing factor found by trying numbers, each multiplied out (244 × 7 = 1708 is too big).
+ */
+export type MissingNumberStep =
+  | { id: "frame"; kind: "missing-frame"; sign: "×" | "−"; known: number; unknownFirst: boolean; total: number; inverse: "÷" | "−"; from: number; by: number }
+  | { id: "zeros"; kind: "drop-zeros"; from: number; by: number; zeros: number; toFrom: number; toBy: number }
+  | { id: string; kind: "try-factor"; factor: number; total: number; round: number; tries: { value: number; product: number }[]; value: number };
 
 /** An expected wrong answer and its cause: a misconception id ("O3") and its plain description. */
 export interface WrongAnswer {
@@ -387,8 +427,12 @@ export interface QuestionPackage {
    */
   answer: PackageAnswer | null;
   operation: Operation | null;
-  /** Added after workbook selection and print checks. The renderer uses the original item without teaching data. */
-  operationSource?: "maya";
+  /**
+   * Added after workbook selection and print checks ("maya", #525), or by Maya's session adapter from the stored
+   * package when a call starts ("maya-teaching", src/lib/maya-teaching; never stored in a workbook). The renderer uses
+   * the original item without teaching data.
+   */
+  operationSource?: "maya" | "maya-teaching";
   /**
    * The shape version of the worked steps here and in the easier example; absent means 1. Code checks only the
    * versions in STEPS_VERSIONS; any other is "unsupported", never a pass.
@@ -785,8 +829,8 @@ function valueProblem(value: unknown, what: string): string | null {
 }
 
 /** A part (the question or its easier example): its operation is valid, and its answer and steps are what it gives. */
-function partProblem(operation: unknown, answer: unknown, steps: unknown, what: string): string | null {
-  const problem = operationProblem(operation);
+function partProblem(operation: unknown, answer: unknown, steps: unknown, what: string, limits?: OperationLimits): string | null {
+  const problem = operationProblem(operation, limits);
   if (problem) return what === "the question" ? problem : `${what}: ${problem}`;
   const value = valueProblem(answer, `${what}'s answer`);
   if (value) return value;
@@ -839,12 +883,14 @@ interface Size {
 const carries = (s: WorkedStep) => ((s.kind === "add-column" || s.kind === "multiply-digit") && s.carryOut > 0)
   || (s.kind === "subtract-column" && s.regrouped) || (s.kind === "clock-change" && s.from.hours !== s.to.hours);
 const WHOLE_KINDS: readonly string[] = ["add", "subtract", "multiply", "divide"];
-function size(operation: Operation): Size {
+function size(operation: Operation, limits?: OperationLimits): Size {
   const steps = workedSteps(operation);
   // A missing part is counted on from the part to the total: its size is the count and the total (9 + ? = 10 counts
   // 1 to 10, so it is easier than 7 + ? = 10, which counts 3).
   const numbers = operation.kind === "missing-addend" ? [operation.operands[1] - operation.operands[0], operation.operands[1]].sort((x, y) => x - y)
-    : WHOLE_KINDS.includes(operation.kind) ? [...(operation.operands as number[])].sort((x, y) => x - y) : null;
+    : WHOLE_KINDS.includes(operation.kind) ? [...(operation.operands as number[])].sort((x, y) => x - y)
+      // A place-value build, only under Maya's explicit check (lesson 8; no default check knows the kind): fewer wholes is easier.
+      : limits?.placeValue === true && operation.kind === "place-value" && operation.ask === "build" ? [operation.operands[0]] : null;
   const expression = operation.kind === "evaluate" || operation.kind === "solve" ? operation.operands[0] : null;
   const literals = expression ? operationText(operation).match(/\d+(?:\.\d+)?/g)?.map(Number).sort((a, b) => a - b) ?? null : null;
   return { digits: (operationText(operation).match(/\d/g) ?? []).length, steps: steps.length, carries: steps.filter(carries).length,
@@ -865,7 +911,7 @@ const smaller = (a: Size, b: Size) => a.digits < b.digits || (a.digits === b.dig
 type Problem = ItemProblem;
 const failed = (reason: string | null): Problem | null => (reason ? { status: "failed", reason } : null);
 
-function packageProblem(p: unknown): Problem | null {
+function packageProblem(p: unknown, limits?: OperationLimits): Problem | null {
   if (!isObject(p)) return failed("the package is not an object");
   if (!isText(p.id)) return failed("the package has no id");
   const ref = refProblem(p.ref);
@@ -877,21 +923,22 @@ function packageProblem(p: unknown): Problem | null {
     if (!STEPS_VERSIONS.includes(p.stepsVersion)) return { status: "unsupported", reason: `code cannot read worked steps of version ${p.stepsVersion}` };
   }
   if (p.operation === null && p.item !== undefined) return noOperationProblem(p, p.text);
-  const operation = operationCheck(p.operation);
+  const operation = operationCheck(p.operation, limits);
   if (operation?.status === "unsupported") return operation;
   const form = unknownForm(p);
   if (form) return { status: "unsupported", reason: form };
   // Only an easier example of the question's (valid) operation kind can be beyond code; another kind fails later.
   const easier = operation === null && isObject(p.easierExample) && isObject(p.easierExample.operation)
-    && p.easierExample.operation.kind === (p.operation as Operation).kind ? operationCheck(p.easierExample.operation) : null;
+    && p.easierExample.operation.kind === (p.operation as Operation).kind ? operationCheck(p.easierExample.operation, limits) : null;
   if (easier?.status === "unsupported") return { status: "unsupported", reason: `the easier example: ${easier.reason}` };
-  const content = failed(contentProblem(p));
+  const content = failed(contentProblem(p, limits));
   if (content || p.item === undefined) return content;
   const q = p as unknown as QuestionPackage & { answer: PackageAnswer; operation: Operation };
   return itemProblem(p.item, {
     ...VALUE_READERS,
     text: q.text,
     computed: { operation: q.operation, answer: q.answer.value, accepted: q.answer.accepted, wrongAnswers: q.wrongAnswers },
+    ...(limits?.templateShown === true ? { templateShown: true } : {}),
   });
 }
 
@@ -920,10 +967,10 @@ function unknownForm(p: Record<string, unknown>): string | null {
 }
 
 /** The answer, the steps and everything after them, for a package whose operation code can compute. */
-function contentProblem(p: Record<string, unknown>): string | null {
+function contentProblem(p: Record<string, unknown>, limits?: OperationLimits): string | null {
   const answer = p.answer;
   if (!isObject(answer)) return "the answer is missing";
-  const work = partProblem(p.operation, answer.value, p.steps, "the question");
+  const work = partProblem(p.operation, answer.value, p.steps, "the question", limits);
   if (work) return work;
   const target = p.operation as Operation;
   const rules = computation(target);
@@ -973,14 +1020,14 @@ function contentProblem(p: Record<string, unknown>): string | null {
   if (!isObject(easier)) return "the package has no easier example";
   if (!isText(easier.text)) return "the easier example has no text";
   if (!isObject(easier.operation) || easier.operation.kind !== target.kind) return "the easier example is not the same operation";
-  const easierWork = partProblem(easier.operation, easier.answer, easier.steps, "the easier example");
+  const easierWork = partProblem(easier.operation, easier.answer, easier.steps, "the easier example", limits);
   if (easierWork) return easierWork;
   // An easier example that comes to the question's answer, in any form, gives the answer away (review R378-1).
   const easierAnswer = easier.answer as AnswerValue;
   if (rightForms.some((r) => equivalent(r, easierAnswer)) || isRight(easierAnswer, rightForms, exact, rules.sameNumberWrong, rules.answer === "amount" ? rules.unit(target) : undefined)) {
     return "the easier example has the question's answer";
   }
-  if (!smaller(size(easier.operation as Operation), size(target))) return "the easier example is not smaller than the question";
+  if (!smaller(size(easier.operation as Operation, limits), size(target, limits))) return "the easier example is not smaller than the question";
   return null;
 }
 
@@ -1026,12 +1073,13 @@ function isRight(wrong: AnswerValue, rightForms: AnswerValue[], exact: AnswerVal
 /**
  * Checks a package of shape `version` (the current one unless given), for example one read from the database:
  * "checked" with the package, "failed" with the first reason, "unsupported" when code cannot compute its operation,
- * read its steps or check a scored region, or "not-checked" for a sound item code does not mark.
+ * read its steps or check a scored region, or "not-checked" for a sound item code does not mark. `limits`: wider
+ * whole-number limits, only for a caller that passes them explicitly (Maya's session adapter); none keeps today's.
  */
-export function checkQuestionPackage(candidate: unknown, version: number = QUESTION_PACKAGE_VERSION): PackageCheck {
+export function checkQuestionPackage(candidate: unknown, version: number = QUESTION_PACKAGE_VERSION, limits?: OperationLimits): PackageCheck {
   if (version !== 1 && version !== QUESTION_PACKAGE_VERSION) return { ok: false, status: "unsupported", reason: `code cannot read question packages of version ${version}` };
   if (version === 1 && isObject(candidate) && candidate.item !== undefined) return { ok: false, status: "failed", reason: "a version 1 package has no item" };
-  const problem = packageProblem(candidate);
+  const problem = packageProblem(candidate, limits);
   if (!problem) return { ok: true, status: "checked", package: candidate as QuestionPackage };
   if (problem.status === "not-checked") return { ok: false, status: "not-checked", reason: problem.reason, package: candidate as QuestionPackage };
   return { ok: false, status: problem.status, reason: problem.reason };

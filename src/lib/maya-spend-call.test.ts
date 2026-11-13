@@ -47,7 +47,7 @@ const readingModel = (): MayaModel => ({
   async propose(input, signal) {
     const p = (await ruleMayaModel().propose(input, signal)) as { reading?: Record<string, unknown> | null };
     const text = input.childTurn ?? "";
-    if (!p.reading) return p;
+    // The configured safety classification applies even when the teaching rule player returns a close with no reading.
     if (text.includes("hurts me")) return { ...p, reading: { ...p.reading, safety: "concern" } };
     if (text.includes("naked")) return { ...p, reading: { ...p.reading, unsafeRequest: true } };
     return p;
