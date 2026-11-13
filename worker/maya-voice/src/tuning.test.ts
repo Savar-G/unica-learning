@@ -9,14 +9,14 @@ import { createBoardSpeech } from "@/lib/board-speech";
 import { templateSkills } from "@/lib/assessment";
 import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
-import { memoryWordingHistoryStore } from "@/lib/maya";
+import { memoryWordingHistoryStore, openingLine } from "@/lib/maya";
 import { mayaCalls, type CallSeams } from "@/lib/maya-call";
 import { memoryCallStore, memoryConnectionLog } from "@/lib/maya-call-memory";
-import { ruleMayaModel } from "@/lib/maya-model-fake";
+import { ruleConversationalModel, ruleMayaModel } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { asksForNumber, GREETING_ID, GREETING_TEXT, turnSilences, VOICE_TUNING_DEFAULTS, voiceProviders, type TurnSilence } from "@/lib/maya-voice";
 import type { QuestionPackage } from "@/lib/question-package";
-import { voiceOpening } from "@/lib/maya-voice-opening";
+import { voiceOpening } from "./opening";
 import { spokenMath } from "@/lib/maya-voice-spoken";
 import type { VoiceCall } from "@/lib/maya-call";
 import { VoiceCallRun, voiceSession, type Timers } from "./agent";
@@ -156,7 +156,8 @@ async function voiceCall(options: { greeting?: boolean; numberContinueMs?: numbe
     history: memoryWordingHistoryStore(),
     events: learningEvents(memoryLearningEventStore({ children: [{ id: CHILD, parentId: PARENT }], tests: [{ id: TEST, childId: CHILD }] })),
     rebuild: vi.fn(async () => true),
-    model: (id) => (id === null || id === "fake" ? ruleMayaModel() : null),
+    // The worker speaks the opening itself only in a conversational call (D-341), as every real call is now.
+    model: (id) => (id === null || id === "fake" ? (options.workerOpening ? ruleConversationalModel() : ruleMayaModel()) : null),
     isTestFamily: async (p) => p === PARENT,
     clock: () => Date.now(),
     newId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`,
@@ -196,7 +197,7 @@ async function voiceCall(options: { greeting?: boolean; numberContinueMs?: numbe
   options.beforeJoin?.(opened.call);
   await run.childJoined();
   if (options.opening !== false) await waitFor(() => heard(said()).length > (options.greeting ? GREETING_TEXT.length : 0) && session.agentState === "listening", "the opening");
-  return { clock, said, session, run, stage, board, calls, call: opened.call, store, id: started.view.id, providers, workerOpening };
+  return { clock, said, session, run, stage, board, receiver, calls, call: opened.call, store, id: started.view.id, providers, workerOpening };
 }
 
 describe("the turn and interruption settings of a session", () => {
@@ -301,10 +302,10 @@ describe("the worker's own opening (the opening's speed, Savar 2026-11-13)", () 
     const started: string[][] = [];
     const hold = (call: VoiceCall) => {
       const real = call.start.bind(call);
-      vi.spyOn(call, "start").mockImplementation(async () => {
+      vi.spyOn(call, "start").mockImplementation(async (options) => {
         await gate;
         if (fail) throw new Error("the database is down");
-        const turn = await real();
+        const turn = await real(options);
         started.push(turn.say);
         return turn;
       });
@@ -315,6 +316,8 @@ describe("the worker's own opening (the opening's speed, Savar 2026-11-13)", () 
   it("is the first words in the voice, said once, and the start's own words are not said again", async () => {
     const start = heldStart();
     const c = await voiceCall({ workerOpening: true, opening: false, beforeJoin: start.hold });
+    // The worker's line is code's own opening line (D-341), the one the start records.
+    expect(c.workerOpening).toBe(openingLine(PKG as Parameters<typeof openingLine>[0]));
     const opening = spokenMath(c.workerOpening!);
     // Said before the call's start is saved: the start is still held.
     await waitFor(() => heard(c.said()).length >= opening.length, "the opening");
@@ -323,12 +326,35 @@ describe("the worker's own opening (the opening's speed, Savar 2026-11-13)", () 
     start.release();
     await waitFor(() => c.call.session.startedAt !== null && c.session.agentState === "listening", "the start");
     await c.call.settled();
+    await c.board.settled();
     await pause();
     expect(heard(c.said())).toBe(opening);
     expect(times(heard(c.said()), opening)).toBe(1);
-    // The start gave its own words; none of them reached the voice.
-    expect(start.started).toHaveLength(1);
-    for (const line of start.started[0]) expect(heard(c.said())).not.toContain(spokenMath(line));
+    // D-341: the start is told the worker spoke the line (`openingSpoken`), so it gives no words to say again.
+    expect(start.started).toEqual([[]]);
+    // The stored call's first Maya line is the line the child heard.
+    const view = (await c.calls.view(c.id))!;
+    expect(view.transcript.find((l) => l.speaker === "maya")?.text).toBe(c.workerOpening);
+    // The question's batch is on the child's board, shown under the opening's own plan: one plan was staged, the opening's.
+    expect(c.call.session.batches).toBe(1);
+    const shown = c.receiver.snapshot().events.flatMap((e) => (e.kind === "batch" ? [e.batchId] : []));
+    expect(shown).toEqual([`${c.id}-b1`]);
+    expect(c.receiver.staged()).toEqual([]);
+    expect(c.stage).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not cut the opening's audio to show the question's batch", async () => {
+    // A start that comes back while the opening still plays: the batch shows and the opening is heard whole.
+    const start = heldStart();
+    const c = await voiceCall({ workerOpening: true, opening: false, beforeJoin: start.hold });
+    const opening = spokenMath(c.workerOpening!);
+    start.release();
+    await waitFor(() => c.call.session.startedAt !== null && c.session.agentState === "listening", "the start");
+    await c.board.settled();
+    await pause();
+    expect(heard(c.said())).toBe(opening);
+    expect(c.receiver.snapshot().events.filter((e) => e.kind === "batch")).toHaveLength(1);
+    expect(c.receiver.snapshot().events.some((e) => e.kind === "cancelled")).toBe(false);
   });
 
   it("is followed by the greeting", async () => {

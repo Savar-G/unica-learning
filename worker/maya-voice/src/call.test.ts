@@ -9,11 +9,11 @@ import { createBoardSpeech, type CueMeasurement } from "@/lib/board-speech";
 import { templateSkills } from "@/lib/assessment";
 import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
-import { memoryWordingHistoryStore, PAUSES, TIME_LIMITS } from "@/lib/maya";
+import { memoryWordingHistoryStore, openingLine, PAUSES, TIME_LIMITS } from "@/lib/maya";
 import { mayaCalls, type CallSeams } from "@/lib/maya-call";
 import { memoryCallStore, memoryConnectionLog } from "@/lib/maya-call-memory";
 import type { MayaModel } from "@/lib/maya-model";
-import { ruleMayaModel } from "@/lib/maya-model-fake";
+import { reply as v3Reply, ruleConversationalModel, ruleMayaModel } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { callSpend, createSpendLedger, spendConfig, SPEND_CLOSE, WEEK_MICROS } from "@/lib/maya-spend";
 import { memorySpendStore } from "@/lib/maya-spend-memory";
@@ -210,7 +210,16 @@ describe("a voice call through LiveKit with the fake providers", () => {
     expect(c.said().join(" ").indexOf("Let's do page 4, number 3")).toBeLessThan(c.said().join(" ").lastIndexOf(reply));
   });
   it("opens when the child joins, carries each spoken turn to Maya and her words back, and stores the call", async () => {
-    const c = await voiceCall();
+    // The model every real call has now (D-341, src/lib/maya-call-seams.ts): its fake is the conversational rule player,
+    // which does not check a number it heard badly. The two hearing turns are scripted as a real model answers them.
+    const rule = ruleConversationalModel();
+    const model: MayaModel = { ...rule, propose: async (input, signal, onText) => {
+      const turn = (input as { childTurn?: string | null }).childTurn;
+      if (turn === "I got sixty six") return v3Reply("Did you say 66?", "confirm");
+      if (turn === "No, I said 66.") return v3Reply("Yes, 27 + 39 = 66. How did you work it out?", "accept_answer", { reading: { correctsHearing: true, answers: [{ value: { type: "number", value: 66 }, step: "result", problem: "target", verdict: "right" }] } });
+      return rule.propose(input, signal, onText);
+    } };
+    const c = await voiceCall({ model });
     await c.clock.advance(2);
     await c.run.childJoined();
     await waitFor(() => c.said().length === 1, "Maya's opening");
@@ -231,6 +240,8 @@ describe("a voice call through LiveKit with the fake providers", () => {
     // Every word Maya spoke is a word the call stored for her, in order (the easier example's steps are one reply). The
     // stored text keeps its math signs; the voice was given them as words.
     const stored = live.transcript.filter((l) => l.speaker === "maya").map((l) => l.text.replaceAll("{name}", "Leah"));
+    // D-341: the opening is code's own line, which names the question in spoken words (openingLine, spokenQuestion).
+    expect(stored[0]).toBe(openingLine(PKG as Parameters<typeof openingLine>[0]));
     expect(stored.some((l) => l.includes("27 + 39"))).toBe(true);
     expect(c.said().join(" ")).toBe(spokenMath(stored.join(" ")));
 

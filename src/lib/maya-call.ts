@@ -74,10 +74,10 @@ import { createHistory, inkLog, mayaWrites, readInkEvent, withChildInk, withInkL
 import { fitView, type PlayStep } from "@/lib/board-svg";
 import type { LearningEvents, NewLearningEvent } from "@/lib/learning-events";
 import type { NoteStep } from "@/lib/maya-call-note";
-import { heardWordings, learningEvent, limitsOf, mayaPackageCheck, SAFETY_GUIDANCE, type Outcome, type Session, type Severity, type WordingHistory, type WordingHistoryStore } from "@/lib/maya";
+import { heardWordings, learningEvent, limitsOf, mayaPackageCheck, nextActs, SAFETY_GUIDANCE, streamRules, type Outcome, type Session, type Severity, type WordingHistory, type WordingHistoryStore } from "@/lib/maya";
 import { modelInput, type MayaModel } from "@/lib/maya-model";
 import type { TalkReviewer } from "@/lib/maya-talk-review";
-import { createTextSession, type FinishOptions, type SavedTextSession, type TextOutput, type TextSession } from "@/lib/maya-text";
+import { createTextSession, type FinishOptions, type SavedTextSession, type TextOutput, type TextSession, type TextSessionOptions } from "@/lib/maya-text";
 import { packageHash, type MayaTrace } from "@/lib/maya-trace";
 import { type QuestionPackage, type QuestionRef } from "@/lib/question-package";
 import { teachingPackage } from "@/lib/maya-teaching";
@@ -417,6 +417,26 @@ export interface VoiceTurn {
   guidance?: string;
   /** How long this input spent on the model, its repair and the free-talk reviews (#532). Absent when no input ran. */
   time?: { modelMs: number; repairMs: number; reviewMs: number };
+  /**
+   * D-341: the child is thinking ("um", "wait"). `say` holds at most one short patient line, and nothing more is said
+   * until the child speaks or the silence rule comes: no thinking phrase for this turn.
+   */
+  wait?: boolean;
+}
+
+/**
+ * The worker's ear on one child turn while it runs (D-341, the streaming contract of src/lib/maya-text.ts). `begun`
+ * comes once, when the child's words reached the session and before any model call: `model` false when no model call
+ * is made (a thinking turn, a call that ended), `streams` false when the reply cannot stream, so its first words wait for
+ * the whole reply. `part` gives each checked sentence in index order, once; a sentence given is never taken back.
+ * `cancel(fromIndex)` drops sentences from that index that were not given yet; `end` ends the output. The finished
+ * turn (`VoiceTurn.say`) holds the same sentences in the same order, then any that follow.
+ */
+export interface VoiceSay {
+  begun?(plan: { model: boolean; streams: boolean }): void;
+  part?(sentence: string, index: number): void;
+  cancel?(fromIndex: number): void;
+  end?(): void;
 }
 
 /**
@@ -453,8 +473,10 @@ export interface VoiceCall {
   acknowledge(id: string): Promise<boolean>;
   /** Persist receiver outcomes with their presentation times, under this worker's revision. */
   observeBoard(snapshot: BoardSnapshot): Promise<void>;
-  start(): Promise<VoiceTurn>;
-  child(text: string, options?: { uncertain?: boolean; alternatives?: string[] }): Promise<VoiceTurn>;
+  /** `openingSpoken`: the worker speaks the opening itself, so the turn comes back with no say (D-341). */
+  start(options?: { openingSpoken?: boolean }): Promise<VoiceTurn>;
+  /** `say` hears this turn's sentences while it runs (VoiceSay), before the save behind it. */
+  child(text: string, options?: { uncertain?: boolean; alternatives?: string[] }, say?: VoiceSay): Promise<VoiceTurn>;
   tick(): Promise<VoiceTurn>;
   writing(status: "started" | "done"): Promise<VoiceTurn>;
   /** Ends from the last durable state without waiting for active model work. */
@@ -822,9 +844,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
   }
 
   /** A call's text session. Admin test calls have free talk on (D-197), with the model's review; chat has it off. A resumed call keeps its flag. */
-  function textSession(record: Pick<CallRecord, "id" | "parentId" | "childId"> & { kind: CallKind }, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number, grade?: number, confirmWorkbook?: boolean, onGuidance?: (output: TextOutput) => void): TextSession {
+  function textSession(record: Pick<CallRecord, "id" | "parentId" | "childId"> & { kind: CallKind }, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number, grade?: number, confirmWorkbook?: boolean, onGuidance?: (output: TextOutput) => void, sayHooks?: Pick<TextSessionOptions, "onSayPart" | "onSayCancel" | "onSayEnd">): TextSession {
     return createTextSession({
-      onGuidance,
+      onGuidance, ...sayHooks,
       callId: record.id, channel: record.kind === "chat" ? "chat" : undefined, package: pkg, model, clock: seams.clock, random: seed, history, childName, runner: "text", resume: saved, limitMs, grade, confirmWorkbook,
       freeTalk: record.kind !== "chat" && record.kind !== "family", reviewer: seams.reviewer?.(model.id, spendCall(record)) ?? null,
     });
@@ -1093,12 +1115,18 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       let hearGuidance: ((turn: VoiceTurn) => void) | null = null;
       // Every trace turn before this index has been told to the worker in an earlier turn.
       let told = 0;
+      /** The worker's ear on the child turn that runs now (VoiceSay). Other inputs give their words with their turn. */
+      let listener: VoiceSay | null = null;
       const session = textSession(record, pkg, model, null, restored, undefined, undefined, undefined, undefined, undefined, (out) => {
         persist(out);
         const from = told;
         told = session.trace().turns.length;
         // Only a worker that lost the call to another stays silent.
         if (!replaced && record.status !== "ended") hearGuidance?.(voiceTurn(out, from));
+      }, {
+        onSayPart: (sentence, index) => listener?.part?.(sentence, index),
+        onSayCancel: (fromIndex) => listener?.cancel?.(fromIndex),
+        onSayEnd: () => listener?.end?.(),
       });
       told = session.trace().turns.length;
       const last = restored.turns.at(-1);
@@ -1167,7 +1195,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         const closing = state.startedAt !== null && state.now !== null && state.now - state.startedAt >= limitsOf(state).closingAtMs;
         const priority = state.safety.flagged || state.state === "TIME_CLOSE" || state.outcome?.reason === "time_limit" || closing;
         const guidance = out.say.find((text) => (Object.values(SAFETY_GUIDANCE) as string[]).includes(text));
-        return { say: out.say, newBatches: out.board.length, boardCues, safetyMessage: out.safetyMessage, ended: out.ended !== null, priority, time, ...(guidance ? { guidance } : {}) };
+        return { say: out.say, newBatches: out.board.length, boardCues, safetyMessage: out.safetyMessage, ended: out.ended !== null, priority, time, ...(guidance ? { guidance } : {}), ...(out.wait ? { wait: true } : {}) };
       };
       let working = 0;
       /** The child's words the running input is working on, for the safety read when the call closes under it. */
@@ -1198,7 +1226,13 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           ...(done.guidance ? { guidance: done.guidance } : {}),
         };
       };
-      const turn = async (run: () => Promise<TextOutput>, childText?: string): Promise<VoiceTurn> => {
+      /** Whether the input just given to the session asks the model, and whether its reply can stream (streamRules). */
+      const planOf = () => {
+        const s = session.session;
+        const asks = s.outcome === null && nextActs(s).expect === "maya";
+        return { model: asks, streams: asks && model.output === 3 && streamRules(s) !== null };
+      };
+      const turn = async (run: () => Promise<TextOutput>, childText?: string, say?: VoiceSay): Promise<VoiceTurn> => {
         if (inactive()) return none;
         // This read stays before the input: beside it, a paid request went out at the cap and the safety read lost its
         // guidance (tried 2026-11-13, src/lib/maya-spend-call.test.ts).
@@ -1230,7 +1264,13 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         working++;
         hearing = childText;
         let out: TextOutput;
-        try { out = await input(); } finally { working--; hearing = undefined; }
+        listener = say ?? null;
+        try {
+          // The input is in the session once `input` returns its promise, before any model call.
+          const running = input();
+          if (say?.begun) { try { say.begun(planOf()); } catch { /* the worker's ear never fails the turn */ } }
+          out = await running;
+        } finally { working--; hearing = undefined; listener = null; }
         persist(out);
         // The cap's read after the turn runs beside the save. A request refused in the turn decides without it.
         const capAfter = session.ended || refusal ? null : capNow();
@@ -1299,8 +1339,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           await queue;
           if (lost) throw new Error("The observed board could not be saved.");
         },
-        start: () => turn(() => session.start()),
-        child: (text, options) => turn(() => session.child(text.trim().slice(0, MAX_CHILD_TEXT), options), text.trim().slice(0, MAX_CHILD_TEXT)),
+        start: (options) => turn(() => session.start(options)),
+        child: (text, options, say) => turn(() => session.child(text.trim().slice(0, MAX_CHILD_TEXT), options), text.trim().slice(0, MAX_CHILD_TEXT), say),
         tick: () => turn(() => session.tick()),
         writing: (status) => turn(() => session.writing(status)),
         async limit() {

@@ -21,6 +21,7 @@
 import { ReadableStream, TransformStream } from "node:stream/web";
 import { FlushSentinel, stt, voice, type llm, type tts, type VAD } from "@livekit/agents";
 import type { AudioFrame } from "@livekit/rtc-node";
+import type { Batch } from "@/lib/board";
 import type { FinishOptions } from "@/lib/maya-text";
 import type { VoiceCall, VoiceTurn } from "@/lib/maya-call";
 import { speechWords, type BoardSpeech, type SpeechScope } from "@/lib/board-speech";
@@ -311,6 +312,8 @@ export class VoiceCallRun {
   private greeted: Promise<void> | null = null;
   private greetStarted = false;
   private openingSaid = false;
+  /** The start's batches the opening's plan could not show (`openingBoard`): the next staged plan carries them. */
+  private owedBatches: Batch[] = [];
   /** Words (transcripts, interim or final) the speech-to-text gave so far, and who waits for the next one. */
   private wordCount = 0;
   private wordWaiter: (() => void) | null = null;
@@ -447,18 +450,48 @@ export class VoiceCallRun {
     // An empty plan gives the opening's audio an owner (the call's audio output plays only audio that has one, which
     // is why an opening with no plan made no sound, 2026-11-13). Its audio does not wait for the board: `ungatedNext`.
     void this.stageBoard({}, false).catch(() => {});
+    const openingScope = this.boardScope;
     this.agent.ungatedNext = true;
     this.options.openingMark?.("say");
     const speech = this.session.say(text, { addToChatCtx: true });
     const generation = this.generation;
     void speech.waitForPlayout().catch(() => {}).then(() => this.options.openingMark?.(`playout:${speech.interrupted ? "interrupted" : "whole"}`));
     const starting = (async () => {
-      const turn = await this.call.start();
+      // D-341: the start records this same line with no model call, and gives no words to say again.
+      const turn = await this.call.start({ openingSpoken: true });
       if (this.call.lost) return void this.finish({ detail: "the call could not be saved" });
+      // The question's batch is known only now, while the opening is being said: it is shown under the opening's own plan.
+      await this.openingBoard(openingScope, turn);
       await this.after({ ...turn, say: [] }, speech, () => false);
     })().catch(() => { if (generation === this.generation && this.childHere) void this.finish({ detail: "the opening could not be saved" }); });
     this.agent.openedByWorker(starting);
     return speech;
+  }
+
+  /**
+   * The start's board batches (the question) on the child's board, without the opening's audio: a new plan would take
+   * it. While the opening's plan owns the board they are shown at once under it (`showWith`). A plan cut before (the
+   * child talked, the opening had no audio) with nothing after it: a plan of their own, shown at once. A newer plan
+   * already playing (a reply): they go with the next plan the worker stages, shown at its first word (`owedBatches`).
+   */
+  private async openingBoard(scope: SpeechScope | null, turn: VoiceTurn) {
+    const board = this.options.board;
+    const batches = (turn.boardCues ?? []).map(c => c.batch);
+    if (!board || !batches.length) return;
+    const generation = this.generation;
+    if (scope) {
+      const done = await board.showWith(scope, batches);
+      if (done.refused.length) console.warn("[maya voice] board batch refused", this.call.id, done.refused);
+      if (done.shown) return;
+    }
+    if (generation !== this.generation || !this.childHere || this.finishing) { this.owedBatches.push(...batches); return; }
+    if (this.boardScope === scope && this.session.userState !== "speaking") {
+      await this.stageBoard({ boardCues: batches.map(batch => ({ batch, word: 1 })) });
+      const own = this.boardScope;
+      if (own) await board.show(own);
+      return;
+    }
+    this.owedBatches.push(...batches);
   }
 
   /** The greeting is over (or there was none, or it never started). */
@@ -792,7 +825,9 @@ export class VoiceCallRun {
   private async stageBoard(turn: Pick<VoiceTurn, "boardCues">, wait = true) {
     if (!this.options.board) return;
     const id = `speech-${this.segment}-${++this.utterance}`;
-    const staging = this.options.board.stage(id, turn.boardCues ?? []);
+    // Batches the opening could not show go first, at this plan's first word.
+    const owed = this.owedBatches.splice(0).map(batch => ({ batch, word: 1 }));
+    const staging = this.options.board.stage(id, [...owed, ...(turn.boardCues ?? [])]);
     // A batch the board core refused is not drawn, and the call goes on (board-speech.ts `stage`). Ids and codes only.
     void staging.then(r => { if (r.refused.length) console.warn("[maya voice] board batch refused", this.call.id, r.refused); }, () => {});
     const scope = this.options.board.capture(id);
