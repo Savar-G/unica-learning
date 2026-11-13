@@ -457,11 +457,26 @@ export class VoiceCallRun {
    * Says the opening at once (Savar, 2026-11-13: under 1 s from the child's connection), with no board plan, and starts
    * the call behind it. The start's own words are not said again; its turn keeps the rest of `after`.
    */
+  /** Debug: the state of LiveKit's audio output chain, for the opening's marks. */
+  private outputState(): string {
+    const parts: string[] = [];
+    let node = this.session.output.audio as unknown as Record<string, unknown> | undefined;
+    for (let depth = 0; node && depth < 4; depth++) {
+      const done = (key: string) => (node![key] as { done?: boolean } | undefined)?.done;
+      const source = node.audioSource as { queuedDuration?: number } | undefined;
+      parts.push(`${(node.constructor as { name: string }).name}{sub:${String(node.subscribed)},play:${String(done("playbackEnabledFuture"))},gen:${String(node.interruptionGeneration)},pushed:${String(node.pushedDuration)},queued:${String(source?.queuedDuration)},seg:${String(node.pendingPlayoutSegments)}}`);
+      node = node.nextInChain as Record<string, unknown> | undefined;
+    }
+    return `agent:${this.session.agentState},user:${this.session.userState} ${parts.join(" > ")}`;
+  }
+
   private openNow(text: string): voice.SpeechHandle {
     this.openingSaid = true;
     this.agent.plainNext = true;
-    this.agent.onOpeningMark = this.options.openingMark ?? null;
-    this.options.openingMark?.("say");
+    const note = this.options.openingMark;
+    this.agent.onOpeningMark = note ? name => note(`${name} | ${this.outputState()}`) : null;
+    note?.(`say | ${this.outputState()}`);
+    for (const ms of [1000, 2500]) setTimeout(() => note?.(`t+${ms} | ${this.outputState()}`), ms);
     // Not interruptible: LiveKit pauses an interruptible speech while it hears the child (a microphone that has just
     // connected often starts with a sound), and audio made during that pause is dropped, so the opening made no sound
     // (2026-11-13). The child's words during the opening are still heard, and answered after it.
