@@ -25,6 +25,7 @@ import { VoiceCallRun, voiceSession, type Timers } from "./agent";
 import { earlyRest } from "./early-speech";
 import { FakeTTS } from "./fake-providers";
 import { makeProviders } from "./providers";
+import { takeMarks } from "./marks";
 import { TURN_PARTS, type VoiceTurnSample } from "./turn-timing";
 
 // Maya's first sentences said before her turn is done (D-341, the streaming contract of src/lib/maya-text.ts), through
@@ -650,6 +651,27 @@ describe("the wait of a turn the speech-to-text held (2026-11-13)", () => {
     const [s] = c.samples;
     expect(s).toMatchObject({ outcome: "answered", speechEnd: "detector", sttWaitMs: 4000, sttHoldMs: 4000 });
     expect(s.waitMs).toBe(4000 + s.answerMs!);
+  });
+
+  it("puts the detector's end, the time it reported it and the last loud frame in the turn's clock marks", async () => {
+    const speech = new ProbeSTT();
+    const v = fakeVad();
+    const c = await voiceCall({ model: ruleConversationalModel(), speech, heardVad: v.vad });
+    takeMarks();
+    for (let i = 0; i < 20; i++) c.microphone.push(3000);
+    await pause();
+    const loudAt = Date.now();
+    speech.send(stt.SpeechEventType.START_OF_SPEECH);
+    await v.send(VADEventType.START_OF_SPEECH, 60, true);
+    c.clock.move(400);
+    await v.send(VADEventType.END_OF_SPEECH, 900, false, 250);
+    c.clock.move(1000);
+    speech.send(stt.SpeechEventType.FINAL_TRANSCRIPT, "24.");
+    speech.send(stt.SpeechEventType.END_OF_SPEECH);
+    await waitFor(() => c.samples.length === 1, "the sample");
+    const clock = takeMarks()!;
+    // Milliseconds after the earliest mark: the last loud frame.
+    expect(clock).toMatchObject({ t0: loudAt, levelEnd: 0, detectorEnd: 150, detectorHeard: 400, sttFinal: 1400 });
   });
 });
 

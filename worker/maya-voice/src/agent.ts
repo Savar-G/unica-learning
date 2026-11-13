@@ -27,7 +27,7 @@ import type { VoiceCall, VoiceSay, VoiceTurn } from "@/lib/maya-call";
 import { speechWords, type BoardSpeech, type SpeechScope } from "@/lib/board-speech";
 import { CuePlaybackOutput } from "./cue-playback";
 import { earlyRest, type EarlyRest } from "./early-speech";
-import { HeardSignals, silentFinal } from "./heard-signals";
+import { detectorVad, HeardSignals, silentFinal } from "./heard-signals";
 import { mark, markLast, resetMarks } from "./marks";
 import { boardAudio, countedSynthesis, type SilentSpeech } from "./speech-audio";
 import { VOICE_METER_TICK_MS } from "@/lib/maya-spend";
@@ -115,7 +115,12 @@ export class MayaVoiceAgent extends voice.Agent {
     let inputStartedAt: number | null = null;
     // The signals of each final transcript, for the worker log; one rule drops a transcript on them (./heard-signals.ts).
     let vad: VAD | undefined = this.hearing.vad;
-    if (!vad) { try { vad = this.session.vad; } catch { vad = undefined; } }
+    if (!vad) {
+      let sessionVad: VAD | undefined;
+      try { sessionVad = this.session.vad; } catch { sessionVad = undefined; }
+      // A VAD of its own with its own minimum silence; the session's VAD (interruptions) keeps LiveKit's settings.
+      vad = detectorVad(sessionVad, this.hearing.detectorMinSilenceMs ?? null);
+    }
     const signals = new HeardSignals(vad);
     const limit = this.hearing.dropSilentPeakDbfs;
     const input = "pipeThrough" in audio
@@ -149,7 +154,8 @@ export class MayaVoiceAgent extends voice.Agent {
           if ((type === stt.SpeechEventType.INTERIM_TRANSCRIPT || type === stt.SpeechEventType.PREFLIGHT_TRANSCRIPT) && signals.quiet(limit)) return;
           if (type === stt.SpeechEventType.END_OF_SPEECH && heldStart) { heldStart = null; return; }
           if (type === stt.SpeechEventType.FINAL_TRANSCRIPT && event.alternatives) {
-            const detectorEndAt = signals.speechEndAt;
+            const detectorEnd = signals.speechEnd;
+            const detectorEndAt = detectorEnd?.endAt ?? null;
             const heard = signals.final(event.alternatives);
             if (silentFinal(heard, limit)) {
               // Words in digital silence: not a child turn, never answered. The signals go in the log, no words.
@@ -161,7 +167,13 @@ export class MayaVoiceAgent extends voice.Agent {
             marks.push(finalMark(event.alternatives[0], inputStartedAt, Date.now(), detectorEndAt));
             resetMarks();
             mark("sttFinal");
-            if (detectorEndAt !== null && detectorEndAt !== undefined) markLast("detectorEnd", detectorEndAt);
+            // The detector's end of speech (put back by its minimum silence), when it reported it, and the last loud input
+            // frame before it: the browser's audio end lines up with `levelEnd` (docs/maya-voice.md, "Clock marks").
+            if (detectorEnd) {
+              markLast("detectorEnd", detectorEnd.endAt);
+              markLast("detectorHeard", detectorEnd.heardAt);
+              if (detectorEnd.levelEndAt !== null) markLast("levelEnd", detectorEnd.levelEndAt);
+            }
             console.info("[maya voice] final transcript", callId, heard);
           }
           // Kept speech: a start held back goes first.
@@ -189,7 +201,7 @@ export class MayaVoiceAgent extends voice.Agent {
    * The silent-transcript rule (`silentFinal`): its peak limit (null: off, the default here; a call sets it from its
    * tuning), and the detector to read, when it is not the session's own (tests).
    */
-  hearing: { dropSilentPeakDbfs: number | null; vad?: VAD } = { dropSilentPeakDbfs: null };
+  hearing: { dropSilentPeakDbfs: number | null; vad?: VAD; detectorMinSilenceMs?: number | null } = { dropSilentPeakDbfs: null };
 
   /** One-shot: the next speech's audio does not wait for its (empty) board plan to be sent (the worker's own opening). */
   ungatedNext = false;
@@ -423,13 +435,15 @@ export class VoiceCallRun {
       dropSilentPeakDbfs?: number | null;
       /** The detector for that rule when it is not the session's own (tests). */
       heardVad?: VAD;
+      /** The worker's detector's minimum silence (VoiceTuning.detectorMinSilenceMs). Absent: the session's VAD as it is. */
+      detectorMinSilenceMs?: number;
     },
   ) {
     this.segment = call.revision;
     this.agent = new MayaVoiceAgent(call, turn => this.after(turn), options.board ? { sync: options.board, scope: () => this.boardScope } : undefined,
       (stoppedAt, work, mark) => this.reply(stoppedAt, work, mark),
       { greetingOver: () => this.greetingOver(), childWentOn: text => this.childWentOn(text) });
-    this.agent.hearing = { dropSilentPeakDbfs: options.dropSilentPeakDbfs ?? null, ...(options.heardVad ? { vad: options.heardVad } : {}) };
+    this.agent.hearing = { dropSilentPeakDbfs: options.dropSilentPeakDbfs ?? null, ...(options.heardVad ? { vad: options.heardVad } : {}), detectorMinSilenceMs: options.detectorMinSilenceMs ?? null };
     this.agent.onSilent = speech => this.silentSpeech(speech);
     call.onGuidance(turn => this.guidanceNow(turn));
     session.on(voice.AgentSessionEventTypes.UserInputTranscribed, ev => { if (ev.transcript.trim()) this.wordsHeard(); });

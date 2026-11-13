@@ -5,12 +5,42 @@
 // heard speech, and the input level. No words go in the log (docs/maya-voice.md). One rule drops a transcript, and only
 // the plainest case (`silentFinal`): no detector speech at all and a peak far below any voice.
 //
-// The detector is a second stream of the session's own VAD (LiveKit's local Silero), fed the same frames as the
-// speech-to-text. The session's user state cannot be used: with `turnDetection: "stt"`, LiveKit raises "speaking" for
-// the speech-to-text's own start of speech too (voice/audio_recognition.js), which a phantom transcript also sends.
-import { VADEventType, type stt, type VAD, type VADStream } from "@livekit/agents";
+// The detector is LiveKit's local Silero, fed the same frames as the speech-to-text. A real call gives it a VAD of its
+// own (`detectorVad`), with its own minimum silence (`detectorMinSilenceMs`), so the session's VAD, which decides when
+// the child's speech stops Maya, keeps LiveKit's settings. The session's user state cannot be used: with
+// `turnDetection: "stt"`, LiveKit raises "speaking" for the speech-to-text's own start of speech too
+// (voice/audio_recognition.js), which a phantom transcript also sends.
+import { inference, VADEventType, type stt, type VAD, type VADStream } from "@livekit/agents";
 import type { AudioFrame } from "@livekit/rtc-node";
 import { speechWords } from "@/lib/board-speech";
+
+/**
+ * The detector for a call: a VAD of its own with `minSilenceMs` as its minimum silence, when the session's VAD is
+ * LiveKit's local one (`inference.VAD`, the session's default, made with LiveKit's defaults, so only the minimum silence
+ * differs). Null `minSilenceMs`, no session VAD (the fakes) or another kind of VAD: the session's own, as before.
+ * LiveKit Agents 1.9.5's local VAD already defaults to 250 ms (`defaultVADOptions` in inference/vad.js).
+ */
+export function detectorVad(sessionVad: VAD | undefined, minSilenceMs: number | null): VAD | undefined {
+  if (!sessionVad || minSilenceMs === null || !(sessionVad instanceof inference.VAD)) return sessionVad;
+  return new inference.VAD({ model: "silero", minSilenceDuration: minSilenceMs });
+}
+
+/**
+ * An input frame at or above this level (dBFS) counts as sound for the `levelEnd` mark: the last such frame before the
+ * detector's end of speech is the worker's view of when the child's audio ended, by level alone, as a browser meter
+ * reads it. Speech in real calls peaked near -3 dBFS; a quiet room stays below -50.
+ */
+export const LEVEL_END_DBFS = -40;
+
+/** When the detector's last speech ended, all on the system clock (`HeardSignals.speechEnd`). */
+export interface DetectorEnd {
+  /** The end of speech: the time the detector reported it, less the silence it waited for. */
+  endAt: number;
+  /** When the detector reported it (`endAt` plus its minimum silence and one step). */
+  heardAt: number;
+  /** The last input frame at or above LEVEL_END_DBFS before it; null when none came. */
+  levelEndAt: number | null;
+}
 
 /** One `[maya voice] final transcript` log line, without the call id. */
 export interface FinalSignals {
@@ -72,7 +102,11 @@ export class HeardSignals {
   /** The part of the going segment already counted at an earlier final. */
   private counted = 0;
   /** When the detector's last speech ended (system clock), if no speech followed it since the previous final. */
-  private endAt: number | null = null;
+  private end: DetectorEnd | null = null;
+  /** The last input frame at or above LEVEL_END_DBFS (system clock). */
+  private loudAt: number | null = null;
+  /** Called when the detector reports an end of speech (after its minimum silence). Never throws into the detector. */
+  onSpeechEnd: ((end: DetectorEnd) => void) | null = null;
 
   constructor(vad: VAD | undefined, private readonly now: () => number = Date.now) {
     if (!vad) return;
@@ -90,14 +124,17 @@ export class HeardSignals {
         if (ev.type === VADEventType.INFERENCE_DONE) {
           this.going = ev.speaking ? ev.speechDuration : 0;
           // Speech again after an end: that end is not the child's last.
-          if (ev.speaking) this.endAt = null;
+          if (ev.speaking) this.end = null;
         } else if (ev.type === VADEventType.END_OF_SPEECH) {
           this.ended += Math.max(0, ev.speechDuration - this.counted);
           this.going = 0;
           this.counted = 0;
           // The detector reports the end after its silence window (`silenceDuration`): the speech ended that long ago.
           // Its `timestamp` is on the detector's audio clock, not the system clock (inference/vad.js), so it is not used.
-          this.endAt = this.now() - Math.max(0, ev.silenceDuration);
+          const heardAt = this.now();
+          const end = { endAt: heardAt - Math.max(0, ev.silenceDuration), heardAt, levelEndAt: this.loudAt };
+          this.end = end;
+          try { this.onSpeechEnd?.(end); } catch { /* the listener never stops the detector */ }
         }
       }
     } catch {
@@ -107,11 +144,14 @@ export class HeardSignals {
 
   frame(frame: AudioFrame) {
     const data = frame.data;
+    let framePeak = 0;
     for (let i = 0; i < data.length; i++) {
       const s = Math.abs(data[i]) / 32768;
-      if (s > this.peak) this.peak = s;
+      if (s > framePeak) framePeak = s;
       this.sumSquares += s * s;
     }
+    if (framePeak > this.peak) this.peak = framePeak;
+    if (dbfs(framePeak) >= LEVEL_END_DBFS) this.loudAt = this.now();
     this.samples += data.length;
     if (!this.stream) return;
     try { this.stream.pushFrame(frame); } catch { this.stream = null; }
@@ -129,11 +169,14 @@ export class HeardSignals {
    * When the detector's last speech ended before now (system clock), with no speech after it; null when it heard none or
    * the speech goes on. Read it before `final`, which starts a new window.
    */
-  get speechEndAt(): number | null { return this.endAt; }
+  get speechEndAt(): number | null { return this.end?.endAt ?? null; }
+
+  /** The detector's last end of speech with its marks (`speechEndAt`'s), or null. Read it before `final`. */
+  get speechEnd(): DetectorEnd | null { return this.end; }
 
   /** The measures for a final transcript, and a new window from here. */
   final(alternatives: readonly stt.SpeechData[]): FinalSignals {
-    this.endAt = null;
+    this.end = null;
     const detected = this.detected();
     const signals = finalSignals(alternatives, { peak: this.peak, sumSquares: this.sumSquares, samples: this.samples }, detected);
     this.peak = this.sumSquares = this.samples = 0;

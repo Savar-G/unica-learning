@@ -1,7 +1,7 @@
 import { inference, initializeLogger, normalizeLanguage, stt, VADEventType, voice, type VAD, type VADEvent } from "@livekit/agents";
 import { AudioFrame } from "@livekit/rtc-node";
 import { describe, expect, it } from "vitest";
-import { finalSignals, HeardSignals, silentFinal } from "./heard-signals";
+import { detectorVad, finalSignals, HeardSignals, LEVEL_END_DBFS, silentFinal } from "./heard-signals";
 
 initializeLogger({ pretty: false, level: "silent" });
 
@@ -129,6 +129,47 @@ describe("the detector's own end of speech (the hold's check, 2026-11-13)", () =
 
   it("is unknown with no detector (the fakes)", () => {
     expect(new HeardSignals(undefined).speechEndAt).toBeNull();
+  });
+});
+
+describe("the worker's own detector (V2, 2026-11-13)", () => {
+  it("is a VAD of its own with the call's minimum silence: the session's VAD keeps LiveKit's", () => {
+    const session = new inference.VAD({ model: "silero" });
+    const own = detectorVad(session, 300) as inference.VAD;
+    expect(own).not.toBe(session);
+    expect(own).toBeInstanceOf(inference.VAD);
+    expect(own.minSilenceDuration).toBe(300);
+    // LiveKit Agents 1.9.5's own default, which the session keeps for its interruptions.
+    expect(session.minSilenceDuration).toBe(250);
+  });
+
+  it("is the session's VAD with no setting, and none with no session VAD (the fakes)", () => {
+    const session = new inference.VAD({ model: "silero" });
+    expect(detectorVad(session, null)).toBe(session);
+    expect(detectorVad(undefined, 300)).toBeUndefined();
+    const other = { stream: () => { throw new Error("unused"); } } as unknown as VAD;
+    expect(detectorVad(other, 300)).toBe(other);
+  });
+
+  it("marks the end of speech, when the detector reported it, and the last loud frame before it", async () => {
+    let now = 20_000;
+    const v = fakeVad();
+    const signals = new HeardSignals(v.vad, () => now);
+    const ends: unknown[] = [];
+    signals.onSpeechEnd = (end) => ends.push(end);
+    signals.frame(frame(3000));
+    now = 20_400;
+    signals.frame(frame(3000));
+    now = 20_420;
+    // Below the level: a quiet room after the child stopped.
+    signals.frame(frame(50));
+    await v.send(VADEventType.START_OF_SPEECH, 60, true);
+    now = 20_700;
+    await v.send(VADEventType.END_OF_SPEECH, 600, false, 250);
+    const end = { endAt: 20_450, heardAt: 20_700, levelEndAt: 20_400 };
+    expect(signals.speechEnd).toEqual(end);
+    expect(ends).toEqual([end]);
+    expect(20 * Math.log10(50 / 32768)).toBeLessThan(LEVEL_END_DBFS);
   });
 });
 
