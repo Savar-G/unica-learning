@@ -552,6 +552,8 @@ const CSS = `
 .pg.consistent .q.compact-wide>.n{grid-column:1;grid-row:1}.pg.consistent .q.compact-wide>.qb{grid-column:2;grid-row:1}
 .pg.consistent .q.compact-wide>.full{grid-column:3;grid-row:1;min-width:0;padding:0}.pg.consistent .q.compact-wide>.rgs{grid-column:4;grid-row:1}
 .pg.consistent[data-page-type="practice-2"]:not(:has([data-slot="solve-it-two-ways"])) :is(.two,.cols){row-gap:calc(12px + var(--extra-gap,0px))}
+/* The next section needs the same base gap as these rows, including when its cells stretch (#908). */
+.pg.consistent[data-page-type="practice-2"]:not(:has([data-slot="solve-it-two-ways"])) .ct{gap:calc(12px + var(--extra-gap,0px))}
 /* (Its block gap and its practice block's gap grow with the rows' gap, so a section label keeps at least a row gap above
    it when the page's gaps grow to fill it: issue #745, "SPOT THE ERROR" 6 px under rows 12 px apart.) */
 .pg.consistent[data-page-type="practice-2"]:has([data-slot="solve-it-two-ways"]) .ct{gap:calc(6px + var(--extra-gap,0px))}
