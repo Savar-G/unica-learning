@@ -78,6 +78,11 @@ export interface StackGuide {
   /** The first page of the day with no photo yet, or null when every page has one. */
   next: GuidePage | null;
   pages: GuidePage[];
+  /**
+   * Every page of the days this stack knows without a usable photo (not scanned, or needing another photo), in book order:
+   * "Still to scan: 3 pages (Page 18, Page 20, Page 22)", or "All pages of Day 2 are scanned". Days with no photo yet are left out.
+   */
+  stillText: string;
 }
 
 export type TileStatus = "adding" | "checking" | "ready" | "saved" | "refused" | "unavailable" | "sent";
@@ -178,7 +183,17 @@ function guideOf(o: { photos: readonly StackPhoto[]; pages: readonly DayPage[] }
     const where = pageLabel(p);
     return { pageId: p.id, title: p.name ? `${where}, ${p.name}` : where, status: standing.get(p.id) ?? "todo" };
   });
-  return { day: dayLabel(anchor), next: pages.find((p) => p.status === "todo") ?? null, pages };
+  // Only days the parent has started: the route sends every day of the book, and the days not started are not "missing" yet.
+  const started = new Set(o.photos.map((ph) => pageById.get(ph.pageId)).filter((p): p is DayPage => !!p).map((p) => `${p.workbookId}|${p.day}`));
+  const known0 = o.pages.filter((p) => started.has(`${p.workbookId}|${p.day}`));
+  const lacking = known0.filter((p) => standing.get(p.id) !== "done");
+  const days = [...new Set(lacking.map((p) => `${p.workbookId}|${p.day}`))];
+  const names = lacking.map((p) => (days.length > 1 ? pageLabel(p) : `Page ${p.pageNumber}`));
+  const known = [...new Set(known0.map((p) => dayLabel(p)))];
+  const stillText = lacking.length
+    ? `Still to scan: ${lacking.length === 1 ? "1 page" : `${lacking.length} pages`} (${names.join(", ")})`
+    : `All pages of ${known.length > 1 ? `${known.slice(0, -1).join(", ")} and ${known[known.length - 1]}` : known[0]} are scanned`;
+  return { day: dayLabel(anchor), stillText, next: pages.find((p) => p.status === "todo") ?? null, pages };
 }
 
 export function buildStack(o: { photos: readonly StackPhoto[]; uploads: readonly StackUpload[]; pages: readonly DayPage[]; checks: boolean }): Stack {

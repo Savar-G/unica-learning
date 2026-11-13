@@ -185,4 +185,27 @@ describe("the scan guide", () => {
     const g = buildStack({ photos: [{ ...photo("x", 1), pageId: "a", workbookId: "b1" }, { ...photo("y", 1), pageId: "b", workbookId: "b2", book: 2 }], uploads: [], pages: two, checks: true }).guide;
     expect(g?.pages[0].title).toBe("Page 1 · Workbook 1 · Day 1");
   });
+
+  const day1 = named.filter((p) => p.day === "Day 1");
+  const withDay2 = [...named, { ...named[4], id: "m2", pageNumber: 6, pageOfDay: 2, pagesInDay: 2, name: "Practice" }];
+
+  it("says plainly what is still to scan, counting pages not scanned or needing another photo", () => {
+    const guide = buildStack({ photos: [shot(1), shot(2, { check: "refused", reason: "faint" })], uploads: [], pages: day1, checks: true }).guide;
+    expect(guide?.stillText).toBe("Still to scan: 3 pages (Page 2, Page 3, Page 4)");
+  });
+
+  it("names the day with each page when the missing pages span days, and uses the singular for one", () => {
+    const one = buildStack({ photos: [1, 2, 3, 4, 5].map((n) => shot(n)), uploads: [], pages: withDay2, checks: true }).guide;
+    expect(one?.stillText).toBe("Still to scan: 1 page (Page 6)");
+    const spanning = buildStack({ photos: [shot(2), shot(5)], uploads: [], pages: withDay2, checks: true }).guide;
+    expect(spanning?.stillText).toBe("Still to scan: 4 pages (Page 1 · Day 1, Page 3 · Day 1, Page 4 · Day 1, Page 6 · Day 2)");
+  });
+
+  it("leaves out days with no photo yet", () => {
+    expect(buildStack({ photos: [shot(1)], uploads: [], pages: withDay2, checks: true }).guide?.stillText).toBe("Still to scan: 3 pages (Page 2, Page 3, Page 4)");
+  });
+
+  it("says all pages are scanned when none are left", () => {
+    expect(buildStack({ photos: [1, 2, 3, 4].map((n) => shot(n)), uploads: [], pages: named.filter((p) => p.day === "Day 1"), checks: true }).guide?.stillText).toBe("All pages of Day 1 are scanned");
+  });
 });

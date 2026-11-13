@@ -541,7 +541,8 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     {focusLine}
     {status}
     {stack.guide && <section className="scan-guide" aria-label={`${stack.guide.day} pages`}>
-      <p className="scan-guide-next">{stack.guide.next ? <><b>Next:</b> {stack.guide.next.title}</> : `Every page of ${stack.guide.day} has a photo.`}</p>
+      <p className="scan-guide-next">{stack.guide.next ? <><b>Next:</b> {stack.guide.next.title}</> : stack.guide.stillText}</p>
+      {stack.guide.next && <p>{stack.guide.stillText}</p>}
       <ul>{stack.guide.pages.map((g) => <li key={g.pageId} className={`is-${g.status}`}>{g.title}: {GUIDE_WORDS[g.status]}</li>)}</ul>
       <p className="small">Scan the pages in any order.</p>
     </section>}
