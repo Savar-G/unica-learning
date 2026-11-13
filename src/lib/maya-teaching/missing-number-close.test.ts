@@ -33,7 +33,7 @@ describe("the honest close of a missing number", () => {
     expect(example.say.join(" ")).toContain("101 × ? = 202");
     expect(close.say.join(" ")).toContain("We worked on 236 × ? = 1416 together today.");
     expect(close.say.join(" ")).not.toMatch(/\b6\b/);
-    expect(s.session.outcome).toMatchObject({ reason: "child_stopped" });
+    expect(s.session.outcome).toMatchObject({ reason: "maya_closed" });
     expect(s.session.assistance).not.toContain("answer_given");
     expect(learningEvent(s.session, { parentId: "p", childId: "c" })).toMatchObject({ result: "blank", stuckStep: "try" });
   });

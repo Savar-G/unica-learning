@@ -865,3 +865,16 @@ about the world, no promise, no advice). It is said through the approved `patter
 
 Also: on a pattern question any "why" question now gets this `step.why` answer before another prompt (`asksWhyIn`), on
 the model's repair and on code's fallback.
+
+
+## Pattern length repair, 2026-11-13
+
+Pending Savar approval. The prior approved missing-pattern explanation could fill to 28 spoken words with its opener. The shorter explanation preserves the two term positions, the equal jump count and the division to find one jump. `{nth}`, `{count}` and `{part}` come from the checked pattern. An independent copy review is required before merge.
+
+| Wording | Approval |
+|---|---|
+| The 1st and {nth} terms are {count} equal jumps apart. Find one jump: {part}. | pending Savar |
+| Here's why. The 1st and {nth} terms are {count} equal jumps apart. Find one jump: {part}. | pending Savar |
+| Let's see. The 1st and {nth} terms are {count} equal jumps apart. Find one jump: {part}. | pending Savar |
+| Look closely. The 1st and {nth} terms are {count} equal jumps apart. Find one jump: {part}. | pending Savar |
+| Here's how. The 1st and {nth} terms are {count} equal jumps apart. Find one jump: {part}. | pending Savar |

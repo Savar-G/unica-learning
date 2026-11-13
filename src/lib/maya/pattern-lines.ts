@@ -83,7 +83,7 @@ function why(p: Pattern, index: number, part: string): string {
   if (p.missing) return index === 0
     ? `The ${ORDINAL[p.count + 1]} term is ${p.count} equal steps past the start. ${part} is what they add.`
     // F2: not the plan line in other words ("Share the increase across 8 equal steps."): the jumps between the two terms.
-    : `From the 1st term to the ${ordinal(p.count + 1)} term there are ${p.count} jumps. Each jump adds the same amount: ${part}.`;
+    : `The 1st and ${ordinal(p.count + 1)} terms are ${p.count} equal jumps apart. Find one jump: ${part}.`;
   if (p.form === "pair") return [
     `The 8th term is 7 steps after the 1st term: ${part}.`, `The 7 steps come after the start, so add the start: ${part}.`,
     `The 2nd term is 1 step after the start: ${part}.`, `The question asks for the two terms together: ${part}.`][index];

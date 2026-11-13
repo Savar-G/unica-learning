@@ -68,7 +68,7 @@ describe("rule 1: an easier example of the question's own shape, which Maya can 
   });
 });
 
-describe("rule 2: the new place words block a step confirm, as the one-word places do", () => {
+describe("rule A: a correct place count credits the current step once", () => {
   // 352418 + 41275: the ones, tens, hundreds and thousands done, so the ten thousands (5 + 4 = 9) is the step.
   const pkg = teach(bareSum(352418, 41275));
   const before: { child: string; read: Read }[] = [
@@ -96,7 +96,7 @@ describe("rule 2: the new place words block a step confirm, as the one-word plac
     }));
   }
 
-  it.each(["9 ten thousands.", "9 in the ten thousands.", "Nine ten thousands.", "I got 9 ten thousands.", "9 for the ten thousands."])("%j: no confirm, and no credit after a yes", async (text) => {
+  it.each(["9 ten thousands.", "9 in the ten thousands.", "Nine ten thousands.", "I got 9 ten thousands.", "9 for the ten thousands."])("%j: credits the count without confirmation and does not repeat credit after yes", async (text) => {
     for (const first of [
       { child: text, read: { answers: [[9, "ten thousands", "right"]] } as Read, maya: [CREDIT] },
       { child: text, maya: [{ act: "confirm" as const, heard: "9", repair: { throws: true } }] },
@@ -105,7 +105,7 @@ describe("rule 2: the new place words block a step confirm, as the one-word plac
       const told = await play([first, { child: "Yes.", read: { answers: [[9, "ten thousands", "right"]] }, maya: [CREDIT] }]);
       expect(told).toHaveLength(7);
       expect(told[5].act, text).not.toBe("confirm");
-      expect(told[5].lines).not.toContain("check.right_step");
+      expect(told[5].lines).toContain("check.right_step");
       expect(told[6].lines).not.toContain("check.right_step");
       expect(told[6].say).not.toMatch(/5 \+ 4 = 9/);
     }
@@ -114,6 +114,18 @@ describe("rule 2: the new place words block a step confirm, as the one-word plac
   it("the bare total still gets the step's confirm path, as before: '9.' is heard as the column's total", async () => {
     const told = await play([{ child: "9.", read: { answers: [[9, "ten thousands", "right"]] }, maya: [CREDIT] }]);
     expect(told[5].lines).toContain("check.right_step");
+  });
+  it.each(["8 ten thousands.", "Eight ten thousands.", "9 hundreds.", "Nine hundreds.", "9 hundred thousands.", "Nine hundred thousands."])("%j: a wrong count or place gains no credit, including after yes", async (text) => {
+    for (const first of [
+      { child: text, read: { answers: [[9, "ten thousands", "right"]] } as Read, maya: [CREDIT] },
+      { child: text, maya: [{ act: "confirm" as const, heard: "9", repair: { throws: true } }] },
+      { child: text },
+    ]) {
+      const told = await play([first, { child: "Yes.", read: { answers: [[9, "ten thousands", "right"]] }, maya: [CREDIT] }]);
+      expect(told[5].lines).not.toContain("check.right_step");
+      expect(told[6].lines).not.toContain("check.right_step");
+      expect(told[6].say).not.toMatch(/5 \+ 4 = 9/);
+    }
   });
 });
 

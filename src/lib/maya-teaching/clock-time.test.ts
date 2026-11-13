@@ -94,7 +94,7 @@ describe("teaching a clock-time question", () => {
     const acts = s.trace().turns.flatMap((t) => (t.kind === "maya" && t.output ? [t.output.act] : []));
     expect(acts).toContain("example_step");
     expect(acts).not.toContain("give_answer");
-    expect(s.session.outcome?.reason).toBe("child_stopped");
+    expect(s.session.outcome?.reason).toBe("maya_closed");
     expect(said.at(-1)).toMatch(/hard/);
     expect(said.at(-1)).not.toMatch(/\d/);
     for (const t of said) expect(gateWordCount(t), t).toBeLessThanOrEqual(25);

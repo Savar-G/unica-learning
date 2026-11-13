@@ -3145,7 +3145,9 @@ const collapsed = (text: string) => text.replace(new RegExp(`(\\d)\\s+(?:${OWN_P
 function digitWords(text: string): string {
   // "a ten" is one ten ("I carried a ten").
   // "10,000" is one number.
-  return text.replace(/(\d),(?=\d{3}\b)/g, "$1").replace(/\b(?:a|an)\s+ten\b/g, "1 ten").replace(NUMBER_RUN, (m) => {
+  return text.replace(/(\d),(?=\d{3}\b)/g, "$1").replace(/\b(?:a|an)\s+ten\b/g, "1 ten")
+    // Preserve a complete place name before converting its preceding count ("nine ten thousands").
+    .split(new RegExp(`(\\b(?:${OWN_PLACES})\\b)`, "g")).map((part, index) => index % 2 ? part : part.replace(NUMBER_RUN, (m) => {
     // A lone "one" or "ten" ("the one I kept", "carry the ten") is a word for the carry, and a lone "hundred" or
     // "thousand" a place ("3 hundred thousands"): read as it is.
     if (["one", "ten", "hundred", "thousand", "million"].includes(m)) return m;
@@ -3154,7 +3156,7 @@ function digitWords(text: string): string {
     // "two three one": each word alone.
     const parts = m.split(/[\s-]+/).map((w) => plainNumber(w));
     return parts.every((p) => p !== null) ? parts.join(" ") : m;
-  });
+  })).join("");
 }
 
 /** Every number a step holds: its fields, the numbers of its own sum ("12 − 8 = 4"), and an addition column's digit sum. */

@@ -155,14 +155,14 @@ describe("the honest close writes the stuck step (lesson 10)", () => {
 
   it("on the first part: the example, the close, and a blank event stuck on e1, never technical_issue", async () => {
     const s = await closeStuck(stuck(6));
-    expect(s.outcome?.reason).toBe("child_stopped");
+    expect(s.outcome?.reason).toBe("maya_closed");
     expect(s.turns.filter(t => t.speaker === "maya").at(-1)?.text).toMatch(/fine to stop|okay to stop/);
     expect(learningEvent(s, { parentId: "p", childId: "c" })).toMatchObject({ result: "blank", stuckStep: "e1" });
   });
 
   it("on the last part: the example, the close, and a blank event stuck on the last part", async () => {
     const s = await closeStuck([{ text: "40 minus 26 is 14.", read: { start: "has_work", answers: [[14, "e1", "right"]] } }, ...stuck(4)]);
-    expect(s.outcome?.reason).toBe("child_stopped");
+    expect(s.outcome?.reason).toBe("maya_closed");
     expect(learningEvent(s, { parentId: "p", childId: "c" })).toMatchObject({ result: "blank", stuckStep: "result" });
   });
 });
