@@ -306,11 +306,12 @@ describe("the speech-to-text's silence limit while Maya asks for a number", () =
     // The opening ends with "Shall we get going?": a question to answer yes or no, so the limit stays as it is.
     expect(c.said().at(-1)).toBe("I'm Maya, an AI math helper.");
     expect(log.sets).toEqual([]);
-    // The child agrees, and Maya hands over the question: "Try 27 + 39 the same way." The next turn may wait longer.
+    // The child agrees, and Maya hands over the question: "Try 27 + 39 the same way." (the voice is given "plus"). The
+    // next turn may wait longer.
     speech.says("Yes.");
     await waitFor(() => log.sets.length === 1 && c.session.agentState === "listening", "her request");
     expect(log.sets).toEqual([number]);
-    expect(c.said().at(-1)).toBe("Try 27 + 39 the same way.");
+    expect(c.said().at(-1)).toBe("Try 27 plus 39 the same way.");
     // The child's turn arrives: the limits go back to the normal ones at once, before Maya's answer is known.
     speech.says("I got 56.");
     await waitFor(() => log.sets.length >= 2, "the turn");

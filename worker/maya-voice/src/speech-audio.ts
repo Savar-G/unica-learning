@@ -3,10 +3,14 @@ import { USERDATA_TIMED_TRANSCRIPT, voice } from "@livekit/agents";
 import type { AudioFrame } from "@livekit/rtc-node";
 import { speechKey } from "@/lib/maya/speech";
 import { SPEECH_SCOPE_DATA, speechSentences, speechWords, type BoardSpeech, type SpeechScope } from "@/lib/board-speech";
+import { spokenStream, spokenWords } from "@/lib/maya-voice-spoken";
 
 /**
  * Passes text to the voice provider and its audio back, and tells `count` the text once when audio came back, also when
  * the speech is cut later. Failed output counts nothing. The count never holds the audio back, and its failure is ignored.
+ * Every line Maya says reaches the provider here, so here its math signs become words (`spokenMath`, a sentence at a
+ * time): "52 − 28" goes to the provider as "52 minus 28". `count` gets that spoken text, which is what the provider
+ * receives and bills. Text that is already spoken (from `boardAudio`) does not change again.
  */
 export async function countedSynthesis(
   text: ReadableStream<string> | AsyncIterable<string>,
@@ -15,12 +19,19 @@ export async function countedSynthesis(
 ): Promise<ReadableStream<AudioFrame> | null> {
   let sent = "";
   const chunks = text[Symbol.asyncIterator]();
+  const spoken = spokenStream();
   const frames = await synthesize(new ReadableStream<string>({
     async pull(controller) {
-      const { value, done } = await chunks.next();
-      if (done) return controller.close();
-      sent += value;
-      controller.enqueue(value);
+      for (;;) {
+        const { value, done } = await chunks.next();
+        const said = done ? spoken.end() : spoken.push(value);
+        if (said) {
+          sent += said;
+          controller.enqueue(said);
+        }
+        if (done) return controller.close();
+        if (said) return;
+      }
     },
     async cancel() { await chunks.return?.(); },
   }));
@@ -81,7 +92,7 @@ export function boardAudio(
         controller.close();
         return true;
       };
-      const synthesizeSentence = (sentence: string) => synthesize(new ReadableStream<string>({ start(c) { c.enqueue(sentence); c.close(); } }));
+      const synthesizeSentence = (spoken: string) => synthesize(new ReadableStream<string>({ start(c) { c.enqueue(spoken); c.close(); } }));
       try {
         if (stale()) return;
         let full = "";
@@ -89,10 +100,20 @@ export function boardAudio(
         let offsetMs = 0;
         let words = 0;
         const sentences = speechSentences(full);
+        // What the provider says for each word of the text, read with the whole text around it (a sentence break can
+        // fall between a sign and its number: "? − 28 = 24"). Entry n is the spoken form of word n.
+        const spokenAll = spokenWords(full);
+        let first = 0;
+        const spokenSentences = sentences.map(sentence => {
+          const count = speechWords(sentence).length;
+          const said = spokenAll.slice(first, first + count);
+          first += count;
+          return said.length === count ? said : spokenWords(sentence);
+        });
         let gated = false;
         for (const [index, sentence] of sentences.entries()) {
           if (stale()) return;
-          const pending = ahead ?? synthesizeSentence(sentence);
+          const pending = ahead ?? synthesizeSentence(spokenSentences[index].join(" "));
           ahead = null;
           const frames = await pending;
           if (stale()) {
@@ -115,7 +136,7 @@ export function boardAudio(
           }
           // The next sentence's audio is made while this one is read out.
           if (index + 1 < sentences.length) {
-            ahead = synthesizeSentence(sentences[index + 1]);
+            ahead = synthesizeSentence(spokenSentences[index + 1].join(" "));
             // Its failure is read when its turn comes (below), not as an unhandled rejection while this one plays.
             void ahead.catch(() => {});
           }
@@ -123,8 +144,15 @@ export function boardAudio(
           current = reader;
           let durationMs = 0;
           const alignment = new Map<string, voice.TimedString>();
+          // A cue counts the words of Maya's own text, but the provider times the words it said ("three quarters" for
+          // "3/4"). Word n is reached when what was heard covers the spoken form of words 1 to n (or their written form,
+          // for a provider that reports the text it was given).
           const expectedWords = speechWords(sentence);
-          const prefixes = expectedWords.map((_, i) => speechKey(expectedWords.slice(0, i + 1).join(" ")));
+          const spokenSentence = spokenSentences[index];
+          const prefixes = expectedWords.map((_, i) => [
+            speechKey(spokenSentence.slice(0, i + 1).join(" ")),
+            speechKey(expectedWords.slice(0, i + 1).join(" ")),
+          ]);
           try {
             for (;;) {
               const { value: frame, done } = await reader.read();
@@ -146,8 +174,7 @@ export function boardAudio(
                   const heard = speechKey(aligned);
                   const before = matchedWords;
                   for (let n = matchedWords + 1; n <= expectedWords.length; n++) {
-                    const expected = prefixes[n - 1];
-                    if (expected && (heard === expected || heard.startsWith(`${expected} `))) matchedWords = n;
+                    if (prefixes[n - 1].some(expected => expected && (heard === expected || heard.startsWith(`${expected} `)))) matchedWords = n;
                   }
                   if (matchedWords > before) {
                     await board.timing(scope, words + matchedWords, offsetMs + t.endTime! * 1000, "word");

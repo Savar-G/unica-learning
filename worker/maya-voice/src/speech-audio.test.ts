@@ -1,12 +1,12 @@
 import { ReadableStream } from "node:stream/web";
 import { AudioFrame } from "@livekit/rtc-node";
 import { USERDATA_TIMED_TRANSCRIPT, voice } from "@livekit/agents";
-import { expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { boardPaths, type Batch } from "@/lib/board";
 import { createBoardReceiver, createBoardSender } from "@/lib/board-protocol";
 import { createMemoryTransport } from "@/lib/board-protocol-memory";
 import { createBoardSpeech } from "@/lib/board-speech";
-import { boardAudio } from "./speech-audio";
+import { boardAudio, countedSynthesis } from "./speech-audio";
 
 it("maps spoken number words to the accepted text before it releases a cue", async () => {
   const receiver = createBoardReceiver({ sessionId: "call" });
@@ -256,4 +256,101 @@ it("plays nothing before the plan is on the receiver, and nothing at all when se
   expect((await read).done).toBe(true);
   expect(heard).toBe(false);
   await expect(board.sent(scope)).rejects.toThrow();
+});
+
+// Math signs are spoken as words (docs/maya-voice.md "Math symbols are spoken as words"). These run boardAudio through
+// countedSynthesis, as the agent's ttsNode does, with a fake provider that records the text it received and times the
+// words it said.
+describe("math is spoken as words", () => {
+  const timed = (words: [string, number][]) => words.map(([text, end], i) =>
+    voice.createTimedString({ text, startTime: i === 0 ? 0 : words[i - 1][1], endTime: end }));
+  /** A provider that answers each sentence with 1 s of audio and the given word times (null: no word times). */
+  function provider(times: (voice.TimedString[] | null)[]) {
+    const received: string[] = [];
+    const counted: string[] = [];
+    const synthesize = (input: ReadableStream<string> | AsyncIterable<string>) => countedSynthesis(input, async (text) => {
+      let said = "";
+      for await (const chunk of text) said += chunk;
+      const words = times[received.length];
+      received.push(said);
+      return new ReadableStream<AudioFrame>({ start(c) {
+        const frame = new AudioFrame(new Int16Array(24000), 24000, 1, 24000);
+        if (words) frame.userdata[USERDATA_TIMED_TRANSCRIPT] = words;
+        c.enqueue(frame); c.close();
+      } });
+    }, (text) => counted.push(text));
+    return { received, counted, synthesize };
+  }
+  const shown = (c: Awaited<ReturnType<typeof setup>>) => boardPaths(c.receiver.scene()).length > 0;
+
+  it("sends 52 − 28 = 24 as words, and the cue on 24 fires when 24 is said", async () => {
+    // Words: We're(1) doing(2) 52(3) −(4) 28(5) =(6) 24(7) today.(8)
+    const c = await setup(7);
+    const p = provider([timed([["We're ", 0.1], ["doing ", 0.2], ["52 ", 0.3], ["minus ", 0.4], ["28 ", 0.5], ["equals ", 0.6], ["24 ", 0.7], ["today.", 0.9]])]);
+    for await (const frame of boardAudio(inputText("We're doing 52 − 28 = 24 today."), p.synthesize, c.board, c.scope)) void frame;
+    expect(p.received).toEqual(["We're doing 52 minus 28 equals 24 today."]);
+    // The voice is counted by what the provider received.
+    expect(p.counted).toEqual(["We're doing 52 minus 28 equals 24 today."]);
+    await c.board.played(c.scope, 699);
+    expect(shown(c)).toBe(false);
+    await c.board.played(c.scope, 700);
+    expect(shown(c)).toBe(true);
+  });
+
+  it("finds a cue on a fraction in the provider's words for it", async () => {
+    // Words: Shade(1) 3/4(2) of(3) the(4) bar(5) now.(6). "3/4" is said as "three quarters", which ends at 0.4 s.
+    const c = await setup(2);
+    const p = provider([timed([["Shade ", 0.1], ["three ", 0.2], ["quarters ", 0.4], ["of ", 0.5], ["the ", 0.6], ["bar ", 0.7], ["now.", 0.9]])]);
+    for await (const frame of boardAudio(inputText("Shade 3/4 of the bar now."), p.synthesize, c.board, c.scope)) void frame;
+    expect(p.received).toEqual(["Shade three quarters of the bar now."]);
+    await c.board.played(c.scope, 200);
+    expect(shown(c)).toBe(false);
+    await c.board.played(c.scope, 399);
+    expect(shown(c)).toBe(false);
+    await c.board.played(c.scope, 400);
+    expect(shown(c)).toBe(true);
+  });
+
+  it("keeps the word count of Maya's text across sentences when a word is said as several", async () => {
+    // Words: Shade(1) 3/4.(2) Then(3) 2(4) 1/2(5) more.(6). The second sentence starts at 1 s; "1/2" ends at 1.5 s.
+    const c = await setup(5);
+    const p = provider([
+      timed([["Shade ", 0.2], ["three ", 0.4], ["quarters.", 0.8]]),
+      timed([["Then ", 0.1], ["two ", 0.2], ["and ", 0.3], ["one ", 0.4], ["half ", 0.5], ["more.", 0.7]]),
+    ]);
+    for await (const frame of boardAudio(inputText("Shade 3/4. Then 2 1/2 more."), p.synthesize, c.board, c.scope)) void frame;
+    expect(p.received).toEqual(["Shade three quarters.", "Then two and one half more."]);
+    expect(p.counted).toEqual(["Shade three quarters.", "Then two and one half more."]);
+    await c.board.played(c.scope, 1499);
+    expect(shown(c)).toBe(false);
+    await c.board.played(c.scope, 1500);
+    expect(shown(c)).toBe(true);
+  });
+
+  it("without word times, a cue on a fraction still fires at its sentence's audio end", async () => {
+    const c = await setup(2);
+    const p = provider([null]);
+    for await (const frame of boardAudio(inputText("Shade 3/4 of the bar."), p.synthesize, c.board, c.scope)) void frame;
+    expect(p.received).toEqual(["Shade three quarters of the bar."]);
+    await c.board.played(c.scope, 999);
+    expect(shown(c)).toBe(false);
+    await c.board.played(c.scope, 1000);
+    expect(shown(c)).toBe(true);
+  });
+
+  it("reads a sign with its number when a sentence break falls between them", async () => {
+    // speechSentences splits "Find it: ? − 28 = 24." after the "?": the unknown and the minus are still read together.
+    const c = await setup(1);
+    const p = provider([null, null]);
+    for await (const frame of boardAudio(inputText("Find it: ? − 28 = 24."), p.synthesize, c.board, c.scope)) void frame;
+    expect(p.received).toEqual(["Find it: what", "minus 28 equals 24."]);
+  });
+
+  it("sends a line without a board as words too", async () => {
+    const p = provider([null]);
+    const out = await p.synthesize(inputText("Let's do 52 − 28. It is 25% of $4."));
+    for await (const frame of out!) void frame;
+    expect(p.received).toEqual(["Let's do 52 minus 28. It is 25 percent of 4 dollars."]);
+    expect(p.counted).toEqual(["Let's do 52 minus 28. It is 25 percent of 4 dollars."]);
+  });
 });
