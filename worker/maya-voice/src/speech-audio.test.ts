@@ -188,7 +188,8 @@ function heldSentence() {
   let cancelled = false;
   const stream = new ReadableStream<AudioFrame>({
     start(o) {
-      o.enqueue(new AudioFrame(new Int16Array(2400), 24000, 1, 2400));
+      // A frame with sound: a silent first frame waits for the leading-silence trim (./voice-delivery.ts).
+      o.enqueue(new AudioFrame(new Int16Array(2400).fill(1000), 24000, 1, 2400));
       end = () => { try { o.close(); } catch { /* already cancelled */ } };
     },
     cancel() { cancelled = true; },

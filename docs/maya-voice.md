@@ -348,6 +348,26 @@ Rules to know:
 
 **What the tests prove.** `src/lib/maya-voice-spoken.test.ts` checks each form above, the text that must not change, idempotence, and that streamed text is the same as the whole text for every chunk break. `speech-audio.test.ts` runs `boardAudio` through `countedSynthesis`, as `ttsNode` does, with a fake voice. It proves that the voice and the spend count receive the spoken text, that a cue on "24" in "52 − 28 = 24" and a cue on a fraction fire at the word time of their spoken words, that the word count stays correct in a later sentence, and that the sentence end is used when there are no word times. Without the spoken prefixes, the two fraction cue tests fail. Without the change, 9 worker tests fail. **Not verified:** how Cartesia reads each spoken form. Nobody listened to it yet.
 
+## Voice delivery (latency plan V4, 2026-11-13)
+
+On real calls, the voice gave its first audio frame 150 to 210 ms after the request. From that frame to the first sound in the browser took 130 ms on some turns and 300 to 450 ms on others. The module `worker/maya-voice/src/voice-delivery.ts` holds the settings and the log lines of this section.
+
+### Leading silence is measured and trimmed
+
+A sentence's audio can start with near-silence. The child hears nothing during it, so it adds to the delay.
+
+- `boardAudio` gives each sentence's frames to a `LeadTrim`. A sample at or above the level (`MAYA_VOICE_TRIM_DBFS`, default -50 dBFS) is sound. Every sample before the first sound is near-silence.
+- Near-silent frames at the start are held until the first sound comes. Then the near-silence is dropped, except the last `MAYA_VOICE_TRIM_FLOOR_MS` (default 20 ms), so the start of the first word is not cut.
+- Only the start of a sentence is trimmed. A pause after the first sound stays. The trailing silence of the sentence before also stays, so there is still a pause between sentences.
+- The word times on every frame, held frames included, move back by the trimmed time. So a board cue fires at its word, and the sentence-end time is the length of the audio that played.
+- A sentence that is all silence plays as it came. Silence longer than `MAYA_VOICE_TRIM_HOLD_MS` (default 1000 ms) is not held: it plays whole, with nothing trimmed.
+- A trimmed frame is a new frame with its own copy of the samples (the crackle of #904 came from views).
+- `MAYA_VOICE_TRIM_LEAD=off` turns the trim off. The measure and its log line stay, and no frame is held.
+
+Each sentence logs one line: `[maya voice] voice lead`, the call id, then `sentence` (its index in the speech), `leadMs` (the measured near-silence), `trimmedMs`, `allSilent`, `firstFrameMs` (the request to the first frame of that sentence) and `madeAhead` (the sentence was made while the one before it played, so its `firstFrameMs` includes that wait). No words are logged. The lines start only when a job names its call (`configureDelivery`), so tests print nothing.
+
+**What the tests prove.** `voice-delivery.test.ts` proves the level, the floor, the shift of word times (held frames included), that a pause inside a sentence stays, that an all-silent sentence plays as it came, the hold limit, the setting that turns the trim off, and that trimmed frames are copies. With the fake voice (200 ms of near-silence before each text), a board cue on "27" in "Write 27 now." fires at 100 ms, not at 280 ms. Without the shift of word times, that test and the shift test fail. **Not verified:** how much near-silence Cartesia gives at the start of a sentence. The log line measures it on real calls.
+
 ## Interim words on the call screen
 
 LiveKit Agents for Node 1.9.5 sends the child's transcript to the room as text streams on the topic `lk.transcription` (`ParticipantTranscriptionOutput` in `voice/room_io/_output.js`): one stream for each interim transcript and one for each final, with `lk.transcription_final`, `lk.segment_id` and `lk.transcribed_track_id` (the child's microphone track). This happened before this work too. The call screens now show those words as the child's last bubble, in light text, while Maya hears them (`src/lib/maya-voice-hearing.ts`, used by `src/components/maya-voice-room.ts`, shown by `src/components/desk-voice.tsx` and the admin transcript in `src/components/admin-maya.tsx`).
