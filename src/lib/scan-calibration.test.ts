@@ -176,6 +176,36 @@ describe("refusals", () => {
     expect(calibratePhoto({ photo, printed, contract: available, pageLink: LINK })).toEqual({ status: "refused", reason: "marks-missing" });
   });
 
+  /** A sheet that bows (#912): its corners stay where the marks are, its middle sits `amount` photo pixels lower. */
+  const bowed = (r: Raster, amount: number): Raster => {
+    const out = new Uint8Array(r.width * r.height * r.channels);
+    for (let y = 0; y < r.height; y++) for (let x = 0; x < r.width; x++) {
+      const from = Math.round(y - amount * Math.sin(Math.PI * x / r.width) * Math.sin(Math.PI * y / r.height));
+      const sy = Math.min(r.height - 1, Math.max(0, from));
+      for (let c = 0; c < r.channels; c++) out[(y * r.width + x) * r.channels + c] = r.data[(sy * r.width + x) * r.channels + c];
+    }
+    return { ...r, data: out };
+  };
+
+  it("takes a bowed sheet of this page, and every crop still holds its own answer (#912)", async () => {
+    // Disproved if the middle of a curled page, 14 pixels from where a flat sheet would put it, reads as another page.
+    const photo = await stored(bowed(photographed(written, SIZE, square(SIZE, 60), { shade: 0.3 }), 14));
+    const result = calibratePhoto({ photo, printed, contract: available, pageLink: LINK });
+    if (result.status !== "calibrated") throw new Error(`refused: ${JSON.stringify(result)}`);
+    expect(result.calibration.pageFit).toBeGreaterThanOrEqual(0.975);
+    expect(digitsRead(photo, result.calibration)).toEqual(wanted);
+  }, 40_000);
+
+  it("still refuses a bowed photo of another page (#912)", async () => {
+    // Disproved if a bend can make another page's ink follow this page.
+    const other = page();
+    for (const m of SCAN_MARKS) mark(other, m);
+    for (let i = 0; i < 40; i++) fill(other, 200 + (i * 37) % 800, 500 + (i * 71) % 900, 60, 14);
+    drawQr(other, QR_BOX, LINK);
+    const photo = await stored(bowed(photographed(other, SIZE, square(SIZE, 60)), 14));
+    expect(calibratePhoto({ photo, printed, contract: available, pageLink: LINK })).toEqual({ status: "refused", reason: "page-mismatch" });
+  }, 20_000);
+
   it("refuses a photo of another page: its marks line up, but its ink does not follow the printed page", async () => {
     // Disproved if four good marks are enough, whatever the page.
     const other = page();
