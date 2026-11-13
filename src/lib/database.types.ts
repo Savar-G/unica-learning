@@ -458,6 +458,163 @@ export type Database = {
           },
         ]
       }
+      budget_categories: {
+        Row: {
+          created_at: string
+          id: string
+          kind: string
+          name: string
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          kind: string
+          name: string
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          kind?: string
+          name?: string
+          sort_order?: number
+        }
+        Relationships: []
+      }
+      budget_entries: {
+        Row: {
+          amount: number
+          amount_cad: number | null
+          category_id: string
+          created_at: string
+          created_by: string | null
+          currency: string
+          deleted_at: string | null
+          description: string
+          entry_date: string
+          id: string
+          kind: string
+          notes: string | null
+          paid_by: string | null
+          party: string | null
+          savar_share_pct: number
+          split_settled: boolean
+          updated_at: string
+          updated_by: string | null
+          usd_to_cad: number | null
+        }
+        Insert: {
+          amount: number
+          amount_cad?: number | null
+          category_id: string
+          created_at?: string
+          created_by?: string | null
+          currency: string
+          deleted_at?: string | null
+          description: string
+          entry_date: string
+          id?: string
+          kind: string
+          notes?: string | null
+          paid_by?: string | null
+          party?: string | null
+          savar_share_pct?: number
+          split_settled?: boolean
+          updated_at?: string
+          updated_by?: string | null
+          usd_to_cad?: number | null
+        }
+        Update: {
+          amount?: number
+          amount_cad?: number | null
+          category_id?: string
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          deleted_at?: string | null
+          description?: string
+          entry_date?: string
+          id?: string
+          kind?: string
+          notes?: string | null
+          paid_by?: string | null
+          party?: string | null
+          savar_share_pct?: number
+          split_settled?: boolean
+          updated_at?: string
+          updated_by?: string | null
+          usd_to_cad?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "budget_entries_category_fkey"
+            columns: ["category_id", "kind"]
+            isOneToOne: false
+            referencedRelation: "budget_categories"
+            referencedColumns: ["id", "kind"]
+          },
+        ]
+      }
+      budget_entry_changes: {
+        Row: {
+          action: string
+          after: Json | null
+          before: Json | null
+          changed_at: string
+          changed_by: string | null
+          entry_id: string
+          id: number
+        }
+        Insert: {
+          action: string
+          after?: Json | null
+          before?: Json | null
+          changed_at?: string
+          changed_by?: string | null
+          entry_id: string
+          id?: never
+        }
+        Update: {
+          action?: string
+          after?: Json | null
+          before?: Json | null
+          changed_at?: string
+          changed_by?: string | null
+          entry_id?: string
+          id?: never
+        }
+        Relationships: [
+          {
+            foreignKeyName: "budget_entry_changes_entry_id_fkey"
+            columns: ["entry_id"]
+            isOneToOne: false
+            referencedRelation: "budget_entries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      budget_settings: {
+        Row: {
+          id: boolean
+          updated_at: string
+          updated_by: string | null
+          usd_to_cad: number
+        }
+        Insert: {
+          id?: boolean
+          updated_at?: string
+          updated_by?: string | null
+          usd_to_cad: number
+        }
+        Update: {
+          id?: boolean
+          updated_at?: string
+          updated_by?: string | null
+          usd_to_cad?: number
+        }
+        Relationships: []
+      }
       card_setups: {
         Row: {
           card_saved_at: string | null

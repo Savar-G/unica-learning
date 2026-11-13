@@ -8,15 +8,13 @@
 // text and sends it to Maya over LiveKit instead of a microphone she could not understand.
 //
 // livekit-client loads only when the admin connects. Labels are plain: no provider errors, no ids.
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import type { Room as LkRoom } from "livekit-client";
-import { createBoardReceiver, type BoardSnapshot } from "@/lib/board-protocol";
-import { BOARD_RPC, boardRpcHandler } from "@/lib/board-rpc";
+import { useEffect, useState, type FormEvent } from "react";
+import type { BoardSnapshot } from "@/lib/board-protocol";
 import type { VoiceTicket } from "@/lib/maya-voice";
+import { clock, useMayaVoiceRoom, useMicCheck, type MayaState, type MicState } from "@/components/maya-voice-room";
 
-type MicState = "idle" | "asking" | "working" | "blocked" | "none" | "failed";
-type CallState = "ready" | "connecting" | "waiting" | "live" | "ending" | "ended" | "failed";
-type MayaState = "listening" | "thinking" | "speaking" | null;
+// The call itself (joining the room, Maya's board, recovery, the fake speech) is the shared hook in
+// maya-voice-room.ts; this screen holds the admin's words and controls.
 
 const MIC_TEXT: Record<MicState, string> = {
   idle: "Check the microphone before you connect.",
@@ -39,65 +37,7 @@ const ERROR_TEXT: Record<string, string> = {
 
 const MAYA_TEXT: Record<Exclude<MayaState, null>, string> = { listening: "Maya is listening", thinking: "Maya is thinking", speaking: "Maya is speaking" };
 
-const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-
-/** How long the screen waits for Maya to join after connecting. */
-const MAYA_JOIN_MS = 45_000;
-
-function micError(e: unknown): MicState {
-  const name = e instanceof DOMException ? e.name : "";
-  if (name === "NotAllowedError" || name === "SecurityError") return "blocked";
-  if (name === "NotFoundError" || name === "OverconstrainedError") return "none";
-  return "failed";
-}
-
-/** The microphone check: asks for the microphone and shows how loud it hears, until stopped. */
-function useMicCheck() {
-  const [state, setState] = useState<MicState>("idle");
-  const [level, setLevel] = useState(0);
-  const stop = useRef<(() => void) | null>(null);
-
-  const check = useCallback(async () => {
-    stop.current?.();
-    if (!navigator.mediaDevices?.getUserMedia) return setState("failed");
-    setState("asking");
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
-      const audio = new AudioContext();
-      const analyser = audio.createAnalyser();
-      analyser.fftSize = 512;
-      audio.createMediaStreamSource(stream).connect(analyser);
-      const data = new Uint8Array(analyser.fftSize);
-      let frame = 0;
-      const read = () => {
-        analyser.getByteTimeDomainData(data);
-        let peak = 0;
-        for (const v of data) peak = Math.max(peak, Math.abs(v - 128) / 128);
-        setLevel(Math.min(1, peak * 2.5));
-        frame = requestAnimationFrame(read);
-      };
-      read();
-      stop.current = () => {
-        cancelAnimationFrame(frame);
-        stream.getTracks().forEach((t) => t.stop());
-        void audio.close();
-        setLevel(0);
-      };
-      setState("working");
-    } catch (e) {
-      setState(micError(e));
-    }
-  }, []);
-
-  const release = useCallback(() => {
-    stop.current?.();
-    stop.current = null;
-  }, []);
-  useEffect(() => release, [release]);
-  return { state, level, check, release };
-}
-
-export function VoicePanel({ callId, childName, started, onUpdate, onEnded, onCancel, onBoard, busy }: {
+export function VoicePanel({ callId, childName, started, onUpdate, onEnded, onCancel, onBoard, onHearing, busy }: {
   callId: string;
   childName: string | null;
   /** The call has started (Maya joined once). */
@@ -108,209 +48,51 @@ export function VoicePanel({ callId, childName, started, onUpdate, onEnded, onCa
   /** Ends a call that never started (no Maya). */
   onCancel(): void;
   onBoard?(snapshot: BoardSnapshot, restored: boolean): void;
+  /** The child's words Maya is hearing now (null when none), for the transcript's last line. Never saved. */
+  onHearing?(words: string | null): void;
   busy: boolean;
 }) {
   const mic = useMicCheck();
-  const [call, setCall] = useState<CallState>("ready");
-  const [maya, setMaya] = useState<MayaState>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [seconds, setSeconds] = useState(0);
-  const [fakeSpeech, setFakeSpeech] = useState(false);
   const [said, setSaid] = useState("");
-  const [sending, setSending] = useState(false);
-  const room = useRef<LkRoom | null>(null);
-  const boardChanged = useRef(onBoard);
-  useEffect(() => { boardChanged.current = onBoard; }, [onBoard]);
-  const endNotification = useRef<{ room: LkRoom; notify(): Promise<void> } | null>(null);
-  const agent = useRef<string | null>(null);
-  const audioHost = useRef<HTMLDivElement>(null);
-  const liveSince = useRef<number | null>(null);
-  const name = childName ?? "the child";
-
-  // The live timer.
-  useEffect(() => {
-    if (call !== "live") return;
-    const t = setInterval(() => setSeconds(liveSince.current ? Math.floor((Date.now() - liveSince.current) / 1000) : 0), 500);
-    return () => clearInterval(t);
-  }, [call]);
-
-  // Leaving the page hangs up.
-  useEffect(() => () => void room.current?.disconnect(), []);
-
-  // While live, read the call now and then too, in case a data message was missed.
-  useEffect(() => {
-    if (call !== "live") return;
-    const t = setInterval(() => void onUpdate(), 8000);
-    return () => clearInterval(t);
-  }, [call, onUpdate]);
-
-  async function connect() {
-    setError(null);
-    setCall("connecting");
-    mic.release();
-    liveSince.current = null;
-    agent.current = null;
-    try {
+  const { phase: call, maya, error: errorCode, seconds, fakeSpeech, sending, hearing, audioHost, prepare, leave, connect: join, hangUp, say: sendSaid } = useMayaVoiceRoom({
+    callId,
+    async getTicket() {
       const res = await fetch(`/api/admin/maya/calls/${callId}/token`, { method: "POST" });
       const body = (await res.json().catch(() => null)) as { ok?: boolean; error?: string; ticket?: VoiceTicket } | null;
       if (!body?.ok || !body.ticket) throw new Error(body?.error ?? "failed");
-      const { Room, RoomEvent, Track, ParticipantKind } = await import("livekit-client");
-      const r = new Room({ adaptiveStream: false, dynacast: false });
-      room.current = r;
-      let terminal = false;
-      let newestSegment = -1;
-      let notification: Promise<void> | null = null;
-      const refreshEnded = () => notification ??= Promise.resolve().then(onEnded);
-      endNotification.current = { room: r, notify: refreshEnded };
-      const isMaya = (p: { kind?: unknown } | undefined) => p?.kind === ParticipantKind.AGENT;
-      const segmentOf = (p: { attributes: Record<string, string> }) => {
-        const raw = p.attributes["maya.segment"];
-        const n = raw === undefined || raw === "" ? -1 : Number(raw);
-        return Number.isSafeInteger(n) && n >= 0 ? n : -1;
-      };
-      const readMaya = () => {
-        if (room.current !== r || terminal) return;
-        const candidates = [...r.remoteParticipants.values()].filter((p) => isMaya(p) && segmentOf(p) >= newestSegment);
-        const p = candidates.sort((a, b) => segmentOf(b) - segmentOf(a) || Number(b.identity === agent.current) - Number(a.identity === agent.current))[0];
-        agent.current = p?.identity ?? null;
-        if (!p) {
-          setMaya(null);
-          if (liveSince.current !== null) {
-            liveSince.current = null;
-            setError(ERROR_TEXT.disconnected);
-            setCall("failed");
-            void onUpdate();
-          }
-          return;
-        }
-        newestSegment = Math.max(newestSegment, segmentOf(p));
-        setFakeSpeech(p.attributes["maya.speech"] === "fake");
-        const s = p.attributes["lk.agent.state"];
-        setMaya(s === "listening" || s === "thinking" || s === "speaking" ? s : null);
-        if (liveSince.current === null) {
-          liveSince.current = Date.now();
-          setError(null);
-          setCall("live");
-        }
-      };
-      const storageKey = `unica-voice-board:${callId}`;
-      let saved: { epoch?: number; snapshot?: BoardSnapshot } = {};
-      try { saved = JSON.parse(sessionStorage.getItem(storageKey) ?? "{}"); } catch {}
-      let receiver: ReturnType<typeof createBoardReceiver>;
-      try { receiver = createBoardReceiver({ sessionId: callId, epoch: saved.epoch, snapshot: saved.snapshot, clock: () => Date.now() }); }
-      catch { receiver = createBoardReceiver({ sessionId: callId, clock: () => Date.now() }); }
-      const changed = (restored = false) => {
-        const snapshot = receiver.snapshot();
-        try { sessionStorage.setItem(storageKey, JSON.stringify({ epoch: receiver.epoch(), snapshot })); } catch {}
-        boardChanged.current?.(snapshot, restored);
-      };
-      const handleBoard = boardRpcHandler(receiver, { changed, allowed: identity => {
-        const p = [...r.remoteParticipants.values()].find(p => p.identity === identity);
-        return room.current === r && !terminal && identity === agent.current && isMaya(p) && !!p && segmentOf(p) === newestSegment;
-      } });
-      r.localParticipant.registerRpcMethod(BOARD_RPC, async data => handleBoard(data.callerIdentity, data.payload));
-      changed(true);
-      r.on(RoomEvent.TrackSubscribed, (track) => {
-        if (track.kind !== Track.Kind.Audio) return;
-        const el = track.attach();
-        audioHost.current?.appendChild(el);
-      });
-      r.on(RoomEvent.TrackUnsubscribed, (track) => track.detach().forEach((el) => el.remove()));
-      r.on(RoomEvent.ParticipantConnected, readMaya);
-      r.on(RoomEvent.ParticipantDisconnected, readMaya);
-      r.on(RoomEvent.ParticipantAttributesChanged, readMaya);
-      r.on(RoomEvent.DataReceived, (payload, participant, _kind, topic) => {
-        if (room.current !== r || topic !== "maya.call" || !isMaya(participant) || !participant || participant.identity !== agent.current) return;
-        let update: { ended?: boolean; error?: string; segment?: number } = {};
-        try {
-          update = JSON.parse(new TextDecoder().decode(payload));
-        } catch {}
-        // Fatal messages require the current worker's immutable claim, including messages delayed across replacement.
-        if (segmentOf(participant) < 0 || update.segment !== segmentOf(participant)) { void onUpdate(); return; }
-        if (update.error === "technical_issue") {
-          setError(ERROR_TEXT.technical_issue);
-          setCall("failed");
-          void r.disconnect();
-          refreshEnded();
-        } else if (update.ended) {
-          terminal = true;
-          setError(null);
-          setCall("ended");
-          void r.disconnect();
-          refreshEnded();
-        } else void onUpdate();
-      });
-      r.on(RoomEvent.Disconnected, () => {
-        if (room.current !== r) return;
-        room.current = null;
-        agent.current = null;
-        liveSince.current = null;
-        setMaya(null);
-        if (terminal) return;
-        // A room event cannot establish the saved call's outcome.
-        setCall("failed");
-        setError(current => current ?? ERROR_TEXT.disconnected);
-        refreshEnded();
-      });
-      await r.connect(body.ticket.url, body.ticket.token);
-      await r.localParticipant.setMicrophoneEnabled(true, { echoCancellation: true, noiseSuppression: true, autoGainControl: true });
-      // Safari plays remote audio only after a tap: this runs inside the Connect tap.
-      await r.startAudio();
-      setCall((c) => (c === "connecting" ? "waiting" : c));
-      readMaya();
-      setTimeout(() => {
-        if (liveSince.current === null && room.current === r) {
-          setError(ERROR_TEXT.no_maya);
-          setCall("failed");
-          void r.disconnect();
-          room.current = null;
-        }
-      }, MAYA_JOIN_MS);
-    } catch (e) {
-      const code = e instanceof Error ? e.message : "failed";
-      setError(ERROR_TEXT[code] ?? (code === "failed" ? ERROR_TEXT.failed : ERROR_TEXT.connect));
-      setCall("failed");
-      void room.current?.disconnect();
-      room.current = null;
-    }
+      return body.ticket;
+    },
+    onUpdate,
+    onEnded,
+    onBoard,
+  });
+  const error = errorCode ? ERROR_TEXT[errorCode] ?? ERROR_TEXT.connect : null;
+  const name = childName ?? "the child";
+  const live = call === "live";
+  useEffect(() => { onHearing?.(live ? hearing : null); }, [onHearing, live, hearing]);
+  useEffect(() => () => onHearing?.(null), [onHearing]);
+  // The room is joined while the microphone is checked, so Maya speaks at once after Connect (docs/maya-voice.md, "The
+  // child joins the room before the Connect tap"). Only for a call that has not started: a started call may be live in
+  // another tab, which a second join with the same identity would push out of the room.
+  useEffect(() => {
+    if (started) return;
+    void prepare();
+    return leave;
+  }, [started, prepare, leave]);
+
+  function cancel() {
+    leave();
+    onCancel();
   }
 
-  async function hangUp() {
-    const r = room.current;
-    if (!r) return;
-    const notify = endNotification.current?.room === r ? endNotification.current.notify : null;
-    setCall("ending");
-    try {
-      if (agent.current) await r.localParticipant.performRpc({ destinationIdentity: agent.current, method: "maya.hang_up", payload: "", responseTimeout: 5000 });
-    } catch {}
-    try {
-      await r.disconnect();
-    } finally {
-      if (room.current === r) {
-        room.current = null;
-        agent.current = null;
-        liveSince.current = null;
-        setMaya(null);
-        setCall("failed");
-        setError(ERROR_TEXT.disconnected);
-      }
-      await notify?.();
-    }
+  function connect() {
+    mic.release();
+    void join();
   }
 
   async function say(e: FormEvent) {
     e.preventDefault();
-    const text = said.trim();
-    if (!text || !room.current || !agent.current || sending) return;
-    setSending(true);
-    try {
-      await room.current.localParticipant.performRpc({ destinationIdentity: agent.current, method: "maya.fake.say", payload: JSON.stringify({ text }), responseTimeout: 5000 });
-      setSaid("");
-    } catch {
-      setError(ERROR_TEXT.failed);
-    } finally {
-      setSending(false);
-    }
+    if (await sendSaid(said)) setSaid("");
   }
 
   const connected = call === "live" || call === "waiting";
@@ -332,11 +114,11 @@ export function VoicePanel({ callId, childName, started, onUpdate, onEnded, onCa
             <button type="button" className={`btn sm adm-btn ${mic.state === "working" ? "ghost" : ""}`} onClick={() => void mic.check()} disabled={mic.state === "asking"}>
               {mic.state === "working" ? "Check again" : "Check the microphone"}
             </button>
-            <button type="button" className={`btn sm adm-btn ${mic.state === "working" ? "" : "ghost"}`} onClick={() => void connect()} disabled={mic.state !== "working" || call === "connecting"}>
+            <button type="button" className={`btn sm adm-btn ${mic.state === "working" ? "" : "ghost"}`} onClick={connect} disabled={mic.state !== "working" || call === "connecting"}>
               {call === "connecting" ? "Connecting…" : started ? "Connect again" : "Connect"}
             </button>
             {!started && (
-              <button type="button" className="btn sm ghost adm-btn mv-hang" onClick={onCancel} disabled={busy || call === "connecting"}>Cancel the call</button>
+              <button type="button" className="btn sm ghost adm-btn mv-hang" onClick={cancel} disabled={busy || call === "connecting"}>Cancel the call</button>
             )}
           </div>
         </div>

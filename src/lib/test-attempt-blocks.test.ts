@@ -52,7 +52,7 @@ describe("durable assessment block locks",()=>{
     delete m.fail.lockBlock;
     expect(await doneChecking(m.store,"p1","a1","block-1",now+20_000)).toMatchObject({ok:true});
   });
-  it("cannot finish when an area's only answers are excluded as rushed", async () => {
+  it("closes without scoring when an area's only answers are excluded as rushed", async () => {
     const m = family(1);
     let result = await nextStep(m.store, "p1", "a1", now);
     for (let i = 0; i < 100 && result.ok && result.step.status !== "complete"; i++) {
@@ -64,8 +64,8 @@ describe("durable assessment block locks",()=>{
       }
     }
     expect(result).toMatchObject({ ok: true, step: { status: "complete", sufficientEvidence: false } });
-    expect(await finishTest(m.store, "p1", "a1", "no", now + 120_000)).toMatchObject({ ok: false, error: "incomplete" });
-    expect(m.tests[0].status).toBe("in_progress");
+    expect(await finishTest(m.store, "p1", "a1", "no", now + 120_000)).toMatchObject({ ok: false, error: "expired" });
+    expect(m.tests[0].status).toBe("expired");
     expect(m.tests[0].placement).toBeUndefined();
   });
 

@@ -3,8 +3,8 @@
 // labels and the grouping changed (emails and the analytics filter link to the old addresses).
 
 export type AdminNavKey =
-  | "home" | "families" | "tests" | "feedback" | "production" | "delivery" | "marking" | "calls"
-  | "flyers" | "emails" | "templates" | "skillmap" | "reviews" | "preview" | "export";
+  | "home" | "health" | "families" | "tests" | "feedback" | "production" | "delivery" | "marking" | "calls"
+  | "flyers" | "emails" | "templates" | "skillmap" | "reviews" | "ai" | "preview" | "budget" | "export";
 
 export interface AdminNavItem {
   key: AdminNavKey;
@@ -25,6 +25,7 @@ export type AdminBadges = Partial<Record<AdminNavKey, AdminBadge>>;
 
 export const ADMIN_NAV: readonly AdminNavEntry[] = [
   { key: "home", label: "Home", href: "/admin" },
+  { key: "health", label: "What to fix", href: "/admin/health" },
   { folder: "Families", items: [
     { key: "families", label: "Families", href: "/admin/parents" },
     { key: "tests", label: "Tests", href: "/admin/tests" },
@@ -46,9 +47,11 @@ export const ADMIN_NAV: readonly AdminNavEntry[] = [
     { key: "templates", label: "Templates", href: "/admin/templates" },
     { key: "skillmap", label: "Skill map", href: "/admin/skill-map" },
     { key: "reviews", label: "AI reviews", href: "/admin/reviews" },
+    { key: "ai", label: "AI usage", href: "/admin/ai" },
   ] },
   { folder: "Team tools", items: [
     { key: "preview", label: "Parent app preview", href: "/admin/dashboard" },
+    { key: "budget", label: "Budget", href: "/admin/budget" },
     { key: "export", label: "Export", href: "/admin/export" },
   ] },
 ];
@@ -65,6 +68,7 @@ export const ADMIN_NAV_ITEMS: readonly AdminNavItem[] = ADMIN_NAV.flatMap((e) =>
  */
 const SEGMENT: Record<string, AdminNavKey> = {
   activity: "home",
+  health: "health",
   parents: "families",
   children: "families",
   "maya-chat": "families",
@@ -81,8 +85,10 @@ const SEGMENT: Record<string, AdminNavKey> = {
   templates: "templates",
   "skill-map": "skillmap",
   reviews: "reviews",
+  ai: "ai",
   dashboard: "preview",
   "parent-dashboard": "preview",
+  budget: "budget",
   export: "export",
 };
 

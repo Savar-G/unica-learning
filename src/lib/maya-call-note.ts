@@ -25,7 +25,8 @@
 // child's name and the clock. Pure otherwise: no Next.js, React, network or database.
 import { hideName } from "@/lib/child-name-redaction";
 export { foldWord, hideName } from "@/lib/child-name-redaction";
-import { aiClient, withTimeLimit, type AiClient } from "@/lib/ai-client";
+import { withTimeLimit, type AiClient } from "@/lib/ai-client";
+import { mayaAiClient } from "@/lib/maya-ai-route";
 import type { NewLearningEvent } from "@/lib/learning-events";
 import { heldSentences, type Outcome } from "@/lib/maya";
 import { fakeNoteAi } from "@/lib/maya-call-note-fake";
@@ -428,7 +429,7 @@ export function noteTranscriptLines(note: Pick<CallNote, "transcript">, childNam
 export function noteAiClient(env: Record<string, string | undefined> = process.env): AiClient | null {
   const fake = env.AI_REVIEW_FAKE;
   if (env.NODE_ENV !== "production" && (fake === "sure" || fake === "unsure")) return fakeNoteAi(fake);
-  return aiClient(env);
+  return mayaAiClient(env);
 }
 
 // ---------- The writer ----------

@@ -7,19 +7,20 @@ describe("the admin sidebar", () => {
   it("has the decided folders and items, in order", () => {
     expect(ADMIN_NAV.map((e) => (isFolder(e) ? [e.folder, e.items.map((i) => i.label)] : e.label))).toEqual([
       "Home",
+      "What to fix",
       ["Families", ["Families", "Tests", "Feedback"]],
       ["Workbooks", ["Production", "Plans and delivery", "Marking"]],
       ["Maya", ["Calls"]],
       ["Marketing", ["Flyers", "Emails"]],
-      ["Quality", ["Templates", "Skill map", "AI reviews"]],
-      ["Team tools", ["Parent app preview", "Export"]],
+      ["Quality", ["Templates", "Skill map", "AI reviews", "AI usage"]],
+      ["Team tools", ["Parent app preview", "Budget", "Export"]],
     ]);
   });
 
   it("keeps every old address", () => {
     expect(ADMIN_NAV_ITEMS.map((i) => i.href)).toEqual([
-      "/admin", "/admin/parents", "/admin/tests", "/admin/feedback", "/admin/workbooks", "/admin/next-steps", "/admin/scans",
-      "/admin/maya", "/admin/flyers", "/admin/emails", "/admin/templates", "/admin/skill-map", "/admin/reviews", "/admin/dashboard", "/admin/export",
+      "/admin", "/admin/health", "/admin/parents", "/admin/tests", "/admin/feedback", "/admin/workbooks", "/admin/next-steps", "/admin/scans",
+      "/admin/maya", "/admin/flyers", "/admin/emails", "/admin/templates", "/admin/skill-map", "/admin/reviews", "/admin/ai", "/admin/dashboard", "/admin/budget", "/admin/export",
     ]);
   });
 

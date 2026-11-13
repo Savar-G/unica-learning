@@ -23,7 +23,7 @@ export function memoryWeeklyStore(data: { parents: WeeklyParent[]; children: Wee
   const row = (id: string) => rows.find((r) => r.id === id);
   return {
     async load() {
-      const calls = data.calls ?? data.notes.map((n) => ({ callId: n.callId, parentId: n.parentId, childId: n.childId, endedAt: n.callEndedAt, notePending: false, kind: "family" }));
+      const calls: WeeklyCall[] = data.calls ?? data.notes.map((n) => ({ callId: n.callId, parentId: n.parentId, childId: n.childId, endedAt: n.callEndedAt, notePending: false, kind: "family" }));
       const parentIds = new Set(calls.map((c) => c.parentId));
       return {
         parents: data.parents.filter((p) => parentIds.has(p.id)).map(copy),

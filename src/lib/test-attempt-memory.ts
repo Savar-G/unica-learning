@@ -196,7 +196,8 @@ export function memoryAttemptStore({ children: kids = [], tests: initial = [] }:
     },
     async expire(id, now) {
       await begin("expire");
-      const row = tests.find((t) => t.id === id && t.status === "in_progress" && t.resumeUntil < now);
+      const row = tests.find((t) => t.id === id && t.status === "in_progress"
+        && (t.resumeUntil < now || t.test.adaptive?.complete === true && t.test.adaptive.sufficientEvidence === false));
       if (row) row.status = "expired";
     },
     async openAnswerWindow(id, now, until) {

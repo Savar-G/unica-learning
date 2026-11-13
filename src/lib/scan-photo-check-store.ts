@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/database";
 import { decisionClient, type DecisionClient } from "@/lib/decision-client";
+import type { AiUsageTag } from "@/lib/ai-usage";
 import { fakeDecisionClient, noul } from "@/lib/decision-client-fake";
 import { STRAIGHT_PART, scanPartPath } from "@/lib/scan-crops";
 import { markedFamily } from "@/lib/scan-pages-access";
@@ -43,10 +44,10 @@ export async function readPhotoCheckView(db: SupabaseClient<Database>, parent: s
  * Development only (ignored in production): PHOTO_CHECK_FAKE=blurry or clear gives a fake model that answers after 1.5 s,
  * for screenshots and browser checks of the preview screen.
  */
-export function photoCheckClient(env: Readonly<Record<string, string | undefined>> = process.env): DecisionClient | null {
+export function photoCheckClient(env: Readonly<Record<string, string | undefined>> = process.env, usage?: AiUsageTag): DecisionClient | null {
   const fake = env.NODE_ENV === "production" ? undefined : env.PHOTO_CHECK_FAKE;
   if (fake === "blurry" || fake === "clear") {
     return fakeDecisionClient({ model: "fake/photo-check", usd: null, answer: () => new Promise((resolve) => setTimeout(() => resolve({ blurry: noul(fake === "blurry" ? 0.9 : 0.04) }), 1500)) });
   }
-  try { return decisionClient(env, undefined, { maxRetries: 0, timeout: PHOTO_CHECK_TIMEOUT_MS }); } catch { return null; }
+  try { return decisionClient(env, undefined, { maxRetries: 0, timeout: PHOTO_CHECK_TIMEOUT_MS, usage: usage ?? { feature: "photo_check" } }); } catch { return null; }
 }

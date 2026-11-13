@@ -79,7 +79,8 @@ export function attemptStore(admin: SupabaseClient<Database>): AttemptStore {
 
     async expire(id, now) {
       const { error } = await admin.from("assessments").update({ status: "expired" })
-        .eq("id", id).eq("status", "in_progress").lt("resume_until", iso(now));
+        .eq("id", id).eq("status", "in_progress")
+        .or(`resume_until.lt.${iso(now)},and(test->adaptive->>complete.eq.true,test->adaptive->>sufficientEvidence.eq.false)`);
       if (error) throw new StoreError("expire failed", error.message);
     },
 

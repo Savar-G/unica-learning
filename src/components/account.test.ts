@@ -47,3 +47,11 @@ describe("family times in the server-rendered account and start button", () => {
     expect(page({ ...wait, opensAt: Date.parse(iso) }, postal)).toContain(expected);
   });
 });
+
+
+it("offers a new test after a closure without promising a report from the closed test (#769)", () => {
+  const text = page({ kind: "expired", attemptId: "a1" });
+  expect(text).toContain("Start again");
+  expect(text).toContain("The last test closed before a report could be made.");
+  expect(text).toContain("The new test has new questions.");
+});

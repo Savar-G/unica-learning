@@ -9,7 +9,7 @@ export const meta: ResourceMeta = {
   description: "What Grade 3 math and reading cover in the BC curriculum, in plain words: fractions, multiplication, practice questions and tips if your child needs help.",
   category: "BC curriculum",
   lead: "A plain-language guide to Grade 3 math and reading in the BC curriculum, with practice questions you can try at home.",
-  updated: "2026-10-09",
+  updated: "2026-11-11",
   faqs: [
     {
       q: "What is in the BC Grade 3 math curriculum?",
@@ -31,10 +31,16 @@ export const meta: ResourceMeta = {
       q: "What should I do if my Grade 3 child is struggling?",
       a: "Talk to the teacher, find the skill that is stuck, and practise it for a few minutes a day with objects and drawings. Grade 3 builds on place value and addition facts to 20, so check those first.",
     },
+    {
+      q: "How will I hear about my Grade 3 child's progress this year?",
+      a: "BC schools must share at least five reports of learning a year: three written and two informal, such as a parent-teacher conference. The last written one is the Summary of Learning at the end of the school year. From Kindergarten to Grade 9, written reports use the proficiency scale: Emerging, Developing, Proficient and Extending. Each school sets its own dates.",
+    },
   ],
   sources: [
     { label: "BC Curriculum: Mathematics, Grade 3 (Big Ideas, Curricular Competencies, Content)", url: "https://curriculum.gov.bc.ca/curriculum/mathematics/3", accessed: "2026-10-09" },
     { label: "BC Curriculum: English Language Arts, Grade 3 (Big Ideas, Curricular Competencies, Content)", url: "https://curriculum.gov.bc.ca/curriculum/english-language-arts/3", accessed: "2026-10-09" },
+    { label: "BC Ministry of Education and Child Care: K-12 Student Reporting, information for parents and caregivers (PDF)", url: "https://curriculum.gov.bc.ca/sites/curriculum.gov.bc.ca/files/pdf/reporting/K-12-student-reporting-one-pager-for-parents-and-caregivers.pdf", accessed: "2026-11-11" },
+    { label: "BC Ministry of Education and Child Care: K-12 Student Reporting Policy, Communicating Student Learning Guidelines (PDF, August 2023)", url: "https://www2.gov.bc.ca/assets/download/A5CA90B9C45D40B4999109A7400A1A39", accessed: "2026-11-11" },
   ],
   related: ["bc-grade-2-math-and-reading", "bc-proficiency-scale"],
 };

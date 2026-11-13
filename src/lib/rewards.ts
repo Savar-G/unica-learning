@@ -11,7 +11,7 @@ const PAGES_PER_BOOK = 22;
 export const POINTS_PER_MONTH = PER_PAGE * PAGES_PER_BOOK + WEEK_BONUS * 4 + BOOK_BONUS;
 
 export const EARN: { title: string; text: string; points: number }[] = [
-  { title: "Every finished page", text: "Scan the page in the app. The points land once the page is checked.", points: PER_PAGE },
+  { title: "Every finished page", text: "Scan the page on our website. The points land once the page is checked.", points: PER_PAGE },
   { title: "A full week", text: "Practice 5 days in one week for a streak bonus.", points: WEEK_BONUS },
   { title: "A finished workbook", text: "Every page of the book scanned, start to end.", points: BOOK_BONUS },
 ];
@@ -30,7 +30,7 @@ export const PRIZES: { name: string; points: number }[] = [
 export const REWARDS_FAQ: { question: string; answer: string }[] = [
   { question: "Does it cost extra?", answer: "No. Rewards are part of every plan." },
   { question: "Do wrong answers lose points?", answer: "No. Points are for finished work, not for scores. A hard page earns the same as an easy one." },
-  { question: "What counts as a finished page?", answer: "A page with your child's work on it, scanned in the app. Every page is checked, so blank pages do not earn points." },
+  { question: "What counts as a finished page?", answer: "A page with your child's work on it, scanned on our website. Every page is checked, so blank pages do not earn points." },
   { question: "Do points expire?", answer: "No. Points stay while your plan is active, and through a pause." },
   { question: "Can I say no to a prize?", answer: "Yes. You approve every prize before we order it. You can also save points together for a bigger goal." },
 ];

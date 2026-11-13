@@ -10,19 +10,19 @@
 // Seam: the store (Supabase: src/lib/maya-notice-store.ts; memory: src/lib/maya-notice-memory.ts). Pure otherwise.
 
 /** Raise it when the notice changes in an important way (voice calls opening, a new kind of company): every family is asked again. */
-export const MAYA_NOTICE_VERSION = "2026-11-05";
+export const MAYA_NOTICE_VERSION = "2026-11-12";
 
 /** What the child's desk says when chat is open to the family but no parent agreed. */
 export const MAYA_NOTICE_DESK_LINE = "Ask a grown-up to turn on Maya from their account.";
 
 /** The notice as a parent reads it. No company names here: DESIGN.md keeps them in the privacy disclosure. */
 export const MAYA_NOTICE: readonly { title: string; text: string }[] = [
-  { title: "What Maya does", text: "Your child types a message on the desk. Maya helps with one workbook question, one step at a time, on a shared board. Maya is an AI, not a person, and can make a mistake." },
-  { title: "Where your child's words go", text: "We send your child's messages, the question and Maya's recent lines to an AI company, so that the AI can choose what Maya says next. Maya's lines can hold your child's first name. After a chat ends, we can also send the chat to the AI company, so that the AI can pick one sentence for your note. We hide your child's first name there, but other personal details your child typed can remain. We do not send your name, email address or postal code. Please ask your child not to type full names, addresses or phone numbers." },
+  { title: "What Maya does", text: "Your child types a message on the desk, or calls Maya and talks out loud. Maya helps with one workbook question, one step at a time, on a shared board. Maya is an AI, not a person, and can make a mistake." },
+  { title: "Where your child's words go", text: "We send your child's messages, the question and Maya's recent lines to an AI company. In a chat or a call, the AI model writes Maya's words for each turn. Before your child sees or hears a reply, our code checks it: the math must be correct, Maya must not give the final answer, and the reply must be short, kind and safe. Maya's lines can hold your child's first name. After a chat ends, we can also send the chat to the AI company, so that the AI can pick one sentence for your note. We hide your child's first name there, but other personal details your child typed can remain. We do not send your name, email address or postal code. In a call, the sound of your child's voice goes to a company that runs the call. It turns the speech into text and turns Maya's words into her voice. Please ask your child not to type or say full names, addresses or phone numbers." },
   { title: "What we keep", text: "We keep each chat, a note about it and a learning record. You can read the note and the whole chat in your account, and we email you a recap each week your child uses Maya, with up to 10 chats or calls across your family. A recap can come late if a note is not ready. Our team can read them too. A company that stores our records holds them, and a company that sends our email handles the recap. We delete them with your family account." },
   { title: "If your child may not be safe", text: "If your child writes something that suggests they may not be safe, Maya stops the math and tells your child to talk to a grown-up they trust. Our team gets an alert, and your note says it happened. Maya cannot call for help, and Maya is not an emergency service." },
-  { title: "What we do not keep", text: "A chat has no audio. Voice calls are not open yet. We will ask you again before they open." },
-  { title: "Limits", text: "Chat is for Grade 3 and up, because it needs typing. Each child can send Maya up to 60 messages a day." },
+  { title: "What we do not keep", text: "We do not save any audio. The company that runs calls says it does not keep the audio or the words." },
+  { title: "Limits", text: "Chat and calls are for Grade 3 and up. Each child can send Maya up to 60 messages a day. A call lasts at most 10 minutes, and each child can talk with Maya for at most 30 minutes a week." },
 ];
 
 export interface NoticeAcceptance {

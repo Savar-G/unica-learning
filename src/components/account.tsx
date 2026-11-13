@@ -688,7 +688,7 @@ function startView(state: Exclude<StartState, { kind: "wait" }>, name: string, w
     case "finish":
       return { label: "Finish test", note: <>All of {name}&apos;s answers are in, but the test was not sent. Open it to finish. The report then comes by email.</>, status: "finish" };
     case "expired":
-      return { label: "Start again", note: "The last test was not finished within 24 hours, so it closed. The new test has new questions.", status: "expired" };
+      return { label: "Start again", note: "The last test closed before a report could be made. The new test has new questions.", status: "expired" };
     case "start":
       return state.retake
         ? { label: "Start test", note: "The next test is open. It has new questions.", status: "retake" }

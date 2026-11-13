@@ -119,6 +119,15 @@ class ProbeSTT extends stt.STT {
   send(type: stt.SpeechEventType, text = "") {
     this.events.emit("event", { type, ...(text ? { alternatives: [{ language: normalizeLanguage("en"), text, startTime: 0, endTime: 0, confidence: 0.95 }] } : {}) });
   }
+  /**
+   * A final transcript whose last word ends `wordEnd` seconds into the audio, as a real speech-to-text reports it. Its own
+   * end time is `turnEnd`: through LiveKit Inference that is the turn's `start + duration`, which runs on while the
+   * speech-to-text holds the turn.
+   */
+  sendTimed(text: string, wordEnd: number, turnEnd = wordEnd) {
+    const words = text.split(/\s+/).map((w, i, all) => voice.createTimedString({ text: w, startTime: wordEnd * i / all.length, endTime: i === all.length - 1 ? wordEnd : wordEnd * (i + 1) / all.length }));
+    this.events.emit("event", { type: stt.SpeechEventType.FINAL_TRANSCRIPT, alternatives: [{ language: normalizeLanguage("en"), text, startTime: 0, endTime: turnEnd, confidence: 0.95, words }] });
+  }
   says(text: string) {
     this.send(stt.SpeechEventType.START_OF_SPEECH);
     this.send(stt.SpeechEventType.FINAL_TRANSCRIPT, text);
@@ -195,7 +204,7 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 
-async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; seams?: Partial<CallSeams>; board?: boolean; speech?: ProbeSTT; limitMs?: number }) {
+async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; seams?: Partial<CallSeams>; board?: boolean; speech?: ProbeSTT; limitMs?: number; timestamps?: boolean }) {
   const clock = handClock();
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
@@ -220,7 +229,7 @@ async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; seams
   if (!config.ok) throw new Error("fake providers");
   const opened = await calls.openVoice(started.view.id, config.ids, "Leah");
   if (!opened.ok) throw new Error(opened.error);
-  const providers = await makeProviders(config, { fakeMsPerChar: 1 });
+  const providers = await makeProviders(config, { fakeMsPerChar: 1, fakeTimestamps: options.timestamps ?? true });
   const session = voiceSession({ ...providers, stt: options.speech ?? providers.stt }, { endpointingMs: 20, aecWarmupDuration: 0 });
   const microphone = new SilentMicrophone();
   const speaker = new Speaker();
@@ -301,8 +310,9 @@ describe("the acknowledgement in one call (#532)", () => {
     c.speaker.release();
     await waitFor(() => c.samples.length === 2, "the slow turn's sample");
     await waitFor(listening, "the slow answer's playout");
-    // One reply: Maya does not go back to listening between the phrase and the answer, so no check-in can start there.
-    expect(states.slice(-3)).toEqual(["thinking", "speaking", "listening"]);
+    // The answer is speech of its own after the phrase (its voice stream ended with the phrase, 2026-11-13), so Maya is
+    // listening for a moment between them. Its turn still holds the silence timer, and the answer is the next thing said.
+    expect(states.slice(-2)).toEqual(["speaking", "listening"]);
     const answerWords = c.said().slice(before + 1).join(" ");
     expect(answerWords.length).toBeGreaterThan(0);
     expect(acksIn(c.said().slice(before + 1))).toEqual([]);
@@ -524,9 +534,10 @@ describe("the parts of one turn (#532)", () => {
     } });
     clockMove = c.clock.move;
 
-    // The save moves the clock inside the controller's turn, and a board send outside it.
+    // The turn's own save moves the clock inside the controller's turn. The board's saves run beside the voice, so they
+    // move nothing here (the next test holds the board's send).
     const update = c.store.update.bind(c.store);
-    c.store.update = async (...args) => { if (asked > 0) c.clock.move(50); return update(...args); };
+    c.store.update = async (id, revision, change) => { if (asked > 0 && !change.boardHistory) c.clock.move(50); return update(id, revision, change); };
     c.speaker.delay = () => { if (asked > 0) c.clock.move(120); };
     let stoppedAt = 0;
     c.session.on(voice.AgentSessionEventTypes.UserStateChanged, (ev) => {
@@ -543,9 +554,110 @@ describe("the parts of one turn (#532)", () => {
     const stopwatch = c.speaker.starts.at(-1)! - stoppedAt;
     expect(s.answerMs).toBe(stopwatch);
     expect(s.firstSoundMs).toBe(stopwatch);
-    expect(s.parts).toEqual({ heardMs: 300, modelMs: 2000, repairMs: 700, reviewMs: 300, codeMs: 50, ackHoldMs: 0, boardMs: expect.any(Number), voiceMs: 120 });
+    // Nothing waits between the ready answer and its words reaching the voice: no later save, and no board answer.
+    expect(s.parts).toEqual({ heardMs: 300, modelMs: 2000, repairMs: 700, reviewMs: 300, codeMs: 50, ackHoldMs: 0, boardMs: 0, voiceMs: 120 });
     expect(sum(s)).toBe(s.answerMs);
-    expect(s.answerMs).toBe(3470 + s.parts!.boardMs);
+    expect(s.answerMs).toBe(3470);
+    // The fake speech-to-text gives no word times; its end of speech came with its final transcript.
+    expect(s).toMatchObject({ sttWaitMs: null, speechEnd: null, waitMs: null });
+  });
+
+  it("measure the speech-to-text's own wait from the child's last word, before the turn's clock starts", async () => {
+    const speech = new ProbeSTT();
+    const c = await voiceCall({ model: ruleMayaModel(), ackLimitMs: 0, speech });
+    // The microphone's first frame (20 ms) went to the speech-to-text when the call started: the word times count from it.
+    const inputStartedAt = Date.UTC(2026, 10, 1, 16, 0, 0) - 20;
+    c.clock.move(5000);
+    const lastWordEnd = Date.now() - 1100;
+    speech.send(stt.SpeechEventType.START_OF_SPEECH);
+    // The speech-to-text held the turn 1100 ms: the transcript's own end time is the final's, the last word's is not
+    // (real calls of 2026-11-13 logged the transcript's end, and under-reported the wait by the hold).
+    speech.sendTimed("I got 56.", (lastWordEnd - inputStartedAt) / 1000, (Date.now() - inputStartedAt) / 1000);
+    speech.send(stt.SpeechEventType.END_OF_SPEECH);
+    await waitFor(() => c.samples.length === 1, "the sample");
+    const [s] = c.samples;
+    expect(s).toMatchObject({ outcome: "answered", speechEnd: "stt_words", sttWaitMs: 1100 });
+    // The whole wait is the speech-to-text's wait plus everything `answerMs` counts.
+    expect(s.waitMs).toBe(1100 + s.answerMs!);
+    await waitFor(() => c.session.agentState === "listening", "the answer's playout");
+
+    // No word times: the end of speech LiveKit reported before the final transcript is the mark.
+    c.clock.move(3000);
+    speech.send(stt.SpeechEventType.START_OF_SPEECH);
+    c.clock.move(400);
+    speech.send(stt.SpeechEventType.END_OF_SPEECH);
+    await pause();
+    c.clock.move(700);
+    speech.send(stt.SpeechEventType.FINAL_TRANSCRIPT, "Is it 66?");
+    await waitFor(() => c.samples.length === 2, "the second sample");
+    expect(c.samples[1]).toMatchObject({ speechEnd: "vad", sttWaitMs: 700 });
+    expect(c.samples[1].waitMs).toBe(700 + c.samples[1].answerMs!);
+  });
+});
+
+describe("the voice does not wait for the board's saves", () => {
+  // With word times a release already waits behind the plan; with none (sentence ends), only the plan's own wait holds
+  // the audio, so both are run.
+  it.each([true, false])("gives the words to the voice while the plan goes out, and the first sound waits for the plan (word times %s)", async (timestamps) => {
+    const c = await voiceCall({ model: ruleMayaModel(), ackLimitMs: 0, timestamps });
+    const send = c.sender.send.bind(c.sender);
+    let releaseSend = () => {};
+    const held = new Promise<void>((r) => { releaseSend = r; });
+    let holding = false;
+    vi.spyOn(c.sender, "send").mockImplementation(async (...args) => {
+      if (!holding) { holding = true; await held; }
+      return send(...args);
+    });
+    const before = c.said().length;
+    const starts = c.speaker.starts.length;
+    c.say("I don't know.");
+    await waitFor(() => holding, "the plan's first send");
+    // The voice has the first sentence already, and no sound has played.
+    await waitFor(() => c.said().length > before, "the words at the voice");
+    await pause();
+    expect(c.speaker.starts.length).toBe(starts);
+    expect(c.receiver.staged()).toEqual([]);
+    c.clock.move(80);
+    releaseSend();
+    await waitFor(() => c.samples.length === 1, "the answer's sound");
+    const [s] = c.samples;
+    expect(s.outcome).toBe("answered");
+    expect(s.parts!.boardMs).toBe(0);
+    expect(s.stageMs).toBe(80);
+    expect(s.parts!.voiceMs).toBe(80);
+    expect(sum(s)).toBe(s.answerMs);
+    // The batches were all on the receiver before the sound, and each shows at its word.
+    await waitFor(() => c.session.agentState === "listening", "the answer's playout");
+    await c.board.settled();
+    expect(c.receiver.staged()).toEqual([]);
+    expect(c.receiver.snapshot().events.some((e) => e.kind === "batch")).toBe(true);
+  });
+
+  it.each([true, false])("a reply that loses its turn while its plan goes out makes no sound and shows no batch (word times %s)", async (timestamps) => {
+    const c = await voiceCall({ model: ruleMayaModel(), ackLimitMs: 0, timestamps });
+    const send = c.sender.send.bind(c.sender);
+    let releaseSend = () => {};
+    const held = new Promise<void>((r) => { releaseSend = r; });
+    let holding = false;
+    const heldBatches: string[] = [];
+    vi.spyOn(c.sender, "send").mockImplementation(async (batch, options) => {
+      if (!holding) { holding = true; heldBatches.push(batch.transactionId); await held; }
+      return send(batch, options);
+    });
+    const starts = c.speaker.starts.length;
+    c.say("I don't know.");
+    await waitFor(() => holding, "the plan's first send");
+    // The child talks before the plan is out: the reply is cut, and its plan is retired.
+    c.say("Is it 66?");
+    await waitFor(() => c.samples.length === 1, "the first turn's sample");
+    expect(c.samples[0].outcome).toBe("interrupted");
+    releaseSend();
+    await waitFor(() => c.samples.length === 2 && c.session.agentState === "listening", "the second answer");
+    await c.board.settled();
+    // Only the second answer made a sound, and the first plan's held batch never showed.
+    expect(c.speaker.starts.length).toBe(starts + 1);
+    const shown = c.receiver.snapshot().events.flatMap((e) => (e.kind === "batch" ? [e.batchId] : []));
+    expect(shown).not.toContain(heldBatches[0]);
   });
 });
 
@@ -613,7 +725,10 @@ describe("R577: what a delay can change while the phrase waits", () => {
     expect(shown).toEqual(expect.arrayContaining(intended));
   });
 
-  it("R577-2 danger reported while the phrase's board stage waits: no phrase before the safety guidance", async () => {
+  // D-341 review, item B: the phrase waits for neither its board stage nor its save, so the two delays R577-2 covered
+  // (danger known while one of them waited) cannot happen. What holds now: the phrase is queued at the limit with the
+  // stage's answer or the save still out, and the guidance that comes after it stops it and goes first (R577-4).
+  it("R577-2 the phrase does not wait for its board stage, and the guidance that comes after it stops it", async () => {
     const d = dangerModel();
     const c = await voiceCall({ model: d.model });
     c.say("I don't know.");
@@ -630,24 +745,24 @@ describe("R577: what a delay can change while the phrase waits", () => {
       await delayed;
       return result;
     });
+    c.speaker.held = true;
     c.say("Someone is hurting me.");
     await waitFor(() => d.calls() === 1, "the child turn's model call");
     await c.clock.advance(ACK_LIMIT_MS);
-    await waitFor(() => staging, "the phrase's board stage");
+    // Queued while the stage's answer is still out.
+    await waitFor(() => acksIn(c.said()).length === 1, "the phrase");
+    expect(staging).toBe(true);
     d.releaseDanger();
-    await waitFor(() => c.call.session.safety.flagged && d.calls() === 2, "the danger to be known");
+    await waitFor(() => c.said().includes(SAFETY_GUIDANCE.immediate.split(/(?<=[.?!])\s+/)[0]) || c.said().includes(SAFETY_GUIDANCE.immediate), "the guidance");
     releaseStage();
-    await pause();
-    expect(acksIn(c.said())).toEqual([]);
-    // Stopped before its save, so the phrase stays in the bank.
-    expect(c.call.acknowledged).toEqual([]);
+    c.speaker.release();
     d.releaseClosing();
     await waitFor(() => c.samples.length === 2, "the turn's sample");
-    expect(acksIn(c.said())).toEqual([]);
-    expect(c.samples[1]).toMatchObject({ ack: null, ackSkipped: "closing" });
+    expect(acksIn(c.said())).toHaveLength(1);
+    expect(c.said().indexOf(acksIn(c.said())[0])).toBeLessThan(c.said().findIndex((t) => SAFETY_GUIDANCE.immediate.startsWith(t)));
   });
 
-  it("R577-2 danger reported while the phrase's save waits: no phrase before the safety guidance", async () => {
+  it("R577-2 the phrase does not wait for its save: its id leaves the bank at once, and the save follows", async () => {
     const d = dangerModel();
     const c = await voiceCall({ model: d.model });
     d.arm();
@@ -656,23 +771,23 @@ describe("R577: what a delay can change while the phrase waits", () => {
     const delayed = new Promise<void>((r) => { releaseSave = r; });
     let saving = false;
     c.store.update = async (id, revision, change) => {
-      const result = await update(id, revision, change);
       if (!saving && change.live?.acknowledged?.length) { saving = true; await delayed; }
-      return result;
+      return update(id, revision, change);
     };
     c.say("Someone is hurting me.");
     await waitFor(() => d.calls() === 1, "the child turn's model call");
     await c.clock.advance(ACK_LIMIT_MS);
-    await waitFor(() => saving, "the phrase's save");
+    await waitFor(() => acksIn(c.said()).length === 1, "the phrase, with its save still out");
+    expect(saving).toBe(true);
+    expect(c.call.acknowledged).toHaveLength(1);
+    releaseSave();
     d.releaseDanger();
     await waitFor(() => c.call.session.safety.flagged, "the danger to be known");
-    releaseSave();
-    await pause();
-    expect(acksIn(c.said())).toEqual([]);
     d.releaseClosing();
     await waitFor(() => c.samples.length === 1, "the turn's sample");
-    expect(acksIn(c.said())).toEqual([]);
-    expect(c.samples[0]).toMatchObject({ ack: null, ackSkipped: "closing" });
+    await c.call.settled();
+    expect((await c.store.get(c.id))!.live?.acknowledged ?? (await c.store.get(c.id))!.status).toBeTruthy();
+    expect(acksIn(c.said())).toHaveLength(1);
   });
 
   it("R577-3 a phrase heard before a worker replacement is already saved, so the new worker cannot pick it", async () => {
@@ -693,7 +808,9 @@ describe("R577: what a delay can change while the phrase waits", () => {
     expect(replacement.call.acknowledged).toContain(id);
   });
 
-  it("R577-3 a worker that was replaced cannot save a phrase, so it says none", async () => {
+  // D-341 review, item B: the save no longer comes before the phrase, so a replaced worker can say one phrase (the
+  // accepted loss). Its save is refused, and from then on it says no phrase.
+  it("R577-3 a worker that was replaced says at most one phrase: its save is refused, and it says no more", async () => {
     const m = heldModel();
     // No board: its own save would stop this worker first, and this test is about the phrase's save.
     const c = await voiceCall({ model: m.model, board: false });
@@ -704,13 +821,16 @@ describe("R577: what a delay can change while the phrase waits", () => {
     const replacement = await c.calls.openVoice(c.id, { speechToText: "fake", voice: "fake" }, null);
     if (!replacement.ok) throw new Error(replacement.error);
     await c.clock.advance(ACK_LIMIT_MS);
-    await pause();
-    expect(acksIn(c.said())).toEqual([]);
+    await waitFor(() => c.call.replaced, "the phrase's save to be refused");
+    expect(acksIn(c.said()).length).toBeLessThanOrEqual(1);
     expect(replacement.call.acknowledged).toEqual([]);
-    expect(c.call.replaced).toBe(true);
     m.release();
-    await waitFor(() => c.samples.length === 1, "the sample");
-    expect(c.samples[0]).toMatchObject({ ack: null, ackSkipped: "save" });
+    // The worker that lost the call stops: its turn ends the call's handle, and it says no further phrase.
+    await waitFor(() => c.run.done !== null, "the replaced worker to stop");
+    await c.run.done;
+    await c.clock.advance(ACK_LIMIT_MS * 2);
+    await pause();
+    expect(acksIn(c.said()).length).toBeLessThanOrEqual(1);
   });
 
   /**
@@ -1711,7 +1831,9 @@ describe("#589: the phrase that never ends, and a reply that crosses into the cl
     c.speaker.release();
   });
 
-  it("a phrase that ends in time keeps the answer in the reply, with no speech of its own", async () => {
+  // Changed on 2026-11-13: the voice provider ends a stream about 1 s after its last audio, so an answer written into
+  // the phrase's stream later was lost with no sound (Savar's call 01f456de). A phrase that played means a new speech.
+  it("a phrase that ends in time sends the answer as speech of its own, after the phrase, without cutting it", async () => {
     const m = heldModel();
     const c = await voiceCall({ model: m.model });
     const says = vi.spyOn(c.session, "say");
@@ -1722,11 +1844,17 @@ describe("#589: the phrase that never ends, and a reply that crosses into the cl
     await waitFor(() => m.asked > asked, "the model call");
     await c.clock.advance(ACK_LIMIT_MS);
     await waitFor(() => c.speaker.starts.length > 1, "the phrase's sound");
+    const before = c.said().length;
     m.release();
     await pause();
-    c.speaker.release();
-    await waitFor(() => c.samples.length === 1, "the sample");
+    // The answer waits for the phrase to end: nothing is queued while it plays.
     expect(says).not.toHaveBeenCalled();
+    c.speaker.release();
+    await waitFor(() => says.mock.calls.length === 1, "the answer as its own speech");
+    await waitFor(() => c.said().length > before, "the answer in the voice");
+    expect(acksIn(c.said().slice(before))).toEqual([]);
+    await waitFor(() => c.samples.length === 1, "the sample");
+    expect(c.samples[0]).toMatchObject({ outcome: "answered", ackHeard: true });
     expect(c.speaker.cut).toBe(0);
   });
 

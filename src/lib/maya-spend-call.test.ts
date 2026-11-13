@@ -58,6 +58,7 @@ const readingModel = (): MayaModel => ({
 const theChilds = (spend: CallSpend): CallSpend => ({
   ...spend,
   state: (call) => spend.state({ ...call, kind: "chat" }),
+  budget: (call) => spend.budget({ ...call, kind: "chat" }),
   voice: (call) => spend.voice({ ...call, kind: "chat" }),
 });
 
@@ -85,7 +86,8 @@ function setup(options: { env?: Record<string, string>; costUsd?: number; voiceI
       }
       if (refuse.next) { refuse.next = false; throw new SpendRefused("week_used"); }
       const id = newId();
-      const r = await ledger.reserve({ id, charge: chargeOf(call!), callId: call!.id, what: "model", micros: usdToMicros(RESERVE_USD.model, config) });
+      const charge = chargeOf(options.voiceIsTheChilds ? { ...call!, kind: "chat" } : call!);
+      const r = await ledger.reserve({ id, charge, callId: call!.id, budgetKey: call!.budgetKey, what: "model", micros: usdToMicros(RESERVE_USD.model, config) });
       if (!r.ok) throw new SpendRefused(r.state);
       sent.count++;
       const proposal = await base.propose(input, signal);
@@ -220,7 +222,9 @@ describe("a voice call at the cap", () => {
     expect(t.spendStore.rows().map((r) => r.what)).toEqual(expect.arrayContaining(["speech_to_text", "model"]));
     t.leave(0);
     const before = t.sent.count;
-    t.advance(3000);
+    // Budget block (latency plan V1): the call keeps the model room its block reserved, so the cap closes the call at the
+    // next paid request it cannot reserve: here the speech-to-text block due after a minute.
+    t.advance(60_000);
     const turn = await call.child("I got 66.");
     expect(t.sent.count).toBe(before + 1);
     expect(turn).toMatchObject({ say: [SPEND_CLOSE.week_used.line], ended: true });
@@ -228,6 +232,8 @@ describe("a voice call at the cap", () => {
     await call.settled();
     expect(t.store.rows()[0]).toMatchObject({ status: "ended" });
     expect(t.spendStore.rows().filter((r) => r.what === "speech_to_text").every((r) => r.settled)).toBe(true);
+    // Budget block: the block gave its unused room back at the call's end, so the week is used up again for this check.
+    t.leave(0);
     expect(await t.calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: TEST_PKG, startedBy: "admin-1" })).toEqual({ ok: false, error: "week_used" });
   });
 });
@@ -292,7 +298,8 @@ describe("safety at the cap (review of PR #640)", () => {
     if (!opened.ok) throw new Error(opened.error);
     await opened.call.start();
     t.leave(0);
-    t.advance(5000);
+    // Budget block (latency plan V1): the close comes at the speech-to-text block due after a minute.
+    t.advance(60_000);
     const turn = await opened.call.child("My uncle hurts me.");
     expect(turn).toMatchObject({ guidance: SAFETY_GUIDANCE.concern, safetyMessage: SAFETY_GUIDANCE.concern, priority: true, ended: true });
     await opened.call.settled();
@@ -385,7 +392,9 @@ describe("a request for harmful content past the teaching clock (review 3 of PR 
   it("stores the flag and sends the alert in a voice call at the cap", async () => {
     const t = setup({ voiceIsTheChilds: true });
     const call = await voiceCall(t);
-    t.leave(0);
+    // Budget block (latency plan V1): past 10 minutes the call's open block and speech-to-text rows expire and stop
+    // counting, so another call's spending must use the whole week on its own.
+    t.spendStore.spent({ charge: "child", parentId: PARENT, childId: CHILD, week: WEEK, month: MONTH }, WEEK_MICROS);
     t.advance(LIMIT_MS);
     const turn = await call.child(HARM);
     expect(turn).toMatchObject({ say: [SPEND_CLOSE.week_used.line], ended: true });
@@ -510,5 +519,375 @@ describe("a voice call's meter (review of PR #640)", () => {
     const closed = ok(await t.calls.input(r.view.id, r.view.revision, { type: "end" }, "Leah"));
     expect(closed.view.status).toBe("ended");
     expect(t.rebuild).toHaveBeenCalledWith(CHILD, expect.objectContaining({ call: expect.objectContaining({ id: r.view.id, kind: "chat", parentId: PARENT, childId: CHILD }) }));
+  });
+});
+
+describe("a voice call's budget block (latency plan V1, 2026-11-13)", () => {
+  /** A block's age limit: retired before the 10-minute expiry of an unsettled reservation. */
+  const RETIRE_MS = 8 * 60_000;
+  /**
+   * The model seam, recording for each paid model request the spend store's requests since `mark` when it went out;
+   * `hold` keeps every paid request waiting until `release`.
+   */
+  function watched(t: ReturnType<typeof setup>) {
+    const at: string[][] = [];
+    let from = 0;
+    let gate: Promise<void> | null = null;
+    let open: () => void = () => {};
+    const base = readingModel();
+    const recording: MayaModel = { ...base, async propose(input, signal) {
+      at.push(t.spendStore.log().slice(from));
+      if (gate) await gate;
+      return base.propose(input, signal);
+    } };
+    t.seams.model = (id, call, how) => (id === null || id === recording.id ? t.paid(call, recording, how) : null);
+    t.seams.canCallVoice = async () => true;
+    return {
+      at, calls: mayaCalls(t.seams),
+      mark: () => { from = t.spendStore.log().length; at.length = 0; },
+      hold: () => { gate = new Promise<void>((r) => { open = r; }); },
+      release: () => { gate = null; open(); },
+    };
+  }
+  async function familyVoice(calls: ReturnType<typeof mayaCalls>) {
+    const view = ok(await calls.startVoice({ kind: "family", parentId: PARENT, childId: CHILD, childName: "Leah", package: CHAT_PKG, startedBy: PARENT })).view;
+    const opened = await calls.openVoice(view.id, { speechToText: "fake", voice: "fake" }, "Leah");
+    if (!opened.ok) throw new Error(opened.error);
+    await opened.call.start();
+    return opened.call;
+  }
+  /** The child's week used up to `left` micros, counting every row (an open reservation at its amount). */
+  const fill = (t: ReturnType<typeof setup>, left: number) => {
+    const used = t.spendStore.rows().filter((r) => r.charge === "child" && r.week === WEEK).reduce((s, r) => s + (r.cost ?? r.reserved), 0);
+    if (WEEK_MICROS - used - left > 0) t.spendStore.spent({ charge: "child", parentId: PARENT, childId: CHILD, week: WEEK, month: MONTH }, WEEK_MICROS - used - left);
+  };
+  /**
+   * Another call uses the week up to room for speech-to-text only, and also takes the room each settle gives back; then
+   * the call's block reaches its age limit.
+   */
+  function weekGoneAndBlockOld(t: ReturnType<typeof setup>) {
+    const keep = 60_000;
+    fill(t, keep);
+    const settle = t.spendStore.settle.bind(t.spendStore);
+    t.spendStore.settle = async (id, micros) => { const m = await settle(id, micros); fill(t, keep); return m; };
+    t.advance(RETIRE_MS);
+  }
+  const childModelRows = (t: ReturnType<typeof setup>, callId: string) => t.spendStore.rows().filter((r) => r.what === "model" && r.charge === "child" && r.callId === callId);
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+
+  it("makes no database request between a voice turn's start and its model request", async () => {
+    const t = setup();
+    const w = watched(t);
+    const call = await familyVoice(w.calls);
+    t.advance(3000);
+    w.mark();
+    const turn = await call.child("I got 66.");
+    expect(turn.say.length).toBeGreaterThan(0);
+    expect(w.at[0]).toEqual([]);
+  });
+
+  it("delivers danger guidance, the flag and alert while model-block settlement is held", async () => {
+    const t = setup();
+    const w = watched(t);
+    const call = await familyVoice(w.calls);
+    fill(t, 0);
+    const settle = t.spendStore.settle.bind(t.spendStore);
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    vi.spyOn(t.spendStore, "settle").mockImplementation(async (id, micros) => {
+      if (childModelRows(t, call.id).some((r) => r.id === id)) await held;
+      return settle(id, micros);
+    });
+    t.advance(60_000);
+    const turn = call.child("My uncle hurts me.");
+    try {
+      await vi.waitFor(() => {
+        expect(t.store.rows()[0].flag).toMatchObject({ level: "safety_concern" });
+        expect(t.alertSend).toHaveBeenCalled();
+      }, { timeout: 300 });
+      expect(await turn).toMatchObject({ guidance: SAFETY_GUIDANCE.concern, ended: true });
+    } finally {
+      release();
+      await turn;
+    }
+  });
+
+  it("starts teaching under valid STT coverage while its renewal settlement is held", async () => {
+    const t = setup();
+    const w = watched(t);
+    const call = await familyVoice(w.calls);
+    const settle = t.spendStore.settle.bind(t.spendStore);
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    vi.spyOn(t.spendStore, "settle").mockImplementation(async (id, micros) => {
+      if (t.spendStore.rows().some((r) => r.id === id && r.what === "speech_to_text")) await held;
+      return settle(id, micros);
+    });
+    t.advance(40_000);
+    const before = t.sent.count;
+    const turn = call.child("I got 66.");
+    try {
+      await vi.waitFor(() => expect(t.sent.count).toBeGreaterThan(before), { timeout: 300 });
+      expect((await turn).say.length).toBeGreaterThan(0);
+    } finally {
+      release();
+      await turn;
+      await call.end({ reason: "child_stopped" });
+    }
+  });
+
+  it("sends no teaching request without STT coverage while renewal is held", async () => {
+    const t = setup();
+    const w = watched(t);
+    const call = await familyVoice(w.calls);
+    const settle = t.spendStore.settle.bind(t.spendStore);
+    let release!: () => void;
+    let entered!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const renewing = new Promise<void>((resolve) => { entered = resolve; });
+    vi.spyOn(t.spendStore, "settle").mockImplementation(async (id, micros) => {
+      if (t.spendStore.rows().some((r) => r.id === id && r.what === "speech_to_text")) {
+        entered();
+        await held;
+      }
+      return settle(id, micros);
+    });
+    t.advance(60_000);
+    const before = t.sent.count;
+    const turn = call.child("I got 66.");
+    try {
+      await renewing;
+      expect(t.sent.count).toBe(before);
+    } finally {
+      release();
+    }
+    expect((await turn).say.length).toBeGreaterThan(0);
+    expect(t.sent.count).toBeGreaterThan(before);
+    await call.end({ reason: "child_stopped" });
+  });
+
+  it("rechecks STT coverage when it expires during a model-block refill wait", async () => {
+    const t = setup();
+    const spend = t.seams.spend!;
+    let owner!: SpendCall;
+    t.seams.spend = { ...spend, budget(input) { owner = input; return spend.budget(input); } };
+    const w = watched(t);
+    const call = await familyVoice(w.calls);
+    const reserve = t.spendStore.reserve.bind(t.spendStore);
+    const settle = t.spendStore.settle.bind(t.spendStore);
+    let releaseModel!: () => void;
+    let releaseStt!: () => void;
+    let modelEntered!: () => void;
+    let sttEntered!: () => void;
+    const modelHeld = new Promise<void>((resolve) => { releaseModel = resolve; });
+    const sttHeld = new Promise<void>((resolve) => { releaseStt = resolve; });
+    const modelWaiting = new Promise<void>((resolve) => { modelEntered = resolve; });
+    const sttWaiting = new Promise<void>((resolve) => { sttEntered = resolve; });
+    vi.spyOn(t.spendStore, "reserve").mockImplementation(async (input) => {
+      const result = await reserve(input);
+      if (input.what === "model" && !input.force) { modelEntered(); await modelHeld; }
+      return result;
+    });
+    vi.spyOn(t.spendStore, "settle").mockImplementation(async (id, micros) => {
+      if (t.spendStore.rows().some((row) => row.id === id && row.what === "speech_to_text")) {
+        sttEntered();
+        await sttHeld;
+      }
+      return settle(id, micros);
+    });
+    // Three paid repair attempts exhaust the admitted model block and start one background refill.
+    for (let i = 0; i < 3; i++) {
+      const id = t.seams.newId();
+      expect(await t.ledger.reserve({ id, charge: chargeOf(owner), callId: call.id, budgetKey: owner.budgetKey, what: "model", micros: room(t) })).toEqual({ ok: true });
+      await t.ledger.settleUsd(id, RESERVE_USD.model);
+    }
+    await modelWaiting;
+    t.advance(40_000);
+    const before = t.sent.count;
+    const turn = call.child("I got 66.");
+    try {
+      await sttWaiting;
+      expect(t.sent.count).toBe(before);
+      t.advance(21_000);
+      releaseModel();
+      await tick();
+      expect(t.sent.count).toBe(before);
+    } finally {
+      releaseModel();
+      releaseStt();
+      await turn;
+      await call.end({ reason: "child_stopped" });
+    }
+    expect(t.sent.count).toBeGreaterThan(before);
+  });
+
+  it.each([true, false])("keeps a replacement's budget active when the old handle ends (loss discovered: %s)", async (discovered) => {
+    const t = setup();
+    const w = watched(t);
+    const old = await familyVoice(w.calls);
+    const opened = await w.calls.openVoice(old.id, { speechToText: "fake", voice: "fake" }, "Leah");
+    if (!opened.ok) throw new Error(opened.error);
+    if (discovered) {
+      await old.connection("child_left");
+      expect(old.lost).toBe(true);
+    }
+    await old.end({ reason: "child_stopped" });
+    t.advance(3000);
+    const turn = await opened.call.child("I got 66.");
+    expect(turn.ended).toBe(false);
+    expect(turn.say).not.toContain(SPEND_CLOSE.week_used.line);
+    await opened.call.end({ reason: "child_stopped" });
+  });
+
+  it("sends no model request when its pre-reservation seam resumes after call end", async () => {
+    const t = setup();
+    const w = watched(t);
+    const call = await familyVoice(w.calls);
+    const model = t.seams.model;
+    let release!: () => void;
+    let entered!: () => void;
+    const waiting = new Promise<void>((resolve) => { entered = resolve; });
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    t.seams.model = (id, charge, how) => {
+      const base = model(id, charge, how);
+      return !base || how?.safetyRead ? base : { ...base, async propose(input, signal, onText) {
+        entered();
+        await held;
+        return base.propose(input, signal, onText);
+      } };
+    };
+    const reopened = await w.calls.openVoice(call.id, { speechToText: "fake", voice: "fake" }, "Leah");
+    if (!reopened.ok) throw new Error(reopened.error);
+    t.advance(3000);
+    const turn = reopened.call.child("I got 66.");
+    await waiting;
+    const before = t.sent.count;
+    await reopened.call.end({ reason: "child_stopped" });
+    expect(t.store.rows()[0].status).toBe("ended");
+    release();
+    await turn;
+    expect(t.sent.count).toBe(before);
+  });
+
+  it("sends no paid request at the cap: the block is old, the refill refused, and the turn closes with code's line", async () => {
+    const t = setup();
+    const w = watched(t);
+    const call = await familyVoice(w.calls);
+    weekGoneAndBlockOld(t);
+    const before = t.sent.count;
+    const rows = childModelRows(t, call.id).map((r) => r.id);
+    const turn = await call.child("I got 66.");
+    // The one request is the safety read, off the child's week.
+    expect(t.sent.count).toBe(before + 1);
+    expect(turn).toMatchObject({ say: [SPEND_CLOSE.week_used.line], ended: true });
+    expect(childModelRows(t, call.id).map((r) => r.id)).toEqual(rows);
+    expect(t.alertSend).not.toHaveBeenCalled();
+  });
+
+  it("keeps the guidance, the flag and the alert for danger words in the turn the cap closes", async () => {
+    const t = setup();
+    const w = watched(t);
+    const call = await familyVoice(w.calls);
+    weekGoneAndBlockOld(t);
+    const before = t.sent.count;
+    const turn = await call.child("My uncle hurts me.");
+    expect(t.sent.count).toBe(before + 1);
+    expect(turn).toMatchObject({ guidance: SAFETY_GUIDANCE.concern, safetyMessage: SAFETY_GUIDANCE.concern, priority: true, ended: true });
+    await call.settled();
+    expect(t.store.rows()[0].flag).toMatchObject({ level: "safety_concern" });
+    expect(t.alertSend).toHaveBeenCalledWith(expect.objectContaining({ flag: expect.objectContaining({ level: "safety_concern" }) }));
+  });
+
+  /**
+   * The overlap cases of the review: a block with room for one or two model attempts (the start turn costs most of it),
+   * and the rest of the week used, so no refill comes.
+   */
+  async function tight(attempts: 1 | 2) {
+    const cost = { costUsd: attempts === 1 ? 0.4 : 0.2 };
+    const t = setup(cost);
+    const w = watched(t);
+    const call = await familyVoice(w.calls);
+    fill(t, 0);
+    cost.costUsd = 0.05;
+    t.advance(3000);
+    // A live danger's guidance reaches the worker at once, beside the turn's own answer.
+    const heard: string[] = [];
+    call.onGuidance((turn) => { heard.push(...turn.say, ...(turn.guidance ? [turn.guidance] : [])); });
+    const guided = (turn: Awaited<ReturnType<typeof call.child>>) => {
+      expect([...turn.say, ...(turn.guidance ? [turn.guidance] : []), ...heard].join(" ")).toContain(SAFETY_GUIDANCE.concern);
+      expect(turn.safetyMessage).toBe(SAFETY_GUIDANCE.concern);
+    };
+    return { t, w, call, guided };
+  }
+  const flagged = (t: ReturnType<typeof setup>) => {
+    expect(t.store.rows()[0].flag).toMatchObject({ level: "safety_concern" });
+    expect(t.alertSend).toHaveBeenCalledWith(expect.objectContaining({ flag: expect.objectContaining({ level: "safety_concern" }) }));
+  };
+
+  it("overlap: a child turn admitted, then a silence check-in during it: the check-in neither closes the call nor blocks the child", async () => {
+    const { t, w, call, guided } = await tight(1);
+    w.hold();
+    const child = call.child("My uncle hurts me.");
+    await tick();
+    expect(call.working).toBe(true);
+    const checkIn = await call.tick();
+    expect(checkIn).toMatchObject({ say: [], ended: false });
+    w.release();
+    guided(await child);
+    // The worker ends the call after the guidance: the flag is stored with the end.
+    await call.end({ reason: "child_stopped" });
+    await call.settled();
+    flagged(t);
+  });
+
+  it("overlap: a check-in admitted, then a child turn with danger words: the child is admitted and guided", async () => {
+    const { t, w, call, guided } = await tight(2);
+    t.advance(20_000);
+    w.hold();
+    w.mark();
+    const checkIn = call.tick();
+    await tick();
+    const child = call.child("My uncle hurts me.");
+    await tick();
+    // Both turns' model requests are out at once: the turns overlap.
+    expect(w.at).toHaveLength(2);
+    w.release();
+    await checkIn;
+    guided(await child);
+    // The worker ends the call after the guidance: the flag is stored with the end.
+    await call.end({ reason: "child_stopped" });
+    await call.settled();
+    flagged(t);
+  });
+
+  it("overlap: with room for one attempt a check-in leaves it to the child's words", async () => {
+    const { t, w, call, guided } = await tight(1);
+    t.advance(20_000);
+    expect(await call.tick()).toMatchObject({ say: [], ended: false });
+    w.mark();
+    guided(await call.child("My uncle hurts me."));
+    // The child's words went to the model on the block's attempt, not to a safety read at the cap.
+    expect(w.at.length).toBeGreaterThan(0);
+    // The worker ends the call after the guidance: the flag is stored with the end.
+    await call.end({ reason: "child_stopped" });
+    await call.settled();
+    flagged(t);
+  });
+
+  it("refuses a new voice call to a child at exactly the cap, as before", async () => {
+    const u = setup();
+    u.leave(0);
+    u.seams.canCallVoice = async () => true;
+    expect(await mayaCalls(u.seams).startVoice({ kind: "family", parentId: PARENT, childId: CHILD, childName: "Leah", package: CHAT_PKG, startedBy: PARENT })).toEqual({ ok: false, error: "week_used" });
+  });
+
+  it("leaves chat's requests as they were: a cap read, then the reserve, before the model request", async () => {
+    const t = setup();
+    const w = watched(t);
+    const r = ok(await w.calls.start({ kind: "chat", parentId: PARENT, childId: CHILD, childName: "Leah", package: CHAT_PKG, startedBy: PARENT }));
+    t.advance(5000);
+    w.mark();
+    ok(await w.calls.input(r.view.id, r.view.revision, { type: "child", text: "I got 66." }, "Leah"));
+    expect(w.at[0]).toEqual(["used", "reserve"]);
   });
 });

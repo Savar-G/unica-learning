@@ -49,6 +49,11 @@ export interface WeeklyCall {
   notePending: boolean;
   /** maya_calls.kind: only a family call counts (NOTE_CALL_KINDS), never an admin test call (R421W-5). */
   kind: string;
+  /**
+   * A voice call with no connected time: Maya never joined it (the desk cancelled a call made for the microphone check,
+   * docs/maya-voice.md). No talk happened, it has no note, and the parent sees nothing of it.
+   */
+  noTalk?: boolean;
 }
 
 /** A row of public.email_log that this email reads. */
@@ -107,7 +112,7 @@ export function dueWeeklyEmails(state: WeeklyState, now: number): DueWeekly[] {
     // Call identity owns coverage. Week labels only set cadence and the displayed calendar grouping.
     const covered = new Set(logs.filter((e) => e.status === "sent" || e.status === "claimed").flatMap((e) => e.callIds ?? []));
     const calls = [...new Map(state.calls.filter((c) => c.parentId === parent.id
-      && (NOTE_CALL_KINDS as readonly string[]).includes(c.kind) && !covered.has(c.callId)
+      && (NOTE_CALL_KINDS as readonly string[]).includes(c.kind) && !c.noTalk && !covered.has(c.callId)
       && Date.parse(c.endedAt) >= now - LOOKBACK_DAYS * 86_400_000
       && Date.parse(c.endedAt) < localDateTime(monday, zone)).map((c) => [c.callId, c])).values()];
     if (!calls.length) continue;

@@ -23,6 +23,7 @@ export interface Meter {
   ledger: SpendLedger;
   charge: Charge;
   callId: string | null;
+  budgetKey?: string;
   newId: () => string;
   safetyRead?: boolean;
 }
@@ -50,10 +51,11 @@ export function meteredAi(make: (hooks: MeterHooks) => AiClient, meter: Meter, w
     async json(request, signal) {
       /** The reservation of the attempt under way. */
       const attempt: { id: string | null; sent: boolean } = { id: null, sent: false };
+      let dispatchRefusal: SpendRefused | null = null;
       const onRequest = async () => {
         const id = meter.newId();
         try {
-          const reserved = await ledger.reserve({ id, charge, callId: meter.callId, what, micros: usdToMicros(RESERVE_USD[what], ledger.config), force: safetyRead });
+          const reserved = await ledger.reserve({ id, charge, callId: meter.callId, budgetKey: meter.budgetKey, what, micros: usdToMicros(RESERVE_USD[what], ledger.config), force: safetyRead });
           if (!reserved.ok) throw new SpendRefused(reserved.state);
           attempt.id = id;
           attempt.sent = false;
@@ -73,6 +75,12 @@ export function meteredAi(make: (hooks: MeterHooks) => AiClient, meter: Meter, w
           }
         }
         const id = attempt.id;
+        if (!safetyRead && id && !ledger.canSend(id)) {
+          attempt.id = null;
+          await settle(id, 0);
+          dispatchRefusal = new SpendRefused("paused");
+          throw dispatchRefusal;
+        }
         attempt.sent = true;
         let res: Response;
         try {
@@ -115,6 +123,9 @@ export function meteredAi(make: (hooks: MeterHooks) => AiClient, meter: Meter, w
       };
       try {
         return await make({ fetch: counted, onRequest }).json(request, signal);
+      } catch (e) {
+        // A provider client may wrap fetch errors. Keep a local budget refusal visible to the call's safety path.
+        throw dispatchRefusal ?? e;
       } finally {
         // An attempt reserved and then stopped before it was sent cost nothing.
         if (attempt.id) await settle(attempt.id, attempt.sent ? null : 0);
