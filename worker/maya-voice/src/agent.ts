@@ -462,7 +462,10 @@ export class VoiceCallRun {
     this.agent.plainNext = true;
     this.agent.onOpeningMark = this.options.openingMark ?? null;
     this.options.openingMark?.("say");
-    const speech = this.session.say(text, { addToChatCtx: true });
+    // Not interruptible: LiveKit pauses an interruptible speech while it hears the child (a microphone that has just
+    // connected often starts with a sound), and audio made during that pause is dropped, so the opening made no sound
+    // (2026-11-13). The child's words during the opening are still heard, and answered after it.
+    const speech = this.session.say(text, { addToChatCtx: true, allowInterruptions: false });
     const generation = this.generation;
     void speech.waitForPlayout().catch(() => {}).then(() => this.options.openingMark?.(`playout:${speech.interrupted ? "interrupted" : "whole"}`));
     const starting = (async () => {
