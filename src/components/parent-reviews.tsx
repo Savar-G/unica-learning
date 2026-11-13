@@ -1,11 +1,12 @@
 // Parent reviews (D-338): a slow strip of short quotes between the statement and How it works.
-// Exact words from parents who saw Unica and agreed to be quoted; "…" marks a cut, nothing is reworded.
+// Exact words from parents who saw Unica and agreed to be quoted; "…" marks a cut, [brackets] mark the one
+// substitution (a competitor's name, D-074); nothing else is reworded.
 // Role labels only, no names, ratings, counts or photos. No review markup (D-319).
 import "@/components/parent-reviews.css";
 
 export const PARENT_REVIEWS: readonly { quote: string; who: string }[] = [
   { quote: "I like the idea of actual workbooks. They already spend enough time on screens. And having them delivered, plus not having to check every answer myself, is a big plus.", who: "Mom of three" },
-  { quote: "The program is great… gives the student and parents more flexibility.", who: "Parent of a 9-year-old" },
+  { quote: "The program is great, it's an alternative for tutoring programs [like other learning programs] and gives the student and parents more flexibility.", who: "Parent of a 9-year-old" },
   { quote: "I used to get them work books every summer, wished I had personalized ones. I'm really impressed!", who: "Mom of teens" },
   { quote: "This is a great tool for kids who are quick learners, as well as those who need a little more time to understand and master concepts, all while allowing parents to monitor their progress.", who: "Parent of a 12-year-old" },
   { quote: "This is extremely unique and appealing.", who: "Parent of an 8-year-old" },
