@@ -762,7 +762,6 @@ export class VoiceCallRun {
     const connectingScope = this.boardScope;
     // The connection row does not wait for the board's answer (the opening's speed, 2026-11-13).
     const row = this.call.connection("child_joined");
-    void row.catch(() => {});
     try {
       if (this.options.board) {
         if (connectingScope) await this.options.board.reconnect(connectingScope);
@@ -771,7 +770,8 @@ export class VoiceCallRun {
       }
     }
     catch { if (generation === this.generation && this.childHere) return this.finish({ detail: "the board reconnect failed" }); return; }
-    await row;
+    // The opening does not wait for the row. A row that could not be saved ends the call when it reports.
+    void row.then(() => { if (this.call.lost && !this.finishing) void this.finish({ detail: "the connection could not be saved" }); }, () => {});
     if (generation !== this.generation || !this.childHere || this.finishing) return;
     if (this.call.lost) return this.finish({ detail: "the connection could not be saved" });
     this.speechEndedAt = this.timers.now();

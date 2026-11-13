@@ -40,7 +40,15 @@ function database() {
   const url = process.env.SUPABASE_URL?.trim();
   const key = process.env.SUPABASE_SECRET_KEY?.trim();
   if (!url || !key) throw new Error("SUPABASE_URL and SUPABASE_SECRET_KEY must be set");
-  return createClient<Database>(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  // MAYA_DB_TIMING=on logs each database request's time (method, table or function, status, ms): never a body or a key.
+  const timed: typeof fetch = async (input, init) => {
+    const at = Date.now();
+    const response = await fetch(input, init);
+    const path = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url).pathname.replace("/rest/v1/", "");
+    log("db", init?.method ?? "GET", path, response.status, Date.now() - at);
+    return response;
+  };
+  return createClient<Database>(url, key, { auth: { persistSession: false, autoRefreshToken: false }, ...(process.env.MAYA_DB_TIMING === "on" ? { global: { fetch: timed } } : {}) });
 }
 
 /** The call's child once they are in the room (any other joiner is ignored), or null after JOIN_WAIT_MS. */
