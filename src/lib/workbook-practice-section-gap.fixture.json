@@ -1,0 +1,910 @@
+{
+  "number": 78,
+  "dayLabel": "Day 10",
+  "type": "practice-2",
+  "qrToken": "test-practice-section-gap-page-78",
+  "content": {
+    "id": "UL\u00b7TEST\u00b7W01\u00b7D10\u00b7P4",
+    "day": 10,
+    "kind": "day",
+    "page": 4,
+    "level": 4,
+    "pages": 8,
+    "title": "Quick looks up to 10",
+    "topic": "See two parts to 10",
+    "blocks": [
+      {
+        "slot": "practice-row",
+        "extra": true,
+        "items": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8
+        ],
+        "label": "Getting started",
+        "reviewFrom": 1
+      },
+      {
+        "who": "Sam",
+        "slot": "spot-the-error",
+        "extra": true,
+        "items": [
+          9
+        ],
+        "lines": [
+          "6 is 4 and ? Answer given: 3."
+        ]
+      }
+    ],
+    "grownUp": null,
+    "extraGap": 0,
+    "subtitle": "Fill in the boxes. Circle your answers.",
+    "fillingComplete": false,
+    "consistentLayout": true,
+    "requiredTimeTarget": 24
+  },
+  "questions": [
+    {
+      "number": 1,
+      "package": {
+        "id": "test-practice-gap:q1",
+        "ref": {
+          "page": 78,
+          "source": "workbook",
+          "question": 1,
+          "workbookId": "55555555-5555-4555-8555-000000000908"
+        },
+        "item": {
+          "error": null,
+          "checks": [
+            {
+              "kind": "template-choice",
+              "region": "answer",
+              "source": {
+                "check": null,
+                "slots": [
+                  {
+                    "name": "p",
+                    "value": {
+                      "int": "0"
+                    },
+                    "domain": {
+                      "max": 5,
+                      "min": 0
+                    }
+                  }
+                ],
+                "answer": "ans",
+                "values": null,
+                "derived": [
+                  [
+                    "st",
+                    "['The sun rises in the morning', 'It rains on the day of a school picnic', 'A dog learns to fly', 'A baby cries', 'Water in a freezer turns to ice', 'You find a four-leaf clover'][p]"
+                  ],
+                  [
+                    "ans",
+                    "['always', 'sometimes', 'never', 'sometimes', 'always', 'sometimes'][p]"
+                  ]
+                ]
+              }
+            }
+          ],
+          "format": "circle",
+          "regions": [
+            {
+              "id": "answer",
+              "kind": "choice",
+              "mark": "circle",
+              "label": null,
+              "answer": "always",
+              "choices": [
+                "never",
+                "sometimes",
+                "always"
+              ]
+            }
+          ],
+          "scorable": true,
+          "parentChecked": false
+        },
+        "text": "The sun rises in the morning. How often?",
+        "level": 4,
+        "skill": {
+          "skills": [
+            "1.10-likelihood-words"
+          ],
+          "standard": "1.10"
+        },
+        "steps": [],
+        "answer": null,
+        "operation": null,
+        "difficulty": 3,
+        "templateId": "1.10-likelihood-words#1.5:story",
+        "textSource": "code",
+        "wrongAnswers": [],
+        "easierExample": null
+      }
+    },
+    {
+      "number": 2,
+      "package": {
+        "id": "test-practice-gap:q2",
+        "ref": {
+          "page": 78,
+          "source": "workbook",
+          "question": 2,
+          "workbookId": "55555555-5555-4555-8555-000000000908"
+        },
+        "item": {
+          "error": null,
+          "checks": [
+            {
+              "kind": "template",
+              "region": "answer",
+              "source": {
+                "check": "s - 4 >= 1",
+                "slots": [
+                  {
+                    "name": "s",
+                    "value": {
+                      "int": "15"
+                    },
+                    "domain": {
+                      "max": 20,
+                      "min": 8
+                    }
+                  }
+                ],
+                "answer": "s - 1",
+                "values": null,
+                "derived": []
+              }
+            }
+          ],
+          "format": "write-number",
+          "regions": [
+            {
+              "id": "answer",
+              "kind": "box",
+              "label": null,
+              "answer": {
+                "type": "number",
+                "value": 14
+              }
+            }
+          ],
+          "scorable": true,
+          "parentChecked": false
+        },
+        "text": "Ethan counts back: 15. What comes next?",
+        "level": 4,
+        "skill": {
+          "skills": [
+            "1.1-count-to-20"
+          ],
+          "standard": "1.1"
+        },
+        "steps": [],
+        "answer": null,
+        "operation": null,
+        "difficulty": 1,
+        "templateId": "1.1-count-to-20#3.2:story",
+        "textSource": "code",
+        "wrongAnswers": [],
+        "easierExample": null
+      }
+    },
+    {
+      "number": 3,
+      "package": {
+        "id": "test-practice-gap:q3",
+        "ref": {
+          "page": 78,
+          "source": "workbook",
+          "question": 3,
+          "workbookId": "55555555-5555-4555-8555-000000000908"
+        },
+        "item": {
+          "error": null,
+          "checks": [
+            {
+              "kind": "sequence",
+              "step": {
+                "type": "number",
+                "value": -1
+              },
+              "terms": [
+                {
+                  "type": "number",
+                  "value": 11
+                },
+                {
+                  "region": "b1"
+                },
+                {
+                  "region": "b2"
+                },
+                {
+                  "region": "b3"
+                },
+                {
+                  "region": "b4"
+                }
+              ]
+            }
+          ],
+          "format": "boxes",
+          "regions": [
+            {
+              "id": "b1",
+              "kind": "box",
+              "label": null,
+              "answer": {
+                "type": "number",
+                "value": 10
+              }
+            },
+            {
+              "id": "b2",
+              "kind": "box",
+              "label": null,
+              "answer": {
+                "type": "number",
+                "value": 9
+              }
+            },
+            {
+              "id": "b3",
+              "kind": "box",
+              "label": null,
+              "answer": {
+                "type": "number",
+                "value": 8
+              }
+            },
+            {
+              "id": "b4",
+              "kind": "box",
+              "label": null,
+              "answer": {
+                "type": "number",
+                "value": 7
+              }
+            }
+          ],
+          "scorable": true,
+          "parentChecked": false
+        },
+        "text": "Count back:",
+        "level": 4,
+        "skill": {
+          "skills": [
+            "1.1-count-to-20"
+          ],
+          "standard": "1.1"
+        },
+        "steps": [],
+        "answer": null,
+        "operation": null,
+        "difficulty": 3,
+        "templateId": "1.1-count-to-20#3.5:missing",
+        "textSource": "code",
+        "wrongAnswers": [],
+        "easierExample": null
+      }
+    },
+    {
+      "number": 4,
+      "package": {
+        "id": "test-practice-gap:q4",
+        "ref": {
+          "page": 78,
+          "source": "workbook",
+          "question": 4,
+          "workbookId": "55555555-5555-4555-8555-000000000908"
+        },
+        "item": {
+          "error": null,
+          "checks": [
+            {
+              "kind": "sequence",
+              "step": {
+                "type": "number",
+                "value": 1
+              },
+              "terms": [
+                {
+                  "type": "number",
+                  "value": 4
+                },
+                {
+                  "region": "b1"
+                },
+                {
+                  "region": "b2"
+                },
+                {
+                  "region": "b3"
+                },
+                {
+                  "region": "b4"
+                }
+              ]
+            }
+          ],
+          "format": "boxes",
+          "regions": [
+            {
+              "id": "b1",
+              "kind": "box",
+              "label": null,
+              "answer": {
+                "type": "number",
+                "value": 5
+              }
+            },
+            {
+              "id": "b2",
+              "kind": "box",
+              "label": null,
+              "answer": {
+                "type": "number",
+                "value": 6
+              }
+            },
+            {
+              "id": "b3",
+              "kind": "box",
+              "label": null,
+              "answer": {
+                "type": "number",
+                "value": 7
+              }
+            },
+            {
+              "id": "b4",
+              "kind": "box",
+              "label": null,
+              "answer": {
+                "type": "number",
+                "value": 8
+              }
+            }
+          ],
+          "scorable": true,
+          "parentChecked": false
+        },
+        "text": "Count on:",
+        "level": 4,
+        "skill": {
+          "skills": [
+            "1.1-count-to-20"
+          ],
+          "standard": "1.1"
+        },
+        "steps": [],
+        "answer": null,
+        "operation": null,
+        "difficulty": 3,
+        "templateId": "1.1-count-to-20#1.5:missing",
+        "textSource": "code",
+        "wrongAnswers": [],
+        "easierExample": null
+      }
+    },
+    {
+      "number": 5,
+      "package": {
+        "id": "test-practice-gap:q5",
+        "ref": {
+          "page": 78,
+          "source": "workbook",
+          "question": 5,
+          "workbookId": "55555555-5555-4555-8555-000000000908"
+        },
+        "item": {
+          "error": null,
+          "checks": [
+            {
+              "kind": "template",
+              "region": "answer",
+              "source": {
+                "check": "s + 3 <= 10",
+                "slots": [
+                  {
+                    "name": "s",
+                    "value": {
+                      "int": "4"
+                    },
+                    "domain": {
+                      "max": 9,
+                      "min": 2
+                    }
+                  },
+                  {
+                    "name": "f",
+                    "value": {
+                      "int": "1"
+                    },
+                    "domain": {
+                      "max": 1,
+                      "min": 0
+                    }
+                  }
+                ],
+                "answer": "'yes' if f == 0 else str(right)",
+                "values": null,
+                "derived": [
+                  [
+                    "right",
+                    "s + 2"
+                  ],
+                  [
+                    "wrong",
+                    "s + 3"
+                  ],
+                  [
+                    "claim",
+                    "right if f == 0 else wrong"
+                  ]
+                ]
+              }
+            }
+          ],
+          "format": "write-number",
+          "regions": [
+            {
+              "id": "answer",
+              "kind": "box",
+              "label": null,
+              "answer": {
+                "type": "number",
+                "value": 6
+              }
+            }
+          ],
+          "scorable": true,
+          "parentChecked": false
+        },
+        "text": "2 more than 4 is 7. Right? Fix if wrong.",
+        "level": 4,
+        "skill": {
+          "skills": [
+            "K5-two-more-less"
+          ],
+          "standard": "K5"
+        },
+        "steps": [],
+        "answer": null,
+        "operation": null,
+        "difficulty": 3,
+        "templateId": "K5-two-more-less#3.5:story",
+        "textSource": "code",
+        "wrongAnswers": [],
+        "easierExample": null
+      }
+    },
+    {
+      "number": 6,
+      "package": {
+        "id": "test-practice-gap:q6",
+        "ref": {
+          "page": 78,
+          "source": "workbook",
+          "question": 6,
+          "workbookId": "55555555-5555-4555-8555-000000000908"
+        },
+        "item": {
+          "error": null,
+          "checks": [
+            {
+              "kind": "template",
+              "region": "answer",
+              "source": {
+                "check": "p < w",
+                "slots": [
+                  {
+                    "name": "w",
+                    "value": {
+                      "int": "7"
+                    },
+                    "domain": {
+                      "max": 10,
+                      "min": 5
+                    }
+                  },
+                  {
+                    "name": "p",
+                    "value": {
+                      "int": "5"
+                    },
+                    "domain": {
+                      "max": 6,
+                      "min": 1
+                    }
+                  },
+                  {
+                    "name": "f",
+                    "value": {
+                      "int": "1"
+                    },
+                    "domain": {
+                      "max": 1,
+                      "min": 0
+                    }
+                  }
+                ],
+                "answer": "'yes' if f == 0 else str(right)",
+                "values": null,
+                "derived": [
+                  [
+                    "right",
+                    "w - p"
+                  ],
+                  [
+                    "wrong",
+                    "w - p + 1"
+                  ],
+                  [
+                    "claim",
+                    "right if f == 0 else wrong"
+                  ]
+                ]
+              }
+            }
+          ],
+          "format": "write-number",
+          "regions": [
+            {
+              "id": "answer",
+              "kind": "box",
+              "label": null,
+              "answer": {
+                "type": "number",
+                "value": 2
+              }
+            }
+          ],
+          "scorable": true,
+          "parentChecked": false
+        },
+        "text": "7 cookies. 5 put away. 3 left out? Fix if wrong.",
+        "level": 4,
+        "skill": {
+          "skills": [
+            "K3-part-part-whole"
+          ],
+          "standard": "K3"
+        },
+        "steps": [],
+        "answer": null,
+        "operation": null,
+        "difficulty": 3,
+        "templateId": "K3-part-part-whole#3.5:story",
+        "textSource": "code",
+        "wrongAnswers": [],
+        "easierExample": null
+      }
+    },
+    {
+      "number": 7,
+      "package": {
+        "id": "test-practice-gap:q7",
+        "ref": {
+          "page": 78,
+          "source": "workbook",
+          "question": 7,
+          "workbookId": "55555555-5555-4555-8555-000000000908"
+        },
+        "item": {
+          "error": null,
+          "checks": [
+            {
+              "kind": "template-choice",
+              "region": "answer",
+              "source": {
+                "check": "p < w",
+                "slots": [
+                  {
+                    "name": "w",
+                    "value": {
+                      "int": "5"
+                    },
+                    "domain": {
+                      "max": 10,
+                      "min": 5
+                    }
+                  },
+                  {
+                    "name": "p",
+                    "value": {
+                      "int": "1"
+                    },
+                    "domain": {
+                      "max": 6,
+                      "min": 1
+                    }
+                  },
+                  {
+                    "name": "f",
+                    "value": {
+                      "int": "1"
+                    },
+                    "domain": {
+                      "max": 1,
+                      "min": 0
+                    }
+                  }
+                ],
+                "answer": "'yes' if f == 0 else 'no'",
+                "values": null,
+                "derived": [
+                  [
+                    "q",
+                    "w - p if f == 0 else w - p + 1"
+                  ]
+                ]
+              }
+            }
+          ],
+          "format": "circle",
+          "regions": [
+            {
+              "id": "answer",
+              "kind": "choice",
+              "mark": "circle",
+              "label": null,
+              "answer": "no",
+              "choices": [
+                "yes",
+                "no"
+              ]
+            }
+          ],
+          "scorable": true,
+          "parentChecked": false
+        },
+        "text": "Yes or no: parts 1 and 5, whole 5.",
+        "level": 4,
+        "skill": {
+          "skills": [
+            "K3-part-part-whole"
+          ],
+          "standard": "K3"
+        },
+        "steps": [],
+        "answer": null,
+        "operation": null,
+        "difficulty": 2,
+        "templateId": "K3-part-part-whole#3.4:true-false",
+        "textSource": "code",
+        "wrongAnswers": [],
+        "easierExample": null
+      }
+    },
+    {
+      "number": 8,
+      "package": {
+        "id": "test-practice-gap:q8",
+        "ref": {
+          "page": 78,
+          "source": "workbook",
+          "question": 8,
+          "workbookId": "55555555-5555-4555-8555-000000000908"
+        },
+        "item": {
+          "error": null,
+          "checks": [
+            {
+              "kind": "template-choice",
+              "region": "answer",
+              "source": {
+                "check": "p < w",
+                "slots": [
+                  {
+                    "name": "w",
+                    "value": {
+                      "int": "10"
+                    },
+                    "domain": {
+                      "max": 10,
+                      "min": 6
+                    }
+                  },
+                  {
+                    "name": "p",
+                    "value": {
+                      "int": "4"
+                    },
+                    "domain": {
+                      "max": 8,
+                      "min": 1
+                    }
+                  },
+                  {
+                    "name": "f",
+                    "value": {
+                      "int": "0"
+                    },
+                    "domain": {
+                      "max": 1,
+                      "min": 0
+                    }
+                  }
+                ],
+                "answer": "'yes' if f == 0 else 'no'",
+                "values": null,
+                "derived": [
+                  [
+                    "q",
+                    "w - p if f == 0 else w - p + 1"
+                  ]
+                ]
+              }
+            }
+          ],
+          "format": "circle",
+          "regions": [
+            {
+              "id": "answer",
+              "kind": "choice",
+              "mark": "circle",
+              "label": null,
+              "answer": "yes",
+              "choices": [
+                "yes",
+                "no"
+              ]
+            }
+          ],
+          "scorable": true,
+          "parentChecked": false
+        },
+        "text": "Yes or no: 4 and 6 make 10.",
+        "level": 4,
+        "skill": {
+          "skills": [
+            "K3-decompose-to-10"
+          ],
+          "standard": "K3"
+        },
+        "steps": [],
+        "answer": null,
+        "operation": null,
+        "difficulty": 2,
+        "templateId": "K3-decompose-to-10#3.3:true-false",
+        "textSource": "code",
+        "wrongAnswers": [],
+        "easierExample": null
+      }
+    },
+    {
+      "number": 9,
+      "package": {
+        "id": "test-practice-gap:q9",
+        "ref": {
+          "page": 78,
+          "source": "workbook",
+          "question": 9,
+          "workbookId": "55555555-5555-4555-8555-000000000908"
+        },
+        "item": {
+          "error": null,
+          "checks": [
+            {
+              "kind": "template-shown",
+              "shown": "3",
+              "region": "right",
+              "source": {
+                "check": "1 <= p < w",
+                "slots": [
+                  {
+                    "name": "w",
+                    "value": {
+                      "int": "6"
+                    },
+                    "domain": {
+                      "max": 10,
+                      "min": 6
+                    }
+                  },
+                  {
+                    "name": "p",
+                    "value": {
+                      "int": "4"
+                    },
+                    "domain": {
+                      "max": 9,
+                      "min": 1
+                    }
+                  }
+                ],
+                "answer": "w - p",
+                "values": null,
+                "derived": []
+              }
+            },
+            {
+              "kind": "template",
+              "region": "fix",
+              "source": {
+                "check": "1 <= p < w",
+                "slots": [
+                  {
+                    "name": "w",
+                    "value": {
+                      "int": "6"
+                    },
+                    "domain": {
+                      "max": 10,
+                      "min": 6
+                    }
+                  },
+                  {
+                    "name": "p",
+                    "value": {
+                      "int": "4"
+                    },
+                    "domain": {
+                      "max": 9,
+                      "min": 1
+                    }
+                  }
+                ],
+                "answer": "w - p",
+                "values": null,
+                "derived": []
+              }
+            }
+          ],
+          "format": "spot-the-error",
+          "regions": [
+            {
+              "id": "right",
+              "kind": "choice",
+              "mark": "tick",
+              "label": "Is it right?",
+              "answer": "No",
+              "choices": [
+                "Yes",
+                "No"
+              ]
+            },
+            {
+              "id": "fix",
+              "kind": "box",
+              "label": "Fix it",
+              "answer": {
+                "type": "number",
+                "value": 2
+              }
+            }
+          ],
+          "scorable": true,
+          "parentChecked": false
+        },
+        "text": "6 is 4 and ?",
+        "level": 4,
+        "skill": {
+          "skills": [
+            "1.1-subitize-to-10"
+          ],
+          "standard": "1.1"
+        },
+        "steps": [],
+        "answer": null,
+        "operation": null,
+        "difficulty": 1,
+        "templateId": "1.1-subitize-to-10#3.1:missing",
+        "textSource": "code",
+        "wrongAnswers": [],
+        "easierExample": null
+      }
+    }
+  ]
+}

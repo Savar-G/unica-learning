@@ -6,6 +6,7 @@ import { sampleBook } from "@/lib/workbook-sample-book";
 import { fullnessProblem, workbookTemplate } from "@/lib/workbook-template";
 import { fixedTemplateFonts } from "@/lib/workbook-template-fonts";
 import { STRETCHED_BOOK, STRETCHED_PAGES } from "@/lib/workbook-layout-stretch-fixture";
+import practiceSectionGap from "./workbook-practice-section-gap.fixture.json";
 
 // The layout checks (src/lib/workbook-layout-check.ts) on pages printed by real Chromium: Codex's physical controls on
 // PR #516 at bfdae35. One practice page at its maximum, printed as the template lays it out, passes the render and the
@@ -41,6 +42,17 @@ const CASES: [name: string, css: string, subtitle?: string][] = [
 ];
 
 describe.skipIf(!chromium)("the layout checks in Chromium", () => {
+  it("keeps a row gap before Spot the error on Practice 2 without two ways (#908)", async () => {
+    // An anonymized test-family page: a 15px row gap but only 10px before its section label.
+    const page = practiceSectionGap as unknown as DraftPage;
+    const result = await renderWorkbook({ draft: { ...STRETCHED_BOOK,
+      id: "55555555-5555-4555-8555-000000000908", pages: [page] },
+      parentId: "11111111-1111-4111-8111-111111111111",
+      template: workbookTemplate(await fixedTemplateFonts()), engine: chromiumPrintEngine() });
+    const problems = result.status === "failed" ? result.problems.map(p => p.reason) : [];
+    expect(problems).toEqual([]);
+  }, 120_000);
+
   it("pass the page as laid out, and fail each of Codex's faults", async () => {
     const template = workbookTemplate(await fixedTemplateFonts());
     // Each fault on its own sheet only.
