@@ -435,7 +435,19 @@ const NUMBER_REQUEST = /\b(?:try|work out|find|solve|add|subtract|multiply|divid
  * (`sttNumberMinSilenceMs`, `sttNumberSilenceMs`); the worker puts the normal limits back when that turn arrives.
  */
 export function asksForNumber(say: string, state: Session["state"]): boolean {
-  if (!NUMBER_STATES.includes(state)) return false;
+  return NUMBER_STATES.includes(state) && lastAsksForNumber(say);
+}
+
+/**
+ * The same rule on the worker's own opening (D-341: code's line, said while the session is in `OPEN`, where
+ * `asksForNumber` is always false). Only the words decide. Today's opening ends "Where do you want to start?", which
+ * asks for no number, so the child's first turn keeps the normal limits (2026-11-13).
+ */
+export function openingAsksForNumber(say: string): boolean {
+  return lastAsksForNumber(say);
+}
+
+function lastAsksForNumber(say: string): boolean {
   const last = say.trim().split(/(?<=[.?!])\s+/).filter(Boolean).at(-1) ?? "";
   return (last.endsWith("?") ? NUMBER_QUESTION : NUMBER_REQUEST).test(last);
 }

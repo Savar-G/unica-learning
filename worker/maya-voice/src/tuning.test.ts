@@ -12,10 +12,10 @@ import { memoryLearningEventStore } from "@/lib/learning-events-memory";
 import { memoryWordingHistoryStore, openingLine } from "@/lib/maya";
 import { mayaCalls, type CallSeams } from "@/lib/maya-call";
 import { memoryCallStore, memoryConnectionLog } from "@/lib/maya-call-memory";
-import { reply, ruleConversationalModel, ruleMayaModel } from "@/lib/maya-model-fake";
+import { ruleConversationalModel, ruleMayaModel } from "@/lib/maya-model-fake";
 import type { MayaModel } from "@/lib/maya-model";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
-import { asksForNumber, GREETING_ID, GREETING_TEXT, turnSilences, VOICE_TUNING_DEFAULTS, voiceProviders, type TurnSilence } from "@/lib/maya-voice";
+import { asksForNumber, GREETING_ID, GREETING_TEXT, openingAsksForNumber, turnSilences, VOICE_TUNING_DEFAULTS, voiceProviders, type TurnSilence } from "@/lib/maya-voice";
 import type { QuestionPackage } from "@/lib/question-package";
 import { voiceOpening } from "./opening";
 import { spokenMath } from "@/lib/maya-voice-spoken";
@@ -146,7 +146,7 @@ const GREETED = { greeting: GREETING_TEXT } as const;
 const heard = (said: readonly string[]) => said.join(" ");
 const times = (text: string, part: string) => text.split(part).length - 1;
 
-async function voiceCall(options: { greeting?: boolean; numberContinueMs?: number; patience?: { normal: TurnSilence; number: TurnSilence; set(limits: TurnSilence): void }; speech?: ProbeSTT; opening?: boolean; workerOpening?: boolean; model?: MayaModel; beforeJoin?(call: VoiceCall): void } = {}) {
+async function voiceCall(options: { greeting?: boolean; numberContinueMs?: number; patience?: { normal: TurnSilence; number: TurnSilence; set(limits: TurnSilence): void }; speech?: ProbeSTT; opening?: boolean; workerOpening?: boolean | string; model?: MayaModel; beforeJoin?(call: VoiceCall): void } = {}) {
   const clock = handClock();
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
@@ -180,7 +180,8 @@ async function voiceCall(options: { greeting?: boolean; numberContinueMs?: numbe
   const sender = createBoardSender({ sessionId: started.view.id, senderId: "worker", transport: createMemoryTransport(receiver) });
   const board = createBoardSpeech({ sender, now: () => Date.now(), observe: (snapshot) => opened.call.observeBoard(snapshot) });
   const stage = vi.spyOn(board, "stage");
-  const workerOpening = options.workerOpening ? voiceOpening(opened.call.session) : null;
+  // A string is the worker's own line in place of code's (the run reads the words it says, not the start's).
+  const workerOpening = typeof options.workerOpening === "string" ? options.workerOpening : options.workerOpening ? voiceOpening(opened.call.session) : null;
   const run = new VoiceCallRun(session, opened.call, {
     board, timers: clock.timers, notify: () => {},
     ...(options.greeting ? GREETED : {}),
@@ -450,29 +451,39 @@ describe("the speech-to-text's silence limit while Maya asks for a number", () =
     expect(log.sets.at(-1)).toEqual(asks ? number : normal);
   });
 
-  it("are the number limits for the child's first turn after the worker's own opening, and normal again after a line that asks for no number", async () => {
+  it("stay normal after the worker's own opening, which asks for no number, and for the child's first turn", async () => {
     const log = patienceLog();
     const speech = new ProbeSTT();
-    // An off-topic turn gets a line that asks for no number.
-    const rule = ruleConversationalModel();
-    const model: MayaModel = { ...rule, propose: async (input, signal, onText) =>
-      (input as { childTurn?: string | null }).childTurn === "I have a dog."
-        ? reply("Dogs are lovely. Let's keep going with our question.", "redirect", { reading: { offTopic: true } })
-        : rule.propose(input, signal, onText) };
-    const c = await voiceCall({ patience: log.patience, speech, workerOpening: true, opening: false, model });
-    // The opening states the question (D-341, code's own line): its child turn may be "fifty... six".
-    await waitFor(() => log.sets.length === 1 && c.call.session.startedAt !== null, "the opening's limits");
-    expect(log.sets).toEqual([number]);
-    // The child's turn sets the normal limits at once, and Maya's line that asks for no number leaves them normal.
-    speech.says("I have a dog.");
-    await waitFor(() => log.sets.length >= 2, "the turn");
-    expect(log.sets[1]).toEqual(normal);
+    const c = await voiceCall({ patience: log.patience, speech, workerOpening: true, opening: false });
+    // The opening ends "Where do you want to start?": the child's first words are usually "Hi Maya", not a number.
+    expect(c.workerOpening!.trim().endsWith("Where do you want to start?")).toBe(true);
+    await waitFor(() => c.call.session.startedAt !== null && c.session.agentState === "listening" && c.said().length > 0, "the opening");
+    await c.call.settled();
+    await pause();
+    expect(openingAsksForNumber(c.workerOpening!)).toBe(false);
+    expect(log.sets).toEqual([]);
+    speech.says("Hi Maya.");
     await waitFor(() => c.session.agentState === "listening" && c.said().length > 1, "the answer");
     await c.call.settled();
     await pause();
+    // No long limit was set before or during the child's first turn: only Maya's answer can ask for a number.
     const last = c.call.session.turns.filter((t) => t.speaker === "maya").at(-1)!.text;
-    expect(asksForNumber(last, c.call.session.state)).toBe(false);
-    expect(log.sets.at(-1)).toEqual(normal);
+    expect(log.sets).toEqual(asksForNumber(last, c.call.session.state) ? [number] : []);
+  });
+
+  it("are the number limits after a worker's opening that asks for a number, and normal again at the child's turn", async () => {
+    const log = patienceLog();
+    const speech = new ProbeSTT();
+    const opening = "Hi Leah, I'm Maya. What is 27 plus 39?";
+    const c = await voiceCall({ patience: log.patience, speech, workerOpening: opening, opening: false });
+    await waitFor(() => c.call.session.startedAt !== null && log.sets.length >= 1, "the opening's limits");
+    // The session is in OPEN, so the rule on Maya's words reads the opening as words only.
+    expect(c.call.session.state).toBe("OPEN");
+    expect(openingAsksForNumber(opening)).toBe(true);
+    expect(log.sets).toEqual([number]);
+    speech.says("I got 56.");
+    await waitFor(() => log.sets.length >= 2, "the turn");
+    expect(log.sets[1]).toEqual(normal);
   });
 
   it("is untouched when the route has no live update", async () => {

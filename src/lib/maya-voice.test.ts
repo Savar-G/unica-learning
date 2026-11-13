@@ -26,6 +26,7 @@ import {
   connectedSeconds,
   livekitProject,
   nextTickAt,
+  openingAsksForNumber,
   asksWordTimings,
   INFERENCE_TTS_MODELS,
   requiredMarkers,
@@ -319,6 +320,13 @@ describe("a number question raises the limits for one turn only", () => {
     expect(asksForNumber("What is 7 + 9?", "CLOSE")).toBe(false);
     expect(asksForNumber("Shall we get going?", "TRY_TARGET")).toBe(false);
     expect(asksForNumber("That's right, well done.", "CHECK")).toBe(false);
+  });
+
+  it("reads the worker's own opening by its words only, and today's opening asks for no number", () => {
+    // The session is in OPEN while the opening is said, where `asksForNumber` is always false.
+    expect(asksForNumber("Hi Leah, I'm Maya. What is 27 + 39?", "OPEN")).toBe(false);
+    expect(openingAsksForNumber("Hi Leah, I'm Maya. What is 27 + 39?")).toBe(true);
+    expect(openingAsksForNumber("Hi Leah, I'm Maya, an AI math helper. Today we have 27 + 39. Where do you want to start?")).toBe(false);
   });
 });
 

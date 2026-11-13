@@ -31,7 +31,7 @@ import { HeardSignals, silentFinal } from "./heard-signals";
 import { boardAudio, countedSynthesis, type SilentSpeech } from "./speech-audio";
 import { VOICE_METER_TICK_MS } from "@/lib/maya-spend";
 import { limitsOf, sentencesOf } from "@/lib/maya";
-import { asksForNumber, CONNECTION_RENEW_MS, childTurnFrom, endsInOpenNumber, GREETING_ID, GREETING_TEXT, nextTickAt, RECONNECT_GRACE_MS, type Heard, type TurnSilence, type VoiceTuning } from "@/lib/maya-voice";
+import { asksForNumber, CONNECTION_RENEW_MS, childTurnFrom, endsInOpenNumber, GREETING_ID, GREETING_TEXT, nextTickAt, openingAsksForNumber, RECONNECT_GRACE_MS, type Heard, type TurnSilence, type VoiceTuning } from "@/lib/maya-voice";
 import { ACK_HOLD_LIMIT_MS, ACK_LIMIT_MS, ACK_NOT_STREAMED_MS, ACK_PHRASES, nextAcknowledgement } from "@/lib/maya-voice-ack";
 import { TurnClock, type AckSkip, type HeardMarks, type TurnOutcome, type VoiceTurnSample } from "./turn-timing";
 
@@ -538,10 +538,12 @@ export class VoiceCallRun {
       // The question's batch is known only now, while the opening is being said: it is shown under the opening's own plan.
       await this.openingBoard(openingScope, turn);
       await this.after({ ...turn, say: [] }, speech, () => false);
-      // The opening states the math question, so the child's first turn is the one most likely to be a number that
-      // goes on ("fifty... six"): it gets the long limits. `after` cannot see it, as the start gives no words.
-      // A child turn already under way (it waits for this start) keeps the limits its own start set.
-      if (!turn.ended && !this.call.lost && !this.pace) this.setPatience(true);
+      // `after` cannot see the opening's words, as the start gives none: the rule reads the worker's own line
+      // (`openingAsksForNumber`, as the session is in OPEN). The opening ends "Where do you want to start?" and the
+      // child's first words are usually "Hi Maya", so the normal limits stay (on real calls of 2026-11-13 the number
+      // limits held that turn 2.5 to 4.5 s). An opening that asks for a number gets the number limits. A child turn
+      // already under way (it waits for this start) keeps its own.
+      if (!this.call.lost && !this.pace) this.setPatience(!turn.ended && openingAsksForNumber(text));
     })().catch(() => { if (generation === this.generation && this.childHere) void this.finish({ detail: "the opening could not be saved" }); });
     this.agent.openedByWorker(starting);
     return speech;
