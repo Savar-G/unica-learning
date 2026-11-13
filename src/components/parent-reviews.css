@@ -1,23 +1,27 @@
-/* Parent reviews (D-338, look D-339): a soft grey panel with a spotlight carousel. The card in focus is white and lifted;
-   its neighbours step back and fade. Role labels only, no photos. */
+/* Parent reviews (D-338, look D-339): a spotlight carousel on the white page. The card in focus is lifted;
+   its neighbours step back and fade, and the row fades out at both edges. Role labels only, no photos. */
 .prv { padding: 0 var(--pad-x, 16px) clamp(48px, 6vw, 88px); }
-.prv-panel { background: var(--card); border-radius: 24px; padding: clamp(40px, 6vw, 80px) 0 clamp(28px, 4vw, 44px); text-align: center; overflow: hidden; }
+.prv-panel { padding: clamp(8px, 2vw, 24px) 0 0; text-align: center; overflow: hidden; }
 .prv-label { justify-content: center; }
 .prv h2 { margin: 14px 0 0; padding: 0 20px; font-size: clamp(30px, 3.6vw, 48px); }
 
-.prv-stage { --w: 300px; --step: 270px; position: relative; height: 340px; margin: clamp(32px, 4vw, 52px) 0 0; }
+.prv-stage {
+  --w: 300px; --step: 270px; position: relative; height: 340px; margin: clamp(32px, 4vw, 52px) 0 0;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+}
 .prv-stage:focus-visible { outline: none; }
 .prv-card {
   position: absolute; left: 50%; top: 20px; width: var(--w); height: 300px; margin: 0 0 0 calc(var(--w) / -2);
   display: flex; flex-direction: column; justify-content: space-between; gap: 20px;
-  padding: 26px 26px 24px; text-align: left; background: #fff; border-radius: 18px;
+  padding: 26px 26px 24px; text-align: left; background: #fff; border: 1px solid var(--line); border-radius: 18px;
   box-shadow: 0 1px 2px rgba(20, 16, 12, .04);
   transform: translateX(calc(var(--o) * var(--step))) scale(calc(1 - var(--ao) * .07));
   opacity: calc(1 - var(--ao) * .3); z-index: calc(10 - var(--ao));
   transition: transform .6s var(--ease), opacity .6s var(--ease), box-shadow .6s var(--ease); cursor: pointer;
 }
 .prv-card[data-far] { opacity: 0; pointer-events: none; }
-.prv-card.is-on { top: 0; height: 320px; cursor: default; box-shadow: 0 2px 6px rgba(20, 16, 12, .05), 0 24px 48px -16px rgba(20, 16, 12, .18); }
+.prv-card.is-on { top: 0; height: 320px; cursor: default; border-color: var(--line-soft); box-shadow: 0 2px 6px rgba(20, 16, 12, .06), 0 28px 56px -18px rgba(20, 16, 12, .22); }
 .prv-card blockquote { margin: 0; font-size: 17px; line-height: 1.5; color: var(--ink-3); }
 .prv-card.is-on blockquote { font-size: 19px; color: var(--ink); }
 .prv-card figcaption { font-size: 14px; font-weight: 500; color: var(--ink-2); }
@@ -26,7 +30,6 @@
 .prv-ctl { display: flex; align-items: center; justify-content: center; gap: 18px; margin-top: 18px; }
 .prv-btn { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: #fff; color: var(--ink); font: inherit; cursor: pointer; transition: transform .2s var(--ease), border-color .2s; }
 .prv-btn:hover { border-color: var(--ink-3); transform: translateY(-1px); }
-.prv-pause { display: grid; place-items: center; margin-left: -6px; color: var(--ink-2); }
 .prv-dots { display: flex; gap: 2px; }
 .prv-dots button { position: relative; width: 22px; height: 44px; border: 0; background: none; cursor: pointer; }
 .prv-dots button::after { content: ""; position: absolute; left: 50%; top: 50%; width: 7px; height: 7px; margin: -3.5px; border-radius: 99px; background: #cfcbc4; transition: width .3s var(--ease), background .3s; }
@@ -35,7 +38,6 @@
 .prv-note { margin: 18px 0 0; padding: 0 20px; font-size: 12.5px; color: var(--ink-3); }
 
 @media (max-width: 640px) {
-  .prv-panel { border-radius: 18px; }
   .prv-stage { --w: 268px; --step: 238px; height: 330px; }
   .prv-card.is-on blockquote { font-size: 17px; }
   .prv-ctl { gap: 10px; }
@@ -44,3 +46,4 @@
 @media (prefers-reduced-motion: reduce) {
   .prv-card, .prv-btn, .prv-dots button::after { transition: none; }
 }
+

@@ -1,9 +1,10 @@
 "use client";
-// Parent reviews (D-338, look D-339): a spotlight carousel between the statement and How it works.
+// Parent reviews (D-338, look D-339): a spotlight carousel on the white page, between the statement and How it works.
+// It moves on every 3 s; it pauses only under the mouse or for a keyboard user inside it, and not with reduced motion.
 // Exact words from parents who saw Unica and agreed to be quoted; "…" marks a cut, [brackets] mark the one
 // substitution (a competitor's name, D-074); nothing else is reworded.
 // Role labels only, no names, ratings, counts or photos. No review markup (D-319).
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type FocusEvent, type KeyboardEvent } from "react";
 import "@/components/parent-reviews.css";
 
 export const PARENT_REVIEWS: readonly { quote: string; who: string }[] = [
@@ -17,7 +18,7 @@ export const PARENT_REVIEWS: readonly { quote: string; who: string }[] = [
   { quote: "Same age doesn't always mean same level.", who: "Mom of three" },
 ];
 
-const ADVANCE_MS = 6000;
+const ADVANCE_MS = 3000;
 const REDUCE = "(prefers-reduced-motion: reduce)";
 
 function useReducedMotion() {
@@ -36,28 +37,23 @@ export function ParentReviews() {
   const n = PARENT_REVIEWS.length;
   const [cur, setCur] = useState(0);
   const [hover, setHover] = useState(false);
+  // Paused only while a mouse is over the cards or a keyboard user is inside the carousel.
   const [focus, setFocus] = useState(false);
-  // Any choice by the visitor (arrow, dot, swipe, key, pause) stops the rotation for good.
-  const [stopped, setStopped] = useState(false);
   const reduce = useReducedMotion();
   const touch = useRef<number | null>(null);
 
   const step = useCallback((d: number) => setCur((c) => (c + d + n) % n), [n]);
-  const choose = (i: number) => {
-    setStopped(true);
-    setCur(i);
-  };
-  const move = (d: number) => {
-    setStopped(true);
-    step(d);
-  };
+  const choose = (i: number) => setCur(i);
+  const move = (d: number) => step(d);
 
-  const playing = !stopped && !reduce;
+  // A choice by the visitor restarts the wait, because the timer depends on cur.
   useEffect(() => {
-    if (!playing || hover || focus) return;
+    if (reduce || hover || focus) return;
     const t = setTimeout(() => step(1), ADVANCE_MS);
     return () => clearTimeout(t);
-  }, [playing, hover, focus, cur, step]);
+  }, [reduce, hover, focus, cur, step]);
+
+  const onFocusIn = (e: FocusEvent<HTMLElement>) => setFocus(e.target.matches(":focus-visible"));
 
   const onKey = (e: KeyboardEvent) => {
     if (e.key === "ArrowLeft") move(-1);
@@ -78,7 +74,7 @@ export function ParentReviews() {
           aria-label="Parent reviews"
           onMouseEnter={() => setHover(true)}
           onMouseLeave={() => setHover(false)}
-          onFocus={() => setFocus(true)}
+          onFocus={onFocusIn}
           onBlur={() => setFocus(false)}
           onKeyDown={onKey}
           onTouchStart={(e) => (touch.current = e.touches[0].clientX)}
@@ -89,7 +85,7 @@ export function ParentReviews() {
             if (Math.abs(dx) > 40) move(dx < 0 ? 1 : -1);
           }}
         >
-          <div aria-live={playing ? "off" : "polite"}>
+          <div aria-live="off">
             {PARENT_REVIEWS.map(({ quote, who }, i) => {
               let o = i - cur;
               if (o > n / 2) o -= n;
@@ -114,7 +110,7 @@ export function ParentReviews() {
             })}
           </div>
         </div>
-        <div className="prv-ctl">
+        <div className="prv-ctl" onFocus={onFocusIn} onBlur={() => setFocus(false)}>
           <button type="button" className="prv-btn" onClick={() => move(-1)} aria-label="Previous review">
             <span aria-hidden="true">←</span>
           </button>
@@ -126,13 +122,6 @@ export function ParentReviews() {
           <button type="button" className="prv-btn" onClick={() => move(1)} aria-label="Next review">
             <span aria-hidden="true">→</span>
           </button>
-          {!reduce && (
-            <button type="button" className="prv-btn prv-pause" onClick={() => setStopped((s) => !s)} aria-label={stopped ? "Play reviews" : "Pause reviews"}>
-              <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">
-                {stopped ? <path d="M3 1.5v9l7.5-4.5z" fill="currentColor" /> : <path d="M2.5 1.5h2.5v9H2.5zM7 1.5h2.5v9H7z" fill="currentColor" />}
-              </svg>
-            </button>
-          )}
         </div>
         <p className="prv-note">Shared with permission, names left out.</p>
       </div>
