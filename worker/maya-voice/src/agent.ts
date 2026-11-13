@@ -348,6 +348,8 @@ export class VoiceCallRun {
   private greeted: Promise<void> | null = null;
   private greetStarted = false;
   private openingSaid = false;
+  /** A phrase's save was refused (this worker was replaced): no more phrases. */
+  private acksRefused = false;
   /** The start's batches the opening's plan could not show (`openingBoard`): the next staged plan carries them. */
   private owedBatches: Batch[] = [];
   /** Words (transcripts, interim or final) the speech-to-text gave so far, and who waits for the next one. */
@@ -952,14 +954,19 @@ export class VoiceCallRun {
       return why !== null;
     };
     if (stopped()) return;
+    // A save of a phrase was refused: this worker was replaced, and says no more phrases.
+    if (this.acksRefused || this.call.lost) return skip("save");
     const phrase = nextAcknowledgement(this.call.id, this.call.acknowledged);
     if (!phrase) return skip("bank_used");
-    // The empty plan gives the phrase's audio an owner, and no batch. A child's speech stops it like any other plan.
-    try { await this.stageBoard({}); } catch { return skip("board"); }
-    if (stopped()) return;
-    // Saved before it is heard, so a replacement worker cannot say it again. A refused save means this worker was replaced.
-    if (!(await this.call.acknowledge(phrase.id))) return skip("save");
-    if (stopped()) return;
+    // Nothing is waited for between the last reading above and the phrase (D-341 review, item B). The empty plan gives
+    // the phrase's audio an owner, and no batch; like the opening's, its audio does not wait for the board. A child's
+    // speech stops it like any other plan; a plan that cannot be sent ends the call (`boardTask`).
+    void this.stageBoard({}, false).catch(() => {});
+    this.agent.ungatedNext = true;
+    // Saved behind the speech: the id is taken from the bank at once (`acknowledge` adds it before its save), and the
+    // save runs while the phrase plays. Accepted loss: a worker that replaces this one before the save could say the
+    // same phrase once more. A refused save stops further phrases from this worker.
+    void this.call.acknowledge(phrase.id).then(saved => { if (!saved) this.acksRefused = true; }, () => { this.acksRefused = true; });
     pace.clock.ackQueued(phrase.id);
     await new Promise<void>(resolve => {
       pace.ackOver = resolve;

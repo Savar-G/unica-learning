@@ -718,7 +718,10 @@ describe("R577: what a delay can change while the phrase waits", () => {
     expect(shown).toEqual(expect.arrayContaining(intended));
   });
 
-  it("R577-2 danger reported while the phrase's board stage waits: no phrase before the safety guidance", async () => {
+  // D-341 review, item B: the phrase waits for neither its board stage nor its save, so the two delays R577-2 covered
+  // (danger known while one of them waited) cannot happen. What holds now: the phrase is queued at the limit with the
+  // stage's answer or the save still out, and the guidance that comes after it stops it and goes first (R577-4).
+  it("R577-2 the phrase does not wait for its board stage, and the guidance that comes after it stops it", async () => {
     const d = dangerModel();
     const c = await voiceCall({ model: d.model });
     c.say("I don't know.");
@@ -735,24 +738,24 @@ describe("R577: what a delay can change while the phrase waits", () => {
       await delayed;
       return result;
     });
+    c.speaker.held = true;
     c.say("Someone is hurting me.");
     await waitFor(() => d.calls() === 1, "the child turn's model call");
     await c.clock.advance(ACK_LIMIT_MS);
-    await waitFor(() => staging, "the phrase's board stage");
+    // Queued while the stage's answer is still out.
+    await waitFor(() => acksIn(c.said()).length === 1, "the phrase");
+    expect(staging).toBe(true);
     d.releaseDanger();
-    await waitFor(() => c.call.session.safety.flagged && d.calls() === 2, "the danger to be known");
+    await waitFor(() => c.said().includes(SAFETY_GUIDANCE.immediate.split(/(?<=[.?!])\s+/)[0]) || c.said().includes(SAFETY_GUIDANCE.immediate), "the guidance");
     releaseStage();
-    await pause();
-    expect(acksIn(c.said())).toEqual([]);
-    // Stopped before its save, so the phrase stays in the bank.
-    expect(c.call.acknowledged).toEqual([]);
+    c.speaker.release();
     d.releaseClosing();
     await waitFor(() => c.samples.length === 2, "the turn's sample");
-    expect(acksIn(c.said())).toEqual([]);
-    expect(c.samples[1]).toMatchObject({ ack: null, ackSkipped: "closing" });
+    expect(acksIn(c.said())).toHaveLength(1);
+    expect(c.said().indexOf(acksIn(c.said())[0])).toBeLessThan(c.said().findIndex((t) => SAFETY_GUIDANCE.immediate.startsWith(t)));
   });
 
-  it("R577-2 danger reported while the phrase's save waits: no phrase before the safety guidance", async () => {
+  it("R577-2 the phrase does not wait for its save: its id leaves the bank at once, and the save follows", async () => {
     const d = dangerModel();
     const c = await voiceCall({ model: d.model });
     d.arm();
@@ -761,23 +764,23 @@ describe("R577: what a delay can change while the phrase waits", () => {
     const delayed = new Promise<void>((r) => { releaseSave = r; });
     let saving = false;
     c.store.update = async (id, revision, change) => {
-      const result = await update(id, revision, change);
       if (!saving && change.live?.acknowledged?.length) { saving = true; await delayed; }
-      return result;
+      return update(id, revision, change);
     };
     c.say("Someone is hurting me.");
     await waitFor(() => d.calls() === 1, "the child turn's model call");
     await c.clock.advance(ACK_LIMIT_MS);
-    await waitFor(() => saving, "the phrase's save");
+    await waitFor(() => acksIn(c.said()).length === 1, "the phrase, with its save still out");
+    expect(saving).toBe(true);
+    expect(c.call.acknowledged).toHaveLength(1);
+    releaseSave();
     d.releaseDanger();
     await waitFor(() => c.call.session.safety.flagged, "the danger to be known");
-    releaseSave();
-    await pause();
-    expect(acksIn(c.said())).toEqual([]);
     d.releaseClosing();
     await waitFor(() => c.samples.length === 1, "the turn's sample");
-    expect(acksIn(c.said())).toEqual([]);
-    expect(c.samples[0]).toMatchObject({ ack: null, ackSkipped: "closing" });
+    await c.call.settled();
+    expect((await c.store.get(c.id))!.live?.acknowledged ?? (await c.store.get(c.id))!.status).toBeTruthy();
+    expect(acksIn(c.said())).toHaveLength(1);
   });
 
   it("R577-3 a phrase heard before a worker replacement is already saved, so the new worker cannot pick it", async () => {
@@ -798,7 +801,9 @@ describe("R577: what a delay can change while the phrase waits", () => {
     expect(replacement.call.acknowledged).toContain(id);
   });
 
-  it("R577-3 a worker that was replaced cannot save a phrase, so it says none", async () => {
+  // D-341 review, item B: the save no longer comes before the phrase, so a replaced worker can say one phrase (the
+  // accepted loss). Its save is refused, and from then on it says no phrase.
+  it("R577-3 a worker that was replaced says at most one phrase: its save is refused, and it says no more", async () => {
     const m = heldModel();
     // No board: its own save would stop this worker first, and this test is about the phrase's save.
     const c = await voiceCall({ model: m.model, board: false });
@@ -809,13 +814,16 @@ describe("R577: what a delay can change while the phrase waits", () => {
     const replacement = await c.calls.openVoice(c.id, { speechToText: "fake", voice: "fake" }, null);
     if (!replacement.ok) throw new Error(replacement.error);
     await c.clock.advance(ACK_LIMIT_MS);
-    await pause();
-    expect(acksIn(c.said())).toEqual([]);
+    await waitFor(() => c.call.replaced, "the phrase's save to be refused");
+    expect(acksIn(c.said()).length).toBeLessThanOrEqual(1);
     expect(replacement.call.acknowledged).toEqual([]);
-    expect(c.call.replaced).toBe(true);
     m.release();
-    await waitFor(() => c.samples.length === 1, "the sample");
-    expect(c.samples[0]).toMatchObject({ ack: null, ackSkipped: "save" });
+    // The worker that lost the call stops: its turn ends the call's handle, and it says no further phrase.
+    await waitFor(() => c.run.done !== null, "the replaced worker to stop");
+    await c.run.done;
+    await c.clock.advance(ACK_LIMIT_MS * 2);
+    await pause();
+    expect(acksIn(c.said()).length).toBeLessThanOrEqual(1);
   });
 
   /**
