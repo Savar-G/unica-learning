@@ -35,14 +35,23 @@ When a reply fails, the model gets one more try with the reason. If that fails t
 
 Code also tells the model facts about the child's numbers. For 52 - 28 and "Is 2 minus 8, 6?": "6 is 8 - 2: the child took the smaller digit from the larger. In the ones, 2 is smaller than 8, so the ones need a regroup: 12 - 8." Then Maya may not confirm 6, and her regroup help is open at once.
 
+## Round 2 (2026-11-12)
+
+- **The first sentence streams.** On a plain math turn, each sentence of Maya's reply goes to the child as soon as it arrives and passes code's checks; the rest of the reply finishes behind it. A sentence once said is never taken back: a later sentence that fails is dropped, and when the act itself is refused, code's own line follows what was said. Before the model call, code reads the child's turn itself and puts its verdict in the brief, so the first sentence cannot call a wrong answer right. A turn about feelings, the child's life or Maya does not stream: the review reads the whole reply first. Measured on the savar script: the first sentence about 1.2 s, the whole reply about 2.1 to 2.4 s. Effort "low" stays: "minimal" was the same speed, and the model default ("none") took about 4.7 s. Sonnet 5.5 on OpenRouter does not allow reasoning off.
+- **A long reply is cut, not sent back.** Code keeps the first sentences that fit (and the closing question, in place of a middle sentence), with no second model call. Only a first sentence that alone breaks a limit is refused. The prompt asks for 1 or 2 short sentences under 25 words, with the question last.
+- **A clear answer is accepted in its turn.** "The tens are 4 minus 2, that's 2. 24!" is the answer, never a confirm.
+- **Off-topic turns get the model's own words.** "Do you like dogs?" gets an honest, warm reply (Maya is an AI and has no dog) and a short way back to the step; the review checks it. Only the safety guidance, the reply about secrets, the decline of harmful content, the redirect of outside math work and the held close stay code's.
+- **A child who is thinking** ("um", "wait", "I'm thinking") hears one short patient line from code, at most twice in a row, then Maya stays quiet until the child speaks or the silence rule comes. These turns count as no help and no miss. For Savar's approval, the two lines: "Take your time, {name}." and "No rush. I'm here when you're ready."
+- **The fallback** never asks "Did you say...?" on its own; it gives the step's neutral help. Once the answer stands and the child says it is written, Maya closes warmly.
+
 ## The prompt
 
-`CONVERSATION_PROMPT` in `src/lib/maya-model.ts`, version `maya-conversation-2`. It is 3,870 characters; the version 2 prompt was 15,396, and its input with the line offers 24,954 against 3,016 for the turn brief (52 - 28, the second turn).
+`CONVERSATION_PROMPT` in `src/lib/maya-model.ts`, version `maya-conversation-3`. It is 3,832 characters; the version 2 prompt was 15,396, and its input with the line offers 24,954 against 3,016 for the turn brief (52 - 28, the second turn).
 
 ```text
 You are Maya, an AI math helper for one child (age 5 to 14) working on one math question. You talk like a kind, patient tutor in a real conversation.
 
-Each turn you get a brief (JSON) from code and return one JSON reply. "say" is what Maya says next, in your own words: 1 to 3 short spoken sentences and at most 30 words (45 when you show a step). Count the sentences before you answer: a fourth sentence is refused. Two short sentences are usually best.
+Each turn you get a brief (JSON) from code and return one JSON reply. "say" is what Maya says next, in your own words: 1 or 2 short sentences, under 25 words, with the question last (up to 45 words when you show a step). Code keeps only the first sentences that fit.
 
 How to talk:
 - Answer what the child just said first. "Hi Maya!" gets a short warm hello back, then the first small step.
