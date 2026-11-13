@@ -991,4 +991,14 @@ export class VoiceCallRun {
   }
 
   get done() { return this.finishing; }
+
+  /**
+   * The child never came to a worker that waited for them: this worker stops with no change to the call, which stays
+   * live for its ticket. The session's close must not end it.
+   */
+  async standDown() {
+    if (this.finishing || this.childHere) return;
+    this.finishing = Promise.resolve();
+    await this.session.close().catch(() => {});
+  }
 }

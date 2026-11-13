@@ -191,19 +191,8 @@ export default defineAgent({
       if (live && checkJoiner({ room: roomName, call: facts, identity: p.identity, attributes: p.attributes }).ok) void run.childJoined();
     });
 
-    made.tts.prewarm();
-    const readyAt = Date.now();
-    const child = await waitForChild(ctx.room, facts);
-    if (!child) {
-      // The call stays live for its ticket: a child who connects later gets a new worker through the token.
-      log("the child did not join", callId);
-      return ctx.shutdown("the child did not join");
-    }
-    childAt = Date.now();
-    marks.readyBeforeChild = childAt - readyAt;
-    ctx.addShutdownCallback(() => run.finish({ detail: "the voice worker stopped" }));
-    // The connection rows and the session start do not wait for each other.
-    const joined = run.agentJoined().then(() => mark("agentJoined"));
+    // The session starts before the child is here, so its audio track is published and the voice is connected when
+    // they come. It hears only the call's child, and nothing is said until they connect.
     await session.start({
       agent: run.agent,
       room: ctx.room,
@@ -212,9 +201,22 @@ export default defineAgent({
       // Disable session recording. Direct-provider retention needs separate verified settings (docs/maya-voice.md).
       record: false,
     });
-    mark("sessionStarted");
     run.attachBoardAudio();
     run.attachTurnTiming();
+    made.tts.prewarm();
+    const readyAt = Date.now();
+    const child = await waitForChild(ctx.room, facts);
+    if (!child) {
+      // The call stays live for its ticket: a child who connects later gets a new worker through the token.
+      log("the child did not join", callId);
+      await run.standDown();
+      return ctx.shutdown("the child did not join");
+    }
+    childAt = Date.now();
+    marks.readyBeforeChild = childAt - readyAt;
+    ctx.addShutdownCallback(() => run.finish({ detail: "the voice worker stopped" }));
+    // The connection rows and the session start do not wait for each other.
+    const joined = run.agentJoined().then(() => mark("agentJoined"));
     live = true;
     // A child who left while the session started opens the call when they are back (the handler above).
     await Promise.all([joined, ctx.room.remoteParticipants.has(identity) ? run.childJoined().then(() => mark("childJoined")) : null]);
