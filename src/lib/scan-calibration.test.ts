@@ -7,6 +7,7 @@ import {
   calibratePhoto,
   calibrationForPhoto,
   cropBox,
+  cropInPhoto,
   cropPlan,
   perspectiveTransform,
   straightenedPage,
@@ -17,7 +18,7 @@ import {
   type Transform,
 } from "@/lib/scan-calibration";
 import { normalizeScanPhoto } from "@/lib/scan-photo-image";
-import { blankPage, cropCut, drawBoxOutline, drawDigit, drawMark, drawPrintedContent, drawQr, fillBox, greyRaster, photoJpeg, photographed, rasterSharp, readDigit, rotatedCorners, uprightCorners } from "@/lib/scan-synthetic";
+import { blankPage, cropCut, curled, cutOut, drawBoxOutline, drawDigit, drawMark, drawPrintedContent, drawQr, drawTextContent, fillBox, greyRaster, photoJpeg, photographed, rasterSharp, readDigit, rotatedCorners, shadowed, uprightCorners } from "@/lib/scan-synthetic";
 import { SCAN_MARKS, printContractForPhoto, type Box, type PagePrintContract, type PhotoContract, type Point } from "@/lib/workbook-print-contract";
 
 // Scan calibration through its public functions, on synthetic pages. Each answer is a seven-segment digit "written" in
@@ -355,4 +356,153 @@ describe("cropPlan", () => {
     expect(plan.crops).toEqual([{ number: 1, itemId: "whole", regionId: "a", box: box("a").box }]);
     expect(plan.notSupported).toEqual([2, 3, 4, 5, 6, 7, 8]);
   });
+});
+
+describe("a sheet held up, cut by the photo's edge, or in shadow (#912)", () => {
+  const SIZE = { width: 1500, height: 1900 };
+  /** This page as real text sets it (drawTextContent): uneven words, so no part repeats another a line or a word away. */
+  const textPage = (answers: boolean) => {
+    const r = page();
+    for (const m of SCAN_MARKS) mark(r, m);
+    drawTextContent(r);
+    drawQr(r, QR_BOX, LINK);
+    for (const a of ANSWERS) { drawBoxOutline(r, a.box); if (answers) drawDigit(r, a.box, a.digit); }
+    return r;
+  };
+  let textPrinted: Raster, textWritten: Raster;
+  beforeAll(() => { textPrinted = textPage(false); textWritten = textPage(true); });
+  /** Another page with this page's marks and QR code: bars where this page prints text and answer boxes. */
+  const otherPage = () => {
+    const other = page();
+    for (const m of SCAN_MARKS) mark(other, m);
+    for (let i = 0; i < 40; i++) fill(other, 200 + (i * 37) % 800, 500 + (i * 71) % 900, 60, 14);
+    drawQr(other, QR_BOX, LINK);
+    return other;
+  };
+  const calibrate = (photo: Raster) => calibratePhoto({ photo, printed: textPrinted, contract: available, pageLink: LINK });
+  /** A crop's grey brought back to paper white: a shadow darkens paper past readDigit's fixed threshold. */
+  const brightened = (r: Raster): Raster => {
+    const sorted = [...r.data].sort((p, q) => p - q), paper = sorted[Math.floor(sorted.length * 0.9)] || 1;
+    return { ...r, data: r.data.map((v) => Math.min(255, Math.round((v * 248) / paper))) };
+  };
+  const answersRead = (photo: Raster, c: Calibration) => ANSWERS.map(({ box }) => readDigit(brightened(cropBox(photo, c, contract, box)), cropCut(box), box));
+
+  it.each([
+    { name: "held at the left edge", amount: 45, edge: "left" as const },
+    { name: "held hard at the left edge", amount: 70, edge: "left" as const },
+    { name: "held very hard at the left edge", amount: 90, edge: "left" as const },
+    { name: "held hard at the right edge", amount: 70, edge: "right" as const },
+  ])("a page $name calibrates part by part, and every crop holds its own answer", async ({ amount, edge }) => {
+    // Disproved if the curl near the fingers, up to `amount` photo pixels from where the four marks put the print, is
+    // refused, or a crop reads a neighbour's digit.
+    const photo = await stored(curled(photographed(textWritten, SIZE, square(SIZE, 60), { shade: 0.3 }), amount, { edge }));
+    const result = calibrate(photo);
+    if (result.status !== "calibrated") throw new Error(`refused: ${JSON.stringify(result)}`);
+    expect(result.calibration.mesh).toBeDefined();
+    expect(result.calibration.pageFit).toBeGreaterThanOrEqual(0.975);
+    expect(result.calibration.quarterTurns).toBe(0);
+    expect(answersRead(photo, result.calibration)).toEqual(wanted);
+    // The straightened page puts the print back where it printed: the heading block is ink at its printed place.
+    const straight = straightenedPage(photo, result.calibration, contract);
+    expect(straight.data[Math.round(H * 0.073) * W + Math.round(W * 0.1)]).toBeLessThan(110);
+  }, 60_000);
+
+  it.each([45, 70])("still refuses another page held the same way, curled by %i pixels", async (amount) => {
+    // Disproved if aligning a page part by part lets another page's print follow this one.
+    const photo = await stored(curled(photographed(otherPage(), SIZE, square(SIZE, 60)), amount));
+    expect(calibrate(photo)).toEqual({ status: "refused", reason: "page-mismatch" });
+  }, 60_000);
+
+  it("this page upside down and curled is read upside down or refused: the way up stays unambiguous", async () => {
+    const photo = await stored(curled(photographed(textWritten, SIZE, rotated(square(SIZE, 60), 180, { x: 750, y: 950 })), 45));
+    const result = calibrate(photo);
+    if (result.status === "calibrated") expect(result.calibration.quarterTurns).toBe(2);
+  }, 60_000);
+
+  /** A photo of this sheet turned 4 degrees, with the photo's top edge just below the top-left mark: that mark is cut off. */
+  const cornerCut = async (sheet: Raster) => {
+    const big = { width: 1500, height: 2000 };
+    const corners = rotated(square(big, 160), 4, { x: 750, y: 1000 });
+    const t = perspectiveTransform([{ x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: H }, { x: 0, y: H }], corners)!;
+    const tl = applyTransform(t, POINTS.tl), tr = applyTransform(t, POINTS.tr);
+    const top = Math.round(tl.y + 12);
+    // (The top-right mark stays well inside the photo: only one corner is cut.)
+    expect(tr.y - top).toBeGreaterThan(60);
+    return stored(cutOut(photographed(sheet, big, corners, { shade: 0.2 }), { x: 0, y: top, width: big.width, height: big.height - top }));
+  };
+
+  it("a photo with one corner mark cut off by its edge is placed by the QR code, and every crop holds its own answer", async () => {
+    // Disproved if a cut-off mark refuses a photo that holds the page's code and every answer.
+    const photo = await cornerCut(textWritten);
+    const result = calibrate(photo);
+    if (result.status !== "calibrated") throw new Error(`refused: ${JSON.stringify(result)}`);
+    expect(result.calibration.placedBy).toBe("qr");
+    expect(result.calibration.missingMarks).toEqual(["tl"]);
+    expect(result.calibration.quarterTurns).toBe(0);
+    expect(answersRead(photo, result.calibration)).toEqual(wanted);
+    for (const { box } of ANSWERS) expect(cropInPhoto(result.calibration, contract, box)).toBe(true);
+  }, 60_000);
+
+  it("refuses the same cut photo of another page carrying this page's code", async () => {
+    // Disproved if the QR code alone places and passes a sheet whose print is not this page's.
+    expect((await calibrate(await cornerCut(otherPage()))).status).toBe("refused");
+  }, 60_000);
+
+  it("refuses the same cut photo when a mark that should be in view is covered", async () => {
+    // A cut-off mark may be missing; one the photo should show may not: the bottom-left mark painted over.
+    const sheet = textPage(true);
+    fill(sheet, POINTS.bl.x - 4, POINTS.bl.y - 34, 38, 38, 248);
+    expect(calibrate(await cornerCut(sheet))).toEqual({ status: "refused", reason: "marks-missing" });
+  }, 60_000);
+
+  it("a question the photo's edge cuts is not cropped, and the others still read their own answers", async () => {
+    // The photo's left edge runs through the first column of answer boxes, and both left marks are cut off. Disproved if
+    // a cut box counts as in the photo (its crop would show white paper as if nothing were written), or another is lost.
+    const full = photographed(textWritten, SIZE, square(SIZE, 60), { shade: 0.2 });
+    const t = perspectiveTransform([{ x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: H }, { x: 0, y: H }], square(SIZE, 60))!;
+    const left = Math.round(applyTransform(t, { x: 260, y: 0 }).x);
+    const photo = await stored(cutOut(full, { x: left, y: 0, width: SIZE.width - left, height: SIZE.height }));
+    const result = calibrate(photo);
+    if (result.status !== "calibrated") throw new Error(`refused: ${JSON.stringify(result)}`);
+    expect(result.calibration.missingMarks).toEqual(["tl", "bl"]);
+    const inPhoto = ANSWERS.map(({ box }) => cropInPhoto(result.calibration, contract, box));
+    expect(inPhoto).toEqual(ANSWERS.map(({ box }) => box.x > 300));
+    ANSWERS.forEach(({ box, digit }, i) => {
+      if (inPhoto[i]) expect(readDigit(brightened(cropBox(photo, result.calibration, contract, box)), cropCut(box), box), `answer ${i + 1}`).toBe(digit);
+    });
+  }, 60_000);
+
+  /** A third of the page across its text under a shadow, or the bottom with the QR code, with a firm edge. */
+  const SHADOWS = [
+    { name: "over a third of the page, across its text", from: { x: 1500, y: 260 }, to: { x: 0, y: 1000 } },
+    { name: "over the QR code and the last row of answers", from: { x: 0, y: 1330 }, to: { x: 1500, y: 1250 } },
+  ];
+
+  it.each(SHADOWS)("a page with a shadow $name calibrates, every crop holds its own answer, and the upload reads it", async ({ from, to }) => {
+    // 40% and 60% darker. Disproved if the right page is refused, read wrong, or not taken at upload.
+    for (const darkness of [0.4, 0.6]) {
+      const bytes = await photoJpeg(shadowed(photographed(textWritten, SIZE, square(SIZE, 60), { shade: 0.2 }), from, to, darkness, 8));
+      const upload = await normalizeScanPhoto(bytes);
+      expect(LINK.endsWith(`/${upload.token}`), `darkness ${darkness}`).toBe(true);
+      const photo = await greyRaster(upload.bytes);
+      const result = calibrate(photo);
+      if (result.status !== "calibrated") throw new Error(`darkness ${darkness}: ${JSON.stringify(result)}`);
+      expect(answersRead(photo, result.calibration), `darkness ${darkness}`).toEqual(wanted);
+    }
+  }, 60_000);
+
+  it.each(SHADOWS)("still refuses another page with a shadow $name", async ({ from, to }) => {
+    const photo = await stored(shadowed(photographed(otherPage(), SIZE, square(SIZE, 60)), from, to, 0.5, 8));
+    expect(calibrate(photo)).toEqual({ status: "refused", reason: "page-mismatch" });
+  }, 60_000);
+
+  it("a page held up in shadow with a corner cut off still calibrates, and every crop holds its own answer", async () => {
+    const big = { width: 1500, height: 2000 };
+    const sheet = cutOut(photographed(textWritten, big, rotated(square(big, 160), 4, { x: 750, y: 1000 }), { shade: 0.2 }), { x: 0, y: 175, width: 1500, height: 1825 });
+    const photo = await stored(shadowed(curled(sheet, 40), { x: 0, y: 1200 }, { x: 1500, y: 1100 }, 0.5, 8));
+    const result = calibrate(photo);
+    if (result.status !== "calibrated") throw new Error(`refused: ${JSON.stringify(result)}`);
+    expect(result.calibration.placedBy).toBe("qr");
+    expect(answersRead(photo, result.calibration)).toEqual(wanted);
+  }, 60_000);
 });

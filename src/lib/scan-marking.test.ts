@@ -1215,3 +1215,30 @@ it("effective projection replaces append-only originals; Try first and parent ex
   expect(rebuilt.built && rebuilt.profile.standards[0]).toMatchObject({ correct: 1, total: 1 });
   expect(markingEvent(marks[0].expected, marks[0].observation).publish).toBe(false);
 });
+
+describe("#912: a question the photo's edge cuts off", () => {
+  it("is never read from the photo: whatever the model says, it waits for our team as cut off", () => {
+    // The straightened page shows white paper where a cut-off answer was. Disproved if a model reading of it, blank or
+    // written, right or wrong, becomes a mark, or if the questions in the photo are not marked as before.
+    const f: MarkingFrame = { ...frame(), cutOff: [2] };
+    for (const text of ["", "12", "7", null]) {
+      const o = readMarkingOutput(f, output(["0", text, "9"]));
+      expect(o[1], `model read ${JSON.stringify(text)}`).toMatchObject({ state: "pending", result: null, issue: "cut-off", certainty: "uncertain" });
+      expect(o.map((x) => observationProblem(x))).toEqual([null, null, null]);
+      expect([o[0].result, o[2].result]).toEqual(["right", "right"]);
+      const mark: EffectiveMark = { expected: expectedItems(f)[1], observation: o[1], originalEvent: null, eventId: null, at: "2026-11-13T12:00:00Z", model: MARKING_MODEL, prompt: MARKING_PROMPT_VERSION };
+      expect(waitsForTeam(mark)).toBe(true);
+      expect(markingPageView([mark]).items[0].label).toBe("Our team is checking this answer. Part of this answer is cut off. You can also send a new photo of this page.");
+    }
+    // Control: the same reading without the cut is marked.
+    expect(readMarkingOutput(frame(), output(["0", "12", "9"]))[1]).toMatchObject({ state: "scored", result: "right" });
+  });
+
+  it("cuts every region of a two-part item", () => {
+    const f: MarkingFrame = { ...tickFrame(), cutOff: [1] };
+    const o = readMarkingOutput(f, tickOutput("+", "66"))[0];
+    expect(o).toMatchObject({ state: "pending", result: null, issue: "cut-off" });
+    expect(o.regions?.map((r) => r.issue)).toEqual(["cut-off", "cut-off"]);
+    expect(readMarkingOutput(tickFrame(), tickOutput("+", "66"))[0]).toMatchObject({ state: "scored", result: "right" });
+  });
+});

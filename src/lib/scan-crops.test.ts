@@ -1,9 +1,10 @@
 import sharp from "sharp";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { QuestionPackage } from "@/lib/question-package";
+import { applyTransform, perspectiveTransform } from "@/lib/scan-calibration";
 import { isFenceRefusal, readScanPreview, runScanCrops, scanPartPath, type ScanCropStore, type ScanFrame } from "@/lib/scan-crops";
 import { memoryScanCropStore } from "@/lib/scan-crops-memory";
-import { blankPage, cropCut, drawBoxOutline, drawDigit, drawMark, drawPrintedContent, drawQr, greyRaster, pagePng, photoJpeg, photographed, readDigit, uprightCorners } from "@/lib/scan-synthetic";
+import { blankPage, cropCut, cutOut, drawBoxOutline, drawDigit, drawMark, drawPrintedContent, drawQr, greyRaster, pagePng, photoJpeg, photographed, readDigit, uprightCorners } from "@/lib/scan-synthetic";
 import { SCAN_MARKS, sha256Hex, type Box, type PagePrintContract, type Point } from "@/lib/workbook-print-contract";
 import { pageUrl } from "@/lib/workbook-render";
 
@@ -403,5 +404,36 @@ describe("comparing with the child's other pages", () => {
     expect(answer).toMatchObject({ status: "refused", reason: "check-timeout" });
     expect(m.calibrations.get(PHOTO)).toMatchObject({ state: "running", result: null });
     expect(m.filesOf(PHOTO)).toEqual([]);
+  });
+});
+
+describe("a question the photo's edge cuts off (#912)", () => {
+  it("is not cropped, the preview names it, and every other question is cropped with its own answer", async () => {
+    // The photo's left edge runs through the first column of answer boxes: questions 1 and 4. The page is placed by its QR
+    // code, since both left marks are cut off. Disproved if a crop is made of a cut box (it would show white paper where
+    // the answer was), or a question in the photo is lost or holds another answer.
+    const size = { width: 1500, height: 1900 }, corners = uprightCorners(size, { width: W, height: H }, 70);
+    const t = perspectiveTransform([{ x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: H }, { x: 0, y: H }], corners)!;
+    const left = Math.round(applyTransform(t, { x: 260, y: 0 }).x);
+    const bytes = await photoJpeg(cutOut(photographed(drawn(true), size, corners, { shade: 0.2 }), { x: left, y: 0, width: size.width - left, height: size.height }));
+    const m = setup({ bytes });
+    const preview = await runScanCrops(m.store, ref, token(1));
+    if (preview.status !== "ready") throw new Error(JSON.stringify(preview));
+    expect(preview.cutOff).toEqual([1, 4]);
+    expect(preview.crops.map((c) => c.number)).toEqual([2, 3, 5, 6]);
+    expect(m.filesOf(PHOTO).sort()).toEqual(["straight", "crop-2", "crop-3", "crop-5", "crop-6"].map((p) => `${token(1)}-${p}.jpg`).sort());
+    for (const n of [2, 3, 5, 6]) {
+      const a = ANSWERS[n - 1];
+      expect(readDigit(await cropRaster(m, `crop-${n}`, token(1)), cropCut(a.box), a.box), `crop ${n}`).toBe(a.digit);
+    }
+    // What marking reads: the stored result names the cut questions, and the calibration says how the page was placed.
+    const stored = await m.store.calibration(ref);
+    expect(stored?.result).toMatchObject({ cutOff: [1, 4], calibration: { placedBy: "qr", missingMarks: ["tl", "bl"] } });
+    expect(await readScanPreview(m.store, ref)).toEqual(preview);
+  });
+
+  it("a whole photo names no question as cut off", async () => {
+    const preview = await runScanCrops(setup().store, ref, token(1));
+    expect(preview.status === "ready" && preview.cutOff).toBeFalsy();
   });
 });
