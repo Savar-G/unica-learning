@@ -67,3 +67,13 @@ it("reads every immutable receipt with exact family, child, book and revision sc
   }
   db.fail("workbook_scan_receipts"); await expect(store.receipts("p1", "c1", "b1", "r1")).rejects.toThrow("read failed");
 });
+
+it("reads marks through the scoped effective marking projection, page by page, and refuses another family", async () => {
+  const calls: { name: string; args: Record<string, unknown> }[] = [];
+  const service = { rpc: async (name: string, args: Record<string, unknown>) => { calls.push({ name, args }); return { data: [], error: null }; } } as unknown as SupabaseClient<Database>;
+  const store = parentScheduleStore(service, service, "p1");
+  expect(await store.marks("p1", "c1")).toEqual([]);
+  expect(calls).toEqual([{ name: "scan_marking_command", args: { p_action: "effective", p_parent: "p1", p_photo: null, p_token: null, p_data: { child: "c1", after: null } } }]);
+  await expect(store.marks("p2", "c1")).rejects.toThrow("family refused");
+  expect(calls).toHaveLength(1);
+});

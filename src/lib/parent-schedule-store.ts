@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import type { ScheduleStore } from "@/lib/parent-schedule";
+import { scanMarkingReader } from "@/lib/scan-marking-reader";
 
 const checked = <T>(r: { data: T; error: { message: string } | null }): T => {
   if (r.error) throw new Error("Schedule read failed");
@@ -81,6 +82,11 @@ export function parentScheduleStore(session: SupabaseClient<Database>, service: 
         after = receipts[receipts.length - 1].id;
       }
       return result;
+    },
+    async marks(parent, child) {
+      scope(parent);
+      // The same validated, parent-scoped projection as page results. Only the status leaves readSchedule.
+      return scanMarkingReader(service).effective(parent, child);
     },
   };
 }
