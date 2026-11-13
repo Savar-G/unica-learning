@@ -192,7 +192,7 @@ async function voiceCall(options: { spend?: (clock: () => number) => CallSeams["
     await opened.call.settled();
     return said().slice(before).join(" ");
   };
-  return { sender, receiver, board, samples, id: started.view.id, calls, store, connections, rebuild, run, session, said, childSays, clock, updates, closed, call: opened.call, seams };
+  return { sender, receiver, board, samples, id: started.view.id, calls, store, connections, rebuild, run, session, said, childSays, clock, updates, closed, call: opened.call, seams, tts: voiceOut, speech: providers.fakeSpeech! };
 }
 
 describe("a voice call through LiveKit with the fake providers", () => {
@@ -616,6 +616,74 @@ it.each([true, false])("#329 carries accepted controller batches through AgentSe
   expect(c.receiver.staged()).toEqual([]);
 });
 
+
+// Call 01f456de (2026-11-13): an answer whose voice gave no audio left its batch staged and unseen, and the next plan,
+// built on that batch, was refused, which ended the call. Now the batch is shown, the worker log says so, and the words
+// are said once more.
+it("a reply with no audio shows its board, is said once more, and the call goes on", async () => {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  try {
+    const c = await voiceCall({ board: true });
+    await c.run.childJoined();
+    await waitFor(() => c.session.agentState === "listening" && c.said().length > 0, "opening playout");
+    await c.board.settled();
+    c.tts.silentNext = 1;
+    const reply = await c.childSays("I don't know.");
+    await waitFor(() => c.session.agentState === "listening", "the words said again");
+    await c.board.settled();
+    expect(c.tts.silenced).toHaveLength(1);
+    expect(reply.startsWith(c.tts.silenced[0])).toBe(true);
+    const stored = (await c.calls.view(c.id))!.transcript.filter(l => l.speaker === "maya").at(-1)!.text.replaceAll("{name}", "Leah");
+    expect(c.said().join(" ").split(spokenMath(stored)).length - 1).toBe(1);
+    expect(warn).toHaveBeenCalledWith("[maya voice] speech had no audio", c.id, expect.objectContaining({ heardAny: false, repeat: false }));
+    // The reply's batches are on the child's board, as Maya's saved board says, and none is left waiting.
+    const saved = c.store.rows()[0].live!.text.board.map(b => b.transactionId);
+    expect(saved.length).toBeGreaterThan(0);
+    const shown = c.receiver.snapshot().events.flatMap(e => e.kind === "batch" ? [e.batchId] : []);
+    expect(shown).toEqual(saved);
+    expect(c.receiver.staged()).toEqual([]);
+    expect((await c.calls.view(c.id))!.status).toBe("live");
+    await c.childSays("Is it 66?");
+    expect((await c.calls.view(c.id))!.status).toBe("live");
+  } finally { warn.mockRestore(); }
+});
+
+it("logs the signals of each final transcript, never its words", async () => {
+  const info = vi.spyOn(console, "info").mockImplementation(() => {});
+  try {
+    const c = await voiceCall();
+    await c.run.childJoined();
+    await waitFor(() => c.said().length > 0, "Maya's opening");
+    await c.childSays("I got 56.", { confidence: 0.61 });
+    const lines = info.mock.calls.filter(call => call[0] === "[maya voice] final transcript");
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toEqual(["[maya voice] final transcript", c.id, expect.objectContaining({ words: 3, confidence: 0.61, vadSpeechMs: null, peakDbfs: -120 })]);
+    expect(JSON.stringify(lines)).not.toMatch(/56|got/);
+  } finally { info.mockRestore(); }
+});
+
+it("a reply whose words are silent twice is said again only once, and the call goes on", async () => {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  try {
+    const c = await voiceCall({ board: true });
+    await c.run.childJoined();
+    await waitFor(() => c.session.agentState === "listening" && c.said().length > 0, "opening playout");
+    await c.board.settled();
+    const before = c.said().length;
+    c.tts.silentNext = 2;
+    // The reply and its one repeat both give no audio.
+    expect(c.speech.say("I don't know.")).toBe(true);
+    await waitFor(() => c.tts.silenced.length === 2 && warn.mock.calls.some(call => (call[2] as { repeat?: boolean } | undefined)?.repeat === true), "the second silence");
+    await waitFor(() => c.session.agentState === "listening", "the repeat's end");
+    await c.board.settled();
+    expect(c.tts.silenced[1]).toBe(c.tts.silenced[0]);
+    expect(c.said().length).toBe(before);
+    expect(c.receiver.staged()).toEqual([]);
+    expect((await c.calls.view(c.id))!.status).toBe("live");
+    // The child is answered as usual after it.
+    await c.childSays("Is it 66?");
+  } finally { warn.mockRestore(); }
+});
 
 it("R450-2 keeps a dropped call recoverable when the board stop cannot reach the child", async () => {
   const c = await voiceCall();
