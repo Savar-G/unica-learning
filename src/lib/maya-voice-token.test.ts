@@ -111,3 +111,28 @@ describe("a voice call token and the Maya notice", () => {
     expect(notice.accepted).not.toHaveBeenCalled();
   });
 });
+
+describe("the early dispatch of Maya's worker", () => {
+  const base = { call: { ...A, kind: "admin_test" }, notice: null, parentId: A.parentId, childId: A.childId, project, now: Date.UTC(2026, 10, 1, 16) };
+
+  it("sends the worker to the call's room with the call id when the ticket is made", async () => {
+    const sent: [string, string][] = [];
+    const r = await mintVoiceToken({ ...base, dispatch: async (room, metadata) => { sent.push([room, metadata]); } });
+    expect(r.ok).toBe(true);
+    expect(sent).toEqual([[voiceRoom(A.id), JSON.stringify({ callId: A.id })]]);
+  });
+
+  it("still gives the ticket when the dispatch fails, and the token keeps its own dispatch", async () => {
+    const r = await mintVoiceToken({ ...base, dispatch: async () => { throw new Error("down"); } });
+    if (!r.ok) throw new Error(r.error);
+    const claims = await verifier.verify(r.ticket.token);
+    expect(claims.roomConfig?.agents?.[0]?.agentName).toBe("maya-voice");
+  });
+
+  it("sends no worker for a refused ticket", async () => {
+    let sent = 0;
+    const r = await mintVoiceToken({ ...base, parentId: B.parentId, dispatch: async () => { sent++; } });
+    expect(r.ok).toBe(false);
+    expect(sent).toBe(0);
+  });
+});
