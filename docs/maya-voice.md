@@ -244,6 +244,51 @@ The session returns the whole reply at once (the controller has no partial outpu
 
 **What the tests prove.** `silence.test.ts` holds a board send and proves, with and without word times, that the words reach the voice before the send ends and that the first sound comes only after it (`boardMs` 0, `stageMs` and `voiceMs` equal to the held time). It proves that a reply cut while its plan goes out makes no sound and shows no batch. `speech-audio.test.ts` proves the next sentence is made while the current one plays, that a cut stream retires it, and that a plan that failed to send plays nothing. Without the wait for the plan, the test with no word times fails. None of this proves real times.
 
+## Math symbols are spoken as words
+
+In a real call on 2026-11-12, the voice (Cartesia sonic-3.6 through LiveKit Inference) read "We're doing 52 − 28 today." as "52 28". It did not say the minus sign. Now the worker changes math notation into words before the text goes to the voice: "52 − 28" goes as "52 minus 28".
+
+- The module is `src/lib/maya-voice-spoken.ts`. `spokenMath(text)` gives the spoken text. `spokenWords(text)` gives the spoken form of each word of the text, one entry for each word that `speechWords` (board-speech) counts.
+- Only the text sent to the voice changes. The board, the stored transcript and the call session keep Maya's own text.
+- `countedSynthesis` in `worker/maya-voice/src/speech-audio.ts` is the one place where text goes to the voice, so every line is changed: replies, acknowledgements, the greeting, guidance and `session.say`. It changes the text one sentence at a time, so a sign is never read apart from its number at a chunk break.
+- Spend counts the spoken text, because the voice receives and bills that text.
+- `boardAudio` changes the whole reply first, so a sign and its number stay together when a sentence break falls between them ("Find it: ? − 28 = 24."). It then sends each spoken sentence.
+- Board cues still count the words of Maya's own text (`cue.word`). The voice gives times for the words it said ("three quarters" for "3/4"). For each word n, `boardAudio` compares what the voice said with the spoken form of words 1 to n (and also with the written form, for a voice that gives back the text it received). Thus a cue at word n fires when the voice reaches the spoken words of word n. When the voice gives no word times, the cue fires at the end of its sentence, as before.
+- LiveKit's own record of Maya's speech (its chat context and room transcript, built from the voice's word times) now has the spoken words. It had the voice's words before this change too. No code reads it for Maya: the call's transcript comes from the call session.
+
+| Written | Spoken |
+|---|---|
+| `52 − 28`, `52-28`, `52 – 28` | 52 minus 28 |
+| `3 + 4 = 7` | 3 plus 4 equals 7 |
+| `3 × 4`, `3 * 4`, `3 x 4`, `3x4` | 3 times 4 |
+| `12 ÷ 4`, `12 / 4` (spaces) | 12 divided by 4 |
+| `52 − 28 = ?` | 52 minus 28 equals what? |
+| `? + 5 = 8`, `__ + 5 = 8` | what plus 5 equals 8, blank plus 5 equals 8 |
+| `−5` (no number before it), `x = −5` | negative 5, x equals negative 5 |
+| `3/4`, `1/2`, `2/3`, `5/8`, `7/20` | three quarters, one half, two thirds, five eighths, 7 over 20 |
+| `2 1/2`, `2½`, `½`, `¾` | two and one half, one half, three quarters |
+| `<`, `>`, `≤`, `≥`, `≠` | less than, greater than, less than or equal to, greater than or equal to, is not equal to |
+| `25%` | 25 percent |
+| `3²`, `2³`, `10⁴`, `x²` | 3 squared, 2 cubed, 10 to the power of 4, x squared |
+| `cm²`, `12 m²` | square centimetres, 12 square metres |
+| `5 cm`, `1 cm`, `250 g`, `500 mL`, `2 L` | 5 centimetres, 1 centimetre, 250 grams, 500 millilitres, 2 litres |
+| `$5`, `$1`, `$3.25`, `$0.50`, `25¢` | 5 dollars, 1 dollar, 3 dollars and 25 cents, 50 cents, 25 cents |
+| `3:30`, `3:05`, `3:00`, `3:00 p.m.`, `3pm` | three thirty, three oh five, three o'clock, three p.m., 3 p.m. |
+| `2:3` | 2 to 3 |
+| `26 R 1` | 26 remainder 1 |
+| `90°`, `√9` | 90 degrees, the square root of 9 |
+
+Digits stay digits where the voice reads them well. Decimals (`2.5`) and thousands (`1,081`) do not change. These stay as they are: hyphenated words ("twenty-seven"), a dash between words ("wait - no"), "and/or", dates (`2026-11-12`, `11/12/2026`), a phone-like `604-555-1234`, "I'm", and the letters "x", "m" and "R" when they are not between numbers or after a number.
+
+Rules to know:
+
+- `h:mm` with two minute digits is a time. One digit after the colon is a ratio. Thus `2:30` is always "two thirty", also when the text means a ratio.
+- A dash between two numbers is a minus, so a range such as `5-10` is read as "5 minus 10". Write ranges with "to".
+- A fraction with no spaces (`12/4`) is a fraction ("twelve quarters"). With spaces (`12 / 4`) it is a division.
+- `spokenMath` never throws, and it gives the same text when it is applied again.
+
+**What the tests prove.** `src/lib/maya-voice-spoken.test.ts` checks each form above, the text that must not change, idempotence, and that streamed text is the same as the whole text for every chunk break. `speech-audio.test.ts` runs `boardAudio` through `countedSynthesis`, as `ttsNode` does, with a fake voice. It proves that the voice and the spend count receive the spoken text, that a cue on "24" in "52 − 28 = 24" and a cue on a fraction fire at the word time of their spoken words, that the word count stays correct in a later sentence, and that the sentence end is used when there are no word times. Without the spoken prefixes, the two fraction cue tests fail. Without the change, 9 worker tests fail. **Not verified:** how Cartesia reads each spoken form. Nobody listened to it yet.
+
 ## Interim words on the call screen
 
 LiveKit Agents for Node 1.9.5 sends the child's transcript to the room as text streams on the topic `lk.transcription` (`ParticipantTranscriptionOutput` in `voice/room_io/_output.js`): one stream for each interim transcript and one for each final, with `lk.transcription_final`, `lk.segment_id` and `lk.transcribed_track_id` (the child's microphone track). This happened before this work too. The call screens now show those words as the child's last bubble, in light text, while Maya hears them (`src/lib/maya-voice-hearing.ts`, used by `src/components/maya-voice-room.ts`, shown by `src/components/desk-voice.tsx` and the admin transcript in `src/components/admin-maya.tsx`).

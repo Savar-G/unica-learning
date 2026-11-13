@@ -22,6 +22,7 @@ import { RECONNECT_GRACE_MS, voiceProviders } from "@/lib/maya-voice";
 import type { QuestionPackage } from "@/lib/question-package";
 import { mayaWorkbookFixture } from "@/lib/maya-workbook-fixture";
 import { selectWorkbookQuestion } from "@/lib/maya-workbook-question";
+import { spokenMath } from "@/lib/maya-voice-spoken";
 import { VoiceCallRun, voiceSession, type CallUpdate, type Timers } from "./agent";
 import { FakeTTS } from "./fake-providers";
 import { makeProviders } from "./providers";
@@ -198,8 +199,9 @@ describe("a voice call through LiveKit with the fake providers", () => {
   it("confirms a spoken workbook reference before teaching through fake audio and board transport", async () => {
     const c = await voiceCall({ workbookReference: "page four, number three", board: true });
     await c.run.childJoined();
-    await waitFor(() => c.said().join(" ").includes("27 + 39."), "the workbook confirmation");
-    expect(c.said().join(" ")).toBe("Hi, I'm Maya, an AI helper. Let's do page 4, number 3: 27 + 39.");
+    // The voice is given the sign as a word (spokenMath); the board and the transcript keep "27 + 39".
+    await waitFor(() => c.said().join(" ").includes("27 plus 39."), "the workbook confirmation");
+    expect(c.said().join(" ")).toBe("Hi, I'm Maya, an AI helper. Let's do page 4, number 3: 27 plus 39.");
     expect(c.store.rows()[0].question).toMatchObject({ source: "workbook", page: 4, question: 3 });
     const reply = await c.childSays("I don't know how to start.");
     expect(reply.length).toBeGreaterThan(0);
@@ -226,9 +228,11 @@ describe("a voice call through LiveKit with the fake providers", () => {
 
     const live = (await c.calls.view(c.id))!;
     expect(live.transcript.filter((l) => l.speaker === "child").map((l) => l.text)).toEqual(["I got 56.", "I got sixty six", "No, I said 66."]);
-    // Every word Maya spoke is a word the call stored for her, in order (the easier example's steps are one reply).
+    // Every word Maya spoke is a word the call stored for her, in order (the easier example's steps are one reply). The
+    // stored text keeps its math signs; the voice was given them as words.
     const stored = live.transcript.filter((l) => l.speaker === "maya").map((l) => l.text.replaceAll("{name}", "Leah"));
-    expect(c.said().join(" ")).toBe(stored.join(" "));
+    expect(stored.some((l) => l.includes("27 + 39"))).toBe(true);
+    expect(c.said().join(" ")).toBe(spokenMath(stored.join(" ")));
 
     await c.clock.advance(10);
     await c.run.hangUp();
