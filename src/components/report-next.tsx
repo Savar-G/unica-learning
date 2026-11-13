@@ -226,7 +226,7 @@ export function ReportNextView({ step, childName, province, asked, start, words,
 
 /**
  * The free 15-minute results call with a founder, high on the report: right after the working level, before workbook 1,
- * because the call is where most families decide. Opens Calendly in a new tab; nothing about the child goes in the
+ * because the call is where most families decide. Opens Cal.com in a new tab; nothing about the child goes in the
  * link. The words come from resultsCall (report-view), shared with the report email. Hidden when no booking page is set.
  */
 export function BookCall({ call }: { call: { title: string; text: string; button: string } }) {

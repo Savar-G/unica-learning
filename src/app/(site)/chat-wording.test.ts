@@ -8,5 +8,5 @@ it.each([["privacy", Privacy], ["terms", Terms]] as const)("shows the approved c
   const html = renderToStaticMarkup(createElement(Page)).replace(/&#x27;/g, "'");
   expect(html).toContain("Chat with Maya opens when your family's plan starts.");
   expect(html).not.toMatch(/We open chat[^.]*in\s+stages/);
-  expect(html).toContain(_name === "privacy" ? "Updated 11 November 2026" : "Updated 9 November 2026");
+  expect(html).toContain(_name === "privacy" ? "Updated 12 November 2026" : "Updated 9 November 2026");
 });
