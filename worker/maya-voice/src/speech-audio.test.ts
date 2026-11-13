@@ -42,12 +42,16 @@ async function setup(word: number) {
  await board.stage('speech',[{word,batch:columns}]);
  return {receiver,board,scope:board.capture("speech")!};
 }
-it('R450-4 empty TTS must not release without any playback',async()=>{
+// R450-4 asked that empty TTS cancel its plan. Call 01f456de showed the cost: Maya's saved board holds the batch, so the
+// next plan built on it was refused and the call ended. Empty TTS now shows the plan at once and ends it: no cue time
+// releases anything later, and nothing stays staged.
+it('R450-4 empty TTS shows its plan at once and ends it',async()=>{
  const c=await setup(1);
  const audio=boardAudio(inputText('Write.'),async()=>new ReadableStream<AudioFrame>({start(o){o.close();}}),c.board,c.scope);
  for await(const frame of audio) void frame;
- expect(boardPaths(c.receiver.scene())).toEqual([]);
+ expect(boardPaths(c.receiver.scene()).length).toBeGreaterThan(0);
  expect(c.receiver.staged()).toHaveLength(0);
+ expect(c.board.owns(c.scope)).toBe(false);
 });
 it('R450 duplicated alignment chunks must not delay a later word to sentence end',async()=>{
  const c=await setup(2);
@@ -352,5 +356,43 @@ describe("math is spoken as words", () => {
     for await (const frame of out!) void frame;
     expect(p.received).toEqual(["Let's do 52 minus 28. It is 25 percent of 4 dollars."]);
     expect(p.counted).toEqual(["Let's do 52 minus 28. It is 25 percent of 4 dollars."]);
+  });
+});
+
+// Call 01f456de (2026-11-13), from its stored trace: the clarify turn wrote the question (b1), and the next turn placed a
+// note below b1's note (b2). b1's audio never came, so b1 was never released; the child's next words cancelled it, and
+// the board core refused b2 ("no object to place this next to"), which ended the call.
+const CALL = "01f456de-db1a-4d26-9633-63e4523649d7";
+const b1: Batch = { transactionId: `${CALL}-b1`, commands: [
+  { id: "question", op: "columns", place: { region: "main" }, operands: [{ id: "top", value: "52" }, { id: "bottom", value: "28" }], operation: "subtract" },
+  { id: "note-1-0-question-problem", op: "write", text: "52 − 28", place: { below: "question" } },
+] };
+const b2: Batch = { transactionId: `${CALL}-b2`, commands: [{ id: "note-2-0-question-problem", op: "write", text: "52 − 28", place: { below: "note-1-0-question-problem" } }] };
+describe("a speech that gives no audio (call 01f456de)", () => {
+  async function call01f456de(tts: () => Promise<ReadableStream<AudioFrame> | null>) {
+    const receiver = createBoardReceiver({ sessionId: "call" });
+    const sender = createBoardSender({ sessionId: "call", senderId: "worker", transport: createMemoryTransport(receiver) });
+    const board = createBoardSpeech({ sender, now: () => 0 });
+    await board.connect();
+    await board.stage("clarify", [{ word: 6, batch: b1 }]);
+    const clarify = board.capture("clarify")!;
+    const silent = vi.fn();
+    const audio = boardAudio(inputText("Let's look at 52 − 28 together."), tts, board, clarify, silent);
+    try { for await (const frame of audio) void frame; } catch { /* the voice failed */ }
+    // The child talks: the worker stops the plan it holds (agent.ts `stopBoard`).
+    await board.interrupt(clarify);
+    await board.settled();
+    return { receiver, board, silent, next: board.stage("try", [{ word: 3, batch: b2 }]) };
+  }
+  it.each([
+    ["an empty stream", async (): Promise<ReadableStream<AudioFrame> | null> => new ReadableStream<AudioFrame>({ start(o) { o.close(); } })],
+    ["no stream", async (): Promise<ReadableStream<AudioFrame> | null> => null],
+    ["a voice that fails", async (): Promise<ReadableStream<AudioFrame> | null> => new ReadableStream<AudioFrame>({ start(o) { o.error(new Error("TTS task failed")); } })],
+  ] as const)("shows its batches, so the next plan built on them stages: %s", async (_name, tts) => {
+    const c = await call01f456de(tts);
+    await expect(c.next).resolves.toEqual({ refused: [] });
+    expect(c.receiver.snapshot().events.filter(e => e.kind === "batch").map(e => e.batchId)).toEqual([b1.transactionId]);
+    expect(c.receiver.staged().map(s => s.batchId)).toEqual([b2.transactionId]);
+    expect(c.silent).toHaveBeenCalledWith(expect.objectContaining({ heardAny: false, text: "Let's look at 52 − 28 together." }));
   });
 });

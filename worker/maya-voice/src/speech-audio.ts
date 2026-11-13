@@ -63,6 +63,16 @@ export async function countedSynthesis(
   });
 }
 
+/** A speech whose audio did not come, or stopped coming, for its own reason: not a cut. */
+export interface SilentSpeech {
+  scope: SpeechScope;
+  /** The speech's whole text, as Maya's session accepted it. */
+  text: string;
+  heardAny: boolean;
+  /** The voice provider failed (an error), rather than giving an empty stream. */
+  failed: boolean;
+}
+
 /**
  * Synthesize separate sentences so a provider without word times still has real sentence audio boundaries. The next
  * sentence is synthesized while the current one plays, so the voice does not stop between sentences for the provider's
@@ -74,6 +84,10 @@ export function boardAudio(
   synthesize: (text: ReadableStream<string>) => Promise<ReadableStream<AudioFrame> | null>,
   board: BoardSpeech,
   scope: SpeechScope,
+  /** The voice gave no audio for the rest of this speech (`heardAny`: some of it played before). The board is shown first. */
+  silent?: (speech: SilentSpeech) => void,
+  /** False: the audio does not wait for the plan to be sent. Only for a plan with no batches. */
+  gate = true,
 ): ReadableStream<AudioFrame> {
   const abort = new AbortController();
   let current: ReadableStreamDefaultReader<AudioFrame> | null = null;
@@ -93,9 +107,19 @@ export function boardAudio(
         return true;
       };
       const synthesizeSentence = (spoken: string) => synthesize(new ReadableStream<string>({ start(c) { c.enqueue(spoken); c.close(); } }));
+      let full = "";
+      let heardAny = false;
+      /**
+       * No audio for the rest of this speech. Its turn is saved, and Maya's saved board holds its batches, so they are
+       * shown now rather than cancelled: a cancel would leave the next plan, built on them, to be refused (call 01f456de).
+       */
+      const unheard = async (failed: boolean) => {
+        if (abort.signal.aborted || !board.owns(scope)) return;
+        await board.show(scope);
+        silent?.({ scope, text: full, heardAny, failed });
+      };
       try {
         if (stale()) return;
-        let full = "";
         for await (const chunk of text) { if (stale()) return; full += chunk; }
         let offsetMs = 0;
         let words = 0;
@@ -121,13 +145,13 @@ export function boardAudio(
             void frames?.cancel(scope).catch(() => {});
             return;
           }
-          if (!frames) { await board.interrupt(scope); if (!abort.signal.aborted) controller.close(); return; }
+          if (!frames) { await unheard(false); if (!abort.signal.aborted) controller.close(); return; }
           if (!gated) {
             gated = true;
             // The voice has the words already; its audio waits until the plan is on the child's screen. A plan that
             // could not be sent has no audio: the call's own handler ends the call for that failure.
             let failed = false;
-            try { await board.sent(scope); } catch { failed = true; }
+            if (gate) { try { await board.sent(scope); } catch { failed = true; } }
             if (failed || stale()) {
               void frames.cancel(scope).catch(() => {});
               if (failed && !abort.signal.aborted) controller.close();
@@ -188,6 +212,7 @@ export function boardAudio(
               }));
               durationMs += frame.samplesPerChannel / frame.sampleRate * 1000;
               frame.userdata[SPEECH_SCOPE_DATA] = scope;
+              if (frame.samplesPerChannel > 0) heardAny = true;
               controller.enqueue(frame);
             }
           } finally {
@@ -196,8 +221,8 @@ export function boardAudio(
           }
           if (stale()) return;
           if (durationMs <= 0) {
-            // The sentence was never spoken. Only this stream's current plan can be retired.
-            await board.interrupt(scope);
+            // The sentence was never spoken. Only this stream's current plan is shown and ended.
+            await unheard(false);
             if (!abort.signal.aborted) controller.close();
             return;
           }
@@ -210,8 +235,12 @@ export function boardAudio(
         if (!abort.signal.aborted) controller.close();
       } catch (e) {
         if (!abort.signal.aborted) {
-          if (board.owns(scope)) controller.error(e);
-          else controller.close();
+          if (board.owns(scope)) {
+            // The voice failed (or a release did): the rest of the speech has no audio. A board that cannot show the
+            // batches is the call's own failure, reported where the plan's other work is.
+            await unheard(true).catch(() => {});
+            controller.error(e);
+          } else controller.close();
         }
       } finally {
         // Every way out, a stale plan or a cut included, retires the sentence made ahead: it is never read.

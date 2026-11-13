@@ -13,6 +13,14 @@ export interface SpeechScope {
   readonly generation: number;
 }
 export const SPEECH_SCOPE_DATA = "unica.maya.speechScope";
+/** A batch of a plan that did not go to the board: the core refused it (`code`), or it came after one it refused (null). */
+export interface StageRefusal {
+  batchId: string;
+  code: string | null;
+}
+export interface StageResult {
+  refused: StageRefusal[];
+}
 export type CueSource = "word" | "sentence";
 export interface CueMeasurement {
   utteranceId: string;
@@ -114,6 +122,7 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
       void done.catch(() => {});
       sending = { scope, done };
       let changed = false;
+      const refused: StageRefusal[] = [];
       const sent = serial(async () => {
         try {
           if (!owns(scope)) return;
@@ -121,12 +130,23 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
           if (!owns(scope)) return;
           if (deliveryScope) { changed = true; check(await sender.cancel(deliveryScope)); }
           if (!owns(scope)) return;
-          active = { scope, id, cues: copy, timings: [], position: null, playedAt: options.now(), generation: gen };
-          for (const cue of copy) {
+          const plan: NonNullable<typeof active> = { scope, id, cues: copy, timings: [], position: null, playedAt: options.now(), generation: gen };
+          active = plan;
+          for (const [index, cue] of copy.entries()) {
             if (!owns(scope)) return;
             deliveryScope = scope;
             changed = true;
-            check(await sender.send(cue.batch, { scope }));
+            const result = await sender.send(cue.batch, { scope });
+            // The board core refused the batch (#326, call 01f456de: it was placed below a note of a batch the child's
+            // board never showed). The receiver decided it, so the connection is sound and the call can go on: the words
+            // are said, and neither this batch nor the batches planned after it go to the board.
+            if (!result.ok && result.code === "refused") {
+              refused.push({ batchId: cue.batch.transactionId, code: result.refusal?.code ?? null });
+              for (const rest of copy.slice(index + 1)) refused.push({ batchId: rest.batch.transactionId, code: null });
+              plan.cues = copy.slice(0, index);
+              return;
+            }
+            check(result);
           }
         } catch (e) {
           failSent(e);
@@ -136,9 +156,33 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
         }
       });
       // Taken once the plan went out, so it holds the cancellation and the new batches (pending until released).
-      const observed = sent.then(() => (changed ? options.observe?.(sender.snapshot()) : undefined));
+      const observed = sent.then(async (): Promise<StageResult> => {
+        if (changed) await options.observe?.(sender.snapshot());
+        return { refused };
+      });
       stagedObservation = observed.catch(() => {});
       return observed;
+    },
+    /**
+     * Shows at once every batch of this plan that is on the receiver and not shown yet, then ends the plan. For a speech
+     * that produced no audio: its turn is saved, and Maya's saved board holds its batches, so the child's board must hold
+     * them too. A cancel here would leave the next plan, built on these batches, to be refused (call 01f456de).
+     */
+    show(scope: SpeechScope) {
+      if (!owns(scope)) return Promise.resolve();
+      return serial(async () => {
+        const a = active;
+        if (!owns(scope) || !a || a.generation !== scope.generation) return;
+        const on = a.cues.filter(c => sender.batchState(c.batch.transactionId) === "accepted");
+        a.cues = [];
+        retired = true;
+        active = null;
+        const last = on.at(-1);
+        // The receiver shows every staged batch up to the one released, in order.
+        if (!last) return;
+        check(await sender.release(last.batch.transactionId, a.scope));
+        await options.observe?.(sender.snapshot());
+      });
     },
     /** Resolves when this scope's batches are on the receiver; rejects when sending them failed. Other scopes: at once. */
     sent(scope: SpeechScope): Promise<void> {

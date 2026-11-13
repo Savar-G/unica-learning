@@ -223,3 +223,35 @@ it("R450-8 keeps initial connection as a barrier when the first plan starts with
   await speech.played(scope, 100);
   expect(receiver.snapshot().events.filter(e => e.kind === "batch").map(e => e.batchId)).toEqual(["columns"]);
 });
+
+// Call 01f456de (2026-11-13): b2 is placed below a note of b1. When b1 never reached the child's board (here the child
+// talked before its cue), the board core refuses b2. The stage threw, and the worker ended the call.
+const CALL = "01f456de-db1a-4d26-9633-63e4523649d7";
+const b1: Batch = { transactionId: `${CALL}-b1`, commands: [
+  { id: "question", op: "columns", place: { region: "main" }, operands: [{ id: "top", value: "52" }, { id: "bottom", value: "28" }], operation: "subtract" },
+  { id: "note-1-0-question-problem", op: "write", text: "52 − 28", place: { below: "question" } },
+] };
+const b2: Batch = { transactionId: `${CALL}-b2`, commands: [{ id: "note-2-0-question-problem", op: "write", text: "52 − 28", place: { below: "note-1-0-question-problem" } }] };
+const after: Batch = { transactionId: `${CALL}-b2-after`, commands: [{ id: "note-3", op: "write", text: "24", place: { below: "note-2-0-question-problem" } }] };
+const own: Batch = { transactionId: "own", commands: [{ id: "own", op: "write", text: "1", place: { region: "main" } }] };
+it("a batch the board core refuses does not fail the stage: it and the batches after it stay off, and the call goes on", async () => {
+  const c = await setup();
+  await c.speech.stage("clarify", [{ batch: b1, word: 6 }]);
+  await c.speech.interrupt(c.speech.capture("clarify")!);
+  await c.speech.settled();
+  expect(c.sender.batchState(b1.transactionId)).toBe("cancelled");
+  await expect(c.speech.stage("try", [{ batch: b2, word: 2 }, { batch: after, word: 4 }])).resolves.toEqual({
+    refused: [{ batchId: b2.transactionId, code: "unknown_target" }, { batchId: after.transactionId, code: null }],
+  });
+  const tryScope = c.speech.capture("try")!;
+  // The words still play: their cue times release nothing, and nothing fails.
+  await c.speech.timing(tryScope, 4, 400, "word");
+  await c.speech.played(tryScope, 400);
+  expect(c.receiver.staged()).toEqual([]);
+  // The next plan is staged and shown as usual.
+  await c.speech.stage("next", [{ batch: own, word: 1 }]);
+  const next = c.speech.capture("next")!;
+  await c.speech.timing(next, 1, 100, "word");
+  await c.speech.played(next, 100);
+  expect(c.sender.batchState("own")).toBe("shown");
+});
