@@ -67,9 +67,12 @@ describe("one request before the model request", () => {
     expect(atSend).toEqual([["reserve"]]);
     const rows = t.store.rows();
     expect(rows).toMatchObject([{ what: "model", callId: call.id, charge: "child", reserved: t.room, cost: usdToMicros(0.02, t.config), settled: true }]);
-    // Taken by the request: a release changes nothing and asks the store nothing.
+    // Taken by the request: a release changes nothing and asks the store nothing. (After a settle the ledger reads the
+    // month's total for the team's alert, as before.)
+    const log = t.store.log();
+    expect(log.slice(0, 2)).toEqual(["reserve", "settle"]);
     await held.release();
-    expect(t.store.log()).toEqual(["reserve", "settle"]);
+    expect(t.store.log()).toEqual(log);
     expect(t.store.rows()).toEqual(rows);
   });
 
@@ -136,7 +139,7 @@ describe("a reservation for every paid request, settled after it", () => {
     await held.release();
     await held.release();
     expect(t.store.rows()).toMatchObject([{ what: "model", reserved: t.room, cost: 0, settled: true }]);
-    expect(t.store.log()).toEqual(["reserve", "settle"]);
+    expect(t.store.log().filter((x) => x !== "used")).toEqual(["reserve", "settle"]);
     // Released: the next request of the call reserves its own.
     await client(t, vi.fn(async () => answer(0.02)) as typeof globalThis.fetch).json(request, signal());
     expect(t.store.rows()).toHaveLength(2);

@@ -58,6 +58,7 @@ const readingModel = (): MayaModel => ({
 const theChilds = (spend: CallSpend): CallSpend => ({
   ...spend,
   state: (call) => spend.state({ ...call, kind: "chat" }),
+  hold: (call) => spend.hold({ ...call, kind: "chat" }),
   voice: (call) => spend.voice({ ...call, kind: "chat" }),
 });
 
@@ -622,6 +623,11 @@ describe("one request before a turn's model request (Savar, 2026-11-13)", () => 
     await call.child("I got 66.");
     for (let i = 0; i < 3; i++) { t.advance(20_000); await call.tick(); }
     await call.settled();
-    expect(childModelRows(t, call.id).every((r) => r.settled)).toBe(true);
+    const rows = childModelRows(t, call.id);
+    expect(rows.every((r) => r.settled)).toBe(true);
+    // One row for each paid request, and a row given back at nothing for each turn whose model was not asked.
+    const given = rows.filter((r) => r.cost === 0).length;
+    expect(given).toBeGreaterThan(0);
+    expect(rows.length - given).toBe(t.sent.count);
   });
 });

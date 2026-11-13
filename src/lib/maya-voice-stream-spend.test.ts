@@ -21,6 +21,8 @@ function recordingLedger() {
     settle: async () => {},
     settleUsd: async (id, usd) => { settled.push({ id, usd }); },
     state: async () => "open",
+    hold: async () => "open",
+    release: async () => {},
     week: async () => ({ usedMicros: 0, weekMicros: 0 }) as never,
   };
   return { ledger, reserved, settled };

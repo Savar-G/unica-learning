@@ -13,6 +13,9 @@
 //   left open past RESERVATION_TTL_MS (a crash) stops counting, so it cannot lock a child out. The reservation and the
 //   check are one database function under the child's lock (`reserve_maya_spend`), so requests sent together cannot spend
 //   past the cap. When the ledger cannot be read, no new paid work starts.
+// - Before a call's turn, the cap's check and the reservation of the turn's first model attempt are that one request
+//   (`hold`, Savar 2026-11-13): the attempt takes the held reservation and sends with no request of its own. A turn
+//   that asked no model gives it back (`release`, settled at nothing).
 // - The voice is counted where it is made: when audio came back from the voice provider (`VoiceMeter.spoken`).
 // - "open": a model request still fits. "week_used": the child's week does not fit one more; Maya closes the call with a
 //   code-written line, and new chats and calls wait for the next week. "paused": the ledger cannot be read.
@@ -161,6 +164,16 @@ export interface SpendLedger {
   settleUsd(id: string, usd: number | null): Promise<void>;
   /** Whether new paid work may start for this charge. Never throws: a ledger that cannot be read is "paused". */
   state(charge: Charge): Promise<SpendState>;
+  /**
+   * The cap's check before a call's turn and the reservation of the turn's first model attempt, in one store request:
+   * `reserve` of one model attempt, whose check under the child's lock is the same as `state` ("open" while one more
+   * model attempt fits). "open": reserved, and held for the call: the call's next model attempt of the same charge
+   * (`reserve` with `what: "model"`, its `callId`, no `force`) takes it instead of reserving again, and its settle
+   * settles it. "week_used": nothing reserved. "paused": the ledger could not answer. Never throws.
+   */
+  hold(input: { id: string; charge: Charge; callId: string }): Promise<SpendState>;
+  /** Settles a held reservation that no attempt took at nothing (no request was sent). Nothing when it was taken. Never throws. */
+  release(id: string): Promise<void>;
   /** The child's week for Parent home and the desk. Throws when the ledger cannot answer. */
   week(input: { parentId: string; childId: string }): Promise<WeekSpend>;
 }
@@ -219,21 +232,70 @@ export function createSpendLedger(seams: SpendSeams): SpendLedger {
     }
   }
 
+  /** One reservation in the store: the check and the write under the child's lock, and the month's alert. */
+  async function write({ id, charge, callId, what, micros, force }: { id: string; charge: Charge; callId: string | null; what: SpendWhat; micros: number; force: boolean }): Promise<Reservation> {
+    const p = await periods(charge);
+    const r = await store.reserve({
+      id, charge: charge.kind, parentId: charge.parentId, childId: charge.childId, callId, what, micros,
+      week: p.week, weekMicros: WEEK_MICROS, month: p.month, force,
+    });
+    if (!r.ok) return { ok: false, state: "week_used" };
+    if (r.monthMicros >= config.monthlyAlertMicros) await alertOnce(p.month);
+    return { ok: true };
+  }
+
+  /** Model reservations made by `hold` that no attempt took yet, oldest first. In this process only. */
+  const held: { id: string; callId: string; charge: Charge; micros: number }[] = [];
+  /** An attempt's own id, to the held reservation it took: its settle settles that one. */
+  const took = new Map<string, string>();
+  const sameCharge = (a: Charge, b: Charge) => a.kind === b.kind && a.parentId === b.parentId && a.childId === b.childId;
+
   const ledger: SpendLedger = {
     config,
     async reserve({ id, charge, callId = null, what, micros, force = false }) {
       if (!Number.isSafeInteger(micros) || micros < 0) throw new Error("maya spend: a reservation is whole micro-units");
-      const p = await periods(charge);
-      const r = await store.reserve({
-        id, charge: charge.kind, parentId: charge.parentId, childId: charge.childId, callId, what, micros,
-        week: p.week, weekMicros: WEEK_MICROS, month: p.month, force,
-      });
-      if (!r.ok) return { ok: false, state: "week_used" };
-      if (r.monthMicros >= config.monthlyAlertMicros) await alertOnce(p.month);
-      return { ok: true };
+      if (took.has(id)) return { ok: true };
+      // The call's model attempt after its hold: the held reservation is this attempt's, and no request is made. Taken
+      // before any await, so two attempts never take the same one.
+      const i = what === "model" && !force && callId !== null ? held.findIndex((h) => h.callId === callId && sameCharge(h.charge, charge) && micros <= h.micros) : -1;
+      if (i >= 0) {
+        took.set(id, held.splice(i, 1)[0].id);
+        return { ok: true };
+      }
+      return write({ id, charge, callId, what, micros, force });
     },
-    settle: (id, micros) => settled(id, micros === null ? null : Math.max(0, Math.ceil(micros))),
-    settleUsd: (id, usd) => settled(id, usd === null ? null : usdToMicros(usd, config)),
+    settle(id, micros) {
+      const own = took.get(id) ?? id;
+      took.delete(id);
+      return settled(own, micros === null ? null : Math.max(0, Math.ceil(micros)));
+    },
+    settleUsd(id, usd) {
+      const own = took.get(id) ?? id;
+      took.delete(id);
+      return settled(own, usd === null ? null : usdToMicros(usd, config));
+    },
+    async hold({ id, charge, callId }) {
+      try {
+        const r = await write({ id, charge, callId, what: "model", micros: room, force: false });
+        if (!r.ok) return r.state;
+        held.push({ id, callId, charge, micros: room });
+        return "open";
+      } catch (e) {
+        console.error("[maya spend] the ledger could not be read", e instanceof Error ? e.message : String(e));
+        return "paused";
+      }
+    },
+    async release(id) {
+      const i = held.findIndex((h) => h.id === id);
+      if (i < 0) return;
+      held.splice(i, 1);
+      try {
+        await settled(id, 0);
+      } catch (e) {
+        // Unsettled, it stops counting after RESERVATION_TTL_MS.
+        console.error("[maya spend] a held reservation not given back", id, e instanceof Error ? e.message : String(e));
+      }
+    },
     async state(charge) {
       try {
         return await stateOf(charge);
@@ -273,14 +335,31 @@ export interface CallSpend {
   readonly ledger: SpendLedger;
   /** Whether the call may make its next paid request. Never throws. */
   state(call: SpendCall): Promise<SpendState>;
+  /**
+   * Before a turn: the cap's state and the reservation of the turn's first model request, in one request
+   * (`SpendLedger.hold`). The call's metered model client takes it, so it must use this same ledger. `release` gives it
+   * back when no request took it: call it once the turn's model requests are over (safe to call again). Never throws.
+   */
+  hold(call: SpendCall): Promise<Held>;
   /** The voice meter of a voice call. */
   voice(call: SpendCall): VoiceMeter;
+}
+
+/** The cap's state before a turn, and the release of the model reservation it holds when "open". */
+export interface Held {
+  state: SpendState;
+  release(): Promise<void>;
 }
 
 export function callSpend(ledger: SpendLedger, seams: { clock: () => number; newId: () => string }): CallSpend {
   return {
     ledger,
     state: (call) => ledger.state(chargeOf(call)),
+    async hold(call) {
+      const id = seams.newId();
+      const state = await ledger.hold({ id, charge: chargeOf(call), callId: call.id });
+      return { state, release: () => (state === "open" ? ledger.release(id) : Promise.resolve()) };
+    },
     voice(call) {
       const charge = chargeOf(call);
       const perMs = ledger.config.sttUsdPerMinute / 60_000;

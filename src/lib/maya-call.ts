@@ -82,7 +82,7 @@ import { packageHash, type MayaTrace } from "@/lib/maya-trace";
 import { type QuestionPackage, type QuestionRef } from "@/lib/question-package";
 import { teachingPackage } from "@/lib/maya-teaching";
 import { connectedSeconds, VOICE_CALL_STALE_MS, type ConnectionEvent, type ConnectionKind } from "@/lib/maya-voice";
-import { spendCloseOf, SPEND_CLOSE, type CallSpend, type SpendCall, type SpendState, type VoiceMeter } from "@/lib/maya-spend";
+import { spendCloseOf, SPEND_CLOSE, type CallSpend, type Held, type SpendCall, type SpendState, type VoiceMeter } from "@/lib/maya-spend";
 import { SpendRefused } from "@/lib/maya-spend-ai";
 export type { SpendCall } from "@/lib/maya-spend";
 
@@ -1241,12 +1241,30 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         const asks = s.outcome === null && nextActs(s).expect === "maya" && !codeStop;
         return { model: asks, conversational: model.output === 3, streams: asks && model.output === 3 && streamRules(s) !== null };
       };
+      /**
+       * Before an input, in one request: the cap's check and the reservation of the input's first model request
+       * (`CallSpend.hold`), after speech-to-text reserved ahead.
+       */
+      const capHold = async (): Promise<Held> => {
+        const open: Held = { state: "open", release: () => Promise.resolve() };
+        if (!seams.spend) return open;
+        const stt = meter ? await meter.ensure() : "open";
+        return stt !== "open" ? { ...open, state: stt } : seams.spend.hold(spendCall(record));
+      };
       const turn = async (run: () => Promise<TextOutput>, childText?: string, say?: VoiceSay): Promise<VoiceTurn> => {
         if (inactive()) return none;
-        // This read stays before the input: beside it, a paid request went out at the cap and the safety read lost its
-        // guidance (tried 2026-11-13, src/lib/maya-spend-call.test.ts).
-        const capped = await capNow();
-        if (capped !== "open") return capClose(capped, null, childText);
+        // This check stays before the input: beside it, a paid request went out at the cap and the safety read lost its
+        // guidance (tried 2026-11-13, src/lib/maya-spend-call.test.ts). At the cap nothing is reserved and the session
+        // has not taken the input.
+        const held = await capHold();
+        if (held.state !== "open") return capClose(held.state, null, childText);
+        try {
+          return await heldTurn(held, run, childText, say);
+        } finally {
+          await held.release();
+        }
+      };
+      const heldTurn = async (held: Held, run: () => Promise<TextOutput>, childText?: string, say?: VoiceSay): Promise<VoiceTurn> => {
         let input = run;
         if (childText && pastClock(session.session) && !session.session.safety.flagged) {
           // Words after the call's clock: read for danger first, as the session would end the call unread.
@@ -1280,9 +1298,11 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           if (say?.begun) { try { say.begun(planOf()); } catch { /* the worker's ear never fails the turn */ } }
           out = await running;
         } finally { working--; hearing = undefined; listener = null; }
+        // The input's model requests are over: a held reservation none of them took is given back, before the cap's read.
+        const released = held.release();
         persist(out);
         // The cap's read after the turn runs beside the save. A request refused in the turn decides without it.
-        const capAfter = session.ended || refusal ? null : capNow();
+        const capAfter = session.ended || refusal ? null : released.then(capNow);
         void capAfter?.catch(() => {});
         await queue;
         if (inactive()) return none;
@@ -1449,57 +1469,67 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       // The name the saved session holds hides itself in the stored trace when the caller gives none: the sweep and an
       // admin end pass no name, and the trace hid only the name it was given (a chat's trace kept the real name, 2026-11-13).
       const name = savedName(saved) ?? childName;
-      if (input.type !== "end") {
-        // At the cap Maya teaches no more, and only the child's own words are read, for safety.
-        const state = await spendState(record);
-        if (state !== "open") {
-          const closed = await closeAtCap(record, state, name, undefined, input.type === "child" ? input.text.trim() : undefined);
-          if (!closed) return { ok: false, error: "conflict" };
-          return { ok: true, view: callView(closed.record, closed.record.trace!, await alertsOf(closed.record)), output: { say: closed.say, newBatches: 0, safetyMessage: closed.safetyMessage } };
+      // At the cap Maya teaches no more, and only the child's own words are read, for safety. One request: the cap's check
+      // and the reservation of this input's first model request (`CallSpend.hold`); at the cap nothing is reserved.
+      const held: Held = input.type !== "end" && seams.spend ? await seams.spend.hold(spendCall(record)) : { state: "open", release: () => Promise.resolve() };
+      if (held.state !== "open") {
+        const closed = await closeAtCap(record, held.state, name, undefined, input.type === "child" ? input.text.trim() : undefined);
+        if (!closed) return { ok: false, error: "conflict" };
+        return { ok: true, view: callView(closed.record, closed.record.trace!, await alertsOf(closed.record)), output: { say: closed.say, newBatches: 0, safetyMessage: closed.safetyMessage } };
+      }
+      try {
+        // Past the call's clock the session asks no model: the held reservation goes back before the call ends (its
+        // profile rebuild reads the cap).
+        if (pastClock(saved.session)) await held.release();
+        if (input.type === "child") {
+          // Words that come after the call's clock get their safety read before the clock ends the call.
+          const late = await closeAtClock(record, name, input.text.trim());
+          if (late) return { ok: true, view: callView(late.record, late.record.trace!, await alertsOf(late.record)), output: { say: late.say, newBatches: 0, safetyMessage: late.safetyMessage } };
         }
-      }
-      if (input.type === "child") {
-        // Words that come after the call's clock get their safety read before the clock ends the call.
-        const late = await closeAtClock(record, name, input.text.trim());
-        if (late) return { ok: true, view: callView(late.record, late.record.trace!, await alertsOf(late.record)), output: { say: late.say, newBatches: 0, safetyMessage: late.safetyMessage } };
-      }
-      let refusal: Exclude<SpendState, "open"> | null = null;
-      const asked = seams.model(record.model, spendCall(record));
-      const model = asked && watched(asked, (state) => { refusal = state; });
-      if (!model) {
-        // The model this call started with is gone (the key was removed): the call ends, recorded with its own model.
-        const session = textSession(record, pkg, idleModel(record), name, saved);
-        const ended = await end(record, pkg, session, { detail: "the model this call started with is no longer available" });
-        return ended ? result(ended, ended.trace!, null) : { ok: false, error: "conflict" };
-      }
-      const session = textSession(record, pkg, model, name, saved);
-      let out: TextOutput | null = null;
-      let saved2: CallRecord | null = null;
-      if (input.type === "end") {
-        saved2 = await end(record, pkg, session, { reason: "child_stopped" });
-      } else {
-        try {
-          out = input.type === "child" ? await session.child(input.text.trim()) : input.type === "tick" ? await session.tick() : await session.writing(input.status);
-        } finally {
-          saved2 = await save(record, pkg, session);
+        let refusal: Exclude<SpendState, "open"> | null = null;
+        const asked = seams.model(record.model, spendCall(record));
+        const model = asked && watched(asked, (state) => { refusal = state; });
+        if (!model) {
+          // The model this call started with is gone (the key was removed): the call ends, recorded with its own model.
+          await held.release();
+          const session = textSession(record, pkg, idleModel(record), name, saved);
+          const ended = await end(record, pkg, session, { detail: "the model this call started with is no longer available" });
+          return ended ? result(ended, ended.trace!, null) : { ok: false, error: "conflict" };
         }
-      }
-      if (!saved2) return { ok: false, error: "conflict" };
-      if (saved2.status === "live" && input.type !== "end") {
-        // The turn that reached the cap is said in full; then code's closing line ends the call. A request refused in the
-        // middle of the turn left the child's words unread, so they get the safety read.
-        const stopped: Exclude<SpendState, "open"> | null = refusal;
-        const state = stopped ?? await spendState(saved2);
-        if (state !== "open") {
-          const closed = await closeAtCap(saved2, state, name, undefined, stopped && input.type === "child" ? input.text.trim() : undefined);
-          if (!closed) return { ok: false, error: "conflict" };
-          return {
-            ok: true, view: callView(closed.record, closed.record.trace!, await alertsOf(closed.record)),
-            output: { say: [...(out?.say ?? []), ...closed.say], newBatches: out?.board.length ?? 0, safetyMessage: out?.safetyMessage ?? closed.safetyMessage },
-          };
+        const session = textSession(record, pkg, model, name, saved);
+        let out: TextOutput | null = null;
+        let saved2: CallRecord | null = null;
+        if (input.type === "end") {
+          saved2 = await end(record, pkg, session, { reason: "child_stopped" });
+        } else {
+          try {
+            out = input.type === "child" ? await session.child(input.text.trim()) : input.type === "tick" ? await session.tick() : await session.writing(input.status);
+          } finally {
+            // The input's model requests are over: a held reservation none of them took is given back before the save
+            // (an ended call's profile rebuild reads the cap) and before the cap's read below.
+            await held.release();
+            saved2 = await save(record, pkg, session);
+          }
         }
+        if (!saved2) return { ok: false, error: "conflict" };
+        if (saved2.status === "live" && input.type !== "end") {
+          // The turn that reached the cap is said in full; then code's closing line ends the call. A request refused in the
+          // middle of the turn left the child's words unread, so they get the safety read.
+          const stopped: Exclude<SpendState, "open"> | null = refusal;
+          const state = stopped ?? await spendState(saved2);
+          if (state !== "open") {
+            const closed = await closeAtCap(saved2, state, name, undefined, stopped && input.type === "child" ? input.text.trim() : undefined);
+            if (!closed) return { ok: false, error: "conflict" };
+            return {
+              ok: true, view: callView(closed.record, closed.record.trace!, await alertsOf(closed.record)),
+              output: { say: [...(out?.say ?? []), ...closed.say], newBatches: out?.board.length ?? 0, safetyMessage: out?.safetyMessage ?? closed.safetyMessage },
+            };
+          }
+        }
+        return result(saved2, saved2.trace ?? session.trace(), out);
+      } finally {
+        await held.release();
       }
-      return result(saved2, saved2.trace ?? session.trace(), out);
     },
 
     async appendInk(id, owner, from, events) {

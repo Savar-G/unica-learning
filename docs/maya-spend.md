@@ -33,6 +33,20 @@ A child's chats and calls count toward the child's week and the month's total. A
 
 The reservation and the check are one database function under the child's lock (`reserve_maya_spend`), so requests sent together cannot spend past the cap. When the ledger cannot be read, Maya starts no new paid work and shows the short-break message: "Maya is taking a short break. There's no extra charge."
 
+### One request before a turn
+
+Savar decided on 2026-11-13 that a turn makes one database request before Maya's model request, not two (about 0.45 s less on each voice turn: the voice worker is far from the database). Before each input of a call (a voice turn, or a chat message), the call module asks the ledger to hold the turn's first model attempt (`CallSpend.hold`): one call of `reserve_maya_spend` for one model attempt (USD 0.15). Its check is the cap's check: "open" while one more model attempt fits the child's week.
+
+- Open: the reservation is written and held for the call. The turn's first model attempt takes it and sends with no request of its own; its settle settles the held row. A second attempt in the same turn (a retry, a repair) reserves its own, as before.
+- At the cap: nothing is written, the session does not take the input, and the call closes as below, with the safety read of the child's words.
+- When the ledger cannot answer: "paused", as before.
+- A turn that asked no model (a check-in that code says, a plain stop) gives the held row back: it is settled at nothing.
+- Only the call's own model request takes the hold: not a safety read, a free-talk review, a call note, the profile's AI or another call.
+
+After an open turn, the cap is read once more beside the save, after a held row that no attempt took is given back. That read sees the turn's actual cost, so the call closes right after Maya's last words when the week is used, not at the child's next words. The hold is in the server process's memory: the call module and the metered model client must use the same ledger (`callSeams` in `src/lib/maya-call-seams.ts` does). No new database function was needed: `reserve_maya_spend` already checks and writes in one transaction.
+
+Speech-to-text keeps its own requests: a voice turn first asks the meter, which makes a request only when its block is within 20 seconds of its end. The worker asks the meter every 10 seconds on its own, so this is rare in a turn.
+
 ## At the cap
 
 The ledger is "open" while one more model attempt (its reservation) fits. When it does not:
