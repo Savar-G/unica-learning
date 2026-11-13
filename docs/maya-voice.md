@@ -117,7 +117,7 @@ Agents create no accounts. Create these, then set the values below.
 | `MAYA_USD_TO_CAD`, `MAYA_MONTHLY_ALERT_CAD`, `MAYA_STT_USD_PER_MINUTE`, `MAYA_VOICE_USD_PER_1K_CHARS` | Optional | Optional | Maya's spending cap (`docs/maya-spend.md`). Use the same values as the web app. |
 | `SUPABASE_URL` | No | Yes | `https://cdjobwsyzndtltzfpyqa.supabase.co`. |
 | `SUPABASE_SECRET_KEY` | Already set | Yes | The worker's own key `maya_voice_worker` (step 4), not the web app's. |
-| `MAYA_ACK_LIMIT_MS` | No | Optional | The child's turn reaching the worker to the acknowledgement, for a reply that can stream, in ms. Default 1500. `0` turns it off. |
+| `MAYA_ACK_LIMIT_MS` | No | Optional | The child's turn reaching the worker to the acknowledgement, for a reply that can stream, in ms. Default 2600 (1500 before 2026-11-13). `0` turns it off. A turn that cannot stream gets the phrase at once. |
 | `MAYA_DROP_SILENT_PEAK_DBFS` | No | Optional | The silent-transcript rule ("Words heard in silence" below): a final transcript with no detector speech and an input peak below this level is dropped. Default -50. A level from -120 to 0, or `off`. |
 | `MAYA_VOICE_LOAD_LIMIT` | No | Optional | 0 to 1: the machine load above which the worker takes no new call. LiveKit's default otherwise. |
 | `MAYA_STT_MIN_SILENCE_MS` | No | Optional | AssemblyAI `min_turn_silence` for a normal turn. Default 400. Whole number, 0 to 2000. |
@@ -216,7 +216,7 @@ The worker sends `min_turn_silence` 400 ms and `max_turn_silence` 1600 ms to eve
 
 A child's turn runs behind the speech. `llmNode` returns its stream at once, so the session is not silent just because the model is working.
 
-**The acknowledgement.** When Maya's first sentence has not come 1500 ms after the child's turn reached the worker (`ACK_LIMIT_MS`, `MAYA_ACK_LIMIT_MS`), the worker says one phrase from `ACK_PHRASES` (`src/lib/maya-voice-ack.ts`), for example "Hmm, let me think." The limit counts from the worker having the turn, not from the child's end of speech (D-341 review, 2026-11-13): a turn the speech-to-text held long would otherwise start its phrase at once, and the answer would then wait for it. The call tells the worker what the turn is before any model call (`VoiceSay.begun`, `planOf` in `openVoice`):
+**The acknowledgement.** When Maya's first sentence has not come 2600 ms after the child's turn reached the worker (`ACK_LIMIT_MS`, `MAYA_ACK_LIMIT_MS`), the worker says one phrase from `ACK_PHRASES` (`src/lib/maya-voice-ack.ts`), for example "Hmm, let me think." The limit counts from the worker having the turn, not from the child's end of speech (D-341 review, 2026-11-13): a turn the speech-to-text held long would otherwise start its phrase at once, and the answer would then wait for it. The call tells the worker what the turn is before any model call (`VoiceSay.begun`, `planOf` in `openVoice`):
 
 - A conversational reply that cannot stream (`streamRules` is null: a hard feeling, an outside-work request, a fixed reply due) gets the phrase at once (`ACK_NOT_STREAMED_MS`, 0), as it takes 2 to 5 s. Since round 3 a request for help and off-topic talk stream.
 - A turn with no model call gets no phrase: a thinking child (`wait`, below) and a plain stop, which is code's goodbye ("Thanks for working on this with me. Bye for now!").
@@ -261,7 +261,7 @@ What the code can see, and what it cannot. From LiveKit Agents 1.9.5 (`voice/aud
 
 **What the fakes prove, and what they do not.** `worker/maya-voice/src/silence.test.ts` runs a whole call through LiveKit's pipeline with the fake speech-to-text and voice on a frozen clock. It proves the order: a fast turn has no phrase, a slow turn has the phrase at the limit and then the answer, a child who talks cancels it, the phrase sends no board batch, no phrase comes twice, and the parts match exact known delays. The R577 tests delay the board and the save to prove that a late answer cannot replace a newer board, that danger known during a delay stops the phrase, and that a replacement worker reads a phrase already heard. They also measure, on the clock the hold runs on, the time from a finished safety or deadline turn to its words being queued. It proves nothing about real times, because no real model, speech-to-text or voice ran. These stay open until the accounts exist:
 
-- Whether 1200 ms is the right limit, and how often a real turn passes it.
+- Whether 2600 ms is the right limit, and how often a real turn passes it. On real calls of 2026-11-13 the first streamed sentence came 1.6 to 2.2 s after the child stopped, so the old 1500 ms limit put a phrase just before it and held the answer back 1 to 1.4 s (the answer at 3.0 to 3.8 s with the phrase, 2.0 to 2.6 s without).
 - Whether LiveKit's `stoppedSpeakingAt` from AssemblyAI is the child's true end of speech. If it comes late, `heardMs` and every total are too small.
 - Whether the first playback event marks real sound on a device. It marks the first frame given to the output, not the speaker.
 - How the gap between the phrase and the answer sounds, as the voice starts the answer only after the phrase has played.

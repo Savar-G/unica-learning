@@ -10,11 +10,13 @@ import { workProblem } from "@/lib/maya";
 
 /**
  * The worker having the child's turn to the acknowledgement, when Maya's first sentence has not come by then and her reply
- * can stream (D-341). MAYA_ACK_LIMIT_MS replaces it. 1500 ms: a streamed first sentence comes in about 1.2 s, and needs no
- * phrase before it. It counts from the turn reaching the worker, not from the child's end of speech: a turn the
- * speech-to-text held long would otherwise start its phrase at once, and the answer would then wait for the phrase.
+ * can stream (D-341). MAYA_ACK_LIMIT_MS replaces it. 2600 ms (1500 before 2026-11-13): on real calls the first streamed
+ * sentence came 1.6 to 2.2 s after the child stopped, so a phrase at 1.5 s played just before it and held the answer back
+ * 1 to 1.4 s (the answer at 3.0 to 3.8 s with the phrase, 2.0 to 2.6 s without). It counts from the turn reaching the
+ * worker, not from the child's end of speech: a turn the speech-to-text held long would otherwise start its phrase at
+ * once, and the answer would then wait for the phrase.
  */
-export const ACK_LIMIT_MS = 1500;
+export const ACK_LIMIT_MS = 2600;
 /**
  * The same, for a turn code knows will not stream before any model call (a request for help, a stop, feelings, off-topic
  * talk: `streamRules` is null). Its reply takes 2 to 5 s, so the phrase comes at once.

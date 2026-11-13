@@ -515,7 +515,7 @@ describe("when the thinking phrase comes (D-341)", () => {
     await pause();
     await c.clock.advance(1000);
     await waitFor(() => m.running, "the model call");
-    // From the child's end of speech the limit would end in 500 ms; from the turn reaching the worker, in 1500 ms.
+    // From the child's end of speech the limit would end 1 s sooner; it ends ACK_LIMIT_MS after the turn reached the worker.
     await c.clock.advance(ACK_LIMIT_MS - 1);
     await pause();
     expect(c.said().slice(before).filter((t) => ACKS.has(t))).toEqual([]);
@@ -524,6 +524,25 @@ describe("when the thinking phrase comes (D-341)", () => {
     m.finish();
     await waitFor(() => c.samples.length === 1, "the sample");
     expect(c.samples[0].parts?.heardMs).toBe(1000);
+  });
+
+  it("does not come before a first sentence that streams 2.2 s after the turn (the real calls of 2026-11-13)", async () => {
+    const m = steppedModel(guideTurn(`${FIRST} ${SECOND}`));
+    const c = await voiceCall({ model: m.model, ackLimitMs: ACK_LIMIT_MS });
+    const before = c.said().length;
+    c.say("I got 56.");
+    await waitFor(() => m.running, "the model call");
+    // Real calls: the first streamed sentence came 1.6 to 2.2 s after the child stopped. A phrase at 1.5 s played just
+    // before it and held the answer back 1 to 1.4 s.
+    await c.clock.advance(2200);
+    await pause();
+    m.stream(1);
+    await waitFor(() => c.said().slice(before).includes(FIRST), "the first sentence");
+    m.finish();
+    await waitFor(() => c.samples.length === 1, "the sample");
+    await pause();
+    expect(c.said().slice(before).filter((t) => ACKS.has(t))).toEqual([]);
+    expect(c.said().slice(before)).toEqual([FIRST, SECOND]);
   });
 
   // Round 3 streams a request for help and off-topic talk; a hard feeling still waits for the whole reply (`streamRules`).
