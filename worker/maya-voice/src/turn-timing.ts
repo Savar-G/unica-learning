@@ -22,7 +22,8 @@ export interface TurnParts {
 export const TURN_PARTS = ["heardMs", "modelMs", "repairMs", "reviewMs", "codeMs", "ackHoldMs", "boardMs", "voiceMs"] as const satisfies readonly (keyof TurnParts)[];
 
 export type TurnOutcome = "answered" | "no_words" | "interrupted";
-export type AckSkip = "child_talking" | "child_away" | "closing" | "bank_used" | "board" | "save";
+/** `streamed`: Maya's first sentence came before the phrase could start (D-341). */
+export type AckSkip = "child_talking" | "child_away" | "closing" | "bank_used" | "board" | "save" | "streamed";
 /**
  * Where the child's own end of speech came from: the speech-to-text's end time of the last word (`stt_words`), or the
  * voice activity detector's end of speech (`vad`), which comes after its own silence window (250 ms in LiveKit's default).
@@ -59,6 +60,13 @@ export interface VoiceTurnSample {
    * while the plan goes out), so it is not one of the parts. The first sound waits for it when it is longer.
    */
   stageMs: number | null;
+  /**
+   * D-341: end of speech to the first of Maya's sentences streamed before her turn was done (the model's first sentence).
+   * Null when nothing streamed. With it, the answer is that sentence's sound, and `parts` reads: `modelMs` the model to
+   * its first sentence, `ackHoldMs` that sentence waiting for a phrase, and no repair, review or code time.
+   */
+  firstPartMs: number | null;
+  streamed: boolean;
   /** The phrase id given to the voice, and whether it made a sound. */
   ack: string | null;
   ackHeard: boolean;
@@ -85,6 +93,7 @@ export class TurnClock {
   private ackOver = false;
   private ackSkip: AckSkip | null = null;
   private sentAt: number | null = null;
+  private partAt: number | null = null;
   constructor(
     private readonly now: () => number,
     private readonly speechEndedAt: number,
@@ -93,6 +102,8 @@ export class TurnClock {
   ) {}
 
   ready(time: ControllerTime) { this.controller = time; this.readyAt = this.now(); }
+  /** The first sentence of the reply came while the turn still ran (D-341). */
+  firstPart() { this.partAt ??= this.now(); }
   held() { this.heldAt = this.now(); }
   /** The words went to the voice. */
   staged() { this.stagedAt = this.now(); this.answerQueued = true; }
@@ -119,7 +130,10 @@ export class TurnClock {
 
   sample(outcome: TurnOutcome): VoiceTurnSample {
     const since = (at: number | null) => (at === null ? null : at - this.speechEndedAt);
-    const answered = outcome === "answered" && this.answerSoundAt !== null && this.readyAt !== null && this.heldAt !== null && this.stagedAt !== null;
+    const streamed = this.partAt !== null;
+    // A streamed answer is heard before the turn is ready: its parts run from its first sentence (D-341).
+    const readyAt = streamed ? this.partAt : this.readyAt;
+    const answered = outcome === "answered" && this.answerSoundAt !== null && readyAt !== null && this.heldAt !== null && this.stagedAt !== null;
     const { modelMs, repairMs, reviewMs } = this.controller;
     // The child's own end of speech is never after the mark `answerMs` counts from.
     const end = this.heard.speechEndAt === null ? null : Math.min(this.heard.speechEndAt, this.speechEndedAt);
@@ -130,9 +144,9 @@ export class TurnClock {
       answerMs: answered ? since(this.answerSoundAt) : null,
       parts: answered ? {
         heardMs: this.heardAt - this.speechEndedAt,
-        modelMs, repairMs, reviewMs,
-        codeMs: this.readyAt! - this.heardAt - modelMs - repairMs - reviewMs,
-        ackHoldMs: this.heldAt! - this.readyAt!,
+        ...(streamed ? { modelMs: readyAt! - this.heardAt, repairMs: 0, reviewMs: 0, codeMs: 0 }
+          : { modelMs, repairMs, reviewMs, codeMs: readyAt! - this.heardAt - modelMs - repairMs - reviewMs }),
+        ackHoldMs: this.heldAt! - readyAt!,
         boardMs: this.stagedAt! - this.heldAt!,
         voiceMs: this.answerSoundAt! - this.stagedAt!,
       } : null,
@@ -140,6 +154,8 @@ export class TurnClock {
       speechEnd: end !== null ? this.heard.source : null,
       waitMs: answered && end !== null ? this.answerSoundAt! - end : null,
       stageMs: answered && this.sentAt !== null ? Math.max(0, this.sentAt - this.heldAt!) : null,
+      firstPartMs: since(this.partAt),
+      streamed,
       ack: this.ackId,
       ackHeard: this.ackHeard,
       ackSkipped: this.ackSkip,
@@ -163,6 +179,8 @@ export function voiceTurnReport(samples: readonly VoiceTurnSample[]) {
     answered: samples.filter((s) => s.outcome === "answered").length,
     interrupted: samples.filter((s) => s.outcome === "interrupted").length,
     noWords: samples.filter((s) => s.outcome === "no_words").length,
+    streamed: samples.filter((s) => s.streamed).length,
+    firstPart: spread(samples.flatMap((s) => (s.firstPartMs === null ? [] : [s.firstPartMs]))),
     acksQueued: samples.filter((s) => s.ack !== null).length,
     acksHeard: samples.filter((s) => s.ackHeard).length,
     acksSkipped: skipped,

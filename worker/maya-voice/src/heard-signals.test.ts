@@ -1,7 +1,7 @@
 import { inference, initializeLogger, normalizeLanguage, stt, VADEventType, voice, type VAD, type VADEvent } from "@livekit/agents";
 import { AudioFrame } from "@livekit/rtc-node";
 import { describe, expect, it } from "vitest";
-import { finalSignals, HeardSignals } from "./heard-signals";
+import { finalSignals, HeardSignals, silentFinal } from "./heard-signals";
 
 initializeLogger({ pretty: false, level: "silent" });
 
@@ -91,5 +91,44 @@ describe("the signals of a final transcript (worker log only)", () => {
       await new Promise(r => setTimeout(r, 200));
       expect(signals.final([heard("Yes!", 1)])).toMatchObject({ words: 1, vadSpeechMs: 0, peakDbfs: -120 });
     } finally { signals.close(); }
+  });
+});
+
+describe("the one rule that drops a final transcript (silentFinal)", () => {
+  const LIMIT = -50;
+  it("drops a final with no detector speech and digital silence", () => {
+    expect(silentFinal({ vadSpeechMs: 0, peakDbfs: -120 }, LIMIT)).toBe(true);
+  });
+
+  it("keeps a quiet real answer: any detector speech, however low the level", () => {
+    // "six" said softly: 120 ms of detector speech at a low level.
+    expect(silentFinal({ vadSpeechMs: 120, peakDbfs: -60 }, LIMIT)).toBe(false);
+  });
+
+  it("keeps a final with no detector speech but a peak at or above the limit", () => {
+    expect(silentFinal({ vadSpeechMs: 0, peakDbfs: -50 }, LIMIT)).toBe(false);
+    expect(silentFinal({ vadSpeechMs: 0, peakDbfs: -2.7 }, LIMIT)).toBe(false);
+  });
+
+  it("drops nothing with no detector (the fakes), or with the rule off", () => {
+    expect(silentFinal({ vadSpeechMs: null, peakDbfs: -120 }, LIMIT)).toBe(false);
+    expect(silentFinal({ vadSpeechMs: 0, peakDbfs: -120 }, null)).toBe(false);
+  });
+
+  it("reads the window so far without starting a new one (quiet)", async () => {
+    const v = fakeVad();
+    const signals = new HeardSignals(v.vad);
+    for (let i = 0; i < 10; i++) signals.frame(frame(0));
+    await v.send(VADEventType.INFERENCE_DONE, 0, false);
+    expect(signals.quiet(LIMIT)).toBe(true);
+    // A quiet real "six": the detector hears it, so the window is no longer quiet, and its final is kept.
+    signals.frame(frame(20));
+    await v.send(VADEventType.START_OF_SPEECH, 60, true);
+    await v.send(VADEventType.INFERENCE_DONE, 120, true);
+    expect(signals.quiet(LIMIT)).toBe(false);
+    const six = signals.final([heard("six", 0.8)]);
+    expect(six.vadSpeechMs).toBe(120);
+    expect(six.peakDbfs).toBeLessThan(-50);
+    expect(silentFinal(six, LIMIT)).toBe(false);
   });
 });

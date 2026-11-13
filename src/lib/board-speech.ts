@@ -184,6 +184,38 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
         await options.observe?.(sender.snapshot());
       });
     },
+    /**
+     * Sends `batches` under a plan that is already playing and shows them at once, without a new plan: the plan keeps its
+     * audio (a new plan would take it). For the question's batch, known only once the call's start returns while the
+     * worker's opening is already being said. False when the plan no longer owns the board (nothing was sent): the caller
+     * must give the batches another way. A batch the board core refuses is not drawn, nor are the ones after it.
+     */
+    showWith(scope: SpeechScope, batches: readonly Batch[]): Promise<{ shown: boolean; refused: StageRefusal[] }> {
+      if (!owns(scope)) return Promise.resolve({ shown: false, refused: [] });
+      const copy = structuredClone([...batches]);
+      return serial(async () => {
+        const a = active;
+        if (!owns(scope) || !a || a.generation !== scope.generation) return { shown: false, refused: [] };
+        const refused: StageRefusal[] = [];
+        let last: Batch | null = null;
+        for (const [index, batch] of copy.entries()) {
+          if (!owns(scope)) break;
+          deliveryScope = scope;
+          const result = await sender.send(batch, { scope });
+          if (!result.ok && result.code === "refused") {
+            refused.push({ batchId: batch.transactionId, code: result.refusal?.code ?? null });
+            for (const rest of copy.slice(index + 1)) refused.push({ batchId: rest.transactionId, code: null });
+            break;
+          }
+          check(result);
+          last = batch;
+        }
+        // A plan cut while its batches went out leaves them staged: the cut's own stop retires them on the receiver.
+        if (last && owns(scope)) check(await sender.release(last.transactionId, scope));
+        await options.observe?.(sender.snapshot());
+        return { shown: true, refused };
+      });
+    },
     /** Resolves when this scope's batches are on the receiver; rejects when sending them failed. Other scopes: at once. */
     sent(scope: SpeechScope): Promise<void> {
       return sending && sending.scope.utteranceId === scope.utteranceId && sending.scope.generation === scope.generation ? sending.done : Promise.resolve();

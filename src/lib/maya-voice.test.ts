@@ -268,22 +268,26 @@ it("R408-11: bounds a crashed worker's connection lease and starts a separate se
 
 describe("the tuning settings", () => {
   it("default to the documented values, and the providers carry them", () => {
-    expect(VOICE_TUNING_DEFAULTS).toEqual({ sttMinSilenceMs: 400, sttMaxSilenceMs: 1600, sttNumberMinSilenceMs: 512, sttNumberSilenceMs: 4500, turnMinDelayMs: 100, numberContinueMs: 1500, interruptMinMs: 300, interruptMinWords: 0 });
+    expect(VOICE_TUNING_DEFAULTS).toEqual({ sttMinSilenceMs: 400, sttMaxSilenceMs: 1600, sttNumberMinSilenceMs: 512, sttNumberSilenceMs: 4500, turnMinDelayMs: 100, numberContinueMs: 1500, interruptMinMs: 300, interruptMinWords: 0, dropSilentPeakDbfs: -50 });
     expect(voiceTuning({})).toEqual({ tuning: VOICE_TUNING_DEFAULTS, problems: [] });
     expect(voiceProviders({})).toMatchObject({ ok: true, tuning: VOICE_TUNING_DEFAULTS });
   });
 
   it("are read from their variables, an empty one keeping its default", () => {
-    const env = { MAYA_STT_MIN_SILENCE_MS: "256", MAYA_STT_MAX_SILENCE_MS: "3500", MAYA_STT_NUMBER_MIN_SILENCE_MS: "800", MAYA_STT_NUMBER_SILENCE_MS: "5000", MAYA_TURN_MIN_DELAY_MS: "0", MAYA_NUMBER_CONTINUE_MS: "", MAYA_INTERRUPT_MIN_MS: "400", MAYA_INTERRUPT_MIN_WORDS: "1" };
+    const env = { MAYA_STT_MIN_SILENCE_MS: "256", MAYA_STT_MAX_SILENCE_MS: "3500", MAYA_STT_NUMBER_MIN_SILENCE_MS: "800", MAYA_STT_NUMBER_SILENCE_MS: "5000", MAYA_TURN_MIN_DELAY_MS: "0", MAYA_NUMBER_CONTINUE_MS: "", MAYA_INTERRUPT_MIN_MS: "400", MAYA_INTERRUPT_MIN_WORDS: "1", MAYA_DROP_SILENT_PEAK_DBFS: "-60.5" };
     expect(voiceTuning(env)).toEqual({
-      tuning: { sttMinSilenceMs: 256, sttMaxSilenceMs: 3500, sttNumberMinSilenceMs: 800, sttNumberSilenceMs: 5000, turnMinDelayMs: 0, numberContinueMs: 1500, interruptMinMs: 400, interruptMinWords: 1 },
+      tuning: { sttMinSilenceMs: 256, sttMaxSilenceMs: 3500, sttNumberMinSilenceMs: 800, sttNumberSilenceMs: 5000, turnMinDelayMs: 0, numberContinueMs: 1500, interruptMinMs: 400, interruptMinWords: 1, dropSilentPeakDbfs: -60.5 },
       problems: [],
     });
     expect(voiceProviders(env)).toMatchObject({ ok: true, tuning: { sttMaxSilenceMs: 3500 } });
   });
 
+  it("turn the silent-transcript rule off with MAYA_DROP_SILENT_PEAK_DBFS=off", () => {
+    expect(voiceTuning({ MAYA_DROP_SILENT_PEAK_DBFS: "off" })).toMatchObject({ tuning: { dropSilentPeakDbfs: null }, problems: [] });
+  });
+
   it("refuse a value outside its bounds, or not a whole number, instead of using a default", () => {
-    for (const [name, bad] of [["MAYA_STT_MIN_SILENCE_MS", "2001"], ["MAYA_STT_NUMBER_MIN_SILENCE_MS", "2001"], ["MAYA_STT_MAX_SILENCE_MS", "99"], ["MAYA_STT_MAX_SILENCE_MS", "10001"], ["MAYA_STT_NUMBER_SILENCE_MS", "-1"], ["MAYA_TURN_MIN_DELAY_MS", "1.5"], ["MAYA_NUMBER_CONTINUE_MS", "3001"], ["MAYA_INTERRUPT_MIN_MS", "fast"], ["MAYA_INTERRUPT_MIN_WORDS", "6"]]) {
+    for (const [name, bad] of [["MAYA_STT_MIN_SILENCE_MS", "2001"], ["MAYA_STT_NUMBER_MIN_SILENCE_MS", "2001"], ["MAYA_STT_MAX_SILENCE_MS", "99"], ["MAYA_STT_MAX_SILENCE_MS", "10001"], ["MAYA_STT_NUMBER_SILENCE_MS", "-1"], ["MAYA_TURN_MIN_DELAY_MS", "1.5"], ["MAYA_NUMBER_CONTINUE_MS", "3001"], ["MAYA_INTERRUPT_MIN_MS", "fast"], ["MAYA_INTERRUPT_MIN_WORDS", "6"], ["MAYA_DROP_SILENT_PEAK_DBFS", "5"], ["MAYA_DROP_SILENT_PEAK_DBFS", "-121"], ["MAYA_DROP_SILENT_PEAK_DBFS", "quiet"]]) {
       const r = voiceProviders({ [name]: bad });
       expect(r, `${name}=${bad}`).toMatchObject({ ok: false, problems: [expect.stringContaining(name)] });
     }

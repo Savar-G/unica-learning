@@ -26,7 +26,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { callSeams } from "@/lib/maya-call-seams";
 import { mayaCalls } from "@/lib/maya-call";
-import { codeOpening, voiceOpening } from "@/lib/maya-voice-opening";
+import { voiceOpening } from "./opening";
 import { mayaCallStore } from "@/lib/maya-call-store";
 import { asksWordTimings, callKeyterms, callOfRoom, childIdentity, GREETING_TEXT, turnSilences, VOICE_AGENT_NAME, voiceProviders, type TurnSilence, type VoiceCallFacts } from "@/lib/maya-voice";
 import { VoiceCallRun, voiceSession, type CallUpdate } from "./agent";
@@ -100,9 +100,9 @@ export default defineAgent({
     let childAt = Date.now();
     const marks: Record<string, number> = {};
     const mark = (name: string) => { marks[name] = Date.now() - childAt; };
-    // The opening needs no model call: code answers that one request (src/lib/maya-voice-opening.ts).
-    const seams = callSeams(db);
-    const calls = mayaCalls({ ...seams, model: (...args) => { const model = seams.model(...args); return model ? codeOpening(model) : model; } });
+    // The opening needs no model call (D-341): the worker speaks code's own line, and the call's start records it
+    // (`start({ openingSpoken: true })`, ./opening.ts).
+    const calls = mayaCalls(callSeams(db));
     const opened = await calls.openVoice(callId, providers.ids, null);
     if (!opened.ok) {
       log("the call could not be opened", callId, opened.error);
@@ -139,7 +139,7 @@ export default defineAgent({
     const turnSamples: VoiceTurnSample[] = [];
     const ackLimit = Number(process.env.MAYA_ACK_LIMIT_MS);
     const run = new VoiceCallRun(session, opened.call, { board, notify, greeting: GREETING_TEXT, ...(openingText ? { opening: openingText, openingMark: mark } : {}),
-      ...(made.fake ? {} : { numberContinueMs: tuning.numberContinueMs }),
+      ...(made.fake ? {} : { numberContinueMs: tuning.numberContinueMs, dropSilentPeakDbfs: tuning.dropSilentPeakDbfs }),
       ...(patience ? { patience: { ...turnSilences(tuning), set: (limits: TurnSilence) => patience.setSilence(limits) } } : {}),
       ...(process.env.MAYA_ACK_LIMIT_MS?.trim() && Number.isFinite(ackLimit) && ackLimit >= 0 ? { ackLimitMs: ackLimit } : {}),
       measureTurn: sample => {
