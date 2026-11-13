@@ -98,7 +98,8 @@ describe("OpenRouter schema compatibility through public callers and fake HTTP",
     const wire = p.sent[0].body;
     expect(audit(MODEL_OUTPUT_SCHEMA)).toMatchObject({ unions: 2, optional: 0, constraints: [] });
     expect(wire.response_format).toMatchObject({ type: "json_schema", json_schema: { name: "maya_reply", strict: true } });
-    expect(wire.messages[0]).toEqual({ role: "system", content: CONVERSATION_PROMPT });
+    // C1: the prompt is one content part with a cache breakpoint.
+    expect(wire.messages[0]).toEqual({ role: "system", content: [{ type: "text", text: CONVERSATION_PROMPT, cache_control: { type: "ephemeral" } }] });
   });
 
   it("keeps feature routing and admission hooks when the shared schema adapter uses instructions", async () => {

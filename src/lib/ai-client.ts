@@ -17,7 +17,8 @@ export const AI_SOLVE_DEFAULT_MODEL = "anthropic/claude-haiku-5.5";
 
 /** One part of what the model reads: text, or an image as bytes. */
 export type AiPart =
-  | { type: "text"; text: string }
+  /** `cache`: a prompt-cache breakpoint after this part (a client that cannot cache ignores it). */
+  | { type: "text"; text: string; cache?: true }
   | { type: "image"; mediaType: "image/png" | "image/jpeg" | "image/webp"; data: Uint8Array };
 
 /** One request for JSON output. */
@@ -39,6 +40,13 @@ export interface AiJsonRequest {
   onText?: (soFar: string) => void;
   /** The most output tokens, thinking included. */
   maxTokens?: number;
+  /** A prompt-cache breakpoint after the instructions (a client that cannot cache ignores it). */
+  cacheSystem?: true;
+  /**
+   * The cost of this request in US dollars, when the provider reports it (once per answered attempt). A request that
+   * is aborted or gets no answer reports nothing.
+   */
+  onCost?: (usd: number) => void;
 }
 
 export interface AiClient {

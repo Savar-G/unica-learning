@@ -4,7 +4,7 @@
 // version 2 proposal (PROPOSAL_SCHEMA). Nothing the model returns reaches the child unless the session's `step`
 // accepts it (src/lib/maya-text.ts). The live model is any OpenRouter model through the AI client (AI_MODEL), off
 // without OPENROUTER_API_KEY; tests use a fake (src/lib/maya-model-fake.ts).
-import { withTimeLimit, type AiClient } from "@/lib/ai-client";
+import { withTimeLimit, type AiClient, type AiPart } from "@/lib/ai-client";
 import {
   drawOffers,
   scopeSkills,
@@ -84,7 +84,7 @@ export interface MayaModel {
    * One proposal (untrusted). Throws when the model gives none. A version 3 model (`output: 3`) gets a TurnBrief here
    * (see conversationalMayaModel and conversationalFake).
    */
-  propose(input: ModelInput, signal: AbortSignal, onText?: (soFar: string) => void): Promise<unknown>;
+  propose(input: ModelInput, signal: AbortSignal, onText?: (soFar: string) => void, onCost?: (usd: number) => void): Promise<unknown>;
 }
 
 const TRANSCRIPT_TURNS = 12;
@@ -222,41 +222,64 @@ export function aiMayaModel(client: AiClient, options: { timeoutMs?: number; eff
 // ---------- Version 3: conversational Maya (D-341) ----------
 
 /** The version of the conversational prompt and of its brief. Raise it when either changes; every trace records it. */
-export const CONVERSATION_PROMPT_VERSION = "maya-conversation-7";
+export const CONVERSATION_PROMPT_VERSION = "maya-conversation-8";
 
-/** The turn brief (code to model) for one conversational Maya turn. Plain JSON. */
+/**
+ * The turn brief (code to model) for one conversational Maya turn. Plain JSON. The key order is part of the contract
+ * (C1, prompt caching): the keys of STABLE_BRIEF_KEYS come first and do not change in a call, so the provider can cache
+ * them with the prompt; then what changes from turn to turn, with what depends on the child's newest words last
+ * (`numbers`, `facts`, `repair`, `childTurn`).
+ */
 export interface TurnBrief {
   promptVersion: string;
   child: { name: string | null; grade: number | null };
   question: {
     text: string;
     answer: string | null;
-    /** The worked steps in order, with code's work and their state now. */
-    steps: { id: string; work: string; state: "done" | "shown" | "now" | "later" }[];
+    /** The worked steps in order, with code's work. Their state now is in `steps`. */
+    steps: { id: string; work: string }[];
     easierExample: string | null;
   } | null;
+  scopeSkills: string[];
   state: string;
+  /** The state of each worked step now, in order. */
+  steps: { id: string; state: "done" | "shown" | "now" | "later" }[];
+  wordLimit: number;
+  noBoard: boolean;
   /** The last turns of the call, oldest first. */
   transcript: { speaker: "child" | "maya"; text: string }[];
-  /** The child's words Maya answers now, or null. */
-  childTurn: string | null;
   /** The acts allowed now. */
   acts: Act[];
   /** The help ladder: the step, the highest level given on it (-1 for none), and what each level may show. */
   help: { step: string; levelNow: number; levels: { level: number; mayShow: string }[] };
-  /** Facts code computed about the numbers in the child's turn. */
-  facts: string[];
-  /** Numbers Maya may say now, and numbers she must never say yet. */
-  numbers: { sayable: string[]; secret: string[] };
-  /** Notes code adds for this turn. */
-  notes: string[];
   /** Board offers by act, by id. */
   draw: Partial<Record<Act, { id: string; shows: string }[]>>;
-  wordLimit: number;
-  noBoard: boolean;
-  scopeSkills: string[];
+  /** Notes code adds for this turn. */
+  notes: string[];
+  /** Numbers Maya may say now, and numbers she must never say yet. */
+  numbers: { sayable: string[]; secret: string[] };
+  /** Facts code computed about the numbers in the child's turn. */
+  facts: string[];
   /** Set when the model is asked again: its last output and why code refused it. */
   repair: { said: unknown; refusal: TraceRefusal } | null;
+  /** The child's words Maya answers now, or null. Last of all. */
+  childTurn: string | null;
+}
+
+/** The keys of the brief that do not change in a call: they come first, and the cache breakpoint follows them. */
+export const STABLE_BRIEF_KEYS = ["promptVersion", "child", "question", "scopeSkills"] as const;
+
+/**
+ * The brief as the model reads it: one JSON object in two text parts, cut after the stable keys, so the first part is
+ * the same bytes for every turn of a call. Joined, the two parts are exactly JSON.stringify(brief).
+ */
+export function briefParts(brief: TurnBrief): [stable: string, turn: string] {
+  const keys = Object.keys(brief);
+  if (STABLE_BRIEF_KEYS.some((k, i) => keys[i] !== k)) return ["", JSON.stringify(brief)];
+  const stable = JSON.stringify(Object.fromEntries(STABLE_BRIEF_KEYS.map((k) => [k, brief[k]])));
+  const whole = JSON.stringify(brief);
+  const head = stable.slice(0, -1);
+  return whole.startsWith(head) ? [head, whole.slice(head.length)] : ["", whole];
 }
 
 /** Notes for the turn: what code will do itself, and what the turn must not do. */
@@ -292,34 +315,28 @@ export function turnBrief(session: Session, repair: TurnBrief["repair"] = null):
   const shown = new Set(session.passed ?? []);
   const draw = Object.fromEntries(Object.entries(drawOffers(session)).filter(([, offers]) => (offers ?? []).length > 0));
   const help = helpBrief(session);
+  const steps = pkg ? pkg.steps.filter((x) => x.kind !== "result" && x.kind !== "missing-frame" && x.kind !== "drop-zeros") : [];
   return {
     promptVersion: CONVERSATION_PROMPT_VERSION,
     // Round 4, P2-6: never the child's name: the model writes {name}, and code fills it after the checks.
     child: { name: session.variety.name ? "{name}" : null, grade: session.grade ?? null },
     question: pkg
-      ? {
-          text: pkg.text,
-          answer: valueText(pkg.answer.value),
-          steps: pkg.steps.filter((s) => s.kind !== "result" && s.kind !== "missing-frame" && s.kind !== "drop-zeros").map((s) => ({
-            id: s.id, work: stepText(s, pkg.operation),
-            state: credited.has(s.id) ? "done" : shown.has(s.id) ? "shown" : s.id === session.ladder.step ? "now" : "later",
-          })),
-          easierExample: pkg.easierExample.text,
-        }
+      ? { text: pkg.text, answer: valueText(pkg.answer.value), steps: steps.map((x) => ({ id: x.id, work: stepText(x, pkg.operation) })), easierExample: pkg.easierExample.text }
       : null,
+    scopeSkills: pkg ? scopeSkills(pkg) : [],
     state: session.state,
-    transcript: session.turns.slice(-TRANSCRIPT_TURNS).map((t) => ({ speaker: t.speaker, text: hideName(t.text, session.variety.name) })),
-    childTurn: session.turn ? hideName(session.turn.text, session.variety.name) : null,
-    acts: nextActs(session).acts.filter((a) => a !== "give_answer"),
-    help: { step: help.step, levelNow: help.level, levels: help.levels },
-    facts: [...codeVerdicts(session), ...turnFacts(session).map((f) => f.text)],
-    numbers: numbersBrief(session),
-    notes: turnNotes(session),
-    draw,
+    steps: steps.map((x) => ({ id: x.id, state: credited.has(x.id) ? "done" : shown.has(x.id) ? "shown" : x.id === session.ladder.step ? "now" : "later" })),
     wordLimit: session.shorter ? 25 : 30,
     noBoard: session.noBoard === true,
-    scopeSkills: pkg ? scopeSkills(pkg) : [],
+    transcript: session.turns.slice(-TRANSCRIPT_TURNS).map((t) => ({ speaker: t.speaker, text: hideName(t.text, session.variety.name) })),
+    acts: nextActs(session).acts.filter((a) => a !== "give_answer"),
+    help: { step: help.step, levelNow: help.level, levels: help.levels },
+    draw,
+    notes: turnNotes(session),
+    numbers: numbersBrief(session),
+    facts: [...codeVerdicts(session), ...turnFacts(session).map((f) => f.text)],
     repair,
+    childTurn: session.turn ? hideName(session.turn.text, session.variety.name) : null,
   };
 }
 
@@ -364,7 +381,7 @@ const outputSchema = MODEL_OUTPUT_SCHEMA as unknown as Record<string, unknown>;
 
 /**
  * Conversational Maya through the AI client (OpenRouter, D-341): one strict structured-output request per turn, with
- * the turn brief as the user content. `output: 3` tells the text adapter to send a brief and read `say`.
+ * the turn brief as the user content, in two parts (briefParts). `output: 3` tells the text adapter to send a brief and read `say`.
  */
 export function conversationalMayaModel(client: AiClient, options: { timeoutMs?: number; effort?: "none" | "minimal" | "low" | "medium" | "high" } = {}): MayaModel {
   const timeoutMs = options.timeoutMs ?? 30_000;
@@ -372,11 +389,15 @@ export function conversationalMayaModel(client: AiClient, options: { timeoutMs?:
     id: client.model,
     promptVersion: CONVERSATION_PROMPT_VERSION,
     output: 3,
-    propose: (input: unknown, signal: AbortSignal, onText?: (soFar: string) => void) =>
+    propose: (input: unknown, signal: AbortSignal, onText?: (soFar: string) => void, onCost?: (usd: number) => void) =>
       withTimeLimit(timeoutMs, (limit) => {
         const both = AbortSignal.any([signal, limit]);
+        // C1: the prompt and the stable part of the brief are cached by the provider (two breakpoints); what changes
+        // with the turn comes after them.
+        const [stable, turn] = briefParts(input as TurnBrief);
+        const content: AiPart[] = stable ? [{ type: "text", text: stable, cache: true }, { type: "text", text: turn }] : [{ type: "text", text: turn }];
         return client.json(
-          { name: "maya_reply", system: CONVERSATION_PROMPT, content: [{ type: "text", text: JSON.stringify(input) }], schema: outputSchema, effort: options.effort ?? CONVERSATION_EFFORT, maxTokens: 1_500, ...(onText ? { onText } : {}) },
+          { name: "maya_reply", system: CONVERSATION_PROMPT, cacheSystem: true, content, schema: outputSchema, effort: options.effort ?? CONVERSATION_EFFORT, maxTokens: 1_500, ...(onText ? { onText } : {}), ...(onCost ? { onCost } : {}) },
           both,
         );
       }),

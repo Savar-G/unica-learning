@@ -100,6 +100,26 @@ describe("the OpenRouter AI client (#183), fetch faked", () => {
     ]);
   });
 
+  it("C1: a cached request sends the instructions and each marked text part with an ephemeral cache breakpoint, and keeps the strict schema", async () => {
+    const { fetch, sent } = fakeFetch(completion(JSON.stringify({ answer: "85" })));
+    await client(fetch).json(request({ cacheSystem: true, effort: "low", content: [{ type: "text", text: "stable", cache: true }, { type: "text", text: "turn" }] }), signal());
+    expect(sent[0].body.messages).toEqual([
+      { role: "system", content: [{ type: "text", text: "You review one piece of work.", cache_control: { type: "ephemeral" } }] },
+      { role: "user", content: [{ type: "text", text: "stable", cache_control: { type: "ephemeral" } }, { type: "text", text: "turn" }] },
+    ]);
+    expect(sent[0].body).toMatchObject({ response_format: { type: "json_schema", json_schema: { strict: true } }, reasoning: { effort: "low", exclude: true } });
+    expect(sent[0].body).not.toHaveProperty("usage");
+  });
+
+  it("C2: a request with onCost asks for usage accounting and reports the answer's cost", async () => {
+    const reply = completion(JSON.stringify({ answer: "85" }));
+    const { fetch, sent } = fakeFetch({ body: { ...reply.body, usage: { ...reply.body.usage, cost: 0.0042 } } });
+    const costs: number[] = [];
+    await client(fetch).json(request({ onCost: (usd) => costs.push(usd) }), signal());
+    expect(sent[0].body.usage).toEqual({ include: true });
+    expect(costs).toEqual([0.0042]);
+  });
+
   it("sends no reasoning setting when the request has no effort", async () => {
     const { fetch, sent } = fakeFetch(completion(JSON.stringify({ answer: "85" })));
     await client(fetch).json(request({ effort: undefined, content: [{ type: "text", text: "facts" }] }), signal());

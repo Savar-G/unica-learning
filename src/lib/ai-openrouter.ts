@@ -12,8 +12,11 @@ export const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 export const AI_REQUEST_TIMEOUT_MS = 60_000;
 const MAX_TOKENS = 16_000;
 
+/** A prompt-cache breakpoint (Anthropic models through OpenRouter; 5 minutes, renewed by each read). */
+const EPHEMERAL = { type: "ephemeral" } as const;
+
 function part(p: AiPart) {
-  if (p.type === "text") return { type: "text", text: p.text };
+  if (p.type === "text") return { type: "text", text: p.text, ...(p.cache ? { cache_control: EPHEMERAL } : {}) };
   return { type: "image_url", image_url: { url: `data:${p.mediaType};base64,${Buffer.from(p.data).toString("base64")}` } };
 }
 
@@ -34,13 +37,15 @@ function body(model: string, request: AiJsonRequest, provider?: OpenRouterProvid
     stream: request.onText !== undefined,
     max_tokens: request.maxTokens ?? MAX_TOKENS,
     messages: [
-      { role: "system", content: output.system },
+      { role: "system", content: request.cacheSystem ? [{ type: "text", text: output.system, cache_control: EPHEMERAL }] : output.system },
       // OpenRouter parses the text first, then the images (its image guide).
       { role: "user", content: request.content.map(part) },
     ],
     ...(output.response_format ? { response_format: output.response_format } : {}),
     provider: provider ?? { require_parameters: true },
     ...(request.effort && request.effort !== "none" ? { reasoning: { effort: request.effort, exclude: true } } : {}),
+    // Usage accounting: the answer (the last event of a stream) then holds its cost.
+    ...(request.onCost ? { usage: { include: true } } : {}),
   };
 }
 
@@ -92,12 +97,16 @@ function readOutput(content: string, strict: boolean): unknown {
   throw new Error("the output is not valid JSON");
 }
 
+const reportCost = (cost: unknown, onCost?: (usd: number) => void) => {
+  if (onCost && typeof cost === "number" && Number.isFinite(cost) && cost >= 0) onCost(cost);
+};
+
 /**
  * A streamed answer (server-sent events, D-341): each `data:` line is one chunk of the completion, and the output text
  * is the chunks' `delta.content` in order. `onText` gets the text so far after each chunk. The end is the same checks
  * as an answer sent whole: an error, a refusal, a finish reason other than "stop", or no output throws.
  */
-async function readStream(res: Response, strict: boolean, onText: (soFar: string) => void): Promise<unknown> {
+async function readStream(res: Response, strict: boolean, onText: (soFar: string) => void, onCost?: (usd: number) => void): Promise<unknown> {
   const reader = res.body?.getReader();
   if (!reader) throw new Error("no output");
   const decoder = new TextDecoder();
@@ -116,6 +125,7 @@ async function readStream(res: Response, strict: boolean, onText: (soFar: string
       return;
     }
     if (chunk.error) throw new Error(`OpenRouter error ${short(chunk.error.code)}: ${short(chunk.error.message)}`);
+    reportCost((chunk as { usage?: { cost?: unknown } }).usage?.cost, onCost);
     const choice = chunk.choices?.[0] as (NonNullable<Completion["choices"]>[number] & { delta?: { content?: unknown; refusal?: string | null } }) | undefined;
     if (!choice) return;
     if (choice.error) throw new Error(`OpenRouter error ${short(choice.error.code)}: ${short(choice.error.message)}`);
@@ -146,7 +156,7 @@ async function readStream(res: Response, strict: boolean, onText: (soFar: string
 }
 
 /** One try: the parsed JSON output, or an error. Error messages hold codes and OpenRouter's words, never the output. */
-async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: AbortSignal, timeout: number, strict: boolean, onDispatch?: () => void, onText?: (soFar: string) => void): Promise<unknown> {
+async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: AbortSignal, timeout: number, strict: boolean, onDispatch?: () => void, onText?: (soFar: string) => void, onCost?: (usd: number) => void): Promise<unknown> {
   let res: Response;
   try {
     const options = { ...init, signal: AbortSignal.any([signal, AbortSignal.timeout(timeout)]) };
@@ -159,7 +169,7 @@ async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: A
   }
   if (onText && res.ok && (res.headers.get("content-type") ?? "").includes("text/event-stream")) {
     try {
-      return await readStream(res, strict, onText);
+      return await readStream(res, strict, onText, onCost);
     } catch (e) {
       if (signal.aborted) throw new Error("time is up");
       throw e;
@@ -172,6 +182,7 @@ async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: A
   } catch {
     data = null;
   }
+  reportCost((data as { usage?: { cost?: unknown } } | null)?.usage?.cost, onCost);
   if (!res.ok) {
     const error = `OpenRouter answered ${res.status}: ${short(data?.error?.message ?? text)}`;
     throw retryableStatus(res.status) ? new Retryable(error) : new Error(error);
@@ -228,7 +239,7 @@ export function openRouterClient({
         await onRequest?.();
         if (signal.aborted) throw new Error("time is up");
         try {
-          return await once(fetch, init, signal, timeout, strict, onDispatch, request.onText);
+          return await once(fetch, init, signal, timeout, strict, onDispatch, request.onText, request.onCost);
         } catch (e) {
           if (!(e instanceof Retryable) || attempt >= maxRetries || signal.aborted) throw e instanceof Retryable ? new Error(e.message) : e;
         }
