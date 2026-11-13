@@ -182,6 +182,7 @@ export class HeardSignals {
   /** The measures for a final transcript, and a new window from here. */
   final(alternatives: readonly stt.SpeechData[]): FinalSignals {
     this.end = null;
+    this.loudAt = null;
     const detected = this.detected();
     const signals = finalSignals(alternatives, { peak: this.peak, sumSquares: this.sumSquares, samples: this.samples }, detected);
     this.peak = this.sumSquares = this.samples = 0;

@@ -42,6 +42,22 @@ function fakeVad() {
 }
 
 describe("the signals of a final transcript (worker log only)", () => {
+  it("does not reuse the prior final's loud-frame time for a quiet new turn", async () => {
+    const v = fakeVad();
+    let now = 1000;
+    const signals = new HeardSignals(v.vad, () => now);
+    try {
+      signals.frame(frame(1000));
+      await v.send(VADEventType.END_OF_SPEECH, 100, false);
+      expect(signals.speechEnd?.levelEndAt).toBe(1000);
+      signals.final([heard("four", 1)]);
+      now = 2000;
+      signals.frame(frame(100));
+      await v.send(VADEventType.END_OF_SPEECH, 100, false);
+      expect(signals.speechEnd?.levelEndAt).toBeNull();
+    } finally { signals.close(); }
+  });
+
   it("measures words, confidences, the speech-to-text's span and the input level", () => {
     const s = finalSignals([heard("Yes!", 0.42, [{ text: "Yes!", confidence: 0.42 }], 1.2, 1.5)], { peak: 0, sumSquares: 0, samples: 0 }, 0);
     expect(s).toEqual({ words: 1, confidence: 0.42, minWordConfidence: 0.42, sttSpeechMs: 300, vadSpeechMs: 0, peakDbfs: -120, rmsDbfs: -120 });
