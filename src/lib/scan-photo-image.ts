@@ -14,14 +14,45 @@ export async function normalizeScanPhoto(input: Uint8Array, limits = { inputByte
   const normalized = await source.autoOrient().resize({ width: 2800, height: 2800, fit: "inside", withoutEnlargement: true })
     .flatten({ background: "#ffffff" }).jpeg({ quality: 88 }).toBuffer({ resolveWithObject: true });
   if (normalized.data.length > limits.outputBytes) throw new Error("size");
-  const { data, info } = await sharp(normalized.data).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-  const qr = jsQR(new Uint8ClampedArray(data), info.width, info.height, { inversionAttempts: "attemptBoth" });
-  if (!qr) throw new Error("qr");
-  let url: URL;
-  try { url = new URL(qr.data); } catch { throw new Error("qr"); }
-  const token = /^\/tutor\/p\/([A-Za-z0-9_-]{16,64})$/.exec(url.pathname)?.[1];
-  if (!token || url.protocol !== "https:" || url.hostname !== "unicalearning.com" || url.search || url.hash) throw new Error("qr");
+  const token = await pageToken(normalized.data, normalized.info);
+  if (!token) throw new Error("qr");
   return { bytes: normalized.data, token, width: normalized.info.width, height: normalized.info.height };
+}
+
+/** The page token a QR link carries, or null for any other link. */
+function tokenOf(link: string): string | null {
+  let url: URL;
+  try { url = new URL(link); } catch { return null; }
+  const token = /^\/tutor\/p\/([A-Za-z0-9_-]{16,64})$/.exec(url.pathname)?.[1];
+  return token && url.protocol === "https:" && url.hostname === "unicalearning.com" && !url.search && !url.hash ? token : null;
+}
+
+/** How much the zoomed read enlarges each crop. */
+const QR_ZOOM = 2;
+/** The crops it reads, each half the photo's width and height, by where they start: the lower ones first. */
+const QR_ZOOM_WINDOWS = [[0, 0.5], [0.25, 0.5], [0.5, 0.5], [0, 0.25], [0.25, 0.25], [0.5, 0.25], [0, 0], [0.25, 0], [0.5, 0]] as const;
+
+/**
+ * The page's token from its QR code: first over the whole photo, then in crops zoomed 2×, where a phone photo's small
+ * code reads when the whole photo's does not. The page prints its code low on the left, so the lower crops come first.
+ * Calibration reads the code in place at the same zoom (`qrBound` in scan-calibration.ts), so a photo taken here for its
+ * code is not refused there for it; change the two together.
+ */
+async function pageToken(jpeg: Buffer, size: { width: number; height: number }): Promise<string | null> {
+  const read = (data: Buffer, width: number, height: number) => jsQR(new Uint8ClampedArray(data), width, height, { inversionAttempts: "attemptBoth" });
+  const whole = await sharp(jpeg).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const first = read(whole.data, whole.info.width, whole.info.height);
+  if (first) return tokenOf(first.data);
+  const width = Math.floor(size.width / 2), height = Math.floor(size.height / 2);
+  if (width < 16 || height < 16) return null;
+  for (const [x, y] of QR_ZOOM_WINDOWS) {
+    const left = Math.min(Math.round(x * size.width), size.width - width), top = Math.min(Math.round(y * size.height), size.height - height);
+    const { data, info } = await sharp(jpeg).extract({ left, top, width, height })
+      .resize({ width: width * QR_ZOOM, height: height * QR_ZOOM, fit: "fill", kernel: "lanczos3" }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const found = read(data, info.width, info.height);
+    if (found) return tokenOf(found.data);
+  }
+  return null;
 }
 
 /** Read with a hard byte bound even when Content-Length is missing or forged. Never store the camera original. */

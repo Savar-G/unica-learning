@@ -1,3 +1,4 @@
+import jsQR from "jsqr";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { QuestionPackage } from "@/lib/question-package";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
@@ -15,7 +16,8 @@ import {
   type Raster,
   type Transform,
 } from "@/lib/scan-calibration";
-import { blankPage, cropCut, drawBoxOutline, drawDigit, drawMark, drawPrintedContent, drawQr, fillBox, greyRaster, photoJpeg, photographed, readDigit, rotatedCorners, uprightCorners } from "@/lib/scan-synthetic";
+import { normalizeScanPhoto } from "@/lib/scan-photo-image";
+import { blankPage, cropCut, drawBoxOutline, drawDigit, drawMark, drawPrintedContent, drawQr, fillBox, greyRaster, photoJpeg, photographed, rasterSharp, readDigit, rotatedCorners, uprightCorners } from "@/lib/scan-synthetic";
 import { SCAN_MARKS, printContractForPhoto, type Box, type PagePrintContract, type PhotoContract, type Point } from "@/lib/workbook-print-contract";
 
 // Scan calibration through its public functions, on synthetic pages. Each answer is a seven-segment digit "written" in
@@ -225,6 +227,51 @@ describe("refusals", () => {
     const photo = await stored(photographed(even, SIZE, square(SIZE, 60)));
     expect(calibratePhoto({ photo, printed: even, contract: available, pageLink: LINK })).toEqual({ status: "refused", reason: "orientation-unclear" });
   }, 20_000);
+});
+
+describe("a small QR code that the upload reads zoomed (#912)", () => {
+  const SIZE = { width: 1500, height: 1900 };
+  /** Where these pages print a small code: low on the left, as the real template does. */
+  const SMALL_QR: Box = { x: 90, y: 1513, width: 87, height: 87 };
+  const smallQrPage = (qr: Box, link: string) => {
+    const r = page();
+    for (const m of SCAN_MARKS) mark(r, m);
+    drawPrintedContent(r);
+    drawQr(r, qr, link);
+    return r;
+  };
+  /** A soft phone photo of a sheet, as the upload stores it. */
+  const softPhoto = async (r: Raster, blur: number, margin: number) => {
+    const bytes = await rasterSharp(photographed(r, SIZE, square(SIZE, margin), { shade: 0.2 })).blur(blur).jpeg({ quality: 82 }).toBuffer();
+    const upload = await normalizeScanPhoto(bytes);
+    return { token: upload.token, photo: await greyRaster(upload.bytes) };
+  };
+  const smallPrinted = () => smallQrPage(SMALL_QR, LINK);
+
+  it.each([{ blur: 1, margin: 60 }, { blur: 0.6, margin: 250 }])("a code the upload read only zoomed is read in place too: blur $blur, margin $margin", async ({ blur, margin }) => {
+    // Disproved if the upload takes a photo for its code and calibration then refuses it for that code. The whole photo's
+    // read finds no code in these photos, so the upload takes them by its zoomed read, and the code reads in place only
+    // from the photo's own pixels enlarged the same way.
+    const { token, photo } = await softPhoto(smallPrinted(), blur, margin);
+    expect(LINK.endsWith(`/${token}`)).toBe(true);
+    const rgba = new Uint8ClampedArray(photo.width * photo.height * 4);
+    for (let i = 0; i < photo.data.length; i++) { rgba[4 * i] = rgba[4 * i + 1] = rgba[4 * i + 2] = photo.data[i]; rgba[4 * i + 3] = 255; }
+    expect(jsQR(rgba, photo.width, photo.height, { inversionAttempts: "attemptBoth" })).toBeNull();
+    expect(calibratePhoto({ photo, printed: smallPrinted(), contract: available, pageLink: LINK }).status).toBe("calibrated");
+  }, 40_000);
+
+  it("still refuses the same small code with another page's link", async () => {
+    // Disproved if the enlarged read decides by finding any code, not this page's.
+    const other = "https://unicalearning.com/tutor/p/test-page-token-0002";
+    const { photo } = await softPhoto(smallQrPage(SMALL_QR, other), 1, 60);
+    expect(calibratePhoto({ photo, printed: smallPrinted(), contract: available, pageLink: LINK })).toEqual({ status: "refused", reason: "qr-mismatch" });
+  }, 40_000);
+
+  it("still refuses this page's small code where the page did not print it", async () => {
+    // Disproved if the enlarged read takes a code from anywhere near the place: moved by its own size, it is elsewhere.
+    const { photo } = await softPhoto(smallQrPage({ ...SMALL_QR, x: SMALL_QR.x + SMALL_QR.width }, LINK), 1, 60);
+    expect(calibratePhoto({ photo, printed: smallPrinted(), contract: available, pageLink: LINK })).toEqual({ status: "refused", reason: "qr-mismatch" });
+  }, 40_000);
 });
 
 describe("a photo and its printed revision", () => {
