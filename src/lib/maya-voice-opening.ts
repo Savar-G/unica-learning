@@ -6,7 +6,10 @@
 //
 // Temporary: the conversational build (site/maya-conversational) gives `start({ openingSpoken: true })`, which never
 // calls the model. Remove this wrapper when the worker uses that.
+import type { Session } from "@/lib/maya";
+import { workbookOpening } from "@/lib/maya/lines";
 import type { MayaModel, ModelInput } from "@/lib/maya-model";
+import { operationText } from "@/lib/question-package";
 
 const OPENING_LINES = ["open.hello", "question.problem"] as const;
 
@@ -32,4 +35,18 @@ export function codeOpening(model: MayaModel): MayaModel {
       return opening ? Promise.resolve(opening) : model.propose(input, signal);
     },
   };
+}
+
+/**
+ * The opening the worker speaks the moment the child is connected, or null when the call's own start must give the
+ * words (a call already started, or a question with no operation). A workbook call keeps its fixed confirmation line,
+ * which the session forces for its opening too, so the spoken and the recorded words are the same. Every other call
+ * gets Savar's approved line (2026-11-12). Temporary, like `codeOpening`: `openingLine(pkg)` of the conversational
+ * build replaces both.
+ */
+export function voiceOpening(session: Session): string | null {
+  const pkg = session.package;
+  if (!pkg || session.startedAt !== null || !("operation" in pkg)) return null;
+  if (session.confirmWorkbook) return workbookOpening(pkg);
+  return `Hi there! I'm Maya, an AI math helper. We're doing ${operationText(pkg.operation)} today.`;
 }

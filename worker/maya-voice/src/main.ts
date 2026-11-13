@@ -24,7 +24,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { callSeams } from "@/lib/maya-call-seams";
 import { mayaCalls } from "@/lib/maya-call";
-import { codeOpening } from "@/lib/maya-voice-opening";
+import { codeOpening, voiceOpening } from "@/lib/maya-voice-opening";
 import { mayaCallStore } from "@/lib/maya-call-store";
 import { asksWordTimings, callKeyterms, callOfRoom, checkJoiner, childIdentity, GREETING_TEXT, JOIN_WAIT_MS, turnSilences, VOICE_AGENT_NAME, voiceProviders, type TurnSilence, type VoiceCallFacts } from "@/lib/maya-voice";
 import { VoiceCallRun, voiceSession, type CallUpdate } from "./agent";
@@ -122,6 +122,7 @@ export default defineAgent({
       return ctx.shutdown("call not opened");
     }
     mark("opened");
+    const openingText = voiceOpening(opened.call.session);
     // The call's question is known now: its answer and its likely wrong answers go to the speech-to-text as keyterms
     // (numbers only, never the question's text or a name).
     const made = await makeProviders(providers, { keyterms: callKeyterms(opened.call.session.package) });
@@ -149,7 +150,7 @@ export default defineAgent({
     } });
     const turnSamples: VoiceTurnSample[] = [];
     const ackLimit = Number(process.env.MAYA_ACK_LIMIT_MS);
-    const run = new VoiceCallRun(session, opened.call, { board, notify, greeting: GREETING_TEXT,
+    const run = new VoiceCallRun(session, opened.call, { board, notify, greeting: GREETING_TEXT, ...(openingText ? { opening: openingText } : {}),
       ...(made.fake ? {} : { numberContinueMs: tuning.numberContinueMs }),
       ...(patience ? { patience: { ...turnSilences(tuning), set: (limits: TurnSilence) => patience.setSilence(limits) } } : {}),
       ...(process.env.MAYA_ACK_LIMIT_MS?.trim() && Number.isFinite(ackLimit) && ackLimit >= 0 ? { ackLimitMs: ackLimit } : {}),

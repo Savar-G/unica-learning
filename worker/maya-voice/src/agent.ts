@@ -148,10 +148,22 @@ export class MayaVoiceAgent extends voice.Agent {
     // Every line reaches the voice provider here: replies, acknowledgement phrases and guidance said again.
     const synthesize = (input: ReadableStream<string> | AsyncIterable<string>) =>
       countedSynthesis(input, counted => voice.Agent.default.ttsNode(this, counted, settings), said => void this.call.spoken(said));
-    if (!this.board) return synthesize(text);
+    // The worker's own opening has no board plan, and must not wait for the board to connect.
+    const plain = this.plainNext;
+    this.plainNext = false;
+    if (!this.board || plain) return synthesize(text);
     const scope = this.board.scope();
     if (!scope || !this.board.sync.owns(scope)) return null;
     return boardAudio(text, synthesize, this.board.sync, scope);
+  }
+
+  /** One-shot: the next speech goes to the voice with no board plan (the worker's own opening). */
+  plainNext = false;
+  private starting: Promise<unknown> | null = null;
+  /** The worker spoke the opening itself, and the call starts behind it: no opening reply, and a child turn waits for the start. */
+  openedByWorker(starting: Promise<unknown>) {
+    this.opened = true;
+    this.starting = starting;
   }
 
   /** Opens the call (the first reply), then answers each finished child turn with what the call's session said. */
@@ -177,7 +189,7 @@ export class MayaVoiceAgent extends voice.Agent {
       }
       this.extended = false;
       return this.reply(stoppedSpeakingAt(chatCtx), async () => [
-        ...(opening ? [await this.call.start()] : []),
+        ...((await this.starting, opening) ? [await this.call.start()] : []),
         await this.call.child(heard.text, heard.uncertain ? { uncertain: true, alternatives: heard.alternatives } : undefined),
       ], heldMarks.at(-1) ?? null);
     }
@@ -282,6 +294,7 @@ export class VoiceCallRun {
   /** The greeting's playout, while it is being said: the opening waits for it. */
   private greeted: Promise<void> | null = null;
   private greetStarted = false;
+  private openingSaid = false;
   /** Words (transcripts, interim or final) the speech-to-text gave so far, and who waits for the next one. */
   private wordCount = 0;
   private wordWaiter: (() => void) | null = null;
@@ -308,6 +321,11 @@ export class VoiceCallRun {
        * GREETING_ID in the call's acknowledged list before it is queued. Absent: no greeting.
        */
       greeting?: string;
+      /**
+       * The opening in the worker's own words (code-written, the same line the call's start records). With it, Maya
+       * speaks the moment the child is here, and the call starts behind the speech. Absent: the call's start gives the words.
+       */
+      opening?: string;
       /**
        * The speech-to-text's silence limits for the one child turn after Maya asks for a number (`number`) and for every
        * other turn (`normal`), set through `set` while the call runs. Absent: the limits set at the start stay.
@@ -400,6 +418,24 @@ export class VoiceCallRun {
   private expectNumber(turn: VoiceTurn) {
     if (!turn.say.length) return;
     this.setPatience(!turn.ended && asksForNumber(turn.say.join(" "), this.call.session.state));
+  }
+
+  /**
+   * Says the opening at once (Savar, 2026-11-13: under 1 s from the child's connection), with no board plan, and starts
+   * the call behind it. The start's own words are not said again; its turn keeps the rest of `after`.
+   */
+  private openNow(text: string): voice.SpeechHandle {
+    this.openingSaid = true;
+    this.agent.plainNext = true;
+    const speech = this.session.say(text, { addToChatCtx: true });
+    const generation = this.generation;
+    const starting = (async () => {
+      const turn = await this.call.start();
+      if (this.call.lost) return void this.finish({ detail: "the call could not be saved" });
+      await this.after({ ...turn, say: [] }, speech, () => false);
+    })().catch(() => { if (generation === this.generation && this.childHere) void this.finish({ detail: "the opening could not be saved" }); });
+    this.agent.openedByWorker(starting);
+    return speech;
   }
 
   /** The greeting is over (or there was none, or it never started). */
@@ -759,6 +795,9 @@ export class VoiceCallRun {
     this.childHere = true;
     if (this.graceTimer !== null) this.timers.clear(this.graceTimer);
     this.graceTimer = null;
+    // The opening is said before anything is waited for: the board, the rows and the call's start follow behind it.
+    const said = !this.openingSaid && this.options.opening && this.call.session.startedAt === null && !this.call.pendingFinal && !this.guidanceOwed && !this.finalOwed
+      ? this.openNow(this.options.opening) : null;
     const connectingScope = this.boardScope;
     // The connection row does not wait for the board's answer (the opening's speed, 2026-11-13).
     const row = this.call.connection("child_joined");
@@ -797,10 +836,10 @@ export class VoiceCallRun {
         const speech = final.say.length ? this.session.say(final.say.join(" "), { addToChatCtx: true }) : null;
         await this.after(final, speech, () => false);
       } catch { await this.finish({ detail: "the saved final speech failed" }); }
-    } else if (this.call.session.startedAt === null) {
+    } else if (this.call.session.startedAt === null || said) {
       // The opening is Maya's first sound (Savar, 2026-11-13). The greeting follows it, unless the child cut the opening:
       // a new board plan takes the audio from the old one, so it is staged only after the opening has played.
-      const opening = this.session.generateReply() as voice.SpeechHandle | undefined;
+      const opening = said ?? this.session.generateReply() as voice.SpeechHandle | undefined;
       void Promise.resolve(opening?.waitForPlayout()).catch(() => {}).then(() => {
         if (generation !== this.generation || !this.childHere || this.finishing || opening?.interrupted) return;
         return this.greet(generation);
