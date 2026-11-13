@@ -1,0 +1,36 @@
+/* Parent reviews strip (D-338): centred label, a slow looping row of equal cards, the permission note under it. */
+.prv { padding: 0 0 clamp(32px, 5vw, 64px); }
+.prv-label { display: flex; justify-content: center; margin: 0 0 20px; }
+[data-look="warm"] .prv-label { display: flex; }
+.prv-rail {
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+}
+.prv-track { display: flex; width: max-content; animation: prv-slide 70s linear infinite; }
+.prv-rail:hover .prv-track, .prv-rail:focus-within .prv-track { animation-play-state: paused; }
+@keyframes prv-slide { to { transform: translateX(-50%); } }
+.prv-set { display: flex; gap: 16px; margin: 0; padding: 4px 16px 4px 0; list-style: none; }
+.prv-card {
+  --tone: #f5c518;
+  width: 320px; flex: none; display: flex; flex-direction: column; justify-content: space-between; gap: 18px;
+  padding: 22px; background: #fff; border: 1px solid var(--line, #e4e4e7); border-radius: 12px;
+}
+.prv-sky { --tone: #2f5be8; }
+.prv-tang { --tone: #ff6a3d; }
+.prv-leaf { --tone: #1f9d55; }
+.prv-card blockquote { margin: 0; padding-left: 14px; border-left: 3px solid var(--tone); font-size: 16px; line-height: 1.5; color: var(--ink); }
+.prv-who { display: flex; align-items: center; gap: 10px; margin: 0; padding-left: 17px; font-size: 14px; font-weight: 600; color: var(--ink); }
+.prv-mark { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5px; width: 20px; height: 20px; flex: none; }
+.prv-mark i { background: var(--tone); }
+.prv-mark i:last-child { background: #b8b3aa; }
+.prv-note { margin: 20px 0 0; text-align: center; font-size: 12px; color: var(--ink-3); }
+@media (max-width: 640px) {
+  .prv-card { width: 272px; padding: 18px; }
+  .prv-card blockquote { font-size: 15px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .prv-track { animation: none; }
+  .prv-rail { overflow-x: auto; -webkit-mask-image: none; mask-image: none; padding: 0 var(--pad-x, 16px); }
+  .prv-set[aria-hidden="true"] { display: none; }
+}
