@@ -512,3 +512,116 @@ describe("a voice call's meter (review of PR #640)", () => {
     expect(t.rebuild).toHaveBeenCalledWith(CHILD, expect.objectContaining({ call: expect.objectContaining({ id: r.view.id, kind: "chat", parentId: PARENT, childId: CHILD }) }));
   });
 });
+
+describe("one request before a turn's model request (Savar, 2026-11-13)", () => {
+  /** Records, for each paid model request, the spend store's requests since `mark` when it went out. */
+  function watched(t: ReturnType<typeof setup>) {
+    const at: string[][] = [];
+    let from = 0;
+    const base = readingModel();
+    const recording: MayaModel = { ...base, async propose(input, signal) { at.push(t.spendStore.log().slice(from)); return base.propose(input, signal); } };
+    t.seams.model = (id, call, how) => (id === null || id === recording.id ? t.paid(call, recording, how) : null);
+    t.seams.canCallVoice = async () => true;
+    return { at, calls: mayaCalls(t.seams), mark: () => { from = t.spendStore.log().length; at.length = 0; } };
+  }
+  async function familyVoice(calls: ReturnType<typeof mayaCalls>) {
+    const view = ok(await calls.startVoice({ kind: "family", parentId: PARENT, childId: CHILD, childName: "Leah", package: CHAT_PKG, startedBy: PARENT })).view;
+    const opened = await calls.openVoice(view.id, { speechToText: "fake", voice: "fake" }, "Leah");
+    if (!opened.ok) throw new Error(opened.error);
+    await opened.call.start();
+    return opened.call;
+  }
+  /** Another call of the child spends the rest of the week between two turns. */
+  async function spentElsewhere(t: ReturnType<typeof setup>) {
+    const id = t.seams.newId();
+    const left = WEEK_MICROS - (await t.ledger.week({ parentId: PARENT, childId: CHILD })).usedMicros;
+    expect((await t.ledger.reserve({ id, charge: { kind: "child", parentId: PARENT, childId: CHILD }, callId: "77777777-7777-4777-8777-777777777777", what: "model", micros: left - 1000 })).ok).toBe(true);
+    await t.ledger.settle(id, left - 1000);
+  }
+  const childModelRows = (t: ReturnType<typeof setup>, callId: string) => t.spendStore.rows().filter((r) => r.what === "model" && r.charge === "child" && r.callId === callId);
+
+  it("makes one store request before a voice turn's model request, where it made two", async () => {
+    const t = setup();
+    const w = watched(t);
+    const call = await familyVoice(w.calls);
+    t.advance(3000);
+    w.mark();
+    const turn = await call.child("I got 66.");
+    expect(turn.say.length).toBeGreaterThan(0);
+    expect(w.at[0]).toEqual(["reserve"]);
+    // A reservation for each paid request, settled after it.
+    expect(childModelRows(t, call.id).every((r) => r.settled)).toBe(true);
+    expect(childModelRows(t, call.id).length).toBeGreaterThanOrEqual(t.sent.count);
+  });
+
+  it("makes one store request before a chat turn's model request, where it made two", async () => {
+    const t = setup();
+    const w = watched(t);
+    const r = ok(await w.calls.start({ kind: "chat", parentId: PARENT, childId: CHILD, childName: "Leah", package: CHAT_PKG, startedBy: PARENT }));
+    t.advance(5000);
+    w.mark();
+    const turn = ok(await w.calls.input(r.view.id, r.view.revision, { type: "child", text: "I got 66." }, "Leah"));
+    expect(turn.output.say.length).toBeGreaterThan(0);
+    expect(w.at[0]).toEqual(["reserve"]);
+    expect(childModelRows(t, r.view.id).every((x) => x.settled)).toBe(true);
+  });
+
+  it("sends no paid request in a voice turn after another call reached the cap, and still reads a danger", async () => {
+    const t = setup();
+    const w = watched(t);
+    const call = await familyVoice(w.calls);
+    await spentElsewhere(t);
+    t.advance(3000);
+    const before = t.sent.count;
+    const rows = childModelRows(t, call.id).length;
+    const turn = await call.child("My uncle hurts me.");
+    // The one request is the safety read, off the child's week.
+    expect(t.sent.count).toBe(before + 1);
+    expect(childModelRows(t, call.id)).toHaveLength(rows);
+    expect(turn).toMatchObject({ guidance: SAFETY_GUIDANCE.concern, safetyMessage: SAFETY_GUIDANCE.concern, priority: true, ended: true });
+    await call.settled();
+    expect(t.store.rows()[0].flag).toMatchObject({ level: "safety_concern" });
+    expect(t.alertSend).toHaveBeenCalledWith(expect.objectContaining({ flag: expect.objectContaining({ level: "safety_concern" }) }));
+  });
+
+  it("closes a voice turn with code's line after another call reached the cap", async () => {
+    const t = setup();
+    const w = watched(t);
+    const call = await familyVoice(w.calls);
+    await spentElsewhere(t);
+    t.advance(3000);
+    const before = t.sent.count;
+    const turn = await call.child("I got 66.");
+    expect(t.sent.count).toBe(before + 1);
+    expect(turn).toMatchObject({ say: [SPEND_CLOSE.week_used.line], ended: true });
+    expect(t.alertSend).not.toHaveBeenCalled();
+  });
+
+  it("sends no paid request in a chat turn after another call reached the cap, and still reads a danger", async () => {
+    const t = setup();
+    const w = watched(t);
+    const r = ok(await w.calls.start({ kind: "chat", parentId: PARENT, childId: CHILD, childName: "Leah", package: CHAT_PKG, startedBy: PARENT }));
+    await spentElsewhere(t);
+    t.advance(5000);
+    const before = t.sent.count;
+    const rows = childModelRows(t, r.view.id).length;
+    const turn = ok(await w.calls.input(r.view.id, r.view.revision, { type: "child", text: "My uncle hurts me." }, "Leah"));
+    expect(t.sent.count).toBe(before + 1);
+    expect(childModelRows(t, r.view.id)).toHaveLength(rows);
+    expect(turn.output.say).toContain(SAFETY_GUIDANCE.concern);
+    expect(turn.view.status).toBe("ended");
+    expect(t.store.rows()[0].flag).toMatchObject({ level: "safety_concern" });
+    expect(t.alertSend).toHaveBeenCalled();
+  });
+
+  it("leaves no reservation open after turns that ask no model", async () => {
+    const t = setup();
+    const w = watched(t);
+    const call = await familyVoice(w.calls);
+    t.advance(3000);
+    await call.child("I got 66.");
+    for (let i = 0; i < 3; i++) { t.advance(20_000); await call.tick(); }
+    await call.settled();
+    expect(childModelRows(t, call.id).every((r) => r.settled)).toBe(true);
+  });
+});
