@@ -71,7 +71,7 @@ export function partialSay(soFar: string): { text: string; complete: boolean } |
   }
   return { text, complete: false };
 }
-import { reviewInput, runReview, REVIEW_TIME_LIMIT_MS, type TalkReviewer } from "@/lib/maya-talk-review";
+import { reviewInput, runReview, CONVERSATION_REVIEW_TIME_LIMIT_MS, REVIEW_TIME_LIMIT_MS, type TalkReviewer } from "@/lib/maya-talk-review";
 import { readFromFence } from "@/lib/ai-fenced";
 import { classifyError, packageHash, redactText, redactTrace, traceCounts, TRACE_KIND, TRACE_VERSION, type MayaTrace, type TraceBoardBatch, type TraceTurn, type TraceObligation } from "@/lib/maya-trace";
 
@@ -370,7 +370,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     const texts = [...new Set(first.refusal ? [] : first.effects.flatMap((e) => e.kind === "say" ? e.talk ?? [] : []).filter((t) => t.code === null && t.review === "not_run").map((t) => t.proposed))];
     const t0 = now();
     const before = folded.session;
-    const reviews = options.reviewer ? Promise.all(texts.map(async (text) => ({ text, result: await runReview(options.reviewer!, reviewInput(before, text), options.reviewTimeLimitMs ?? REVIEW_TIME_LIMIT_MS, (error) => options.onError?.(error, { turn: folded.turns.length, source: "review" })) }))) : Promise.resolve([]);
+    const reviews = options.reviewer ? Promise.all(texts.map(async (text) => ({ text, result: await runReview(options.reviewer!, reviewInput(before, text), options.reviewTimeLimitMs ?? (before.conversational ? CONVERSATION_REVIEW_TIME_LIMIT_MS : REVIEW_TIME_LIMIT_MS), (error) => options.onError?.(error, { turn: folded.turns.length, source: "review" })) }))) : Promise.resolve([]);
     const reviewed = reviews.then((results) => {
       append({ kind: "review", at: now(), requestId, reviews: results, ...(texts.length && options.reviewer ? { reviewMs: now() - t0 } : {}) });
     });
