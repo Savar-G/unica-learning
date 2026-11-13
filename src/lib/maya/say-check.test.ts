@@ -124,6 +124,8 @@ describe("the opening and spoken signs", () => {
     expect(checkSay("Hi! I'm Maya, your helper.", rules({ wrong: [], noIntro: true }))).toMatchObject({ ok: false, reason: "reintroduces" });
     expect(checkSay("We're doing 52 minus 28 today.", rules({ wrong: [], noIntro: true }))).toMatchObject({ ok: false, reason: "reintroduces" });
     expect(checkSay("I'm an AI helper, not a person.", rules({ wrong: [], noIntro: false })).ok).toBe(true);
+    // Saying what Maya is to answer the child ("I'm an AI, so I have no pet") is no new introduction.
+    expect(checkSay("I'm an AI, so I have no pet.", rules({ wrong: [], noIntro: true })).ok).toBe(true);
   });
   it("reads written signs and spoken signs the same way", () => {
     for (const text of ["12 − 8 = 4.", "12 minus 8 equals 4.", "12 - 8 is 4."]) expect(equationHolds(equationsOf(text)[0])).toBe(true);

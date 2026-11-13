@@ -178,6 +178,11 @@ export interface TextOutput {
   /** The safety guidance to keep on screen after the call, or null. */
   safetyMessage: string | null;
   /**
+   * D-341, round 2: the child is thinking ("um", "wait"): Maya said at most a short patient line and now waits. A voice
+   * worker may skip speech after the first patient line.
+   */
+  wait?: boolean;
+  /**
    * Maya must stop talking now and drop board batches not yet shown (the session's `cancel_output`): the child talked
    * over her, she said words that were not her text, or the content hold began. `say` and `board` come after the stop.
    */
@@ -433,7 +438,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
           append({ kind: "cancelled", at: now() });
           return out;
         }
-        const out = textOutput(folded);
+        const out: TextOutput = { ...textOutput(folded), ...((folded.session.thinking ?? 0) > 0 && !folded.session.outcome ? { wait: true } : {}) };
         const streamedNow = [...streamedThisOutput];
         streamedThisOutput.length = 0;
         append({ kind: "delivered", at: now() });

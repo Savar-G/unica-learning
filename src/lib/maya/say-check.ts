@@ -381,7 +381,7 @@ export function checkSentence(sentence: string, rules: SayRules, index = 0): Say
   if (plain) return no("hard_words", `${plain}: use the plain words of the workbook.`);
   const long = wordsIn(text).map((w) => w.replace(/[^\p{L}]/gu, "").toLowerCase()).find((w) => w.length > 12 && !LONG_OK.has(w));
   if (long) return no("hard_words", `"${long}" is a hard word for a young child.`);
-  if (rules.noIntro && /\b(?:i'?m maya|i am maya|my name is maya|i'?m an ai|i am an ai|i'?m your ai)\b|\bwe'?re doing\b.*\btoday\b/i.test(text)) {
+  if (rules.noIntro && /\b(?:i'?m maya|i am maya|my name is maya)\b|\bwe'?re doing\b.*\btoday\b/i.test(text)) {
     return no("reintroduces", "The opening already said who Maya is and the question: answer what the child said instead.");
   }
   if (rules.noBoard && /\b(?:board|look|watch|see|show me|follow along)\b/i.test(text)) return no("board_words", "The child cannot see the board: use spoken words only.");

@@ -7,7 +7,7 @@ import { SCOPE_REASONS } from "@/lib/maya/scope";
 //
 // Plain JSON. Pure TypeScript except `packageHash`, which uses node:crypto (server and scripts only).
 import { createHash } from "node:crypto";
-import { ACTS, SAFETY_GUIDANCE, ASSISTANCE, heldSentences, INTERRUPTS, MAIN_STATES, NEVER_SAY_IDS, PHRASES, type Act, type Outcome, type RefusalCode, type SessionState, type TalkCheck } from "@/lib/maya";
+import { ACTS, SAFETY_GUIDANCE, ASSISTANCE, heldSentences, INTERRUPTS, MAIN_STATES, NEVER_SAY_IDS, PATIENT_LINES, PHRASES, type Act, type Outcome, type RefusalCode, type SessionState, type TalkCheck } from "@/lib/maya";
 
 /** Why a proposal was refused: the session's refusal, or "board_refused" when the board core refused a batch the session built. */
 export interface TraceRefusal {
@@ -438,7 +438,10 @@ function checkTurn(t: unknown, path: string, version: number): Record<string, un
         const opening = o?.act === "open" && Array.isArray(o?.say) && o.say.length === 1 && typeof o.say[0] === "string" &&
           (/^Hi there! I'm Maya, an AI math helper\. We're doing .+ today\.$/.test(o.say[0]) || /^Hi there! I'm Maya, an AI math helper\. We're doing page \d+, number \d+ today: .+\.$/.test(o.say[0])) &&
           Array.isArray(o?.board) && o.board.length <= 1;
-        need(attempts.length === 1 && attempts[0].proposal === null && attempts[0].refusal === null && attempts[0].error === undefined && Array.isArray(o?.say) && o.say.length === 1 && (opening || (exact.includes(o.say[0] as string) && Array.isArray(o?.board) && o.board.length === 0)), path, "controller output is exact safety guidance, the exact held lines or the code opening only");
+        // D-341, round 2: code's patient line for a child who is thinking, with the name as a redacted trace writes it.
+        const patient = o?.act === "wait" && Array.isArray(o?.say) && o.say.length === 1 && Array.isArray(o?.board) && o.board.length === 0 &&
+          PATIENT_LINES.some((line) => [line, line.replace(/,? ?\{name\}/g, "")].includes((o.say as unknown[])[0] as string));
+        need(attempts.length === 1 && attempts[0].proposal === null && attempts[0].refusal === null && attempts[0].error === undefined && Array.isArray(o?.say) && o.say.length === 1 && (opening || patient || (exact.includes(o.say[0] as string) && Array.isArray(o?.board) && o.board.length === 0)), path, "controller output is exact safety guidance, the exact held lines, the code opening or a patient line only");
       }
       // A chat's close after the safety guidance is code's own: no model is asked for it (#589).
       if (attempts.length === 1 && attempts[0]?.source === "fallback") need(x.state === "SAFETY" && (x.output as { act?: unknown } | null)?.act === "close", `${path}.attempts`, "a fallback with no model attempt is only the close after safety guidance");

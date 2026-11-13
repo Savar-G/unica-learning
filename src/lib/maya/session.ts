@@ -322,6 +322,8 @@ export interface Session {
    * writes every other word Maya says (version 3 output, checked by say-check.ts). A saved session from before has none.
    */
   conversational?: boolean;
+  /** D-341: the child's thinking turns in a row ("um", "wait"), answered by code's patient line at most twice. */
+  thinking?: number;
   grade?: number;
   noBoard?: boolean;
   shorter?: boolean;
@@ -1502,6 +1504,20 @@ export function step(session: Session, event: SessionEvent): StepResult {
       if (s.state === "OPEN" && s.opened) s.state = "ASSESS";
       s.expect = "maya";
       s.silence = "none";
+      // D-341, round 2: a child who is thinking ("um", "wait", "I'm thinking") gets one short patient line from code, at
+      // most twice in a row, then quiet until they speak or the silence rule comes. No model call, no help, no count.
+      if (s.conversational && s.package && fillerTurn(event.text) && s.turn.text === event.text && isTeaching(s.state) && !s.safety.flagged && !s.stopRequested) {
+        s.thinking = (s.thinking ?? 0) + 1;
+        s.turn = null;
+        delete s.mathClaim;
+        delete s.scopeDue;
+        if (s.thinking <= 2) {
+          const text = withName(PATIENT_LINES[(s.thinking - 1) % PATIENT_LINES.length], s.variety.name ?? null);
+          effects.push({ kind: "say", act: "wait", text });
+          s.turns.push({ at: event.at, speaker: "maya", text, state: s.state, act: "wait" });
+        }
+        waitForChild(s);
+      } else if (s.conversational) delete s.thinking;
       break;
     }
     case "tick":
@@ -4280,8 +4296,12 @@ function codeProposals(given: Session, refused: readonly unknown[] = [], plan?: 
   // A claim child who only asks for help and has not seen the easier example gets it first (lesson 10, #737 review P2).
   const claimPkg = sessionClaim(pkg) !== null;
   const exampleFirst = claimPkg && claimExampleDue(s) && claimHelpOnly(s, reading ?? {}, rightResult);
-  const rank = (a: Act) => (exampleFirst && a === "example_step" ? -1 : (solved && a === "ask_write") || ((doubtful || unheard) && a === "confirm") ? FALLBACK_ORDER.indexOf("guide") - 0.5 : a === wayOut ? FALLBACK_ORDER.indexOf("guide") : FALLBACK_ORDER.indexOf(a));
-  const order = plan ? [plan.act] : [...new Set(unheard && s.opened && s.turn && s.confirmTries < 2 && s.solved === null && !rightResult ? [...acts, "confirm" as Act] : acts)].sort((a, b) => rank(a) - rank(b)).filter((a) => a !== "accept_answer" || rightResult);
+  // D-341, round 2: a conversational call's fallback asks a confirm first only on a real hearing doubt (speech-to-text
+  // was unsure); else the neutral help of the step comes first. Once the child wrote the solved answer, the close.
+  const doubt = given.conversational ? session.turn?.uncertain === true : doubtful || unheard;
+  const writtenNow = given.conversational && solved && !!session.turn && saysWritten(session.turn.text);
+  const rank = (a: Act) => (writtenNow && a === "close" ? -2 : exampleFirst && a === "example_step" ? -1 : (solved && a === "ask_write") || (doubt && a === "confirm") ? FALLBACK_ORDER.indexOf("guide") - 0.5 : a === wayOut ? FALLBACK_ORDER.indexOf("guide") : FALLBACK_ORDER.indexOf(a));
+  const order = plan ? [plan.act] : [...new Set(unheard && !given.conversational && s.opened && s.turn && s.confirmTries < 2 && s.solved === null && !rightResult ? [...acts, "confirm" as Act] : acts)].sort((a, b) => rank(a) - rank(b)).filter((a) => a !== "accept_answer" || rightResult);
   const make = (act: Act, offers: LineOffer[], extra: Partial<Proposal> = {}): Proposal => ({
     version: PROPOSAL_VERSION, act, parts: offers.map((o) => ({ line: o.line, slots: o.slots })), ...extra, ...(reading ? { reading } : {}),
     ...(plan?.draw ? { draw: plan.draw } : {}),
@@ -4309,7 +4329,7 @@ function codeProposals(given: Session, refused: readonly unknown[] = [], plan?: 
         // Another person's or a copied claim result ("My mom said 1440."): ask for the child's own work on this step, its
         // H0 invite, not more help (claim.ts, #737 review P3).
         const own = reading?.help === undefined && claimResultUnconfirmable(session);
-        const target = reading?.help === "show" ? 3 : session.turn && !own ? hint + 1 : 0;
+        const target = reading?.help === "show" ? 3 : session.turn && !own && !(given.conversational && !plan) ? hint + 1 : 0;
         const lv = (o: LineOffer) => o.level ?? 0;
         const levelled = [...byLevel(free).filter((o) => lv(o) >= target), ...byLevel(free).filter((o) => lv(o) < target).reverse()];
         // Round 5: only while a carry explanation on the step is still no repeat (carryLinesLeft); after that the help climbs.
@@ -4376,6 +4396,20 @@ function codeProposals(given: Session, refused: readonly unknown[] = [], plan?: 
 }
 
 // ---------- Conversational turns (D-341) ----------
+
+/** Code's patient lines for a child who is thinking (D-341, round 2): "{name}" is the child's name now and then. */
+export const PATIENT_LINES = ["Take your time, {name}.", "No rush. I'm here when you're ready."] as const;
+
+/**
+ * A turn that only says the child is thinking or wants a moment: no number, no question, and only filler words ("um",
+ * "wait", "I'm thinking", "hold on", "one sec").
+ */
+export function fillerTurn(text: string): boolean {
+  const t = text.toLowerCase().replace(/[’]/g, "'").trim();
+  if (t === "" || /\d|\?/.test(t) || valuesOf(t).length > 0) return false;
+  const rest = t.replace(/\b(?:u+m+|u+h+|h+m+|e+r+m*|well|okay|ok|so|wait|hold on|hang on|one sec(?:ond)?|just a (?:sec(?:ond)?|minute|moment)|give me a (?:sec(?:ond)?|minute|moment)|a sec|let me think|i'?m thinking|i am thinking|thinking|still thinking|i'?m still thinking|maya|please)\b/g, " ");
+  return rest.replace(/[\s.,!…-]+/g, "") === "";
+}
 
 /** A reading with its plain defaults left out, so a version 3 reading reads like a version 2 one. */
 function plainReading(raw: unknown): unknown {
@@ -4609,7 +4643,7 @@ function needsReview(s: Session, p: Proposal, say: string): boolean {
 }
 
 /** Lines code says in its own words whatever the model wrote: the decline, the outside-work redirect and the fixed AI replies. */
-const CODE_WORD_LINES: readonly string[] = ["redirect.workbook", "redirect.decline", "about.ai", "about.no_secret"];
+const CODE_WORD_LINES: readonly string[] = ["redirect.decline", "about.no_secret"];
 
 /** Refusals that are about code's own choice of lines, not the model's act: the next planned set is tried. */
 const PLAN_REFUSALS: readonly RefusalCode[] = ["line_not_offered", "free_talk_in_math_turn", "math_line_not_last", "invalid_proposal", "turn_too_long", "missing_disclosure", "fixed_reply_first", "hint_too_high", "same_hint_again", "board_not_code", "board_not_allowed", "board_wrong_problem"];
@@ -4626,6 +4660,12 @@ function proposeV3(base: Session, out: ModelOutput, effects: Effect[], reviews: 
   const reading = out.reading ?? {};
   const acts = () => (gate(base, reading) ?? actsNow(base, reading, false)).acts;
   const no = (code: RefusalCode, reason: string, allowed: Act[], say?: SayReason | "review"): StepResult => ({ session: base, effects, refusal: { code, reason, allowed, ...(say ? { say } : {}) } });
+  // D-341, round 2: once the answer stands and the child says they wrote it, Maya closes warmly; she asks nothing more.
+  const written: Reading = { ...reading, paper: "written" };
+  if (base.solved !== null && base.turn && (saysWritten(base.turn.text) || reading.paper === "written") && out.act !== "close" && (gate(base, written) ?? actsNow(base, written, false)).acts.includes("close")) {
+    const kept = sentencesOf(out.say).filter((x) => !/\?\s*$/.test(x));
+    out = { ...out, act: "close", reading: written, say: kept.length ? kept.join(" ") : "Thanks for writing it down. Bye for now." };
+  }
   const located = turnFacts(base).find((f) => f.misconception);
   if (located && (out.act === "confirm" || out.act === "accept_answer")) {
     return no("act_not_allowed", `The child's number shows a mistake: ${located.text} Name it plainly, say why, and guide that step. Never confirm it.`, acts().filter((a) => a !== "confirm" && a !== "accept_answer"));
@@ -4664,7 +4704,7 @@ function proposeV3(base: Session, out: ModelOutput, effects: Effect[], reviews: 
   if (at === -1) return r;
   const planned = (r.effects[at] as Extract<Effect, { kind: "say" }>).text;
   const codeWords = p.act === "safety" || base.state === "CONTENT_HOLD" || (p.act === "close" && base.state === "SAFETY") ||
-    p.parts.some((x) => "line" in x && CODE_WORD_LINES.includes(x.line)) || (p.act === "open" && !!base.confirmWorkbook);
+    p.parts.some((x) => "line" in x && (CODE_WORD_LINES.includes(x.line) || (x.line === "redirect.workbook" && base.scopeDue === "outside_work"))) || (p.act === "open" && !!base.confirmWorkbook);
   if (codeWords) return withSent(r, sent);
   const rules = sayRules(base, r.session, p, planned);
   if (sent.length > 0) return withStreamed(base, r, at, planned, out.say, sent, rules);

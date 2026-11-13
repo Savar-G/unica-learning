@@ -142,3 +142,61 @@ describe("A: the OpenRouter client streams", () => {
     expect(sentBody.stream).toBe(false);
   });
 });
+
+describe("D: off-topic and about-Maya turns are answered in the model's own words", () => {
+  it("says the model's honest reply to a dog and a food question, then credits the ones", async () => {
+    const { session } = call((b) => {
+      const t = b.childTurn ?? "";
+      if (/dog/.test(t)) return reply("Max is a nice name. I'm an AI, so I have no pet. What can you do with the 2 and the 8?", "redirect", { reading: { offTopic: true } });
+      if (/food/.test(t)) return reply("I'm an AI, so I don't eat. Let's get back to the ones. What can you do there?", "redirect", { reading: { aboutMaya: "identity" } });
+      return reply("Yes, 12 minus 8 is 4. Now the tens: what is 4 minus 2?", "guide", { step: "tens", reading: { answers: [ans(4, "ones")] } });
+    });
+    await session.start();
+    expect((await session.child("Do you like dogs? I have a dog named Max.")).say).toEqual(["Max is a nice name. I'm an AI, so I have no pet. What can you do with the 2 and the 8?"]);
+    expect((await session.child("What's your favourite food?")).say.join(" ")).toContain("I'm an AI, so I don't eat.");
+    await session.child("Okay. The ones are 12 minus 8, 4.");
+    expect(session.session.done).toEqual(["ones"]);
+  });
+});
+
+describe("E: a child who is thinking", () => {
+  it("gets one patient line from code, at most twice, with no model call and no help counted", async () => {
+    const { session, model } = call(() => reply("Let's look at the ones. What can you do there?", "guide", { step: "ones" }));
+    await session.start();
+    const a = await session.child("um");
+    const b = await session.child("wait");
+    const c = await session.child("I'm thinking");
+    expect(model.briefs).toHaveLength(0);
+    expect(a.say).toEqual(["Take your time, Leo."]);
+    expect(b.say).toEqual(["No rush. I'm here when you're ready."]);
+    expect(c.say).toEqual([]);
+    expect([a.wait, b.wait, c.wait]).toEqual([true, true, true]);
+    expect(session.session.hints).toBe(0);
+    expect(session.session.prompt).toBeUndefined();
+    await session.child("um 2 minus 8");
+    expect(model.briefs).toHaveLength(1);
+    expect(model.briefs[0].notes.join(" ")).not.toContain("took time to think");
+    const trace = await session.finish({ reason: "child_stopped" });
+    const { checkTrace } = await import("@/lib/maya-trace");
+    expect(checkTrace(trace).ok).toBe(true);
+  });
+});
+
+describe("F and G: the fallback and the close", () => {
+  it("a fallback after two refusals is the step's neutral help, never a confirm", async () => {
+    const { session } = call(() => reply("The answer is 24.", "guide", { step: "ones" }));
+    await session.start();
+    const out = await session.child("12 minus 8 is 4?");
+    expect(out.say.join(" ")).not.toMatch(/did you say|heard|was that/i);
+  });
+  it("after the answer stands, 'I wrote it.' closes warmly with no question", async () => {
+    const { session } = call((b) => (/24/.test(b.childTurn ?? "") && !/wrote/.test(b.childTurn ?? "")
+      ? reply("Yes, 52 minus 28 is 24. Please write it down.", "accept_answer", { reading: { answers: [ans(24, "result")] } })
+      : reply("Good, Leo. Did you write the 4 in the ones place?", "ask_write")));
+    await session.start();
+    await session.child("Then 4 minus 2 is 2. So it's 24.");
+    const out = await session.child("Okay I wrote 24.");
+    expect(out.ended?.reason).toBe("solved");
+    expect(out.say.join(" ")).not.toContain("?");
+  });
+});

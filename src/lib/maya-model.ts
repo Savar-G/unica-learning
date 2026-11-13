@@ -17,6 +17,7 @@ import {
   numbersBrief,
   turnFacts,
   codeVerdicts,
+  saysWritten,
   MODEL_OUTPUT_SCHEMA,
   PROPOSAL_SCHEMA,
   PROPOSAL_VERSION,
@@ -273,6 +274,8 @@ function turnNotes(session: Session): string[] {
     if (next) notes.push(`If you work the easier example now, say its next step: ${stepText(next, session.package.easierExample.operation)}${session.exampleShown === 0 && !session.exampleIntroduced ? " Say first that it is a new, easier problem." : ""}`);
   }
   if (session.noBoard) notes.push("The child cannot see the board: say everything in words.");
+  if ((session.thinking ?? 0) > 0) notes.push("The child took time to think before this turn: be patient, do not push, and answer what they say now.");
+  if (session.solved !== null && session.turn && saysWritten(session.turn.text)) notes.push("The child wrote the answer: close warmly now (act \"close\"), and ask nothing.");
   return notes;
 }
 
