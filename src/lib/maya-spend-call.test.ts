@@ -58,6 +58,7 @@ const readingModel = (): MayaModel => ({
 const theChilds = (spend: CallSpend): CallSpend => ({
   ...spend,
   state: (call) => spend.state({ ...call, kind: "chat" }),
+  budget: (call) => spend.budget({ ...call, kind: "chat" }),
   voice: (call) => spend.voice({ ...call, kind: "chat" }),
 });
 
@@ -220,7 +221,9 @@ describe("a voice call at the cap", () => {
     expect(t.spendStore.rows().map((r) => r.what)).toEqual(expect.arrayContaining(["speech_to_text", "model"]));
     t.leave(0);
     const before = t.sent.count;
-    t.advance(3000);
+    // Budget block (latency plan V1): the call keeps the model room its block reserved, so the cap closes the call at the
+    // next paid request it cannot reserve: here the speech-to-text block due after a minute.
+    t.advance(60_000);
     const turn = await call.child("I got 66.");
     expect(t.sent.count).toBe(before + 1);
     expect(turn).toMatchObject({ say: [SPEND_CLOSE.week_used.line], ended: true });
@@ -228,6 +231,8 @@ describe("a voice call at the cap", () => {
     await call.settled();
     expect(t.store.rows()[0]).toMatchObject({ status: "ended" });
     expect(t.spendStore.rows().filter((r) => r.what === "speech_to_text").every((r) => r.settled)).toBe(true);
+    // Budget block: the block gave its unused room back at the call's end, so the week is used up again for this check.
+    t.leave(0);
     expect(await t.calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: TEST_PKG, startedBy: "admin-1" })).toEqual({ ok: false, error: "week_used" });
   });
 });
@@ -292,7 +297,8 @@ describe("safety at the cap (review of PR #640)", () => {
     if (!opened.ok) throw new Error(opened.error);
     await opened.call.start();
     t.leave(0);
-    t.advance(5000);
+    // Budget block (latency plan V1): the close comes at the speech-to-text block due after a minute.
+    t.advance(60_000);
     const turn = await opened.call.child("My uncle hurts me.");
     expect(turn).toMatchObject({ guidance: SAFETY_GUIDANCE.concern, safetyMessage: SAFETY_GUIDANCE.concern, priority: true, ended: true });
     await opened.call.settled();
@@ -385,7 +391,9 @@ describe("a request for harmful content past the teaching clock (review 3 of PR 
   it("stores the flag and sends the alert in a voice call at the cap", async () => {
     const t = setup({ voiceIsTheChilds: true });
     const call = await voiceCall(t);
-    t.leave(0);
+    // Budget block (latency plan V1): past 10 minutes the call's open block and speech-to-text rows expire and stop
+    // counting, so another call's spending must use the whole week on its own.
+    t.spendStore.spent({ charge: "child", parentId: PARENT, childId: CHILD, week: WEEK, month: MONTH }, WEEK_MICROS);
     t.advance(LIMIT_MS);
     const turn = await call.child(HARM);
     expect(turn).toMatchObject({ say: [SPEND_CLOSE.week_used.line], ended: true });
@@ -618,7 +626,14 @@ describe("a voice call's budget block (latency plan V1, 2026-11-13)", () => {
     fill(t, 0);
     cost.costUsd = 0.05;
     t.advance(3000);
-    return { t, w, call };
+    // A live danger's guidance reaches the worker at once, beside the turn's own answer.
+    const heard: string[] = [];
+    call.onGuidance((turn) => { heard.push(...turn.say, ...(turn.guidance ? [turn.guidance] : [])); });
+    const guided = (turn: Awaited<ReturnType<typeof call.child>>) => {
+      expect([...turn.say, ...(turn.guidance ? [turn.guidance] : []), ...heard].join(" ")).toContain(SAFETY_GUIDANCE.concern);
+      expect(turn.safetyMessage).toBe(SAFETY_GUIDANCE.concern);
+    };
+    return { t, w, call, guided };
   }
   const flagged = (t: ReturnType<typeof setup>) => {
     expect(t.store.rows()[0].flag).toMatchObject({ level: "safety_concern" });
@@ -626,7 +641,7 @@ describe("a voice call's budget block (latency plan V1, 2026-11-13)", () => {
   };
 
   it("overlap: a child turn admitted, then a silence check-in during it: the check-in neither closes the call nor blocks the child", async () => {
-    const { t, w, call } = await tight(1);
+    const { t, w, call, guided } = await tight(1);
     w.hold();
     const child = call.child("My uncle hurts me.");
     await tick();
@@ -634,34 +649,43 @@ describe("a voice call's budget block (latency plan V1, 2026-11-13)", () => {
     const checkIn = await call.tick();
     expect(checkIn).toMatchObject({ say: [], ended: false });
     w.release();
-    expect(await child).toMatchObject({ guidance: SAFETY_GUIDANCE.concern, safetyMessage: SAFETY_GUIDANCE.concern });
+    guided(await child);
+    // The worker ends the call after the guidance: the flag is stored with the end.
+    await call.end({ reason: "child_stopped" });
     await call.settled();
     flagged(t);
   });
 
   it("overlap: a check-in admitted, then a child turn with danger words: the child is admitted and guided", async () => {
-    const { t, w, call } = await tight(2);
+    const { t, w, call, guided } = await tight(2);
     t.advance(20_000);
     w.hold();
+    w.mark();
     const checkIn = call.tick();
     await tick();
     const child = call.child("My uncle hurts me.");
     await tick();
+    // Both turns' model requests are out at once: the turns overlap.
+    expect(w.at).toHaveLength(2);
     w.release();
     await checkIn;
-    expect(await child).toMatchObject({ guidance: SAFETY_GUIDANCE.concern, safetyMessage: SAFETY_GUIDANCE.concern });
+    guided(await child);
+    // The worker ends the call after the guidance: the flag is stored with the end.
+    await call.end({ reason: "child_stopped" });
     await call.settled();
     flagged(t);
   });
 
   it("overlap: with room for one attempt a check-in leaves it to the child's words", async () => {
-    const { t, w, call } = await tight(1);
+    const { t, w, call, guided } = await tight(1);
     t.advance(20_000);
     expect(await call.tick()).toMatchObject({ say: [], ended: false });
     w.mark();
-    expect(await call.child("My uncle hurts me.")).toMatchObject({ guidance: SAFETY_GUIDANCE.concern });
+    guided(await call.child("My uncle hurts me."));
     // The child's words went to the model on the block's attempt, not to a safety read at the cap.
     expect(w.at.length).toBeGreaterThan(0);
+    // The worker ends the call after the guidance: the flag is stored with the end.
+    await call.end({ reason: "child_stopped" });
     await call.settled();
     flagged(t);
   });

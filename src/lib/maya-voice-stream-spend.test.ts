@@ -21,6 +21,7 @@ function recordingLedger() {
     settle: async () => {},
     settleUsd: async (id, usd) => { settled.push({ id, usd }); },
     state: async () => "open",
+    block: () => { throw new Error("no budget block in this test"); },
     week: async () => ({ usedMicros: 0, weekMicros: 0 }) as never,
   };
   return { ledger, reserved, settled };

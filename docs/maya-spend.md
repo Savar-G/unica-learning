@@ -33,6 +33,35 @@ A child's chats and calls count toward the child's week and the month's total. A
 
 The reservation and the check are one database function under the child's lock (`reserve_maya_spend`), so requests sent together cannot spend past the cap. When the ledger cannot be read, Maya starts no new paid work and shows the short-break message: "Maya is taking a short break. There's no extra charge."
 
+## The budget block of a voice call
+
+Latency plan V1 (Chief of Staff, 2026-11-13): a voice turn makes no database request before Maya's model request. Before, each turn made two (a cap read and the reservation, about 0.5 s from the voice worker). Code: `src/lib/maya-spend-block.ts`, wired in `src/lib/maya-spend.ts` (`SpendLedger.block`, `CallSpend.budget`) and `openVoice` in `src/lib/maya-call.ts`. Chat is unchanged: each message reads the cap, then reserves its model request.
+
+- **The block.** When a voice call opens, one `reserve_maya_spend` request (no force, the child's lock) reserves a block of 4 model attempts (4 x USD 0.15) for the call, as one ordinary `maya_spend` row with what `model`. When the week does not cover 4, it reserves 1. When it does not cover 1, nothing: the call closes at the cap, as before. No new database function was needed.
+- **The gate.** Before the session takes a turn's input, the call module asks the block for one model attempt for that turn. The check is in memory and synchronous: there is no wait between the check and the session taking the input. A turn with the child's words needs 1 free attempt. A turn with no child words (a silence check-in, a writing status) needs 2, so the last attempt stays for the child's words. Turns that overlap each hold their own attempt.
+- **Paying.** Each paid model attempt of the call (the first one, a repair, a retry, a streamed one) and each free-talk review takes its reservation from the block in memory, and its real cost replaces the reservation when it comes back: the reported cost, the reservation when the cost is not known, nothing when it was never sent. The turn's first attempt takes the attempt the gate held; a turn that asked no model gives it back.
+- **Refill.** When fewer than 2 attempts are free, or the newest block is 7 minutes old, one new block is reserved in the background. One refill runs at a time, and no turn waits for it unless the allowance is 0. A refused refill is not tried again in the background: the call runs on what it has. At 0, the turn tries once more (after the blocks it retired are settled); when that is refused too, the turn closes with code's line, and the child's words get the safety read.
+- **Retire and settle.** A block takes no more attempts at 8 minutes (below the 10-minute expiry of an unsettled reservation), when a newer block exists and it has no whole attempt left, and at the call's end. A retired block is settled once, with the real total of its attempts, when its last attempt is back. Its unused room goes back to the week.
+- **A crash.** The block stays counted at its reservation until the 10-minute expiry, then stops counting. The real cost of attempts made from it is then lost to the week: usually under CAD 0.30 a crash. A worker shutdown on deploy is not a crash: `end` settles.
+- **What it changes.** What another call of the child spends, and a ledger that cannot be read, take effect at the call's next refill or at its end, not in the middle of a block (at most 4 attempts, about a minute of talk). The block spends only money the database admitted under the child's lock, so the calls of a child together never pass the week. In the meantime, a chat of the same child sees the block's unused room as used. The safety read never comes from the block: it is forced, off the child's week, and never refused.
+- **Overlapping turns.** A refusal in the middle of a turn is counted per turn (one shared flag lost a refusal when a check-in and a child turn overlapped). A check-in never closes the call while another turn runs; it answers nothing. When a turn closes the call while other turns run, the safety read reads the child's words of every turn whose answer the close drops.
+
+### The seam for the text session (agreed with the Maya lead, 2026-11-13)
+
+The text session does not import the block. The call module gives it `budget.seam` (`BlockSeam` in `src/lib/maya-spend-block.ts`):
+
+```ts
+take(kind: "model" | "speculative"): Handle | null; // synchronous; null when there is no room
+settle(handle: Handle, usd: number, how?: { used?: boolean }): void; // the attempt's real cost
+giveBack(handle: Handle): void; // never sent: costs nothing
+```
+
+- The block enforces the rules, not the caller: at most 3 `speculative` takes a turn (the call module calls `budget.newTurn()` when it admits a turn); a `speculative` take is refused when fewer than 2 attempts are free, so speculation never takes the last live attempts; and the week's cap, as above.
+- A `model` take is the turn's admitted attempt first, then a fresh one.
+- A speculative attempt whose reply is used stays kind `speculative`: `settle(handle, usd, { used: true })` marks it. Nothing is re-labelled `model`.
+- `budget.totals()` gives the settled costs per kind in micros (`model`, `speculative`, `speculativeUsed`, `review`). The database keeps one row per block (what `model`); the detail per attempt is in `ai_usage_events`. A separate `what` for speculation in `maya_spend` would need a migration.
+- A client whose attempts the session pays through the seam must not also be metered through the ledger, or the attempt is paid twice. In `openVoice` the line that passes the seam to the session is marked and commented out: this base's text session options have no `spend` field yet.
+
 ## At the cap
 
 The ledger is "open" while one more model attempt (its reservation) fits. When it does not:
@@ -62,7 +91,7 @@ When the month's total reaches `MAYA_MONTHLY_ALERT_CAD`, at a reservation or whe
 
 ## Reading it
 
-Admins read `public.maya_spend` (one row per attempt: charge, child, call, what, week, month, reserved and actual micros, whether the cost was unknown). Parents read nothing directly; Parent home reads through the server.
+Admins read `public.maya_spend` (one row per attempt: charge, child, call, what, week, month, reserved and actual micros, whether the cost was unknown; for a voice call's model and review attempts, one row per budget block, with the block's reservation and its real total). Parents read nothing directly; Parent home reads through the server.
 
 ```sql
 -- This month's total, in CAD.

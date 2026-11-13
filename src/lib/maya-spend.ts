@@ -24,6 +24,7 @@
 // family's time zone and the alert. Pure otherwise: no network, database or Next.js.
 
 import { formatInZone, monthOf, PACIFIC_ZONE, weekOf, type FamilyZone } from "@/lib/family-time";
+import { createBudget, type CallBudget, type Handle } from "@/lib/maya-spend-block";
 
 export const MICROS_PER_CAD = 1_000_000;
 /** A child's weekly amount for Maya, in CAD (Savar, 2026-11-05). */
@@ -138,7 +139,7 @@ export interface SpendStore {
 
 // ---------- the ledger ----------
 
-export type Reservation = { ok: true } | { ok: false; state: "week_used" };
+export type Reservation = { ok: true } | { ok: false; state: "week_used" | "paused" };
 
 export interface WeekSpend {
   usedMicros: number;
@@ -161,6 +162,12 @@ export interface SpendLedger {
   settleUsd(id: string, usd: number | null): Promise<void>;
   /** Whether new paid work may start for this charge. Never throws: a ledger that cannot be read is "paused". */
   state(charge: Charge): Promise<SpendState>;
+  /**
+   * The budget block of a voice call (src/lib/maya-spend-block.ts, latency plan V1): one per call id in this process.
+   * While it exists, the call's model and review attempts of the same charge (`reserve` with its `callId`, no `force`)
+   * are paid from it in memory, and their settles add their costs to it; the safety read (forced) never is.
+   */
+  block(input: { charge: Charge; callId: string; newId: () => string }): CallBudget;
   /** The child's week for Parent home and the desk. Throws when the ledger cannot answer. */
   week(input: { parentId: string; childId: string }): Promise<WeekSpend>;
 }
@@ -219,21 +226,76 @@ export function createSpendLedger(seams: SpendSeams): SpendLedger {
     }
   }
 
-  const ledger: SpendLedger = {
-    config,
-    async reserve({ id, charge, callId = null, what, micros, force = false }) {
-      if (!Number.isSafeInteger(micros) || micros < 0) throw new Error("maya spend: a reservation is whole micro-units");
-      const p = await periods(charge);
+  /** One reservation in the store: the check and the write under the child's lock, and the month's alert. */
+  async function write({ id, charge, callId, what, micros, force }: { id: string; charge: Charge; callId: string | null; what: SpendWhat; micros: number; force: boolean }): Promise<Reservation> {
+    const p = await periods(charge);
       const r = await store.reserve({
         id, charge: charge.kind, parentId: charge.parentId, childId: charge.childId, callId, what, micros,
         week: p.week, weekMicros: WEEK_MICROS, month: p.month, force,
       });
-      if (!r.ok) return { ok: false, state: "week_used" };
-      if (r.monthMicros >= config.monthlyAlertMicros) await alertOnce(p.month);
-      return { ok: true };
+    if (!r.ok) return { ok: false, state: "week_used" };
+    if (r.monthMicros >= config.monthlyAlertMicros) await alertOnce(p.month);
+    return { ok: true };
+  }
+
+  const sameCharge = (a: Charge, b: Charge) => a.kind === b.kind && a.parentId === b.parentId && a.childId === b.childId;
+  /** The budget blocks of voice calls in this process, by call id. */
+  const budgets = new Map<string, { charge: Charge; budget: CallBudget }>();
+  /** A request's own reservation id, to the attempt it took from a block: its settle goes to the block. */
+  const fromBlock = new Map<string, { budget: CallBudget; handle: Handle }>();
+
+  const ledger: SpendLedger = {
+    config,
+    async reserve({ id, charge, callId = null, what, micros, force = false }) {
+      if (!Number.isSafeInteger(micros) || micros < 0) throw new Error("maya spend: a reservation is whole micro-units");
+      if (fromBlock.has(id)) return { ok: true };
+      const held = !force && callId !== null && (what === "model" || what === "review") ? budgets.get(callId) : undefined;
+      if (held && sameCharge(held.charge, charge)) {
+        // A voice call's attempt: paid from its block in memory, with no database request. The turn's admitted attempt
+        // first; at an allowance of 0 the block tries its refill, and a refusal sends nothing.
+        const { budget } = held;
+        const kind = what === "review" ? "review" : "model";
+        let handle = (kind === "model" ? budget.claim(micros) : null) ?? budget.take(kind, micros);
+        let state: SpendState = "open";
+        if (!handle) {
+          state = await budget.ensure();
+          handle = state === "open" ? budget.take(kind, micros) : null;
+        }
+        if (!handle) return { ok: false, state: state === "open" ? "week_used" : state };
+        fromBlock.set(id, { budget, handle });
+        return { ok: true };
+      }
+      return write({ id, charge, callId, what, micros, force });
     },
-    settle: (id, micros) => settled(id, micros === null ? null : Math.max(0, Math.ceil(micros))),
-    settleUsd: (id, usd) => settled(id, usd === null ? null : usdToMicros(usd, config)),
+    settle(id, micros) {
+      const b = fromBlock.get(id);
+      if (b) {
+        fromBlock.delete(id);
+        b.budget.finish(b.handle, micros);
+        return Promise.resolve();
+      }
+      return settled(id, micros === null ? null : Math.max(0, Math.ceil(micros)));
+    },
+    settleUsd(id, usd) {
+      const b = fromBlock.get(id);
+      if (b) {
+        fromBlock.delete(id);
+        b.budget.finish(b.handle, usd === null ? null : usdToMicros(usd, config));
+        return Promise.resolve();
+      }
+      return settled(id, usd === null ? null : usdToMicros(usd, config));
+    },
+    block({ charge, callId, newId }) {
+      const known = budgets.get(callId);
+      if (known) return known.budget;
+      const budget = createBudget({
+        modelMicros: room, reviewMicros: usdToMicros(RESERVE_USD.review, config), usdToMicros: (usd) => usdToMicros(usd, config), clock, newId,
+        reserve: (id, micros) => write({ id, charge, callId, what: "model", micros, force: false }),
+        settle: (id, micros) => settled(id, micros),
+      });
+      budgets.set(callId, { charge, budget });
+      return budget;
+    },
     async state(charge) {
       try {
         return await stateOf(charge);
@@ -273,6 +335,11 @@ export interface CallSpend {
   readonly ledger: SpendLedger;
   /** Whether the call may make its next paid request. Never throws. */
   state(call: SpendCall): Promise<SpendState>;
+  /**
+   * A voice call's budget block (src/lib/maya-spend-block.ts): the same one for the same call id. The call's metered
+   * model client must use this same ledger, so its attempts are paid from the block.
+   */
+  budget(call: SpendCall): CallBudget;
   /** The voice meter of a voice call. */
   voice(call: SpendCall): VoiceMeter;
 }
@@ -281,11 +348,12 @@ export function callSpend(ledger: SpendLedger, seams: { clock: () => number; new
   return {
     ledger,
     state: (call) => ledger.state(chargeOf(call)),
+    budget: (call) => ledger.block({ charge: chargeOf(call), callId: call.id, newId: seams.newId }),
     voice(call) {
       const charge = chargeOf(call);
       const perMs = ledger.config.sttUsdPerMinute / 60_000;
       let block: { id: string; from: number } | null = null;
-      let refused: "week_used" | null = null;
+      let refused: "week_used" | "paused" | null = null;
       let stopped = false;
       const counting = new Set<Promise<void>>();
       let queue: Promise<unknown> = Promise.resolve();

@@ -83,6 +83,7 @@ import { type QuestionPackage, type QuestionRef } from "@/lib/question-package";
 import { teachingPackage } from "@/lib/maya-teaching";
 import { connectedSeconds, VOICE_CALL_STALE_MS, type ConnectionEvent, type ConnectionKind } from "@/lib/maya-voice";
 import { spendCloseOf, SPEND_CLOSE, type CallSpend, type SpendCall, type SpendState, type VoiceMeter } from "@/lib/maya-spend";
+import type { CallBudget, Handle } from "@/lib/maya-spend-block";
 import { SpendRefused } from "@/lib/maya-spend-ai";
 export type { SpendCall } from "@/lib/maya-spend";
 
@@ -1103,10 +1104,13 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       if (!found) return { ok: false, error: "not_found" };
       if (found.mode !== "voice") return { ok: false, error: "not_voice" };
       if (found.status !== "live" || !found.live) return { ok: false, error: "ended" };
-      let refusal: Exclude<SpendState, "open"> | null = null;
+      // Refusals of the call's model requests, counted: a turn that saw the count move while it ran was refused. Per turn,
+      // as turns can overlap (a silence check-in and a child turn); one shared flag lost a refusal (latency plan V1).
+      let refusals = 0;
+      let lastRefusal: Exclude<SpendState, "open"> = "week_used";
       const asked = found.live.text.session.outcome ? idleModel(found) : seams.model(found.model, spendCall(found));
       if (!asked) return { ok: false, error: "model_unavailable" };
-      const model = watched(asked, (state) => { refusal = state; });
+      const model = watched(asked, (state) => { refusals++; lastRefusal = state; });
       const restored = structuredClone(found.live.text);
       // Savar, 2026-11-12: Maya may say the child's first name on a voice call, as in chat. The session keeps the name
       // its start was given (startVoice, from the server). Every trace this handle stores hides it as {name}: the name
@@ -1118,6 +1122,13 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       const pkg = found.live.package;
       // The call's speech-to-text and voice in the spending ledger (D-290).
       const meter: VoiceMeter | null = seams.spend ? seams.spend.voice(spendCall(record)) : null;
+      // The call's model attempts are paid from its budget block (src/lib/maya-spend-block.ts, latency plan V1): the first
+      // block is reserved now, in the background; the first turn waits for it only if it has not answered.
+      const budget: CallBudget | null = seams.spend ? seams.spend.budget(spendCall(record)) : null;
+      void budget?.open();
+      // For the Maya lead's prepare-then-commit seam: the text session gets `budget.seam` (BlockSeam) once its options
+      // have a `spend` field. Not passed yet: this base's TextSessionOptions has none.
+      // const blockSeam = budget?.seam;
       let hearGuidance: ((turn: VoiceTurn) => void) | null = null;
       // Every trace turn before this index has been told to the worker in an earlier turn.
       let told = 0;
@@ -1206,19 +1217,32 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         return { say: out.say, newBatches: out.board.length, boardCues, safetyMessage: out.safetyMessage, ended: out.ended !== null, priority, time, ...(guidance ? { guidance } : {}), ...(out.wait ? { wait: true } : {}) };
       };
       let working = 0;
-      /** The child's words the running input is working on, for the safety read when the call closes under it. */
-      let hearing: string | undefined;
-      /** The cap's state for the next paid request: speech-to-text reserved ahead, then the ledger. */
-      const capNow = async (): Promise<SpendState> => {
-        if (!seams.spend) return "open";
-        const stt = meter ? await meter.ensure() : "open";
-        return stt !== "open" ? stt : seams.spend.state(spendCall(record));
+      /** The turns admitted and not done, each with the child's words it carries (a check-in carries none). */
+      const inflight = new Set<{ words?: string }>();
+      /** Child words a refused turn left unread while another turn ran: the turn that closes the call reads them. */
+      const owed: string[] = [];
+      /**
+       * The words a closing safety read holds: `own`, the owed words, and the words of every other turn still in flight,
+       * whose answers are lost when the call closes under them.
+       */
+      const unread = (own?: string, me?: object): string | undefined => {
+        const words = [...(own ? [own] : []), ...owed.splice(0), ...[...inflight].filter((t) => t !== me && t.words).map((t) => t.words!)];
+        return words.length ? words.join(" ") : undefined;
+      };
+      /** Speech-to-text reserved ahead (its own requests, only when its block is near its end). */
+      const sttNow = async (): Promise<SpendState> => (meter ? meter.ensure() : "open");
+      /** After a turn: speech-to-text, then the block (in memory unless its allowance is 0; then its refill decides). */
+      const capAfterTurn = async (): Promise<SpendState> => {
+        const stt = await sttNow();
+        return stt !== "open" ? stt : budget ? budget.ensure() : "open";
       };
       /** Ends the call because of the cap after `said` (what this input already says), with code's closing line. */
       const capClose = async (state: Exclude<SpendState, "open">, said: VoiceTurn | null, childText?: string): Promise<VoiceTurn> => {
         let closed: Awaited<ReturnType<typeof closeAtCap>> = null;
         later(async () => {
           if (lost || record.status === "ended" || !record.live) return;
+          // The block pays for no more: it is settled with its real total, before the call's end reads the cap.
+          await budget?.stop();
           closed = await closeAtCap(record, state, name, connected, childText);
           if (!closed) { lost = true; replaced = true; }
           else record = closed.record;
@@ -1242,12 +1266,47 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         const asks = s.outcome === null && nextActs(s).expect === "maya" && !codeStop;
         return { model: asks, conversational: model.output === 3, streams: asks && model.output === 3 && streamPlan(s) !== null };
       };
-      const turn = async (run: () => Promise<TextOutput>, childText?: string, say?: VoiceSay): Promise<VoiceTurn> => {
+      /**
+       * One input. `need`: free model attempts the gate asks for, 2 for a turn with no child words (a check-in), so the
+       * last attempt stays for the child.
+       */
+      const turn = async (run: () => Promise<TextOutput>, childText?: string, say?: VoiceSay, need: 1 | 2 = 1): Promise<VoiceTurn> => {
         if (inactive()) return none;
-        // This read stays before the input: beside it, a paid request went out at the cap and the safety read lost its
-        // guidance (tried 2026-11-13, src/lib/maya-spend-call.test.ts).
-        const capped = await capNow();
-        if (capped !== "open") return capClose(capped, null, childText);
+        const stt = await sttNow();
+        if (stt !== "open") return capClose(stt, null, unread(childText));
+        if (inactive()) return none;
+        const me: { words?: string } = { words: childText };
+        inflight.add(me);
+        let ticket: Handle | null = null;
+        try {
+          if (budget) {
+            // The gate stays before the input, and is in memory and synchronous: no await between it and the session
+            // taking the input. Beside the input, a paid request went out at the cap and the safety read lost its
+            // guidance (tried 2026-11-13); a hold awaited before the input let overlapping turns lose the guidance
+            // (review of 2026-11-13).
+            ticket = budget.admit(need);
+            if (!ticket) {
+              // A check-in never closes the call under another turn, and never takes the child's last attempt.
+              if (!childText && (inflight.size > 1 || budget.attempts() >= 1)) return none;
+              // The allowance is 0: the block's refill decides (the call is at the cap, or the ledger cannot answer).
+              const state = await budget.ensure();
+              if (inactive()) return none;
+              ticket = state === "open" ? budget.admit(need) : null;
+              if (!ticket) {
+                if (!childText && (inflight.size > 1 || budget.attempts() >= 1)) return none;
+                return capClose(state === "open" ? "week_used" : state, null, unread(childText, me));
+              }
+            }
+            budget.newTurn();
+          }
+          return await admitted(me, ticket, run, childText, say);
+        } finally {
+          inflight.delete(me);
+          if (ticket) budget?.release(ticket);
+        }
+      };
+      /** An admitted input (`ticket`: its model attempt from the block). */
+      const admitted = async (me: { words?: string }, ticket: Handle | null, run: () => Promise<TextOutput>, childText?: string, say?: VoiceSay): Promise<VoiceTurn> => {
         let input = run;
         if (childText && pastClock(session.session) && !session.session.safety.flagged) {
           // Words after the call's clock: read for danger first, as the session would end the call unread.
@@ -1269,10 +1328,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
             if (inactive()) return none;
           }
         }
-        refusal = null;
+        const seen = refusals;
         const before = session.trace().turns.length;
         working++;
-        hearing = childText;
         let out: TextOutput;
         listener = say ?? null;
         try {
@@ -1280,10 +1338,14 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           const running = input();
           if (say?.begun) { try { say.begun(planOf()); } catch { /* the worker's ear never fails the turn */ } }
           out = await running;
-        } finally { working--; hearing = undefined; listener = null; }
+        } finally { working--; listener = null; }
+        // The input's model requests are over: an admitted attempt none of them took goes back before the cap's check.
+        if (ticket) budget?.release(ticket);
+        // Refused in this turn's time (any refusal while it ran counts: the turns share one model).
+        const stopped: Exclude<SpendState, "open"> | null = refusals !== seen ? lastRefusal : null;
         persist(out);
-        // The cap's read after the turn runs beside the save. A request refused in the turn decides without it.
-        const capAfter = session.ended || refusal ? null : capNow();
+        // The cap's check after the turn runs beside the save. A request refused in the turn decides without it.
+        const capAfter = session.ended || stopped ? null : capAfterTurn();
         void capAfter?.catch(() => {});
         await queue;
         if (inactive()) return none;
@@ -1292,10 +1354,16 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         const said = voiceTurn(out, from);
         if (!session.ended) {
           // The words this input chose are said; then the cap closes the call when it is reached. A request refused in
-          // the middle of the turn left the child's words unread, so they get the safety read.
-          const stopped: Exclude<SpendState, "open"> | null = refusal;
-          const after = stopped ?? await (capAfter ?? capNow());
-          if (after !== "open") return capClose(after, said, stopped ? childText : undefined);
+          // the middle of the turn left the child's words unread, so they get the safety read. While another turn still
+          // runs, that turn closes the call after its own words, and reads the words owed.
+          const after = stopped ?? await (capAfter ?? capAfterTurn());
+          if (after !== "open" || owed.length > 0) {
+            if (inflight.size > 1) {
+              if (stopped && childText) owed.push(childText);
+              return said;
+            }
+            return capClose(after !== "open" ? after : lastRefusal, said, unread(stopped ? childText : undefined, me));
+          }
         }
         return said;
       };
@@ -1351,14 +1419,16 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         },
         start: (options) => turn(() => session.start(options)),
         child: (text, options, say) => turn(() => session.child(text.trim().slice(0, MAX_CHILD_TEXT), options), text.trim().slice(0, MAX_CHILD_TEXT), say),
-        tick: () => turn(() => session.tick()),
-        writing: (status) => turn(() => session.writing(status)),
+        tick: () => turn(() => session.tick(), undefined, undefined, 2),
+        writing: (status) => turn(() => session.writing(status), undefined, undefined, 2),
         async limit() {
           later(async () => {
             if (lost || record.status === "ended" || !record.live) return;
             // Restore only accepted, saved work. An outstanding model answer cannot delay the deadline.
             const final = textSession(record, pkg, idleModel(record), name, record.live.text);
             await final.tick();
+            // The block is settled with its real total before the call's end reads the cap (its profile rebuild).
+            await budget?.stop();
             const ended = await end(record, pkg, final, {}, connected, record.startedAt === null);
             if (!ended) { lost = true; replaced = true; }
             else record = ended;
@@ -1383,17 +1453,21 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           await queue;
         },
         async meter() {
+          // The worker's 10-second tick also renews and retires the budget block by age (in the background).
+          budget?.tick();
           if (!meter || inactive() || session.ended) return null;
           const state = await meter.ensure();
           if (state === "open" || inactive() || session.ended) return null;
           // Speech-to-text cannot be renewed: the call closes now, also during a model request (its answer is not said,
           // and the child's words it was reading get the safety read). Waiting for it would keep the room listening.
-          return capClose(state, null, working > 0 ? hearing : undefined);
+          return capClose(state, null, unread());
         },
         spoken: (text) => meter?.spoken(text) ?? Promise.resolve(),
         async end(how) {
           await queue;
           await meter?.stop();
+          // Every block is settled with its real total; the unused room goes back to the week.
+          await budget?.stop();
           if (lost) return;
           if (record.status === "live") {
             later(async () => {
