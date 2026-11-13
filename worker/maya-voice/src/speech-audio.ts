@@ -86,6 +86,8 @@ export function boardAudio(
   scope: SpeechScope,
   /** The voice gave no audio for the rest of this speech (`heardAny`: some of it played before). The board is shown first. */
   silent?: (speech: SilentSpeech) => void,
+  /** False: the audio does not wait for the plan to be sent. Only for a plan with no batches. */
+  gate = true,
 ): ReadableStream<AudioFrame> {
   const abort = new AbortController();
   let current: ReadableStreamDefaultReader<AudioFrame> | null = null;
@@ -149,7 +151,7 @@ export function boardAudio(
             // The voice has the words already; its audio waits until the plan is on the child's screen. A plan that
             // could not be sent has no audio: the call's own handler ends the call for that failure.
             let failed = false;
-            try { await board.sent(scope); } catch { failed = true; }
+            if (gate) { try { await board.sent(scope); } catch { failed = true; } }
             if (failed || stale()) {
               void frames.cancel(scope).catch(() => {});
               if (failed && !abort.signal.aborted) controller.close();

@@ -157,32 +157,17 @@ export class MayaVoiceAgent extends voice.Agent {
     // Every line reaches the voice provider here: replies, acknowledgement phrases and guidance said again.
     const synthesize = (input: ReadableStream<string> | AsyncIterable<string>) =>
       countedSynthesis(input, counted => voice.Agent.default.ttsNode(this, counted, settings), said => void this.call.spoken(said));
-    // The worker's own opening has no board plan, and must not wait for the board to connect.
-    const plain = this.plainNext;
-    this.plainNext = false;
-    if (plain) {
-      // The opening's own marks, for the worker's log: when its words reached the voice, and its first audio.
-      this.onOpeningMark?.("ttsNode");
-      const frames = await synthesize(text);
-      if (!frames) return frames;
-      let count = 0;
-      return frames.pipeThrough(new TransformStream<AudioFrame, AudioFrame>({
-        transform: (frame, controller) => {
-          if (++count === 1) this.onOpeningMark?.("firstFrame");
-          controller.enqueue(frame);
-        },
-        flush: () => { this.onOpeningMark?.(`framesEnd:${count}`); },
-      }));
-    }
+    // The worker's own opening has an empty plan, and must not wait for the board to connect.
+    const ungated = this.ungatedNext;
+    this.ungatedNext = false;
     if (!this.board) return synthesize(text);
     const scope = this.board.scope();
     if (!scope || !this.board.sync.owns(scope)) return null;
-    return boardAudio(text, synthesize, this.board.sync, scope, speech => this.onSilent?.(speech));
+    return boardAudio(text, synthesize, this.board.sync, scope, speech => this.onSilent?.(speech), !ungated);
   }
 
-  /** One-shot: the next speech goes to the voice with no board plan (the worker's own opening). */
-  plainNext = false;
-  onOpeningMark: ((name: string) => void) | null = null;
+  /** One-shot: the next speech's audio does not wait for its (empty) board plan to be sent (the worker's own opening). */
+  ungatedNext = false;
   /** A speech with a board plan whose voice gave no audio (./speech-audio.ts `boardAudio`). */
   onSilent: ((speech: SilentSpeech) => void) | null = null;
   private starting: Promise<unknown> | null = null;
@@ -457,30 +442,14 @@ export class VoiceCallRun {
    * Says the opening at once (Savar, 2026-11-13: under 1 s from the child's connection), with no board plan, and starts
    * the call behind it. The start's own words are not said again; its turn keeps the rest of `after`.
    */
-  /** Debug: the state of LiveKit's audio output chain, for the opening's marks. */
-  private outputState(): string {
-    const parts: string[] = [];
-    let node = this.session.output.audio as unknown as Record<string, unknown> | undefined;
-    for (let depth = 0; node && depth < 4; depth++) {
-      const done = (key: string) => (node![key] as { done?: boolean } | undefined)?.done;
-      const source = node.audioSource as { queuedDuration?: number } | undefined;
-      parts.push(`${(node.constructor as { name: string }).name}{sub:${String(node.subscribed)},play:${String(done("playbackEnabledFuture"))},gen:${String(node.interruptionGeneration)},pushed:${String(node.pushedDuration)},queued:${String(source?.queuedDuration)},seg:${String(node.pendingPlayoutSegments)}}`);
-      node = node.nextInChain as Record<string, unknown> | undefined;
-    }
-    return `agent:${this.session.agentState},user:${this.session.userState} ${parts.join(" > ")}`;
-  }
-
   private openNow(text: string): voice.SpeechHandle {
     this.openingSaid = true;
-    this.agent.plainNext = true;
-    const note = this.options.openingMark;
-    this.agent.onOpeningMark = note ? name => note(`${name} | ${this.outputState()}`) : null;
-    note?.(`say | ${this.outputState()}`);
-    for (const ms of [1000, 2500]) setTimeout(() => note?.(`t+${ms} | ${this.outputState()}`), ms);
-    // Not interruptible: LiveKit pauses an interruptible speech while it hears the child (a microphone that has just
-    // connected often starts with a sound), and audio made during that pause is dropped, so the opening made no sound
-    // (2026-11-13). The child's words during the opening are still heard, and answered after it.
-    const speech = this.session.say(text, { addToChatCtx: true, allowInterruptions: false });
+    // An empty plan gives the opening's audio an owner (the call's audio output plays only audio that has one, which
+    // is why an opening with no plan made no sound, 2026-11-13). Its audio does not wait for the board: `ungatedNext`.
+    void this.stageBoard({}, false).catch(() => {});
+    this.agent.ungatedNext = true;
+    this.options.openingMark?.("say");
+    const speech = this.session.say(text, { addToChatCtx: true });
     const generation = this.generation;
     void speech.waitForPlayout().catch(() => {}).then(() => this.options.openingMark?.(`playout:${speech.interrupted ? "interrupted" : "whole"}`));
     const starting = (async () => {
@@ -880,17 +849,23 @@ export class VoiceCallRun {
     if (this.graceTimer !== null) this.timers.clear(this.graceTimer);
     this.graceTimer = null;
     // The opening is said before anything is waited for: the board, the rows and the call's start follow behind it.
-    const said = !this.openingSaid && this.options.opening && this.call.session.startedAt === null && !this.call.pendingFinal && !this.guidanceOwed && !this.finalOwed
-      ? this.openNow(this.options.opening) : null;
+    const opens = !this.openingSaid && !!this.options.opening && this.call.session.startedAt === null && !this.call.pendingFinal && !this.guidanceOwed && !this.finalOwed;
+    let said: voice.SpeechHandle | null = null;
     const connectingScope = this.boardScope;
     // The connection row does not wait for the board's answer (the opening's speed, 2026-11-13).
     const row = this.call.connection("child_joined");
     try {
       if (this.options.board) {
         if (connectingScope) await this.options.board.reconnect(connectingScope);
-        else await this.options.board.connect();
+        else {
+          // The board's connection is under way, not awaited: the opening's empty plan is queued behind it, and its
+          // audio does not wait for it.
+          const connecting = this.options.board.connect();
+          if (opens) said = this.openNow(this.options.opening!);
+          await connecting;
+        }
         if (this.boardScope === connectingScope) this.boardScope = null;
-      }
+      } else if (opens) said = this.openNow(this.options.opening!);
     }
     catch { if (generation === this.generation && this.childHere) return this.finish({ detail: "the board reconnect failed" }); return; }
     // The opening does not wait for the row. A row that could not be saved ends the call when it reports.
