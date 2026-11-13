@@ -35,6 +35,7 @@ import {
   streamRules,
   streamSentenceOk,
   withoutName,
+  clearStop,
   LINES_VERSION,
   PROPOSAL_VERSION,
   type Outcome,
@@ -402,6 +403,11 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       if (nextActs(folded.session).expect !== "maya") break;
       const { state, safety } = folded.session;
       if (options.channel === "chat" && state === "SAFETY" && safety.guided && !folded.candidate && !folded.attempts.length) {
+        closeByCode();
+        break;
+      }
+      // D-341, round 3: a plain stop is closed in code's approved words at once, with no model call.
+      if (folded.session.conversational && folded.session.stopRequested && !safety.flagged && folded.session.turn && clearStop(folded.session.turn.text) && !folded.candidate && !folded.attempts.length) {
         closeByCode();
         break;
       }

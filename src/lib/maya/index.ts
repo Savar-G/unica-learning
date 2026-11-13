@@ -13,6 +13,7 @@ export {
   streamSentenceOk,
   withoutName,
   nameRecent,
+  clearStop,
   codeVerdicts,
   turnFacts,
   type TurnFact,

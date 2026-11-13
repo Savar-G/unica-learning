@@ -1517,7 +1517,11 @@ export function step(session: Session, event: SessionEvent): StepResult {
           s.turns.push({ at: event.at, speaker: "maya", text, state: s.state, act: "wait" });
         }
         waitForChild(s);
-      } else if (s.conversational) delete s.thinking;
+      } else if (s.conversational) {
+        delete s.thinking;
+        // A plain stop ("I want to stop", "bye", "can we stop") closes in code's approved words, with no model call (round 3).
+        if (clearStop(event.text) && isTeaching(s.state) && !s.safety.flagged) s.stopRequested = true;
+      }
       break;
     }
     case "tick":
@@ -4417,6 +4421,16 @@ export function withoutName(text: string, name: string): string {
     .replace(/\s+,/g, ",").replace(/,([.!?])/g, "$1").replace(/\s{2,}/g, " ").trim();
 }
 
+/**
+ * A plain stop (round 3): the child asks to stop or says goodbye, with no number, no feeling, no question about the
+ * math and nothing personal (a child who is hurt or scared goes to the model and the safety path).
+ */
+export function clearStop(text: string): boolean {
+  const t = text.toLowerCase().replace(/[’]/g, "'");
+  if (valuesOf(t).length > 0 || PERSONAL.test(t) || hardFeeling(t) && !/\b(?:don'?t|do not) want to do (?:this|it|math) (?:any ?more)\b/.test(t)) return false;
+  return /\b(?:i (?:want|wanna) to stop|can we stop|let'?s stop|stop now|i'?m done|i am done|bye|goodbye|see you|i (?:don'?t|do not) want to do (?:this|it|math)(?: any ?more)?|i want to quit|can i go)\b/.test(t);
+}
+
 /** Code's patient lines for a child who is thinking (D-341, round 2): "{name}" is the child's name now and then. */
 export const PATIENT_LINES = ["Take your time, {name}.", "No rush. I'm here when you're ready."] as const;
 
@@ -4729,7 +4743,9 @@ function proposeV3(base: Session, out: ModelOutput, effects: Effect[], reviews: 
     // Beside a clear right final answer, a step the turn does not say clearly is left out too: the answer stands
     // ("The tens are 4 minus 2, that's 2. 24!").
     const final = reading.answers.some((a) => a.step === "result" && a.verdict === "right" && (a.problem ?? "target") === "target" && checkAnswers(base, [a], []) === null);
-    const kept = reading.answers.filter((a) => (a.verdict === "right" && !(final && a.step !== "result")) || !unsaid(a));
+    // A second value for a step the turn already credits ("16. I write 6": 16 for the ones) is left out too.
+    const credited = (a: ChildAnswer) => reading.answers!.some((b) => b !== a && b.step === a.step && b.verdict === "right" && checkAnswers(base, [b], []) === null);
+    const kept = reading.answers.filter((a) => (a.verdict === "right" && !(final && a.step !== "result") && !credited(a)) || !unsaid(a));
     if (kept.length !== reading.answers.length) out = { ...out, reading: { ...reading, ...(kept.length ? { answers: kept } : { answers: undefined }) } };
   }
   const plans = codeProposals(base, [], out);
@@ -4800,7 +4816,7 @@ function withAsk(text: string, p: Pick<Proposal, "act">, planned: string, sent: 
   const asks = q === -1 ? [] : !named || endsWithAsk(plan[q]) ? [plan[q]] : q > 0 && endsWithAsk(plan.slice(q - 1, q + 1).join(" ")) ? plan.slice(q - 1, q + 1) : [];
   // Else the step's own question at this help level or below, from code's help lines ("Subtract the ones: 12 − 8. What
   // do you get?").
-  const own = after ? helpBrief(after).levels.filter((l) => l.level <= Math.max(level, 0)).reverse().flatMap((l) => l.mayShow.split(" / ")).find((w) => endsWithAsk(w)) : undefined;
+  const own = after && p.act !== "accept_answer" ? helpBrief(after).levels.filter((l) => l.level <= Math.max(level, 0)).reverse().flatMap((l) => l.mayShow.split(" / ")).find((w) => endsWithAsk(w)) : undefined;
   const ownAsk = own ? sentencesOf(own).slice(-2).filter((x, i, all) => i === all.length - 1 || !endsWithAsk(all.at(-1)!)) : [];
   const ask = asks.length ? asks : plan.some((x) => INSTRUCTION.test(x)) ? plan.filter((x) => INSTRUCTION.test(x)).slice(-1) : ownAsk;
   if (!ask.length) return text;
@@ -4808,7 +4824,9 @@ function withAsk(text: string, p: Pick<Proposal, "act">, planned: string, sent: 
   const last = xs.at(-1);
   const bare = !!last && xs.length - 1 >= sent && (/\?\s*$/.test(last) || INSTRUCTION.test(last));
   const lead = bare ? xs.slice(0, -1) : xs;
-  return [...lead, ...ask.filter((x) => !lead.includes(x))].join(" ");
+  // When the reply already names the step, code's question alone follows it, not its lead-in again.
+  const extra = ask.length > 1 && lead.some((x) => MATH_WORD.test(x)) ? ask.slice(-1) : ask;
+  return [...lead, ...extra.filter((x) => !lead.includes(x))].join(" ");
 }
 
 /** A turn whose first sentences were already said (streamed): they lead its words, whatever code's plan says after them. */
@@ -4818,7 +4836,9 @@ function withSent(r: StepResult, sent: readonly string[]): StepResult {
   const at = r.effects.findLastIndex((e) => e.kind === "say");
   if (at === -1) return r;
   const said = (r.effects[at] as Extract<Effect, { kind: "say" }>).text;
-  const text = said.startsWith(lead) ? said : `${lead} ${said}`;
+  // What was said already asks about the step: code's line adds nothing. Else only its closing question follows.
+  const question = sentencesOf(said).filter((x) => /\?\s*$/.test(x)).at(-1);
+  const text = said.startsWith(lead) ? said : endsWithAsk(lead) ? lead : `${lead} ${question ?? said}`;
   const turns = [...r.session.turns];
   const last = turns.findLastIndex((t) => t.speaker === "maya" && t.text === said);
   if (last !== -1) turns[last] = { ...turns[last], text, planned: turns[last].planned ?? said };
@@ -4856,11 +4876,11 @@ function withStreamed(base: Session, r: StepResult, at: number, planned: string,
  */
 export function streamRules(s: Session): (SayRules & { credits: boolean; strict: boolean; dropName: string | null }) | null {
   const pkg = s.package;
-  if (!pkg || !s.turn || s.safety.flagged || s.stopRequested || s.scopeDue || s.replies?.length) return null;
+  if (!pkg || !s.turn || s.safety.flagged || s.stopRequested || s.scopeDue === "outside_work" || s.replies?.length) return null;
   if (!isTeaching(s.state) || hardFeeling(s.turn.text)) return null;
   // A turn about the child's life or Maya streams only code's strict reactions and plain math (round 3): anything else in
   // it waits for the review.
-  const personal = PERSONAL.test(s.turn.text) || /\b(?:you|your)\b/i.test(s.turn.text) && !/\b(?:help|show|tell me)\b/i.test(s.turn.text);
+  const personal = !!s.scopeDue || PERSONAL.test(s.turn.text) || /\b(?:you|your)\b/i.test(s.turn.text) && !/\b(?:help|show|tell me)\b/i.test(s.turn.text);
   // A request for help may turn into the easier example (round 3): it streams, but asks nothing before code knows the act.
   const main = isTeaching(s.state) ? s.state : s.resume;
   const exampleLikely = main === "ASSESS" && s.done.length === 0 && (helpInWords(s.turn.text) || saysStuck(s.turn.text));
