@@ -2535,13 +2535,36 @@ const NEXT_STEP_DOUBT = /\b(?:(?:don't|do not|dont|didn't|did not) (?:know|get|u
 /** A copied or looked-up number (review of 1b5c3b50, P1-1), whoever says it. */
 const SOURCE = /\b(?:copied|copy|copying|looked (?:at the back|it up|up)|look(?:ed)? it up|checked the answer|answer key|answer sheet|back of the book|the app|an app|google|internet|calculator|ipad|tablet|siri|alexa|on the screen|in class|at school|according to|from the board|on the poster|poster|peeked|peek|peeking)\b/;
 /** A subject that is no person or source: a number expression, a place or column, or a word for the numbers ("7 and 9 gives 16", "The ones have 16", "That gives 16"). */
+/** Lead words a clause may start with before its subject ("so", "okay", "for the ones", "last time"). */
+const CLAUSE_LEAD = /^(?:(?:result|product|answer|total|sum|difference|quotient)\s*:\s*|(?:so|and|then|okay|ok|um|uh|oh|yes|yeah|no|nope|well|but|like|now|first|next|because|cause|since|cuz|coz|also|just|fine|wait|hmm|right|sure|together|hi|hey|maya|actually|oops|i mean|sorry|maybe|probably|perhaps|possibly|likely|most likely|i think|i guess|i believe|i feel like|pretty sure|let's say|let's go with|about|around|roughly|almost|last time|this time|for the (?:ones|tens|hundreds|thousands|ten thousands|hundred thousands)(?: column)?|in the (?:ones|tens|hundreds|thousands)(?: column)?|for (?:that|this|mine|my question)|in my (?:head|paper|book))\b[,!\s]*)+/;
+/** A clause with no subject: it starts with a number, a fraction word or an operation word ("16.", "7 plus 9 is 16", "a half"). */
+const SUBJECTLESS = /^(?:\d|\.\d|\+|plus|minus|times|add|added|adding|take|carry|carried|the \d|a \d|(?:a|an)\s+(?:half|third|quarter|fourth|fifth|sixth|seventh|eighth|ninth|tenth|twelfth|sixteenth)|(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|half|negative|point)\b)/;
+/** A clause that starts with its verb and so has the subject of the clause before it ("I added 7 and 9, and got 16"). */
+const CONTINUES = /^(?:got|get|gets|wrote|write|writes|put|added|add|made|make|makes|carried|did|found|have|had|equals?|comes?|gives?|keep|kept|ended up with|came to|got to|took|take|subtracted|counted|multiplied|divided|rounded|changed|used|checked|worked)\b/;
+/**
+ * The allow-list of a clause's subject (re-review of dd794d02): empty (SUBJECTLESS), I or we (and their forms), it, that,
+ * this, these, those, there, here, mine, a place or column ("the ones", "the top"), "adding them", "the total", "the
+ * sum", "my answer", "the answer", Maya's own words said back ("you said", rule C reads them), and "they", "both" or
+ * "all" with a math verb only ("They make 16.", not "They got 16."). After "I heard", "I saw" or "I know" the clause it
+ * reports is checked too ("I heard Sam got 16.").
+ */
+function ownSubject(clause: string): boolean {
+  const c = clause.replace(CLAUSE_LEAD, "").trim();
+  if (c === "" || SUBJECTLESS.test(c)) return true;
+  const reported = /^(?:i|we)\s+(?:heard|saw|know|knew|noticed|read|remember|found out|learned|learnt|was told|were told)\s+(?:that\s+)?(.+)$/.exec(c);
+  if (reported) return ownSubject(reported[1]);
+  if (/^(?:i|we|i've|we've|i'd|we'd|i'm|we're|i'll|we'll)(?:\s|$)/.test(c)) return true;
+  if (/^(?:it|it's|its|that|that's|this|these|those|there|there's|here|here's|mine)\b/.test(c)) return true;
+  if (/^(?:(?:the|my|our)\s+)?(?:ones|tens|hundreds|thousands|ten thousands|hundred thousands|tenths|hundredths|thousandths|top|bottom)\b/.test(c)) return true;
+  if (/^(?:adding(?: them| those| these)?|(?:the|my|our) (?:total|sum|answer|final answer|result|product|difference|number)|my (?:work|paper))\b/.test(c)) return true;
+  if (/^(?:like |as )?you\b/.test(c)) return true;
+  return /^(?:(?:together\s+)?they|both(?: of them)?|all(?: of them)?|the two|these two|those two)\s+(?:together\s+)?(?:make|makes|made|add up to|adds up to|added up to|are|were|equal|equals|give|gives|is|come to|comes to)\b/.test(c);
+}
 const NOT_A_PERSON = /^(?:that|it|this|they|these|those|them|the numbers?|adding(?:\s+\w+)*|(?:the\s+)?(?:ones|tens|hundreds|thousands|ten thousands|hundred thousands|tenths|hundredths|thousandths)(?:\s+(?:column|place|part|digit|side))?|\d+(?:\s*(?:,|\+|×|\*|plus|and|times|minus|x)\s*\d+)+)$/;
-/** A clause's subject before a verb that gives a number to someone ("Sam said", "my iPad got", "the sheet has"). */
-const ATTRIBUTION = /^(?:(?:so|and|then|okay|ok|um|uh|oh|yes|yeah|no|well|but|like)\b[,\s]*)*(.+?)\s+(said|says|told|tells|got|gets|wrote|writes|has|have|had|showed|shows|shown|gave|gives|thinks|think|knows|know|found|finds|put|puts)\b/;
 /** Near the value, not the value (review of 1b5c3b50, P1-2). */
-const NEAR = new RegExp(`\\b(?:about|around|almost|approximately|roughly|nearly|close to)\\s+(?:\\d|(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)\\b)|-ish\\b|\\bish\\b|\\bfeel like\\b|\\breckon\\b|\\bsomething like\\b|\\bi suppose\\b|\\bi bet\\b|\\bpretty sure\\b|\\bapproximately\\b|\\broughly\\b|\\b(?:most )?likely\\b|\\blet'?s say\\b|\\bsay\\s+(?:\\d|(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\\b)`);
+const NEAR = new RegExp(`\\b(?:about|around|almost|approximately|roughly|nearly|close to)\\s+(?:\\d|(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)\\b)|-ish\\b|\\bish\\b|\\bfeel like\\b|\\breckon\\b|\\bsomething like\\b|\\bi suppose\\b|\\bi bet\\b|\\bpretty sure\\b|\\bapproximately\\b|\\broughly\\b|\\b(?:most )?likely\\b|\\blet'?s say\\b|\\blet'?s go with\\b|\\bsay,\\s*\\S|\\bsay\\s+\\S+\\s*\\?`);
 /** Another person, or another source, of a number. Maya herself is "you": rule C reads her. */
-const OTHER_PERSON = /\b(?:mom|mum|mommy|mummy|mother|dad|daddy|father|teacher|brother|sister|friend|grandma|grandpa|granny|nana|papa|aunt|auntie|uncle|cousin|parents?|tutor|classmate|someone|somebody|everyone|everybody|she|he|they|her|his|their|calculator|google|book)\b/;
+const OTHER_PERSON = /\b(?:mom|mum|mommy|mummy|mother|dad|daddy|father|teacher|brother|sister|friend|grandma|grandpa|granny|nana|papa|aunt|auntie|uncle|cousin|parents?|tutor|classmate|someone|somebody|everyone|everybody|she|he|her|his|their|calculator|google|book)\b/;
 /** Maya's words named as the source, with what she said after it ("You said 16", "you told me to add the ones"): rule C reads it. */
 const ECHO_SAID = /\byou (?:said|say|told (?:me|us)|showed (?:me|us)|taught (?:me|us)|meant|asked|wrote|carried|put|got|added)(?: that| to)?\b/g;
 /** Maya or her example named as the source with nothing after it ("like you said", "the 1 you carried", "like your example"). */
@@ -2746,18 +2769,23 @@ function ownTurn(s: Session, target: WorkedStep | null, value: AnswerValue, opti
   if (SOURCE.test(lower)) return "other_person";
   // ...and a clause that holds the value is the child's own only with a first-person subject or none ("16.", "It's 16.",
   // "7 plus 9 is 16."): "Sam said 16.", "My iPad got 16.", "The answer sheet has 16." are another's. A name list never ends.
-  // Re-review: only a person or a source blocks; "7 and 9 gives 16", "The ones have 16" and "That gives 16" are the math. A
-  // person who said it blocks anywhere in the turn ("16, Sam said."), and "Sam: 16." names a speaker.
-  for (const clause of lower.split(/[.!?;,\n]+|\s+(?:so|then|but)\s+/)) {
-    const m = ATTRIBUTION.exec(clause.trim());
-    if (!m) continue;
-    const subject = m[1].trim();
-    if (/^(?:i|we|i've|we've|i'd|we'd)\b/.test(subject) || /^you(?:\s+(?:just|also|already))*$/.test(subject) || NOT_A_PERSON.test(digitWords(subject))
-      // "and got 16" (no subject of its own), "the 1 you said" (Maya's words, rule C reads them).
-      || /^(?:and|so|then|but|also|just|now)$/.test(subject) || /\byou$/.test(subject)) continue;
-    if (/^(?:said|says|told|tells)$/.test(m[2]) || valuesIn(collapsed(digitWords(clause)), opts).some((v) => saidAs(v, value))) return "other_person";
+  // Re-review of dd794d02: the subject of a clause that holds the value is an allow-list (ownSubject): honest math talk
+  // has a small closed class of subjects, and any other one ("Sam did 16.", "Sam's is 16.", "They got 16.") blocks. A value
+  // clause with no subject hangs from the clause before it ("Sam was like, 16."), and a person who said it blocks anywhere
+  // in the turn ("16, Sam said.").
+  // A question is read by the question rules, not here ("Do I write the 6 in the tens?").
+  for (const sentence of lower.split(/(?<=[.!?;\n])\s*/).filter((x) => !x.trim().endsWith("?"))) {
+    const clauses = sentence.replace(/[.!;\n]+$/, "").split(/\s*,\s*|\s+(?:so|then|but)\s+/).map((c) => digitWords(c.trim())).filter(Boolean);
+    // A clause that starts with its verb ("and got 16") goes on with the subject of the clause before it.
+    const subjectOf = (k: number): boolean => (CONTINUES.test(clauses[k].replace(CLAUSE_LEAD, "").trim()) ? k === 0 || subjectOf(k - 1) : ownSubject(clauses[k]));
+    for (const [k, clause] of clauses.entries()) {
+      const holds = valuesIn(collapsed(clause), opts).some((v) => saidAs(v, value));
+      const said = /\b(?:said|says|told|tells|saying)\b/.test(clause) && !/\byou (?:said|told)\b|\bi (?:said|told)\b/.test(clause);
+      if ((holds || said) && !subjectOf(k)) return "other_person";
+      if (holds && k > 0 && SUBJECTLESS.test(clause) && /\b(?:like|said|says|goes|went|saying|reckons|thinks|answered|told me|told us)$/.test(clauses[k - 1]) && !ownSubject(clauses[k - 1])) return "other_person";
+    }
   }
-  if (/(?:^|[.!?,]\s*)(?!ones|tens|hundreds|thousands|so|okay|ok|um|uh|oh|yes|yeah|well|first|then|answer|total|sum|step)[a-z]+\s*:\s*\S/.test(lower)) return "other_person";
+  if (/(?:^|[.!?,]\s*)(?!ones|tens|hundreds|thousands|so|okay|ok|um|uh|oh|yes|yeah|well|first|then|answer|total|sum|step|result|product|difference|quotient|remainder|part|next|last|second|third|final|working|work)[a-z]+\s*:\s*\S/.test(lower)) return "other_person";
   // P1-2: more hedges: an amount near the value ("about 16", "around 16", "16-ish"), "I feel like", "I reckon".
   if (formToo && NEAR.test(lower)) return "hedge";
   if (OTHER_PERSON.test(lower) || /\bsays\b|\b(?:ms|mr|mrs|miss|dr)\.?\s+[a-z]/.test(lower)) return "other_person";
@@ -2877,6 +2905,8 @@ function ownTurn(s: Session, target: WorkedStep | null, value: AnswerValue, opti
   for (const m of text.matchAll(/\b(\d+)\s+(?:is|equals|makes?|=)\s+(\d+)(?!\d|[./]\d)/g)) {
     const before = text.slice(0, m.index ?? 0);
     if (/(?:\+|plus|and|add|added to|to|of|minus|-|−|take away|times|x|×|divided by|÷)\s*(?:the\s+)?$/.test(before)) continue;
+    // "those two make 16": a count of the numbers, not a number said to be another.
+    if (/\b(?:those|these|the|all|both|my|our)\s*$/.test(before)) continue;
     const list = /((?:\d+\s*,\s*)+)$/.exec(before);
     const sum = list ? [...list[1].matchAll(/\d+/g)].reduce((a, x) => a + Number(x[0]), Number(m[1])) : Number(m[1]);
     if (sum !== Number(m[2])) return "false_sum";
