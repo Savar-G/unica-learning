@@ -4,7 +4,7 @@
 // teacher; the session still checks every proposal it makes.
 import { readNumbers, PROPOSAL_VERSION, type Act } from "@/lib/maya";
 import { valueText } from "@/lib/question-package";
-import { PROMPT_VERSION, type ActOffer, type MayaModel, type ModelInput } from "@/lib/maya-model";
+import { CONVERSATION_PROMPT_VERSION, PROMPT_VERSION, type ActOffer, type MayaModel, type ModelInput, type TurnBrief } from "@/lib/maya-model";
 
 export function fakeMayaModel({
   id = "fake",
@@ -114,5 +114,43 @@ function rulePropose(input: ModelInput): unknown {
     understanding: pick.act === "ask_write" ? (!input.repair && has(text, /\b(because|carr|ten|ones)\b/) ? "evidence_observed" : "uncertain") : null,
     draw: !input.repair && draw ? [{ offer: draw.id, place: null }] : null,
     board: null,
+  };
+}
+
+// ---------- Version 3 (D-341) ----------
+
+/** A version 3 reply with every reading field at its default, for tests and scripted fakes. */
+export function reply(say: string, act: Act, extra: { step?: string; level?: number; reading?: Record<string, unknown>; draw?: { offer: string; place: string }[] } = {}) {
+  return {
+    say, act, step: extra.step ?? "", level: extra.level ?? 0,
+    reading: {
+      answers: [], help: "none", unclear: false, stop: false, safety: "none", writing: false, offTopic: false, mathClaim: false, mathRequests: [],
+      outsideScope: "none", scopeSkill: "", unsafeRequest: false, noBoard: false, shorter: false, aboutMaya: "none", start: "none", paper: "none",
+      correctsHearing: false, ...(extra.reading ?? {}),
+    },
+    draw: extra.draw ?? [],
+  };
+}
+
+/** A fake conversational model (D-341): answers each brief with what a test gives it, and records the briefs. */
+export function conversationalFake({
+  id = "fake-v3",
+  answer,
+}: {
+  id?: string;
+  /** The reply for a brief (`call` counts from 0); throw to act as a failed model call. */
+  answer: (brief: TurnBrief, call: number) => unknown | Promise<unknown>;
+}): MayaModel & { briefs: TurnBrief[] } {
+  const briefs: TurnBrief[] = [];
+  return {
+    id,
+    promptVersion: CONVERSATION_PROMPT_VERSION,
+    output: 3,
+    briefs,
+    propose: async (input) => {
+      const brief = structuredClone(input) as unknown as TurnBrief;
+      briefs.push(brief);
+      return answer(brief, briefs.length - 1);
+    },
   };
 }
