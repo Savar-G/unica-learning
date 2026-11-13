@@ -1,6 +1,7 @@
 // How long a child waits in a voice call (#532): one sample per child turn, from the child's end of speech to Maya's
 // first sound and to the first sound of her answer. The parts of the answer time add up to it, each measured on its own
 // marks, so a lost part shows as a wrong sum rather than a quiet gap. Logs hold times and phrase ids, never words.
+import type { PrepareStats } from "./heard-signals";
 
 /** What the answer's wait is made of, in order. */
 export interface TurnParts {
@@ -52,6 +53,13 @@ export interface FinalMark {
   finalAt: number;
   wordEndAt: number | null;
   detectorEndAt: number | null;
+  /** What the prepare signal did before this final (./heard-signals.ts `PrepareSignal`). */
+  prepare?: PrepareStats | null;
+}
+
+/** What else the worker logs with a turn, beside its times. */
+export interface TurnExtras {
+  prepare?: PrepareStats | null;
 }
 
 /** The end time (seconds, on the speech-to-text's audio clock) of the last word of a final transcript. */
@@ -113,6 +121,15 @@ export interface VoiceTurnSample {
    * from it before the final.
    */
   sttHoldMs: number | null;
+  /**
+   * The prepare signal (V2b): words of the newest partial at the detector's end of speech, whether the final equalled it
+   * after `normalizeTranscript`, the detector's report of the end to the final (ms), and the hints given. Null: no end
+   * of speech before the final (the fakes have no detector).
+   */
+  interimWordsAtEnd: number | null;
+  interimEqualsFinal: boolean | null;
+  prepareLeadMs: number | null;
+  prepares: number;
   /** The whole wait of an answered turn: the child's own end of speech to the answer's first sound. */
   waitMs: number | null;
   /**
@@ -159,6 +176,7 @@ export class TurnClock {
     private readonly speechEndedAt: number,
     private readonly heardAt: number,
     private readonly heard: HeardMarks = { speechEndAt: null, source: null, finalAt: null },
+    private readonly extras: TurnExtras = {},
   ) {}
 
   ready(time: ControllerTime) { this.controller = time; this.readyAt = this.now(); }
@@ -213,6 +231,10 @@ export class TurnClock {
       sttWaitMs: end !== null && finalAt !== null ? Math.max(0, finalAt - end) : null,
       speechEnd: end !== null ? this.heard.source : null,
       sttHoldMs: this.heard.detectorEndAt != null && finalAt !== null ? Math.max(0, finalAt - this.heard.detectorEndAt) : null,
+      interimWordsAtEnd: this.extras.prepare?.interimWordsAtEnd ?? null,
+      interimEqualsFinal: this.extras.prepare?.interimEqualsFinal ?? null,
+      prepareLeadMs: this.extras.prepare?.prepareLeadMs ?? null,
+      prepares: this.extras.prepare?.prepares ?? 0,
       waitMs: answered && end !== null ? this.answerSoundAt! - end : null,
       stageMs: answered && this.sentAt !== null ? Math.max(0, this.sentAt - this.heldAt!) : null,
       firstPartMs: since(this.partAt),
@@ -249,6 +271,9 @@ export function voiceTurnReport(samples: readonly VoiceTurnSample[]) {
     answer: spread(samples.flatMap((s) => (s.answerMs === null ? [] : [s.answerMs]))),
     sttWait: spread(samples.flatMap((s) => (s.sttWaitMs === null ? [] : [s.sttWaitMs]))),
     sttHold: spread(samples.flatMap((s) => (s.sttHoldMs === null ? [] : [s.sttHoldMs]))),
+    prepared: samples.filter((s) => s.prepares > 0).length,
+    interimEqualsFinal: samples.filter((s) => s.interimEqualsFinal === true).length,
+    prepareLead: spread(samples.flatMap((s) => (s.prepareLeadMs === null ? [] : [s.prepareLeadMs]))),
     wait: spread(samples.flatMap((s) => (s.waitMs === null ? [] : [s.waitMs]))),
     stage: spread(samples.flatMap((s) => (s.stageMs === null ? [] : [s.stageMs]))),
     parts: Object.fromEntries(TURN_PARTS.map((k) => [k, spread(parts.map((p) => p[k]))])) as Record<keyof TurnParts, ReturnType<typeof spread>>,

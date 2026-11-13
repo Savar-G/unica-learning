@@ -425,6 +425,15 @@ export function childTurnFrom(finals: readonly (readonly Heard[])[]): { text: st
 }
 
 /**
+ * A transcript as the prepare signal compares it (V2b, 2026-11-13): lower case, a hyphen or dash as a space, no other
+ * punctuation, one space between words. "Twelve-minus eight, is FOUR." and "twelve minus eight is four" are the same.
+ * Number words and digits are not the same: a speech-to-text partial says "four" where its formatted final says "4".
+ */
+export function normalizeTranscript(text: string): string {
+  return text.toLowerCase().replace(/[-‐-―]+/g, " ").replace(/[^\p{L}\p{N}\s]+/gu, "").replace(/\s+/g, " ").trim();
+}
+
+/**
  * Whether a transcript ends in a number word that can go on ("fifty", "twenty-", "one hundred", "and", or a tens number
  * written in digits: "50"), so a child who pauses between "fifty" and "six" is not cut off. The worker waits once more
  * for words when this is true (`numberContinueMs`). It reads only the end of the text, not the whole answer.

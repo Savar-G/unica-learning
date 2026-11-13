@@ -1,7 +1,7 @@
 import { inference, initializeLogger, normalizeLanguage, stt, VADEventType, voice, type VAD, type VADEvent } from "@livekit/agents";
 import { AudioFrame } from "@livekit/rtc-node";
 import { describe, expect, it } from "vitest";
-import { detectorVad, finalSignals, HeardSignals, LEVEL_END_DBFS, silentFinal } from "./heard-signals";
+import { detectorVad, finalSignals, HeardSignals, LEVEL_END_DBFS, PrepareSignal, silentFinal } from "./heard-signals";
 
 initializeLogger({ pretty: false, level: "silent" });
 
@@ -91,6 +91,74 @@ describe("the signals of a final transcript (worker log only)", () => {
       await new Promise(r => setTimeout(r, 200));
       expect(signals.final([heard("Yes!", 1)])).toMatchObject({ words: 1, vadSpeechMs: 0, peakDbfs: -120 });
     } finally { signals.close(); }
+  });
+});
+
+describe("the prepare signal (V2b)", () => {
+  function signal(accept = () => true) {
+    const sent: string[] = [];
+    let now = 1000;
+    const p = new PrepareSignal((text) => { if (!accept()) return false; sent.push(text); return true; }, () => now);
+    return { p, sent, at: (t: number) => { now = t; } };
+  }
+
+  it("gives the newest partial as it came, once at the end of speech, and again only for different words", () => {
+    const { p, sent, at } = signal();
+    p.partial("twelve minus");
+    // Before the end of speech: no hint.
+    expect(sent).toEqual([]);
+    p.partial("Twelve minus eight is four");
+    at(1200);
+    p.speechEnd(1200);
+    expect(sent).toEqual(["Twelve minus eight is four"]);
+    // Case, spaces and punctuation are not new words.
+    p.partial("twelve  minus eight, is four.");
+    expect(sent).toHaveLength(1);
+    p.partial("twelve minus eight is four apples");
+    expect(sent).toEqual(["Twelve minus eight is four", "twelve minus eight is four apples"]);
+    const stats = p.final("12 minus 8 is 4.", 2400);
+    expect(stats).toEqual({ interimWordsAtEnd: 5, interimEqualsFinal: false, prepareLeadMs: 1200, prepares: 2, firstPrepareAt: 1200 });
+  });
+
+  it("says whether the final equals the partial at the end of speech, after normalizing", () => {
+    const { p } = signal();
+    p.partial("I don't know");
+    p.speechEnd(500);
+    expect(p.final("I don't know.", 900)).toMatchObject({ interimWordsAtEnd: 3, interimEqualsFinal: true, prepareLeadMs: 400, prepares: 1 });
+  });
+
+  it("stops at a new start of speech until the next end, and never gives the same words twice", () => {
+    const { p, sent } = signal();
+    p.partial("twenty");
+    p.speechEnd(100);
+    p.speechStart();
+    p.partial("twenty four");
+    expect(sent).toEqual(["twenty"]);
+    p.speechEnd(900);
+    expect(sent).toEqual(["twenty", "twenty four"]);
+    p.speechStart();
+    p.speechEnd(1500);
+    expect(sent).toHaveLength(2);
+  });
+
+  it("does not count a dropped hint, and tries it again at the next partial", () => {
+    let open = false;
+    const { p, sent } = signal(() => open);
+    p.partial("four");
+    p.speechEnd(100);
+    expect(sent).toEqual([]);
+    open = true;
+    p.partial("four.");
+    expect(sent).toEqual(["four."]);
+    expect(p.final("4.", 300).prepares).toBe(1);
+  });
+
+  it("has nothing to say with no end of speech before the final, and starts fresh after it", () => {
+    const { p, sent } = signal();
+    p.partial("six");
+    expect(p.final("6.", 100)).toEqual({ interimWordsAtEnd: null, interimEqualsFinal: null, prepareLeadMs: null, prepares: 0, firstPrepareAt: null });
+    p.speechEnd(200);
+    expect(sent).toEqual([]);
   });
 });
 

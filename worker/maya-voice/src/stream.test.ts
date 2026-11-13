@@ -21,7 +21,7 @@ import { ACK_LIMIT_MS, ACK_PHRASES } from "@/lib/maya-voice-ack";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
 import { spokenMath } from "@/lib/maya-voice-spoken";
 import type { QuestionPackage } from "@/lib/question-package";
-import { VoiceCallRun, voiceSession, type Timers } from "./agent";
+import { VoiceCallRun, voiceSession, type PreparingCall, type Timers } from "./agent";
 import { earlyRest } from "./early-speech";
 import { FakeTTS } from "./fake-providers";
 import { makeProviders } from "./providers";
@@ -672,6 +672,85 @@ describe("the wait of a turn the speech-to-text held (2026-11-13)", () => {
     const clock = takeMarks()!;
     // Milliseconds after the earliest mark: the last loud frame.
     expect(clock).toMatchObject({ t0: loudAt, levelEnd: 0, detectorEnd: 150, detectorHeard: 400, sttFinal: 1400 });
+  });
+});
+
+describe("the prepare signal (V2b)", () => {
+  /** The child speaks: loud frames, the speech-to-text's start and the detector's start. */
+  async function speak(c: Awaited<ReturnType<typeof voiceCall>>, speech: ProbeSTT, v: ReturnType<typeof fakeVad>) {
+    for (let i = 0; i < 5; i++) c.microphone.push(3000);
+    speech.send(stt.SpeechEventType.START_OF_SPEECH);
+    await v.send(VADEventType.START_OF_SPEECH, 60, true);
+  }
+
+  it("gives the call the newest partial when the detector hears the end, once, and logs it with no words", async () => {
+    const speech = new ProbeSTT();
+    const v = fakeVad();
+    const c = await voiceCall({ model: ruleConversationalModel(), speech, heardVad: v.vad });
+    const prepare = vi.fn();
+    (c.call as PreparingCall).prepare = prepare;
+    await speak(c, speech, v);
+    speech.send(stt.SpeechEventType.INTERIM_TRANSCRIPT, "twelve minus eight is four");
+    await pause();
+    // The child still speaks: no hint.
+    expect(prepare).not.toHaveBeenCalled();
+    c.clock.move(300);
+    await v.send(VADEventType.END_OF_SPEECH, 900, false, 250);
+    expect(prepare).toHaveBeenCalledWith({ text: "twelve minus eight is four", reason: "interim" });
+    // The same words with other case and punctuation: no second hint.
+    speech.send(stt.SpeechEventType.INTERIM_TRANSCRIPT, "Twelve minus eight is four.");
+    await pause();
+    c.clock.move(1000);
+    speech.send(stt.SpeechEventType.FINAL_TRANSCRIPT, "12 minus 8 is 4.");
+    speech.send(stt.SpeechEventType.END_OF_SPEECH);
+    await waitFor(() => c.samples.length === 1, "the sample");
+    expect(prepare).toHaveBeenCalledTimes(1);
+    const [s] = c.samples;
+    // A partial says number words, its formatted final digits: not equal.
+    expect(s).toMatchObject({ outcome: "answered", interimWordsAtEnd: 5, interimEqualsFinal: false, prepareLeadMs: 1000, prepares: 1 });
+    expect(JSON.stringify(s)).not.toMatch(/twelve|minus|eight|four/i);
+  });
+
+  it("drops the hint while a child turn of the call runs, and gives it for the next turn", async () => {
+    const speech = new ProbeSTT();
+    const v = fakeVad();
+    const m = steppedModel(guideTurn(`${FIRST} ${SECOND}`));
+    const c = await voiceCall({ model: m.model, speech, heardVad: v.vad });
+    const prepare = vi.fn();
+    (c.call as PreparingCall).prepare = prepare;
+    speech.send(stt.SpeechEventType.START_OF_SPEECH);
+    speech.send(stt.SpeechEventType.FINAL_TRANSCRIPT, "I got 56.");
+    speech.send(stt.SpeechEventType.END_OF_SPEECH);
+    await waitFor(() => m.running, "the model call");
+    // The child talks on while the turn runs.
+    await speak(c, speech, v);
+    speech.send(stt.SpeechEventType.INTERIM_TRANSCRIPT, "um wait");
+    await pause();
+    await v.send(VADEventType.END_OF_SPEECH, 400, false, 250);
+    expect(c.call.working).toBe(true);
+    expect(prepare).not.toHaveBeenCalled();
+    m.finish();
+    await waitFor(() => c.samples.length === 1 && c.session.agentState === "listening" && !c.call.working, "the turn's end");
+    await c.call.settled();
+    await speak(c, speech, v);
+    speech.send(stt.SpeechEventType.INTERIM_TRANSCRIPT, "sixty six");
+    await pause();
+    await v.send(VADEventType.END_OF_SPEECH, 400, false, 250);
+    expect(prepare).toHaveBeenCalledWith({ text: "sixty six", reason: "interim" });
+  });
+
+  it("changes nothing for a call with no prepare", async () => {
+    const speech = new ProbeSTT();
+    const v = fakeVad();
+    const c = await voiceCall({ model: ruleConversationalModel(), speech, heardVad: v.vad });
+    await speak(c, speech, v);
+    speech.send(stt.SpeechEventType.INTERIM_TRANSCRIPT, "sixty six");
+    await pause();
+    await v.send(VADEventType.END_OF_SPEECH, 400, false, 250);
+    speech.send(stt.SpeechEventType.FINAL_TRANSCRIPT, "66.");
+    speech.send(stt.SpeechEventType.END_OF_SPEECH);
+    await waitFor(() => c.samples.length === 1, "the sample");
+    expect(c.samples[0]).toMatchObject({ outcome: "answered", interimWordsAtEnd: 2, interimEqualsFinal: false, prepares: 0 });
   });
 });
 

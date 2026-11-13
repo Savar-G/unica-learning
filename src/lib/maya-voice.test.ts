@@ -26,6 +26,7 @@ import {
   connectedSeconds,
   livekitProject,
   nextTickAt,
+  normalizeTranscript,
   openingAsksForNumber,
   asksWordTimings,
   INFERENCE_TTS_MODELS,
@@ -320,6 +321,14 @@ describe("a number question raises the limits for one turn only", () => {
     expect(asksForNumber("What is 7 + 9?", "CLOSE")).toBe(false);
     expect(asksForNumber("Shall we get going?", "TRY_TARGET")).toBe(false);
     expect(asksForNumber("That's right, well done.", "CHECK")).toBe(false);
+  });
+
+  it("normalizes a transcript for the prepare signal: case, spaces and punctuation only", () => {
+    expect(normalizeTranscript("Twelve-minus  eight, is FOUR.")).toBe("twelve minus eight is four");
+    expect(normalizeTranscript("I don't know.")).toBe(normalizeTranscript("i dont know"));
+    // Digits and number words stay different: a partial says "four" where the formatted final says "4".
+    expect(normalizeTranscript("12 minus 8 is 4.")).not.toBe(normalizeTranscript("twelve minus eight is four"));
+    expect(normalizeTranscript(" ... ")).toBe("");
   });
 
   it("reads the worker's own opening by its words only, and today's opening asks for no number", () => {
