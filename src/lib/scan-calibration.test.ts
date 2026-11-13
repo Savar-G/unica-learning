@@ -459,6 +459,19 @@ describe("a sheet held up, cut by the photo's edge, or in shadow (#912)", () => 
     expect(calibrate(await cornerCut(sheet))).toEqual({ status: "refused", reason: "marks-missing" });
   }, 60_000);
 
+  it("requires a near-edge mark whose inward arms are fully in the photo", async () => {
+    const sheet = textPage(true);
+    fill(sheet, POINTS.bl.x - 4, POINTS.bl.y - 34, 38, 38, 248);
+    const full = photographed(sheet, SIZE, square(SIZE, 60), { shade: 0.2 });
+    // The mark's corner is about 24 px inside this edge. Its arms point inward and are not cut off.
+    const photo = await stored(cutOut(full, { x: 75, y: 0, width: SIZE.width - 75, height: SIZE.height }));
+    expect(calibrate(photo)).toEqual({ status: "refused", reason: "marks-missing" });
+    const control = await stored(cutOut(photographed(textWritten, SIZE, square(SIZE, 60), { shade: 0.2 }),
+      { x: 75, y: 0, width: SIZE.width - 75, height: SIZE.height }));
+    const result = calibrate(control);
+    expect(result.status).toBe("calibrated");
+  }, 60_000);
+
   it("a question the photo's edge cuts is not cropped, and the others still read their own answers", async () => {
     // The photo's left edge runs through the first column of answer boxes, and both left marks are cut off. Disproved if
     // a cut box counts as in the photo (its crop would show white paper as if nothing were written), or another is lost.

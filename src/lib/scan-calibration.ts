@@ -1492,8 +1492,20 @@ function placedByQr(photo: Raster, printedQr: FoundQr, ink: PrintedInk, greySums
   const found: { at: number; corner: Point }[] = [], missing: ScanMark[] = [];
   for (let k = 0; k < 4; k++) {
     const p = at(stored[k]);
-    if (p.x < arm || p.y < arm || p.x > photo.width - arm || p.y > photo.height - arm) { missing.push(SCAN_MARKS[k]); continue; }
     const inward = { x: stored[k].x < page.width / 2 ? 1 : -1, y: stored[k].y < page.height / 2 ? 1 : -1 };
+    // The L points inward. A corner near an edge does not mean that either arm is cut off. Check the transformed L's
+    // perimeter, including its stroke width, rather than a full arm-length band outside each side of the corner.
+    const length = MARK_ARM * page.width, stroke = length / 5;
+    const footprint = [[0, 0], [length, 0], [length, stroke], [stroke, stroke], [stroke, length], [0, length]];
+    const inPhoto = footprint.every(([x, y], i) => {
+      const next = footprint[(i + 1) % footprint.length];
+      return Array.from({ length: 9 }, (_, step) => {
+        const q = at({ x: stored[k].x + inward.x * (x + (next[0] - x) * step / 8),
+          y: stored[k].y + inward.y * (y + (next[1] - y) * step / 8) });
+        return q.x > 0 && q.y > 0 && q.x < photo.width - 1 && q.y < photo.height - 1;
+      }).every(Boolean);
+    });
+    if (!inPhoto) { missing.push(SCAN_MARKS[k]); continue; }
     const arms = [unit(p, at({ x: stored[k].x + inward.x * 50, y: stored[k].y })), unit(p, at({ x: stored[k].x, y: stored[k].y + inward.y * 50 }))];
     let nearest: MarkShape | null = null;
     for (const s of shapes) {
