@@ -19,7 +19,7 @@ import { workProblem } from "@/lib/maya";
 export const ACK_LIMIT_MS = 2600;
 /**
  * The same, for a turn code knows will not stream before any model call (a request for help, a stop, feelings, off-topic
- * talk: `streamRules` is null). Its reply takes 2 to 5 s, so the phrase comes at once.
+ * talk: `streamPlan` is null). Its reply takes 2 to 5 s, so the phrase comes at once.
  */
 export const ACK_NOT_STREAMED_MS = 0;
 /**
