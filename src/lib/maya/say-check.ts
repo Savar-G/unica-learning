@@ -17,7 +17,7 @@ import { feelingClaim, plainLanguageProblem } from "./phrases";
 /** Why a reply was refused. */
 export const SAY_REASONS = [
   "empty", "too_long", "too_many_sentences", "long_sentence", "number_not_allowed", "reveals_answer", "reveals_step",
-  "false_equation", "affirms_wrong", "missing_number", "hard_words", "never_say", "hype", "board_words", "reintroduces",
+  "false_equation", "affirms_wrong", "missing_number", "hard_words", "never_say", "hype", "board_words", "reintroduces", "close_asks",
 ] as const;
 export type SayReason = (typeof SAY_REASONS)[number];
 
@@ -61,6 +61,8 @@ export interface SayRules {
   noBoard?: boolean;
   /** The act accepts the child's right answer (an affirmation is right then). */
   accepting?: boolean;
+  /** The act ends the call: the reply asks nothing. */
+  closing?: boolean;
 }
 
 export type SayVerdict =
@@ -417,12 +419,17 @@ export function checkSentence(sentence: string, rules: SayRules, index = 0): Say
 export function checkSay(say: string, rules: SayRules): SayVerdict {
   const sentences = sentencesOf(say);
   if (sentences.length === 0) return { ok: false, reason: "empty", detail: "Maya needs words for this turn.", sentence: 0 };
-  if (sentences.length > SAY_SENTENCES) return { ok: false, reason: "too_many_sentences", detail: `Say at most ${SAY_SENTENCES} short sentences (this has ${sentences.length}).`, sentence: SAY_SENTENCES };
+  if (sentences.length > SAY_SENTENCES) {
+    return { ok: false, reason: "too_many_sentences", detail: `Say at most ${SAY_SENTENCES} sentences. This has ${sentences.length}: ${sentences.map((x, i) => `(${i + 1}) ${x}`).join(" ")} Drop one, or join two with a comma, and keep the question at the end.`, sentence: SAY_SENTENCES };
+  }
   const words = wordsIn(say).length;
   if (words > rules.wordLimit) return { ok: false, reason: "too_long", detail: `Say at most ${rules.wordLimit} words (this has ${words}).`, sentence: sentences.length - 1 };
   for (const [i, x] of sentences.entries()) {
     const v = checkSentence(x, rules, i);
     if (!v.ok) return v;
+  }
+  if (rules.closing && sentences.some((x) => /\?\s*$/.test(x) || /^(?:tell me|can you|could you|what|which|how)\b/i.test(x))) {
+    return { ok: false, reason: "close_asks", detail: "This reply ends the call: say a short goodbye and ask nothing.", sentence: sentences.length - 1 };
   }
   if (rules.mustAsk && !sayNumbers(say).some((t) => sameSayValue(t, rules.mustAsk!))) {
     return { ok: false, reason: "missing_number", detail: `Ask if the child said ${rules.mustAsk.key}.`, sentence: 0 };

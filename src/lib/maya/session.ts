@@ -4586,6 +4586,7 @@ function sayRules(before: Session, after: Session, p: Proposal, planned: string)
     wordLimit: before.shorter ? 25 : show ? 45 : 30,
     noBoard: after.noBoard === true,
     accepting: p.act === "accept_answer" || released,
+    closing: p.act === "close",
     noIntro: before.conversational === true && before.opened && !p.reading?.aboutMaya,
   };
 }

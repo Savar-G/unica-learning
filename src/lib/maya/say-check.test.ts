@@ -136,3 +136,14 @@ describe("the opening and spoken signs", () => {
     expect(checkSay("Then 4 minus 2 is 2.", { ...r, shownEquations: ["4 2|-|2"] }).ok).toBe(true);
   });
 });
+
+describe("the close", () => {
+  it("refuses a question in a reply that ends the call", () => {
+    expect(checkSay("Thanks, Ava. Which part was the trickiest?", rules({ wrong: [], closing: true }))).toMatchObject({ ok: false, reason: "close_asks" });
+    expect(checkSay("Thanks for your work, Ava. Bye for now.", rules({ wrong: [], closing: true })).ok).toBe(true);
+  });
+  it("lists the sentences when there are too many", () => {
+    const v = checkSay("One. Two. Three. Four?", rules());
+    expect(v.ok === false && v.detail).toContain("(4) Four?");
+  });
+});

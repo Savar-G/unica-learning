@@ -16,6 +16,8 @@
 //   --seed <n>               the wording seed (default 1)
 //   --name <child name>      the child's name, said now and then by code
 //   --list                   list the sample questions
+//   --real-clock             the real clock with a script, so the trace times each model call
+//   --legacy                 Maya's version 2 model (code-written lines), for a before-and-after comparison
 //
 // Script lines: a child turn, or "/wait <seconds>" (the clock moves on and the pause policy runs), "/write start",
 // "/write done", "/quit" (the child hangs up: child_stopped). "#" starts a comment. With --script or piped input the
@@ -27,7 +29,7 @@ import { execFileSync } from "node:child_process";
 import { aiClient } from "@/lib/ai-client";
 import { anthropicClient } from "@/lib/ai-anthropic";
 import { livekitTextSession } from "@/lib/maya-livekit-text";
-import { conversationalMayaModel, type MayaModel } from "@/lib/maya-model";
+import { aiMayaModel, conversationalMayaModel, type MayaModel } from "@/lib/maya-model";
 import { ruleConversationalModel } from "@/lib/maya-model-fake";
 import { aiTalkReviewer, fakeTalkReviewer, REVIEW_DEFAULT_MODEL, type TalkReviewer } from "@/lib/maya-talk-review";
 import { redactText } from "@/lib/maya-trace";
@@ -45,10 +47,14 @@ interface Options {
   seed: number;
   name: string | null;
   list: boolean;
+  /** The real clock with a script, so the trace times each model call (latency checks). */
+  realClock: boolean;
+  /** Maya's version 2 model (code-written lines), for a before-and-after comparison. */
+  legacy: boolean;
 }
 
 function parse(argv: string[]): Options {
-  const o: Options = { question: "add-27-39", model: "fake", freeTalk: true, script: null, runner: "livekit", trace: null, seed: 1, name: null, list: false };
+  const o: Options = { question: "add-27-39", model: "fake", freeTalk: true, script: null, runner: "livekit", trace: null, seed: 1, name: null, list: false, realClock: false, legacy: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const v = () => {
@@ -72,6 +78,8 @@ function parse(argv: string[]): Options {
     else if (a === "--seed") o.seed = Number(v());
     else if (a === "--name") o.name = v();
     else if (a === "--list") o.list = true;
+    else if (a === "--real-clock") o.realClock = true;
+    else if (a === "--legacy") o.legacy = true;
     else throw new Error(`unknown option ${a}`);
   }
   return o;
@@ -127,7 +135,7 @@ function model(o: Options, root: string): MayaModel {
   }
   const client = aiClient(env);
   if (!client) throw new Error("--model openrouter needs OPENROUTER_API_KEY (in the environment or .env.local). The AI is off without it.");
-  return conversationalMayaModel(client);
+  return o.legacy ? aiMayaModel(client) : conversationalMayaModel(client);
 }
 
 async function main() {
@@ -143,7 +151,7 @@ async function main() {
 
   const typed = !o.script && process.stdin.isTTY;
   let simulated = Date.now();
-  const clock = typed ? () => Date.now() : () => simulated;
+  const clock = typed || o.realClock ? () => Date.now() : () => simulated;
   const callId = `text-${new Date().toISOString().replace(/[:.]/g, "-")}`;
   const text = createTextSession({
     callId, package: pkg, model: m, clock, random: o.seed, childName: o.name, runner: o.runner === "livekit" ? "livekit-text" : "text",
