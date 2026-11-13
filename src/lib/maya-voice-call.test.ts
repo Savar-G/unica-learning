@@ -349,6 +349,27 @@ describe("R408 recovery and privacy", () => {
     expect(JSON.stringify(row.notePending)).not.toContain("Leah");
   });
 
+  // The same rule for a chat or a typed call (2026-11-13): the sweep and an admin end pass no name, and the stored
+  // trace kept the real name, because it hid only the name it was given.
+  for (const who of ["the sweep", "an admin"] as const) {
+    it(`a typed call that ${who} ends with no name given still hides the name its session says`, async () => {
+      const s = setup();
+      s.seams.model = (id) => (id === null || id === "fake" ? ruleConversationalModel() : null);
+      const text = ok(await s.calls.start({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: PKG, startedBy: who === "an admin" ? "admin-1" : null })).view;
+      const said = ok(await s.calls.input(text.id, text.revision, { type: "child", text: "Um, let me think." }, "Leah"));
+      expect(said.output!.say).toEqual(["Take your time, Leah."]);
+      const ended = ok(await s.calls.input(text.id, said.view.revision, { type: "end" }, null));
+      const row = s.store.rows()[0];
+      expect(row.status).toBe("ended");
+      expect(JSON.stringify(row.trace)).not.toContain("Leah");
+      expect(JSON.stringify(row.trace)).toContain("Take your time, {name}.");
+      expect(JSON.stringify(row.notePending ?? null)).not.toContain("Leah");
+      // An end sent again for the ended call (the sweep's retry) keeps it hidden.
+      ok(await s.calls.input(text.id, ended.view.revision, { type: "end" }, null));
+      expect(JSON.stringify(s.store.rows()[0].trace)).not.toContain("Leah");
+    });
+  }
+
   it("R408-5: a voice call the sweep ends (no name given) still hides the name its session says", async () => {
     const s = setup();
     s.seams.model = (id) => (id === null || id === "fake" ? ruleConversationalModel() : null);

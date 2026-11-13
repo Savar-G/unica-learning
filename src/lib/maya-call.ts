@@ -1423,7 +1423,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         if (input.type !== "end" || !record.trace) return { ok: false, error: "conflict" };
         // An ended call: send the alert, write the event and rebuild the profile when an earlier try did not.
         await alert(record);
-        const final = record.live ? textSession(record, record.live.package, idleModel(record), childName, record.live.text) : null;
+        const final = record.live ? textSession(record, record.live.package, idleModel(record), savedName(record.live.text) ?? childName, record.live.text) : null;
         const done = await afterEnd(record, final);
         return result(done, done.trace!, null);
       }
@@ -1446,18 +1446,21 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         return ended ? result(ended, ended.trace!, null) : { ok: false, error: "conflict" };
       }
       const { package: pkg, text: saved } = record.live;
+      // The name the saved session holds hides itself in the stored trace when the caller gives none: the sweep and an
+      // admin end pass no name, and the trace hid only the name it was given (a chat's trace kept the real name, 2026-11-13).
+      const name = savedName(saved) ?? childName;
       if (input.type !== "end") {
         // At the cap Maya teaches no more, and only the child's own words are read, for safety.
         const state = await spendState(record);
         if (state !== "open") {
-          const closed = await closeAtCap(record, state, childName, undefined, input.type === "child" ? input.text.trim() : undefined);
+          const closed = await closeAtCap(record, state, name, undefined, input.type === "child" ? input.text.trim() : undefined);
           if (!closed) return { ok: false, error: "conflict" };
           return { ok: true, view: callView(closed.record, closed.record.trace!, await alertsOf(closed.record)), output: { say: closed.say, newBatches: 0, safetyMessage: closed.safetyMessage } };
         }
       }
       if (input.type === "child") {
         // Words that come after the call's clock get their safety read before the clock ends the call.
-        const late = await closeAtClock(record, childName, input.text.trim());
+        const late = await closeAtClock(record, name, input.text.trim());
         if (late) return { ok: true, view: callView(late.record, late.record.trace!, await alertsOf(late.record)), output: { say: late.say, newBatches: 0, safetyMessage: late.safetyMessage } };
       }
       let refusal: Exclude<SpendState, "open"> | null = null;
@@ -1465,11 +1468,11 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       const model = asked && watched(asked, (state) => { refusal = state; });
       if (!model) {
         // The model this call started with is gone (the key was removed): the call ends, recorded with its own model.
-        const session = textSession(record, pkg, idleModel(record), childName, saved);
+        const session = textSession(record, pkg, idleModel(record), name, saved);
         const ended = await end(record, pkg, session, { detail: "the model this call started with is no longer available" });
         return ended ? result(ended, ended.trace!, null) : { ok: false, error: "conflict" };
       }
-      const session = textSession(record, pkg, model, childName, saved);
+      const session = textSession(record, pkg, model, name, saved);
       let out: TextOutput | null = null;
       let saved2: CallRecord | null = null;
       if (input.type === "end") {
@@ -1488,7 +1491,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         const stopped: Exclude<SpendState, "open"> | null = refusal;
         const state = stopped ?? await spendState(saved2);
         if (state !== "open") {
-          const closed = await closeAtCap(saved2, state, childName, undefined, stopped && input.type === "child" ? input.text.trim() : undefined);
+          const closed = await closeAtCap(saved2, state, name, undefined, stopped && input.type === "child" ? input.text.trim() : undefined);
           if (!closed) return { ok: false, error: "conflict" };
           return {
             ok: true, view: callView(closed.record, closed.record.trace!, await alertsOf(closed.record)),
