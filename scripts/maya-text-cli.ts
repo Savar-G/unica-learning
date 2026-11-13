@@ -27,7 +27,7 @@ import { execFileSync } from "node:child_process";
 import { aiClient } from "@/lib/ai-client";
 import { anthropicClient } from "@/lib/ai-anthropic";
 import { livekitTextSession } from "@/lib/maya-livekit-text";
-import { aiMayaModel, type MayaModel } from "@/lib/maya-model";
+import { conversationalMayaModel, type MayaModel } from "@/lib/maya-model";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
 import { aiTalkReviewer, fakeTalkReviewer, REVIEW_DEFAULT_MODEL, type TalkReviewer } from "@/lib/maya-talk-review";
 import { redactText } from "@/lib/maya-trace";
@@ -107,7 +107,7 @@ function models(o: Options, root: string): { maya: MayaModel; reviewer: TalkRevi
   if (o.model === "fake") return { maya: ruleMayaModel(), reviewer: fakeTalkReviewer() };
   if (o.model === "anthropic") {
     const key = anthropicKey();
-    return { maya: aiMayaModel(anthropicClient({ apiKey: key })), reviewer: aiTalkReviewer(anthropicClient({ apiKey: key, model: "claude-haiku-5-5" })) };
+    return { maya: conversationalMayaModel(anthropicClient({ apiKey: key })), reviewer: aiTalkReviewer(anthropicClient({ apiKey: key, model: "claude-haiku-5-5" })) };
   }
   const maya = model(o, root);
   const review = aiClient(process.env, process.env.MAYA_REVIEW_MODEL?.trim() || REVIEW_DEFAULT_MODEL);
@@ -127,7 +127,7 @@ function model(o: Options, root: string): MayaModel {
   }
   const client = aiClient(env);
   if (!client) throw new Error("--model openrouter needs OPENROUTER_API_KEY (in the environment or .env.local). The AI is off without it.");
-  return aiMayaModel(client);
+  return conversationalMayaModel(client);
 }
 
 async function main() {

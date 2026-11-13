@@ -354,7 +354,7 @@ export function withoutDefaults(reading: unknown): unknown {
 }
 
 /** A version 3 output: an object with `say` as a string. */
-export const isModelOutput = (raw: unknown): raw is Record<string, unknown> => isRecord(raw) && typeof raw.say === "string";
+export const isModelOutput = (raw: unknown): raw is Record<string, unknown> => isRecord(raw) && typeof raw.say === "string" && (raw.version === undefined || raw.version === MODEL_OUTPUT_VERSION);
 
 /**
  * A version 3 output as the session reads it: defaults left out, the step and level only where they mean something,

@@ -64,7 +64,7 @@ import { claimActs, claimAnswers, claimCommitted, claimConfirm, claimQuestionAsk
 import { closeParts, compareEquationSaid, currentPart, evaluateSteps, evaluateTeaching, partBoards, partCovered, partEquationSaid, partIdOf, stepsBeforeLastPart, withEvaluateExample } from "./evaluate";
 import { isSpot, spotAnswers, spotReveals, spotSessionPackage, spotStepHeard } from "./spot-error";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, isModelOutput, readModelOutput, withoutDefaults, withoutNulls, type Act, type ChildAnswer, type HintLevel, type ModelOutput, type Proposal, type Reading, type Severity } from "./proposal";
-import { checkSay, equationKeysOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, type SayReason, type SayRules, type SayValue } from "./say-check";
+import { checkSay, equationKeysOf, equationsOf, sentencesOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, type SayReason, type SayRules, type SayValue } from "./say-check";
 import type { TalkReviewResult } from "./talk-review";
 
 /** Closing starts 9 minutes into the call; the call ends at 10 minutes. */
@@ -4329,7 +4329,7 @@ function codeProposals(given: Session, refused: readonly unknown[] = [], plan?: 
         const score = (set: LineOffer[]) => (located && set.some((o) => o.line === "step.order" || o.line === "step.regroup") ? 0 : 100) +
           (want === null ? 0 : levelOf(set) === want ? 0 : levelOf(set) < want ? 10 + want - levelOf(set) : 20 + levelOf(set) - want);
         const ordered = plan ? sets.map((set, i) => ({ set, i })).sort((a, b) => score(a.set) - score(b.set) || a.i - b.i).map((x) => x.set) : sets;
-        lineSets = ordered.map((set) => make(act, set, { step: plan?.step ?? ladderStep, level: levelOf(set) as HintLevel }));
+        lineSets = ordered.map((set) => make(act, set, { step: ladderStep, level: levelOf(set) as HintLevel }));
         break;
       }
       case "example_step": {
@@ -4469,6 +4469,8 @@ export function turnFacts(s: Session): TurnFact[] {
   const credited = new Set([...s.done, ...(s.passed ?? [])]);
   const facts: TurnFact[] = [];
   const seen: SayValue[] = [];
+  const known = steps.flatMap((st) => [...stepAnswers(st).flatMap(sayValues), ...valuesOf(stepText(st, pkg.operation))]);
+  const said = sentencesOf(s.turn.text).flatMap((x) => equationsOf(x).flatMap((e) => e.operands.map(({ key, q }) => ({ key, q }))));
   for (const v of valuesIn(s.turn.text, readOptionsFor(pkg))) {
     if (v.type !== "number" && v.type !== "fraction" && v.type !== "mixed") continue;
     const sv = sayValues(v)[0];
@@ -4485,6 +4487,25 @@ export function turnFacts(s: Session): TurnFact[] {
       continue;
     }
     if (valueIn(sv, printed)) continue;
+    const misread = misconceptionOf(s, v, sv, vt);
+    if (misread) {
+      facts.push(misread);
+      continue;
+    }
+    // A number of the work itself (a done step's value, a regrouped digit, an operand the child says in an equation)
+    // is no wrong answer: "Then 4 minus 2 is 2." says the tens' own numbers.
+    if (valueIn(sv, known) || valueIn(sv, said)) continue;
+    facts.push({ text: `${vt} is not right for the step "${s.ladder.step}".`, numbers: [sv], step: s.ladder.step, wrong: sv });
+  }
+  return facts;
+}
+
+/** The named misconception a number of the child's turn shows, or null (O1: the smaller digit from the larger; O3: the carry left out). */
+function misconceptionOf(s: Session, v: AnswerValue, sv: SayValue, vt: string): TurnFact | null {
+  const pkg = s.package!;
+  const credited = new Set([...s.done, ...(s.passed ?? [])]);
+  const steps = workSteps(pkg);
+  {
     let found: TurnFact | null = null;
     for (const st of steps) {
       if (credited.has(st.id) || v.type !== "number") continue;
@@ -4500,19 +4521,20 @@ export function turnFacts(s: Session): TurnFact[] {
       }
       if (st.kind === "add-column" && st.carryIn > 0) {
         const without = st.total - st.carryIn;
-        if (v.value === without || v.value === without % 10) {
+        // Only a bare number: "2 plus 3 plus 1 is 5" added the carry and slipped, it did not leave it out.
+        const bare = valuesIn(s.turn!.text, readOptionsFor(pkg)).length === 1;
+        if (bare && (v.value === without || v.value === without % 10)) {
           found = { text: `${vt} leaves out the carried ${st.carryIn} in the ${st.place}.`, numbers: [sv, numberValue(st.carryIn)], step: st.id, misconception: "O3", wrong: sv };
           break;
         }
       }
     }
-    facts.push(found ?? { text: `${vt} is not right for the step "${s.ladder.step}".`, numbers: [sv], step: s.ladder.step, wrong: sv });
+    return found;
   }
-  return facts;
 }
 
 /** The child's turn shows a named misconception on this step (a located error: its regroup help may come at once). */
-const misconceptionAt = (s: Session, step: string) => turnFacts(s).some((f) => f.misconception && f.step === step);
+const misconceptionAt = (s: Session, step: string) => turnFacts(s).some((f) => f.misconception === "O1" && f.step === step);
 
 /** Values and equations of the steps the child has not been credited with, and of the final answer while it is open. */
 function hiddenOf(s: Session, released: boolean): { forbidden: SayValue[]; answer: SayValue[]; hidden: string[] } {

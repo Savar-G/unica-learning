@@ -40,13 +40,16 @@ import {
   type Severity,
   type WordingHistory,
 } from "@/lib/maya";
-import { modelInput, type MayaModel } from "@/lib/maya-model";
+import { modelInput, turnBrief, type MayaModel, type ModelInput } from "@/lib/maya-model";
+import { sentencesOf } from "@/lib/maya/say-check";
 import { reviewInput, runReview, REVIEW_TIME_LIMIT_MS, type TalkReviewer } from "@/lib/maya-talk-review";
 import { readFromFence } from "@/lib/ai-fenced";
 import { classifyError, packageHash, redactText, redactTrace, traceCounts, TRACE_KIND, TRACE_VERSION, type MayaTrace, type TraceBoardBatch, type TraceTurn, type TraceObligation } from "@/lib/maya-trace";
 
 /** At most this many Maya turns in a row without the child (the easier example is up to four). */
 export const MAX_MAYA_TURNS = 8;
+/** D-341: the time one Maya turn may take in chat for the model and its repair, in ms. */
+export const TURN_BUDGET_MS = 6_000;
 
 export interface TextSessionOptions {
   confirmWorkbook?: boolean;
@@ -71,8 +74,22 @@ export interface TextSessionOptions {
   freeTalk?: boolean;
   /** The call's end when it is shorter than 10 minutes (ms). A resumed call keeps the limits it started with. */
   limitMs?: number;
-  /** The free-talk review (src/lib/maya-talk-review.ts), or null. */
+  /** The free-talk review (src/lib/maya-talk-review.ts), or null. D-341: it reads each reply that is not plain math talk. */
   reviewer?: TalkReviewer | null;
+  /**
+   * D-341: the time one Maya turn may take for the model and its repair (default TURN_BUDGET_MS). When it is spent,
+   * Maya says code's own line (fallbacks). Voice sets less.
+   */
+  turnBudgetMs?: number;
+  /**
+   * D-341, the streaming contract agreed with the voice lead. Each sentence of Maya's output goes to `onSayPart` in
+   * index order, one at a time, only after it passed the per-sentence checks; a sentence sent is never cancelled.
+   * `onSayCancel(fromIndex)` is only for indexes not sent yet; `onSayEnd` ends the output. Today the hooks are called
+   * once the whole reply is checked (no token streaming yet); the saved turn holds exactly the spoken sentences in order.
+   */
+  onSayPart?: (sentence: string, index: number, boardCues: Batch[]) => void;
+  onSayCancel?: (fromIndex: number) => void;
+  onSayEnd?: () => void;
   /** The time limit of one review (default REVIEW_TIME_LIMIT_MS); a late review fails the line. */
   reviewTimeLimitMs?: number;
   /**
@@ -139,8 +156,12 @@ export interface TextOutput {
 }
 
 export interface TextSession {
-  /** Starts the call: Maya's opening. */
-  start(): Promise<TextOutput>;
+  /**
+   * Starts the call: Maya's opening. In a conversational call (D-341) it is code's opening line (openingLine) with the
+   * question staged on the board, and no model call. `openingSpoken`: the voice worker speaks that line itself, so it
+   * comes back with no say (the trace records it, the board batch comes back as usual).
+   */
+  start(options?: { openingSpoken?: boolean }): Promise<TextOutput>;
   /** One child turn as text. */
   child(text: string, options?: { uncertain?: boolean; alternatives?: string[] }): Promise<TextOutput>;
   /**
@@ -199,7 +220,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   if (resume?.v === 6 && (!resume.initial || !Array.isArray(resume.log))) throw new Error("maya text: the saved event log is missing");
   if (resume && (![1, 6].includes(resume.v) || (resume.v === 6 ? resume.initial!.session.callId : resume.session.callId) !== options.callId)) throw new Error("maya text: the saved session is not this call's");
   const initial: TextLogInitial = resume?.v === 6 && resume.initial ? structuredClone(resume.initial) : {
-    session: resume ? structuredClone(resume.session) : createSession({ callId: options.callId, confirmWorkbook: options.confirmWorkbook, channel: options.channel, package: options.package, random: options.random, grade: options.grade, history: options.history, childName: options.childName, freeTalk: options.freeTalk === true, limitMs: options.limitMs }),
+    session: resume ? structuredClone(resume.session) : createSession({ callId: options.callId, confirmWorkbook: options.confirmWorkbook, channel: options.channel, package: options.package, random: options.random, grade: options.grade, history: options.history, childName: options.childName, freeTalk: options.freeTalk === true, limitMs: options.limitMs, conversational: model.output === 3 }),
     endedAt: resume?.endedAt ?? null, turns: resume?.turns ?? [], board: resume?.board ?? [],
     approved: resume?.approved, obligations: resume?.obligations, childState: resume?.childState, problems: resume?.problems,
   };
@@ -213,6 +234,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   let active: AbortController | null = null;
   let generation = 0;
   let queue: Promise<unknown> = Promise.resolve();
+  let turnEndsAt = Number.POSITIVE_INFINITY;
+  let quietOpening = false;
   const newOutput = (): TextOutput => ({ say: [], board: [], ended: null, safetyMessage: null, cancelled: false });
   const now = () => {
     let at = 0;
@@ -247,18 +270,30 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       proposal: folded.attempts.at(-1)!.proposal,
       refusal: folded.attempts.at(-1)!.refusal!,
     } : null;
-    const input = modelInput(folded.session, repair);
+    const input = model.output === 3 ? turnBrief(folded.session, repair ? { said: repair.proposal, refusal: repair.refusal } : null) as unknown as ModelInput : modelInput(folded.session, repair);
     const at = Math.max(clock(), now());
     append({ kind: "request", at, requestId, source });
     if (folded.session.outcome || folded.request?.id !== requestId) return;
-    // The handler logs even a late response from a provider that ignores abort.
-    const response = Promise.resolve().then(() => model.propose(input, controller.signal)).then((proposal) => {
-      // A proposal the client read from inside one code fence is counted in the trace (`fenced`), never told apart otherwise.
-      append({ kind: "response", at: now(), requestId, proposal, ...(readFromFence(proposal) ? { fenced: true as const } : {}), ms: now() - at });
-    }, (error) => {
+    // D-341: the turn's time budget. When it is spent, the request counts as a time-out and code's line follows.
+    const left = Math.max(0, turnEndsAt - Date.now());
+    let budgetTimer: ReturnType<typeof setTimeout> | undefined;
+    const budget = new Promise<"budget">((resolve) => { budgetTimer = setTimeout(() => resolve("budget"), left); });
+    // The handler logs even a late response from a provider that ignores abort; a response after the budget is stale.
+    const answered = Promise.resolve().then(() => model.propose(input, controller.signal)).then((proposal) => ({ proposal }), (error: unknown) => ({ error }));
+    const response = Promise.race([answered, budget]).then((got) => {
+      clearTimeout(budgetTimer);
+      if (got === "budget") {
+        if (folded.request?.id === requestId) append({ kind: "response", at: now(), requestId, error: classifyError(new Error("the turn's time is up"), "model"), ms: now() - at });
+        return;
+      }
+      if ("proposal" in got) {
+        // A proposal the client read from inside one code fence is counted in the trace (`fenced`), never told apart otherwise.
+        append({ kind: "response", at: now(), requestId, proposal: got.proposal, ...(readFromFence(got.proposal) ? { fenced: true as const } : {}), ms: now() - at });
+        return;
+      }
       const stale = folded.request?.id !== requestId;
-      append({ kind: "response", at: now(), requestId, error: classifyError(error, "model"), ms: now() - at });
-      if (!stale) options.onError?.(error, { turn: folded.turns.length, source });
+      append({ kind: "response", at: now(), requestId, error: classifyError(got.error, "model"), ms: now() - at });
+      if (!stale) options.onError?.(got.error, { turn: folded.turns.length, source });
     });
     if (await wait(response, controller) === stopped || controller.signal.aborted) return;
     await reviewCandidate(controller);
@@ -297,6 +332,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     sendGuidance();
     for (let n = 0; n < MAX_MAYA_TURNS && !controller.signal.aborted; n++) {
       if (folded.session.outcome) break;
+      turnEndsAt = Date.now() + (options.turnBudgetMs ?? TURN_BUDGET_MS);
       const urgent = folded.session.safety.flagged || folded.session.contentProblem !== null;
       if (folded.childState === "child_speaking" && !urgent) break;
       if (nextActs(folded.session).expect !== "maya") break;
@@ -310,7 +346,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       if (controller.signal.aborted) break;
       // With the danger known, a refused proposal gets code's guidance now, not a second model call.
       const safetyDue = folded.session.safety.flagged && !folded.session.safety.guided;
-      if (folded.attempts.at(-1)?.source === "model" && folded.attempts.at(-1)?.refusal && !folded.session.outcome && !safetyDue) await request("repair", controller);
+      if (folded.attempts.at(-1)?.source === "model" && folded.attempts.at(-1)?.refusal && !folded.session.outcome && !safetyDue && Date.now() < turnEndsAt) await request("repair", controller);
       if (controller.signal.aborted) break;
       if (folded.attempts.length && !folded.session.outcome) {
         const refused = folded.attempts.filter((a) => a.refusal !== null).map((a) => a.proposal);
@@ -340,6 +376,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         }
         const out = textOutput(folded);
         append({ kind: "delivered", at: now() });
+        sayParts(out);
         return out;
       } catch (error) {
         options.onError?.(error, "session");
@@ -349,6 +386,14 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     });
     queue = next.catch(() => undefined);
     return next;
+  }
+  /** The streaming hooks (D-341): each sentence in order, once the whole reply passed its checks, then the end. */
+  function sayParts(out: TextOutput) {
+    if (quietOpening) { quietOpening = false; return; }
+    if (!options.onSayPart && !options.onSayEnd) return;
+    let index = 0;
+    for (const [k, said] of out.say.entries()) for (const sentence of sentencesOf(said)) options.onSayPart?.(sentence, index++, k === 0 && index === 1 ? out.board : []);
+    options.onSayEnd?.();
   }
   function receive(event: SessionEvent, respond = true): Promise<TextOutput> {
     recover();
@@ -379,7 +424,12 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     }, options.childName ?? null);
   }
   return {
-    start: () => receive({ type: "start", at: now() }),
+    start: async (opts = {}) => {
+      quietOpening = opts.openingSpoken === true;
+      const out = await receive({ type: "start", at: now() });
+      // D-341: the voice worker speaks the opening itself; the trace keeps it and the board batch comes back.
+      return opts.openingSpoken ? { ...out, say: [] } : out;
+    },
     child: (text, opts = {}) => receive({ type: "child_turn", at: now(), text, ...structuredClone(opts) }),
     partial: (text) => receive({ type: "child_turn", at: now(), text, final: false }, false),
     mayaSaid: (text) => receive({ type: "maya_said", at: now(), text }),

@@ -14,6 +14,8 @@ export interface TraceRefusal {
   code: RefusalCode | "board_refused";
   reason: string;
   allowed: Act[];
+  /** D-341: the say check's reason ("review" for the review of a non-math turn). */
+  say?: string;
 }
 
 /**
@@ -239,6 +241,8 @@ export interface TraceCounts {
   modelErrors: number;
   /** Maya turns where nothing was output. */
   silent: number;
+  /** D-341: the model's own words refused by the say checks (and the review, "review"), by reason. */
+  sayRefusals?: Record<string, number>;
 }
 
 /** The counts of a trace's turns. */
@@ -253,6 +257,7 @@ export function traceCounts(turns: readonly TraceTurn[]): TraceCounts {
     fallbacks: maya.filter((t) => t.output && t.attempts.at(-1)?.source === "fallback").length,
     modelErrors: attempts.filter((a) => a.error !== undefined).length,
     silent: maya.filter((t) => t.output === null).length,
+    sayRefusals: attempts.reduce<Record<string, number>>((n, a) => (a.refusal?.say ? { ...n, [a.refusal.say]: (n[a.refusal.say] ?? 0) + 1 } : n), {}),
   };
 }
 
@@ -427,7 +432,11 @@ function checkTurn(t: unknown, path: string, version: number): Record<string, un
         // the text before D-327 in version 8 and earlier, the D-327 text from version 9.
         const held = version <= 8 ? PRE_D314_HELD : heldSentences(true).join(" ");
         const exact = o?.act === "safety" ? Object.values(SAFETY_GUIDANCE) as string[] : o?.act === "close" ? [held] : [];
-        need(attempts.length === 1 && attempts[0].proposal === null && attempts[0].refusal === null && attempts[0].error === undefined && Array.isArray(o?.say) && o.say.length === 1 && exact.includes(o.say[0] as string) && Array.isArray(o?.board) && o.board.length === 0, path, "controller output is exact safety guidance or the exact held lines only");
+        // D-341: the code-written opening of a conversational call, with the question staged on the board.
+        const opening = o?.act === "open" && Array.isArray(o?.say) && o.say.length === 1 && typeof o.say[0] === "string" &&
+          (/^Hi there! I'm Maya, an AI math helper\. We're doing .+ today\.$/.test(o.say[0]) || /^Hi, I'm Maya, an AI helper\. Let's do page /.test(o.say[0])) &&
+          Array.isArray(o?.board) && o.board.length <= 1;
+        need(attempts.length === 1 && attempts[0].proposal === null && attempts[0].refusal === null && attempts[0].error === undefined && Array.isArray(o?.say) && o.say.length === 1 && (opening || (exact.includes(o.say[0] as string) && Array.isArray(o?.board) && o.board.length === 0)), path, "controller output is exact safety guidance, the exact held lines or the code opening only");
       }
       // A chat's close after the safety guidance is code's own: no model is asked for it (#589).
       if (attempts.length === 1 && attempts[0]?.source === "fallback") need(x.state === "SAFETY" && (x.output as { act?: unknown } | null)?.act === "close", `${path}.attempts`, "a fallback with no model attempt is only the close after safety guidance");

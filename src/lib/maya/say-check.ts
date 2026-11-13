@@ -206,7 +206,7 @@ export function sayNumbers(raw: string): SayToken[] {
     const placeAfter = after.trimStart();
     // Counting words: "one" alone ("this one", "one ten"), "ten ones", "a ten": they name a place, not a value.
     if (w.words.length === 1 && w.words[0] === "one") continue;
-    if (w.words.length === 1 && w.words[0] === "ten" && (PLACE_PLURAL.test(placeAfter) || /\b(?:a|one|1)\s+$/.test(before))) continue;
+    if (w.words.length === 1 && w.words[0] === "ten" && (PLACE_PLURAL.test(placeAfter) || /\b(?:a|one|1|the|that|this)\s+$/.test(before))) continue;
     push({ key: String(w.value), q: rational(w.value, 1), at: w.at, end: w.end, text: text.slice(w.at, w.end) });
   }
   // "a half", "a quarter": one part.
