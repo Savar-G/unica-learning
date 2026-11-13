@@ -686,7 +686,18 @@ describe("turns that ask no model (D-341, round 3)", () => {
   /** The rule player, counting every model call. */
   function countedModel() {
     const rule = ruleConversationalModel();
-    const state = { asked: 0, model: { ...rule, propose: (input, signal, onText) => { state.asked++; return rule.propose(input, signal, onText); } } as MayaModel };
+    const state = {
+      asked: 0,
+      /** While set, each model call waits for `release()`, in order. */
+      hold: false,
+      held: [] as (() => void)[],
+      release() { state.held.shift()?.(); },
+      model: { ...rule, propose: async (input, signal, onText) => {
+        state.asked++;
+        if (state.hold) await new Promise<void>((resolve) => { state.held.push(resolve); });
+        return rule.propose(input, signal, onText);
+      } } as MayaModel,
+    };
     return state;
   }
   /** What the call said of each child turn before any model call, and each finished turn. */
@@ -757,5 +768,46 @@ describe("turns that ask no model (D-341, round 3)", () => {
     c.say("I got 56.");
     await waitFor(() => c.samples.length === 4 && c.said().length > quiet, "the answer");
     expect(c.samples[3].outcome).toBe("answered");
+  });
+
+  /**
+   * Real call c19531cb (2026-11-13): two patient lines, a thinking turn with no words, then the silence check-in with no
+   * words ("The child stayed quiet."), then a real turn that got no answer: `interrupted` at once, 13 s of silence.
+   */
+  it("a check-in with no words after a silent thinking turn: the child's next turn is answered", async () => {
+    const m = countedModel();
+    const c = await voiceCall({ model: m.model, ackLimitMs: ACK_LIMIT_MS });
+    const w = watchTurns(c);
+    for (const [n, text] of ["Um.", "Wait.", "I'm thinking."].entries()) {
+      c.say(text);
+      await waitFor(() => w.turns.length === n + 1 && c.samples.length === n + 1, `thinking turn ${n + 1}`);
+      await pause();
+    }
+    expect(w.turns[2]).toMatchObject({ wait: true, say: [] });
+    expect(c.samples[2].outcome).toBe("no_words");
+    const quiet = c.said().length;
+    const ticks = vi.spyOn(c.call, "tick");
+    // The check-in asks the model, which takes its time: the child speaks while it runs, and the reply to them takes
+    // its time too.
+    m.hold = true;
+    for (let i = 0; i < 30 && ticks.mock.calls.length === 0; i++) { await c.clock.advance(1000); await pause(); }
+    expect(ticks).toHaveBeenCalledTimes(1);
+    await waitFor(() => m.held.length === 1, "the check-in's model call");
+    c.say("I can't do 2 minus 8.");
+    await waitFor(() => w.plans.length === 4, "the child's turn");
+    m.hold = false;
+    m.release();
+    // The child's words come first: the check-in says nothing.
+    const checkIn = await ticks.mock.results[0].value as VoiceTurn;
+    expect(checkIn.say).toEqual([]);
+    await waitFor(() => m.held.length === 1, "the reply's model call");
+    await pause();
+    // The check-in did not end the child's turn.
+    expect(c.samples.length).toBe(3);
+    m.release();
+    await waitFor(() => c.samples.length === 4, "the turn's sample");
+    await waitFor(() => c.said().length > quiet, "the answer");
+    expect(c.samples[3].outcome).toBe("answered");
+    expect(c.said().slice(quiet).join(" ")).toContain("What can you do there?");
   });
 });

@@ -384,6 +384,8 @@ export class VoiceCallRun {
   private wordWaiter: (() => void) | null = null;
   /** The speech-to-text now waits the longer limit, because Maya asked for a number. */
   private numberWait = false;
+  /** Child turns whose reply started (`reply`): a check-in that ran across one of them leaves it alone (`tick`). */
+  private replies = 0;
   readonly agent: MayaVoiceAgent;
   /** Immutable revision claimed when this worker opened the call. */
   readonly segment: number;
@@ -600,6 +602,7 @@ export class VoiceCallRun {
 
   /** The stream of a child turn's reply. It is returned at once: the turn runs behind it. */
   private reply(stoppedAt: number | undefined, work: (say: VoiceSay) => Promise<VoiceTurn[]>, mark: FinalMark | null = null) {
+    this.replies++;
     this.setPatience(false);
     this.closeTurn();
     const heardAt = this.timers.now();
@@ -1264,6 +1267,13 @@ export class VoiceCallRun {
     if (busy) { this.tickTimer = this.timers.set(1000, () => void this.tick()); return; }
     this.lastTickAt = this.timers.now();
     const generation = this.generation;
+    const repliesBefore = this.replies;
+    /**
+     * A child's turn reached the worker while the check-in ran (its model call takes seconds). That turn is answered:
+     * the check-in does not end it, take its board, or talk over it. Real call c19531cb (2026-11-13): the check-in ended
+     * the child's next turn as interrupted, and Maya never answered it.
+     */
+    const childTurnBegan = () => this.replies !== repliesBefore;
     try {
       const turn = await this.call.tick();
       if (this.call.lost) return this.finish({ detail: "the call could not be saved" });
@@ -1274,8 +1284,14 @@ export class VoiceCallRun {
         this.closeTurn();
         return await this.sayFirst(null, [turn]);
       }
-      await this.stageBoard(turn);
+      if (!childTurnBegan()) await this.stageBoard(turn);
       if (generation !== this.generation || !this.childHere || this.finishing) return this.finalDropped(turn);
+      if (childTurnBegan() && !turn.ended) {
+        // Counts only: logs hold no words. The child spoke after the check-in was due, so its words are not said.
+        if (turn.say.length) console.info("[maya voice] check-in not said: the child spoke", this.call.id, { sentences: turn.say.length });
+        await this.after({ ...turn, say: [] }, null, () => false);
+        return;
+      }
       this.closeTurn();
       const speech = turn.say.length ? this.session.say(turn.say.join(" "), { addToChatCtx: true }) : null;
       await this.after(turn, speech, () => false);
