@@ -38,6 +38,9 @@ import { runWorkbookReference } from "./workbook-reference";
 
 const log = (...a: unknown[]) => console.log("[maya voice]", ...a);
 
+/** How often a worker that waits for the child reads whether the call was cancelled. */
+const CANCEL_POLL_MS = 5000;
+
 /** The worker's database client: the secret key of the worker's own Supabase key (docs/maya-voice.md). */
 function database() {
   const url = process.env.SUPABASE_URL?.trim();
@@ -197,7 +200,22 @@ export default defineAgent({
     run.attachTurnTiming();
     made.tts.prewarm();
     const readyAt = Date.now();
-    const waited = await waitForChild(ctx.room, facts, { log: message => log(message, callId) });
+    // A call cancelled before the tap (the desk cancels its pre-made call after 60 s, or when the child leaves the
+    // microphone check) frees this worker at once: the wait reads the call's status every 5 s.
+    let poll: ReturnType<typeof setInterval> | null = null;
+    const cancelled = new Promise<"cancelled">((resolve) => {
+      poll = setInterval(() => {
+        void mayaCallStore(db).get(callId).then((now) => { if (now && now.status !== "live") resolve("cancelled"); }, () => {});
+      }, CANCEL_POLL_MS);
+    });
+    const outcome = await Promise.race([waitForChild(ctx.room, facts, { log: message => log(message, callId) }), cancelled]);
+    if (poll !== null) clearInterval(poll);
+    if (outcome === "cancelled") {
+      log("the call ended before the child's microphone", callId);
+      await run.standDown();
+      return ctx.shutdown("the call ended before the child's microphone");
+    }
+    const waited = outcome;
     if (!waited.child) {
       // The call stays live for its ticket: a child who connects later gets a new worker through the token. Nothing was
       // counted: the connection rows, the minutes and the call's start all wait for the microphone.
