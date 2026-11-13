@@ -51,7 +51,8 @@ describe("B: a long reply is cut, not repaired", () => {
     const { session, model } = call(() => reply("Hi Leo. Let's look at the ones. There is a 2 on top and an 8 below it in the column. What can you do there?", "guide", { step: "ones" }));
     await session.start();
     const out = await session.child("Hi");
-    expect(out.say).toEqual(["Hi Leo. Let's look at the ones. There is a 2 on top and an 8 below it in the column."]);
+    // The closing question takes the place of the third sentence: the child gets something to answer.
+    expect(out.say).toEqual(["Hi Leo. Let's look at the ones. What can you do there?"]);
     expect(model.briefs).toHaveLength(1);
     expect(sources(lastMaya(session))).toEqual(["model"]);
   });
@@ -91,7 +92,8 @@ describe("A: the first sentence streams as it arrives", () => {
     parts.length = 0;
     const out = await session.child("Help me.");
     expect(atEnd[0].map(([x]) => x)).toEqual(["Let's look at the ones."]);
-    expect(out.say).toEqual(["Let's look at the ones."]);
+    // The failing middle sentence is never said; the closing question still follows what was sent.
+    expect(out.say).toEqual(["Let's look at the ones. What is on top?"]);
   });
   it("after a refused act, code's line follows the streamed sentence, with no repair", async () => {
     const { session, atEnd, parts } = streamed(() => reply("Let's look at the ones together.", "accept_answer"));
@@ -128,7 +130,7 @@ describe("A: the OpenRouter client streams", () => {
     expect(seen).toEqual([chunks[0], chunks[0] + chunks[1], text]);
     expect(out).toEqual({ say: "Hi. What is 12 minus 8?", act: "guide" });
   });
-  it("turns thinking off with effort none", async () => {
+  it("sends no reasoning field with effort none (the model default: Sonnet 5.5 refuses reasoning off)", async () => {
     const { openRouterClient } = await import("@/lib/ai-openrouter");
     let sentBody: Record<string, unknown> = {};
     const fetch = (async (_url: unknown, init?: RequestInit) => {
@@ -136,7 +138,7 @@ describe("A: the OpenRouter client streams", () => {
       return new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: "{}" } }] }), { status: 200 });
     }) as typeof globalThis.fetch;
     await openRouterClient({ apiKey: "k", model: "m", fetch }).json({ name: "x", system: "s", content: [], schema: { type: "object" }, effort: "none" }, new AbortController().signal);
-    expect(sentBody.reasoning).toEqual({ enabled: false });
+    expect(sentBody.reasoning).toBeUndefined();
     expect(sentBody.stream).toBe(false);
   });
 });

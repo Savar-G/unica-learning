@@ -451,5 +451,14 @@ export function trimSay(say: string, wordLimit: number): string {
     kept.push(x);
     words += n;
   }
-  return kept.length === 0 ? say.trim() : kept.join(" ");
+  if (kept.length === 0) return say.trim();
+  // The reply's closing question is what the child answers: when it was cut, it takes the place of the sentences before
+  // it that leave no room for it (the first sentence always stays).
+  const question = sentences.at(-1)!;
+  if (kept.length < sentences.length && /\?\s*$/.test(question) && wordsIn(question).length <= SENTENCE_WORDS) {
+    const q = wordsIn(question).length;
+    while (kept.length > 1 && (kept.length >= SAY_SENTENCES || words + q > wordLimit)) words -= wordsIn(kept.pop()!).length;
+    if (kept.length < SAY_SENTENCES && words + q <= wordLimit) kept.push(question);
+  }
+  return kept.join(" ");
 }

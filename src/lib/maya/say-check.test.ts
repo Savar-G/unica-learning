@@ -147,3 +147,12 @@ describe("the close", () => {
     expect(v.ok === false && v.detail).toContain("(4) Four?");
   });
 });
+
+describe("trimSay", () => {
+  it("keeps the leading sentences that fit, and the closing question in place of a middle one", async () => {
+    const { trimSay } = await import("./say-check");
+    expect(trimSay("One. Two. Three. Four?", 30)).toBe("One. Two. Four?");
+    expect(trimSay("One two three four five. Six seven eight nine ten. What now?", 11)).toBe("One two three four five. What now?");
+    expect(trimSay("Short one. Short two.", 30)).toBe("Short one. Short two.");
+  });
+});

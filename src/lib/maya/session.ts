@@ -4715,8 +4715,12 @@ function withStreamed(base: Session, r: StepResult, at: number, planned: string,
   const all = sentencesOf(say);
   const rest = all.slice(0, sent.length).join(" ") === sent.join(" ") ? all.slice(sent.length) : [];
   let keep = rest.length;
-  while (keep > 0 && (!checkSay([...sent, ...rest.slice(0, keep)].join(" "), rules).ok || PERSONAL.test(rest.slice(0, keep).join(" ")))) keep--;
-  const text = [...sent, ...rest.slice(0, keep)].join(" ");
+  const fits = (more: readonly string[]) => checkSay([...sent, ...more].join(" "), rules).ok && !PERSONAL.test(more.join(" "));
+  while (keep > 0 && !fits(rest.slice(0, keep))) keep--;
+  // The closing question, when it was cut, still follows the sentences already said if it fits after them.
+  const question = rest.at(-1);
+  const tail = keep < rest.length && question && /\?\s*$/.test(question) && fits([question]) && !fits([...rest.slice(0, keep), question]) ? [question] : keep < rest.length && question && /\?\s*$/.test(question) && fits([...rest.slice(0, keep), question]) ? [...rest.slice(0, keep), question] : rest.slice(0, keep);
+  const text = [...sent, ...tail].join(" ");
   const turns = [...r.session.turns];
   const last = turns.findLastIndex((t) => t.speaker === "maya" && t.text === planned);
   if (last !== -1) turns[last] = { ...turns[last], text, planned };

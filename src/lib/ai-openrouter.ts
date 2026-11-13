@@ -40,7 +40,7 @@ function body(model: string, request: AiJsonRequest, provider?: OpenRouterProvid
     ],
     ...(output.response_format ? { response_format: output.response_format } : {}),
     provider: provider ?? { require_parameters: true },
-    ...(request.effort === "none" ? { reasoning: { enabled: false } } : request.effort ? { reasoning: { effort: request.effort, exclude: true } } : {}),
+    ...(request.effort && request.effort !== "none" ? { reasoning: { effort: request.effort, exclude: true } } : {}),
   };
 }
 
