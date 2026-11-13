@@ -74,7 +74,7 @@ import { createHistory, inkLog, mayaWrites, readInkEvent, withChildInk, withInkL
 import { fitView, type PlayStep } from "@/lib/board-svg";
 import type { LearningEvents, NewLearningEvent } from "@/lib/learning-events";
 import type { NoteStep } from "@/lib/maya-call-note";
-import { heardWordings, learningEvent, limitsOf, mayaPackageCheck, nextActs, SAFETY_GUIDANCE, streamRules, type Outcome, type Session, type Severity, type WordingHistory, type WordingHistoryStore } from "@/lib/maya";
+import { clearStop, heardWordings, learningEvent, limitsOf, mayaPackageCheck, nextActs, SAFETY_GUIDANCE, streamRules, type Outcome, type Session, type Severity, type WordingHistory, type WordingHistoryStore } from "@/lib/maya";
 import { modelInput, type MayaModel } from "@/lib/maya-model";
 import type { TalkReviewer } from "@/lib/maya-talk-review";
 import { createTextSession, type FinishOptions, type SavedTextSession, type TextOutput, type TextSession, type TextSessionOptions } from "@/lib/maya-text";
@@ -1236,7 +1236,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       /** Whether the input just given to the session asks the model, and whether its reply can stream (streamRules). */
       const planOf = () => {
         const s = session.session;
-        const asks = s.outcome === null && nextActs(s).expect === "maya";
+        // D-341, round 3: a plain stop is code's goodbye with no model call (the text adapter's pump reads the same).
+        const codeStop = s.conversational === true && s.stopRequested && !s.safety.flagged && !!s.turn && clearStop(s.turn.text);
+        const asks = s.outcome === null && nextActs(s).expect === "maya" && !codeStop;
         return { model: asks, conversational: model.output === 3, streams: asks && model.output === 3 && streamRules(s) !== null };
       };
       const turn = async (run: () => Promise<TextOutput>, childText?: string, say?: VoiceSay): Promise<VoiceTurn> => {

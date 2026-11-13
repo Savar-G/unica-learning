@@ -18,6 +18,7 @@ import { reply, ruleConversationalModel } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { voiceProviders } from "@/lib/maya-voice";
 import { ACK_LIMIT_MS, ACK_PHRASES } from "@/lib/maya-voice-ack";
+import { fakeTalkReviewer } from "@/lib/maya-talk-review";
 import { spokenMath } from "@/lib/maya-voice-spoken";
 import type { QuestionPackage } from "@/lib/question-package";
 import { VoiceCallRun, voiceSession, type Timers } from "./agent";
@@ -183,7 +184,7 @@ class ProbeStream extends stt.SpeechStream {
   }
 }
 
-async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; speech?: ProbeSTT; numberContinueMs?: number; dropSilentPeakDbfs?: number; heardVad?: VAD; childName?: string | null; note?: CallSeams["note"] }) {
+async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; speech?: ProbeSTT; numberContinueMs?: number; dropSilentPeakDbfs?: number; heardVad?: VAD; childName?: string | null; note?: CallSeams["note"]; reviewer?: ReturnType<typeof fakeTalkReviewer> }) {
   const clock = handClock();
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
@@ -200,6 +201,7 @@ async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; speec
     newId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`,
     seed: () => 42,
     ...(options.note ? { note: options.note } : {}),
+    ...(options.reviewer ? { reviewer: () => options.reviewer! } : {}),
   };
   const calls = mayaCalls(seams);
   const started = await calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: options.childName === undefined ? "Leah" : options.childName, package: PKG, startedBy: "admin-1" });
@@ -236,6 +238,8 @@ async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; speec
 }
 
 const FIRST = "Let's think about the ones together.";
+/** A hard feeling: its reply never streams (`hardFeeling` in src/lib/maya). */
+const FEELING = "I feel really bad today.";
 const SECOND = "What can you do with those two digits?";
 const ACKS = new Set(ACK_PHRASES.map((p) => p.text));
 const count = (said: readonly string[], text: string) => said.filter((t) => t === text).length;
@@ -522,11 +526,12 @@ describe("when the thinking phrase comes (D-341)", () => {
     expect(c.samples[0].parts?.heardMs).toBe(1000);
   });
 
-  it("comes at once for a turn code knows will not stream (a request for help)", async () => {
-    const m = steppedModel((brief) => brief.childTurn === "Can you help me?" ? reply("Sure. Let's start with the ones.", "guide", { step: brief.help.step, level: 0, reading: { help: "more" } }) : null);
+  // Round 3 streams a request for help and off-topic talk; a hard feeling still waits for the whole reply (`streamRules`).
+  it("comes at once for a turn code knows will not stream (a hard feeling)", async () => {
+    const m = steppedModel((brief) => brief.childTurn === FEELING ? reply("I'm sorry you feel bad. We can go slowly.", "guide", { step: brief.help.step, level: 0 }) : null);
     const c = await voiceCall({ model: m.model, ackLimitMs: ACK_LIMIT_MS });
     const before = c.said().length;
-    c.say("Can you help me?");
+    c.say(FEELING);
     await waitFor(() => m.running, "the model call");
     await c.clock.advance(1);
     await waitFor(() => c.said().slice(before).some((t) => ACKS.has(t)), "the phrase at once");
@@ -648,19 +653,21 @@ describe("the child's first name on a voice call (Savar, 2026-11-12)", () => {
   });
 
   it("keeps the board cue on the right spoken word when the name has two words", async () => {
-    // A reply that does not stream (a request for help), with the name in its first sentence and a board offer drawn.
+    // A reply that does not stream (a hard feeling), with the name in its first sentence and a board offer drawn.
     const say = "Mary Ann, let's look at the ones column. What can you do there?";
-    const m = steppedModel((brief) => brief.childTurn === "Can you help me?"
-      ? reply(say, "guide", { step: brief.help.step, level: 0, reading: { help: "more" }, draw: (brief.draw.guide ?? []).slice(0, 1).map((o) => ({ offer: o.id, place: "main" })) })
+    const m = steppedModel((brief) => brief.childTurn === FEELING
+      ? reply(say, "guide", { step: brief.help.step, level: 0, draw: (brief.draw.guide ?? []).slice(0, 1).map((o) => ({ offer: o.id, place: "main" })) })
       : null);
-    const c = await voiceCall({ model: m.model, childName: "Mary Ann" });
+    // A feeling turn is read by the free-talk review: it passes here.
+    const c = await voiceCall({ model: m.model, childName: "Mary Ann", reviewer: fakeTalkReviewer(() => ({ verdict: "pass" })) });
     const cues: number[] = [];
     const realStage = c.board.stage.bind(c.board);
     vi.spyOn(c.board, "stage").mockImplementation((id, staged) => { cues.push(...staged.map((q) => q.word)); return realStage(id, staged); });
     const before = c.said().length;
-    c.say("Can you help me?");
+    c.say(FEELING);
     await waitFor(() => m.running, "the model call");
     m.finish();
+
     await waitFor(() => c.said().slice(before).join(" ").includes("What can you do there?"), "the reply");
     await c.call.settled();
     // The voice says both words of the name, and the math as words.
@@ -672,5 +679,83 @@ describe("the child's first name on a voice call (Savar, 2026-11-12)", () => {
     const row = (await c.store.get(c.id))!;
     expect(JSON.stringify(row.trace)).not.toContain("Mary Ann");
     expect(JSON.stringify(row.trace)).toContain("{name}, let's look at the ones column.");
+  });
+});
+
+describe("turns that ask no model (D-341, round 3)", () => {
+  /** The rule player, counting every model call. */
+  function countedModel() {
+    const rule = ruleConversationalModel();
+    const state = { asked: 0, model: { ...rule, propose: (input, signal, onText) => { state.asked++; return rule.propose(input, signal, onText); } } as MayaModel };
+    return state;
+  }
+  /** What the call said of each child turn before any model call, and each finished turn. */
+  function watchTurns(c: Awaited<ReturnType<typeof voiceCall>>) {
+    const plans: unknown[] = [];
+    const turns: VoiceTurn[] = [];
+    const child = c.call.child.bind(c.call);
+    vi.spyOn(c.call, "child").mockImplementation(async (text, options, say) => {
+      const turn = await child(text, options, say && { ...say, begun: (p) => { plans.push(p); say.begun?.(p); } });
+      turns.push(turn);
+      return turn;
+    });
+    return { plans, turns };
+  }
+
+  it("plays no thinking phrase before code's goodbye to a plain stop", async () => {
+    const m = countedModel();
+    const c = await voiceCall({ model: m.model, ackLimitMs: ACK_LIMIT_MS });
+    const w = watchTurns(c);
+    const asked = m.asked;
+    const before = c.said().length;
+    c.say("I want to stop.");
+    await c.clock.advance(1);
+    await waitFor(() => c.said().slice(before).join(" ").includes("Bye for now!"), "the goodbye");
+    await c.clock.advance(ACK_LIMIT_MS * 2);
+    await pause();
+    expect(w.plans).toEqual([{ model: false, conversational: true, streams: false }]);
+    expect(m.asked).toBe(asked);
+    expect(c.said().slice(before).filter((t) => ACKS.has(t))).toEqual([]);
+    expect(c.said().slice(before).join(" ")).toBe("Thanks for working on this with me. Bye for now!");
+  });
+
+  it("a wait output with a patient line: no phrase, and the child's next turn is answered", async () => {
+    const m = countedModel();
+    const c = await voiceCall({ model: m.model, ackLimitMs: ACK_LIMIT_MS });
+    const w = watchTurns(c);
+    const before = c.said().length;
+    c.say("Um, let me think.");
+    await waitFor(() => w.turns.length === 1 && c.samples.length === 1, "the patient line");
+    expect(w.turns[0]).toMatchObject({ wait: true, say: ["Take your time, Leah."] });
+    await c.clock.advance(ACK_LIMIT_MS * 3);
+    await pause();
+    expect(c.said().slice(before)).toEqual(["Take your time, Leah."]);
+    c.say("I got 56.");
+    await waitFor(() => c.samples.length === 2 && c.said().length > before + 1, "the answer");
+    expect(c.said().slice(before).filter((t) => ACKS.has(t))).toEqual([]);
+    expect(c.samples[1].outcome).toBe("answered");
+  });
+
+  it("a wait output with no say: nothing is said, no phrase, and the child's next turn is answered", async () => {
+    const m = countedModel();
+    const c = await voiceCall({ model: m.model, ackLimitMs: ACK_LIMIT_MS });
+    const w = watchTurns(c);
+    const before = c.said().length;
+    // Code says a patient line at most twice in a row; the third thinking turn gets no words.
+    for (const [n, text] of ["Um.", "Hmm, wait.", "Um, let me think."].entries()) {
+      c.say(text);
+      await waitFor(() => w.turns.length === n + 1 && c.samples.length === n + 1, `thinking turn ${n + 1}`);
+      await pause();
+    }
+    expect(w.turns[2]).toMatchObject({ wait: true, say: [] });
+    expect(c.samples[2].outcome).toBe("no_words");
+    const quiet = c.said().length;
+    await c.clock.advance(ACK_LIMIT_MS * 3);
+    await pause();
+    expect(c.said().length).toBe(quiet);
+    expect(c.said().slice(before).filter((t) => ACKS.has(t))).toEqual([]);
+    c.say("I got 56.");
+    await waitFor(() => c.samples.length === 4 && c.said().length > quiet, "the answer");
+    expect(c.samples[3].outcome).toBe("answered");
   });
 });
