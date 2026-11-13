@@ -71,7 +71,7 @@ export interface SayRules {
    * Round 4, P1-3: the steps the child has no credit for (and code's plan does not show): no sentence holds a step's
    * operands together with its result, in any wording.
    */
-  openSteps?: readonly { operands: readonly SayValue[]; result: SayValue; place?: string }[];
+  openSteps?: readonly { operands: readonly SayValue[]; result: SayValue; place?: string; current?: boolean }[];
   /** Round 4, P1-3: the open answer's digits with their places ([2, "tens"], [4, "ones"]): never all said as places. */
   answerPlaces?: readonly [number, string][];
   /**
@@ -405,7 +405,7 @@ const PLACES = "ones|tens|hundreds|thousands|one|ten|hundred|thousand";
 function placed(text: string): [number, string][] {
   const out: [number, string][] = [];
   const plural = (p: string) => (p.endsWith("s") ? p : `${p}s`);
-  for (const m of text.toLowerCase().matchAll(new RegExp(`\\b(\\d+|zero|one|two|three|four|five|six|seven|eight|nine)\\s+(?:(?:is|are)\\s+)?(?:in\\s+the\\s+)?(${PLACES})\\b`, "g"))) {
+  for (const m of text.toLowerCase().matchAll(new RegExp(`\\b(\\d+|zero|one|two|three|four|five|six|seven|eight|nine)\\s+(?:(?:is|are)\\s+)?(?:(?:in|into|for|as)\\s+(?:the\\s+)?)?(${PLACES})\\b`, "g"))) {
     const n = /\d/.test(m[1]) ? Number(m[1]) : ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"].indexOf(m[1]);
     out.push([n, plural(m[2])]);
   }
@@ -414,6 +414,19 @@ function placed(text: string): [number, string][] {
     out.push([n, plural(m[1])]);
   }
   return out;
+}
+
+/** Values directly assigned by an instruction. A printed operand is not permission to write an open result. */
+function assignedValues(text: string): SayValue[] {
+  const prefix = /\b(?:write|put|record|enter|place|mark|set|say|fill(?: in)?)\s+(?:down\s+)?(?:(?:the|a)\s+)?(?:(?:number|digit|answer|result)\s+)?["']?\s*$/i;
+  const resultPrefix = /\b(?:(?:answer|result|digit|number)(?:\s+to\s+(?:write|put|record|enter))?\s+(?:is|equals|would be|should be|will be|must be)|you\s+(?:get|got)|it(?:'s| is)|that(?:'s| is))\s+["']?\s*$/i;
+  const suffix = /^\s+(?:goes|belongs|is written|is placed|is put)\s+(?:in|into|for|as)\b/i;
+  const assigns = (at: number, end: number) => prefix.test(text.slice(0, at)) || resultPrefix.test(text.slice(0, at)) || suffix.test(text.slice(end));
+  const tokens = sayNumbers(text);
+  const assigned = tokens.filter((token) => assigns(token.at, token.end));
+  // sayNumbers leaves the counting word "one" out. An explicit instruction to write it still assigns the value 1.
+  const ones = [...text.matchAll(/\bone\b/gi)].filter((match) => !tokens.some((token) => token.at <= match.index && token.end > match.index) && assigns(match.index, match.index + match[0].length));
+  return [...assigned, ...ones.map(() => numberValue(1))];
 }
 
 /** Words that mark an answer right or a step done. */
@@ -472,6 +485,10 @@ export function checkSentence(sentence: string, rules: SayRules, index = 0): Say
   const tokens = sayNumbers(text);
   if ((rules.openSteps ?? []).some((st) => stepLeak(tokens, st))) return no("reveals_step", `"${sentence}" works out a step the child has not done: never say its result.`);
   const places = placed(text);
+  const assigned = assignedValues(text);
+  if ((rules.openSteps ?? []).some((st) => (st.current || (st.place && new RegExp(`\\b${st.place}\\b`, "i").test(text))) && assigned.some((value) => sameSayValue(value, st.result)))) {
+    return no("reveals_step", `"${sentence}" assigns a result the child has not found yet.`);
+  }
   if ((!question || tokens.length === 1) && (rules.openSteps ?? []).some((st) => st.place && places.some(([n, p]) => p === st.place && sameSayValue(numberValue(n), st.result)))) {
     return no("reveals_step", `"${sentence}" states the result of a place the child has not done.`);
   }

@@ -86,6 +86,16 @@ describe("checkSay", () => {
   it("refuses a number from outside the question", () => {
     expect(checkSay("Think of 37 apples.", rules())).toMatchObject({ ok: false, reason: "number_not_allowed" });
   });
+  it("refuses direct open-step assignments while preserving operand questions and whole number words", () => {
+    const open = rules({ allowed: valuesOf("4 2 100"), forbidden: [], wrong: [], shown: [], openSteps: [{ operands: valuesOf("4 2"), result: numberValue(2), place: "tens", current: true }] });
+    for (const text of ["Write 2.", "The tens: write 2.", "Write 2 for the tens.", "Put down the digit two.", "Say 2."]) {
+      expect(checkSay(text, open)).toMatchObject({ ok: false, reason: "reveals_step" });
+    }
+    expect(checkSay("What is 4 minus 2?", open).ok).toBe(true);
+    const one = { ...open, openSteps: [{ operands: valuesOf("4 2"), result: numberValue(1), current: true }] };
+    expect(checkSay("Write one.", one)).toMatchObject({ ok: false, reason: "reveals_step" });
+    expect(checkSay("Write one hundred.", one).ok).toBe(true);
+  });
   it("refuses a yes to a wrong answer", () => {
     expect(checkSay("Yes! Now the tens.", rules())).toMatchObject({ ok: false, reason: "affirms_wrong" });
     expect(checkSay("6 is right.", rules())).toMatchObject({ ok: false, reason: "affirms_wrong" });

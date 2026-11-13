@@ -243,6 +243,13 @@ describe("round 4 re-review: statements, place results and names", () => {
       "The tens are 2. The ones are 4. What is the whole answer?",
       "Two tens. Four ones. What is the whole answer?",
       "Write 2 in the tens. What is the whole answer?",
+      "The tens: write 2. The ones: write 4. What is the whole answer?",
+      "Write 2 for the tens. What is the whole answer?",
+      "For the tens, put down the digit 2. What is the whole answer?",
+      "Write 2. What is the whole answer?",
+      "The digit to write is 2. What is the whole answer?",
+      "2 goes in the tens. What is the whole answer?",
+      "Use 2 for the tens. What is the whole answer?",
     ])("keeps an open place result hidden, stream=" + stream + ": %s", async (bad) => {
       const c = call((b) => /12 minus 8/.test(b.childTurn ?? "")
         ? reply("Yes, 12 minus 8 is 4. What is 4 minus 2?", "guide", { step: "tens", reading: { answers: [ans(4, "ones")] } })
@@ -251,7 +258,7 @@ describe("round 4 re-review: statements, place results and names", () => {
       c.parts.length = 0;
       const out = await c.session.child("I don't know the tens.");
       expect(out.say.join(" ")).not.toContain(bad);
-      expect(c.parts.join(" ")).not.toMatch(/(?:tens are 2|two tens|2 in the tens)/i);
+      expect(c.parts.join(" ")).not.toMatch(/(?:tens are 2|two tens|2 in the tens|tens: write 2|write 2|put down the digit 2)/i);
     });
   }
 

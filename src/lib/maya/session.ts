@@ -4710,7 +4710,7 @@ function leakRules(before: Session, after: Session, planned: string, released: b
   const openSteps = open.flatMap((st) => {
     const result = stepAnswers(st).flatMap(sayValues)[0];
     const operands = leakOperands(st);
-    return result && operands.length ? [{ operands: operands.map(numberValue), result, ...("place" in st && typeof st.place === "string" ? { place: st.place } : {}) }] : [];
+    return result && operands.length ? [{ operands: operands.map(numberValue), result, current: st.id === after.ladder.step, ...("place" in st && typeof st.place === "string" ? { place: st.place } : {}) }] : [];
   });
   const answer = pkg.answer.value;
   const digits = answer.type === "number" && Number.isInteger(answer.value) && answer.value >= 10 ? String(answer.value).split("").map(Number) : [];
