@@ -4783,7 +4783,9 @@ function withStreamed(base: Session, r: StepResult, at: number, planned: string,
 export function streamRules(s: Session): (SayRules & { credits: boolean }) | null {
   const pkg = s.package;
   if (!pkg || !s.turn || s.safety.flagged || s.stopRequested || s.scopeDue || s.replies?.length) return null;
-  if (!isTeaching(s.state) || hardFeeling(s.turn.text) || PERSONAL.test(s.turn.text)) return null;
+  // A request for help often turns into the easier example: its first words wait for the whole reply, so a question
+  // streamed before it cannot be followed by the example's code words.
+  if (!isTeaching(s.state) || hardFeeling(s.turn.text) || PERSONAL.test(s.turn.text) || helpInWords(s.turn.text) || saysStuck(s.turn.text)) return null;
   const credits = heardAnswers(s);
   const released = s.solved !== null || s.lastResult === "right" || credits.some((a) => a.step === "result" && a.verdict === "right");
   const done = [...s.done, ...credits.filter((a) => a.step !== "result" && a.verdict === "right").map((a) => a.step)];

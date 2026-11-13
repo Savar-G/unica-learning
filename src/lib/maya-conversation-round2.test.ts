@@ -90,7 +90,7 @@ describe("A: the first sentence streams as it arrives", () => {
     const { session, atEnd, parts } = streamed(() => reply("Let's look at the ones. The answer is 24. What is on top?", "guide", { step: "ones" }));
     await session.start();
     parts.length = 0;
-    const out = await session.child("Help me.");
+    const out = await session.child("Okay.");
     expect(atEnd[0].map(([x]) => x)).toEqual(["Let's look at the ones."]);
     // The failing middle sentence is never said; the closing question still follows what was sent.
     expect(out.say).toEqual(["Let's look at the ones. What is on top?"]);
@@ -99,7 +99,7 @@ describe("A: the first sentence streams as it arrives", () => {
     const { session, atEnd, parts } = streamed(() => reply("Let's look at the ones together.", "accept_answer"));
     await session.start();
     parts.length = 0;
-    const out = await session.child("Help me.");
+    const out = await session.child("Okay.");
     expect(atEnd[0].map(([x]) => x)).toEqual(["Let's look at the ones together."]);
     expect(out.say[0].startsWith("Let's look at the ones together. ")).toBe(true);
     expect(sources(lastMaya(session))).toEqual(["model", "fallback"]);
@@ -198,5 +198,20 @@ describe("F and G: the fallback and the close", () => {
     const out = await session.child("Okay I wrote 24.");
     expect(out.ended?.reason).toBe("solved");
     expect(out.say.join(" ")).not.toContain("?");
+  });
+});
+
+describe("A: a request for help does not stream", () => {
+  it("waits for the whole reply when the child asks for help", async () => {
+    let now = T0;
+    const atEnd: number[] = [];
+    const model = conversationalFake({ answer: () => reply("Sure. Let's look at the ones.", "guide", { step: "ones" }), stream: { beforeEnd: async () => { atEnd.push(parts.length); } } });
+    const parts: string[] = [];
+    const session = createTextSession({ callId: "r2h", package: PKG, model, clock: () => (now += 100), onSayPart: (x) => parts.push(x) });
+    await session.start();
+    parts.length = 0;
+    await session.child("I don't get it. Can you help me?");
+    expect(atEnd).toEqual([]);
+    expect(parts).toEqual(["Sure.", "Let's look at the ones."]);
   });
 });
