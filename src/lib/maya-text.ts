@@ -34,6 +34,7 @@ import {
   step,
   streamRules,
   streamSentenceOk,
+  withoutName,
   LINES_VERSION,
   PROPOSAL_VERSION,
   type Outcome,
@@ -324,7 +325,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       if (streamDone || folded.request?.id !== requestId || controller.signal.aborted) return;
       const said = partialSay(soFar);
       if (!said) return;
-      const parts = sentencesOf(said.text);
+      const parts = sentencesOf(rules.dropName ? withoutName(said.text, rules.dropName) : said.text);
       const complete = said.complete ? parts : parts.slice(0, -1);
       for (const sentence of complete.slice(sent.length)) {
         if (!streamSentenceOk(sentence, rules, sent.length, words)) { streamDone = true; return; }

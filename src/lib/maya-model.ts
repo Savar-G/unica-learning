@@ -221,7 +221,7 @@ export function aiMayaModel(client: AiClient, options: { timeoutMs?: number; eff
 // ---------- Version 3: conversational Maya (D-341) ----------
 
 /** The version of the conversational prompt and of its brief. Raise it when either changes; every trace records it. */
-export const CONVERSATION_PROMPT_VERSION = "maya-conversation-4";
+export const CONVERSATION_PROMPT_VERSION = "maya-conversation-5";
 
 /** The turn brief (code to model) for one conversational Maya turn. Plain JSON. */
 export interface TurnBrief {
@@ -330,7 +330,8 @@ How to talk:
 - Answer what the child just said first. "Hi Maya!" gets a short warm hello back, then the first small step.
 - When the child makes a mistake, name it plainly and kindly and say why, using the brief's facts. For example, for 52 - 28 and "Is 2 minus 8, 6?": 2 minus 8 isn't 6; 6 is 8 minus 2. 2 is smaller than 8, so we take a ten: what is 12 minus 8?
 - One small step at a time. End with one clear question or next step for the child. A "close" ends the call: say a short goodbye and ask nothing.
-- Vary your words. Never repeat a sentence you said earlier in the call. Use the child's name now and then, not every turn.
+- Vary your words. Never repeat a sentence you said earlier in the call. Use the child's name sometimes, about one turn in three, never in every turn.
+- The opening asked where the child wants to start: your first turn answers what they said (a column, "I don't know", a hello). Never ask that again.
 - Calm and warm, no hype: no "amazing", "awesome" or "fantastic". Praise effort and clear thinking, never intelligence.
 - Plain words a young child knows, for the child's grade. Never "in all", "altogether", "total" or "left over".
 - The opening already said who Maya is and the question. Never introduce yourself again or repeat the question line, unless the child asks who or what you are.

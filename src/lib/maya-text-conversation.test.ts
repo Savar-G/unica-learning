@@ -42,17 +42,17 @@ describe("the output schema (#903)", () => {
 
 describe("the opening seam (D-341, agreed with the voice lead)", () => {
   it("openingLine says Savar's opening with the question in spoken words", () => {
-    expect(openingLine(PKG)).toBe("Hi there! I'm Maya, an AI math helper. We're doing 52 minus 28 today.");
-    expect(openingLine(SAMPLE_PACKAGES["add-27-39"] as OperationPackage)).toBe("Hi there! I'm Maya, an AI math helper. We're doing 27 plus 39 today.");
+    expect(openingLine(PKG)).toBe("Hi there! I'm Maya, an AI math helper. We're doing 52 minus 28 today. Where do you want to start?");
+    expect(openingLine(SAMPLE_PACKAGES["add-27-39"] as OperationPackage)).toBe("Hi there! I'm Maya, an AI math helper. We're doing 27 plus 39 today. Where do you want to start?");
   });
   it("openingLine names the page and the question number for a workbook call", () => {
-    expect(openingLine(PKG, { page: 3, number: 7 })).toBe("Hi there! I'm Maya, an AI math helper. We're doing page 3, number 7 today: 52 minus 28.");
+    expect(openingLine(PKG, { page: 3, number: 7 })).toBe("Hi there! I'm Maya, an AI math helper. We're doing page 3, number 7 today: 52 minus 28. Where do you want to start?");
   });
   it("a workbook session opens with the page and number, and its trace is valid", async () => {
     let now = T0;
     const pkg = { ...PKG, ref: { source: "workbook" as const, workbookId: "w1", page: 4, question: 2 } };
     const session = createTextSession({ callId: "conv-wb", package: pkg, model: conversationalFake({ answer: () => { throw new Error("no model"); } }), clock: () => (now += 500), confirmWorkbook: true });
-    expect((await session.start()).say).toEqual(["Hi there! I'm Maya, an AI math helper. We're doing page 4, number 2 today: 52 minus 28."]);
+    expect((await session.start()).say).toEqual(["Hi there! I'm Maya, an AI math helper. We're doing page 4, number 2 today: 52 minus 28. Where do you want to start?"]);
     expect(() => checkTrace(session.trace())).not.toThrow();
     expect(checkTrace(await session.finish({ reason: "child_stopped" })).ok).toBe(true);
   });

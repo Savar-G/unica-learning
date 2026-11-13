@@ -4399,6 +4399,24 @@ function codeProposals(given: Session, refused: readonly unknown[] = [], plan?: 
 
 // ---------- Conversational turns (D-341) ----------
 
+/** The child's name was said in one of Maya's last two turns: this turn leaves it out (round 3: about one turn in three). */
+export function nameRecent(s: Session): string | null {
+  const name = s.variety.name?.trim();
+  if (!name) return null;
+  const re = new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+  return s.turns.filter((t) => t.speaker === "maya").slice(-2).some((t) => re.test(t.text)) ? name : null;
+}
+
+/** A reply with the child's name left out, the words around it kept: "Yes, 4 is right, Leo." becomes "Yes, 4 is right." */
+export function withoutName(text: string, name: string): string {
+  const n = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return text
+    .replace(new RegExp(`(^|[.!?]\\s+)${n},\\s*([a-z])`, "gi"), (_m, lead: string, c: string) => `${lead}${c.toUpperCase()}`)
+    .replace(new RegExp(`\\s*,\\s*${n}(?=[.!?,;:])`, "gi"), "")
+    .replace(new RegExp(`\\s+${n}(?=[.!?,;:])`, "gi"), "")
+    .replace(/\s+,/g, ",").replace(/,([.!?])/g, "$1").replace(/\s{2,}/g, " ").trim();
+}
+
 /** Code's patient lines for a child who is thinking (D-341, round 2): "{name}" is the child's name now and then. */
 export const PATIENT_LINES = ["Take your time, {name}.", "No rush. I'm here when you're ready."] as const;
 
@@ -4688,6 +4706,9 @@ const PLAN_REFUSALS: readonly RefusalCode[] = ["line_not_offered", "free_talk_in
  * asks the model once more, then says code's plan (fallbacks).
  */
 function proposeV3(base: Session, out: ModelOutput, effects: Effect[], reviews: readonly TalkReview[] | undefined, sent: readonly string[] = []): StepResult {
+  // The child's name about one turn in three: a reply right after a turn that said it leaves it out (round 3).
+  const recent = nameRecent(base);
+  if (recent) out = { ...out, say: withoutName(out.say, recent) };
   const reading = out.reading ?? {};
   const acts = () => (gate(base, reading) ?? actsNow(base, reading, false)).acts;
   const no = (code: RefusalCode, reason: string, allowed: Act[], say?: SayReason | "review"): StepResult => ({ session: base, effects, refusal: { code, reason, allowed, ...(say ? { say } : {}) } });
@@ -4833,7 +4854,7 @@ function withStreamed(base: Session, r: StepResult, at: number, planned: string,
  * fixed reply or an outside request due, a stop, or a child turn that is not plain math talk (the review needs the
  * whole reply).
  */
-export function streamRules(s: Session): (SayRules & { credits: boolean; strict: boolean }) | null {
+export function streamRules(s: Session): (SayRules & { credits: boolean; strict: boolean; dropName: string | null }) | null {
   const pkg = s.package;
   if (!pkg || !s.turn || s.safety.flagged || s.stopRequested || s.scopeDue || s.replies?.length) return null;
   if (!isTeaching(s.state) || hardFeeling(s.turn.text)) return null;
@@ -4863,6 +4884,7 @@ export function streamRules(s: Session): (SayRules & { credits: boolean; strict:
     credits: credits.some((a) => a.verdict === "right"),
     noQuestion: exampleLikely,
     strict: personal,
+    dropName: nameRecent(s),
   };
 }
 

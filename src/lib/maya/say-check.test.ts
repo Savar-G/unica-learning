@@ -172,3 +172,13 @@ describe("round 3: a reply answers and asks", () => {
     expect(endsWithAsk("Now try the tens.")).toBe(true);
   });
 });
+
+describe("the child's name about one turn in three", () => {
+  it("leaves the name out with the words around it kept", async () => {
+    const { withoutName } = await import("./session");
+    expect(withoutName("Yes, 12 minus 8 is 4, Leo. What is 4 minus 2?", "Leo")).toBe("Yes, 12 minus 8 is 4. What is 4 minus 2?");
+    expect(withoutName("Hi Leo! Let's start.", "Leo")).toBe("Hi! Let's start.");
+    expect(withoutName("Leo, try the tens.", "Leo")).toBe("Try the tens.");
+    expect(withoutName("Leopards are fast.", "Leo")).toBe("Leopards are fast.");
+  });
+});

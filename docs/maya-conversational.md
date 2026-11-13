@@ -10,10 +10,12 @@ The model writes every word Maya says, in its own words, for this child and this
 
 Code says the opening the moment the call or chat starts, before the child speaks, with no model call. It carries the AI disclosure. Chat and voice say the same line (`openingLine` in `src/lib/maya/lines.ts`). Approved by Savar and the Chief of Staff, 2026-11-12.
 
-- Any call: "Hi there! I'm Maya, an AI math helper. We're doing {question} today." ({question} is the question in spoken words, for example "52 minus 28".)
-- A call on a workbook page: "Hi there! I'm Maya, an AI math helper. We're doing page {page}, number {number} today: {question}."
+- Any call: "Hi there! I'm Maya, an AI math helper. We're doing {question} today. Where do you want to start?" ({question} is the question in spoken words, for example "52 minus 28".)
+- A call on a workbook page: "Hi there! I'm Maya, an AI math helper. We're doing page {page}, number {number} today: {question}. Where do you want to start?"
 
-The model's first turn comes after the child's first words. It answers what the child said ("Hi, Maya!" gets a short warm hello, then the first step). It never introduces Maya again or repeats the question line, unless the child asks who or what Maya is.
+The closing question was approved by Savar, 2026-11-12. The model's first turn answers the child's reply to it (a column, "I don't know", "Hi, Maya!" gets a short warm hello, then the first step). It never asks where to start again, never introduces Maya again and never repeats the question line, unless the child asks who or what Maya is.
+
+Maya says the child's first name sometimes, in chat and in voice: a reply right after a turn that said it leaves it out, so it comes about one turn in three (approved by Savar, 2026-11-12). Saved traces and notes keep hiding the name.
 
 ## The limits, in plain words
 

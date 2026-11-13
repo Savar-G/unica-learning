@@ -11,6 +11,8 @@ export {
   numbersBrief,
   streamRules,
   streamSentenceOk,
+  withoutName,
+  nameRecent,
   codeVerdicts,
   turnFacts,
   type TurnFact,

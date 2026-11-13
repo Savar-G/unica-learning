@@ -436,7 +436,7 @@ function checkTurn(t: unknown, path: string, version: number): Record<string, un
         const exact = o?.act === "safety" ? Object.values(SAFETY_GUIDANCE) as string[] : o?.act === "close" ? [held] : [];
         // D-341: the code-written opening of a conversational call, with the question staged on the board.
         const opening = o?.act === "open" && Array.isArray(o?.say) && o.say.length === 1 && typeof o.say[0] === "string" &&
-          (/^Hi there! I'm Maya, an AI math helper\. We're doing .+ today\.$/.test(o.say[0]) || /^Hi there! I'm Maya, an AI math helper\. We're doing page \d+, number \d+ today: .+\.$/.test(o.say[0])) &&
+          (/^Hi there! I'm Maya, an AI math helper\. We're doing .+ today\.(?: Where do you want to start\?)?$/.test(o.say[0]) || /^Hi there! I'm Maya, an AI math helper\. We're doing page \d+, number \d+ today: .+\.(?: Where do you want to start\?)?$/.test(o.say[0])) &&
           Array.isArray(o?.board) && o.board.length <= 1;
         // D-341, round 2: code's patient line for a child who is thinking, with the name as a redacted trace writes it.
         const patient = o?.act === "wait" && Array.isArray(o?.say) && o.say.length === 1 && Array.isArray(o?.board) && o.board.length === 0 &&
