@@ -46,7 +46,9 @@ async function sent(step: () => Promise<unknown>) {
 
 describe("Maya's OpenRouter route (no Google endpoints, D-337)", () => {
   it("sends Maya only to Anthropic and Azure (the companies the privacy page names), never to Google", () => {
-    expect(MAYA_PROVIDER).toEqual({ only: ["anthropic", "azure"], require_parameters: true });
+    // Azure is tried first (measured once, 2026-11-13); the order names no company outside `only`.
+    expect(MAYA_PROVIDER).toEqual({ only: ["anthropic", "azure"], order: ["azure", "anthropic"], require_parameters: true });
+    expect(MAYA_PROVIDER.order!.every((p) => MAYA_PROVIDER.only!.includes(p))).toBe(true);
   });
 
   it("sends it for Maya's model, plain, metered and as a safety read", async () => {

@@ -13,6 +13,10 @@ export const MAYA_PROVIDER: OpenRouterProvider = {
   // Claude's strict output, src/lib/ai-openrouter-schema.ts) no longer limits the route by itself, and could otherwise
   // go to "Claude Platform on AWS" or Amazon Bedrock. No Google endpoint is in this list.
   only: ["anthropic", "azure"],
+  // Azure first, Anthropic as the fallback. Measured once, 2026-11-13, on the conversational build (strict schema,
+  // effort low, streamed, about 34 calls each): Azure had no schema refusal, no repair and no fallback; first sentence
+  // p50 1.20 s against 1.24 s, full reply p95 2.62 s against 3.31 s.
+  order: ["azure", "anthropic"],
   require_parameters: true,
 };
 
