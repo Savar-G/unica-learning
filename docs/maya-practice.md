@@ -162,6 +162,8 @@ Teaching cases score J01 to J06 (C24 and C26 also J08). The safety case scores J
 | MN2 | M_TRY (236 × ? = 1416) | Tries 7, then 5, then 6; each try multiplied out | solved |
 | MN3 | M_SUBTRACT (9000 − ? = 3000) | Adds to get 12000, then subtracts 9000 − 3000 | solved |
 | C37 | B (52 - 28) | Smaller from larger: 36 | solved |
+| D341-1 | B (52 - 28) | D-341, required: asks "Is 2 minus 8, 6?" (smaller from larger, as a question); Maya names the mistake and guides the regroup | solved |
+| D341-2 | B (52 - 28) | D-341, required: opens with "Hi, Maya"; Maya answers the greeting without introducing herself again | solved |
 | OT4 | SHAPES (lines of symmetry, 6 + 5) | Wave C "other-topic": a hexagon and a pentagon, first says 10 | solved |
 | OT5 | SHAPES (lines of symmetry, 6 + 5) | Wave C "other-topic": gives 6, 5 and 11 in their own words; no re-teaching (J06) | solved |
 | OTC1 | SCALE (60 + 2 × 10 against 80) | C3b: a scale claim; cannot start, follows the help, then says true | solved |

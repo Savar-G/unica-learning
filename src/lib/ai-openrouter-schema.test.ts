@@ -123,7 +123,7 @@ describe("OpenRouter schema compatibility through public callers and fake HTTP",
       { name: "maya_proposal", unions: 35, optional: 0 },
       { name: "practice_child", unions: 2, optional: 0 },
       { name: "practice_validity", unions: 0, optional: 0 },
-      { name: "practice_judgement", unions: 8, optional: 0 },
+      { name: "practice_judgement", unions: 9, optional: 0 },
       { name: "maya_talk_review", unions: 0, optional: 0 },
     ]);
     expect([...new Set(inventory[0].constraints)].sort()).toEqual(["maxItems", "maxLength", "minItems", "minimum"]);
