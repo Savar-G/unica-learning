@@ -468,7 +468,8 @@ const changed = (what: string, was: string | null, is: string | null) =>
 /** The curriculum key of a signup curriculum: only BC has a map. */
 const CURRICULUM_KEYS: Record<string, string> = { BC: "bc" };
 
-const draftPage = (p: GeneratedPage): DraftPage => ({
+/** A generated page as the renderer prints it (also the page layout gate set, #859). */
+export const draftPage = (p: GeneratedPage): DraftPage => ({
   number: p.number,
   dayLabel: p.dayLabel,
   type: p.type,

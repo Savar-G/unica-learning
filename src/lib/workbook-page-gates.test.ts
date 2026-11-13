@@ -3,7 +3,7 @@ import sharp from "sharp";
 import { DecisionError } from "@/lib/decision-client";
 import { fakeDecisionClient, noul } from "@/lib/decision-client-fake";
 import {
-  activePageGates, checkRenderedPages, decisionPageGateChecker, pageGateChecker, pageGateKey, pageGateMark, pageGateTerms,
+  activePageGates, calibratePageGate, checkRenderedPages, decisionPageGateChecker, evaluatePageGateFolds, pageGateChecker, pageGateKey, pageGateMark, pageGateTerms, splitPageGateCases,
   PAGE_GATE_MAX_SIDE, PAGE_GATE_THRESHOLDS, scaledPage, type PageGateChecker, type PageGateTerms, type StoredPageGate,
 } from "@/lib/workbook-page-gates";
 
@@ -100,5 +100,39 @@ describe("checking a run's rendered pages", () => {
     const { checker, asked } = fake(() => "pass");
     await expect(checkRenderedPages(checker, [], pages(3), async () => { throw new Error("lease lost"); }, signal())).rejects.toThrow("lease lost");
     expect(asked).toEqual([1]);
+  });
+});
+
+describe("calibrating the page layout gate", () => {
+  // 8 sample pages, and 4 changed copies per gate from them; the model's answers are made up for each case.
+  const sources = Array.from({ length: 8 }, (_, i) => `U16-p${i + 3}`);
+  const cases = [
+    ...sources.map((s) => ({ id: s, source: s, gate: null })),
+    ...(["text_cut_off", "overlap"] as const).flatMap((gate) => sources.slice(0, 4).map((s) => ({ id: `${s}-${gate}`, source: s, gate }))),
+  ];
+  const rows = (fault: number, clean: number) => cases.map((c) => ({ id: c.id, probabilities: {
+    text_cut_off: c.gate === "text_cut_off" ? fault : clean, overlap: c.gate === "overlap" ? fault : clean, box_too_small: clean } }));
+
+  it("keeps a changed copy in its source page's half", () => {
+    const split = splitPageGateCases(cases);
+    for (const c of cases) expect(split.get(c.id)).toBe(split.get(c.source));
+    expect([0, 1].map((side) => sources.filter((s) => split.get(s) === side).length)).toEqual([4, 4]);
+  });
+
+  it("fits the threshold that catches the most changed pages with at most 5% false flags", () => {
+    expect(calibratePageGate([0.1, 0.2, 0.1], [0.9, 0.8])).toMatchObject({ caught: 2, falseFlags: 0 });
+    expect(calibratePageGate([0.1, 0.2, 0.1], [0.9, 0.8])!.threshold).toBeGreaterThan(0.2);
+    expect(() => calibratePageGate([0.1], [2])).toThrow(/invalid/);
+  });
+
+  it("passes a gate whose model separates changed pages on both held-out halves, and fails one that does not", () => {
+    const good = evaluatePageGateFolds(cases, rows(0.9, 0.05), "text_cut_off");
+    expect(good.map((f) => [f.caught, f.changed, f.falseFlags, f.unchanged])).toEqual([[2, 2, 0, 4], [2, 2, 0, 4]]);
+    expect(good.every((f) => f.passed)).toBe(true);
+    const blind = evaluatePageGateFolds(cases, rows(0.05, 0.05), "overlap");
+    expect(blind.some((f) => f.passed)).toBe(false);
+    // A gate with no changed copies is never passed.
+    expect(evaluatePageGateFolds(cases, rows(0.9, 0.05), "box_too_small").every((f) => !f.passed)).toBe(true);
+    expect(() => evaluatePageGateFolds(cases, rows(0.9, 0.05).slice(1), "overlap")).toThrow(/missing/);
   });
 });

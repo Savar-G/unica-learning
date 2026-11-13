@@ -165,3 +165,54 @@ export async function checkRenderedPages(
   }
   return { rows, unavailable: down() };
 }
+
+// ---------- Calibration (#859) ----------
+
+/** One page of the calibration set: an unchanged sample page, or a changed copy of one that shows `gate`'s fault. */
+export interface PageGateCase { id: string; source: string; gate: PageGate | null }
+/** One model answer: the probability of each gate's fault on that page. */
+export interface PageGateCaseRow { id: string; probabilities: Record<PageGate, number> }
+
+/** Pages in source order to alternate halves; a changed copy goes to its source page's half, so no fold sees both. */
+export function splitPageGateCases(cases: readonly PageGateCase[]): Map<string, 0 | 1> {
+  const sources = [...new Set(cases.map((c) => c.source))];
+  const side = new Map(sources.map((s, i) => [s, (i % 2) as 0 | 1]));
+  return new Map(cases.map((c) => [c.id, side.get(c.source)!]));
+}
+
+/** The lowest threshold (most caught) that flags at most 5% of unchanged pages; null when no cut-off meets that. */
+export function calibratePageGate(unchanged: readonly number[], changed: readonly number[]): { threshold: number; caught: number; falseFlags: number } | null {
+  if (!unchanged.length || !changed.length || [...unchanged, ...changed].some((p) => !Number.isFinite(p) || p < 0 || p > 1)) throw new Error("invalid page gate probabilities");
+  const choices = Array.from({ length: 101 }, (_, n) => n / 100).map((t) => ({ threshold: t, caught: changed.filter((p) => p >= t).length, falseFlags: unchanged.filter((p) => p >= t).length }))
+    .filter((x) => x.falseFlags / unchanged.length <= 0.05)
+    .sort((a, b) => b.caught - a.caught || a.falseFlags - b.falseFlags || b.threshold - a.threshold);
+  return choices[0] ?? null;
+}
+
+/**
+ * Fit a gate's threshold on one half and measure it on the other, then swap (as the question gates, #857). A fold
+ * passes at 90% caught with at most 5% false flags; a gate may be turned on only when both pass. Unchanged pages count
+ * for every gate; a changed copy counts only for its own gate.
+ */
+export function evaluatePageGateFolds(cases: readonly PageGateCase[], rows: readonly PageGateCaseRow[], gate: PageGate) {
+  const split = splitPageGateCases(cases);
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const data = [{ unchanged: [] as number[], changed: [] as number[] }, { unchanged: [] as number[], changed: [] as number[] }];
+  for (const c of cases) {
+    if (c.gate !== null && c.gate !== gate) continue;
+    const row = byId.get(c.id);
+    if (!row) throw new Error(`missing page gate result for ${c.id}`);
+    data[split.get(c.id)!][c.gate ? "changed" : "unchanged"].push(row.probabilities[gate]);
+  }
+  return ([0, 1] as const).map((testSide) => {
+    const train = data[1 - testSide];
+    // (A half with no changed copy of this gate has nothing to fit on: the gate stays off.)
+    const fit = train.changed.length && train.unchanged.length ? calibratePageGate(train.unchanged, train.changed) : null;
+    const test = data[testSide];
+    if (!fit) return { testSide, threshold: null, caught: 0, changed: test.changed.length, falseFlags: 0, unchanged: test.unchanged.length, passed: false };
+    const caught = test.changed.filter((p) => p >= fit.threshold).length;
+    const falseFlags = test.unchanged.filter((p) => p >= fit.threshold).length;
+    return { testSide, threshold: fit.threshold, caught, changed: test.changed.length, falseFlags, unchanged: test.unchanged.length,
+      passed: test.changed.length > 0 && caught / test.changed.length >= 0.9 && falseFlags / test.unchanged.length <= 0.05 };
+  });
+}
