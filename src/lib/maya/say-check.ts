@@ -421,9 +421,12 @@ function placed(text: string): [number, string][] {
 /** Literal values, including "one" when it is not part of a larger number or fraction. */
 function literalValues(text: string): SayToken[] {
   const tokens = sayNumbers(text);
+  // The speech parser skips numeric place counts such as "1 ten" and "10 ones". A result guard must retain them.
+  const digits = [...text.matchAll(/\b\d+\b/g)].filter((match) => !tokens.some((token) => token.at < match.index + match[0].length && token.end > match.index))
+    .map((match) => ({ ...numberValue(Number(match[0])), at: match.index, end: match.index + match[0].length, text: match[0] }));
   const words = wordNumbers(text).filter((word) => !tokens.some((token) => token.at < word.end && token.end > word.at))
     .map((word) => ({ ...numberValue(word.value), at: word.at, end: word.end, text: text.slice(word.at, word.end) }));
-  return [...tokens, ...words].sort((a, b) => a.at - b.at);
+  return [...tokens, ...digits, ...words].sort((a, b) => a.at - b.at);
 }
 
 /** A whole question about the step's operands, with no supplied result or writing instruction. */
@@ -499,13 +502,14 @@ export function checkSentence(sentence: string, rules: SayRules, index = 0): Say
   const tokens = sayNumbers(text);
   if ((rules.openSteps ?? []).some((st) => stepLeak(tokens, st))) return no("reveals_step", `"${sentence}" works out a step the child has not done: never say its result.`);
   const places = placed(text);
-  const literal = literalValues(text);
+  const literalText = text.replace(/[−–]/g, "-").replace(/(\d),(?=\d{3}\b)/g, "$1");
+  const literal = literalValues(literalText);
   for (const st of rules.openSteps ?? []) {
     if (!literal.some((value) => sameSayValue(value, st.result))) continue;
     if (!st.current && !(st.place && new RegExp(`\\b${st.place}\\b`, "i").test(text))) continue;
     const heard = rules.confirming ?? rules.mustAsk;
     const confirmation = heard && question && sameSayValue(heard, st.result) && literal.every((value) => sameSayValue(value, heard)) && /^(?:did you say|are you saying|do you mean)\b/i.test(text.trim());
-    if (!confirmation && !operandQuestion(text, literal, st.operands)) {
+    if (!confirmation && !operandQuestion(literalText, literal, st.operands)) {
       return no("reveals_step", `"${sentence}" states or assigns a result the child has not found yet. Ask only about the step's operands.`);
     }
   }
