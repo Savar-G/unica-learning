@@ -105,7 +105,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   parent: string;
   noticeAcknowledged: boolean;
   mode?: Mode;
-  /** The page a QR code opened (D-276 build note): its child and its name, "Day 4 · Page 2". */
+  /** The page a QR code opened (D-276 build note): its child and its name, "Page 17 · Day 4". */
   focus?: { childId: string; label: string } | null;
 }) {
   const [child, setChild] = useState(focus?.childId ?? childrenList[0]?.id ?? "");

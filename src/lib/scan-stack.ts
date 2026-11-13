@@ -67,7 +67,7 @@ export type GuideStatus = "done" | "retake" | "todo";
 
 export interface GuidePage {
   pageId: string;
-  /** "Day 1 · Page 5, Mixed review" (no name when the page has none). */
+  /** "Page 17 · Day 2, Mixed review" (no name when the page has none). */
   title: string;
   status: GuideStatus;
 }
@@ -86,9 +86,9 @@ export interface StackTile {
   key: string;
   photoId: string | null;
   uploadKey: string | null;
-  /** "Page 2" in a day; "Day 4 · Page 3" outside one; "Unknown page" when the page is not known. */
+  /** "Page 17" in a day; "Page 17 · Day 4" outside one; "Unknown page" when the page is not known. */
   label: string;
-  /** The page's full name wherever it shows: "Day 4 · Page 2", or "Unknown page". */
+  /** The page's full name wherever it shows: "Page 17 · Day 4", or "Unknown page". */
   title: string;
   status: TileStatus;
   /** The short reason under a refused or uncheckable tile. */
@@ -100,7 +100,7 @@ export interface StackDay {
   key: string;
   label: string;
   tiles: StackTile[];
-  /** Pages of the day (1-based, within the day) with no photo yet. */
+  /** Printed page numbers of the day with no photo yet. */
   missing: number[];
   missingText: string | null;
 }
@@ -167,7 +167,7 @@ const listed = (n: readonly number[]) => (n.length < 2 ? `${n[0]}` : `${n.slice(
 type Built = { photo: StackPhoto; tile: StackTile }[];
 
 /** The guide for the day of the newest photo not yet sent: a page with a photo is done unless refused (retake); the rest are to do. */
-function guideOf(o: { photos: readonly StackPhoto[]; pages: readonly DayPage[] }, tiles: Built, dayLabel: (p: DayPage) => string): StackGuide | null {
+function guideOf(o: { photos: readonly StackPhoto[]; pages: readonly DayPage[] }, tiles: Built, dayLabel: (p: DayPage) => string, pageLabel: (p: DayPage) => string): StackGuide | null {
   const pageById = new Map(o.pages.map((p) => [p.id, p]));
   const current = tiles.filter((t) => t.tile.status !== "sent" && pageById.has(t.photo.pageId))
     .sort((a, b) => b.photo.createdAt.localeCompare(a.photo.createdAt))[0];
@@ -175,7 +175,7 @@ function guideOf(o: { photos: readonly StackPhoto[]; pages: readonly DayPage[] }
   if (!anchor) return null;
   const standing = new Map(tiles.map((t) => [t.photo.pageId, t.tile.status === "refused" ? "retake" as const : "done" as const]));
   const pages = o.pages.filter((p) => p.workbookId === anchor.workbookId && p.day === anchor.day).map((p): GuidePage => {
-    const where = `${dayLabel(p)} · Page ${p.pageOfDay}`;
+    const where = pageLabel(p);
     return { pageId: p.id, title: p.name ? `${where}, ${p.name}` : where, status: standing.get(p.id) ?? "todo" };
   });
   return { day: dayLabel(anchor), next: pages.find((p) => p.status === "todo") ?? null, pages };
@@ -185,14 +185,16 @@ export function buildStack(o: { photos: readonly StackPhoto[]; uploads: readonly
   const pageById = new Map(o.pages.map((p) => [p.id, p]));
   const books = new Set(o.photos.map((p) => p.workbookId));
   const dayLabel = (p: DayPage) => (books.size > 1 ? `Workbook ${p.book} · ${p.day}` : p.day);
+  /** The printed number first, as at the foot of the sheet, then the day: "Page 17 · Day 2". */
+  const pageLabel = (p: DayPage) => `Page ${p.pageNumber} · ${dayLabel(p)}`;
   const fullLabel = (photo: StackPhoto) => {
     const page = pageById.get(photo.pageId);
-    return page ? `${dayLabel(page)} · Page ${page.pageOfDay}` : `Page ${photo.pageNumber}`;
+    return page ? pageLabel(page) : `Page ${photo.pageNumber}`;
   };
 
   const tileOf = (photo: StackPhoto): StackTile => {
     const page = pageById.get(photo.pageId);
-    const base = { key: photo.id, photoId: photo.id, uploadKey: null, label: page ? `Page ${page.pageOfDay}` : fullLabel(photo), title: fullLabel(photo), reason: null, refusal: null };
+    const base = { key: photo.id, photoId: photo.id, uploadKey: null, label: page ? `Page ${page.pageNumber}` : fullLabel(photo), title: fullLabel(photo), reason: null, refusal: null };
     if (photo.sentAt && photo.state === "saved" && o.checks && photo.check === "ready") return { ...base, label: fullLabel(photo), status: "sent" };
     if (photo.state === "pending") return { ...base, status: "checking" };
     if (!o.checks || photo.check === "none") return { ...base, status: "saved" };
@@ -230,7 +232,7 @@ export function buildStack(o: { photos: readonly StackPhoto[]; uploads: readonly
     const key = page ? `${page.workbookId}|${page.day}` : `${photo.workbookId}|none`;
     let day = dayOf.get(key);
     if (!day) {
-      const missing = page ? o.pages.filter((p) => p.workbookId === page.workbookId && p.day === page.day && !photographed.has(p.id)).map((p) => p.pageOfDay) : [];
+      const missing = page ? o.pages.filter((p) => p.workbookId === page.workbookId && p.day === page.day && !photographed.has(p.id)).map((p) => p.pageNumber) : [];
       day = { key, label: page ? dayLabel(page) : `Workbook ${photo.book}`, tiles: [], missing, missingText: missing.length ? `No photo yet: page${missing.length > 1 ? "s" : ""} ${listed(missing)}` : null };
       dayOf.set(key, day);
       days.push(day);
@@ -247,7 +249,7 @@ export function buildStack(o: { photos: readonly StackPhoto[]; uploads: readonly
     readyIds: ready.map((t) => t.photo.id),
     counts: { photos: o.photos.length + o.uploads.length, ready: ready.length, refused: refused.length, checking },
     // A refused page keeps its card and its retake, even alone.
-    guide: guideOf(o, tiles, dayLabel),
+    guide: guideOf(o, tiles, dayLabel, pageLabel),
     one: open.length === 1 && open[0].photoId && open[0].status !== "refused" ? open[0] : null,
   };
 }

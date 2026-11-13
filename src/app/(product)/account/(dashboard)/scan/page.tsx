@@ -45,7 +45,7 @@ async function focusedPage(db: Db, workbook: unknown, page: unknown): Promise<{ 
   if (book.error || pages.error || !book.data || book.data.status !== "shipped") return null;
   const numbered = dayPages((pages.data ?? []).map((p) => ({ id: p.id, workbookId: workbook, book: book.data!.number, pageNumber: p.page_number, day: p.day_label })));
   const found = numbered.find((p) => p.pageNumber === number);
-  return { childId: book.data.child_id, workbookId: workbook, page: number, label: found ? `${found.day} · Page ${found.pageOfDay}` : `page ${number} of Workbook ${book.data.number}` };
+  return { childId: book.data.child_id, workbookId: workbook, page: number, label: found ? `Page ${found.pageNumber} · ${found.day}` : `page ${number} of Workbook ${book.data.number}` };
 }
 
 export default async function ScanPage({ searchParams }: PageProps<"/account/scan">) {
