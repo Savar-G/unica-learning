@@ -8,8 +8,11 @@
 // New wording goes in docs/maya-practice-lines.md for Savar's reading.
 import { workProblem } from "@/lib/maya";
 
-/** The child's end of speech to the acknowledgement, when the turn is not ready by then. MAYA_ACK_LIMIT_MS replaces it. */
-export const ACK_LIMIT_MS = 1500;
+/**
+ * The child's end of speech to the acknowledgement, when the turn is not ready by then. MAYA_ACK_LIMIT_MS replaces it.
+ * 1200 ms: a reply that comes within it needs no phrase, and a slower one gets the phrase before the silence feels long.
+ */
+export const ACK_LIMIT_MS = 1200;
 /**
  * An ordinary answer waits for a phrase to finish, because cutting a phrase of a few words sounds worse than a short
  * wait. This is the limit from the moment the phrase is queued, if its audio never reports an end: the longest phrase is

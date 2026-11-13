@@ -2,11 +2,27 @@ import { describe, expect, it } from "vitest";
 import { createSession, PAUSES, TIME_LIMITS } from "@/lib/maya";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import {
+  asksForNumber,
   ATTR,
+  callKeyterms,
+  CONFUSABLE_NUMBER_WORDS,
+  endsInOpenNumber,
+  GREETING_ID,
+  GREETING_TEXT,
+  MATH_KEYTERMS,
+  MAX_KEYTERM_CHARS,
+  MAX_KEYTERMS,
+  VOICE_TUNING_DEFAULTS,
+  voiceTuning,
+  turnSilences,
   callOfRoom,
   checkJoiner,
   childIdentity,
+  childPresence,
   childTurnFrom,
+  JOIN_WAIT_MS,
+  MIC_WAIT_MS,
+  VOICE_TOKEN_TTL_SECONDS,
   connectedSeconds,
   livekitProject,
   nextTickAt,
@@ -58,7 +74,12 @@ describe("providers by configuration", () => {
   const INFERENCE_OK = "livekit-inference-zdr,child-use-approved";
 
   it("routes speech-to-text and the voice through LiveKit Inference by configuration, with the LiveKit key", () => {
-    const p = voiceProviders({ ...LK, MAYA_STT: "inference", MAYA_TTS: "inference", MAYA_VOICE: "Ashley", MAYA_VOICE_PRIVACY_CONFIRMED: INFERENCE_OK });
+    // D-338: with no model and no voice, Cartesia Sonic 3.6 with Katie's voice.
+    expect(voiceProviders({ ...LK, MAYA_STT: "inference", MAYA_TTS: "inference", MAYA_VOICE_PRIVACY_CONFIRMED: INFERENCE_OK })).toMatchObject({
+      ok: true, voice: { provider: "inference", model: "cartesia/sonic-3.6", voice: "f786b574-daa5-4673-aa0c-cbe3e8534c02", modelOptions: { add_timestamps: true } },
+    });
+    expect(voiceProviders({ ...LK, MAYA_STT: "inference", MAYA_TTS: "inference", MAYA_TTS_MODEL: "inworld/inworld-tts-2", MAYA_VOICE_PRIVACY_CONFIRMED: INFERENCE_OK })).toMatchObject({ ok: false, problems: ["MAYA_TTS is inference, but MAYA_VOICE (the voice id) is not set"] });
+    const p = voiceProviders({ ...LK, MAYA_STT: "inference", MAYA_TTS: "inference", MAYA_TTS_MODEL: "inworld/inworld-tts-2", MAYA_VOICE: "Ashley", MAYA_VOICE_PRIVACY_CONFIRMED: INFERENCE_OK });
     expect(p).toMatchObject({
       ok: true,
       speechToText: { provider: "inference", model: "assemblyai/universal-3-6-pro", apiKey: "lk-key", apiSecret: "lk-secret" },
@@ -93,7 +114,8 @@ describe("providers by configuration", () => {
     refused({ MAYA_STT: "inference" }, /LIVEKIT_API_KEY and LIVEKIT_API_SECRET/);
     refused({ MAYA_STT: "inference", LIVEKIT_API_KEY: "k" }, /LIVEKIT_API_KEY and LIVEKIT_API_SECRET/);
     refused({ MAYA_TTS: "inference", MAYA_VOICE: "Ashley", LIVEKIT_API_SECRET: "s" }, /LIVEKIT_API_KEY and LIVEKIT_API_SECRET/);
-    refused({ ...LK, MAYA_TTS: "inference" }, /MAYA_VOICE/);
+    // The default model has a default voice (D-338); another model still needs its own.
+    refused({ ...LK, MAYA_TTS: "inference", MAYA_TTS_MODEL: "inworld/inworld-tts-2" }, /MAYA_VOICE/);
   });
 
   it("refuses a real route without its privacy markers, child-use-approved included, and an unknown marker", () => {
@@ -141,6 +163,26 @@ describe("rooms and joiners", () => {
     expect(checkJoiner({ room: voiceRoom(CALL), call, identity: childIdentity(CHILD), attributes: { ...attrs, [ATTR.call]: OTHER_CALL } })).toEqual({ ok: false, reason: "wrong_family" });
     expect(checkJoiner({ room: voiceRoom(CALL), call: { ...call, status: "ended" }, identity: childIdentity(CHILD), attributes: attrs })).toEqual({ ok: false, reason: "ended" });
     expect(checkJoiner({ room: voiceRoom(CALL), call: { ...call, mode: "text" }, identity: childIdentity(CHILD), attributes: attrs })).toEqual({ ok: false, reason: "not_voice" });
+  });
+
+  it("counts the call's child as here only with a microphone published: in the room before the tap is not here", () => {
+    // The SDK's source values (rtc-node: 2 is the microphone, 1 the camera, 3 the screen share).
+    const MIC = 2;
+    const presence = (tracks: Iterable<{ source?: unknown }>, over: Partial<{ identity: string; attributes: Record<string, string> }> = {}) =>
+      childPresence({ room: voiceRoom(CALL), call, identity: childIdentity(CHILD), attributes: attrs, tracks, microphone: MIC, ...over });
+    expect(presence([])).toBe("joined");
+    expect(presence([{ source: 1 }, { source: 3 }, {}])).toBe("joined");
+    expect(presence([{ source: 1 }, { source: MIC }])).toBe("here");
+    // Another joiner is never the child, with or without a microphone.
+    expect(presence([{ source: MIC }], { identity: childIdentity(OTHER_CHILD), attributes: { ...attrs, [ATTR.child]: OTHER_CHILD } })).toBe("other");
+    expect(presence([{ source: MIC }], { attributes: { ...attrs, [ATTR.parent]: OTHER_PARENT } })).toBe("other");
+    // The tracks may be any iterable, such as a participant's publications.
+    expect(presence(new Map([["TR_1", { source: MIC }]]).values())).toBe("here");
+  });
+
+  it("waits for a child's microphone as long as a ticket admits a join, longer than for a join", () => {
+    expect(MIC_WAIT_MS).toBe(VOICE_TOKEN_TTL_SECONDS * 1000);
+    expect(MIC_WAIT_MS).toBeGreaterThan(JOIN_WAIT_MS);
   });
 });
 
@@ -220,4 +262,149 @@ it("R408-11: bounds a crashed worker's connection lease and starts a separate se
     { kind: "agent_left", at: 70_000 }, { kind: "agent_joined", at: 70_000 },
     { kind: "child_joined", at: 70_000 }, { kind: "child_left", at: 80_000 },
   ], 80_000)).toBeLessThanOrEqual(25);
+});
+
+// ---------- tuning for children (docs/maya-voice.md, "Tuning for children") ----------
+
+describe("the tuning settings", () => {
+  it("default to the documented values, and the providers carry them", () => {
+    expect(VOICE_TUNING_DEFAULTS).toEqual({ sttMinSilenceMs: 400, sttMaxSilenceMs: 1600, sttNumberMinSilenceMs: 512, sttNumberSilenceMs: 4500, turnMinDelayMs: 100, numberContinueMs: 1500, interruptMinMs: 300, interruptMinWords: 0 });
+    expect(voiceTuning({})).toEqual({ tuning: VOICE_TUNING_DEFAULTS, problems: [] });
+    expect(voiceProviders({})).toMatchObject({ ok: true, tuning: VOICE_TUNING_DEFAULTS });
+  });
+
+  it("are read from their variables, an empty one keeping its default", () => {
+    const env = { MAYA_STT_MIN_SILENCE_MS: "256", MAYA_STT_MAX_SILENCE_MS: "3500", MAYA_STT_NUMBER_MIN_SILENCE_MS: "800", MAYA_STT_NUMBER_SILENCE_MS: "5000", MAYA_TURN_MIN_DELAY_MS: "0", MAYA_NUMBER_CONTINUE_MS: "", MAYA_INTERRUPT_MIN_MS: "400", MAYA_INTERRUPT_MIN_WORDS: "1" };
+    expect(voiceTuning(env)).toEqual({
+      tuning: { sttMinSilenceMs: 256, sttMaxSilenceMs: 3500, sttNumberMinSilenceMs: 800, sttNumberSilenceMs: 5000, turnMinDelayMs: 0, numberContinueMs: 1500, interruptMinMs: 400, interruptMinWords: 1 },
+      problems: [],
+    });
+    expect(voiceProviders(env)).toMatchObject({ ok: true, tuning: { sttMaxSilenceMs: 3500 } });
+  });
+
+  it("refuse a value outside its bounds, or not a whole number, instead of using a default", () => {
+    for (const [name, bad] of [["MAYA_STT_MIN_SILENCE_MS", "2001"], ["MAYA_STT_NUMBER_MIN_SILENCE_MS", "2001"], ["MAYA_STT_MAX_SILENCE_MS", "99"], ["MAYA_STT_MAX_SILENCE_MS", "10001"], ["MAYA_STT_NUMBER_SILENCE_MS", "-1"], ["MAYA_TURN_MIN_DELAY_MS", "1.5"], ["MAYA_NUMBER_CONTINUE_MS", "3001"], ["MAYA_INTERRUPT_MIN_MS", "fast"], ["MAYA_INTERRUPT_MIN_WORDS", "6"]]) {
+      const r = voiceProviders({ [name]: bad });
+      expect(r, `${name}=${bad}`).toMatchObject({ ok: false, problems: [expect.stringContaining(name)] });
+    }
+  });
+
+  it("refuse limits that contradict each other", () => {
+    expect(voiceTuning({ MAYA_STT_MIN_SILENCE_MS: "1000", MAYA_STT_MAX_SILENCE_MS: "500" }).problems).toEqual(["MAYA_STT_MAX_SILENCE_MS must not be less than MAYA_STT_MIN_SILENCE_MS"]);
+    expect(voiceTuning({ MAYA_STT_MAX_SILENCE_MS: "6000" }).problems).toEqual(["MAYA_STT_NUMBER_SILENCE_MS must not be less than MAYA_STT_MAX_SILENCE_MS"]);
+    expect(voiceTuning({ MAYA_STT_NUMBER_MIN_SILENCE_MS: "1800", MAYA_STT_MAX_SILENCE_MS: "1600", MAYA_STT_NUMBER_SILENCE_MS: "1700" }).problems).toEqual(["MAYA_STT_NUMBER_SILENCE_MS must not be less than MAYA_STT_NUMBER_MIN_SILENCE_MS"]);
+  });
+});
+
+describe("the silences of a turn", () => {
+  it("are short for a normal turn and long for the one turn after a number question", () => {
+    expect(turnSilences(VOICE_TUNING_DEFAULTS)).toEqual({ normal: { minMs: 400, maxMs: 1600 }, number: { minMs: 512, maxMs: 4500 } });
+  });
+
+  it("never make the number turn shorter than a normal turn", () => {
+    const { tuning } = voiceTuning({ MAYA_STT_MIN_SILENCE_MS: "700", MAYA_STT_NUMBER_MIN_SILENCE_MS: "300" });
+    expect(turnSilences(tuning)).toEqual({ normal: { minMs: 700, maxMs: 1600 }, number: { minMs: 700, maxMs: 4500 } });
+  });
+});
+
+describe("a number question raises the limits for one turn only", () => {
+  it("asks for a number only in a computing state, with a number question or a request to compute", () => {
+    expect(asksForNumber("Try 27 + 39 the same way.", "TRY_TARGET")).toBe(true);
+    expect(asksForNumber("Good. What is 7 + 9?", "GUIDE_TARGET")).toBe(true);
+    // Not in a computing state, or not a number question: the normal limits stay.
+    expect(asksForNumber("What is 7 + 9?", "CLOSE")).toBe(false);
+    expect(asksForNumber("Shall we get going?", "TRY_TARGET")).toBe(false);
+    expect(asksForNumber("That's right, well done.", "CHECK")).toBe(false);
+  });
+});
+
+describe("keyterms for a call", () => {
+  const add = SAMPLE_PACKAGES["add-27-39"];
+  const lower = (terms: string[]) => terms.map((t) => t.toLowerCase());
+
+  it("hold the right answer and the likely wrong answers together, as digits and as words", () => {
+    const terms = callKeyterms(add);
+    // The answer 66, the stored wrong answer 56, and the operands 27 and 39: digits and words, none favoured.
+    for (const t of ["66", "sixty-six", "56", "fifty-six", "27", "twenty-seven", "39", "thirty-nine"]) expect(terms, t).toContain(t);
+    // Near answers (plus and minus 1 and 10); the answer's digits reversed (66 reads the same, so none is added).
+    for (const t of ["67", "65", "76", "sixty-seven", "sixty-five", "seventy-six"]) expect(terms, t).toContain(t);
+    // The stored wrong answer comes before the near answers, so a full list drops the near answers first.
+    expect(terms.indexOf("56")).toBeLessThan(terms.indexOf("67"));
+  });
+
+  it("reverse a number's digits, and read a subtraction's own wrong answers", () => {
+    const terms = callKeyterms(SAMPLE_PACKAGES["subtract-83-46"]);
+    // 83 - 46 = 37; wrong answers 43 and 47; reversed digits 73.
+    for (const t of ["37", "thirty-seven", "43", "forty-three", "47", "forty-seven", "73", "seventy-three", "83", "46"]) expect(terms, t).toContain(t);
+  });
+
+  it("hold the confusable number words and the math words, whatever the question", () => {
+    for (const terms of [callKeyterms(add), callKeyterms(null)]) {
+      for (const w of [...CONFUSABLE_NUMBER_WORDS, ...MATH_KEYTERMS]) expect(terms, w).toContain(w);
+    }
+    expect([...CONFUSABLE_NUMBER_WORDS]).toEqual(expect.arrayContaining(["thirteen", "nineteen", "thirty", "ninety"]));
+    expect(callKeyterms(null)).toEqual([...CONFUSABLE_NUMBER_WORDS, ...MATH_KEYTERMS]);
+  });
+
+  it("read the parts of a fraction answer and its wrong answers", () => {
+    const terms = callKeyterms(SAMPLE_PACKAGES["add-fractions-3-4-1-8"]);
+    // 7/8 is the answer, 4/12 the wrong answer: every number in them, and the operands' 3, 4, 1 and 8.
+    for (const t of ["seven", "eight", "four", "twelve", "three", "one", "12"]) expect(terms, t).toContain(t);
+  });
+
+  it("keep to 100 terms of 50 characters, with no duplicate, and keep the fixed words when the question has too many terms", () => {
+    const many = { ...add, wrongAnswers: Array.from({ length: 80 }, (_, i) => ({ value: { type: "number" as const, value: 1000 + i * 37 }, cause: "x", description: "x", step: null })) };
+    const terms = callKeyterms(many);
+    expect(terms.length).toBe(MAX_KEYTERMS);
+    for (const t of terms) expect(t.length).toBeLessThanOrEqual(MAX_KEYTERM_CHARS);
+    expect(new Set(lower(terms)).size).toBe(terms.length);
+    for (const w of [...CONFUSABLE_NUMBER_WORDS, ...MATH_KEYTERMS]) expect(terms, w).toContain(w);
+    expect(terms).toContain("66");
+  });
+
+  it("hold no name, and none of the question's text", () => {
+    const named = { ...add, text: "Leah has 27 apples and gets 39 more. How many now? Leah" };
+    const terms = callKeyterms(named);
+    expect(terms.join(" ").toLowerCase()).not.toContain("leah");
+    expect(terms.join(" ")).not.toContain("apples");
+  });
+});
+
+describe("a number that may go on", () => {
+  it("is a tens word, a hundred or an 'and' at the end of the transcript", () => {
+    for (const t of ["fifty", "I think it's fifty.", "twenty-", "one hundred", "one hundred and", "70", "It's 50,", "Sixty!"]) expect(endsInOpenNumber(t), t).toBe(true);
+  });
+
+  it("is not a whole number, a teen or a word that only contains one", () => {
+    for (const t of ["fifty six", "66", "sixteen", "I got fifty six.", "fifteen", "ninety nine", "it is forty-two", "120", "", "twentyish"]) expect(endsInOpenNumber(t), t).toBe(false);
+  });
+});
+
+describe("Maya asks for a number", () => {
+  it("in a state where she asks for a computed answer, with a question or a request to compute", () => {
+    expect(asksForNumber("Now put it all together. What is 27 + 39?", "TRY_TARGET")).toBe(true);
+    expect(asksForNumber("Add the ones: 7 + 9. What do you get?", "GUIDE_TARGET")).toBe(true);
+    expect(asksForNumber("How many tens are there?", "ASSESS")).toBe(true);
+    expect(asksForNumber("Can you add 7 + 9?", "GUIDE_TARGET")).toBe(true);
+    expect(asksForNumber("Over to you! Try 27 + 39 the same way.", "TRY_TARGET")).toBe(true);
+    expect(asksForNumber("Now multiply 3 × 4.", "MODEL_EXAMPLE")).toBe(true);
+  });
+
+  it("not for a question with a yes or no, in a state where she asks for none, or with no request", () => {
+    expect(asksForNumber("Shall we get going?", "OPEN")).toBe(false);
+    expect(asksForNumber("What do you get?", "OPEN")).toBe(false);
+    expect(asksForNumber("Did you say 13 or 30?", "CONFIRM_HEARD")).toBe(false);
+    expect(asksForNumber("Is that right?", "TRY_TARGET")).toBe(false);
+    expect(asksForNumber("Are you still there?", "TRY_TARGET")).toBe(false);
+    expect(asksForNumber("Nice work. That is 66.", "CHECK")).toBe(false);
+    expect(asksForNumber("", "TRY_TARGET")).toBe(false);
+  });
+});
+
+describe("the greeting", () => {
+  it("is the exact fixed line, with an id of its own", () => {
+    expect(GREETING_TEXT).toBe("I can make mistakes, so tell me if something sounds wrong.");
+    expect(GREETING_ID).toBe("greeting.hello");
+    expect(GREETING_TEXT).not.toContain(String.fromCharCode(0x2014));
+  });
 });

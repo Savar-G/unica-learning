@@ -88,6 +88,9 @@ export class FakeTTS extends tts.TTS {
   label = "fake.TTS";
   /** Every text spoken, in order. */
   readonly spoken: string[] = [];
+  /** For tests: this many next texts give no audio at all (a voice provider that fails quietly). They go to `silenced`. */
+  silentNext = 0;
+  readonly silenced: string[] = [];
   constructor(readonly msPerChar = 60, readonly timestamps = true) {
     super(FAKE_SAMPLE_RATE, 1, { streaming: true, alignedTranscript: timestamps });
   }
@@ -113,6 +116,11 @@ class FakeSynthesizeStream extends tts.SynthesizeStream {
   }
   private speak(text: string) {
     if (!text.trim() || this.queue.closed) return;
+    if (this.fake.silentNext > 0) {
+      this.fake.silentNext--;
+      this.fake.silenced.push(text.trim());
+      return;
+    }
     this.markStarted();
     this.fake.spoken.push(text.trim());
     const id = `fake-${++this.segment}`;

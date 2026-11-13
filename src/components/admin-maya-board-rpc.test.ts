@@ -22,6 +22,7 @@ vi.mock("livekit-client", () => {
       registerRpcMethod: (method: string, handler: unknown) => this.rpc.set(method, handler),
       setMicrophoneEnabled: async () => {}, performRpc: async () => "ok",
     };
+    registerTextStreamHandler() {}
     constructor() { rooms.push(this); }
     on(event: string, handler: (...args: unknown[]) => void) { this.handlers.set(event, [...this.handlers.get(event) ?? [], handler]); }
     emit(event: string, ...args: unknown[]) { for (const handler of this.handlers.get(event) ?? []) handler(...args); }

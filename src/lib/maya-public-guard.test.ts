@@ -42,8 +42,9 @@ const forbidden = /speaks to your child|unlimited chat|(?:every grade.{0,80}(?:m
 describe("first ship public Maya copy", () => {
   it("has no voice claims in public sources", () => {
     const allowed: Record<string, RegExp[]> = {
-      "app/(site)/terms/page.tsx": [/Voice calls with Maya are not open to families/],
-      "app/(site)/privacy/page.tsx": [/Voice calls with Maya \(not open yet\)/, /Voice calls are not open to families/, /holds nothing from a chat or call with Maya/],
+      // D-336: voice calls are open in the MVP; the legal pages describe them. Marketing pages still make no voice claim.
+      "app/(site)/terms/page.tsx": [/call Maya by voice when your family&apos;s plan is active/, /no new chat or call starts/],
+      "app/(site)/privacy/page.tsx": [/<h2>Voice calls with Maya<\/h2>/, /can also call Maya and talk out loud/, /In a call, the sound of your child&apos;s voice/, /From a call we keep the same records/, /no new chat or call starts/, /words of a chat or a call/, /holds nothing from a chat or call with Maya/],
       "content/resources/bc-proficiency-scale.tsx": [/what many parents still call the final report card/, /Ask your child to explain their thinking out loud/],
       "content/resources/bc-grade-4-math-and-reading.tsx": [/recall the 2s/],
       // These components remain in the source for a later release. The render test checks that they are hidden.

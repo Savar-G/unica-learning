@@ -123,7 +123,9 @@ export class CuePlaybackOutput {
     for (let offset = 0; offset < frame.samplesPerChannel; offset += samples) {
       if (generation !== this.generation || !this.board.owns(scope)) return;
       const size = Math.min(samples, frame.samplesPerChannel - offset);
-      const part = new AudioFrame(frame.data.subarray(offset * frame.channels, (offset + size) * frame.channels), frame.sampleRate, frame.channels, size);
+      // A copy, never a view: rtc-node sends `frame.data.buffer` to the native layer and ignores a view's offset, so a
+      // subarray part played the start of its parent frame every 20 ms (the crackle of 2026-11-12, #904).
+      const part = new AudioFrame(frame.data.slice(offset * frame.channels, (offset + size) * frame.channels), frame.sampleRate, frame.channels, size);
       const forwarding = { scope, frame: part };
       this.forwarding = forwarding;
       try {
