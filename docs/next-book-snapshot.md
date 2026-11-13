@@ -177,6 +177,14 @@ line, with times in the family's time zone:
 | no planner | The planner is not ready yet. |
 | not a test family (until the worker reads `plan_input`) | Only test families can get the next book for now. |
 
+**The admin page "Snapshot plan" (#473).** `/admin/children/<id>/snapshot-plan`, linked from "Plan the next book" on the
+admin child page. It reads the child's latest snapshot row with the admin's session and writes nothing. For each skill it
+lists the decision from the marks, the new steps the next book starts, the spaced reviews due and missed, the Fix it items
+carried over and the marks held for a later book with their reason; held marks with no skill are counted by reason. The
+row keeps the planner's input, not its plan, so the page runs the planner again on that input and shows the new steps
+only when the result hashes to the saved plan hash; otherwise it says the planner has changed since the snapshot
+(`src/lib/next-book-plan-view.ts`, `src/components/admin-snapshot-plan.tsx`).
+
 ## Where things are
 
 | Piece | File |

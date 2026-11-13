@@ -108,6 +108,7 @@ export default async function ChildPage({ params }: PageProps<"/admin/children/[
       <div className="rec-tools">
         <Link className="btn ghost adm-btn" href={`/admin/children/${c.id}/preview-plan`} prefetch={false}>Preview plan</Link>
         <Link className="btn ghost adm-btn" href={`/admin/children/${c.id}/preview-marks`} prefetch={false}>Preview from marks</Link>
+        <Link className="btn ghost adm-btn" href={`/admin/children/${c.id}/snapshot-plan`} prefetch={false}>Snapshot plan</Link>
       </div>
       <BookInstructions child={c} note={learning?.note ?? ""} data={instructions} />
       <h3>First pages of Workbook 1</h3>
