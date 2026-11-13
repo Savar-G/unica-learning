@@ -82,7 +82,7 @@ export function mayaCallSpend(ledger: SpendLedger, newId: () => string): CallSpe
  * An OpenRouter client behind the ledger: the model `model` (or AI_MODEL), charged to `charge`. Null without
  * OPENROUTER_API_KEY.
  */
-export function meteredClient(env: Env, ledger: SpendLedger, meter: { charge: Charge; callId: string | null; newId: () => string; safetyRead?: boolean }, what: "model" | "review" | "note", model?: string): AiClient | null {
+export function meteredClient(env: Env, ledger: SpendLedger, meter: { charge: Charge; callId: string | null; budgetKey?: string; newId: () => string; safetyRead?: boolean }, what: "model" | "review" | "note", model?: string): AiClient | null {
   if (!aiClient(env, model)) return null;
   // Each answer's usage also goes to the AI usage ledger (D-330): the family, the child and the call, never the words.
   const usage: AiUsageTag = { feature: what === "model" ? "maya" : what === "review" ? "maya_review" : "maya_note", parentId: meter.charge.parentId, childId: meter.charge.childId, source: meter.callId ? { kind: "maya_call", id: meter.callId } : null };

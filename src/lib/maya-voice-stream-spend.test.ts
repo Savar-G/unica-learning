@@ -18,6 +18,7 @@ function recordingLedger() {
   const ledger: SpendLedger = {
     config: spendConfig({}),
     reserve: async ({ id }) => { reserved.push(id); return { ok: true }; },
+    canSend: () => true,
     settle: async () => {},
     settleUsd: async (id, usd) => { settled.push({ id, usd }); },
     state: async () => "open",

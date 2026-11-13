@@ -88,6 +88,8 @@ export interface CallBudget {
   take(kind: BlockKind, micros?: number): Handle | null;
   /** The next model request of the call: the oldest admitted attempt no request claimed, else null. */
   claim(micros: number): Handle | null;
+  /** The claimed attempt may still dispatch now. No await may separate this check from dispatch. */
+  canSend(handle: Handle): boolean;
   /** The attempt's real cost in micros; null: not known, it stays at its reservation. */
   finish(handle: Handle, micros: number | null, how?: { used?: boolean }): void;
   /** Whole model attempts free now. */
@@ -167,6 +169,8 @@ export function createBudget(seams: BudgetSeams): CallBudget {
 
   function retire(b: Block) {
     b.retired = true;
+    // An admission that no request claimed has sent nothing. It cannot outlive its reservation.
+    for (const t of [...pending]) if (t.block === b) finish(t, 0);
     settleIfDone(b);
   }
 
@@ -179,13 +183,18 @@ export function createBudget(seams: BudgetSeams): CallBudget {
     try {
       for (const n of [BLOCK_ATTEMPTS, 1]) {
         const id = seams.newId();
+        const at = seams.clock();
         const r = await seams.reserve(id, n * m);
         if (!r.ok) continue;
-        const b: Block = { id, reserved: n * m, spent: 0, open: 0, at: seams.clock(), retired: stopped, settled: false };
+        // The database can accept before its response arrives. The request start is the conservative age.
+        const b: Block = { id, reserved: n * m, spent: 0, open: 0, at, retired: false, settled: false };
         blocks.push(b);
-        if (stopped) settleIfDone(b);
+        if (stopped || seams.clock() - at >= BLOCK_RETIRE_MS) {
+          retire(b);
+          refused = "paused";
+        }
         // An older block with no whole attempt left takes no more: it is settled once its attempts end.
-        else for (const o of active()) if (o !== b && freeOf(o) < m) retire(o);
+        else for (const o of active()) if (o !== b && o.open === 0 && freeOf(o) < m) retire(o);
         return;
       }
       refused = "week_used";
@@ -206,6 +215,8 @@ export function createBudget(seams: BudgetSeams): CallBudget {
   function takeFrom(kind: BlockKind, micros: number): Ticket | null {
     if (stopped) return null;
     age();
+    // Count only current room. Age retirement and the take are in this same synchronous operation.
+    if (kind === "speculative" && (speculated >= SPECULATIVE_PER_TURN || attempts() <= SPECULATIVE_KEEP)) return null;
     const b = active().find((x) => freeOf(x) >= micros);
     if (!b) {
       maybeRefill();
@@ -214,6 +225,7 @@ export function createBudget(seams: BudgetSeams): CallBudget {
     b.spent += micros;
     b.open++;
     const t: Ticket = { kind, micros, block: b, done: false };
+    if (kind === "speculative") speculated++;
     maybeRefill();
     return t;
   }
@@ -229,6 +241,7 @@ export function createBudget(seams: BudgetSeams): CallBudget {
     t.block.open--;
     totals[t.kind] += cost;
     if (t.kind === "speculative" && how?.used) totals.speculativeUsed += cost;
+    if (!t.block.retired && t.block.open === 0 && freeOf(t.block) < m && active().at(-1) !== t.block) retire(t.block);
     settleIfDone(t.block);
   }
 
@@ -236,10 +249,7 @@ export function createBudget(seams: BudgetSeams): CallBudget {
     seam: {
       take(kind) {
         if (kind === "model") return budget.claim(m) ?? budget.take("model", m);
-        if (speculated >= SPECULATIVE_PER_TURN || attempts() <= SPECULATIVE_KEEP) return null;
-        const h = budget.take("speculative", m);
-        if (h) speculated++;
-        return h;
+        return budget.take("speculative", m);
       },
       settle: (handle, usd, how) => finish(handle, seams.usdToMicros(usd), how),
       giveBack: (handle) => finish(handle, 0),
@@ -267,17 +277,27 @@ export function createBudget(seams: BudgetSeams): CallBudget {
     },
     take: (kind, micros = kind === "review" ? seams.reviewMicros : m) => takeFrom(kind, micros),
     claim(micros) {
+      if (stopped) return null;
+      age();
       const i = pending.findIndex((t) => micros <= t.micros);
       return i < 0 ? null : pending.splice(i, 1)[0];
     },
+    canSend(handle) {
+      age();
+      const t = handle as Ticket;
+      return !stopped && !t.done && !t.block.retired;
+    },
     finish,
-    attempts,
+    attempts() {
+      age();
+      return attempts();
+    },
     async ensure() {
       if (!stopped) age();
       if (attempts() >= 1) return "open";
       if (stopped) return refused ?? "week_used";
       // Blocks with no whole attempt left give their unused room back first.
-      for (const b of active()) if (freeOf(b) < m) retire(b);
+      for (const b of active()) if (b.open === 0 && freeOf(b) < m) retire(b);
       await Promise.all([...settles]);
       if (!refilling) {
         refused = null;
@@ -293,8 +313,9 @@ export function createBudget(seams: BudgetSeams): CallBudget {
     },
     async stop() {
       stopped = true;
-      await refilling;
+      // Close admission before any database wait, including a refill response.
       for (const b of blocks) if (!b.retired) retire(b);
+      await refilling;
       await Promise.all([...settles]);
     },
     totals: () => ({ ...totals }),

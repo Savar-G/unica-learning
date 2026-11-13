@@ -194,6 +194,57 @@ describe("paid requests from the block", () => {
 });
 
 describe("retiring a block", () => {
+  it("does not restore allowance when the reservation response arrives after expiry", async () => {
+    const t = setup();
+    const reserve = t.store.reserve.bind(t.store);
+    let release!: () => void;
+    let inserted!: () => void;
+    const accepted = new Promise<void>((resolve) => { inserted = resolve; });
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    vi.spyOn(t.store, "reserve").mockImplementation(async (request) => {
+      const result = await reserve(request);
+      inserted();
+      await held;
+      return result;
+    });
+    const b = t.spend.budget(voice);
+    const opening = b.open();
+    await accepted;
+    t.advance(RESERVATION_TTL_MS + 1);
+    release();
+    await opening;
+    expect(b.attempts()).toBe(0);
+    expect(b.claim(t.m)).toBeNull();
+    await b.stop();
+    expect(await t.week()).toBe(0);
+  });
+
+  it("does not claim an admitted attempt after its block retires", async () => {
+    const t = setup();
+    const b = t.spend.budget(voice);
+    await b.open();
+    b.admit(1);
+    t.advance(BLOCK_RETIRE_MS);
+    expect(b.claim(t.m)).toBeNull();
+    await b.stop();
+    expect(t.blocks()).toMatchObject([{ settled: true, cost: 0 }]);
+  });
+
+  it("preserves two live attempts after retiring the old block during a speculative take", async () => {
+    const t = setup();
+    const b = t.spend.budget(voice);
+    await b.open();
+    t.leave(t.m + 1000);
+    t.advance(BLOCK_RENEW_MS);
+    b.tick();
+    await t.flush();
+    expect(b.attempts()).toBe(5);
+    t.advance(BLOCK_RETIRE_MS - BLOCK_RENEW_MS);
+    expect(b.seam.take("speculative")).toBeNull();
+    expect(b.attempts()).toBe(1);
+    expect(b.seam.take("model")).not.toBeNull();
+  });
+
   it("opens the next block before 8 minutes and settles the old one once with its real total", async () => {
     const t = setup();
     const b = t.spend.budget(voice);
@@ -228,6 +279,35 @@ describe("retiring a block", () => {
 });
 
 describe("the call's end", () => {
+  it("sends nothing when stop occurs after reservation and before network dispatch", async () => {
+    const t = setup();
+    const b = t.spend.budget(voice);
+    await b.open();
+    const reserve = t.ledger.reserve.bind(t.ledger);
+    vi.spyOn(t.ledger, "reserve").mockImplementation(async (input) => {
+      const result = await reserve(input);
+      if (input.what === "model" && !input.force) void b.stop();
+      return result;
+    });
+    const fetch = vi.fn(async () => answer(0.01));
+    await expect(client(t, voice, fetch as typeof globalThis.fetch).json(request, signal())).rejects.toBeInstanceOf(SpendRefused);
+    expect(fetch).not.toHaveBeenCalled();
+    await b.stop();
+    expect(t.blocks()).toMatchObject([{ settled: true, cost: 0 }]);
+  });
+
+  it("returns an unclaimed admission and sends no request after stop", async () => {
+    const t = setup();
+    const b = t.spend.budget(voice);
+    await b.open();
+    expect(b.admit(1)).not.toBeNull();
+    await b.stop();
+    const fetch = vi.fn(async () => answer(0.01));
+    await expect(client(t, voice, fetch as typeof globalThis.fetch).json(request, signal())).rejects.toBeInstanceOf(SpendRefused);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(t.blocks()).toMatchObject([{ settled: true, cost: 0 }]);
+  });
+
   it("settles the open block with its real total and gives the rest back", async () => {
     const t = setup();
     const b = t.spend.budget(voice);

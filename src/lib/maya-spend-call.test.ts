@@ -86,7 +86,8 @@ function setup(options: { env?: Record<string, string>; costUsd?: number; voiceI
       }
       if (refuse.next) { refuse.next = false; throw new SpendRefused("week_used"); }
       const id = newId();
-      const r = await ledger.reserve({ id, charge: chargeOf(call!), callId: call!.id, what: "model", micros: usdToMicros(RESERVE_USD.model, config) });
+      const charge = chargeOf(options.voiceIsTheChilds ? { ...call!, kind: "chat" } : call!);
+      const r = await ledger.reserve({ id, charge, callId: call!.id, budgetKey: call!.budgetKey, what: "model", micros: usdToMicros(RESERVE_USD.model, config) });
       if (!r.ok) throw new SpendRefused(r.state);
       sent.count++;
       const proposal = await base.propose(input, signal);
@@ -583,6 +584,134 @@ describe("a voice call's budget block (latency plan V1, 2026-11-13)", () => {
     const turn = await call.child("I got 66.");
     expect(turn.say.length).toBeGreaterThan(0);
     expect(w.at[0]).toEqual([]);
+  });
+
+  it("delivers danger guidance, the flag and alert while model-block settlement is held", async () => {
+    const t = setup();
+    const w = watched(t);
+    const call = await familyVoice(w.calls);
+    fill(t, 0);
+    const settle = t.spendStore.settle.bind(t.spendStore);
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    vi.spyOn(t.spendStore, "settle").mockImplementation(async (id, micros) => {
+      if (childModelRows(t, call.id).some((r) => r.id === id)) await held;
+      return settle(id, micros);
+    });
+    t.advance(60_000);
+    const turn = call.child("My uncle hurts me.");
+    try {
+      await vi.waitFor(() => {
+        expect(t.store.rows()[0].flag).toMatchObject({ level: "safety_concern" });
+        expect(t.alertSend).toHaveBeenCalled();
+      }, { timeout: 300 });
+      expect(await turn).toMatchObject({ guidance: SAFETY_GUIDANCE.concern, ended: true });
+    } finally {
+      release();
+      await turn;
+    }
+  });
+
+  it("starts teaching under valid STT coverage while its renewal settlement is held", async () => {
+    const t = setup();
+    const w = watched(t);
+    const call = await familyVoice(w.calls);
+    const settle = t.spendStore.settle.bind(t.spendStore);
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    vi.spyOn(t.spendStore, "settle").mockImplementation(async (id, micros) => {
+      if (t.spendStore.rows().some((r) => r.id === id && r.what === "speech_to_text")) await held;
+      return settle(id, micros);
+    });
+    t.advance(40_000);
+    const before = t.sent.count;
+    const turn = call.child("I got 66.");
+    try {
+      await vi.waitFor(() => expect(t.sent.count).toBeGreaterThan(before), { timeout: 300 });
+      expect((await turn).say.length).toBeGreaterThan(0);
+    } finally {
+      release();
+      await turn;
+      await call.end({ reason: "child_stopped" });
+    }
+  });
+
+  it("sends no teaching request without STT coverage while renewal is held", async () => {
+    const t = setup();
+    const w = watched(t);
+    const call = await familyVoice(w.calls);
+    const settle = t.spendStore.settle.bind(t.spendStore);
+    let release!: () => void;
+    let entered!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const renewing = new Promise<void>((resolve) => { entered = resolve; });
+    vi.spyOn(t.spendStore, "settle").mockImplementation(async (id, micros) => {
+      if (t.spendStore.rows().some((r) => r.id === id && r.what === "speech_to_text")) {
+        entered();
+        await held;
+      }
+      return settle(id, micros);
+    });
+    t.advance(60_000);
+    const before = t.sent.count;
+    const turn = call.child("I got 66.");
+    try {
+      await renewing;
+      expect(t.sent.count).toBe(before);
+    } finally {
+      release();
+    }
+    expect((await turn).say.length).toBeGreaterThan(0);
+    expect(t.sent.count).toBeGreaterThan(before);
+    await call.end({ reason: "child_stopped" });
+  });
+
+  it.each([true, false])("keeps a replacement's budget active when the old handle ends (loss discovered: %s)", async (discovered) => {
+    const t = setup();
+    const w = watched(t);
+    const old = await familyVoice(w.calls);
+    const opened = await w.calls.openVoice(old.id, { speechToText: "fake", voice: "fake" }, "Leah");
+    if (!opened.ok) throw new Error(opened.error);
+    if (discovered) {
+      await old.connection("child_left");
+      expect(old.lost).toBe(true);
+    }
+    await old.end({ reason: "child_stopped" });
+    t.advance(3000);
+    const turn = await opened.call.child("I got 66.");
+    expect(turn.ended).toBe(false);
+    expect(turn.say).not.toContain(SPEND_CLOSE.week_used.line);
+    await opened.call.end({ reason: "child_stopped" });
+  });
+
+  it("sends no model request when its pre-reservation seam resumes after call end", async () => {
+    const t = setup();
+    const w = watched(t);
+    const call = await familyVoice(w.calls);
+    const model = t.seams.model;
+    let release!: () => void;
+    let entered!: () => void;
+    const waiting = new Promise<void>((resolve) => { entered = resolve; });
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    t.seams.model = (id, charge, how) => {
+      const base = model(id, charge, how);
+      return !base || how?.safetyRead ? base : { ...base, async propose(input, signal, onText) {
+        entered();
+        await held;
+        return base.propose(input, signal, onText);
+      } };
+    };
+    const reopened = await w.calls.openVoice(call.id, { speechToText: "fake", voice: "fake" }, "Leah");
+    if (!reopened.ok) throw new Error(reopened.error);
+    t.advance(3000);
+    const turn = reopened.call.child("I got 66.");
+    await waiting;
+    const before = t.sent.count;
+    await reopened.call.end({ reason: "child_stopped" });
+    expect(t.store.rows()[0].status).toBe("ended");
+    release();
+    await turn;
+    expect(t.sent.count).toBe(before);
   });
 
   it("sends no paid request at the cap: the block is old, the refill refused, and the turn closes with code's line", async () => {

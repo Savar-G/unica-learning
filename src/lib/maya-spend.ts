@@ -92,6 +92,8 @@ export interface SpendCall {
   kind: string;
   parentId: string;
   childId: string;
+  /** One open voice handle owns this budget generation. Never stored in the call row. */
+  budgetKey?: string;
 }
 
 /** An admin test call counts only toward the month's total; every other call is the child's. */
@@ -155,7 +157,9 @@ export interface WeekSpend {
 export interface SpendLedger {
   readonly config: SpendConfig;
   /** Reserves before a paid request. Throws when the ledger cannot answer: then the request is not sent. */
-  reserve(input: { id: string; charge: Charge; callId?: string | null; what: SpendWhat; micros: number; force?: boolean }): Promise<Reservation>;
+  reserve(input: { id: string; charge: Charge; callId?: string | null; budgetKey?: string; what: SpendWhat; micros: number; force?: boolean }): Promise<Reservation>;
+  /** Rechecks a voice block immediately before network dispatch. Other reservations remain admitted. */
+  canSend(id: string): boolean;
   /** Settles with the actual cost in micros, or null when it is not known. Throws when the ledger cannot answer. */
   settle(id: string, micros: number | null): Promise<void>;
   /** Settles with the actual cost in US dollars, or null when it is not known. */
@@ -163,11 +167,11 @@ export interface SpendLedger {
   /** Whether new paid work may start for this charge. Never throws: a ledger that cannot be read is "paused". */
   state(charge: Charge): Promise<SpendState>;
   /**
-   * The budget block of a voice call (src/lib/maya-spend-block.ts, latency plan V1): one per call id in this process.
-   * While it exists, the call's model and review attempts of the same charge (`reserve` with its `callId`, no `force`)
+   * The budget block of a voice call (src/lib/maya-spend-block.ts, latency plan V1): one active generation per call id.
+   * While it exists, the call's model and review attempts of the same charge (`reserve` with its `budgetKey`, no `force`)
    * are paid from it in memory, and their settles add their costs to it; the safety read (forced) never is.
    */
-  block(input: { charge: Charge; callId: string; newId: () => string }): CallBudget;
+  block(input: { charge: Charge; callId: string; budgetKey?: string; newId: () => string }): CallBudget;
   /** The child's week for Parent home and the desk. Throws when the ledger cannot answer. */
   week(input: { parentId: string; childId: string }): Promise<WeekSpend>;
 }
@@ -240,16 +244,18 @@ export function createSpendLedger(seams: SpendSeams): SpendLedger {
 
   const sameCharge = (a: Charge, b: Charge) => a.kind === b.kind && a.parentId === b.parentId && a.childId === b.childId;
   /** The budget blocks of voice calls in this process, by call id. */
-  const budgets = new Map<string, { charge: Charge; budget: CallBudget }>();
+  const budgets = new Map<string, { charge: Charge; budgetKey?: string; budget: CallBudget }>();
   /** A request's own reservation id, to the attempt it took from a block: its settle goes to the block. */
   const fromBlock = new Map<string, { budget: CallBudget; handle: Handle }>();
 
   const ledger: SpendLedger = {
     config,
-    async reserve({ id, charge, callId = null, what, micros, force = false }) {
+    async reserve({ id, charge, callId = null, budgetKey, what, micros, force = false }) {
       if (!Number.isSafeInteger(micros) || micros < 0) throw new Error("maya spend: a reservation is whole micro-units");
       if (fromBlock.has(id)) return { ok: true };
       const held = !force && callId !== null && (what === "model" || what === "review") ? budgets.get(callId) : undefined;
+      if (held && (!sameCharge(held.charge, charge) || budgetKey !== held.budgetKey)) return { ok: false, state: "paused" };
+      if (!force && budgetKey !== undefined && !held && (what === "model" || what === "review")) return { ok: false, state: "paused" };
       if (held && sameCharge(held.charge, charge)) {
         // A voice call's attempt: paid from its block in memory, with no database request. The turn's admitted attempt
         // first; at an allowance of 0 the block tries its refill, and a refusal sends nothing.
@@ -266,6 +272,10 @@ export function createSpendLedger(seams: SpendSeams): SpendLedger {
         return { ok: true };
       }
       return write({ id, charge, callId, what, micros, force });
+    },
+    canSend(id) {
+      const attempt = fromBlock.get(id);
+      return !attempt || attempt.budget.canSend(attempt.handle);
     },
     settle(id, micros) {
       const b = fromBlock.get(id);
@@ -285,15 +295,17 @@ export function createSpendLedger(seams: SpendSeams): SpendLedger {
       }
       return settled(id, usd === null ? null : usdToMicros(usd, config));
     },
-    block({ charge, callId, newId }) {
+    block({ charge, callId, budgetKey, newId }) {
       const known = budgets.get(callId);
-      if (known) return known.budget;
+      if (known && known.budgetKey === budgetKey && sameCharge(known.charge, charge)) return known.budget;
+      // A replacement owns new room. The obsolete handle can retire only the budget it already holds.
+      void known?.budget.stop();
       const budget = createBudget({
         modelMicros: room, reviewMicros: usdToMicros(RESERVE_USD.review, config), usdToMicros: (usd) => usdToMicros(usd, config), clock, newId,
         reserve: (id, micros) => write({ id, charge, callId, what: "model", micros, force: false }),
         settle: (id, micros) => settled(id, micros),
       });
-      budgets.set(callId, { charge, budget });
+      budgets.set(callId, { charge, budgetKey, budget });
       return budget;
     },
     async state(charge) {
@@ -319,6 +331,8 @@ export function createSpendLedger(seams: SpendSeams): SpendLedger {
 
 /** A voice call's speech-to-text and voice, reserved and counted as the call runs. */
 export interface VoiceMeter {
+  /** Current admitted STT coverage, without I/O. Null requires a fresh reservation before teaching. */
+  state(): SpendState | null;
   /**
    * Reserves the next speech-to-text block when the current one is close to its end. One at a time: checks that come
    * together share one block. "open", or why no more may be reserved. After `stop`, it reserves nothing.
@@ -336,8 +350,8 @@ export interface CallSpend {
   /** Whether the call may make its next paid request. Never throws. */
   state(call: SpendCall): Promise<SpendState>;
   /**
-   * A voice call's budget block (src/lib/maya-spend-block.ts): the same one for the same call id. The call's metered
-   * model client must use this same ledger, so its attempts are paid from the block.
+   * A voice handle's budget block (src/lib/maya-spend-block.ts): the same one for its call id and budgetKey. The call's
+   * metered model client must use this same ledger and budgetKey, so its attempts are paid from the owned block.
    */
   budget(call: SpendCall): CallBudget;
   /** The voice meter of a voice call. */
@@ -348,11 +362,12 @@ export function callSpend(ledger: SpendLedger, seams: { clock: () => number; new
   return {
     ledger,
     state: (call) => ledger.state(chargeOf(call)),
-    budget: (call) => ledger.block({ charge: chargeOf(call), callId: call.id, newId: seams.newId }),
+    budget: (call) => ledger.block({ charge: chargeOf(call), callId: call.id, budgetKey: call.budgetKey, newId: seams.newId }),
     voice(call) {
       const charge = chargeOf(call);
       const perMs = ledger.config.sttUsdPerMinute / 60_000;
       let block: { id: string; from: number } | null = null;
+      let coveredUntil = 0;
       let refused: "week_used" | "paused" | null = null;
       let stopped = false;
       const counting = new Set<Promise<void>>();
@@ -369,6 +384,7 @@ export function callSpend(ledger: SpendLedger, seams: { clock: () => number; new
         await ledger.settleUsd(b.id, Math.max(0, at - b.from) * perMs);
       };
       return {
+        state: () => stopped ? "paused" : refused ?? (seams.clock() < coveredUntil ? "open" : null),
         ensure: () => inOrder(async (): Promise<SpendState> => {
           if (refused) return refused;
           if (stopped) return "open";
@@ -397,9 +413,11 @@ export function callSpend(ledger: SpendLedger, seams: { clock: () => number; new
               return refused;
             }
             block = { id, from: now };
+            coveredUntil = now + VOICE_BLOCK_MS;
             return "open";
           } catch (e) {
             console.error("[maya spend] speech-to-text not reserved", call.id, e instanceof Error ? e.message : String(e));
+            refused = "paused";
             if (!block) await tail();
             return "paused";
           }

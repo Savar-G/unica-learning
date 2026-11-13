@@ -849,11 +849,11 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
   }
 
   /** A call's text session. Admin test calls have free talk on (D-197), with the model's review; chat has it off. A resumed call keeps its flag. */
-  function textSession(record: Pick<CallRecord, "id" | "parentId" | "childId"> & { kind: CallKind }, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number, grade?: number, confirmWorkbook?: boolean, onGuidance?: (output: TextOutput) => void, sayHooks?: Pick<TextSessionOptions, "onSayPart" | "onSayCancel" | "onSayEnd">): TextSession {
+  function textSession(record: Pick<CallRecord, "id" | "parentId" | "childId"> & { kind: CallKind }, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number, grade?: number, confirmWorkbook?: boolean, onGuidance?: (output: TextOutput) => void, sayHooks?: Pick<TextSessionOptions, "onSayPart" | "onSayCancel" | "onSayEnd">, spend?: SpendCall): TextSession {
     return createTextSession({
       onGuidance, ...sayHooks,
       callId: record.id, channel: record.kind === "chat" ? "chat" : undefined, package: pkg, model, clock: seams.clock, random: seed, history, childName, runner: "text", resume: saved, limitMs, grade, confirmWorkbook,
-      freeTalk: record.kind !== "chat" && record.kind !== "family", reviewer: seams.reviewer?.(model.id, spendCall(record)) ?? null,
+      freeTalk: record.kind !== "chat" && record.kind !== "family", reviewer: seams.reviewer?.(model.id, spend ?? spendCall(record)) ?? null,
     });
   }
 
@@ -1108,7 +1108,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       // as turns can overlap (a silence check-in and a child turn); one shared flag lost a refusal (latency plan V1).
       let refusals = 0;
       let lastRefusal: Exclude<SpendState, "open"> = "week_used";
-      const asked = found.live.text.session.outcome ? idleModel(found) : seams.model(found.model, spendCall(found));
+      const voiceSpend: SpendCall = { ...spendCall(found), budgetKey: seams.newId() };
+      const asked = found.live.text.session.outcome ? idleModel(found) : seams.model(found.model, voiceSpend);
       if (!asked) return { ok: false, error: "model_unavailable" };
       const model = watched(asked, (state) => { refusals++; lastRefusal = state; });
       const restored = structuredClone(found.live.text);
@@ -1121,10 +1122,10 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       let record: CallRecord = { ...found, ...claim, revision: found.revision + 1 };
       const pkg = found.live.package;
       // The call's speech-to-text and voice in the spending ledger (D-290).
-      const meter: VoiceMeter | null = seams.spend ? seams.spend.voice(spendCall(record)) : null;
+      const meter: VoiceMeter | null = seams.spend ? seams.spend.voice(voiceSpend) : null;
       // The call's model attempts are paid from its budget block (src/lib/maya-spend-block.ts, latency plan V1): the first
       // block is reserved now, in the background; the first turn waits for it only if it has not answered.
-      const budget: CallBudget | null = seams.spend ? seams.spend.budget(spendCall(record)) : null;
+      const budget: CallBudget | null = seams.spend ? seams.spend.budget(voiceSpend) : null;
       void budget?.open();
       // For the Maya lead's prepare-then-commit seam: the text session gets `budget.seam` (BlockSeam) once its options
       // have a `spend` field. Not passed yet: this base's TextSessionOptions has none.
@@ -1144,7 +1145,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         onSayPart: (sentence, index) => listener?.part?.(sentence, index),
         onSayCancel: (fromIndex) => listener?.cancel?.(fromIndex),
         onSayEnd: () => listener?.end?.(),
-      });
+      }, voiceSpend);
       told = session.trace().turns.length;
       const last = restored.turns.at(-1);
       const pendingFinal: VoiceTurn | null = restored.session.outcome ? record.live?.pendingVoice ?? {
@@ -1230,7 +1231,17 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         return words.length ? words.join(" ") : undefined;
       };
       /** Speech-to-text reserved ahead (its own requests, only when its block is near its end). */
-      const sttNow = async (): Promise<SpendState> => (meter ? meter.ensure() : "open");
+      const sttNow = async (): Promise<SpendState> => {
+        if (!meter) return "open";
+        const current = meter.state();
+        if (current !== null) {
+          // Keep valid admitted coverage while renewal runs on the worker's timer or beside this turn.
+          if (current === "open") void meter.ensure();
+          return current;
+        }
+        const renewed = await meter.ensure();
+        return renewed === "open" ? meter.state() ?? "paused" : renewed;
+      };
       /** After a turn: speech-to-text, then the block (in memory unless its allowance is 0; then its refill decides). */
       const capAfterTurn = async (): Promise<SpendState> => {
         const stt = await sttNow();
@@ -1241,8 +1252,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         let closed: Awaited<ReturnType<typeof closeAtCap>> = null;
         later(async () => {
           if (lost || record.status === "ended" || !record.live) return;
-          // The block pays for no more: it is settled with its real total, before the call's end reads the cap.
-          await budget?.stop();
+          // Close admission synchronously. A held settlement cannot delay the forced safety read or guidance.
+          void budget?.stop();
           closed = await closeAtCap(record, state, name, connected, childText);
           if (!closed) { lost = true; replaced = true; }
           else record = closed.record;
@@ -1427,8 +1438,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
             // Restore only accepted, saved work. An outstanding model answer cannot delay the deadline.
             const final = textSession(record, pkg, idleModel(record), name, record.live.text);
             await final.tick();
-            // The block is settled with its real total before the call's end reads the cap (its profile rebuild).
-            await budget?.stop();
+            void budget?.stop();
             const ended = await end(record, pkg, final, {}, connected, record.startedAt === null);
             if (!ended) { lost = true; replaced = true; }
             else record = ended;
@@ -1464,11 +1474,11 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         },
         spoken: (text) => meter?.spoken(text) ?? Promise.resolve(),
         async end(how) {
+          // Stop admissions before waiting for a save or the STT meter.
+          const settledBudget = budget?.stop();
           await queue;
           await meter?.stop();
-          // Every block is settled with its real total; the unused room goes back to the week.
-          await budget?.stop();
-          if (lost) return;
+          if (lost) { await settledBudget; return; }
           if (record.status === "live") {
             later(async () => {
               // A fatal close or hang-up must not wait for an unfinished model turn.
@@ -1483,6 +1493,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
             });
           }
           await queue;
+          await settledBudget;
         },
         settled: () => queue,
       };

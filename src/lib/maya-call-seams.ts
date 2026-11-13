@@ -42,7 +42,7 @@ const siteOrigin = (env: Env) => env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/+$/
  * OPENROUTER_API_KEY is set, else the fake rule player); an id asks for that model again, or null when it is gone.
  */
 export function callModel(id: string | null, env: Env = process.env, metered?: { ledger: SpendLedger; call: SpendCall; newId: () => string; safetyRead?: boolean }): MayaModel | null {
-  const client = metered ? meteredClient(env, metered.ledger, { charge: chargeOf(metered.call), callId: metered.call.id, newId: metered.newId, safetyRead: metered.safetyRead }, "model") : mayaAiClient(env);
+  const client = metered ? meteredClient(env, metered.ledger, { charge: chargeOf(metered.call), callId: metered.call.id, budgetKey: metered.call.budgetKey, newId: metered.newId, safetyRead: metered.safetyRead }, "model") : mayaAiClient(env);
   if (id === null) return client ? conversationalMayaModel(client) : ruleConversationalModel();
   if (id === FAKE_MODEL_ID) return ruleConversationalModel();
   return client && client.model === id ? conversationalMayaModel(client) : null;
@@ -55,7 +55,7 @@ export function callModel(id: string | null, env: Env = process.env, metered?: {
 export function callReviewer(modelId: string, env: Env = process.env, metered?: { ledger: SpendLedger; call: SpendCall; newId: () => string }): TalkReviewer | null {
   if (modelId === FAKE_MODEL_ID) return null;
   const model = env.MAYA_REVIEW_MODEL?.trim() || REVIEW_DEFAULT_MODEL;
-  const client = metered ? meteredClient(env, metered.ledger, { charge: chargeOf(metered.call), callId: metered.call.id, newId: metered.newId }, "review", model) : mayaAiClient(env, model);
+  const client = metered ? meteredClient(env, metered.ledger, { charge: chargeOf(metered.call), callId: metered.call.id, budgetKey: metered.call.budgetKey, newId: metered.newId }, "review", model) : mayaAiClient(env, model);
   return client ? aiTalkReviewer(client) : null;
 }
 
