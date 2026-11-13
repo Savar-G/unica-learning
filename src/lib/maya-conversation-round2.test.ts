@@ -90,7 +90,7 @@ describe("A: the first sentence streams as it arrives", () => {
     const { session, atEnd, parts } = streamed(() => reply("Let's look at the ones. The answer is 24. What is on top?", "guide", { step: "ones" }));
     await session.start();
     parts.length = 0;
-    const out = await session.child("Okay.");
+    const out = await session.child("Let's do it.");
     expect(atEnd[0].map(([x]) => x)).toEqual(["Let's look at the ones."]);
     // The failing middle sentence is never said; the closing question still follows what was sent.
     expect(out.say).toEqual(["Let's look at the ones. What is on top?"]);
@@ -99,7 +99,7 @@ describe("A: the first sentence streams as it arrives", () => {
     const { session, atEnd, parts } = streamed(() => reply("Let's look at the ones together.", "accept_answer"));
     await session.start();
     parts.length = 0;
-    const out = await session.child("Okay.");
+    const out = await session.child("Let's do it.");
     expect(atEnd[0].map(([x]) => x)).toEqual(["Let's look at the ones together."]);
     expect(out.say[0].startsWith("Let's look at the ones together. ")).toBe(true);
     expect(sources(lastMaya(session))).toEqual(["model", "fallback"]);
