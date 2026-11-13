@@ -4676,6 +4676,7 @@ function sayRules(before: Session, after: Session, p: Proposal, planned: string)
     forbidden, answer, hidden,
     wrong: released ? [] : wrong,
     mustAsk: asked,
+    confirming: asked,
     // The prompt asks for about 30 words (SAY_WORDS); the check allows a few more before it refuses.
     wordLimit: before.shorter ? 25 : show ? 45 : 35,
     noBoard: after.noBoard === true,

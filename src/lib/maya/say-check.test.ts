@@ -92,6 +92,11 @@ describe("checkSay", () => {
       expect(checkSay(text, open)).toMatchObject({ ok: false, reason: "reveals_step" });
     }
     expect(checkSay("What is 4 minus 2?", open).ok).toBe(true);
+    expect(checkSay("What is 4 minus 2 in the tens?", open).ok).toBe(true);
+    expect(checkSay("What is 2 for the tens minus 4?", open)).toMatchObject({ ok: false, reason: "reveals_step" });
+    const confirm = { ...open, mustAsk: numberValue(2), confirming: numberValue(2) };
+    expect(checkSay("Did you say 2 for the tens?", confirm).ok).toBe(true);
+    expect(checkSay("Write 2?", confirm)).toMatchObject({ ok: false, reason: "reveals_step" });
     const one = { ...open, openSteps: [{ operands: valuesOf("4 2"), result: numberValue(1), current: true }] };
     expect(checkSay("Write one.", one)).toMatchObject({ ok: false, reason: "reveals_step" });
     expect(checkSay("Write one hundred.", one).ok).toBe(true);

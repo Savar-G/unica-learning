@@ -250,6 +250,10 @@ describe("round 4 re-review: statements, place results and names", () => {
       "The digit to write is 2. What is the whole answer?",
       "2 goes in the tens. What is the whole answer?",
       "Use 2 for the tens. What is the whole answer?",
+      "Write the tens digit as 2. Write the ones digit as 4. What is the whole answer?",
+      "Write the tens as 2. What is the whole answer?",
+      "Write in 2. What is the whole answer?",
+      "The tens should be 2. What is the whole answer?",
     ])("keeps an open place result hidden, stream=" + stream + ": %s", async (bad) => {
       const c = call((b) => /12 minus 8/.test(b.childTurn ?? "")
         ? reply("Yes, 12 minus 8 is 4. What is 4 minus 2?", "guide", { step: "tens", reading: { answers: [ans(4, "ones")] } })

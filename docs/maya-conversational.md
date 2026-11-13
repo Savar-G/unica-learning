@@ -69,6 +69,8 @@ The review at `50ed9178` found four defects through the public text adapter. The
 
 An uncredited place's result stays hidden even when its digit is also a printed operand. The checks read place declarations in either order, the whole reply and each streaming prefix. A final answer cannot be disclosed one place per sentence.
 
+The literal current open result is withheld across all wordings. The only exceptions are a complete question made from that step's operands and a confirmation of a value code heard from the child. This also applies to prepared replies at commit. A writing instruction cannot bypass the rule by moving the destination before the value.
+
 Model briefs and review inputs now use the same Unicode name filter as parent notes. The filter has no AI or note dependency. It covers accented, decomposed, full-width and unspaced names. These repairs have synthetic public-interface tests. They need the final practice pass and live checks before release.
 
 ## Prepared replies (C2)

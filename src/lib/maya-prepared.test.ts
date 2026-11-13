@@ -75,6 +75,24 @@ describe("prepare then commit", () => {
       expect(model.briefs).toHaveLength(0);
     }
   });
+  it.each([false, true])("keeps destination-first assignments out of a prepared hit, stream=%s", async (stream) => {
+    const bad = "Write the tens digit as 2. Write the ones digit as 4. What is the whole answer?";
+    const spoken: string[] = [];
+    const model = conversationalFake({ answer: (brief) => /12 minus 8/.test(brief.childTurn ?? "")
+      ? reply("Yes, 12 minus 8 is 4. What is 4 minus 2?", "guide", { step: "tens", reading: { answers: [{ value: { type: "number", value: 4 }, step: "ones", problem: "target", verdict: "right" }] } })
+      : reply(bad, "guide", { step: "tens" }), ...(stream ? { stream: { chunk: 5 } } : {}) });
+    const { session } = setup({ model, ...(stream ? { onSayPart: (text) => spoken.push(text) } : {}) });
+    await session.start();
+    await session.child("12 minus 8 is 4.");
+    spoken.length = 0;
+    expect(session.prepare("5")).toBe(true);
+    const out = await session.child("5");
+    expect(out.prepared).toBe("hit");
+    expect(out.say.join(" ")).not.toContain(bad);
+    expect(spoken.join(" ")).not.toMatch(/tens digit as 2/);
+    expect(session.session.done).toEqual(["ones"]);
+    await session.finish();
+  });
   it("starts at most three requests in one turn and shares equal keys", async () => {
     const { session, model } = setup();
     await session.start();

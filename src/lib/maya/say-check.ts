@@ -55,6 +55,8 @@ export interface SayRules {
   wrong: readonly SayValue[];
   /** A confirmation must ask about exactly this value. */
   mustAsk?: SayValue | null;
+  /** Code authorized confirmation of this heard value. Kept when a streaming prefix has no completeness check. */
+  confirming?: SayValue | null;
   /** Most words in the reply. */
   wordLimit: number;
   /** The child cannot see the board. */
@@ -416,17 +418,29 @@ function placed(text: string): [number, string][] {
   return out;
 }
 
-/** Values directly assigned by an instruction. A printed operand is not permission to write an open result. */
-function assignedValues(text: string): SayValue[] {
-  const prefix = /\b(?:write|put|record|enter|place|mark|set|say|fill(?: in)?)\s+(?:down\s+)?(?:(?:the|a)\s+)?(?:(?:number|digit|answer|result)\s+)?["']?\s*$/i;
-  const resultPrefix = /\b(?:(?:answer|result|digit|number)(?:\s+to\s+(?:write|put|record|enter))?\s+(?:is|equals|would be|should be|will be|must be)|you\s+(?:get|got)|it(?:'s| is)|that(?:'s| is))\s+["']?\s*$/i;
-  const suffix = /^\s+(?:goes|belongs|is written|is placed|is put)\s+(?:in|into|for|as)\b/i;
-  const assigns = (at: number, end: number) => prefix.test(text.slice(0, at)) || resultPrefix.test(text.slice(0, at)) || suffix.test(text.slice(end));
+/** Literal values, including "one" when it is not part of a larger number or fraction. */
+function literalValues(text: string): SayToken[] {
   const tokens = sayNumbers(text);
-  const assigned = tokens.filter((token) => assigns(token.at, token.end));
-  // sayNumbers leaves the counting word "one" out. An explicit instruction to write it still assigns the value 1.
-  const ones = [...text.matchAll(/\bone\b/gi)].filter((match) => !tokens.some((token) => token.at <= match.index && token.end > match.index) && assigns(match.index, match.index + match[0].length));
-  return [...assigned, ...ones.map(() => numberValue(1))];
+  const words = wordNumbers(text).filter((word) => !tokens.some((token) => token.at < word.end && token.end > word.at))
+    .map((word) => ({ ...numberValue(word.value), at: word.at, end: word.end, text: text.slice(word.at, word.end) }));
+  return [...tokens, ...words].sort((a, b) => a.at - b.at);
+}
+
+/** A whole question about the step's operands, with no supplied result or writing instruction. */
+function operandQuestion(text: string, values: readonly SayToken[], operands: readonly SayValue[]): boolean {
+  const start = /^\s*(?:(?:(?:now|next|in|for)\s+)?(?:the\s+)?(?:ones|tens|hundreds|thousands)[:,]\s*)?what\s+(?:is|are)\s+/i.exec(text);
+  if (!start || values.length < 2 || values.length !== operands.length || text.slice(start[0].length, values[0].at).trim()) return false;
+  for (let i = 1; i < values.length; i++) {
+    if (!/^\s*(?:plus|minus|times|divided by|take away|[+×÷−-])\s*$/i.test(text.slice(values[i - 1].end, values[i].at))) return false;
+  }
+  if (!/^\s*(?:(?:in|for)\s+(?:the\s+)?(?:ones|tens|hundreds|thousands))?\s*\?\s*$/i.test(text.slice(values.at(-1)!.end))) return false;
+  const remaining = [...values];
+  for (const value of operands) {
+    const at = remaining.findIndex((candidate) => sameSayValue(candidate, value));
+    if (at === -1) return false;
+    remaining.splice(at, 1);
+  }
+  return true;
 }
 
 /** Words that mark an answer right or a step done. */
@@ -485,12 +499,15 @@ export function checkSentence(sentence: string, rules: SayRules, index = 0): Say
   const tokens = sayNumbers(text);
   if ((rules.openSteps ?? []).some((st) => stepLeak(tokens, st))) return no("reveals_step", `"${sentence}" works out a step the child has not done: never say its result.`);
   const places = placed(text);
-  const assigned = assignedValues(text);
-  if ((rules.openSteps ?? []).some((st) => (st.current || (st.place && new RegExp(`\\b${st.place}\\b`, "i").test(text))) && assigned.some((value) => sameSayValue(value, st.result)))) {
-    return no("reveals_step", `"${sentence}" assigns a result the child has not found yet.`);
-  }
-  if ((!question || tokens.length === 1) && (rules.openSteps ?? []).some((st) => st.place && places.some(([n, p]) => p === st.place && sameSayValue(numberValue(n), st.result)))) {
-    return no("reveals_step", `"${sentence}" states the result of a place the child has not done.`);
+  const literal = literalValues(text);
+  for (const st of rules.openSteps ?? []) {
+    if (!literal.some((value) => sameSayValue(value, st.result))) continue;
+    if (!st.current && !(st.place && new RegExp(`\\b${st.place}\\b`, "i").test(text))) continue;
+    const heard = rules.confirming ?? rules.mustAsk;
+    const confirmation = heard && question && sameSayValue(heard, st.result) && literal.every((value) => sameSayValue(value, heard)) && /^(?:did you say|are you saying|do you mean)\b/i.test(text.trim());
+    if (!confirmation && !operandQuestion(text, literal, st.operands)) {
+      return no("reveals_step", `"${sentence}" states or assigns a result the child has not found yet. Ask only about the step's operands.`);
+    }
   }
   if (rules.answerPlaces?.length && rules.answerPlaces.every(([d, p]) => places.some(([n, q]) => n === d && q === p))) {
     return no("reveals_answer", `"${sentence}" says the answer as its places: the child has not found it yet.`);
