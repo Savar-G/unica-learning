@@ -32,7 +32,7 @@ import { boardAudio, countedSynthesis, type SilentSpeech } from "./speech-audio"
 import { VOICE_METER_TICK_MS } from "@/lib/maya-spend";
 import { limitsOf, sentencesOf } from "@/lib/maya";
 import { asksForNumber, CONNECTION_RENEW_MS, childTurnFrom, endsInOpenNumber, GREETING_ID, GREETING_TEXT, nextTickAt, RECONNECT_GRACE_MS, type Heard, type TurnSilence, type VoiceTuning } from "@/lib/maya-voice";
-import { ACK_HOLD_LIMIT_MS, ACK_LIMIT_MS, ACK_PHRASES, nextAcknowledgement } from "@/lib/maya-voice-ack";
+import { ACK_HOLD_LIMIT_MS, ACK_LIMIT_MS, ACK_NOT_STREAMED_MS, ACK_PHRASES, nextAcknowledgement } from "@/lib/maya-voice-ack";
 import { TurnClock, type AckSkip, type HeardMarks, type TurnOutcome, type VoiceTurnSample } from "./turn-timing";
 
 const userTexts = (ctx: llm.ChatContext) =>
@@ -270,7 +270,9 @@ interface TurnPace {
   /** This turn's sample was taken (at the answer's first sound, or when it closed). */
   measured: boolean;
   /** What the call said of the turn before any model call (VoiceSay.begun); null until then. */
-  plan: { model: boolean; streams: boolean } | null;
+  plan: { model: boolean; streams: boolean; conversational: boolean } | null;
+  /** When the thinking phrase is due for a turn that can stream (the turn's clock); null: no phrase. */
+  ackLimitAt: number | null;
 }
 
 /**
@@ -365,7 +367,7 @@ export class VoiceCallRun {
       board?: BoardSpeech;
       notify(update: CallUpdate): void;
       closed?(): Promise<void>;
-      /** The child's end of speech to the acknowledgement. Default ACK_LIMIT_MS; 0 turns it off. */
+      /** The turn reaching the worker to the acknowledgement, for a turn that can stream. Default ACK_LIMIT_MS; 0 turns it off. */
       ackLimitMs?: number;
       /** One sample per child turn (./turn-timing.ts). */
       measureTurn?(sample: VoiceTurnSample): void;
@@ -575,14 +577,14 @@ export class VoiceCallRun {
     const pace: TurnPace = {
       clock: new TurnClock(this.timers.now, speechEndedAt, heardAt, heard), generation: this.generation,
       writable: true, ready: false, closed: false, handle: this.speech, guided: false, ackStopped: false, ackWritten: false, ownSpeech: false, limit: null, hold: null, ack: null, ackOver: null, write: () => {}, end: () => {},
-      early: noEarly(), measured: false, plan: null,
+      early: noEarly(), measured: false, plan: null, ackLimitAt: null,
     };
     this.pace = pace;
     return new ReadableStream<string | FlushSentinel>({
       start: controller => {
         pace.write = chunk => { if (pace.writable) controller.enqueue(chunk); };
         pace.end = () => { if (pace.writable) { pace.writable = false; controller.close(); } };
-        this.runTurn(pace, speechEndedAt, work).then(
+        this.runTurn(pace, heardAt, work).then(
           () => pace.end(),
           error => {
             pace.early.closed = true;
@@ -602,14 +604,26 @@ export class VoiceCallRun {
     });
   }
 
-  private async runTurn(pace: TurnPace, speechEndedAt: number, work: (say: VoiceSay) => Promise<VoiceTurn[]>) {
+  /** The thinking phrase starts at `at` (the turn's clock), unless the turn is ready or a sentence came first. */
+  private ackAt(pace: TurnPace, at: number) {
+    this.clearLimit(pace);
+    if (pace.ready || pace.early.said.length || pace.early.waiting.length || pace.ack) return;
+    pace.limit = this.timers.set(at - this.timers.now(), () => {
+      pace.limit = null;
+      pace.ack = this.acknowledge(pace);
+    });
+  }
+
+  /**
+   * The limit counts from when the worker has the turn (`heardAt`), not from the child's end of speech: a turn the
+   * speech-to-text held would otherwise start its phrase at once, and the answer would wait for the phrase. Once the
+   * call says what the turn is (VoiceSay.begun): no model call (a thinking child, an ended call) means no phrase; a
+   * conversational reply that cannot stream gets the phrase at once, as it takes 2 to 5 s.
+   */
+  private async runTurn(pace: TurnPace, heardAt: number, work: (say: VoiceSay) => Promise<VoiceTurn[]>) {
     const limit = this.options.ackLimitMs ?? ACK_LIMIT_MS;
-    if (limit > 0) {
-      pace.limit = this.timers.set(speechEndedAt + limit - this.timers.now(), () => {
-        pace.limit = null;
-        pace.ack = this.acknowledge(pace);
-      });
-    }
+    pace.ackLimitAt = limit > 0 ? heardAt + limit : null;
+    if (pace.ackLimitAt !== null) this.ackAt(pace, pace.ackLimitAt);
     let turns: VoiceTurn[];
     try { turns = await work(this.listen(pace)); }
     finally {
@@ -657,7 +671,14 @@ export class VoiceCallRun {
   private listen(pace: TurnPace): VoiceSay {
     const early = pace.early;
     return {
-      begun: (plan) => { pace.plan = plan; },
+      begun: (plan) => {
+        pace.plan = plan;
+        if (pace.ackLimitAt === null) return;
+        // No model call: the child is thinking ("um"), or the call ended. No phrase (D-341, the patient line is code's).
+        if (!plan.model) return this.clearLimit(pace);
+        // A conversational reply that cannot stream takes 2 to 5 s: the phrase comes at once.
+        if (plan.conversational && !plan.streams) this.ackAt(pace, this.timers.now() + ACK_NOT_STREAMED_MS);
+      },
       part: (sentence, index) => {
         if (early.closed) return;
         // No thinking phrase starts once a sentence has come.

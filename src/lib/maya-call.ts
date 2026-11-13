@@ -428,12 +428,12 @@ export interface VoiceTurn {
  * The worker's ear on one child turn while it runs (D-341, the streaming contract of src/lib/maya-text.ts). `begun`
  * comes once, when the child's words reached the session and before any model call: `model` false when no model call
  * is made (a thinking turn, a call that ended), `streams` false when the reply cannot stream, so its first words wait for
- * the whole reply. `part` gives each checked sentence in index order, once; a sentence given is never taken back.
+ * the whole reply (`conversational` false: a version 2 model, which never streams). `part` gives each checked sentence in index order, once; a sentence given is never taken back.
  * `cancel(fromIndex)` drops sentences from that index that were not given yet; `end` ends the output. The finished
  * turn (`VoiceTurn.say`) holds the same sentences in the same order, then any that follow.
  */
 export interface VoiceSay {
-  begun?(plan: { model: boolean; streams: boolean }): void;
+  begun?(plan: { model: boolean; streams: boolean; conversational: boolean }): void;
   part?(sentence: string, index: number): void;
   cancel?(fromIndex: number): void;
   end?(): void;
@@ -1231,7 +1231,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       const planOf = () => {
         const s = session.session;
         const asks = s.outcome === null && nextActs(s).expect === "maya";
-        return { model: asks, streams: asks && model.output === 3 && streamRules(s) !== null };
+        return { model: asks, conversational: model.output === 3, streams: asks && model.output === 3 && streamRules(s) !== null };
       };
       const turn = async (run: () => Promise<TextOutput>, childText?: string, say?: VoiceSay): Promise<VoiceTurn> => {
         if (inactive()) return none;

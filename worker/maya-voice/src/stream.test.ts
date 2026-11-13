@@ -1,5 +1,6 @@
 import { ReadableStream, type ReadableStreamDefaultController } from "node:stream/web";
-import { initializeLogger, voice } from "@livekit/agents";
+import { EventEmitter } from "node:events";
+import { initializeLogger, normalizeLanguage, stt, voice } from "@livekit/agents";
 import { AudioFrame } from "@livekit/rtc-node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Batch } from "@/lib/board";
@@ -16,7 +17,7 @@ import type { MayaModel, TurnBrief } from "@/lib/maya-model";
 import { reply, ruleConversationalModel } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { voiceProviders } from "@/lib/maya-voice";
-import { ACK_PHRASES } from "@/lib/maya-voice-ack";
+import { ACK_LIMIT_MS, ACK_PHRASES } from "@/lib/maya-voice-ack";
 import { spokenMath } from "@/lib/maya-voice-spoken";
 import type { QuestionPackage } from "@/lib/question-package";
 import { VoiceCallRun, voiceSession, type Timers } from "./agent";
@@ -104,7 +105,7 @@ function handClock() {
     }
     await new Promise<void>((resolve) => setImmediate(resolve));
   };
-  return { timers, advance };
+  return { timers, advance, move: (ms: number) => void vi.setSystemTime(Date.now() + ms) };
 }
 
 const waitFor = async (check: () => boolean, what: string) => {
@@ -160,7 +161,29 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 
-async function voiceCall(options: { model: MayaModel; ackLimitMs?: number }) {
+/** A speech-to-text the test drives one event at a time. */
+class ProbeSTT extends stt.STT {
+  label = "probe.STT";
+  events = new EventEmitter();
+  constructor() { super({ streaming: true, interimResults: true }); }
+  async _recognize(): Promise<stt.SpeechEvent> { throw new Error("stream only"); }
+  stream() { return new ProbeStream(this); }
+  send(type: stt.SpeechEventType, text = "") {
+    this.events.emit("event", { type, ...(text ? { alternatives: [{ language: normalizeLanguage("en"), text, startTime: 0, endTime: 0, confidence: 0.95 }] } : {}) });
+  }
+}
+class ProbeStream extends stt.SpeechStream {
+  label = "probe.Stream";
+  constructor(readonly source: ProbeSTT) { super(source); }
+  async run() {
+    const put = (event: stt.SpeechEvent) => this.queue.put(event);
+    this.source.events.on("event", put);
+    try { for await (const frame of this.input) { void frame; if (this.abortSignal.aborted) break; } }
+    finally { this.source.events.off("event", put); }
+  }
+}
+
+async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; speech?: ProbeSTT; numberContinueMs?: number }) {
   const clock = handClock();
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
@@ -185,7 +208,7 @@ async function voiceCall(options: { model: MayaModel; ackLimitMs?: number }) {
   const opened = await calls.openVoice(started.view.id, config.ids, "Leah");
   if (!opened.ok) throw new Error(opened.error);
   const providers = await makeProviders(config, { fakeMsPerChar: 1 });
-  const session = voiceSession(providers, { endpointingMs: 20, aecWarmupDuration: 0 });
+  const session = voiceSession({ ...providers, stt: options.speech ?? providers.stt }, { endpointingMs: 20, aecWarmupDuration: 0 });
   const microphone = new SilentMicrophone();
   const speaker = new Speaker();
   session.input.audio = microphone;
@@ -195,7 +218,7 @@ async function voiceCall(options: { model: MayaModel; ackLimitMs?: number }) {
   const board = createBoardSpeech({ sender, now: () => Date.now(), observe: (snapshot) => opened.call.observeBoard(snapshot) });
   const samples: VoiceTurnSample[] = [];
   const run = new VoiceCallRun(session, opened.call, {
-    board, timers: clock.timers, notify: () => {}, measureTurn: (s) => samples.push(s), ackLimitMs: options.ackLimitMs ?? 0,
+    board, timers: clock.timers, notify: () => {}, measureTurn: (s) => samples.push(s), ackLimitMs: options.ackLimitMs ?? 0, numberContinueMs: options.numberContinueMs ?? 0,
   });
   await run.agentJoined();
   await session.start({ agent: run.agent });
@@ -474,5 +497,54 @@ describe("what is left of a turn after its early sentences (earlyRest)", () => {
     const rest = earlyRest([turn(["Other words. Then more."])], ["Said early."]);
     expect(rest.turns[0].say).toEqual(["Other words. Then more."]);
     expect(rest).toMatchObject({ differ: true, unmatched: ["Said early."] });
+  });
+});
+
+describe("when the thinking phrase comes (D-341)", () => {
+  it("counts its limit from when the worker has the turn, not from the child's end of speech", async () => {
+    const m = steppedModel((brief) => brief.childTurn === "I got fifty" ? reply(`${FIRST} ${SECOND}`, "guide", { step: brief.help.step, level: 0, reading: { answers: [{ value: { type: "number", value: 50 }, step: "result", problem: "target", verdict: "wrong" }] } }) : null);
+    // A number word that can go on ("fifty"): the worker holds the turn 1 s for more words before it answers.
+    const c = await voiceCall({ model: m.model, ackLimitMs: ACK_LIMIT_MS, numberContinueMs: 1000 });
+    const before = c.said().length;
+    c.say("I got fifty");
+    await pause();
+    await c.clock.advance(1000);
+    await waitFor(() => m.running, "the model call");
+    // From the child's end of speech the limit would end in 500 ms; from the turn reaching the worker, in 1500 ms.
+    await c.clock.advance(ACK_LIMIT_MS - 1);
+    await pause();
+    expect(c.said().slice(before).filter((t) => ACKS.has(t))).toEqual([]);
+    await c.clock.advance(1);
+    await waitFor(() => c.said().slice(before).some((t) => ACKS.has(t)), "the phrase at the limit");
+    m.finish();
+    await waitFor(() => c.samples.length === 1, "the sample");
+    expect(c.samples[0].parts?.heardMs).toBe(1000);
+  });
+
+  it("comes at once for a turn code knows will not stream (a request for help)", async () => {
+    const m = steppedModel((brief) => brief.childTurn === "Can you help me?" ? reply("Sure. Let's start with the ones.", "guide", { step: brief.help.step, level: 0, reading: { help: "more" } }) : null);
+    const c = await voiceCall({ model: m.model, ackLimitMs: ACK_LIMIT_MS });
+    const before = c.said().length;
+    c.say("Can you help me?");
+    await waitFor(() => m.running, "the model call");
+    await c.clock.advance(1);
+    await waitFor(() => c.said().slice(before).some((t) => ACKS.has(t)), "the phrase at once");
+    m.finish();
+    await waitFor(() => c.samples.length === 1, "the sample");
+    expect(c.samples[0].ack).not.toBeNull();
+  });
+
+  it("does not come for a child who is thinking: only code's patient line is said", async () => {
+    const m = steppedModel(() => null);
+    const c = await voiceCall({ model: m.model, ackLimitMs: ACK_LIMIT_MS });
+    const before = c.said().length;
+    c.say("Um, let me think.");
+    await waitFor(() => c.samples.length === 1, "the sample");
+    await c.clock.advance(ACK_LIMIT_MS * 3);
+    await pause();
+    const after = c.said().slice(before);
+    expect(after.filter((t) => ACKS.has(t))).toEqual([]);
+    expect(after).toEqual(["Take your time."]);
+    expect(m.asked).toBe(0);
   });
 });
