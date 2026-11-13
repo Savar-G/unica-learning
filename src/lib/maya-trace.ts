@@ -149,6 +149,8 @@ export interface TraceAttempt {
   reviewMs?: number;
   /** D-341: how long until the first sentence of this attempt was checked and streamed to the child, by the passed-in clock. */
   firstSayMs?: number;
+  /** Round 4: sentences of the model's reply its review did not pass: never said. */
+  dropped?: { text: string; reason: string }[];
   /**
    * The client read this proposal from inside one Markdown code fence (a request sent without `response_format`, first
    * ship practice at 6de7e777). Absent otherwise, and in traces from before. Counted by `fencedReplies`.

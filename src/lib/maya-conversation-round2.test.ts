@@ -103,7 +103,8 @@ describe("A: the first sentence streams as it arrives", () => {
     expect(atEnd[0].map(([x]) => x)).toEqual(["Let's look at the ones together."]);
     // What was sent already tells the child what to do about the step: code's line adds nothing after it.
     expect(out.say).toEqual(["Let's look at the ones together."]);
-    expect(sources(lastMaya(session))).toEqual(["model", "fallback"]);
+    // Round 4, P2-7: the words went out under code's own plan, so the turn is that plan, with no refusal and no fallback.
+    expect(sources(lastMaya(session))).toEqual(["model"]);
   });
   it("does not stream a personal sentence that is no strict reaction", async () => {
     const { session, atEnd, parts } = streamed(() => reply("Dogs are the best pets in the world. Let's look at the ones now.", "redirect", { reading: { offTopic: true } }));
@@ -231,7 +232,7 @@ describe("round 3: a guiding reply ends with a named question", () => {
 });
 
 describe("round 3: the review only where it is needed", () => {
-  it("a strict reaction and a math bridge need no review, and stream", async () => {
+  it("an exact safe sentence and a math bridge need no review and stream; any other reaction is reviewed (round 4, P1-2)", async () => {
     let now = T0;
     const parts: string[] = [];
     const reviewer = fakeTalkReviewer();
@@ -240,9 +241,8 @@ describe("round 3: the review only where it is needed", () => {
     await session.start();
     parts.length = 0;
     const out = await session.child("Do you like dogs? I have a dog named Max.");
-    expect(reviewer.requests).toHaveLength(0);
+    expect(reviewer.requests.map((r) => r.line)).toEqual(["Max sounds like a good name for a dog."]);
     expect(out.say).toEqual(["Max sounds like a good name for a dog. I'm an AI, so I have no pet. What can you do with the 2 and the 8?"]);
-    expect(parts[0]).toBe("Max sounds like a good name for a dog.");
   });
   it("any other reply to an off-topic turn is reviewed", async () => {
     const { session } = call(() => reply("Dogs are the best pets in the world. Let's get back to the ones.", "redirect", { reading: { offTopic: true } }));

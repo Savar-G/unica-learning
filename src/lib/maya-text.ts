@@ -32,9 +32,10 @@ import {
   fallbacks,
   nextActs,
   step,
-  streamRules,
-  streamSentenceOk,
-  withoutName,
+  streamPlan,
+  streamSentence,
+  codeStance,
+  fillName,
   clearStop,
   LINES_VERSION,
   PROPOSAL_VERSION,
@@ -51,13 +52,15 @@ import { sentencesOf } from "@/lib/maya/say-check";
  * The `say` string at the start of a version 3 reply as it streams in (D-341: `say` is the first key): its text so far,
  * with JSON escapes read, and whether its closing quote has come. Null before the key.
  */
-export function partialSay(soFar: string): { text: string; complete: boolean } | null {
-  const m = /^\s*\{\s*"say"\s*:\s*"/.exec(soFar);
+export function partialSay(soFar: string): { text: string; complete: boolean; kind: string | null } | null {
+  // Round 4, P2-7: "kind" may come first; "say" follows it.
+  const m = /^\s*\{\s*(?:"kind"\s*:\s*"([a-z]*)"\s*,\s*)?"say"\s*:\s*"/.exec(soFar);
   if (!m) return null;
+  const kind = m[1] ?? (/^\s*\{\s*"say"/.test(soFar) ? "math" : null);
   let text = "";
   for (let i = m[0].length; i < soFar.length; i++) {
     const c = soFar[i];
-    if (c === '"') return { text, complete: true };
+    if (c === '"') return { text, complete: true, kind };
     if (c !== "\\") { text += c; continue; }
     const e = soFar[i + 1];
     if (e === undefined) break;
@@ -71,9 +74,10 @@ export function partialSay(soFar: string): { text: string; complete: boolean } |
     text += ({ n: "\n", t: "\t", r: "\r", b: "\b", f: "\f" } as Record<string, string>)[e] ?? e;
     i += 1;
   }
-  return { text, complete: false };
+  return { text, complete: false, kind };
 }
 import { reviewInput, runReview, CONVERSATION_REVIEW_TIME_LIMIT_MS, REVIEW_TIME_LIMIT_MS, type TalkReviewer } from "@/lib/maya-talk-review";
+import type { TalkReviewResult } from "@/lib/maya";
 import { readFromFence } from "@/lib/ai-fenced";
 import { classifyError, packageHash, redactText, redactTrace, traceCounts, TRACE_KIND, TRACE_VERSION, type MayaTrace, type TraceBoardBatch, type TraceTurn, type TraceObligation } from "@/lib/maya-trace";
 
@@ -274,6 +278,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   let quietOpening = false;
   /** Sentences streamed for the output being built (D-341), in the order they were sent. */
   const streamedThisOutput: string[] = [];
+  /** Reviews the stream started for its sentences (round 4), by sentence: the whole-reply review reuses them. */
+  const streamReviews = new Map<string, Promise<TalkReviewResult>>();
   const newOutput = (): TextOutput => ({ say: [], board: [], ended: null, safetyMessage: null, cancelled: false });
   const now = () => {
     let at = 0;
@@ -319,25 +325,54 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     // D-341: on a plain math turn, each sentence of `say` that passes the stream's checks goes to the child as it arrives.
     const sent: string[] = [];
     let firstSayMs: number | undefined;
-    const rules = model.output === 3 && options.onSayPart && !folded.sent?.length && folded.pending.length === 0 ? streamRules(folded.session) : null;
+    streamReviews.clear();
+    // Round 4: code's plan for the turn is settled before the call; the "kind" the model writes first decides how its
+    // sentences go out: math or help stream (math-only sentences at once, others after their own review, started the
+    // moment the sentence is complete); any other kind reviews every sentence first; safety streams nothing.
+    const plan = model.output === 3 && options.onSayPart && !folded.sent?.length && folded.pending.length === 0 ? streamPlan(folded.session) : null;
+    const session = folded.session;
     let streamDone = false;
     let words = 0;
-    const onText = rules ? (soFar: string) => {
+    let seen = 0;
+    const queue: { sentence: string; state: "ready" | "pending" | "drop" }[] = [];
+    const flush = () => {
+      while (queue.length && queue[0].state !== "pending") {
+        const next = queue.shift()!;
+        if (next.state === "drop" || streamDone && next.state !== "ready") continue;
+        firstSayMs ??= now() - at;
+        options.onSayPart!(fillName(next.sentence, session), sent.length, []);
+        sent.push(next.sentence);
+      }
+    };
+    const onText = plan ? (soFar: string) => {
       if (streamDone || folded.request?.id !== requestId || controller.signal.aborted) return;
       const said = partialSay(soFar);
-      if (!said) return;
-      const parts = sentencesOf(rules.dropName ? withoutName(said.text, rules.dropName) : said.text);
+      if (!said || !said.kind) return;
+      if (said.kind === "safety") { streamDone = true; return; }
+      const reviewAll = said.kind !== "math" && said.kind !== "help";
+      const parts = sentencesOf(said.text);
       const complete = said.complete ? parts : parts.slice(0, -1);
-      for (const sentence of complete.slice(sent.length)) {
-        if (!streamSentenceOk(sentence, rules, sent.length, words)) { streamDone = true; return; }
-        firstSayMs ??= now() - at;
-        options.onSayPart!(sentence, sent.length, []);
-        sent.push(sentence);
+      for (const sentence of complete.slice(seen)) {
+        const how = streamSentence(sentence, plan, seen, words, reviewAll);
+        if (how === "stop" || (how === "review" && !options.reviewer)) { streamDone = true; return; }
+        seen++;
         words += sentence.split(/\s+/).filter(Boolean).length;
+        const item: { sentence: string; state: "ready" | "pending" | "drop" } = { sentence, state: how === "send" ? "ready" : "pending" };
+        queue.push(item);
+        if (how === "review") {
+          const started = runReview(options.reviewer!, reviewInput(session, sentence, plan.stance), options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS);
+          streamReviews.set(sentence, started);
+          void started.then((result) => {
+            item.state = result.verdict === "pass" && !streamDone ? "ready" : "drop";
+            if (!streamDone) flush();
+          });
+        }
       }
+      flush();
     } : undefined;
     const streamed = () => {
-      streamedThisOutput.push(...sent);
+      streamDone = true;
+      streamedThisOutput.push(...sent.map((x) => fillName(x, session)));
       return sent.length ? { sent: [...sent], firstSayMs } : {};
     };
     // The handler logs even a late response from a provider that ignores abort; a response after the budget is stale.
@@ -372,7 +407,9 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     const texts = [...new Set(first.refusal ? [] : first.effects.flatMap((e) => e.kind === "say" ? e.talk ?? [] : []).filter((t) => t.code === null && t.review === "not_run").map((t) => t.proposed))];
     const t0 = now();
     const before = folded.session;
-    const reviews = options.reviewer ? Promise.all(texts.map(async (text) => ({ text, result: await runReview(options.reviewer!, reviewInput(before, text), options.reviewTimeLimitMs ?? (before.conversational ? CONVERSATION_REVIEW_TIME_LIMIT_MS : REVIEW_TIME_LIMIT_MS), (error) => options.onError?.(error, { turn: folded.turns.length, source: "review" })) }))) : Promise.resolve([]);
+    const stance = before.conversational ? codeStance(before) : "none";
+    // A sentence the stream already sent to its review is not reviewed twice (round 4).
+    const reviews = options.reviewer ? Promise.all(texts.map(async (text) => ({ text, result: await (streamReviews.get(text) ?? runReview(options.reviewer!, reviewInput(before, text, stance), options.reviewTimeLimitMs ?? (before.conversational ? CONVERSATION_REVIEW_TIME_LIMIT_MS : REVIEW_TIME_LIMIT_MS), (error) => options.onError?.(error, { turn: folded.turns.length, source: "review" }))) }))) : Promise.resolve([]);
     const reviewed = reviews.then((results) => {
       append({ kind: "review", at: now(), requestId, reviews: results, ...(texts.length && options.reviewer ? { reviewMs: now() - t0 } : {}) });
     });

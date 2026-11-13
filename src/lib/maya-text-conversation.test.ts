@@ -36,7 +36,7 @@ describe("the output schema (#903)", () => {
     expect(unions(MODEL_OUTPUT_SCHEMA)).toBeLessThanOrEqual(16);
     const wire = openRouterJsonOutput("anthropic/claude-sonnet-5.5", { name: "maya_reply", system: "x", content: [], schema: MODEL_OUTPUT_SCHEMA as unknown as Record<string, unknown> });
     expect(wire).toHaveProperty("response_format.json_schema.strict", true);
-    expect(Object.keys(MODEL_OUTPUT_SCHEMA.properties)).toEqual(["say", "act", "step", "level", "reading", "draw"]);
+    expect(Object.keys(MODEL_OUTPUT_SCHEMA.properties)).toEqual(["kind", "say", "act", "step", "level", "reading", "draw"]);
   });
 });
 
@@ -118,12 +118,13 @@ describe("Savar's turn: 52 - 28, 'Is 2 minus 8, 6?'", () => {
 
 describe("the review, the time budget and the hooks", () => {
   it("reviews a reply to a personal turn and skips plain math turns", async () => {
-    const { session, reviewer } = call((brief) => reply(brief.childTurn?.includes("dog") ? "A dog sounds fun. Let's look at the ones now. What do you see?" : "Let's look at the ones. What do you see?", brief.childTurn?.includes("dog") ? "redirect" : "guide", { step: "ones", reading: brief.childTurn?.includes("dog") ? { offTopic: true } : {} }));
+    const { session, reviewer } = call((brief) => reply(brief.childTurn?.includes("dog") ? "A dog sounds fun. Let's look at the ones now. What do you see?" : "Let's look at the ones. What do you see in the ones?", brief.childTurn?.includes("dog") ? "redirect" : "guide", { step: "ones", reading: brief.childTurn?.includes("dog") ? { offTopic: true } : {} }));
     await session.start();
     await session.child("Can we do the ones?");
     expect(reviewer.requests).toHaveLength(0);
     const out = await session.child("I have a dog.");
-    expect(reviewer.requests).toHaveLength(1);
+    // Round 4: each sentence that is not math-only is reviewed on its own.
+    expect(reviewer.requests.map((r) => r.line)).toEqual(["A dog sounds fun.", "What do you see?"]);
     expect(reviewer.requests[0].conversation).toBe(true);
     expect(out.say).toEqual(["A dog sounds fun. Let's look at the ones now. What do you see?"]);
   });

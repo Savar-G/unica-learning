@@ -9,8 +9,12 @@ export {
   fillerTurn,
   PATIENT_LINES,
   numbersBrief,
-  streamRules,
-  streamSentenceOk,
+  streamPlan,
+  streamSentence,
+  codePlan,
+  codeStance,
+  fillName,
+  hideName,
   withoutName,
   nameRecent,
   clearStop,
@@ -104,4 +108,5 @@ export { readAnswer, readNumbers, saysWritten, unreadableAnswer, valuesIn, writt
 export { asksSimplest, isEqualForm, readOptionsFor, rightForQuestion, teachSteps, TAUGHT_STEP_KINDS } from "./fractions";
 
 export { scopeReason, scopeSkills, SCOPE_LABELS, SCOPE_REASONS, type MathRequest, type ScopeReading, type OutsideReason, type ScopeReason, type ScopeRefusal } from "./scope";
+export { exactSafe, mathOnly, EXACT_SAFE, MATH_VOCAB } from "./math-vocab";
 export { checkSay, checkSentence, numberValue, sentencesOf, sayNumbers, trimSay, valuesOf, SAY_REASONS, SAY_WORDS, type SayReason, type SayRules, type SayVerdict } from "./say-check";

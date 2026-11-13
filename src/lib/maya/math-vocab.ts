@@ -64,6 +64,8 @@ export const EXACT_SAFE: readonly string[] = [
   "I'm an AI, so I don't have pets",
   "I'm an AI, so I don't have a pet",
   "I'm an AI, so I don't have a dog",
+  "I'm an AI, so I have no pet",
+  "I'm an AI, so I have no pets",
   "I'm an AI, so I don't eat",
   "I'm an AI, so I don't eat food",
   "I'm an AI, so I don't eat or have favourites",

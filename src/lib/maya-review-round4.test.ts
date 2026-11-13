@@ -116,10 +116,11 @@ describe("P2-5: a plain stop is a whole turn from a closed list", () => {
 describe("P2-6: the child's name never goes to a model", () => {
   it("briefs and reviews carry {name}, and code fills the name after the checks", async () => {
     const c = call(() => reply("Hi {name}! Look at the ones. What can you do in the ones?", "guide", { step: "ones" }), { reviewer: fakeTalkReviewer() });
-    const outs = await said(c, ["um", "Hi, I'm Ava. Can we start?", "I like dogs."]);
+    const outs = await said(c, ["Hi, I'm Ava. Can we start?", "um", "I like dogs."]);
     expect(JSON.stringify(c.model.briefs)).not.toMatch(/\bAva\b/);
     expect(JSON.stringify(c.reviewer.requests)).not.toMatch(/\bAva\b/);
-    expect(outs[1]).toContain("Hi Ava!");
+    expect(outs[0]).toContain("Hi Ava!");
+    expect(outs[1]).toBe("Take your time, Ava.");
   });
 });
 
@@ -128,7 +129,7 @@ describe("P2-7: kind first, code's plan settled before anything streams", () => 
     expect(Object.keys(MODEL_OUTPUT_SCHEMA.properties).slice(0, 2)).toEqual(["kind", "say"]);
   });
   it("a streamed sentence is never followed by a refused act: code's plan wins", async () => {
-    const c = call(() => ({ kind: "math", ...reply("Let's look at the ones. What is 12 minus 8?", "accept_answer") }), { stream: true });
+    const c = call(() => ({ ...reply("Let's look at the ones. What is 12 minus 8?", "accept_answer"), kind: "math" }), { stream: true });
     const [out] = await said(c, ["Can we start?"]);
     expect(c.parts[0]).toBe("Let's look at the ones.");
     expect(out.startsWith("Let's look at the ones.")).toBe(true);
@@ -136,26 +137,26 @@ describe("P2-7: kind first, code's plan settled before anything streams", () => 
     expect(t?.kind === "maya" && t.attempts.map((a) => [a.source, a.refusal?.code ?? null])).toEqual([["model", null]]);
   });
   it("nothing of the model's streams on a turn it flags as safety, and the saved turn holds what was said", async () => {
-    const c = call(() => ({ kind: "safety", ...reply("Oh no. I'm so sorry.", "safety", { reading: { safety: "concern" } }) }), { stream: true });
+    const c = call(() => ({ ...reply("Oh no. I'm so sorry.", "safety", { reading: { safety: "concern" } }), kind: "safety" }), { stream: true });
     const [out] = await said(c, ["My dad hurts me."]);
     expect(c.parts.join(" ")).not.toContain("Oh no");
-    const t = c.session.trace().turns.filter((x) => x.kind === "maya").at(-1);
+    const t = c.session.trace().turns.find((x) => x.kind === "maya" && x.output?.act === "safety");
     expect(t?.kind === "maya" && t.output?.say.join(" ")).toBe(out);
   });
   it("after a streamed sentence, a turn that turns into safety guidance keeps the streamed sentence, then the guidance", async () => {
     // The model's reading raises safety after its first sentence has gone out (kind said math).
-    const c = call(() => ({ kind: "math", ...reply("Let's look at the ones. What is 12 minus 8?", "safety", { reading: { safety: "concern" } }) }), { stream: true });
+    const c = call(() => ({ ...reply("Let's look at the ones. What is 12 minus 8?", "safety", { reading: { safety: "concern" } }), kind: "math" }), { stream: true });
     const [out] = await said(c, ["Can we start?"]);
     expect(c.parts[0]).toBe("Let's look at the ones.");
     expect(out.startsWith("Let's look at the ones. ")).toBe(true);
-    const t = c.session.trace().turns.filter((x) => x.kind === "maya").at(-1);
+    const t = c.session.trace().turns.find((x) => x.kind === "maya" && x.output?.act === "safety");
     expect(t?.kind === "maya" && t.output?.say.join(" ").startsWith("Let's look at the ones. ")).toBe(true);
   });
 });
 
 describe("P3: thinking, the cut and the addition question", () => {
   it("'okay' after Maya's question is an answer, not thinking", async () => {
-    const c = call(() => reply("Let's look at the ones. What is 12 minus 8?", "guide", { step: "ones" }), { reviewer: fakeTalkReviewer() });
+    const c = call(() => reply("Let's look at the ones. What can you do in the ones?", "guide", { step: "ones" }), { reviewer: fakeTalkReviewer() });
     await said(c, ["Can we start?", "okay"]);
     expect(c.model.briefs).toHaveLength(2);
     expect(fillerTurn("okay")).toBe(true);

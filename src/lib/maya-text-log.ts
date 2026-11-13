@@ -178,9 +178,11 @@ function receiveReading(s: TextFold, reading: unknown, at: number) {
   s.session = r.session;
   syncSafety(s, at);
   if (s.session.safety.severity !== previous) {
-    const request = s.request, candidate = s.candidate, attempts = s.attempts;
+    // Words already streamed stay said: the guidance follows them in the saved turn (round 4).
+    const request = s.request, candidate = s.candidate, attempts = s.attempts, sent = s.sent;
     cancel(s, "superseded by safety", true);
     s.request = request; s.candidate = candidate; s.attempts = attempts;
+    if (sent?.length) s.sent = sent;
   }
   takeEffects(s, r.effects, at);
 }
@@ -278,6 +280,8 @@ function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt
   attempt.refusal = r.refusal;
   const talk = r.effects.flatMap((e) => e.kind === "say" ? e.talk ?? [] : []);
   if (talk.length) attempt.talk = talk;
+  const dropped = r.effects.flatMap((e) => e.kind === "say" ? e.dropped ?? [] : []);
+  if (dropped.length) attempt.dropped = dropped;
   if (attempt.source !== "fallback" || !r.refusal) s.attempts.push(attempt);
   if (r.refusal && !s.session.outcome) { takeEffects(s, r.effects, at); return; }
   s.scene = scene;
