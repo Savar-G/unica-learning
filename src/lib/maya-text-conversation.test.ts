@@ -82,7 +82,7 @@ describe("the opening seam (D-341, agreed with the voice lead)", () => {
 describe("Savar's turn: 52 - 28, 'Is 2 minus 8, 6?'", () => {
   it("briefs the model with the misconception and says its reply when the checks pass", async () => {
     const say = "2 minus 8 isn't 6; 6 is 8 minus 2. 2 is smaller than 8, so we take a ten. What is 12 minus 8?";
-    const { session, model } = call((brief) => reply(brief.childTurn?.includes("Hi") ? "Hi Ava! Let's start with the ones. What do you see there?" : say, "guide", { step: "ones", level: brief.childTurn?.includes("Hi") ? 0 : 2 }));
+    const { session, model } = call((brief) => reply(brief.childTurn?.includes("Hi") ? "Hi Ava! Let's start with the ones. What do you see there?" : say, "guide", { step: "ones", level: brief.childTurn?.includes("Hi") ? 0 : 2, reading: brief.childTurn?.includes("Hi") ? {} : { answers: [{ value: { type: "number", value: 6 }, step: "ones", problem: "target", verdict: "wrong" }] } }));
     await session.start();
     expect((await session.child("Hi, Maya")).say).toEqual(["Hi Ava! Let's start with the ones. What do you see there?"]);
     const out = await session.child("Is 2 minus 8, 6?");
@@ -92,6 +92,10 @@ describe("Savar's turn: 52 - 28, 'Is 2 minus 8, 6?'", () => {
     expect(out.say).toEqual([say]);
     expect(session.session.done).toEqual([]);
     expect(session.session.ladder.hint).toBe(2);
+    // The question "Is 2 minus 8, 6?" commits to no answer: the model's wrong reading is left out, with no repair.
+    const turn = session.trace().turns.filter((t) => t.kind === "maya").at(-1)!;
+    expect(turn.kind === "maya" && turn.attempts.map((a) => a.source)).toEqual(["model"]);
+    expect(session.session.ladder.failures).toBe(0);
   });
   it("refuses a confirm of the misconception, and a false equation, then says code's line", async () => {
     const { session } = call((brief, n) => (n === 0 ? reply("Did you say 6?", "confirm") : reply("Yes, 2 minus 8 is 6.", "guide", { step: "ones", level: 1 })));

@@ -4583,7 +4583,8 @@ function sayRules(before: Session, after: Session, p: Proposal, planned: string)
     forbidden, answer, hidden,
     wrong: released ? [] : wrong,
     mustAsk: asked,
-    wordLimit: before.shorter ? 25 : show ? 45 : 30,
+    // The prompt asks for about 30 words (SAY_WORDS); the check allows a few more before it refuses.
+    wordLimit: before.shorter ? 25 : show ? 45 : 35,
     noBoard: after.noBoard === true,
     accepting: p.act === "accept_answer" || released,
     closing: p.act === "close",
@@ -4622,6 +4623,12 @@ function proposeV3(base: Session, out: ModelOutput, effects: Effect[], reviews: 
   const located = turnFacts(base).find((f) => f.misconception);
   if (located && (out.act === "confirm" || out.act === "accept_answer")) {
     return no("act_not_allowed", `The child's number shows a mistake: ${located.text} Name it plainly, say why, and guide that step. Never confirm it.`, acts().filter((a) => a !== "confirm" && a !== "accept_answer"));
+  }
+  // The model's reading is its bookkeeping, not Maya's words: a wrong answer the child did not commit to ("Is 2 minus 8,
+  // 6?" is a question) is left out, so it counts as no miss, and the turn goes on without a repair.
+  if (reading.answers?.length) {
+    const kept = reading.answers.filter((a) => a.verdict === "right" || !["answer_not_committed", "answer_not_heard"].includes(checkAnswers(base, [a], [])?.code ?? ""));
+    if (kept.length !== reading.answers.length) out = { ...out, reading: { ...reading, ...(kept.length ? { answers: kept } : { answers: undefined }) } };
   }
   const plans = codeProposals(base, [], out);
   let accepted: { r: StepResult; p: Proposal } | null = null;
