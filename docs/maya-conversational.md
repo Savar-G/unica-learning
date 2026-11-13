@@ -69,13 +69,13 @@ The review at `50ed9178` found four defects through the public text adapter. The
 
 An uncredited place's result stays hidden even when its digit is also a printed operand. The checks read place declarations in either order, the whole reply and each streaming prefix. A final answer cannot be disclosed one place per sentence.
 
-The literal current open result is withheld across all wordings. The only exceptions are a complete question made from that step's operands and a confirmation of a value code heard from the child. This also applies to prepared replies at commit. A writing instruction cannot bypass the rule by moving the destination before the value.
+The literal current open result is withheld across all wordings. The only exceptions are a complete question made from that step's operands, a confirmation of a value code heard from the child, and an exact sentence code planned for an authorized regroup. This also applies to prepared replies at commit. A writing instruction cannot bypass the rule by moving the destination before the value.
 
 Model briefs and review inputs now use the same Unicode name filter as parent notes. The filter has no AI or note dependency. It covers accented, decomposed, full-width and unspaced names. These repairs have synthetic public-interface tests. They need the final practice pass and live checks before release.
 
 ## Prepared replies (C2)
 
-`TextSession.prepare(text)` can start a reply to an interim transcript. The session can also prepare the expected value and a known wrong value after it delivers a turn. Preparation requires an explicit spend seam. It is off for callers that have none. The voice worker does not yet pass that seam into the text session.
+`TextSession.prepare(text)` can start a reply to an interim transcript. The session can also prepare the expected value and a known wrong value after it delivers a turn. Preparation requires an explicit spend seam. It is off for callers that have none. The local V1 integration passes the voice budget seam and a model bound to each speculative handle. Normal model and reviewer requests keep their existing metering. The bound speculative client permits one dispatch and checks the handle again immediately before fetch. It does not reserve or settle a second time.
 
 Preparation copies the controller fold through its checkpoint serializer. It changes no real log, saved state, output or credit. At most three requests start for one child turn. A prepared reply belongs to that turn and can be used once. A final turn must have the same code-derived key and pass the plain-math guard. An interim also needs equal normalized text. All output checks and credit decisions run from the real final turn.
 
@@ -182,3 +182,8 @@ Measured on these runs with the real clock (`--real-clock`): the model call took
 - The turn brief: `turnBrief` in `src/lib/maya-model.ts`. The plan and the checks: `proposeV3` and `codeProposals` in `src/lib/maya/session.ts`.
 - The streaming hooks for voice: `onSayPart`, `onSayCancel`, `onSayEnd` on `createTextSession` (`src/lib/maya-text.ts`). Today they are called once the whole reply is checked; there is no token streaming yet.
 - `start({ openingSpoken: true })`: the voice worker speaks `openingLine(pkg)` itself; the trace keeps it and the board batch comes back.
+
+
+### Local voice preparation ownership
+
+`VoiceCall.prepare({ text, reason: "interim" })` calls the synchronous text-session preparation method. It gives no credit or output. The call does not prepare while an input runs or after its clock ends. A call that stops or loses its saved revision cancels pending work and disables further preparation. Completion alone does not settle a prepared handle: the request must also have a final use or discard decision. The one settlement includes that decision as `used`. A stopped or expired handle cannot dispatch. One handle cannot pay for a retry or a second request. These are local implementation checks, not evidence of live delay or hosted release behavior.

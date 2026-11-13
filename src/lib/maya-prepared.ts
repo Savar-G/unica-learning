@@ -97,7 +97,7 @@ interface Entry extends PreparedReply {
 }
 
 /** One in-memory cache. Every sent attempt settles once, including providers that ignore abort. */
-export function preparedReplies(model: MayaModel, spend: SpendSeam, clock: () => number) {
+export function preparedReplies(model: MayaModel, spend: SpendSeam, clock: () => number, modelFor?: (handle: SpendHandle) => MayaModel | null) {
   let open = new Map<string, Entry>();
   return {
     get: (key: string): PreparedReply | undefined => open.get(key),
@@ -109,6 +109,10 @@ export function preparedReplies(model: MayaModel, spend: SpendSeam, clock: () =>
       else entry.hypotheses.push({ ...hypothesis, at: clock() });
     },
     start(key: string, brief: TurnBrief, hypothesis: PrepareHypothesis, handle: SpendHandle): boolean {
+      let asked: MayaModel | null;
+      try { asked = modelFor ? modelFor(handle) : model; }
+      catch { spend.giveBack(handle); return false; }
+      if (!asked || asked.output !== 3) { spend.giveBack(handle); return false; }
       const controller = new AbortController();
       let soFar = "";
       let listener: ((text: string) => void) | undefined;
@@ -162,7 +166,7 @@ export function preparedReplies(model: MayaModel, spend: SpendSeam, clock: () =>
       const timer = setTimeout(() => { entry.abort(); finish({ error: new Error("prepared request timed out") }); }, 6_000);
       open.set(key, entry);
       try {
-        void Promise.resolve(model.propose(brief as unknown as ModelInput, controller.signal,
+        void Promise.resolve(asked.propose(brief as unknown as ModelInput, controller.signal,
           (text) => { if (!controller.signal.aborted) { soFar = text; listener?.(text); } },
           (usd) => { if (Number.isFinite(usd) && usd >= 0) reported = usd; }))
           .then((proposal) => finish({ proposal }), (error: unknown) => finish({ error }));

@@ -35,7 +35,7 @@ function streamedFetch(say: string, cost: number) {
     calls++;
     const body = JSON.parse(String(init?.body)) as { stream?: boolean; messages: { content: { text?: string }[] }[] };
     if (!body.stream) throw new Error("this request was not streamed");
-    const brief = JSON.parse(body.messages[1].content[0].text ?? "{}") as { help?: { step?: string } };
+    const brief = JSON.parse(body.messages[1].content.map((part) => part.text ?? "").join("")) as { help?: { step?: string } };
     const text = JSON.stringify(reply(say, "guide", { step: brief.help?.step ?? "", reading: { answers: [{ value: { type: "number", value: 56 }, step: "result", problem: "target", verdict: "wrong" }] } }));
     const chunks: string[] = [];
     for (let i = 0; i < text.length; i += 6) chunks.push(text.slice(i, i + 6));
@@ -50,7 +50,7 @@ describe("a streamed Maya turn and its cost (D-341, D-290)", () => {
   it("streams the first sentence to the voice and settles the request with the cost OpenRouter reported", async () => {
     const t = recordingLedger();
     // Round 4: both sentences are math-only by the closed vocabulary, so they stream with no review.
-    const net = streamedFetch("Let's think about the ones together. What do the ones make?", 0.0042);
+    const net = streamedFetch("Let's look at the ones. What can you do in the ones?", 0.0042);
     let n = 0;
     const client = meteredAi((hooks) => openRouterClient({ apiKey: "k", model: "anthropic/claude-sonnet-5.5", ...hooks, maxRetries: 0 }), {
       ledger: t.ledger, charge: { kind: "child", parentId: "p", childId: "c" }, callId: "call-1", newId: () => `r${++n}`,
@@ -66,10 +66,10 @@ describe("a streamed Maya turn and its cost (D-341, D-290)", () => {
     const out = await session.child("I got 56.");
     expect(net.calls()).toBe(1);
     // The first sentence was streamed while the reply came in (its attempt says when), and the turn holds it.
-    expect(parts[0]).toBe("Let's think about the ones together.");
+    expect(parts[0]).toBe("Let's look at the ones.");
     const attempt = session.trace().turns.at(-1)!;
     expect(attempt.kind === "maya" && attempt.attempts[0].firstSayMs).not.toBeUndefined();
-    expect(out.say.join(" ")).toBe("Let's think about the ones together. What do the ones make?");
+    expect(out.say.join(" ")).toBe("Let's look at the ones. What can you do in the ones?");
     // One reservation for the one request, settled with the stream's own cost once the stream ended.
     await new Promise((r) => setTimeout(r, 20));
     expect(t.reserved).toEqual(["r1"]);

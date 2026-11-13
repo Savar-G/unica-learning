@@ -50,7 +50,7 @@ import {
 } from "@/lib/maya";
 import { modelInput, turnBrief, type MayaModel, type ModelInput } from "@/lib/maya-model";
 import { preparedReplies, preparedKey, normalizeTurn, MAX_PREPARES_PER_TURN, type PrepareHypothesis, type PreparedReply, type PrepareRecord } from "@/lib/maya-prepared";
-import type { SpendSeam } from "@/lib/maya-spend-seam";
+import type { SpendHandle, SpendSeam } from "@/lib/maya-spend-seam";
 import { sentencesOf } from "@/lib/maya/say-check";
 
 /**
@@ -94,6 +94,8 @@ export const TURN_BUDGET_MS = 6_000;
 export interface TextSessionOptions {
   /** Budget owner refuses speculative takes when only two live attempts remain. No seam disables preparation. */
   spend?: SpendSeam;
+  /** One request-bound model for the already paid handle. Normal turns still use `model`. */
+  prepareModel?: (handle: SpendHandle) => MayaModel | null;
   /** Prepare expected and known-wrong values after a delivered turn. Default on when spend is supplied. */
   prepareExpected?: boolean;
   confirmWorkbook?: boolean;
@@ -217,6 +219,8 @@ export interface TextSession {
   start(options?: { openingSpoken?: boolean }): Promise<TextOutput>;
   /** Starts a speculative request. It never changes saved state or speaks. False means no request was needed or allowed. */
   prepare(hypothesis: PrepareHypothesis | string): boolean;
+  /** Cancels pending model work and preparation when the caller stops or loses ownership. Changes no saved input. */
+  cancelPending(): void;
   /** One child turn as text. */
   child(text: string, options?: { uncertain?: boolean; alternatives?: string[] }): Promise<TextOutput>;
   /**
@@ -293,9 +297,10 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   let quietOpening = false;
   let scheduled = 0;
   let prepareCount = 0;
+  let preparationStopped = false;
   const preparations: PrepareRecord[] = structuredClone(resume?.preparations ?? []);
   const costs = new Map<PrepareRecord, PreparedReply>();
-  const cache = options.spend && model.output === 3 ? preparedReplies(model, options.spend, () => now()) : null;
+  const cache = options.spend && model.output === 3 ? preparedReplies(model, options.spend, () => now(), options.prepareModel) : null;
   let committing: { generation: number; entries: Map<string, PreparedReply>; at: number } | null = null;
   let preparedOutput: Pick<TextOutput, "prepared" | "preparedLeadMs" | "preparedKind"> = {};
   function record(entry: PreparedReply, value: PrepareRecord) { preparations.push(value); costs.set(value, entry); }
@@ -308,7 +313,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     if (committing) { discard(committing.entries, reason); committing = null; }
   }
   function prepare(hypothesis: PrepareHypothesis | string): boolean {
-    if (!cache || scheduled || active || needsRecovery || folded.session.startedAt === null || folded.session.outcome || folded.request || folded.candidate || folded.pending.length || folded.session.turn) return false;
+    if (preparationStopped || !cache || scheduled || active || needsRecovery || folded.session.startedAt === null || folded.session.outcome || folded.request || folded.candidate || folded.pending.length || folded.session.turn) return false;
     const h = typeof hypothesis === "string" ? { text: hypothesis, reason: "interim" as const } : hypothesis;
     if (!h.text.trim() || h.text.length > 1_000) return false;
     const at = now();
@@ -640,6 +645,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       return opts.openingSpoken ? { ...out, say: [] } : out;
     },
     prepare,
+    cancelPending: () => { preparationStopped = true; generation++; active?.abort(); clearPrepares("ended"); },
     child: (text, opts = {}) => {
       const pending = receive({ type: "child_turn", at: now(), text, ...structuredClone(opts) });
       const version = generation;

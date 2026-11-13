@@ -108,7 +108,7 @@ describe("the OpenRouter AI client (#183), fetch faked", () => {
       { role: "user", content: [{ type: "text", text: "stable", cache_control: { type: "ephemeral" } }, { type: "text", text: "turn" }] },
     ]);
     expect(sent[0].body).toMatchObject({ response_format: { type: "json_schema", json_schema: { strict: true } }, reasoning: { effort: "low", exclude: true } });
-    expect(sent[0].body).not.toHaveProperty("usage");
+    expect(sent[0].body).toHaveProperty("usage", { include: true });
   });
 
   it("C2: a request with onCost asks for usage accounting and reports the answer's cost", async () => {
