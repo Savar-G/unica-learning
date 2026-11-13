@@ -9,7 +9,7 @@ For fold A, the script selects a threshold on half B and evaluates it on half A.
 | Model | Gate | Fold A: catch, false flag, threshold | Fold B: catch, false flag, threshold | Mean: catch, false flag | State |
 |---|---|---|---|---|---|
 | typesafe/jev-1.14 | reading_level | 8/15 (53.3%), 0/54 (0.0%), 0.04 | 13/15 (86.7%), 0/54 (0.0%), 0.02 | 70.0%, 0.0% | off |
-| typesafe/jev-1.14 | one_right_answer | 15/15 (100.0%), 0/54 (0.0%), 0.03 | 15/15 (100.0%), 0/54 (0.0%), 0.03 | 100.0%, 0.0% | on |
+| typesafe/jev-1.14 | one_right_answer | 26/29 (89.7%), 0/54 (0.0%), 0.98 | 27/29 (93.1%), 2/54 (3.7%), 0.98 | 91.4%, 1.9% | off |
 | google/gemini-decision-1 | reading_level | 14/15 (93.3%), 2/54 (3.7%), 0.05 | 13/15 (86.7%), 0/54 (0.0%), 0.06 | 90.0%, 1.9% | off |
 | google/gemini-decision-1 | one_right_answer | 15/15 (100.0%), 0/54 (0.0%), 0.08 | 13/15 (86.7%), 0/54 (0.0%), 0.07 | 93.3%, 0.0% | off |
 | typesafe/jev-1.14 | picture_matches | unmeasured (0) | unmeasured (0) | unmeasured | off |
@@ -22,10 +22,17 @@ Multiple-answer copies caught by kind, each judged by its own fold's threshold:
 | Model | Kind | Caught |
 |---|---|---|
 | typesafe/jev-1.14 | either-instruction | 30/30 |
+| typesafe/jev-1.14 | number-between | 4/4 |
+| typesafe/jev-1.14 | inequality | 4/4 |
+| typesafe/jev-1.14 | rounding-unstated | 4/4 |
+| typesafe/jev-1.14 | estimate | 4/4 |
+| typesafe/jev-1.14 | two-counts | 0/4 |
+| typesafe/jev-1.14 | two-units | 3/4 |
+| typesafe/jev-1.14 | two-unknowns | 4/4 |
 | google/gemini-decision-1 | either-instruction | 28/30 |
 
-Not measured: typesafe/jev-1.14 one_right_answer: 28 copies not asked; google/gemini-decision-1 one_right_answer: 28 copies not asked. A model is measured only on the copies it answered; Gemini is not asked again (Savar, 2026-11-11).
+Not measured: google/gemini-decision-1 one_right_answer: 28 copies not asked. A model is measured only on the copies it answered; Gemini is not asked again (Savar, 2026-11-11).
 
 The eligible samples contain 0 picture questions and 0 interest questions. Those gates remain off with unset thresholds. These small, templated samples do not establish performance on production questions.
 
-The model runs cost USD 0.006541 in all, with 0 unpriced attempts.
+The model runs cost USD 0.007015 in all, with 0 unpriced attempts.
