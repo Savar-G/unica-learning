@@ -99,7 +99,6 @@ function decimalValue(text: string): [number, number] {
   const d = 10 ** part.length;
   return rational(Number(whole) * d + Number(part || "0"), d);
 }
-const keyOf = (q: [number, number]) => (q[1] === 1 ? String(q[0]) : `${q[0]}/${q[1]}`);
 
 /** A value from a number. */
 export const numberValue = (n: number): SayValue => {

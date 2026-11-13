@@ -22,12 +22,16 @@ npm run maya:text -- --anthropic --script scripts/maya-text/no-start.txt   # Cla
 | `--runner livekit\|plain` | `livekit` (default): LiveKit Agents for Node in text mode, with no room. `plain`: the text adapter alone. |
 | `--trace <file>` | The trace path. Default `traces/maya/<call id>.json` (not committed). |
 | `--seed <n>`, `--name <name>` | The wording seed and the child's name. |
+| `--real-clock` | The real clock with a script, so the trace times each model call (D-341). |
+| `--legacy` | Maya's version 2 model (code-written lines), to compare with conversational Maya. |
 
 Script lines: a child turn, `/wait <seconds>` (the clock moves on and the pause policy runs), `/write start`, `/write done`, `/quit` (the child hangs up: the call ends as `child_stopped`). `#` starts a comment. A script or piped input uses a simulated clock (4 seconds a turn, plus each `/wait`). Typed input uses the real clock.
 
 `OPENROUTER_API_KEY` is a Vercel Secret variable, so `vercel env pull` cannot read its value. Put the key in your shell for a real-model run.
 
 ## What reaches the child
+
+**Conversational Maya (D-341, `docs/maya-conversational.md`).** The live model (`conversationalMayaModel`) gets a turn brief (`turnBrief`: the question and its steps with their state, the last turns, the child's turn, the allowed acts, the help levels and what each may show, code's facts about the child's numbers, the numbers Maya may say and the ones she must not) and writes Maya's own words in `say` (output version 3, `MODEL_OUTPUT_SCHEMA`). The opening is code's (`openingLine`), said at `start()` with no model call. For every other turn the session plans code's lines for the model's act and level (`codeProposals`), steps that plan, and says the model's words only when they pass the say checks (`src/lib/maya/say-check.ts`) against it; a turn that is not plain math talk is also reviewed (`CONVERSATION_REVIEW_SYSTEM`). A failed check is a refusal with a typed reason (`say_check`, `say_review`; counted by reason in the trace's `counts.sayRefusals`). One repair, then code's planned line (the fallback below). The turn has a time budget (`turnBudgetMs`, default `TURN_BUDGET_MS`, 6 s). `--real-clock` times each model call; `--legacy` runs the version 2 model for comparison. The rest of this section describes the version 2 path, which old saved calls and the scripted behaviour gate still use.
 
 Nothing reaches the child unless the session's `step` accepts it (`src/lib/maya-text.ts`):
 
