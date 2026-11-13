@@ -51,7 +51,8 @@ export function createBoardSpeech(options: { sender: BoardSender; now(): number;
   const serial = <T>(op: () => Promise<T>) => { const run = queue.then(op); queue = run.catch(() => {}); return run; };
   const matches = (scope: SpeechScope | null) => !!scope && plannedScope?.utteranceId === scope.utteranceId && plannedScope.generation === scope.generation;
   const owns = (scope: SpeechScope | null) => matches(scope) && !retired;
-  const check = (r: { ok: boolean }) => { if (!r.ok) throw new Error("The board did not accept the speech operation."); };
+  // The code says why, for the worker's log: a refusal, an unreachable board, or another sender (Savar's call, 2026-11-13).
+  const check = (r: { ok: boolean; code?: string }) => { if (!r.ok) throw new Error(`The board did not accept the speech operation (${r.code ?? "unknown"}).`); };
   const release = async () => {
     const a = active;
     if (!a || !owns(a.scope) || a.position === null) return;

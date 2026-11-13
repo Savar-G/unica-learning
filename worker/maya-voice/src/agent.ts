@@ -195,6 +195,11 @@ interface TurnPace {
   guided: boolean;
   /** The phrase's end never came, so its speech was stopped at the limit. */
   ackStopped: boolean;
+  /**
+   * A phrase went into this reply's stream. The voice provider closes a stream about 1 s after its last audio
+   * (Cartesia contexts), so words written later are lost with no sound: Savar's call of 2026-11-13 heard no answer.
+   */
+  ackWritten: boolean;
   /** The answer goes out as speech of its own, so the end of this reply's stream does not end the turn. */
   ownSpeech: boolean;
   limit: unknown;
@@ -392,7 +397,7 @@ export class VoiceCallRun {
     const speechEndedAt = stoppedAt === undefined ? this.childStoppedAt ?? heardAt : heardAt - Math.max(0, Date.now() - stoppedAt * 1000);
     const pace: TurnPace = {
       clock: new TurnClock(this.timers.now, speechEndedAt, heardAt), generation: this.generation,
-      writable: true, ready: false, closed: false, handle: this.speech, guided: false, ackStopped: false, ownSpeech: false, limit: null, hold: null, ack: null, ackOver: null, write: () => {}, end: () => {},
+      writable: true, ready: false, closed: false, handle: this.speech, guided: false, ackStopped: false, ackWritten: false, ownSpeech: false, limit: null, hold: null, ack: null, ackOver: null, write: () => {}, end: () => {},
     };
     this.pace = pace;
     return new ReadableStream<string | FlushSentinel>({
@@ -433,8 +438,9 @@ export class VoiceCallRun {
     if (turns.some(t => t.priority)) return this.sayFirst(pace, turns);
     // A new plan takes the audio from the old one, so the answer's board waits until the acknowledgement has played.
     if (pace.ack) await pace.ack;
-    // Its end never came: its speech was stopped at the limit, so a word in this reply could not be read.
-    if (pace.ackStopped) return this.sayFirst(pace, turns);
+    // Its end never came: its speech was stopped at the limit, so a word in this reply could not be read. A phrase that
+    // played has an ended voice stream, so the answer goes out as speech of its own, with a new stream.
+    if (pace.ackStopped || pace.ackWritten) return this.sayFirst(pace, turns);
     pace.clock.held();
     const said: string[] = [];
     // A dropped turn must not stage: its speech cannot play, and its plan would take the board from the turn that
@@ -491,7 +497,7 @@ export class VoiceCallRun {
       const generation = guidance ? this.generation : pace?.generation ?? this.generation;
       // A plan with no batches has nothing to wait for, and a late board answer must not hold back these words.
       try { await this.stageBoard(last, !!last.boardCues?.length); }
-      catch { if (generation === this.generation && this.childHere) void this.finish({ detail: "the speech board could not be staged" }); return this.closeTurn(pace); }
+      catch (error) { this.boardFailed(error); if (generation === this.generation && this.childHere) void this.finish({ detail: "the speech board could not be staged" }); return this.closeTurn(pace); }
       if (this.finishing || !this.childHere || generation !== this.generation) {
         this.finalDropped({ ...last, say: turns.flatMap(t => t.say) });
         return this.closeTurn(pace);
@@ -584,6 +590,7 @@ export class VoiceCallRun {
         pace.handle?.interrupt(true);
         this.cutAck(pace);
       });
+      pace.ackWritten = true;
       pace.write(phrase.text);
       pace.write(FlushSentinel);
     });
@@ -630,6 +637,11 @@ export class VoiceCallRun {
     this.boardAudio?.cancelPending(scope);
     if (this.childHere) this.boardTask(board.interrupt(scope), scope);
     else board.detach(scope);
+  }
+
+  /** The trace keeps a fixed detail; the reason goes to the worker's log. */
+  private boardFailed(error: unknown) {
+    console.warn("[maya voice] board stage failed", this.call.id, error instanceof Error ? error.message : String(error));
   }
 
   private async stageBoard(turn: Pick<VoiceTurn, "boardCues">, wait = true) {
@@ -797,7 +809,7 @@ export class VoiceCallRun {
     const generation = this.generation;
     if (stage()) {
       try { await this.stageBoard(turn); }
-      catch { if (generation === this.generation && this.childHere) void this.finish({ detail: "the speech board could not be staged" }); return false; }
+      catch (error) { this.boardFailed(error); if (generation === this.generation && this.childHere) void this.finish({ detail: "the speech board could not be staged" }); return false; }
     }
     if (this.finishing || generation !== this.generation || !this.childHere) { this.finalDropped(turn); return false; }
     this.options.notify({ revision: this.call.revision, segment: this.segment, ended: false });

@@ -301,8 +301,9 @@ describe("the acknowledgement in one call (#532)", () => {
     c.speaker.release();
     await waitFor(() => c.samples.length === 2, "the slow turn's sample");
     await waitFor(listening, "the slow answer's playout");
-    // One reply: Maya does not go back to listening between the phrase and the answer, so no check-in can start there.
-    expect(states.slice(-3)).toEqual(["thinking", "speaking", "listening"]);
+    // The answer is speech of its own after the phrase (its voice stream ended with the phrase, 2026-11-13), so Maya is
+    // listening for a moment between them. Its turn still holds the silence timer, and the answer is the next thing said.
+    expect(states.slice(-2)).toEqual(["speaking", "listening"]);
     const answerWords = c.said().slice(before + 1).join(" ");
     expect(answerWords.length).toBeGreaterThan(0);
     expect(acksIn(c.said().slice(before + 1))).toEqual([]);
@@ -1656,7 +1657,9 @@ describe("#589: the phrase that never ends, and a reply that crosses into the cl
     c.speaker.release();
   });
 
-  it("a phrase that ends in time keeps the answer in the reply, with no speech of its own", async () => {
+  // Changed on 2026-11-13: the voice provider ends a stream about 1 s after its last audio, so an answer written into
+  // the phrase's stream later was lost with no sound (Savar's call 01f456de). A phrase that played means a new speech.
+  it("a phrase that ends in time sends the answer as speech of its own, after the phrase, without cutting it", async () => {
     const m = heldModel();
     const c = await voiceCall({ model: m.model });
     const says = vi.spyOn(c.session, "say");
@@ -1667,11 +1670,17 @@ describe("#589: the phrase that never ends, and a reply that crosses into the cl
     await waitFor(() => m.asked > asked, "the model call");
     await c.clock.advance(ACK_LIMIT_MS);
     await waitFor(() => c.speaker.starts.length > 1, "the phrase's sound");
+    const before = c.said().length;
     m.release();
     await pause();
-    c.speaker.release();
-    await waitFor(() => c.samples.length === 1, "the sample");
+    // The answer waits for the phrase to end: nothing is queued while it plays.
     expect(says).not.toHaveBeenCalled();
+    c.speaker.release();
+    await waitFor(() => says.mock.calls.length === 1, "the answer as its own speech");
+    await waitFor(() => c.said().length > before, "the answer in the voice");
+    expect(acksIn(c.said().slice(before))).toEqual([]);
+    await waitFor(() => c.samples.length === 1, "the sample");
+    expect(c.samples[0]).toMatchObject({ outcome: "answered", ackHeard: true });
     expect(c.speaker.cut).toBe(0);
   });
 
