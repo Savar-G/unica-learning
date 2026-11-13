@@ -222,15 +222,24 @@ it("lets the child try again after a drop with a new ticket, and stop a call May
   expect(host.textContent).toContain("Call Maya");
 });
 
-it("tells a child whose microphone is blocked how to allow it, and starts no call", async () => {
+it("tells a child whose microphone is blocked how to allow it, and leaves no live call", async () => {
+  // The call is made when the check opens; a blocked microphone cancels it (the server side, that a cancelled call
+  // counts nothing and the parent sees nothing: src/lib/maya-voice-desk-server.test.ts).
+  answer = (body) => ({ call: call({ ended: body.type === "cancel" }), ...(body.type === "start" ? { ticket: { url: "ws://fake", token: "t", room: "r", identity: "child", expiresAt: "x" } } : {}), usage: USAGE });
   const f = await mount({ mic: "blocked" });
   await f.click("Call Maya");
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
   expect(host.textContent).toContain("The microphone is turned off for this page.");
   expect(host.textContent).toContain("Then tap Check again.");
   expect(f.button("Start the call")?.hasAttribute("disabled")).toBe(true);
-  expect(sent).toEqual([]);
+  expect(sent.map((b) => b.type)).toEqual(["start", "cancel"]);
+  expect(sent[1].id).toBe(sent[0].id);
+  // No room is left joined, and none turned the microphone on.
+  for (const r of rooms) expect(r.disconnect).toHaveBeenCalled();
+  for (const r of rooms) expect((r.localParticipant as unknown as { setMicrophoneEnabled: ReturnType<typeof vi.fn> }).setMicrophoneEnabled).not.toHaveBeenCalled();
   await f.click("Not now");
   expect(host.textContent).toContain("Call Maya");
+  expect(sent.map((b) => b.type)).toEqual(["start", "cancel"]);
 });
 
 it("says a missing microphone plainly", async () => {
@@ -239,14 +248,29 @@ it("says a missing microphone plainly", async () => {
   expect(host.textContent).toContain("We cannot find a microphone.");
 });
 
-it("shows the refusal of a start in plain words, and returns to the control", async () => {
+it("shows the refusal of a start in plain words as the check opens, and returns to the control", async () => {
+  // The start (and its weekly check) runs when the microphone check opens, so the refusal shows then.
   answer = () => ({ call: null, usage: { ...USAGE, leftSeconds: 5 }, error: "voice_week_used" });
   const f = await mount();
-  await f.click("Call Maya"); await f.click("Start the call");
+  await f.click("Call Maya");
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
   expect(rooms).toHaveLength(0);
   expect(host.textContent).toContain("You've used Maya's call time for this week. She'll be back on Monday.");
   expect(host.textContent).toContain("Used this week");
   expect(f.button("Call Maya")).toBeUndefined();
+  expect(f.button("Start the call")).toBeUndefined();
+});
+
+it("shows the busy refusal of the weekly check after the insert in today's words", async () => {
+  // The server ends a call that is over the week after its insert (admit) and answers busy with the ended call.
+  answer = () => ({ call: call({ ended: true }), usage: USAGE, error: "busy" });
+  const f = await mount();
+  await f.click("Call Maya");
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  expect(host.textContent).toContain("Maya cannot take a call right now. Try again later.");
+  expect(f.button("Call Maya")).toBeDefined();
+  expect(rooms).toHaveLength(0);
+  expect(sent.map((b) => b.type)).toEqual(["start"]);
 });
 
 it("asks the server to end a call whose start got no answer, then lets the child try again", async () => {
@@ -254,9 +278,18 @@ it("asks the server to end a call whose start got no answer, then lets the child
   const f = await mount();
   answer = () => { calls++; throw new Error("offline"); };
   vi.stubGlobal("fetch", vi.fn(async (_url: string, init: { body: string }) => { sent.push(JSON.parse(init.body)); throw new Error("offline"); }));
-  await f.click("Call Maya"); await f.click("Start the call");
+  // The start made for the check gets no answer: it is cancelled, and the check stays.
+  await f.click("Call Maya");
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
   expect(sent.map((b) => b.type)).toEqual(["start", "cancel"]);
   expect(sent[1].id).toBe(sent[0].id);
+  expect(host.textContent).toContain("Your microphone works.");
+  // "Start the call" then starts in full, with a new call, and that start gets no answer either.
+  await f.click("Start the call");
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  expect(sent.map((b) => b.type)).toEqual(["start", "cancel", "start", "cancel"]);
+  expect(sent[2].id).not.toBe(sent[0].id);
+  expect(sent[3].id).toBe(sent[2].id);
   expect(host.textContent).toContain("The call did not start. Try again in a moment.");
   expect(f.button("Call Maya")).toBeDefined();
   expect(calls).toBe(0);

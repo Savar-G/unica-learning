@@ -181,6 +181,24 @@ describe("weekly store completeness and concurrent deletion", () => {
     expect(dueWeeklyEmails(await mayaWeeklyStore(db).load(finalDay), finalDay)).toHaveLength(1);
   });
 
+  it("leaves out a voice call Maya never joined (the desk cancelled a call made for the microphone check): the parent sees nothing", async () => {
+    // A cancelled call is an ended family voice call with no connected time, no note and no pending note
+    // (src/lib/maya-voice-desk-server.test.ts). Without this rule it made a recap with no call in it but "a missing note".
+    const at = new Date(pdt(3, 15)).toISOString();
+    const real = new Date(pdt(4, 15)).toISOString();
+    const cancelled = (id: string, parentId: string, childId: string) => ({ id, parent_id: parentId, child_id: childId, status: "ended", kind: "family", mode: "voice", connected_seconds: 0, ended_at: at, note_pending: null });
+    const db = fakeDb({ maya_call_notes: [noteRow("talked", "p2", "c2", pdt(4, 15))], maya_calls: [
+      cancelled("cancelled-1", "p1", "c1"), { ...cancelled("cancelled-2", "p1", "c1"), connected_seconds: null },
+      cancelled("cancelled-3", "p2", "c2"),
+      { id: "talked", parent_id: "p2", child_id: "c2", status: "ended", kind: "family", mode: "voice", connected_seconds: 140, ended_at: real, note_pending: null },
+    ], parents: [parent("p1"), parent("p2")], children: [child("c1", "p1"), child("c2", "p2")], email_log: [] });
+    for (const day of [NOW, pdt(15, 8)]) {
+      const due = dueWeeklyEmails(await mayaWeeklyStore(db).load(day), day);
+      // p1 only cancelled: no email. p2's email holds its real call only, so no note is missing from it.
+      expect(due.map((d) => [d.parentId, d.callIds])).toEqual([["p2", ["talked"]]]);
+    }
+  });
+
   it("R421W-5: leaves admin test calls and test families out of the load's due weeks", async () => {
     const at = new Date(pdt(3, 15)).toISOString();
     const db = fakeDb({ maya_call_notes: [], maya_calls: [

@@ -7,7 +7,7 @@ import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
 import { memoryWordingHistoryStore } from "@/lib/maya";
 import { mayaCalls } from "@/lib/maya-call";
-import { memoryCallStore } from "@/lib/maya-call-memory";
+import { memoryCallStore, memoryConnectionLog } from "@/lib/maya-call-memory";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { voiceRoom } from "@/lib/maya-voice";
@@ -182,9 +182,12 @@ function setup(over: { used?: number; accepted?: boolean; project?: typeof PROJE
   let n = 0;
   const now = Date.parse("2026-11-11T20:00:00Z");
   const store = memoryCallStore({ testFamilies: over.testFamilies ?? [] });
+  const eventStore = memoryLearningEventStore({ children: [{ id: CHILD, parentId: PARENT }] });
+  const alerts = { send: vi.fn(async () => {}), list: async () => [] };
   const base = {
-    store, history: memoryWordingHistoryStore(), events: learningEvents(memoryLearningEventStore({ children: [{ id: CHILD, parentId: PARENT }] })), rebuild: async () => true,
-    model: () => ruleMayaModel(), isTestFamily: async () => false, alerts: { send: async () => {}, list: async () => [] },
+    store, history: memoryWordingHistoryStore(), events: learningEvents(eventStore), rebuild: async () => true,
+    connections: memoryConnectionLog(store, () => now),
+    model: () => ruleMayaModel(), isTestFamily: async () => false, alerts,
     clock: () => now, newId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`, seed: () => 42,
     ...(over.note ? { note: over.note } : {}),
   };
@@ -202,7 +205,9 @@ function setup(over: { used?: number; accepted?: boolean; project?: typeof PROJE
     usedSeconds: async () => used.seconds,
     now: () => now,
   };
-  return { deps, store, calls, used, accepted, run: (action: Parameters<typeof runVoice>[1], c = ctx()) => runVoice(c, action, deps) };
+  /** The child's learning events of the whole call day: a cancelled call must write none. */
+  const events = () => eventStore.range(CHILD, { from: "2026-11-01T00:00:00Z", to: "2026-12-01T00:00:00Z" });
+  return { deps, store, calls, used, accepted, alerts, events, run: (action: Parameters<typeof runVoice>[1], c = ctx()) => runVoice(c, action, deps) };
 }
 const ID = "55555555-5555-4555-8555-555555555555";
 const start = (id = ID, question = REF) => ({ type: "start" as const, id, question });
@@ -420,6 +425,79 @@ describe("a desk voice request", () => {
     const r = await s.run({ type: "cancel", id: ID });
     expect(r).toMatchObject({ error: "already_started", call: { status: "live", started: true } });
     expect(s.store.rows()[0].status).toBe("live");
+  });
+
+  describe("a call made for the microphone check and cancelled before the tap (docs/maya-voice.md)", () => {
+    const NEXT = "66666666-6666-4666-8666-666666666666";
+    const PROVIDERS = { speechToText: "fake-stt", voice: "fake-voice" };
+    /** What a cancelled call must not leave: minutes, an event, a note, an alert, a start. */
+    async function nothingCounted(s: ReturnType<typeof setup>, note: ReturnType<typeof vi.fn>, id = ID) {
+      const row = s.store.rows().find((r) => r.id === id)!;
+      // The session's finish stamps a start time on the ended row, so `startedAt` is not the mark; the connected time is.
+      expect(row).toMatchObject({ status: "ended", connectedSeconds: 0, learningEventId: null, notePending: null, live: null, profileRebuiltAt: null });
+      expect(await s.events()).toEqual([]);
+      expect(note).not.toHaveBeenCalled();
+      expect(s.alerts.send).not.toHaveBeenCalled();
+    }
+
+    it("counts nothing, and frees the child's one live call at once: a new start right after gets a new call and ticket", async () => {
+      const note = vi.fn(async () => "done" as const);
+      const s = setup({ note });
+      expect((await s.run(start())).ticket).toBeTruthy();
+      // While the first call is live, a second one is refused: the one-live-call rule the cancel must free.
+      expect(await s.run(start(NEXT))).toMatchObject({ call: null, error: "busy" });
+      const cancelled = await s.run({ type: "cancel", id: ID });
+      expect(cancelled).toMatchObject({ call: { status: "ended", ended: true } });
+      expect(cancelled.error).toBeUndefined();
+      // The week is whole again: the cancelled call has no connected time.
+      expect(cancelled.usage).toMatchObject({ usedSeconds: 0, leftSeconds: 1800 });
+      await nothingCounted(s, note);
+
+      const again = await s.run(start(NEXT));
+      expect(again.error).toBeUndefined();
+      expect(again.call).toMatchObject({ id: NEXT, status: "live", started: false });
+      expect(again.ticket?.room).toBe(voiceRoom(NEXT));
+      expect(s.store.rows().filter((r) => r.status === "live").map((r) => r.id)).toEqual([NEXT]);
+    });
+
+    it("ends with no trace when Maya's worker opened the call before the child's microphone, and a new start works", async () => {
+      const note = vi.fn(async () => "done" as const);
+      const s = setup({ note });
+      await s.run(start());
+      const before = s.store.rows()[0].revision;
+      // The worker opens the call as soon as the room is made (main.ts): the providers are set and the revision rises,
+      // but the call has not started.
+      const opened = await s.calls.openVoice(ID, PROVIDERS, null);
+      expect(opened.ok).toBe(true);
+      expect(s.store.rows()[0]).toMatchObject({ speechToText: "fake-stt", voice: "fake-voice", startedAt: null });
+      expect(s.store.rows()[0].revision).toBeGreaterThan(before);
+
+      const cancelled = await s.run({ type: "cancel", id: ID });
+      expect(cancelled.error).toBeUndefined();
+      expect(cancelled.call).toMatchObject({ status: "ended", ended: true });
+      await nothingCounted(s, note);
+      expect((await s.run(start(NEXT))).ticket?.room).toBe(voiceRoom(NEXT));
+    });
+
+    it("retries the cancel when the worker opens the call between the desk's read and its end", async () => {
+      const note = vi.fn(async () => "done" as const);
+      const s = setup({ note });
+      await s.run(start());
+      const real = s.deps.calls.input;
+      let first = true;
+      s.deps.calls = { ...s.deps.calls, input: async (id, revision, input, name) => {
+        if (first) {
+          first = false;
+          expect((await s.calls.openVoice(id, PROVIDERS, null)).ok).toBe(true);
+        }
+        return real(id, revision, input, name);
+      } };
+      const cancelled = await s.run({ type: "cancel", id: ID });
+      expect(cancelled.error).toBeUndefined();
+      expect(cancelled.call).toMatchObject({ status: "ended" });
+      await nothingCounted(s, note);
+      expect((await s.run(start(NEXT))).ticket).toBeTruthy();
+    });
   });
 
   it("reads the call again when Maya joins between the read and the end, and then refuses the cancel", async () => {

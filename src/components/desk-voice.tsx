@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Avatar, Icon } from "@/components/desk-icons";
 import { MayaBoard } from "@/components/maya-board";
 import { clock, useMayaVoiceRoom, useMicCheck, type MayaState } from "@/components/maya-voice-room";
@@ -16,19 +16,47 @@ import type { DeskVoiceCall, DeskVoiceReply, VoiceTicket, VoiceUsage } from "@/l
 // itself (LiveKit, the microphone, Maya's board over RPC) is the shared hook in maya-voice-room.ts, the same one the
 // admin test call uses. During a call Maya's board shows in the desk's board area, read-only: the child's pen is not
 // part of a voice call. The screen to show is decided by src/lib/desk-voice-screen.ts.
+//
+// The call is made when the microphone check opens (docs/maya-voice.md, "The child joins the room before the Connect
+// tap"): its start (with the weekly check) and its ticket come while the child checks the microphone, and the room
+// joins in the background with the microphone off. "Start the call" then only goes live. A call made for the check is
+// cancelled (the room left, and the route's "cancel") when the child leaves the check, when the microphone does not
+// work, when the page is closed, and PREMADE_LIFE_MS after it was made with no tap. After that, "Start the call" starts
+// in full, with a new call and a new ticket, as before. Maya never joined a cancelled call, so it counts nothing.
 
 const MAYA_TEXT: Record<Exclude<MayaState, null>, string> = { listening: "Maya is listening", thinking: "Maya is thinking", speaking: "Maya is speaking" };
 const EMPTY_BOARD = { steps: [] as PlayStep[], viewBox: "0 0 1000 1000" };
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** How long a call made for the microphone check waits for "Start the call" before it is cancelled (ms). */
+export const PREMADE_LIFE_MS = 60_000;
+/** The longest a new start waits for the last cancel to answer (ms), so the child's one live call is free first. */
+const CANCEL_WAIT_MS = 5000;
+
+type VoiceQuestion = { source: "workbook"; workbookId: string; page: number; question: number };
 type VoiceRequest =
-  | { type: "start"; id: string; question: { source: "workbook"; workbookId: string; page: number; question: number } }
+  | { type: "start"; id: string; question: VoiceQuestion }
   | { type: "token" | "read" | "cancel"; id: string };
 
-/** One request to the desk's voice route. Null when the server cannot be reached or does not answer in JSON. */
-async function post(body: VoiceRequest): Promise<DeskVoiceReply | null> {
+/** A call made when the microphone check opened, until "Start the call" takes it or the check drops it. */
+interface Premade {
+  id: string;
+  state: "starting" | "ready" | "taken" | "dropped";
+  /** The start was sent: the call can exist on the server. */
+  sent: boolean;
+  answer: Promise<DeskVoiceReply | null>;
+  reply: DeskVoiceReply | null;
+  readyAt: number;
+  timer: ReturnType<typeof setTimeout> | null;
+}
+
+/**
+ * One request to the desk's voice route. Null when the server cannot be reached or does not answer in JSON. `keepalive`
+ * lets a request finish after the page is gone (a cancel on pagehide); the route takes it as any other POST.
+ */
+async function post(body: VoiceRequest, keepalive = false): Promise<DeskVoiceReply | null> {
   try {
-    const res = await fetch("/api/desk/voice", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const res = await fetch("/api/desk/voice", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), ...(keepalive ? { keepalive: true } : {}) });
     return (await res.json()) as DeskVoiceReply;
   } catch {
     return null;
@@ -48,9 +76,21 @@ export function useDeskVoice(initial: { usage: VoiceUsage } | null, at: { book: 
   // the call is this minus the call's own seconds, never the server's count minus them again.
   const [base, setBase] = useState<VoiceUsage | null>(null);
   const mic = useMicCheck();
+  const { release: releaseMic } = mic;
   const ticket = useRef<VoiceTicket | null>(null);
   const live = useRef({ id: "", hungUp: false });
   const drawn = useRef(-1);
+  /** The call made for the microphone check (see the top of this file). */
+  const premade = useRef<Premade | null>(null);
+  /** The call whose room joins before the tap. */
+  const [joinEarly, setJoinEarly] = useState<string | null>(null);
+  /** The last cancel this screen sent: a new start waits for it, so the child's one live call is free first. */
+  const cancelling = useRef<Promise<unknown>>(Promise.resolve());
+  /** Calls this screen made whose end it has not seen: a "busy" start asks about them. */
+  const loose = useRef(new Set<string>());
+  /** The question the microphone check was opened for. */
+  const opened = useRef("");
+  const questionKey = `${at.book}:${at.page}:${at.question}`;
 
   /** Reads the saved call again: its transcript, whether it ended, and the week's time left. */
   const read = useCallback(async () => {
@@ -93,8 +133,11 @@ export function useDeskVoice(initial: { usage: VoiceUsage } | null, at: { book: 
     },
   });
 
+  const { prepare, leave } = room;
+
   const forget = () => {
-    live.current = { id: "", hungUp: false };
+    live.current.id = "";
+    live.current.hungUp = false;
     drawn.current = -1;
     ticket.current = null;
     setHungUp(false);
@@ -104,42 +147,173 @@ export function useDeskVoice(initial: { usage: VoiceUsage } | null, at: { book: 
     setBase(null);
   };
 
-  /** Opens the microphone check. `before` runs first (the desk ends an open chat); false from it stops here. */
-  const open = async (before?: () => Promise<boolean>) => {
-    if (!initial || flow !== "idle" || at.question === null || voiceWeekUsed(usage)) return;
-    if (before && !(await before())) return;
-    forget();
+  /** A new id for the screen's call: the next start makes a new call. */
+  const renew = useCallback(() => {
     const id = crypto.randomUUID();
     live.current.id = id;
     setCallId(id);
-    setStartError(null);
-    setFlow("mic");
-    void mic.check();
-  };
+    return id;
+  }, []);
 
-  const closeMic = () => {
-    mic.release();
+  /** Cancels a call this screen made, which Maya never joined. It is remembered until the server says it ended. */
+  const cancel = useCallback((id: string, keepalive = false) => {
+    loose.current.add(id);
+    const sent = post({ type: "cancel", id }, keepalive).then((r) => {
+      if (r?.call?.status === "ended") loose.current.delete(id);
+      return r;
+    });
+    cancelling.current = sent;
+    return sent;
+  }, []);
+
+  /**
+   * Drops the call made for the microphone check: leaves its room and cancels it. A start that has not answered yet is
+   * cancelled when it answers, and at once too on pagehide (`keepalive`), since the page may be gone by then.
+   */
+  const drop = useCallback((keepalive = false) => {
+    const p = premade.current;
+    if (!p) return;
+    premade.current = null;
+    const was = p.state;
+    p.state = "dropped";
+    if (p.timer) clearTimeout(p.timer);
+    ticket.current = null;
+    setJoinEarly(null);
+    leave();
+    if (!p.sent) return;
+    if (was !== "starting") return void cancel(p.id, keepalive);
+    if (keepalive) void cancel(p.id, true);
+    cancelling.current = p.answer.then((r) => (!r || r.call?.status === "live" ? cancel(p.id, keepalive) : null));
+  }, [cancel, leave]);
+
+  /**
+   * Starts the call `id` on the server, after the last cancel has answered. "busy" with no call means another call of
+   * this child is live: when it is one this screen made and Maya never joined, it is read, cancelled, and the start is
+   * asked once more. Otherwise the answer is the refusal.
+   */
+  const startCall = useCallback(async (id: string, question: VoiceQuestion) => {
+    await Promise.race([cancelling.current, wait(CANCEL_WAIT_MS)]);
+    const r = await post({ type: "start", id, question });
+    if (r?.error !== "busy" || r.call) return r;
+    let freed = false;
+    for (const other of [...loose.current]) {
+      if (other === id) continue;
+      const seen = await post({ type: "read", id: other });
+      if (seen?.call?.status === "live" && !seen.call.started) freed = (await cancel(other))?.call?.status === "ended" || freed;
+      else if (seen?.call || seen?.error === "not_found") loose.current.delete(other);
+    }
+    return freed ? post({ type: "start", id, question }) : r;
+  }, [cancel]);
+
+  /** A start the server refused or did not answer: its words, and back to the Call Maya control. */
+  const refuse = (r: DeskVoiceReply | null) => {
+    releaseMic();
+    if (r?.usage) setUsage(r.usage);
+    setStartError(startErrorLine(r?.error, r?.usage ?? usage));
     live.current.id = "";
     setFlow("idle");
   };
 
-  /** The microphone works: the server starts the call, then the room joins with the ticket it gave. */
+  /** Makes the call for the microphone check: its start and ticket now; its room joins early once they come. */
+  const premake = (id: string, question: VoiceQuestion) => {
+    const p: Premade = { id, state: "starting", sent: false, answer: Promise.resolve(null), reply: null, readyAt: 0, timer: null };
+    premade.current = p;
+    p.answer = (async () => {
+      await Promise.race([cancelling.current, wait(CANCEL_WAIT_MS)]);
+      if (p.state === "dropped") return null;
+      p.sent = true;
+      return startCall(id, question);
+    })();
+    void p.answer.then((r) => {
+      // Dropped, or taken by "Start the call", which reads the answer itself.
+      if (p.state !== "starting") return;
+      premade.current = null;
+      p.state = "dropped";
+      if (!r) {
+        // No answer: the call may exist, so ask it to end. "Start the call" then starts in full.
+        void cancel(id);
+        renew();
+        return;
+      }
+      // Refused (the week is used, another call is live, ...): the words and the screen of a refused start.
+      if (!r.call || !r.ticket) return refuse(r);
+      premade.current = p;
+      p.state = "ready";
+      p.reply = r;
+      p.readyAt = Date.now();
+      ticket.current = r.ticket;
+      p.timer = setTimeout(() => {
+        if (premade.current !== p) return;
+        drop();
+        renew();
+      }, PREMADE_LIFE_MS);
+      setJoinEarly(id);
+    });
+  };
+  const take = (p: Premade) => {
+    p.state = "taken";
+    if (p.timer) clearTimeout(p.timer);
+    premade.current = null;
+    setJoinEarly(null);
+  };
+
+  /** Opens the microphone check, and makes the call. `before` runs first (the desk ends an open chat); false from it stops here. */
+  const open = async (before?: () => Promise<boolean>) => {
+    const q = at.question;
+    if (!initial || flow !== "idle" || q === null || voiceWeekUsed(usage)) return;
+    if (before && !(await before())) return;
+    forget();
+    const id = renew();
+    opened.current = questionKey;
+    setStartError(null);
+    setFlow("mic");
+    void mic.check();
+    premake(id, { source: "workbook", workbookId: at.book, page: at.page, question: q });
+  };
+
+  /** The microphone check again. A call the check cancelled (the microphone did not work, or no tap came) is made again. */
+  const recheck = () => {
+    void mic.check();
+    if (flow === "mic" && !premade.current && at.question !== null) premake(callId, { source: "workbook", workbookId: at.book, page: at.page, question: at.question });
+  };
+
+  const closeMic = useCallback(() => {
+    drop();
+    releaseMic();
+    live.current.id = "";
+    setFlow("idle");
+  }, [drop, releaseMic]);
+
+  /**
+   * The microphone works. A call made for the check and ready goes live at once: the room joined before the tap (or
+   * joins now, with its ticket). Else the server starts the call (or the start under way answers), then the room joins.
+   */
   const begin = async () => {
     if (flow !== "mic" || mic.state !== "working" || at.question === null) return;
     const id = callId;
+    const p = premade.current?.id === id ? premade.current : null;
     setBase(usage);
+    releaseMic();
+    if (p?.state === "ready" && p.reply?.call) {
+      take(p);
+      if (p.reply.usage) setUsage(p.reply.usage);
+      setCall(p.reply.call);
+      setFlow("call");
+      void room.connect();
+      return;
+    }
     setFlow("starting");
-    mic.release();
-    const r = await post({ type: "start", id, question: { source: "workbook", workbookId: at.book, page: at.page, question: at.question } });
-    if (live.current.id !== id) return;
+    if (p) take(p);
+    const r = p ? await p.answer : await startCall(id, { source: "workbook", workbookId: at.book, page: at.page, question: at.question });
+    if (live.current.id !== id) {
+      // The child left while it started (the desk closed): the call is not needed.
+      if (!r || r.call?.status === "live") void cancel(id);
+      return;
+    }
     if (!r?.call || !r.ticket) {
       // No answer: the call may exist on the server, so ask it to end.
-      if (!r) void post({ type: "cancel", id });
-      if (r?.usage) setUsage(r.usage);
-      setStartError(startErrorLine(r?.error, r?.usage ?? usage));
-      live.current.id = "";
-      setFlow("idle");
-      return;
+      if (!r) void cancel(id);
+      return refuse(r);
     }
     if (r.usage) setUsage(r.usage);
     ticket.current = r.ticket;
@@ -147,6 +321,58 @@ export function useDeskVoice(initial: { usage: VoiceUsage } | null, at: { book: 
     setFlow("call");
     void room.connect();
   };
+
+  // The room of the call made for the check joins early, with the microphone off (maya-voice-room.ts, `prepare`).
+  useEffect(() => {
+    if (flow !== "mic" || !joinEarly || joinEarly !== callId) return;
+    void prepare();
+    return leave;
+  }, [flow, joinEarly, callId, prepare, leave]);
+
+  // A microphone that does not work cancels the call made for the check; "Check again" makes a new one.
+  const micBad = mic.state === "blocked" || mic.state === "none" || mic.state === "failed";
+  useEffect(() => {
+    if (flow !== "mic" || !micBad || !premade.current) return;
+    drop();
+    renew();
+  }, [flow, micBad, drop, renew]);
+
+  // Another question leaves the check.
+  useEffect(() => {
+    if (flow === "mic" && opened.current !== questionKey) closeMic();
+  }, [flow, questionKey, closeMic]);
+
+  // The page closed or put away (pagehide) cancels the call made for the check. A tab hidden so long that its timer
+  // could not run (a hidden tab's timers can be slowed or stopped) cancels it as soon as it shows again.
+  useEffect(() => {
+    if (flow !== "mic") return;
+    const hide = () => {
+      if (!premade.current) return;
+      drop(true);
+      renew();
+    };
+    const shown = () => {
+      const p = premade.current;
+      if (document.visibilityState !== "visible" || p?.state !== "ready" || Date.now() - p.readyAt < PREMADE_LIFE_MS) return;
+      drop();
+      renew();
+    };
+    window.addEventListener("pagehide", hide);
+    document.addEventListener("visibilitychange", shown);
+    return () => {
+      window.removeEventListener("pagehide", hide);
+      document.removeEventListener("visibilitychange", shown);
+    };
+  }, [flow, drop, renew]);
+
+  // The desk closes: the call made for the check is cancelled, and a start still under way is cancelled when it answers.
+  useEffect(() => {
+    const current = live.current;
+    return () => {
+      drop(true);
+      current.id = "";
+    };
+  }, [drop]);
 
   const hangUp = () => {
     live.current.hungUp = true;
@@ -196,7 +422,7 @@ export function useDeskVoice(initial: { usage: VoiceUsage } | null, at: { book: 
     /** Maya's board shows for the call and until the child is back on the page. */
     showBoard: flow === "call" || flow === "after",
     picked: at.question !== null,
-    open, closeMic, begin, hangUp, tryAgain, stop, done,
+    open, recheck, closeMic, begin, hangUp, tryAgain, stop, done,
   };
 }
 export type DeskVoiceState = ReturnType<typeof useDeskVoice>;
@@ -283,7 +509,7 @@ export function VoiceControls({ state, beforeOpen }: { state: DeskVoiceState; be
         )}
         <button type="button" className="desk-call" disabled={mic.state !== "working"} onClick={() => void state.begin()}><Icon name="phone" />Start the call</button>
         <div className="desk-voice-row">
-          <button type="button" className="desk-chat-end" disabled={mic.state === "asking"} onClick={() => void mic.check()}>Check again</button>
+          <button type="button" className="desk-chat-end" disabled={mic.state === "asking"} onClick={state.recheck}>Check again</button>
           <button type="button" className="desk-chat-end" onClick={state.closeMic}>Not now</button>
         </div>
       </>}
