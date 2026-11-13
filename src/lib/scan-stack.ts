@@ -35,6 +35,8 @@ export interface StackUpload {
   key: string;
   status: "waiting" | "uploading" | "refused";
   reason?: UploadRefusal;
+  /** The server had no room for it for a while (#915): it keeps its place and asks again. */
+  held?: boolean;
 }
 
 /** A printed workbook page that belongs to a day. */
@@ -85,7 +87,8 @@ export interface StackGuide {
   stillText: string;
 }
 
-export type TileStatus = "adding" | "checking" | "ready" | "saved" | "refused" | "unavailable" | "sent";
+/** "adding": on its way to the server; "waiting": in the queue on this device, or waiting for room on the server. */
+export type TileStatus = "adding" | "waiting" | "checking" | "ready" | "saved" | "refused" | "unavailable" | "sent";
 
 export interface StackTile {
   key: string;
@@ -112,8 +115,11 @@ export interface StackDay {
 
 export interface Stack {
   refused: StackTile[];
-  /** Photos still on their way to the server: their page is not known yet. */
+  /** Photos still on their way to the server, sending or waiting: their page is not known yet. */
   adding: number;
+  /** Of those, how many are waiting their turn, and how many of those the server had no room for (#915). */
+  waiting: number;
+  held: number;
   addingTiles: StackTile[];
   days: StackDay[];
   sent: StackTile[];
@@ -147,13 +153,13 @@ const REFUSALS: Record<StackReason, { short: string; title: string; action: stri
   "page-mismatch": { short: "Wrong page", title: "This photo does not match its page code.", action: "Take a photo of one page, with its own QR code in view." },
   "orientation-unclear": { short: "Turned", title: "We cannot tell which way up this page is.", action: "Hold the page upright. Then take another photo." },
   "ambiguous-page": { short: "Two pages", title: "This photo shows more than one page.", action: "Fold the book back, so only one page shows. Then take another photo." },
-  "qr-mismatch": { short: "Code not clear", title: "We cannot read the QR code in this photo.", action: "Keep the QR code clear and in view. Then take another photo." },
+  "qr-mismatch": { short: "Code not clear", title: "We cannot read the QR code in this photo.", action: "Keep the QR code in view and sharp, with no shadow over it. Move a little closer. Then take another photo." },
   "another-page": { short: "Another page", title: "Part of this photo looks like a different page.", action: "Take a photo of this page on its own, flat, with nothing on top of it." },
   faint: { short: "Too faint", title: "Part of the page is too bright or faint to read.", action: "Take another photo without glare." },
   "check-timeout": { short: "Not checked yet", title: "We couldn't check this page right now.", action: "Try again in a minute." },
   "printed-page-changed": { short: "Cannot check", title: "We cannot line up this photo with the printed page.", action: "Take another photo of the whole page." },
   failed: { short: "Cannot check", title: "We cannot line up this photo with the printed page.", action: "Take another photo of the whole page." },
-  qr: { short: "Not a workbook page", title: "We cannot find a page in this photo.", action: "Take a photo of one finished page, with its QR code in view." },
+  qr: { short: "Not a workbook page", title: "We cannot read a page's QR code in this photo.", action: "Keep the QR code in view and sharp, with no shadow or finger over it. Move a little closer. Then take another photo." },
   page: { short: "Wrong workbook", title: "This page is not in this child's workbook.", action: "Check the child, then take a photo of a page from this workbook." },
   duplicate: { short: "Already has a photo", title: "This page already has a photo.", action: "Open its photo in the stack. Delete it first if you need another photo." },
   image: { short: "Cannot open", title: "We cannot open this photo.", action: "Choose a JPG, PNG or WebP photo of one page." },
@@ -229,7 +235,7 @@ export function buildStack(o: { photos: readonly StackPhoto[]; uploads: readonly
     return { key: u.key, photoId: null, uploadKey: u.key, label: "Unknown page", title: "Unknown page", status: "refused", reason: refusalCopy(reason).short, refusal: reason };
   });
   const addingTiles: StackTile[] = o.uploads.filter((u) => u.status !== "refused")
-    .map((u) => ({ key: u.key, photoId: null, uploadKey: u.key, label: "New photo", title: "New photo", status: "adding", reason: null, refusal: null }));
+    .map((u) => ({ key: u.key, photoId: null, uploadKey: u.key, label: "New photo", title: "New photo", status: u.status === "uploading" && !u.held ? "adding" : "waiting", reason: u.held ? "Waiting for room" : null, refusal: null }));
 
   // Refused photos, oldest first, then refused uploads, whose page is not known.
   const refused = [
@@ -261,6 +267,8 @@ export function buildStack(o: { photos: readonly StackPhoto[]; uploads: readonly
   const open = [...refused, ...addingTiles, ...days.flatMap((d) => d.tiles)];
   return {
     refused, adding: addingTiles.length, addingTiles, days, sent,
+    waiting: addingTiles.filter((t) => t.status === "waiting").length,
+    held: o.uploads.filter((u) => u.status !== "refused" && u.held).length,
     readyIds: ready.map((t) => t.photo.id),
     counts: { photos: o.photos.length + o.uploads.length, ready: ready.length, refused: refused.length, checking },
     // A refused page keeps its card and its retake, even alone.
@@ -285,6 +293,24 @@ export function sendLabel(ready: number): string {
   if (ready === 1) return "Send this page for marking";
   if (ready === 0) return "Send pages for marking";
   return `Send ${ready} pages for marking`;
+}
+
+/** "Sending 2 photos", "Sending 2 photos, 5 waiting", "3 photos waiting": the count beside the new photos. */
+export function addingCount(stack: Stack): string {
+  const sending = stack.adding - stack.waiting;
+  if (!sending) return `${plural(stack.waiting, "photo", "photos")} waiting`;
+  return `Sending ${plural(sending, "photo", "photos")}${stack.waiting ? `, ${stack.waiting} waiting` : ""}`;
+}
+
+/**
+ * What to do when the server has had no room for new photos for a while (#915), or null. The photos keep their place and
+ * go on their own when there is room. Sending ready pages frees room, so it is named when there are ready pages to send.
+ */
+export function roomNote(stack: Stack): string | null {
+  if (!stack.held) return null;
+  const keep = stack.held === 1 ? "The waiting photo keeps its place" : "The waiting photos keep their place";
+  if (stack.counts.ready) return `There is no room for more photos yet. Send these pages for marking first, then add more. ${keep}.`;
+  return `There is no room for more photos yet. ${keep} and ${stack.held === 1 ? "goes" : "go"} when there is room.`;
 }
 
 /** The line above Send while some pages are still being checked; null when none are. */

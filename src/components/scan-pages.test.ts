@@ -21,7 +21,9 @@ const PAGES = [10, 11, 12, 13].map((n, i) => ({ id: `p${n}`, workbookId: "book",
 let root: Root, host: HTMLDivElement;
 let checks: boolean, acknowledged: boolean;
 let photos: Map<string, Photo & { two: boolean }>;
-let uploading: number, overlap: boolean;
+let uploading: number, mostAtOnce: number;
+// While true, every admission answers busy, as the server does when the family has no room.
+let full: boolean;
 // Admission ids in order; how many admissions commit and then lose their answer; how many saves fail; which ids' leases ended.
 let admitted: string[], loseAdmissions: number, saveFailures: number, expired: Set<string>;
 // Uploads that land and lose their answer; status answers lost; the list down; the children on the page; the ids released.
@@ -45,7 +47,7 @@ const text = () => document.body.textContent ?? "";
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   marking = null;
-  context.auth = null; context.prepare = null; checks = true; acknowledged = true; photos = new Map(); uploading = 0; overlap = false; calls.length = 0;
+  context.auth = null; context.prepare = null; checks = true; acknowledged = true; photos = new Map(); uploading = 0; mostAtOnce = 0; full = false; calls.length = 0;
   admitted = []; loseAdmissions = 0; saveFailures = 0; expired = new Set();
   losePuts = 0; loseStatus = false; listDown = false; kids = [{ id: "child", first_name: "Leah" }]; released = [];
   vi.stubGlobal("fetch", async (path: string, init?: RequestInit) => {
@@ -60,6 +62,7 @@ beforeEach(() => {
     if (path === "/api/account/scans" && method === "POST") {
       const asked: string = JSON.parse(String(init!.body)).id;
       admitted.push(asked);
+      if (full) return Response.json({ error: "busy" }, { status: 429 });
       if (loseAdmissions > 0) { loseAdmissions--; throw new TypeError("the answer was lost"); }
       return Response.json({ state: photos.get(asked)?.state ?? "reserved", id: asked });
     }
@@ -82,7 +85,7 @@ beforeEach(() => {
     }
     if (method === "PUT" && id) {
       if (expired.has(id)) return Response.json({ error: "expired" }, { status: 409 });
-      uploading++; if (uploading > 1) overlap = true;
+      uploading++; mostAtOnce = Math.max(mostAtOnce, uploading);
       await new Promise((r) => setTimeout(r, 1));
       uploading--;
       const name = await (init!.body as Blob).text();
@@ -104,14 +107,39 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
-it("starts with the tips, Choose photos and Start scanning, and shows the photo notice once before the first photo", async () => {
+it("keeps both saved photos when the older concurrent list reply arrives last", async () => {
+  checks = false;
+  const server = global.fetch;
+  let releaseOld!: () => void, releaseSecond!: () => void, captured = false;
+  const oldReply = new Promise<void>((resolve) => { releaseOld = resolve; });
+  const secondUpload = new Promise<void>((resolve) => { releaseSecond = resolve; });
+  vi.stubGlobal("fetch", async (path: string, init?: RequestInit) => {
+    if (init?.method === "PUT" && await (init.body as Blob).text() === "p11.jpg") await secondUpload;
+    const response = await server(path, init);
+    if (path.startsWith("/api/account/scans?child=")) {
+      const data = await response.clone().json();
+      if (!captured && data.photos.length === 1) { captured = true; releaseSecond(); await oldReply; }
+    }
+    return response;
+  });
+  await render();
+  await choose("library", "p10.jpg", "p11.jpg");
+  expect(captured).toBe(true);
+  expect(text()).toContain("2 photos saved.");
+  await act(async () => releaseOld()); await settle();
+  expect(photos.size).toBe(2);
+  expect(text()).toContain("2 photos saved.");
+  expect(text()).not.toContain("1 photo saved.");
+});
+
+it("starts with the tips, Take photos and Choose from your photos, and shows the photo notice once before the first photo", async () => {
   acknowledged = false;
   await render();
   expect(text()).toContain("Fold the book back, so only one page shows.");
-  expect(button("Choose photos")).toBeDefined();
+  expect(button("Choose from your photos")).toBeDefined();
   const camera = host.querySelector<HTMLInputElement>("input[capture]")!;
   const opened = vi.spyOn(camera, "click").mockImplementation(() => {});
-  await act(async () => button("Start scanning")!.click());
+  await act(async () => button("Take photos")!.click());
   expect(opened).not.toHaveBeenCalled();
   expect(text()).toContain("Before you take a photo");
   await act(async () => button("Got it")!.click()); await settle();
@@ -119,11 +147,20 @@ it("starts with the tips, Choose photos and Start scanning, and shows the photo 
   expect(acknowledged).toBe(true);
 });
 
-it("takes several chosen photos one at a time, saves each with no confirm, and groups them by day with the gaps", async () => {
+it("opens the phone's photos for several at once from the start screen", async () => {
+  await render();
+  const library = host.querySelector<HTMLInputElement>("input[multiple]")!;
+  expect(library.accept).toContain("image/jpeg");
+  const opened = vi.spyOn(library, "click").mockImplementation(() => {});
+  await act(async () => button("Choose from your photos")!.click());
+  expect(opened).toHaveBeenCalledOnce();
+});
+
+it("takes several chosen photos two at a time, saves each with no confirm, and groups them by day with the gaps", async () => {
   const logged = vi.spyOn(console, "error");
   await render();
   await choose("library", "p10.jpg", "p12.jpg", "p13.jpg");
-  expect(overlap).toBe(false);
+  expect(mostAtOnce).toBeLessThanOrEqual(2);
   expect(calls.filter((c) => c.startsWith("PUT"))).toHaveLength(3);
   expect([...photos.values()].every((p) => p.state === "saved")).toBe(true);
   expect(button("Save this page")).toBeUndefined();
@@ -404,4 +441,32 @@ it("a held old-account upload response cannot save, refill the stack or start a 
   await act(async () => resume(Response.json({ photo: { id: admitted[0], state: "pending" } }))); await settle();
   expect(calls).not.toContain(`POST /api/account/scans/${admitted[0]}`);
   expect(host.textContent).toContain("Your account changed"); expect(host.querySelectorAll("img")).toHaveLength(0);
+});
+
+it("keeps photos the server has no room for in their place, says so, and sends them when there is room", async () => {
+  shortWaits();
+  await render();
+  await choose("library", "p10.jpg");
+  full = true;
+  await choose("library", "p11.jpg", "p12.jpg", "p13.jpg");
+  expect(text()).toContain("Waiting for room");
+  expect(text()).toContain("Send these pages for marking first, then add more.");
+  expect(text()).not.toContain("Not sent");
+  expect(photos.size).toBe(1);
+  full = false;
+  await act(async () => button("Send this page for marking")!.click()); await settle();
+  await settle();
+  expect(text()).not.toContain("Waiting for room");
+  expect([...photos.values()].map((p) => p.pageId).sort()).toEqual(["p10", "p11", "p12", "p13"]);
+});
+
+it("without checks, a photo waiting for room says it goes on its own", async () => {
+  shortWaits(); checks = false; full = true;
+  await render();
+  await choose("library", "p10.jpg");
+  expect(text()).toContain("Waiting for room");
+  expect(text()).toContain("There is no room for more photos yet. The waiting photo keeps its place and goes when there is room.");
+  expect(text()).not.toContain("Not sent");
+  full = false; await settle(); await settle();
+  expect(photos.size).toBe(1);
 });

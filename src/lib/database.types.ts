@@ -4372,6 +4372,36 @@ export type Database = {
           },
         ]
       }
+      scan_team_email_days: {
+        Row: {
+          claimed_at: string
+          day: string
+          email_id: string | null
+          error: string | null
+          state: string
+          updated_at: string
+          waiting: number
+        }
+        Insert: {
+          claimed_at?: string
+          day: string
+          email_id?: string | null
+          error?: string | null
+          state?: string
+          updated_at?: string
+          waiting: number
+        }
+        Update: {
+          claimed_at?: string
+          day?: string
+          email_id?: string | null
+          error?: string | null
+          state?: string
+          updated_at?: string
+          waiting?: number
+        }
+        Relationships: []
+      }
       sign_in_links: {
         Row: {
           child_id: string
@@ -10000,6 +10030,7 @@ export type Database = {
         Args: { p_session: string; p_user: string }
         Returns: boolean
       }
+      scan_team_waiting_count: { Args: never; Returns: number }
       seed_family_plan_history: {
         Args: { p_parent: string }
         Returns: undefined
