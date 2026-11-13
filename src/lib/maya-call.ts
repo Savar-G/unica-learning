@@ -1302,6 +1302,14 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
               // The allowance is 0: the block's refill decides (the call is at the cap, or the ledger cannot answer).
               const state = await budget.ensure();
               if (inactive()) return none;
+              // The model refill can outlast admitted STT coverage. Hold no model ticket during a new STT wait.
+              if (state === "open" && meter && meter.state() !== "open") {
+                const coverage = await sttNow();
+                if (inactive()) return none;
+                const current = meter.state();
+                if (coverage !== "open") return capClose(coverage, null, unread(childText, me));
+                if (current !== "open") return capClose(current ?? "paused", null, unread(childText, me));
+              }
               ticket = state === "open" ? budget.admit(need) : null;
               if (!ticket) {
                 if (!childText && (inflight.size > 1 || budget.attempts() >= 1)) return none;

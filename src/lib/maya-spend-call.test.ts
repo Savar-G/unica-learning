@@ -666,6 +666,61 @@ describe("a voice call's budget block (latency plan V1, 2026-11-13)", () => {
     await call.end({ reason: "child_stopped" });
   });
 
+  it("rechecks STT coverage when it expires during a model-block refill wait", async () => {
+    const t = setup();
+    const spend = t.seams.spend!;
+    let owner!: SpendCall;
+    t.seams.spend = { ...spend, budget(input) { owner = input; return spend.budget(input); } };
+    const w = watched(t);
+    const call = await familyVoice(w.calls);
+    const reserve = t.spendStore.reserve.bind(t.spendStore);
+    const settle = t.spendStore.settle.bind(t.spendStore);
+    let releaseModel!: () => void;
+    let releaseStt!: () => void;
+    let modelEntered!: () => void;
+    let sttEntered!: () => void;
+    const modelHeld = new Promise<void>((resolve) => { releaseModel = resolve; });
+    const sttHeld = new Promise<void>((resolve) => { releaseStt = resolve; });
+    const modelWaiting = new Promise<void>((resolve) => { modelEntered = resolve; });
+    const sttWaiting = new Promise<void>((resolve) => { sttEntered = resolve; });
+    vi.spyOn(t.spendStore, "reserve").mockImplementation(async (input) => {
+      const result = await reserve(input);
+      if (input.what === "model" && !input.force) { modelEntered(); await modelHeld; }
+      return result;
+    });
+    vi.spyOn(t.spendStore, "settle").mockImplementation(async (id, micros) => {
+      if (t.spendStore.rows().some((row) => row.id === id && row.what === "speech_to_text")) {
+        sttEntered();
+        await sttHeld;
+      }
+      return settle(id, micros);
+    });
+    // Three paid repair attempts exhaust the admitted model block and start one background refill.
+    for (let i = 0; i < 3; i++) {
+      const id = t.seams.newId();
+      expect(await t.ledger.reserve({ id, charge: chargeOf(owner), callId: call.id, budgetKey: owner.budgetKey, what: "model", micros: room(t) })).toEqual({ ok: true });
+      await t.ledger.settleUsd(id, RESERVE_USD.model);
+    }
+    await modelWaiting;
+    t.advance(40_000);
+    const before = t.sent.count;
+    const turn = call.child("I got 66.");
+    try {
+      await sttWaiting;
+      expect(t.sent.count).toBe(before);
+      t.advance(21_000);
+      releaseModel();
+      await tick();
+      expect(t.sent.count).toBe(before);
+    } finally {
+      releaseModel();
+      releaseStt();
+      await turn;
+      await call.end({ reason: "child_stopped" });
+    }
+    expect(t.sent.count).toBeGreaterThan(before);
+  });
+
   it.each([true, false])("keeps a replacement's budget active when the old handle ends (loss discovered: %s)", async (discovered) => {
     const t = setup();
     const w = watched(t);
