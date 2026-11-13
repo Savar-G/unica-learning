@@ -121,6 +121,7 @@ export default defineAgent({
       if (firstSound || ev.newState !== "speaking") return;
       firstSound = true;
       log("opening first sound", { callId, sinceChildMs: Date.now() - childAt, sinceJobMs: Date.now() - jobAt, marks });
+      setTimeout(() => log("opening marks", { callId, marks }), 9000);
     });
     const encoder = new TextEncoder();
     const notify = (update: CallUpdate) => {

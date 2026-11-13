@@ -165,11 +165,14 @@ export class MayaVoiceAgent extends voice.Agent {
       this.onOpeningMark?.("ttsNode");
       const frames = await synthesize(text);
       if (!frames) return frames;
-      let first = true;
-      return frames.pipeThrough(new TransformStream<AudioFrame, AudioFrame>({ transform: (frame, controller) => {
-        if (first) { first = false; this.onOpeningMark?.("firstFrame"); }
-        controller.enqueue(frame);
-      } }));
+      let count = 0;
+      return frames.pipeThrough(new TransformStream<AudioFrame, AudioFrame>({
+        transform: (frame, controller) => {
+          if (++count === 1) this.onOpeningMark?.("firstFrame");
+          controller.enqueue(frame);
+        },
+        flush: () => { this.onOpeningMark?.(`framesEnd:${count}`); },
+      }));
     }
     if (!this.board) return synthesize(text);
     const scope = this.board.scope();
@@ -461,6 +464,7 @@ export class VoiceCallRun {
     this.options.openingMark?.("say");
     const speech = this.session.say(text, { addToChatCtx: true });
     const generation = this.generation;
+    void speech.waitForPlayout().catch(() => {}).then(() => this.options.openingMark?.(`playout:${speech.interrupted ? "interrupted" : "whole"}`));
     const starting = (async () => {
       const turn = await this.call.start();
       if (this.call.lost) return void this.finish({ detail: "the call could not be saved" });
