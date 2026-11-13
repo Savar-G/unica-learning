@@ -817,9 +817,10 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
   /** The model, telling `refused` when the ledger refuses one of its requests in the middle of a turn. */
   const watched = (model: MayaModel, refused: (state: Exclude<SpendState, "open">) => void): MayaModel => ({
     ...model,
-    async propose(input, signal) {
+    // D-341: `onText` goes through, so a voice call's reply can stream (a chat passes none).
+    async propose(input, signal, onText) {
       try {
-        return await model.propose(input, signal);
+        return await model.propose(input, signal, onText);
       } catch (e) {
         if (e instanceof SpendRefused) refused(e.state);
         throw e;

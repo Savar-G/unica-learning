@@ -23,13 +23,14 @@ import { FlushSentinel, stt, voice, type llm, type tts, type VAD } from "@liveki
 import type { AudioFrame } from "@livekit/rtc-node";
 import type { Batch } from "@/lib/board";
 import type { FinishOptions } from "@/lib/maya-text";
-import type { VoiceCall, VoiceTurn } from "@/lib/maya-call";
+import type { VoiceCall, VoiceSay, VoiceTurn } from "@/lib/maya-call";
 import { speechWords, type BoardSpeech, type SpeechScope } from "@/lib/board-speech";
 import { CuePlaybackOutput } from "./cue-playback";
+import { earlyRest, type EarlyRest } from "./early-speech";
 import { HeardSignals } from "./heard-signals";
 import { boardAudio, countedSynthesis, type SilentSpeech } from "./speech-audio";
 import { VOICE_METER_TICK_MS } from "@/lib/maya-spend";
-import { limitsOf } from "@/lib/maya";
+import { limitsOf, sentencesOf } from "@/lib/maya";
 import { asksForNumber, CONNECTION_RENEW_MS, childTurnFrom, endsInOpenNumber, GREETING_ID, GREETING_TEXT, nextTickAt, RECONNECT_GRACE_MS, type Heard, type TurnSilence, type VoiceTuning } from "@/lib/maya-voice";
 import { ACK_HOLD_LIMIT_MS, ACK_LIMIT_MS, ACK_PHRASES, nextAcknowledgement } from "@/lib/maya-voice-ack";
 import { TurnClock, type AckSkip, type HeardMarks, type TurnOutcome, type VoiceTurnSample } from "./turn-timing";
@@ -104,7 +105,7 @@ export class MayaVoiceAgent extends voice.Agent {
     private readonly call: VoiceCall,
     private readonly onTurn: (turn: VoiceTurn) => Promise<boolean>,
     private readonly board: { sync: BoardSpeech; scope(): SpeechScope | null } | undefined,
-    private readonly reply: (stoppedAt: number | undefined, work: () => Promise<VoiceTurn[]>, mark: FinalMark | null) => ReadableStream<string | FlushSentinel>,
+    private readonly reply: (stoppedAt: number | undefined, work: (say: VoiceSay) => Promise<VoiceTurn[]>, mark: FinalMark | null) => ReadableStream<string | FlushSentinel>,
     private readonly hooks: AgentHooks = { greetingOver: async () => {}, childWentOn: async () => false },
   ) {
     super({ instructions: "Maya's words come from her session through the text adapter, not from these instructions." });
@@ -200,9 +201,10 @@ export class MayaVoiceAgent extends voice.Agent {
         return null;
       }
       this.extended = false;
-      return this.reply(stoppedSpeakingAt(chatCtx), async () => [
+      // The reply's first sentences may stream (D-341), unless the call's own start runs in the same work.
+      return this.reply(stoppedSpeakingAt(chatCtx), async (say) => [
         ...((await this.starting, opening) ? [await this.call.start()] : []),
-        await this.call.child(heard.text, heard.uncertain ? { uncertain: true, alternatives: heard.alternatives } : undefined),
+        await this.call.child(heard.text, heard.uncertain ? { uncertain: true, alternatives: heard.alternatives } : undefined, opening ? undefined : say),
       ], heldMarks.at(-1) ?? null);
     }
     if (!opening) return null;
@@ -263,7 +265,39 @@ interface TurnPace {
   write(chunk: string | FlushSentinel): void;
   /** Ends the reply's stream. Nothing more can be written to it. */
   end(): void;
+  /** The sentences said before the turn was done (D-341). */
+  early: EarlySpeech;
+  /** This turn's sample was taken (at the answer's first sound, or when it closed). */
+  measured: boolean;
+  /** What the call said of the turn before any model call (VoiceSay.begun); null until then. */
+  plan: { model: boolean; streams: boolean } | null;
 }
+
+/**
+ * Maya's first sentences of a child turn, said while the rest of her turn (the model's end, the save, the spend read)
+ * finishes (D-341). Speech A: the sentences the session streamed, under an empty board plan whose audio does not wait for
+ * the board. They go into the reply's own stream, or, after a thinking phrase, into a speech of their own.
+ */
+interface EarlySpeech {
+  /** Parts given and not yet written. A part waits one microtask: parts given with the output's end are the finished turn's. */
+  waiting: { sentence: string; index: number }[];
+  /** Sentences written to the voice, in order. */
+  said: string[];
+  /** Of `said`, the ones a finished turn has not matched yet (each is said once). */
+  unmatched: string[];
+  /** No more parts are taken: the output ended, the turn finished, or it was stopped. */
+  closed: boolean;
+  /** The turn is not done yet: more words or its plan can still come, so the turn stays this run's after its first sound. */
+  open: boolean;
+  write: ((text: string) => void) | null;
+  end: (() => void) | null;
+  /** The speech that carries them: the reply's own speech, or a speech of their own after a phrase. */
+  speech: voice.SpeechHandle | null;
+  /** The speech of their own is under way. */
+  starting: Promise<void> | null;
+}
+
+const noEarly = (): EarlySpeech => ({ waiting: [], said: [], unmatched: [], closed: false, open: false, write: null, end: null, speech: null, starting: null });
 
 /** The greeting's own wait for its end of playback, if the audio never reports one (its words take about 8 s at a calm pace). */
 export const GREETING_HOLD_LIMIT_MS = 20_000;
@@ -522,7 +556,7 @@ export class VoiceCallRun {
   }
 
   /** The stream of a child turn's reply. It is returned at once: the turn runs behind it. */
-  private reply(stoppedAt: number | undefined, work: () => Promise<VoiceTurn[]>, mark: FinalMark | null = null) {
+  private reply(stoppedAt: number | undefined, work: (say: VoiceSay) => Promise<VoiceTurn[]>, mark: FinalMark | null = null) {
     this.setPatience(false);
     this.closeTurn();
     const heardAt = this.timers.now();
@@ -541,6 +575,7 @@ export class VoiceCallRun {
     const pace: TurnPace = {
       clock: new TurnClock(this.timers.now, speechEndedAt, heardAt, heard), generation: this.generation,
       writable: true, ready: false, closed: false, handle: this.speech, guided: false, ackStopped: false, ackWritten: false, ownSpeech: false, limit: null, hold: null, ack: null, ackOver: null, write: () => {}, end: () => {},
+      early: noEarly(), measured: false, plan: null,
     };
     this.pace = pace;
     return new ReadableStream<string | FlushSentinel>({
@@ -549,7 +584,14 @@ export class VoiceCallRun {
         pace.end = () => { if (pace.writable) { pace.writable = false; controller.close(); } };
         this.runTurn(pace, speechEndedAt, work).then(
           () => pace.end(),
-          error => { this.closeTurn(pace); if (pace.writable) { pace.writable = false; controller.error(error); } },
+          error => {
+            pace.early.closed = true;
+            pace.early.open = false;
+            this.closeTurn(pace);
+            // Sentences already said stay said: their stream ends rather than fails, so their audio is not cut.
+            if (pace.early.said.length) { pace.early.end?.(); pace.end(); }
+            else if (pace.writable) { pace.writable = false; controller.error(error); }
+          },
         );
       },
       cancel: () => {
@@ -560,7 +602,7 @@ export class VoiceCallRun {
     });
   }
 
-  private async runTurn(pace: TurnPace, speechEndedAt: number, work: () => Promise<VoiceTurn[]>) {
+  private async runTurn(pace: TurnPace, speechEndedAt: number, work: (say: VoiceSay) => Promise<VoiceTurn[]>) {
     const limit = this.options.ackLimitMs ?? ACK_LIMIT_MS;
     if (limit > 0) {
       pace.limit = this.timers.set(speechEndedAt + limit - this.timers.now(), () => {
@@ -569,14 +611,18 @@ export class VoiceCallRun {
       });
     }
     let turns: VoiceTurn[];
-    try { turns = await work(); }
+    try { turns = await work(this.listen(pace)); }
     finally {
       pace.ready = true;
+      pace.early.closed = true;
+      pace.early.waiting.length = 0;
       this.clearLimit(pace);
     }
     // The guidance went out on its own, and this turn's marks with it. What is left is the close.
-    if (pace.guided) return this.sayFirst(null, turns);
+    if (pace.guided) return this.sayFirst(null, this.unsaid(pace, turns));
     pace.clock.ready(timeOf(turns));
+    // Sentences went out before the turn was done: the rest follows them (D-341).
+    if (pace.early.said.length) return this.finishEarly(pace, turns);
     // Safety comes first, and the deadline close with it: nothing that came before them holds them back.
     if (turns.some(t => t.priority)) return this.sayFirst(pace, turns);
     // A new plan takes the audio from the old one, so the answer's board waits until the acknowledgement has played.
@@ -602,6 +648,160 @@ export class VoiceCallRun {
     pace.write(text);
   }
 
+  /**
+   * The ear on this turn's sentences while it runs (VoiceSay, the streaming contract of src/lib/maya-text.ts). A part
+   * waits one microtask: the session gives the parts of a reply checked whole together with the output's end, in the
+   * same task, and those are the finished turn's (its board plan is staged before them). A part streamed while the model
+   * still writes is never followed by the end in the same task, so it is said at once.
+   */
+  private listen(pace: TurnPace): VoiceSay {
+    const early = pace.early;
+    return {
+      begun: (plan) => { pace.plan = plan; },
+      part: (sentence, index) => {
+        if (early.closed) return;
+        // No thinking phrase starts once a sentence has come.
+        this.clearLimit(pace);
+        early.waiting.push({ sentence, index });
+        queueMicrotask(() => this.flushEarly(pace));
+      },
+      cancel: (fromIndex) => { early.waiting = early.waiting.filter(p => p.index < fromIndex); },
+      end: () => { early.waiting.length = 0; early.closed = true; },
+    };
+  }
+
+  /** Says the parts that waited, after the ones already said. A turn that is no longer this run's says nothing more. */
+  private flushEarly(pace: TurnPace) {
+    const early = pace.early;
+    const parts = early.waiting.splice(0);
+    if (!parts.length || early.closed) return;
+    const fresh = this.pace === pace && !pace.guided && !this.finishing && this.childHere && pace.generation === this.generation
+      && (early.speech ? !early.speech.interrupted : pace.writable && !pace.handle?.interrupted);
+    // Out of order is not the contract: the finished turn gives the rest.
+    if (!fresh || parts.some((p, i) => p.index !== early.said.length + i)) { early.closed = true; return; }
+    const sentences = parts.map(p => p.sentence);
+    if (!early.write) this.openEarly(pace);
+    early.said.push(...sentences);
+    early.unmatched.push(...sentences);
+    // A sentence ends with a space: LiveKit's text filter holds back a sentence's last mark until more text comes.
+    early.write!(`${sentences.join(" ")} `);
+  }
+
+  /**
+   * Speech A: an empty plan (no batch), whose audio does not wait for the board, like the opening's. With no thinking
+   * phrase in the reply's stream, the sentences go into it. After a phrase they wait for its end and go out as a speech
+   * of their own: the voice closes a stream about 1 s after its last audio (`ackWritten`).
+   */
+  private openEarly(pace: TurnPace) {
+    const early = pace.early;
+    early.open = true;
+    pace.clock.firstPart();
+    if (!pace.ackWritten && !pace.ownSpeech) {
+      void this.stageBoard({}, false).catch(() => {});
+      this.agent.ungatedNext = true;
+      pace.clock.held();
+      pace.clock.staged();
+      early.speech = pace.handle;
+      early.write = text => pace.write(text);
+      early.end = () => pace.end();
+      return;
+    }
+    pace.ownSpeech = true;
+    const queued: string[] = [];
+    let controller: ReadableStreamDefaultController<string> | null = null;
+    let ended = false;
+    early.write = text => { if (ended) return; if (controller) controller.enqueue(text); else queued.push(text); };
+    early.end = () => { if (ended) return; ended = true; controller?.close(); };
+    early.starting = (async () => {
+      await pace.ack;
+      if (this.pace !== pace || pace.guided || this.finishing || !this.childHere || pace.generation !== this.generation || this.session.userState === "speaking") {
+        early.closed = true;
+        ended = true;
+        return;
+      }
+      // The reply's speech ends with the phrase, so this speech plays next.
+      pace.end();
+      void this.stageBoard({}, false).catch(() => {});
+      this.agent.ungatedNext = true;
+      pace.clock.held();
+      pace.clock.staged();
+      const text = new ReadableStream<string>({ start: c => {
+        controller = c;
+        for (const t of queued.splice(0)) c.enqueue(t);
+        if (ended) c.close();
+      } });
+      early.speech = this.session.say(text, { addToChatCtx: true });
+    })().catch(() => { early.closed = true; ended = true; });
+  }
+
+  /**
+   * The turns with the sentences already said left out, and their cues moved (./early-speech.ts). A finished turn that
+   * does not start with them is logged, with counts only (logs hold no words), and the rest is said from where they
+   * differ. Each sentence said early is matched once.
+   */
+  private unsaidRest(pace: TurnPace | null, turns: VoiceTurn[]): EarlyRest {
+    const early = pace?.early;
+    if (!early?.unmatched.length) return earlyRest(turns, []);
+    const rest = earlyRest(turns, early.unmatched);
+    if ((rest.differ || rest.unmatched.length) && !this.call.lost) {
+      console.warn("[maya voice] streamed words differ from the saved turn", this.call.id, { said: early.said.length, unmatched: rest.unmatched.length, turnSentences: turns.flatMap(t => t.say.flatMap(sentencesOf)).length });
+    }
+    early.unmatched.length = 0;
+    return rest;
+  }
+
+  private unsaid(pace: TurnPace | null, turns: VoiceTurn[]): VoiceTurn[] {
+    return pace?.early.unmatched.length ? this.unsaidRest(pace, turns).turns : turns;
+  }
+
+  /**
+   * The rest of a turn whose first sentences were said early. With no board batch it joins their speech (the same empty
+   * plan), so there is no gap. With batches, a new plan would take their audio, so the rest is speech B of its own after
+   * they have played: its plan holds the turn's batches, each cue moved back by the words already said (a cue inside
+   * them shows at B's first word; with no words left, the batches are shown at once). Safety guidance never comes here:
+   * it stopped them already.
+   */
+  private async finishEarly(pace: TurnPace, all: VoiceTurn[]) {
+    const early = pace.early;
+    const { turns, cues: shifted } = this.unsaidRest(pace, all);
+    const rest = turns.flatMap(t => t.say).join(" ");
+    const owns = () => this.pace === pace && pace.generation === this.generation && this.childHere && !this.finishing && !early.speech?.interrupted && !pace.guided;
+    const done = () => { early.open = false; if (pace.measured) this.closeTurn(pace, "answered"); };
+    if (!owns()) {
+      early.end?.();
+      for (const turn of turns) await this.after(turn, undefined, () => false, true);
+      early.open = false;
+      return this.closeTurn(pace, "interrupted");
+    }
+    const priority = turns.some(t => t.priority);
+    if (!shifted.length && !priority) {
+      if (rest) early.write?.(`${rest} `);
+      early.end?.();
+      for (const turn of turns) await this.after(turn, early.speech ?? undefined, () => false, true);
+      return done();
+    }
+    // Speech B, after A.
+    early.end?.();
+    pace.ownSpeech = true;
+    await early.starting;
+    await early.speech?.waitForPlayout().catch(() => {});
+    if (!owns()) {
+      for (const turn of turns) await this.after(turn, undefined, () => false, true);
+      early.open = false;
+      return this.closeTurn(pace, "interrupted");
+    }
+    if (priority) { early.open = false; return this.sayFirst(pace, turns); }
+    const generation = this.generation;
+    try { await this.stageBoard({ boardCues: shifted }, false); }
+    catch (error) { this.boardFailed(error); if (generation === this.generation && this.childHere) void this.finish({ detail: "the speech board could not be staged" }); return this.closeTurn(pace); }
+    const scope = this.boardScope;
+    const speech = rest ? this.session.say(rest, { addToChatCtx: true }) : null;
+    // No words left: the batches are shown at once, once they are on the receiver.
+    if (!speech && scope && this.options.board) { const board = this.options.board; this.boardTask(board.sent(scope).then(() => board.show(scope)), scope); }
+    for (const turn of turns) await this.after(turn, speech ?? early.speech ?? undefined, () => false, !speech);
+    done();
+  }
+
   /** The session accepted safety guidance, and the input behind it can still be waiting for the model's close (#589). */
   private guidanceNow(turn: VoiceTurn) {
     const pace = this.pace;
@@ -612,8 +812,12 @@ export class VoiceCallRun {
       // A phrase still on its way never starts, and this turn's sample can be taken before that work comes back.
       if (pace.ack) pace.clock.ackSkipped("closing");
       pace.clock.ready(timeOf([turn]));
+      // Sentences said early stop with the reply, and none after them is said (D-341).
+      pace.early.closed = true;
+      pace.early.waiting.length = 0;
+      pace.early.open = false;
     }
-    void this.sayFirst(pace, [turn]).catch(() => this.finish({ detail: "the safety guidance failed" }));
+    void this.sayFirst(pace, this.unsaid(pace, [turn])).catch(() => this.finish({ detail: "the safety guidance failed" }));
     // The reply is stopped, and its stream must not stay open for the close call.
     pace?.end();
   }
@@ -635,6 +839,8 @@ export class VoiceCallRun {
     let speech: voice.SpeechHandle | null = null;
     if (text) {
       pace?.handle?.interrupt(true);
+      // Guidance stops the sentences said early too, when they have a speech of their own.
+      if (guidance) pace?.early.speech?.interrupt(true);
       // New guidance goes first. Anything else waits: a queued speech takes the board plan that is current when it starts,
       // so a later plan would take the guidance's audio.
       if (guidance) this.dropGuidance();
@@ -713,6 +919,8 @@ export class VoiceCallRun {
     // again after each one, and nothing awaits between the last reading and queuing the phrase.
     const stopped = () => {
       if (pace.guided) { skip("closing"); return true; }
+      // Maya's first sentence came (D-341): no phrase starts after it.
+      if (pace.early.waiting.length || pace.early.said.length) { skip("streamed"); return true; }
       if (pace.ready || this.pace !== pace || !pace.writable) return true;
       const state = this.call.session;
       const why: AckSkip | null = !this.childHere || this.finishing || pace.generation !== this.generation ? "child_away"
@@ -766,9 +974,18 @@ export class VoiceCallRun {
   /** Reports the turn once. A turn nothing more can happen to, with no answer heard, was interrupted. */
   private closeTurn(pace = this.pace, outcome: TurnOutcome = "interrupted") {
     if (!pace || pace.closed) return;
+    // The first sentences were heard while the turn still runs (D-341): the sample is taken now, and the turn stays
+    // this run's, so its rest, a guidance that stops it, and a child who talks over it are still handled.
+    if (outcome === "answered" && pace.early.open) return this.measure(pace, outcome);
     pace.closed = true;
     this.cutAck(pace);
     if (this.pace === pace) this.pace = null;
+    this.measure(pace, outcome);
+  }
+
+  private measure(pace: TurnPace, outcome: TurnOutcome) {
+    if (pace.measured) return;
+    pace.measured = true;
     this.options.measureTurn?.(pace.clock.sample(outcome));
   }
 

@@ -118,25 +118,79 @@ export function boardAudio(
         await board.show(scope);
         silent?.({ scope, text: full, heardAny, failed });
       };
+      // The sentences known so far, with the spoken form of each word, and whether the text has ended.
+      const sentences: string[] = [];
+      const spokenSentences: string[][] = [];
+      let textDone = false;
+      let textError: unknown = null;
+      const waiter: { wake: (() => void) | null } = { wake: null };
+      /** The sentence being read out now; the one after it is made ahead as soon as it is known. */
+      let playing = -1;
+      const known = (more: string[], spoken: string[][]) => {
+        sentences.push(...more);
+        spokenSentences.push(...spoken);
+        // A sentence that came while the one before it plays is made now, as one known at the start would be.
+        if (!ahead && playing >= 0 && playing + 1 < sentences.length && !abort.signal.aborted) {
+          ahead = synthesizeSentence(spokenSentences[playing + 1].join(" "));
+          void ahead.catch(() => {});
+        }
+        waiter.wake?.();
+      };
+      abort.signal.addEventListener("abort", () => waiter.wake?.(), { once: true });
+      // A plan with batches reads the whole text first: its cue words count the words of the whole text. An ungated plan
+      // (no batches: the opening, Maya's first sentences streamed before her turn is done) reads each sentence as it
+      // comes, so its first sentence is heard while the rest is still on its way (D-341).
+      void (async () => {
+        let rest = "";
+        try {
+          for await (const chunk of text) {
+            if (abort.signal.aborted) return;
+            full += chunk;
+            if (gate) continue;
+            rest += chunk;
+            const parts = speechSentences(rest);
+            // The last part is a whole sentence only when it ends the way a sentence ends.
+            const whole = parts.length && /[.!?]["')\]]*\s*$/.test(rest) ? parts : parts.slice(0, -1);
+            if (!whole.length) continue;
+            rest = parts.slice(whole.length).join(" ");
+            known(whole, whole.map(s => spokenWords(s)));
+          }
+          if (gate) {
+            const all = speechSentences(full);
+            // What the provider says for each word of the text, read with the whole text around it (a sentence break can
+            // fall between a sign and its number: "? − 28 = 24"). Entry n is the spoken form of word n.
+            const spokenAll = spokenWords(full);
+            let first = 0;
+            known(all, all.map(sentence => {
+              const count = speechWords(sentence).length;
+              const said = spokenAll.slice(first, first + count);
+              first += count;
+              return said.length === count ? said : spokenWords(sentence);
+            }));
+          } else if (rest.trim()) {
+            const last = speechSentences(rest);
+            known(last, last.map(s => spokenWords(s)));
+          }
+        } catch (e) { textError = e; }
+        finally { textDone = true; waiter.wake?.(); }
+      })();
+      /** The next sentence to read out, or null when the text has ended (or this stream was stopped). */
+      const next = async (index: number) => {
+        while (index >= sentences.length && !textDone && !abort.signal.aborted) await new Promise<void>(resolve => { waiter.wake = resolve; });
+        waiter.wake = null;
+        if (textError) throw textError;
+        return index < sentences.length && !abort.signal.aborted ? sentences[index] : null;
+      };
       try {
         if (stale()) return;
-        for await (const chunk of text) { if (stale()) return; full += chunk; }
         let offsetMs = 0;
         let words = 0;
-        const sentences = speechSentences(full);
-        // What the provider says for each word of the text, read with the whole text around it (a sentence break can
-        // fall between a sign and its number: "? − 28 = 24"). Entry n is the spoken form of word n.
-        const spokenAll = spokenWords(full);
-        let first = 0;
-        const spokenSentences = sentences.map(sentence => {
-          const count = speechWords(sentence).length;
-          const said = spokenAll.slice(first, first + count);
-          first += count;
-          return said.length === count ? said : spokenWords(sentence);
-        });
         let gated = false;
-        for (const [index, sentence] of sentences.entries()) {
+        for (let index = 0; ; index++) {
+          const sentence = await next(index);
           if (stale()) return;
+          if (sentence === null) break;
+          playing = index;
           const pending = ahead ?? synthesizeSentence(spokenSentences[index].join(" "));
           ahead = null;
           const frames = await pending;
