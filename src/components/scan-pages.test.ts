@@ -128,7 +128,7 @@ it("takes several chosen photos one at a time, saves each with no confirm, and g
   expect([...photos.values()].every((p) => p.state === "saved")).toBe(true);
   expect(button("Save this page")).toBeUndefined();
   expect(text()).toContain("Day 4");
-  expect(text()).toContain("No photo yet: page 2");
+  expect(text()).toContain("No photo yet: page 11");
   expect(text()).toContain("3 photos. 3 pages are ready to send.");
   expect(button("Send 3 pages for marking")).toBeDefined();
   expect(logged.mock.calls.filter(([m]) => String(m).includes('unique "key"'))).toEqual([]);
@@ -140,8 +140,19 @@ it("does not ask for another photo of a page that already has one, and focus nev
   await choose("library", "copy-p10.jpg");
   expect(text()).toContain("Already has a photo");
   expect(button("Take the photo again")).toBeUndefined();
-  await act(async () => button("Page 1: Ready")!.click()); await settle();
+  await act(async () => button("Page 10: Ready")!.click()); await settle();
   expect(document.activeElement?.textContent).toBe("Close");
+});
+
+it("closes an open photo with the corner Close button", async () => {
+  await render();
+  await choose("library", "p10.jpg", "p11.jpg");
+  await act(async () => button("Page 10: Ready")!.click()); await settle();
+  const x = document.querySelector<HTMLButtonElement>(".scan-sheet-x");
+  expect(x?.getAttribute("aria-label")).toBe("Close");
+  expect(document.querySelector(".scan-sheet")).not.toBeNull();
+  await act(async () => x!.click()); await settle();
+  expect(document.querySelector(".scan-sheet")).toBeNull();
 });
 
 it("keeps a refused photo first with its reason while the other pages go on, and Send counts only ready pages", async () => {
@@ -306,7 +317,7 @@ it("shows and deletes a sent photo when the only open page is one ready photo", 
   // The one ready page still shows large.
   expect(text()).toContain("We can read this page.");
   expect(button("Send this page for marking")).toBeDefined();
-  const tile = button("Day 4 · Page 1: Sent for marking");
+  const tile = button("Page 10 · Day 4: Sent for marking");
   expect(tile).toBeDefined();
   await act(async () => tile!.click());
   // The sheet's own Delete: the one page's Delete sits behind the sheet.
