@@ -1,6 +1,6 @@
 import { ReadableStream, type ReadableStreamDefaultController } from "node:stream/web";
 import { EventEmitter } from "node:events";
-import { initializeLogger, normalizeLanguage, stt, voice } from "@livekit/agents";
+import { initializeLogger, normalizeLanguage, stt, VADEventType, voice, type VAD, type VADEvent } from "@livekit/agents";
 import { AudioFrame } from "@livekit/rtc-node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Batch } from "@/lib/board";
@@ -50,7 +50,7 @@ class SilentMicrophone extends voice.AudioInput {
     super();
     this.multiStream.addInputStream(new ReadableStream<AudioFrame>({ start: (c) => void (this.controller = c) }));
   }
-  push() { this.controller.enqueue(new AudioFrame(new Int16Array(320), 16_000, 1, 320)); }
+  push(amplitude = 0) { this.controller.enqueue(new AudioFrame(new Int16Array(320).fill(amplitude), 16_000, 1, 320)); }
 }
 
 /** The child's speaker. It holds a playback while `held`, as a real phrase takes time to play. */
@@ -183,7 +183,7 @@ class ProbeStream extends stt.SpeechStream {
   }
 }
 
-async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; speech?: ProbeSTT; numberContinueMs?: number }) {
+async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; speech?: ProbeSTT; numberContinueMs?: number; dropSilentPeakDbfs?: number; heardVad?: VAD }) {
   const clock = handClock();
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
@@ -218,7 +218,7 @@ async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; speec
   const board = createBoardSpeech({ sender, now: () => Date.now(), observe: (snapshot) => opened.call.observeBoard(snapshot) });
   const samples: VoiceTurnSample[] = [];
   const run = new VoiceCallRun(session, opened.call, {
-    board, timers: clock.timers, notify: () => {}, measureTurn: (s) => samples.push(s), ackLimitMs: options.ackLimitMs ?? 0, numberContinueMs: options.numberContinueMs ?? 0,
+    board, timers: clock.timers, notify: () => {}, measureTurn: (s) => samples.push(s), ackLimitMs: options.ackLimitMs ?? 0, numberContinueMs: options.numberContinueMs ?? 0, dropSilentPeakDbfs: options.dropSilentPeakDbfs ?? null, ...(options.heardVad ? { heardVad: options.heardVad } : {}),
   });
   await run.agentJoined();
   await session.start({ agent: run.agent });
@@ -231,7 +231,7 @@ async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; speec
   await waitFor(() => said().length > 0 && session.agentState === "listening", "the opening");
   await opened.call.settled();
   const say = (text: string) => expect(providers.fakeSpeech!.say(text)).toBe(true);
-  return { clock, say, said, session, speaker, receiver, board, samples, run, id: started.view.id, calls, call: opened.call, store };
+  return { clock, say, said, session, speaker, receiver, board, samples, run, id: started.view.id, calls, call: opened.call, store, microphone };
 }
 
 const FIRST = "Let's think about the ones together.";
@@ -546,5 +546,81 @@ describe("when the thinking phrase comes (D-341)", () => {
     expect(after.filter((t) => ACKS.has(t))).toEqual([]);
     expect(after).toEqual(["Take your time."]);
     expect(m.asked).toBe(0);
+  });
+});
+
+/** A detector whose events the test sends (as in ./heard-signals.test.ts). */
+function fakeVad() {
+  const queue: VADEvent[] = [];
+  let wake: (() => void) | null = null;
+  const event = (type: VADEventType, speechDuration: number, speaking: boolean): VADEvent =>
+    ({ type, samplesIndex: 0, timestamp: 0, speechDuration, silenceDuration: 0, frames: [], probability: speaking ? 0.9 : 0.1, inferenceDuration: 1, speaking, rawAccumulatedSilence: 0, rawAccumulatedSpeech: 0 });
+  const stream = {
+    pushFrame: () => {},
+    close: () => {},
+    async *[Symbol.asyncIterator]() {
+      for (;;) {
+        while (queue.length) yield queue.shift()!;
+        await new Promise<void>(r => (wake = r));
+      }
+    },
+  };
+  return {
+    vad: { stream: () => stream } as unknown as VAD,
+    async send(type: VADEventType, speechDuration: number, speaking: boolean) {
+      queue.push(event(type, speechDuration, speaking));
+      wake?.();
+      for (let i = 0; i < 3; i++) await new Promise(r => setImmediate(r));
+    },
+  };
+}
+
+describe("a final transcript heard in silence (the drop rule)", () => {
+  it("is dropped: no child turn, no answer, and the child is not left speaking", async () => {
+    const speech = new ProbeSTT();
+    const v = fakeVad();
+    const c = await voiceCall({ model: ruleConversationalModel(), speech, heardVad: v.vad, dropSilentPeakDbfs: -50 });
+    const before = c.said().length;
+    const states: string[] = [];
+    c.session.on(voice.AgentSessionEventTypes.UserStateChanged, (ev) => states.push(ev.newState));
+    const warn = vi.spyOn(console, "warn");
+    const asked = vi.spyOn(c.call, "child");
+    for (let i = 0; i < 20; i++) c.microphone.push(0);
+    await v.send(VADEventType.INFERENCE_DONE, 0, false);
+    await pause();
+    speech.send(stt.SpeechEventType.START_OF_SPEECH);
+    speech.send(stt.SpeechEventType.INTERIM_TRANSCRIPT, "Yes");
+    speech.send(stt.SpeechEventType.FINAL_TRANSCRIPT, "Yes!");
+    speech.send(stt.SpeechEventType.END_OF_SPEECH);
+    await pause();
+    await pause();
+    expect(asked).not.toHaveBeenCalled();
+    expect(c.said().slice(before)).toEqual([]);
+    expect(states).not.toContain("speaking");
+    const view = (await c.calls.view(c.id))!;
+    expect(view.transcript.filter((l) => l.speaker === "child")).toEqual([]);
+    // Logged with its signals, and no words.
+    const dropped = warn.mock.calls.find((a) => a[0] === "[maya voice] dropped transcript");
+    expect(dropped?.[2]).toMatchObject({ words: 1, vadSpeechMs: 0, peakDbfs: -120 });
+    expect(JSON.stringify(dropped)).not.toContain("Yes");
+  });
+
+  it("keeps a quiet real answer the detector heard, and answers it", async () => {
+    const speech = new ProbeSTT();
+    const v = fakeVad();
+    const c = await voiceCall({ model: ruleConversationalModel(), speech, heardVad: v.vad, dropSilentPeakDbfs: -50 });
+    const before = c.said().length;
+    const asked = vi.spyOn(c.call, "child");
+    // Soft speech: a level far below the limit (about -64 dBFS), and 120 ms the detector heard as speech.
+    for (let i = 0; i < 20; i++) c.microphone.push(20);
+    await v.send(VADEventType.START_OF_SPEECH, 60, true);
+    await v.send(VADEventType.INFERENCE_DONE, 120, true);
+    await pause();
+    speech.send(stt.SpeechEventType.START_OF_SPEECH);
+    speech.send(stt.SpeechEventType.FINAL_TRANSCRIPT, "Six.");
+    speech.send(stt.SpeechEventType.END_OF_SPEECH);
+    await waitFor(() => asked.mock.calls.length === 1, "the child's turn");
+    expect(asked.mock.calls[0][0]).toBe("Six.");
+    await waitFor(() => c.said().length > before, "Maya's answer");
   });
 });

@@ -205,6 +205,13 @@ export interface VoiceTuning {
   interruptMinMs: number;
   /** LiveKit interruption `minWords`: words the speech-to-text must have heard before speech stops Maya; 0 is none. */
   interruptMinWords: number;
+  /**
+   * A final transcript is dropped (never a child turn) only when the local voice activity detector heard no speech at
+   * all since the previous final AND the input's peak stayed below this level (dBFS): words "heard" in digital silence
+   * (a phantom "Yes!" on a silent microphone). Null: the rule is off. A quiet real answer has detector speech or a
+   * louder peak, and is kept.
+   */
+  dropSilentPeakDbfs: number | null;
 }
 
 /**
@@ -224,6 +231,8 @@ export const VOICE_TUNING_DEFAULTS: VoiceTuning = {
   numberContinueMs: 1500,
   interruptMinMs: 300,
   interruptMinWords: 0,
+  // Real speech in two real calls peaked at -2.7 and -2.9 dBFS (mean level -26 and -29.3): -50 is far below any voice.
+  dropSilentPeakDbfs: -50,
 };
 
 /** Each setting: its variable, the field it sets, and its bounds (both inclusive). */
@@ -236,7 +245,7 @@ const TUNING_SETTINGS = [
   { env: "MAYA_NUMBER_CONTINUE_MS", field: "numberContinueMs", min: 0, max: 3000 },
   { env: "MAYA_INTERRUPT_MIN_MS", field: "interruptMinMs", min: 0, max: 2000 },
   { env: "MAYA_INTERRUPT_MIN_WORDS", field: "interruptMinWords", min: 0, max: 5 },
-] as const satisfies readonly { env: string; field: keyof VoiceTuning; min: number; max: number }[];
+] as const satisfies readonly { env: string; field: Exclude<keyof VoiceTuning, "dropSilentPeakDbfs">; min: number; max: number }[];
 
 /** AssemblyAI's two end-of-turn silences (ms): `min_turn_silence` and `max_turn_silence`. */
 export interface TurnSilence {
@@ -264,6 +273,14 @@ export function voiceTuning(env: Readonly<Record<string, string | undefined>>): 
     const n = Number(raw);
     if (!/^\d+$/.test(raw) || !Number.isSafeInteger(n) || n < min || n > max) problems.push(`${name} must be a whole number from ${min} to ${max}, not "${raw}"`);
     else tuning[field] = n;
+  }
+  // `off` turns the silent-transcript rule off; else a level from -120 to 0 dBFS.
+  const drop = value(env, "MAYA_DROP_SILENT_PEAK_DBFS");
+  if (drop === "off") tuning.dropSilentPeakDbfs = null;
+  else if (drop) {
+    const n = Number(drop);
+    if (!/^-?\d+(?:\.\d+)?$/.test(drop) || n < -120 || n > 0) problems.push(`MAYA_DROP_SILENT_PEAK_DBFS must be "off" or a level from -120 to 0 (dBFS), not "${drop}"`);
+    else tuning.dropSilentPeakDbfs = n;
   }
   if (!problems.length) {
     if (tuning.sttMaxSilenceMs < tuning.sttMinSilenceMs) problems.push("MAYA_STT_MAX_SILENCE_MS must not be less than MAYA_STT_MIN_SILENCE_MS");

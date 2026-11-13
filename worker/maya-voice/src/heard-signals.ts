@@ -1,8 +1,9 @@
 // What the worker knows about each final transcript besides its words, for the worker log (#326). Real calls heard
-// words in silence (a child turn "Yes!" from a silent test microphone) and wrong words ("Bye-bye" for "hi"). Before any
-// rule drops a transcript, the logs must show which signals separate those from a child's short real answers ("24",
-// "yes", "six"): the speech-to-text's confidence, the word confidences, how long the speech-to-text says the speech was,
-// how long a voice activity detector heard speech, and the input level. No words go in the log (docs/maya-voice.md).
+// words in silence (a child turn "Yes!" from a silent test microphone) and wrong words ("Bye-bye" for "hi"). The logs
+// show which signals separate those from a child's short real answers ("24", "yes", "six"): the speech-to-text's
+// confidence, the word confidences, how long the speech-to-text says the speech was, how long a voice activity detector
+// heard speech, and the input level. No words go in the log (docs/maya-voice.md). One rule drops a transcript, and only
+// the plainest case (`silentFinal`): no detector speech at all and a peak far below any voice.
 //
 // The detector is a second stream of the session's own VAD (LiveKit's local Silero), fed the same frames as the
 // speech-to-text. The session's user state cannot be used: with `turnDetection: "stt"`, LiveKit raises "speaking" for
@@ -45,6 +46,15 @@ export function finalSignals(alternatives: readonly stt.SpeechData[], levels: { 
     peakDbfs: dbfs(levels.peak),
     rmsDbfs: dbfs(levels.samples ? Math.sqrt(levels.sumSquares / levels.samples) : 0),
   };
+}
+
+/**
+ * A final transcript heard in silence (docs/maya-voice.md, "Silent transcripts"): the detector heard no speech at all
+ * since the previous final, and the input's peak stayed below `limitDbfs`. Both must hold: a quiet real answer has
+ * detector speech or a louder peak, and is kept. No detector (`vadSpeechMs` null, the fakes) or no limit: never silent.
+ */
+export function silentFinal(signals: Pick<FinalSignals, "vadSpeechMs" | "peakDbfs">, limitDbfs: number | null): boolean {
+  return limitDbfs !== null && signals.vadSpeechMs === 0 && signals.peakDbfs < limitDbfs;
 }
 
 /**
@@ -99,9 +109,17 @@ export class HeardSignals {
     try { this.stream.pushFrame(frame); } catch { this.stream = null; }
   }
 
+  private detected() { return this.stream || this.ended || this.going ? this.ended + Math.max(0, this.going - this.counted) : null; }
+
+  /** The window so far is silent by `silentFinal`: no detector speech and a low peak. It starts no new window. */
+  quiet(limitDbfs: number | null): boolean {
+    const detected = this.detected();
+    return silentFinal({ vadSpeechMs: detected === null ? null : Math.round(detected), peakDbfs: dbfs(this.peak) }, limitDbfs);
+  }
+
   /** The measures for a final transcript, and a new window from here. */
   final(alternatives: readonly stt.SpeechData[]): FinalSignals {
-    const detected = this.stream || this.ended || this.going ? this.ended + Math.max(0, this.going - this.counted) : null;
+    const detected = this.detected();
     const signals = finalSignals(alternatives, { peak: this.peak, sumSquares: this.sumSquares, samples: this.samples }, detected);
     this.peak = this.sumSquares = this.samples = 0;
     this.ended = 0;

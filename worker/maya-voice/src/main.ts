@@ -139,7 +139,7 @@ export default defineAgent({
     const turnSamples: VoiceTurnSample[] = [];
     const ackLimit = Number(process.env.MAYA_ACK_LIMIT_MS);
     const run = new VoiceCallRun(session, opened.call, { board, notify, greeting: GREETING_TEXT, ...(openingText ? { opening: openingText, openingMark: mark } : {}),
-      ...(made.fake ? {} : { numberContinueMs: tuning.numberContinueMs }),
+      ...(made.fake ? {} : { numberContinueMs: tuning.numberContinueMs, dropSilentPeakDbfs: tuning.dropSilentPeakDbfs }),
       ...(patience ? { patience: { ...turnSilences(tuning), set: (limits: TurnSilence) => patience.setSilence(limits) } } : {}),
       ...(process.env.MAYA_ACK_LIMIT_MS?.trim() && Number.isFinite(ackLimit) && ackLimit >= 0 ? { ackLimitMs: ackLimit } : {}),
       measureTurn: sample => {

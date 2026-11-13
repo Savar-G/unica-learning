@@ -27,7 +27,7 @@ import type { VoiceCall, VoiceSay, VoiceTurn } from "@/lib/maya-call";
 import { speechWords, type BoardSpeech, type SpeechScope } from "@/lib/board-speech";
 import { CuePlaybackOutput } from "./cue-playback";
 import { earlyRest, type EarlyRest } from "./early-speech";
-import { HeardSignals } from "./heard-signals";
+import { HeardSignals, silentFinal } from "./heard-signals";
 import { boardAudio, countedSynthesis, type SilentSpeech } from "./speech-audio";
 import { VOICE_METER_TICK_MS } from "@/lib/maya-spend";
 import { limitsOf, sentencesOf } from "@/lib/maya";
@@ -118,10 +118,11 @@ export class MayaVoiceAgent extends voice.Agent {
    */
   override async sttNode(audio: ReadableStream<AudioFrame> | AsyncIterable<AudioFrame>, settings: voice.ModelSettings) {
     let inputStartedAt: number | null = null;
-    // The signals of each final transcript, for the worker log only: nothing is dropped on them (./heard-signals.ts).
-    let vad: VAD | undefined;
-    try { vad = this.session.vad; } catch { vad = undefined; }
+    // The signals of each final transcript, for the worker log; one rule drops a transcript on them (./heard-signals.ts).
+    let vad: VAD | undefined = this.hearing.vad;
+    if (!vad) { try { vad = this.session.vad; } catch { vad = undefined; } }
     const signals = new HeardSignals(vad);
+    const limit = this.hearing.dropSilentPeakDbfs;
     const input = "pipeThrough" in audio
       ? audio.pipeThrough(new TransformStream<AudioFrame, AudioFrame>({
         transform(frame, controller) {
@@ -137,18 +138,38 @@ export class MayaVoiceAgent extends voice.Agent {
     const finals = this.finals;
     const marks = this.marks;
     const callId = this.call.id;
+    /**
+     * A start of speech held back while the input is silent (no detector speech, a low peak): a phantom transcript then
+     * leaves the session's user state alone. It goes on as soon as anything of the speech is kept.
+     */
+    let heldStart: stt.SpeechEvent | null = null;
     return stream.pipeThrough(
       new TransformStream<stt.SpeechEvent | string, stt.SpeechEvent | string>({
         transform(event, controller) {
-          if (typeof event !== "string" && event.type === stt.SpeechEventType.FINAL_TRANSCRIPT && event.alternatives) {
+          if (typeof event === "string") return controller.enqueue(event);
+          const type = event.type;
+          // While the input is silent, the speech-to-text's start of speech and its interim words wait: a phantom
+          // transcript then never raises the child's "speaking" state, and never stops Maya's speech by its words.
+          if (type === stt.SpeechEventType.START_OF_SPEECH && signals.quiet(limit)) { heldStart = event; return; }
+          if ((type === stt.SpeechEventType.INTERIM_TRANSCRIPT || type === stt.SpeechEventType.PREFLIGHT_TRANSCRIPT) && signals.quiet(limit)) return;
+          if (type === stt.SpeechEventType.END_OF_SPEECH && heldStart) { heldStart = null; return; }
+          if (type === stt.SpeechEventType.FINAL_TRANSCRIPT && event.alternatives) {
+            const heard = signals.final(event.alternatives);
+            if (silentFinal(heard, limit)) {
+              // Words in digital silence: not a child turn, never answered. The signals go in the log, no words.
+              console.warn("[maya voice] dropped transcript", callId, heard);
+              return;
+            }
             finals.push(event.alternatives.map((a) => ({ text: a.text, confidence: a.confidence })));
             const finalAt = Date.now();
             const end = event.alternatives[0]?.endTime ?? 0;
             const wordEndAt = inputStartedAt !== null && end > 0 ? inputStartedAt + end * 1000 : null;
             // A word that "ends" after its transcript came is a clock that does not fit: no mark rather than a wrong one.
             marks.push({ finalAt, wordEndAt: wordEndAt !== null && wordEndAt <= finalAt ? wordEndAt : null });
-            console.info("[maya voice] final transcript", callId, signals.final(event.alternatives));
+            console.info("[maya voice] final transcript", callId, heard);
           }
+          // Kept speech: a start held back goes first.
+          if (heldStart) { controller.enqueue(heldStart); heldStart = null; }
           controller.enqueue(event);
         },
       }),
@@ -167,6 +188,12 @@ export class MayaVoiceAgent extends voice.Agent {
     if (!scope || !this.board.sync.owns(scope)) return null;
     return boardAudio(text, synthesize, this.board.sync, scope, speech => this.onSilent?.(speech), !ungated);
   }
+
+  /**
+   * The silent-transcript rule (`silentFinal`): its peak limit (null: off, the default here; a call sets it from its
+   * tuning), and the detector to read, when it is not the session's own (tests).
+   */
+  hearing: { dropSilentPeakDbfs: number | null; vad?: VAD } = { dropSilentPeakDbfs: null };
 
   /** One-shot: the next speech's audio does not wait for its (empty) board plan to be sent (the worker's own opening). */
   ungatedNext = false;
@@ -391,12 +418,20 @@ export class VoiceCallRun {
       patience?: { normal: TurnSilence; number: TurnSilence; set(limits: TurnSilence): void };
       /** How long to wait once more when a transcript ends in a number word that can go on (ms). 0 or absent: no wait. */
       numberContinueMs?: number;
+      /**
+       * A final transcript with no detector speech since the previous one and a peak below this level (dBFS) is dropped
+       * (`silentFinal`, VoiceTuning.dropSilentPeakDbfs). Absent or null: nothing is dropped.
+       */
+      dropSilentPeakDbfs?: number | null;
+      /** The detector for that rule when it is not the session's own (tests). */
+      heardVad?: VAD;
     },
   ) {
     this.segment = call.revision;
     this.agent = new MayaVoiceAgent(call, turn => this.after(turn), options.board ? { sync: options.board, scope: () => this.boardScope } : undefined,
       (stoppedAt, work, mark) => this.reply(stoppedAt, work, mark),
       { greetingOver: () => this.greetingOver(), childWentOn: text => this.childWentOn(text) });
+    this.agent.hearing = { dropSilentPeakDbfs: options.dropSilentPeakDbfs ?? null, ...(options.heardVad ? { vad: options.heardVad } : {}) };
     this.agent.onSilent = speech => this.silentSpeech(speech);
     call.onGuidance(turn => this.guidanceNow(turn));
     session.on(voice.AgentSessionEventTypes.UserInputTranscribed, ev => { if (ev.transcript.trim()) this.wordsHeard(); });
