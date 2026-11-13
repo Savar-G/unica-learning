@@ -228,7 +228,8 @@ describe("a desk voice request", () => {
     expect(claims.attributes).toMatchObject({ "maya.call": ID, "maya.parent": PARENT, "maya.child": CHILD });
     expect(r.usage).toMatchObject({ usedSeconds: 0, leftSeconds: 1800, limitSeconds: 600 });
     // Nothing of the model, the saved session or the family is in what the child's screen gets.
-    expect(Object.keys(r.call!).sort()).toEqual(["batches", "ended", "hint", "id", "mode", "revision", "safetyMessage", "started", "status", "transcript"]);
+    // `question` is the workbook question the child picked (the conversational build shows it as a card on the desk).
+    expect(Object.keys(r.call!).sort()).toEqual(["batches", "ended", "hint", "id", "mode", "question", "revision", "safetyMessage", "started", "status", "transcript"]);
   });
 
   it("needs the parent's agreement to the Maya notice, and makes no call without it", async () => {
