@@ -3931,7 +3931,7 @@
    "shownBefore": [],
    "lastMaya": {
     "act": "open",
-    "say": "Hey! I'm Maya, an AI helper for your workbook. Today we're working on 52 − 28. What have you done on 52 − 28 so far?"
+    "say": "Hey! I'm Maya, an AI helper for your workbook. Today we're working on 52 \u2212 28. What have you done on 52 \u2212 28 so far?"
    },
    "why": "read wrong"
   },
@@ -3999,7 +3999,7 @@
    ],
    "lastMaya": {
     "act": "guide",
-    "say": "You got it, 12 − 8 = 4. Let's look at the tens. What can you do there?"
+    "say": "You got it, 12 \u2212 8 = 4. Let's look at the tens. What can you do there?"
    },
    "why": "guess or hedge"
   },
@@ -4074,7 +4074,7 @@
    ],
    "lastMaya": {
     "act": "guide",
-    "say": "Exactly! 4 − 2 = 2. Every part is done. So what is 52 − 28?"
+    "say": "Exactly! 4 \u2212 2 = 2. Every part is done. So what is 52 \u2212 28?"
    },
    "why": "moved from positive: hedge"
   },
@@ -4129,7 +4129,7 @@
    "shownBefore": [],
    "lastMaya": {
     "act": "open",
-    "say": "Hello, I'm Maya. I'm an AI. I'm here to help. Our question is 52 − 28. How did you start 52 − 28?"
+    "say": "Hello, I'm Maya. I'm an AI. I'm here to help. Our question is 52 \u2212 28. How did you start 52 \u2212 28?"
    },
    "why": "read wrong"
   },
@@ -4206,7 +4206,7 @@
    ],
    "lastMaya": {
     "act": "guide",
-    "say": "Yes! 12 − 8 = 4. Next up, the tens. What would you do?"
+    "say": "Yes! 12 \u2212 8 = 4. Next up, the tens. What would you do?"
    },
    "why": "read wrong"
   },
@@ -4252,7 +4252,7 @@
    ],
    "lastMaya": {
     "act": "guide",
-    "say": "Every part is done. So what is 52 − 28?"
+    "say": "Every part is done. So what is 52 \u2212 28?"
    },
    "why": "moved from positive: hedge"
   },
@@ -4273,7 +4273,7 @@
    ],
    "lastMaya": {
     "act": "example_step",
-    "say": "So 31 − 17 = 14."
+    "say": "So 31 \u2212 17 = 14."
    },
    "why": "request"
   },
@@ -4311,7 +4311,7 @@
    ],
    "lastMaya": {
     "act": "guide",
-    "say": "I hear you. So what is 52 − 28?"
+    "say": "I hear you. So what is 52 \u2212 28?"
    },
    "why": "moved from positive: hedge"
   },
@@ -4382,7 +4382,7 @@
    ],
    "lastMaya": {
     "act": "guide",
-    "say": "Exactly! 12 − 8 = 4. Now put it all together. What is 52 − 28?"
+    "say": "Exactly! 12 \u2212 8 = 4. Now put it all together. What is 52 \u2212 28?"
    },
    "why": "moved from positive: hedge"
   },
@@ -4407,7 +4407,7 @@
    "shownBefore": [],
    "lastMaya": {
     "act": "open",
-    "say": "Hello, I'm Maya. I'm an AI. I'm here to help. Today we're working on 52 − 28. Tell me what you did on 52 − 28 so far."
+    "say": "Hello, I'm Maya. I'm an AI. I'm here to help. Today we're working on 52 \u2212 28. Tell me what you did on 52 \u2212 28 so far."
    },
    "why": "read wrong"
   },
@@ -4475,7 +4475,7 @@
    "shownBefore": [],
    "lastMaya": {
     "act": "guide",
-    "say": "That's right: 12 − 8 = 4. What could you try for the tens?"
+    "say": "That's right: 12 \u2212 8 = 4. What could you try for the tens?"
    },
    "why": "read wrong, guess or hedge"
   },
@@ -4503,7 +4503,7 @@
    "shownBefore": [],
    "lastMaya": {
     "act": "guide",
-    "say": "Exactly! 4 − 2 = 2. So what is 52 − 28?"
+    "say": "Exactly! 4 \u2212 2 = 2. So what is 52 \u2212 28?"
    },
    "why": "moved from positive: hedge"
   },
@@ -4559,7 +4559,7 @@
    "shownBefore": [],
    "lastMaya": {
     "act": "guide",
-    "say": "It's okay to feel unsure. Let's check it together. Put the parts together. What does 52 − 28 make?"
+    "say": "It's okay to feel unsure. Let's check it together. Put the parts together. What does 52 \u2212 28 make?"
    },
    "why": "moved from positive: hedge"
   },
@@ -4615,7 +4615,7 @@
    "shownBefore": [],
    "lastMaya": {
     "act": "guide",
-    "say": "I hear you. Every part is done. So what is 52 − 28?"
+    "say": "I hear you. Every part is done. So what is 52 \u2212 28?"
    },
    "why": "read wrong, guess or hedge"
   },
@@ -8692,6 +8692,384 @@
     "ones",
     "tens"
    ],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Sam did 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Sam made 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Sam answered 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Sam worked out 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Sam counted 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Sam was like, 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Sam goes 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Sam is saying 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Sam reckons 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Sam's is 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Sam's answer was 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "The girl next to me got 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "I heard Sam got 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "I saw Sam got 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "I know Sam got 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "They got 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "They said 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: must be refused"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Let's go with 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
    "shownBefore": [],
    "why": "review: must be refused"
   }
