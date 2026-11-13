@@ -408,7 +408,9 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       }
       // D-341, round 3: a plain stop is closed in code's approved words at once, with no model call.
       if (folded.session.conversational && folded.session.stopRequested && !safety.flagged && folded.session.turn && clearStop(folded.session.turn.text) && !folded.candidate && !folded.attempts.length) {
-        closeByCode();
+        // The goodbye is two approved closing phrases: "Thanks for working on this with me. Bye for now!"
+        append({ kind: "fallback", at: now(), proposal: { version: PROPOSAL_VERSION, act: "close", parts: [{ warm: "closing", pick: 8 }, { warm: "closing", pick: 4 }] } });
+        if (!folded.session.outcome) closeByCode();
         break;
       }
       if (folded.candidate) await reviewCandidate(controller);

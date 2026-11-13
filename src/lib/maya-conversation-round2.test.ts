@@ -257,7 +257,7 @@ describe("round 3: the review only where it is needed", () => {
     const out = await session.child("I don't want to do this anymore. Can we stop?");
     expect(model.briefs).toHaveLength(0);
     expect(out.ended?.reason).toBe("child_stopped");
-    expect(out.say.join(" ").length).toBeGreaterThan(0);
+    expect(out.say).toEqual(["Thanks for working on this with me. Bye for now!"]);
     const { checkTrace } = await import("@/lib/maya-trace");
     expect(checkTrace(await session.finish({ reason: "child_stopped" })).ok).toBe(true);
   });

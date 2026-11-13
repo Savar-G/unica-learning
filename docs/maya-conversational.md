@@ -46,6 +46,14 @@ Code also tells the model facts about the child's numbers. For 52 - 28 and "Is 2
 - **A child who is thinking** ("um", "wait", "I'm thinking") hears one short patient line from code, at most twice in a row, then Maya stays quiet until the child speaks or the silence rule comes. These turns count as no help and no miss. The two lines, approved by Savar, 2026-11-12: "Take your time, {name}." and "No rush. I'm here when you're ready."
 - **The fallback** never asks "Did you say...?" on its own; it gives the step's neutral help. Once the answer stands and the child says it is written, Maya closes warmly.
 
+## Round 3 (2026-11-12)
+
+- **Every guiding reply ends with a question or instruction that names the step.** The prompt asks for at most 2 short sentences plus one question. When a reply is cut, the first sentence and the closing question stay. When it ends with no question, or with a bare one ("What can you do there?" after "Hi Mia!"), code's own step question takes its place, with no model call. Praise alone on a math turn is refused.
+- **A right value asked as a question** ("Um, 12 minus 8... is it 4?") gets a warm confirm in the model's words ("Are you saying 4 for the ones step?").
+- **A plain stop** ("I want to stop", "bye", "can we stop") closes at once in code's approved close words, with no model call: the model's goodbye took 1.83 s to its first sentence (p50), above the 1.2 s bar. A stop with a feeling or a hurt still goes to the model and the safety path.
+- **Help and off-topic turns stream too.** A help request streams but asks nothing before code knows the act. On an off-topic or about-Maya turn, a short reaction of a fixed form ("Max sounds like a good name for a dog.", "I'm an AI, so I have no pet.") and plain math stream with no review; any other sentence waits for the review. Why this rule and not a per-sentence review: the review's p95 was about 1.8 s, so a 1.2 s limit would fail about a third of good replies. NEVER_SAY is unchanged; the strict forms are a short allow-list, and everything outside it is reviewed.
+- **The review** of a whole reply has 4 s and runs at minimal effort with 400 tokens: on the 88 OK_TALK, NOT_OK_TALK and NEVER_SAY lines it gave the same verdicts as before (86 of 88, the same two cautious fails), p50 0.85 s.
+
 ## The prompt
 
 `CONVERSATION_PROMPT` in `src/lib/maya-model.ts`, version `maya-conversation-3`. It is 3,832 characters; the version 2 prompt was 15,396, and its input with the line offers 24,954 against 3,016 for the turn brief (52 - 28, the second turn).

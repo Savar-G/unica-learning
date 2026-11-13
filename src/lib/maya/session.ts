@@ -5248,7 +5248,8 @@ export function phraseOffers(session: Session, group: PhraseGroup): { pick: numb
   const ready = new Set([1, 2, 3, 4, 8, 12]);
   const closingEffort = new Set([2, 7, 10, 13, 14]);
   const asked = askedNow(session);
-  const hard = hardFeeling(childTurnText(session));
+  // A plain stop in a conversational call ("I don't want to do this anymore") gets the calm goodbye of the closing group.
+  const hard = hardFeeling(childTurnText(session)) && !(session.conversational && session.stopRequested && group === "closing");
   const turn = ([...session.turns].reverse().find((t) => t.speaker === "child")?.text ?? "").replace(/’/g, "'");
   const positive = CHEER_AT_FIRST_SHIP && !hard && !/[,]/.test(turn)
     && /^[^.!?]*[.!?]?$/.test(turn.trim())
@@ -5588,7 +5589,7 @@ function speak(s: Session, p: Proposal, view: View, reviews: readonly TalkReview
     return pool[chooseWording(s.variety, pool.map(id), s.now!)];
   };
   const phrase = (group: PhraseGroup, echoed: string | null = null, pick?: number, only?: readonly string[]): string => {
-    if (!only && hardFeeling(childTurnText(s)) && phraseOffers(s, group).length === 0) return phrase("smalltalk", null, undefined, FEELING_SMALLTALK);
+    if (!only && hardFeeling(childTurnText(s)) && phraseOffers(s, group).length === 0 && !(s.conversational && s.stopRequested && group === "closing")) return phrase("smalltalk", null, undefined, FEELING_SMALLTALK);
     if (!only && phraseOffers(s, group).length === 0) return phrase("smalltalk", null, undefined, NEUTRAL_SMALLTALK);
     const bank = PHRASES[group];
     const eligible = new Set(phraseOffers(s, group).map((o) => o.pick - 1));
@@ -5639,7 +5640,7 @@ function speak(s: Session, p: Proposal, view: View, reviews: readonly TalkReview
         : phrase(part.warm, part.echo === undefined ? null : echoOf(s, part.echo), part.pick);
       // A hard feeling gets FEELING_SMALLTALK, never a cheerful wording, whatever the model picked (phraseOffers already
       // leaves those out; this holds when a group has nothing else left).
-      add("warm", !s.mathClaim && hardFeeling(childTurnText(s)) && part.warm !== "empathy" && ![...FEELING_SMALLTALK, ...NEUTRAL_SMALLTALK].includes(warm) ? phrase("smalltalk", null, undefined, FEELING_SMALLTALK) : warm);
+      add("warm", !s.mathClaim && hardFeeling(childTurnText(s)) && part.warm !== "empathy" && !(s.conversational && s.stopRequested && part.warm === "closing") && ![...FEELING_SMALLTALK, ...NEUTRAL_SMALLTALK].includes(warm) ? phrase("smalltalk", null, undefined, FEELING_SMALLTALK) : warm);
       continue;
     }
     if ("talk" in part) {
