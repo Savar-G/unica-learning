@@ -22,12 +22,13 @@ export async function runWorkbookEditWith(db: SupabaseClient<Database>, id: stri
   const edit = await db.from("workbook_edits").select("draft_id,parent_id,edit_kind").eq("id", id).single();
   if (edit.error) throw new Error(edit.error.message);
   if (edit.data.edit_kind === "layout") return runWorkbookLayoutEditWith(db, id, place);
-  const run = await db.from("workbook_runs").select("id").eq("draft_id", edit.data.draft_id).single();
+  const run = await db.from("workbook_runs").select("id, parent_id, child_id").eq("draft_id", edit.data.draft_id).single();
   if (run.error) throw new Error(run.error.message);
   const log = runAiCallLog(saveRunAiCalls(db, run.data.id));
   const env = place.env ?? process.env;
   const fake = workbookFakeAi(env);
-  const live = fake ? null : workbookAi(env, { subscription: place.subscription, primary: place.primary, singleDispatch: true, onStart: log.add, onCall: log.add });
+  const live = fake ? null : workbookAi(env, { subscription: place.subscription, primary: place.primary, singleDispatch: true, onStart: log.add, onCall: log.add,
+    usage: { parentId: run.data.parent_id, childId: run.data.child_id, runId: run.data.id } });
   const template = workbookTemplate(await fixedTemplateFonts()), engine = chromiumPrintEngine(), files = workbookFiles(db);
   const rendering = workbookEditRendering(db, template, engine);
   const solver = (fake ? workbookFakeSolver(env) : live?.solve?.solver) ?? {

@@ -8,7 +8,8 @@ import { planReminderDue } from "@/lib/plan-reminder";
 import { SUPPORT_EMAIL } from "@/lib/contact";
 import { findSavedCard, recordSavedCard, type SavedCards, type StripeAnswer } from "@/lib/saved-card";
 import { savedCards } from "@/lib/saved-card-server";
-import { familyProvince, familyZone, formatInZone } from "@/lib/family-time";
+import { familyZone, formatInZone } from "@/lib/family-time";
+import { loadFamilyProvince } from "@/lib/family-time-server";
 import { markingAccess } from "@/lib/scan-marking-access";
 import { explanationAvailable } from "@/lib/parent-problem-explanation-ai";
 import { planStartEmail, workbookEmail, type WorkbookDelivery, type WorkbookEmailKind, type WorkbookNoticeKind } from "@/lib/workbook-email";
@@ -134,12 +135,14 @@ async function markingOpen(read: MarkingRead, db: SupabaseClient<Database>, pare
 export async function sendPlanStartEmail(db: SupabaseClient<Database>, p: { cardId: string; generation: number; price: number; firstChargeAt: string; origin: string }, transport?: MailTransport, inTime: () => boolean = () => true, marking: MarkingRead = productMarking, explain: () => boolean = () => explanationAvailable()): Promise<TimedDeliveryOutcome> {
   const { data: card, error } = await db.from("card_setups").select("parent_id, child_id").eq("id", p.cardId).maybeSingle();
   if (error || !card) throw Error("store_failed");
-  const [parent, child] = await Promise.all([
+  const [parent, child, province] = await Promise.all([
     db.from("parents").select("name, email, postal, time_zone").eq("id", card.parent_id).maybeSingle(),
-    db.from("children").select("first_name, province, grade").eq("id", card.child_id).eq("parent_id", card.parent_id).maybeSingle(),
+    db.from("children").select("first_name, grade").eq("id", card.child_id).eq("parent_id", card.parent_id).maybeSingle(),
+    // The family's zone comes from its oldest child, as every family time does (src/lib/family-time.ts).
+    loadFamilyProvince(db, card.parent_id).catch(() => { throw Error("store_failed"); }),
   ]);
   if (parent.error || child.error || !parent.data || !child.data) throw Error("store_failed");
-  const zone = familyZone({ timeZone: parent.data.time_zone, postal: parent.data.postal, province: familyProvince([{ id: card.child_id, province: child.data.province }]) });
+  const zone = familyZone({ timeZone: parent.data.time_zone, postal: parent.data.postal, province });
   const terms = await db.from("plan_starts").select("monthly_cents,first_charge_at,family_terms,trial_end").eq("card_setup_id", p.cardId).eq("generation", p.generation).maybeSingle();
   if (terms.error) throw Error("store_failed");
   if (terms.data?.family_terms && (terms.data.monthly_cents == null || !terms.data.first_charge_at)) throw Error("Plan start terms incomplete");

@@ -6,7 +6,7 @@ const UNSUBSCRIBE = "https://unicalearning.com/unsubscribe?t=abc";
 // Monday, October 12, 2026, 23:15 UTC: 4:15 p.m. in Vancouver, 7:15 p.m. in Toronto.
 const DEADLINE = Date.UTC(2026, 9, 12, 23, 15);
 
-const common = { parentName: "Priya Shah", childName: "Maya", url: URL, unsubscribeUrl: UNSUBSCRIBE, postal: "V3S 1A1", total: 36 };
+const common = { parentName: "Priya Shah", childName: "Maya", url: URL, unsubscribeUrl: UNSUBSCRIBE, postal: "V3S 1A1" };
 const email = (over: Partial<ReminderEmailInput> & Pick<ReminderEmailInput, "kind">) =>
   reminderEmail({ ...common, answered: 12, resumeUntil: DEADLINE, ...over } as ReminderEmailInput);
 
@@ -18,7 +18,11 @@ describe("the continue your test reminder", () => {
     expect(e.text).toMatch(/^Hi Priya,/);
   });
   it("says where the child stopped and until when the test can continue, in the family's time zone", () => {
-    expect(e.text).toContain("Maya answered 12 of 36 questions on the free math placement test, and those answers are saved.");
+    expect(e.text).toContain("Maya answered 12 questions on the free math placement test, and those answers are saved.");
+    expect(e.html).toContain("Maya answered 12 questions on the free math placement test, and those answers are saved.");
+    expect(email({ kind: "continue", answered: 1 }).text).toContain("Maya answered 1 question on the free math placement test, and those answers are saved.");
+    // A block test's length is not known until it ends, so no email names a total.
+    for (const body of [e.text, e.html]) expect(body).not.toMatch(/answered \d+ of \d+/);
     expect(e.text).toContain("Maya can pick up from the same question until 4:15 p.m. on Monday, October 12.");
     const toronto = email({ kind: "continue", postal: "M5V 2T6" });
     expect(toronto.text).toContain("until 7:15 p.m. on Monday, October 12.");
@@ -38,9 +42,9 @@ describe("the continue your test reminder", () => {
 describe("the come back reminder", () => {
   const e = email({ kind: "come_back", url: URL.replace("continue", "come_back") });
 
-  it("says the 24 hours ran out and the child can start fresh with new questions", () => {
+  it("says the test closed before a report and the child can start fresh", () => {
     expect(e.subject).toBe("Maya can start the math test fresh");
-    expect(e.text).toContain("Maya's free math placement test closed after 24 hours, before Maya finished.");
+    expect(e.text).toContain("Maya's free math placement test closed before a report could be made.");
     expect(e.text).toContain("Maya can start fresh with a new set of questions.");
     expect(e.text).toContain("about 20 minutes");
     expect(e.html).toContain("Start again");

@@ -19,7 +19,7 @@ const OFF = (
     <p className="lead">We will not send you more reminders or emails about our plans. Your child&apos;s report stays in your account, and when your child finishes a test, you still get the report by email.</p>
   </>
 );
-// The daily Maya email's own link (#332) turns off only that email.
+// The weekly Maya email's own link (#332; the retired daily email's links too) turns off only that email.
 const MAYA_OFF = (
   <>
     <h1>Maya emails are off.</h1>

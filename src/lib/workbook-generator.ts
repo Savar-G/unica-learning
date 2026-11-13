@@ -65,7 +65,8 @@ import type { Curriculum } from "@/lib/workbook-curriculum";
 import { buildQuestion, isCodeWorded, ITEMS_SCHEMA, kindProblem, relationWordings, selectedItemStep, type AiItem, type BuiltQuestion, type QuestionCheck, type SlotWording } from "@/lib/workbook-generator-items";
 import { attachWorkbookMayaOperations, withWorkbookMayaOperation, printedWorkbookQuestion } from "@/lib/workbook-maya-operation";
 import { isOneMoreLessSkill } from "@/lib/number-words";
-import { solveCheck, solveReason, type SolveLog, type Solver, type SolveVerdict } from "@/lib/workbook-solve-check";
+import { solveCheck, solveReason, toSolve, type SolveLog, type Solver, type SolveVerdict } from "@/lib/workbook-solve-check";
+import { gateMark, gateNeedsRewrite, type QuestionGateMark, type QuestionGateRun, type StoredQuestionGate } from "@/lib/workbook-run-gates";
 import { canonical, digestOf } from "@/lib/workbook-digest";
 import { BOYS, fillFrame, frameDoes, framePair, framesFor, GIRLS, PEOPLE, THINGS, quantityStoryProblem, storyProblem, type Action, type WordingKind } from "@/lib/workbook-wording";
 import {
@@ -697,6 +698,8 @@ export interface GeneratedQuestion {
   existing?: boolean;
   /** The text code wrote for a question with no plan (code's wording of its operation): a story prints it exactly (B1). */
   codeText?: string;
+  /** A quality gate that flagged this question, or did not answer. Absent when the gate passed or was not asked. */
+  gate?: QuestionGateMark;
 }
 
 export type PageFit = { status: "fits" } | { status: "failed"; problems: FitProblem[] } | { status: "not-needed" };
@@ -760,6 +763,8 @@ export interface GeneratedWorkbook {
   pages: GeneratedPage[];
   quality?: BookQuality;
   counts: { pages: number; questions: number; checked: number; notChecked: number; failed: number; failedPages: number };
+  /** The run stopped asking quality gates after too many errored requests. */
+  gatesUnavailable?: boolean;
 }
 
 /**
@@ -820,6 +825,8 @@ export interface GenerateInput {
   /** The child profile build the plan was made from, or null. */
   profileBuild: string | null;
   plan: WorkbookPlan;
+  /** The child's school grade, for the reading-level gate. Absent on a caller that does not run quality gates. */
+  schoolGrade?: number;
   /** The child's curriculum: what the AI is told about each skill and step. */
   curriculum: Curriculum;
   /**
@@ -930,6 +937,11 @@ export interface GenerateDeps {
   solveTimeLimitMs?: number;
   /** Called after each solve check that ran (a kept one replayed is not), to log it. */
   onSolve?(log: SolveLog): void;
+  /**
+   * The quality gates (spec #850): the same printed questions as the solve check, at the same time. Absent: no gate
+   * is asked. The live one is the decision client; a test passes a script.
+   */
+  questionGates?: QuestionGateRun;
   /** The time in milliseconds, for the solve log only; none when not given. */
   now?(): number;
   /** Finished pages kept for a resume (#312); none when not given. */
@@ -1736,7 +1748,7 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
       throw new ResumeMismatch(`page ${w.number}: its kept call ${seq} is ${askText(kept.ask)}, and the plan now asks ${askText(ask)}`);
     }
     for (const [id, n] of Object.entries(kept.tries)) w.tries.used.set(id, n);
-    await solveChecks(deps, w, seq, ask, kept.built, kept.examples);
+    await solveChecks(input, deps, w, seq, ask, kept.built, kept.examples);
     return { built: kept.built, examples: kept.examples, refused: new Set(kept.refused) };
   }
   const attempt = input.itemPolicy === "approved-v1" ? 0 : name === "workbook_page_redo" ? 1 : 0;
@@ -1855,7 +1867,7 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
   if ((open.length > 0 || input.itemPolicy === "approved-v1") && deps.calls) {
     await deps.calls.save(w.number, seq, { ask, built, examples, refused: [...refused], tries: Object.fromEntries(open.map((id) => [id, w.tries.used.get(id)!])) });
   }
-  if (!o.skipSolve) await solveChecks(deps, w, seq, ask, built, examples);
+  if (!o.skipSolve) await solveChecks(input, deps, w, seq, ask, built, examples);
   return { built, examples, refused };
 }
 
@@ -1865,33 +1877,64 @@ async function writeSlots(input: GenerateInput, deps: GenerateDeps, w: PageWork,
  * fails it. Each check is kept as it comes back, under its key (R379-8-1); a check an earlier try kept is not run
  * again, its verdict is used. Every check settles before this returns or throws, so none is still writing after.
  */
-async function solveChecks(deps: GenerateDeps, w: PageWork, seq: number, ask: CallAsk, built: BuiltQuestion[], examples: BuiltQuestion[]) {
+/** A quality-gate flag kept on the built question until the draft copies it. Not part of the stored AI call. */
+const gateMarks = new WeakMap<BuiltQuestion, QuestionGateMark>();
+
+async function solveChecks(input: GenerateInput, deps: GenerateDeps, w: PageWork, seq: number, ask: CallAsk, built: BuiltQuestion[], examples: BuiltQuestion[]) {
   const items = [...built.map((b, k) => ({ b, id: ask.slots[k] })), ...examples.map((b, k) => ({ b, id: ask.panels[k] }))];
   const settled = await Promise.allSettled(items.map(async ({ b, id }) => {
     if (b.check.status === "failed" || !b.package) return;
     const key = solveKey(w.number, seq, id);
-    let verdict = w.solves.get(key);
-    if (!verdict) {
-      const log = await solveCheck(deps.solver, b.package, deps.solveTimeLimitMs ?? SOLVE_TIME_LIMIT_MS, deps.now);
-      if (!log) return;
-      deps.onSolve?.(log);
-      await deps.calls?.saveSolve(key, log);
-      verdict = log.verdict;
-    }
-    if (verdict.status !== "agreed") {
+    const pkg = b.package;
+    const [verdict, gate] = await Promise.all([
+      (async () => {
+        let kept = w.solves.get(key);
+        if (!kept) {
+          const log = await solveCheck(deps.solver, pkg, deps.solveTimeLimitMs ?? SOLVE_TIME_LIMIT_MS, deps.now);
+          if (!log) return null;
+          deps.onSolve?.(log);
+          await deps.calls?.saveSolve(key, log);
+          kept = log.verdict;
+        }
+        return kept;
+      })(),
+      askGate(input, deps, w, id, key, pkg),
+    ]);
+    const reasons: string[] = [];
+    if (verdict && verdict.status !== "agreed") {
       // A step template story the reader could not answer as reworded keeps the template's own checked words: the
       // slot is not left empty for the writer's words (the U4 review, items 1 and 4).
       const c = w.slots.find((x) => x.id === id)?.contract;
-      const pkg = b.package;
       if (c?.template && pkg.textSource === "ai") {
         const back = buildStepItem(c.template, c.item.text, { id: pkg.id, workbookId: pkg.ref.source === "workbook" ? pkg.ref.workbookId : "", page: pkg.ref.source === "workbook" ? pkg.ref.page : 0, question: pkg.ref.source === "workbook" ? pkg.ref.question : 1, level: pkg.level, skills: pkg.skill.skills }, "code");
         if (back.package && back.check.status !== "failed") { b.package = back.package; b.check = back.check; return; }
       }
-      b.check = { status: "failed", reason: solveReason(verdict) };
+      reasons.push(solveReason(verdict));
     }
+    if (gate && gateNeedsRewrite(ask.name, gate)) reasons.push(gate.reason ?? gateReasonText(gate));
+    else if (gate) {
+      const mark = gateMark(gate);
+      if (mark) gateMarks.set(b, mark);
+    }
+    if (reasons.length) b.check = { status: "failed", reason: reasons.join(" ") };
   }));
   const failure = settled.find((x) => x.status === "rejected");
   if (failure) throw (failure as PromiseRejectedResult).reason;
+}
+
+const gateReasonText = (row: { reason: string | null }) => row.reason ?? "A quality gate flagged this question.";
+
+/** The quality gate of one printed question, at the same time as its solve check. Null when this question is not asked. */
+async function askGate(input: GenerateInput, deps: GenerateDeps, w: PageWork, id: string, key: string, pkg: QuestionPackage): Promise<StoredQuestionGate | null> {
+  const run = deps.questionGates;
+  if (!run) return null;
+  const printed = toSolve(pkg).questions.find((q) => q.id === "question");
+  if (!printed) return null;
+  const slot = w.slots.find((s) => s.id === id);
+  const things = interestWords(input.plan).things;
+  const named = slot?.contract?.item.thing;
+  const interest = slot?.interest ? (named && things.includes(named) ? named : things[0] ?? null) : null;
+  return run.ask(key, { question: printed, grade: input.schoolGrade ?? 0, interest }, AbortSignal.timeout(20_000));
 }
 
 /**
@@ -2016,6 +2059,7 @@ const generated = (w: PageWork, i: number, b: BuiltQuestion, attempts: Generated
     itemStepReason: itemStep ? null : fact ? "The G1 family builder did not declare a curriculum step." : b.itemStepReason ?? "No step-specific builder declared this item.",
     ...(w.slots[i].existing ? { existing: true } : {}),
     ...(!w.slots[i].contract && b.package && b.wordings?.includes(b.package.text) ? { codeText: b.package.text } : {}),
+    ...(gateMarks.get(b) ? { gate: gateMarks.get(b) } : {}),
   };
 };
 
@@ -2033,6 +2077,7 @@ function hintFor(reason: string): string | null {
   if (/is a count: write it as the sequence format|the sequence goes from|the sequence starts at/.test(reason)) return "Make it a sequence item whose first and last numbers are the ones the text says.";
   if (/gives its own answer|adding or taking away 0/.test(reason)) return "Ask for a number the child works out; the text gives only what the child needs.";
   if (/the solve check/.test(reason)) return "A reader who sees only the printed text and picture must work out exactly the answer code computes from your data: name every number it works, ask for what it gives, and say nothing that points to another operation.";
+  if (/quality gate/.test(reason)) return "Give the question exactly one right answer. Do not leave a second answer that also works.";
   return null;
 }
 
@@ -3124,6 +3169,8 @@ function ownStepFirst(w: PageWork): void {
   }
 }
 
+// Row swaps, restored-grid retries and the final empty-cell check all read the same printable questions (#764).
+// An absent approved contract stays missing; only an existing writer slot gets its measured stand-in.
 function budgetPage(input: GenerateInput, w: PageWork): DraftPage {
   const questions = w.slots.map((s, i) => {
     const c = s.contract;
@@ -4223,6 +4270,7 @@ async function generate(input: GenerateInput, deps: GenerateDeps, only: Readonly
   const draft: GeneratedWorkbook = attachWorkbookMayaOperations({
     ...book,
     model: deps.ai.model,
+    ...(deps.questionGates?.unavailable ? { gatesUnavailable: true } : {}),
     pages,
     ...(quality ? { quality } : {}),
     counts: {

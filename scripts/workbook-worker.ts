@@ -24,6 +24,7 @@ import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { workbookAiPreflight, workbookAiPrimary, workbookModels, workbookSubscriptionProvider } from "@/lib/workbook-ai";
+import { configureAiUsage, flushAiUsage } from "@/lib/ai-usage";
 import { runWorkbookJobWith } from "@/lib/workbook-job-deps";
 import { workbookWorkerQueue } from "@/lib/workbook-job-store";
 import { workbookWorker } from "@/lib/workbook-worker";
@@ -95,7 +96,10 @@ const provider = workbookSubscriptionProvider();
 const primary = workbookAiPrimary();
 const id = process.env.WORKBOOK_WORKER_ID?.trim() || hostname().replace(/\.local$/, "");
 const url = process.env.SUPABASE_URL || `https://${PROJECT}.supabase.co`;
-const admin = createClient<Database>(url, await secretKey(), { auth: { persistSession: false, autoRefreshToken: false } });
+const serviceKey = await secretKey();
+const admin = createClient<Database>(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
+// The AI usage ledger (D-330) writes with this key too: the worker's key is not in process.env.
+configureAiUsage({ url, key: serviceKey });
 if (provider === "codex") log("Codex subscription only: API fallback is disabled.");
 else if (!process.env.OPENROUTER_API_KEY) log("OPENROUTER_API_KEY is not set: there is no API fallback, so a call the subscription cannot take fails.");
 log(`workbook worker ${id} on ${code.slice(0, 12)}: ${primary === "subscription" ? `the ${provider} subscription first` : "the API first"}; writer ${workbookModels().write}; solver ${workbookModels().solve}`);
@@ -106,7 +110,11 @@ const worker = workbookWorker({
   runJob: async (runId, resume) => {
     // Recheck between jobs. A lost login or removed CLI must not consume the next queued family run.
     await workbookAiPreflight();
-    return runWorkbookJobWith(admin, runId, { subscription: true, build: code, budgetMs: 6 * 3_600_000, timeLimitMs: 10 * 60_000 }, { resume });
+    try {
+      return await runWorkbookJobWith(admin, runId, { subscription: true, build: code, budgetMs: 6 * 3_600_000, timeLimitMs: 10 * 60_000 }, { resume });
+    } finally {
+      await flushAiUsage();
+    }
   },
   keepAwake,
   shouldExit: newerMain,

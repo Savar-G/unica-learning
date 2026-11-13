@@ -122,7 +122,7 @@ it("keeps the scan gate: a family scanning is not released to gets the 404 on ev
 });
 
 it("opens Scan pages on the page a QR code named, for that page's child", async () => {
-  expect(await render({ w: BOOK, p: "12" })).toContain("camera flow: Leo, Iris · Day 4 · Page 3");
+  expect(await render({ w: BOOK, p: "12" })).toContain("camera flow: Leo, Iris · Page 12 · Day 4");
   // Anything that is not a workbook id and a page number names no page.
   expect(await render({ w: "not-an-id", p: "12" })).toContain("camera flow: Iris, Leo<");
 });
@@ -134,7 +134,7 @@ it("keeps the page a QR code named when an iPad that reports a Mac continues on 
   const href = /href="([^"]*here=1[^"]*)"/.exec(out)![1].replaceAll("&amp;", "&");
   const query = Object.fromEntries(new URL(href, "http://localhost:3000").searchParams);
   expect(query).toEqual({ w: BOOK, p: "12", here: "1" });
-  expect(await render(query)).toContain("camera flow: Leo, Iris · Day 4 · Page 3");
+  expect(await render(query)).toContain("camera flow: Leo, Iris · Page 12 · Day 4");
 });
 
 it("carries no page on Take the pictures on this device when the address names none", async () => {

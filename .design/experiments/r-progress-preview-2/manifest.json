@@ -1,0 +1,24 @@
+{
+  "round": "r-progress-preview-2",
+  "decision": "Which mix of A (book path) and B (grade climb) should show where the child can go, and in which visual language?",
+  "evidence": "Savar, 2026-11-11, after round r-progress-preview: 'I like a mix of A and B ... I'm not happy with the visuals just yet.' No build yet.",
+  "primary_axis": "visual language of the A+B mix (precise chart, product cover, dark poster, illustration)",
+  "invariants": [
+    "same three cases, pace model, headline and basis line as round 1 (pace.js, levels.js unchanged)",
+    "every option shows both the books (A) and the climb over time to the goal (B)",
+    "books drawn in the workbook cover's language: white paper, 3x3 colour grid, yellow highlight (public/whats-included/wb/leah-01-cover.jpg)",
+    "no level ids shown to a parent; grades label groups of books (D-218)"
+  ],
+  "options": [
+    { "id": "E", "artifact": "e-book-stairs.html", "bet": "A staircase chart: each grade a step, books stand on it, months across, flag on top",
+      "benefit": "Most honest picture: progress happens a grade at a time; every book is visible; clean and light", "cost": "Plain; close to a chart", "risk": "Reads as an analytics graph, not a child's plan" },
+    { "id": "F", "artifact": "f-cover-and-line.html", "bet": "Lead with a real-looking Book 1 cover made for the child, beside the climb line of book dots",
+      "benefit": "The product is the picture: 'made for Leah'; tapping a dot shows any book's cover and topic", "cost": "The cover takes a lot of space on a phone", "risk": "The line is thin next to the cover; the goal is less loud" },
+    { "id": "G", "artifact": "g-spine-skyline.html", "bet": "A dark poster: 'Grade 1 -> Grade 3' in big type, each book a spine that rises with the grade, flag at the end",
+      "benefit": "The strongest single image; best as the email still and a screenshot a parent shares", "cost": "Dark block differs from the light report", "risk": "Rising bars can read as scores, not books" },
+    { "id": "H", "artifact": "h-book-trail.html", "bet": "An illustrated trail up a hill: books as stepping stones, grade signposts, a flag on the top",
+      "benefit": "The warmest and most child-like; a journey, not a chart", "cost": "Most custom drawing to build and keep right for every case", "risk": "Can feel childish to a parent; the dates are less exact to read" }
+  ],
+  "recommendation": "G for the report and the email still, with F's tap-a-book cover as the detail; or E if Savar wants the lighter report look",
+  "screenshots": "shots/<option>-<case>-desktop.png and shots/<option>-below-phone.png"
+}

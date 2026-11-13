@@ -1,0 +1,15 @@
+{
+  "round": "r-progress-preview-3",
+  "decision": "A new way to show where the child can go, after Savar rejected rounds 1 and 2 ('I'm still not a fan ... let's try some new things').",
+  "evidence": "Research 2026-11-11 (refs/): Kumon progress graph (level over months beside a rising grade-level line; default goal: grade level within a year of enrolment), i-Ready growth report (on-grade band; Typical and Stretch targets), Khan Academy unit mastery squares, Duolingo's one guided path, Noom's prediction ('we predict you'll hit your goal by June 22', then questions to get there sooner), IEP and tutoring goal writing ('you can picture what your child will be able to do').",
+  "primary_axis": "what the parent sees as progress: real problems (I), a dated prediction (J), the class as the yardstick (K), topics filled in (L), a familiar growth chart (M)",
+  "invariants": ["same three cases, pace model, headline and basis line as rounds 1 and 2", "no level ids shown to a parent", "warm look tokens"],
+  "options": [
+    { "id": "I", "artifact": "i-today-and-then.html", "bet": "Show real math: the problems the child does today, at the next grade and at the goal, handwritten", "benefit": "A parent can picture the result; no chart to read", "cost": "Example problems must come from real question templates", "risk": "A parent compares single problems to what the child does at school" },
+    { "id": "J", "artifact": "j-prediction.html", "bet": "Noom's pattern: one sentence with the date, then 'How many days a week can Leah practise?'", "benefit": "The prediction is the headline; the pace becomes a question the parent answers", "cost": "Least about the curriculum", "risk": "Feels like a sales funnel" },
+    { "id": "K", "artifact": "k-with-her-class.html", "bet": "The child's line beside the class's grade, which goes up each September", "benefit": "The most honest: shows when a below-grade child catches up with the class", "cost": "A chart a parent must read", "risk": "Shows that catching up takes longer than reaching the old grade (March 2028 vs September 2027 for Leah)" },
+    { "id": "L", "artifact": "l-topic-map.html", "bet": "Every topic to the goal as a tile: secure in the test, in Book 1, next", "benefit": "Most personal (the test's real secure topics); Parent home can fill tiles as pages are marked", "cost": "Many tiles; needs the child's real profile", "risk": "Reads as a long to-do list" },
+    { "id": "M", "artifact": "m-growth-chart.html", "bet": "A door-frame growth chart in grades with pencil marks", "benefit": "Familiar to every parent, warm, works as a vertical email image", "cost": "The handwriting look is new to the site", "risk": "Height marks can suggest the child is 'short'" }
+  ],
+  "recommendation": "I, with J's sentence and question for the pace"
+}

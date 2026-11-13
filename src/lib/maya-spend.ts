@@ -1,6 +1,6 @@
 // Maya's spending cap (D-290, D-291): what Maya's paid provider requests may cost, kept in one ledger on the server.
 //
-// - A child may use CAD 10 of Maya a week (WEEK_CAD, Savar's decision of 2026-11-05). The week is the minutes ledger's:
+// - A child may use CAD 10 of Maya a week (WEEK_CAD, Savar's decision of 2026-11-05). The week is the family's week:
 //   Monday 00:00 to Monday 00:00 in the family's time zone (src/lib/family-time.ts `weekOf`).
 // - No cap is shared between children. The month's total for all of Maya (calendar month, Pacific time) only sends the
 //   team one email at MAYA_MONTHLY_ALERT_CAD (default CAD 400); it has no effect on access. Admin test calls, the local

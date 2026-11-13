@@ -1,0 +1,50 @@
+{
+  "round": "r-progress-preview",
+  "decision": "How should the report, the report email and Parent home show where the child's math can go with Unica, book by book, up to a goal grade?",
+  "evidence": "Savar, 2026-11-11: after the first report, show a visual, easy plan tied to the curriculum (Book 1, Book 2, ...). Goal: below grade -> school grade; at grade -> school grade + 2; ahead -> working level + 2.",
+  "primary_axis": "representation form (book path, grade chart, month list, milestone stops)",
+  "invariants": [
+    "same child (Leah, Grade 3) in three cases: working at Grade 1, 3 and 4",
+    "same computed pace from the real BC curriculum (src/lib/workbook-curriculum): 10 days a book, the level's planned books, the last one the level test book; Book 1 at the first level of the working grade",
+    "same headline: 'At {d} days a week, {child} can reach a {Grade N} level by about {month year}.' and the same basis line",
+    "pace switch 3, 4 or 5 days a week moves every date",
+    "no level ids (U4) shown to a parent; grades label groups of books, never one level (D-218)",
+    "placed after the report's results and before the plan button; warm look tokens"
+  ],
+  "assumptions_to_decide": [
+    "Book 1 starts 5 weeks after the report (making plus the 14 to 35 day mail window in parent-view.ts); Parent home would count from the real delivery date",
+    "the goal is reached when the child starts the goal grade's first level (the same meaning as the report's working level)"
+  ],
+  "options": [
+    {
+      "id": "A", "artifact": "a-book-path.html",
+      "bet": "Show the books themselves: one tile per book, grouped by grade, from Today to a goal flag; topic cards under it",
+      "benefit": "Ties the plan to what the family gets in the mail; Parent home can fill each tile as books are marked, on the same picture",
+      "cost": "20 to 24 tiles; on a phone the track must wrap (the mockup scrolls sideways)",
+      "risk": "Many tiles can read as 'a lot of work' instead of 'a clear path'"
+    },
+    {
+      "id": "B", "artifact": "b-grade-climb.html",
+      "bet": "A chart: grade going up over months, with the school grade line and the goal flag",
+      "benefit": "Reads like a projection at a glance; the pace switch visibly moves the goal; the best still image for the email",
+      "cost": "Less about books and topics; chart labels are small on a phone",
+      "risk": "A straight rising line looks like a promise of steady progress; parents may read it as a guarantee"
+    },
+    {
+      "id": "C", "artifact": "c-month-plan.html",
+      "bet": "A month-by-month plan: which books and topics each month, with grade milestones and the goal",
+      "benefit": "The most concrete: a parent sees what December holds; easy to mark real progress later",
+      "cost": "The longest; needs 'Show all months'; weakest as one picture",
+      "risk": "Feels like a schedule the child can fall behind on"
+    },
+    {
+      "id": "D", "artifact": "d-three-stops.html",
+      "bet": "Three stops only: Book 1 now, the next grade, the goal, each with its date and main topics",
+      "benefit": "The easiest to read in 5 seconds; the same on phone, email and Parent home",
+      "cost": "Books are a count, not a picture; less 'program' feel",
+      "risk": "Too plain to feel like a personal plan"
+    }
+  ],
+  "recommendation": "A, with each grade's tiles wrapping into rows on a phone, and its static render as the email image",
+  "screenshots": "shots/<option>-<case>-desktop.png and shots/<option>-below-phone.png"
+}

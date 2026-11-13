@@ -19,6 +19,7 @@ import { runWorkbookJob, type JobOutcome, type WorkbookJobDeps } from "@/lib/wor
 import { excludeRunProvider, loadRunProviderGate, runAiCallLog, saveRunAiCalls, workbookJobSource, workbookRunStore } from "@/lib/workbook-job-store";
 import { workbookFiles } from "@/lib/workbook-store";
 import { workbookTemplate } from "@/lib/workbook-template";
+import { decisionGateChecker } from "@/lib/workbook-run-gates";
 import { fixedTemplateFonts } from "@/lib/workbook-template-fonts";
 
 /** A QR token: 22 URL-safe characters from 16 random bytes. */
@@ -39,6 +40,17 @@ export interface RunPlace {
   env?: Record<string, string | undefined>;
 }
 
+/** Whose run it is, for the AI usage ledger (D-330). A read that fails gives no family: the calls are still stored. */
+export async function runUsage(admin: SupabaseClient<Database>, runId: string): Promise<{ parentId: string | null; childId: string | null; runId: string }> {
+  try {
+    // At most 3 seconds: the ledger is never worth holding a run for.
+    const { data } = await admin.from("workbook_runs").select("parent_id, child_id").eq("id", runId).abortSignal(AbortSignal.timeout(3_000)).maybeSingle();
+    return { parentId: data?.parent_id ?? null, childId: data?.child_id ?? null, runId };
+  } catch {
+    return { parentId: null, childId: null, runId };
+  }
+}
+
 /** Makes one job call of a run with the live deps. Throws only when the deps cannot be made (fonts, the template). */
 export async function runWorkbookJobWith(admin: SupabaseClient<Database>, runId: string, place: RunPlace, o: { resume?: boolean } = {}): Promise<JobOutcome> {
   // The first pages of Workbook 1 (docs/first-pages.md) share the worker's queue.
@@ -54,7 +66,9 @@ export async function runWorkbookJobWith(admin: SupabaseClient<Database>, runId:
   const engine = chromiumPrintEngine();
   const fake = workbookFakeAi();
   const log = runAiCallLog(saveRunAiCalls(admin, runId));
+  const usage = await runUsage(admin, runId);
   const live = fake ? null : workbookAi(env, { subscription: place.subscription, primary: place.primary, onCall: log.add, onStart: log.add,
+    usage,
     gate: await loadRunProviderGate(admin, runId),
     onExclude: (provider, reason) => excludeRunProvider(admin, runId, provider, reason) });
   try {
@@ -66,6 +80,7 @@ export async function runWorkbookJobWith(admin: SupabaseClient<Database>, runId:
       files: workbookFiles(admin),
       ai: fake ?? live!.ai,
       solver: fake ? workbookFakeSolver() : live!.solve?.solver ?? null,
+      gates: fake ? null : decisionGateChecker(env, { feature: "workbook_gate", parentId: usage.parentId, childId: usage.childId, source: { kind: "workbook_run", id: runId } }),
       ...(live?.solve ? { solveCost: live.solve.cost } : {}),
       template,
       fit: (parentId, signal) => renderFitCheck({ template, engine: { print: (job) => engine.print({ ...job, signal }) }, parentId, fullness: true }),

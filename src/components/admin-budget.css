@@ -1,0 +1,96 @@
+/* The admin budget page (D-333). The admin's tokens and parts (admin.css, admin-blocks.css) carry the layout; this file holds
+   the balance card, the form, the transaction table (a card for each row on a phone), the month table and the chart. Light
+   only, as the admin is. Chart colours are categorical slots 1 and 2 of the data-viz palette (blue, orange); the legend names
+   both and the table under the chart holds the same numbers. */
+.adm-bt { --c1: #2a78d6; --c2: #eb6834; }
+.adm-bt .bt-sub { display: block; font-size: 12.5px; color: var(--ink-2); font-weight: 400; overflow-wrap: anywhere; }
+.adm-bt .bt-line { margin: var(--s3) 0; font-size: 13.5px; color: var(--ink-2); }
+.adm-bt .bt-error { margin: 0; min-height: 1.4em; font-size: 13.5px; color: #a8380f; }
+.adm-bt .bt-ok { margin: 0; font-size: 13.5px; color: #1d6b4a; }
+.adm-bt .ap-card { margin-bottom: var(--s5); }
+
+/* who owes whom */
+.adm-bt .bt-balance { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s3); margin: 0; }
+.adm-bt .bt-balance > div { display: grid; gap: var(--s1); min-width: 0; }
+.adm-bt .bt-balance dt { font: 400 11px/1.3 var(--mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-2); }
+.adm-bt .bt-balance dd { margin: 0; font: 300 24px/1.2 var(--sans); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.adm-bt .bt-balance .is-net dd { font-weight: 400; }
+@media (max-width: 659.98px) { .adm-bt .bt-balance { grid-template-columns: minmax(0, 1fr); } }
+
+/* the add and edit form */
+.adm-bt .bt-form { margin: 0 0 var(--s4); padding: var(--s4); border: 1px solid var(--line); border-radius: var(--r); background: #fff; }
+.adm-bt .bt-form h3 { margin: 0 0 var(--s3); font: 500 16px/1.3 var(--sans); }
+.adm-bt .bt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--s3) var(--s4); }
+.adm-bt .bt-grid label, .adm-bt .bt-rate label { display: grid; gap: var(--s1); font: 400 12px/1.2 var(--mono); color: var(--ink-2); min-width: 0; }
+.adm-bt .bt-grid input:not([type="checkbox"]):not([type="radio"]), .adm-bt .bt-grid select, .adm-bt .bt-grid textarea,
+.adm-bt .bt-rate input, .adm-bt .bt-cat input { box-sizing: border-box; width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid #d4d4d8; border-radius: 6px; background: #fff; font: 400 14px/1.3 var(--sans); color: var(--ink); }
+.adm-bt .bt-grid textarea { resize: vertical; }
+.adm-bt .bt-wide { grid-column: 1 / -1; }
+.adm-bt .bt-seg { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); margin: 0; padding: 0; border: 0; min-width: 0; }
+.adm-bt .bt-seg legend { padding: 0; margin-bottom: var(--s1); font: 400 12px/1.2 var(--mono); color: var(--ink-2); }
+.adm-bt .bt-seg label { display: flex; align-items: center; gap: 6px; min-height: 36px; font: 400 14px/1.2 var(--sans); color: var(--ink); }
+.adm-bt .bt-check { display: flex !important; align-items: center; gap: 8px; min-height: 40px; align-self: end; font: 400 14px/1.3 var(--sans) !important; color: var(--ink) !important; }
+.adm-bt .bt-check span { display: grid; gap: 2px; }
+.adm-bt .bt-check b { font-weight: 400; }
+.adm-bt .bt-check small { font-size: 12.5px; color: var(--ink-2); }
+.adm-bt input[type="checkbox"], .adm-bt input[type="radio"] { width: 18px; height: 18px; margin: 0; accent-color: var(--ink); }
+.adm-bt .bt-preview { margin: var(--s3) 0 0; font-size: 14px; color: var(--ink-2); }
+.adm-bt .bt-preview b { color: var(--ink); font-weight: 500; }
+.adm-bt .bt-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); margin-top: var(--s3); }
+.adm-bt .adm-btn.is-quiet { background: #fff; color: var(--ink); border: 1px solid var(--line); }
+.adm-bt .adm-btn.is-danger { background: #a8380f; border-color: #a8380f; color: #fff; }
+
+/* filters and the transaction table */
+.adm-bt .bt-table td, .adm-bt .bt-table th { vertical-align: top; }
+.adm-bt .bt-date { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.adm-bt .bt-desc { min-width: 14em; overflow-wrap: anywhere; }
+.adm-bt .bt-notes { max-width: 28em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.adm-bt .bt-owes .adm-table th:not(:first-child) { text-align: right; }
+.adm-bt .bt-owes .adm-table td { width: 30%; }
+.adm-bt .bt-settle { text-align: center; }
+.adm-bt .bt-row-actions { white-space: nowrap; text-align: right; }
+.adm-bt .bt-row-actions .adm-btn { min-height: 32px; padding: 0 10px; font-size: 13px; }
+.adm-bt .bt-row-actions .adm-btn + .adm-btn { margin-left: var(--s1); }
+
+/* settings: rate and category names */
+.adm-bt .bt-settings { margin-top: var(--s5); padding: var(--s3) var(--s4); border: 1px solid var(--line); border-radius: var(--r); background: #fff; }
+.adm-bt .bt-settings summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; font-size: 14px; color: var(--ink-2); }
+.adm-bt .bt-rate { display: grid; grid-template-columns: minmax(0, 14em) auto; align-items: end; gap: var(--s2) var(--s3); margin: var(--s3) 0; }
+.adm-bt .bt-rate p { grid-column: 1 / -1; margin: 0; font-size: 13px; color: var(--ink-2); }
+.adm-bt .bt-cats h3 { margin: var(--s4) 0 var(--s2); font: 500 14px/1.3 var(--sans); }
+.adm-bt .bt-cat { display: grid; grid-template-columns: minmax(0, 20em) auto 1fr; align-items: center; gap: var(--s2); margin-bottom: var(--s2); }
+
+/* the month table: row heads are plain text, not column-head style */
+.adm-bt .adm-table tbody th { position: static; padding: var(--s2) var(--s3); border-top: 1px solid var(--line-soft); background: transparent; text-align: left; font: 400 14px/1.4 var(--sans); letter-spacing: 0; text-transform: none; color: var(--ink); white-space: nowrap; }
+.adm-bt .adm-table tbody tr.bt-section th { padding-top: var(--s4); background: var(--soft); font: 400 11.5px/1.2 var(--mono); letter-spacing: 0.03em; text-transform: uppercase; color: var(--ink-2); }
+.adm-bt .adm-table tbody tr.bt-sum th, .adm-bt .adm-table tbody tr.bt-sum td { font-weight: 500; background: var(--soft); }
+.adm-bt .bt-total { font-weight: 500; border-left: 1px solid var(--line-soft); }
+.adm-bt .is-loss { color: #a8380f; }
+
+/* the chart */
+.adm-bt .bt-figure { margin: 0 0 var(--s4); }
+.adm-bt .bt-chart-wrap { overflow-x: auto; }
+.adm-bt .bt-chart { display: block; width: 100%; min-width: 480px; height: auto; }
+.adm-bt .bt-grid { stroke: var(--line-soft); stroke-width: 1; }
+.adm-bt .bt-axis { font: 400 11.5px var(--mono); fill: var(--ink-2); }
+.adm-bt .bt-bar.is-rev, .adm-bt .bt-legend i.is-rev { fill: var(--c1); background: var(--c1); }
+.adm-bt .bt-bar.is-exp, .adm-bt .bt-legend i.is-exp { fill: var(--c2); background: var(--c2); }
+.adm-bt .bt-bar:hover { opacity: 0.8; }
+.adm-bt .bt-legend { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s4); margin-top: var(--s2); font-size: 12.5px; color: var(--ink-2); }
+.adm-bt .bt-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.adm-bt .bt-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; }
+
+/* on a phone each transaction is a card, not a row of a wide table */
+@media (max-width: 719.98px) {
+  .adm-bt .bt-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .adm-bt .bt-table, .adm-bt .bt-table tbody { display: block; }
+  .adm-bt .bt-table tr { display: grid; gap: 2px; padding: var(--s3); border: 1px solid var(--line); border-radius: var(--r); margin-bottom: var(--s2); background: #fff; }
+  .adm-bt .bt-table td { display: grid; grid-template-columns: 7.5em minmax(0, 1fr); gap: var(--s2); padding: 2px 0; border: 0; text-align: left; }
+  .adm-bt .bt-table td::before { content: attr(data-label); font: 400 11px/1.6 var(--mono); letter-spacing: 0.03em; text-transform: uppercase; color: var(--ink-2); }
+  .adm-bt .bt-table td.bt-row-actions { display: flex; justify-content: flex-start; gap: var(--s2); padding-top: var(--s2); }
+  .adm-bt .bt-table td.bt-row-actions::before { content: none; }
+  .adm-bt .bt-table td.adm-num, .adm-bt .bt-settle { text-align: left; }
+  .adm-bt .bt-table tbody tr:hover td { background: transparent; }
+  .adm-bt .bt-row-actions .adm-btn { min-height: 40px; }
+  .adm-bt .bt-rate, .adm-bt .bt-cat { grid-template-columns: minmax(0, 1fr); }
+}

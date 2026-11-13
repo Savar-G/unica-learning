@@ -23,5 +23,5 @@ export function memoryReportLedger({ now, reads = {} }: { now?: () => number; re
       return book.entry({ report, email: "parent" })?.state === "sent";
     },
   };
-  return { ledger, entry: book.entry };
+  return { ledger, entry: book.entry, keptCopy: book.keptCopy };
 }

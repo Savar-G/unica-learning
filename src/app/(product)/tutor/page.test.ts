@@ -28,7 +28,7 @@ beforeEach(async () => {
   const store = memoryWorkbookStore({ children: [{ id: CHILD, parentId: PARENT }], now: () => new Date("2026-11-01T20:00:00Z") });
   expect((await store.write(sampleWorkbook({ workbookId: BOOK, childId: CHILD, parentId: PARENT, qrTokens: [1, 2, 3].map(p => `sample-token-0000000${p}`) }))).status).toBe("written");
   store.setStatus(BOOK, "shipped"); state.store = store;
-  vi.spyOn(store, "workbook"); state.receipt.mockResolvedValue(receipt);
+  vi.spyOn(store, "workbook"); vi.spyOn(store, "page"); state.receipt.mockResolvedValue(receipt);
   state.sign.mockResolvedValue({ data: { signedUrl: "https://example.invalid/page.png" }, error: null });
   state.chat.mockResolvedValue({ usage: { used: 0, left: 60, resetsAt: 1800000000000, backAt: "Monday" }, note: null });
 });
@@ -38,13 +38,13 @@ it("shows the awaiting-delivery desk without reading packages or signing an imag
   expect(body).toContain("Your workbook pages will open here after we confirm delivery.");
   expect(body).toContain("Leave"); expect(body).toContain("Write to Maya");
   expect(body).not.toContain("Pick from my page"); expect(body).not.toContain("https://example.invalid/page.png");
-  expect(state.store!.workbook).not.toHaveBeenCalled(); expect(state.sign).not.toHaveBeenCalled();
+  expect(state.store!.workbook).not.toHaveBeenCalled(); expect(state.store!.page).not.toHaveBeenCalled(); expect(state.sign).not.toHaveBeenCalled();
   expect(state.chat).toHaveBeenCalledOnce();
 });
 it.each([{ deliveredAt: "2999-01-01T00:00:00Z" }, { parentId: BOOK }, { childId: BOOK }, { workbookId: CHILD }, { number: 2 }])("keeps an invalid effective receipt closed: %j", async change => {
   state.receipt.mockResolvedValue({ ...receipt, ...change });
   expect(await html()).toContain("after we confirm delivery");
-  expect(state.store!.workbook).not.toHaveBeenCalled(); expect(state.sign).not.toHaveBeenCalled();
+  expect(state.store!.workbook).not.toHaveBeenCalled(); expect(state.store!.page).not.toHaveBeenCalled(); expect(state.sign).not.toHaveBeenCalled();
 });
 it("keeps the notice and delivery message visible when Maya is unavailable or the weekly chat count is zero", async () => {
   state.receipt.mockResolvedValue(null); state.notice = true;

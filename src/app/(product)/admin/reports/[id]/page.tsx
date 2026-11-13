@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/admin-store";
 import { adminTestPath } from "@/lib/admin-view";
 import { loadReportView } from "@/lib/report-loading";
+import { progressPreview } from "@/lib/progress-preview";
 import { adminReportReader } from "@/lib/report-loading-server";
 import { AdminFrame } from "@/components/admin-frame";
 import { childPath } from "@/components/admin-records";
@@ -22,6 +23,6 @@ export default async function AdminReportPage({ params }: PageProps<"/admin/repo
       <Link className="btn adm-btn ghost" href={`/admin/reports/${report.view.id}/deck`}>Open the results deck</Link>
     </>}>
     <p className="adm-report-note">The test page has the flags, every answer and all shown work.</p>
-    <ReportCard view={report.view} readOnly />
+    <ReportCard view={report.view} readOnly progress={progressPreview(report.view)} />
   </AdminFrame>;
 }

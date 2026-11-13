@@ -1,7 +1,6 @@
-// Shared by the reserve form (client) and /api/signup (server).
+// Curricula, field checks and the source cleaner, shared by the account signup, the contact form and the admin.
 import { SOURCE_KEYS } from "@/lib/visit-source";
 
-export const POSTAL = /^[ABCEGHJ-NPRSTVXY]\d[A-Z] ?\d[A-Z]\d$/i;
 export const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** A trimmed string of at most n characters; anything else becomes "". */
@@ -40,29 +39,3 @@ export type CurriculumId = keyof typeof CURRICULA;
 /** Curricula we make books for today. Every other curriculum joins the waitlist (D-053). */
 export const OPEN_CURRICULA: readonly CurriculumId[] = ["BC"];
 export const statusFor = (c: CurriculumId): SignupStatus => (OPEN_CURRICULA.includes(c) ? "reserved" : "waitlist");
-
-// The server sets the status from the curriculum, so the client does not send one.
-export interface SignupPayload {
-  name: string;
-  email: string;
-  postal: string;
-  plan: "one";
-  subject: string;
-  /** School grade, 1-7: the old booking form (no longer offered) and its signups table. The assessment takes K-9 (account.ts, D-156). */
-  grade: number;
-  curriculum: CurriculumId;
-  /** CTA that opened the form, referrer and UTM tags, so we know which channel brought each parent. */
-  source: Record<string, string>;
-  /** Honeypot: hidden from people, filled in by bots. */
-  website?: string;
-}
-
-/** What /api/signup answers. `cardUrl` is Stripe's page to add a card, only for reserved signups when Stripe works. */
-export interface SignupResult {
-  ok: boolean;
-  status?: SignupStatus;
-  /** The row's ref. /thank-you sends it with the "how did you hear about us?" answer. */
-  ref?: string;
-  cardUrl?: string;
-  error?: string;
-}

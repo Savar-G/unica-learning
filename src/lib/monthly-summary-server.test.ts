@@ -18,7 +18,7 @@ const TABLES: MemoryParentViewTables = {
   cards: [{ ...own, cardSavedAt: "2026-09-20T00:00:00Z" }, { parentId: "parent-2", childId: "child-2", cardSavedAt: "2026-09-20T00:00:00Z" }],
   deliveries: [{ ...own, workbookId: "wb-1", deliveredAt: "2026-09-28T18:00:00Z" }, { parentId: "parent-2", childId: "child-2", deliveredAt: "2026-09-28T18:00:00Z" }],
   workbooks: [{ ...own, id: "wb-1", number: 1, status: "shipped", shippedAt: "2026-10-14T18:00:00Z" }],
-  maya: [{ ...own, kind: "child", createdAt: "2026-10-02T18:00:00Z", usedSeconds: 120 }],
+  maya: [{ ...own, kind: "chat", status: "ended", endedAt: "2026-10-02T18:00:00Z", childTurns: 3 }],
 };
 const FONTS = { sans: new Uint8Array([1]), mono: new Uint8Array([2]) };
 

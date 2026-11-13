@@ -97,6 +97,72 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_usage_events: {
+        Row: {
+          calls: number
+          child_id: string | null
+          cost_usd: number | null
+          created_at: string
+          feature: string
+          generation_id: string | null
+          id: number
+          input_tokens: number | null
+          model: string
+          output_tokens: number | null
+          parent_id: string | null
+          provider: string
+          source_id: string | null
+          source_kind: string | null
+        }
+        Insert: {
+          calls?: number
+          child_id?: string | null
+          cost_usd?: number | null
+          created_at?: string
+          feature: string
+          generation_id?: string | null
+          id?: never
+          input_tokens?: number | null
+          model: string
+          output_tokens?: number | null
+          parent_id?: string | null
+          provider: string
+          source_id?: string | null
+          source_kind?: string | null
+        }
+        Update: {
+          calls?: number
+          child_id?: string | null
+          cost_usd?: number | null
+          created_at?: string
+          feature?: string
+          generation_id?: string | null
+          id?: never
+          input_tokens?: number | null
+          model?: string
+          output_tokens?: number | null
+          parent_id?: string | null
+          provider?: string
+          source_id?: string | null
+          source_kind?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_usage_events_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "ai_usage_events_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       anonymous_test_links: {
         Row: {
           assessment_id: string
@@ -391,6 +457,163 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      budget_categories: {
+        Row: {
+          created_at: string
+          id: string
+          kind: string
+          name: string
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          kind: string
+          name: string
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          kind?: string
+          name?: string
+          sort_order?: number
+        }
+        Relationships: []
+      }
+      budget_entries: {
+        Row: {
+          amount: number
+          amount_cad: number | null
+          category_id: string
+          created_at: string
+          created_by: string | null
+          currency: string
+          deleted_at: string | null
+          description: string
+          entry_date: string
+          id: string
+          kind: string
+          notes: string | null
+          paid_by: string | null
+          party: string | null
+          savar_share_pct: number
+          split_settled: boolean
+          updated_at: string
+          updated_by: string | null
+          usd_to_cad: number | null
+        }
+        Insert: {
+          amount: number
+          amount_cad?: number | null
+          category_id: string
+          created_at?: string
+          created_by?: string | null
+          currency: string
+          deleted_at?: string | null
+          description: string
+          entry_date: string
+          id?: string
+          kind: string
+          notes?: string | null
+          paid_by?: string | null
+          party?: string | null
+          savar_share_pct?: number
+          split_settled?: boolean
+          updated_at?: string
+          updated_by?: string | null
+          usd_to_cad?: number | null
+        }
+        Update: {
+          amount?: number
+          amount_cad?: number | null
+          category_id?: string
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          deleted_at?: string | null
+          description?: string
+          entry_date?: string
+          id?: string
+          kind?: string
+          notes?: string | null
+          paid_by?: string | null
+          party?: string | null
+          savar_share_pct?: number
+          split_settled?: boolean
+          updated_at?: string
+          updated_by?: string | null
+          usd_to_cad?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "budget_entries_category_fkey"
+            columns: ["category_id", "kind"]
+            isOneToOne: false
+            referencedRelation: "budget_categories"
+            referencedColumns: ["id", "kind"]
+          },
+        ]
+      }
+      budget_entry_changes: {
+        Row: {
+          action: string
+          after: Json | null
+          before: Json | null
+          changed_at: string
+          changed_by: string | null
+          entry_id: string
+          id: number
+        }
+        Insert: {
+          action: string
+          after?: Json | null
+          before?: Json | null
+          changed_at?: string
+          changed_by?: string | null
+          entry_id: string
+          id?: never
+        }
+        Update: {
+          action?: string
+          after?: Json | null
+          before?: Json | null
+          changed_at?: string
+          changed_by?: string | null
+          entry_id?: string
+          id?: never
+        }
+        Relationships: [
+          {
+            foreignKeyName: "budget_entry_changes_entry_id_fkey"
+            columns: ["entry_id"]
+            isOneToOne: false
+            referencedRelation: "budget_entries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      budget_settings: {
+        Row: {
+          id: boolean
+          updated_at: string
+          updated_by: string | null
+          usd_to_cad: number
+        }
+        Insert: {
+          id?: boolean
+          updated_at?: string
+          updated_by?: string | null
+          usd_to_cad: number
+        }
+        Update: {
+          id?: boolean
+          updated_at?: string
+          updated_by?: string | null
+          usd_to_cad?: number
+        }
+        Relationships: []
       }
       card_setups: {
         Row: {
@@ -805,6 +1028,7 @@ export type Database = {
           learning_styles: string[] | null
           learning_updated_at: string | null
           math_feeling: string | null
+          math_help: string | null
           parent_id: string
           province: string
           weekly_time: string | null
@@ -821,6 +1045,7 @@ export type Database = {
           learning_styles?: string[] | null
           learning_updated_at?: string | null
           math_feeling?: string | null
+          math_help?: string | null
           parent_id: string
           province: string
           weekly_time?: string | null
@@ -837,6 +1062,7 @@ export type Database = {
           learning_styles?: string[] | null
           learning_updated_at?: string | null
           math_feeling?: string | null
+          math_help?: string | null
           parent_id?: string
           province?: string
           weekly_time?: string | null
@@ -850,6 +1076,21 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      contact_message_claims: {
+        Row: {
+          created_at: string
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+        }
+        Relationships: []
       }
       email_copies: {
         Row: {
@@ -2811,6 +3052,7 @@ export type Database = {
           email: string
           id: string
           name: string
+          phone: string | null
           postal: string | null
           source: Json
           time_zone: string | null
@@ -2821,6 +3063,7 @@ export type Database = {
           email: string
           id: string
           name: string
+          phone?: string | null
           postal?: string | null
           source?: Json
           time_zone?: string | null
@@ -2831,6 +3074,7 @@ export type Database = {
           email?: string
           id?: string
           name?: string
+          phone?: string | null
           postal?: string | null
           source?: Json
           time_zone?: string | null
@@ -4056,6 +4300,7 @@ export type Database = {
           lease_until: string
           page_id: string | null
           parent_id: string
+          photo_check: Json | null
           printed_revision: string | null
           reserved_bytes: number
           sent_at: string | null
@@ -4074,6 +4319,7 @@ export type Database = {
           lease_until?: string
           page_id?: string | null
           parent_id: string
+          photo_check?: Json | null
           printed_revision?: string | null
           reserved_bytes: number
           sent_at?: string | null
@@ -4092,6 +4338,7 @@ export type Database = {
           lease_until?: string
           page_id?: string | null
           parent_id?: string
+          photo_check?: Json | null
           printed_revision?: string | null
           reserved_bytes?: number
           sent_at?: string | null
@@ -4124,6 +4371,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      scan_team_email_days: {
+        Row: {
+          claimed_at: string
+          day: string
+          email_id: string | null
+          error: string | null
+          state: string
+          updated_at: string
+          waiting: number
+        }
+        Insert: {
+          claimed_at?: string
+          day: string
+          email_id?: string | null
+          error?: string | null
+          state?: string
+          updated_at?: string
+          waiting: number
+        }
+        Update: {
+          claimed_at?: string
+          day?: string
+          email_id?: string | null
+          error?: string | null
+          state?: string
+          updated_at?: string
+          waiting?: number
+        }
+        Relationships: []
       }
       sign_in_links: {
         Row: {
@@ -4256,6 +4533,54 @@ export type Database = {
           source?: Json
           status?: string
           subject?: string
+        }
+        Relationships: []
+      }
+      site_hits: {
+        Row: {
+          browser: string | null
+          country: string | null
+          device: string | null
+          hit_at: string
+          id: number
+          is_landing: boolean
+          path: string
+          referrer_host: string | null
+          region: string | null
+          utm_campaign: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          visit_id: string
+        }
+        Insert: {
+          browser?: string | null
+          country?: string | null
+          device?: string | null
+          hit_at?: string
+          id?: never
+          is_landing?: boolean
+          path: string
+          referrer_host?: string | null
+          region?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          visit_id: string
+        }
+        Update: {
+          browser?: string | null
+          country?: string | null
+          device?: string | null
+          hit_at?: string
+          id?: never
+          is_landing?: boolean
+          path?: string
+          referrer_host?: string | null
+          region?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          visit_id?: string
         }
         Relationships: []
       }
@@ -4516,6 +4841,128 @@ export type Database = {
             columns: ["workbook_id"]
             isOneToOne: false
             referencedRelation: "workbooks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workbook_book1_baseline_pending: {
+        Row: {
+          child_id: string
+          created_at: string
+          draft_id: string
+          parent_id: string
+          reason: string
+          revision: number
+          run_id: string
+        }
+        Insert: {
+          child_id: string
+          created_at?: string
+          draft_id: string
+          parent_id: string
+          reason: string
+          revision: number
+          run_id: string
+        }
+        Update: {
+          child_id?: string
+          created_at?: string
+          draft_id?: string
+          parent_id?: string
+          reason?: string
+          revision?: number
+          run_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_book1_baseline_pending_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_book1_baseline_pending_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_book1_baseline_pending_draft_id_revision_fkey"
+            columns: ["draft_id", "revision"]
+            isOneToOne: true
+            referencedRelation: "workbook_draft_revisions"
+            referencedColumns: ["draft_id", "revision"]
+          },
+          {
+            foreignKeyName: "workbook_book1_baseline_pending_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_book1_baseline_pending_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workbook_book1_baseline_tries: {
+        Row: {
+          child_id: string
+          draft_id: string
+          last_tried_at: string
+          parent_id: string
+          revision: number
+          tries: number
+        }
+        Insert: {
+          child_id: string
+          draft_id: string
+          last_tried_at?: string
+          parent_id: string
+          revision: number
+          tries?: number
+        }
+        Update: {
+          child_id?: string
+          draft_id?: string
+          last_tried_at?: string
+          parent_id?: string
+          revision?: number
+          tries?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_book1_baseline_tries_child_id_parent_id_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_book1_baseline_tries_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_drafts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_book1_baseline_tries_draft_id_revision_fkey"
+            columns: ["draft_id", "revision"]
+            isOneToOne: true
+            referencedRelation: "workbook_draft_revisions"
+            referencedColumns: ["draft_id", "revision"]
+          },
+          {
+            foreignKeyName: "workbook_book1_baseline_tries_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
             referencedColumns: ["id"]
           },
         ]
@@ -5925,6 +6372,76 @@ export type Database = {
           },
         ]
       }
+      workbook_run_gates: {
+        Row: {
+          call_key: string
+          child_id: string
+          created_at: string
+          flags: string[]
+          id: number
+          model: string
+          outcome: string
+          parent_id: string
+          probabilities: Json
+          question_id: string
+          reason: string | null
+          run_id: string
+          threshold_version: number
+        }
+        Insert: {
+          call_key: string
+          child_id: string
+          created_at?: string
+          flags: string[]
+          id?: never
+          model: string
+          outcome: string
+          parent_id: string
+          probabilities: Json
+          question_id: string
+          reason?: string | null
+          run_id: string
+          threshold_version: number
+        }
+        Update: {
+          call_key?: string
+          child_id?: string
+          created_at?: string
+          flags?: string[]
+          id?: never
+          model?: string
+          outcome?: string
+          parent_id?: string
+          probabilities?: Json
+          question_id?: string
+          reason?: string | null
+          run_id?: string
+          threshold_version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_run_gates_child_fkey"
+            columns: ["child_id", "parent_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id", "parent_id"]
+          },
+          {
+            foreignKeyName: "workbook_run_gates_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workbook_run_gates_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "workbook_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workbook_run_pages: {
         Row: {
           child_id: string
@@ -7250,6 +7767,16 @@ export type Database = {
         Args: { p_parent: string }
         Returns: boolean
       }
+      admin_ai_usage: {
+        Args: {
+          p_cad_per_usd?: number
+          p_day_starts?: string[]
+          p_from: string
+          p_to: string
+          p_with_tests?: boolean
+        }
+        Returns: Json
+      }
       admin_assessments: {
         Args: never
         Returns: {
@@ -7282,6 +7809,20 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      admin_book1_baseline_items: {
+        Args: { p_hide?: string[]; p_limit?: number }
+        Returns: {
+          child_id: string
+          child_name: string
+          draft_id: string
+          kind: string
+          parent_id: string
+          reason: string
+          revision: number
+          run_id: string
+          tries: number
+        }[]
       }
       admin_card_setups: {
         Args: never
@@ -7320,6 +7861,7 @@ export type Database = {
           learning_styles: string[] | null
           learning_updated_at: string | null
           math_feeling: string | null
+          math_help: string | null
           parent_id: string
           province: string
           weekly_time: string | null
@@ -7330,6 +7872,38 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      admin_families_at_risk_v1: {
+        Args: { p_with_tests?: boolean }
+        Returns: {
+          child_id: string
+          child_name: string
+          ending_free: boolean
+          ends_at: string
+          held_at: string
+          held_book: number
+          held_workbook_id: string
+          last_activity_at: string
+          last_activity_kind: string
+          last_sign_in_at: string
+          next_charge_at: string
+          parent_id: string
+          parent_name: string
+          plan_kind: string
+          plan_since: string
+          test_family: boolean
+        }[]
+      }
+      admin_health_v1: {
+        Args: { p_with_tests?: boolean }
+        Returns: {
+          at: string
+          d30: number
+          d7: number
+          key: string
+          n30: number
+          n7: number
+        }[]
       }
       admin_latest_draft_revisions: {
         Args: { p_drafts: string[] }
@@ -7356,6 +7930,7 @@ export type Database = {
           email: string
           id: string
           name: string
+          phone: string | null
           postal: string | null
           source: Json
           time_zone: string | null
@@ -7523,6 +8098,10 @@ export type Database = {
       admin_set_test_account: {
         Args: { p_parent: string; p_test: boolean }
         Returns: undefined
+      }
+      admin_site_traffic: {
+        Args: { p_days?: number; p_with_tests?: boolean }
+        Returns: Json
       }
       admin_team_ids: { Args: never; Returns: string[] }
       admin_team_names: {
@@ -7990,6 +8569,10 @@ export type Database = {
         Args: { c: string; p: string; token: string }
         Returns: boolean
       }
+      claim_contact_message: {
+        Args: { p_max: number; p_window_seconds: number }
+        Returns: boolean
+      }
       claim_family_delete_attempt: {
         Args: {
           p_lock_seconds: number
@@ -8052,6 +8635,15 @@ export type Database = {
           p_trigger: string
         }
         Returns: Json
+      }
+      claim_photo_check: {
+        Args: {
+          p_id: string
+          p_parent: string
+          p_stale_seconds: number
+          p_token: string
+        }
+        Returns: boolean
       }
       claim_pin_attempt: {
         Args: {
@@ -8268,19 +8860,34 @@ export type Database = {
         }
         Returns: Json
       }
-      create_family: {
-        Args: {
-          p_child_grade: number
-          p_child_name: string
-          p_child_province: string
-          p_email: string
-          p_name: string
-          p_parent: string
-          p_postal: string
-          p_source: Json
-        }
-        Returns: Json
-      }
+      create_family:
+        | {
+            Args: {
+              p_child_grade: number
+              p_child_name: string
+              p_child_province: string
+              p_email: string
+              p_name: string
+              p_parent: string
+              p_postal: string
+              p_source: Json
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_child_grade: number
+              p_child_name: string
+              p_child_province: string
+              p_email: string
+              p_name: string
+              p_parent: string
+              p_phone: string
+              p_postal: string
+              p_source: Json
+            }
+            Returns: Json
+          }
       decide_family_deletion: {
         Args: { keep_family: boolean; p: string; token: string }
         Returns: boolean
@@ -8330,6 +8937,19 @@ export type Database = {
           event_at: string
           kind: string
           parent_id: string
+        }[]
+      }
+      due_workbook_book1_baselines: {
+        Args: { p_limit: number }
+        Returns: {
+          actor_id: string
+          approved_at: string
+          child_id: string
+          draft_id: string
+          parent_id: string
+          revision: number
+          run_id: string
+          tries: number
         }[]
       }
       email_copy_child_scope: {
@@ -8445,6 +9065,15 @@ export type Database = {
           p_generation: number
           p_state: string
           p_subscription: string
+        }
+        Returns: boolean
+      }
+      finish_photo_check: {
+        Args: {
+          p_id: string
+          p_parent: string
+          p_result: Json
+          p_token: string
         }
         Returns: boolean
       }
@@ -8710,6 +9339,12 @@ export type Database = {
         Args: { p_child: string }
         Returns: undefined
       }
+      note_workbook_book1_baseline_try: {
+        Args: { p_draft: string; p_revision: number }
+        Returns: Json
+      }
+      pacific_day: { Args: { ts: string }; Returns: string }
+      pacific_day_start: { Args: { d: string }; Returns: string }
       parent_explanation_command: {
         Args: {
           p_action: string
@@ -8741,6 +9376,7 @@ export type Database = {
           object_id: string
         }[]
       }
+      photo_check_eligible: { Args: { p_parent: string }; Returns: boolean }
       ping: { Args: never; Returns: number }
       plan_control_context: {
         Args: { p_card: string; p_parent: string }
@@ -8880,6 +9516,15 @@ export type Database = {
           p_states: Json
         }
         Returns: number
+      }
+      record_workbook_book1_baseline_pending: {
+        Args: {
+          p_draft: string
+          p_reason: string
+          p_revision: number
+          p_run: string
+        }
+        Returns: Json
       }
       record_workbook_scan_delivery_calendar: {
         Args: {
@@ -9327,6 +9972,10 @@ export type Database = {
         Args: { p_frame: Json; p_lease: string; p_run: string }
         Returns: boolean
       }
+      save_workbook_run_gates: {
+        Args: { p_lease: string; p_rows: Json; p_run: string }
+        Returns: boolean
+      }
       save_workbook_run_page: {
         Args: { p_lease: string; p_number: number; p_page: Json; p_run: string }
         Returns: boolean
@@ -9381,6 +10030,7 @@ export type Database = {
         Args: { p_session: string; p_user: string }
         Returns: boolean
       }
+      scan_team_waiting_count: { Args: never; Returns: number }
       seed_family_plan_history: {
         Args: { p_parent: string }
         Returns: undefined

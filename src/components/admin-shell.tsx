@@ -13,6 +13,7 @@ import { testsCookie } from "@/lib/admin-test-families";
 // The icons of the picked prototype (.design/experiments/r-admin-nav/shared.js), 24 x 24, drawn with the stroke.
 const ICON: Record<AdminNavKey | "chev" | "side" | "menu" | "search", string> = {
   home: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/>',
+  health: '<path d="M3 12h4l2.5-6 4 12 2.5-6H21"/>',
   families: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 14.2c2.9-.4 5.5 1.8 5.5 4.8"/>',
   tests: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/>',
   feedback: '<path d="M4 5h16v11H9l-5 4z"/>',
@@ -20,12 +21,15 @@ const ICON: Record<AdminNavKey | "chev" | "side" | "menu" | "search", string> = 
   delivery: '<path d="M3 7h11v9H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="18" r="1.8"/><circle cx="17" cy="18" r="1.8"/>',
   marking: '<path d="M4 12l5 5L20 6"/>',
   calls: '<circle cx="12" cy="12" r="8.5"/><path d="M8.5 14c1 1.4 2.2 2 3.5 2s2.5-.6 3.5-2"/><path d="M9 9.5h.01M15 9.5h.01"/>',
+  traffic: '<path d="M3 17l5-5 4 3 8-9"/><path d="M15 6h5v5"/>',
   flyers: '<path d="M4 4h16v16H4z"/><path d="M8 8h3v3H8zM13 8h3v3h-3zM8 13h3v3H8z"/>',
   emails: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3.5 6 8.5 7 8.5-7"/>',
   templates: '<rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/>',
   skillmap: '<circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M7.5 7.5l3.5 8.5M16.5 7.5 13 16M8 6h8"/>',
   reviews: '<path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6z"/><path d="m9 12 2 2 4-4"/>',
+  ai: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
   preview: '<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>',
+  budget: '<rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6.5 9.5v.01M17.5 14.5v.01"/>',
   export: '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 19h16"/>',
   chev: '<path d="m6 9 6 6 6-6"/>',
   side: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>',

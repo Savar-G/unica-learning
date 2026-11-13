@@ -110,6 +110,19 @@ interface Envelope {
   errors?: string[];
   startup_failure_reason?: string;
   structured_output?: unknown;
+  usage?: { input_tokens?: unknown; output_tokens?: unknown; cache_creation_input_tokens?: unknown; cache_read_input_tokens?: unknown } | null;
+}
+
+/** What one `claude -p` call used, from its envelope: the tokens (cache reads and writes counted as input). */
+export interface CliUsage {
+  inputTokens: number | null;
+  outputTokens: number | null;
+}
+const tokenCount = (n: unknown) => (typeof n === "number" && Number.isSafeInteger(n) && n >= 0 ? n : 0);
+function usageOf(envelope: Envelope): CliUsage | null {
+  const u = envelope.usage;
+  if (!u || typeof u !== "object") return null;
+  return { inputTokens: tokenCount(u.input_tokens) + tokenCount(u.cache_creation_input_tokens) + tokenCount(u.cache_read_input_tokens), outputTokens: tokenCount(u.output_tokens) };
 }
 
 const short = (s: unknown) => String(s ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
@@ -152,6 +165,7 @@ export function claudeCliClient({
   env = process.env,
   configDir,
   timeout = CLAUDE_CLI_TIMEOUT_MS,
+  onUsage,
 }: {
   model?: string;
   /** The `claude` command: a name on PATH or a full path. */
@@ -163,6 +177,8 @@ export function claudeCliClient({
   /** CLAUDE_CONFIG_DIR for the child: which Claude login runs it. */
   configDir?: string | null;
   timeout?: number;
+  /** Called once for each call that answered with an envelope, a refused or failed output included. No cost: the subscription has no per-call charge. */
+  onUsage?: (usage: CliUsage) => void;
 } = {}): AiClient {
   const childEnv = claudeCliEnv(env, configDir);
   return {
@@ -188,6 +204,11 @@ export function claudeCliClient({
       if (!envelope || typeof envelope !== "object") {
         const words = `${run.stderr} ${out}`;
         throw unavailable(words, null) ?? new SubscriptionUnavailable("crash", `claude -p ${out ? "answered with something that is not JSON" : "returned no output"} (exit ${run.code ?? "by signal"}): ${short(words)}`);
+      }
+      const used = onUsage ? usageOf(envelope) : null;
+      // A call that failed and used nothing (a usage limit answer) is not a call: the fallback's own call is the one.
+      if (used && !(envelope.is_error && !used.inputTokens && !used.outputTokens)) {
+        try { onUsage!(used); } catch { /* recording never fails a call */ }
       }
       if (envelope.is_error || (envelope.subtype && envelope.subtype !== "success")) {
         const words = [envelope.result, ...(Array.isArray(envelope.errors) ? envelope.errors : []), envelope.startup_failure_reason, run.stderr].join(" ");

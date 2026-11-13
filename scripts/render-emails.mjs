@@ -19,7 +19,7 @@ const bundled = await build({
 });
 const api = await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString("base64")}`);
 const common = {
-  parentName: "Priya Shah", childName: "Asha", postal: "V4N 5B2", total: 24,
+  parentName: "Priya Shah", childName: "Asha", postal: "V4N 5B2",
   url: "https://unicalearning.com/account/start/sample?reminder=start",
   unsubscribeUrl: "https://unicalearning.com/unsubscribe?t=sample-token",
 };
@@ -32,7 +32,7 @@ for (const province of ["BC", "ON"]) {
   const { placement } = api.takeTest({ grade: 4, province }, 1, api.knowsUpTo(3));
   const view = {
     id: "sample-report", childName: "Asha", province, completedAt: "2026-10-17T19:30:00Z", questions: 36, minutes: 34,
-    model: api.reportModel(placement, { completedTestsInGrade: 0, workReviews: [] }),
+    model: api.reportModel(placement, { workReviews: [] }),
   };
   for (const offer of [true, false]) {
     samples[`report-${province}-${offer ? "offer" : "quiet"}`] = api.reportEmail({ view, parentName: common.parentName, url: "https://unicalearning.com/account/report/sample?src=email", unsubscribeUrl: common.unsubscribeUrl, offer });
@@ -40,7 +40,7 @@ for (const province of ["BC", "ON"]) {
 }
 samples["founders-welcome"] = api.welcomeEmail({ parentName: common.parentName, childName: common.childName, url: "https://unicalearning.com/account/start/sample" });
 samples["founders-phone-welcome"] = api.phoneWelcomeEmail({ parentName: common.parentName, childName: common.childName, url: "https://unicalearning.com/sign-in/link?t=sample-token" });
-samples["founders-waitlist"] = api.waitlistEmail({ parentName: common.parentName, childName: common.childName, curriculum: "Ontario", reportUrl: "https://unicalearning.com/account/report/sample", bookingUrl: "https://calendly.com/contact-unicalearning/15min" });
+samples["founders-waitlist"] = api.waitlistEmail({ parentName: common.parentName, childName: common.childName, curriculum: "Ontario", reportUrl: "https://unicalearning.com/account/report/sample", bookingUrl: "https://cal.com/unicalearning/15min" });
 for (const kind of api.AUTH_EMAIL_KINDS) samples[kind] = api.authEmail(kind);
 await mkdir(output, { recursive: true });
 for (const [name, email] of Object.entries(samples)) await writeFile(resolve(output, `${name}.html`), email.html);

@@ -1,0 +1,4 @@
+/* The admin Traffic tab (admin-traffic.tsx): space between its sections and the small heads over the two funnels. */
+.adm-main .tr-section { margin: 0 0 var(--s6); }
+.adm-main .tr-sub { margin: var(--s4) 0 var(--s2); font: 400 11.5px/1.2 var(--mono); letter-spacing: 0.03em; text-transform: uppercase; color: var(--ink-2); }
+.adm-main .tr-sub:first-of-type { margin-top: 0; }

@@ -1,7 +1,7 @@
 // #472 The book 2 preview's positive path. From frozen sources that hold a Book 1 baseline (version 2), it binds the
 // baseline to the shipped book, reads the second-try ledger, plans book 2 from the frozen Book 1 inputs, and calls the
-// existing public preview (previewNextWorkbookPlanFromHistory: readWorkbookProgressHistory, then
-// previewNextWorkbookPlan). It adds no planner, threshold or review policy, and it issues, saves and queues nothing.
+// existing public preview (readFrozenWorkbookProgressHistory over the frozen marks, then previewNextWorkbookPlan). It
+// adds no planner, threshold or review policy, and it issues, saves and queues nothing.
 //
 // It answers "unavailable" with one reason whenever a proof is missing or does not hold, and "held" when the book has
 // no marked scan at all (#628: never advance or repeat by plan). Only a Book 1 to book 2 preview is supported here:
@@ -13,8 +13,8 @@ import type { CurriculumKey } from "./workbook-curriculum/types";
 import type { PlanInput, WorkbookPlan } from "./workbook-plan";
 import type { WorkbookProgressDecision } from "./workbook-progress";
 import { previewNextWorkbookPlan, type PlanPreviewRefusal } from "./workbook-progress-plan";
-import { readWorkbookProgressHistory, type HistoryFence, type HistoryPage, type HistoryRefusal,
-  type WorkbookProgressHistoryInput, type WorkbookProgressHistoryResult, type WorkbookProgressHistoryStore } from "./workbook-progress-history";
+import { readFrozenWorkbookProgressHistory, type HistoryFence, type HistoryRefusal,
+  type WorkbookProgressHistoryInput, type WorkbookProgressHistoryResult } from "./workbook-progress-history";
 import { sourceHash } from "./workbook-progress-hash";
 import { validateCatalog, type FrozenWorkbookSourcesV2, type SourceUnavailable, type WorkbookPreviewRequest } from "./workbook-progress-source";
 
@@ -71,10 +71,6 @@ export interface Book1Captured {
 export type Book1CaptureOutcome = SourceUnavailable | Book1Unavailable | Book1Held | Book1Captured;
 
 const keyOf = (i: { workbookId: string; printedRevision: string; pageId: string; itemId: string }) => JSON.stringify([i.workbookId, i.printedRevision, i.pageId, i.itemId]);
-function page<T extends { id: string | number }>(rows: readonly T[], after: string | number | null, limit: number): HistoryPage<T> {
-  const rest = rows.filter(r => after === null || r.id > after).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-  return structuredClone({ rows: rest.slice(0, limit), remaining: rest.length });
-}
 
 const refusal = (common: Book1Common, reason: Book1PreviewRefusal): Book1Unavailable => structuredClone({ ok: false, availability: "unavailable",
   reasons: [reason], sourceStatus: { catalog: "validated", book1: "refused" }, ...common, consumedVersions: [], decision: null, plan: null });
@@ -140,16 +136,11 @@ export async function captureBook1Progress(request: WorkbookPreviewRequest, froz
   };
   const fence: HistoryFence = { parentId: request.parentId, childId: request.childId, markingRevision: frozen.markingRevision,
     books: [{ workbookId: w.id, printedRevision, manifest, counts: { items: items.length, changes: changes.length, events: events.length } }] };
-  const store: WorkbookProgressHistoryStore = {
-    fence: async () => structuredClone(fence),
-    items: async (_i, _b, after, limit) => page(items, after, limit),
-    changes: async (_i, _b, after, limit) => page(changes, after, limit),
-    events: async (_i, _b, after, limit) => page(events, after, limit),
-  };
   const { progress: _none, ...planning } = next.input;
   void _none;
-  // The public composition (previewNextWorkbookPlanFromHistory), keeping the preview's own refusal reason.
-  const retained = await readWorkbookProgressHistory(store, input);
+  // #870: the saved marks were read from the database, once, when the sources were frozen (workbookProgressSourceStore).
+  // The public history reader reads exactly those rows, as the next-book snapshot does, so a replay sees the same marks.
+  const retained = readFrozenWorkbookProgressHistory(input, { fence, books: [{ workbookId: w.id, items, changes, events }] });
   if (!retained.ok) return refuse(`history-${retained.reason}`);
   if (retained.proof.corrections === "unavailable") return refuse("history-corrections-unavailable");
   return { ok: true, availability: "captured", common, sources, retained, fence, curriculum: input.curriculum, planning,

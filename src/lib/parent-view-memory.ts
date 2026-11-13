@@ -5,7 +5,7 @@
 import type { AreaAnswer, AttemptStatus, Grade, ReportModel } from "@/lib/assessment";
 import type { TabSwitches } from "@/lib/child-stage";
 import type { LearningRow } from "@/lib/learning-style";
-import type { ParentViewReader, PlanRecord } from "@/lib/parent-view";
+import type { OverviewProgress, ParentViewReader, PlanRecord } from "@/lib/parent-view";
 import type { CurriculumId } from "@/lib/signup";
 
 interface Owned {
@@ -82,12 +82,14 @@ export interface MemoryScan extends Owned {
   /** Defaults to 2026-01-01. */
   takenAt?: string;
 }
-/** A Maya minutes grant (public.maya_minute_grants): a call counts only as a child's, settled with time used. */
-export interface MemoryMayaGrant extends Owned {
-  kind: "child" | "parent_demo";
-  createdAt: string;
-  /** Null while the call is open. */
-  usedSeconds: number | null;
+/** A Maya call (public.maya_calls): it counts only as a family chat that ended, with a message from the child. */
+export interface MemoryMayaCall extends Owned {
+  kind: "admin_test" | "chat";
+  status: "live" | "ended";
+  /** Null while the call is live. */
+  endedAt: string | null;
+  /** The child's messages, written when the call ends; null while it is live. */
+  childTurns: number | null;
 }
 export interface MemoryPage {
   parentId: string;
@@ -111,7 +113,7 @@ export interface MemoryWorkbookQuestion {
   standard: string | null;
 }
 
-const TABLES = ["children", "tests", "reports", "cards", "deliveries", "workbooks", "plans", "switches", "corrections", "dispatches", "family", "results", "scans", "pages", "learning", "pin", "maya", "skillTests", "questions"] as const;
+const TABLES = ["children", "tests", "reports", "cards", "deliveries", "workbooks", "plans", "switches", "corrections", "dispatches", "family", "results", "scans", "pages", "learning", "pin", "maya", "skillTests", "questions", "overviewProgress"] as const;
 type Table = (typeof TABLES)[number];
 
 export interface MemoryParentViewTables {
@@ -128,15 +130,16 @@ export interface MemoryParentViewTables {
   /** One value for every parent; no saved zone or postal code when left out. */
   family?: { timeZone: string | null; postal: string | null };
   /** One value for every parent; every switch is off when left out. */
-  switches?: TabSwitches & { scanPlanChildren?: ReadonlySet<string> };
+  switches?: TabSwitches & { scanPlanChildren?: ReadonlySet<string>; mayaPlanChildren?: ReadonlySet<string> };
   results?: MemoryResult[];
   scans?: MemoryScan[];
   pages?: MemoryPage[];
   /** One value for every parent; true when left out. */
   pinSet?: boolean | null;
-  maya?: MemoryMayaGrant[];
+  maya?: MemoryMayaCall[];
   skillTests?: MemorySkillTest[];
   questions?: MemoryWorkbookQuestion[];
+  overviewProgress?: (Owned & OverviewProgress)[];
   fail?: Table[];
 }
 
@@ -225,8 +228,8 @@ export function memoryParentViewReaders(tables: MemoryParentViewTables) {
       },
       async mayaCalls(childId, from, to) {
         read("maya");
-        return own(tables.maya).filter((g) => g.kind === "child" && g.childId === childId && g.usedSeconds !== null && g.usedSeconds > 0
-          && Date.parse(g.createdAt) >= from && Date.parse(g.createdAt) < to).length;
+        return own(tables.maya).filter((c) => c.kind === "chat" && c.childId === childId && c.status === "ended" && (c.childTurns ?? 0) > 0
+          && c.endedAt !== null && Date.parse(c.endedAt) >= from && Date.parse(c.endedAt) < to).length;
       },
       async skillTests(childId) {
         read("skillTests");
@@ -235,6 +238,11 @@ export function memoryParentViewReaders(tables: MemoryParentViewTables) {
         const reported = new Set(own(tables.reports).map((r) => r.assessmentId));
         const unreliable = new Set(own(tables.results).filter((r) => r.unreliable).map((r) => r.assessmentId));
         return own(tables.skillTests).filter((t) => t.childId === childId && reported.has(t.assessmentId)).map((t) => ({ ...t, unreliable: unreliable.has(t.assessmentId) }));
+      },
+      async overviewProgress(childId) {
+        read("overviewProgress");
+        if (!own(tables.children).some((c) => c.id === childId)) return null;
+        return own(tables.overviewProgress).find((r) => r.childId === childId) ?? { marks: [], skillMarks: [] };
       },
       async workbookStandards(workbookId) {
         read("questions");

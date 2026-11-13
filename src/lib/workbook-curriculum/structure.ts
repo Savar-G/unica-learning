@@ -4,13 +4,13 @@
 // does not stop the next book, and a change to a level, unit, skill or step does. Pure TypeScript.
 import type { CurriculumData, CurriculumKey } from "./types";
 
-export const CURRICULUM_STRUCTURE_FORMAT = "curriculum-structure/1";
+export const CURRICULUM_STRUCTURE_FORMAT = "curriculum-structure/2";
 
 /** A step is its number, position code and name (the name is its identity: house-templates.ts checks it the same way). */
 export interface StructureStep { number: number; position: string; name: string }
 export interface StructureSkill { id: string; order: number; position: string; level: string; steps: StructureStep[] }
 export interface StructureUnit { code: string; skills: StructureSkill[] }
-export interface StructureLevel { id: string; number: number; units: StructureUnit[] }
+export interface StructureLevel { id: string; number: number; schoolGrade: CurriculumData["levels"][number]["schoolGrade"]; units: StructureUnit[] }
 export interface CurriculumStructure { format: typeof CURRICULUM_STRUCTURE_FORMAT; key: CurriculumKey; levels: StructureLevel[] }
 
 /** One archive file: the structure of the curriculum whose curriculumVersion was `digest`, and where it came from. */
@@ -41,15 +41,15 @@ export function curriculumStructureOf(data: CurriculumData): CurriculumStructure
   const levels = [...data.levels].sort(byNumber).map((level): StructureLevel => {
     const skills = data.skills.filter(s => s.level === level.id).sort((a, b) => a.order - b.order);
     const codes = [...level.units, ...new Set(skills.map(s => s.unit).filter(u => !level.units.includes(u)))];
-    return { id: level.id, number: level.number,
+    return { id: level.id, number: level.number, schoolGrade: level.schoolGrade,
       units: codes.map(code => ({ code, skills: skills.filter(s => s.unit === code).map(skillOf) })) };
   });
   const placed = new Set(levels.flatMap(l => l.units.flatMap(u => u.skills.map(s => s.id))));
   const lost = data.skills.filter(s => !placed.has(s.id));
-  if (lost.length) levels.push({ id: "", number: 0, units: [{ code: "", skills: lost.map(skillOf) }] });
+  if (lost.length) levels.push({ id: "", number: 0, schoolGrade: 0, units: [{ code: "", skills: lost.map(skillOf) }] });
   const known = new Set(data.skills.map(s => s.id));
   const orphans = data.steps.filter(s => !known.has(s.skill));
-  if (orphans.length) levels.push({ id: "", number: 0, units: [{ code: "", skills: [...new Set(orphans.map(s => s.skill))]
+  if (orphans.length) levels.push({ id: "", number: 0, schoolGrade: 0, units: [{ code: "", skills: [...new Set(orphans.map(s => s.skill))]
     .map(id => ({ id, order: 0, position: "", level: "", steps: [...stepsOf.get(id)!].sort(byNumber) })) }] });
   return { format: CURRICULUM_STRUCTURE_FORMAT, key: data.key, levels };
 }
@@ -69,7 +69,8 @@ export function readCurriculumStructureRecord(v: unknown, key: string, digest: s
   const levelIds = new Set<string>(), units = new Set<string>(), skills = new Set<string>();
   let previous = 0;
   for (const level of v.levels) {
-    if (!at(level, ["id", "number", "units"]) || !text(level.id) || !count(level.number) || level.number <= previous || levelIds.has(level.id)
+    if (!at(level, ["id", "number", "schoolGrade", "units"]) || !text(level.id) || !count(level.number) || level.number <= previous || levelIds.has(level.id)
+      || !Number.isInteger(level.schoolGrade) || (level.schoolGrade as number) < 0 || (level.schoolGrade as number) > 9
       || !Array.isArray(level.units)) return null;
     previous = level.number; levelIds.add(level.id);
     for (const unit of level.units) {
@@ -106,6 +107,7 @@ export function structureDifference(frozen: CurriculumStructure, now: Curriculum
   for (const [i, a] of frozen.levels.entries()) {
     const b = now.levels[i];
     if (a.number !== b.number) return `level ${a.id} is number ${b.number}, not ${a.number}`;
+    if (a.schoolGrade !== b.schoolGrade) return `level ${a.id} has school grade ${b.schoolGrade}, not ${a.schoolGrade}`;
     if (list(a.units) !== list(b.units)) return `level ${a.id} has units [${list(b.units)}], not [${list(a.units)}]`;
     for (const [j, u] of a.units.entries()) {
       const v = b.units[j];

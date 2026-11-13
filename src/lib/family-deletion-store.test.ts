@@ -80,7 +80,7 @@ for (const retention of [undefined, { endedAt: "2020-01-01T00:00:00Z" }]) {
 }
 
 // #201: the copy without names goes through the database before any Storage or Auth removal, on every deletion path
-// (a parent's request, the retention worker and the manual route all run runFamilyDeletion).
+// (a parent's request, an admin's request and the retention worker all run runFamilyDeletion).
 describe("the copy without names before a deletion", () => {
   const test = {
     id: "33333333-3333-4333-8333-333333333333", copied: false, testFamily: false, grade: 2, province: "BC", status: "completed",

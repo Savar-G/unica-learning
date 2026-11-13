@@ -1,5 +1,6 @@
 import type { Database as Generated, Json } from "@/lib/database.types";
 import type { AdStep } from "@/lib/ad-visit-steps";
+import type { MathHelp } from "@/lib/learning-style";
 import type { AnswerChange } from "@/lib/answer-events";
 import type { EventResult, EventSource, EvidenceKind } from "@/lib/learning-events";
 import type { QuestionRef } from "@/lib/question-package";
@@ -27,6 +28,8 @@ import type { WorkbookDelivery, WorkbookEmailKind, WorkbookEmailStatus } from "@
 import type { ConnectionKind } from "@/lib/maya-voice";
 import type { CommentRoute } from "@/lib/workbook-comment-route";
 import type { LayoutEditPlan } from "@/lib/workbook-layout-edit";
+import type { QuestionGate } from "@/lib/workbook-gates";
+import type { GateOutcome } from "@/lib/workbook-run-gates";
 
 export type { Json };
 
@@ -45,7 +48,7 @@ type ColumnTypes = KnownColumns<{
   assessments: { status: AttemptStatus; province: Province; route: Route | null; stage3_route: Stage3Route | null; help: HelpAnswer | null; test: StoredTest; placement: Placement | null; device: TestDevice | null };
   card_setups: { plan: PlanId };
   child_plan_states: { kind: KnownPlan["kind"] };
-  children: { province: Province };
+  children: { province: Province; math_help: MathHelp | null };
   email_log: { kind: LogKind; status: LogStatus | null };
   learning_events: { source: EventSource; question_source: QuestionRef["source"]; result: EventResult; evidence_kind: EvidenceKind | null };
   maya_calls: {
@@ -79,6 +82,7 @@ type ColumnTypes = KnownColumns<{
   workbook_run_pages: { page: GeneratedPage };
   workbook_run_calls: { call: StoredCall };
   workbook_run_solves: { verdict: RunSolve["verdict"]; log: RunSolve["log"] };
+  workbook_run_gates: { outcome: GateOutcome; flags: QuestionGate[]; probabilities: Partial<Record<QuestionGate, number>> };
   workbook_run_frames: { frame: RunFrame };
   workbook_run_ai_calls: { kind: AiCallKind; provider: AiProvider; outcome: AiCallRecord["outcome"] };
   workbook_workers: { primary_ai: AiProvider };
@@ -131,6 +135,8 @@ type NullArgs = KnownArgs<{
   finish_workbook_edit: "p_content" | "p_rendering" | "p_error";
   finish_workbook_layout_edit: "p_rendering" | "p_results" | "p_error";
   admin_template_stats_v2: "school_grade" | "curriculum";
+  // All time on the Traffic tab sends no day count. Omitting it would use the function's 7-day default.
+  admin_site_traffic: "p_days";
   // An idle worker has no run; a worker outside git has no build.
   beat_workbook_worker: "p_build" | "p_run" | "p_note";
   save_child_profile_and_skill_changes: "p_assessment" | "p_expected";
@@ -142,9 +148,7 @@ type NullArgs = KnownArgs<{
   complete_test: "p_help";
   create_family: "p_postal";
   // Paging: null asks for the first page.
-  family_deletion_candidates: "after_id";
   family_retention_candidates: "after_id";
-  finish_booking_signup: "customer";
   // A parent's demo minutes have no child (#330).
   grant_maya_minutes: "p_child";
   reserve_maya_spend: "p_parent" | "p_child" | "p_call" | "p_week" | "p_week_cap";

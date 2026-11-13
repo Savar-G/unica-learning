@@ -4,6 +4,8 @@
 // provider.require_parameters: only providers that support every parameter sent (the JSON schema above all) get the
 // request. Which providers may train on inputs is an account setting on OpenRouter (#182), not a request field.
 import type { AiClient, AiJsonRequest, AiPart } from "@/lib/ai-client";
+import { noteFenced } from "@/lib/ai-fenced";
+import { openRouterJsonOutput } from "@/lib/ai-openrouter-schema";
 
 export const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 /** One request stops after this long. A time-out, a lost connection, a 408, a 429 or a 5xx gets one more try. */
@@ -16,9 +18,9 @@ function part(p: AiPart) {
 }
 
 export interface OpenRouterProvider {
-  only: string[];
-  order: string[];
-  allow_fallbacks: false;
+  only?: string[];
+  order?: string[];
+  allow_fallbacks?: boolean;
   require_parameters: true;
   ignore?: string[];
   zdr?: true;
@@ -26,17 +28,20 @@ export interface OpenRouterProvider {
 }
 
 function body(model: string, request: AiJsonRequest, provider?: OpenRouterProvider) {
+  const output = openRouterJsonOutput(model, request);
   return {
     model,
     stream: false,
     max_tokens: request.maxTokens ?? MAX_TOKENS,
     messages: [
-      { role: "system", content: request.system },
+      { role: "system", content: output.system },
       // OpenRouter parses the text first, then the images (its image guide).
       { role: "user", content: request.content.map(part) },
     ],
-    response_format: { type: "json_schema", json_schema: { name: request.name, strict: true, schema: request.schema } },
+    ...(output.response_format ? { response_format: output.response_format } : {}),
     provider: provider ?? { require_parameters: true },
+    // Usage accounting: the answer reports its tokens and cost (the AI usage ledger, src/lib/ai-usage.ts).
+    usage: { include: true },
     ...(request.effort ? { reasoning: { effort: request.effort, exclude: true } } : {}),
   };
 }
@@ -48,7 +53,16 @@ interface ErrorBody {
   code?: number | string;
   message?: string;
 }
+/** What one answer says it used: OpenRouter's generation id, the tokens and the cost in US dollars (null when absent). */
+export interface OpenRouterUsage {
+  id: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  costUsd: number | null;
+}
 interface Completion {
+  id?: unknown;
+  usage?: { prompt_tokens?: unknown; completion_tokens?: unknown; cost?: unknown } | null;
   error?: ErrorBody;
   choices?: {
     finish_reason?: string | null;
@@ -58,11 +72,47 @@ interface Completion {
   }[];
 }
 
+const tokens = (n: unknown) => (typeof n === "number" && Number.isSafeInteger(n) && n >= 0 ? n : null);
+function usageOf(data: Completion): OpenRouterUsage | null {
+  const u = data.usage;
+  if (!u || typeof u !== "object") return null;
+  const cost = typeof u.cost === "number" && Number.isFinite(u.cost) && u.cost >= 0 ? u.cost : null;
+  return { id: typeof data.id === "string" && data.id ? data.id : null, inputTokens: tokens(u.prompt_tokens), outputTokens: tokens(u.completion_tokens), costUsd: cost };
+}
+
 const short = (s: unknown) => String(s ?? "").slice(0, 160);
 const retryableStatus = (status: number) => status === 408 || status === 429 || status >= 500;
 
+/** Exactly one outer Markdown code fence, ```json or ```, around the whole output: its inside, or null. */
+const ONE_FENCE = /^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]*```$/i;
+
+/**
+ * The output as JSON. A request that sent `response_format` (`strict`) reads it as it is, as before. A request that went
+ * out without it (the schema is in its instructions) also reads JSON inside exactly one outer ```json or ``` fence, and
+ * notes it (ai-fenced.ts). Prose before or after, a second block, a fence inside, or an unclosed fence is still not JSON.
+ * The caller checks the output against the same schema either way.
+ */
+function readOutput(content: string, strict: boolean): unknown {
+  try {
+    return JSON.parse(content);
+  } catch {
+    // Not plain JSON: only the one fence below may hold it.
+  }
+  const inside = strict ? null : ONE_FENCE.exec(content.trim())?.[1];
+  if (inside !== undefined && inside !== null && !inside.includes("```")) {
+    try {
+      const value: unknown = JSON.parse(inside);
+      noteFenced(value);
+      return value;
+    } catch {
+      // Not JSON inside the fence either.
+    }
+  }
+  throw new Error("the output is not valid JSON");
+}
+
 /** One try: the parsed JSON output, or an error. Error messages hold codes and OpenRouter's words, never the output. */
-async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: AbortSignal, timeout: number, onDispatch?: () => void): Promise<unknown> {
+async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: AbortSignal, timeout: number, strict: boolean, onDispatch?: () => void, onUsage?: (u: OpenRouterUsage) => void): Promise<unknown> {
   let res: Response;
   try {
     const options = { ...init, signal: AbortSignal.any([signal, AbortSignal.timeout(timeout)]) };
@@ -85,6 +135,12 @@ async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: A
     throw retryableStatus(res.status) ? new Retryable(error) : new Error(error);
   }
   if (!data) throw new Error("OpenRouter answered 200 with a body that is not JSON");
+  // The call was made and billed even when its output is refused or cut off below, so the usage goes first.
+  // The observer never throws into the call.
+  const used = usageOf(data);
+  if (used && onUsage) {
+    try { onUsage(used); } catch { /* recording never fails a call */ }
+  }
   // After the provider accepts the request, OpenRouter reports a failure inside a 200 answer.
   if (data.error) throw new Error(`OpenRouter error ${short(data.error.code)}: ${short(data.error.message)}`);
   const choice = data.choices?.[0];
@@ -95,11 +151,7 @@ async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: A
   if (choice.finish_reason !== "stop") throw new Error(`the model stopped: ${short(choice.finish_reason)} (${short(choice.native_finish_reason)})`);
   const content = choice.message?.content;
   if (typeof content !== "string" || !content.trim()) throw new Error("no output");
-  try {
-    return JSON.parse(content);
-  } catch {
-    throw new Error("the output is not valid JSON");
-  }
+  return readOutput(content, strict);
 }
 
 export function openRouterClient({
@@ -110,6 +162,7 @@ export function openRouterClient({
   timeout = AI_REQUEST_TIMEOUT_MS,
   onRequest,
   onDispatch,
+  onUsage,
   provider,
 }: {
   apiKey: string;
@@ -121,23 +174,28 @@ export function openRouterClient({
   onRequest?: () => Promise<void>;
   /** Synchronous observation immediately before fetch, after the durable permission and abort check. */
   onDispatch?: () => void;
+  /** Called once for each answer that reports usage, a refused or cut-off one included (the AI usage ledger). */
+  onUsage?: (usage: OpenRouterUsage) => void;
   /** Optional feature-owned route. The default route is unchanged. */
   provider?: OpenRouterProvider;
 }): AiClient {
   return {
     model,
     async json(request, signal) {
+      const sent = body(model, request, provider);
       const init: RequestInit = {
         method: "POST",
         headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json", "x-openrouter-title": "Unica Learning" },
-        body: JSON.stringify(body(model, request, provider)),
+        body: JSON.stringify(sent),
       };
+      // A request with `response_format` keeps its strict reading: a fenced output stays not JSON.
+      const strict = "response_format" in sent;
       for (let attempt = 0; ; attempt++) {
         if (signal.aborted) throw new Error("time is up");
         await onRequest?.();
         if (signal.aborted) throw new Error("time is up");
         try {
-          return await once(fetch, init, signal, timeout, onDispatch);
+          return await once(fetch, init, signal, timeout, strict, onDispatch, onUsage);
         } catch (e) {
           if (!(e instanceof Retryable) || attempt >= maxRetries || signal.aborted) throw e instanceof Retryable ? new Error(e.message) : e;
         }

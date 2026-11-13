@@ -24,9 +24,14 @@
 .scan-dock-row .btn { flex: 1; min-height: 52px; justify-content: center; }
 .scan-dock-row .btn.scan-add { flex: none; min-width: 56px; padding: 0 16px; display: inline-flex; align-items: center; }
 .scan-dock-row .btn:disabled { opacity: .45; cursor: default; }
-@media (min-width: 700px) { .scan-pages > .scan-dock { position: sticky; z-index: 30; bottom: 0; padding: 10px 0 12px; background: #fff; } .scan-dock-row { justify-content: flex-end; } .scan-dock-row .btn { flex: none; min-width: 280px; } .scan-dock-row .btn.scan-add { min-width: 56px; } .scan-dock .small { text-align: right; } .scan-dock .scan-link { justify-self: end; } }
+/* The start screen's two ways in (#915), stacked: Take photos, then Choose from your photos */
+.scan-dock-row.is-choice { flex-direction: column; gap: 8px; }
+.scan-dock-row.is-choice .btn { flex: none; }
+.scan-dock .scan-room { color: var(--ink); }
+@media (min-width: 700px) { .scan-pages > .scan-dock { position: sticky; z-index: 30; bottom: 0; padding: 10px 0 12px; background: #fff; } .scan-dock-row { justify-content: flex-end; } .scan-dock-row .btn { flex: none; min-width: 280px; } .scan-dock-row .btn.scan-add { min-width: 56px; } .scan-dock-row.is-choice { align-items: flex-end; } .scan-dock .small { text-align: right; } .scan-dock .scan-link { justify-self: end; } }
 @media (max-width: 699px) {
   .scan-pages:has(> .scan-dock) { padding-bottom: 150px; }
+  .scan-pages.is-start:has(> .scan-dock) { padding-bottom: 200px; }
   .scan-pages > .scan-dock { position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; margin: 0; padding: 10px 16px max(12px, env(safe-area-inset-bottom)); background: #fff; border-top: 1px solid var(--line); }
   .pd-has-bar .scan-pages > .scan-dock { bottom: calc(64px + env(safe-area-inset-bottom)); padding-bottom: 10px; }
 }
@@ -89,6 +94,9 @@
 .scan-sheet { width: min(560px, 100%); max-width: 100%; max-height: 92dvh; margin: auto auto 0; padding: 0; border: 0; border-radius: 18px 18px 0 0; background: #fff; color: var(--ink); overflow: auto; }
 .scan-sheet::backdrop { background: rgba(12, 12, 14, .45); }
 .scan-sheet-body { display: grid; gap: 14px; padding: 22px 18px max(22px, env(safe-area-inset-bottom)); }
+.scan-sheet-bar { position: sticky; top: 0; height: 0; display: flex; justify-content: flex-end; z-index: 1; }
+.scan-sheet-x { width: 44px; height: 44px; margin: 8px 8px 0 0; padding: 0; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: #fff; color: var(--ink); font: 400 26px/1 var(--sans, inherit); cursor: pointer; }
+.scan-sheet-body h2 { padding-right: 44px; }
 .scan-sheet-body h2 { margin: 0; font-size: 21px; font-weight: 500; letter-spacing: -.01em; }
 .scan-sheet-body p { margin: 0; font-size: 16px; line-height: 1.5; }
 .scan-sheet-body .btn { min-height: 52px; justify-content: center; }
@@ -107,6 +115,11 @@
 .scan-marking-results p { overflow-wrap: anywhere; }
 .scan-result-refresh { min-height: 44px; }
 .scan-preview .btn { justify-self: start; min-height: 44px; }
+/* The photo check's problem (#855): one sentence, then "Take again" (main) and "Send anyway" (second). Nothing is blocked. */
+.scan-check-problem { display: grid; gap: 12px; padding: 14px 16px; background: var(--accent-soft); border-radius: 10px; }
+.scan-check-problem > p { font-weight: 500; color: var(--scan-accent-ink); }
+.scan-check-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.scan-check-actions .btn { flex: 1 1 140px; justify-content: center; min-height: 48px; }
 .scan-preview-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 20px; align-items: start; }
 .scan-straight { margin: 0; display: grid; gap: 8px; font-size: 14px; color: var(--ink-2); }
 .scan-straight img { display: block; width: 100%; height: auto; border: 1px solid var(--line); }
@@ -139,3 +152,10 @@
 .scan-explanation .scan-link:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
 .scan-explanation .scan-mark-review { max-width: 64ch; }
 .scan-explanation ol { padding-left: 24px; }
+
+/* Which page to scan next */
+.scan-guide { display: grid; gap: 6px; padding: 12px 14px; background: var(--card); border-radius: 12px; }
+.scan-guide p { margin: 0; }
+.scan-guide-next { font-size: 17px; }
+.scan-guide ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: 15px; color: var(--ink-2); }
+.scan-guide li.is-retake { color: var(--ink); font-weight: 500; }

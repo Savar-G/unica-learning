@@ -18,6 +18,7 @@ import { firstPagesEmailStore } from "@/lib/first-pages-email-store";
 import { firstPagesEmailEnabled, restartFirstPagesNow } from "@/lib/first-pages-server";
 import { stripe } from "@/lib/stripe";
 import { adminClient } from "@/lib/supabase-auth";
+import { reconcileBook1BaselinesNow } from "@/lib/workbook-book1-capture-server";
 import { createWorkbookScanMaintenanceServer, scanMaintenanceRelease } from "@/lib/workbook-scan-maintenance-server";
 
 // The reminder job (#73, D-085). Supabase pg_cron calls it every 15 minutes through pg_net, with
@@ -34,6 +35,9 @@ import { createWorkbookScanMaintenanceServer, scanMaintenanceRelease } from "@/l
 // signal that ends 40 seconds after the run began (REPORT_RETRY_END_MS in src/lib/report-retry-server.ts).
 // Last, the first pages' sample email (docs/first-pages.md), only with FIRST_PAGES_EMAIL_ENABLED "on", and (with
 // WORKBOOK_RUNNER "server") a restart of the first pages that stopped on the server; both end 52 seconds after the run began.
+// Also beside the emails, it captures the Book 1 baseline of up to 3 approved Book 1 revisions that have none and are not
+// pending recovery (#870, src/lib/workbook-book1-capture.ts); none starts 30 seconds after the run began, and its
+// database calls stop 45 seconds after it.
 // ?dry=1 counts what is due and sends and ends nothing.
 // The answer holds counts only, never a parent's details.
 
@@ -45,6 +49,10 @@ const SEND_GAP_MS = 600;
 const MONTHLY_END_MS = 50_000;
 /** No first pages email starts this long after the run began. */
 const FIRST_PAGES_END_MS = 52_000;
+/** No Book 1 baseline capture starts this long after the run began. */
+const BOOK1_END_MS = 30_000;
+/** Every database call of the Book 1 step is stopped this long after the run began, so a hung capture cannot hold the run. */
+const BOOK1_ABORT_MS = 45_000;
 
 function authorized(header: string | null, secret: string): boolean {
   const given = Buffer.from(header ?? "");
@@ -77,6 +85,7 @@ export async function POST(request: Request) {
   let cards: Promise<unknown> | null = null;
   let cancels: Promise<unknown> | null = null;
   let reports: Promise<unknown> | null = null;
+  let book1: Promise<unknown> | null = null;
   try {
     if (new URL(request.url).searchParams.get("dry") === "1") {
       const maya = dueWeeklyEmails(await mayaWeeklyStore(admin).load(now), now).length;
@@ -112,6 +121,14 @@ export async function POST(request: Request) {
     reports = retryReportsNow({ origin, startedAt: now, transport }).then((r) => {
       if ("due" in r && r.due > 0) console.info("[report retry] run", JSON.stringify(r));
       return r;
+    });
+    // The Book 1 baselines run beside the emails; the step never throws, so a failure never hides the other results.
+    book1 = reconcileBook1BaselinesNow(adminClient(AbortSignal.timeout(BOOK1_ABORT_MS), { retry: false }) ?? admin, { inTime: () => Date.now() < now + BOOK1_END_MS }).then((r) => {
+      if (!("error" in r) && r.due > 0) console.info("[book1 baseline] run", JSON.stringify(r));
+      return r;
+    }, (e) => {
+      console.error("[book1 baseline] run failed", e instanceof Error ? e.message : e);
+      return { error: "run_failed" as const };
     });
     const result = await runReminders(store, now, {
       newToken,
@@ -158,7 +175,7 @@ export async function POST(request: Request) {
         scans = { error: "run_failed" };
       }
     }
-    return Response.json({ ok: true, ...result, maya, monthly, firstPages, sweep: await sweep, cards: await cards, cancels: await cancels, reports: await reports,
+    return Response.json({ ok: true, ...result, maya, monthly, firstPages, book1: await book1, sweep: await sweep, cards: await cards, cancels: await cancels, reports: await reports,
       ...(scans ? { scans } : {}) });
   } catch (e) {
     console.error("[reminders] run failed", e instanceof Error ? e.message : e);
@@ -167,6 +184,7 @@ export async function POST(request: Request) {
     await cards;
     await cancels;
     await reports;
+    await book1;
     return Response.json({ ok: false, error: "run_failed" }, { status: 500 });
   }
 }

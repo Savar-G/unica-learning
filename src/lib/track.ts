@@ -1,6 +1,6 @@
 // Funnel events: page_zoom (src = sample child page opened on the home page, D-096), cta_click (src = the "Take free assessment" link that opened /start, #82), card_saved, card_cancelled.
 // The old booking dialog's events (form_start, plan_selected, details_done, checkout_start, reserve_success,
-// card_redirect, signup_save_failed) stopped with the public launch (#82). heard_from stays for old booking receipts.
+// card_redirect, signup_save_failed) stopped with the public launch (#82). heard_from stopped when its question was removed (2026-11-11).
 // Parent accounts (#62): account_form_start, account_created, account_signup_failed, sign_in, sign_in_failed, child_added, phone_screen, test_start_click.
 // Email code (#82): account_code_sent (status sent, wait or again), account_code_failed (code send, expired, too_many or
 // check_failed), sign_in (channel "code": the email already had an account, and the code signed the parent in).
@@ -28,7 +28,7 @@
 // analytics.
 // Help flags (#71): test_help (status yes, a-little or no: the answer to "Did anyone help?", sent once the test is stored).
 // Rushing (#189): test_pace (status shown: "Take your time" showed after three very fast answers in a row). No time or score.
-// Results call: book_call (src report: the parent opened the Calendly booking page from the report). No child data.
+// Results call: book_call (src report: the parent opened the Cal.com booking page from the report). No child data.
 // Report wait: test_report_wait (status opened: the end screen opened the built report; slow: it was not built within 3
 // minutes and the screen points to the email). No time or score.
 // Check your answers (#253): test_check (status stage1, stage2 or stage3: "Done checking" locked that part). test_error has
@@ -37,6 +37,7 @@
 // reminder email), unsubscribe (status done or failed: the unsubscribe page turned reminders off), unsubscribe_page
 // (status unsubscribed = already off, unknown = a link that does not work, failed).
 // Contact page (D-130): contact_sent (status sent, failed or unknown). No name, email or message.
+// Parent goals (D-325): goals_saved (the goals step after signup was saved). No answer travels with it.
 // Analytics run only after the visitor accepts (see consent.ts). Without consent an event is dropped, not queued.
 // Only src, plan, subject, curriculum, price, status, code, card and channel travel with an event (see analytics.ts).
 // posthog-js is imported on demand so it stays out of the first-load bundle.

@@ -2,9 +2,9 @@
 // id that does not link to the family. The copy is an allowlist, built field by field here, so a column added to a
 // table later never reaches it on its own. It keeps the grade, province, test month, route, every question as shown,
 // each response with its mark and misconception, all timing and signals, the fact answers, the placement, the profile
-// facts and the questionnaire choices. D-145: never the removed extra round (#190): not its record, not its questions. It
-// leaves out names, emails, postal codes, every family, child or test id, drawings, strokes, typed working and all free
-// text. Every time is milliseconds since the test started: an exact date and time could be matched to other records of
+// facts and the questionnaire choices. D-145: never the removed extra round (#190): not its record, and not the wrong
+// answers to its questions that one stored learner profile still holds. It leaves out names, emails, postal codes,
+// every family, child or test id, drawings, strokes, typed working and all free text. Every time is milliseconds since the test started: an exact date and time could be matched to other records of
 // the family. Pure: the source is what the database function family_copy_sources returns for one test
 // (supabase/migrations/20261016_test_copies_without_names.sql).
 import { UNKNOWN_RESPONSE } from "./adaptive";
@@ -40,7 +40,8 @@ export const COPY_FIELDS = {
 
 /**
  * The placement's fields the copy keeps: all of today's, by name. A field added later is left out until listed here.
- * D-145: so is `extraRound`, which two placements from before the round's removal (#190) still hold.
+ * D-145: so is `extraRound`, the removed round's record (#190; migration drop_extra_round_data removed it from every
+ * stored placement).
  */
 const PLACEMENT_FIELDS = [
   "grade", "province", "scoredAgainst", "workingLevel", "confidence", "levelCertainty", "atCeiling", "route", "stage3Route", "stage1",
@@ -247,10 +248,7 @@ function questionCopy(
   };
 }
 
-/**
- * Every question the server served, by place in the test: the answered ones, and those shown with no answer. D-145:
- * not the questions of the removed extra round (#190), answered or shown (fromRemovedRound).
- */
+/** Every question the server served, by place in the test: the answered ones, and those shown with no answer. */
 function questionsOf(s: Raw, start: number): QuestionCopy[] {
   if (!Array.isArray(s.answers) || !Array.isArray(s.shows)) unreadable();
   const stored = storedQuestions(s.stored);
@@ -266,7 +264,6 @@ function questionsOf(s: Raw, start: number): QuestionCopy[] {
     places.set(position!, { questionId: questionId!, answer, shownAt: places.get(position!)?.shownAt ?? null });
   }
   return [...places.entries()].sort(([a], [b]) => a - b)
-    .filter(([, p]) => !fromRemovedRound(p.questionId))
     .map(([position, p]) => questionCopy(position, p.questionId, p.answer, p.shownAt, stored.get(p.questionId) ?? null, start));
 }
 
@@ -316,8 +313,8 @@ function profileOf(v: unknown, questions: readonly QuestionCopy[]): Raw | null {
   profile.struggles = list(profile.struggles).map((raw) => {
     const struggle = record(raw);
     if (!struggle) return struggle;
-    // D-145: a wrong answer to a question of the removed extra round (#190) is left out, as its question is, with a
-    // misconception only such answers had. Two stored profiles hold such answers.
+    // D-145: a wrong answer to a question of the removed extra round (#190) is left out, with a misconception only such
+    // answers had. One stored profile holds such answers (probed 2026-11-11).
     const all = list(struggle.wrong);
     const kept = all.filter((w) => !fromRemovedRound(str(record(w)?.questionId) ?? ""));
     const misconceptions = kept.length === all.length ? struggle.misconceptions

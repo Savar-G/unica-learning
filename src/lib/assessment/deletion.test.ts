@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  createSession, deleteFamily, FAMILY_BUCKETS, runRetentionBatch, storedTest, withFamilyCardOperation,
+  createSession, deleteFamily, FAMILY_BUCKETS, storedTest, withFamilyCardOperation,
   type AnonymousTestCopy, type FamilyCopyStore, type FamilyDeletionStore, type ImageEntry,
 } from "@/lib/assessment";
 
@@ -23,95 +23,6 @@ describe("family card operation", () => {
     expect(await withFamilyCardOperation({ async begin() { settledHold = true; return true; }, async end() { settledHold = false; } }, async () => "Checkout URL")).toBe("Checkout URL");
     expect(settledHold).toBe(false);
     expect(held).toBe(true);
-  });
-});
-
-describe("scheduled family deletion", () => {
-  it("uses an explicit foreground budget while retaining the HTTP default", async () => {
-    const attempts: number[] = [];
-    const store = { async cursor() { return null; }, async advance() {}, async run(_id: string, limit: number) {
-      attempts.push(limit);
-      if (limit < 80_000) throw Error("fresh 64-customer pass does not fit");
-      return { state: "deleted" as const, images: 0, copies: 0 };
-    } };
-    expect(await runRetentionBatch(["family"], store, () => 840_000)).toMatchObject({ failed: 1 });
-    expect(await runRetentionBatch(["family"], store, () => 840_000, 600_000)).toMatchObject({ deleted: 1 });
-    expect(attempts).toEqual([30_000, 600_000]);
-  });
-  it("starts the first family when a reduced route budget decreases between clock reads", async () => {
-    const times = [25_000, 24_999, 24_998, 0];
-    const cursors: string[] = [], attempts: number[] = [];
-    expect(await runRetentionBatch(["family"], {
-      async cursor() { return null; },
-      async advance(id) { cursors.push(id); },
-      async run(_id, limit) { attempts.push(limit); return { state: "deleted", images: 0, copies: 0 }; },
-    }, () => times.shift() ?? 0)).toMatchObject({ deleted: 1, failed: 0 });
-    expect(cursors).toEqual(["family"]);
-    expect(attempts).toEqual([24_998]);
-  });
-  it("counts a family kept for an open plan start", async () => {
-    const result = await runRetentionBatch(["family"], { cursor: async () => null, advance: async () => {}, run: async () => ({ state: "plan_start" }) }, () => 840_000);
-    expect(result).toMatchObject({ eligible: 1, plan_start: 1, deleted: 0, failed: 0 });
-  });
-
-  it("saves progress before a slow failure and starts the next run with later families", async () => {
-    let cursor: string | null = null;
-    let remaining = 45_000;
-    const attempts: string[] = [];
-    const store = {
-      async cursor() { return cursor; },
-      async advance(id: string) { cursor = id; },
-      async run(id: string, limit: number) {
-        expect(cursor).toBe(id); // Progress survives a process stop inside the external call.
-        expect(limit).toBeLessThanOrEqual(45_000);
-        attempts.push(id);
-        if (id === "a-slow") { remaining = 0; throw new Error("slow failed service"); }
-        remaining -= 1;
-        return { state: "deleted" as const, images: 2, copies: 0 };
-      },
-    };
-    expect(await runRetentionBatch(["a-slow", "b-later", "c-later"], store, () => remaining)).toMatchObject({ deleted: 0, failed: 1 });
-    remaining = 45_000;
-    expect(await runRetentionBatch(["a-slow", "b-later", "c-later"], store, () => remaining)).toMatchObject({ eligible: 3, deleted: 2, images: 4, failed: 1 });
-    expect(attempts).toEqual(["a-slow", "b-later", "c-later", "a-slow"]);
-  });
-  it("permits a complete fresh payment decision beyond ten seconds within the route budget", async () => {
-    let remaining = 45_000;
-    let deleted = false;
-    const result = await runRetentionBatch(["family"], {
-      async cursor() { return null; },
-      async advance() {},
-      async run(_id, limit) {
-        if (limit <= 12_000) { remaining -= limit; throw Error("payment deadline"); }
-        remaining -= 12_000;
-        deleted = true;
-        return { state: "deleted", images: 0, copies: 0 };
-      },
-    }, () => remaining);
-    expect(deleted).toBe(true);
-    expect(result).toMatchObject({ eligible: 1, deleted: 1, failed: 0 });
-    expect(remaining).toBe(33_000);
-  });
-  it("leaves a later family next in the queue instead of repeatedly giving it a partial budget", async () => {
-    let remaining = 45_000;
-    let cursor: string | null = null;
-    const attempts: string[] = [];
-    const store = {
-      async cursor() { return cursor; },
-      async advance(id: string) { cursor = id; },
-      async run(id: string, limit: number) {
-        attempts.push(id);
-        if (id === "a-slow" || limit <= 20_000) { remaining -= limit; throw Error("deadline"); }
-        remaining -= 20_000;
-        return { state: "deleted" as const, images: 0, copies: 0 };
-      },
-    };
-    expect(await runRetentionBatch(["a-slow", "b-later"], store, () => remaining)).toMatchObject({ failed: 1, deleted: 0 });
-    expect(cursor).toBe("a-slow");
-    remaining = 45_000;
-    expect(await runRetentionBatch(["a-slow", "b-later"], store, () => remaining)).toMatchObject({ failed: 0, deleted: 1 });
-    expect(attempts).toEqual(["a-slow", "b-later"]);
-    expect(cursor).toBe("b-later");
   });
 });
 

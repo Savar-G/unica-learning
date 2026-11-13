@@ -29,6 +29,7 @@
     "workbooks:samples": "node scripts/workbook-samples.mjs",
     "scan:photo-set": "node scripts/scan-photo-set.mjs",
     "workbook:fast": "node scripts/workbook-samples.mjs --fake --no-store --check-only --levels U4,U16 --days 1,5,10 --concurrency 3",
+    "workbooks:book1-recover": "node scripts/book1-baseline-recover.mjs",
     "workbooks:worker": "node scripts/workbook-worker.mjs",
     "generate:family-zones": "node scripts/generate-family-zones.mjs",
     "test:family-zones": "node --expose-gc supabase/tests/maya_window_zones.cjs --bootstrap"
@@ -40,6 +41,7 @@
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
     "jsqr": "^1.4.0",
+    "libphonenumber-js": "^1.13.16",
     "livekit-client": "2.23.0",
     "livekit-server-sdk": "2.19.2",
     "next": "16.3.8",

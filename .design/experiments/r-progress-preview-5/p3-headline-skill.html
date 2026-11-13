@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en-CA">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>P3. Headline skill</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shell.css"><link rel="stylesheet" href="p.css">
+<style>
+
+.ba { display: grid; grid-template-columns: minmax(0, 1fr) 120px minmax(0, 1fr); align-items: stretch; }
+@media (max-width: 760px) { .ba { grid-template-columns: 1fr; } }
+.card { padding: 24px 26px 22px; border-radius: 16px; background: var(--card); }
+.card.goal { background: var(--ink); color: #fff; }
+.card.goal .when, .card.goal li { color: #d6d6dc; }
+.card h3 { margin: 6px 0 0; font: 400 14px/1.3 var(--mono); color: inherit; }
+.big { margin-top: 18px; font-size: clamp(28px, 3.2vw, 38px); font-weight: 300; line-height: 1.08; letter-spacing: -.03em; }
+.card.goal .big { font-weight: 400; }
+.big mark { padding: 0 .08em; white-space: nowrap; background: #ffd23f; color: #0c0c0e; }
+.card ul { margin: 18px 0 0; padding: 14px 0 0; border-top: 1px solid rgba(127,127,127,.25); list-style: none; }
+.card li { padding: 4px 0; font-size: 15px; color: var(--ink-2); }
+.mid { display: grid; place-items: center; align-content: center; gap: 8px; text-align: center; font: 400 12px/1.35 var(--mono); color: var(--ink-2); }
+.mid svg { width: 70px; height: 24px; }
+@media (max-width: 760px) { .mid { padding: 14px 0; } .mid svg { transform: rotate(90deg); width: 40px; } }
+</style>
+</head>
+<body>
+<div class="chrome"><span class="v">P3. Headline skill</span><div class="cases" data-cases></div><a href="board.html">All options</a></div>
+<main class="page">
+  <div class="stub">Report: "Where Leah is", "What's in workbook 1" (unchanged)</div>
+  <section class="section" id="out"></section>
+  <div class="stub">Next step: card and plan button (unchanged)</div>
+</main>
+<script src="levels.js"></script><script src="covers.js"></script><script src="plan.js"></script><script src="skills.js"></script><script src="p.js"></script>
+<script>
+
+// The headline row is "Adding and subtracting" (the jump every parent reads: 1-digit to 3-digit); the number in it is marked.
+mount((p) => {
+  const rows = skillRows(p.c.working, p.goal);
+  const lead = rows.find((r) => r.area === "Adding and subtracting" && r.today) ?? rows[0];
+  const hi = (s) => s.replace(/(\d-digit|decimals|negative numbers|fractions|polynomials)/, "<mark>$1</mark>");
+  const rest = (key) => rows.filter((r) => r !== lead).map((r) => `<li>${r[key] ?? `<span class="notyet">${r.area}: not started yet</span>`}</li>`).join("");
+  renderP(p, `<div class="ba">
+    <div class="card"><p class="when">Today</p><h3>${gradeName(p.c.working)} level</h3><p class="big">${hi(lead.today ?? "")}</p><ul>${rest("today")}</ul></div>
+    <div class="mid"><svg viewBox="0 0 70 24" aria-hidden="true"><path d="M2 12h60m-10-9 10 9-10 9" fill="none" stroke="#0c0c0e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>${p.books.length} workbooks</span></div>
+    <div class="card goal"><p class="when">By ${monthYear(p.goalDate)}</p><h3>${gradeName(p.goal)} level</h3><p class="big">${hi(lead.goal)}</p><ul>${rest("goal")}</ul></div>
+  </div>`);
+});
+</script>
+</body>
+</html>

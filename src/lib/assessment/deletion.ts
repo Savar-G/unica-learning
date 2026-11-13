@@ -17,37 +17,6 @@ export async function withFamilyCardOperation<T>(store: { begin(): Promise<boole
  */
 export type FamilyDeletionResult = { state: "deleted"; images: number; copies: number } | { state: "busy" | "excluded" | "plan_start" };
 
-/** The external worker must enforce its time limit. Saving the cursor first also survives termination. */
-export interface RetentionBatchStore {
-  cursor(): Promise<string | null>;
-  advance(parent: string): Promise<void>;
-  run(parent: string, limitMs: number): Promise<FamilyDeletionResult>;
-}
-
-export async function runRetentionBatch(ids: string[], store: RetentionBatchStore, remainingMs: () => number, maximumFamilyMs = 30_000) {
-  if (!Number.isFinite(maximumFamilyMs) || maximumFamilyMs <= 0) throw new Error("Invalid deletion budget");
-  const counts = { eligible: ids.length, deleted: 0, busy: 0, excluded: 0, plan_start: 0, failed: 0, images: 0, copies: 0 };
-  const cursor = await store.cursor();
-  const order = cursor === null ? ids : [...ids.filter((id) => id > cursor), ...ids.filter((id) => id <= cursor)];
-  const budget = Math.min(maximumFamilyMs, remainingMs());
-  let attempted = false;
-  for (const id of order) {
-    // Do not repeatedly advance past a family that receives only the tail of a route's budget.
-    const remaining = remainingMs();
-    if (budget <= 0 || remaining <= 0 || (attempted && remaining < budget)) break;
-    await store.advance(id);
-    const limit = Math.min(budget, remainingMs());
-    if (limit <= 0) break;
-    attempted = true;
-    try {
-      const result = await store.run(id, limit);
-      counts[result.state]++;
-      if (result.state === "deleted") { counts.images += result.images; counts.copies += result.copies; }
-    } catch { counts.failed++; }
-  }
-  return counts;
-}
-
 export interface ImageEntry { name: string; folder: boolean }
 
 /**

@@ -26,7 +26,7 @@ Prices are in Canadian dollars. Delivery across Canada is included. There is one
 - The online math assessment is free and comes before any plan or card. Every family in Canada can take the free online math assessment. Start at ${url("/start")}
 - After the report, BC-curriculum families can choose the plan and add a card. Other curricula can join the workbook waitlist without a card. Nothing is charged when the card is added. The first month is free, starting when the first workbook arrives at your home; the monthly price is charged on day 30, then monthly until you cancel.
 - Cancel before day 30 and you pay nothing. A reminder email comes 7 days before the first charge, with a link to manage or cancel the plan.
-- Cancel anytime. Contact us to arrange a pause of up to two months a year.
+- Cancel anytime. Once the first workbook arrives, you can pause from your account for up to 8 weeks a year, or contact us to arrange a pause.
 
 More: ${url("/pricing")}
 `;
@@ -40,7 +40,7 @@ export function llmsTxt(): string {
 
 > A personalized math learning program for children aged 5 to 14 (Kindergarten to Grade 9) in Canada. Each child gets paper workbooks made for them and adapted after every book. Math is CAD ${cad(PLANS.one.price)} a month after a free first month, delivery included.
 
-${BRAND} is made in Vancouver, BC. A free online math assessment, taken on a laptop or tablet, finds each child's math level and gaps. The assessment is open across Canada. BC-curriculum families can choose a plan after the report. Other curricula can join the workbook waitlist without a card. A child on the program works on paper workbooks on their own for 15-30 minutes a day, 5 days a week. The parent scans finished pages with a phone on the Unica website and sees progress there; there is no app to install. Children in Grade 3 and up can type to the Teaching Assistant for help. Each book is matched to the child's level and gaps; province-specific curriculum alignment is expanding.
+${BRAND} is made in Vancouver, BC. A free online math assessment, taken on a laptop or tablet, finds each child's math level and gaps. The assessment is open across Canada. BC-curriculum families can choose a plan after the report. Other curricula can join the workbook waitlist without a card. A child on the program works on paper workbooks on their own for 15-30 minutes a day, 5 days a week. The parent scans finished pages with a phone on the Unica website and sees progress on the parent dashboard there; there is nothing to install. Children in Grade 3 and up can type to the Teaching Assistant for help. Each book is matched to the child's level and gaps; province-specific curriculum alignment is expanding.
 
 ## How it works
 1. Assess: your child takes the free math assessment online, on a laptop or tablet. The report shows their math level and gaps. BC-curriculum families can choose a plan after the report. Other curricula can join the workbook waitlist.
@@ -74,10 +74,12 @@ Parents in Canada with a child aged 5 to 14 who want math practice on paper, at 
 - [Free math assessment](${url("/start")}): create a parent account and start the free online math assessment
 - [Our story](${url("/our-story")}): why we built ${BRAND}
 - [How we compare](${url("/compare")}): ${BRAND} side by side with private tutors, learning centres and online learning platforms
+- [What's included](${url("/whats-included")}): everything a child gets, in the order it happens: the free assessment, the workbook, the AI Teaching Assistant, page scanning, the parent dashboard and the next workbook
 - [Curriculum](${url("/curriculum")}): the 30 levels from Kindergarten to Grade 9 and what a child works on at each level
 - [Rewards](${url("/rewards")}): how children earn points for finished pages and full weeks of practice, and trade them for prizes their parent approves
 - [Sample report](${url("/sample-report")}): the report a parent gets after the free online math assessment, for a sample Grade 3 child working at a Grade 2 level
 - [Pricing](${url("/pricing.md")}): plans and terms in plain text
+- [Contact](${url("/contact")}): send us a question about the free assessment, plans or your account
 - [Privacy](${url("/privacy")})
 - [Terms](${url("/terms")})
 

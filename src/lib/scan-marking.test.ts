@@ -775,12 +775,41 @@ it.each(["friday-5", "mixed-set", "show-what-you-know", "practice", "review"])("
   f.questions[5].teaching!.part = part;
   const store = new Store(f);
   expect(await run(store, f.photo, client(output(["1", "1", "1", "1", "1", "1"])))).toBe("finished");
-  const originals = (await store.effective(P, C)).map((mark, n) => ({ ...mark, at: `2026-11-0${n + 1}T12:00:00Z` }));
+  const originals = (await store.effective(P, C)).map((mark, n) => ({ ...mark, at: `2026-11-0${n + 1}T12:00:00Z`, originalEvent: { ...mark.originalEvent!, occurredAt: `2026-11-0${n + 1}T12:00:00Z` } }));
   const marks = effectiveSkillMarks(originals);
   const approved = ["friday-5", "mixed-set", "show-what-you-know"].includes(part);
   expect(marks.map((m) => m.review)).toEqual([false, false, false, false, false, approved]);
   const state = skillStates({ schoolGrade: 2, tests: [], workbookStandards: [STANDARD.code], marks }).find((s) => s.standard === STANDARD.code);
   expect(state?.state).toBe(approved ? "mastered" : "working_on");
+});
+
+it.each(["correction", "same-result save"])("keeps mastery when a later %s replaces an October mark (#886)", async (change) => {
+  const f = frame("dated-photo", [1, 1, 1, 1, 1, 1]);
+  const standard = BC_SKILL_MAP.standards.find((s) => s.code === "3.3")!;
+  for (const q of f.questions) q.package!.skill = { standard: standard.code, skills: [standard.skills[0].id] };
+  f.questions[5].teaching!.part = "friday-5";
+  const store = new Store(f);
+  await run(store, f.photo, client(output([change === "correction" ? "0" : "1", "1", "1", "1", "1", "1"])));
+  const dates = ["01", "01", "02", "02", "03", "04"];
+  const originals = (await store.effective(P, C)).map((m, n) => ({
+    ...m, at: `2026-10-${dates[n]}T19:00:00Z`,
+    originalEvent: { ...m.originalEvent!, occurredAt: `2026-10-${dates[n]}T19:00:00Z` },
+  }));
+  const state = (items: EffectiveMark[]) => skillStates({ schoolGrade: 3, tests: [], workbookStandards: [], marks: effectiveSkillMarks(items) }).find((s) => s.standard === "3.3");
+  expect(state(originals)).toMatchObject({ state: "mastered", evidenceAt: "2026-10-04T19:00:00.000Z" });
+  const changed = originals.map((m, n) => n === 0 ? {
+    ...m, at: "2026-11-02T20:00:00Z",
+    observation: { ...m.observation, result: "right" as const, actor: "parent" as const, resultVersion: m.observation.resultVersion + 1 },
+  } : m);
+  expect(state(changed)).toMatchObject({ state: "mastered", evidenceAt: "2026-10-04T19:00:00.000Z" });
+  expect(effectiveSkillMarks(changed)[0]).toMatchObject({ right: true, at: "2026-10-01T19:00:00Z" });
+  const memory = memoryChildProfiles({ children: [{ id: C, parentId: P, grade: 3 }] });
+  const profiles = { ...memory.profiles, marks: async () => ({ revision: 1, items: originals }) };
+  expect((await rebuildChildProfile(C, { profiles, events: memory.events })).built).toBe(true);
+  expect(memory.history().filter((row) => row.standard === "3.3").map((row) => row.state)).toEqual(["mastered"]);
+  profiles.marks = async () => ({ revision: 2, items: changed });
+  expect((await rebuildChildProfile(C, { profiles, events: memory.events })).built).toBe(true);
+  expect(memory.history().filter((row) => row.standard === "3.3").map((row) => row.state)).toEqual(["mastered"]);
 });
 
 describe("S4 whole-page readings", () => {

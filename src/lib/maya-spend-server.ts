@@ -2,6 +2,8 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { aiClient, type AiClient } from "@/lib/ai-client";
+import { mayaAiClient } from "@/lib/maya-ai-route";
+import type { AiUsageTag } from "@/lib/ai-usage";
 import { resendTransport } from "@/lib/email-resend";
 import type { MailTransport } from "@/lib/email-delivery";
 import { familyZone, formatInZone, type FamilyZone } from "@/lib/family-time";
@@ -82,5 +84,7 @@ export function mayaCallSpend(ledger: SpendLedger, newId: () => string): CallSpe
  */
 export function meteredClient(env: Env, ledger: SpendLedger, meter: { charge: Charge; callId: string | null; newId: () => string; safetyRead?: boolean }, what: "model" | "review" | "note", model?: string): AiClient | null {
   if (!aiClient(env, model)) return null;
-  return meteredAi((hooks) => aiClient(env, model, hooks)!, { ledger, ...meter }, what);
+  // Each answer's usage also goes to the AI usage ledger (D-330): the family, the child and the call, never the words.
+  const usage: AiUsageTag = { feature: what === "model" ? "maya" : what === "review" ? "maya_review" : "maya_note", parentId: meter.charge.parentId, childId: meter.charge.childId, source: meter.callId ? { kind: "maya_call", id: meter.callId } : null };
+  return meteredAi((hooks) => mayaAiClient(env, model, { ...hooks, usage })!, { ledger, ...meter }, what);
 }

@@ -31,10 +31,10 @@ export function resendSender(): string | null {
  */
 export function resendFrom(message: Pick<EmailMessage, "sender">): string | null {
   const from = resendSender();
-  if (!from || message.sender.to !== "parent" || message.sender.from !== "founders") return from;
+  if (!from || message.sender.to !== "parent" || message.sender.from !== "founders" && message.sender.from !== "results-founders") return from;
   const address = from.match(/<([^>]+)>/)?.[1] ?? from.trim();
   // Plain `Name <address>`, the form in Resend's docs: the name has no comma or other character that needs quotes.
-  return `${FOUNDERS_SENDER_NAME} <${address}>`;
+  return message.sender.from === "results-founders" ? `"Cedric and Savar, co-founders of Unica Learning" <${address}>` : `${FOUNDERS_SENDER_NAME} <${address}>`;
 }
 
 const refusal = (status: number) => status >= 400 && status < 500 && status !== 408;

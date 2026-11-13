@@ -22,6 +22,7 @@ import { flagsFor, type HelpAnswer } from "./flags";
 import { leftOutOfScore, paceOf, takeYourTime } from "./rushing";
 import { rngFor } from "./rng";
 import type {
+  AdaptiveTest,
   Answer,
   ChildProfile,
   Level,
@@ -374,12 +375,20 @@ export function nextQuestion(session: Session): Question | null {
 }
 
 /** True when every question of the routed test has an answer: the test only waits to be scored. */
-export const allAnswered = (session: Session): boolean => session.adaptive ? session.adaptive.complete : session.route !== null && session.answers.length >= questionsOnRoute(session).length;
+export const allAnswered = (session: Session): boolean => session.adaptive ? adaptiveAnsweredAll(session.adaptive, session.answers.length) : session.route !== null && session.answers.length >= questionsOnRoute(session).length;
+
+/**
+ * allAnswered for a block (adaptive) test, from its stored state and the number of stored answers: the stored state says
+ * the test is complete (its last block is locked, no block follows) and every drawn question has an answer. Every
+ * question of the blocks drawn so far answered is not enough: the next block is drawn when that block locks.
+ */
+export const adaptiveAnsweredAll = (adaptive: AdaptiveTest, answered: number): boolean => adaptive.complete && answered >= adaptiveQuestions(adaptive).length;
 
 /**
  * D-145: the optional extra round (#190, D-116) is removed, and migration drop_extra_round_data deleted its answers,
  * serves and stored parts. Its question ids were x-0, x-1 and so on (the main test's are s1-, up-, stay- and down-).
- * Two stored learner profiles still name such questions, so every read keeps leaving them out with this rule.
+ * One stored learner profile still names such questions (probed 2026-11-11), so the reads of stored learner profiles
+ * leave them out with this rule.
  */
 export const fromRemovedRound = (questionId: string): boolean => questionId.startsWith("x-");
 
