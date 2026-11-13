@@ -405,3 +405,16 @@ it("a held old-account upload response cannot save, refill the stack or start a 
   expect(calls).not.toContain(`POST /api/account/scans/${admitted[0]}`);
   expect(host.textContent).toContain("Your account changed"); expect(host.querySelectorAll("img")).toHaveLength(0);
 });
+
+it("keeps help available as photos are added and rejected without repeating the first-visit offer", async () => {
+  localStorage.clear();
+  await render();
+  await act(async () => { button("Not now")!.click(); });
+  await choose("library", "p10.jpg");
+  expect(text()).not.toContain("New to scanning?"); expect(button("How scanning works")).toBeTruthy();
+  await choose("library", "two-p11.jpg");
+  expect(text()).toContain("needs another photo");
+  await act(async () => { button("How scanning works")!.click(); });
+  expect(host.querySelector(".scan-help-dialog")?.hasAttribute("open")).toBe(true);
+  expect(text()).toContain("replace it");
+});
