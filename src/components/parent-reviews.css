@@ -1,36 +1,46 @@
-/* Parent reviews strip (D-338): centred label, a slow looping row of equal cards, the permission note under it. */
-.prv { padding: 0 0 clamp(32px, 5vw, 64px); }
-.prv-label { display: flex; justify-content: center; margin: 0 0 20px; }
-[data-look="warm"] .prv-label { display: flex; }
-.prv-rail {
-  overflow: hidden;
-  -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
-  mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
-}
-.prv-track { display: flex; width: max-content; animation: prv-slide 70s linear infinite; }
-.prv-rail:hover .prv-track, .prv-rail:focus-within .prv-track { animation-play-state: paused; }
-@keyframes prv-slide { to { transform: translateX(-50%); } }
-.prv-set { display: flex; gap: 16px; margin: 0; padding: 4px 16px 4px 0; list-style: none; }
+/* Parent reviews (D-338, look D-339): a soft grey panel with a spotlight carousel. The card in focus is white and lifted;
+   its neighbours step back and fade. Role labels only, no photos. */
+.prv { padding: 0 var(--pad-x, 16px) clamp(48px, 6vw, 88px); }
+.prv-panel { background: var(--card); border-radius: 24px; padding: clamp(40px, 6vw, 80px) 0 clamp(28px, 4vw, 44px); text-align: center; overflow: hidden; }
+.prv-label { justify-content: center; }
+.prv h2 { margin: 14px 0 0; padding: 0 20px; font-size: clamp(30px, 3.6vw, 48px); }
+
+.prv-stage { --w: 300px; --step: 270px; position: relative; height: 340px; margin: clamp(32px, 4vw, 52px) 0 0; }
+.prv-stage:focus-visible { outline: none; }
 .prv-card {
-  --tone: #f5c518;
-  width: 320px; flex: none; display: flex; flex-direction: column; justify-content: space-between; gap: 18px;
-  padding: 22px; background: #fff; border: 1px solid var(--line, #e4e4e7); border-radius: 12px;
+  position: absolute; left: 50%; top: 20px; width: var(--w); height: 300px; margin: 0 0 0 calc(var(--w) / -2);
+  display: flex; flex-direction: column; justify-content: space-between; gap: 20px;
+  padding: 26px 26px 24px; text-align: left; background: #fff; border-radius: 18px;
+  box-shadow: 0 1px 2px rgba(20, 16, 12, .04);
+  transform: translateX(calc(var(--o) * var(--step))) scale(calc(1 - var(--ao) * .07));
+  opacity: calc(1 - var(--ao) * .3); z-index: calc(10 - var(--ao));
+  transition: transform .6s var(--ease), opacity .6s var(--ease), box-shadow .6s var(--ease); cursor: pointer;
 }
-.prv-sky { --tone: #2f5be8; }
-.prv-tang { --tone: #ff6a3d; }
-.prv-leaf { --tone: #1f9d55; }
-.prv-card blockquote { margin: 0; padding-left: 14px; border-left: 3px solid var(--tone); font-size: 16px; line-height: 1.5; color: var(--ink); }
-.prv-who { display: flex; align-items: center; gap: 10px; margin: 0; padding-left: 17px; font-size: 14px; font-weight: 600; color: var(--ink); }
-.prv-mark { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5px; width: 20px; height: 20px; flex: none; }
-.prv-mark i { background: var(--tone); }
-.prv-mark i:last-child { background: #b8b3aa; }
-.prv-note { margin: 20px 0 0; text-align: center; font-size: 12px; color: var(--ink-3); }
+.prv-card[data-far] { opacity: 0; pointer-events: none; }
+.prv-card.is-on { top: 0; height: 320px; cursor: default; box-shadow: 0 2px 6px rgba(20, 16, 12, .05), 0 24px 48px -16px rgba(20, 16, 12, .18); }
+.prv-card blockquote { margin: 0; font-size: 17px; line-height: 1.5; color: var(--ink-3); }
+.prv-card.is-on blockquote { font-size: 19px; color: var(--ink); }
+.prv-card figcaption { font-size: 14px; font-weight: 500; color: var(--ink-2); }
+.prv-card:not(.is-on) figcaption { color: var(--ink-3); }
+
+.prv-ctl { display: flex; align-items: center; justify-content: center; gap: 18px; margin-top: 18px; }
+.prv-btn { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: #fff; color: var(--ink); font: inherit; cursor: pointer; transition: transform .2s var(--ease), border-color .2s; }
+.prv-btn:hover { border-color: var(--ink-3); transform: translateY(-1px); }
+.prv-pause { display: grid; place-items: center; margin-left: -6px; color: var(--ink-2); }
+.prv-dots { display: flex; gap: 2px; }
+.prv-dots button { position: relative; width: 22px; height: 44px; border: 0; background: none; cursor: pointer; }
+.prv-dots button::after { content: ""; position: absolute; left: 50%; top: 50%; width: 7px; height: 7px; margin: -3.5px; border-radius: 99px; background: #cfcbc4; transition: width .3s var(--ease), background .3s; }
+.prv-dots button[aria-current="true"]::after { width: 18px; margin-left: -9px; background: var(--ink); }
+.prv-btn:focus-visible, .prv-dots button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.prv-note { margin: 18px 0 0; padding: 0 20px; font-size: 12.5px; color: var(--ink-3); }
+
 @media (max-width: 640px) {
-  .prv-card { width: 272px; padding: 18px; }
-  .prv-card blockquote { font-size: 15px; }
+  .prv-panel { border-radius: 18px; }
+  .prv-stage { --w: 268px; --step: 238px; height: 330px; }
+  .prv-card.is-on blockquote { font-size: 17px; }
+  .prv-ctl { gap: 10px; }
+  .prv-dots button { width: 16px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .prv-track { animation: none; }
-  .prv-rail { overflow-x: auto; -webkit-mask-image: none; mask-image: none; padding: 0 var(--pad-x, 16px); }
-  .prv-set[aria-hidden="true"] { display: none; }
+  .prv-card, .prv-btn, .prv-dots button::after { transition: none; }
 }

@@ -1,7 +1,9 @@
-// Parent reviews (D-338): a slow strip of short quotes between the statement and How it works.
+"use client";
+// Parent reviews (D-338, look D-339): a spotlight carousel between the statement and How it works.
 // Exact words from parents who saw Unica and agreed to be quoted; "…" marks a cut, [brackets] mark the one
 // substitution (a competitor's name, D-074); nothing else is reworded.
 // Role labels only, no names, ratings, counts or photos. No review markup (D-319).
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent } from "react";
 import "@/components/parent-reviews.css";
 
 export const PARENT_REVIEWS: readonly { quote: string; who: string }[] = [
@@ -15,42 +17,125 @@ export const PARENT_REVIEWS: readonly { quote: string; who: string }[] = [
   { quote: "Same age doesn't always mean same level.", who: "Mom of three" },
 ];
 
-// The logo's four colours, in turn, for each card's bar and mark.
-const TONES = ["sun", "sky", "tang", "leaf"] as const;
+const ADVANCE_MS = 6000;
+const REDUCE = "(prefers-reduced-motion: reduce)";
 
-function Cards({ hidden }: { hidden?: boolean }) {
-  return (
-    <ul className="prv-set" aria-hidden={hidden || undefined}>
-      {PARENT_REVIEWS.map(({ quote, who }, i) => (
-        <li key={i} className={`prv-card prv-${TONES[i % TONES.length]}`}>
-          <blockquote>“{quote}”</blockquote>
-          <p className="prv-who">
-            <span className="prv-mark" aria-hidden="true">
-              {Array.from({ length: 9 }, (_, k) => (
-                <i key={k} />
-              ))}
-            </span>
-            {who}
-          </p>
-        </li>
-      ))}
-    </ul>
+function useReducedMotion() {
+  return useSyncExternalStore(
+    (on) => {
+      const m = window.matchMedia(REDUCE);
+      m.addEventListener("change", on);
+      return () => m.removeEventListener("change", on);
+    },
+    () => window.matchMedia(REDUCE).matches,
+    () => true,
   );
 }
 
 export function ParentReviews() {
+  const n = PARENT_REVIEWS.length;
+  const [cur, setCur] = useState(0);
+  const [hover, setHover] = useState(false);
+  const [focus, setFocus] = useState(false);
+  // Any choice by the visitor (arrow, dot, swipe, key, pause) stops the rotation for good.
+  const [stopped, setStopped] = useState(false);
+  const reduce = useReducedMotion();
+  const touch = useRef<number | null>(null);
+
+  const step = useCallback((d: number) => setCur((c) => (c + d + n) % n), [n]);
+  const choose = (i: number) => {
+    setStopped(true);
+    setCur(i);
+  };
+  const move = (d: number) => {
+    setStopped(true);
+    step(d);
+  };
+
+  const playing = !stopped && !reduce;
+  useEffect(() => {
+    if (!playing || hover || focus) return;
+    const t = setTimeout(() => step(1), ADVANCE_MS);
+    return () => clearTimeout(t);
+  }, [playing, hover, focus, cur, step]);
+
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === "ArrowLeft") move(-1);
+    else if (e.key === "ArrowRight") move(1);
+    else return;
+    e.preventDefault();
+  };
+
   return (
     <section className="prv" aria-labelledby="prvT">
-      <p className="eyebrow prv-label" id="prvT">
-        Parent reviews
-      </p>
-      <div className="prv-rail">
-        <div className="prv-track">
-          <Cards />
-          <Cards hidden />
+      <div className="prv-panel">
+        <p className="eyebrow prv-label">Parent reviews</p>
+        <h2 id="prvT">Parents love us</h2>
+        <div
+          className="prv-stage"
+          role="region"
+          aria-roledescription="carousel"
+          aria-label="Parent reviews"
+          onMouseEnter={() => setHover(true)}
+          onMouseLeave={() => setHover(false)}
+          onFocus={() => setFocus(true)}
+          onBlur={() => setFocus(false)}
+          onKeyDown={onKey}
+          onTouchStart={(e) => (touch.current = e.touches[0].clientX)}
+          onTouchEnd={(e) => {
+            if (touch.current === null) return;
+            const dx = e.changedTouches[0].clientX - touch.current;
+            touch.current = null;
+            if (Math.abs(dx) > 40) move(dx < 0 ? 1 : -1);
+          }}
+        >
+          <div aria-live={playing ? "off" : "polite"}>
+            {PARENT_REVIEWS.map(({ quote, who }, i) => {
+              let o = i - cur;
+              if (o > n / 2) o -= n;
+              if (o < -n / 2) o += n;
+              const on = o === 0;
+              return (
+                <figure
+                  key={i}
+                  className={`prv-card${on ? " is-on" : ""}`}
+                  style={{ "--o": o, "--ao": Math.abs(o) } as CSSProperties}
+                  role="group"
+                  aria-roledescription="slide"
+                  aria-label={`${i + 1} of ${n}`}
+                  aria-hidden={!on || undefined}
+                  data-far={Math.abs(o) > 2 || undefined}
+                  onClick={on ? undefined : () => choose(i)}
+                >
+                  <blockquote>“{quote}”</blockquote>
+                  <figcaption>{who}</figcaption>
+                </figure>
+              );
+            })}
+          </div>
         </div>
+        <div className="prv-ctl">
+          <button type="button" className="prv-btn" onClick={() => move(-1)} aria-label="Previous review">
+            <span aria-hidden="true">←</span>
+          </button>
+          <div className="prv-dots">
+            {PARENT_REVIEWS.map(({ who }, i) => (
+              <button key={i} type="button" aria-current={i === cur || undefined} aria-label={`Review ${i + 1} of ${n}, ${who}`} onClick={() => choose(i)} />
+            ))}
+          </div>
+          <button type="button" className="prv-btn" onClick={() => move(1)} aria-label="Next review">
+            <span aria-hidden="true">→</span>
+          </button>
+          {!reduce && (
+            <button type="button" className="prv-btn prv-pause" onClick={() => setStopped((s) => !s)} aria-label={stopped ? "Play reviews" : "Pause reviews"}>
+              <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">
+                {stopped ? <path d="M3 1.5v9l7.5-4.5z" fill="currentColor" /> : <path d="M2.5 1.5h2.5v9H2.5zM7 1.5h2.5v9H7z" fill="currentColor" />}
+              </svg>
+            </button>
+          )}
+        </div>
+        <p className="prv-note">Shared with permission, names left out.</p>
       </div>
-      <p className="prv-note">Shared with permission, names left out.</p>
     </section>
   );
 }
