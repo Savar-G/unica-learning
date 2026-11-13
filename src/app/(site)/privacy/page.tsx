@@ -12,7 +12,7 @@ const PAGE = {
 export const metadata = pageMetadata(PAGE);
 
 export default function Privacy() {
-  return <SupportPage label="Updated 11 November 2026" title="Privacy policy">
+  return <SupportPage label="Updated 12 November 2026" title="Privacy policy">
     <JsonLd data={pageJsonLd(PAGE)} />
     <p className="lead">{BUSINESS_NAME} is responsible for the information you share through this website. This policy explains what we collect, why we use it, and the choices you have.</p>
     <h2>What you share with us</h2>
@@ -67,7 +67,7 @@ export default function Privacy() {
         <li>When enabled, OpenRouter sends a photo of your child&apos;s workbook page and the printed workbook questions to TypeSafe, which provides an AI model. We use it to check whether a photo is clear and to check workbook questions.</li>
         <li>OpenRouter also receives the Maya chat requests and the transcript for a note sentence, described above, and sends each request to a company that runs the AI model. Today Maya&apos;s model is Claude, made by Anthropic. For Maya, OpenRouter today sends each request to Anthropic or Microsoft Azure, which run Claude, and not to Google.</li>
         <li>Stripe handles adding your card and payments.</li>
-        <li>Calendly provides the results-call calendar. Its booking page has its own cookie settings. It receives the details you enter when you book a call.</li>
+        <li>Cal.com provides the results-call calendar. Its booking page has its own cookie settings. It receives the details you enter when you book a call.</li>
         <li>Vercel makes the website available to you and measures how fast our pages load.</li>
         <li>PostHog counts visits and signup steps only if you accept optional cookies.</li>
         <li>Meta (Facebook and Instagram) and Google Ads measure whether our ads lead to signups. They run only if you accept optional cookies, and they never send anything from the pages your child uses.</li>

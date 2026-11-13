@@ -17,17 +17,19 @@ it("loads the calendar only with consent and keeps the link after withdrawal", a
   const root = createRoot(host);
   await act(async () => root.render(createElement(BookCall, { call: { title: "Results", text: "Details", button: "Book" } })));
   expect(host.querySelector("iframe")).toBeNull();
-  expect(host.querySelector("a")?.href).toContain("calendly.com");
+  expect(host.querySelector("a")?.href).toContain("cal.com/unicalearning");
   await act(async () => setConsent("granted"));
   expect(host.querySelector("iframe")?.getAttribute("referrerPolicy")).toBe("no-referrer");
   await act(async () => setConsent("denied"));
   expect(host.querySelector("iframe")).toBeNull();
-  expect(host.querySelector("a")?.href).toContain("calendly.com");
+  expect(host.querySelector("a")?.href).toContain("cal.com/unicalearning");
   await act(async () => root.unmount());
   host.remove();
 });
 
 it("removes contact data from booking links", () => {
   expect(safeBookingUrl("https://calendly.com/example/15min?name=Priya&email=a%40b.ca#child")).toBe("https://calendly.com/example/15min");
+  expect(safeBookingUrl("https://cal.com/unicalearning/15min?name=Priya&email=a%40b.ca#child")).toBe("https://cal.com/unicalearning/15min");
   expect(safeBookingUrl("https://example.com/?phone=6045550123")).toBe("");
+  expect(safeBookingUrl("https://cal.com.example.com/x")).toBe("");
 });
