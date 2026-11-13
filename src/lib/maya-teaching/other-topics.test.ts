@@ -283,7 +283,7 @@ describe("the honest close (lessons from review 7 and 10)", () => {
         acts.push(...s.trace().turns.filter((x) => x.kind === "maya" && x.output).map((x) => (x as { output: { act: string } }).output.act).slice(acts.length));
         said.push(...out.say);
       }
-      expect(s.session.outcome?.reason, `grade ${grade}`).toBe("child_stopped");
+      expect(s.session.outcome?.reason, `grade ${grade}`).toBe("maya_closed");
       expect(acts).not.toContain("give_answer");
       expect(acts).toContain("example_step");
       expect(acts.at(-1)).toBe("close");
