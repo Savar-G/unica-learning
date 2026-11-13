@@ -64,7 +64,7 @@ import { claimActs, claimAnswers, claimCommitted, claimConfirm, claimQuestionAsk
 import { closeParts, compareEquationSaid, currentPart, evaluateSteps, evaluateTeaching, partBoards, partCovered, partEquationSaid, partIdOf, stepsBeforeLastPart, withEvaluateExample } from "./evaluate";
 import { isSpot, spotAnswers, spotReveals, spotSessionPackage, spotStepHeard } from "./spot-error";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, isModelOutput, readModelOutput, withoutDefaults, withoutNulls, type Act, type ChildAnswer, type HintLevel, type ModelOutput, type Proposal, type Reading, type Severity } from "./proposal";
-import { checkSay, equationKeysOf, equationsOf, sentencesOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, type SayReason, type SayRules, type SayValue } from "./say-check";
+import { checkSay, trimSay, equationKeysOf, equationsOf, sentencesOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, type SayReason, type SayRules, type SayValue } from "./say-check";
 import type { TalkReviewResult } from "./talk-review";
 
 /** Closing starts 9 minutes into the call; the call ends at 10 minutes. */
@@ -3497,7 +3497,7 @@ function ownTurn(s: Session, target: WorkedStep | null, value: AnswerValue, opti
         const role = prep === "from" ? "from" : prep === "with" || (carries && !writes) || (!writes && ["to", "into"].includes(prep)) ? "carry" : writes || (!result && ["in", "under", "at", "on"].includes(prep)) ? "write" : "value";
         checks.push({ n: Number(m[1]), place: m[3], role });
       }
-      for (const m of clause.matchAll(new RegExp(`\\b${PLACE}\\s+(?:is|are|was|were|make|makes|made|gives?|equals?)\\s+(\\d+)\\b(?!\\s+(?:ten|one)s?\\b)`, "g"))) checks.push({ n: Number(m[2]), place: m[1], role: "value" });
+      for (const m of clause.matchAll(new RegExp(`\\b${PLACE}\\s+(?:is|are|was|were|make|makes|made|gives?|equals?)\\s+(\\d+)\\b(?!\\s+(?:ten|one)s?\\b|\\s*(?:minus|plus|take away|times|[-+\u2212\u00d7]))`, "g"))) checks.push({ n: Number(m[2]), place: m[1], role: "value" });
       // "16 ones", "16 hundreds", "6 tens": the number as that column's digit.
       for (const m of clause.matchAll(new RegExp(`\\b(\\d+)\\s+(${OWN_PLACES})\\b(?!\\s+(?:plus|and|\\+|minus))`, "g"))) checks.push({ n: Number(m[1]), place: m[2], role: "write" });
       for (const m of clause.matchAll(new RegExp(`\\bfor\\s+${PLACE},?\\s+(?:i (?:got|get|have|wrote)|it's|it is|that's|that is)\\s+(\\d+)\\b`, "g"))) checks.push({ n: Number(m[2]), place: m[1], role: "value" });
@@ -4547,6 +4547,8 @@ const misconceptionAt = (s: Session, step: string) => turnFacts(s).some((f) => f
 
 /** Values and equations of the steps the child has not been credited with, and of the final answer while it is open. */
 function hiddenOf(s: Session, released: boolean): { forbidden: SayValue[]; answer: SayValue[]; hidden: string[] } {
+  // Once the answer stands, every step of it may be said ("4 minus 2 is 2, so 24").
+  if (released) return { forbidden: [], answer: [], hidden: [] };
   const pkg = s.package!;
   const printed = printedValues(pkg);
   const credited = new Set([...s.done, ...(s.passed ?? [])]);
@@ -4627,7 +4629,11 @@ function proposeV3(base: Session, out: ModelOutput, effects: Effect[], reviews: 
   // The model's reading is its bookkeeping, not Maya's words: a wrong answer the child did not commit to ("Is 2 minus 8,
   // 6?" is a question) is left out, so it counts as no miss, and the turn goes on without a repair.
   if (reading.answers?.length) {
-    const kept = reading.answers.filter((a) => a.verdict === "right" || !["answer_not_committed", "answer_not_heard"].includes(checkAnswers(base, [a], [])?.code ?? ""));
+    const unsaid = (a: ChildAnswer) => ["answer_not_committed", "answer_not_heard"].includes(checkAnswers(base, [a], [])?.code ?? "");
+    // Beside a clear right final answer, a step the turn does not say clearly is left out too: the answer stands
+    // ("The tens are 4 minus 2, that's 2. 24!").
+    const final = reading.answers.some((a) => a.step === "result" && a.verdict === "right" && (a.problem ?? "target") === "target" && checkAnswers(base, [a], []) === null);
+    const kept = reading.answers.filter((a) => (a.verdict === "right" && !(final && a.step !== "result")) || !unsaid(a));
     if (kept.length !== reading.answers.length) out = { ...out, reading: { ...reading, ...(kept.length ? { answers: kept } : { answers: undefined }) } };
   }
   const plans = codeProposals(base, [], out);
@@ -4656,8 +4662,10 @@ function proposeV3(base: Session, out: ModelOutput, effects: Effect[], reviews: 
   const codeWords = p.act === "safety" || base.state === "CONTENT_HOLD" || (p.act === "close" && base.state === "SAFETY") ||
     p.parts.some((x) => "line" in x && CODE_WORD_LINES.includes(x.line)) || (p.act === "open" && !!base.confirmWorkbook);
   if (codeWords) return r;
-  const say = out.say.trim();
-  const verdict = checkSay(say, sayRules(base, r.session, p, planned));
+  const rules = sayRules(base, r.session, p, planned);
+  // Too long is cut, not repaired: the leading sentences that fit are kept, each still checked (round 2).
+  const say = trimSay(out.say, rules.wordLimit);
+  const verdict = checkSay(say, rules);
   if (!verdict.ok) return no("say_check", `Your say was refused (${verdict.reason}): ${verdict.detail}`, [p.act], verdict.reason);
   let talk: TalkCheck[] | undefined;
   if (needsReview(base, p, say)) {

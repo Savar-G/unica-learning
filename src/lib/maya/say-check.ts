@@ -435,3 +435,21 @@ export function checkSay(say: string, rules: SayRules): SayVerdict {
   }
   return { ok: true, sentences };
 }
+
+/**
+ * A reply cut to the limits with no model call (D-341, round 2): the leading sentences that fit (at most SAY_SENTENCES,
+ * at most `wordLimit` words, each sentence at most SENTENCE_WORDS words). When the first sentence alone breaks a limit,
+ * the reply comes back as it was, and the check refuses it.
+ */
+export function trimSay(say: string, wordLimit: number): string {
+  const sentences = sentencesOf(say);
+  const kept: string[] = [];
+  let words = 0;
+  for (const x of sentences) {
+    const n = wordsIn(x).length;
+    if (kept.length >= SAY_SENTENCES || n > SENTENCE_WORDS || words + n > wordLimit) break;
+    kept.push(x);
+    words += n;
+  }
+  return kept.length === 0 ? say.trim() : kept.join(" ");
+}
