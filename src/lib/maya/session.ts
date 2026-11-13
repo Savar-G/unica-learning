@@ -4975,7 +4975,7 @@ function withStreamed(base: Session, r: StepResult, at: number, planned: string,
   const turns = [...r.session.turns];
   const last = turns.findLastIndex((t) => t.speaker === "maya" && t.text === planned);
   if (last !== -1) turns[last] = { ...turns[last], text, planned };
-  return { session: { ...r.session, turns }, effects: r.effects.map((e, i) => (i === at && e.kind === "say" ? { ...e, text, planned, ...(reviewed.talk.length ? { talk: reviewed.talk.filter((t) => t.review === "pass") } : {}), ...(reviewed.dropped.length ? { dropped: reviewed.dropped } : {}) } : e)), refusal: null };
+  return { session: { ...r.session, turns }, effects: r.effects.map((e, i) => (i === at && e.kind === "say" ? { ...e, text, planned, ...(reviewed.talk.length ? { talk: reviewed.talk } : {}), ...(reviewed.dropped.length ? { dropped: reviewed.dropped } : {}) } : e)), refusal: null };
 }
 
 /**

@@ -18,9 +18,10 @@ export const CONVERSATION_REVIEW_TIME_LIMIT_MS = 4_000;
 /**
  * D-341, round 3: the conversational review thinks as little as Haiku allows. Measured on the 88 OK_TALK, NOT_OK_TALK and
  * NEVER_SAY lines (2026-11-12): minimal with 400 tokens gave the same verdicts as low with 2,000 (86 of 88, the same two
- * cautious fails), p50 0.85 s against 0.97 s; 200 tokens cut off four answers, which then counted as errors.
+ * cautious fails), p50 0.85 s against 0.97 s; 200 tokens cut off four answers, which then counted as errors. The real
+ * runs of round 4 cut off some at 400 too, so the limit is 1,000 (a short answer stops well before it).
  */
-export const CONVERSATION_REVIEW_REQUEST = { effort: "minimal" as const, maxTokens: 400 };
+export const CONVERSATION_REVIEW_REQUEST = { effort: "minimal" as const, maxTokens: 1_000 };
 /** The turns of the call the review reads, besides the line. */
 const REVIEW_TURNS = 6;
 

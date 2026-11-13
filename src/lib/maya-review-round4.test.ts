@@ -194,3 +194,12 @@ describe("each turn is judged on its own (real voice calls on 0be41ec5)", () => 
     expect(c.reviewer.requests.map((r) => r.line)).not.toContain("I'm an AI, so I don't eat.");
   });
 });
+
+describe("the review of a streamed reply's rest (real runs of round 4)", () => {
+  it("a sentence after the streamed ones that needs a review is reviewed, not dropped for want of one", async () => {
+    const c = call(() => reply("Yes, 12 minus 8 is 4. That sounds like a plan you can be proud of. What is 4 minus 2?", "guide", { step: "tens", reading: { answers: [ans(4, "ones")] } }), { stream: true, reviewer: fakeTalkReviewer() });
+    const [out] = await said(c, ["12 minus 8 is 4."]);
+    expect(c.reviewer.requests.map((r) => r.line)).toContain("That sounds like a plan you can be proud of.");
+    expect(out).toContain("That sounds like a plan you can be proud of.");
+  });
+});

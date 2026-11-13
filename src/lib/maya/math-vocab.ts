@@ -53,8 +53,17 @@ const SMALL_WORDS = [
   "almost", "idea", "job", "part", "start", "end", "on", "off", "own", "yourself", "itself", "other",
 ];
 
+/** More plain words of a tutor's talk, from the real runs of round 4 (sentences that were reviewed for no reason). */
+const TUTOR_WORDS = [
+  "since", "through", "fix", "fixes", "fixed", "today", "tricky", "hard", "easy", "harder", "yet", "goodbye", "bye",
+  "paper", "solve", "solved", "solves", "steady", "nicely", "quick", "quickly", "nearly", "simple", "land", "lands",
+  "everything", "something", "each", "kept", "going", "hear", "heard", "worked", "matters", "matter", "careful",
+  "track", "tracking", "line", "lines", "together", "turn", "great", "job", "minute", "moment", "already", "still",
+  "even", "well", "said", "talked", "ask", "asked", "answer", "check", "sure", "fine", "too", "okay",
+];
+
 /** Every word a math-only sentence may hold, in lower case. */
-export const MATH_VOCAB: ReadonlySet<string> = new Set([...NUMBER_WORDS, ...MATH_WORDS, ...VERBS, ...SMALL_WORDS]);
+export const MATH_VOCAB: ReadonlySet<string> = new Set([...NUMBER_WORDS, ...MATH_WORDS, ...VERBS, ...SMALL_WORDS, ...TUTOR_WORDS]);
 
 /**
  * The non-math sentences Maya may say with no review: exact sentences only (compared after case and a final "." or "!"
