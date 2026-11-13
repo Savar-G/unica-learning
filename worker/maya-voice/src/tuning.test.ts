@@ -423,7 +423,7 @@ describe("the speech-to-text's silence limit while Maya asks for a number", () =
 
   it("has short normal limits and keeps the number turn long", () => {
     expect(normal).toEqual({ minMs: 400, maxMs: 1600 });
-    expect(number).toEqual({ minMs: 512, maxMs: 4500 });
+    expect(number).toEqual({ minMs: 512, maxMs: 2500 });
   });
 
   it("is raised when she asks the child to try the question, and put back when the child's turn arrives", async () => {

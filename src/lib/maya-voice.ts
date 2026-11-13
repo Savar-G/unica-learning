@@ -219,14 +219,17 @@ export interface VoiceTuning {
  * (docs/maya-voice.md, "Tuning for children"): AssemblyAI ends a turn that reads complete at `min_turn_silence`, and holds
  * a turn that reads unfinished, or ends in a number that can go on, until `max_turn_silence`. 400 ms is between its
  * "balanced" 128 ms, which can cut a child's pause in a sentence, and "max_accuracy" 512 ms. 1600 ms is just above
- * "balanced" 1280 ms and near the 1.64 s AssemblyAI measured for its slowest tenth of held turns. A number answer keeps
- * the long limits (512 ms and 4500 ms), because a child thinks between "fifty" and "six".
+ * "balanced" 1280 ms and near the 1.64 s AssemblyAI measured for its slowest tenth of held turns. A number answer gets
+ * longer limits (512 ms and 2500 ms), because a child thinks between "fifty" and "six"; the one wait of
+ * `numberContinueMs` covers an open number word. 2500 ms (4500 ms before 2026-11-13) is from one real call: the child's
+ * whole answer "Then 4 minus 2 is 2, so it's 24." was held about 4 s, and Maya's first sound came 7.0 s after the child
+ * stopped. MAYA_STT_NUMBER_SILENCE_MS sets it.
  */
 export const VOICE_TUNING_DEFAULTS: VoiceTuning = {
   sttMinSilenceMs: 400,
   sttMaxSilenceMs: 1600,
   sttNumberMinSilenceMs: 512,
-  sttNumberSilenceMs: 4500,
+  sttNumberSilenceMs: 2500,
   turnMinDelayMs: 100,
   numberContinueMs: 1500,
   interruptMinMs: 300,

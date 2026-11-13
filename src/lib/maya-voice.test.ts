@@ -269,7 +269,7 @@ it("R408-11: bounds a crashed worker's connection lease and starts a separate se
 
 describe("the tuning settings", () => {
   it("default to the documented values, and the providers carry them", () => {
-    expect(VOICE_TUNING_DEFAULTS).toEqual({ sttMinSilenceMs: 400, sttMaxSilenceMs: 1600, sttNumberMinSilenceMs: 512, sttNumberSilenceMs: 4500, turnMinDelayMs: 100, numberContinueMs: 1500, interruptMinMs: 300, interruptMinWords: 0, dropSilentPeakDbfs: -50 });
+    expect(VOICE_TUNING_DEFAULTS).toEqual({ sttMinSilenceMs: 400, sttMaxSilenceMs: 1600, sttNumberMinSilenceMs: 512, sttNumberSilenceMs: 2500, turnMinDelayMs: 100, numberContinueMs: 1500, interruptMinMs: 300, interruptMinWords: 0, dropSilentPeakDbfs: -50 });
     expect(voiceTuning({})).toEqual({ tuning: VOICE_TUNING_DEFAULTS, problems: [] });
     expect(voiceProviders({})).toMatchObject({ ok: true, tuning: VOICE_TUNING_DEFAULTS });
   });
@@ -303,12 +303,12 @@ describe("the tuning settings", () => {
 
 describe("the silences of a turn", () => {
   it("are short for a normal turn and long for the one turn after a number question", () => {
-    expect(turnSilences(VOICE_TUNING_DEFAULTS)).toEqual({ normal: { minMs: 400, maxMs: 1600 }, number: { minMs: 512, maxMs: 4500 } });
+    expect(turnSilences(VOICE_TUNING_DEFAULTS)).toEqual({ normal: { minMs: 400, maxMs: 1600 }, number: { minMs: 512, maxMs: 2500 } });
   });
 
   it("never make the number turn shorter than a normal turn", () => {
     const { tuning } = voiceTuning({ MAYA_STT_MIN_SILENCE_MS: "700", MAYA_STT_NUMBER_MIN_SILENCE_MS: "300" });
-    expect(turnSilences(tuning)).toEqual({ normal: { minMs: 700, maxMs: 1600 }, number: { minMs: 700, maxMs: 4500 } });
+    expect(turnSilences(tuning)).toEqual({ normal: { minMs: 700, maxMs: 1600 }, number: { minMs: 700, maxMs: 2500 } });
   });
 });
 
