@@ -18,8 +18,10 @@ import { workProblem } from "@/lib/maya";
  */
 export const ACK_LIMIT_MS = 2600;
 /**
- * The same, for a turn code knows will not stream before any model call (a request for help, a stop, feelings, off-topic
- * talk: `streamPlan` is null). Its reply takes 2 to 5 s, so the phrase comes at once.
+ * The same, for a turn code knows will not stream before any model call (`streamPlan` is null: a fixed reply due, code's
+ * own words, a state that is not teaching). Its reply takes 2 to 5 s, so the phrase comes at once. Since round 4 a hard
+ * feeling or off-topic talk has a plan, and the model's "kind" holds its sentences for the review during the call: it
+ * keeps ACK_LIMIT_MS, which covers a late first sentence.
  */
 export const ACK_NOT_STREAMED_MS = 0;
 /**

@@ -1201,7 +1201,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         // The close keeps its priority after it ended the call: a reply that crosses the closing time can end as "solved".
         const closing = state.startedAt !== null && state.now !== null && state.now - state.startedAt >= limitsOf(state).closingAtMs;
         const priority = state.safety.flagged || state.state === "TIME_CLOSE" || state.outcome?.reason === "time_limit" || closing;
-        const guidance = out.say.find((text) => (Object.values(SAFETY_GUIDANCE) as string[]).includes(text));
+        // Round 4: a turn that streamed sentences and then turned into safety holds them and the guidance in one line.
+        const guidance = (Object.values(SAFETY_GUIDANCE) as string[]).find((g) => out.say.some((text) => text === g || text.endsWith(` ${g}`)));
         return { say: out.say, newBatches: out.board.length, boardCues, safetyMessage: out.safetyMessage, ended: out.ended !== null, priority, time, ...(guidance ? { guidance } : {}), ...(out.wait ? { wait: true } : {}) };
       };
       let working = 0;

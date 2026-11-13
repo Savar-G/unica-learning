@@ -47,7 +47,8 @@ function streamedFetch(say: string, cost: number) {
 describe("a streamed Maya turn and its cost (D-341, D-290)", () => {
   it("streams the first sentence to the voice and settles the request with the cost OpenRouter reported", async () => {
     const t = recordingLedger();
-    const net = streamedFetch("Let's think about the ones together. What can you do with those two digits?", 0.0042);
+    // Round 4: both sentences are math-only by the closed vocabulary, so they stream with no review.
+    const net = streamedFetch("Let's think about the ones together. What do the ones make?", 0.0042);
     let n = 0;
     const client = meteredAi((hooks) => openRouterClient({ apiKey: "k", model: "anthropic/claude-sonnet-5.5", ...hooks, maxRetries: 0 }), {
       ledger: t.ledger, charge: { kind: "child", parentId: "p", childId: "c" }, callId: "call-1", newId: () => `r${++n}`,
@@ -66,7 +67,7 @@ describe("a streamed Maya turn and its cost (D-341, D-290)", () => {
     expect(parts[0]).toBe("Let's think about the ones together.");
     const attempt = session.trace().turns.at(-1)!;
     expect(attempt.kind === "maya" && attempt.attempts[0].firstSayMs).not.toBeUndefined();
-    expect(out.say.join(" ")).toBe("Let's think about the ones together. What can you do with those two digits?");
+    expect(out.say.join(" ")).toBe("Let's think about the ones together. What do the ones make?");
     // One reservation for the one request, settled with the stream's own cost once the stream ended.
     await new Promise((r) => setTimeout(r, 20));
     expect(t.reserved).toEqual(["r1"]);

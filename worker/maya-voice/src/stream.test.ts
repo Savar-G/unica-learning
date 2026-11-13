@@ -240,7 +240,8 @@ async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; speec
 const FIRST = "Let's think about the ones together.";
 /** A hard feeling: its reply never streams (`hardFeeling` in src/lib/maya). */
 const FEELING = "I feel really bad today.";
-const SECOND = "What can you do with those two digits?";
+// Round 4: both sentences are math-only by the closed vocabulary, so they stream with no review (`mathOnly`).
+const SECOND = "What do the ones make?";
 const ACKS = new Set(ACK_PHRASES.map((p) => p.text));
 const count = (said: readonly string[], text: string) => said.filter((t) => t === text).length;
 const sum = (s: VoiceTurnSample) => TURN_PARTS.reduce((total, k) => total + s.parts![k], 0);
@@ -348,6 +349,7 @@ describe("Maya's first sentence before her turn is done (D-341)", () => {
   it("gives way to safety guidance, which stops it", async () => {
     const m = steppedModel((brief) => brief.childTurn === "I got 56." ? reply(`${FIRST} ${SECOND}`, "guide", { step: brief.help.step, reading: { safety: "immediate" } }) : null);
     const c = await voiceCall({ model: m.model });
+    const warn = vi.spyOn(console, "warn");
     const before = c.said().length;
     c.speaker.held = true;
     c.say("I got 56.");
@@ -357,6 +359,10 @@ describe("Maya's first sentence before her turn is done (D-341)", () => {
     await waitFor(() => c.session.agentState === "speaking", "the first sentence to play");
     m.finish();
     const guidance = SAFETY_GUIDANCE.immediate.split(/(?<=[.?!])\s+/);
+    // Round 4: the saved turn holds the streamed sentences, then the guidance. It starts with what the worker sent the
+    // voice, so the worker says only the guidance, and logs no difference.
+    await waitFor(() => c.call.session.turns.at(-1)?.speaker === "maya", "the saved turn");
+    expect(c.call.session.turns.at(-1)!.text).toBe(`${FIRST} ${SECOND} ${SAFETY_GUIDANCE.immediate}`);
     await waitFor(() => c.said().slice(before).includes(guidance.at(-1)!), "the guidance");
     // The guidance stopped the first sentence's playback.
     expect(c.speaker.cut).toBeGreaterThan(0);
@@ -367,6 +373,7 @@ describe("Maya's first sentence before her turn is done (D-341)", () => {
     // Nothing of the reply follows the first sentence: the guidance comes next, whole, and the sentence is not said again.
     expect(after.includes(SECOND)).toBe(false);
     expect(after.slice(1, 1 + guidance.length)).toEqual(guidance);
+    expect(warn.mock.calls.some((a) => a[0] === "[maya voice] streamed words differ from the saved turn")).toBe(false);
   });
 
   it("keeps a sentence said when the turn fails after it, and the call ends as today", async () => {
@@ -449,10 +456,10 @@ describe("the parts of a turn as the worker hears them (VoiceSay)", () => {
       return realStage(id, cues);
     });
     const before = c.said().length;
-    // The cue is at "seven" (word 18 of the whole reply): 6 words were said early, so it is word 12 of the rest.
+    // The cue is at "seven" (word 15 of the whole reply): 6 words were said early, so it is word 9 of the rest.
     const words = `${FIRST} ${SECOND} ${third}`.split(/\s+/);
-    expect(words.indexOf("seven.") + 1).toBe(18);
-    const finish = playedTurn(c, (say) => { say.part!(FIRST, 0); }, { say: [`${FIRST} ${SECOND} ${third}`], newBatches: 1, boardCues: [{ batch: note, word: 18 }], safetyMessage: null, ended: false });
+    expect(words.indexOf("seven.") + 1).toBe(15);
+    const finish = playedTurn(c, (say) => { say.part!(FIRST, 0); }, { say: [`${FIRST} ${SECOND} ${third}`], newBatches: 1, boardCues: [{ batch: note, word: 15 }], safetyMessage: null, ended: false });
     c.say("I got 56.");
     await waitFor(() => c.said().slice(before).includes(FIRST), "the first sentence");
     finish();
@@ -461,7 +468,7 @@ describe("the parts of a turn as the worker hears them (VoiceSay)", () => {
     await waitFor(() => c.session.agentState === "listening", "the rest to play");
     await c.board.settled();
     // Speech A had an empty plan; speech B's plan holds the batch at its moved word, staged after A was said.
-    expect(sends).toEqual([`${note.transactionId}@12`]);
+    expect(sends).toEqual([`${note.transactionId}@9`]);
     expect(c.said().slice(before)).toEqual([FIRST, SECOND, third]);
     const shown = c.receiver.snapshot().events.flatMap((e) => (e.kind === "batch" ? [e.batchId] : []));
     expect(shown).toEqual([question.transactionId, note.transactionId]);
@@ -545,18 +552,42 @@ describe("when the thinking phrase comes (D-341)", () => {
     expect(c.said().slice(before)).toEqual([FIRST, SECOND]);
   });
 
-  // Round 3 streams a request for help and off-topic talk; a hard feeling still waits for the whole reply (`streamRules`).
-  it("comes at once for a turn code knows will not stream (a hard feeling)", async () => {
-    const m = steppedModel((brief) => brief.childTurn === FEELING ? reply("I'm sorry you feel bad. We can go slowly.", "guide", { step: brief.help.step, level: 0 }) : null);
+  // Round 4: before the model call, code knows a turn will not stream only when `streamPlan` is null (a fixed reply due,
+  // code's own words, a state that is not teaching). Every turn a child can start with a word now has a plan: a hard
+  // feeling gets one, and the model's "kind" then holds its sentences for the review. So this rule is tested with the
+  // call's own answer played by the test (`begun` with no stream), and a held hard feeling waits for the limit.
+  it("comes at once for a turn the call says will not stream", async () => {
+    const c = await voiceCall({ model: ruleConversationalModel(), ackLimitMs: ACK_LIMIT_MS });
+    let finish = () => {};
+    const done = new Promise<void>((resolve) => { finish = resolve; });
+    vi.spyOn(c.call, "child").mockImplementation(async (_text, _options, say) => {
+      say?.begun?.({ model: true, conversational: true, streams: false });
+      await done;
+      return { say: ["Let's look at the ones."], newBatches: 0, boardCues: [], safetyMessage: null, ended: false };
+    });
+    const before = c.said().length;
+    c.say("I got 56.");
+    await pause();
+    await c.clock.advance(1);
+    await waitFor(() => c.said().slice(before).some((t) => ACKS.has(t)), "the phrase at once");
+    finish();
+    await waitFor(() => c.samples.length === 1, "the sample");
+    expect(c.samples[0].ack).not.toBeNull();
+  });
+
+  it("waits for the limit on a turn that has a plan but holds its sentences for the review (a hard feeling)", async () => {
+    const m = steppedModel((brief) => brief.childTurn === FEELING ? { ...reply("I'm sorry you feel bad. We can go slowly.", "guide", { step: brief.help.step, level: 0 }), kind: "feeling" } : null);
     const c = await voiceCall({ model: m.model, ackLimitMs: ACK_LIMIT_MS });
     const before = c.said().length;
     c.say(FEELING);
     await waitFor(() => m.running, "the model call");
+    await c.clock.advance(ACK_LIMIT_MS - 1);
+    await pause();
+    expect(c.said().slice(before).filter((t) => ACKS.has(t))).toEqual([]);
     await c.clock.advance(1);
-    await waitFor(() => c.said().slice(before).some((t) => ACKS.has(t)), "the phrase at once");
+    await waitFor(() => c.said().slice(before).some((t) => ACKS.has(t)), "the phrase at the limit");
     m.finish();
     await waitFor(() => c.samples.length === 1, "the sample");
-    expect(c.samples[0].ack).not.toBeNull();
   });
 
   it("does not come for a child who is thinking: only code's patient line is said", async () => {
@@ -849,6 +880,9 @@ describe("turns that ask no model (D-341, round 3)", () => {
     await waitFor(() => c.samples.length === 4, "the turn's sample");
     await waitFor(() => c.said().length > quiet, "the answer");
     expect(c.samples[3].outcome).toBe("answered");
-    expect(c.said().slice(quiet).join(" ")).toContain("What can you do there?");
+    // Round 4: the rule player's question to the child is not math-only, so with no reviewer it is not said; what is said is
+    // the saved turn, word for word.
+    await c.call.settled();
+    expect(c.said().slice(quiet).join(" ")).toBe(spokenMath(c.call.session.turns.filter((t) => t.speaker === "maya").at(-1)!.text));
   });
 });
