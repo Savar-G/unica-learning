@@ -2,6 +2,7 @@ import { ReadableStream } from "node:stream/web";
 import { USERDATA_TIMED_TRANSCRIPT, voice } from "@livekit/agents";
 import type { AudioFrame } from "@livekit/rtc-node";
 import { speechKey } from "@/lib/maya/speech";
+import { mark } from "./marks";
 import { SPEECH_SCOPE_DATA, speechSentences, speechWords, type BoardSpeech, type SpeechScope } from "@/lib/board-speech";
 import { spokenStream, spokenWords } from "@/lib/maya-voice-spoken";
 
@@ -26,6 +27,7 @@ export async function countedSynthesis(
         const { value, done } = await chunks.next();
         const said = done ? spoken.end() : spoken.push(value);
         if (said) {
+          if (!sent) mark("ttsRequest");
           sent += said;
           controller.enqueue(said);
         }
@@ -49,6 +51,7 @@ export async function countedSynthesis(
       try {
         const { value, done } = await reader.read();
         if (done) { charge(); return controller.close(); }
+        if (!heard) mark("ttsFirstFrame");
         heard = true;
         controller.enqueue(value);
       } catch (e) {

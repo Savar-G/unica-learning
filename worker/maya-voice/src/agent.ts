@@ -28,6 +28,7 @@ import { speechWords, type BoardSpeech, type SpeechScope } from "@/lib/board-spe
 import { CuePlaybackOutput } from "./cue-playback";
 import { earlyRest, type EarlyRest } from "./early-speech";
 import { HeardSignals, silentFinal } from "./heard-signals";
+import { mark, markLast, resetMarks } from "./marks";
 import { boardAudio, countedSynthesis, type SilentSpeech } from "./speech-audio";
 import { VOICE_METER_TICK_MS } from "@/lib/maya-spend";
 import { limitsOf, sentencesOf } from "@/lib/maya";
@@ -158,6 +159,9 @@ export class MayaVoiceAgent extends voice.Agent {
             finals.push(event.alternatives.map((a) => ({ text: a.text, confidence: a.confidence })));
             // The last word's end, never the transcript's own end time, which can hold the turn's end (`finalMark`).
             marks.push(finalMark(event.alternatives[0], inputStartedAt, Date.now(), detectorEndAt));
+            resetMarks();
+            mark("sttFinal");
+            if (detectorEndAt !== null && detectorEndAt !== undefined) markLast("detectorEnd", detectorEndAt);
             console.info("[maya voice] final transcript", callId, heard);
           }
           // Kept speech: a start held back goes first.

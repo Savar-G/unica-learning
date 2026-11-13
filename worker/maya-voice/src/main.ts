@@ -30,6 +30,7 @@ import { voiceOpening } from "./opening";
 import { mayaCallStore } from "@/lib/maya-call-store";
 import { asksWordTimings, callKeyterms, callOfRoom, childIdentity, GREETING_TEXT, turnSilences, VOICE_AGENT_NAME, voiceProviders, type TurnSilence, type VoiceCallFacts } from "@/lib/maya-voice";
 import { VoiceCallRun, voiceSession, type CallUpdate } from "./agent";
+import { mark as clockMark, markedFetch, takeMarks } from "./marks";
 import { presenceOf, waitForChild } from "./child-wait";
 import { voiceTurnReport, type VoiceTurnSample } from "./turn-timing";
 import { makeProviders } from "./providers";
@@ -60,6 +61,8 @@ function database() {
 export default defineAgent({
   entry: async (ctx: JobContext) => {
     const jobAt = Date.now();
+    // Marks on the model provider's requests, for the turn's clock times (./marks.ts).
+    globalThis.fetch = markedFetch(globalThis.fetch);
     let selection = null;
     try { selection = referenceJob(JSON.parse(ctx.job.metadata || "{}").reference); } catch { /* Not a reference job. */ }
     if (selection) {
@@ -125,6 +128,7 @@ export default defineAgent({
     // The opening's speed: the child's microphone published (or the job, when it was there first) to Maya's first sound.
     let firstSound = false;
     session.on(voice.AgentSessionEventTypes.AgentStateChanged, ev => {
+      if (ev.newState === "speaking") clockMark("firstFramePublished");
       if (firstSound || ev.newState !== "speaking") return;
       firstSound = true;
       log("opening first sound", { callId, sinceChildMs: Date.now() - childAt, sinceJobMs: Date.now() - jobAt, marks });
@@ -148,7 +152,7 @@ export default defineAgent({
       ...(process.env.MAYA_ACK_LIMIT_MS?.trim() && Number.isFinite(ackLimit) && ackLimit >= 0 ? { ackLimitMs: ackLimit } : {}),
       measureTurn: sample => {
         turnSamples.push(sample);
-        log("voice turn", { callId, fakeProviders: { speechToText: made.stt.provider === "fake", voice: made.tts.provider === "fake" }, ...sample });
+        log("voice turn", { callId, fakeProviders: { speechToText: made.stt.provider === "fake", voice: made.tts.provider === "fake" }, ...sample, clock: takeMarks() });
       },
       closed: async () => {
         log("board cue report", { callId, fakeAudio: made.tts.provider === "fake", groups: cueReport(samples) });
