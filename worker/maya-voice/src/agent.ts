@@ -151,7 +151,18 @@ export class MayaVoiceAgent extends voice.Agent {
     // The worker's own opening has no board plan, and must not wait for the board to connect.
     const plain = this.plainNext;
     this.plainNext = false;
-    if (!this.board || plain) return synthesize(text);
+    if (plain) {
+      // The opening's own marks, for the worker's log: when its words reached the voice, and its first audio.
+      this.onOpeningMark?.("ttsNode");
+      const frames = await synthesize(text);
+      if (!frames) return frames;
+      let first = true;
+      return frames.pipeThrough(new TransformStream<AudioFrame, AudioFrame>({ transform: (frame, controller) => {
+        if (first) { first = false; this.onOpeningMark?.("firstFrame"); }
+        controller.enqueue(frame);
+      } }));
+    }
+    if (!this.board) return synthesize(text);
     const scope = this.board.scope();
     if (!scope || !this.board.sync.owns(scope)) return null;
     return boardAudio(text, synthesize, this.board.sync, scope);
@@ -159,6 +170,7 @@ export class MayaVoiceAgent extends voice.Agent {
 
   /** One-shot: the next speech goes to the voice with no board plan (the worker's own opening). */
   plainNext = false;
+  onOpeningMark: ((name: string) => void) | null = null;
   private starting: Promise<unknown> | null = null;
   /** The worker spoke the opening itself, and the call starts behind it: no opening reply, and a child turn waits for the start. */
   openedByWorker(starting: Promise<unknown>) {
@@ -326,6 +338,7 @@ export class VoiceCallRun {
        * speaks the moment the child is here, and the call starts behind the speech. Absent: the call's start gives the words.
        */
       opening?: string;
+      openingMark?: (name: string) => void;
       /**
        * The speech-to-text's silence limits for the one child turn after Maya asks for a number (`number`) and for every
        * other turn (`normal`), set through `set` while the call runs. Absent: the limits set at the start stay.
@@ -427,6 +440,8 @@ export class VoiceCallRun {
   private openNow(text: string): voice.SpeechHandle {
     this.openingSaid = true;
     this.agent.plainNext = true;
+    this.agent.onOpeningMark = this.options.openingMark ?? null;
+    this.options.openingMark?.("say");
     const speech = this.session.say(text, { addToChatCtx: true });
     const generation = this.generation;
     const starting = (async () => {
