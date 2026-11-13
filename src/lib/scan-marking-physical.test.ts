@@ -140,7 +140,7 @@ describe("physical human truth", () => {
 describe("physical plans, journals and accounting", () => {
   it("pins both models on one prompt and settings without admitting the set as fixed40", async () => {
     const input = await setAndPlan();
-    expect(physicalSettings(15_000_000)).toMatchObject({ models: [{ model: "anthropic/claude-sonnet-5.5", endpoint: "google-vertex/global", providerName: "Google" }, { model: "openai/gpt-6.1-terra", endpoint: "azure", providerName: "Azure" }], prompt: "whole-page-scalar-readings-v8", effort: "low", outputTokens: 4096, fallbacks: false, parallelRequests: 1 });
+    expect(physicalSettings(15_000_000)).toMatchObject({ models: [{ model: "anthropic/claude-sonnet-5.5", endpoint: "google-vertex/global", providerName: "Google" }, { model: "openai/gpt-6.1-terra", endpoint: "azure", providerName: "Azure" }], prompt: "whole-page-scalar-readings-v9", effort: "low", outputTokens: 4096, fallbacks: false, parallelRequests: 1 });
     expect(PHYSICAL_PARALLEL_REQUESTS).toBe(1);
     expect(PHYSICAL_EXPECTED).toEqual({ photos: 20, itemLabels: 148, aiMarked: 148, parent: 0 });
     expect(() => validateComparisonManifest({ ...input.set, version: 1, synthetic: true } as never)).toThrow();
@@ -548,7 +548,7 @@ describe("fixed 40 set in the same paid step", () => {
     expect(saved).toHaveLength(4);
     const report = physicalFixedReport(input.fixed, saved, evidences(), input.run);
     expect(report.rows.map(r => r.model)).toEqual([SONNET.model, TERRA.model]);
-    expect(report.rows[0]).toMatchObject({ v8: { complete: false, wrongMarks: 0, wrongAsRight: 0, prompt: "whole-page-scalar-readings-v8" }, v7: { prompt: "whole-page-scalar-readings-v7", wrongMarks: 0, definite: 218, wrongAsRight: 0, clearUnsure: 1, clear: 219, costPerPageUsd: 0.01095165, latencyP50Ms: 2551, latencyP95Ms: 3164 } });
+    expect(report.rows[0]).toMatchObject({ v8: { complete: false, wrongMarks: 0, wrongAsRight: 0, prompt: "whole-page-scalar-readings-v9" }, v7: { prompt: "whole-page-scalar-readings-v7", wrongMarks: 0, definite: 218, wrongAsRight: 0, clearUnsure: 1, clear: 219, costPerPageUsd: 0.01095165, latencyP50Ms: 2551, latencyP95Ms: 3164 } });
     expect(report.rows[1].v7).toMatchObject({ costPerPageUsd: 0.005076625, latencyP50Ms: 2270, latencyP95Ms: 3264 });
     const team = TWO_WAYS_METHOD_MARKS ? 0 : 2;
     expect(report.rows[0].v8).toMatchObject({ clearUnsure: 0, clear: 18 - team, clearUnsureRate: 0, clearUnsureWithTeam: team, clearWithTeam: 18, clearUnsureRateWithTeam: team / 18,
