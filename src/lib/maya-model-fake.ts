@@ -154,3 +154,56 @@ export function conversationalFake({
     },
   };
 }
+
+/**
+ * A small deterministic conversational player (D-341) for the command line and the practice suite's --fake run: it
+ * reads the brief's facts and help levels and writes a plain `say` from them. It is not a teacher; the session checks
+ * every reply it makes, and refuses what breaks the limits.
+ */
+export function ruleConversationalModel(): MayaModel {
+  return conversationalFake({ id: "fake", answer: (brief) => ruleReply(brief) });
+}
+
+function ruleReply(brief: TurnBrief): unknown {
+  const text = brief.childTurn ?? "";
+  const lower = text.toLowerCase();
+  const answers: Record<string, unknown>[] = [];
+  let rightFinal = false;
+  for (const fact of brief.facts) {
+    const final = /^(.+?) is the right final answer\.$/.exec(fact);
+    const step = /^(.+?) is right for the step "([^"]+)"\.$/.exec(fact);
+    const value = Number((final ?? step)?.[1]);
+    if (final && Number.isFinite(value)) { answers.push({ value: { type: "number", value }, step: "result", problem: "target", verdict: "right" }); rightFinal = true; }
+    else if (step && Number.isFinite(value)) answers.push({ value: { type: "number", value }, step: step[2], problem: "target", verdict: "right" });
+  }
+  const reading = {
+    answers,
+    stop: /\b(stop|bye|goodbye)\b/.test(lower),
+    writing: /\b(wait|writing|hold on)\b/.test(lower),
+    help: /\b(help|stuck|show me|don'?t know|dont know)\b/.test(lower) ? "more" : "none",
+    paper: /\b(wrote it|i wrote|written)\b/.test(lower) ? "written" : "none",
+    start: /\b(how to start|can'?t start)\b/.test(lower) ? "no_start" : "none",
+  };
+  const acts = brief.acts;
+  const has = (a: Act) => acts.includes(a);
+  const levels = brief.help.levels;
+  if (reading.stop && has("close")) return reply("Okay, we can stop here. Bye for now.", "close", { reading });
+  if (reading.writing && has("wait")) return reply("Take your time.", "wait", { reading });
+  if (rightFinal && has("accept_answer")) return reply("Yes, that's right. How did you work it out?", "accept_answer", { reading });
+  if (reading.paper === "written" && has("close")) return reply("Thanks for writing it. Bye for now.", "close", { reading });
+  if (has("ask_write") && !has("guide")) return reply("Please write your answer on your paper.", "ask_write", { reading });
+  const example = brief.notes.find((n) => n.startsWith("If you work the easier example now"));
+  if (has("example_step") && (reading.start === "no_start" || !has("guide")) && example) {
+    return reply(example.replace(/^If you work the easier example now, say its next step: /, "").replace(/ Say first that it is a new, easier problem\.$/, ""), "example_step", { reading });
+  }
+  if (has("guide")) {
+    const want = reading.help === "more" ? brief.help.levelNow + 1 : 0;
+    const pick = levels.find((l) => l.level >= want) ?? levels.at(-1);
+    const lead = brief.facts.some((f) => /not right|smaller digit|leaves out/.test(f)) ? "Not quite. " : "";
+    return reply(`${lead}${pick?.mayShow.split(" / ")[0] ?? "Let's look at the next step."}`, "guide", { level: pick?.level ?? 0, reading });
+  }
+  if (has("close")) return reply("Thanks for working with me. Bye for now.", "close", { reading });
+  if (has("try_target")) return reply("Now try our question.", "try_target", { reading });
+  if (has("redirect")) return reply("Let's get back to our question.", "redirect", { reading });
+  return reply("Let's keep going.", acts[0] ?? "close", { reading });
+}

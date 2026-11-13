@@ -28,7 +28,7 @@ import { aiClient } from "@/lib/ai-client";
 import { anthropicClient } from "@/lib/ai-anthropic";
 import { livekitTextSession } from "@/lib/maya-livekit-text";
 import { conversationalMayaModel, type MayaModel } from "@/lib/maya-model";
-import { ruleMayaModel } from "@/lib/maya-model-fake";
+import { ruleConversationalModel } from "@/lib/maya-model-fake";
 import { aiTalkReviewer, fakeTalkReviewer, REVIEW_DEFAULT_MODEL, type TalkReviewer } from "@/lib/maya-talk-review";
 import { redactText } from "@/lib/maya-trace";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
@@ -104,7 +104,7 @@ function anthropicKey(): string {
 
 /** Maya's model and the free-talk review (D-197) for the chosen model. */
 function models(o: Options, root: string): { maya: MayaModel; reviewer: TalkReviewer } {
-  if (o.model === "fake") return { maya: ruleMayaModel(), reviewer: fakeTalkReviewer() };
+  if (o.model === "fake") return { maya: ruleConversationalModel(), reviewer: fakeTalkReviewer() };
   if (o.model === "anthropic") {
     const key = anthropicKey();
     return { maya: conversationalMayaModel(anthropicClient({ apiKey: key })), reviewer: aiTalkReviewer(anthropicClient({ apiKey: key, model: "claude-haiku-5-5" })) };
@@ -115,7 +115,7 @@ function models(o: Options, root: string): { maya: MayaModel; reviewer: TalkRevi
 }
 
 function model(o: Options, root: string): MayaModel {
-  if (o.model === "fake") return ruleMayaModel();
+  if (o.model === "fake") return ruleConversationalModel();
   const env: Record<string, string | undefined> = { ...process.env };
   const file = join(root, ".env.local");
   if (!env.OPENROUTER_API_KEY && existsSync(file)) {

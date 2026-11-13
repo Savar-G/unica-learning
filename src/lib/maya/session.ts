@@ -4470,13 +4470,19 @@ export function turnFacts(s: Session): TurnFact[] {
   const facts: TurnFact[] = [];
   const seen: SayValue[] = [];
   const known = steps.flatMap((st) => [...stepAnswers(st).flatMap(sayValues), ...valuesOf(stepText(st, pkg.operation))]);
-  const said = sentencesOf(s.turn.text).flatMap((x) => equationsOf(x).flatMap((e) => e.operands.map(({ key, q }) => ({ key, q }))));
+  const equations = sentencesOf(s.turn.text).flatMap((x) => equationsOf(x));
+  const results = equations.map((e) => e.result);
+  const said = equations.flatMap((e) => e.operands.filter((o) => !results.some((r) => sameSayValue(r, o))).map(({ key, q }) => ({ key, q })));
   for (const v of valuesIn(s.turn.text, readOptionsFor(pkg))) {
     if (v.type !== "number" && v.type !== "fraction" && v.type !== "mixed") continue;
     const sv = sayValues(v)[0];
     if (!sv || valueIn(sv, seen)) continue;
     seen.push(sv);
     const vt = valueText(v);
+    // A number of the question itself, or an operand of an equation the child says ("Is 2 minus 8, 6?": 2 and 8), is
+    // no answer, unless it is the child's whole turn.
+    const bare = valuesIn(s.turn.text, readOptionsFor(pkg)).length === 1;
+    if (!bare && (valueIn(sv, printed) || valueIn(sv, said))) continue;
     if (rightForQuestion(pkg, v)) {
       facts.push({ text: `${vt} is the right final answer.`, numbers: [sv] });
       continue;
@@ -4492,9 +4498,8 @@ export function turnFacts(s: Session): TurnFact[] {
       facts.push(misread);
       continue;
     }
-    // A number of the work itself (a done step's value, a regrouped digit, an operand the child says in an equation)
-    // is no wrong answer: "Then 4 minus 2 is 2." says the tens' own numbers.
-    if (valueIn(sv, known) || valueIn(sv, said)) continue;
+    // A number of the work itself (a done step's value, a regrouped digit) is no wrong answer.
+    if (valueIn(sv, known)) continue;
     facts.push({ text: `${vt} is not right for the step "${s.ladder.step}".`, numbers: [sv], step: s.ladder.step, wrong: sv });
   }
   return facts;

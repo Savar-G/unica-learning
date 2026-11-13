@@ -789,7 +789,18 @@ export interface PracticeReport {
    * shows how often the fence is read. A report saved before has none.
    */
   fencedJson?: { calls: number; fenced: number; runs: Record<string, number> };
+  /**
+   * D-341: Maya turns said in code's fallback line, over all runs and per run with any. The target is under
+   * FALLBACK_TARGET of Maya turns; the suite fails only above FALLBACK_LIMIT. A report saved before has none.
+   */
+  fallbacks?: { turns: number; fallbacks: number; rate: number; runs: Record<string, { turns: number; fallbacks: number; rate: number }> };
+  /** D-341: sentences Maya said in two or more runs of the same case (code's opening and safety words left out). */
+  sharedSentences?: Record<string, string[]>;
 }
+
+/** D-341: the fallback rate the suite aims under, and the rate above which it fails. */
+export const FALLBACK_TARGET = 0.05;
+export const FALLBACK_LIMIT = 0.15;
 
 const median = (xs: number[]) => {
   if (xs.length === 0) return null;
@@ -990,8 +1001,51 @@ export function buildReport(cases: readonly PracticeCase[], store: PracticeStore
     fencedJson: fencedJsonOf(required.map((r) => r.id), store),
   };
   report.problem = problems.length > 0 ? `the saved plan is not the code's plan: ${problems.join("; ")}` : null;
-  report.passed = problems.length === 0 && required.length > 0 && report.counts.passed === required.length;
+  report.fallbacks = fallbacksOf(required.map((r) => r.id), store);
+  report.sharedSentences = sharedSentencesOf(required, store);
+  report.passed = problems.length === 0 && required.length > 0 && report.counts.passed === required.length && report.fallbacks.rate <= FALLBACK_LIMIT;
   return report;
+}
+
+/** D-341: how many Maya turns of these runs were code's fallback line. */
+function fallbacksOf(ids: readonly string[], store: PracticeStore): NonNullable<PracticeReport["fallbacks"]> {
+  const out: NonNullable<PracticeReport["fallbacks"]> = { turns: 0, fallbacks: 0, rate: 0, runs: {} };
+  for (const id of ids) {
+    const trace = parse<MayaTrace>(store.load(traceFile(id)));
+    if (!trace || !Array.isArray(trace.turns)) continue;
+    const maya = trace.turns.filter((t) => t.kind === "maya" && t.output !== null && t.attempts[0]?.source !== "controller");
+    const fallbacks = maya.filter((t) => t.kind === "maya" && t.attempts.at(-1)?.source === "fallback").length;
+    out.turns += maya.length;
+    out.fallbacks += fallbacks;
+    if (fallbacks > 0) out.runs[id] = { turns: maya.length, fallbacks, rate: fallbacks / maya.length };
+  }
+  out.rate = out.turns > 0 ? out.fallbacks / out.turns : 0;
+  return out;
+}
+
+/** D-341: the model's sentences said in two or more runs of one case: the words should vary across runs. */
+function sharedSentencesOf(required: readonly { id: string; caseId: string }[], store: PracticeStore): Record<string, string[]> {
+  const byCase = new Map<string, Map<string, Set<string>>>();
+  for (const r of required) {
+    const trace = parse<MayaTrace>(store.load(traceFile(r.id)));
+    if (!trace || !Array.isArray(trace.turns)) continue;
+    const seen = byCase.get(r.caseId) ?? new Map<string, Set<string>>();
+    byCase.set(r.caseId, seen);
+    for (const t of trace.turns) {
+      if (t.kind !== "maya" || !t.output || t.attempts[0]?.source === "controller" || t.attempts.at(-1)?.source === "fallback") continue;
+      for (const said of t.output.say) for (const x of said.split(/(?<=[.?!])\s+/)) {
+        const key = x.trim().toLowerCase();
+        if (key.split(/\s+/).length < 4) continue;
+        seen.set(key, (seen.get(key) ?? new Set()).add(r.id));
+      }
+    }
+  }
+  const out: Record<string, string[]> = {};
+  for (const [caseId, seen] of byCase) {
+    const shared = [...seen].filter(([, ids]) => ids.size >= 2).map(([x]) => x);
+    if (shared.length > 0) out[caseId] = shared;
+  }
+  return out;
 }
 
 /** Maya's model calls in the saved traces of these runs, and the proposals read from inside one code fence. */
@@ -1032,6 +1086,16 @@ export function reportMarkdown(r: PracticeReport): string {
   if (r.fencedJson) {
     const runs = Object.entries(r.fencedJson.runs).map(([id, n]) => `${id} ${n}`).join(", ");
     lines.push(`Fenced JSON: ${r.fencedJson.fenced} of ${r.fencedJson.calls} Maya model calls were read from inside one code fence${runs ? ` (${runs})` : ""}. Not a gate result.`, "");
+  }
+  if (r.fallbacks) {
+    const f = r.fallbacks;
+    const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
+    lines.push(`Fallbacks (D-341): ${f.fallbacks} of ${f.turns} Maya turns (${pct(f.rate)}) were code's line; target under ${pct(FALLBACK_TARGET)}, the suite fails above ${pct(FALLBACK_LIMIT)}.`, "");
+    const runs = Object.entries(f.runs);
+    if (runs.length) lines.push("| Run | Maya turns | Fallbacks | Rate |", "|---|---|---|---|", ...runs.map(([id, x]) => `| ${id} | ${x.turns} | ${x.fallbacks} | ${pct(x.rate)} |`), "");
+  }
+  if (r.sharedSentences && Object.keys(r.sharedSentences).length) {
+    lines.push("Sentences said in two or more runs of a case (the words should vary):", "", ...Object.entries(r.sharedSentences).map(([id, xs]) => `- ${id}: ${xs.map((x) => `"${x}"`).join("; ")}`), "");
   }
   if (r.packages.some(p => p.source === "real-generator-synthetic-v1")) {
     lines.push("## Generated packages", "", "These cases check known answers and unsupported-kind refusals. They do not cover every teaching path.", "", "| Case | Support | Package hash |", "|---|---|---|");

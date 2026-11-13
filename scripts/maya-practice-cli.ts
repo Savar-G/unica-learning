@@ -50,8 +50,8 @@ import { anthropicClient } from "@/lib/ai-anthropic";
 import { claudeCliClient } from "@/lib/ai-claude-cli-practice";
 import { openRouterClient } from "@/lib/ai-openrouter";
 import { freeTalkProblem, NEVER_SAY, NOT_OK_TALK, OK_TALK, TALK_REVIEW_PROMPT_VERSION } from "@/lib/maya";
-import { aiMayaModel, type MayaModel } from "@/lib/maya-model";
-import { ruleMayaModel } from "@/lib/maya-model-fake";
+import { conversationalMayaModel, type MayaModel } from "@/lib/maya-model";
+import { ruleConversationalModel } from "@/lib/maya-model-fake";
 import { aiTalkReviewer, fakeTalkReviewer, REVIEW_DEFAULT_MODEL, runReview, type TalkReviewer } from "@/lib/maya-talk-review";
 import { redactText } from "@/lib/maya-trace";
 import { randomUUID } from "node:crypto";
@@ -390,7 +390,7 @@ async function main() {
   const stopped = () => spending.reached || usageLimit !== null;
   if (o.reviewCheck && o.fake) throw new Error("--review-check needs a real review model: drop --fake.");
   if (o.fake) {
-    maya = ruleMayaModel();
+    maya = ruleConversationalModel();
     reviewer = o.freeTalk ? fakeTalkReviewer() : null;
     const scripts = new Map(cases.map((c) => [c.persona.name, c.fakeScript]));
     simulator = { id: "fake-child", promptVersion: SIMULATOR_PROMPT_VERSION, next: (input, s) => scriptedSimulator(scripts.get(input.persona.name) ?? []).next(input, s) };
@@ -417,7 +417,7 @@ async function main() {
     });
     // Each call starts a Claude Code process (about 3 s more than an API call), so Maya's 30 s limit and the review's 8 s
     // live limit are raised: this run checks her rules and words, not the live time limits.
-    maya = aiMayaModel(client("maya"), { timeoutMs: SUBSCRIPTION_MAYA_MS });
+    maya = conversationalMayaModel(client("maya"), { timeoutMs: SUBSCRIPTION_MAYA_MS });
     simulator = aiChildSimulator(client("simulator"), { timeoutMs: SUBSCRIPTION_MAYA_MS });
     validity = aiValidityJudge(client("validity"), { timeoutMs: SUBSCRIPTION_MAYA_MS });
     judge = aiJudge(client("judge"), { timeoutMs: 3 * SUBSCRIPTION_MAYA_MS });
@@ -454,7 +454,7 @@ async function main() {
       console.log(`-- ${credit.message}`);
       client = (role) => cappedClient(openRouterClient({ apiKey: key, model: models[role], fetch: meteredFetch(globalThis.fetch, spending, price[role]) }), spending, price[role]);
     }
-    maya = aiMayaModel(client("maya"));
+    maya = conversationalMayaModel(client("maya"));
     simulator = aiChildSimulator(client("simulator"));
     validity = aiValidityJudge(client("validity"));
     judge = aiJudge(client("judge"));

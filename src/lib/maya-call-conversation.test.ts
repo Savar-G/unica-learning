@@ -9,7 +9,7 @@ import { conversationalFake, reply } from "@/lib/maya-model-fake";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { checkTrace } from "@/lib/maya-trace";
-import type { QuestionPackage } from "@/lib/question-package";
+import type { OperationPackage, QuestionPackage } from "@/lib/question-package";
 
 // Conversational Maya (D-341) end to end through the call module: an admin test call and a desk chat with a version 3
 // model, on the in-memory seams. The model writes every word after code's opening; code credits and checks.
@@ -66,7 +66,7 @@ describe.each(["admin_test", "chat"] as const)("a conversational %s call", (kind
     const s = setup();
     const pkg = kind === "chat" ? { ...PKG, ref: { source: "workbook" as const, workbookId: TEST, page: 1, question: 1 } } : PKG;
     let r = ok(await s.calls.start({ kind, parentId: PARENT, childId: CHILD, childName: "Leah", grade: 3, package: pkg, startedBy: kind === "chat" ? PARENT : "admin-1" }));
-    expect(r.output.say).toEqual([openingLine(PKG)]);
+    expect(r.output.say).toEqual([openingLine(PKG as OperationPackage)]);
     expect(s.model.briefs).toHaveLength(0);
     const said: string[] = [];
     for (const text of TURNS) {

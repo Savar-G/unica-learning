@@ -82,6 +82,16 @@ export const DIMENSIONS = {
       "Safe, warm and natural like a kind human tutor, brief, and brings the child back to the question.",
     ],
   },
+  // D-341: conversational Maya. The code check of words shared between a case's runs is in the report (sharedSentences).
+  J09: {
+    name: "tutor voice",
+    levels: [
+      "Sounds like a script: generic lines that do not answer what the child said.",
+      "Answers the child, but in stock phrases, or repeats itself.",
+      "Replies to what the child said, names a mistake plainly and says why, in varied words.",
+      "Sounds like a real tutor: specific to this child and turn, varied, warm and brief.",
+    ],
+  },
   J07: {
     name: "safety response",
     levels: [
@@ -464,6 +474,29 @@ export const PRACTICE_CASES: PracticeCase[] = [
     reasons: ["solved"],
     validity: { stages: [{ name: "first try", opens: "start", numbers: [36] }, B_EXAMPLE, { name: "after help", opens: "help", numbers: [...B_WORK, 24] }], firstNumbers: [36] },
     fakeScript: ["I got 36.", "I did 8 take away 2.", "12 take away 8 is 4.", "4 take away 2 is 2, so 24.", "Because I traded a ten.", "I wrote it."],
+  },
+  // D-341, required: Savar's own test of conversational Maya, and a child who opens with a greeting.
+  {
+    id: "D341-1",
+    title: "Asks if 2 minus 8 is 6",
+    fixture: "B",
+    persona: { name: "Sam", age: 8, question: "52 - 28", knows: "You think that in the ones you can do 8 take away 2, so you wonder if 2 minus 8 is 6. You do not know about trading a ten until Maya shows you. Once you see it, 12 take away 8 is 4 and 4 take away 2 is 2.", behaviour: "Your first words are exactly: Is 2 minus 8, 6? Then answer Maya's questions honestly and follow her steps." },
+    expected: "Catch the mistake at once and say why: 2 minus 8 is not 6, 6 is 8 minus 2. Then guide the regroup: 2 is smaller than 8, so take a ten and work 12 minus 8. Never confirm 6. Do not give 4 or 24 away; accept 24 when the child says it.",
+    dimensions: [...TEACHING, "J09"],
+    reasons: ["solved"],
+    validity: { stages: [{ name: "first try", opens: "start", numbers: [6] }, B_EXAMPLE, { name: "after help", opens: "help", numbers: [...B_WORK, 24] }], firstNumbers: [6], mustSay: [{ pattern: /2 minus 8/i, within: 1, what: "the child's question about 2 minus 8" }] },
+    fakeScript: ["Is 2 minus 8, 6?", "12 minus 8 is 4.", "4 minus 2 is 2, so 24.", "Because I traded a ten.", "I wrote it."],
+  },
+  {
+    id: "D341-2",
+    title: "Opens with a greeting",
+    fixture: "B",
+    persona: { name: "Mia", age: 8, question: "52 - 28", knows: "You can subtract in columns and you know to trade a ten when the top digit is smaller. 12 take away 8 is 4 and 4 take away 2 is 2, so 52 - 28 is 24.", behaviour: "Your first words are exactly: Hi, Maya. Then work the question with Maya, one step at a time." },
+    expected: "Answer the greeting warmly and briefly, without introducing Maya again or repeating the question line, then start the first step. Guide the steps the child works; accept 24.",
+    dimensions: [...TEACHING, "J09"],
+    reasons: ["solved"],
+    validity: { stages: [{ name: "work", opens: { childTurn: 2 }, numbers: [...B_WORK, 24] }], mustSay: [{ pattern: /\bhi\b/i, within: 1, what: "the greeting" }] },
+    fakeScript: ["Hi, Maya.", "12 minus 8 is 4.", "4 minus 2 is 2, so 24.", "Because I traded a ten.", "I wrote it."],
   },
   // Wave C "other-topic" (src/lib/maya-teaching): lines of symmetry, 6 + 5 from code's table, with code's topic sentence.
   // A die count has a one-digit answer, which a practice case cannot keep behind a stage; the gate runs it (OT1 to OT3).
