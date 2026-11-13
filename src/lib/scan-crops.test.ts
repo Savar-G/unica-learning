@@ -136,7 +136,7 @@ describe("making the crops", () => {
     const m = setup();
     await runScanCrops(m.store, ref, token(1));
     const stored = await m.store.calibration(ref);
-    expect(stored).toMatchObject({ state: "ready", revision: REVISION, result: { calibration: { revision: REVISION, version: 1 } } });
+    expect(stored).toMatchObject({ state: "ready", revision: REVISION, result: { calibration: { revision: REVISION, version: 2 } } });
     expect(JSON.stringify(stored).length).toBeLessThan(5000);
   });
 });
@@ -428,7 +428,8 @@ describe("a question the photo's edge cuts off (#912)", () => {
     }
     // What marking reads: the stored result names the cut questions, and the calibration says how the page was placed.
     const stored = await m.store.calibration(ref);
-    expect(stored?.result).toMatchObject({ cutOff: [1, 4], calibration: { placedBy: "qr", missingMarks: ["tl", "bl"] } });
+    // Version 1 readers ignore cutOff. They must reject this result before they can mark its white border as blank.
+    expect(stored?.result).toMatchObject({ cutOff: [1, 4], calibration: { version: 2, placedBy: "qr", missingMarks: ["tl", "bl"] } });
     expect(await readScanPreview(m.store, ref)).toEqual(preview);
   });
 

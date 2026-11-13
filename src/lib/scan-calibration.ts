@@ -29,7 +29,9 @@ import {
   type ScanMark,
 } from "@/lib/workbook-print-contract";
 
-export const CALIBRATION_VERSION = 1;
+// Version 2 includes mesh placement and cut-off answers. Version 1 readers must refuse new results because they ignore
+// the cut-off list and could mark the straightened page's white border as a definite blank during a rolling deploy.
+export const CALIBRATION_VERSION = 2;
 
 /** Interleaved 8-bit pixels: 1 channel (grey) or 3 (RGB). Row 0 is the top. */
 export interface Raster {
@@ -1602,9 +1604,9 @@ export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: Ph
   return calibration({ ...best, marks: best.order.map((m) => m.corner) });
 }
 
-/** A stored calibration, only for a photo of its own revision. */
+/** A stored calibration, only for a photo of its own revision. Version 1 keeps the earlier complete-page format. */
 export const calibrationForPhoto = (c: Calibration, photo: { printedRevision: string | null }): Calibration | null =>
-  (c.revision === photo.printedRevision && c.version === CALIBRATION_VERSION ? c : null);
+  (c.revision === photo.printedRevision && (c.version === 1 || c.version === CALIBRATION_VERSION) ? c : null);
 
 // ---------- Cutting the page ----------
 

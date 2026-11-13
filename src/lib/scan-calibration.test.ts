@@ -290,7 +290,11 @@ describe("a photo and its printed revision", () => {
     const result = calibratePhoto({ photo, printed, contract: own, pageLink: LINK });
     if (result.status !== "calibrated") throw new Error("refused");
     expect(result.calibration.revision).toBe(REVISION);
+    expect(result.calibration.version).toBe(2);
     expect(calibrationForPhoto(result.calibration, { printedRevision: REVISION })).toBe(result.calibration);
+    const legacy = { ...result.calibration, version: 1 };
+    expect(calibrationForPhoto(legacy, { printedRevision: REVISION })).toBe(legacy);
+    expect(calibrationForPhoto({ ...result.calibration, version: 3 }, { printedRevision: REVISION })).toBeNull();
     expect(calibrationForPhoto(result.calibration, { printedRevision: NEW })).toBeNull();
     expect(calibrationForPhoto(result.calibration, { printedRevision: null })).toBeNull();
   }, 20_000);
