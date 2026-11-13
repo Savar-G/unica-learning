@@ -119,9 +119,14 @@ class ProbeSTT extends stt.STT {
   send(type: stt.SpeechEventType, text = "") {
     this.events.emit("event", { type, ...(text ? { alternatives: [{ language: normalizeLanguage("en"), text, startTime: 0, endTime: 0, confidence: 0.95 }] } : {}) });
   }
-  /** A final transcript whose last word ends `endTime` seconds into the audio, as a real speech-to-text reports it. */
-  sendTimed(text: string, endTime: number) {
-    this.events.emit("event", { type: stt.SpeechEventType.FINAL_TRANSCRIPT, alternatives: [{ language: normalizeLanguage("en"), text, startTime: 0, endTime, confidence: 0.95 }] });
+  /**
+   * A final transcript whose last word ends `wordEnd` seconds into the audio, as a real speech-to-text reports it. Its own
+   * end time is `turnEnd`: through LiveKit Inference that is the turn's `start + duration`, which runs on while the
+   * speech-to-text holds the turn.
+   */
+  sendTimed(text: string, wordEnd: number, turnEnd = wordEnd) {
+    const words = text.split(/\s+/).map((w, i, all) => voice.createTimedString({ text: w, startTime: wordEnd * i / all.length, endTime: i === all.length - 1 ? wordEnd : wordEnd * (i + 1) / all.length }));
+    this.events.emit("event", { type: stt.SpeechEventType.FINAL_TRANSCRIPT, alternatives: [{ language: normalizeLanguage("en"), text, startTime: 0, endTime: turnEnd, confidence: 0.95, words }] });
   }
   says(text: string) {
     this.send(stt.SpeechEventType.START_OF_SPEECH);
@@ -565,7 +570,9 @@ describe("the parts of one turn (#532)", () => {
     c.clock.move(5000);
     const lastWordEnd = Date.now() - 1100;
     speech.send(stt.SpeechEventType.START_OF_SPEECH);
-    speech.sendTimed("I got 56.", (lastWordEnd - inputStartedAt) / 1000);
+    // The speech-to-text held the turn 1100 ms: the transcript's own end time is the final's, the last word's is not
+    // (real calls of 2026-11-13 logged the transcript's end, and under-reported the wait by the hold).
+    speech.sendTimed("I got 56.", (lastWordEnd - inputStartedAt) / 1000, (Date.now() - inputStartedAt) / 1000);
     speech.send(stt.SpeechEventType.END_OF_SPEECH);
     await waitFor(() => c.samples.length === 1, "the sample");
     const [s] = c.samples;

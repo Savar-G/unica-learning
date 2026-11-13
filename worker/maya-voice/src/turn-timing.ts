@@ -25,18 +25,71 @@ export type TurnOutcome = "answered" | "no_words" | "interrupted";
 /** `streamed`: Maya's first sentence came before the phrase could start (D-341). */
 export type AckSkip = "child_talking" | "child_away" | "closing" | "bank_used" | "board" | "save" | "streamed";
 /**
- * Where the child's own end of speech came from: the speech-to-text's end time of the last word (`stt_words`), or the
- * voice activity detector's end of speech (`vad`), which comes after its own silence window (250 ms in LiveKit's default).
+ * Where the child's own end of speech came from, in this order: the speech-to-text's end time of the last word in the
+ * final transcript (`stt_words`); the worker's own detector stream (`detector`, ./heard-signals.ts), whose end of speech
+ * is put back by the silence it waited for; or LiveKit's end of speech (`vad`), which comes after its own silence window
+ * (250 ms in LiveKit's default).
  */
-export type SpeechEndSource = "stt_words" | "vad";
+export type SpeechEndSource = "stt_words" | "detector" | "vad";
 
 /** What the worker saw before the turn: the child's own end of speech and the speech-to-text's final transcript. */
 export interface HeardMarks {
-  /** The child's end of speech, on the turn's clock. Null when neither source gave one. */
+  /** The child's end of speech, on the turn's clock. Null when no source gave one. */
   speechEndAt: number | null;
   source: SpeechEndSource | null;
   /** The last final transcript of the turn reached the worker, on the turn's clock. */
   finalAt: number | null;
+  /** The worker's own detector's end of speech, on the turn's clock, whatever `source` is. Null: no detector, or none. */
+  detectorEndAt?: number | null;
+}
+
+/**
+ * When one final transcript reached the worker, and when the child's speech in it ended, all on the system clock:
+ * `wordEndAt` by the speech-to-text's own time of the last word (null when it gave no word times), `detectorEndAt` by the
+ * worker's own detector (null when there is none, or it heard no end of speech since the previous final).
+ */
+export interface FinalMark {
+  finalAt: number;
+  wordEndAt: number | null;
+  detectorEndAt: number | null;
+}
+
+/** The end time (seconds, on the speech-to-text's audio clock) of the last word of a final transcript. */
+interface TimedWords {
+  words?: readonly { endTime?: number }[];
+}
+
+/**
+ * The marks of one final transcript. The child's last word ends at the time the first audio frame went in
+ * (`inputStartedAt`) plus the last word's end time. It is never the transcript's own end time: through LiveKit Inference
+ * that is `start + duration` of the turn (inference/stt.js), which can run on to the end of the turn, so a turn the
+ * speech-to-text held put the child's "end of speech" near the final itself (real calls of 2026-11-13: `waitMs` 3186
+ * where the browser measured 7028). A mark after the final is a clock that does not fit, and is left out.
+ */
+export function finalMark(best: TimedWords | undefined, inputStartedAt: number | null, finalAt: number, detectorEndAt: number | null): FinalMark {
+  const end = best?.words?.at(-1)?.endTime;
+  const wordEndAt = inputStartedAt !== null && typeof end === "number" && Number.isFinite(end) && end > 0 ? inputStartedAt + end * 1000 : null;
+  return {
+    finalAt,
+    wordEndAt: wordEndAt !== null && wordEndAt <= finalAt ? wordEndAt : null,
+    detectorEndAt: detectorEndAt !== null && detectorEndAt <= finalAt ? detectorEndAt : null,
+  };
+}
+
+/**
+ * The marks of a turn on the turn's clock (`onTurnClock` maps a system-clock time to it). The child's end of speech: the
+ * last word's end, else the worker's detector, else LiveKit's first end of speech (`vadEndAt`, system clock) when it came
+ * before the final transcript (one at or after it is the speech-to-text's own end of turn, not the child's).
+ */
+export function heardMarks(mark: FinalMark | null, vadEndAt: number | null, onTurnClock: (systemAt: number) => number): HeardMarks {
+  if (!mark) return { speechEndAt: null, source: null, finalAt: null, detectorEndAt: null };
+  const finalAt = onTurnClock(mark.finalAt);
+  const detectorEndAt = mark.detectorEndAt === null ? null : onTurnClock(mark.detectorEndAt);
+  const end: [number, SpeechEndSource] | null = mark.wordEndAt !== null ? [onTurnClock(mark.wordEndAt), "stt_words"]
+    : detectorEndAt !== null ? [detectorEndAt, "detector"]
+    : vadEndAt !== null && vadEndAt < mark.finalAt ? [onTurnClock(vadEndAt), "vad"]
+    : null;
+  return { speechEndAt: end?.[0] ?? null, source: end?.[1] ?? null, finalAt, detectorEndAt };
 }
 
 export interface VoiceTurnSample {
@@ -53,6 +106,13 @@ export interface VoiceTurnSample {
    */
   sttWaitMs: number | null;
   speechEnd: SpeechEndSource | null;
+  /**
+   * The speech-to-text's hold by the worker's own detector alone: its end of speech to the final transcript. It uses no
+   * provider time, so it checks `sttWaitMs`: when the two differ by much more than the detector's window (about 30 ms
+   * steps), the provider's word times do not fit the worker's clock. Null: no detector (the fakes), or no end of speech
+   * from it before the final.
+   */
+  sttHoldMs: number | null;
   /** The whole wait of an answered turn: the child's own end of speech to the answer's first sound. */
   waitMs: number | null;
   /**
@@ -152,6 +212,7 @@ export class TurnClock {
       } : null,
       sttWaitMs: end !== null && finalAt !== null ? Math.max(0, finalAt - end) : null,
       speechEnd: end !== null ? this.heard.source : null,
+      sttHoldMs: this.heard.detectorEndAt != null && finalAt !== null ? Math.max(0, finalAt - this.heard.detectorEndAt) : null,
       waitMs: answered && end !== null ? this.answerSoundAt! - end : null,
       stageMs: answered && this.sentAt !== null ? Math.max(0, this.sentAt - this.heldAt!) : null,
       firstPartMs: since(this.partAt),
@@ -187,6 +248,7 @@ export function voiceTurnReport(samples: readonly VoiceTurnSample[]) {
     firstSound: spread(samples.flatMap((s) => (s.firstSoundMs === null ? [] : [s.firstSoundMs]))),
     answer: spread(samples.flatMap((s) => (s.answerMs === null ? [] : [s.answerMs]))),
     sttWait: spread(samples.flatMap((s) => (s.sttWaitMs === null ? [] : [s.sttWaitMs]))),
+    sttHold: spread(samples.flatMap((s) => (s.sttHoldMs === null ? [] : [s.sttHoldMs]))),
     wait: spread(samples.flatMap((s) => (s.waitMs === null ? [] : [s.waitMs]))),
     stage: spread(samples.flatMap((s) => (s.stageMs === null ? [] : [s.stageMs]))),
     parts: Object.fromEntries(TURN_PARTS.map((k) => [k, spread(parts.map((p) => p[k]))])) as Record<keyof TurnParts, ReturnType<typeof spread>>,

@@ -71,8 +71,10 @@ export class HeardSignals {
   private going = 0;
   /** The part of the going segment already counted at an earlier final. */
   private counted = 0;
+  /** When the detector's last speech ended (system clock), if no speech followed it since the previous final. */
+  private endAt: number | null = null;
 
-  constructor(vad: VAD | undefined) {
+  constructor(vad: VAD | undefined, private readonly now: () => number = Date.now) {
     if (!vad) return;
     try {
       this.stream = vad.stream();
@@ -85,11 +87,17 @@ export class HeardSignals {
   private async read(stream: VADStream) {
     try {
       for await (const ev of stream) {
-        if (ev.type === VADEventType.INFERENCE_DONE) this.going = ev.speaking ? ev.speechDuration : 0;
-        else if (ev.type === VADEventType.END_OF_SPEECH) {
+        if (ev.type === VADEventType.INFERENCE_DONE) {
+          this.going = ev.speaking ? ev.speechDuration : 0;
+          // Speech again after an end: that end is not the child's last.
+          if (ev.speaking) this.endAt = null;
+        } else if (ev.type === VADEventType.END_OF_SPEECH) {
           this.ended += Math.max(0, ev.speechDuration - this.counted);
           this.going = 0;
           this.counted = 0;
+          // The detector reports the end after its silence window (`silenceDuration`): the speech ended that long ago.
+          // Its `timestamp` is on the detector's audio clock, not the system clock (inference/vad.js), so it is not used.
+          this.endAt = this.now() - Math.max(0, ev.silenceDuration);
         }
       }
     } catch {
@@ -117,8 +125,15 @@ export class HeardSignals {
     return silentFinal({ vadSpeechMs: detected === null ? null : Math.round(detected), peakDbfs: dbfs(this.peak) }, limitDbfs);
   }
 
+  /**
+   * When the detector's last speech ended before now (system clock), with no speech after it; null when it heard none or
+   * the speech goes on. Read it before `final`, which starts a new window.
+   */
+  get speechEndAt(): number | null { return this.endAt; }
+
   /** The measures for a final transcript, and a new window from here. */
   final(alternatives: readonly stt.SpeechData[]): FinalSignals {
+    this.endAt = null;
     const detected = this.detected();
     const signals = finalSignals(alternatives, { peak: this.peak, sumSquares: this.sumSquares, samples: this.samples }, detected);
     this.peak = this.sumSquares = this.samples = 0;

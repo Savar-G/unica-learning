@@ -33,7 +33,7 @@ import { VOICE_METER_TICK_MS } from "@/lib/maya-spend";
 import { limitsOf, sentencesOf } from "@/lib/maya";
 import { asksForNumber, CONNECTION_RENEW_MS, childTurnFrom, endsInOpenNumber, GREETING_ID, GREETING_TEXT, nextTickAt, openingAsksForNumber, RECONNECT_GRACE_MS, type Heard, type TurnSilence, type VoiceTuning } from "@/lib/maya-voice";
 import { ACK_HOLD_LIMIT_MS, ACK_LIMIT_MS, ACK_NOT_STREAMED_MS, ACK_PHRASES, nextAcknowledgement } from "@/lib/maya-voice-ack";
-import { TurnClock, type AckSkip, type HeardMarks, type TurnOutcome, type VoiceTurnSample } from "./turn-timing";
+import { finalMark, heardMarks, TurnClock, type AckSkip, type FinalMark, type TurnOutcome, type VoiceTurnSample } from "./turn-timing";
 
 const userTexts = (ctx: llm.ChatContext) =>
   ctx.items.flatMap((i) => (i.type === "message" && i.role === "user" ? [i.textContent ?? ""] : []));
@@ -84,14 +84,7 @@ interface AgentHooks {
   childWentOn(text: string): Promise<boolean>;
 }
 
-/**
- * When one final transcript reached the worker, and when the child's last word in it ended by the speech-to-text's own
- * word times (null when the provider gave none). Both on the system clock.
- */
-export interface FinalMark {
-  finalAt: number;
-  wordEndAt: number | null;
-}
+export type { FinalMark } from "./turn-timing";
 
 export class MayaVoiceAgent extends voice.Agent {
   private seen = 0;
@@ -113,8 +106,9 @@ export class MayaVoiceAgent extends voice.Agent {
 
   /**
    * The speech-to-text as LiveKit runs it, keeping each final transcript's confidence and alternatives, and its time
-   * marks (FinalMark). The child's last word ends at the time the first audio frame went in plus the transcript's end
-   * time, as LiveKit reads it (`inputStartedAt` in voice/audio_recognition.js).
+   * marks (FinalMark). The child's last word ends at the time the first audio frame went in plus the last word's end
+   * time, as LiveKit reads it (`inputStartedAt` in voice/audio_recognition.js); the worker's own detector gives a second
+   * end of speech that uses no provider time.
    */
   override async sttNode(audio: ReadableStream<AudioFrame> | AsyncIterable<AudioFrame>, settings: voice.ModelSettings) {
     let inputStartedAt: number | null = null;
@@ -154,6 +148,7 @@ export class MayaVoiceAgent extends voice.Agent {
           if ((type === stt.SpeechEventType.INTERIM_TRANSCRIPT || type === stt.SpeechEventType.PREFLIGHT_TRANSCRIPT) && signals.quiet(limit)) return;
           if (type === stt.SpeechEventType.END_OF_SPEECH && heldStart) { heldStart = null; return; }
           if (type === stt.SpeechEventType.FINAL_TRANSCRIPT && event.alternatives) {
+            const detectorEndAt = signals.speechEndAt;
             const heard = signals.final(event.alternatives);
             if (silentFinal(heard, limit)) {
               // Words in digital silence: not a child turn, never answered. The signals go in the log, no words.
@@ -161,11 +156,8 @@ export class MayaVoiceAgent extends voice.Agent {
               return;
             }
             finals.push(event.alternatives.map((a) => ({ text: a.text, confidence: a.confidence })));
-            const finalAt = Date.now();
-            const end = event.alternatives[0]?.endTime ?? 0;
-            const wordEndAt = inputStartedAt !== null && end > 0 ? inputStartedAt + end * 1000 : null;
-            // A word that "ends" after its transcript came is a clock that does not fit: no mark rather than a wrong one.
-            marks.push({ finalAt, wordEndAt: wordEndAt !== null && wordEndAt <= finalAt ? wordEndAt : null });
+            // The last word's end, never the transcript's own end time, which can hold the turn's end (`finalMark`).
+            marks.push(finalMark(event.alternatives[0], inputStartedAt, Date.now(), detectorEndAt));
             console.info("[maya voice] final transcript", callId, heard);
           }
           // Kept speech: a start held back goes first.
@@ -613,13 +605,9 @@ export class VoiceCallRun {
     const sinceThen = (at: number) => heardAt - Math.max(0, systemNow - at);
     // LiveKit's mark is on the system clock, and can be earlier than its user state change. Keep only how long ago it was.
     const speechEndedAt = stoppedAt === undefined ? this.childStoppedAt ?? heardAt : sinceThen(stoppedAt * 1000);
-    // The child's own end of speech: the speech-to-text's end of the last word, else LiveKit's first end of speech if it
-    // came before the final transcript (one at or after it is the speech-to-text's own end of turn, not the child's).
-    const seen = this.speechEndSeenAt;
-    const heard: HeardMarks = !mark ? { speechEndAt: null, source: null, finalAt: null }
-      : mark.wordEndAt !== null ? { speechEndAt: sinceThen(mark.wordEndAt), source: "stt_words", finalAt: sinceThen(mark.finalAt) }
-      : seen !== null && seen < mark.finalAt ? { speechEndAt: sinceThen(seen), source: "vad", finalAt: sinceThen(mark.finalAt) }
-      : { speechEndAt: null, source: null, finalAt: sinceThen(mark.finalAt) };
+    // The child's own end of speech: the speech-to-text's end of the last word, else the worker's own detector, else
+    // LiveKit's first end of speech if it came before the final transcript (`heardMarks`).
+    const heard = heardMarks(mark, this.speechEndSeenAt, sinceThen);
     const pace: TurnPace = {
       clock: new TurnClock(this.timers.now, speechEndedAt, heardAt, heard), generation: this.generation,
       writable: true, ready: false, closed: false, handle: this.speech, guided: false, ackStopped: false, ackWritten: false, ownSpeech: false, limit: null, hold: null, ack: null, ackOver: null, write: () => {}, end: () => {},

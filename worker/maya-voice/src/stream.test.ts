@@ -578,8 +578,8 @@ describe("when the thinking phrase comes (D-341)", () => {
 function fakeVad() {
   const queue: VADEvent[] = [];
   let wake: (() => void) | null = null;
-  const event = (type: VADEventType, speechDuration: number, speaking: boolean): VADEvent =>
-    ({ type, samplesIndex: 0, timestamp: 0, speechDuration, silenceDuration: 0, frames: [], probability: speaking ? 0.9 : 0.1, inferenceDuration: 1, speaking, rawAccumulatedSilence: 0, rawAccumulatedSpeech: 0 });
+  const event = (type: VADEventType, speechDuration: number, speaking: boolean, silenceDuration = 0): VADEvent =>
+    ({ type, samplesIndex: 0, timestamp: 0, speechDuration, silenceDuration, frames: [], probability: speaking ? 0.9 : 0.1, inferenceDuration: 1, speaking, rawAccumulatedSilence: 0, rawAccumulatedSpeech: 0 });
   const stream = {
     pushFrame: () => {},
     close: () => {},
@@ -592,13 +592,35 @@ function fakeVad() {
   };
   return {
     vad: { stream: () => stream } as unknown as VAD,
-    async send(type: VADEventType, speechDuration: number, speaking: boolean) {
-      queue.push(event(type, speechDuration, speaking));
+    async send(type: VADEventType, speechDuration: number, speaking: boolean, silenceDuration = 0) {
+      queue.push(event(type, speechDuration, speaking, silenceDuration));
       wake?.();
       for (let i = 0; i < 3; i++) await new Promise(r => setImmediate(r));
     },
   };
 }
+
+describe("the wait of a turn the speech-to-text held (2026-11-13)", () => {
+  it("counts from the worker's detector when the final has no word times, and logs the hold", async () => {
+    const speech = new ProbeSTT();
+    const v = fakeVad();
+    const c = await voiceCall({ model: ruleConversationalModel(), speech, heardVad: v.vad });
+    for (let i = 0; i < 20; i++) c.microphone.push(3000);
+    speech.send(stt.SpeechEventType.START_OF_SPEECH);
+    await v.send(VADEventType.START_OF_SPEECH, 60, true);
+    await v.send(VADEventType.INFERENCE_DONE, 900, true);
+    // The detector hears the end after 250 ms of silence: the child stopped 250 ms ago.
+    await v.send(VADEventType.END_OF_SPEECH, 900, false, 250);
+    // The speech-to-text holds the turn about 4 s more.
+    c.clock.move(3750);
+    speech.send(stt.SpeechEventType.FINAL_TRANSCRIPT, "Then 4 minus 2 is 2, so it's 24.");
+    speech.send(stt.SpeechEventType.END_OF_SPEECH);
+    await waitFor(() => c.samples.length === 1, "the sample");
+    const [s] = c.samples;
+    expect(s).toMatchObject({ outcome: "answered", speechEnd: "detector", sttWaitMs: 4000, sttHoldMs: 4000 });
+    expect(s.waitMs).toBe(4000 + s.answerMs!);
+  });
+});
 
 describe("a final transcript heard in silence (the drop rule)", () => {
   it("is dropped: no child turn, no answer, and the child is not left speaking", async () => {
