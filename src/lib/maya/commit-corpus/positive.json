@@ -3498,7 +3498,7 @@
    ],
    "lastMaya": {
     "act": "guide",
-    "say": "No problem. We can check it together. Now say the whole answer. What is 52 − 28?"
+    "say": "No problem. We can check it together. Now say the whole answer. What is 52 \u2212 28?"
    }
   },
   {
@@ -6678,6 +6678,203 @@
    "question": "gate-A-27-39",
    "turn": 0,
    "text": "That gives 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "They make 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Together they make 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "7 and 9, they make 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "They add up to 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Those two make 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "I say 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "They make 6.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "They add up to 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Result: 66.",
    "answers": [
     {
      "value": {
