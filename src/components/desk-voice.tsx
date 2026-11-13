@@ -189,7 +189,7 @@ export function useDeskVoice(initial: { usage: VoiceUsage } | null, at: { book: 
   const liveLeft = counting && base ? leftWhileLive(base, room.seconds) : null;
   const screen = voiceScreen({ flow, phase: room.phase, callEnded: call?.ended === true, hungUp, error: room.error });
   return {
-    enabled: initial !== null, usage, liveLeft, flow, screen, call, mic, room: { phase: room.phase, maya: room.maya, error: room.error, seconds: room.seconds, fakeSpeech: room.fakeSpeech, sending: room.sending, say: room.say },
+    enabled: initial !== null, usage, liveLeft, flow, screen, call, mic, room: { phase: room.phase, maya: room.maya, error: room.error, seconds: room.seconds, fakeSpeech: room.fakeSpeech, sending: room.sending, hearing: room.hearing, say: room.say },
     audioHost: room.audioHost, startError, board, shown,
     /** A call is under way or just ended: the desk's own controls give way to the call's. */
     engaged: flow !== "idle",
@@ -207,15 +207,21 @@ export function VoiceLimit({ state }: { state: DeskVoiceState }) {
   return <div><dt><Icon name="phone" size={14} />Calls</dt><dd>{voiceLeftLine(state.liveLeft ?? state.usage.leftSeconds) ?? "Used this week"}</dd></div>;
 }
 
-/** The call's talk, as chat shows it: Maya's lines and the child's, in order. */
+/**
+ * The call's talk, as chat shows it: Maya's lines and the child's, in order. While Maya hears the child, their words
+ * show as the last bubble in light text, until the saved turn takes its place. That line is for this screen only: it is
+ * not saved, and a screen reader reads the saved turn instead.
+ */
 export function VoiceTranscript({ state }: { state: DeskVoiceState }) {
   const { call } = state;
   if (!call) return null;
+  const hearing = state.flow === "call" ? state.room.hearing : null;
   return <>{call.transcript.map((line, i) => (
     <p key={`${call.id}-${i}`} className={`desk-bubble${line.speaker === "child" ? " desk-child-bubble" : ""}`}>
       <span className="sr-only">{line.speaker === "child" ? "You" : "Maya"}: </span>{line.text}
     </p>
-  ))}</>;
+  ))}
+  {hearing && <p className="desk-bubble desk-child-bubble desk-hearing" aria-hidden="true">{hearing}</p>}</>;
 }
 
 /** Maya's board during a call: read-only. The child's pen is not part of a voice call. */

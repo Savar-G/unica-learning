@@ -24,7 +24,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { callsOn } from "@/lib/maya-call-seams";
 import { mayaCallStore } from "@/lib/maya-call-store";
-import { asksWordTimings, callKeyterms, callOfRoom, checkJoiner, GREETING_TEXT, JOIN_WAIT_MS, VOICE_AGENT_NAME, voiceProviders, type VoiceCallFacts } from "@/lib/maya-voice";
+import { asksWordTimings, callKeyterms, callOfRoom, checkJoiner, GREETING_TEXT, JOIN_WAIT_MS, turnSilences, VOICE_AGENT_NAME, voiceProviders, type TurnSilence, type VoiceCallFacts } from "@/lib/maya-voice";
 import { VoiceCallRun, voiceSession, type CallUpdate } from "./agent";
 import { voiceTurnReport, type VoiceTurnSample } from "./turn-timing";
 import { makeProviders } from "./providers";
@@ -126,7 +126,7 @@ export default defineAgent({
     const ackLimit = Number(process.env.MAYA_ACK_LIMIT_MS);
     const run = new VoiceCallRun(session, opened.call, { board, notify, greeting: GREETING_TEXT,
       ...(made.fake ? {} : { numberContinueMs: tuning.numberContinueMs }),
-      ...(patience ? { patience: { normalMs: tuning.sttMaxSilenceMs, numberMs: tuning.sttNumberSilenceMs, set: (ms: number) => patience.setMaxSilenceMs(ms) } } : {}),
+      ...(patience ? { patience: { ...turnSilences(tuning), set: (limits: TurnSilence) => patience.setSilence(limits) } } : {}),
       ...(process.env.MAYA_ACK_LIMIT_MS?.trim() && Number.isFinite(ackLimit) && ackLimit >= 0 ? { ackLimitMs: ackLimit } : {}),
       measureTurn: sample => {
         turnSamples.push(sample);

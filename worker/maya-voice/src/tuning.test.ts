@@ -14,7 +14,7 @@ import { mayaCalls, type CallSeams } from "@/lib/maya-call";
 import { memoryCallStore, memoryConnectionLog } from "@/lib/maya-call-memory";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
-import { GREETING_ID, GREETING_TEXT, voiceProviders } from "@/lib/maya-voice";
+import { asksForNumber, GREETING_ID, GREETING_TEXT, turnSilences, VOICE_TUNING_DEFAULTS, voiceProviders, type TurnSilence } from "@/lib/maya-voice";
 import type { QuestionPackage } from "@/lib/question-package";
 import { VoiceCallRun, voiceSession, type Timers } from "./agent";
 import { FakeTTS } from "./fake-providers";
@@ -142,7 +142,7 @@ const GREETED = { greeting: GREETING_TEXT } as const;
 const heard = (said: readonly string[]) => said.join(" ");
 const times = (text: string, part: string) => text.split(part).length - 1;
 
-async function voiceCall(options: { greeting?: boolean; numberContinueMs?: number; patience?: { normalMs: number; numberMs: number; set(ms: number): void }; speech?: ProbeSTT; opening?: boolean } = {}) {
+async function voiceCall(options: { greeting?: boolean; numberContinueMs?: number; patience?: { normal: TurnSilence; number: TurnSilence; set(limits: TurnSilence): void }; speech?: ProbeSTT; opening?: boolean } = {}) {
   const clock = handClock();
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
@@ -286,10 +286,16 @@ describe("the greeting", () => {
 });
 
 describe("the speech-to-text's silence limit while Maya asks for a number", () => {
+  const { normal, number } = turnSilences(VOICE_TUNING_DEFAULTS);
   const patienceLog = () => {
-    const sets: number[] = [];
-    return { sets, patience: { normalMs: 3000, numberMs: 4500, set: (ms: number) => void sets.push(ms) } };
+    const sets: TurnSilence[] = [];
+    return { sets, patience: { normal, number, set: (limits: TurnSilence) => void sets.push(limits) } };
   };
+
+  it("has short normal limits and keeps the number turn long", () => {
+    expect(normal).toEqual({ minMs: 400, maxMs: 1600 });
+    expect(number).toEqual({ minMs: 512, maxMs: 4500 });
+  });
 
   it("is raised when she asks the child to try the question, and put back when the child's turn arrives", async () => {
     const log = patienceLog();
@@ -301,13 +307,18 @@ describe("the speech-to-text's silence limit while Maya asks for a number", () =
     // The child agrees, and Maya hands over the question: "Try 27 + 39 the same way." The next turn may wait longer.
     speech.says("Yes.");
     await waitFor(() => log.sets.length === 1 && c.session.agentState === "listening", "her request");
-    expect(log.sets).toEqual([4500]);
+    expect(log.sets).toEqual([number]);
     expect(c.said().at(-1)).toBe("Try 27 + 39 the same way.");
-    // The child's turn arrives: the limit goes back to the normal one at once, before Maya's answer is known.
+    // The child's turn arrives: the limits go back to the normal ones at once, before Maya's answer is known.
     speech.says("I got 56.");
     await waitFor(() => log.sets.length >= 2, "the turn");
-    expect(log.sets[1]).toBe(3000);
+    expect(log.sets[1]).toEqual(normal);
     await waitFor(() => c.session.agentState === "listening", "the answer");
+    // Every long limit is followed by the normal one at the next child turn: the long wait is for one turn only.
+    for (let i = 1; i < log.sets.length; i++) expect(log.sets[i]).not.toEqual(log.sets[i - 1]);
+    // After her answer, the limits are the number ones only if her last words ask for a number.
+    const asks = asksForNumber(c.said().join(" "), c.call.session.state);
+    expect(log.sets.at(-1)).toEqual(asks ? number : normal);
   });
 
   it("is untouched when the route has no live update", async () => {

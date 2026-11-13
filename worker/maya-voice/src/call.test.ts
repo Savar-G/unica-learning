@@ -622,6 +622,8 @@ it("R450-2 keeps a dropped call recoverable when the board stop cannot reach the
   const context = new llm.ChatContext();
   context.addMessage({ role: "user", content: "I don't know." });
   await readReply(await run.agent.llmNode(context, {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {}));
+  // The words go to the voice while the plan goes out; the plan is on the receiver before any of their audio plays.
+  await c.board.settled();
   const pending = c.receiver.staged();
   expect(pending).toHaveLength(3);
   const scope = c.board.capture(pending[0].utteranceId!)!;
@@ -664,6 +666,7 @@ it("R450-8 old playback completion cannot cancel the next controller turn", asyn
     const context = new llm.ChatContext();
     context.addMessage({ role: "user", content: "I don't know." });
     await readReply(await run.agent.llmNode(context, {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {}));
+    await c.board.settled();
     const expected = c.receiver.staged().map(b => b.batchId);
     expect(expected).toHaveLength(3);
     const newScope = c.board.capture(stages.mock.calls.at(-1)![0])!;
@@ -704,6 +707,7 @@ it("R450-9 an interrupt before native forwarding leaves no unmatched playback se
     const context = new llm.ChatContext();
     context.addMessage({ role: "user", content: "I don't know." });
     await readReply(await run.agent.llmNode(context, {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {}));
+    await c.board.settled();
     expect(c.receiver.staged()).toHaveLength(3);
     const scope = c.board.capture(stages.mock.calls.at(-1)![0])!;
     const next = new AudioFrame(new Int16Array(2400), 24000, 1, 2400);

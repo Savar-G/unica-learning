@@ -245,6 +245,8 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
   const [error, setError] = useState<string | null>(null);
   const [safety, setSafety] = useState<string | null>(null);
   const [writing, setWriting] = useState(false);
+  /** The child's words Maya is hearing in a live voice call, shown until the saved turn replaces them. Never saved. */
+  const [hearing, setHearing] = useState<string | null>(null);
   const reduced = useReducedMotion();
   const talk = useRef<HTMLOListElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
@@ -362,6 +364,12 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
                 <p>{named(line.text, childName)}</p>
               </li>
             ))}
+            {live && voice && hearing && (
+              <li className="mc-line is-child is-hearing" aria-hidden="true">
+                <span className="mc-who">{childName ?? "Child"} · hearing</span>
+                <p>{hearing}</p>
+              </li>
+            )}
             {busy && <li className="mc-line is-maya is-typing" aria-label="Maya is thinking"><p><span /><span /><span /></p></li>}
           </ol>
           {safety && <p className="mc-safety" role="status">{safety}</p>}
@@ -395,6 +403,7 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
                 }
               }}
               onCancel={() => void send({ type: "end" })}
+              onHearing={setHearing}
               busy={busy}
             />
           ) : live && view.kind === "admin_test" ? (

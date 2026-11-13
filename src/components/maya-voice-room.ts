@@ -14,6 +14,7 @@ import type { Room as LkRoom } from "livekit-client";
 import { createBoardReceiver, type BoardSnapshot } from "@/lib/board-protocol";
 import { BOARD_RPC, boardRpcHandler } from "@/lib/board-rpc";
 import type { VoiceTicket } from "@/lib/maya-voice";
+import { addHeard, childTranscription, clearHeard, heardFinals, heardSegment, heardText, TRANSCRIPTION_TOPIC, type HeardSegment } from "@/lib/maya-voice-hearing";
 
 export type MicState = "idle" | "asking" | "working" | "blocked" | "none" | "failed";
 export type CallPhase = "ready" | "connecting" | "waiting" | "live" | "ending" | "ended" | "failed";
@@ -117,6 +118,11 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
   const [seconds, setSeconds] = useState(0);
   const [fakeSpeech, setFakeSpeech] = useState(false);
   const [sending, setSending] = useState(false);
+  // The child's words as Maya hears them (src/lib/maya-voice-hearing.ts): on this screen only, never saved, and cleared
+  // when the saved call is read again after Maya's turn.
+  const [heard, setHeard] = useState<HeardSegment[]>([]);
+  const heardLine = useRef<HeardSegment[]>([]);
+  const setLine = useCallback((line: HeardSegment[]) => { heardLine.current = line; setHeard(line); }, []);
   const room = useRef<LkRoom | null>(null);
   const latest = useRef(options);
   useEffect(() => { latest.current = options; });
@@ -147,6 +153,7 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
   const connect = useCallback(async () => {
     setError(null);
     setPhase("connecting");
+    setLine([]);
     liveSince.current = null;
     agent.current = null;
     const onUpdate = () => latest.current.onUpdate();
@@ -209,6 +216,19 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
       } });
       r.localParticipant.registerRpcMethod(BOARD_RPC, async data => handleBoard(data.callerIdentity, data.payload));
       changed(true);
+      // The child's words as LiveKit's worker hears them, interim and final, from this device's microphone only.
+      r.registerTextStreamHandler(TRANSCRIPTION_TOPIC, (reader, from) => {
+        void (async () => {
+          if (room.current !== r || terminal) return;
+          const microphone = r.localParticipant.getTrackPublication(Track.Source.Microphone)?.trackSid ?? null;
+          const attributes = reader.info.attributes;
+          if (!childTranscription({ identity: from.identity, attributes, child: r.localParticipant.identity, maya: agent.current, microphone })) return;
+          let text = "";
+          try { text = await reader.readAll(); } catch { return; }
+          const segment = heardSegment(attributes, text);
+          if (segment && room.current === r && !terminal) setLine(addHeard(heardLine.current, segment));
+        })();
+      });
       r.on(RoomEvent.TrackSubscribed, (track) => {
         if (track.kind !== Track.Kind.Audio) return;
         const el = track.attach();
@@ -233,11 +253,17 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
           refreshEnded();
         } else if (update.ended) {
           terminal = true;
+          setLine([]);
           setError(null);
           setPhase("ended");
           void r.disconnect();
           refreshEnded();
-        } else void onUpdate();
+        } else {
+          // A saved turn: once the screen has read it, its final words are in the transcript, so the heard line drops
+          // them. Words heard after this message stay.
+          const saved = heardFinals(heardLine.current);
+          void onUpdate().then(() => { if (room.current === r) setLine(clearHeard(heardLine.current, saved)); }, () => {});
+        }
       });
       r.on(RoomEvent.Disconnected, () => {
         if (room.current !== r) return;
@@ -245,6 +271,7 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
         agent.current = null;
         liveSince.current = null;
         setMaya(null);
+        setLine([]);
         if (terminal) return;
         // A room event cannot establish the saved call's outcome.
         setPhase("failed");
@@ -271,7 +298,7 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
       void room.current?.disconnect();
       room.current = null;
     }
-  }, [callId]);
+  }, [callId, setLine]);
 
   const hangUp = useCallback(async () => {
     const r = room.current;
@@ -312,5 +339,7 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
     }
   }, [sending]);
 
-  return { phase, maya, error, seconds, fakeSpeech, sending, audioHost, connect, hangUp, say };
+  /** The child's words Maya is hearing now, for the child's last bubble in light text; null when there are none. */
+  const hearing = heardText(heard);
+  return { phase, maya, error, seconds, fakeSpeech, sending, hearing, audioHost, connect, hangUp, say };
 }
