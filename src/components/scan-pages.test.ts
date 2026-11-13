@@ -144,6 +144,17 @@ it("does not ask for another photo of a page that already has one, and focus nev
   expect(document.activeElement?.textContent).toBe("Close");
 });
 
+it("closes an open photo with the corner Close button", async () => {
+  await render();
+  await choose("library", "p10.jpg", "p11.jpg");
+  await act(async () => button("Page 10: Ready")!.click()); await settle();
+  const x = document.querySelector<HTMLButtonElement>(".scan-sheet-x");
+  expect(x?.getAttribute("aria-label")).toBe("Close");
+  expect(document.querySelector(".scan-sheet")).not.toBeNull();
+  await act(async () => x!.click()); await settle();
+  expect(document.querySelector(".scan-sheet")).toBeNull();
+});
+
 it("keeps a refused photo first with its reason while the other pages go on, and Send counts only ready pages", async () => {
   await render();
   await choose("library", "junk.jpg", "p10.jpg", "two-p11.jpg");

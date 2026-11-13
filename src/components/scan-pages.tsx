@@ -58,7 +58,7 @@ const STATUS_WORDS: Record<StackTile["status"], string> = {
   adding: "Sending", checking: "Checking", ready: "Ready", saved: "Saved", refused: "Needs another photo", unavailable: "Cannot be checked", sent: "Sent for marking",
 };
 
-/** A bottom sheet on a phone, a centred dialog on a wider screen. Esc and the backdrop close it. */
+/** A bottom sheet on a phone, a centred dialog on a wider screen. A Close button, Esc and the backdrop close it. */
 function Sheet({ label, onClose, children }: { label: string; onClose: () => void; children: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -70,6 +70,7 @@ function Sheet({ label, onClose, children }: { label: string; onClose: () => voi
     return () => { if (d.open && typeof d.close === "function") d.close(); };
   }, []);
   return <dialog ref={ref} className="scan-sheet" aria-label={label} onCancel={(e) => { e.preventDefault(); onClose(); }} onClick={(e) => { if (e.target === ref.current) onClose(); }}>
+    <div className="scan-sheet-bar"><button type="button" className="scan-sheet-x" aria-label="Close" onClick={onClose}><span aria-hidden="true">×</span></button></div>
     <div className="scan-sheet-body">{children}</div>
   </dialog>;
 }
