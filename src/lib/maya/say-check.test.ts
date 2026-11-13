@@ -118,3 +118,21 @@ describe("checkSay", () => {
     expect(checkSay("Hi there! Let's work on 52 minus 28 together. What do you see in the ones?", rules({ wrong: [] })).ok).toBe(true);
   });
 });
+
+describe("the opening and spoken signs", () => {
+  it("refuses a self-introduction after the opening, unless allowed", () => {
+    expect(checkSay("Hi! I'm Maya, your helper.", rules({ wrong: [], noIntro: true }))).toMatchObject({ ok: false, reason: "reintroduces" });
+    expect(checkSay("We're doing 52 minus 28 today.", rules({ wrong: [], noIntro: true }))).toMatchObject({ ok: false, reason: "reintroduces" });
+    expect(checkSay("I'm an AI helper, not a person.", rules({ wrong: [], noIntro: false })).ok).toBe(true);
+  });
+  it("reads written signs and spoken signs the same way", () => {
+    for (const text of ["12 − 8 = 4.", "12 minus 8 equals 4.", "12 - 8 is 4."]) expect(equationHolds(equationsOf(text)[0])).toBe(true);
+    for (const text of ["3 × 4 = 12.", "3 times 4 equals 12.", "12 ÷ 3 = 4.", "12 divided by 3 is 4."]) expect(equationHolds(equationsOf(text)[0])).toBe(true);
+    expect(equationHolds(equationsOf("3 times 4 equals 13.")[0])).toBe(false);
+  });
+  it("refuses an equation of a step the child has not done, even when its result is a printed number", () => {
+    const r = rules({ wrong: [], hidden: ["4 2|-|2"], forbidden: [], allowed: [...valuesOf("52 - 28 4 2")] });
+    expect(checkSay("Then 4 minus 2 is 2.", r)).toMatchObject({ ok: false, reason: "reveals_step" });
+    expect(checkSay("Then 4 minus 2 is 2.", { ...r, shownEquations: ["4 2|-|2"] }).ok).toBe(true);
+  });
+});

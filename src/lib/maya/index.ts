@@ -5,6 +5,10 @@
 export {
   createSession,
   fallbacks,
+  helpBrief,
+  numbersBrief,
+  turnFacts,
+  type TurnFact,
   heardWordings,
   heldReason,
   mayaPackageCheck,
@@ -51,6 +55,12 @@ export {
   PROPOSAL_SCHEMA,
   PROPOSAL_VERSION,
   withoutNulls,
+  withoutDefaults,
+  isModelOutput,
+  readModelOutput,
+  MODEL_OUTPUT_SCHEMA,
+  MODEL_OUTPUT_VERSION,
+  type ModelOutput,
   type Act,
   type ChildAnswer,
   type HintLevel,
@@ -61,7 +71,7 @@ export {
   type Talk,
   type Warm,
 } from "./proposal";
-export { allLineTexts, heldSentences, LINE_IDS, LINES_VERSION, TEMPLATES, type LineChoice, type LineId, type LineOffer, type Slots, type TemplateKey } from "./lines";
+export { allLineTexts, heldSentences, openingLine, spokenQuestion, LINE_IDS, LINES_VERSION, TEMPLATES, type LineChoice, type LineId, type LineOffer, type Slots, type TemplateKey } from "./lines";
 export { talkMath } from "./claims";
 export { speechKey, speechWords } from "./speech";
 export { cheerful, FEELING_SMALLTALK, FREE_TALK_LIMITS, hardFeeling, NEUTRAL_SMALLTALK, replyFor, type ReplyPick, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, feelingClaim, freeTalkProblem, plainLanguageProblem, PLAIN_LANGUAGE_BANNED, workProblem, type PhraseGroup } from "./phrases";
@@ -85,3 +95,4 @@ export { readAnswer, readNumbers, unreadableAnswer, valuesIn, writtenFractions, 
 export { asksSimplest, isEqualForm, readOptionsFor, rightForQuestion, teachSteps, TAUGHT_STEP_KINDS } from "./fractions";
 
 export { scopeReason, scopeSkills, SCOPE_LABELS, SCOPE_REASONS, type MathRequest, type ScopeReading, type OutsideReason, type ScopeReason, type ScopeRefusal } from "./scope";
+export { checkSay, checkSentence, sentencesOf, sayNumbers, SAY_REASONS, SAY_WORDS, type SayReason, type SayRules, type SayVerdict } from "./say-check";

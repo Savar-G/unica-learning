@@ -17,7 +17,7 @@ import { feelingClaim, plainLanguageProblem } from "./phrases";
 /** Why a reply was refused. */
 export const SAY_REASONS = [
   "empty", "too_long", "too_many_sentences", "long_sentence", "number_not_allowed", "reveals_answer", "reveals_step",
-  "false_equation", "affirms_wrong", "missing_number", "hard_words", "never_say", "hype", "board_words",
+  "false_equation", "affirms_wrong", "missing_number", "hard_words", "never_say", "hype", "board_words", "reintroduces",
 ] as const;
 export type SayReason = (typeof SAY_REASONS)[number];
 
@@ -45,6 +45,10 @@ export interface SayRules {
   shownEquations: readonly string[];
   /** Values of steps the child has not been credited with: never said unless the plan shows them. */
   forbidden: readonly SayValue[];
+  /** Equations of uncredited steps and of the whole question while its answer is open (equationKey): never said. */
+  hidden?: readonly string[];
+  /** The opening said who Maya is: no reply says it again (unless the child asked). */
+  noIntro?: boolean;
   /** The final answer while it is not the child's yet: never said, not even when a plan text holds the number. */
   answer: readonly SayValue[];
   /** Values the child said this turn that code judged wrong: no sentence may call them right. */
@@ -376,6 +380,9 @@ export function checkSentence(sentence: string, rules: SayRules, index = 0): Say
   if (plain) return no("hard_words", `${plain}: use the plain words of the workbook.`);
   const long = wordsIn(text).map((w) => w.replace(/[^\p{L}]/gu, "").toLowerCase()).find((w) => w.length > 12 && !LONG_OK.has(w));
   if (long) return no("hard_words", `"${long}" is a hard word for a young child.`);
+  if (rules.noIntro && /\b(?:i'?m maya|i am maya|my name is maya|i'?m an ai|i am an ai|i'?m your ai)\b|\bwe'?re doing\b.*\btoday\b/i.test(text)) {
+    return no("reintroduces", "The opening already said who Maya is and the question: answer what the child said instead.");
+  }
   if (rules.noBoard && /\b(?:board|look|watch|see|show me|follow along)\b/i.test(text)) return no("board_words", "The child cannot see the board: use spoken words only.");
   const question = /\?\s*$/.test(text);
   // Equations first: a false one fails; one that says a hidden value must be code's own.
@@ -385,6 +392,9 @@ export function checkSentence(sentence: string, rules: SayRules, index = 0): Say
     if (!question && holds === false && !e.negated) return no("false_equation", `"${sentence}" says a false equation.`);
     if (!question && holds === true && e.negated) return no("false_equation", `"${sentence}" calls a true equation false.`);
     const hidden = within(e.result, rules.answer) || within(e.result, rules.forbidden);
+    if (!e.negated && (rules.hidden ?? []).includes(equationKey(e)) && !rules.shownEquations.includes(equationKey(e))) {
+      return no("reveals_step", `"${sentence}" works out a step the child has not done: never say its result.`);
+    }
     if (hidden && !e.negated && !rules.shownEquations.includes(equationKey(e))) {
       return no(within(e.result, rules.answer) ? "reveals_answer" : "reveals_step", `"${e.result.text}" is a value the child has not found yet: never say it.`);
     }

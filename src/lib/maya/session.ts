@@ -47,7 +47,7 @@ import { talkMath } from "./claims";
 import { closeExpressionContainsAnswer } from "./backup-close";
 import { mathClaimIn, outsideConfirmation, scopeReason, scopeValue, type ScopeReading, type ScopeReason, type ScopeRefusal } from "./scope";
 import { speechWords, saidAsApproved } from "./speech";
-import { compensations, findOffer, normalSlots, packageLines, stepEquation, workbookOpening, WORKBOOK_OPENING, fixedOffers, areaOffers, spokenOffer, heldOffers, heldSentences, LINE_IDS, type LineOffer } from "./lines";
+import { compensations, findOffer, normalSlots, openingLine, packageLines, stepEquation, workbookOpening, WORKBOOK_OPENING, fixedOffers, areaOffers, spokenOffer, heldOffers, heldSentences, LINE_IDS, type LineOffer } from "./lines";
 import { freeTalkProblem, hardFeeling, CALM_PHRASES, replyFor, workProblem, FALLBACK_GROUP, FEELING_SMALLTALK, NEUTRAL_SMALLTALK, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, type PhraseGroup } from "./phrases";
 import { chooseWording, heardInCall, nameNow, newVariety, withName, type Variety, type WordingHistory } from "./variety";
 import { kindOf, writtenFractions, claimWordsOnly, committedText, confirmWordsOnly, echoedClaim, echoesShown, falseEquationResults, nextStepQuestion, numberSentences, onlyNextStepQuestions, plainNumber, stepTurnBody, withoutNextStepQuestions, wholeSum, wholeTurn, wholeValue, wholeYes, retainedText, readAnswer, showsDoubt, readNumbers, additionSetup, saysDone, saysGuess, saysStuck, saysYes, saysWritten, takenBack, unreadableAnswer, valuesIn, withoutExplanations, type AnswerRead, type ReadOptions } from "./numbers";
@@ -63,7 +63,8 @@ import { isPartsOperation } from "@/lib/question-package-place-parts";
 import { claimActs, claimAnswers, claimCommitted, claimConfirm, claimQuestionAsked, claimRead, claimResultDone, claimReveals, claimSaid, claimStepConfirmable, claimStepHeard, claimSessionPackage, claimUnclear, sessionClaim, type ClaimTurn } from "./claim";
 import { closeParts, compareEquationSaid, currentPart, evaluateSteps, evaluateTeaching, partBoards, partCovered, partEquationSaid, partIdOf, stepsBeforeLastPart, withEvaluateExample } from "./evaluate";
 import { isSpot, spotAnswers, spotReveals, spotSessionPackage, spotStepHeard } from "./spot-error";
-import { ACTS, PART_LIMITS, PROPOSAL_VERSION, withoutNulls, type Act, type ChildAnswer, type HintLevel, type Proposal, type Reading, type Severity } from "./proposal";
+import { ACTS, PART_LIMITS, PROPOSAL_VERSION, isModelOutput, readModelOutput, withoutDefaults, withoutNulls, type Act, type ChildAnswer, type HintLevel, type ModelOutput, type Proposal, type Reading, type Severity } from "./proposal";
+import { checkSay, equationKeysOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, type SayReason, type SayRules, type SayValue } from "./say-check";
 import type { TalkReviewResult } from "./talk-review";
 
 /** Closing starts 9 minutes into the call; the call ends at 10 minutes. */
@@ -211,7 +212,7 @@ export type Effect =
    * `talkReplaced`: how many pieces of the model's own warm words failed a check and were replaced (D-196 rule B).
    * `talk`: each piece, with both checks and what was said (D-197).
    */
-  | { kind: "say"; act: Act; text: string; talkReplaced?: number; talk?: TalkCheck[] }
+  | { kind: "say"; act: Act; text: string; talkReplaced?: number; talk?: TalkCheck[]; planned?: string }
   | { kind: "board"; batch: Batch }
   /** Stop speaking and drop board batches not yet shown. */
   | { kind: "cancel_output" }
@@ -251,11 +252,16 @@ export type RefusalCode =
   | "reveals_answer"
   | "missing_disclosure"
   | "board_not_allowed"
-  | "board_wrong_problem";
+  | "board_wrong_problem"
+  /** D-341: the model's own words failed a say check (say-check.ts), or the review of a non-math turn. */
+  | "say_check"
+  | "say_review";
 
 export interface Refusal {
   code: RefusalCode;
   reason: string;
+  /** D-341: the say check's reason, or "review" for the review of a non-math turn. */
+  say?: SayReason | "review";
   /** The acts allowed now. */
   allowed: Act[];
 }
@@ -278,6 +284,8 @@ export interface TranscriptTurn {
   act?: Act;
   /** Other transcripts speech-to-text offered for a child turn, kept for review. */
   alternatives?: string[];
+  /** D-341: code's own plan for a turn Maya said in the model's words (what code would have said). */
+  planned?: string;
 }
 
 /** The child's words Maya has not answered yet, with what code already knows about them. */
@@ -309,6 +317,11 @@ export interface Session {
   variety: Variety;
   /** D-196, D-197: whether the model's own warm words may be said, after the code guards and the review. */
   freeTalk: boolean;
+  /**
+   * D-341: a conversational call. The opening is code's own (openingLine) at the start, with no model call, and the model
+   * writes every other word Maya says (version 3 output, checked by say-check.ts). A saved session from before has none.
+   */
+  conversational?: boolean;
   grade?: number;
   noBoard?: boolean;
   shorter?: boolean;
@@ -510,6 +523,8 @@ export function createSession(input: {
   modelBoard?: boolean;
   /** The call's end when it is shorter than 10 minutes (ms from the start; #330, the minutes left this week). */
   limitMs?: number;
+  /** D-341: a conversational call (see Session.conversational). */
+  conversational?: boolean;
 }): Session {
   const { pkg, held } = teachableOf(input.package);
   const teachable = held === null;
@@ -520,6 +535,7 @@ export function createSession(input: {
     ...(input.confirmWorkbook ? { confirmWorkbook: true } : {}),
     variety: newVariety({ random: input.random ?? hashOf(input.callId), history: input.history, name: input.childName }),
     freeTalk: input.freeTalk === true,
+    ...(input.conversational ? { conversational: true } : {}),
     grade: input.grade,
     ...(input.modelBoard === true ? { modelBoard: true } : {}),
     state: "READY",
@@ -1376,8 +1392,10 @@ export function step(session: Session, event: SessionEvent): StepResult {
 
   // Safety first: a safety signal is taken before the clock and before anything else in the same event.
   // Structured output sends null for an unused field: it reads as a missing one.
-  const raw = event.type === "proposal" ? withoutNulls(event.proposal) : undefined;
-  const shape = event.type === "proposal" ? proposalProblem(raw) : null;
+  // D-341: a version 3 output (the model's own words in `say`) is read with its plain defaults left out.
+  const v3 = event.type === "proposal" && isModelOutput(event.proposal);
+  const raw = event.type === "proposal" ? (v3 ? readModelOutput(event.proposal) : plainReading(withoutNulls(event.proposal))) : undefined;
+  const shape = event.type === "proposal" ? (v3 ? outputProblem(raw) : proposalProblem(raw)) : null;
   // The priority input is read field by field, so a malformed board or answer list cannot drop it.
   const priority = priorityOf(raw);
   const severity = event.type === "safety" ? event.severity : priority.safety;
@@ -1440,7 +1458,7 @@ export function step(session: Session, event: SessionEvent): StepResult {
         effects.push({ kind: "say", act: "close", text });
         s.turns.push({ at: event.at, speaker: "maya", text, state: "CLOSE", act: "close" });
         end(s, "child_stopped", effects, false);
-      }
+      } else if (s.conversational) openConversation(s, effects);
       break;
     case "child_turn": {
       if (typeof event.text !== "string") return refuse(session, "invalid_event", "A child turn needs its text.");
@@ -1546,6 +1564,7 @@ export function step(session: Session, event: SessionEvent): StepResult {
       break;
     case "proposal":
       if (shape) return { session: s, effects, refusal: { code: "invalid_proposal", reason: shape, allowed: (gate(s, {}) ?? actsNow(s, {}, false)).acts } };
+      if (v3) return proposeV3(s, raw as ModelOutput, effects, event.talkReviews === undefined ? undefined : reviewsOf(event.talkReviews));
       return propose(s, raw as Proposal, effects, reviewsOf(event.talkReviews), event.fallback === true);
     default:
       return refuse(session, "invalid_event", "Unknown event type.");
@@ -1676,6 +1695,9 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     if (reading.help === "show") ladder.unlocked = Math.max(ladder.unlocked, ladder.hint >= 3 ? 4 : 3);
     // A lost carry is a located error: its regroup line (H1) is allowed at once.
     if (pendingRegroup(regroup).some((c) => c.at === ladder.step)) ladder.unlocked = Math.max(ladder.unlocked, 1);
+    // D-341: a named misconception in the child's turn (turnFacts: 6 for 2 - 8) is a located error too: its regroup help
+    // (H2) is allowed at once, so Maya names the mistake and guides the regroup.
+    if (misconceptionAt(s, ladder.step)) ladder.unlocked = Math.max(ladder.unlocked, 2);
     // The loop guard climbs: the next help up is allowed now (loopGuard).
     const up = (loop === "climb" || loop === "repeat") && ladder.step === s.ladder.step ? nextHint(base) : null;
     if (up !== null) ladder.unlocked = Math.max(ladder.unlocked, up);
@@ -4179,21 +4201,31 @@ function keptReading(session: Session, refused: readonly unknown[], answers: rea
  * the model's words are replaced.
  */
 export function fallbacks(given: Session, refused: readonly unknown[] = []): Proposal[] {
+  return codeProposals(given, refused);
+}
+
+/**
+ * Code's proposals for the session now. Without `plan`, the fallbacks above. With `plan` (D-341), the lines code plans
+ * for the model's own act, step and help level, with the model's reading: the session checks them as any proposal, and
+ * their words are what the model's `say` is checked against (proposeV3). The model picks no line.
+ */
+function codeProposals(given: Session, refused: readonly unknown[] = [], plan?: ModelOutput): Proposal[] {
   if (given.outcome || given.expect !== "maya") return [];
   // The fixed reply to a question about a secret, as `step` will set it: a failed model call must still say it.
   const secret = secretReplies(given);
   const session: Session = secret ? { ...given, replies: secret } : given;
   const pkg = session.package;
   const yes = yesAnswer(session);
-  const kept = yes ? [yes] : keptAnswers(session, refused);
+  const modelAnswers = plan?.reading?.answers?.length ? plan.reading.answers : null;
+  const kept = modelAnswers ?? (yes ? [yes] : plan ? [] : keptAnswers(session, refused));
   // A reading that named the turn off topic or harmful stands: code's own reading adds no answer to it.
-  const named = keptReading(session, refused, kept);
-  const heard = yes || named.offTopic || named.unsafeRequest ? [] : heardAnswers(session)
+  const named = plan ? (plan.reading ?? {}) : keptReading(session, refused, kept);
+  const heard = plan || yes || named.offTopic || named.unsafeRequest ? [] : heardAnswers(session)
     .filter((a) => !kept.some((k) => k.step === a.step && (k.problem ?? "target") === "target"));
   const found = [...kept, ...heard];
   // A claim question's word is read by code (claim.ts), right or wrong; the model's final answers are left out.
   const answers = !yes && sessionClaim(pkg) ? spotAnswers(pkg, claimAnswers(claimTurn(session), found, session.solved !== null && session.lastResult === "right"), session.done) ?? [] : found;
-  const keptFields = keptReading(session, refused, answers);
+  const keptFields: Reading = plan ? (({ answers: _a, ...rest }) => (void _a, rest))(plan.reading ?? {}) : keptReading(session, refused, answers);
   // A reading's answers are numbers: `step` reads a claim's word again itself.
   const said = answers.filter((a) => isAnswerValue(a.value));
   const reading: Reading | undefined = said.length > 0 || Object.keys(keptFields).length > 0 ? { ...keptFields, ...(said.length > 0 ? { answers: said } : {}) } : undefined;
@@ -4245,9 +4277,10 @@ export function fallbacks(given: Session, refused: readonly unknown[] = []): Pro
   const claimPkg = sessionClaim(pkg) !== null;
   const exampleFirst = claimPkg && claimExampleDue(s) && claimHelpOnly(s, reading ?? {}, rightResult);
   const rank = (a: Act) => (exampleFirst && a === "example_step" ? -1 : (solved && a === "ask_write") || ((doubtful || unheard) && a === "confirm") ? FALLBACK_ORDER.indexOf("guide") - 0.5 : a === wayOut ? FALLBACK_ORDER.indexOf("guide") : FALLBACK_ORDER.indexOf(a));
-  const order = [...new Set(unheard && s.opened && s.turn && s.confirmTries < 2 && s.solved === null && !rightResult ? [...acts, "confirm" as Act] : acts)].sort((a, b) => rank(a) - rank(b)).filter((a) => a !== "accept_answer" || rightResult);
+  const order = plan ? [plan.act] : [...new Set(unheard && s.opened && s.turn && s.confirmTries < 2 && s.solved === null && !rightResult ? [...acts, "confirm" as Act] : acts)].sort((a, b) => rank(a) - rank(b)).filter((a) => a !== "accept_answer" || rightResult);
   const make = (act: Act, offers: LineOffer[], extra: Partial<Proposal> = {}): Proposal => ({
     version: PROPOSAL_VERSION, act, parts: offers.map((o) => ({ line: o.line, slots: o.slots })), ...extra, ...(reading ? { reading } : {}),
+    ...(plan?.draw ? { draw: plan.draw } : {}),
   });
   const byLevel = (offers: LineOffer[]) => [...offers].sort((a, b) => (a.level ?? 0) - (b.level ?? 0));
   return order.flatMap((act) => {
@@ -4288,8 +4321,15 @@ export function fallbacks(given: Session, refused: readonly unknown[] = []): Pro
         // A right final answer said with doubt or as a guess: check it together, with the step's question (#605).
         const lead = offers.find((o) => o.line === "check.guess") ?? offers.find((o) => o.line === "check.together");
         const asks = lead ? byLevel(free).filter((o) => o.slots.step === ladderStep && (o.line === "step.operation" || o.line === "step.invite")).reverse() : [];
-        lineSets = [...asks.map((h) => [lead!, h]), ...(judge ? help.map((h) => [judge, h]) : []), ...help.map((h) => [h])]
-          .map((set) => make(act, set, { step: ladderStep, level: (set.at(-1)!.level ?? 0) as HintLevel }));
+        const sets = [...asks.map((h) => [lead!, h]), ...(judge ? help.map((h) => [judge, h]) : []), ...help.map((h) => [h])];
+        // D-341: the model's own help level first, then lower, then higher; a located misconception's lines first.
+        const want = plan?.level ?? null;
+        const located = plan ? turnFacts(session).some((f) => f.misconception && f.step === ladderStep) : false;
+        const levelOf = (set: LineOffer[]) => set.at(-1)!.level ?? 0;
+        const score = (set: LineOffer[]) => (located && set.some((o) => o.line === "step.order" || o.line === "step.regroup") ? 0 : 100) +
+          (want === null ? 0 : levelOf(set) === want ? 0 : levelOf(set) < want ? 10 + want - levelOf(set) : 20 + levelOf(set) - want);
+        const ordered = plan ? sets.map((set, i) => ({ set, i })).sort((a, b) => score(a.set) - score(b.set) || a.i - b.i).map((x) => x.set) : sets;
+        lineSets = ordered.map((set) => make(act, set, { step: plan?.step ?? ladderStep, level: levelOf(set) as HintLevel }));
         break;
       }
       case "example_step": {
@@ -4329,6 +4369,302 @@ export function fallbacks(given: Session, refused: readonly unknown[] = []): Pro
       { version: PROPOSAL_VERSION, act, parts: [], ...(reading ? { reading } : {}) } as Proposal,
     ];
   });
+}
+
+// ---------- Conversational turns (D-341) ----------
+
+/** A reading with its plain defaults left out, so a version 3 reading reads like a version 2 one. */
+function plainReading(raw: unknown): unknown {
+  return isObject(raw) && isObject(raw.reading) ? { ...raw, reading: withoutDefaults(raw.reading) } : raw;
+}
+
+/** The shape check of a version 3 output: `say`, a known act, and the version 2 checks of its other fields. */
+function outputProblem(raw: unknown): string | null {
+  if (!isObject(raw) || typeof raw.say !== "string") return "the output is an object with `say`";
+  const { say: _say, ...rest } = raw;
+  void _say;
+  return proposalProblem({ ...rest, version: PROPOSAL_VERSION, parts: [] });
+}
+
+/**
+ * The code-written opening (D-341, approved by Savar 2026-11-12): said at the start, before the child speaks, with no
+ * model call; the question is staged on the board. A workbook session keeps its printed-reference opening.
+ */
+function openConversation(s: Session, effects: Effect[]) {
+  const pkg = s.package!;
+  const text = (s.confirmWorkbook ? workbookOpening(pkg) : null) ?? openingLine(pkg);
+  effects.push({ kind: "say", act: "open", text });
+  s.turns.push({ at: s.now!, speaker: "maya", text, state: "OPEN", act: "open" });
+  const columns = s.noBoard ? null : columnsOf(s, "target");
+  if (columns) {
+    s.batches += 1;
+    effects.push({ kind: "board", batch: { transactionId: `${s.callId}-b${s.batches}`, commands: [columns] } });
+    s.boardRoles = { ...s.boardRoles, question: "target" };
+  }
+  s.opened = true;
+  waitForChild(s);
+}
+
+/** One fact code computed about a number in the child's turn, for the model's brief and the say check. */
+export interface TurnFact {
+  /** The fact in plain words, for the model. */
+  text: string;
+  /** The numbers the fact names: Maya may say them. */
+  numbers: SayValue[];
+  /** The step it is about. */
+  step?: string;
+  /** A named misconception (src/lib/assessment/misconceptions.ts): O1 smaller from larger, O3 forgot the carry. */
+  misconception?: "O1" | "O3";
+  /** The child's value, when code judged it wrong. */
+  wrong?: SayValue;
+}
+
+/** The say values of an answer value. */
+function sayValues(v: AnswerValue): SayValue[] {
+  switch (v.type) {
+    case "number":
+    case "quantity":
+      return [numberValue(v.value)];
+    case "fraction":
+      return [fractionValue(v.numerator, v.denominator)];
+    case "mixed":
+      return [fractionValue(v.whole * v.denominator + v.numerator, v.denominator), fractionValue(v.numerator, v.denominator)];
+    case "remainder":
+      return [numberValue(v.quotient), numberValue(v.remainder)];
+    case "time":
+      return [timeValue(v.hours, v.minutes)];
+    case "compound":
+      return v.parts.map((x) => numberValue(x.value));
+    default:
+      return [];
+  }
+}
+
+/** The numbers printed in the question: its text, its operation, and each digit of a whole operand with its place value. */
+function printedValues(pkg: OperationPackage): SayValue[] {
+  const out = [...valuesOf(pkg.text), ...valuesOf(operationText(pkg.operation))];
+  for (const n of operandsOf(pkg.operation)) {
+    const digits = String(n).replace(/[^0-9]/g, "").split("").map(Number);
+    const whole = String(Math.trunc(Math.abs(n))).length;
+    digits.forEach((d, i) => {
+      out.push(numberValue(d));
+      if (i < whole) out.push(numberValue(d * 10 ** (whole - 1 - i)));
+    });
+  }
+  return out;
+}
+
+const valueIn = (v: SayValue, list: readonly SayValue[]) => list.some((x) => sameSayValue(v, x));
+
+/**
+ * What code knows about each number the child said this turn: the step it fits and whether it is right, or the
+ * misconception it shows, with the numbers (D-341): "6 is 8 - 2: the child took the smaller digit from the larger. In
+ * the ones, 2 is smaller than 8, so the ones need a regroup: 12 - 8." A question ("Is 2 minus 8, 6?") counts too.
+ */
+export function turnFacts(s: Session): TurnFact[] {
+  const pkg = s.package;
+  if (!pkg || !s.turn) return [];
+  const printed = printedValues(pkg);
+  const steps = workSteps(pkg);
+  const credited = new Set([...s.done, ...(s.passed ?? [])]);
+  const facts: TurnFact[] = [];
+  const seen: SayValue[] = [];
+  for (const v of valuesIn(s.turn.text, readOptionsFor(pkg))) {
+    if (v.type !== "number" && v.type !== "fraction" && v.type !== "mixed") continue;
+    const sv = sayValues(v)[0];
+    if (!sv || valueIn(sv, seen)) continue;
+    seen.push(sv);
+    const vt = valueText(v);
+    if (rightForQuestion(pkg, v)) {
+      facts.push({ text: `${vt} is the right final answer.`, numbers: [sv] });
+      continue;
+    }
+    const fits = steps.find((st) => !credited.has(st.id) && stepAnswers(st).some((a) => equivalent(a, v)));
+    if (fits) {
+      facts.push({ text: `${vt} is right for the step "${fits.id}".`, numbers: [sv], step: fits.id });
+      continue;
+    }
+    if (valueIn(sv, printed)) continue;
+    let found: TurnFact | null = null;
+    for (const st of steps) {
+      if (credited.has(st.id) || v.type !== "number") continue;
+      if (st.kind === "subtract-column" && st.regrouped && st.bottom !== null) {
+        const have = st.top - (st.lent ? 1 : 0);
+        if (have >= 0 && have < st.bottom && v.value === st.bottom - have) {
+          found = {
+            text: `${vt} is ${st.bottom} - ${have}: the child took the smaller digit from the larger. In the ${st.place}, ${have} is smaller than ${st.bottom}, so the ${st.place} need a regroup: ${have + 10} - ${st.bottom}.`,
+            numbers: [sv, numberValue(st.bottom), numberValue(have), numberValue(have + 10)], step: st.id, misconception: "O1", wrong: sv,
+          };
+          break;
+        }
+      }
+      if (st.kind === "add-column" && st.carryIn > 0) {
+        const without = st.total - st.carryIn;
+        if (v.value === without || v.value === without % 10) {
+          found = { text: `${vt} leaves out the carried ${st.carryIn} in the ${st.place}.`, numbers: [sv, numberValue(st.carryIn)], step: st.id, misconception: "O3", wrong: sv };
+          break;
+        }
+      }
+    }
+    facts.push(found ?? { text: `${vt} is not right for the step "${s.ladder.step}".`, numbers: [sv], step: s.ladder.step, wrong: sv });
+  }
+  return facts;
+}
+
+/** The child's turn shows a named misconception on this step (a located error: its regroup help may come at once). */
+const misconceptionAt = (s: Session, step: string) => turnFacts(s).some((f) => f.misconception && f.step === step);
+
+/** Values and equations of the steps the child has not been credited with, and of the final answer while it is open. */
+function hiddenOf(s: Session, released: boolean): { forbidden: SayValue[]; answer: SayValue[]; hidden: string[] } {
+  const pkg = s.package!;
+  const printed = printedValues(pkg);
+  const credited = new Set([...s.done, ...(s.passed ?? [])]);
+  const known = workSteps(pkg).filter((st) => credited.has(st.id)).flatMap((st) => [...stepAnswers(st).flatMap(sayValues), ...valuesOf(stepText(st, pkg.operation))]);
+  const open = workSteps(pkg).filter((st) => !credited.has(st.id));
+  const forbidden = open.flatMap((st) => stepAnswers(st).flatMap(sayValues)).filter((v) => !valueIn(v, printed) && !valueIn(v, known));
+  const answer = released ? [] : sayValues(pkg.answer.value).filter((v) => !valueIn(v, printed));
+  const hidden = [...open.flatMap((st) => equationKeysOf(stepText(st, pkg.operation))), ...(released ? [] : equationKeysOf(`${operationText(pkg.operation)} = ${valueText(pkg.answer.value)}.`))];
+  return { forbidden, answer, hidden };
+}
+
+/** The limits of the model's words on a turn code planned (`after` is the session after the plan, `planned` its words). */
+function sayRules(before: Session, after: Session, p: Proposal, planned: string): SayRules {
+  const pkg = after.package;
+  const facts = turnFacts(before);
+  const released = after.solved !== null || after.lastResult === "right";
+  const children = before.turns.filter((t) => t.speaker === "child").map((t) => t.text);
+  const example = pkg && (after.exampleIntroduced || after.exampleShown > 0)
+    ? [...valuesOf(operationText(pkg.easierExample.operation)), ...valuesOf(pkg.easierExample.text), ...pkg.easierExample.steps.slice(0, after.exampleShown).flatMap((st) => valuesOf(stepText(st, pkg.easierExample.operation)))] : [];
+  const credited = pkg ? workSteps(pkg).filter((st) => after.done.includes(st.id) || (after.passed ?? []).includes(st.id))
+    .flatMap((st) => [...stepAnswers(st).flatMap(sayValues), ...valuesOf(stepText(st, pkg.operation))]) : [];
+  const { forbidden, answer, hidden } = pkg ? hiddenOf(after, released) : { forbidden: [], answer: [], hidden: [] };
+  const wrong = [...(p.reading?.answers ?? []).filter((a) => a.verdict === "wrong" && (a.problem ?? "target") === "target").flatMap((a) => sayValues(a.value)),
+    ...facts.flatMap((f) => (f.wrong ? [f.wrong] : []))];
+  const show = (p.act === "guide" && (p.level ?? 0) >= 3) || p.act === "example_step";
+  const asked = p.act === "confirm" && after.heardAsked ? sayValues(after.heardAsked)[0] ?? null : null;
+  return {
+    allowed: [
+      ...(pkg ? printedValues(pkg) : []), ...credited, ...example, ...children.flatMap(valuesOf), ...facts.flatMap((f) => f.numbers),
+      ...(released && pkg ? sayValues(pkg.answer.value) : []),
+    ],
+    shown: valuesOf(planned),
+    shownEquations: equationKeysOf(planned),
+    forbidden, answer, hidden,
+    wrong: released ? [] : wrong,
+    mustAsk: asked,
+    wordLimit: before.shorter ? 25 : show ? 45 : 30,
+    noBoard: after.noBoard === true,
+    accepting: p.act === "accept_answer" || released,
+    noIntro: before.conversational === true && before.opened && !p.reading?.aboutMaya,
+  };
+}
+
+/** Words of a reply that is not plain math talk: the review reads it (D-341, item 4). */
+const PERSONAL = /\b(?:mom|mum|dad|family|brother|sister|grandma|grandpa|granny|friend|friends|pet|dog|cat|school|teacher|home|house|birthday|secret|secrets|love|sad|scared|worried|hurt|sick|feel|feeling|feelings|tired|angry|upset|lunch|dinner|game|games|real|person|human|promise)\b/i;
+
+/** A turn the review reads: the child's turn was off topic, about feelings, about Maya or personal, or the reply holds more than math and encouragement. */
+function needsReview(s: Session, p: Proposal, say: string): boolean {
+  const r = p.reading ?? {};
+  return !!(r.offTopic || r.aboutMaya || r.outsideScope || r.unsafeRequest || r.safety || r.stop) || p.act === "redirect" || p.act === "check_in" ||
+    hardFeeling(s.turn?.text) || PERSONAL.test(say) || (s.turn !== null && PERSONAL.test(s.turn.text));
+}
+
+/** Lines code says in its own words whatever the model wrote: the decline, the outside-work redirect and the fixed AI replies. */
+const CODE_WORD_LINES: readonly string[] = ["redirect.workbook", "redirect.decline", "about.ai", "about.no_secret"];
+
+/** Refusals that are about code's own choice of lines, not the model's act: the next planned set is tried. */
+const PLAN_REFUSALS: readonly RefusalCode[] = ["line_not_offered", "free_talk_in_math_turn", "math_line_not_last", "invalid_proposal", "turn_too_long", "missing_disclosure", "fixed_reply_first", "hint_too_high", "same_hint_again", "board_not_code", "board_not_allowed", "board_wrong_problem"];
+
+/**
+ * A version 3 output (D-341): code plans the lines for the model's act, step and level (codeProposals) and steps the
+ * first plan the session accepts, so the state machine, the credit rule, the help ladder and the loop guard stay
+ * code's. Then the model's own `say` replaces the plan's words when it passes the say checks against them (and, on a
+ * turn that is not plain math talk, the review). Code keeps its own words for safety, the content hold, the decline,
+ * the outside-work redirect and the fixed AI replies. A failed check is a refusal with its typed reason: the adapter
+ * asks the model once more, then says code's plan (fallbacks).
+ */
+function proposeV3(base: Session, out: ModelOutput, effects: Effect[], reviews: readonly TalkReview[] | undefined): StepResult {
+  const reading = out.reading ?? {};
+  const acts = () => (gate(base, reading) ?? actsNow(base, reading, false)).acts;
+  const no = (code: RefusalCode, reason: string, allowed: Act[], say?: SayReason | "review"): StepResult => ({ session: base, effects, refusal: { code, reason, allowed, ...(say ? { say } : {}) } });
+  const located = turnFacts(base).find((f) => f.misconception);
+  if (located && (out.act === "confirm" || out.act === "accept_answer")) {
+    return no("act_not_allowed", `The child's number shows a mistake: ${located.text} Name it plainly, say why, and guide that step. Never confirm it.`, acts().filter((a) => a !== "confirm" && a !== "accept_answer"));
+  }
+  const plans = codeProposals(base, [], out);
+  let accepted: { r: StepResult; p: Proposal } | null = null;
+  let refused: StepResult | null = null;
+  for (const draw of [true, false]) {
+    for (const plan of plans) {
+      if (!draw && !plan.draw) continue;
+      const p = draw ? plan : { ...plan, draw: undefined };
+      const r = propose(base, p, [...effects], [], false);
+      if (!r.refusal) { accepted = { r, p }; break; }
+      if (!refused || (PLAN_REFUSALS.includes(refused.refusal!.code) && !PLAN_REFUSALS.includes(r.refusal.code))) refused = r;
+    }
+    if (accepted) break;
+  }
+  if (!accepted) {
+    if (!refused) return no("act_not_allowed", `"${out.act}" does not fit now. Allowed acts: ${acts().join(", ")}.`, acts());
+    const r = refused.refusal!;
+    if (!PLAN_REFUSALS.includes(r.code)) return { ...refused, effects };
+    return no(r.code, `"${out.act}"${out.act === "guide" ? ` at level ${out.level ?? 0} on "${out.step ?? base.ladder.step}"` : ""} does not fit now (${r.reason}) Allowed acts: ${r.allowed.join(", ") || acts().join(", ")}.`, r.allowed.length ? r.allowed : acts());
+  }
+  const { r, p } = accepted;
+  const at = r.effects.findLastIndex((e) => e.kind === "say");
+  if (at === -1) return r;
+  const planned = (r.effects[at] as Extract<Effect, { kind: "say" }>).text;
+  const codeWords = p.act === "safety" || base.state === "CONTENT_HOLD" || (p.act === "close" && base.state === "SAFETY") ||
+    p.parts.some((x) => "line" in x && CODE_WORD_LINES.includes(x.line)) || (p.act === "open" && !!base.confirmWorkbook);
+  if (codeWords) return r;
+  const say = out.say.trim();
+  const verdict = checkSay(say, sayRules(base, r.session, p, planned));
+  if (!verdict.ok) return no("say_check", `Your say was refused (${verdict.reason}): ${verdict.detail}`, [p.act], verdict.reason);
+  let talk: TalkCheck[] | undefined;
+  if (needsReview(base, p, say)) {
+    if (reviews === undefined) talk = [{ proposed: say, code: null, review: "not_run", shown: say }];
+    else {
+      const review = reviews.find((x) => x.text === say)?.result ?? null;
+      if (review?.verdict !== "pass") {
+        const why = review?.verdict === "fail" ? `${review.reason} (${review.rules.join(", ")})` : review?.verdict === "error" ? review.reason : "no review";
+        return no("say_review", `The review refused your say: ${why}. Write a short, kind reply that answers the child, then go back to the question.`, [p.act], "review");
+      }
+      talk = [{ proposed: say, code: null, review: "pass", shown: say }];
+    }
+  }
+  const text = p.act === "open" ? `${planned} ${say}` : say;
+  const effectsOut = r.effects.map((e, i) => (i === at && e.kind === "say" ? { ...e, text, planned, ...(talk ? { talk } : {}) } : e));
+  const turns = [...r.session.turns];
+  const last = turns.findLastIndex((t) => t.speaker === "maya" && t.text === planned);
+  if (last !== -1) turns[last] = { ...turns[last], text, planned };
+  return { session: { ...r.session, turns }, effects: effectsOut, refusal: null };
+}
+
+/** What the model's brief says about the help now (D-341): the step, the level reached, and what each level may show. */
+export function helpBrief(s: Session): { step: string; level: number; levels: { level: number; mayShow: string }[] } {
+  const pkg = s.package;
+  if (!pkg) return { step: s.ladder.step, level: s.ladder.hint, levels: [] };
+  const done = [...s.done];
+  const after = regroupAfter(s, [], done);
+  const view: View = { steps: [s.ladder.step], done, checked: [], rightResult: false, regroup: pendingRegroup(after), regroupSaid: after.said, regroupTimes: after.times };
+  const offers = offersFor(s, "guide", view).filter((o) => o.line.startsWith("step.") && (o.slots.step === undefined || o.slots.step === s.ladder.step));
+  const levels = [...new Set(offers.map((o) => o.level ?? 0))].sort((a, b) => a - b)
+    .map((level) => ({ level, mayShow: offers.filter((o) => (o.level ?? 0) === level).map((o) => o.texts[0]).filter(Boolean).slice(0, 3).join(" / ") }));
+  return { step: s.ladder.step, level: s.ladder.hint, levels };
+}
+
+/** The numbers the model may say on this turn, and the ones it must keep secret, for the brief (D-341). */
+export function numbersBrief(s: Session): { sayable: string[]; secret: string[] } {
+  const pkg = s.package;
+  if (!pkg) return { sayable: [], secret: [] };
+  const released = s.solved !== null || s.lastResult === "right";
+  const credited = workSteps(pkg).filter((st) => s.done.includes(st.id) || (s.passed ?? []).includes(st.id)).flatMap((st) => stepAnswers(st).flatMap(sayValues));
+  const { forbidden, answer } = hiddenOf(s, released);
+  const keys = (list: SayValue[]) => [...new Set(list.map((v) => v.key))];
+  return {
+    sayable: keys([...printedValues(pkg), ...credited, ...turnFacts(s).flatMap((f) => f.numbers), ...(released ? sayValues(pkg.answer.value) : [])]),
+    secret: keys([...answer, ...forbidden]),
+  };
 }
 
 // ---------- Helpers ----------
@@ -4778,7 +5114,7 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
   const main = isTeaching(s.state) ? s.state : s.resume;
   const solved = s.solved ?? (view.rightResult ? "child" : null);
   // A missing number's framing rides on the first step's hint until Maya has said it (missing-number.ts).
-  const framing = frameState(pkg.steps, s.turns.filter((t) => t.speaker === "maya").map((t) => t.text),
+  const framing = frameState(pkg.steps, s.turns.filter((t) => t.speaker === "maya").map((t) => t.planned ?? t.text),
     [...s.turns.filter((t) => t.speaker === "child").map((t) => t.text), ...(s.turn ? [s.turn.text] : [])]);
   const right = l.stepIds.flatMap(l.rightStep);
   switch (act) {
@@ -4813,7 +5149,7 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
       const turnText = s.turn?.text ?? "";
       const asking = asksWhy(turnText) || /\?\s*$/.test(turnText);
       const work = view.checked.some((c) => c.problem === "target") || (!asking && valuesIn(turnText, opts).length > 0);
-      if (!work && frameOwed(pkg.text, pkg.operation, s.turns.flatMap((t) => (t.speaker === "maya" ? [t.text] : [])))) return l.question().filter((o) => o.line === "question.problem");
+      if (!work && frameOwed(pkg.text, pkg.operation, s.turns.flatMap((t) => (t.speaker === "maya" ? [t.planned ?? t.text] : [])))) return l.question().filter((o) => o.line === "question.problem");
       // An equal fraction when the question asks for the simplest form (#407): the equal-form check for each equal
       // fraction in the child's turn (it needs code to check that one), and the final step's help to simplify it.
       const candidates = view.equal ? [view.equal] : valuesIn(s.turn?.text ?? "", opts).filter((v) => isEqualForm(pkg, v));

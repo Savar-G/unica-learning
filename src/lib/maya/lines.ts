@@ -967,6 +967,22 @@ export function workbookOpening(pkg: OperationPackage): string | null {
     .replace("{page}", String(pkg.ref.page)).replace("{number}", String(pkg.ref.question)).replace("{expr}", expr) : null;
 }
 
+/** The question in spoken words ("52 minus 28"): the signs of the written question said as words. */
+export function spokenQuestion(text: string): string {
+  return text.replace(/\s*[\u2212-]\s*(?=\d|\()/g, " minus ").replace(/\s*\+\s*/g, " plus ").replace(/\s*[×x\u00d7]\s*(?=\d|\()/g, " times ")
+    .replace(/\s*÷\s*/g, " divided by ").replace(/\s*=\s*/g, " equals ").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * The opening of a conversational call (D-341, approved by Savar 2026-11-12): code-written, said the moment the call or
+ * chat starts and before the child speaks, with no model call. It carries the AI disclosure. Chat and voice say the
+ * same line; the voice worker speaks it itself (start with openingSpoken).
+ */
+export function openingLine(pkg: OperationPackage): string {
+  const expr = pkg.operation.kind === "place-value" ? placeOpeningText(pkg.operation) : questionExpr(pkg);
+  return `Hi there! I'm Maya, an AI math helper. We're doing ${spokenQuestion(expr)} today.`;
+}
+
 /** The question as Maya names it: as the page prints it for a missing number or a missing-number evaluate, else its operation. */
 const questionExpr = (pkg: OperationPackage) =>
   framedLines(pkg.steps)?.printed ?? evaluateFrame(pkg)?.printed ?? operationText(pkg.operation);
