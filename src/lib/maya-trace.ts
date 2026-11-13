@@ -209,6 +209,8 @@ export interface TraceBoardBatch {
 }
 
 export interface MayaTrace {
+  /** C2: committed preparation decisions. No hypothetical child text is stored. */
+  preparations?: import("@/lib/maya-prepared").PrepareRecord[];
   kind: typeof TRACE_KIND;
   /** The shape's version: this code writes TRACE_VERSION and reads every one of TRACE_VERSIONS. */
   version: (typeof TRACE_VERSIONS)[number];
@@ -490,6 +492,18 @@ function check(raw: unknown): MayaTrace {
   const r = raw as Record<string, unknown>;
   need((TRACE_VERSIONS as readonly unknown[]).includes(r.version), "version", `one of ${TRACE_VERSIONS.join(", ")}, not ${String(r.version)}`);
   need(isName(r.callId), "callId", "a call id");
+  if (r.preparations !== undefined) {
+    need(Array.isArray(r.preparations), "preparations", "a list of preparation decisions");
+    for (const raw of r.preparations as unknown[]) {
+      need(isObject(raw), "preparations", "a preparation decision");
+      const p = raw as Record<string, unknown>;
+      need(Object.keys(p).every((key) => ["kind", "leadMs", "status", "reason", "usd", "estimated"].includes(key)), "preparations", "metadata only");
+      need(oneOf(["interim", "expected"], p.kind) && isNum(p.leadMs) && (p.leadMs as number) >= 0 && oneOf(["used", "discarded"], p.status), "preparations", "a known kind, status and nonnegative lead time");
+      need(p.status === "used" ? p.reason === undefined : oneOf(["key", "text", "not_plain", "stale", "ended"], p.reason), "preparations", "a discard reason only for a discarded reply");
+      need(p.usd === undefined || isNum(p.usd) && (p.usd as number) >= 0, "preparations", "a nonnegative cost");
+      need(p.estimated === undefined || p.estimated === true && p.usd !== undefined, "preparations", "an estimate only with a cost");
+    }
+  }
   if (r.version === 7 || r.scopeRefusals !== undefined) {
     need(Array.isArray(r.scopeRefusals), "scopeRefusals", "a list of reason codes and times");
     for (const refusal of r.scopeRefusals as unknown[]) need(isObject(refusal) && typeof refusal.at === "number" && Number.isFinite(refusal.at) &&

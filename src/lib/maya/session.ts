@@ -5041,6 +5041,84 @@ export function numbersBrief(s: Session): { sayable: string[]; secret: string[] 
   };
 }
 
+// ---------- C2: prepare, then commit (src/lib/maya-text.ts, src/lib/maya-prepared.ts) ----------
+
+/** Words of a stop, a goodbye or a break: a turn that holds one is no plain math turn. */
+const STOP_WORDS = /\b(?:stop|bye|goodbye|quit|leave|done with (?:this|math|it)|no more|go away|i'?m done|break)\b/i;
+/** Words that make a turn a question or a hedge, not a plain statement of a value. */
+const ASK_WORDS = /\?|\b(?:is it|is that|am i|do i|does it|should i|can i|could it|what|why|how|which|maybe|i think|i guess|not sure|or is|right)\b/i;
+
+/**
+ * C2: a plain math turn by code's own read, the only kind of turn a prepared reply may answer: code's stream plan
+ * exists (no safety flag, no stop, no fixed reply, no outside work, no content hold), the turn is heard clearly, it
+ * holds no help, stop or feeling words, and every word of it is in the closed math vocabulary (so no off-topic or
+ * personal words). Greetings use the live path.
+ */
+export function plainMathTurn(s: Session): boolean {
+  if (!s.turn || s.turn.uncertain || (s.turns.at(-1)?.alternatives?.length ?? 0) > 0 || s.turn.text.includes("\n")) return false;
+  const plan = streamPlan(s);
+  if (!plan || plan.rules.noQuestion) return false;
+  if (plan.greeting) return false;
+  const text = s.turn.text;
+  if (fillerTurn(text) || clearStop(text) || STOP_WORDS.test(text) || helpInWords(text) || saysStuck(text) || saysGuess(text) || hardFeeling(text)) return false;
+  if (/\b(?:help|hint|stuck|show me|tell me|don'?t (?:know|get|understand)|can'?t|confus\w*|hard|tricky)\b/i.test(text)) return false;
+  // Closed input grammar. The output vocabulary includes personal statements such as "you are nothing";
+  // those are never plain arithmetic inputs, even when each word is also a tutor word.
+  const words = new Set("zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty ninety hundred thousand million half halves third thirds quarter quarters fourth fourths fifth fifths sixth sixths eighth eighths tenth tenths hundredth hundredths plus minus times divided by add subtract multiply divide equals equal is are was the a an and so then ones tens hundreds thousands top bottom column columns digit digits number numbers point decimal carry carried write wrote got i answer it's that that's it my result".split(" "));
+  if ((text.toLowerCase().match(/[a-z']+/g) ?? []).some((word) => !words.has(word))) return false;
+  const extra = vocabExtra(s);
+  return sentencesOf(text).every((x) => mathOnly(x, extra));
+}
+
+/**
+ * C2: the child turns the session may prepare for while it waits for the child's answer to a math step: the step's
+ * expected value said plainly, then the top wrong value code's facts can explain (the smaller digit taken from the
+ * larger, the carry left out). Empty when code has no such value, or when the call does not wait on a teaching step.
+ */
+export function expectedTurns(s: Session): { text: string; why: "right" | "known_wrong" }[] {
+  const pkg = s.package;
+  if (!pkg || s.turn || s.outcome || s.safety.flagged || s.stopRequested || s.replies?.length || s.scopeDue || s.contentProblem !== null) return [];
+  if (!isTeaching(s.state) || s.solved !== null || nextActs(s).expect !== "child") return [];
+  const at = s.now ?? 0;
+  const heard = (text: string) => step(s, { type: "child_turn", at, text });
+  const out: { text: string; why: "right" | "known_wrong" }[] = [];
+  const current = workSteps(pkg).find((st) => st.id === s.ladder.step);
+  const expected = s.ladder.step === "result" ? pkg.answer.value : current ? stepAnswers(current)[0] : undefined;
+  if (expected?.type === "number") {
+    const text = valueText(expected);
+    const h = heard(text);
+    // Only a value code itself hears as the child's clear, right answer.
+    if (!h.refusal && heardAnswers(h.session).some((a) => a.verdict === "right") && plainMathTurn(h.session)) out.push({ text, why: "right" });
+  }
+  const wrong: number[] = [];
+  if (current?.kind === "subtract-column" && current.regrouped && current.bottom !== null) wrong.push(current.bottom - (current.top - (current.lent ? 1 : 0)));
+  if (current?.kind === "add-column" && current.carryIn > 0) wrong.push(current.total - current.carryIn, (current.total - current.carryIn) % 10);
+  for (const value of wrong) {
+    if (value < 0 || out.some((x) => x.text === String(value))) continue;
+    const h = heard(String(value));
+    if (h.refusal || !plainMathTurn(h.session)) continue;
+    if (turnFacts(h.session).some((f) => f.misconception !== undefined && f.step === s.ladder.step)) { out.push({ text: String(value), why: "known_wrong" }); break; }
+  }
+  return out;
+}
+
+/**
+ * C2: whether the real turn (the session's `turn`) may take a reply prepared for the expected turn `hypothesis`: it
+ * holds no number other than the hypothesis's own and the question's printed values, and no help, stop or question
+ * words the hypothesis did not have.
+ */
+export function fitsExpected(s: Session, hypothesis: string): boolean {
+  const pkg = s.package;
+  if (!pkg || !s.turn) return false;
+  const text = s.turn.text;
+  const allowed = [...valuesOf(hypothesis), ...printedValues(pkg)];
+  if (valuesOf(text).some((v) => !valueIn(v, allowed))) return false;
+  if (!valuesOf(hypothesis).every((v) => valueIn(v, valuesOf(text)))) return false;
+  for (const words of [STOP_WORDS, ASK_WORDS]) if (words.test(text) && !words.test(hypothesis)) return false;
+  if ((helpInWords(text) || saysStuck(text) || saysGuess(text)) && !(helpInWords(hypothesis) || saysStuck(hypothesis) || saysGuess(hypothesis))) return false;
+  return true;
+}
+
 // ---------- Helpers ----------
 
 function refuse(session: Session, code: RefusalCode, reason: string): StepResult {

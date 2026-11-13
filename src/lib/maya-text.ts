@@ -33,6 +33,9 @@ import {
   nextActs,
   step,
   streamPlan,
+  plainMathTurn,
+  expectedTurns,
+  fitsExpected,
   streamSentence,
   codeStance,
   fillName,
@@ -46,6 +49,8 @@ import {
   type WordingHistory,
 } from "@/lib/maya";
 import { modelInput, turnBrief, type MayaModel, type ModelInput } from "@/lib/maya-model";
+import { preparedReplies, preparedKey, normalizeTurn, MAX_PREPARES_PER_TURN, type PrepareHypothesis, type PreparedReply, type PrepareRecord } from "@/lib/maya-prepared";
+import type { SpendSeam } from "@/lib/maya-spend-seam";
 import { sentencesOf } from "@/lib/maya/say-check";
 
 /**
@@ -87,6 +92,10 @@ export const MAX_MAYA_TURNS = 8;
 export const TURN_BUDGET_MS = 6_000;
 
 export interface TextSessionOptions {
+  /** Budget owner refuses speculative takes when only two live attempts remain. No seam disables preparation. */
+  spend?: SpendSeam;
+  /** Prepare expected and known-wrong values after a delivered turn. Default on when spend is supplied. */
+  prepareExpected?: boolean;
   confirmWorkbook?: boolean;
   callId: string;
   /** The question package (untrusted; the session checks it). */
@@ -166,6 +175,7 @@ export interface SavedTextSession {
   obligations?: TraceObligation[];
   childState?: "listening" | "child_speaking";
   problems?: string[];
+  preparations?: PrepareRecord[];
 }
 
 /** How a call that has not ended yet ends when it is finished. */
@@ -177,6 +187,9 @@ export interface FinishOptions {
 
 /** What reached the child after one input: Maya's sentences and board batches, all accepted by the session. */
 export interface TextOutput {
+  prepared?: "hit" | "miss" | "none";
+  preparedLeadMs?: number;
+  preparedKind?: "interim" | "expected";
   say: string[];
   board: Batch[];
   /** The outcome when the call ended with this input. */
@@ -202,6 +215,8 @@ export interface TextSession {
    * comes back with no say (the trace records it, the board batch comes back as usual).
    */
   start(options?: { openingSpoken?: boolean }): Promise<TextOutput>;
+  /** Starts a speculative request. It never changes saved state or speaks. False means no request was needed or allowed. */
+  prepare(hypothesis: PrepareHypothesis | string): boolean;
   /** One child turn as text. */
   child(text: string, options?: { uncertain?: boolean; alternatives?: string[] }): Promise<TextOutput>;
   /**
@@ -276,6 +291,63 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   let queue: Promise<unknown> = Promise.resolve();
   let turnEndsAt = Number.POSITIVE_INFINITY;
   let quietOpening = false;
+  let scheduled = 0;
+  let prepareCount = 0;
+  const preparations: PrepareRecord[] = structuredClone(resume?.preparations ?? []);
+  const costs = new Map<PrepareRecord, PreparedReply>();
+  const cache = options.spend && model.output === 3 ? preparedReplies(model, options.spend, () => now()) : null;
+  let committing: { generation: number; entries: Map<string, PreparedReply>; at: number } | null = null;
+  let preparedOutput: Pick<TextOutput, "prepared" | "preparedLeadMs" | "preparedKind"> = {};
+  function record(entry: PreparedReply, value: PrepareRecord) { preparations.push(value); costs.set(value, entry); }
+  function discard(entries: Map<string, PreparedReply>, reason: NonNullable<PrepareRecord["reason"]>) {
+    for (const entry of entries.values()) record(entry, cache!.discard(entry, reason, now()));
+  }
+  function clearPrepares(reason: NonNullable<PrepareRecord["reason"]>) {
+    if (!cache) return;
+    discard(cache.takeAll(), reason);
+    if (committing) { discard(committing.entries, reason); committing = null; }
+  }
+  function prepare(hypothesis: PrepareHypothesis | string): boolean {
+    if (!cache || scheduled || active || needsRecovery || folded.session.startedAt === null || folded.session.outcome || folded.request || folded.candidate || folded.pending.length || folded.session.turn) return false;
+    const h = typeof hypothesis === "string" ? { text: hypothesis, reason: "interim" as const } : hypothesis;
+    if (!h.text.trim() || h.text.length > 1_000) return false;
+    const at = now();
+    const copy = foldTextEvent(restoreTextCheckpoint(saveTextCheckpoint(folded)), { kind: "input", at, event: { type: "child_turn", at, text: h.text } });
+    if (!plainMathTurn(copy.session) || copy.session.outcome) return false;
+    const brief = turnBrief(copy.session);
+    const key = preparedKey(copy.session, brief);
+    if (cache.get(key)) { cache.share(key, h); return false; }
+    if (prepareCount >= MAX_PREPARES_PER_TURN) return false;
+    const handle = options.spend!.take("speculative");
+    if (!handle) return false;
+    prepareCount++;
+    return cache.start(key, brief, h, handle);
+  }
+  function prepareNext() {
+    if (options.prepareExpected === false) return;
+    for (const h of expectedTurns(folded.session)) prepare({ text: h.text, reason: "expected" });
+  }
+  function preparedForTurn(): PreparedReply | undefined {
+    const batch = committing;
+    committing = null;
+    if (!batch || !cache) return;
+    const plain = plainMathTurn(folded.session);
+    const brief = turnBrief(folded.session);
+    const key = preparedKey(folded.session, brief);
+    let selected: PreparedReply | undefined;
+    for (const entry of batch.entries.values()) {
+      const h = batch.generation === generation && plain && key === entry.key ? entry.hypotheses.find((h) => h.reason === "interim" ? normalizeTurn(h.text) === normalizeTurn(brief.childTurn ?? "") : fitsExpected(folded.session, h.text)) : undefined;
+      if (h && !selected) {
+        selected = entry;
+        const rec = cache.used(entry, batch.at);
+        rec.kind = h.reason;
+        record(entry, rec);
+        preparedOutput = { prepared: "hit", preparedLeadMs: rec.leadMs, preparedKind: h.reason };
+      } else record(entry, cache.discard(entry, !plain ? "not_plain" : key !== entry.key ? "key" : "text", batch.at));
+    }
+    if (!selected && batch.entries.size) preparedOutput = { prepared: "miss" };
+    return selected;
+  }
   /** Sentences streamed for the output being built (D-341), in the order they were sent. */
   const streamedThisOutput: string[] = [];
   /** Reviews the stream started for its sentences (round 4), by sentence: the whole-reply review reuses them. */
@@ -309,6 +381,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     finally { controller.signal.removeEventListener("abort", abort); }
   }
   async function request(source: "model" | "repair", controller: AbortController) {
+    const prepared = source === "model" ? preparedForTurn() : undefined;
     const requestId = nextRequestId++;
     const repair = source === "repair" && folded.attempts.at(-1)?.refusal ? {
       proposal: folded.attempts.at(-1)!.proposal,
@@ -376,7 +449,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       return sent.length ? { sent: [...sent], firstSayMs } : {};
     };
     // The handler logs even a late response from a provider that ignores abort; a response after the budget is stale.
-    const answered = Promise.resolve().then(() => model.propose(input, controller.signal, onText)).then((proposal) => ({ proposal }), (error: unknown) => ({ error }));
+    const answered = Promise.resolve().then(() => prepared ? prepared.use(onText, controller.signal) : model.propose(input, controller.signal, onText)).then((proposal) => ({ proposal }), (error: unknown) => ({ error }));
     const response = Promise.race([answered, budget]).then((got) => {
       clearTimeout(budgetTimer);
       if (got === "budget") {
@@ -471,6 +544,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   }
   function schedule(respond = true): Promise<TextOutput> {
     const version = generation;
+    scheduled++;
     const next = queue.then(async () => {
       if (version !== generation) return { ...newOutput(), cancelled: true };
       const controller = new AbortController();
@@ -484,7 +558,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
           append({ kind: "cancelled", at: now() });
           return out;
         }
-        const out: TextOutput = { ...textOutput(folded), ...((folded.session.thinking ?? 0) > 0 && !folded.session.outcome ? { wait: true } : {}) };
+        const out: TextOutput = { ...textOutput(folded), ...preparedOutput, ...((folded.session.thinking ?? 0) > 0 && !folded.session.outcome ? { wait: true } : {}) };
+        if (out.ended) clearPrepares("ended");
         const streamedNow = [...streamedThisOutput];
         streamedThisOutput.length = 0;
         append({ kind: "delivered", at: now() });
@@ -496,8 +571,9 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         throw error;
       } finally { if (active === controller) active = null; }
     });
-    queue = next.catch(() => undefined);
-    return next;
+    const settled = next.finally(() => { scheduled--; });
+    queue = settled.catch(() => undefined);
+    return settled;
   }
   /** The streaming hooks (D-341): each sentence in order, once the whole reply passed its checks, then the end. */
   function sayParts(out: TextOutput, streamedSentences: readonly string[] = []) {
@@ -516,6 +592,12 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     recover();
     const nonInterrupting = event.type === "writing" || event.type === "tick" || event.type === "start" || event.type === "content_problem" || event.type === "maya_said";
     if (!nonInterrupting) { generation++; active?.abort(); }
+    if (event.type === "child_turn" && event.final !== false) {
+      if (committing && cache) discard(committing.entries, "stale");
+      committing = cache ? { generation, entries: cache.takeAll(), at: event.at } : null;
+      prepareCount = 0;
+      preparedOutput = cache ? { prepared: "none" } : {};
+    } else if (event.type !== "maya_said" && event.type !== "tick" && event.type !== "writing" && event.type !== "start") clearPrepares("stale");
     const approval = event.type === "maya_said" && matchesApproval(folded, event.text);
     append({ kind: "input", at: event.at, event });
     if (approval) return Promise.resolve(newOutput());
@@ -527,6 +609,10 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     }
     return schedule(respond);
   }
+  function preparationRecords() {
+    for (const [rec, entry] of costs) Object.assign(rec, entry.cost() ?? {});
+    return structuredClone(preparations);
+  }
   function trace(): MayaTrace {
     const { session, turns, board, obligations, endedAt } = folded;
     const outcome = folded.pending.length ? null : session.outcome;
@@ -537,6 +623,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       question: { id: typeof raw.id === "string" ? raw.id : null, ref: raw.ref ?? null, text: typeof raw.text === "string" ? raw.text : null, hash: packageHash(options.package) },
       freeTalk: session.freeTalk, reviewer: options.reviewer ? { id: options.reviewer.id, promptVersion: options.reviewer.promptVersion } : null,
       scopeRefusals: structuredClone(session.scopeRefusals ?? []),
+      ...(preparations.length ? { preparations: preparationRecords() } : {}),
       obligations: structuredClone(obligations), turns: structuredClone(turns), board: structuredClone(board), outcome, counts: traceCounts(turns),
     }, options.childName ?? null);
   }
@@ -545,9 +632,15 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       quietOpening = opts.openingSpoken === true;
       const out = await receive({ type: "start", at: now() });
       // D-341: the voice worker speaks the opening itself; the trace keeps it and the board batch comes back.
+      prepareNext();
       return opts.openingSpoken ? { ...out, say: [] } : out;
     },
-    child: (text, opts = {}) => receive({ type: "child_turn", at: now(), text, ...structuredClone(opts) }),
+    prepare,
+    child: (text, opts = {}) => {
+      const pending = receive({ type: "child_turn", at: now(), text, ...structuredClone(opts) });
+      const version = generation;
+      return pending.then((out) => { if (version === generation && !out.cancelled) { if (committing) { discard(committing.entries, "not_plain"); committing = null; } prepareNext(); } return out; });
+    },
     partial: (text) => receive({ type: "child_turn", at: now(), text, final: false }, false),
     mayaSaid: (text) => receive({ type: "maya_said", at: now(), text }),
     contentProblem: (detail) => receive({ type: "content_problem", at: now(), detail: redactText(detail) }),
@@ -559,13 +652,13 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     get ended() { return folded.session.outcome !== null; },
     finish: async (end = {}, oldFailed) => {
       const { reason = "technical_issue", detail = "the session was closed before the call ended", failed = false }: FinishOptions = typeof end === "string" ? { detail: end, failed: oldFailed ?? false } : end;
-      recover(); generation++; active?.abort();
+      recover(); generation++; active?.abort(); clearPrepares("ended");
       if (folded.session.startedAt === null) append({ kind: "input", at: now(), event: { type: "start", at: now() } });
       append({ kind: "input", at: now(), event: reason === "child_stopped" ? { type: "hang_up", at: now() } : { type: "technical", at: now(), detail: redactText(detail) }, ...(failed ? { error: classifyError(null, "local") } : {}) });
       await schedule(false);
       return trace();
     },
     trace,
-    saved: async () => structuredClone({ v: 6 as const, initial, checkpoint, nextRequestId, log, session: folded.session, turns: folded.turns, board: folded.board, endedAt: folded.endedAt, approved: folded.approved, obligations: folded.obligations, childState: folded.childState }),
+    saved: async () => structuredClone({ ...(preparations.length ? { preparations: preparationRecords() } : {}), v: 6 as const, initial, checkpoint, nextRequestId, log, session: folded.session, turns: folded.turns, board: folded.board, endedAt: folded.endedAt, approved: folded.approved, obligations: folded.obligations, childState: folded.childState }),
   };
 }
