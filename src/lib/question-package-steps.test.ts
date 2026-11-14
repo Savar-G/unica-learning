@@ -77,3 +77,19 @@ it("steps that would disagree with the stored answer are never given", () => {
   box.answer.value += 1;
   expect(templateSolvingSteps(pkg)).toBeNull();
 });
+
+it("a missing number undoes only a value the question prints, never a helper value", () => {
+  expect(templateSourceSteps(source("b", [["wrong", "b + 1"], ["c", "a * b"]], [["a", 6], ["b", 7]]), "6 × ? = 42")).toEqual(["42 ÷ 6 = 7"]);
+  expect(templateSourceSteps(source("b", [["t", "b * 10"], ["c", "a + b"]], [["a", 6], ["b", 7]]), "6 + ? = 13")).toEqual(["13 − 6 = 7"]);
+});
+
+it("a true or false switch that means the other way gets no steps, never steps that contradict the answer", () => {
+  expect(templateSourceSteps(source("'true' if flip == 1 else 'false'", [["shown", "a + b + flip * 2"]], [["a", 3], ["b", 4], ["flip", 0, { min: 0, max: 1 }]]), "True or false: 3 + 4 = 7.")).toBeNull();
+});
+
+it("rough step text is left out: a division that does not end, an equality test; negatives take the typed minus", () => {
+  expect(templateSourceSteps(source("round(a / b, 1)", [], [["a", 7], ["b", 3]]), "7 ÷ 3 to one decimal")).toBeNull();
+  expect(templateSourceSteps(source("a - b", [], [["a", 3], ["b", 8]]), "3 − 8")).toEqual(["3 − 8 = −5"]);
+  const parity = templateSourceSteps(source("'even' if a % 2 == 0 else 'odd'", [], [["a", 7]]), "Is 7 even or odd?");
+  expect(parity?.some(step => step.includes("= 0 is"))).not.toBe(true);
+});

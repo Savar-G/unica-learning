@@ -116,7 +116,8 @@ function forward(n: ExpressionNode, w: Work, top = false): ExpressionValue {
 }
 /** A comparison that chooses the answer, shown with its numbers ("345 < 567"). A sampled switch is not shown. */
 function explainCondition(n: ExpressionNode, w: Work): ExpressionValue {
-  if (n.kind !== "compare" || n.rest.length !== 1 || !COMPARE[n.rest[0].op]) return value(n, w);
+  // An equality test ("a % 2 == 0") reads badly as a sentence ("1 = 0 is false"), so it is not shown.
+  if (n.kind !== "compare" || n.rest.length !== 1 || !COMPARE[n.rest[0].op] || n.rest[0].op === "==") return value(n, w);
   const fixed = (x: ExpressionNode) => x.kind === "value" || (x.kind === "name" && !w.clean.has(x.name));
   if (fixed(n.first) && fixed(n.rest[0].right) && (n.first.kind === "value" || n.rest[0].right.kind === "value")) return value(n, w);
   const l = forward(n.first, w), r = forward(n.rest[0].right, w), out = value(n, w);
@@ -128,6 +129,8 @@ function explainCondition(n: ExpressionNode, w: Work): ExpressionValue {
 function undo(answer: string, w: Work): boolean {
   for (const [name, tree] of w.clean) {
     if (name === answer || tree.kind === "name" || !countsOnce(tree, answer)) continue;
+    // Only a value the question prints is the one to undo: "6 × ? = 42" undoes 42, never a helper value it never shows.
+    if (w.text && !printed(w.text, show(w.values[name], w))) continue;
     const term = placeTerms(tree, w)?.find(t => t.name === answer);
     if (term) {
       if (!placeName(term.place)) return false;
@@ -172,7 +175,7 @@ const sameValue = (a: ExpressionValue, b: ExpressionValue, w: Work) => show(a, w
  * A true or false answer chosen by a sampled switch: the shown number is the right one when the switch is 0
  * ("right + flip * k", "right if flip == 0 else wrong"). The right number is worked out, then set beside the shown one.
  */
-function switched(src: TemplateSource, w: Work): boolean {
+function switched(src: TemplateSource, w: Work, answer: string): boolean {
   const flags = new Set(src.slots.filter(s => isSwitch(s.domain)).map(s => s.name));
   const free = (n: ExpressionNode) => ![...names(n)].some(x => flags.has(x));
   for (const [name, expression] of src.derived) {
@@ -183,8 +186,9 @@ function switched(src: TemplateSource, w: Work): boolean {
       && tree.condition.rest[0].op === "==" && tree.condition.first.kind === "name" && flags.has(tree.condition.first.name)
       && tree.condition.rest[0].right.kind === "value" && tree.condition.rest[0].right.value === BigInt(0)) right = tree.yes;
     if (!right) continue;
-    const truth = forward(right, w), shown = w.values[name];
-    if (!isNumber(truth) || !isNumber(shown)) return false;
+    const before = w.steps.length, truth = forward(right, w), shown = w.values[name];
+    // The steps must agree with the stored answer: a template whose switch means the other way gets no steps.
+    if (!isNumber(truth) || !isNumber(shown) || sameValue(truth, shown, w) !== (answer === "true")) { w.steps.length = before; return false; }
     w.steps.push(sameValue(truth, shown, w) ? `${show(shown, w)} is right.` : `The right number is ${show(truth, w)}, not ${show(shown, w)}.`);
     return true;
   }
@@ -225,18 +229,29 @@ export function templateSourceSteps(src: TemplateSource, text = ""): string[] | 
     const w: Work = { values, clean, budget, steps: [], text };
     const tree = compileExpression(src.answer, budget).tree;
     forward(tree, w, true);
-    if (!w.steps.length && (result.answer === "true" || result.answer === "false")) switched(src, w);
+    if (!w.steps.length && (result.answer === "true" || result.answer === "false")) switched(src, w, result.answer);
     if (!w.steps.length) return null;
     if (!w.steps.at(-1)!.endsWith(`= ${result.answer}`)) w.steps.push(`So the answer is ${result.answer}.`);
-    return w.steps.length <= MOST_TEMPLATE_STEPS ? w.steps : null;
+    // A division that does not end ("2.3333333333333335") is no step for a parent: none are sent.
+    if (w.steps.some(step => /\d\.\d{7,}/.test(step))) return null;
+    // A negative number takes the same minus sign as the operations ("3 − −5 = 8").
+    const steps = w.steps.map(step => step.replace(/(^|[\s(])-(?=\d)/g, "$1−"));
+    return steps.length <= MOST_TEMPLATE_STEPS ? steps : null;
   } catch { return null; }
 }
 
 /** The steps of a checked package without an operation: from its answer's template source, or null. */
 export function templateSolvingSteps(pkg: QuestionPackage): string[] | null {
+  // Steps are help, never a reason the explanation fails: anything unexpected sends none.
+  try { return solvingSteps(pkg); } catch { return null; }
+}
+function solvingSteps(pkg: QuestionPackage): string[] | null {
   const checks = (pkg.item?.checks ?? []).filter((c): c is Extract<typeof c, { source: TemplateSource }> => c.kind === "template" || c.kind === "template-choice");
   const check = checks.find(c => c.kind === "template" && c.region === "answer") ?? checks.find(c => c.region === "answer") ?? checks[0];
   if (!check) return null;
+  // Several parts worked out by templates, none of them "answer": steps to one part would leave the others unexplained.
+  // One worked part beside a plain choice ("Is it right? If not, fix it") keeps its steps.
+  if (check.region !== "answer" && new Set(checks.map(c => c.region)).size > 1) return null;
   const stored = storedAnswer(pkg, check.region), result = templateAnswer(check.source);
   if (stored === null || "problem" in result || !sameAnswer(result.answer, stored)) return null;
   return templateSourceSteps(check.source, pkg.text);
