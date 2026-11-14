@@ -1433,6 +1433,12 @@ const QR_PLACE_MIN_PATCHES = 8;
 const MARK_ARM = 0.022;
 /** How near a mark in view must be to where the placed page puts it, in arms. */
 const MARK_NEAR = 3;
+/**
+ * How near a mark placed by the code must be, in arms, before it may pin the sheet. A sheet lying on the rest of the
+ * book has the under-sheet's mark 2 arms or more from where the print puts this page's own (#912 review), so a mark
+ * farther than this is never taken: the photo is refused rather than bent toward a neighbouring sheet.
+ */
+const MARK_SURE = 1.5;
 /** How far a mark's arms may point from the page's edges where the placed sheet puts them: 30 degrees. */
 const MARK_ALIGNMENT = Math.cos((30 * Math.PI) / 180);
 /** How much more a mark found in view counts in the placement's map than one patch of print. */
@@ -1514,7 +1520,7 @@ function placedByQr(photo: Raster, printedQr: FoundQr, ink: PrintedInk, greySums
       const tips = s.tips.map((tip) => unit(s.corner, tip));
       if (arms.every((d) => tips.some((e) => dot(d, e) >= MARK_ALIGNMENT))) nearest = s;
     }
-    if (!nearest) return null;
+    if (!nearest || distance(nearest.corner, p) > MARK_SURE * arm) return null;
     found.push({ at: k, corner: nearest.corner });
   }
   let placed: Transform | null = t, sheet = first, fit = firstFit;
@@ -1589,8 +1595,12 @@ export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: Ph
     if (best.fit < MIN_PAGE_FIT) { refusal = "page-mismatch"; continue; }
     followers.push({ ...best, next: ways[1]?.fit ?? null });
   }
-  // Two sheets in one photo: which one was meant cannot be known, whichever shows its code.
-  if (followers.length > 1) return { status: "refused", reason: "ambiguous-page" };
+  // Two sheets in one photo: which one was meant cannot be known, whichever shows its code. Rectangles that share two or
+  // more marks are one sheet, not two: a page lying on the rest of the book shows the marks of the sheets under it, and
+  // a mark of the sheet below can stand in for one of the page's own (#912). Which marks are the page's is then decided
+  // by its code and print below, never by the rectangles.
+  const oneSheet = followers.length > 1 && followers.every((a, i) => followers.every((b, j) => j <= i || a.order.filter((m) => b.order.includes(m)).length >= 2));
+  if (followers.length > 1 && !oneSheet) return { status: "refused", reason: "ambiguous-page" };
   const calibration = (c: { t: Transform; turns: 0 | 1 | 2 | 3; fit: number; mesh?: Mesh; marks: Point[] }, more: Partial<Calibration> = {}): CalibrationResult => {
     if (!qrBound(photo, c.t, printedQr, prepared.qrGrid, pageSize, c.mesh)) return { status: "refused", reason: "qr-mismatch" };
     return {
@@ -1603,6 +1613,12 @@ export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: Ph
       },
     };
   };
+  if (oneSheet) {
+    // The code and print place the page; each mark is then the one nearest where the page puts it (placedByQr).
+    const placed = placedByQr(photo, printedQr, ink, greySums, shapes, stored, pageSize);
+    if (!placed) return { status: "refused", reason: "ambiguous-page" };
+    return calibration(placed, placed.missing.length ? { placedBy: "qr", missingMarks: placed.missing } : {});
+  }
   // Placed by its code only when four marks did not line up as a page: a page whose marks did, but whose print does not
   // follow, is another page.
   if (followers.length === 0 && (refusal === "marks-missing" || refusal === "marks-inconsistent")) {
