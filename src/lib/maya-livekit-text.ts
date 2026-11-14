@@ -37,7 +37,12 @@ class MayaTextAgent extends voice.Agent {
     const output = fresh.length === 0 ? await this.text.start() : await this.text.child(fresh.join("\n"));
     this.last = output;
     const said = output.say.join(" ");
-    if (!said) return null;
+    if (!said) {
+      // D-341, round 3: a silent turn (a thinking child) still ends LiveKit's run. With no reply at all its test run
+      // waits for one forever, and the next turn is refused as a nested run. A single space is spoken as nothing and
+      // carried as no words (take).
+      return new ReadableStream<string>({ start(controller) { controller.enqueue(" "); controller.close(); } });
+    }
     return new ReadableStream<string>({
       start(controller) {
         controller.enqueue(said);
@@ -61,7 +66,7 @@ export async function livekitTextSession(text: TextSession): Promise<LivekitText
   });
   await session.start({ agent });
   const take = () => {
-    const out = { output: agent.last ?? { say: [], board: [], ended: null, safetyMessage: null }, carried };
+    const out = { output: agent.last ?? { say: [], board: [], ended: null, safetyMessage: null }, carried: carried?.trim() ? carried : null };
     agent.last = null;
     carried = null;
     return out;

@@ -89,12 +89,14 @@ describe("the Dockerfile", () => {
     expect(ignore).toMatch(/\.env/);
   });
 
-  it("has a livekit.toml with the project and agent keys, empty until lk agent create fills them", async () => {
+  it("has the livekit.toml lk agent create wrote: the project subdomain and the agent id", async () => {
     const toml = readFileSync(resolve(worker, "livekit.toml"), "utf8");
     expect(toml).toMatch(/^\[project\]\s*\n\s*subdomain = "[^"]*"/m);
     expect(toml).toMatch(/^\[agent\]\s*\n\s*id = "[^"]*"/m);
     const stage = (await import(resolve(root, "scripts/voice-deploy-context.mjs") as string)) as { agentId(toml: string): string };
-    expect(stage.agentId(toml)).toBe("");
+    // The deployed agent (2026-11-12, docs/maya-voice-deploy.md).
+    expect(toml).toMatch(/subdomain = "unica-ai-teacher-[a-z0-9]+"/);
+    expect(stage.agentId(toml)).toMatch(/^CA_[A-Za-z0-9]+$/);
     expect(stage.agentId('[project]\n  subdomain = "unica"\n\n[agent]\n  id = "CA_abc123"\n')).toBe("CA_abc123");
     expect(stage.agentId('[agent]\n  id = ""\n[other]\n  id = "x"\n')).toBe("");
   });

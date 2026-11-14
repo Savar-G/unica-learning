@@ -17,7 +17,7 @@ import {
   SMALL_WIDTH,
   type WrittenDigit,
 } from "@/lib/board/representation";
-import { PLACE_NAMES, type ColumnsCommand, type Ink, type PlaceName, type Rect, type RegroupCommand, type Target } from "@/lib/board/types";
+import { PLACE_NAMES, type ChartPlace, type ColumnsCommand, type Ink, type Rect, type RegroupCommand, type Target } from "@/lib/board/types";
 
 interface CalcRow {
   /** "answer", or "p0", "p1"... for the work rows of a multiplication by a number with several digits. */
@@ -66,7 +66,8 @@ const CARRY_ARROW_Y = 0.26;
 
 const digitAt = (value: string, place: number) => (place < value.length ? Number(value[value.length - 1 - place]) : 0);
 const placeName = (place: number) => PLACE_NAMES[place];
-const placeIndex = (name: PlaceName) => PLACE_NAMES.indexOf(name);
+/** A decimal place is not a place of the columns: its index is -1 and the callers refuse it. */
+const placeIndex = (name: ChartPlace) => (PLACE_NAMES as readonly string[]).indexOf(name);
 
 /** Adds rows of digits column by column: the carry out of each place. */
 function additionCarries(values: string[], places: number): number[] {

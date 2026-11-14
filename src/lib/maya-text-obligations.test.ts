@@ -341,13 +341,26 @@ describe("safety guidance does not wait for a model (#589)", () => {
     expect(done).toBeNull();
     d.held[0].resolve();
     const out = await child;
-    expect(out.say.join(" ")).not.toContain(SAFETY_GUIDANCE.immediate);
-    expect(out.say.length).toBeGreaterThan(0);
+    // The close after the guidance adds no words (e00cf1f8): the guidance is the last thing Maya says, and the input
+    // that waited for the close ends the chat.
+    expect(out.say).toEqual([]);
     expect(out.ended).toMatchObject({ reason: "safety" });
+    expect(out.safetyMessage).toBe(SAFETY_GUIDANCE.immediate);
+    expect(session.ended).toBe(true);
+    expect(session.session.state).toBe("CLOSE");
+    const mayaSaid = session.session.turns.filter((t) => t.speaker === "maya");
+    expect(mayaSaid.at(-1)?.text).toBe(SAFETY_GUIDANCE.immediate);
     const trace = session.trace();
     expect(checkTrace(trace).ok).toBe(true);
     expect(trace.turns.flatMap((t) => t.kind === "maya" ? [t.output?.act] : [])).toEqual(["open", "safety", "close"]);
     expect((trace.obligations ?? []).filter((o) => o.kind === "safety_due").map((o) => o.status)).toEqual(["served"]);
+    // The ended chat takes no more input: no model call, no words, and the transcript stays as it was.
+    const asked = d.asked();
+    const turns = session.session.turns.length;
+    const after = await session.child("Are you there?");
+    expect(after).toMatchObject({ say: [], board: [] });
+    expect(d.asked()).toBe(asked);
+    expect(session.session.turns).toHaveLength(turns);
   });
 
   it("a saved session goes on after the guidance with no second guidance, whether or not the call was resumed", async () => {

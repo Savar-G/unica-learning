@@ -20,7 +20,7 @@ export default async function MayaCallPage({ params }: PageProps<"/admin/maya/[i
   const who = call.childName ?? "the child";
   return (
     <AdminFrame email={admin.email} title={call.view.questionText ?? "Maya call"}
-      lead={call.view.kind === "chat" ? `A chat with ${who}.` : `A test call, with the team speaking as ${who}.`}
+      lead={call.view.kind === "chat" ? `A chat with ${who}.` : call.view.kind === "family" ? `A voice call from the desk with ${who}.` : `A test call, with the team speaking as ${who}.`}
       actions={<Link className="btn ghost adm-btn" href={`${ADMIN_PATH}/maya`} prefetch={false}>All calls</Link>}>
       <MayaCall initial={call.view} board={boardPlayback(call.view.batches)} childName={call.childName} />
       <p className="adm-note mc-scope-total">Workbook scope refusals for this child: {scope.count} across calls and chats.</p>

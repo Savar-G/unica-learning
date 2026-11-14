@@ -1,0 +1,248 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the generator is unchanged by Maya's adapter > attaches the same #525 teaching data to a fixed set as before 1`] = `
+[
+  {
+    "answer": null,
+    "easier": null,
+    "operation": null,
+    "same": true,
+    "source": null,
+    "text": "Leo has 10000 stickers and gives 3615 away. How many stickers are left?",
+  },
+  {
+    "answer": null,
+    "easier": null,
+    "operation": null,
+    "same": true,
+    "source": null,
+    "text": "Ivy has 10000 points and gives 409 away. How many points are left?",
+  },
+  {
+    "answer": null,
+    "easier": null,
+    "operation": null,
+    "same": true,
+    "source": null,
+    "text": "Each crate has 284 apples. Nora has 7 of them. How many apples in all?",
+  },
+  {
+    "answer": null,
+    "easier": null,
+    "operation": null,
+    "same": true,
+    "source": null,
+    "text": "Theo puts 4 shells in each box. How many shells in 6 boxes?",
+  },
+  {
+    "answer": null,
+    "easier": null,
+    "operation": null,
+    "same": true,
+    "source": null,
+    "text": "16000 + 3000 = ?",
+  },
+  {
+    "answer": null,
+    "easier": null,
+    "operation": null,
+    "same": true,
+    "source": null,
+    "text": "Rui collected 14000 stamps and a friend collected 5000. How many stamps is that in all?",
+  },
+  {
+    "answer": null,
+    "easier": null,
+    "operation": null,
+    "same": true,
+    "source": null,
+    "text": "352418 + 41275 = ?",
+  },
+  {
+    "answer": null,
+    "easier": null,
+    "operation": null,
+    "same": true,
+    "source": null,
+    "text": "Mo's shop has 4 boxes with 230 beads in each. It sells 460 beads. How many beads are left?",
+  },
+  {
+    "answer": null,
+    "easier": null,
+    "operation": null,
+    "same": true,
+    "source": null,
+    "text": "73562 + 1000 + 100 = ?",
+  },
+  {
+    "answer": {
+      "accepted": [],
+      "unit": null,
+      "value": {
+        "type": "number",
+        "value": 7500,
+      },
+    },
+    "easier": "0 + 1 = ?",
+    "operation": {
+      "kind": "add",
+      "operands": [
+        4800,
+        2700,
+      ],
+    },
+    "same": false,
+    "source": "maya",
+    "text": "4800 + 2700 = ?",
+  },
+  {
+    "answer": {
+      "accepted": [],
+      "unit": null,
+      "value": {
+        "type": "number",
+        "value": 3050,
+      },
+    },
+    "easier": "1 − 1 = ?",
+    "operation": {
+      "kind": "subtract",
+      "operands": [
+        4300,
+        1250,
+      ],
+    },
+    "same": false,
+    "source": "maya",
+    "text": "Jin has 4300 cards. He gives 1250 away. How many cards are left?",
+  },
+  {
+    "answer": null,
+    "easier": null,
+    "operation": null,
+    "same": true,
+    "source": null,
+    "text": "Jin has 43000 cards. He gives 1250 away. How many cards are left?",
+  },
+  {
+    "answer": {
+      "accepted": [],
+      "unit": null,
+      "value": {
+        "type": "number",
+        "value": 3,
+      },
+    },
+    "easier": "1 − 1 = ?",
+    "operation": {
+      "kind": "subtract",
+      "operands": [
+        10,
+        7,
+      ],
+    },
+    "same": false,
+    "source": "maya",
+    "text": "7 + ? = 10",
+  },
+  {
+    "answer": {
+      "accepted": [],
+      "unit": null,
+      "value": {
+        "type": "number",
+        "value": 15,
+      },
+    },
+    "easier": "1 + 1 = ?",
+    "operation": {
+      "kind": "evaluate",
+      "operands": [
+        "9 + 3 × 2",
+      ],
+    },
+    "same": false,
+    "source": "maya",
+    "text": "What is 9 + 3 × 2?",
+  },
+  {
+    "answer": {
+      "accepted": [],
+      "unit": null,
+      "value": {
+        "type": "number",
+        "value": 720,
+      },
+    },
+    "easier": "0 × 1 = ?",
+    "operation": {
+      "kind": "multiply",
+      "operands": [
+        120,
+        6,
+      ],
+    },
+    "same": false,
+    "source": "maya",
+    "text": "Each jar holds 120 beads. Ana fills 6 of them. How many beads is that?",
+  },
+  {
+    "answer": null,
+    "easier": null,
+    "operation": null,
+    "same": true,
+    "source": null,
+    "text": "13000 − ? = 3000",
+  },
+]
+`;
+
+exports[`the generator is unchanged by Maya's adapter > finalizes a draft the same way as before 1`] = `
+[
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  {
+    "kind": "add",
+    "operands": [
+      4800,
+      2700,
+    ],
+  },
+  {
+    "kind": "subtract",
+    "operands": [
+      4300,
+      1250,
+    ],
+  },
+  null,
+  {
+    "kind": "subtract",
+    "operands": [
+      10,
+      7,
+    ],
+  },
+  {
+    "kind": "evaluate",
+    "operands": [
+      "9 + 3 × 2",
+    ],
+  },
+  {
+    "kind": "multiply",
+    "operands": [
+      120,
+      6,
+    ],
+  },
+  null,
+]
+`;

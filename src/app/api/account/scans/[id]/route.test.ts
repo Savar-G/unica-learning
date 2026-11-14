@@ -2,7 +2,7 @@ import { beforeEach, afterEach, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 const f = vi.hoisted(() => ({ start: "started", identify: "identified" as string | string[], normalize: true, uploads: 0, calls: [] as string[], spread: false, admit: "reserved" as string | string[], tokens: [] as string[], saved: [] as string[], refuse: "qr", storageFails: 0, recover: "pending", filed: "child", closed: [] as string[],
   // F5: the page's photo a new photo of it may replace, and that photo's stored check; the photos deleted.
-  held: null as null | { id: string; printed_revision: string; sent_at: string | null }, calibration: null as null | { state: string; printed_revision: string }, deleted: [] as string[],
+  held: null as null | { id: string; printed_revision: string; sent_at: string | null }, keep: false, calibration: null as null | { state: string; printed_revision: string }, deleted: [] as string[],
   // The held photo's marking job (scan edge sweep, 2026-11-14).
   job: null as null | { state: string; blocked_reason: string | null }, swap: "pending" as string, cleaned: [] as string[] }));
 const ai = vi.hoisted(() => vi.fn(() => { throw new Error("S1 must not dispatch AI"); }));
@@ -42,6 +42,8 @@ vi.mock("@/lib/scan-photo-server", () => ({
       }
       if (name === "change_scan_photo" && args.p_action === "save") f.saved.push(args.p_id!);
       if (name === "change_scan_photo" && args.p_action === "delete") { f.deleted.push(args.p_id!); return { data: "deleted" }; }
+      // The swap rechecks under the family lock; `keep` is its answer for a photo sent or marked meanwhile.
+      if (name === "replace_ready_scan_photo") { const old = (args as { p_old?: string }).p_old!; if (f.keep) return { data: "kept" }; f.deleted.push(old); return { data: "deleted" }; }
       if (name === "admit_scan_photo_v2") return { data: Array.isArray(f.admit) ? f.admit.shift() ?? "reserved" : f.admit };
       if (name === "recover_scan_photo") return { data: f.recover };
       if (name === "replace_unfinished_scan_photo") return { data: f.swap };
@@ -53,7 +55,7 @@ vi.mock("@/lib/scan-photo-server", () => ({
 import { POST, PUT } from "./route";
 const id = "00000000-0000-4000-8000-000000000001";
 const put = () => PUT(new Request(`https://unicalearning.com/api/account/scans/${id}`, { method: "PUT", headers: { Origin: "https://unicalearning.com" }, body: new Uint8Array([1]) }), { params: Promise.resolve({ id }) });
-beforeEach(() => { later.tasks = []; later.checks = true; later.crops = []; later.fail = false; later.preview = "ready"; later.photoChecks = []; f.start = "started"; f.identify = "identified"; f.normalize = true; f.uploads = 0; f.calls = []; f.spread = false; f.admit = "reserved"; f.tokens = []; f.saved = []; f.refuse = "qr"; f.storageFails = 0; f.recover = "pending"; f.filed = "child"; f.closed = []; f.held = null; f.calibration = null; f.deleted = []; f.job = null; f.swap = "pending"; f.cleaned = []; ai.mockClear(); vi.stubEnv("OPENROUTER_API_KEY", "synthetic-configured-key"); });
+beforeEach(() => { later.tasks = []; later.checks = true; later.crops = []; later.fail = false; later.preview = "ready"; later.photoChecks = []; f.start = "started"; f.identify = "identified"; f.normalize = true; f.uploads = 0; f.calls = []; f.spread = false; f.admit = "reserved"; f.tokens = []; f.saved = []; f.refuse = "qr"; f.storageFails = 0; f.recover = "pending"; f.filed = "child"; f.closed = []; f.held = null; f.calibration = null; f.deleted = []; f.job = null; f.swap = "pending"; f.cleaned = []; f.keep = false; ai.mockClear(); vi.stubEnv("OPENROUTER_API_KEY", "synthetic-configured-key"); });
 afterEach(() => vi.unstubAllEnvs());
 it("stores one normalized photo with zero AI dispatches when a key is configured", async () => {
   expect((await put()).status).toBe(200); expect(f.uploads).toBe(1);
@@ -182,7 +184,8 @@ it("keeps a page's photo that is ready, still being checked, of another printing
   ] as const) {
     f.identify = "duplicate"; f.held = { ...held }; f.calibration = calibration && { ...calibration }; f.uploads = 0;
     const answer = await put();
-    expect(answer.status).toBe(422); expect(await answer.json()).toEqual({ error: "duplicate" });
+    // The answer names the page (#4); only the ready photo not sent may be replaced, and only by the parent's choice.
+    expect(answer.status).toBe(422); expect(await answer.json()).toMatchObject({ error: "duplicate", page: 24 });
     expect(f.deleted).toEqual([]); expect(f.uploads).toBe(0);
   }
 });
@@ -214,4 +217,39 @@ it("keeps a sent page that is marked, being marked or could not be marked: the n
     expect(answer.status).toBe(422); expect(f.deleted).toEqual([]); expect(f.uploads).toBe(0);
     expect(f.calls).not.toContain("replace_unfinished_scan_photo");
   }
+});
+
+// Scan edge sweep #4: a duplicate names its page, and a ready photo not sent may be replaced by the parent's choice.
+const putReplacing = (replace: string) => PUT(new Request(`https://unicalearning.com/api/account/scans/${id}?replace=${replace}`, { method: "PUT", headers: { Origin: "https://unicalearning.com" }, body: new Uint8Array([1]) }), { params: Promise.resolve({ id }) });
+it("names the page of a duplicate, and the photo it may replace only when that one is ready and not sent (#4)", async () => {
+  f.identify = "duplicate"; f.held = { id: "old", printed_revision: "r1", sent_at: null }; f.calibration = { state: "ready", printed_revision: "r1" };
+  let r = await put();
+  expect(r.status).toBe(422); expect(await r.json()).toEqual({ error: "duplicate", page: 24, replaceable: "old" });
+  // A plain new photo never deletes a ready photo.
+  expect(f.deleted).toEqual([]);
+  f.held = { id: "old", printed_revision: "r1", sent_at: "2026-11-14T10:00:00Z" };
+  r = await put();
+  expect(await r.json()).toEqual({ error: "duplicate", page: 24 });
+});
+it("replaces the page's ready photo, not sent, only when the parent chose this photo instead of it (#4)", async () => {
+  f.identify = ["duplicate", "identified"]; f.held = { id: "old", printed_revision: "r1", sent_at: null }; f.calibration = { state: "ready", printed_revision: "r1" };
+  expect((await putReplacing("00000000-0000-4000-8000-0000000000aa")).status).toBe(422);
+  expect(f.deleted).toEqual([]);
+  f.identify = ["duplicate", "identified"]; f.held = { id: "00000000-0000-4000-8000-0000000000aa", printed_revision: "r1", sent_at: null };
+  expect((await putReplacing("00000000-0000-4000-8000-0000000000aa")).status).toBe(200);
+  expect(f.deleted).toEqual(["00000000-0000-4000-8000-0000000000aa"]);
+  // A sent photo is never replaced.
+  f.deleted = []; f.identify = ["duplicate", "identified"]; f.held = { id: "00000000-0000-4000-8000-0000000000aa", printed_revision: "r1", sent_at: "2026-11-14T10:00:00Z" };
+  expect((await putReplacing("00000000-0000-4000-8000-0000000000aa")).status).toBe(422);
+  expect(f.deleted).toEqual([]);
+});
+
+it("keeps the old photo when the locked swap finds it sent or in marking meanwhile, for a retake and for Use this new photo instead (review of #981)", async () => {
+  f.keep = true;
+  f.identify = ["duplicate", "identified"]; f.held = { id: "old", printed_revision: "r1", sent_at: null }; f.calibration = { state: "refused", printed_revision: "r1" };
+  expect((await put()).status).toBe(422);
+  f.identify = ["duplicate", "identified"]; f.held = { id: "00000000-0000-4000-8000-0000000000aa", printed_revision: "r1", sent_at: null }; f.calibration = { state: "ready", printed_revision: "r1" };
+  expect((await putReplacing("00000000-0000-4000-8000-0000000000aa")).status).toBe(422);
+  expect(f.deleted).toEqual([]);
+  expect(f.calls.filter((c) => c === "replace_ready_scan_photo")).toHaveLength(2);
 });

@@ -14,13 +14,14 @@ import { model } from "@/lib/board/model";
 import { note } from "@/lib/board/note";
 import { numberLine } from "@/lib/board/number-line";
 import { parseCommand } from "@/lib/board/parse";
+import { placeChart } from "@/lib/board/place-chart";
 import { valueName } from "@/lib/board/rational";
 import { isRefusal, refuse, type Ctx, type LocalStroke, type LocalTarget, type RefusalBody, type Representation } from "@/lib/board/representation";
 import type { Batch, BoardPath, Command, CreateCommand, Notice, PageSize, PathKind, Place, Rect, Refusal, Target, TargetInfo, TimedPath, View } from "@/lib/board/types";
 import type { Stroke } from "@/lib/whiteboard";
 
 /** The representations the board can create, by their create command. Later ones are added here. */
-const REPRESENTATIONS = { columns, division, write: note, model, fraction, number_line: numberLine } satisfies Record<CreateCommand["op"], unknown>;
+const REPRESENTATIONS = { columns, division, write: note, model, fraction, number_line: numberLine, place_chart: placeChart } satisfies Record<CreateCommand["op"], unknown>;
 const representation = (op: CreateCommand["op"]) => REPRESENTATIONS[op] as unknown as Representation<unknown, CreateCommand>;
 const isCreate = (c: Command): c is CreateCommand => c.op in REPRESENTATIONS;
 

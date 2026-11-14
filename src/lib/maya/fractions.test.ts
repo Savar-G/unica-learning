@@ -113,7 +113,7 @@ describe("reading spoken and typed fractions in a fraction call (#407)", () => {
 
   it("keeps the old reading outside a fraction call: a spoken fraction is confirmed there", () => {
     expect(readAnswer("three quarters").final).toBeNull();
-    expect(readOptionsFor(C38)).toEqual({ fractions: true });
+    expect(readOptionsFor(C38)).toMatchObject({ fractions: true });
   });
 
   it.each([
@@ -153,6 +153,27 @@ describe("reading spoken and typed fractions in a fraction call (#407)", () => {
     expect(valuesIn(said, { fractions: false })).toEqual(expected);
   });
 
+  it.each([
+    "I got 7/8. I used eighths.", "7/8. I used eighths.",
+    "I used eighths. I got seven eighths.", "I got 7/8. I used quarters.",
+  ])("keeps a committed answer beside the nonnumeric method sentence %j", (said) => {
+    expect(readAnswer(said, readOptionsFor(C38))).toMatchObject({ final: frac(7, 8), sure: true });
+    const c = call(C38, said);
+    expect(c.propose({ act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [answer(frac(7, 8), "result", "right")] } }).refusal).toBeNull();
+    expect(c.s.solved).toBe("child");
+  });
+
+  it.each([
+    "Maybe 7/8. I used eighths.", "7/8. I used eighths. No, that is wrong.",
+    "7/8. Eighths.", "7/8. I used eighths of 10.", "7/8. I used two eighths.",
+    "7/8. I used eighths, maybe.", "7/8. I used eighths or quarters.",
+    "7/8. I used eighths and got 6/8.", "7/8. I used one eighths.",
+  ])("does not accept an uncertain answer or numeric method claim in %j", (said) => {
+    const c = call(C38, said);
+    expect(c.propose({ act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [answer(frac(7, 8), "result", "right")] } }).refusal).not.toBeNull();
+    expect(c.s.solved).toBeNull();
+  });
+
   it("limits the new mixed-number reading to fraction calls", () => {
     const before = [{ type: "number", value: 1 }, frac(3, 8)];
     expect(valuesIn("1 3/8")).toEqual(before);
@@ -173,7 +194,8 @@ describe("reading spoken and typed fractions in a fraction call (#407)", () => {
   });
 
   it.each([
-    ...["actually", "oops", "wait", "I mean", "no,", "no wait,", "oh wait, I mean", "actually, I think it's"].map((correction) => [`3/4, ${correction} a half`, frac(1, 2)] as const),
+    // Rule A (2026-11-12): "I think" is a hedge, so "3/4, actually, I think it's a half" is no longer accepted as it is.
+    ...["actually", "oops", "wait", "I mean", "no,", "no wait,", "oh wait, I mean"].map((correction) => [`3/4, ${correction} a half`, frac(1, 2)] as const),
     ["3/4, actually a quarter", frac(1, 4)],
     ["3/4, actually an eighth", frac(1, 8)],
     ["fourteen sixteenths, I mean a half", frac(1, 2)],
@@ -191,6 +213,12 @@ describe("reading spoken and typed fractions in a fraction call (#407)", () => {
     const c = call(pkg, said);
     expect(c.propose({ act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [answer(value, "result", "right")] } }).refusal).toBeNull();
     expect(c.s.solved).toBe("child");
+  });
+
+  it("does not accept a hedged correction as it is (rule A): \"3/4, actually, I think it's a half\"", () => {
+    const c = call(pkgOf("Add the fractions.", add(frac(1, 4), frac(1, 4)), EASY), "3/4, actually, I think it's a half");
+    expect(c.propose({ act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [answer(frac(1, 2), "result", "right")] } }).refusal).toMatchObject({ code: "answer_not_committed" });
+    expect(c.s.solved).toBeNull();
   });
 
   it.each(["a half", "one half", "1/2", "two fourths"].flatMap((form) =>
@@ -212,9 +240,11 @@ describe("fraction expression and explanation boundaries", () => {
         ["3 - 1 is 2", "I used two of four"].flatMap((body) =>
           [" ", ". "].map((separator) => `${prefix}${form}${separator}${word} ${body}`))))))("keeps the answer before arithmetic in its explanation: %s", (said) => {
     const value = said.includes("two fourths") ? frac(2, 4) : frac(1, 2);
-    expect(readAnswer(said, READ)).toMatchObject({ final: value, sure: true });
     const pkg = pkgOf("3/4 - 1/4 = ?", sub(frac(3, 4), frac(1, 4)), sub(frac(3, 5), frac(1, 5)));
     const proposal = { version: 2, act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [answer(value, "result", "right")] } };
+    // Rule A (2026-11-12): an explanation in a sentence of its own is the child's own working, not a second answer: the
+    // answer is accepted on both paths (PR #624 round 3 made Maya confirm it first). readAnswer alone still reads it unsure.
+    expect(readAnswer(said, READ)).toMatchObject({ final: value, sure: !(/\. \S/.test(said) && /\d|two|four/.test(said.slice(said.lastIndexOf(". ")))) });
     const direct = call(pkg, said);
     expect(direct.propose(proposal).refusal).toBeNull();
     expect(direct.s.solved).toBe("child");
@@ -355,7 +385,7 @@ describe("the controller teaches fractions (#407)", () => {
     c.child("14/16.");
     expect(c.propose({ act: "guide", step: "result", level: 0, parts: [equal], reading: { answers: [answer(frac(14, 16), "result", "wrong")] } }).refusal).toBeNull();
     c.child("I don't know.");
-    expect(c.propose({ act: "give_answer", parts: [], reading: { help: "more" } }).refusal).toMatchObject({ code: "hint_too_high" });
+    expect(c.propose({ act: "give_answer", parts: [], reading: { help: "more" } }).refusal).toMatchObject({ code: "act_not_allowed" });
     const h1 = c.propose({ act: "guide", step: "result", level: 1, parts: [{ line: "step.point", slots: { step: "result" } }], reading: { help: "more" } });
     expect(h1.refusal).toBeNull();
     expect(c.said(h1)).toMatch(/14.*16/);

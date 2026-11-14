@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { spreadNote, addingCount, buildStack, dayPages, refusalCopy, roomNote, sendLabel, stackSummary, waitingNote, type StackPhoto, type StackUpload } from "@/lib/scan-stack";
+import { spreadNote, addingCount, buildStack, dayPages, duplicateNote, refusalCopy, roomNote, sendLabel, stackSummary, waitingNote, type StackPhoto, type StackUpload } from "@/lib/scan-stack";
 
 const BOOK = "book-1";
 // Workbook 1: a cover, Day 4 with pages 10 to 13, Day 5 with pages 14 to 16.
@@ -169,6 +169,15 @@ it("tells the parent what went wrong and the one thing to do, for each photo ref
   // Every refusal ends with what to do, in one sentence the parent can act on.
   for (const reason of ["qr", "qr-mismatch", "marks-missing", "marks-inconsistent", "page-mismatch", "ambiguous-page", "faint", "failed"] as const)
     expect(refusalCopy(reason).action).toMatch(/\.$/);
+});
+
+it("keeps a duplicate out of the pages that need another photo, as information that names its page (#4)", () => {
+  const uploads: StackUpload[] = [{ key: "d1", status: "refused", reason: "duplicate", page: 27, replaceable: "a" }, { key: "d2", status: "refused", reason: "duplicate" }];
+  const stack = buildStack({ photos: [photo("a", 10)], uploads, pages, checks: true });
+  expect(stack.refused).toEqual([]);
+  expect(stack.counts).toMatchObject({ refused: 0, photos: 1 });
+  expect(stack.duplicates.map(duplicateNote)).toEqual(["Page 27 is already scanned.", "This page is already scanned."]);
+  expect(stack.duplicates.map((t) => t.replaceable ?? null)).toEqual(["a", null]);
 });
 
 describe("photos waiting to send (#915)", () => {

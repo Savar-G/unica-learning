@@ -208,6 +208,15 @@
   .desk-stage { container-type: normal; display: block; }
   .desk-sheet { width: 100%; }
   .desk-pagebar a { padding: 0 12px; }
+  /* A voice call on a phone: Maya's board goes above the talk and stays in view while the talk scrolls under it. */
+  .desk-root.is-calling { grid-template-areas: "top" "main" "maya"; }
+  .desk-root.is-calling .desk-main { position: sticky; top: 0; z-index: 20; padding: 8px 12px; background: var(--desk-bg); border-bottom: 1px solid var(--line); }
+  .desk-root.is-calling .desk-modes { display: none; }
+  .desk-root.is-calling .desk-maya-head { display: none; }
+  .desk-root.is-calling .desk-board > header { padding: 10px 14px 6px; }
+  .desk-root.is-calling .desk-canvas { min-height: 0; height: 34dvh; padding: 8px 10px 40px; }
+  /* The call's controls (Hang up) stay in reach above the rail. */
+  .desk-root.is-calling .desk-say { position: sticky; bottom: calc(72px + env(safe-area-inset-bottom)); z-index: 20; background: #fff; border-top: 1px solid var(--line); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -218,5 +227,40 @@
 
 /* The chat uses the desk's conversation, controls and board. */
 .desk-child-bubble { margin-left: 24px; background: var(--accent-soft); }
+/* The child's words while Maya hears them: the same bubble, lighter, until the saved turn replaces it. */
+.desk-hearing { color: var(--ink-2); opacity: 0.75; }
 .desk-chat-end { min-height: 44px; border: 0; background: transparent; color: var(--ink-2); text-decoration: underline; font: inherit; }
 .desk-say > .desk-bubble { font-size: 14px; margin-bottom: 12px; }
+
+/* ---------- a call with Maya (voice): the control, the microphone check and the call in Maya's column ---------- */
+/* While a call is under way (or just ended), only the call's own controls show in Maya's column. */
+.desk-say.is-calling > :not(.desk-voice) { display: none; }
+.desk-voice { display: grid; gap: 10px; }
+.desk-voice p { margin: 0; }
+.desk-call, .desk-hang { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 52px; padding: 0 18px; border: 0; border-radius: 12px; font: 500 17px/1 var(--sans); cursor: pointer; transition: transform 0.15s; }
+.desk-call { background: var(--ink); color: #fff; }
+.desk-call:hover:not(:disabled) { background: #26262b; }
+.desk-call:disabled { opacity: 0.55; }
+.desk-call:active:not(:disabled), .desk-hang:active { transform: scale(0.98); }
+/* Hang up is the big control of a live call. */
+.desk-hang { min-height: 60px; background: var(--desk-warn); color: #fff; font-size: 19px; font-weight: 600; }
+.desk-hang:hover { background: #9c350c; }
+.desk-voice .desk-error { color: var(--desk-warn); font: 500 14px/1.4 var(--sans); }
+.desk-voice-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 16px; }
+.desk-mic-row { display: flex; align-items: flex-start; gap: 10px; }
+.desk-mic-row p { font: 400 15px/1.4 var(--sans); color: var(--ink); }
+.desk-dot { flex: none; width: 10px; height: 10px; margin-top: 6px; border-radius: 50%; background: #a1a1aa; }
+.desk-dot.is-ok { background: #1f8a4c; }
+.desk-dot.is-bad { background: var(--desk-warn); }
+.desk-meter { height: 12px; border-radius: 6px; background: #e4e4e7; overflow: hidden; }
+.desk-meter span { display: block; height: 100%; background: #1f8a4c; transform-origin: left center; }
+@media (prefers-reduced-motion: no-preference) { .desk-meter span { transition: transform 80ms linear; } }
+.desk-live-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 12px; }
+.desk-live-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; border-radius: 16px; background: var(--desk-bg); font: 500 14px/1 var(--sans); color: var(--ink-2); }
+.desk-live-chip::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #dc2626; }
+.desk-mono { font-family: var(--mono); }
+.desk-maya-state { font: 400 14px/1.2 var(--sans); color: var(--ink-2); }
+.desk-maya-state.is-speaking { color: var(--ink); font-weight: 600; }
+/* Maya's board in a call has no tools: one canvas. */
+.desk-board-body.desk-board-solo { grid-template-columns: minmax(0, 1fr); }
+@media (prefers-reduced-motion: reduce) { .desk-call:active, .desk-hang:active { transform: none; } }

@@ -164,6 +164,12 @@ export function sentenceProblems(): string[] {
 
 // ---------- the candidates ----------
 
+// Inworld TTS-2 has an opt-in "reasoning" step (Inworld's `synthesisContext.reasoning: "REASONING_ON"`, announced
+// 2026-10-28), which adds a step before the first audio. It is not a candidate here: LiveKit Agents for Node 1.9.5 has no
+// option for it in its Inference `InworldOptions` (speaking_rate, temperature, delivery_mode, timestamp_type,
+// apply_text_normalization) or in the Inworld plugin, and the name the gateway would pass on is not known. Add it as a
+// candidate when an SDK version types it, with the first-audio column of the operator report to show its cost.
+
 export const CANDIDATES = [
   { id: "inworld", name: "Inworld TTS-2", model: "inworld/inworld-tts-2", route: "LiveKit Inference", voicesEnv: "LISTEN_INWORLD_VOICES", keys: ["LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"] },
   { id: "cartesia", name: "Cartesia Sonic 3.6", model: "cartesia/sonic-3.6", route: "LiveKit Inference", voicesEnv: "LISTEN_CARTESIA_VOICES", keys: ["LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"] },
@@ -324,11 +330,16 @@ export interface RenderedLine {
   /** Words with times from the start of the line. */
   timed: Timed[];
   timedWords: number;
+  /** Timed words that came back with a start time (not only an end time). */
+  startedWords: number;
   matched: number;
   expected: number;
   firstAudioMs: number | null;
   error: string | null;
 }
+
+/** Timed words that carry a start time, which the board's word cues and the replay need besides the end time. */
+export const withStartTime = (timed: readonly Timed[]) => timed.filter(t => t.startTime !== undefined && Number.isFinite(t.startTime)).length;
 
 /**
  * A line as the worker speaks it: one synthesis per sentence (speechSentences), the audio joined, each sentence's word
@@ -359,7 +370,7 @@ export async function renderLine(voice: tts.TTS, text: string, options: { timeou
   const samples = new Int16Array(parts.reduce((n, c) => n + c.length, 0));
   let at = 0;
   for (const c of parts) { samples.set(c, at); at += c.length; }
-  return { samples, sampleRate, timed, timedWords: timed.length, matched, expected, firstAudioMs, error };
+  return { samples, sampleRate, timed, timedWords: timed.length, startedWords: withStartTime(timed), matched, expected, firstAudioMs, error };
 }
 
 // ---------- the blind plan ----------
@@ -542,6 +553,8 @@ export interface Measure {
   part: Part;
   sentence: string;
   timedWords: number;
+  /** Timed words with a start time (RenderedLine.startedWords). Absent in a measures file from before it was recorded. */
+  startedWords?: number;
   matched: number;
   expected: number;
   firstAudioMs: number | null;
@@ -633,4 +646,55 @@ export function score(plan: readonly PlanItem[], answers: readonly Answer[], mea
     };
   });
   return { ok: true, voices, listeners };
+}
+
+// ---------- the operator report ----------
+
+/** What the operator report needs of the key: who made it, when, and each voice with its vendor and route. */
+export interface ReportKey {
+  seed: number;
+  fake: boolean;
+  madeAt: string;
+  voices: { key: string; name: string; voice: string; route: string }[];
+}
+
+const median = (xs: number[]) => {
+  const s = [...xs].sort((a, b) => a - b);
+  return s.length ? s[Math.floor((s.length - 1) / 2)] : null;
+};
+
+/**
+ * The operator's report, which names the vendors. For every voice: whether word timings and word START times came back
+ * (files with timed words, files with start times), how many words the board's alignment matched, the time from the
+ * text being sent to the first audio frame (median and slowest, in ms) and the errors; then the timed words of each math
+ * line. A missing number is "-", never 0: a measures file from before start times were recorded shows "-" for them.
+ */
+export function operatorReport(key: ReportKey, measures: readonly Measure[]): string {
+  const out = ["# Listening test: operator report", "", "This report names the vendors. Keep it from the listeners until they are done.", ""];
+  if (key.fake) out.push("**Fake voice.** The files are silence and the word timings are made up by the fake. This run proves the kit works, nothing about any real voice.", "");
+  out.push(`Made ${key.madeAt}, seed ${key.seed}. Every text went through the same LiveKit Agents for Node TTS stream the worker uses, one sentence at a time, as the worker sends it.`, "");
+  out.push("## Word timings and first audio", "", "Matched words are counted with the worker's board alignment (speech-audio.ts). All matched: the board follows each word. Fewer: the rest waits for the sentence's audio end. Start times: how many files had words with a start time, not only an end time. First audio: the time from the text being sent to the first audio frame, per file.", "");
+  out.push("| Voice | Route | Files with timed words | Files with word start times | Timing check (s04, words) | Words matched, part 1 | Words matched, part 2 (digits) | First audio, median (ms) | First audio, slowest (ms) | Errors |", "|---|---|---|---|---|---|---|---|---|---|");
+  for (const v of key.voices) {
+    const mine = measures.filter(m => m.voice === v.key);
+    const sum = (part: "voice" | "math") => {
+      const xs = mine.filter(m => m.part === part);
+      return `${xs.reduce((n, m) => n + m.matched, 0)} of ${xs.reduce((n, m) => n + m.expected, 0)}`;
+    };
+    const check = mine.find(m => m.part === "voice" && m.sentence === "s04");
+    const errors = mine.filter(m => m.error).length;
+    const first = mine.flatMap(m => (m.firstAudioMs === null ? [] : [m.firstAudioMs]));
+    const started = mine.some(m => m.startedWords === undefined) ? "-" : `${mine.filter(m => (m.startedWords ?? 0) > 0).length} of ${mine.length}`;
+    out.push(`| ${v.name}, ${v.voice} | ${v.route} | ${mine.filter(m => m.timedWords > 0).length} of ${mine.length} | ${started} | ${check ? `${check.matched} of ${check.expected}` : "-"} | ${sum("voice")} | ${sum("math")} | ${median(first) ?? "-"} | ${first.length ? Math.max(...first) : "-"} | ${errors} |`);
+  }
+  out.push("", "## How each voice got the math lines (part 2)", "", "The timed words a voice returned for each line as written. They may repeat the text sent, not what the voice said: the listeners' misread marks decide.", "");
+  for (const v of key.voices) {
+    out.push(`### ${v.name}, ${v.voice}`, "");
+    for (const m of measures.filter(x => x.voice === v.key && x.part === "math")) {
+      const s = SENTENCES.find(x => x.id === m.sentence)!;
+      out.push(`- ${s.id}: sent "${s.written}"; timed words: ${m.timedText ? `"${m.timedText}"` : "none"}${m.error ? `; error: ${m.error}` : ""}`);
+    }
+    out.push("");
+  }
+  return `${out.join("\n")}\n`;
 }

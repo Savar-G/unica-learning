@@ -22,7 +22,7 @@ const PAGE = 1000;
 /** Reads two days wider than the rules: a call's local day can be a day off its UTC date. */
 const SLACK_DAYS = 2;
 
-type CallRow = Pick<Database["public"]["Tables"]["maya_calls"]["Row"], "id" | "parent_id" | "child_id" | "ended_at" | "note_pending" | "kind">;
+type CallRow = Pick<Database["public"]["Tables"]["maya_calls"]["Row"], "id" | "parent_id" | "child_id" | "ended_at" | "note_pending" | "kind" | "mode" | "connected_seconds">;
 type NoteRow = Database["public"]["Tables"]["maya_call_notes"]["Row"];
 type LogRow = Pick<Database["public"]["Tables"]["email_log"]["Row"], "id" | "kind" | "parent_id" | "week_start" | "status" | "attempts" | "call_ids">;
 
@@ -55,7 +55,7 @@ export function mayaWeeklyStore(admin: SupabaseClient<Database>): WeeklyStore {
       // Completed calls are the count, including calls whose note is still pending (#403).
       // Read calls before notes so a note saved during this load can complete the already-read call.
       const callRows = await allPages<CallRow>((after) => {
-        const query = admin.from("maya_calls").select("id, parent_id, child_id, ended_at, note_pending, kind")
+        const query = admin.from("maya_calls").select("id, parent_id, child_id, ended_at, note_pending, kind, mode, connected_seconds")
           .eq("status", "ended").gte("ended_at", since).order("ended_at").order("id").limit(PAGE);
         return after ? query.or(`ended_at.gt.${after.ended_at},and(ended_at.eq.${after.ended_at},id.gt.${after.id})`) : query;
       });
@@ -64,7 +64,8 @@ export function mayaWeeklyStore(admin: SupabaseClient<Database>): WeeklyStore {
         return after ? query.or(`call_ended_at.gt.${after.call_ended_at},and(call_ended_at.eq.${after.call_ended_at},call_id.gt.${after.call_id})`) : query;
       });
       const notes = noteRows.map(fromNoteRow);
-      const calls = callRows.map((c) => ({ callId: c.id, parentId: c.parent_id, childId: c.child_id, endedAt: c.ended_at!, notePending: c.note_pending !== null, kind: c.kind }));
+      const calls = callRows.map((c) => ({ callId: c.id, parentId: c.parent_id, childId: c.child_id, endedAt: c.ended_at!, notePending: c.note_pending !== null, kind: c.kind,
+        noTalk: c.mode === "voice" && !(Number(c.connected_seconds) > 0) }));
       const parentIds = [...new Set(calls.map((c) => c.parentId))];
       const [parents, children, unsubscribes, tests, rehearsals] = await Promise.all([
         // Each id chunk has at most CHUNK rows, below the server page limit.

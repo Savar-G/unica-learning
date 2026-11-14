@@ -266,6 +266,11 @@ describe("generated Maya coverage by print band", () => {
     const draft = result.draft;
     // The existing fake U3 writer leaves one failed question. Keep it in the coverage denominator.
     expect(draft.counts.failed).toBe(level === "U3" ? 1 : 0);
+    if (level === "U16") {
+      const trials = draft.pages.flatMap(p => p.questions).flatMap(q => q.package?.steps.some(st => st.kind === "operate" && st.op === "÷" && st.right >= 100) ? [q.package] : []);
+      expect(trials.map(pkg => pkg.text)).toEqual(["942 × ? = 8448 + 30", "941 × ? = 8449 + 20"]);
+      for (const pkg of trials) expect(createSession({ callId: "generated-trial", package: pkg }).contentProblem).toBeNull();
+    }
     expect(mayaCoverage(draft)).toMatchSnapshot();
     // The counter uses the public createSession for every generated question. Assert every attached package as well.
     for (const q of draft.pages.flatMap(p => p.questions)) if (q.package?.operationSource === "maya") {

@@ -13,20 +13,24 @@ interface Row {
 }
 
 export interface MemorySpendStore extends SpendStore {
-  rows(): { id: string; charge: string; childId: string | null; what: string; reserved: number; cost: number | null; settled: boolean; week: string | null; month: string }[];
+  rows(): { id: string; charge: string; childId: string | null; callId: string | null; what: string; reserved: number; cost: number | null; settled: boolean; week: string | null; month: string }[];
   /** Adds an amount already spent (a settled row), for a test's starting point. */
   spent(r: Pick<ReserveRequest, "charge" | "parentId" | "childId" | "week" | "month">, micros: number): void;
   alerts(): string[];
   fail(on: boolean): void;
+  /** Every request the ledger made of the store, in order (one entry per database request in Supabase). */
+  log(): ("reserve" | "settle" | "used" | "claimAlert")[];
 }
 
 export function memorySpendStore(options: { clock?: () => number } = {}): MemorySpendStore {
   const clock = options.clock ?? Date.now;
   const rows = new Map<string, Row>();
   const alerts: string[] = [];
+  const log: ReturnType<MemorySpendStore["log"]> = [];
   let failing = false;
   let n = 0;
-  const check = () => {
+  const check = (op: (typeof log)[number]) => {
+    log.push(op);
     if (failing) throw new Error("maya spend: the store did not answer");
   };
   const counted = (r: Row) => (r.cost !== null ? r.cost : r.settled || clock() - r.at <= RESERVATION_TTL_MS ? r.request.micros : 0);
@@ -41,7 +45,7 @@ export function memorySpendStore(options: { clock?: () => number } = {}): Memory
   };
   return {
     async reserve(r) {
-      check();
+      check("reserve");
       if (rows.has(r.id)) return { ok: true, monthMicros: used(r.childId, r.week, r.month).month };
       if (r.charge === "child" && (r.childId === null || r.week === null)) throw new Error("maya spend: a child's charge names the child and the week");
       const u = used(r.childId, r.week, r.month);
@@ -50,7 +54,7 @@ export function memorySpendStore(options: { clock?: () => number } = {}): Memory
       return { ok: true, monthMicros: u.month + r.micros };
     },
     async settle(id, micros) {
-      check();
+      check("settle");
       const r = rows.get(id);
       if (!r || r.settled) return null;
       r.settled = true;
@@ -58,21 +62,22 @@ export function memorySpendStore(options: { clock?: () => number } = {}): Memory
       return r.request.month;
     },
     async used(q) {
-      check();
+      check("used");
       return used(q.childId, q.week, q.month);
     },
     async claimAlert(month) {
-      check();
+      check("claimAlert");
       if (alerts.includes(month)) return false;
       alerts.push(month);
       return true;
     },
-    rows: () => [...rows.entries()].map(([id, r]) => ({ id, charge: r.request.charge, childId: r.request.childId, what: r.request.what, reserved: r.request.micros, cost: r.cost, settled: r.settled, week: r.request.week, month: r.request.month })),
+    rows: () => [...rows.entries()].map(([id, r]) => ({ id, charge: r.request.charge, childId: r.request.childId, callId: r.request.callId, what: r.request.what, reserved: r.request.micros, cost: r.cost, settled: r.settled, week: r.request.week, month: r.request.month })),
     spent(r, micros) {
       const id = `spent-${++n}`;
       rows.set(id, { request: { id, callId: null, what: "model", micros, weekMicros: 0, force: true, ...r }, cost: micros, settled: true, at: clock() });
     },
     alerts: () => [...alerts],
+    log: () => [...log],
     fail(on) {
       failing = on;
     },

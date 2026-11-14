@@ -13,7 +13,13 @@ vi.mock("@/lib/scan-marking-access", async (importOriginal) => {
   return { ...actual, scanChecksAccess: (...args: Parameters<typeof actual.scanChecksAccess>) => actual.scanChecksAccess(args[0], args[1], args[2], args[3], gate) };
 });
 vi.mock("@/lib/scan-marking-server", () => ({ markingAccess: async () => false }));
-vi.mock("@/lib/scan-stack-server", () => ({ readScanStack: async (_db: unknown, _parent: string, _child: string, checks: boolean) => ({ photos: [], pages: [], echoed: checks }) }));
+// The due sends of a first load (#3): recorded, with what they send.
+const due = vi.hoisted(() => ({ asked: [] as unknown[], sent: [] as { parent: string; byChild: { child: string; sent: string[] }[] }[], order: [] as string[] }));
+vi.mock("@/lib/scan-send", () => ({ sendDuePhotos: async (_db: unknown, o: unknown) => { due.asked.push(o); due.order.push("due"); return due.sent; } }));
+vi.mock("@/lib/scan-send-marking", () => ({ SEND_MARKING_MAX_PHOTOS: 6, sendMarkingStart: async (_db: unknown, _p: string, _c: string, sent: string[]) => sent, markSentPhotos: async () => ({}) }));
+const later = vi.hoisted(() => [] as (() => unknown)[]);
+vi.mock("next/server", () => ({ after: (task: () => unknown) => { later.push(task); } }));
+vi.mock("@/lib/scan-stack-server", () => ({ readScanStack: async (_db: unknown, _parent: string, _child: string, checks: boolean) => { due.order.push("stack"); return { photos: [], pages: [], echoed: checks }; } }));
 // The family's children: only CHILD is this family's.
 const children = { from: (table: string) => ({ select: () => ({ eq: (_c: string, id: string) => ({ eq: (_p: string, owner: string) => ({
   maybeSingle: async () => ({ data: table === "children" && owner === "family" && id === "22222222-2222-4222-8222-222222222222" ? { id } : null, error: null }),
@@ -26,7 +32,7 @@ import { GET } from "./route";
 
 const stack = async (child = CHILD) => (await GET(new Request(`https://unicalearning.com/api/account/scans?child=${child}`))).json();
 
-beforeEach(() => { Object.assign(f, { marked: false, plan: { open: true, reason: "open" }, asked: [] }); vi.stubEnv("SCAN_MARKING_ENABLED", "families"); });
+beforeEach(() => { Object.assign(f, { marked: false, plan: { open: true, reason: "open" }, asked: [] }); Object.assign(due, { asked: [], sent: [], order: [] }); later.length = 0; vi.stubEnv("SCAN_MARKING_ENABLED", "families"); });
 afterEach(() => vi.unstubAllEnvs());
 
 it.each(["open", "ending_until_end"])("families mode gives a real family the checks while the child's plan is %s", async (reason) => {
@@ -49,4 +55,16 @@ it.each(["test-only", "off"])("with switch %s the checks are unchanged: test fam
   f.marked = true;
   expect(await stack()).toMatchObject({ checks: true });
   expect(f.asked).toEqual([]);
+});
+
+it("the first load sends the family's pages whose Undo passed while nobody was here, before it reads the stack (#3)", async () => {
+  due.sent = [{ parent: "family", byChild: [{ child: CHILD, sent: ["a"] }] }];
+  await (await GET(new Request(`https://unicalearning.com/api/account/scans?child=${CHILD}&due=1`))).json();
+  expect(due.asked).toEqual([{ parent: "family" }]);
+  expect(due.order).toEqual(["due", "stack"]);
+  // Marking starts on them after the answer, as Send starts it.
+  expect(later).toHaveLength(1);
+  // The page's polls do not ask again.
+  await stack();
+  expect(due.asked).toHaveLength(1);
 });

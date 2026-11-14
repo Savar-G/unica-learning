@@ -15,10 +15,10 @@ type RequestAction = { type: string; id: string; revision?: number; messageId?: 
 let root: Root, host: HTMLDivElement, state: DeskChatState;
 let answer: (action: RequestAction) => Promise<ChatReply>;
 const requests: RequestAction[] = [];
-function Harness({ question = 1, child = CHILD }: { question?: number; child?: string }) {
+function Harness({ question = 1, child = CHILD, held = false }: { question?: number; child?: string; held?: boolean }) {
   const chat = useDeskChat(reply(1).usage, { book, page: 1, question }, child);
   useLayoutEffect(() => { state = chat; }, [chat]);
-  return createElement(ChatControls, { state: chat, picked: true });
+  return createElement(ChatControls, { state: chat, picked: true, held });
 }
 const render = async (question = 1, child = CHILD) => act(async () => root.render(createElement(Harness, { question, child })));
 const send = async (type: "start" | "child" | "end", text?: string) => {
@@ -42,6 +42,35 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe("chat message admission at the public hook", () => {
+  it("hides the start button for a held question and keeps reference entry available", async () => {
+    await act(async () => root.render(createElement(Harness, { held: true })));
+    expect([...host.querySelectorAll("button")].some(b => b.textContent === "Chat with Maya")).toBe(false);
+    expect(host.querySelector('input[aria-label="Page and question number"]')?.hasAttribute("disabled")).toBe(false);
+    expect(host.textContent).not.toMatch(/cannot|can't|unable/i);
+  });
+
+  it("starts a typed page reference in the selected workbook without using the old picked number", async () => {
+    await render();
+    expect(await send("start", "page 4, number 3")).toBe(true);
+    expect(requests[0]).toMatchObject({ type: "start", workbookId: book, reference: "page 4, number 3" });
+    expect(requests[0]).not.toHaveProperty("question");
+  });
+
+  it("ends the active question before opening a typed reference and keeps a failed start ID for retry", async () => {
+    let failed = false;
+    answer = async action => {
+      if (action.type === "end") return reply(3, { chat: { ...view(3), ended: true } });
+      if ((action as RequestAction & { reference?: string }).reference && !failed) { failed = true; throw Error("Lost start response"); }
+      return reply(1);
+    };
+    await render(); await send("start");
+    expect(await send("start", "page 4, number 3")).toBe(false);
+    expect(requests.map(r => r.type)).toEqual(["start", "end", "start"]);
+    const id = requests[2].id;
+    expect(await send("start", "page 4, number 3")).toBe(true);
+    expect(requests.at(-1)).toMatchObject({ id, reference: "page 4, number 3" });
+  });
+
   it("R451-2: releases a definitely refused request before sending new text at the returned revision", async () => {
     answer = async (action) => action.type === "start" ? reply(1) : requests.filter((r) => r.type === "child").length === 1
       ? reply(3, { error: "conflict", admission: "refused" }) : reply(5, { admission: "accepted" });

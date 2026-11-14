@@ -8,10 +8,11 @@ import { callReplay } from "@/lib/maya-call-review";
 import { templateSkills } from "@/lib/assessment";
 import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
-import { memoryWordingHistoryStore, TIME_LIMITS } from "@/lib/maya";
+import { limitsOf, memoryWordingHistoryStore, TIME_LIMITS } from "@/lib/maya";
 import { mayaCalls, recordView, boardHistoryOf, type CallResult, type CallSeams } from "@/lib/maya-call";
 import { memoryCallStore, memoryConnectionLog } from "@/lib/maya-call-memory";
-import { ruleMayaModel } from "@/lib/maya-model-fake";
+import { ruleConversationalModel, ruleMayaModel } from "@/lib/maya-model-fake";
+import { VOICE_CALL_STALE_MS } from "@/lib/maya-voice";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { checkTrace } from "@/lib/maya-trace";
 import type { QuestionPackage } from "@/lib/question-package";
@@ -331,25 +332,68 @@ describe("R408 recovery and privacy", () => {
     expect(s.rebuild).not.toHaveBeenCalled();
   });
 
-  it("R408-5: excludes the child's name from every saved voice session and opening", async () => {
+  // Savar, 2026-11-12 (replaces R408-5's "no name on voice"): Maya may say the child's first name on a voice call, as in
+  // chat. The live session keeps it on the server, as a chat's does; every trace the call stores hides it as {name}.
+  it("R408-5: keeps the child's first name in the live voice session, as chat does, and the stored trace hides it", async () => {
     const s = setup();
     s.seams.seed = () => 1;
     const view = await newVoiceCall(s);
-    expect(JSON.stringify(s.store.rows()[0].live)).not.toContain("Leah");
+    expect(s.store.rows()[0].live?.text.initial?.session.variety.name).toBe("Leah");
     const call = await open(s, view.id);
-    expect((await call.start()).say.join(" ")).not.toContain("Leah");
-    await call.settled();
-    expect(JSON.stringify(s.store.rows()[0].live)).not.toContain("Leah");
+    await call.start();
+    await call.child("I got 56.");
+    await call.end({ reason: "child_stopped" });
+    const [row] = s.store.rows();
+    expect(row.status).toBe("ended");
+    expect(JSON.stringify(row.trace)).not.toContain("Leah");
+    expect(JSON.stringify(row.notePending)).not.toContain("Leah");
   });
 
-  it("R408-5: removes personalization when an older saved voice call is opened", async () => {
+  // The same rule for a chat or a typed call (2026-11-13): the sweep and an admin end pass no name, and the stored
+  // trace kept the real name, because it hid only the name it was given.
+  for (const who of ["the sweep", "an admin"] as const) {
+    it(`a typed call that ${who} ends with no name given still hides the name its session says`, async () => {
+      const s = setup();
+      s.seams.model = (id) => (id === null || id === "fake" ? ruleConversationalModel() : null);
+      const text = ok(await s.calls.start({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: PKG, startedBy: who === "an admin" ? "admin-1" : null })).view;
+      const said = ok(await s.calls.input(text.id, text.revision, { type: "child", text: "Um, let me think." }, "Leah"));
+      expect(said.output!.say).toEqual(["Take your time, Leah."]);
+      const ended = ok(await s.calls.input(text.id, said.view.revision, { type: "end" }, null));
+      const row = s.store.rows()[0];
+      expect(row.status).toBe("ended");
+      expect(JSON.stringify(row.trace)).not.toContain("Leah");
+      expect(JSON.stringify(row.trace)).toContain("Take your time, {name}.");
+      expect(JSON.stringify(row.notePending ?? null)).not.toContain("Leah");
+      // An end sent again for the ended call (the sweep's retry) keeps it hidden.
+      ok(await s.calls.input(text.id, ended.view.revision, { type: "end" }, null));
+      expect(JSON.stringify(s.store.rows()[0].trace)).not.toContain("Leah");
+    });
+  }
+
+  it("R408-5: a voice call the sweep ends (no name given) still hides the name its session says", async () => {
     const s = setup();
+    s.seams.model = (id) => (id === null || id === "fake" ? ruleConversationalModel() : null);
     const view = await newVoiceCall(s);
-    const row = s.store.rows()[0];
-    row.live!.text.session.variety.name = "Leah";
-    await s.store.update(row.id, row.revision, { live: row.live });
     const call = await open(s, view.id);
-    expect(s.store.rows()[0].live?.text.session.variety.name).toBeNull();
+    await call.start();
+    // A thinking child hears code's patient line with the name (D-341).
+    expect((await call.child("Um, let me think.")).say).toEqual(["Take your time, Leah."]);
+    await call.settled();
+    // The worker stopped without an end: the sweep ends the call, and passes no name.
+    s.advance(VOICE_CALL_STALE_MS / 1000 + 1);
+    const row = s.store.rows()[0];
+    ok(await s.calls.input(view.id, row.revision, { type: "end" }, null));
+    const ended = s.store.rows()[0];
+    expect(ended.status).toBe("ended");
+    expect(JSON.stringify(ended.trace)).not.toContain("Leah");
+    expect(JSON.stringify(ended.trace)).toContain("Take your time, {name}.");
+  });
+
+  it("R408-5: an older saved voice call with no name stays without one", async () => {
+    const s = setup();
+    const view = ok(await s.calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: null, package: PKG, startedBy: "admin-1" })).view;
+    const call = await open(s, view.id);
+    expect(call.session.variety.name).toBeNull();
     expect((await call.start()).say.join(" ")).not.toContain("Leah");
   });
 
@@ -430,4 +474,68 @@ it.each(["saved", "trace", "empty delivery"] as const)("R450-6 preserves the his
   expect(callReplay(saved).maya.strokes).toEqual(source === "empty delivery" ? [] : expected);
   expect(saved.batches).toHaveLength(source === "empty delivery" ? 0 : row.trace!.board.length);
   if (source === "saved") expect(saved.boardHistory).toEqual(history);
+});
+
+// A child's own voice call from the family desk (kind "family"): voice only, a workbook question, authorized by the
+// server's canCallVoice seam, no free talk and no chat channel, and a time limit the server may shorten.
+describe("a family voice call from the desk", () => {
+  const BOOK_PKG: QuestionPackage = { ...SAMPLE_PACKAGES["add-27-39"], ref: { source: "workbook", workbookId: "44444444-4444-4444-8444-444444444444", page: 1, question: 1 } };
+  const familyInput = (over: Partial<Parameters<ReturnType<typeof mayaCalls>["startVoice"]>[0]> = {}) =>
+    ({ kind: "family" as const, parentId: PARENT, childId: CHILD, childName: "Leah", package: BOOK_PKG, startedBy: PARENT, ...over });
+
+  it("is refused unless the server says this child may call, and nothing is stored", async () => {
+    const s = setup();
+    expect(await s.calls.startVoice(familyInput())).toEqual({ ok: false, error: "not_test_family" });
+    const no = mayaCalls({ ...s.seams, canCallVoice: async () => false });
+    expect(await no.startVoice(familyInput())).toEqual({ ok: false, error: "not_test_family" });
+    expect(s.store.rows()).toHaveLength(0);
+  });
+
+  it("is voice only and a workbook question only", async () => {
+    const s = setup();
+    const calls = mayaCalls({ ...s.seams, canCallVoice: async () => true });
+    expect(await calls.start(familyInput())).toEqual({ ok: false, error: "not_test_family" });
+    expect(await calls.startVoice(familyInput({ package: PKG }))).toEqual({ ok: false, error: "invalid_question" });
+    expect(s.store.rows()).toHaveLength(0);
+    const made = ok(await calls.startVoice(familyInput())).view;
+    expect(made).toMatchObject({ kind: "family", mode: "voice", status: "live", startedAt: null });
+  });
+
+  it("keeps free talk off, sets no chat channel and the normal limits, and asks no test-family check", async () => {
+    const s = setup();
+    const asked = vi.fn(async () => false);
+    const calls = mayaCalls({ ...s.seams, isTestFamily: asked, canCallVoice: async () => true });
+    ok(await calls.startVoice(familyInput()));
+    const session = s.store.rows()[0].live!.text.session;
+    expect(session.freeTalk).toBe(false);
+    expect(session.channel).toBeUndefined();
+    expect(session.limits).toBeUndefined();
+    expect(asked).not.toHaveBeenCalled();
+  });
+
+  it("a shorter limit shortens the closing and the end that the worker and the session use", async () => {
+    const s = setup();
+    const calls = mayaCalls({ ...s.seams, canCallVoice: async () => true });
+    const view = ok(await calls.startVoice(familyInput({ limitMs: 150_000 }))).view;
+    expect(s.store.rows()[0].live!.text.session.limits).toEqual({ closingAtMs: 90_000, endAtMs: 150_000 });
+    // The worker restores the saved session, so it reads the same limits (agent.ts: limitsOf(call.session)).
+    const opened = await calls.openVoice(view.id, PROVIDERS, "Leah");
+    if (!opened.ok) throw new Error(opened.error);
+    expect(limitsOf(opened.call.session)).toEqual({ closingAtMs: 90_000, endAtMs: 150_000 });
+    await opened.call.end({ reason: "child_stopped" });
+  });
+
+  it("is run by the worker like any voice call and ends as a family row", async () => {
+    const s = setup();
+    const calls = mayaCalls({ ...s.seams, canCallVoice: async () => true });
+    const view = ok(await calls.startVoice(familyInput())).view;
+    const opened = await calls.openVoice(view.id, PROVIDERS, "Leah");
+    if (!opened.ok) throw new Error(opened.error);
+    await opened.call.start();
+    await opened.call.end({ reason: "child_stopped" });
+    const row = s.store.rows()[0];
+    expect(row).toMatchObject({ kind: "family", mode: "voice", status: "ended" });
+    expect(row.trace && checkTrace(row.trace).ok).toBe(true);
+    expect(row.trace?.freeTalk).toBe(false);
+  });
 });

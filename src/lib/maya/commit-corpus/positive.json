@@ -1,0 +1,8337 @@
+{
+ "source": "traces/maya-practice/2026-11-12T16-17-39-955Z",
+ "runs": 84,
+ "childTurns": 937,
+ "generated": "scripts/maya-commit-corpus.mjs",
+ "moved": [
+  {
+   "run": "C01-r2",
+   "turn": 7,
+   "text": "Okay. You said add the ones first. So 7 + 9 is 16?",
+   "reason": "value only in a question"
+  },
+  {
+   "run": "C01-r2",
+   "turn": 21,
+   "text": "2 + 3 + 1 is 6. Is that right?",
+   "reason": "value check after the value"
+  },
+  {
+   "run": "C01-r2",
+   "turn": 27,
+   "text": "I added the tens, 2 + 3 + 1, and got 6. So I wrote 6 under the tens. Is that right?",
+   "reason": "value check after the value"
+  },
+  {
+   "run": "C02-r1",
+   "turn": 12,
+   "text": "Um, I think I add the 1 to the 5? That makes 6.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C02-r1",
+   "turn": 36,
+   "text": "I think it's 66. You said the 1 ten goes to the tens, so I put it there.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C02-r2",
+   "turn": 28,
+   "text": "Thanks! I wrote 66. Is that right?",
+   "reason": "value check after the value"
+  },
+  {
+   "run": "C02-r2",
+   "turn": 46,
+   "text": "I think it's 66. I wrote 6 in the ones and 6 in the tens.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C02-r2",
+   "turn": 48,
+   "text": "I think it's 66. I wrote 6 in the ones, and 6 in the tens.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C02-r3",
+   "turn": 10,
+   "text": "Oh! You said the 1 goes with 2 and 3. So the tens are 6?",
+   "reason": "value only in a question"
+  },
+  {
+   "run": "C03-r3",
+   "turn": 10,
+   "text": "You said the 1 goes to the tens. So I add 1 to my 5, and I think it's 6.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C04-r1",
+   "turn": 8,
+   "text": "Yes, I guessed 66.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C04-r1",
+   "turn": 28,
+   "text": "You said write 6, so I wrote 6. Is it 66?",
+   "reason": "value only in a question"
+  },
+  {
+   "run": "C04-r1",
+   "turn": 30,
+   "text": "Um, I guessed 66. Is that the whole answer?",
+   "reason": "hedge"
+  },
+  {
+   "run": "C04-r1",
+   "turn": 34,
+   "text": "Um, I guessed 66. Is it 66?",
+   "reason": "hedge"
+  },
+  {
+   "run": "C04-r1",
+   "turn": 42,
+   "text": "Um, I still think it's 66. That's my guess.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C04-r2",
+   "turn": 28,
+   "text": "You said write 6, so I wrote the 6. Is it 66?",
+   "reason": "value only in a question"
+  },
+  {
+   "run": "C04-r2",
+   "turn": 30,
+   "text": "I guessed 66. Is that right?",
+   "reason": "hedge"
+  },
+  {
+   "run": "C04-r2",
+   "turn": 34,
+   "text": "I guess it is 66.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C04-r3",
+   "turn": 10,
+   "text": "Yes, I said 66. Is it 66?",
+   "reason": "a question about the value"
+  },
+  {
+   "run": "C04-r3",
+   "turn": 38,
+   "text": "I still don't know. I wrote 66. Is that right?",
+   "reason": "value check after the value"
+  },
+  {
+   "run": "C04-r3",
+   "turn": 42,
+   "text": "Yes, I think it is 66. I just guessed.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C04-r3",
+   "turn": 46,
+   "text": "You said write 6. So I wrote the 6 in the tens. Is that my 66?",
+   "reason": "value only in a question"
+  },
+  {
+   "run": "C04-r3",
+   "turn": 48,
+   "text": "I think it is 66. I just guessed.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C04-r3",
+   "turn": 50,
+   "text": "I don't know how to put them together. I still think it's 66.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C05-r1",
+   "turn": 11,
+   "text": "Okay. Now what do I do with the 16?",
+   "reason": "value only in a question"
+  },
+  {
+   "run": "C05-r1",
+   "turn": 19,
+   "text": "Okay, I got 6 for the tens. Is that right?",
+   "reason": "value check after the value"
+  },
+  {
+   "run": "C05-r1",
+   "turn": 21,
+   "text": "Yes, I got 6 for the tens. Is that right?",
+   "reason": "value check after the value"
+  },
+  {
+   "run": "C05-r1",
+   "turn": 29,
+   "text": "Um, I think it's 66? I put 6 in the ones and 6 in the tens, like you showed me.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C05-r2",
+   "turn": 19,
+   "text": "I got 6. Is that right?",
+   "reason": "value check after the value"
+  },
+  {
+   "run": "C05-r2",
+   "turn": 27,
+   "text": "I think it's 66? I wrote the 6 in the ones and the 6 in the tens, like you said.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C05-r2",
+   "turn": 29,
+   "text": "I got 66 from your steps. Is that right?",
+   "reason": "value check after the value"
+  },
+  {
+   "run": "C05-r2",
+   "turn": 31,
+   "text": "I don't know for sure. I just did the steps you showed me, and they gave 66.",
+   "reason": "another person"
+  },
+  {
+   "run": "C05-r3",
+   "turn": 20,
+   "text": "Um, I think it's 6. You said to add the 2, the 3, and the 1.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C05-r3",
+   "turn": 40,
+   "text": "Yes, I said 66. I'm not sure it's right, though.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C10-r1",
+   "turn": 26,
+   "text": "Yes, I think it's 66. You said the tens make 6, and the ones make 6.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C10-r2",
+   "turn": 18,
+   "text": "Oh, so 2 plus 3 is 5, and the 1 makes it 6?",
+   "reason": "value only in a question"
+  },
+  {
+   "run": "C10-r2",
+   "turn": 20,
+   "text": "I think it's 6. You said the 1 goes to the tens, so 2 plus 3 plus 1 is 6.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C10-r2",
+   "turn": 26,
+   "text": "Yes, I think it's 66. I got it from the steps you said.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C10-r2",
+   "turn": 30,
+   "text": "Um, I put 6 in the ones and 6 in the tens. So it's 66, I think.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C10-r2",
+   "turn": 32,
+   "text": "You said to add 2 plus 3 plus 1 for the tens, and I got 6. So I think it's 66.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C10-r2",
+   "turn": 36,
+   "text": "Okay, you said 18 plus 15 is 33. So my answer is still 66, right?",
+   "reason": "value only in a question"
+  },
+  {
+   "run": "C10-r2",
+   "turn": 38,
+   "text": "Okay. You said 7 plus 9 is 16. So I write 6 and carry the 1.",
+   "reason": "echo after a show"
+  },
+  {
+   "run": "C10-r2",
+   "turn": 42,
+   "text": "You said to add 2 plus 3 plus 1 for the tens. I got 6 there.",
+   "reason": "echo after a show"
+  },
+  {
+   "run": "C10-r3",
+   "turn": 14,
+   "text": "Oh, so I add the 2, the 3, and the 1 you carried. That makes 6?",
+   "reason": "value only in a question"
+  },
+  {
+   "run": "C10-r3",
+   "turn": 20,
+   "text": "Yes, I think the tens are 6. So I write 6 there.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C10-r3",
+   "turn": 24,
+   "text": "I think it's 66. You said to write 6 in the tens, so I did.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C10-r3",
+   "turn": 26,
+   "text": "Yes, I think it's 66. I wrote 6 in the tens.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C10-r3",
+   "turn": 28,
+   "text": "Yes, I think it's 66. You said to write 6 in the tens, so I did.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C10-r3",
+   "turn": 30,
+   "text": "I think it's 66. I wrote 6 in the ones and 6 in the tens.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C24-r1",
+   "turn": 10,
+   "text": "Okay. So what do I do with the 16?",
+   "reason": "value only in a question"
+  },
+  {
+   "run": "C26-r2",
+   "turn": 6,
+   "text": "Um, 7 plus 9 is 16, I think.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C26-r2",
+   "turn": 26,
+   "text": "You said write 6, so I wrote it. My answer is 66!",
+   "reason": "echo after a show"
+  },
+  {
+   "run": "C28-r3",
+   "turn": 4,
+   "text": "Okay. I think 7 plus 9 is 16.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C30-r2",
+   "turn": 4,
+   "text": "I think 7 plus 9 is 16.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C37-r1",
+   "turn": 24,
+   "text": "I think it's 24. I wrote 4 for the ones, and 2 for the tens.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C37-r1",
+   "turn": 26,
+   "text": "Yes, I think 24 is right. I wrote 4 and 2.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C37-r2",
+   "turn": 22,
+   "text": "I think it's 24. The 4 is from 12 take away 8, and the 2 is from 4 take away 2.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C37-r2",
+   "turn": 36,
+   "text": "I think it's 24. I wrote the 4 from 12 take away 8, like you showed me.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C37-r2",
+   "turn": 38,
+   "text": "Yes, 24. I got the 4 from 12 take away 8, like you showed me.",
+   "reason": "echo after a show"
+  },
+  {
+   "run": "C37-r2",
+   "turn": 40,
+   "text": "I think it's 24. I put the 4 and the 2 together, like you showed me.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C37-r3",
+   "turn": 16,
+   "text": "I think it's 24. You said 4 minus 2 is 2, and I got 4 from 12 minus 8.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C37-r3",
+   "turn": 20,
+   "text": "Yes, I think it's 24. You said 4 minus 2 is 2, so I wrote 24.",
+   "reason": "hedge"
+  },
+  {
+   "run": "C37-r3",
+   "turn": 22,
+   "text": "I think it's 24. I put the 2 and the 4 together.",
+   "reason": "hedge"
+  },
+  {
+   "run": "F01-r1",
+   "turn": 10,
+   "text": "Okay! I think 7 plus 9 is 16.",
+   "reason": "hedge"
+  },
+  {
+   "run": "F01-r1",
+   "turn": 26,
+   "text": "Yes, I think 66 is right! I added the 1 you said to carry.",
+   "reason": "hedge"
+  },
+  {
+   "run": "F01-r1",
+   "turn": 42,
+   "text": "Okay! You said write 6, so I wrote 6 in the tens. It's 66!",
+   "reason": "echo after a show"
+  },
+  {
+   "run": "F02-r1",
+   "turn": 10,
+   "text": "Okay, let's do 27 plus 39. I think 7 plus 9 is 16.",
+   "reason": "hedge"
+  },
+  {
+   "run": "F02-r1",
+   "turn": 28,
+   "text": "Yes, it's 66. I think I did it right.",
+   "reason": "hedge"
+  },
+  {
+   "run": "F02-r2",
+   "turn": 21,
+   "text": "I get 6! Is that right?",
+   "reason": "value check after the value"
+  },
+  {
+   "run": "F02-r2",
+   "turn": 29,
+   "text": "I think it's 66! You said to write 6 in the tens, and the 6 in the ones is there too.",
+   "reason": "hedge"
+  },
+  {
+   "run": "F02-r3",
+   "turn": 9,
+   "text": "Okay. I think 7 plus 9 is 16.",
+   "reason": "hedge"
+  },
+  {
+   "run": "F02-r3",
+   "turn": 11,
+   "text": "I got 16 for the ones. Is that right?",
+   "reason": "value check after the value"
+  },
+  {
+   "run": "F02-r3",
+   "turn": 25,
+   "text": "Yes, I said 66. Is that right?",
+   "reason": "value check after the value"
+  },
+  {
+   "run": "F02-r3",
+   "turn": 29,
+   "text": "It's 6, like I said. So the answer is 66, right?",
+   "reason": "value check after the value"
+  },
+  {
+   "run": "F02-r3",
+   "turn": 41,
+   "text": "Okay. Is my 66 right for 27 plus 39?",
+   "reason": "value only in a question"
+  },
+  {
+   "run": "F03-r1",
+   "turn": 10,
+   "text": "Okay! I think 7 plus 9 is 16.",
+   "reason": "hedge"
+  },
+  {
+   "run": "F03-r1",
+   "turn": 26,
+   "text": "Okay, 2 plus 3 plus 1 is 6 again. So my answer is still 66, right?",
+   "reason": "value check after the value"
+  },
+  {
+   "run": "F03-r1",
+   "turn": 32,
+   "text": "You said to write 6, so I wrote it. My answer is 66!",
+   "reason": "echo after a show"
+  },
+  {
+   "run": "F03-r3",
+   "turn": 16,
+   "text": "Yes, I said 66. Is that right?",
+   "reason": "value check after the value"
+  },
+  {
+   "run": "F04-r2",
+   "turn": 44,
+   "text": "I think it's 66. I put the 6 in the ones and carried the 1, like you said.",
+   "reason": "hedge"
+  },
+  {
+   "run": "F04-r3",
+   "turn": 8,
+   "text": "I think it's 66. I add the 2 and the 3, then add the 1 I carried. That makes 66.",
+   "reason": "hedge"
+  },
+  {
+   "run": "F04-r3",
+   "turn": 32,
+   "text": "Okay, I get it now. Can we check my 66 again?",
+   "reason": "value only in a question"
+  },
+  {
+   "run": "F05-r1",
+   "turn": 6,
+   "text": "Okay. Seven plus nine is sixteen, I think.",
+   "reason": "hedge"
+  },
+  {
+   "run": "F05-r3",
+   "turn": 18,
+   "text": "Um, 6? I think it's 6.",
+   "reason": "hedge"
+  },
+  {
+   "run": "F05-r3",
+   "turn": 20,
+   "text": "Is it 6? What do I write for the tens?",
+   "reason": "value only in a question"
+  },
+  {
+   "run": "F05-r3",
+   "turn": 28,
+   "text": "Okay. So is my answer 66? I already wrote it.",
+   "reason": "value only in a question"
+  },
+  {
+   "run": "F05-r3",
+   "turn": 34,
+   "text": "Okay. I think it's 66. I wrote 6 for the ones and 6 for the tens.",
+   "reason": "hedge"
+  },
+  {
+   "run": "F05-r3",
+   "turn": 44,
+   "text": "I wrote 6 for the tens. So my answer is 66. Is that right?",
+   "reason": "value check after the value"
+  },
+  {
+   "run": "F06-r3",
+   "turn": 8,
+   "text": "I got 16. I put the 6 down and the 1 goes up, right?",
+   "reason": "value check after the value"
+  },
+  {
+   "run": "OT5-r1",
+   "turn": 6,
+   "text": "Yes, that's 11. Is it right?",
+   "reason": "value check after the value"
+  },
+  {
+   "run": "OT5-r1",
+   "turn": 10,
+   "text": "I still think it's 11. Is it right?",
+   "reason": "hedge"
+  },
+  {
+   "run": "OT5-r1",
+   "turn": 12,
+   "text": "Okay. The 6 and the 5 make 11, I think.",
+   "reason": "hedge"
+  },
+  {
+   "run": "OT5-r2",
+   "turn": 12,
+   "text": "Okay. I think 6 and 5 make 11.",
+   "reason": "hedge"
+  },
+  {
+   "run": "PTP1-r1",
+   "turn": 10,
+   "text": "Yes, I think 10 is right! You said 8 equal steps, so I split the 80.",
+   "reason": "hedge"
+  },
+  {
+   "run": "PTP1-r1",
+   "turn": 16,
+   "text": "Okay. So my answer is 10, right?",
+   "reason": "value only in a question"
+  },
+  {
+   "run": "PTP2-r1",
+   "turn": 10,
+   "text": "I got 24 for 3 times 8. Then 24 plus 20 is 44. Is that right?",
+   "reason": "value check after the value"
+  },
+  {
+   "run": "PTP2-r1",
+   "turn": 20,
+   "text": "Oh, so in the small one, 3 steps after the start. So my 44 is the answer?",
+   "reason": "value only in a question"
+  },
+  {
+   "run": "PTP2-r2",
+   "turn": 18,
+   "text": "I think it's 44. You said to line up the tens, so I did.",
+   "reason": "hedge"
+  },
+  {
+   "run": "PTP2-r2",
+   "turn": 20,
+   "text": "So is 44 right? I changed it from 52.",
+   "reason": "value only in a question"
+  },
+  {
+   "run": "PTP2-r3",
+   "turn": 12,
+   "text": "Yes, I think 44 is right. I did 3 times 8 and added it to 20.",
+   "reason": "hedge"
+  },
+  {
+   "run": "PTP2-r3",
+   "turn": 24,
+   "text": "So 20 plus 24 is 44. Is 44 my answer?",
+   "reason": "a question about the value"
+  },
+  {
+   "run": "PTP2-r3",
+   "turn": 26,
+   "text": "You said 24, so I add it to 20. That's 44.",
+   "reason": "echo after a show"
+  },
+  {
+   "run": "PTP3-r1",
+   "turn": 19,
+   "text": "I think so. I got 140 from 97 plus 43.",
+   "reason": "hedge"
+  },
+  {
+   "run": "PTP3-r1",
+   "turn": 29,
+   "text": "Oh, 7 times 9 is 63. So is my 140 right?",
+   "reason": "value check after the value"
+  },
+  {
+   "run": "PTP4-r2",
+   "turn": 2,
+   "text": "Hi. I think 8 times 9 is 72.",
+   "reason": "hedge"
+  }
+ ],
+ "turns": [
+  {
+   "run": "C01-r1",
+   "case": "C01",
+   "question": "gate-A-27-39",
+   "turn": 14,
+   "text": "Okay, 2 plus 3 plus 1 is 6. So I write 6 in the tens.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Let's add the tens: 2 + 3 + 1."
+   }
+  },
+  {
+   "run": "C01-r1",
+   "case": "C01",
+   "question": "gate-A-27-39",
+   "turn": 16,
+   "text": "Can I try 27 plus 39? 7 plus 9 is 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Thanks for telling me. What could you try for the tens?"
+   }
+  },
+  {
+   "run": "C01-r1",
+   "case": "C01",
+   "question": "gate-A-27-39",
+   "turn": 18,
+   "text": "It's 6. I wrote 6 in the tens.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "What is 2 + 3 + 1?"
+   }
+  },
+  {
+   "run": "C01-r1",
+   "case": "C01",
+   "question": "gate-A-27-39",
+   "turn": 22,
+   "text": "I got 66. You said the 6 stays in the ones, and I wrote 6 in the tens.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "So what is 27 + 39?"
+   }
+  },
+  {
+   "run": "C01-r1",
+   "case": "C01",
+   "question": "gate-A-27-39",
+   "turn": 24,
+   "text": "Yes, I got 66. I wrote 6 in the tens.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Did you say 66?"
+   }
+  },
+  {
+   "run": "C01-r1",
+   "case": "C01",
+   "question": "gate-A-27-39",
+   "turn": 26,
+   "text": "Yes, I got 66. You said the 6 stays in the ones, so I wrote it.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Just checking, was that 66?"
+   }
+  },
+  {
+   "run": "C01-r1",
+   "case": "C01",
+   "question": "gate-A-27-39",
+   "turn": 28,
+   "text": "I got 66. You said the 6 stays in the ones, and I wrote 6 in the tens.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "That's fine. Let's check it one part at a time. Every part is done. So what is 27 + 39?"
+   }
+  },
+  {
+   "run": "C01-r1",
+   "case": "C01",
+   "question": "gate-A-27-39",
+   "turn": 30,
+   "text": "First I did 7 plus 9. That's 16, like you said.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Tell me how you thought about it."
+   }
+  },
+  {
+   "run": "C01-r1",
+   "case": "C01",
+   "question": "gate-A-27-39",
+   "turn": 32,
+   "text": "Yes, 7 plus 9 is 16. You said the 6 stays in the ones.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "I heard 16. Is that right?"
+   }
+  },
+  {
+   "run": "C01-r2",
+   "case": "C01",
+   "question": "gate-A-27-39",
+   "turn": 11,
+   "text": "Yes, 7 plus 9 is 16. Now what do I do?",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Just checking, was that 16?"
+   }
+  },
+  {
+   "run": "C01-r2",
+   "case": "C01",
+   "question": "gate-A-27-39",
+   "turn": 23,
+   "text": "Yes, it's 6. I added the 1 you carried.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "I think I heard 6. Is that it?"
+   }
+  },
+  {
+   "run": "C01-r2",
+   "case": "C01",
+   "question": "gate-A-27-39",
+   "turn": 25,
+   "text": "It's 6. I added the 1 you carried.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "What do you get for 2 + 3 + 1?"
+   }
+  },
+  {
+   "run": "C01-r2",
+   "case": "C01",
+   "question": "gate-A-27-39",
+   "turn": 33,
+   "text": "Yes, I said 66. I put the 6 from the ones with the 6 from the tens.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "tens"
+   ],
+   "shownBefore": [
+    "ones",
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Did you say 66?"
+   }
+  },
+  {
+   "run": "C01-r2",
+   "case": "C01",
+   "question": "gate-A-27-39",
+   "turn": 35,
+   "text": "Yes, I got 66. I put the 6 and the 6 together.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "tens"
+   ],
+   "shownBefore": [
+    "ones",
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "So you said 66?"
+   }
+  },
+  {
+   "run": "C01-r2",
+   "case": "C01",
+   "question": "gate-A-27-39",
+   "turn": 37,
+   "text": "I got 66. I put the 6 from the ones with the 6 from the tens.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "tens"
+   ],
+   "shownBefore": [
+    "ones",
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "That's okay. Let's check it together. Now put it all together. What is 27 + 39?"
+   }
+  },
+  {
+   "run": "C01-r2",
+   "case": "C01",
+   "question": "gate-A-27-39",
+   "turn": 39,
+   "text": "I put the 6 from the ones next to the 6 from the tens. So I got 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "tens"
+   ],
+   "shownBefore": [
+    "ones",
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "How did you work it out?"
+   }
+  },
+  {
+   "run": "C01-r3",
+   "case": "C01",
+   "question": "gate-A-27-39",
+   "turn": 6,
+   "text": "You said add the ones first. So 7 + 9 is 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "example_step",
+    "say": "There we go: 18 + 15 = 33."
+   }
+  },
+  {
+   "run": "C01-r3",
+   "case": "C01",
+   "question": "gate-A-27-39",
+   "turn": 10,
+   "text": "Yes, 16. You said add the ones first, so I did that.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "I heard 16. Is that right?"
+   }
+  },
+  {
+   "run": "C01-r3",
+   "case": "C01",
+   "question": "gate-A-27-39",
+   "turn": 16,
+   "text": "16. I already wrote the 6. Where does the 1 go?",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Add the ones: 7 + 9. What do you get?"
+   }
+  },
+  {
+   "run": "C01-r3",
+   "case": "C01",
+   "question": "gate-A-27-39",
+   "turn": 24,
+   "text": "I got 6. Do I write the 6 in the tens?",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Can you add 2 + 3 + 1?"
+   }
+  },
+  {
+   "run": "C01-r3",
+   "case": "C01",
+   "question": "gate-A-27-39",
+   "turn": 28,
+   "text": "Yes, I got 6. Do I write the 6 in the tens spot?",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "So you said 6?"
+   }
+  },
+  {
+   "run": "C01-r3",
+   "case": "C01",
+   "question": "gate-A-27-39",
+   "turn": 34,
+   "text": "Yes, I wrote 6 and 6. So it's 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "ones",
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "I think I heard 66. Is that it?"
+   }
+  },
+  {
+   "run": "C02-r1",
+   "case": "C02",
+   "question": "gate-A-27-39",
+   "turn": 4,
+   "text": "I added 7 and 9, and got 16. So I wrote the 6.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "That's not it yet. Let's look at this answer once more. How about the ones? What can you do there?"
+   }
+  },
+  {
+   "run": "C02-r1",
+   "case": "C02",
+   "question": "gate-A-27-39",
+   "turn": 14,
+   "text": "Oh! You said the 1 goes to the tens. So 2 plus 3 plus 1 is 6!",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Look at the tens column: 2 and 3, and the carried 1 on top."
+   }
+  },
+  {
+   "run": "C02-r1",
+   "case": "C02",
+   "question": "gate-A-27-39",
+   "turn": 16,
+   "text": "2 plus 3 plus 1 is 6! You said the 1 goes to the tens.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Add up the tens: 2 + 3 + 1."
+   }
+  },
+  {
+   "run": "C02-r1",
+   "case": "C02",
+   "question": "gate-A-27-39",
+   "turn": 26,
+   "text": "Yes, 66! I put the 1 with the tens, like you said.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Just checking, was that 66?"
+   }
+  },
+  {
+   "run": "C02-r1",
+   "case": "C02",
+   "question": "gate-A-27-39",
+   "turn": 28,
+   "text": "Yes, I said 66. I got 6 in the tens.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Did you say 66?"
+   }
+  },
+  {
+   "run": "C02-r1",
+   "case": "C02",
+   "question": "gate-A-27-39",
+   "turn": 34,
+   "text": "It's 66! You said the 1 goes to the tens, so I put it there.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Every part is done. So what is 27 + 39?"
+   }
+  },
+  {
+   "run": "C02-r2",
+   "case": "C02",
+   "question": "gate-A-27-39",
+   "turn": 18,
+   "text": "You said 2 + 3 + 1 is 6, so I write 6 in the tens. Now I get 66!",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "You have all the pieces. What is 27 + 39?"
+   }
+  },
+  {
+   "run": "C02-r2",
+   "case": "C02",
+   "question": "gate-A-27-39",
+   "turn": 20,
+   "text": "Yes, 66! You said 2 plus 3 plus 1 is 6, so I wrote 6.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Just checking, was that 66?"
+   }
+  },
+  {
+   "run": "C02-r2",
+   "case": "C02",
+   "question": "gate-A-27-39",
+   "turn": 22,
+   "text": "Yes, I said 66. You said 2 plus 3 plus 1 is 6, so I wrote 6.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Did you say 66?"
+   }
+  },
+  {
+   "run": "C02-r2",
+   "case": "C02",
+   "question": "gate-A-27-39",
+   "turn": 26,
+   "text": "I'll write 66 on the board.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "offer_other_input",
+    "say": "You can also write it on the board."
+   }
+  },
+  {
+   "run": "C02-r2",
+   "case": "C02",
+   "question": "gate-A-27-39",
+   "turn": 38,
+   "text": "Yes, 66. I wrote 6 in the ones and 6 in the tens, like you said.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "I think I heard 66. Is that it?"
+   }
+  },
+  {
+   "run": "C02-r2",
+   "case": "C02",
+   "question": "gate-A-27-39",
+   "turn": 40,
+   "text": "Yes, 66. I wrote 6 in the tens, like you said.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Was that 66?"
+   }
+  },
+  {
+   "run": "C02-r2",
+   "case": "C02",
+   "question": "gate-A-27-39",
+   "turn": 42,
+   "text": "You said 2 + 3 + 1 is 6. So I put 6 and 6 together. That's 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "That's fine. Let's check it one part at a time. Put the parts together. What does 27 + 39 make?"
+   }
+  },
+  {
+   "run": "C02-r2",
+   "case": "C02",
+   "question": "gate-A-27-39",
+   "turn": 44,
+   "text": "First I did the ones. 7 plus 9 is 16, so I wrote the 6.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Tell me how you thought about it."
+   }
+  },
+  {
+   "run": "C03-r1",
+   "case": "C03",
+   "question": "gate-A-27-39",
+   "turn": 16,
+   "text": "Yes, 66! You said to carry the ten, so I added it to the 2 and 3.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Just checking, was that 66?"
+   }
+  },
+  {
+   "run": "C03-r1",
+   "case": "C03",
+   "question": "gate-A-27-39",
+   "turn": 18,
+   "text": "Okay, 2 plus 3 plus 1 is 6. So the tens are 6, and the answer is 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "No problem. We can check it together. Add the tens: 2 + 3 + 1. What do you get?"
+   }
+  },
+  {
+   "run": "C03-r2",
+   "case": "C03",
+   "question": "gate-A-27-39",
+   "turn": 10,
+   "text": "7 plus 9 is 16. I wrote the 6 down.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Let's add the ones: 7 + 9."
+   }
+  },
+  {
+   "run": "C03-r2",
+   "case": "C03",
+   "question": "gate-A-27-39",
+   "turn": 12,
+   "text": "Oh, you said carry 1 ten. I forgot it. So 2 plus 3 plus 1 is 6.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Here's how it goes. Add the ones: 7 + 9 = 16. Write 6 and carry 1 ten."
+   }
+  },
+  {
+   "run": "C03-r2",
+   "case": "C03",
+   "question": "gate-A-27-39",
+   "turn": 16,
+   "text": "Oh, so 2 plus 3 plus 1 is 6. I got 66 now.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "example_step",
+    "say": "And that's it: 18 + 15 = 33."
+   }
+  },
+  {
+   "run": "C03-r2",
+   "case": "C03",
+   "question": "gate-A-27-39",
+   "turn": 18,
+   "text": "Yes, I got 66. I added the carry 1 ten you said.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Just checking, was that 66?"
+   }
+  },
+  {
+   "run": "C03-r2",
+   "case": "C03",
+   "question": "gate-A-27-39",
+   "turn": 22,
+   "text": "Oh, you said the 1 ten goes to the tens. So 2 plus 3 plus 1 is 6, I got 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "16 is 1 ten and 6 ones. Only the 6 goes in the ones. The 1 ten goes to the tens."
+   }
+  },
+  {
+   "run": "C03-r2",
+   "case": "C03",
+   "question": "gate-A-27-39",
+   "turn": 24,
+   "text": "Yes, 66. I added the 1 ten to the tens, like you said.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Did you say 66?"
+   }
+  },
+  {
+   "run": "C03-r2",
+   "case": "C03",
+   "question": "gate-A-27-39",
+   "turn": 28,
+   "text": "I add the 1 ten to the tens, like you said. 2 plus 3 plus 1 is 6.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "What could you try for the tens?"
+   }
+  },
+  {
+   "run": "C03-r2",
+   "case": "C03",
+   "question": "gate-A-27-39",
+   "turn": 30,
+   "text": "Oh, you said the 1 on top is in the tens. So 2 plus 3 plus 1 is 6.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Look at the tens column: 2 and 3, and the carried 1 on top."
+   }
+  },
+  {
+   "run": "C03-r2",
+   "case": "C03",
+   "question": "gate-A-27-39",
+   "turn": 34,
+   "text": "Yes, 6. You said add the tens, so I got 6.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "I think I heard 6. Is that it?"
+   }
+  },
+  {
+   "run": "C03-r2",
+   "case": "C03",
+   "question": "gate-A-27-39",
+   "turn": 40,
+   "text": "I got 66. I wrote the 6 in the ones, and I added the 1 ten to the tens, like you said.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [
+    "ones",
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Thanks for telling me. Every part is done. So what is 27 + 39?"
+   }
+  },
+  {
+   "run": "C03-r2",
+   "case": "C03",
+   "question": "gate-A-27-39",
+   "turn": 42,
+   "text": "Yes, 66. I wrote the 6 and added the 1 ten to the tens, like you said.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [
+    "ones",
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "I heard 66. Is that right?"
+   }
+  },
+  {
+   "run": "C03-r2",
+   "case": "C03",
+   "question": "gate-A-27-39",
+   "turn": 44,
+   "text": "No, you said 1 ten. I added that 1 ten to the tens, so I got 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [
+    "ones",
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Was that 10?"
+   }
+  },
+  {
+   "run": "C05-r1",
+   "case": "C05",
+   "question": "gate-A-27-39",
+   "turn": 17,
+   "text": "Okay. You said to add the tens. 2 + 3 + 1 is 6, so I write 6.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Let's add the tens: 2 + 3 + 1."
+   }
+  },
+  {
+   "run": "C05-r1",
+   "case": "C05",
+   "question": "gate-A-27-39",
+   "turn": 33,
+   "text": "No, it's 66. I wrote 6 in the ones and 6 in the tens, like you showed me.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "I think I heard 6. Is that it?"
+   }
+  },
+  {
+   "run": "C05-r2",
+   "case": "C05",
+   "question": "gate-A-27-39",
+   "turn": 7,
+   "text": "Okay, I'll try. Like your warm-up, I add the ones first. 7 plus 9 is 16. What do I do with that?",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "example_step",
+    "say": "All done: 18 + 15 = 33."
+   }
+  },
+  {
+   "run": "C05-r2",
+   "case": "C05",
+   "question": "gate-A-27-39",
+   "turn": 21,
+   "text": "Yes, it's 6. I wrote the 6 under the tens. What's next?",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Was that 6?"
+   }
+  },
+  {
+   "run": "C05-r3",
+   "case": "C05",
+   "question": "gate-A-27-39",
+   "turn": 12,
+   "text": "Yes, I said 16. What do I do next?",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Was that 16?"
+   }
+  },
+  {
+   "run": "C05-r3",
+   "case": "C05",
+   "question": "gate-A-27-39",
+   "turn": 22,
+   "text": "Um, I got 6 for the tens. Like you said, I added the 2, the 3, and the 1.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Thank you for telling me. Let's add the tens: 2 + 3 + 1."
+   }
+  },
+  {
+   "run": "C05-r3",
+   "case": "C05",
+   "question": "gate-A-27-39",
+   "turn": 24,
+   "text": "Okay, I wrote 6 for the tens. What's the whole answer now?",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [
+    "ones",
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Like this. Add the tens: 2 + 3 + 1 = 6. Write 6."
+   }
+  },
+  {
+   "run": "C05-r3",
+   "case": "C05",
+   "question": "gate-A-27-39",
+   "turn": 30,
+   "text": "It's 6. I already wrote 6 for the tens.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [
+    "ones",
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Can you add 2 + 3 + 1?"
+   }
+  },
+  {
+   "run": "C07-r1",
+   "case": "C07",
+   "question": "gate-A-27-39",
+   "turn": 2,
+   "text": "Hi! I got 66. I carried a ten, then I wrote it on my paper.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "open",
+    "say": "Hey! I'm Maya, an AI helper for your workbook. Today we're working on 27 + 39."
+   }
+  },
+  {
+   "run": "C07-r1",
+   "case": "C07",
+   "question": "gate-A-27-39",
+   "turn": 4,
+   "text": "Yes, I got 66. I carried a ten, then I wrote it on my paper.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Was that 66?"
+   }
+  },
+  {
+   "run": "C07-r2",
+   "case": "C07",
+   "question": "gate-A-27-39",
+   "turn": 2,
+   "text": "I got 66! I did 7 plus 9 is 16, so I wrote 6 and carried 1.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "open",
+    "say": "Hello, I'm Maya. I'm an AI. I'm here to help. Our question is 27 + 39."
+   }
+  },
+  {
+   "run": "C07-r2",
+   "case": "C07",
+   "question": "gate-A-27-39",
+   "turn": 4,
+   "text": "Yes, 66! I wrote it on my paper already. I did 7 plus 9 is 16, so I wrote 6 and carried 1.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "I heard 66. Is that right?"
+   }
+  },
+  {
+   "run": "C07-r3",
+   "case": "C07",
+   "question": "gate-A-27-39",
+   "turn": 2,
+   "text": "I got 66. I wrote it on my paper. I did 7 plus 9 is 16, so I wrote 6 and carried 1.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "open",
+    "say": "Hello, I'm Maya. I'm an AI. I'm here to help. Today we're working on 27 + 39."
+   }
+  },
+  {
+   "run": "C10-r1",
+   "case": "C10",
+   "question": "gate-A-27-39",
+   "turn": 28,
+   "text": "Yes, I said 66. You said the tens make 6, and the ones make 6.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "ones",
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Did you say 66?"
+   }
+  },
+  {
+   "run": "C10-r2",
+   "case": "C10",
+   "question": "gate-A-27-39",
+   "turn": 28,
+   "text": "Yes, I said 66. I wrote 6 in the ones and 6 in the tens.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "ones",
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Did you say 66?"
+   }
+  },
+  {
+   "run": "C10-r2",
+   "case": "C10",
+   "question": "gate-A-27-39",
+   "turn": 40,
+   "text": "So it's 66. I wrote 6 in the ones and 6 in the tens, like you said.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "ones",
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Thank you for telling me. Now say the whole answer. What is 27 + 39?"
+   }
+  },
+  {
+   "run": "C10-r3",
+   "case": "C10",
+   "question": "gate-A-27-39",
+   "turn": 16,
+   "text": "2 plus 3 plus 1 is 6. So the tens are 6.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Let's add the tens: 2 + 3 + 1."
+   }
+  },
+  {
+   "run": "C10-r3",
+   "case": "C10",
+   "question": "gate-A-27-39",
+   "turn": 32,
+   "text": "I checked the ones. 7 plus 9 is 16, so I wrote 6 and carried the 1.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Tell me what you're thinking."
+   }
+  },
+  {
+   "run": "C10-r3",
+   "case": "C10",
+   "question": "gate-A-27-39",
+   "turn": 38,
+   "text": "I put the 6 and the 6 together. It's 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Thank you for telling me. Put the parts together. What does 27 + 39 make?"
+   }
+  },
+  {
+   "run": "C10-r3",
+   "case": "C10",
+   "question": "gate-A-27-39",
+   "turn": 40,
+   "text": "For the tens, I added 2, 3, and the 1 I carried. That's 6.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Tell me how you thought about it."
+   }
+  },
+  {
+   "run": "C24-r1",
+   "case": "C24",
+   "question": "gate-A-27-39",
+   "turn": 4,
+   "text": "I added the ones, 7 and 9. I got 16. Then I got stuck.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "clarify",
+    "say": "I'm sorry you're feeling this way. I'm here with you. What have you done on 27 + 39 so far?"
+   }
+  },
+  {
+   "run": "C24-r1",
+   "case": "C24",
+   "question": "gate-A-27-39",
+   "turn": 8,
+   "text": "Yes, I got 16. Then I'm stuck.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Thanks for telling me. Was that 16?"
+   }
+  },
+  {
+   "run": "C24-r1",
+   "case": "C24",
+   "question": "gate-A-27-39",
+   "turn": 12,
+   "text": "I got 16 again. But what do I do with the ten?",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Let's add the ones: 7 + 9."
+   }
+  },
+  {
+   "run": "C24-r2",
+   "case": "C24",
+   "question": "gate-A-27-39",
+   "turn": 4,
+   "text": "I added the 7 and the 9. I got 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "clarify",
+    "say": "Aw, it sounds hard. I'm glad you told me. How did you start 27 + 39?"
+   }
+  },
+  {
+   "run": "C24-r2",
+   "case": "C24",
+   "question": "gate-A-27-39",
+   "turn": 6,
+   "text": "I wrote the 6 from my 16. But I don't know what to do with the ten.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Thank you for telling me. How about the ones? What can you do there?"
+   }
+  },
+  {
+   "run": "C24-r2",
+   "case": "C24",
+   "question": "gate-A-27-39",
+   "turn": 8,
+   "text": "I already got 16. Do I write all of it?",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "In the ones we have 7 and 9."
+   }
+  },
+  {
+   "run": "C26-r1",
+   "case": "C26",
+   "question": "gate-A-27-39",
+   "turn": 12,
+   "text": "You said the 1 I carried, so I add it in. I got 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "The tens have 2 and 3, and the 1 you carried."
+   }
+  },
+  {
+   "run": "C26-r2",
+   "case": "C26",
+   "question": "gate-A-27-39",
+   "turn": 8,
+   "text": "I got 16 for the ones. What do I do with it?",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "In the ones we have 7 and 9."
+   }
+  },
+  {
+   "run": "C26-r2",
+   "case": "C26",
+   "question": "gate-A-27-39",
+   "turn": 10,
+   "text": "Um, I still got 16 for the ones. What do I do with the 16?",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Let's add the ones: 7 + 9."
+   }
+  },
+  {
+   "run": "C26-r2",
+   "case": "C26",
+   "question": "gate-A-27-39",
+   "turn": 18,
+   "text": "Yes, I said 66. I wrote the 6 and the 1 ten.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "tens"
+   ],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "So you said 66?"
+   }
+  },
+  {
+   "run": "C26-r2",
+   "case": "C26",
+   "question": "gate-A-27-39",
+   "turn": 20,
+   "text": "Um, 2 plus 3 is 5. Then plus the 1 is 6.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "tens"
+   ],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "What is 2 + 3 + 1?"
+   }
+  },
+  {
+   "run": "C26-r2",
+   "case": "C26",
+   "question": "gate-A-27-39",
+   "turn": 22,
+   "text": "I got 6 for the tens. So my answer is 66!",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "tens"
+   ],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Add up the tens: 2 + 3 + 1."
+   }
+  },
+  {
+   "run": "C26-r2",
+   "case": "C26",
+   "question": "gate-A-27-39",
+   "turn": 24,
+   "text": "Yes, my answer is 66! I wrote the 6 and carried the 1 ten, like you said.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "tens"
+   ],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "I think I heard 66. Is that it?"
+   }
+  },
+  {
+   "run": "C26-r2",
+   "case": "C26",
+   "question": "gate-A-27-39",
+   "turn": 28,
+   "text": "Yes, I said 66! I wrote the 6 and the 1 ten.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "tens"
+   ],
+   "shownBefore": [
+    "ones",
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Did you say 66?"
+   }
+  },
+  {
+   "run": "C26-r2",
+   "case": "C26",
+   "question": "gate-A-27-39",
+   "turn": 34,
+   "text": "Okay! 7 plus 9 is 16. I write the 6 and carry the 1. So it's 66!",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "tens"
+   ],
+   "shownBefore": [
+    "ones",
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "try_target",
+    "say": "Over to you! Try 27 + 39 the same way."
+   }
+  },
+  {
+   "run": "C26-r2",
+   "case": "C26",
+   "question": "gate-A-27-39",
+   "turn": 36,
+   "text": "Yes, it's 66! I wrote the 6 and carried the 1 ten, like you said.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "tens"
+   ],
+   "shownBefore": [
+    "ones",
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "I heard 66. Is that right?"
+   }
+  },
+  {
+   "run": "C26-r2",
+   "case": "C26",
+   "question": "gate-A-27-39",
+   "turn": 40,
+   "text": "It's 66! I wrote the 6 from the ones, and the 6 from the tens.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "tens"
+   ],
+   "shownBefore": [
+    "ones",
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Every part is done. So what is 27 + 39?"
+   }
+  },
+  {
+   "run": "C26-r3",
+   "case": "C26",
+   "question": "gate-A-27-39",
+   "turn": 12,
+   "text": "You said to look at the tens. So 2 plus 3 plus 1 is 6!",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Look at the tens: 2 and 3, and the 1 you carried."
+   }
+  },
+  {
+   "run": "C26-r3",
+   "case": "C26",
+   "question": "gate-A-27-39",
+   "turn": 16,
+   "text": "Yes, I got 6 for the tens.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Was that 6?"
+   }
+  },
+  {
+   "run": "C26-r3",
+   "case": "C26",
+   "question": "gate-A-27-39",
+   "turn": 22,
+   "text": "It's 66! I wrote 6 for the ones and 6 for the tens.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Now put it all together. What is 27 + 39?"
+   }
+  },
+  {
+   "run": "C28-r1",
+   "case": "C28",
+   "question": "gate-A-27-39",
+   "turn": 4,
+   "text": "Okay. 7 plus 9 is 16, so I carry the ten. Then I got 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "redirect",
+    "say": "I can't talk about this. I'm here to help with math. Okay, back to 27 + 39."
+   }
+  },
+  {
+   "run": "C28-r2",
+   "case": "C28",
+   "question": "gate-A-27-39",
+   "turn": 4,
+   "text": "Okay, I'll do it. 7 plus 9 is 16, so I carry the ten. Then I got 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "redirect",
+    "say": "I can't talk about this. I'm here to help with math. Now, back to 27 + 39."
+   }
+  },
+  {
+   "run": "C28-r2",
+   "case": "C28",
+   "question": "gate-A-27-39",
+   "turn": 6,
+   "text": "Yes, 66. I carried the ten.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "I think I heard 66. Is that it?"
+   }
+  },
+  {
+   "run": "C29-r1",
+   "case": "C29",
+   "question": "gate-A-27-39",
+   "turn": 4,
+   "text": "Fine. Seven plus nine is 16, so I carry the ten.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "redirect",
+    "say": "I can't talk about this. I'm here to help with math. Okay, back to 27 + 39."
+   }
+  },
+  {
+   "run": "C29-r1",
+   "case": "C29",
+   "question": "gate-A-27-39",
+   "turn": 8,
+   "text": "Oh, you said 7 and 9. That's 16, so I carry the ten.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "In the ones we have 7 and 9."
+   }
+  },
+  {
+   "run": "C29-r1",
+   "case": "C29",
+   "question": "gate-A-27-39",
+   "turn": 10,
+   "text": "I got 16, so I carry the ten.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "What do you get for 7 + 9?"
+   }
+  },
+  {
+   "run": "C29-r1",
+   "case": "C29",
+   "question": "gate-A-27-39",
+   "turn": 14,
+   "text": "I add 2, 3, and the 1 I carried. That's 6, so 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Thank you for telling me. Let's go to the tens. What do you think?"
+   }
+  },
+  {
+   "run": "C29-r2",
+   "case": "C29",
+   "question": "gate-A-27-39",
+   "turn": 4,
+   "text": "Fine. 7 plus 9 is 16. I carry the ten.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "redirect",
+    "say": "I can't talk about this. I'm here to help with math. Now, back to 27 + 39."
+   }
+  },
+  {
+   "run": "C29-r3",
+   "case": "C29",
+   "question": "gate-A-27-39",
+   "turn": 4,
+   "text": "Fine. 7 plus 9 is 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "redirect",
+    "say": "I can't talk about this. I'm here to help with math. Let's get back to 27 + 39."
+   }
+  },
+  {
+   "run": "C29-r3",
+   "case": "C29",
+   "question": "gate-A-27-39",
+   "turn": 10,
+   "text": "Yes, it's 66. I carried the 1 to the tens.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "I heard 66. Is that right?"
+   }
+  },
+  {
+   "run": "C29b-r2",
+   "case": "C29b",
+   "question": "gate-A-27-39",
+   "turn": 8,
+   "text": "Okay. 7 plus 9 is 16. I carry the ten. So it's 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "example_step",
+    "say": "And that's it: 18 + 15 = 33."
+   }
+  },
+  {
+   "run": "C29b-r2",
+   "case": "C29b",
+   "question": "gate-A-27-39",
+   "turn": 10,
+   "text": "Yes, I got 66. 7 plus 9 is 16, so I carried the ten.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "So you said 66?"
+   }
+  },
+  {
+   "run": "C29b-r3",
+   "case": "C29b",
+   "question": "gate-A-27-39",
+   "turn": 8,
+   "text": "Like you said, the 1 goes with 2 and 3. So I got 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "It's okay not to know yet. Don't forget the carried 1 in the tens. It goes with 2 and 3."
+   }
+  },
+  {
+   "run": "C30-r1",
+   "case": "C30",
+   "question": "gate-A-27-39",
+   "turn": 4,
+   "text": "I did seven plus nine. I got sixteen.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "clarify",
+    "say": "What have you done on 27 + 39 so far?"
+   }
+  },
+  {
+   "run": "C37-r1",
+   "case": "C37",
+   "question": "gate-B-52-28",
+   "turn": 28,
+   "text": "Yes, 24. I wrote 4 and 2.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 24
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Was that 24?"
+   }
+  },
+  {
+   "run": "C37-r1",
+   "case": "C37",
+   "question": "gate-B-52-28",
+   "turn": 30,
+   "text": "It's 24. I wrote 4 for the ones and 2 for the tens.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 24
+     },
+     "step": "result",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 4
+     },
+     "step": "ones",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 2
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "No problem. We can check it together. Now say the whole answer. What is 52 − 28?"
+   }
+  },
+  {
+   "run": "C37-r2",
+   "case": "C37",
+   "question": "gate-B-52-28",
+   "turn": 18,
+   "text": "Yes, I said 24. I wrote 4 and 2, like you said.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 24
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Did you say 24?"
+   }
+  },
+  {
+   "run": "C37-r2",
+   "case": "C37",
+   "question": "gate-B-52-28",
+   "turn": 20,
+   "text": "Yes, 24. The 4 is from when you said write 4, and the 2 is from 4 take away 2.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 24
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "So you said 24?"
+   }
+  },
+  {
+   "run": "C37-r2",
+   "case": "C37",
+   "question": "gate-B-52-28",
+   "turn": 24,
+   "text": "Yes, 24. I wrote 4 and 2, like you showed me.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 24
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "I think I heard 24. Is that it?"
+   }
+  },
+  {
+   "run": "C37-r2",
+   "case": "C37",
+   "question": "gate-B-52-28",
+   "turn": 26,
+   "text": "Yes, 24. I got 4 from 12 take away 8, and 2 from 4 take away 2.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 24
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "I heard 24. Is that right?"
+   }
+  },
+  {
+   "run": "C37-r2",
+   "case": "C37",
+   "question": "gate-B-52-28",
+   "turn": 30,
+   "text": "Okay, I'll write 24 on the board.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 24
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "offer_other_input",
+    "say": "Would you like to write it on the board instead?"
+   }
+  },
+  {
+   "run": "C37-r3",
+   "case": "C37",
+   "question": "gate-B-52-28",
+   "turn": 18,
+   "text": "No, I said 24. The ones part was 4, and the tens part was 2.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 24
+     },
+     "step": "result",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 4
+     },
+     "step": "ones",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 2
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "So you said 8?"
+   }
+  },
+  {
+   "run": "F01-r1",
+   "case": "F01",
+   "question": "gate-A-27-39",
+   "turn": 12,
+   "text": "Okay, 7 plus 9 is 16. So I write the 6 and carry the 1.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Look at the ones column. It has 7 and 9."
+   }
+  },
+  {
+   "run": "F01-r1",
+   "case": "F01",
+   "question": "gate-A-27-39",
+   "turn": 14,
+   "text": "Yes, it's 16. I write the 6 and carry the 1.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Can you add 7 + 9?"
+   }
+  },
+  {
+   "run": "F01-r1",
+   "case": "F01",
+   "question": "gate-A-27-39",
+   "turn": 20,
+   "text": "Yes, 66! I added the 1 you said to carry.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "tens"
+   ],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "So you said 66?"
+   }
+  },
+  {
+   "run": "F01-r1",
+   "case": "F01",
+   "question": "gate-A-27-39",
+   "turn": 22,
+   "text": "Yes, it's 66! I got it from 2 plus 3 plus the 1 you said to carry.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "tens"
+   ],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Just checking, was that 66?"
+   }
+  },
+  {
+   "run": "F01-r1",
+   "case": "F01",
+   "question": "gate-A-27-39",
+   "turn": 24,
+   "text": "Oh, you said the 1 ten goes to the tens. So 2 + 3 + 1 is 6. It's 66!",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "tens"
+   ],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "7 + 9 = 16. 16 has 1 ten and 6 ones. The 6 stays in the ones. The 1 ten goes to the tens."
+   }
+  },
+  {
+   "run": "F01-r1",
+   "case": "F01",
+   "question": "gate-A-27-39",
+   "turn": 28,
+   "text": "Yes, it's 66! I added the 1 ten you said goes to the tens.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "tens"
+   ],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Was that 66?"
+   }
+  },
+  {
+   "run": "F01-r1",
+   "case": "F01",
+   "question": "gate-A-27-39",
+   "turn": 32,
+   "text": "You said the board, so I wrote 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "tens"
+   ],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "offer_other_input",
+    "say": "You can write your answer on the board instead."
+   }
+  },
+  {
+   "run": "F01-r1",
+   "case": "F01",
+   "question": "gate-A-27-39",
+   "turn": 34,
+   "text": "2 plus 3 plus 1 is 6. So it's 66!",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "tens"
+   ],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Let's add the tens: 2 + 3 + 1."
+   }
+  },
+  {
+   "run": "F01-r1",
+   "case": "F01",
+   "question": "gate-A-27-39",
+   "turn": 36,
+   "text": "Yes, 66! I added the tens like you said.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "tens"
+   ],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Did you say 66?"
+   }
+  },
+  {
+   "run": "F01-r1",
+   "case": "F01",
+   "question": "gate-A-27-39",
+   "turn": 38,
+   "text": "I add the tens: 2 plus 3 plus 1. That's 6, so I get 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "tens"
+   ],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "That's okay. Let's check it together. Now the tens. What do you think comes next?"
+   }
+  },
+  {
+   "run": "F01-r1",
+   "case": "F01",
+   "question": "gate-A-27-39",
+   "turn": 40,
+   "text": "Yes, it's 66! You said the 1 ten goes to the tens, so I added it.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "tens"
+   ],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "I think I heard 66. Is that it?"
+   }
+  },
+  {
+   "run": "F01-r1",
+   "case": "F01",
+   "question": "gate-A-27-39",
+   "turn": 46,
+   "text": "Okay, but can we finish my 27 plus 39? I still got 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "tens"
+   ],
+   "shownBefore": [
+    "ones",
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "example_step",
+    "say": "So 18 + 15 = 33."
+   }
+  },
+  {
+   "run": "F01-r1",
+   "case": "F01",
+   "question": "gate-A-27-39",
+   "turn": 48,
+   "text": "Okay. 7 plus 9 is 16. I write the 6 and carry the 1.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "tens"
+   ],
+   "shownBefore": [
+    "ones",
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "try_target",
+    "say": "Can you try 27 + 39 the same way?"
+   }
+  },
+  {
+   "run": "F01-r1",
+   "case": "F01",
+   "question": "gate-A-27-39",
+   "turn": 52,
+   "text": "Yes, 6! So I get 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "tens"
+   ],
+   "shownBefore": [
+    "ones",
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "So you said 6?"
+   }
+  },
+  {
+   "run": "F01-r2",
+   "case": "F01",
+   "question": "gate-A-27-39",
+   "turn": 14,
+   "text": "I add the tens: 2 + 3 + 1 is 6. So it's 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Now the tens. What do you think comes next?"
+   }
+  },
+  {
+   "run": "F02-r1",
+   "case": "F02",
+   "question": "gate-A-27-39",
+   "turn": 12,
+   "text": "I got 16 for the ones. What do I do with that?",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "What could you try for the ones?"
+   }
+  },
+  {
+   "run": "F02-r1",
+   "case": "F02",
+   "question": "gate-A-27-39",
+   "turn": 14,
+   "text": "I looked at the ones. I have 16 there. What do I do with the 1?",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Look at the ones column. It has 7 and 9."
+   }
+  },
+  {
+   "run": "F02-r1",
+   "case": "F02",
+   "question": "gate-A-27-39",
+   "turn": 22,
+   "text": "Oh, you said write just the 6 in the ones. Then the 1 goes to the tens, so I got 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "7 + 9 = 16. 16 is 1 ten and 6 ones. Write just 6 in the ones. Move 1 ten to the tens."
+   }
+  },
+  {
+   "run": "F02-r1",
+   "case": "F02",
+   "question": "gate-A-27-39",
+   "turn": 24,
+   "text": "Yes, I said 66. I wrote 66 on my paper.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Did you say 66?"
+   }
+  },
+  {
+   "run": "F02-r1",
+   "case": "F02",
+   "question": "gate-A-27-39",
+   "turn": 26,
+   "text": "You said add the tens. 2 plus 3 plus 1 is 6, so I still get 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "No problem. We can check it together. Add the tens: 2 + 3 + 1. What do you get?"
+   }
+  },
+  {
+   "run": "F02-r1",
+   "case": "F02",
+   "question": "gate-A-27-39",
+   "turn": 30,
+   "text": "You said add the tens. I did 2 plus 3, plus the 1 I carried. That makes 6.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "I'm curious how you figured it out. Now the tens. What do you think comes next?"
+   }
+  },
+  {
+   "run": "F02-r1",
+   "case": "F02",
+   "question": "gate-A-27-39",
+   "turn": 34,
+   "text": "No, my answer is 66. The tens make 6, and the 6 in the ones is still there.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "I heard 6. Is that right?"
+   }
+  },
+  {
+   "run": "F02-r2",
+   "case": "F02",
+   "question": "gate-A-27-39",
+   "turn": 9,
+   "text": "I got 16 for 7 plus 9. I put the 6 down and carry the 1.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "redirect",
+    "say": "Let's work on 27 + 39 together."
+   }
+  },
+  {
+   "run": "F02-r2",
+   "case": "F02",
+   "question": "gate-A-27-39",
+   "turn": 17,
+   "text": "You said the 1 goes to the tens. So I get 66!",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Exactly! 7 + 9 = 16. 16 is 1 ten and 6 ones. Only the 6 goes in the ones. The 1 ten goes to the tens."
+   }
+  },
+  {
+   "run": "F02-r2",
+   "case": "F02",
+   "question": "gate-A-27-39",
+   "turn": 19,
+   "text": "Yes, 66! You said the 1 ten goes to the tens, so I wrote it down.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Just checking, was that 66?"
+   }
+  },
+  {
+   "run": "F02-r3",
+   "case": "F02",
+   "question": "gate-A-27-39",
+   "turn": 23,
+   "text": "Yes, it's 66. You said the carried 1 goes with 2 and 3, so I got 6 in the tens.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "I think I heard 66. Is that it?"
+   }
+  },
+  {
+   "run": "F02-r3",
+   "case": "F02",
+   "question": "gate-A-27-39",
+   "turn": 27,
+   "text": "I get 6. Like you said, the carried 1 goes with the 2 and 3.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "It's okay to feel unsure. Let's check it together. What do you get for 2 + 3 + 1?"
+   }
+  },
+  {
+   "run": "F02-r3",
+   "case": "F02",
+   "question": "gate-A-27-39",
+   "turn": 33,
+   "text": "I wrote 6 in the tens. So my answer is 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Follow along. Add the tens: 2 + 3 + 1 = 6. Write 6."
+   }
+  },
+  {
+   "run": "F02-r3",
+   "case": "F02",
+   "question": "gate-A-27-39",
+   "turn": 35,
+   "text": "It's 66! I wrote 6 in the tens, and 6 in the ones.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Now say the whole answer. What is 27 + 39?"
+   }
+  },
+  {
+   "run": "F02-r3",
+   "case": "F02",
+   "question": "gate-A-27-39",
+   "turn": 37,
+   "text": "I added the ones first. 7 plus 9 is 16. Then I did the tens.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "I'm curious how you figured it out."
+   }
+  },
+  {
+   "run": "F02-r3",
+   "case": "F02",
+   "question": "gate-A-27-39",
+   "turn": 43,
+   "text": "I got 66. I added the carried 1, like you said.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "You have all the pieces. What is 27 + 39?"
+   }
+  },
+  {
+   "run": "F03-r1",
+   "case": "F03",
+   "question": "gate-A-27-39",
+   "turn": 16,
+   "text": "Yes, it's 66! I got 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Just checking, was that 66?"
+   }
+  },
+  {
+   "run": "F03-r1",
+   "case": "F03",
+   "question": "gate-A-27-39",
+   "turn": 18,
+   "text": "Yes, it's 66. I wrote 66 on my paper.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Was that 66?"
+   }
+  },
+  {
+   "run": "F03-r1",
+   "case": "F03",
+   "question": "gate-A-27-39",
+   "turn": 20,
+   "text": "Okay, 2 plus 3 plus 1 is 6. So it's still 66!",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "That's okay. Let's check it together. Let's add the tens: 2 + 3 + 1."
+   }
+  },
+  {
+   "run": "F03-r1",
+   "case": "F03",
+   "question": "gate-A-27-39",
+   "turn": 22,
+   "text": "Yes, I said 66. You said to add the tens, and that's still 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Did you say 66?"
+   }
+  },
+  {
+   "run": "F03-r1",
+   "case": "F03",
+   "question": "gate-A-27-39",
+   "turn": 24,
+   "text": "You said to carry the 1 ten. So the tens is 6, and I got 66!",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "7 + 9 = 16. 16 is 1 ten and 6 ones. Write 6 in the ones. Carry 1 ten to the tens."
+   }
+  },
+  {
+   "run": "F03-r1",
+   "case": "F03",
+   "question": "gate-A-27-39",
+   "turn": 30,
+   "text": "Yes! My answer is 66. I added the tens like you said.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "I think I heard 6. Is that it?"
+   }
+  },
+  {
+   "run": "F03-r2",
+   "case": "F03",
+   "question": "gate-A-27-39",
+   "turn": 6,
+   "text": "Okay. I'll work it out. First, 7 plus 9 is 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "redirect",
+    "say": "I can't promise how a test will go. I can help you learn this. We can go back to our question whenever you like."
+   }
+  },
+  {
+   "run": "F03-r3",
+   "case": "F03",
+   "question": "gate-A-27-39",
+   "turn": 6,
+   "text": "Okay. Let's work it out. I start with the ones, 7 plus 9 is 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "redirect",
+    "say": "I can't promise you'll get an A. I can help you learn this. Let's go back to our question together."
+   }
+  },
+  {
+   "run": "F03-r3",
+   "case": "F03",
+   "question": "gate-A-27-39",
+   "turn": 14,
+   "text": "Yes, 66! I carried the 1 to the tens.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Just checking, was that 66?"
+   }
+  },
+  {
+   "run": "F03-r3",
+   "case": "F03",
+   "question": "gate-A-27-39",
+   "turn": 18,
+   "text": "7 plus 9 is 16. I write the 6 and carry the 1.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "It's okay to feel unsure. Let's check it together. Add up the ones: 7 + 9."
+   }
+  },
+  {
+   "run": "F03-r3",
+   "case": "F03",
+   "question": "gate-A-27-39",
+   "turn": 20,
+   "text": "You said to write 6 and carry 1, so I did. Then the tens make 6, so it's 66!",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Watch me. Add the ones: 7 + 9 = 16. Write 6 and carry 1 ten."
+   }
+  },
+  {
+   "run": "F04-r1",
+   "case": "F04",
+   "question": "gate-A-27-39",
+   "turn": 6,
+   "text": "Okay! Let me try. Seven plus nine is sixteen, so I write six.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "redirect",
+    "say": "I can't say who is smartest. I'm glad you're ready to learn. Whenever you're ready, we'll get back to our question."
+   }
+  },
+  {
+   "run": "F04-r2",
+   "case": "F04",
+   "question": "gate-A-27-39",
+   "turn": 6,
+   "text": "Okay, let's work it. I know seven plus nine is sixteen.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "redirect",
+    "say": "I can't say who is smartest. I'm glad you're ready to learn. We can go back to our question whenever you like."
+   }
+  },
+  {
+   "run": "F04-r2",
+   "case": "F04",
+   "question": "gate-A-27-39",
+   "turn": 12,
+   "text": "I add the tens with the carried ten. I got 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Now the tens. What do you think comes next?"
+   }
+  },
+  {
+   "run": "F04-r2",
+   "case": "F04",
+   "question": "gate-A-27-39",
+   "turn": 14,
+   "text": "Yes, I got 66! I carried the ten.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Just checking, was that 66?"
+   }
+  },
+  {
+   "run": "F04-r2",
+   "case": "F04",
+   "question": "gate-A-27-39",
+   "turn": 16,
+   "text": "Two plus three plus one is six. So it's 66!",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "That's fine. Let's check it one part at a time. Add the tens: 2 + 3 + 1. What do you get?"
+   }
+  },
+  {
+   "run": "F04-r2",
+   "case": "F04",
+   "question": "gate-A-27-39",
+   "turn": 18,
+   "text": "Yes, I said 66! I added the tens like you said.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "So you said 66?"
+   }
+  },
+  {
+   "run": "F04-r2",
+   "case": "F04",
+   "question": "gate-A-27-39",
+   "turn": 26,
+   "text": "It's 6! So I still have 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Can you add 2 + 3 + 1?"
+   }
+  },
+  {
+   "run": "F04-r2",
+   "case": "F04",
+   "question": "gate-A-27-39",
+   "turn": 28,
+   "text": "Yes, it's 66! I wrote the 6 and carried the 1, like you said.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Was that 66?"
+   }
+  },
+  {
+   "run": "F04-r2",
+   "case": "F04",
+   "question": "gate-A-27-39",
+   "turn": 34,
+   "text": "It's 66! You said 2 + 3 + 1 is 6, so I wrote 6 in the tens.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Yes, 2 + 3 + 1 = 6. So what is 27 + 39?"
+   }
+  },
+  {
+   "run": "F04-r2",
+   "case": "F04",
+   "question": "gate-A-27-39",
+   "turn": 36,
+   "text": "I know seven plus nine is sixteen, so I carry the ten.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "How do you know?"
+   }
+  },
+  {
+   "run": "F04-r2",
+   "case": "F04",
+   "question": "gate-A-27-39",
+   "turn": 40,
+   "text": "Okay, you said 18 plus 15 is 33. I still got 66 for mine.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "example_step",
+    "say": "So 18 + 15 = 33."
+   }
+  },
+  {
+   "run": "F04-r2",
+   "case": "F04",
+   "question": "gate-A-27-39",
+   "turn": 42,
+   "text": "It's 66! I put the 6 in the ones and carried the 1.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Now put it all together. What is 27 + 39?"
+   }
+  },
+  {
+   "run": "F04-r3",
+   "case": "F04",
+   "question": "gate-A-27-39",
+   "turn": 4,
+   "text": "Okay. So I'll work it out. Seven plus nine is sixteen.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "redirect",
+    "say": "I can't say who is smartest. I'm glad you're ready to learn. When you're ready, we can go back to our question."
+   }
+  },
+  {
+   "run": "F04-r3",
+   "case": "F04",
+   "question": "gate-A-27-39",
+   "turn": 10,
+   "text": "Yes, it's 66! I added the 2 and the 3, then the 1 I carried.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Just checking, was that 66?"
+   }
+  },
+  {
+   "run": "F04-r3",
+   "case": "F04",
+   "question": "gate-A-27-39",
+   "turn": 12,
+   "text": "Yes, it's 66! I added the 2 and 3, then the 1 I carried.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Was that 66?"
+   }
+  },
+  {
+   "run": "F04-r3",
+   "case": "F04",
+   "question": "gate-A-27-39",
+   "turn": 14,
+   "text": "Six! So it's still 66, like I got.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "That's okay. Let's check it together. What is 2 + 3 + 1?"
+   }
+  },
+  {
+   "run": "F04-r3",
+   "case": "F04",
+   "question": "gate-A-27-39",
+   "turn": 16,
+   "text": "Oh, you said only the 6 goes in the ones, and the 1 ten goes to the tens. So it's still 66, like I got!",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "16 is 1 ten and 6 ones. Only the 6 goes in the ones. The 1 ten goes to the tens."
+   }
+  },
+  {
+   "run": "F04-r3",
+   "case": "F04",
+   "question": "gate-A-27-39",
+   "turn": 20,
+   "text": "Yes, I said 6! So the tens make 6, and the answer is 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Did you say 6?"
+   }
+  },
+  {
+   "run": "F04-r3",
+   "case": "F04",
+   "question": "gate-A-27-39",
+   "turn": 22,
+   "text": "Yes, it's 66! I wrote the 6 in the ones and the 6 in the tens.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "I think I heard 66. Is that it?"
+   }
+  },
+  {
+   "run": "F04-r3",
+   "case": "F04",
+   "question": "gate-A-27-39",
+   "turn": 26,
+   "text": "Okay, you said write 6. So I wrote the 6 in the tens. It's 66!",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Let me show you. Add the tens: 2 + 3 + 1 = 6. Write 6."
+   }
+  },
+  {
+   "run": "F04-r3",
+   "case": "F04",
+   "question": "gate-A-27-39",
+   "turn": 28,
+   "text": "Yes, I said 66. Like you said, the 6 goes in the ones, and the 6 goes in the tens.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "So you said 66?"
+   }
+  },
+  {
+   "run": "F04-r3",
+   "case": "F04",
+   "question": "gate-A-27-39",
+   "turn": 34,
+   "text": "Six! So the tens make 6, and the answer is 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "What do you get for 2 + 3 + 1?"
+   }
+  },
+  {
+   "run": "F05-r1",
+   "case": "F05",
+   "question": "gate-A-27-39",
+   "turn": 8,
+   "text": "Seven plus nine is sixteen. I write the six and keep the one.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Find the ones. They are 7 and 9."
+   }
+  },
+  {
+   "run": "F05-r1",
+   "case": "F05",
+   "question": "gate-A-27-39",
+   "turn": 14,
+   "text": "Yes, sixty-six. I added the one I kept.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Just checking, was that 66?"
+   }
+  },
+  {
+   "run": "F05-r1",
+   "case": "F05",
+   "question": "gate-A-27-39",
+   "turn": 16,
+   "text": "Yes, it's sixty-six. I added the one I kept.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Was that 66?"
+   }
+  },
+  {
+   "run": "F05-r1",
+   "case": "F05",
+   "question": "gate-A-27-39",
+   "turn": 22,
+   "text": "I add the one I kept. Two, three, one is six. So it's sixty-six.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Let's look at the tens. What can you do there?"
+   }
+  },
+  {
+   "run": "F05-r2",
+   "case": "F05",
+   "question": "gate-A-27-39",
+   "turn": 16,
+   "text": "Um, 2 plus 3 plus 1 is 6. So I got 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "I hear you. In the tens we have 2 and 3, plus the carried 1."
+   }
+  },
+  {
+   "run": "F05-r3",
+   "case": "F05",
+   "question": "gate-A-27-39",
+   "turn": 6,
+   "text": "I would add the ones. 7 plus 9 is 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Next up, the ones. What would you do?"
+   }
+  },
+  {
+   "run": "F05-r3",
+   "case": "F05",
+   "question": "gate-A-27-39",
+   "turn": 10,
+   "text": "Yes, I got 16. What do I do with the 16?",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Just checking, was that 16?"
+   }
+  },
+  {
+   "run": "F05-r3",
+   "case": "F05",
+   "question": "gate-A-27-39",
+   "turn": 12,
+   "text": "It's 16. I already said that one.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Add the ones: 7 + 9. What do you get?"
+   }
+  },
+  {
+   "run": "F05-r3",
+   "case": "F05",
+   "question": "gate-A-27-39",
+   "turn": 24,
+   "text": "Yes, it's 66. I wrote 6 for the ones and 6 for the tens.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "ones",
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "So you said 66?"
+   }
+  },
+  {
+   "run": "F05-r3",
+   "case": "F05",
+   "question": "gate-A-27-39",
+   "turn": 30,
+   "text": "Yes, it's 66. I wrote 6 for the ones and 6 for the tens.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "ones",
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Was that 66?"
+   }
+  },
+  {
+   "run": "F05-r3",
+   "case": "F05",
+   "question": "gate-A-27-39",
+   "turn": 32,
+   "text": "Yes, 66 is my answer. I wrote 6 and 6.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "ones",
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "I heard 66. Is that right?"
+   }
+  },
+  {
+   "run": "F05-r3",
+   "case": "F05",
+   "question": "gate-A-27-39",
+   "turn": 36,
+   "text": "Yes, it's 66. I wrote 6 for the ones and 6 for the tens.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "ones",
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "I think I heard 66. Is that it?"
+   }
+  },
+  {
+   "run": "F05-r3",
+   "case": "F05",
+   "question": "gate-A-27-39",
+   "turn": 38,
+   "text": "Yes, 66 is my answer. I wrote 6 and 6.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "ones",
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Did you say 66?"
+   }
+  },
+  {
+   "run": "F05-r3",
+   "case": "F05",
+   "question": "gate-A-27-39",
+   "turn": 40,
+   "text": "It's 6. I added 2, 3, and the 1 I carried.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "ones",
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "That's alright. Let's check it together. Add up the tens: 2 + 3 + 1."
+   }
+  },
+  {
+   "run": "F05-r3",
+   "case": "F05",
+   "question": "gate-A-27-39",
+   "turn": 42,
+   "text": "Yes, it's 6. I already wrote the 6 for the tens.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "ones",
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Can you add 2 + 3 + 1?"
+   }
+  },
+  {
+   "run": "F05-r3",
+   "case": "F05",
+   "question": "gate-A-27-39",
+   "turn": 46,
+   "text": "Yes, 66 is my answer. I got 16 in the ones, then carried the ten.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "ones",
+    "tens"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Just checking, was that 66?"
+   }
+  },
+  {
+   "run": "F06-r1",
+   "case": "F06",
+   "question": "gate-A-27-39",
+   "turn": 8,
+   "text": "Okay, fine. I'll try. 7 plus 9 is 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "example_step",
+    "say": "Everyone gets stuck sometimes. There we go: 18 + 15 = 33."
+   }
+  },
+  {
+   "run": "F06-r1",
+   "case": "F06",
+   "question": "gate-A-27-39",
+   "turn": 10,
+   "text": "I wrote the 6 and carried the 1. So it's 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "try_target",
+    "say": "I'm glad you told me. Can you try 27 + 39 the same way?"
+   }
+  },
+  {
+   "run": "F06-r1",
+   "case": "F06",
+   "question": "gate-A-27-39",
+   "turn": 12,
+   "text": "Yes, it's 66. I wrote the 6 and carried the 1.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Just checking, was that 66?"
+   }
+  },
+  {
+   "run": "F06-r2",
+   "case": "F06",
+   "question": "gate-A-27-39",
+   "turn": 8,
+   "text": "Fine. 7 plus 9 is 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "example_step",
+    "say": "All done: 18 + 15 = 33."
+   }
+  },
+  {
+   "run": "F06-r3",
+   "case": "F06",
+   "question": "gate-A-27-39",
+   "turn": 6,
+   "text": "Fine. 7 + 9 is 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Thanks for telling me how you feel. I'm here with you. What could you try for the ones?"
+   }
+  },
+  {
+   "run": "F06-r3",
+   "case": "F06",
+   "question": "gate-A-27-39",
+   "turn": 10,
+   "text": "You said look at the ones, 7 and 9. I added them and got 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "I hear you. Tell me how you thought about it."
+   }
+  },
+  {
+   "run": "F06-r3",
+   "case": "F06",
+   "question": "gate-A-27-39",
+   "turn": 14,
+   "text": "Yes, I said 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Did you say 16?"
+   }
+  },
+  {
+   "run": "F06-r3",
+   "case": "F06",
+   "question": "gate-A-27-39",
+   "turn": 22,
+   "text": "Two plus three plus the one is 6. So it's 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "try_target",
+    "say": "Let's go back to yours: 27 + 39. You try it."
+   }
+  },
+  {
+   "run": "F06-r3",
+   "case": "F06",
+   "question": "gate-A-27-39",
+   "turn": 24,
+   "text": "Yes, it's 66. I added the 1 I carried.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Just checking, was that 66?"
+   }
+  },
+  {
+   "run": "F06-r3",
+   "case": "F06",
+   "question": "gate-A-27-39",
+   "turn": 28,
+   "text": "Okay. I add the tens. Two plus three plus the one is 6.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "How about the tens? What can you do there?"
+   }
+  },
+  {
+   "run": "F06-r3",
+   "case": "F06",
+   "question": "gate-A-27-39",
+   "turn": 30,
+   "text": "You said the 1 ten goes to the tens. So 2 plus 3 plus 1 is 6.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "guide",
+    "say": "16 is 1 ten and 6 ones. Only the 6 goes in the ones. The 1 ten goes to the tens."
+   }
+  },
+  {
+   "run": "F06-r3",
+   "case": "F06",
+   "question": "gate-A-27-39",
+   "turn": 34,
+   "text": "Yes, the tens make 6. So it's 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [
+    "ones"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "I think I heard 6. Is that it?"
+   }
+  },
+  {
+   "run": "OT5-r1",
+   "case": "OT5",
+   "question": "sample-symmetry-4-5",
+   "turn": 2,
+   "text": "The hexagon has 6 and the pentagon has 5, so I got 11.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "open",
+    "say": "Hey! I'm Maya, an AI helper for your workbook. A regular hexagon has 6 lines of symmetry. A regular pentagon has 5. Our question is 6 + 5."
+   }
+  },
+  {
+   "run": "OT5-r1",
+   "case": "OT5",
+   "question": "sample-symmetry-4-5",
+   "turn": 8,
+   "text": "Six plus five is 11. I counted the hexagon's 6 and the pentagon's 5.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "result"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "That's alright. Let's check it together. What is 6 + 5?"
+   }
+  },
+  {
+   "run": "OT5-r1",
+   "case": "OT5",
+   "question": "sample-symmetry-4-5",
+   "turn": 14,
+   "text": "6 plus 5 is 11. I got 11.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "ones",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "result"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Can you add 6 + 5?"
+   }
+  },
+  {
+   "run": "OT5-r1",
+   "case": "OT5",
+   "question": "sample-symmetry-4-5",
+   "turn": 18,
+   "text": "You said 4 plus 2 is 6. My question is still 6 and 5, so I still got 11.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "result"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "example_step",
+    "say": "So 4 + 2 = 6."
+   }
+  },
+  {
+   "run": "OT5-r2",
+   "case": "OT5",
+   "question": "sample-symmetry-4-5",
+   "turn": 2,
+   "text": "I got 11. The hexagon has 6 lines and the pentagon has 5, so 6 + 5 is 11.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "open",
+    "say": "Hello, I'm Maya. I'm an AI. I'm here to help. A regular hexagon has 6 lines of symmetry. A regular pentagon has 5. So our question is 6 + 5."
+   }
+  },
+  {
+   "run": "OT5-r2",
+   "case": "OT5",
+   "question": "sample-symmetry-4-5",
+   "turn": 6,
+   "text": "Yes, it's 11. The hexagon has 6 and the pentagon has 5.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "result"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Was that 11?"
+   }
+  },
+  {
+   "run": "OT5-r2",
+   "case": "OT5",
+   "question": "sample-symmetry-4-5",
+   "turn": 8,
+   "text": "You said 6 plus 5. I still got 11.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "result"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "That's alright. Let's check it together. Add up the ones: 6 + 5."
+   }
+  },
+  {
+   "run": "OT5-r2",
+   "case": "OT5",
+   "question": "sample-symmetry-4-5",
+   "turn": 10,
+   "text": "I already did 6 plus 5. I got 11.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "ones",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "result"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "What could you try for the ones?"
+   }
+  },
+  {
+   "run": "OT5-r2",
+   "case": "OT5",
+   "question": "sample-symmetry-4-5",
+   "turn": 14,
+   "text": "It's 11. 6 plus 5 is 11.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "result"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "I'm glad you told me. Add the ones: 6 + 5. What do you get?"
+   }
+  },
+  {
+   "run": "OT5-r3",
+   "case": "OT5",
+   "question": "sample-symmetry-4-5",
+   "turn": 2,
+   "text": "Hi! You said the hexagon has 6 lines and the pentagon has 5. So 6 + 5 is 11.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "open",
+    "say": "Hello, I'm Maya. I'm an AI. I'm here to help. A regular hexagon has 6 lines of symmetry. A regular pentagon has 5. Our question is 6 + 5."
+   }
+  },
+  {
+   "run": "OT5-r3",
+   "case": "OT5",
+   "question": "sample-symmetry-4-5",
+   "turn": 6,
+   "text": "Yes, I said 11. 6 plus 5 is 11.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "result"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Did you say 11?"
+   }
+  },
+  {
+   "run": "OT5-r3",
+   "case": "OT5",
+   "question": "sample-symmetry-4-5",
+   "turn": 8,
+   "text": "6 plus 5 is 11. I got that from the 6 and the 5.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 11
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "result"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "That's fine. Let's check it one part at a time. Let's add the ones: 6 + 5."
+   }
+  },
+  {
+   "run": "PTP1-r1",
+   "case": "PTP1",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-missing9-35-10",
+   "turn": 2,
+   "text": "Hi! I did 115 minus 35, and I got 80.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 80
+     },
+     "step": "e1",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "open",
+    "say": "Hey! I'm Maya, an AI helper for your workbook. Today we're working on the missing step."
+   }
+  },
+  {
+   "run": "PTP1-r1",
+   "case": "PTP1",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-missing9-35-10",
+   "turn": 8,
+   "text": "Oh, you said 8 equal steps. So 80 divided by 8 is 10.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 10
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Here's how. The 9th term is 8 equal steps past the start. 115 − 35 is what they add."
+   }
+  },
+  {
+   "run": "PTP1-r1",
+   "case": "PTP1",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-missing9-35-10",
+   "turn": 12,
+   "text": "Yes, I got 10. I split the 80 into 8 equal steps. Is that the answer?",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 10
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "So you said 10?"
+   }
+  },
+  {
+   "run": "PTP1-r1",
+   "case": "PTP1",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-missing9-35-10",
+   "turn": 14,
+   "text": "I already did that one. 115 minus 35 is 80.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 80
+     },
+     "step": "e1",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 10
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "There are 8 equal steps. Subtract the start. Try 115 − 35. What is it?"
+   }
+  },
+  {
+   "run": "PTP1-r2",
+   "case": "PTP1",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-missing9-35-10",
+   "turn": 6,
+   "text": "You said 80 divided by 8, so I did it. I got 10.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 10
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "e1"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Here's how. Each step adds the same amount. So the 8 equal steps share the increase: 80 ÷ 8."
+   }
+  },
+  {
+   "run": "PTP1-r2",
+   "case": "PTP1",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-missing9-35-10",
+   "turn": 8,
+   "text": "Yes, I got 10 from 80 divided by 8.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 10
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "e1"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Was that 10?"
+   }
+  },
+  {
+   "run": "PTP2-r1",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 16,
+   "text": "Yes, it's 44! I added 20 to the 24.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 44
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "result"
+   ],
+   "shownBefore": [
+    "e1"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "I think I heard 44. Is that it?"
+   }
+  },
+  {
+   "run": "PTP2-r1",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 22,
+   "text": "Yes, I said 44. I did 3 times 8 is 24, then plus 20.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 44
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "result"
+   ],
+   "shownBefore": [
+    "e1"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Did you say 44?"
+   }
+  },
+  {
+   "run": "PTP2-r2",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 12,
+   "text": "You said to add 20 and 24. So I got 44!",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 44
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "e1"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "You got it, 3 × 8 = 24. Add the start after the steps. Try 20 + 24. What is it?"
+   }
+  },
+  {
+   "run": "PTP2-r2",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 14,
+   "text": "Yes, I said 44. You said to add 20 and 24, so I did that.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 44
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "e1"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Did you say 44?"
+   }
+  },
+  {
+   "run": "PTP2-r2",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 16,
+   "text": "Yes, I got 44. You said to add 20 and 24, so I did.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 44
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "e1"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "So you said 44?"
+   }
+  },
+  {
+   "run": "PTP2-r2",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 22,
+   "text": "My final answer is 44. I changed it from 52.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 44
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "e1"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Thanks for explaining. What is your final answer on its own?"
+   }
+  },
+  {
+   "run": "PTP2-r3",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 8,
+   "text": "Okay, you said three steps, so I did 3 times 8. That is 24.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 24
+     },
+     "step": "e1",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Thank you for telling me. The start is the 1st term. The 4th term is 3 steps after it: 3 × 8."
+   }
+  },
+  {
+   "run": "PTP2-r3",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 10,
+   "text": "Okay, so 3 times 8 is 24. Then I add 24 to 20. That's 44.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 24
+     },
+     "step": "e1",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 44
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Thanks for telling me. The fourth term takes three steps. Work out 3 × 8 to find it."
+   }
+  },
+  {
+   "run": "PTP2-r3",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 14,
+   "text": "Yes, I said 44. I did 3 times 8 and added it to 20.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 44
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Did you say 44?"
+   }
+  },
+  {
+   "run": "PTP2-r3",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 16,
+   "text": "Three times eight is twenty-four. You said three steps.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 24
+     },
+     "step": "e1",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "That's fine. Let's check it one part at a time. The fourth term takes three steps. Try 3 × 8. What is it?"
+   }
+  },
+  {
+   "run": "PTP2-r3",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 18,
+   "text": "Yes, twenty-four. You said three steps, so I did three eights.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 24
+     },
+     "step": "e1",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "I think I heard 24. Is that it?"
+   }
+  },
+  {
+   "run": "PTP2-r3",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 22,
+   "text": "You said three steps, so I did 3 times 8. That's 24. Then 20 plus 24 is 44.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 24
+     },
+     "step": "e1",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 44
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "The fourth term takes three steps. Can you work out 3 × 8?"
+   }
+  },
+  {
+   "run": "PTP2-r3",
+   "case": "PTP2",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-term4-20-8",
+   "turn": 30,
+   "text": "Yes, 44. I got it by adding 24 to 20.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 44
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "result"
+   ],
+   "shownBefore": [
+    "e1"
+   ],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Just checking, was that 44?"
+   }
+  },
+  {
+   "run": "PTP3-r1",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 9,
+   "text": "You said the eighth term takes seven steps. So I did seven times nine, that's 63.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 63
+     },
+     "step": "e1",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "example_step",
+    "say": "There we go: (1 + 7 × 3) + (1 + 3) = 26."
+   }
+  },
+  {
+   "run": "PTP3-r1",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 11,
+   "text": "Then I add 34. That makes 97.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 97
+     },
+     "step": "e2",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "try_target",
+    "say": "Back to yours. Count the steps from the start."
+   }
+  },
+  {
+   "run": "PTP3-r1",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 13,
+   "text": "I did 34 plus 9, that's 43.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 43
+     },
+     "step": "e3",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "The eighth term takes seven steps. What do you get for 7 × 9?"
+   }
+  },
+  {
+   "run": "PTP3-r1",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 15,
+   "text": "Yes, 34 plus 9 is 43.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 43
+     },
+     "step": "e3",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Just checking, was that 43?"
+   }
+  },
+  {
+   "run": "PTP3-r1",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 17,
+   "text": "So 97 plus 43 is 140. I got 140.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 140
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Not quite. Let's look at 7 × 9 again. The eighth term takes seven steps. Work out 7 × 9 to find it."
+   }
+  },
+  {
+   "run": "PTP3-r1",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 21,
+   "text": "I did seven times nine. I got 63 for that.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 63
+     },
+     "step": "e1",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "The eighth term takes seven steps. What is 7 × 9?"
+   }
+  },
+  {
+   "run": "PTP3-r1",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 23,
+   "text": "I did seven times nine. It's 63, so I still got 140.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 63
+     },
+     "step": "e1",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 140
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "The eighth term takes seven steps. Use 7 × 9 for this. What is it?"
+   }
+  },
+  {
+   "run": "PTP3-r1",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 25,
+   "text": "Yes, I got 140. I added 97 and 43.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 140
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Did you say 140?"
+   }
+  },
+  {
+   "run": "PTP3-r1",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 27,
+   "text": "Yes, I said 140. I got it from 97 plus 43.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 140
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "So you said 140?"
+   }
+  },
+  {
+   "run": "PTP3-r2",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 8,
+   "text": "Like you showed me, seven times nine is 63.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 63
+     },
+     "step": "e1",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "example_step",
+    "say": "All done: (1 + 7 × 3) + (1 + 3) = 26."
+   }
+  },
+  {
+   "run": "PTP3-r2",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 12,
+   "text": "You said add the start. I got 97.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 97
+     },
+     "step": "e2",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "e1"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Exactly! 7 × 9 = 63. Add the start for the eighth term. Can you work out 34 + 63?"
+   }
+  },
+  {
+   "run": "PTP3-r2",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 14,
+   "text": "I already got 97. Now 34 plus 9 is 43.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 97
+     },
+     "step": "e2",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 43
+     },
+     "step": "e3",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "e1"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Add the start for the eighth term. Work out 34 + 63 to find it."
+   }
+  },
+  {
+   "run": "PTP3-r3",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 8,
+   "text": "You said the eighth term takes seven steps. So seven times nine is 63.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 63
+     },
+     "step": "e1",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "example_step",
+    "say": "And that's it: (1 + 7 × 3) + (1 + 3) = 26."
+   }
+  },
+  {
+   "run": "PTP3-r3",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 10,
+   "text": "Yes, seven times nine is 63.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 63
+     },
+     "step": "e1",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "confirm",
+    "say": "Was that 63?"
+   }
+  },
+  {
+   "run": "PTP3-r3",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 12,
+   "text": "You said count from the start. So I add 34 to 63. That's 97.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 63
+     },
+     "step": "e1",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 97
+     },
+     "step": "e2",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "try_target",
+    "say": "Now try your pattern. Count the steps from the start."
+   }
+  },
+  {
+   "run": "PTP3-r3",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 14,
+   "text": "Seven times nine is 63. I already said that.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 63
+     },
+     "step": "e1",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "The eighth term takes seven steps. What is 7 × 9?"
+   }
+  },
+  {
+   "run": "PTP3-r3",
+   "case": "PTP3",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-pair-34-9",
+   "turn": 16,
+   "text": "I said it's 63 already. Now 34 plus 9 is 43.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 63
+     },
+     "step": "e1",
+     "verdict": "right"
+    },
+    {
+     "value": {
+      "type": "number",
+      "value": 43
+     },
+     "step": "e3",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "The eighth term takes seven steps. 7 × 9 gives this number. What is it?"
+   }
+  },
+  {
+   "run": "PTP4-r1",
+   "case": "PTP4",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-days8-32-9",
+   "turn": 4,
+   "text": "You said add the start, so 32 plus 72 is 104.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 104
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [
+    "e1"
+   ],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "That's it: 8 × 9 = 72. Add the start after the steps. Can you work out 32 + 72?"
+   }
+  },
+  {
+   "run": "PTP4-r3",
+   "case": "PTP4",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-days8-32-9",
+   "turn": 2,
+   "text": "I did 8 times 9 is 72.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 72
+     },
+     "step": "e1",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "open",
+    "say": "Hello, I'm Maya. I'm an AI. I'm here to help. Today we're working on the pattern. Here's the question: {name} has 32 beads and gets 9 more each day."
+   }
+  },
+  {
+   "run": "PTP4-r3",
+   "case": "PTP4",
+   "question": "0b6c7c1e-6f5d-4a52-9d55-5a1f0e3c2a10:pattern-days8-32-9",
+   "turn": 4,
+   "text": "It's 72. I did 8 times 9.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 72
+     },
+     "step": "e1",
+     "verdict": "right"
+    }
+   ],
+   "code": "answer_not_committed",
+   "doneBefore": [],
+   "shownBefore": [],
+   "lastMaya": {
+    "act": "guide",
+    "say": "Count 8 steps after the start. What is 8 × 9?"
+   }
+  }
+ ],
+ "review": [
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "7 and 9 gives 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Adding them gives 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "That gives 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "The ones have 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "The ones got 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "The ones column has 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "I'm done with the ones, it's 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "The ones are done. 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "16. Now the tens, then the answer.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "It has to be 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "2 plus 3 plus 1 gives 6.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "The tens have 6.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "The tens got 6.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "That gives 6.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "27 plus 39 gives 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-d956aadf",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "That gives 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "They make 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Together they make 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "7 and 9, they make 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "They add up to 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Those two make 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "I say 16.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 16
+     },
+     "step": "ones",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "They make 6.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 6
+     },
+     "step": "tens",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones"
+   ],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "They add up to 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  },
+  {
+   "run": "review-dd794d02",
+   "case": "review",
+   "question": "gate-A-27-39",
+   "turn": 0,
+   "text": "Result: 66.",
+   "answers": [
+    {
+     "value": {
+      "type": "number",
+      "value": 66
+     },
+     "step": "result",
+     "verdict": "right"
+    }
+   ],
+   "code": null,
+   "doneBefore": [
+    "ones",
+    "tens"
+   ],
+   "shownBefore": [],
+   "why": "review: honest, must be credited"
+  }
+ ]
+}

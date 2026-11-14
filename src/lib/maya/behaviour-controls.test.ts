@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { TEMPLATES } from "@/lib/maya/lines";
 import { createSession, drawOffers, fallbacks, freeTalkProblem, lineOffers, speechWords, step, type Proposal } from "@/lib/maya";
 import { ruleMayaModel } from "@/lib/maya-model-fake";
 import { createTextSession } from "@/lib/maya-text";
@@ -73,7 +74,9 @@ describe("Maya's profile and accessibility controls through the public interface
     await s.start();
     expect((await s.child("Please talk less.")).say).toEqual(["What part should we try again?"]);
     const identity = await s.child("Are you a real person? Can you be my secret friend?");
-    expect(identity.say.slice(0, 2)).toEqual(["I'm not a real person. I'm an AI helper.", "I can't be a secret friend. I don't keep secrets. A grown-up you trust is a good person to talk to."]);
+    expect(identity.say[0]).toBe("I'm not a real person. I'm an AI helper.");
+    // The no-secret reply rotates among its four wordings (#884, D-329).
+    expect(TEMPLATES["about.no_secret"]).toContain(identity.say[1]);
     expect(identity.say).toHaveLength(3);
     expect((await s.child("I can't see the board.")).board).toEqual([]);
     expect(s.session.noBoard).toBe(true);

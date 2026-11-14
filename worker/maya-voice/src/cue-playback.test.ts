@@ -190,3 +190,24 @@ it("R450-9 cancellation while native admission waits for startup creates no segm
     expect(c.failure).not.toHaveBeenCalled();
   } finally { native.clearBuffer(); await native.close(); }
 });
+
+it("forwards each 20 ms part in its own buffer, with its own samples (rtc-node sends frame.data.buffer and ignores a view's offset)", async () => {
+  const c = await setup();
+  const sent: AudioFrame[] = [];
+  const capture = c.audio.captureFrame.bind(c.audio);
+  c.audio.captureFrame = async (f: AudioFrame) => { sent.push(f); return capture(f); };
+  const samples = Int16Array.from({ length: 100 * 24 }, (_, i) => i % 30000);
+  const whole = new AudioFrame(samples, 24000, 1, samples.length);
+  whole.userdata[SPEECH_SCOPE_DATA] = c.scope;
+  await c.output.captureFrame(whole);
+  expect(sent.length).toBe(5);
+  for (const [i, part] of sent.entries()) {
+    // What the native layer reads: the whole underlying buffer from its start.
+    const native = new Int16Array(part.data.buffer);
+    expect(part.data.byteOffset).toBe(0);
+    expect(native.length).toBe(part.samplesPerChannel);
+    expect(native[0]).toBe(samples[i * 480]);
+    expect(native[native.length - 1]).toBe(samples[i * 480 + 479]);
+  }
+});
+
