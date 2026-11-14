@@ -26,6 +26,7 @@ import {
   type IconName,
 } from "@/ds";
 import { HomeCompare } from "./compare";
+import { PricingSwitch } from "./pricing-prototype";
 import { Knot, Rise, type Vars } from "./drawn";
 
 import adapt4 from "@/assets/img/loop-adapt-4.jpg";
@@ -176,7 +177,8 @@ export function Pricing() {
           price={PLANS.one.price}
           offer={{ price: "Free", note: "your first month!", then: `Then CAD ${cad(PLANS.one.price)} a month.` }}
           priceNote={
-            <span className="plan-family">
+            <>
+            <span className="plan-family pp-sib-in">
               <svg viewBox="0 0 34 34" aria-hidden="true">
                 <circle cx="12" cy="11" r="5" fill="var(--sun)" />
                 <circle cx="23" cy="13" r="4" fill="var(--sky)" />
@@ -188,6 +190,11 @@ export function Pricing() {
                 <span className="plan-family-save">CAD {cad(SIBLING_SAVING)} less a month for each additional child.</span>
               </span>
             </span>
+            <span className="plan-family pp-ref-in">
+              <svg viewBox="0 0 34 34" aria-hidden="true"><rect x="5" y="13" width="24" height="16" rx="2" fill="var(--sun)" /><rect x="3" y="9" width="28" height="6" rx="1.5" fill="#FF6430" /><path d="M17 9v20" stroke="#fff" strokeWidth="2.5" /><path d="M17 9c-3-5-9-4-7 0M17 9c3-5 9-4 7 0" fill="none" stroke="#FF6430" strokeWidth="2" /></svg>
+              <span><b>Know a family who&apos;d love this?</b> Refer them, and you both get a free month.</span>
+            </span>
+            </>
           }
           features={[
             "Free online math assessment and report, before you choose a plan",
@@ -203,6 +210,20 @@ export function Pricing() {
           cta={<div className="plan-cta"><GetStarted src="price" /><StartNote /></div>}
         />
       </PlanGrid>
+      <div className="pp-under">
+        <div className="pp-tile"><b>More than one child?</b><span>Each sibling is CAD {cad(ADDITIONAL_CHILD_PRICE)} a month, CAD {cad(SIBLING_SAVING)} less for each additional child.</span></div>
+        <div className="pp-tile pp-tile-ref"><b>Refer a family</b><span>When a family you refer joins, you both get a free month.</span></div>
+      </div>
+      <div className="pp-banner"><span className="pp-banner-tag">Refer a family</span><span><b>You both get a free month.</b> Share Unica with a family you know. When they join, their first month and your next month are free.</span></div>
+      <div className="pp-save">
+        <p className="pp-save-h">Ways to save</p>
+        <ul>
+          <li><b>First month free</b><span>Try it for a month before you pay.</span></li>
+          <li><b>CAD {cad(ADDITIONAL_CHILD_PRICE)} for each sibling</b><span>CAD {cad(SIBLING_SAVING)} less a month for each additional child.</span></li>
+          <li><b>A free month for referrals</b><span>Refer a family. When they join, you both get a free month.</span></li>
+        </ul>
+      </div>
+      <PricingSwitch />
       <p className="plan-foot">*The Unica Teaching Assistant is for Grade 3 and up.</p>
     </Section>
   );

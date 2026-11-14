@@ -447,3 +447,23 @@ main{position:relative;display:block}
 .g-line{font-size:clamp(20px,2vw,26px);line-height:1.35;color:var(--ink);margin:-16px 0 40px}
 .offer-flag{display:block;width:fit-content;margin:0 0 12px;font:500 13px/1 var(--mono, ui-monospace, monospace);letter-spacing:.08em;text-transform:uppercase;color:var(--red)}
 .offer-flag::before{content:"";display:inline-block;width:9px;height:9px;margin-right:8px;background:var(--red);vertical-align:1px}
+
+/* PROTOTYPE (site/maya-side-prototype): pricing referral variants, picked by html[data-pricing]. */
+.pp-ref-in,.pp-under,.pp-banner,.pp-save{display:none}
+.pp-ref-in{margin-top:10px}
+html[data-pricing="P1"] .pp-sib-in{display:none}
+html[data-pricing="P1"] .pp-under{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px}
+.pp-tile{display:grid;gap:4px;padding:18px 20px;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:15px;color:var(--ink-2)}
+.pp-tile b{font-size:17px;color:var(--ink)}
+.pp-tile-ref{background:#FFF6D6;border-color:#FFD23F}
+html[data-pricing="P2"] .pp-ref-in{display:flex}
+html[data-pricing="P3"] .pp-banner{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:16px;padding:16px 20px;border-radius:12px;background:#111;color:#fff;font-size:15.5px}
+.pp-banner b{color:#fff}
+.pp-banner-tag{font:500 12px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;background:#FFD23F;color:#111;padding:7px 10px;border-radius:999px}
+html[data-pricing="P4"] .pp-sib-in{display:none}
+html[data-pricing="P4"] .pp-save{display:block;margin-top:22px}
+.pp-save-h{margin:0 0 10px;font:500 12px/1.4 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+.pp-save ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,1fr);gap:0;border-top:2px solid var(--ink)}
+.pp-save li{display:grid;gap:4px;padding:14px 18px 0 0;font-size:14.5px;color:var(--ink-2)}
+.pp-save li b{font-size:17px;color:var(--ink)}
+@media (max-width:899px){html[data-pricing="P1"] .pp-under,.pp-save ul{grid-template-columns:1fr}}
