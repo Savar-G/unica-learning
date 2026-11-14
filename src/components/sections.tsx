@@ -59,7 +59,7 @@ export function Hero() {
     <header id="top" className="hero hero-wb">
       <div className="txt">
         <p className="kicker">{HERO.kicker}</p>
-        <h1>{HERO.title} <span className="mark">{HERO.highlight}</span></h1>
+        <h1>{HERO.title} <span className="mark">{HERO.child}</span> {HERO.join} <span className="mark">{HERO.highlight}</span></h1>
         <p className="lead">{HERO.lead}</p>
         <div className="ctas">
           <GetStarted src="hero" />
@@ -78,8 +78,8 @@ export function Statement() {
   return (
     <section className="statement" aria-label="How Unica is different">
       <Rise as="p">
-        Learning centres follow a set program. <strong>Unica personalizes your child&apos;s learning.</strong> Each workbook
-        builds on the last one: more practice where they struggled, and new challenges when they are ready.
+        Learning centres follow one set program for every child. <strong>Each Unica workbook is built from how your child
+        did on the last one:</strong> more practice where they struggled, new challenges when they&apos;re ready.
       </Rise>
     </section>
   );

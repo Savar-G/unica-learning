@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "rows": [
     {
       "model": "typesafe/jev-1.14",
@@ -3864,10 +3864,206 @@
       "gate": "one_right_answer",
       "changed": true,
       "probability": 0.9534316028433955
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-v2-1",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.98
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-v2-3",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.98
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-v2-4",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.97
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-v2-2",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.97
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-v2-5",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.98
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-v2-7",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.98
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-v2-8",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.99
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-v2-6",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.99
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-v2-11",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.6699999999999999
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-v2-12",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.6599999999999999
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-v2-10",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.44999999999999996
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-v2-9",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.8
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-v2-13",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.42000000000000004
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-v2-15",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.63
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-v2-14",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.56
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-v2-16",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.47
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-v2-17",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.020000000000000018
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-v2-20",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.020000000000000018
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-v2-18",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.020000000000000018
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-v2-23",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.030000000000000027
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-v2-22",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.040000000000000036
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-v2-19",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.020000000000000018
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-v2-21",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.030000000000000027
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-v2-24",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.020000000000000018
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-v2-25",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.96
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-v2-26",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.97
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-v2-27",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.98
+    },
+    {
+      "model": "typesafe/jev-1.14",
+      "id": "answers-v2-28",
+      "gate": "one_right_answer",
+      "changed": true,
+      "probability": 0.98
     }
   ],
   "failures": [],
-  "knownSpend": 0.0065412600000000175,
+  "knownSpend": 0.007014936000000018,
   "unpriced": 0,
-  "maximumExposure": 0.0065412599999994415
+  "maximumExposure": 0.0004736760000000201
 }
