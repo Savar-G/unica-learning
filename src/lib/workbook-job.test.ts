@@ -111,6 +111,26 @@ describe("a run", () => {
     expect(marked[0].layoutGate).toMatchObject({ outcome: "flag", flags: ["overlap"], reason: expect.stringContaining("overlap") });
   });
 
+  it("marks the pages a page layout gate outage skipped as not checked, never as passed (#859)", async () => {
+    const asked: number[] = [];
+    const pageGates: PageGateChecker = {
+      model: "typesafe/jev-1.14",
+      check: async (n) => {
+        asked.push(n);
+        return { callKey: pageGateKey(n), questionId: `page-${n}`, model: "typesafe/jev-1.14", thresholdVersion: 1, outcome: "unknown", flags: [], probabilities: {}, reason: null };
+      },
+    };
+    const s = setup({ pageGates });
+    const id = await started(s);
+    expect(await runWorkbookJob(id, s.deps)).toBe("done");
+    const pages = s.runs.revisions[0].rendering!.pages.filter((p) => !p.proof);
+    expect(pages.length).toBeGreaterThan(10);
+    // Every answer errored: the pass stops after 10 requests, and the rest are skipped.
+    expect(asked).toHaveLength(10);
+    expect(pages.every((p) => p.layoutGate?.outcome === "unknown")).toBe(true);
+    expect(pages.filter((p) => !asked.includes(p.number)).every((p) => p.layoutGate!.reason.includes("not checked"))).toBe(true);
+  });
+
   it("stores a draft with its progress, its check results and revision 1 with an image of every page", async () => {
     const s = setup();
     const id = await started(s);

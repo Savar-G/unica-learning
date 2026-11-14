@@ -648,12 +648,14 @@ export async function runWorkbookJob(runId: string, deps: WorkbookJobDeps, o: { 
         if (deps.pageGates && rendered.rendering && rendered.pngs.length) {
           // #859: each rendered page once; a stored page is not asked again. A flag marks the page; nothing is rewritten.
           const stored = (await runs.gates(runId)).filter((r): r is StoredPageGate => r.callKey.startsWith("page:"));
-          const { rows } = await checkRenderedPages(deps.pageGates, stored, rendered.pngs, async (row) => {
+          const { rows, unavailable } = await checkRenderedPages(deps.pageGates, stored, rendered.pngs, async (row) => {
             if (lost || !(await runs.saveGates(runId, lease, [row]))) { loseLease(); throw new Stopped("the run was taken up by another call"); }
           }, stop.signal);
           for (const page of rendered.rendering.pages) {
             const row = rows.get(page.number);
-            const mark = row && !page.proof ? pageGateMark(row) : null;
+            if (page.proof) continue;
+            // A page the pass skipped after the model stopped answering is shown as not checked, never as passed.
+            const mark = row ? pageGateMark(row) : unavailable ? { outcome: "unknown" as const, flags: [], reason: "The page layout gate stopped answering before this page, so it was not checked and is flagged for review." } : null;
             if (mark) page.layoutGate = mark;
           }
         }
