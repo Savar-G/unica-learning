@@ -183,3 +183,45 @@ it("marks a fresh join with its reason when nothing was joined before the tap", 
   expect(marks.find((m) => m.event === "prejoin_decision")).toMatchObject({ decision: "fresh", reason: "not_prepared", prejoin: "none" });
   expect(marks.map((m) => m.event)).toEqual(["tap", "prejoin_decision", "ticket_begin", "ticket_end", "module_ready", "room_connect_begin", "room_connect_end", "mic_begin", "mic_end", "start_audio_begin", "start_audio_end"]);
 });
+
+
+it("a new call does not share the old call's claimed pending join", async () => {
+  const rerender = await mount("call-a");
+  lk.connect.push("hold");
+  await act(async () => { void api.prepare(); void api.connect(); });
+  await rerender("call-b");
+  await act(async () => { void api.connect(); });
+  await settle();
+  expect(tickets).toBe(2);
+  expect(lk.rooms).toHaveLength(2);
+  expect(lk.rooms[0].disconnect).toHaveBeenCalled();
+  await release();
+  expect(lk.rooms[0].localParticipant.setMicrophoneEnabled).not.toHaveBeenCalled();
+  expect(lk.rooms[0].startAudio).not.toHaveBeenCalled();
+  expect(lk.rooms[1].localParticipant.setMicrophoneEnabled).toHaveBeenCalledOnce();
+  expect(api.phase).toBe("waiting");
+});
+
+it.each(["resolve", "reject"])("retry after disconnection owns its room when the old microphone later %ss", async (outcome) => {
+  await mount();
+  await act(async () => { void api.prepare(); });
+  await settle();
+  let finishMic!: () => void;
+  lk.rooms[0].localParticipant.setMicrophoneEnabled.mockImplementationOnce(() => new Promise<void>((resolve, reject) => {
+    finishMic = () => outcome === "resolve" ? resolve() : reject(new Error("not connected"));
+  }));
+  await act(async () => { void api.connect(); });
+  await act(async () => { lk.rooms[0].emit("Disconnected"); });
+  expect(api.phase).toBe("failed");
+  await act(async () => { void api.connect(); });
+  await settle();
+  expect(tickets).toBe(2);
+  expect(lk.rooms).toHaveLength(2);
+  expect(api.phase).toBe("waiting");
+  await act(async () => { finishMic(); });
+  await settle();
+  expect(lk.rooms[1].disconnect).not.toHaveBeenCalled();
+  expect(lk.rooms[1].localParticipant.setMicrophoneEnabled).toHaveBeenCalledOnce();
+  expect(api.phase).toBe("waiting");
+  expect(api.error).toBeNull();
+});
