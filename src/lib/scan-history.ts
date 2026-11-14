@@ -10,7 +10,9 @@ export interface HistoryRecord {
   id: string; childId: string; childName: string; workbookId: string; book: number; revision: string; day: string; pageNumber: number;
   marks: EffectiveMark[]; photos: HistoryPhoto[]; jobs: HistoryJob[]; spend: HistorySpend[];
 }
-export interface HistoryFilter { child?: string; workbook?: string; status?: "all" | "review" | "failed"; after?: string }
+export interface HistoryFilter { child?: string; workbook?: string; status?: "all" | "review" | "failed"; after?: string;
+  /** Leave out printed pages with no photo and no marks. The parent list sets it; the progress readers need every page. */
+  scannedOnly?: boolean }
 export interface HistoryBudget { period: string; cap: number; reported: number; held: number; unknown: number; reserved: number }
 export interface HistoryPage extends Omit<HistoryRecord, "marks" | "photos" | "jobs" | "spend"> {
   status: HistoryStatus; label: string; photo: string | null; photoAvailable: boolean; failedJob: boolean;
@@ -58,10 +60,17 @@ export interface HistoryStore { read(filter: HistoryFilter): Promise<{ pages: Hi
 export async function readScanHistory(store: HistoryStore, filter: HistoryFilter, now: number, limit = 25, skipChildren: ReadonlySet<string> = new Set(),
   uncounted: ReadonlySet<string> = new Set()) {
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error("history_limit");
-  const records: HistoryRecord[] = [], pages: HistoryPage[] = [];
-  let after = filter.after, budget: HistoryBudget | null = null, more = false;
+  const { scannedOnly, ...storeFilter } = filter;
+  // The store pages by page UUID, which is not page order. Within one child or workbook (a few hundred pages at most) read
+  // every stored page, then order and cap them here, so a 25-page list holds the first 25 pages in printed order (#920).
+  // Without either scope (the Admin list across families) the stored UUID order and cursor stay as they were.
+  const ordered = Boolean(filter.child || filter.workbook);
+  let matches: { r: HistoryRecord; p: HistoryPage }[] = [];
+  const inFilter = (p: HistoryPage) => (filter.status !== "review" || p.status === "review")
+    && (filter.status !== "failed" || p.failedJob) && (!scannedOnly || p.status !== "never-scanned");
+  let after = ordered ? undefined : filter.after, budget: HistoryBudget | null = null, more = false;
   for (;;) {
-    const batch = await store.read({ ...filter, after });
+    const batch = await store.read({ ...storeFilter, after });
     if (!batch) return null;
     budget = batch.budget;
     if (!batch.pages.length) break;
@@ -70,13 +79,23 @@ export async function readScanHistory(store: HistoryStore, filter: HistoryFilter
       after = r.id;
       if ((filter.child && r.childId !== filter.child) || (filter.workbook && r.workbookId !== filter.workbook) || skipChildren.has(r.childId)) continue;
       const p = historyPage(r, now);
-      if (filter.status === "review" && p.status !== "review") continue;
-      if (filter.status === "failed" && !p.failedJob) continue;
-      if (pages.length === limit) { more = true; break; }
-      records.push(r); pages.push(p);
+      if (!ordered && !inFilter(p)) continue;
+      if (!ordered && matches.length === limit) { more = true; break; }
+      matches.push({ r, p });
     }
     if (more) break;
   }
+  if (ordered) {
+    // Newest book first, then printed page, the order the list shows. The page id breaks ties and is the cursor.
+    matches.sort((a, b) => a.p.childId.localeCompare(b.p.childId) || b.p.book - a.p.book || a.p.pageNumber - b.p.pageNumber || a.p.id.localeCompare(b.p.id));
+    let start = 0;
+    if (filter.after) { start = matches.findIndex((m) => m.p.id === filter.after) + 1; if (!start) throw new Error("history_cursor"); }
+    // Find the printed cursor before mutable filters: a team mark can remove the cursor page from its old status.
+    matches = matches.slice(start).filter(({ p }) => inFilter(p));
+    more = matches.length > limit;
+    matches.length = Math.min(matches.length, limit);
+  }
+  const records = matches.map((m) => m.r), pages = matches.map((m) => m.p);
   // Do not consume the first matching row of the next page.
   const countedRecords = records.filter((r) => !uncounted.has(r.childId)), countedPages = pages.filter((p) => !uncounted.has(p.childId));
   return { pages, counted: countedPages.length, counts: Object.fromEntries(Object.keys(HISTORY_LABELS).map((s) => [s, countedPages.filter((p) => p.status === s).length])),

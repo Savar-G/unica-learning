@@ -84,7 +84,9 @@ export async function calibratePhysicalPhoto(raw: Uint8Array, page: WorkbookInpu
   const writing = page.questions.flatMap(q => (q.regions ?? []).flatMap(r => r.box ? [r.box] : []));
   const result = calibratePhoto({ photo, printed, contract, pageLink: pageUrl(page.qrToken), writing });
   if (result.status !== "calibrated") throw Error(`calibration:${result.reason}`);
-  const sheet = sheetChecker({ photo, printed, transform: result.calibration.transform, writing })(others);
+  // The frozen kit is measured on photos that hold all four marks: a page placed by its QR code (#912) is not one of them.
+  if (result.calibration.placedBy === "qr") throw Error("calibration:marks-missing");
+  const sheet = sheetChecker({ photo, printed, transform: result.calibration.transform, writing, sheet: result.calibration })(others);
   if (sheet.verdict !== "this-page") throw Error(`sheet:${sheet.verdict}`);
   if (contract.status !== "available") throw Error("no-contract");
   const plan = cropPlan(page.questions.map(q => ({ ...q, regions: q.regions ?? null }))), straight = await jpeg(straightenedPage(photo, result.calibration, contract.contract));
