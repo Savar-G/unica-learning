@@ -28,3 +28,8 @@ it("refuses another site, bad ids and a hold outside 1 to 600 seconds, and says 
   f.fail = true;
   expect((await hold({ ids: [A] })).status).toBe(503);
 });
+
+it("lets go of a hold with no Undo mark when the phone drops a page or swaps its photo (review of #981)", async () => {
+  expect(await (await hold({ ids: [A], release: true })).json()).toEqual({ released: [A] });
+  expect(f.calls).toEqual([{ name: "release_scan_holds", args: { p_parent: "family", p_ids: [A] } }]);
+});

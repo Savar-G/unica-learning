@@ -46,13 +46,13 @@ let filedTo: { child_id: string; child: string } | null, markingOn: boolean;
 let allPages: string[];
 // The holds the page wrote on the server (#3): `{ ids, seconds }`, or `{ ids, undo: true }`.
 let holds: { ids: string[]; seconds?: number; undo?: boolean }[];
-// How long a duplicate's note shows (#4): long by default.
-let duplicateMs: number;
+// How long a duplicate's note shows (#4): long by default. Hold requests that fail before one succeeds.
+let duplicateMs: number, holdFailures: number, captureRenewMs: number;
 
 const buttons = () => [...document.querySelectorAll("button")];
 const button = (text: string) => buttons().find((b) => b.textContent === text || b.getAttribute("aria-label") === text);
 const settle = async () => { for (let i = 0; i < 30; i++) await act(async () => { await new Promise((r) => setTimeout(r, 0)); }); };
-const render = async () => { await act(async () => root.render(createElement(ScanPages, { childrenList: kids, parent: "parent", noticeAcknowledged: acknowledged, undoMs, allPages, duplicateMs }))); await settle(); };
+const render = async () => { await act(async () => root.render(createElement(ScanPages, { childrenList: kids, parent: "parent", noticeAcknowledged: acknowledged, undoMs, allPages, duplicateMs, captureRenewMs }))); await settle(); };
 const choose = async (input: "camera" | "library", ...names: string[]) => {
   const el = host.querySelector<HTMLInputElement>(input === "camera" ? "input[capture]" : "input[multiple]")!;
   Object.defineProperty(el, "files", { configurable: true, value: names.map((n) => new File(["x"], n, { type: "image/jpeg" })) });
@@ -63,7 +63,7 @@ const text = () => document.body.textContent ?? "";
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  marking = null; putGate = null; undoMs = 60_000; filedTo = null; markingOn = false; allPages = ["child"]; holds = []; context.encodings = []; duplicateMs = 60_000;
+  marking = null; putGate = null; undoMs = 60_000; filedTo = null; markingOn = false; allPages = ["child"]; holds = []; context.encodings = []; duplicateMs = 60_000; holdFailures = 0; captureRenewMs = 270_000;
   try { localStorage.setItem("unica.scan-tips.v1:parent", "seen"); localStorage.removeItem("unica.scan-undone.v1:parent"); } catch {}
   context.auth = null; context.prepare = null; context.code = null; checks = true; acknowledged = true; photos = new Map(); uploading = 0; mostAtOnce = 0; full = false; calls.length = 0;
   admitted = []; loseAdmissions = 0; saveFailures = 0; expired = new Set();
@@ -84,7 +84,13 @@ beforeEach(() => {
       if (loseAdmissions > 0) { loseAdmissions--; throw new TypeError("the answer was lost"); }
       return Response.json({ state: photos.get(asked)?.state ?? "reserved", id: asked });
     }
-    if (path === "/api/account/scans/hold") { holds.push(JSON.parse(String(init!.body))); return Response.json({ held: [] }); }
+    if (path === "/api/account/scans/hold") {
+      const body = JSON.parse(String(init!.body));
+      if (holdFailures > 0) { holdFailures--; return Response.json({ error: "unavailable" }, { status: 503 }); }
+      holds.push(body);
+      const unsent = (body.ids as string[]).filter((pid) => !photos.get(pid)?.sentAt);
+      return Response.json(body.undo || body.release ? { released: unsent } : { held: unsent });
+    }
     if (path === "/api/account/scans/send") {
       const ids: string[] = JSON.parse(String(init!.body)).ids;
       for (const pid of ids) { const p = photos.get(pid); if (p && p.check === "ready" && p.state === "saved") p.sentAt = "2026-11-05T12:00:00Z"; }
@@ -1252,4 +1258,62 @@ it("says a photo the phone could not encode is not sent, with Try again, never t
   context.prepare = null;
   await act(async () => button("Try again")!.click()); await settle();
   expect([...photos.values()].map((p) => p.pageId)).toEqual(["p10"]);
+});
+
+// Review of #981.
+it("tries Undo on the server again when it fails, so the page is never sent on its own (review of #981)", async () => {
+  undoMs = 5_000;
+  await render();
+  await choose("library", "p10.jpg");
+  const id = [...photos.keys()][0];
+  holdFailures = 1;
+  await act(async () => button("Undo")!.click());
+  await act(async () => { await new Promise((r) => setTimeout(r, 1100)); }); await settle();
+  expect(holds.filter((h) => h.undo)).toEqual([{ ids: [id], undo: true }]);
+  expect(text()).toContain("Not sent. The page waits here.");
+});
+
+it("says a page was already sent when Undo comes too late for it on the server (review of #981)", async () => {
+  undoMs = 5_000;
+  await render();
+  await choose("library", "p10.jpg");
+  // The recovery run sent it in the meantime.
+  photos.get([...photos.keys()][0])!.sentAt = "2026-11-14T10:00:00Z";
+  await act(async () => button("Undo")!.click()); await settle();
+  expect(text()).toContain("Page 10 was already sent for marking.");
+  expect(text()).not.toContain("Not sent.");
+});
+
+it("renews the server's capture hold while the capture screen stays open (review of #981)", async () => {
+  undoMs = 5_000; captureRenewMs = 40;
+  await render();
+  await choose("library", "p10.jpg");
+  const id = [...photos.keys()][0];
+  await openCapture();
+  await act(async () => { await new Promise((r) => setTimeout(r, 150)); }); await settle();
+  expect(holds.filter((h) => h.seconds === 600 && h.ids.includes(id)).length).toBeGreaterThanOrEqual(2);
+});
+
+it("lets go of the old photo's server hold when the parent uses the new photo instead (review of #981)", async () => {
+  await render();
+  await choose("library", "p10.jpg");
+  const first = [...photos.keys()][0];
+  await choose("library", "better-p10.jpg");
+  await act(async () => button("Use this new photo instead")!.click()); await settle();
+  expect(holds).toContainEqual({ ids: [first], release: true });
+});
+
+it("lets go of the server hold of a page the phone drops because its check could not be read (review of #981)", async () => {
+  undoMs = 5;
+  const server = global.fetch;
+  vi.stubGlobal("fetch", async (path: string, init?: RequestInit) => {
+    if (path.endsWith("/preview") && (init?.method ?? "GET") === "GET") return Response.json({ error: "unavailable" }, { status: 503 });
+    return server(path, init);
+  });
+  await render();
+  await choose("library", "p10.jpg");
+  await act(async () => { await new Promise((r) => setTimeout(r, 60)); }); await settle();
+  const id = [...photos.keys()][0];
+  expect(holds).toContainEqual({ ids: [id], release: true });
+  expect(calls).not.toContain("POST /api/account/scans/send");
 });

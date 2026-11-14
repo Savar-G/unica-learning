@@ -2,7 +2,7 @@ import { beforeEach, afterEach, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 const f = vi.hoisted(() => ({ start: "started", identify: "identified" as string | string[], normalize: true, uploads: 0, calls: [] as string[], spread: false, admit: "reserved" as string | string[], tokens: [] as string[], saved: [] as string[], refuse: "qr", storageFails: 0, recover: "pending", filed: "child", closed: [] as string[],
   // F5: the page's photo a new photo of it may replace, and that photo's stored check; the photos deleted.
-  held: null as null | { id: string; printed_revision: string; sent_at: string | null }, calibration: null as null | { state: string; printed_revision: string }, deleted: [] as string[] }));
+  held: null as null | { id: string; printed_revision: string; sent_at: string | null }, keep: false, calibration: null as null | { state: string; printed_revision: string }, deleted: [] as string[] }));
 const ai = vi.hoisted(() => vi.fn(() => { throw new Error("S1 must not dispatch AI"); }));
 vi.mock("@/lib/ai-client", () => ({ aiClient: ai }));
 // #915: the page check starts after the answer, for a family that gets checks.
@@ -40,6 +40,8 @@ vi.mock("@/lib/scan-photo-server", () => ({
       }
       if (name === "change_scan_photo" && args.p_action === "save") f.saved.push(args.p_id!);
       if (name === "change_scan_photo" && args.p_action === "delete") { f.deleted.push(args.p_id!); return { data: "deleted" }; }
+      // The swap rechecks under the family lock; `keep` is its answer for a photo sent or marked meanwhile.
+      if (name === "replace_ready_scan_photo") { const old = (args as { p_old?: string }).p_old!; if (f.keep) return { data: "kept" }; f.deleted.push(old); return { data: "deleted" }; }
       if (name === "admit_scan_photo") return { data: Array.isArray(f.admit) ? f.admit.shift() ?? "reserved" : f.admit };
       if (name === "recover_scan_photo") return { data: f.recover };
       return { data: name === "start_scan_photo" ? f.start : name === "change_scan_photo" ? "saved" : "pending" };
@@ -50,7 +52,7 @@ vi.mock("@/lib/scan-photo-server", () => ({
 import { POST, PUT } from "./route";
 const id = "00000000-0000-4000-8000-000000000001";
 const put = () => PUT(new Request(`https://unicalearning.com/api/account/scans/${id}`, { method: "PUT", headers: { Origin: "https://unicalearning.com" }, body: new Uint8Array([1]) }), { params: Promise.resolve({ id }) });
-beforeEach(() => { later.tasks = []; later.checks = true; later.crops = []; later.fail = false; later.preview = "ready"; later.photoChecks = []; f.start = "started"; f.identify = "identified"; f.normalize = true; f.uploads = 0; f.calls = []; f.spread = false; f.admit = "reserved"; f.tokens = []; f.saved = []; f.refuse = "qr"; f.storageFails = 0; f.recover = "pending"; f.filed = "child"; f.closed = []; f.held = null; f.calibration = null; f.deleted = []; ai.mockClear(); vi.stubEnv("OPENROUTER_API_KEY", "synthetic-configured-key"); });
+beforeEach(() => { later.tasks = []; later.checks = true; later.crops = []; later.fail = false; later.preview = "ready"; later.photoChecks = []; f.start = "started"; f.identify = "identified"; f.normalize = true; f.uploads = 0; f.calls = []; f.spread = false; f.admit = "reserved"; f.tokens = []; f.saved = []; f.refuse = "qr"; f.storageFails = 0; f.recover = "pending"; f.filed = "child"; f.closed = []; f.held = null; f.calibration = null; f.deleted = []; f.keep = false; ai.mockClear(); vi.stubEnv("OPENROUTER_API_KEY", "synthetic-configured-key"); });
 afterEach(() => vi.unstubAllEnvs());
 it("stores one normalized photo with zero AI dispatches when a key is configured", async () => {
   expect((await put()).status).toBe(200); expect(f.uploads).toBe(1);
@@ -208,4 +210,14 @@ it("replaces the page's ready photo, not sent, only when the parent chose this p
   f.deleted = []; f.identify = ["duplicate", "identified"]; f.held = { id: "00000000-0000-4000-8000-0000000000aa", printed_revision: "r1", sent_at: "2026-11-14T10:00:00Z" };
   expect((await putReplacing("00000000-0000-4000-8000-0000000000aa")).status).toBe(422);
   expect(f.deleted).toEqual([]);
+});
+
+it("keeps the old photo when the locked swap finds it sent or in marking meanwhile, for a retake and for Use this new photo instead (review of #981)", async () => {
+  f.keep = true;
+  f.identify = ["duplicate", "identified"]; f.held = { id: "old", printed_revision: "r1", sent_at: null }; f.calibration = { state: "refused", printed_revision: "r1" };
+  expect((await put()).status).toBe(422);
+  f.identify = ["duplicate", "identified"]; f.held = { id: "00000000-0000-4000-8000-0000000000aa", printed_revision: "r1", sent_at: null }; f.calibration = { state: "ready", printed_revision: "r1" };
+  expect((await putReplacing("00000000-0000-4000-8000-0000000000aa")).status).toBe(422);
+  expect(f.deleted).toEqual([]);
+  expect(f.calls.filter((c) => c === "replace_ready_scan_photo")).toHaveLength(2);
 });

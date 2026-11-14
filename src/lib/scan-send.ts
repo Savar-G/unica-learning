@@ -25,6 +25,8 @@ export interface FamilySend {
   byChild: ChildSend[];
   /** Children Send refused, with the reason (server logs only). */
   closed: { child: string; ids: string[]; reason: string }[];
+  /** Ids of children whose send failed. */
+  failed: string[];
 }
 
 /** Groups ids by the child each photo is filed with. Only this family's photos are read. Throws on a failed read. */
@@ -40,15 +42,16 @@ export async function photosByChild(db: SupabaseClient<Database>, parent: string
  * Sends each child's pages with `send_scan_photos`, child by child, after that child's access check. One child's failed
  * send does not stop the others; when every open child's send failed, it throws, so the route answers "unavailable".
  */
-export async function sendGroups(db: SupabaseClient<Database>, parent: string, groups: ReadonlyMap<string, readonly string[]>, decide: SendDecide): Promise<FamilySend> {
-  const out: FamilySend = { open: false, sent: [], byChild: [], closed: [] };
+export async function sendGroups(db: SupabaseClient<Database>, parent: string, groups: ReadonlyMap<string, readonly string[]>, decide: SendDecide,
+  send: "send_scan_photos" | "send_due_scan_photos" = "send_scan_photos"): Promise<FamilySend> {
+  const out: FamilySend = { open: false, sent: [], byChild: [], closed: [], failed: [] };
   let failed = 0, tried = 0;
   for (const [child, ids] of [...groups].sort(([a], [b]) => a.localeCompare(b))) {
     const decision = await decide(parent, child);
     if (!decision.open) { out.closed.push({ child, ids: [...ids], reason: decision.reason }); continue; }
     out.open = true; tried++;
-    const { data, error } = await db.rpc("send_scan_photos", { p_parent: parent, p_child: child, p_ids: [...new Set(ids)] });
-    if (error) { failed++; continue; }
+    const { data, error } = await db.rpc(send, { p_parent: parent, p_child: child, p_ids: [...new Set(ids)] });
+    if (error) { failed++; out.failed.push(...ids); continue; }
     const sent = Array.isArray(data) ? data : [];
     out.byChild.push({ child, sent });
     out.sent.push(...sent);
@@ -63,16 +66,23 @@ export async function sendFamilyPhotos(db: SupabaseClient<Database>, parent: str
   return sendGroups(db, parent, await photosByChild(db, parent, ids), decide);
 }
 
-/** Reasons that will not change by themselves: a page held for such a child is let go, so it never sends later on its own. */
-const SETTLED_CLOSED = new Set(["off", "not_test_family", "child_unknown", "no_plan", "ended"]);
+/**
+ * Reasons that will not change by themselves: a page held for such a child is let go, so it never sends later on its
+ * own. `off` is not one: a malformed parent list closes every family at once and is a mistake to fix, not a decision.
+ */
+const SETTLED_CLOSED = new Set(["not_test_family", "child_unknown", "no_plan", "ended"]);
+/** How long a due page that cannot send now waits before the next try, so it does not push newer pages out of the limit. */
+export const DEFER_SECONDS = 3600;
 
 export interface DueSend { parent: string; byChild: ChildSend[] }
 
 /**
  * Sends the held pages whose Undo has passed (`due_scan_sends`, by the database's clock): one family's on its next load of
- * Scan pages, or every family's from the recovery run. Grouped by family and child, each with Send's access check; a
- * page of a child whose access is settled closed is let go (`unhold_scan_photos`). A family whose send fails is left for
- * the next run. Never throws; returns what was sent.
+ * Scan pages, or every family's from the recovery run. Grouped by family and child, each with Send's access check, and
+ * sent by `send_due_scan_photos`, which sends only rows that still match the due rule under the family lock (an Undo
+ * that lands after the read wins). A page of a child whose access is settled closed is let go (`release_scan_holds`);
+ * one that cannot send now (a plan paused, payment failed or unreadable, a failed send, a family being deleted) waits
+ * DEFER_SECONDS more (`defer_scan_sends`), so stuck pages never fill the run's limit. Never throws; returns what was sent.
  */
 export async function sendDuePhotos(db: SupabaseClient<Database>, o: { parent?: string; limit?: number; env?: Env; decide?: SendDecide } = {}): Promise<DueSend[]> {
   const env = o.env ?? process.env, decide = o.decide ?? decideOf(db, env);
@@ -89,13 +99,18 @@ export async function sendDuePhotos(db: SupabaseClient<Database>, o: { parent?: 
     families.set(r.parent_id, children);
   }
   const out: DueSend[] = [];
+  const defer = async (parent: string, ids: string[]) => {
+    if (!ids.length) return;
+    try { await db.rpc("defer_scan_sends", { p_parent: parent, p_ids: ids, p_seconds: DEFER_SECONDS }); } catch { /* the next run tries again */ }
+  };
   for (const [parent, groups] of families) {
     try {
-      const result = await sendGroups(db, parent, groups, decide);
+      const result = await sendGroups(db, parent, groups, decide, "send_due_scan_photos");
       const settled = result.closed.filter((c) => SETTLED_CLOSED.has(c.reason)).flatMap((c) => c.ids);
-      if (settled.length) await db.rpc("unhold_scan_photos", { p_parent: parent, p_ids: settled });
+      if (settled.length) await db.rpc("release_scan_holds", { p_parent: parent, p_ids: settled });
+      await defer(parent, [...result.closed.filter((c) => !SETTLED_CLOSED.has(c.reason)).flatMap((c) => c.ids), ...result.failed]);
       if (result.sent.length) out.push({ parent, byChild: result.byChild.filter((c) => c.sent.length) });
-    } catch { /* the next run tries this family again */ }
+    } catch { await defer(parent, [...groups.values()].flat()); }
   }
   return out;
 }

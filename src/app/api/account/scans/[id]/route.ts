@@ -125,7 +125,9 @@ async function replaceRefusedPhoto(admin: SupabaseClient<Database>, parent: stri
     if (check.error || !c || c.state === "running" || c.printed_revision !== held.data.printed_revision) return false;
     // A ready photo goes only when the parent chose this new photo instead of that one (#4).
     if (c.state === "ready" && held.data.id !== ready) return false;
-    const gone = await admin.rpc("change_scan_photo", { p_parent: parent, p_id: held.data.id, p_action: "delete" });
+    // The delete itself rechecks everything under the family lock (`replace_ready_scan_photo`): still saved, unsent,
+    // active, with no marking job and a finished check of its own printing. A photo sent meanwhile is kept.
+    const gone = await admin.rpc("replace_ready_scan_photo", { p_parent: parent, p_old: held.data.id, p_page: page.data.id });
     if (gone.error || gone.data !== "deleted") return false;
     await cleanupScanPhoto(admin, parent, held.data.id);
     return true;

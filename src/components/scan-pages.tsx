@@ -73,6 +73,8 @@ async function api(path: string, init?: RequestInit, timeout = REQUEST_TIMEOUT_M
 const holdSeconds = (ms: number) => Math.min(600, Math.max(1, Math.ceil(ms / 1000)));
 /** While the capture screen is open, the server holds the pages this long, so none sends while the parent takes photos. */
 const CAPTURE_HOLD_SECONDS = 600;
+/** The capture hold is written again this often while the screen stays open: 4.5 minutes, well inside its 10. */
+export const CAPTURE_RENEW_MS = 270_000;
 const codeOf = (error: unknown) => (error instanceof Error ? error.message : "unavailable");
 /** Notes in this browser that the parent is scanning, so a page's QR code opens Scan pages for that page (src/lib/scan-tab.ts). */
 function noteScanning() {
@@ -171,7 +173,7 @@ function sentWords(sent: number, started: number) {
   return `${pages} sent for marking. Marks show here when they are ready.`;
 }
 
-export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "phone", focus = null, initial, undoMs = UNDO_MS, duplicateMs = DUPLICATE_NOTE_MS, now = Date.now, timeZone = PACIFIC_ZONE, allPages = [] }: {
+export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "phone", focus = null, initial, undoMs = UNDO_MS, duplicateMs = DUPLICATE_NOTE_MS, captureRenewMs = CAPTURE_RENEW_MS, now = Date.now, timeZone = PACIFIC_ZONE, allPages = [] }: {
   childrenList: { id: string; first_name: string }[];
   /** Optional server presentation state; the controller still reloads the signed-in family on mount. */
   initial?: { listing: ScanListing | null; loadFailed?: boolean };
@@ -184,6 +186,8 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   undoMs?: number;
   /** How long "Page 27 is already scanned" shows (#4); tests pass a short one. */
   duplicateMs?: number;
+  /** How often the capture screen renews the server's hold; tests pass a short one. */
+  captureRenewMs?: number;
   now?: () => number;
   timeZone?: FamilyZone;
   /**
@@ -723,6 +727,31 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     if (!ids.length) return;
     void api("/api/account/scans/hold", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids, seconds }) }).catch(() => {});
   }, []);
+  /** Lets go of a hold with no Undo mark: the phone dropped the page or swapped its photo. */
+  const releaseHolds = useCallback((ids: string[]) => {
+    if (!ids.length) return;
+    void api("/api/account/scans/hold", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids, release: true }) }).catch(() => {});
+  }, []);
+  /** Undo on the server, tried three times; the ids it covers (unsent), or null when every try failed. */
+  const unholdOnServer = useCallback(async (ids: string[]): Promise<string[] | null> => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const data = await api("/api/account/scans/hold", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids, undo: true }) });
+        return Array.isArray(data.released) ? data.released as string[] : [];
+      } catch { if (attempt < 2) await wait(1000 * (attempt + 1)); }
+    }
+    return null;
+  }, []);
+  // An Undo whose request never arrived is written again on a later visit: the pages kept back on this phone that the
+  // list shows unsent are let go once per visit (idempotent on the server).
+  const undoneSynced = useRef(new Set<string>());
+  useEffect(() => {
+    if (!listing) return;
+    const ids = listing.photos.filter((p) => !p.sentAt && undone.has(p.id) && !undoneSynced.current.has(p.id)).map((p) => p.id);
+    if (!ids.length) return;
+    for (const id of ids) undoneSynced.current.add(id);
+    void unholdOnServer(ids);
+  }, [listing, undone, unholdOnServer]);
   useEffect(() => {
     if (!auto || capturing) return;
     const fresh = [...stack.readyIds, ...siblingPages].filter((id) => !held.current.has(id) && !undone.has(id));
@@ -747,6 +776,12 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     for (const id of ids) heldAt.current.set(id, at);
     holdOnServer(ids, holdSeconds(undoMs));
   }, [capturing, undoMs, holdOnServer]);
+  // The capture hold is renewed while the screen stays open, well before it runs out (review of #981).
+  useEffect(() => {
+    if (!capturing) return;
+    const timer = setInterval(() => holdOnServer(batchRef.current, CAPTURE_HOLD_SECONDS), captureRenewMs);
+    return () => clearInterval(timer);
+  }, [capturing, captureRenewMs, holdOnServer]);
   const commitRef = useRef<(ids: string[]) => Promise<void>>(async () => {});
   commitRef.current = async (ids: string[]) => {
     const version = epoch.current;
@@ -770,6 +805,8 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
         // A sibling's page still being checked waits again; after two waits, the server's hold sends it once it passes.
         if (sibling && answer && ["busy", "not-started"].includes(answer.preview?.status ?? "") && waitAgain(id)) continue;
         // A sibling's page leaves this screen's batch for good (its own screen shows it), so it is not held again.
+        // The phone dropped the page, so the server's hold goes too (it may be held again once it passes).
+        releaseHolds([id]);
         if (sibling) { siblingIds.current.delete(id); setSiblingPages((list) => list.filter((x) => x !== id)); continue; }
         held.current.delete(id); continue;
       }
@@ -803,11 +840,27 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     return () => clearTimeout(timer);
   }, [batch, capturing, undoMs]);
   // Leaving the page clears the phone's hold (clearAll); the server's hold still sends the pages when their wait ends.
-  function undo() {
-    keepUndone(batch);
-    void api("/api/account/scans/hold", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: batch, undo: true }) }).catch(() => {});
+  // Undo is written on the server, tried again after a failure (it is idempotent, and wins over a hold that arrives after
+  // it). A page the server says was already sent (the recovery run, or another phone) is named, never "Not sent".
+  async function undo() {
+    const ids = batch, version = epoch.current;
+    for (const id of ids) undoneSynced.current.add(id);
+    keepUndone(ids);
     setBatch([]);
-    setMessage({ text: batch.length === 1 ? "Not sent. The page waits here. Open it to send it." : "Not sent. The pages wait here. Open one to send it.", failed: false });
+    const notSent = (n: number) => (n === 1 ? "Not sent. The page waits here. Open it to send it." : "Not sent. The pages wait here. Open one to send it.");
+    setMessage({ text: notSent(ids.length), failed: false });
+    const released = await unholdOnServer(ids);
+    if (version !== epoch.current || !sessionCurrent.current || !released) return;
+    const already = ids.filter((id) => !released.includes(id));
+    if (!already.length) return;
+    const fresh = await load().catch(() => null);
+    if (version !== epoch.current) return;
+    const numbers = already.map((id) => fresh?.photos.find((p) => p.id === id)?.pageNumber).filter((n): n is number => Boolean(n)).sort((a, b) => a - b);
+    const named = numbers.length === already.length
+      ? `${numbers.length === 1 ? "Page" : "Pages"} ${numbers.length < 2 ? numbers[0] : `${numbers.slice(0, -1).join(", ")} and ${numbers[numbers.length - 1]}`} ${numbers.length === 1 ? "was" : "were"} already sent for marking.`
+      : `${already.length === 1 ? "1 page was" : `${already.length} pages were`} already sent for marking.`;
+    const kept = ids.length - already.length;
+    setMessage({ text: kept ? `${named} ${notSent(kept)}` : named, failed: false });
   }
 
   // Photos still queued on this phone (#3): a camera shot is not in the phone's photos, so leaving now would lose it.
@@ -847,6 +900,8 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     const timer = duplicateTimers.current.get(key);
     if (timer) { clearTimeout(timer); duplicateTimers.current.delete(key); }
     setBatch((b) => b.filter((id) => id !== old));
+    // The old photo leaves the Undo: its server hold goes, so the server never sends it while the swap runs.
+    releaseHolds([old]);
     patchUpload(key, { status: "waiting", reason: undefined, replaceOf: old, replaceable: undefined, page: undefined, reservation: undefined, codeUnread: undefined });
     pump();
   }
@@ -1071,7 +1126,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   </div>;
   const undoBar = batch.length > 0 && <div className="scan-undo" role="status">
     <span><i aria-hidden="true">{ICONS.check}</i>{batch.length === 1 ? "1 page sends for marking in a moment" : `${batch.length} pages send for marking in a moment`}</span>
-    <button type="button" className="scan-link" onClick={undo}>Undo</button>
+    <button type="button" className="scan-link" onClick={() => void undo()}>Undo</button>
   </div>;
 
   if (loadFailed && !listing) {

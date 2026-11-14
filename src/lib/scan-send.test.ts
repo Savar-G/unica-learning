@@ -14,7 +14,7 @@ function fakeDb(o: { due?: { id: string; parent_id: string; child_id: string }[]
     rpc: async (name: string, args: Record<string, unknown>) => {
       calls.push({ name, args });
       if (name === "due_scan_sends") return o.failDue ? { data: null, error: { message: "down" } } : { data: (o.due ?? []).filter((r) => !args.p_parent || r.parent_id === args.p_parent), error: null };
-      if (name === "send_scan_photos") return o.failSend?.includes(args.p_child as string) ? { data: null, error: { message: "down" } } : { data: [...(args.p_ids as string[])].sort(), error: null };
+      if (name === "send_scan_photos" || name === "send_due_scan_photos") return o.failSend?.includes(args.p_child as string) ? { data: null, error: { message: "down" } } : { data: [...(args.p_ids as string[])].sort(), error: null };
       return { data: args.p_ids, error: null };
     },
   };
@@ -46,8 +46,11 @@ it("sends the held pages whose Undo passed, per family and child, and lets go of
   const sent = await sendDuePhotos(db, { decide: decide({ leah: "open", omar: "open", aisha: "ended", zoe: "read_failed" }) });
   expect(sent).toEqual([{ parent: "p1", byChild: [{ child: "leah", sent: ["a"] }] }, { parent: "p2", byChild: [{ child: "omar", sent: ["c"] }] }]);
   expect(calls[0]).toEqual({ name: "due_scan_sends", args: { p_parent: null, p_limit: 100 } });
-  // A plan that ended lets its page go; a failed read keeps the hold for the next run.
-  expect(calls.filter((c) => c.name === "unhold_scan_photos")).toEqual([{ name: "unhold_scan_photos", args: { p_parent: "p1", p_ids: ["b"] } }]);
+  // The send rechecks the due rule under the family lock (review of #981), never the plain Send.
+  expect(calls.filter((c) => c.name.startsWith("send_")).map((c) => c.name)).toEqual(["send_due_scan_photos", "send_due_scan_photos"]);
+  // A plan that ended lets its page go, with no Undo mark; a failed read waits an hour, so it never fills the limit.
+  expect(calls.filter((c) => c.name === "release_scan_holds")).toEqual([{ name: "release_scan_holds", args: { p_parent: "p1", p_ids: ["b"] } }]);
+  expect(calls.filter((c) => c.name === "defer_scan_sends")).toEqual([{ name: "defer_scan_sends", args: { p_parent: "p2", p_ids: ["d"], p_seconds: 3600 } }]);
 });
 
 it("reads one family's due pages on its next load, and never throws when the database is down (#3)", async () => {
@@ -56,4 +59,20 @@ it("reads one family's due pages on its next load, and never throws when the dat
   expect(calls[0].args).toEqual({ p_parent: "p1", p_limit: 100 });
   expect(await sendDuePhotos(fakeDb({ failDue: true }).db, { decide: decide({}) })).toEqual([]);
   expect(await sendDuePhotos(fakeDb({ due: [{ id: "a", parent_id: "p1", child_id: "leah" }], failSend: ["leah"] }).db, { decide: decide({ leah: "open" }) })).toEqual([]);
+});
+
+it("leaves the holds alone when marking is off for everyone, and defers pages it could not send (review of #981)", async () => {
+  const off = fakeDb({ due: [{ id: "a", parent_id: "p1", child_id: "leah" }] });
+  expect(await sendDuePhotos(off.db, { decide: decide({ leah: "off" }) })).toEqual([]);
+  expect(off.calls.filter((c) => c.name === "release_scan_holds" || c.name === "unhold_scan_photos")).toEqual([]);
+  expect(off.calls.filter((c) => c.name === "defer_scan_sends")).toEqual([{ name: "defer_scan_sends", args: { p_parent: "p1", p_ids: ["a"], p_seconds: 3600 } }]);
+  for (const reason of ["paused", "payment_failed", "unknown"]) {
+    const held = fakeDb({ due: [{ id: "a", parent_id: "p1", child_id: "leah" }] });
+    await sendDuePhotos(held.db, { decide: decide({ leah: reason }) });
+    expect(held.calls.map((c) => c.name)).toEqual(["due_scan_sends", "defer_scan_sends"]);
+  }
+  // A family whose send fails (being deleted) waits an hour too.
+  const failing = fakeDb({ due: [{ id: "a", parent_id: "p1", child_id: "leah" }], failSend: ["leah"] });
+  await sendDuePhotos(failing.db, { decide: decide({ leah: "open" }) });
+  expect(failing.calls.filter((c) => c.name === "defer_scan_sends")).toEqual([{ name: "defer_scan_sends", args: { p_parent: "p1", p_ids: ["a"], p_seconds: 3600 } }]);
 });
