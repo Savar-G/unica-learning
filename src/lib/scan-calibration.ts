@@ -67,12 +67,17 @@ export interface Calibration {
    */
   mesh?: Mesh;
   /**
-   * "qr": a corner mark was cut off by the photo's edge, so the page was placed from its QR code and its print, and the
-   * marks still in the photo. `marks` then holds where the cut-off marks would be, outside the photo. Absent: four marks.
+   * "qr": a corner mark was cut off by the photo's edge or hidden in it (a hand's shadow, #912), so the page was placed
+   * from its QR code and its print, and the marks found. `marks` then holds where the other marks would be. Absent: four marks.
    */
   placedBy?: "qr";
   /** The marks that were outside the photo, for a page placed by its QR code. */
   missingMarks?: ScanMark[];
+  /**
+   * The marks in the photo that could not be found as this page's own (a hand's shadow over a corner, #912), for a page
+   * placed by its QR code: never used, never replaced by a nearer sheet's mark. Absent when every mark in view was found.
+   */
+  hiddenMarks?: ScanMark[];
 }
 
 /** A sheet's bend: coefficients of 1, u, v, u², uv, v² for each direction, u and v from -0.5 to 0.5 across the page. */
@@ -1435,6 +1440,8 @@ const QR_PLACE_MIN_PATCHES = 8;
 const MARK_ARM = 0.022;
 /** How near a mark in view must be to where the placed page puts it, in arms. */
 const MARK_NEAR = 3;
+/** The fewest of the page's own marks a page placed by its code must show when a mark in view is hidden (#912). */
+const MIN_FOUND_WITH_HIDDEN = 2;
 /**
  * How near a mark placed by the code must be, in arms, before it may pin the sheet. A sheet lying on the rest of the
  * book has the under-sheet's mark 2 arms or more from where the print puts this page's own (#912 review), so a mark
@@ -1446,7 +1453,7 @@ const MARK_ALIGNMENT = Math.cos((30 * Math.PI) / 180);
 /** How much more a mark found in view counts in the placement's map than one patch of print. */
 const MARK_WEIGHT = 10;
 
-interface QrPlacement { t: Transform; turns: 0 | 1 | 2 | 3; fit: number; mesh?: Mesh; marks: Point[]; missing: ScanMark[] }
+interface QrPlacement { t: Transform; turns: 0 | 1 | 2 | 3; fit: number; mesh?: Mesh; marks: Point[]; missing: ScanMark[]; hidden: ScanMark[] }
 
 /**
  * A page placed by its QR code and its print, when its four marks cannot place it: a mark cut off by the photo's edge, or
@@ -1497,7 +1504,7 @@ function placedByQr(photo: Raster, printedQr: FoundQr, ink: PrintedInk, greySums
   const at = (p: Point) => photoPointOf(t!, first.mesh, p);
   const scale = distance(at({ x: 0, y: page.height / 2 }), at({ x: page.width, y: page.height / 2 })) / page.width;
   const arm = MARK_ARM * page.width * scale;
-  const found: { at: number; corner: Point }[] = [], missing: ScanMark[] = [];
+  const found: { at: number; corner: Point }[] = [], missing: ScanMark[] = [], hidden: ScanMark[] = [];
   for (let k = 0; k < 4; k++) {
     const p = at(stored[k]);
     const inward = { x: stored[k].x < page.width / 2 ? 1 : -1, y: stored[k].y < page.height / 2 ? 1 : -1 };
@@ -1522,9 +1529,13 @@ function placedByQr(photo: Raster, printedQr: FoundQr, ink: PrintedInk, greySums
       const tips = s.tips.map((tip) => unit(s.corner, tip));
       if (arms.every((d) => tips.some((e) => dot(d, e) >= MARK_ALIGNMENT))) nearest = s;
     }
-    if (!nearest || distance(nearest.corner, p) > MARK_SURE * arm) return null;
+    // A mark in view that is not there as this page's own (in a hand's shadow, or only a mark farther off, as a sheet
+    // under the page shows) is hidden: never pinned, so a neighbouring sheet never bends the page. The code and the print
+    // still have to place the page, with enough of its own marks found (below).
+    if (!nearest || distance(nearest.corner, p) > MARK_SURE * arm) { hidden.push(SCAN_MARKS[k]); continue; }
     found.push({ at: k, corner: nearest.corner });
   }
+  if (hidden.length && found.length < MIN_FOUND_WITH_HIDDEN) return null;
   let placed: Transform | null = t, sheet = first, fit = firstFit;
   if (!found.length && fit < MIN_PAGE_FIT) return null;
   if (found.length) {
@@ -1543,7 +1554,7 @@ function placedByQr(photo: Raster, printedQr: FoundQr, ink: PrintedInk, greySums
   const right = { x: applyTransform(placed, { x: page.width, y: page.height / 2 }).x - applyTransform(placed, { x: 0, y: page.height / 2 }).x, y: applyTransform(placed, { x: page.width, y: page.height / 2 }).y - applyTransform(placed, { x: 0, y: page.height / 2 }).y };
   const turns = (((Math.round(Math.atan2(right.y, right.x) / (Math.PI / 2)) % 4) + 4) % 4) as 0 | 1 | 2 | 3;
   const marks = stored.map((s, k) => found.find((f) => f.at === k)?.corner ?? photoPointOf(placed, sheet.mesh, s));
-  return { t: placed, turns, fit, ...(sheet.mesh ? { mesh: sheet.mesh } : {}), marks, missing };
+  return { t: placed, turns, fit, ...(sheet.mesh ? { mesh: sheet.mesh } : {}), marks, missing, hidden };
 }
 
 const photoPointOf = (t: Transform, mesh: Mesh | undefined, p: Point) => applyTransform(t, mesh ? meshAt(mesh, p.x, p.y) : p);
@@ -1556,8 +1567,8 @@ const photoPointOf = (t: Transform, mesh: Mesh | undefined, p: Point) => applyTr
  * asks sheetChecker about the child's other pages, a few at a time.
  *
  * A sheet that is not flat is aligned part by part (pageFit, #912). A photo whose four marks do not place the page, as when
- * the photo's edge cuts one off, is placed by its QR code and print instead (placedByQr), never by a mark that is in view
- * but missing: a covered mark still refuses.
+ * the photo's edge cuts one off or a hand's shadow hides one, is placed by its QR code and print instead (placedByQr):
+ * a hidden mark is never used and never replaced by another sheet's, and the print must still follow (#912).
  */
 export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: PhotoContract; pageLink: string; writing?: readonly Box[] }): CalibrationResult {
   if (o.contract.status !== "available") return { status: "unavailable", reason: o.contract.reason };
@@ -1619,13 +1630,13 @@ export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: Ph
     // The code and print place the page; each mark is then the one nearest where the page puts it (placedByQr).
     const placed = placedByQr(photo, printedQr, ink, greySums, shapes, stored, pageSize);
     if (!placed) return { status: "refused", reason: "ambiguous-page" };
-    return calibration(placed, placed.missing.length ? { placedBy: "qr", missingMarks: placed.missing } : {});
+    return calibration(placed, placed.missing.length || placed.hidden.length ? { placedBy: "qr", missingMarks: placed.missing, ...(placed.hidden.length ? { hiddenMarks: placed.hidden } : {}) } : {});
   }
   // Placed by its code only when four marks did not line up as a page: a page whose marks did, but whose print does not
   // follow, is another page.
   if (followers.length === 0 && (refusal === "marks-missing" || refusal === "marks-inconsistent")) {
     const placed = placedByQr(photo, printedQr, ink, greySums, shapes, stored, pageSize);
-    return placed ? calibration(placed, { placedBy: "qr", missingMarks: placed.missing }) : { status: "refused", reason: refusal };
+    return placed ? calibration(placed, { placedBy: "qr", missingMarks: placed.missing, ...(placed.hidden.length ? { hiddenMarks: placed.hidden } : {}) }) : { status: "refused", reason: refusal };
   }
   if (followers.length === 0) return { status: "refused", reason: refusal };
   const [best] = followers;

@@ -161,15 +161,13 @@ describe("refusals", () => {
     return r;
   };
 
-  it.each(SCAN_MARKS)("refuses a photo with mark %s out of view, and makes no calibration", async (m) => {
-    // Disproved if three marks and a guess give a map.
-    const photo = await stored(photographed(covered(m), SIZE, square(SIZE, 60)));
-    expect(calibratePhoto({ photo, printed, contract: available, pageLink: LINK })).toEqual({ status: "refused", reason: "marks-missing" });
-  }, 20_000);
-
-  it("refuses a photo with a thumb across a mark", async () => {
-    const r = writtenPage();
-    fill(r, 20, 20, 90, 30, 60);
+  it("refuses a photo with three marks hidden: too few of the page's own marks to place it", async () => {
+    // Disproved if one mark, the code and a guess give a map.
+    const r = covered("tl");
+    for (const m of ["tr", "bl"] as const) {
+      const p = POINTS[m];
+      fill(r, m === "bl" ? p.x - 4 : p.x - 34, m === "tr" ? p.y - 4 : p.y - 34, 38, 38, 248);
+    }
     const photo = await stored(photographed(r, SIZE, square(SIZE, 60)));
     expect(calibratePhoto({ photo, printed, contract: available, pageLink: LINK }).status).toBe("refused");
   }, 20_000);
@@ -452,11 +450,37 @@ describe("a sheet held up, cut by the photo's edge, or in shadow (#912)", () => 
     expect((await calibrate(await cornerCut(otherPage()))).status).toBe("refused");
   }, 60_000);
 
-  it("refuses the same cut photo when a mark that should be in view is covered", async () => {
-    // A cut-off mark may be missing; one the photo should show may not: the bottom-left mark painted over.
+  it.each(SCAN_MARKS)("a photo with mark %s hidden in a shadow is placed by its code and print, and every crop reads its own answer (#912)", async (m) => {
+    // Cedric's rule (2026-11-14): with the code and every answer in view, a hidden corner does not refuse the page. Disproved
+    // if the page is refused, or a crop reads another box's answer.
+    const sheet = { ...textWritten, data: new Uint8Array(textWritten.data) };
+    const p = POINTS[m];
+    fill(sheet, m === "tl" || m === "bl" ? p.x - 4 : p.x - 34, m === "tl" || m === "tr" ? p.y - 4 : p.y - 34, 38, 38, 248);
+    const photo = await stored(photographed(sheet, SIZE, square(SIZE, 60), { shade: 0.2 }));
+    const result = calibrate(photo);
+    if (result.status !== "calibrated") throw new Error(`refused: ${JSON.stringify(result)}`);
+    expect(result.calibration).toMatchObject({ placedBy: "qr", missingMarks: [], hiddenMarks: [m] });
+    expect(answersRead(photo, result.calibration)).toEqual(wanted);
+  }, 60_000);
+
+  it("the same cut photo with a mark in view covered is placed by the code, two own marks found, every crop its own answer", async () => {
+    // #912 (Cedric, 2026-11-14): a covered mark no longer refuses while the code, two own marks and the print place the
+    // page. Disproved if a crop reads another box's answer.
+    const sheet = textWritten;
+    const covered = { ...sheet, data: new Uint8Array(sheet.data) };
+    fill(covered, POINTS.bl.x - 4, POINTS.bl.y - 34, 38, 38, 248);
+    const photo = await cornerCut(covered);
+    const result = calibrate(photo);
+    if (result.status !== "calibrated") throw new Error(`refused: ${JSON.stringify(result)}`);
+    expect(result.calibration).toMatchObject({ placedBy: "qr", missingMarks: ["tl"], hiddenMarks: ["bl"] });
+    expect(answersRead(photo, result.calibration)).toEqual(wanted);
+  }, 60_000);
+
+  it("refuses the cut photo when a second mark in view is covered too: one own mark is too few", async () => {
     const sheet = textPage(true);
     fill(sheet, POINTS.bl.x - 4, POINTS.bl.y - 34, 38, 38, 248);
-    expect(calibrate(await cornerCut(sheet))).toEqual({ status: "refused", reason: "marks-missing" });
+    fill(sheet, POINTS.br.x - 34, POINTS.br.y - 34, 38, 38, 248);
+    expect(calibrate(await cornerCut(sheet)).status).toBe("refused");
   }, 60_000);
 
   it("requires a near-edge mark whose inward arms are fully in the photo", async () => {
@@ -465,7 +489,10 @@ describe("a sheet held up, cut by the photo's edge, or in shadow (#912)", () => 
     const full = photographed(sheet, SIZE, square(SIZE, 60), { shade: 0.2 });
     // The mark's corner is about 24 px inside this edge. Its arms point inward and are not cut off.
     const photo = await stored(cutOut(full, { x: 75, y: 0, width: SIZE.width - 75, height: SIZE.height }));
-    expect(calibrate(photo)).toEqual({ status: "refused", reason: "marks-missing" });
+    // In view, so covered rather than cut off (#912): hidden, never counted as missing.
+    const covered = calibrate(photo);
+    if (covered.status !== "calibrated") throw new Error(`refused: ${JSON.stringify(covered)}`);
+    expect(covered.calibration).toMatchObject({ placedBy: "qr", missingMarks: [], hiddenMarks: ["bl"] });
     const control = await stored(cutOut(photographed(textWritten, SIZE, square(SIZE, 60), { shade: 0.2 }),
       { x: 75, y: 0, width: SIZE.width - 75, height: SIZE.height }));
     const result = calibrate(control);
