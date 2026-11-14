@@ -49,7 +49,7 @@ console.log(rows.map((r) => `${r.run}\t${r.problem ? "blurry" : "clear "}\t${r.y
  */
 async function physical(dir: string) {
   const set = JSON.parse(await readFile(resolve(dir, "set.json"), "utf8")) as { photos: { mapping: { file: string }; status: string; reason: string | null; photo: { image: { path: string } } }[] };
-  const kindOf = (file: string): PhotoKind => PHOTO_PROBLEMS.find((p) => file.includes(`-${p}.`)) ?? "clear";
+  const kindOf = (file: string): PhotoKind => PHOTO_PROBLEMS.find((p) => new RegExp(`-${p}\\d*\\.`).test(file)) ?? "clear";
   const ready = set.photos.filter((p) => p.status === "ready");
   const refused = set.photos.filter((p) => p.status !== "ready").map((p) => ({ file: p.mapping.file, kind: kindOf(p.mapping.file), reason: p.reason }));
   const photos = await Promise.all(ready.map(async (p) => {

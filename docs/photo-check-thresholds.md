@@ -83,3 +83,17 @@ DECISIONS_OPENROUTER_API_KEY="$(security find-generic-password -s decisions-open
 ```
 
 `--max-usd` must be a number of at least 0. Each request is admitted only when its whole cost bound fits under the cap (`costCap` from the #851 comparison), and is settled at its known cost plus the bound of each attempt that gave no cost. So `--max-usd 0` sends nothing (checked 2026-11-11: 40 of 40 not admitted, USD 0). The script reads the set folder and never writes into it. It writes the raw answers to `.workbook-sample/photo-check/` (gitignored) and never prints the key. `--question` takes `blurry` (default), `glare`, `shadow` or `faint`; `--model` takes a model of `DECISION_MODELS`.
+
+### Second real run (2026-11-14, 53 photos)
+
+Cedric added 20 photos: 10 clear single pages, 5 flash or lamp glare and 5 hand or phone shadow, with the corners and QR codes in view. The page check (main plus #954's stacked-sheet fix) accepted 37 of 53, so the check was asked about 18 clear, 11 glare and 8 shadow pages, two runs each, on `typesafe/jev-1.14` (74 requests, USD 0.0167, 0 failures). Results: `docs/photo-check-real-results-20261114-v2.json` (names, hashes and every answer; no images).
+
+| Question | Highest on a clear photo | Its own photos | Caught | Ships? |
+|---|---|---|---|---|
+| blurry | 0.13 | 0 (every blurry photo is refused by the page check first) | - | no |
+| glare | 0.20 | 11 | 1 photo (the plastic bag, 0.84); the 10 flash or lamp photos 0.04 to 0.20 | no |
+| shadow | 0.45 | 8 | 1 photo surely (0.82 to 0.85), one at 0.48 to 0.54; the rest 0.06 to 0.36 | no |
+| faint | 0.05 | 0 | - | no |
+
+No kind ships, so the thresholds and their version do not change. What it shows: in these photos the glare and the shadow left every answer readable (each was checked by eye for the truth file), and Jev rates them like clear pages. The photos the page check refuses (QR not read, ambiguous page) are where a parent needs a sentence, so the refusal messages, not the check, are where "too much glare" and "too blurry" belong for now.
+
