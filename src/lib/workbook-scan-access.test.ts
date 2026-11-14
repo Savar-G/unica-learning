@@ -33,7 +33,8 @@ describe("scan progress release access", () => {
   it.each(["", "family", "on", "Families", "families "])("fails closed for malformed mode %j", mode => {
     expect(scanMaintenanceRelease({ ...env, WORKBOOK_SCAN_PROGRESS_ENABLED: mode })).toBeNull();
   });
-  it("does not enable reminder families mode", () => {
-    expect(scanMaintenanceRelease({ ...env, WORKBOOK_SCAN_REMINDERS_ENABLED: "families" })).toBeNull();
+  it("enables reminder families mode only with families progress (#475)", () => {
+    expect(scanMaintenanceRelease({ ...env, WORKBOOK_SCAN_PROGRESS_ENABLED: "test-only", WORKBOOK_SCAN_REMINDERS_ENABLED: "families" })).toBeNull();
+    expect(scanMaintenanceRelease({ ...env, WORKBOOK_SCAN_PROGRESS_ENABLED: "families", WORKBOOK_SCAN_REMINDERS_ENABLED: "families" })).toMatchObject({ mode: "families", reminders: "families", delivery: true });
   });
 });
