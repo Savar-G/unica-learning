@@ -4861,7 +4861,50 @@ function vocabExtra(s: Session): ReadonlySet<string> {
  */
 function reviewNeeded(sentence: string, s: Session, rules: Pick<SayRules, "stance">): boolean {
   if (exactSafe(sentence)) return false;
-  return !mathOnly(sentence, vocabExtra(s)) || (rules.stance === "wrong" && PRAISE_WORDS.test(sentence));
+  if (rules.stance === "wrong" && PRAISE_WORDS.test(sentence)) return true;
+  return !mathOnly(sentence, vocabExtra(s)) && !closedMathSentence(sentence, s);
+}
+
+/** Hedges about hearing the child, exact (after case and a final "." are set aside). */
+const HEARD_HEDGES = new Set(["i'm not sure i heard that right", "hmm, i'm not sure i heard that right"]);
+/** "Did you say 5?" or "Did you say 5 for the answer?": a confirm of a number the child said. Digits only. */
+const SAID_CONFIRM = /^did you say (\d+)(?: for (?:the|that|this) answer)?\?$/i;
+/** "12 minus 8 was the ones step.": the operation of a column step that is done. Digits only. */
+const STEP_ROLE = /^(\d+) (minus|plus) (\d+) was the (ones|tens|hundreds|thousands) step\.?$/i;
+/** Whether the child's turn is plain math, read once per session state (plainMathTurn steps the session). */
+const plainTurnRead = new WeakMap<Session, boolean>();
+
+/**
+ * Review path repair (main 9babc50c): the closed forms of a reply to a plain math turn. Code checks each in full, so it
+ * needs no external review. Each holds only when the child's turn is a plain math turn by code's own read (`plainMathTurn`:
+ * closed input words, no help, stop, feeling or safety), never by the model's own kind:
+ *  - a hearing hedge from HEARD_HEDGES;
+ *  - "Did you say N?" where N is a number in the child's turn;
+ *  - "A minus B was the <place> step." where a done column step of that place has exactly those operands.
+ * The say check (numbers, the answer, the step values, the stance) still runs on every sentence before this.
+ */
+function closedMathSentence(sentence: string, s: Session): boolean {
+  const text = sentence.trim().replace(/[’]/g, "'");
+  const hedge = HEARD_HEDGES.has(text.replace(/[.!]+$/, "").toLowerCase());
+  const confirm = SAID_CONFIRM.exec(text);
+  const role = STEP_ROLE.exec(text);
+  if (!hedge && !confirm && !role) return false;
+  if (!s.turn) return false;
+  let plain = plainTurnRead.get(s);
+  // An "unclear" reading marks the turn uncertain (which numbers were said), not what it is about: the review reads the
+  // same words, so the closed read of the words is taken as heard. A confirm is what such a turn calls for.
+  if (plain === undefined) { plain = plainMathTurn({ ...s, turn: { ...s.turn, uncertain: false } }); plainTurnRead.set(s, plain); }
+  if (!plain) return false;
+  if (hedge) return true;
+  if (confirm) return valuesOf(s.turn.text).some((v) => v.key === String(Number(confirm[1])));
+  if (!role || !s.package) return false;
+  const [a, op, b, place] = [Number(role[1]), role[2].toLowerCase(), Number(role[3]), role[4].toLowerCase()];
+  return workSteps(s.package).some((st) => {
+    if (!("place" in st) || st.place !== place || !(s.done.includes(st.id) || (s.passed ?? []).includes(st.id))) return false;
+    if (op === "minus" && st.kind === "subtract-column") return st.bottom !== null && st.top - (st.lent ? 1 : 0) + (st.regrouped ? 10 : 0) === a && st.bottom === b;
+    if (op === "plus" && st.kind === "add-column") return st.carryIn === 0 && st.digits.length === 2 && ((st.digits[0] === a && st.digits[1] === b) || (st.digits[0] === b && st.digits[1] === a));
+    return false;
+  });
 }
 
 /** The child's name hidden as {name}: no model reads it (round 4, P2-6). */
@@ -5089,7 +5132,7 @@ function withStreamed(base: Session, r: StepResult, at: number, planned: string,
  * before the call, and its say rules. Null when nothing may stream: no plan, a plan in code's own words, safety, a stop,
  * a fixed reply due, or the content hold.
  */
-export function streamPlan(s: Session): { rules: SayRules; act: Act; stance: "wrong" | "right" | "none"; extra: ReadonlySet<string>; greeting: boolean } | null {
+export function streamPlan(s: Session): { rules: SayRules; act: Act; stance: "wrong" | "right" | "none"; extra: ReadonlySet<string>; greeting: boolean; closed: (sentence: string) => boolean } | null {
   if (!s.package || !s.turn || s.safety.flagged || s.stopRequested || s.replies?.length || !isTeaching(s.state) || s.scopeDue === "outside_work") return null;
   const plan = codePlan(s);
   if (!plan || plan.codeWords) return null;
@@ -5098,7 +5141,7 @@ export function streamPlan(s: Session): { rules: SayRules; act: Act; stance: "wr
   const exampleLikely = main === "ASSESS" && s.done.length === 0 && (helpInWords(s.turn.text) || saysStuck(s.turn.text));
   // A plain hello ("Hi, Maya") answers the opening: it streams like a math turn, whatever kind the model names it.
   const greeting = /^(?:hi|hello|hey|hiya|good (?:morning|afternoon|evening))(?:,?\s+maya)?[\s!.,]*$/i.test(s.turn.text.trim());
-  return { rules: { ...plan.rules, ...(exampleLikely ? { noQuestion: true } : {}) }, act: plan.p.act, stance: codeStance(s), extra: vocabExtra(s), greeting };
+  return { rules: { ...plan.rules, ...(exampleLikely ? { noQuestion: true } : {}) }, act: plan.p.act, stance: codeStance(s), extra: vocabExtra(s), greeting, closed: (sentence) => closedMathSentence(sentence, s) };
 }
 
 /**
@@ -5112,7 +5155,7 @@ export function streamSentence(sentence: string, plan: NonNullable<ReturnType<ty
   if (!checkSentence(sentence, plan.rules, index).ok) return "stop";
   if (!checkSay([...previous, sentence].join(" "), { ...plan.rules, needsSubstance: false, mustAsk: null }).ok) return "stop";
   if (exactSafe(sentence)) return "send";
-  return reviewAll || !mathOnly(sentence, plan.extra) || (plan.rules.stance === "wrong" && PRAISE_WORDS.test(sentence)) ? "review" : "send";
+  return reviewAll || !(mathOnly(sentence, plan.extra) || plan.closed(sentence)) || (plan.rules.stance === "wrong" && PRAISE_WORDS.test(sentence)) ? "review" : "send";
 }
 
 /**
