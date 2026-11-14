@@ -16,6 +16,8 @@ import { newToken } from "@/lib/sign-in-link";
 import { runFirstPagesEmails } from "@/lib/first-pages-email";
 import { firstPagesEmailStore } from "@/lib/first-pages-email-store";
 import { firstPagesEmailEnabled, restartFirstPagesNow } from "@/lib/first-pages-server";
+import { runScanTeamEmail } from "@/lib/scan-team-email";
+import { scanTeamEmailStore } from "@/lib/scan-team-email-store";
 import { stripe } from "@/lib/stripe";
 import { adminClient } from "@/lib/supabase-auth";
 import { reconcileBook1BaselinesNow } from "@/lib/workbook-book1-capture-server";
@@ -85,6 +87,7 @@ export async function POST(request: Request) {
   let cards: Promise<unknown> | null = null;
   let cancels: Promise<unknown> | null = null;
   let reports: Promise<unknown> | null = null;
+  let scanTeam: Promise<Awaited<ReturnType<typeof runScanTeamEmail>>> | null = null;
   let book1: Promise<unknown> | null = null;
   try {
     if (new URL(request.url).searchParams.get("dry") === "1") {
@@ -105,6 +108,17 @@ export async function POST(request: Request) {
       env: scanEnv, origin, provider, gapMs: SEND_GAP_MS, signal: scanSignal,
     }) : null;
     const transport = scan?.transport ?? pacedTransport(provider, SEND_GAP_MS);
+    // Run beside the other work, with bounded database calls and time for one request and its ledger write.
+    const teamDb = adminClient(AbortSignal.timeout(Math.max(1, now + 55_000 - Date.now())), { retry: false });
+    scanTeam = teamDb ? runScanTeamEmail(scanTeamEmailStore(teamDb), now, {
+      enabled: process.env.SCAN_TEAM_EMAIL_ENABLED, to: process.env.SIGNUP_NOTIFY_EMAIL, origin, transport, time: { now: () => Date.now(), endAt: now + 55_000 },
+    }).then((r) => {
+      if (!["off", "too_early", "none_waiting", "already_sent"].includes(r.status)) console.info("[scan team email] run", JSON.stringify(r));
+      return r;
+    }, (e) => {
+      console.error("[scan team email] run failed", e instanceof Error ? e.message : e);
+      return { status: "failed" as const };
+    }) : Promise.resolve({ status: "failed" });
     // The sweep runs beside the emails and never fails the run.
     sweep = sweepAbandonedCallsNow(admin, { origin, startedAt: now, transport }).then(
       (r) => {
@@ -175,7 +189,7 @@ export async function POST(request: Request) {
         scans = { error: "run_failed" };
       }
     }
-    return Response.json({ ok: true, ...result, maya, monthly, firstPages, book1: await book1, sweep: await sweep, cards: await cards, cancels: await cancels, reports: await reports,
+    return Response.json({ ok: true, ...result, maya, scanTeam: await scanTeam, monthly, firstPages, book1: await book1, sweep: await sweep, cards: await cards, cancels: await cancels, reports: await reports,
       ...(scans ? { scans } : {}) });
   } catch (e) {
     console.error("[reminders] run failed", e instanceof Error ? e.message : e);
@@ -185,6 +199,7 @@ export async function POST(request: Request) {
     await cancels;
     await reports;
     await book1;
+    await scanTeam;
     return Response.json({ ok: false, error: "run_failed" }, { status: 500 });
   }
 }

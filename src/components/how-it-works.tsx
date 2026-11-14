@@ -47,7 +47,7 @@ const STEPS: { n: string; title: string; text: ReactNode; vis: ReactNode; label:
   {
     n: "04",
     title: "Stuck? Maya helps",
-    text: "Your child asks Maya, our AI Teaching Assistant, for help on a shared board. She starts with hints, so your child does the thinking.",
+    text: "Your child calls Maya, our AI Teaching Assistant, and talks it through on a shared board. She starts with hints, so your child does the thinking.",
     vis: <TeachingDemo />,
     label: "Illustration of a shared board: Maya, the AI Teaching Assistant, works through 300 minus 128, then Leah writes the last digit.",
   },

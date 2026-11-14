@@ -21,9 +21,9 @@ type Env = Readonly<Record<string, string | undefined>>;
  *   Measured Sonnet calls in the marking ledger: median 2.7 s, 90th percentile 3.3 s.
  * - At most 6 photos start per Send, so the Send answer can say how many. At about 8 s a photo, 6 photos start well
  *   before 105 s; on a slow run the time rule stops first and the cron marks the rest.
- * Photos run one at a time. The family has one processing slot (`scan_limits.active_jobs = 1`, counted by
- * `scan_active_jobs`), shared by uploads, photo checks and marking, and a claim while it is taken answers "busy". So
- * before each photo the run waits, with a read only, until the slot is free (`familySlotFree`), with backoff, up to the
+ * Photos run one at a time. The family has two processing slots (`scan_limits.active_jobs = 2` since #915, counted
+ * by `scan_active_jobs`), shared by uploads, photo checks and marking, and a claim with both taken answers "busy". So
+ * before each photo the run waits, with a read only, until nothing of the family is running (`familySlotFree`), with backoff, up to the
  * start rule's deadline. Then it calls `processScanMarking` once for that photo, never again in this run.
  *
  * The cron `/api/scan-marking` stays the retry for photos this run does not reach, that fail or that stop. The claim
