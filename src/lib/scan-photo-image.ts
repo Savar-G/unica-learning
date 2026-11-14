@@ -27,15 +27,17 @@ function tokenOf(link: string): string | null {
   return token && url.protocol === "https:" && url.hostname === "unicalearning.com" && !url.search && !url.hash ? token : null;
 }
 
-/** How much the zoomed read enlarges each crop. */
-const QR_ZOOM = 2;
-/** The crops it reads, each half the photo's width and height, by where they start: the lower ones first. */
-const QR_ZOOM_WINDOWS = [[0, 0.5], [0.25, 0.5], [0.5, 0.5], [0, 0.25], [0.25, 0.25], [0.5, 0.25], [0, 0], [0.25, 0], [0.5, 0]] as const;
+/**
+ * The zoomed reads, in order, each with the crops it reads (half the photo's width and height, by where they start,
+ * lower first): 2× over nine crops, then 3× over the four quarters, which still cover the whole photo. 3× reads a code
+ * only a few pixels a module, as in a photo taken from higher up (two clear Robin photos read only at 3×, 2026-11-14).
+ */
+const QR_ZOOM_PASSES = [[2, [[0, 0.5], [0.25, 0.5], [0.5, 0.5], [0, 0.25], [0.25, 0.25], [0.5, 0.25], [0, 0], [0.25, 0], [0.5, 0]]], [3, [[0, 0.5], [0.5, 0.5], [0, 0], [0.5, 0]]]] as const;
 
 /**
- * The page's token from its QR code: first over the whole photo, then in crops zoomed 2×, where a phone photo's small
+ * The page's token from its QR code: first over the whole photo, then in crops zoomed 2× and then 3×, where a phone photo's small
  * code reads when the whole photo's does not. The page prints its code low on the left, so the lower crops come first.
- * Calibration reads the code in place at the same zoom (`qrBound` in scan-calibration.ts), so a photo taken here for its
+ * Calibration reads the code in place at the same zooms (`qrBound` in scan-calibration.ts), so a photo taken here for its
  * code is not refused there for it; change the two together.
  */
 async function pageToken(jpeg: Buffer, size: { width: number; height: number }): Promise<string | null> {
@@ -45,10 +47,10 @@ async function pageToken(jpeg: Buffer, size: { width: number; height: number }):
   if (first) return tokenOf(first.data);
   const width = Math.floor(size.width / 2), height = Math.floor(size.height / 2);
   if (width < 16 || height < 16) return null;
-  for (const [x, y] of QR_ZOOM_WINDOWS) {
+  for (const [zoom, windows] of QR_ZOOM_PASSES) for (const [x, y] of windows) {
     const left = Math.min(Math.round(x * size.width), size.width - width), top = Math.min(Math.round(y * size.height), size.height - height);
     const { data, info } = await sharp(jpeg).extract({ left, top, width, height })
-      .resize({ width: width * QR_ZOOM, height: height * QR_ZOOM, fit: "fill", kernel: "lanczos3" }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+      .resize({ width: width * zoom, height: height * zoom, fit: "fill", kernel: "lanczos3" }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
     const found = read(data, info.width, info.height);
     if (found) return tokenOf(found.data);
   }

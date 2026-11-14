@@ -1201,8 +1201,8 @@ function photoBox(photo: Raster, b: Box): Raster {
   return { width: b.width, height: b.height, channels: 1, data };
 }
 
-/** How much the zoomed read of the photo's own pixels enlarges them: the upload's zoom (scan-photo-image.ts). */
-const QR_ZOOM = 2;
+/** How much the zoomed reads of the photo's own pixels enlarge them, in order: the upload's zooms (scan-photo-image.ts). */
+const QR_ZOOMS = [2, 3] as const;
 
 /** A lanczos (a = 3) weight: the kernel sharp enlarges with. */
 const lanczos = (x: number) => {
@@ -1365,8 +1365,10 @@ function qrBound(photo: Raster, sheetMap: Transform, printed: FoundQr, grid: QrG
     if (own) return !!decides(own, (c) => applyTransform(inverse, { x: x0 + c.x, y: y0 + c.y }));
     // The same pixels enlarged as the upload's zoomed read enlarges them, so a code the upload read in a zoomed crop
     // reads here too.
-    const zoomed = readQr(enlarged(box, QR_ZOOM));
-    if (zoomed) return !!decides(zoomed, (c) => applyTransform(inverse, { x: x0 + c.x / QR_ZOOM, y: y0 + c.y / QR_ZOOM }));
+    for (const zoom of QR_ZOOMS) {
+      const zoomed = readQr(enlarged(box, zoom));
+      if (zoomed) return !!decides(zoomed, (c) => applyTransform(inverse, { x: x0 + c.x / zoom, y: y0 + c.y / zoom }));
+    }
   }
   // Then module by module where the page printed it: what a phone's small or soft code needs.
   const byModule = gridQr(photo, t, printed, grid);
@@ -1383,8 +1385,8 @@ function wholePhotoQr(photo: Raster): FoundQr | null {
   return wholeQrCache.get(photo)!;
 }
 
-/** The upload's zoomed windows (scan-photo-image.ts): half the photo's width and height, by where they start, lower first. */
-const QR_ZOOM_WINDOWS = [[0, 0.5], [0.25, 0.5], [0.5, 0.5], [0, 0.25], [0.25, 0.25], [0.5, 0.25], [0, 0], [0.25, 0], [0.5, 0]] as const;
+/** The upload's zoomed reads (scan-photo-image.ts): each zoom with its windows, half the photo's width and height, lower first. */
+const QR_ZOOM_PASSES = [[2, [[0, 0.5], [0.25, 0.5], [0.5, 0.5], [0, 0.25], [0.25, 0.25], [0.5, 0.25], [0, 0], [0.25, 0], [0.5, 0]]], [3, [[0, 0.5], [0.5, 0.5], [0, 0], [0.5, 0]]]] as const;
 const photoQrCache = new WeakMap<Raster, FoundQr | null>();
 
 /**
@@ -1395,10 +1397,10 @@ function photoQr(photo: Raster): FoundQr | null {
   if (photoQrCache.has(photo)) return photoQrCache.get(photo)!;
   let found = wholePhotoQr(photo);
   const width = Math.floor(photo.width / 2), height = Math.floor(photo.height / 2);
-  for (const [sx, sy] of found || width < 16 || height < 16 ? [] : QR_ZOOM_WINDOWS) {
+  search: for (const [zoom, windows] of found || width < 16 || height < 16 ? [] : QR_ZOOM_PASSES) for (const [sx, sy] of windows) {
     const x0 = Math.min(Math.round(sx * photo.width), photo.width - width), y0 = Math.min(Math.round(sy * photo.height), photo.height - height);
-    const read = readQr(enlarged(photoBox(photo, { x: x0, y: y0, width, height }), QR_ZOOM), "attemptBoth");
-    if (read) { found = { ...read, corners: read.corners.map((c) => ({ x: x0 + c.x / QR_ZOOM, y: y0 + c.y / QR_ZOOM })) }; break; }
+    const read = readQr(enlarged(photoBox(photo, { x: x0, y: y0, width, height }), zoom), "attemptBoth");
+    if (read) { found = { ...read, corners: read.corners.map((c) => ({ x: x0 + c.x / zoom, y: y0 + c.y / zoom })) }; break search; }
   }
   photoQrCache.set(photo, found);
   return found;
