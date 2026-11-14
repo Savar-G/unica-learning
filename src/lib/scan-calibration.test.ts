@@ -161,15 +161,13 @@ describe("refusals", () => {
     return r;
   };
 
-  it.each(SCAN_MARKS)("refuses a photo with mark %s out of view, and makes no calibration", async (m) => {
-    // Disproved if three marks and a guess give a map.
-    const photo = await stored(photographed(covered(m), SIZE, square(SIZE, 60)));
-    expect(calibratePhoto({ photo, printed, contract: available, pageLink: LINK })).toEqual({ status: "refused", reason: "marks-missing" });
-  }, 20_000);
-
-  it("refuses a photo with a thumb across a mark", async () => {
-    const r = writtenPage();
-    fill(r, 20, 20, 90, 30, 60);
+  it("refuses a photo with three marks hidden: too few of the page's own marks to place it", async () => {
+    // Disproved if one mark, the code and a guess give a map.
+    const r = covered("tl");
+    for (const m of ["tr", "bl"] as const) {
+      const p = POINTS[m];
+      fill(r, m === "bl" ? p.x - 4 : p.x - 34, m === "tr" ? p.y - 4 : p.y - 34, 38, 38, 248);
+    }
     const photo = await stored(photographed(r, SIZE, square(SIZE, 60)));
     expect(calibratePhoto({ photo, printed, contract: available, pageLink: LINK }).status).toBe("refused");
   }, 20_000);
@@ -384,6 +382,8 @@ describe("a sheet held up, cut by the photo's edge, or in shadow (#912)", () => 
     return other;
   };
   const calibrate = (photo: Raster) => calibratePhoto({ photo, printed: textPrinted, contract: available, pageLink: LINK });
+  /** As the crop job calls it: with the page's answer boxes, so a hidden corner's answers are checked (#966 review). */
+  const calibrateWithAnswers = (photo: Raster) => calibratePhoto({ photo, printed: textPrinted, contract: available, pageLink: LINK, writing: ANSWERS.map((a) => a.box) });
   /** A crop's grey brought back to paper white: a shadow darkens paper past readDigit's fixed threshold. */
   const brightened = (r: Raster): Raster => {
     const sorted = [...r.data].sort((p, q) => p - q), paper = sorted[Math.floor(sorted.length * 0.9)] || 1;
@@ -452,11 +452,73 @@ describe("a sheet held up, cut by the photo's edge, or in shadow (#912)", () => 
     expect((await calibrate(await cornerCut(otherPage()))).status).toBe("refused");
   }, 60_000);
 
-  it("refuses the same cut photo when a mark that should be in view is covered", async () => {
-    // A cut-off mark may be missing; one the photo should show may not: the bottom-left mark painted over.
+  it.each(SCAN_MARKS)("a photo with mark %s hidden in a shadow is placed by its code and print, and every crop reads its own answer (#912)", async (m) => {
+    // Cedric's rule (2026-11-14): with the code and every answer in view, a hidden corner does not refuse the page. Disproved
+    // if the page is refused, or a crop reads another box's answer.
+    const sheet = { ...textWritten, data: new Uint8Array(textWritten.data) };
+    const p = POINTS[m];
+    fill(sheet, m === "tl" || m === "bl" ? p.x - 4 : p.x - 34, m === "tl" || m === "tr" ? p.y - 4 : p.y - 34, 38, 38, 248);
+    const photo = await stored(photographed(sheet, SIZE, square(SIZE, 60), { shade: 0.2 }));
+    // With the answer boxes, as the crop job asks: the boxes next to the hidden mark must show their own frame (#966 review).
+    const result = calibrateWithAnswers(photo);
+    if (result.status !== "calibrated") throw new Error(`refused: ${JSON.stringify(result)}`);
+    expect(result.calibration).toMatchObject({ placedBy: "qr", missingMarks: [], hiddenMarks: [m] });
+    expect(answersRead(photo, result.calibration)).toEqual(wanted);
+  }, 60_000);
+
+  /** This written page with its bottom-left mark gone from view, as a hand or a sheet over it leaves it. */
+  const blHidden = () => {
+    const sheet = { ...textWritten, data: new Uint8Array(textWritten.data) };
+    fill(sheet, POINTS.bl.x - 4, POINTS.bl.y - 34, 38, 38, 248);
+    return sheet;
+  };
+  /** The answer box nearest the bottom-left mark. */
+  const nearBl = ANSWERS[8];
+
+  it("refuses a page whose hidden corner and the answer beside it lie under another sheet with other writing (#966 review)", async () => {
+    // Disproved if the covered box is cropped: its crop would hold the other sheet's digit as this page's answer.
+    const sheet = blHidden();
+    const other = (nearBl.digit + 4) % 10;
+    fill(sheet, 0, nearBl.box.y - 20, nearBl.box.x + nearBl.box.width + 16, H - nearBl.box.y + 20, 248);
+    drawDigit(sheet, { x: nearBl.box.x + 10, y: nearBl.box.y + 10, width: nearBl.box.width - 20, height: nearBl.box.height - 20 }, other);
+    const result = calibrateWithAnswers(await stored(photographed(sheet, SIZE, square(SIZE, 60), { shade: 0.2 })));
+    expect(result).toEqual({ status: "refused", reason: "corner-covered" });
+  }, 60_000);
+
+  it("accepts a real shadow over the hidden corner and its answers, and the crops beside it read their own digits (#966 review)", async () => {
+    // Disproved if a shadow (the frame still printed, only darker) refuses the page, or a crop near the corner misreads.
+    const photo = await stored(shadowed(photographed(blHidden(), SIZE, square(SIZE, 60), { shade: 0.2 }), { x: 0, y: 1250 }, { x: 640, y: SIZE.height }, 0.45, 10));
+    const result = calibrateWithAnswers(photo);
+    if (result.status !== "calibrated") throw new Error(`refused: ${JSON.stringify(result)}`);
+    expect(result.calibration).toMatchObject({ placedBy: "qr", hiddenMarks: ["bl"] });
+    expect(answersRead(photo, result.calibration)).toEqual(wanted);
+  }, 60_000);
+
+  it.each([45, 70])("a curled sheet with its hidden corner on the curled edge (%i) is refused or read right, never misaligned (#966 review)", async (amount) => {
+    const photo = await stored(curled(photographed(blHidden(), SIZE, square(SIZE, 60), { shade: 0.2 }), amount, { edge: "left" }));
+    const result = calibrateWithAnswers(photo);
+    if (result.status === "calibrated") expect(answersRead(photo, result.calibration)).toEqual(wanted);
+    else expect(result.status).toBe("refused");
+  }, 60_000);
+
+  it("the same cut photo with a mark in view covered is placed by the code, two own marks found, every crop its own answer", async () => {
+    // #912 (Cedric, 2026-11-14): a covered mark no longer refuses while the code, two own marks and the print place the
+    // page. Disproved if a crop reads another box's answer.
+    const sheet = textWritten;
+    const covered = { ...sheet, data: new Uint8Array(sheet.data) };
+    fill(covered, POINTS.bl.x - 4, POINTS.bl.y - 34, 38, 38, 248);
+    const photo = await cornerCut(covered);
+    const result = calibrate(photo);
+    if (result.status !== "calibrated") throw new Error(`refused: ${JSON.stringify(result)}`);
+    expect(result.calibration).toMatchObject({ placedBy: "qr", missingMarks: ["tl"], hiddenMarks: ["bl"] });
+    expect(answersRead(photo, result.calibration)).toEqual(wanted);
+  }, 60_000);
+
+  it("refuses the cut photo when a second mark in view is covered too: one own mark is too few", async () => {
     const sheet = textPage(true);
     fill(sheet, POINTS.bl.x - 4, POINTS.bl.y - 34, 38, 38, 248);
-    expect(calibrate(await cornerCut(sheet))).toEqual({ status: "refused", reason: "marks-missing" });
+    fill(sheet, POINTS.br.x - 34, POINTS.br.y - 34, 38, 38, 248);
+    expect(calibrate(await cornerCut(sheet)).status).toBe("refused");
   }, 60_000);
 
   it("requires a near-edge mark whose inward arms are fully in the photo", async () => {
@@ -465,7 +527,10 @@ describe("a sheet held up, cut by the photo's edge, or in shadow (#912)", () => 
     const full = photographed(sheet, SIZE, square(SIZE, 60), { shade: 0.2 });
     // The mark's corner is about 24 px inside this edge. Its arms point inward and are not cut off.
     const photo = await stored(cutOut(full, { x: 75, y: 0, width: SIZE.width - 75, height: SIZE.height }));
-    expect(calibrate(photo)).toEqual({ status: "refused", reason: "marks-missing" });
+    // In view, so covered rather than cut off (#912): hidden, never counted as missing.
+    const covered = calibrate(photo);
+    if (covered.status !== "calibrated") throw new Error(`refused: ${JSON.stringify(covered)}`);
+    expect(covered.calibration).toMatchObject({ placedBy: "qr", missingMarks: [], hiddenMarks: ["bl"] });
     const control = await stored(cutOut(photographed(textWritten, SIZE, square(SIZE, 60), { shade: 0.2 }),
       { x: 75, y: 0, width: SIZE.width - 75, height: SIZE.height }));
     const result = calibrate(control);

@@ -11,7 +11,7 @@ import { dayPages, type DayPage, type StackPhoto } from "@/lib/scan-stack";
 
 // (Every reason the crop job stores: a record, so a new reason cannot be left out and shown as "failed".)
 const REFUSALS: Record<ScanRefusal, true> = {
-  "marks-missing": true, "marks-inconsistent": true, "page-mismatch": true, "orientation-unclear": true, "ambiguous-page": true,
+  "marks-missing": true, "marks-inconsistent": true, "page-mismatch": true, "orientation-unclear": true, "ambiguous-page": true, "corner-covered": true,
   "qr-mismatch": true, "another-page": true, faint: true, "printed-page-changed": true, "check-timeout": true, failed: true,
 };
 const refusal = (r: unknown): ScanRefusal => (typeof r === "string" && Object.hasOwn(REFUSALS, r) ? r as ScanRefusal : "failed");
