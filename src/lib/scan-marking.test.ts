@@ -235,7 +235,7 @@ function client(answer: unknown | (() => Promise<unknown>), requests: AiJsonRequ
 }
 const run = (s: Store, photo: string, ai: MarkingClientFactory, token = photo) => runScanMarking(s, { parent: P, photo }, token, ai, () => new Date(s.clock).toISOString());
 
-const FROZEN_PROMPT_SHA256 = "d911e7f08fa22d79c80fe91adfbb0059f43ba40c59065630d7547463f374a894";
+const FROZEN_PROMPT_SHA256 = "06123fdccc95bf75145aa4631a9970a2712cd02676dfb47c52aa39d8549b6aab";
 const FROZEN_CONTENT_SHA256 = "803ea308db4014ebdb55c9c685cb27ca84b4ce050edd81be7ccb0ef13553fb52";
 const GOOD_ONE = "27 + 30 = 57\n57 + 9 = 66", GOOD_TWO = "39 + 30 = 69\n69 - 3 = 66";
 type Verdict = "solves" | "does-not-solve" | "unsure" | null;
@@ -305,7 +305,7 @@ describe("two-ways AI marking", () => {
     expect(JSON.stringify(items)).not.toContain("66");
     expect(request.system).toContain("method region");
     expect(request.system).toMatch(/does-not-solve/);
-    expect(MARKING_PROMPT_VERSION).toBe("whole-page-scalar-readings-v8");
+    expect(MARKING_PROMPT_VERSION).toBe("whole-page-scalar-readings-v9");
     const props = (request.schema as { properties: { readings: { items: { required: string[]; properties: { verdict: unknown; reason: unknown } } } } }).properties.readings.items;
     expect(props.required).toEqual(expect.arrayContaining(["verdict", "reason"]));
   });
@@ -313,7 +313,7 @@ describe("two-ways AI marking", () => {
     const request = markingRequest(twoWaysFrame(), new Uint8Array([1]));
     // Changing either needs the controller's approval: the paid run is valid only for what ships.
     expect(createHash("sha256").update(JSON.stringify({ system: request.system, schema: request.schema, effort: request.effort, maxTokens: request.maxTokens })).digest("hex")).toBe(FROZEN_PROMPT_SHA256);
-    expect(MARKING_PROMPT_VERSION).toBe("whole-page-scalar-readings-v8");
+    expect(MARKING_PROMPT_VERSION).toBe("whole-page-scalar-readings-v9");
   });
   it("tells the AI to report a step it cannot read and never to leave out or tidy a step", () => {
     const system = markingRequest(twoWaysFrame(), new Uint8Array([1])).system!;
@@ -900,7 +900,7 @@ describe("S4 whole-page readings", () => {
   });
   it.each([frame, tickFrame, circleFrame])("uses one versioned empty-area rule for number, tick and circle requests", makeFrame => {
     const request = markingRequest(makeFrame(), new Uint8Array([1, 2, 3]));
-    expect(MARKING_PROMPT_VERSION).toBe("whole-page-scalar-readings-v8");
+    expect(MARKING_PROMPT_VERSION).toBe("whole-page-scalar-readings-v9");
     expect(request.system).toMatch(/Blank requires positive visual evidence/);
     expect(request.system).toMatch(/Check for faint writing or marks before reporting blank with empty text/);
     expect(request.system).toMatch(/Never report blank for these conditions/);
@@ -1087,6 +1087,32 @@ describe("S7m spot-the-error answers", () => {
     expect(items.map((r: { region: string }) => r.region)).toEqual(["r1", "r1-2"]);
     expect(JSON.stringify(items)).not.toContain("56");
     expect(cropPlan(f.questions).crops).toHaveLength(1);
+  });
+
+  // #921: on real photos every Fix it tick came back "multiple-marks" while its number was read. The tick sits in the
+  // same printed row as the Fix it box, and a child's tick runs out of its box over the label. The prompt said what a
+  // choice is, never what one tick looks like or that the number beside it is another region.
+  it("tells the AI what one tick on a Yes/No box is and that the Fix it number beside it is not a second mark", () => {
+    const request = markingRequest(spotFrame(), new Uint8Array([1]));
+    const items = JSON.parse((request.content[0] as { text: string }).text).items;
+    expect(items.map((i: { region: string; kind: string; mark?: string }) => [i.region, i.kind, i.mark])).toEqual([["r1", "choice", "tick"], ["r1-2", "number", undefined]]);
+    expect(MARKING_PROMPT_VERSION).toBe("whole-page-scalar-readings-v9");
+    expect(request.system).toMatch(/A tick drawn in or on an option's box marks that option, even when its long stroke runs out of the box over the option's label; that is one mark, not two\./);
+    expect(request.system).toMatch(/Handwriting in another requested region, such as a number written in an answer box beside the choices, belongs to that region and is never a mark on the choice\./);
+    expect(request.system).toMatch(/Printed boxes, printed labels and printed symbols are never marks\./);
+  });
+
+  it("still sends an unclear tick to our team: a mark in both boxes, a reported double mark, or no reading", () => {
+    const system = markingRequest(spotFrame(), new Uint8Array([1])).system!;
+    expect(system).toMatch(/Multiple, crossed-out or ambiguous marks are uncertain\./);
+    expect(system).toMatch(/A mark that reaches into the box of another option is ambiguous\./);
+    const doubled = tickOutput(null, "66");
+    Object.assign(doubled.readings[0], { issue: "multiple-marks" });
+    for (const out of [doubled, tickOutput("Yes and No", "66"), tickOutput("✓ No", "66")]) {
+      const o = readMarkingOutput(spotFrame(), out)[0];
+      expect(o).toMatchObject({ state: "pending", result: null, certainty: "uncertain" });
+      expect(waitsForTeam({ observation: o, model: MARKING_MODEL })).toBe(true);
+    }
   });
 });
 
