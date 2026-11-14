@@ -95,7 +95,7 @@ describe("model requests", () => {
     const finalId = h.t.final({ at: h.now() });
     const turnId = h.t.turn([finalId]);
     const request = h.events.find((e) => e.ev === "request") as Extract<Emitted, { ev: "request" }>;
-    expect(request).toMatchObject({ source: "prepared_interim", turnId: null, binding: "unbound", prepareId });
+    expect(request).toMatchObject({ source: "prepared_interim", turnId: null, binding: "unbound", prepareId, handleId: null });
     // The final lists it as a candidate, never as the turn's own: selection is the controller's to report.
     expect(h.events.find((e) => e.ev === "prepare_candidates")).toMatchObject({ finalId, prepareIds: [prepareId], requestIds: [request.requestId], selection: "unreported" });
     expect((h.t.turnClock(turnId) as { requests: unknown[] }).requests).toEqual([]);
@@ -203,5 +203,14 @@ describe("the log", () => {
   it("never fails a call when the sink throws", () => {
     const t = new CallTelemetry({ sink: () => { throw new Error("disk full"); } });
     expect(() => t.turn([t.final({ at: 1 })])).not.toThrow();
+  });
+
+  it("logs a closed diagnostic handle id on the request and drops any other text", async () => {
+    const h = harness();
+    const f = h.t.fetch(provider().fetch);
+    await withRequestContext({ source: "prepared_expected", turnId: null, diagnosticHandleId: "abc-123#h2" }, () => f("https://openrouter.ai/v1/chat", { method: "POST" }));
+    await withRequestContext({ source: "prepared_expected", turnId: null, diagnosticHandleId: "sk-secret text here" }, () => f("https://openrouter.ai/v1/chat", { method: "POST" }));
+    const sent = h.events.filter((e) => e.ev === "request") as Extract<Emitted, { ev: "request" }>[];
+    expect(sent.map((e) => e.handleId)).toEqual(["abc-123#h2", null]);
   });
 });

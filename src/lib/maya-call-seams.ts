@@ -43,7 +43,7 @@ const siteOrigin = (env: Env) => env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/+$/
  */
 export function callModel(id: string | null, env: Env = process.env, metered?: { ledger: SpendLedger; call: SpendCall; newId: () => string } & CallModelOptions): MayaModel | null {
   const client = metered?.prepared
-    ? preparedClient(env, metered.prepared.budget, metered.prepared.handle, { charge: chargeOf(metered.call), callId: metered.call.id })
+    ? preparedClient(env, metered.prepared.budget, metered.prepared.handle, { charge: chargeOf(metered.call), callId: metered.call.id, diagnosticHandleId: metered.prepared.diagnosticHandleId })
     : metered ? meteredClient(env, metered.ledger, { charge: chargeOf(metered.call), callId: metered.call.id, budgetKey: metered.call.budgetKey, newId: metered.newId, safetyRead: metered.safetyRead }, "model") : mayaAiClient(env);
   if (id === null) return client ? conversationalMayaModel(client) : ruleConversationalModel();
   if (id === FAKE_MODEL_ID) return ruleConversationalModel();

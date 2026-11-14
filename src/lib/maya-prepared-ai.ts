@@ -1,12 +1,14 @@
 // One speculative model request, paid by the text session's existing handle. This client never reserves or settles
 // that handle. The session settles it after both the request and its use/discard decision finish. A handle permits
 // one dispatch: a provider retry must not reuse it. Each client is bound to one handle, never a shared "next" slot.
+// `diagnosticHandleId` only labels the request in the worker's log: it is set around the physical request, and replaces
+// any handle label inherited from the code that prepared the client.
 import type { AiClient } from "@/lib/ai-client";
 import type { CallBudget, Handle } from "@/lib/maya-spend-block";
 import { requestContext, withRequestContext } from "@/lib/maya-request-trace";
 import { SpendRefused, type MeterHooks } from "@/lib/maya-spend-ai";
 
-export function preparedAi(make: (hooks: MeterHooks) => AiClient, budget: Pick<CallBudget, "canSend">, handle: Handle, base: typeof globalThis.fetch = globalThis.fetch): AiClient {
+export function preparedAi(make: (hooks: MeterHooks) => AiClient, budget: Pick<CallBudget, "canSend">, handle: Handle, base: typeof globalThis.fetch = globalThis.fetch, diagnosticHandleId?: string): AiClient {
   let claimed = false;
   let dispatched = false;
   const allowed = () => !dispatched && budget.canSend(handle);
@@ -28,7 +30,7 @@ export function preparedAi(make: (hooks: MeterHooks) => AiClient, budget: Pick<C
       // A prepared request belongs to no turn yet, whatever turn was running when the controller prepared it
       // (src/lib/maya-request-trace.ts). An interim hint named itself; anything else is the controller's expected turn.
       const source = requestContext().source === "prepared_interim" ? "prepared_interim" : "prepared_expected";
-      try { return await withRequestContext({ source, turnId: null }, () => client.json(request, signal)); }
+      try { return await withRequestContext({ source, turnId: null, diagnosticHandleId: diagnosticHandleId ?? null }, () => client.json(request, signal)); }
       finally {
         // A stop or expiry before dispatch costs zero. No callback means the provider's cost is still unknown.
         if (!dispatched) request.onCost?.(0);

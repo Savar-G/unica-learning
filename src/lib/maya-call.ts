@@ -75,6 +75,7 @@ import { fitView, type PlayStep } from "@/lib/board-svg";
 import type { LearningEvents, NewLearningEvent } from "@/lib/learning-events";
 import type { NoteStep } from "@/lib/maya-call-note";
 import { clearStop, heardWordings, learningEvent, limitsOf, mayaPackageCheck, nextActs, SAFETY_GUIDANCE, streamPlan, type Outcome, type Session, type Severity, type WordingHistory, type WordingHistoryStore } from "@/lib/maya";
+import { createHandleDiagnosticIds } from "@/lib/maya-handle-diagnostic";
 import { modelInput, type MayaModel } from "@/lib/maya-model";
 import type { TalkReviewer } from "@/lib/maya-talk-review";
 import { createTextSession, type FinishOptions, type SavedTextSession, type TextOutput, type TextSession, type TextSessionOptions } from "@/lib/maya-text";
@@ -251,7 +252,7 @@ export interface CallStore {
 
 export interface CallModelOptions {
   safetyRead?: boolean;
-  prepared?: { budget: CallBudget; handle: Handle };
+  prepared?: { budget: CallBudget; handle: Handle; diagnosticHandleId?: string };
 }
 
 export interface CallSeams {
@@ -1152,6 +1153,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       // block is reserved now, in the background; the first turn waits for it only if it has not answered.
       const budget: CallBudget | null = seams.spend ? seams.spend.budget(voiceSpend) : null;
       void budget?.open();
+      // One diagnostic id per handle object for this call, shared with the controller's prepareHandleId hook. Log labels only.
+      const prepareHandleId = createHandleDiagnosticIds(voiceSpend.budgetKey ?? record.id);
       // C2 speculative requests use this budget through a request-bound model, without a second reservation.
       let hearGuidance: ((turn: VoiceTurn) => void) | null = null;
       // Every trace turn before this index has been told to the worker in an earlier turn.
@@ -1168,7 +1171,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         onSayPart: (sentence, index) => listener?.part?.(sentence, index),
         onSayCancel: (fromIndex) => listener?.cancel?.(fromIndex),
         onSayEnd: () => listener?.end?.(),
-      }, voiceSpend, budget ? { spend: budget.seam, prepareModel: (handle) => seams.model(record.model, voiceSpend, { prepared: { budget, handle } }) } : undefined);
+      }, voiceSpend, budget ? { spend: budget.seam, prepareModel: (handle) => seams.model(record.model, voiceSpend, { prepared: { budget, handle, diagnosticHandleId: prepareHandleId(handle) } }) } : undefined);
       told = session.trace().turns.length;
       const last = restored.turns.at(-1);
       const pendingFinal: VoiceTurn | null = restored.session.outcome ? record.live?.pendingVoice ?? {

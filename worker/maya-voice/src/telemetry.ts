@@ -44,7 +44,7 @@ export type TelemetryEvent =
   | { ev: "turn"; turnId: string; finalIds: string[]; at: number }
   | { ev: "prepare_hint"; prepareId: string; at: number }
   | { ev: "prepare_candidates"; finalId: string; prepareIds: string[]; requestIds: string[]; selection: "unreported" }
-  | { ev: "request"; requestId: string; source: RequestSource | "unlabelled"; turnId: string | null; binding: "turn" | "unbound"; prepareId: string | null; ordinalInTurn: number | null; at: number }
+  | { ev: "request"; requestId: string; source: RequestSource | "unlabelled"; turnId: string | null; binding: "turn" | "unbound"; prepareId: string | null; handleId: string | null; ordinalInTurn: number | null; at: number }
   | { ev: "request_end"; requestId: string; outcome: RequestOutcome; status: StatusClass | null; at: number }
   | { ev: "utterance"; utteranceId: string; kind: UtteranceKind; turnId: string | null; at: number }
   | { ev: "sentence"; turnId: string; sentenceId: string; index: number; via: "stream" | "turn_end"; at: number }
@@ -76,6 +76,7 @@ interface RequestRecord {
   source: RequestSource | "unlabelled";
   turnId: string | null;
   prepareId: string | null;
+  handleId: string | null;
   marks: Partial<Record<RequestMark, number>>;
   status: StatusClass | null;
   outcome: RequestOutcome | null;
@@ -89,6 +90,9 @@ interface UtteranceRecord {
 }
 
 const statusClass = (status: number): StatusClass => (status >= 200 && status < 300 ? "2xx" : status >= 300 && status < 400 ? "3xx" : status >= 400 && status < 500 ? "4xx" : status >= 500 && status < 600 ? "5xx" : "other");
+
+/** A diagnostic handle id is logged only when it has the closed shape of src/lib/maya-handle-diagnostic.ts; any other text is dropped. */
+const closedId = (id: string | null | undefined): string | null => (typeof id === "string" && /^[\w.:-]{1,80}#h\d{1,6}$/.test(id) ? id : null);
 
 /** The oldest entries leave when a map is over its bound. */
 function bounded<V>(map: Map<string, V>, limit: number) {
@@ -259,13 +263,13 @@ export class CallTelemetry {
     const ctx = requestContext();
     const id = this.id("r");
     const turnId = ctx.turnId && this.turns.has(ctx.turnId) ? ctx.turnId : null;
-    const record: RequestRecord = { id, source: ctx.source ?? "unlabelled", turnId, prepareId: ctx.prepareId ?? null, marks: {}, status: null, outcome: null };
+    const record: RequestRecord = { id, source: ctx.source ?? "unlabelled", turnId, prepareId: ctx.prepareId ?? null, handleId: closedId(ctx.diagnosticHandleId), marks: {}, status: null, outcome: null };
     this.requests.set(id, record);
     bounded(this.requests, LIMITS.requests);
     const turn = turnId ? this.turns.get(turnId) : undefined;
     if (turn) turn.requestIds.push(id);
     else if (record.source === "prepared_interim" || record.source === "prepared_expected") this.unboundPrepared.push(id);
-    this.emit({ ev: "request", requestId: id, source: record.source, turnId, binding: turnId ? "turn" : "unbound", prepareId: record.prepareId, ordinalInTurn: turn ? turn.requestIds.length : null, at: this.now() });
+    this.emit({ ev: "request", requestId: id, source: record.source, turnId, binding: turnId ? "turn" : "unbound", prepareId: record.prepareId, handleId: record.handleId, ordinalInTurn: turn ? turn.requestIds.length : null, at: this.now() });
     return record;
   }
 
@@ -351,7 +355,7 @@ export class CallTelemetry {
       ...(first ? { modelSent: first.marks.sent !== undefined ? first.marks.sent - t0 : null, modelHeaders: first.marks.headers !== undefined ? first.marks.headers - t0 : null, modelFirstChunk: first.marks.firstBodyChunk !== undefined ? first.marks.firstBodyChunk - t0 : null } : {}),
       ...(answer ? { ttsRequest: answer.marks.ttsRequest !== undefined ? answer.marks.ttsRequest - t0 : null, ttsFirstFrame: answer.marks.ttsFirstFrame !== undefined ? answer.marks.ttsFirstFrame - t0 : null } : {}),
       ...(ack ? { ackTtsRequest: ack.marks.ttsRequest !== undefined ? ack.marks.ttsRequest - t0 : null, ackTtsFirstFrame: ack.marks.ttsFirstFrame !== undefined ? ack.marks.ttsFirstFrame - t0 : null } : {}),
-      requests: requests.map(r => ({ id: r.id, source: r.source, prepareId: r.prepareId, status: r.status, outcome: r.outcome, ...rel(r.marks) })),
+      requests: requests.map(r => ({ id: r.id, source: r.source, prepareId: r.prepareId, handleId: r.handleId, status: r.status, outcome: r.outcome, ...rel(r.marks) })),
       utterances: utterances.map(u => ({ id: u.id, kind: u.kind, ttsRequests: u.ttsRequests, ...rel(u.marks) })),
     };
   }

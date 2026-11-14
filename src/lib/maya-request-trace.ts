@@ -17,6 +17,11 @@ export interface RequestContext {
   turnId?: string | null;
   /** The worker's id of the interim hint that prepared the request. */
   prepareId?: string | null;
+  /**
+   * Diagnostic id (src/lib/maya-handle-diagnostic.ts) of the spend handle that pays the request. A log label only, never a
+   * reservation id. `null`: the request has no prepared handle; set explicitly, it hides an inherited one.
+   */
+  diagnosticHandleId?: string | null;
 }
 
 const store = new AsyncLocalStorage<RequestContext>();
