@@ -16,6 +16,13 @@ import type { ScanCleanFailure } from "@/lib/scan-states";
 export const MARKING_PROMPT_VERSION = "whole-page-scalar-readings-v9";
 export const MARKING_MODEL = "anthropic/claude-sonnet-5.5";
 /**
+ * The second look (decision 2026-11-13): the answers MARKING_MODEL leaves unsure are read once more by this model, on the
+ * same no-Google route, before any reaches our team. Off unless SCAN_MARKING_ESCALATION is "on" and its price row is
+ * enabled; evidence in docs/scan-marking-escalation.md.
+ */
+export const MARKING_ESCALATION_MODEL = "anthropic/claude-opus-5.5";
+export const MARKING_ESCALATION_PROMPT_VERSION = `${MARKING_PROMPT_VERSION}+second-look-v1`;
+/**
  * Off: the AI reads every two-ways item (both methods and the answer), and every one waits for our team, never Right.
  * On: code's method rules (`src/lib/scan-marking-methods.ts`, D-302) can mark a valid pair. The method rules ship apart.
  */
@@ -42,6 +49,11 @@ export const MARKING_RETRY_WAIT_MS = 2_000;
 export const MARKING_RETRY_WAIT_CAP_MS = 10_000;
 const MAX_VERDICT_REASON = 120;
 export const MARKING_CAP_MICROS = 50_000_000;
+/**
+ * The second look is admitted only while the month's spent plus held, with its own worst-case hold, stays at or under
+ * this (#958 review; the SQL admit rule): half the cap, so second-look holds can never use up the room first reads need.
+ */
+export const MARKING_ESCALATION_CAP_MICROS = 25_000_000;
 /** Match the current whole-sheet identity check. A legacy ready label is insufficient. */
 export const MARKING_SHEET_CHECK_VERSION = 1;
 /** Bounded canonical key. Item IDs can be 200 characters; photos never change this key. */
@@ -85,7 +97,7 @@ export interface MarkingStore {
   /** One whole normalized page. The adapter strips metadata again before dispatch. */
   image(ref: MarkingRef): Promise<Uint8Array>;
   /** Called by AiClient immediately before EACH transport attempt, including its retry. */
-  admit(ref: MarkingRef, token: string, model: string): Promise<{ dispatch: string } | "terminal" | "budget" | "price-unverified" | "attempts">;
+  admit(ref: MarkingRef, token: string, model: string, role?: "escalation"): Promise<{ dispatch: string } | "terminal" | "budget" | "price-unverified" | "attempts">;
   /**
    * Can reconcile after deletion. The dispatch record contains no family or file references. Unknown keeps its full hold.
    * With no cost and a clean 429 `failure` (#868), the store checks the 429 body itself; only when it accepts it does the
@@ -100,7 +112,8 @@ export interface MarkingStore {
    * pauses the job as `pending`. Throws on an answer it cannot read.
    */
   defer(ref: MarkingRef, token: string): Promise<"pending" | "attempts" | "terminal">;
-  extract(ref: MarkingRef, token: string, observations: Observation[], model: string): Promise<boolean>;
+  /** `escalation`: the second look's record, when it decided any item (its model, prompt and the item ids it decided). */
+  extract(ref: MarkingRef, token: string, observations: Observation[], model: string, escalation?: MarkingEscalation | null): Promise<boolean>;
   /** Apply only still-owned pending versions. Save event intent in the same transaction. */
   apply(ref: MarkingRef, token: string, observations: Observation[], events: NewLearningEvent[], at: string): Promise<boolean>;
   finish(ref: MarkingRef, token: string): Promise<boolean>;
@@ -153,6 +166,42 @@ function request(image: Uint8Array, local: Alias[]): AiJsonRequest {
       reason: { anyOf: [{ type: "string", description: `At most ${MAX_VERDICT_REASON} characters.` }, { type: "null" }] },
     } } } } },
   };
+}
+/** What the second look decided: its model, prompt and the item ids whose marks it gave. */
+export interface MarkingEscalation { model: string; prompt: string; items: string[] }
+/**
+ * The second look's extra instruction, added to the same production prompt. It only widens what counts as one clear
+ * answer; every "uncertain" rule still holds.
+ */
+const SECOND_LOOK = " This is a second look at answers another reader could not read. Read them freshly from the image. In a number, fraction or text region, a value struck through with a line, with one clear value written beside, above or below it inside the same answer area, is a correction: transcribe only the clear value. If more than one value is left unstruck, or you cannot tell which value is final, report uncertain with issue multiple-marks.";
+/** The request for some of the page's items only (their aliases stay those of the whole page). */
+export function markingRequestFor(frame: MarkingFrame, image: Uint8Array, itemIds: readonly string[], secondLook = false): AiJsonRequest {
+  const local = aliases(frame, expectedItems(frame)).filter(a => a.expected.method === "code" && itemIds.includes(a.expected.identity.itemId));
+  const r = request(image, local);
+  return secondLook ? { ...r, system: r.system + SECOND_LOOK } : r;
+}
+/**
+ * The items the second look may ask (#958 review): AI-marked items the first read was asked (`asked`) and left pending,
+ * leaving out questions the photo's edge cuts off (`cutOff` numbers), which stay pending whatever any model reads.
+ */
+export function unsureItems(observations: readonly Observation[], frame: MarkingFrame, asked?: readonly string[]): string[] {
+  const cut = new Set(expectedItems(frame).filter(e => frame.cutOff?.includes(e.number)).map(e => e.identity.itemId));
+  return observations.filter(o => o.method === "code" && o.state === "pending" && (!asked || asked.includes(o.identity.itemId)) && !cut.has(o.identity.itemId)).map(o => o.identity.itemId);
+}
+/**
+ * The second look's marks replace the first read's only where the first was unsure and the second is a mark (scored).
+ * Anything else, including a second look that is unsure too, keeps the first read's observation.
+ */
+export function mergeSecondLook(first: readonly Observation[], second: readonly Observation[], asked: readonly string[]): { observations: Observation[]; decided: string[] } {
+  const decided: string[] = [];
+  const observations = first.map(o => {
+    if (!asked.includes(o.identity.itemId) || o.state !== "pending") return o;
+    const s = second.find(x => x.identity.itemId === o.identity.itemId && x.state === "scored" && x.result !== null);
+    if (!s) return o;
+    decided.push(o.identity.itemId);
+    return s;
+  });
+  return { observations, decided };
 }
 /** The comparison uses the production prompt and aliases, with no truth or answer keys. */
 export function markingRequest(frame: MarkingFrame, image: Uint8Array): AiJsonRequest {
@@ -287,6 +336,12 @@ class RetryLater extends Error {}
 class SettleFailure extends Error {}
 /** The model call's own limit: one timeout over both attempts. */
 export const MARKING_AI_TIMEOUT_MS = 120_000;
+/**
+ * The time from the claim for every model call of one photo, the second look included (#958 review): the claim's lease
+ * is 180 s, and the image read and the database writes after the calls need the rest. The second look gets only what is
+ * left of this, so a slow first read can never push the job past its lease.
+ */
+export const MARKING_AI_BUDGET_MS = 150_000;
 /** A model call starts only with at least this much time for it; else the photo waits as `pending` (#726). */
 export const MARKING_MIN_AI_MS = 20_000;
 /** The timeout of the model call, given the time the caller still has for it: at most 120 s; null when too short. */
@@ -318,6 +373,12 @@ export interface MarkingRunOptions {
   /** For tests: the clock (ms) and the wait before a 429's retry. Absent: Date.now and a timer that ends early on `signal`. */
   clockMs?: () => number;
   sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
+  /**
+   * The second look (decision 2026-11-13): when given, the items the first read leaves unsure are sent once to this
+   * client's model before extraction. One attempt, no retry, admitted and settled as a dispatch of the same job; any
+   * refusal or failure keeps the first read's unsure items, which then go to our team as before.
+   */
+  escalate?: MarkingClientFactory;
 }
 /** One bounded server job. Reload, cron and admin recovery all call this same path. */
 export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token: string, makeClient: MarkingClientFactory, now: () => string, options: MarkingRunOptions = {}): Promise<MarkingStatus> {
@@ -329,8 +390,11 @@ export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token
     || new Set(expected.map((e) => e.number)).size !== expected.length) return "unavailable";
   const job = await store.claim(ref, token, frame, expected);
   if (typeof job === "string") return job;
+  const claimedAt = (options.clockMs ?? Date.now)();
   let observations = job.extraction;
   let model = MARKING_MODEL;
+  let escalation: MarkingEscalation | null = null;
+  let image: Uint8Array | null = null;
   if (!observations) {
     const pending = job.items.filter((m) => m.observation.state === "pending" && m.expected.method === "code");
     const local = aliases(frame, expected).filter((a) => pending.some((m) => itemKey(m.expected.identity) === itemKey(a.expected.identity)));
@@ -380,7 +444,7 @@ export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token
       if (!transport) { await store.pause(ref, token, "off"); return "off"; }
       model = transport.client.model;
       try {
-        const image = await store.image(ref);
+        image = await store.image(ref);
         // Too little time left for a whole call and its commit: no call, so no charge. A later run takes the photo.
         const timeout = markingAiTimeout(options.aiTimeLeftMs ? options.aiTimeLeftMs() : null);
         if (timeout === null) { await store.pause(ref, token, "pending"); return "pending"; }
@@ -420,14 +484,63 @@ export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token
           await store.settle(open, cost).catch(() => { console.error("[scan-marking] a dispatch could not be settled twice; its full hold stays"); });
         }
       }
+      if (options.escalate && image) {
+        const second = await secondLook(store, ref, token, frame, image, observations, local.map((a) => a.expected.identity.itemId), claimedAt, options.escalate, options);
+        observations = second.observations;
+        escalation = second.escalation;
+      }
     } else observations = expected.map((e) => firstObservation(e, frame.photo));
-    if (!await store.extract(ref, token, observations, model)) return "terminal";
+    if (!await store.extract(ref, token, observations, model, escalation)) return "terminal";
   }
   const at = now();
   if (!await store.apply(ref, token, observations, originalEvents(frame, observations, at), at)) return "terminal";
   await store.publish(frame.parentId, frame.childId);
   if (!await store.finish(ref, token)) return "terminal";
   return "finished";
+}
+/**
+ * One call to the second-look model for the first read's unsure items. Never throws for a provider, admission or settle
+ * failure: the first read's observations stand. Its one dispatch is settled exactly once, with the clean 429 kept as
+ * evidence (#868), so a refused or rate-limited call frees its hold like any other.
+ */
+async function secondLook(store: MarkingStore, ref: MarkingRef, token: string, frame: MarkingFrame, image: Uint8Array, first: Observation[], firstAsked: readonly string[], claimedAt: number, makeClient: MarkingClientFactory, options: MarkingRunOptions): Promise<{ observations: Observation[]; escalation: MarkingEscalation | null }> {
+  const asked = unsureItems(first, frame, firstAsked);
+  const none = { observations: first, escalation: null };
+  if (!asked.length) return none;
+  let dispatch: string | null = null;
+  let transport: MarkingTransport | null = null;
+  let tries = 0;
+  const settle = async () => {
+    if (!dispatch || !transport) return;
+    const open = dispatch, cost = transport.costMicros(), failure = cost === null ? transport.failure?.() ?? null : null;
+    dispatch = null;
+    await store.settle(open, cost, failure);
+  };
+  const beforeAttempt = async () => {
+    // One attempt only: a client retry is refused here, before any admission.
+    if (++tries > 1) throw new AdmissionRefusal("attempts");
+    const admitted = await store.admit(ref, token, transport!.client.model, "escalation");
+    if (typeof admitted === "string") throw new AdmissionRefusal(admitted);
+    dispatch = admitted.dispatch;
+  };
+  // Only what is left of the run's AI budget, and of the caller's own time: too little, and the unsure items keep the
+  // first read's result (they go to our team) instead of risking the lease and the first read's marks.
+  const budgetLeft = claimedAt + MARKING_AI_BUDGET_MS - (options.clockMs ?? Date.now)();
+  const timeout = markingAiTimeout(Math.min(budgetLeft, options.aiTimeLeftMs ? options.aiTimeLeftMs() : Infinity));
+  if (timeout === null) return none;
+  transport = makeClient(beforeAttempt);
+  if (!transport) return none;
+  const signal = options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(timeout)]) : AbortSignal.timeout(timeout);
+  try {
+    const output = await transport.client.json(markingRequestFor(frame, image, asked, true), signal);
+    const merged = mergeSecondLook(first, readMarkingOutput(frame, output), asked);
+    return { observations: merged.observations, escalation: merged.decided.length ? { model: transport.client.model, prompt: MARKING_ESCALATION_PROMPT_VERSION, items: merged.decided } : null };
+  } catch {
+    return none;
+  } finally {
+    // Counts only: no dispatch, family or photo id is logged.
+    await settle().catch(() => { console.error("[scan-marking] a second-look dispatch could not be settled; its full hold stays"); });
+  }
 }
 /** One effective event per eligible canonical original. Raw events remain append-only. No reading text enters this set. */
 export function effectiveMarkingEvents(raw: readonly LearningEvent[], marks: readonly EffectiveMark[]): LearningEvent[] {
