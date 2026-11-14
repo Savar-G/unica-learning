@@ -10,7 +10,7 @@ import type { GeneratedPage, GeneratedWorkbook } from "@/lib/workbook-generator"
 import type { PageContent } from "@/lib/workbook-page";
 
 // Hand-written synthetic records. No generation, rendering engine, provider or database is used.
-function fixture(child = "c1", parent = "p1", book = "b1"): ScheduleMemory {
+function fixture(child = "c1", parent = "p1", book = "b1", twoPageDay = false): ScheduleMemory {
   const question = sampleDraft({ workbookId: book, childId: child, qrTokens: ["a", "b", "c"] }).pages[1].questions[0].package;
   const page = (number: number, content: PageContent): GeneratedPage => ({ number, type: content.kind === "day" ? "practice" : "how-plan", dayLabel: content.kind === "day" && !content.extraPractice ? `Day ${content.day}` : null,
     day: content.kind === "day" ? content.day : null, pageOfDay: content.kind === "day" ? content.page : null,
@@ -20,10 +20,10 @@ function fixture(child = "c1", parent = "p1", book = "b1"): ScheduleMemory {
   const draft: GeneratedWorkbook = { id: book, childId: child, number: 1, levels: [10], profileBuild: null, model: "synthetic", counts: { pages: 4, questions: 3, checked: 3, notChecked: 0, failed: 0, failedPages: 0 }, pages: [
     page(2, { kind: "how-plan", id: "plan", level: 10, child, workbook: 1, pagesADay: 1, minutes: { min: 15, max: 20 }, rows: [
       { day: 2, topic: "Second printed row first", second: "Subtraction", pages: [4, 4], requiredMinutes: 20 + 1e-10 },
-      { day: 1, topic: "Addition", second: "Number facts", pages: [3, 3], requiredMinutes: 17.2 },
+      { day: 1, topic: "Addition", second: "Number facts", pages: [3, twoPageDay ? 5 : 3], requiredMinutes: 17.2 },
     ] }),
     ...[1, 2, 3].map(day => page(day + 2, { kind: "day", id: `day${day}`, level: 10, day: day === 3 ? 1 : day, page: 1, pages: 1,
-      topic: "Practice", title: "Practice", subtitle: "Practice", grownUp: null, extraPractice: day === 3,
+      topic: "Practice", title: "Practice", subtitle: "Practice", grownUp: null, extraPractice: day === 3 && !twoPageDay,
       blocks: [{ slot: "now-you", items: [1] }],
     })),
   ] };
@@ -34,7 +34,7 @@ function fixture(child = "c1", parent = "p1", book = "b1"): ScheduleMemory {
     if (!contract.contract) throw new Error(contract.problem);
     return { number: p.number, image: { path: "private.png", width: 816, height: 1056 }, questions: [], printContract: contract.contract };
   }) };
-  const manifest: ScanManifest = { version: 1, curriculum: { key: "BC", version: "frozen" }, testWorkbook: false, snapshotDay: 7, levelTest: null, days: [{ day: 1, pages: [3] }, { day: 2, pages: [4] }] };
+  const manifest: ScanManifest = { version: 1, curriculum: { key: "BC", version: "frozen" }, testWorkbook: false, snapshotDay: 7, levelTest: null, days: [{ day: 1, pages: twoPageDay ? [3, 5] : [3] }, { day: 2, pages: [4] }] };
   const pages = rendering.pages.map(p => ({ book, parent, child, page: { id: `page-${book}-${p.number}`, number: p.number, contract: p.printContract,
     qrToken: draft.pages.find(d => d.number === p.number)!.qrToken,
     questions: draft.pages.find(d => d.number === p.number)!.questions.map(q => ({ number: q.number, package: { id: q.package!.id }, box: { x: 100, y: 100, width: 80, height: 80 }, regions: null, teaching: null })),
@@ -153,4 +153,50 @@ it.each(["override", "extra", "calculated", "global"])("matches actual page-2 HT
   const line = root.querySelector('[data-measure="slot-how-0"]')!.textContent!.toLowerCase();
   expect(line.startsWith("do the days in order, 5 days a week. ")).toBe(true);
   expect(line.slice("do the days in order, 5 days a week. ".length).replace(" minutes a day", " minutes").replace(/\.$/, "")).toBe(projection.dailyTime.toLowerCase());
+});
+
+// #475: marks are read from the effective marking projection, never from receipts. A scan is not a mark.
+function scheduleMark(data: ScheduleMemory, page: number, kind: "right" | "checking" | "unread", over: { workbookId?: string; printedRevision?: string } = {}): NonNullable<ScheduleMemory["marks"]>[number] {
+  const row = data.pages.find(p => p.page.number === page)!;
+  const identity = { workbookId: over.workbookId ?? row.book, printedRevision: over.printedRevision ?? data.books[0].printedRevision!, pageId: row.page.id, itemId: row.page.questions[0].package.id };
+  const result = kind === "right" ? "right" as const : null;
+  return { parent: row.parent, child: row.child, mark: {
+    expected: { identity, number: 1, method: "code", scoredRegions: ["a"], mastery: { eligible: false, reason: "no-teaching-context" }, teaching: null },
+    observation: { version: 1, identity, evidence: null, readAnswerText: kind === "unread" ? null : "7", regions: kind === "unread" ? [] : [{ regionId: "a", text: "7", value: "7", certainty: "certain" }],
+      certainty: kind === "unread" ? "not-read" : "certain", state: kind === "right" ? "parent-checked" : "pending", method: kind === "right" ? "parent" : "code", result,
+      teaching: null, mastery: { eligible: false, reason: "no-teaching-context" }, help: "none", actor: kind === "right" ? "parent" : "system", resultVersion: 1 },
+    originalEvent: null, eventId: null, at: "2026-11-05T00:00:00Z", model: kind === "unread" ? null : "synthetic-model", prompt: null } };
+}
+
+it("shows marks separately from scans: not marked yet, our team checking, and all marked", async () => {
+  const data = fixture();
+  const revision = data.books[0].printedRevision!;
+  data.receipts = [3, 4].map(n => ({ parentId: "p1", childId: "c1", workbookId: "b1", pageId: `page-b1-${n}`, revision, status: "accepted" }));
+  // Scanned, nothing read yet: the scan count is full and no mark is claimed.
+  data.marks = [];
+  expect(await read(data)).toMatchObject({ rows: [{ day: 2, scan: { accepted: 1, required: 1 }, marks: { kind: "none", total: 1 } }, { day: 1, marks: { kind: "none", total: 1 } }] });
+  data.marks = [scheduleMark(data, 4, "unread"), scheduleMark(data, 3, "checking")];
+  expect(await read(data)).toMatchObject({ rows: [{ day: 2, marks: { kind: "none", marked: 0, total: 1 } }, { day: 1, marks: { kind: "checking", marked: 0, total: 1 } }] });
+  data.marks = [scheduleMark(data, 4, "right"), scheduleMark(data, 3, "right")];
+  expect(await read(data)).toMatchObject({ rows: [{ day: 2, marks: { kind: "all", marked: 1, total: 1 } }, { day: 1, marks: { kind: "all", marked: 1, total: 1 } }] });
+  // The extra practice page (5) is not a required page; its mark changes no day.
+  data.marks.push(scheduleMark(data, 5, "checking"));
+  expect(await read(data)).toMatchObject({ rows: [{ marks: { kind: "all" } }, { marks: { kind: "all" } }] });
+});
+
+it("never counts a mark from another print, another book or another family, and a failed read claims no mark", async () => {
+  const data = fixture();
+  data.marks = [scheduleMark(data, 3, "right", { printedRevision: "old-print" }), scheduleMark(data, 3, "right", { workbookId: "b9" }),
+    { ...scheduleMark(data, 4, "right"), parent: "p2" }, { ...scheduleMark(data, 4, "right"), child: "c2" }];
+  expect(await read(data)).toMatchObject({ rows: [{ marks: { kind: "none" } }, { marks: { kind: "none" } }] });
+  data.fail = "marks";
+  expect(await read(data)).toMatchObject({ kind: "ready", rows: [{ marks: { kind: "unknown" } }, { marks: { kind: "unknown" } }] });
+});
+
+it("lists the printed pages of a day that have no recorded scan", async () => {
+  const data = fixture("c1", "p1", "b1", true);
+  const revision = data.books[0].printedRevision!;
+  data.receipts = [{ parentId: "p1", childId: "c1", workbookId: "b1", pageId: "page-b1-3", revision, status: "accepted" }];
+  const view = await read(data);
+  expect(view).toMatchObject({ kind: "ready", rows: [{ day: 2, scan: { kind: "unknown" } }, { day: 1, scan: { kind: "known", accepted: 1, required: 2, missing: [5] }, marks: { total: 2 } }] });
 });

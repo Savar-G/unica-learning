@@ -40,7 +40,7 @@ export async function readScanStack(db: SupabaseClient<Database>, parent: string
   const books = [...new Set(live.map((p) => p.workbook_id!))];
   const [workbooks, printed, calibrations] = await Promise.all([
     db.from("workbooks").select("id,number").eq("parent_id", parent).in("id", books),
-    db.from("workbook_pages").select("id,workbook_id,page_number,day_label").eq("parent_id", parent).in("workbook_id", books),
+    db.from("workbook_pages").select("id,workbook_id,page_number,day_label,page_type").eq("parent_id", parent).in("workbook_id", books),
     checks
       ? db.from("scan_calibrations").select("photo_id,state,printed_revision,reason:result->>reason,sheetCheck:result->sheetCheck").eq("parent_id", parent).in("photo_id", live.map((p) => p.id))
       : Promise.resolve({ data: [], error: null }),
@@ -57,6 +57,6 @@ export async function readScanStack(db: SupabaseClient<Database>, parent: string
       state: p.state as StackPhoto["state"], check, reason: check === "refused" ? refusal(c?.reason) : null, sentAt: p.sent_at, createdAt: p.created_at,
     };
   });
-  const pages = dayPages(printed.data.map((p) => ({ id: p.id, workbookId: p.workbook_id, book: number.get(p.workbook_id) ?? 1, pageNumber: p.page_number, day: p.day_label })));
+  const pages = dayPages(printed.data.map((p) => ({ id: p.id, workbookId: p.workbook_id, book: number.get(p.workbook_id) ?? 1, pageNumber: p.page_number, day: p.day_label, type: p.page_type })));
   return { photos, pages };
 }

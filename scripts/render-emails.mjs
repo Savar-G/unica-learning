@@ -40,7 +40,7 @@ for (const province of ["BC", "ON"]) {
 }
 samples["founders-welcome"] = api.welcomeEmail({ parentName: common.parentName, childName: common.childName, url: "https://unicalearning.com/account/start/sample" });
 samples["founders-phone-welcome"] = api.phoneWelcomeEmail({ parentName: common.parentName, childName: common.childName, url: "https://unicalearning.com/sign-in/link?t=sample-token" });
-samples["founders-waitlist"] = api.waitlistEmail({ parentName: common.parentName, childName: common.childName, curriculum: "Ontario", reportUrl: "https://unicalearning.com/account/report/sample", bookingUrl: "https://calendly.com/contact-unicalearning/15min" });
+samples["founders-waitlist"] = api.waitlistEmail({ parentName: common.parentName, childName: common.childName, curriculum: "Ontario", reportUrl: "https://unicalearning.com/account/report/sample", bookingUrl: "https://cal.com/unicalearning/15min" });
 for (const kind of api.AUTH_EMAIL_KINDS) samples[kind] = api.authEmail(kind);
 await mkdir(output, { recursive: true });
 for (const [name, email] of Object.entries(samples)) await writeFile(resolve(output, `${name}.html`), email.html);

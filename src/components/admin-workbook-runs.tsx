@@ -27,7 +27,7 @@ import { RunRefresh } from "@/components/admin-run-refresh";
 import { RunOnServer } from "@/components/run-on-server";
 import { StopWorkbookRun } from "@/components/stop-workbook-run";
 import { AuditLog } from "@/components/admin-workbook-audit";
-import { ApproveDraft } from "@/components/workbook-ship-actions";
+import { ApproveDraft, NextBookApproval } from "@/components/workbook-ship-actions";
 import { approvalProblems } from "@/lib/workbook-ship";
 import type { AiCallSummary } from "@/lib/workbook-ai";
 import { Fold } from "@/components/admin-fold";
@@ -374,12 +374,14 @@ function DraftPageSection({ page, detail, solves }: { page: GeneratedPage; detai
         {page.fit.status === "fits" && !noLayout && <Chip tone="ok">Fits</Chip>}
         {issues.failed.length > 0 && <Chip tone="bad">{issues.failed.length} {issues.failed.length === 1 ? "question needs" : "questions need"} fixing</Chip>}
         {page.questions.some((q) => q.gate) && <Chip tone="warn">{page.questions.filter((q) => q.gate).length} flagged by a quality gate</Chip>}
+        {image?.layoutGate && <span title={image.layoutGate.reason}><Chip tone={image.layoutGate.outcome === "unknown" ? "warn" : "bad"}>{image.layoutGate.outcome === "unknown" ? "Page layout gate did not answer" : "Page layout gate flagged this page"}</Chip></span>}
         {issues.notChecked.length > 0 && <Chip tone="warn">{issues.notChecked.length} to check by hand</Chip>}
         {problems.length > 0 && <Chip tone="bad">{noLayout ? "No page layout" : "Not in the PDF"}</Chip>}
         {(page.omissions ?? []).length > 0 && <Chip tone="warn">{(page.omissions ?? []).reduce((n, o) => n + o.requested - o.placed, 0)} planned items left out</Chip>}
         {page.attempts === 2 && <span className="adm-sub">Written again after the fit check</span>}
       </p>
       <ProblemList problems={[...issues.fit.map((p) => ({ question: p.question, reason: `fit check: ${p.reason}` })), ...problems]} />
+      {image?.layoutGate && <p className="adm-sub">{image.layoutGate.reason}</p>}
       {(page.omissions ?? []).length > 0 && <ul className="adm-wb-problems adm-sub">{(page.omissions ?? []).map((o, i) => <li key={`o${i}`}>{partText(o.kind)}: {o.placed} of {o.requested} placed ({o.reason})</li>)}</ul>}
       {(page.leftOut ?? []).length > 0 && <ul className="adm-wb-problems adm-sub" aria-label={`Questions left out of page ${page.number}`}>{(page.leftOut ?? []).map((q) => <li key={`l${q.slot}`} title={`Slot ${q.slot}: ${q.reason}`}>Left out to make room: {partText(q.part)}, {q.text ? `"${q.text}"` : "a question with no text"}</li>)}</ul>}
       <div className={page.questions.length ? "adm-wb-grid" : "adm-wb-solo"}>
@@ -427,8 +429,9 @@ function Approval({ detail, name }: { detail: RunDetail; name: string }) {
     </>;
   }
   const flagged = draft.workbook.pages.flatMap((p) => p.questions).filter((q) => q.gate);
-  const flagLine = flagged.length
-    ? <p><b>{flagged.length} {flagged.length === 1 ? "question is" : "questions are"} flagged by a quality gate.</b> Read each flag before you approve.</p>
+  const flaggedPages = (draft.rendering?.pages ?? []).filter((p) => p.layoutGate);
+  const flagLine = flagged.length || flaggedPages.length
+    ? <p>{flagged.length > 0 && <b>{flagged.length} {flagged.length === 1 ? "question is" : "questions are"} flagged by a quality gate. </b>}{flaggedPages.length > 0 && <b>{flaggedPages.length} {flaggedPages.length === 1 ? "page is" : "pages are"} flagged by the page layout gate. </b>}Read each flag before you approve.</p>
     : null;
   const problems = approvalProblems({
     runId: run.id, runDone: run.status === "done", draftId: draft.workbook.id, revision: draft.revision, oldFormat: false,
@@ -438,7 +441,10 @@ function Approval({ detail, name }: { detail: RunDetail; name: string }) {
     return <div className="adm-note adm-wb-full" role="note">{flagLine}<b>Not ready to approve.</b> Every check must pass first:
       <ul className="adm-wb-list">{problems.map((p) => <li key={p}>{p}</li>)}</ul></div>;
   }
-  return <>{flagLine}<ApproveDraft runId={run.id} revision={draft.revision} workbookPath={adminWorkbookPath(draft.workbook.id)} child={name} pending={detail.comments.filter(c => ["pending", "failed", "stale"].includes(c.status)).length} /></>;
+  const approve = { runId: run.id, revision: draft.revision, workbookPath: adminWorkbookPath(draft.workbook.id), child: name,
+    pending: detail.comments.filter(c => ["pending", "failed", "stale"].includes(c.status)).length };
+  // D-308: a next-book draft (its run has a snapshot) reads its new marks check in the browser, once, off the refresh loop.
+  return <>{flagLine}{run.snapshotId ? <NextBookApproval {...approve} /> : <ApproveDraft {...approve} />}</>;
 }
 
 const ICON_OK = <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>;

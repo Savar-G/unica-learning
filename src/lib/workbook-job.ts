@@ -67,6 +67,7 @@ import { skillUnits } from "@/lib/workbook-teaching-frame";
 import type { WorkbookPlan, PlanInput } from "@/lib/workbook-plan";
 import type { SolveLog, Solver, SolveVerdict } from "@/lib/workbook-solve-check";
 import { openQuestionGateRun, type QuestionGateChecker, type StoredQuestionGate } from "@/lib/workbook-run-gates";
+import { checkRenderedPages, pageGateMark, type PageGateChecker, type PageGateMark, type StoredPageGate } from "@/lib/workbook-page-gates";
 import { IMAGE_SCALE, PRINT_PAGE, proofPages, renderedPages, renderWorkbook, type DraftPage, type PrintEngine, type RenderProblem, type WorkbookTemplate } from "@/lib/workbook-render";
 
 /** Attempts of one run in all: the first and one retry. */
@@ -122,6 +123,11 @@ export interface WorkbookRun {
   runner: RunRunner;
   /** The admin who stopped the run with the Stop button; its time is `finishedAt`. */
   stoppedBy?: string | null;
+  /**
+   * The next-book snapshot the run was admitted from (#476, admit_next_book_run): its first job call makes the book from
+   * the snapshot's saved plan input, never from the child read now. Absent or null: an ordinary run.
+   */
+  snapshotId?: string | null;
 }
 
 /** Where a run is made: "server" (the site, on Vercel) or "mac" (the workbook worker, src/lib/workbook-worker.ts). */
@@ -136,7 +142,7 @@ export type RunRunner = "server" | "mac";
 export interface DraftRendering {
   pdfPath: string | null;
   pdfSha256?: string | null;
-  pages: (RenderedPage & { proof?: boolean; contractProblem?: string | null })[];
+  pages: (RenderedPage & { proof?: boolean; contractProblem?: string | null; layoutGate?: PageGateMark })[];
 }
 
 export type StartResult =
@@ -205,9 +211,9 @@ export interface WorkbookRunStore {
   /** The verdicts of the run's solve checks that have a call key, by that key (R379-8-1). */
   solves(runId: string): Promise<Map<string, SolveVerdict>>;
   /** Stores quality-gate results (the first row at a call key stays). False when the lease is lost. */
-  saveGates(runId: string, lease: string, gates: StoredQuestionGate[]): Promise<boolean>;
-  /** Every stored quality-gate result of the run. */
-  gates(runId: string): Promise<StoredQuestionGate[]>;
+  saveGates(runId: string, lease: string, gates: (StoredQuestionGate | StoredPageGate)[]): Promise<boolean>;
+  /** Every stored quality-gate result of the run: the questions' and, at "page:<page>", the rendered pages' (#859). */
+  gates(runId: string): Promise<(StoredQuestionGate | StoredPageGate)[]>;
   /** The run's plan, as its first job call stored it (R379-8-2); null before. */
   frame(runId: string): Promise<RunFrame | null>;
   /** Whether any page, counted attempt, call or solve check exists, including old solve checks without a call key. */
@@ -283,6 +289,8 @@ export interface RunFrame {
    * It holds the frozen child profile the plan read, because the current profile changes and cannot prove it later.
    */
   planning?: RunPlanningCapture;
+  /** A next-book run (#476): the snapshot whose saved plan input made this plan, and that plan's hash. */
+  nextBook?: { snapshotId: string; planHash: string };
   workbooks: { number: number; levels: number[] }[];
   plan: WorkbookPlan;
   /**
@@ -322,7 +330,19 @@ export interface RunPlanningCapture {
   };
 }
 
+/**
+ * The saved plan of a next-book snapshot, as a run with that snapshot_id makes its book from it (#476): the plan input the
+ * snapshot's planner saved and the plan it makes, checked against the saved hash, only on the curriculum version the plan
+ * was made on (nextBookRunBook in src/lib/next-book-snapshot.ts). Else the reason: curriculum-changed,
+ * curriculum-unrecorded, plan-mismatch, or why the snapshot cannot be read.
+ */
+export type NextBookRunBook =
+  | { ok: true; snapshotId: string; planHash: string; planInput: PlanInput; plan: WorkbookPlan }
+  | { ok: false; reason: string };
+
 export interface WorkbookJobSource {
+  /** A next-book run's saved plan (#476). Absent: this place cannot make a run that has a snapshot (refused). */
+  nextBookPlan?(snapshotId: string): Promise<NextBookRunBook>;
   /** Read only the report recommendation, test duration and device for this plan's assessment. */
   planningMetadata?(assessmentId: string): Promise<Pick<import("./workbook-signals").BookSignalsInput, "report" | "device">>;
   /** Null when there is no such child. */
@@ -372,6 +392,8 @@ export interface WorkbookJobDeps {
   solver: Solver | null;
   /** The quality gates (spec #850). Null or absent: this run asks none. */
   gates?: QuestionGateChecker | null;
+  /** The page layout gate on the rendered pages (#859). Null or absent: this run asks none. */
+  pageGates?: PageGateChecker | null;
   /** The cost of one solve check in US dollars, when the reader's provider said it; none: not known. */
   solveCost?(log: SolveLog): number | null;
   /** The page templates: the real ones (#310) in live use. */
@@ -465,7 +487,8 @@ const changed = (what: string, was: string | null, is: string | null) =>
 /** The curriculum key of a signup curriculum: only BC has a map. */
 const CURRICULUM_KEYS: Record<string, string> = { BC: "bc" };
 
-const draftPage = (p: GeneratedPage): DraftPage => ({
+/** A generated page as the renderer prints it (also the page layout gate set, #859). */
+export const draftPage = (p: GeneratedPage): DraftPage => ({
   number: p.number,
   dayLabel: p.dayLabel,
   type: p.type,
@@ -531,13 +554,17 @@ async function renderDraft(draft: GeneratedWorkbook, parentId: string, deps: Wor
         continue;
       }
       for (const file of result.files) await put(file);
-      return { rendering: { pdfPath: result.workbook.pdfPath!, pdfSha256: result.workbook.pdfSha256 ?? null, pages: [...renderedPages(result), ...proofs].sort((a, b) => a.number - b.number) }, problems, paths: stored };
+      const rendered: DraftRendering["pages"] = renderedPages(result);
+      // (The rendered page images, for the page layout gate, #859; a proof image is a page that failed already.)
+      const images = new Map(result.files.map((f) => [f.path, f.bytes]));
+      const pngs = rendered.flatMap((p) => { const png = images.get(p.image.path); return png ? [{ number: p.number, png }] : []; });
+      return { rendering: { pdfPath: result.workbook.pdfPath!, pdfSha256: result.workbook.pdfSha256 ?? null, pages: [...rendered, ...proofs].sort((a, b) => a.number - b.number) }, problems, paths: stored, pngs };
     }
   } catch (e) {
     await deps.files.remove(stored).catch(() => undefined);
     throw e;
   }
-  return { rendering: proofs.length ? { pdfPath: null, pages: proofs.sort((a, b) => a.number - b.number) } : null, problems, paths: stored };
+  return { rendering: proofs.length ? { pdfPath: null, pages: proofs.sort((a, b) => a.number - b.number) } : null, problems, paths: stored, pngs: [] };
 }
 
 /**
@@ -637,6 +664,20 @@ export async function runWorkbookJob(runId: string, deps: WorkbookJobDeps, o: { 
         await progress({ step: "render" });
         await check();
         const rendered = await renderDraft(draft, claimed.parentId, stoppable);
+        if (deps.pageGates && rendered.rendering && rendered.pngs.length) {
+          // #859: each rendered page once; a stored page is not asked again. A flag marks the page; nothing is rewritten.
+          const stored = (await runs.gates(runId)).filter((r): r is StoredPageGate => r.callKey.startsWith("page:"));
+          const { rows, unavailable } = await checkRenderedPages(deps.pageGates, stored, rendered.pngs, async (row) => {
+            if (lost || !(await runs.saveGates(runId, lease, [row]))) { loseLease(); throw new Stopped("the run was taken up by another call"); }
+          }, stop.signal);
+          for (const page of rendered.rendering.pages) {
+            const row = rows.get(page.number);
+            if (page.proof) continue;
+            // A page the pass skipped after the model stopped answering is shown as not checked, never as passed.
+            const mark = row ? pageGateMark(row) : unavailable ? { outcome: "unknown" as const, flags: [], reason: "The page layout gate stopped answering before this page, so it was not checked and is flagged for review." } : null;
+            if (mark) page.layoutGate = mark;
+          }
+        }
         await progress({ step: "save" });
         const finished = await runs.finish(runId, lease, { draftId: draft.id, rendering: rendered.rendering, problems: rendered.problems });
         if (!finished) {
@@ -719,6 +760,43 @@ export async function makeRunFrame(t: FrameTarget, deps: FrameDeps, name: string
   return made;
 }
 
+/** The plain error of a next-book run whose saved plan cannot be used (#476). Nothing is planned again. */
+export function nextBookRefusal(reason: string): string {
+  if (reason === "curriculum-changed") return "The next book's saved plan was made on another version of the workbook curriculum, so the book cannot be made from it. Prepare the next book from the snapshot again.";
+  if (reason === "curriculum-unrecorded") return "The next book's saved plan does not record the curriculum version it was made on, so the book cannot be made from it.";
+  if (reason === "plan-mismatch") return "The next book's saved plan does not make the plan it was saved with, so the book cannot be made from it.";
+  return `The next book's saved plan cannot be read (${reason}), so the book cannot be made from it.`;
+}
+
+/**
+ * A next-book run's plan (#476): the plan the snapshot's saved plan input makes, never the child read now (no profile
+ * refresh, no placement, no instructions read again: the saved input holds what the planner used). Then the same capacity
+ * steps and fingerprints as makeRunFrame. Throws a refusal, before any AI call, when the saved plan cannot be used.
+ */
+export async function makeNextBookFrame(t: FrameTarget, snapshotId: string, deps: FrameDeps, name: string, inputs: ChildInputs): Promise<RunFrame> {
+  if (!deps.source.nextBookPlan) throw new Refusal("This place cannot read the next book's saved plan. Run it on the workbook worker.");
+  const key = CURRICULUM_KEYS[inputs.province];
+  const curriculum = key ? curriculumFor(key) : null;
+  if (!key || !curriculum) throw new Refusal(`There is no workbook curriculum for ${inputs.province} yet. Only BC has one.`);
+  const saved = await deps.source.nextBookPlan(snapshotId);
+  if (!saved.ok) throw new Refusal(nextBookRefusal(saved.reason));
+  if (saved.snapshotId !== snapshotId) throw new Refusal(nextBookRefusal("not-found"));
+  if (saved.planInput.curriculum?.key !== key) throw new Refusal(`The next book's saved plan is for another curriculum (${saved.planInput.curriculum?.key ?? "none"}) than ${name}'s (${key}).`);
+  const grade = saved.planInput.grade;
+  if (!isGrade(grade)) throw new Refusal(nextBookRefusal("plan-mismatch"));
+  const made: RunFrame = {
+    version: RUN_FRAME_VERSION, ...(deps.itemPolicy === "legacy" ? {} : { itemPolicy: "approved-v1" as const }), curriculum: key, units: skillUnits(curriculum), grade,
+    profileRevision: inputs.profile?.revision ?? null, countsCallEvents: WORKBOOK_COUNTS_CALL_EVENTS, workbooks: inputs.workbooks,
+    nextBook: { snapshotId, planHash: saved.planHash },
+    plan: deps.itemPolicy === "legacy" ? saved.plan : workbookCapacityPlan(curriculum, saved.plan),
+    versions: { curriculum: "", outline: "", model: deps.ai.model, solveModel: deps.solver.model, gateModel: deps.gates?.model ?? null, build: deps.build ?? null },
+  };
+  if (made.itemPolicy === "approved-v1") made.plan = await prepareWorkbookCapacity(frameInput(t, made, name), deps.fit(t.parentId));
+  made.versions.curriculum = curriculumVersion(key)!;
+  made.versions.outline = bookOutline(frameInput(t, made, name));
+  return made;
+}
+
 /**
  * Why a stored plan cannot be used by this call (R379-8-2), or null: its shape, the call event policy, the curriculum,
  * the deployed code, the AI or solve model, or the planned book changed since it was made.
@@ -756,8 +834,12 @@ async function runFrame(run: WorkbookRun, deps: WorkbookJobDeps & { ai: AiClient
     if (await deps.runs.hasStoredWork(run.id)) {
       throw new Refusal("This run has no stored plan, so it cannot resume safely. Start a new run.");
     }
-    const sample = run.number === 1 ? await deps.source.firstPages?.(run.childId) ?? null : null;
-    if (sample && sample.decision !== "drop") {
+    const sample = run.number === 1 && !run.snapshotId ? await deps.source.firstPages?.(run.childId) ?? null : null;
+    if (run.snapshotId) {
+      // #476: a next-book run is made from its snapshot's saved plan only.
+      const made = await makeNextBookFrame(targetOf(run), run.snapshotId, deps, name, inputs);
+      if (!(await deps.runs.saveFrame(run.id, lease, made))) throw new Stopped("the run was taken up by another call");
+    } else if (sample && sample.decision !== "drop") {
       await adoptFirstPages(run, deps, lease, name, inputs, sample);
     } else {
       const made = await makeRunFrame(targetOf(run), deps, name, inputs);
@@ -907,7 +989,7 @@ async function write(
     concurrency: deps.concurrency ?? PAGE_CONCURRENCY, stop: () => isLost() || outOfTime(), timeLimitMs: deps.timeLimitMs,
     progress: (done, total) => { void progress({ step: "write", done, total }); },
     solver: guardedSolver, now: deps.now,
-    ...(deps.gates ? { questionGates: openQuestionGateRun(deps.gates, await deps.runs.gates(run.id), async (row) => {
+    ...(deps.gates ? { questionGates: openQuestionGateRun(deps.gates, (await deps.runs.gates(run.id)).filter((r): r is StoredQuestionGate => !r.callKey.startsWith("page:")), async (row) => {
       if (isLost() || !(await deps.runs.saveGates(run.id, lease, [row]))) lose();
     }) } : {}),
   });

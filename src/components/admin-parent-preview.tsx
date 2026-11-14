@@ -143,7 +143,7 @@ function planControl(name: string, state: string, cardId: string) {
 
 function scanListing(state: string): ScanListing | null {
   if (state === "loading" || state === "unavailable") return null;
-  return { checks: true, marking: true, pages: [{ id: "sample-page", workbookId: "sample-book", book: 3, pageNumber: 4, day: "Day 1", pageOfDay: 1, pagesInDay: 2 }],
+  return { checks: true, marking: true, pages: [{ id: "sample-page", workbookId: "sample-book", book: 3, pageNumber: 4, day: "Day 1", pageOfDay: 1, pagesInDay: 2, name: "Warm-up" }],
     photos: state === "empty" ? [] : [{ id: "sample-photo", pageId: "sample-page", workbookId: "sample-book", book: 3, pageNumber: 4, state: "saved", check: state === "refused" ? "refused" : "ready", reason: state === "refused" ? "marks-missing" : null, sentAt: state === "sent" ? "2026-11-05T20:00:00Z" : null, createdAt: "2026-11-05T19:00:00Z" }] };
 }
 
@@ -200,7 +200,9 @@ function previewContent(selection: PreviewSelection, child: ChildView | undefine
       kind: "ready", child: { ...child, parentId: "sample-parent" }, book: { id: "sample-printed-book", number: child.id === "sample-child-2" ? 2 : 1 }, dailyTime: "about 20 minutes, plus Extra if there's time",
       rows: Array.from({ length: 10 }, (_, i) => ({ day: i + 1, topic: child.id === "sample-child-2" ? "Multiplication" : "Addition", second: i === 6 ? "Level check" : "Number practice",
         pages: [3 + i * 8, 10 + i * 8], requiredMinutes: 20, extra: true,
-        scan: state === "accepted" || state === "expired" ? { kind: "known", accepted: 8, required: 8 } : state === "partial" && i === 0 ? { kind: "known", accepted: 3, required: 8 } : { kind: "unknown" },
+        scan: state === "accepted" || state === "expired" ? { kind: "known", accepted: 8, required: 8, missing: [] } : state === "partial" && i === 0 ? { kind: "known", accepted: 3, required: 8, missing: [6, 7, 8, 9, 10] } : { kind: "unknown" },
+        marks: state === "accepted" || state === "expired" ? (i < 2 ? { kind: "all", marked: 8, total: 8 } : i === 2 ? { kind: "checking", marked: 6, total: 8 } : { kind: "none", marked: 0, total: 8 })
+          : state === "partial" && i === 0 ? { kind: "some", marked: 2, total: 8 } : { kind: "none", marked: 0, total: 8 },
       })),
     }} />;
     case "progress": {

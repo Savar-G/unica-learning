@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-import { aiClient } from "@/lib/ai-client";
+import { aiClient, NO_GOOGLE_PROVIDER } from "@/lib/ai-client";
 import { callModel, callReviewer } from "@/lib/maya-call-seams";
 import { noteAiClient } from "@/lib/maya-call-note";
 import { meteredClient } from "@/lib/maya-spend-server";
@@ -11,7 +11,7 @@ import { memorySpendStore } from "@/lib/maya-spend-memory";
 import { MAYA_PROVIDER } from "@/lib/maya-ai-route";
 
 // D-337: every OpenRouter request that carries a child's words for Maya (her model, the safety read, the free-talk review
-// and the call note) goes only to Anthropic and Azure, never to Google. Other AI features keep the default route.
+// and the call note) goes only to Anthropic and Azure, never to Google. Other AI features use the client's default route, which also leaves Google out (#900).
 
 const env = { OPENROUTER_API_KEY: "test-key", AI_MODEL: "anthropic/claude-sonnet-5.5", NODE_ENV: "test" };
 const request = { name: "t", system: "s", content: [{ type: "text" as const, text: "x" }], schema: { type: "object" } };
@@ -71,9 +71,9 @@ describe("Maya's OpenRouter route (no Google endpoints, D-337)", () => {
     expect(await sent(() => meteredClient(env, m.ledger, { charge, callId: call.id, newId: m.newId }, "note")!.json(request, signal()))).toEqual(MAYA_PROVIDER);
   });
 
-  it("leaves other AI features on the default route", async () => {
+  it("sends other AI features on the client's default route, which also leaves Google out (#900)", async () => {
     capture();
-    expect(await sent(() => aiClient(env)!.json(request, signal()))).toEqual({ require_parameters: true });
-    expect(await sent(() => aiClient(env, "anthropic/claude-haiku-5.5")!.json(request, signal()))).toEqual({ require_parameters: true });
+    expect(await sent(() => aiClient(env)!.json(request, signal()))).toEqual(NO_GOOGLE_PROVIDER);
+    expect(await sent(() => aiClient(env, "anthropic/claude-haiku-5.5")!.json(request, signal()))).toEqual(NO_GOOGLE_PROVIDER);
   });
 });

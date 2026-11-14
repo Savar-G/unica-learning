@@ -5,7 +5,8 @@ import type { OpenRouterProvider } from "@/lib/ai-openrouter";
 // free-talk review and the call note) goes only to Anthropic and Azure, never to Google: Google Cloud's Service Specific Terms (section 20(d),
 // read 2026-11-12) do not allow its generative AI services in an online service directed to or likely to be used by people
 // under 18. `require_parameters` keeps the parameters sent (a strict JSON schema, when the schema allows one).
-// Other AI features keep the default route (#900). A zero-data-retention route on Amazon Bedrock is the next step, after
+// Other AI features that read child data use the client's default route, which leaves out Google's endpoints too
+// (NO_GOOGLE_PROVIDER in src/lib/ai-client.ts, #900). A zero-data-retention route on Amazon Bedrock is the next step, after
 // its test with Maya's real schema.
 
 export const MAYA_PROVIDER: OpenRouterProvider = {

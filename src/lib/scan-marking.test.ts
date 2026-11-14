@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { expectedItems, firstObservation, itemKey, markingEvent, observationProblem, PHOTO_ISSUES, type Observation } from "@/lib/scan-observation";
-import { markingAiTimeout, MARKING_AI_TIMEOUT_MS, MARKING_MIN_AI_MS, TWO_WAYS_METHOD_MARKS, waitsForTeam, effectiveMarkingEvents, effectiveSkillMarks, markingOriginalKey, markingPageView, markingRequest, MARKING_CAP_MICROS, MARKING_MODEL, MARKING_PROMPT_VERSION, readMarkingOutput, runScanMarking, validMarkingOutput, type EffectiveMark, type MarkingClientFactory, type MarkingFrame, type MarkingJob, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
+import { markingAiTimeout, MARKING_AI_TIMEOUT_MS, MARKING_MAX_DEFERRALS, MARKING_MAX_DISPATCHES, MARKING_MAX_TRANSPORT_DISPATCHES, MARKING_RETRY_WAIT_CAP_MS, MARKING_RETRY_WAIT_MS, type MarkingFailure, MARKING_MIN_AI_MS, TWO_WAYS_METHOD_MARKS, waitsForTeam, effectiveMarkingEvents, effectiveSkillMarks, markingOriginalKey, markingPageView, markingRequest, MARKING_CAP_MICROS, MARKING_ESCALATION_CAP_MICROS, MARKING_MODEL, MARKING_PROMPT_VERSION, MARKING_ESCALATION_MODEL, MARKING_ESCALATION_PROMPT_VERSION, type MarkingEscalation, readMarkingOutput, runScanMarking, validMarkingOutput, type EffectiveMark, type MarkingClientFactory, type MarkingFrame, type MarkingJob, type MarkingRunOptions, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
 import type { AiJsonRequest } from "@/lib/ai-client";
+import { markingEscalationClient } from "@/lib/scan-marking-ai";
 import { checkQuestionPackage, workedSteps, type NumberValue, type Operation, type QuestionPackage } from "@/lib/question-package";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
 import { memoryChildProfiles } from "@/lib/child-profile-memory";
@@ -145,11 +146,12 @@ it("shows page results in printed question order without changing the canonical 
 class Store implements MarkingStore {
   frames = new Map<string, MarkingFrame>();
   items = new Map<string, EffectiveMark>();
-  jobs = new Map<string, MarkingJob & { until: number; dispatches: number; done: boolean }>();
+  jobs = new Map<string, MarkingJob & { until: number; dispatches: number; done: boolean; deferrals?: number }>();
   terminal = new Set<string>(); frozen = false; deleted = false;
   clock = Date.parse("2026-11-05T12:00:00Z");
   prices = new Map([[MARKING_MODEL, 10_000], ["comparison-model", 10_000]]);
-  spend = new Map<string, { period: string; reserved: number; charged: number | null }>();
+  spend = new Map<string, { period: string; reserved: number; charged: number | null; photo?: string; clean?: MarkingFailure["kind"] }>();
+  pauses: string[] = [];
   events: LearningEvent[] = [];
   owners = new Map<string, string>();
   pendingReceipts = new Map<string, { photo: string; version: number }>();
@@ -168,22 +170,53 @@ class Store implements MarkingStore {
       if (item.observation.state === "pending") this.owners.set(key, ref.photo);
     }
     const old = this.jobs.get(ref.photo);
-    const j = { token, items: structuredClone([...this.items.values()]), extraction: old?.extraction ?? null, until: this.clock + 180_000, dispatches: old?.dispatches ?? 0, done: false };
+    const j = { token, items: structuredClone([...this.items.values()]), extraction: old?.extraction ?? null, until: this.clock + 180_000, dispatches: old?.dispatches ?? 0, deferrals: old?.deferrals ?? 0, done: false };
     this.jobs.set(ref.photo, j); return j;
   }
   async image() { this.imageReads++; return new Uint8Array([1, 2, 3]); }
-  async admit(ref: MarkingRef, token: string, model: string) {
+  roles: { model: string; role?: string }[] = [];
+  async admit(ref: MarkingRef, token: string, model: string, role?: "escalation") {
+    this.roles.push({ model, ...(role ? { role } : {}) });
     if (!this.live(ref, token)) return "terminal" as const;
     const j = this.jobs.get(ref.photo)!;
-    if (j.dispatches >= 2) return "attempts" as const;
+    // The SQL rule (#868): only a clean 429 the store confirmed does not use up one of the two dispatches; five in all.
+    const clean = [...this.spend.values()].filter((x) => x.photo === ref.photo && x.clean === "rate-limit").length;
+    if (j.dispatches - clean >= MARKING_MAX_DISPATCHES || j.dispatches >= MARKING_MAX_TRANSPORT_DISPATCHES) return "attempts" as const;
     const maximum = this.prices.get(model); if (!maximum) return "price-unverified" as const;
     const period = new Date(this.clock).toISOString().slice(0, 7);
     const held = [...this.spend.values()].filter((s) => s.period === period).reduce((sum, s) => sum + (s.charged ?? s.reserved), 0);
     if (held + maximum > MARKING_CAP_MICROS) return "budget" as const;
-    const dispatch = `d${this.spend.size}`; this.spend.set(dispatch, { period, reserved: maximum, charged: null }); j.dispatches++; return { dispatch };
+    // The SQL rule (#958 review): a second look only while the month stays within half the cap.
+    if (role === "escalation" && held + maximum > MARKING_ESCALATION_CAP_MICROS) return "budget" as const;
+    const dispatch = `d${this.spend.size}`; this.spend.set(dispatch, { period, reserved: maximum, charged: null, photo: ref.photo }); j.dispatches++; return { dispatch };
   }
-  async settle(id: string, cost: number | null) { const s = this.spend.get(id)!; if (cost !== null && cost <= s.reserved && s.charged === null) s.charged = cost; }
-  async extract(ref: MarkingRef, token: string, o: Observation[], model: string) { if (!this.live(ref, token)) return false; this.jobs.get(ref.photo)!.extraction = structuredClone(o); for (const m of this.items.values()) m.model = model; return true; }
+  /** The store's own check (the SQL rule): clean only for a 429 body it accepts; `refuseClean` plays a store that disagrees. */
+  refuseClean = false; settles: string[] = [];
+  settleFails = new Set<string>();
+  async settle(id: string, cost: number | null, failure: MarkingFailure | null = null) {
+    this.settles.push(id);
+    if (this.settleFails.has(id)) throw new Error("settle failed");
+    const s = this.spend.get(id)!;
+    if (cost !== null) { if (cost <= s.reserved && s.charged === null) s.charged = cost; return false; }
+    if (s.clean === "rate-limit") return true;
+    if (!failure || this.refuseClean || s.charged !== null || failure.kind !== "rate-limit" || failure.evidence.status !== 429) return false;
+    s.clean = failure.kind; s.charged = 0;
+    return true;
+  }
+  /** `deferAnswer`: plays a store whose defer answers something unexpected (it throws, as the real store does). */
+  deferAnswer: "throw" | null = null;
+  async defer(ref: MarkingRef, token: string) {
+    if (this.deferAnswer === "throw") throw new Error("marking_defer");
+    if (!this.live(ref, token)) return "terminal" as const;
+    const job = this.jobs.get(ref.photo)!;
+    // The SQL rule: a deferral is spent only when the job's latest dispatch is a clean 429 the store recorded.
+    const latest = [...this.spend.values()].filter((x) => x.photo === ref.photo).at(-1);
+    if (latest?.clean !== "rate-limit") { await this.pause(ref, token, "pending"); return "pending" as const; }
+    if ((job.deferrals ?? 0) >= MARKING_MAX_DEFERRALS) { await this.pause(ref, token, "attempts"); return "attempts" as const; }
+    job.deferrals = (job.deferrals ?? 0) + 1; job.until = 0; return "pending" as const;
+  }
+  escalations: (MarkingEscalation | null | undefined)[] = [];
+  async extract(ref: MarkingRef, token: string, o: Observation[], model: string, escalation?: MarkingEscalation | null) { this.escalations.push(escalation); if (!this.live(ref, token)) return false; this.jobs.get(ref.photo)!.extraction = structuredClone(o); for (const m of this.items.values()) m.model = model; return true; }
   async apply(ref: MarkingRef, token: string, observations: Observation[], events: NewLearningEvent[], at: string) {
     if (!this.live(ref, token)) return false;
     for (const o of observations) {
@@ -194,6 +227,7 @@ class Store implements MarkingStore {
     } return true;
   }
   async pause(ref: MarkingRef, token: string, status: import("./scan-marking").MarkingStatus) {
+    this.pauses.push(status);
     if (!this.live(ref, token)) return;
     const job = this.jobs.get(ref.photo)!;
     if (status === "attempts") {
@@ -235,7 +269,7 @@ function client(answer: unknown | (() => Promise<unknown>), requests: AiJsonRequ
 }
 const run = (s: Store, photo: string, ai: MarkingClientFactory, token = photo) => runScanMarking(s, { parent: P, photo }, token, ai, () => new Date(s.clock).toISOString());
 
-const FROZEN_PROMPT_SHA256 = "d911e7f08fa22d79c80fe91adfbb0059f43ba40c59065630d7547463f374a894";
+const FROZEN_PROMPT_SHA256 = "06123fdccc95bf75145aa4631a9970a2712cd02676dfb47c52aa39d8549b6aab";
 const FROZEN_CONTENT_SHA256 = "803ea308db4014ebdb55c9c685cb27ca84b4ce050edd81be7ccb0ef13553fb52";
 const GOOD_ONE = "27 + 30 = 57\n57 + 9 = 66", GOOD_TWO = "39 + 30 = 69\n69 - 3 = 66";
 type Verdict = "solves" | "does-not-solve" | "unsure" | null;
@@ -286,6 +320,198 @@ describe("#726: the model call fits the caller's deadline", () => {
   });
 });
 
+/** One scripted transport attempt: a clean 429 the transport classified, any other failure (unknown), or an answer. */
+type Step = { failure: MarkingFailure } | { unknown: true } | { answer: unknown; cost?: number };
+/** Behaves like the real adapter: admission before each attempt, one retry of a retryable failure, cost and failure per attempt. */
+function scripted(steps: Step[], requests: AiJsonRequest[] = []): MarkingClientFactory {
+  return (before) => {
+    let cost: number | null = null, failure: MarkingFailure | null = null;
+    return { costMicros: () => cost, failure: () => failure, client: { model: MARKING_MODEL, async json(r) {
+      for (let attempt = 0; ; attempt++) {
+        await before(); cost = null; failure = null;
+        const step = steps.shift()!; requests.push(r);
+        if ("answer" in step) { cost = step.cost ?? null; return step.answer; }
+        if ("failure" in step) failure = step.failure;
+        if (attempt >= 1) throw new Error("OpenRouter failed");
+      }
+    } } };
+  };
+}
+const rateLimit = (retryAfterMs: number | null = null): MarkingFailure => ({ kind: "rate-limit", retryAfterMs, evidence: { status: 429, body: '{"error":{"code":429,"message":"Rate limit exceeded"}}' } });
+
+describe("#868: a clean 429 waits, frees its hold and defers the photo; every other failure counts", () => {
+  function timedRun(s: Store, photo: string, ai: MarkingClientFactory, token: string, waits: number[] = [], extra: Partial<MarkingRunOptions> = {}) {
+    return runScanMarking(s, { parent: P, photo }, token, ai, () => new Date(s.clock).toISOString(),
+      { clockMs: () => s.clock, sleep: async (ms) => { waits.push(ms); s.clock += ms; }, ...extra });
+  }
+  const answer = { answer: output(["0", "12", "9"]), cost: 2_000 };
+
+  it("waits the Retry-After of a 429, retries, and frees the 429's hold", async () => {
+    const s = new Store(frame()), waits: number[] = [], requests: AiJsonRequest[] = [];
+    expect(await timedRun(s, "photo-a", scripted([{ failure: rateLimit(3_000) }, answer], requests), "a", waits)).toBe("finished");
+    expect(waits).toEqual([3_000]);
+    expect(requests).toHaveLength(2);
+    expect([...s.spend.values()].map((x) => x.charged)).toEqual([0, 2_000]);
+  });
+
+  it("waits a short default when a 429 names no time", async () => {
+    const s = new Store(frame()), waits: number[] = [];
+    expect(await timedRun(s, "photo-a", scripted([{ failure: rateLimit() }, answer]), "a", waits)).toBe("finished");
+    expect(waits).toEqual([MARKING_RETRY_WAIT_MS]);
+  });
+
+  it("does not retry now when the wait is over the cap or would not leave time for the call, and defers the photo", async () => {
+    for (const [retryAfter, left] of [[MARKING_RETRY_WAIT_CAP_MS + 1, 120_000], [5_000, MARKING_MIN_AI_MS + 4_000]] as const) {
+      const s = new Store(frame()), waits: number[] = [], requests: AiJsonRequest[] = [];
+      expect(await timedRun(s, "photo-a", scripted([{ failure: rateLimit(retryAfter) }, answer], requests), "a", waits, { aiTimeLeftMs: () => left })).toBe("pending");
+      expect(waits).toEqual([]);
+      expect(requests).toHaveLength(1);
+      expect([...s.spend.values()].map((x) => x.charged)).toEqual([0]);
+      expect(s.jobs.get("photo-a")).toMatchObject({ deferrals: 1, done: false });
+    }
+  });
+
+  it("a time-out, 408, 5xx or lost answer uses up a dispatch, keeps its full hold and spends no deferral", async () => {
+    const s = new Store(frame()), requests: AiJsonRequest[] = [];
+    expect(await timedRun(s, "photo-a", scripted([{ unknown: true }, { unknown: true }], requests), "a")).toBe("pending");
+    expect(s.jobs.get("photo-a")).toMatchObject({ deferrals: 0, dispatches: 2, done: false });
+    expect([...s.spend.values()].map((x) => [x.reserved, x.charged])).toEqual([[10_000, null], [10_000, null]]);
+    // As before #868: two counted dispatches, so the next run makes no call and the unread items go to the team.
+    expect(await timedRun(s, "photo-a", scripted([answer], requests), "b")).toBe("attempts");
+    expect(requests).toHaveLength(2);
+    expect(s.teamQueue()).toHaveLength(3);
+  });
+
+  it("a photo deferred by clean 429s goes to the team only after the last deferral, and their holds are all freed", async () => {
+    const s = new Store(frame()), requests: AiJsonRequest[] = [];
+    for (let n = 1; n <= MARKING_MAX_DEFERRALS; n++) {
+      expect(await timedRun(s, "photo-a", scripted([{ failure: rateLimit(60_000) }], requests), `run-${n}`)).toBe("pending");
+      expect(s.jobs.get("photo-a")).toMatchObject({ deferrals: n, done: false });
+      expect(s.teamQueue()).toHaveLength(0);
+    }
+    expect(await timedRun(s, "photo-a", scripted([{ failure: rateLimit(60_000) }], requests), "last")).toBe("attempts");
+    expect(s.jobs.get("photo-a")!.done).toBe(true);
+    expect(s.teamQueue()).toHaveLength(3);
+    expect([...s.spend.values()].every((x) => x.charged === 0)).toBe(true);
+    expect(requests).toHaveLength(MARKING_MAX_DEFERRALS + 1);
+  });
+
+  it("a deferred photo is marked by a later run with its two dispatches", async () => {
+    const s = new Store(frame());
+    expect(await timedRun(s, "photo-a", scripted([{ failure: rateLimit(60_000) }]), "a")).toBe("pending");
+    expect(await timedRun(s, "photo-a", scripted([{ unknown: true }, answer]), "b")).toBe("finished");
+    expect(s.jobs.get("photo-a")!.dispatches).toBe(3);
+  });
+
+  it("a failure that may have been charged still uses up a dispatch and keeps its hold", async () => {
+    const s = new Store(frame());
+    expect(await timedRun(s, "photo-a", scripted([{ unknown: true }, { unknown: true }]), "a")).toBe("pending");
+    expect(s.jobs.get("photo-a")!.deferrals).toBe(0);
+    expect(await timedRun(s, "photo-a", scripted([answer]), "b")).toBe("attempts");
+    expect([...s.spend.values()].map((x) => x.charged)).toEqual([null, null]);
+  });
+
+  it("a clean failure after a charged one defers, and the charged one still counts", async () => {
+    const s = new Store(frame());
+    expect(await timedRun(s, "photo-a", scripted([{ unknown: true }, { failure: rateLimit(1_000) }]), "a")).toBe("pending");
+    expect(s.jobs.get("photo-a")!.deferrals).toBe(1);
+    // The clean 429 did not count, so one counted dispatch is left: its retry is refused.
+    expect(await timedRun(s, "photo-a", scripted([{ unknown: true }, answer]), "b")).toBe("attempts");
+  });
+
+  it("a job reaches all 3 deferrals with two clean 429s a run, then goes to the team: 8 dispatches, no hold kept", async () => {
+    expect(MARKING_MAX_TRANSPORT_DISPATCHES).toBe(8);
+    const s = new Store(frame()), requests: AiJsonRequest[] = [];
+    // Each run: a 429, a short wait, its retry also a 429: two dispatches, both clean, then a deferral.
+    for (let n = 1; n <= MARKING_MAX_DEFERRALS; n++) {
+      expect(await timedRun(s, "photo-a", scripted([{ failure: rateLimit(1_000) }, { failure: rateLimit(1_000) }], requests), `r${n}`)).toBe("pending");
+      expect(s.jobs.get("photo-a")).toMatchObject({ deferrals: n, dispatches: 2 * n, done: false });
+    }
+    expect(await timedRun(s, "photo-a", scripted([{ failure: rateLimit(1_000) }, { failure: rateLimit(1_000) }], requests), "last")).toBe("attempts");
+    expect(s.jobs.get("photo-a")).toMatchObject({ dispatches: 8, done: true });
+    expect(requests).toHaveLength(8);
+    expect([...s.spend.values()].every((x) => x.charged === 0)).toBe(true);
+    const full = new Store(frame());
+    await full.claim({ parent: P, photo: "photo-a" }, "x", frame());
+    full.jobs.get("photo-a")!.dispatches = MARKING_MAX_TRANSPORT_DISPATCHES; full.jobs.get("photo-a")!.until = 0;
+    expect(await timedRun(full, "photo-a", scripted([answer]), "a")).toBe("attempts");
+  });
+
+  it("a dispatch-count refusal right after a confirmed clean 429 tells the caller about the rate limit; other refusals do not", async () => {
+    for (const [refusal, told] of [["attempts", [1_000]], ["budget", []], ["price-unverified", []], ["terminal", []]] as const) {
+      const s = new Store(frame()), limits: (number | null)[] = [];
+      const admit = s.admit.bind(s);
+      let calls = 0;
+      s.admit = async (ref, token, model) => ++calls === 2 ? refusal : admit(ref, token, model);
+      expect(await timedRun(s, "photo-a", scripted([{ failure: rateLimit(1_000) }, answer]), "a", [], { onRateLimit: (ms) => { limits.push(ms); } })).toBe(refusal);
+      expect(limits, refusal).toEqual(told);
+    }
+    // A refusal with no clean 429 before it is no rate limit.
+    const s = new Store(frame()), limits: unknown[] = [];
+    s.admit = async () => "attempts";
+    expect(await timedRun(s, "photo-a", scripted([answer]), "a", [], { onRateLimit: (ms) => { limits.push(ms); } })).toBe("attempts");
+    expect(limits).toEqual([]);
+  });
+
+  it("a cancelled call stops its 429 wait at once, sends no retry and defers the photo", async () => {
+    const s = new Store(frame()), requests: AiJsonRequest[] = [], cancel = new AbortController();
+    const started = Date.now();
+    setTimeout(() => cancel.abort(), 20);
+    expect(await runScanMarking(s, { parent: P, photo: "photo-a" }, "a", scripted([{ failure: rateLimit(9_000) }, answer], requests), () => new Date(s.clock).toISOString(), { signal: cancel.signal })).toBe("pending");
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(requests).toHaveLength(1);
+    expect(s.jobs.get("photo-a")!.deferrals).toBe(1);
+  });
+
+  it("defers only when the store confirmed the 429 clean: otherwise it counts, keeps its hold and spends no deferral", async () => {
+    const s = new Store(frame()), waits: number[] = [];
+    s.refuseClean = true;
+    expect(await timedRun(s, "photo-a", scripted([{ failure: rateLimit(60_000) }, { failure: rateLimit(60_000) }]), "a", waits)).toBe("pending");
+    expect(waits).toEqual([]);
+    expect(s.jobs.get("photo-a")).toMatchObject({ deferrals: 0, dispatches: 2 });
+    expect([...s.spend.values()].map((x) => x.charged)).toEqual([null, null]);
+    expect(await timedRun(s, "photo-a", scripted([answer]), "b")).toBe("attempts");
+  });
+
+  it("a settle that throws still pauses the photo as pending; it is retried once at the end, never as clean, and a settled dispatch never again", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    for (const failing of ["d0", "d1"]) {
+      const s = new Store(frame()), sent: [string, MarkingFailure | null][] = [];
+      const settle = s.settle.bind(s);
+      s.settle = async (id, cost, failure = null) => { sent.push([id, failure]); return settle(id, cost, failure); };
+      s.settleFails.add(failing);
+      expect(await timedRun(s, "photo-a", scripted([{ failure: rateLimit(1_000) }, { failure: rateLimit(1_000) }]), "a")).toBe("pending");
+      expect(s.pauses).toEqual(["pending"]);
+      expect(s.jobs.get("photo-a")!.deferrals).toBe(0);
+      // The failed settle is tried once more with no clean failure, so its full hold stays.
+      expect(sent.filter(([id]) => id === failing).map(([, f]) => f?.kind ?? null)).toEqual(["rate-limit", null]);
+      expect(s.spend.get(failing)!.charged).toBeNull();
+      // Every other dispatch was settled exactly once.
+      for (const id of s.spend.keys()) if (id !== failing) expect(s.settles.filter((x) => x === id)).toHaveLength(1);
+    }
+    // Each settle that failed twice is logged once, with no ids.
+    expect(log).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(log.mock.calls)).not.toMatch(/d0|d1|photo-a/);
+    log.mockRestore();
+  });
+
+  it("a defer the store cannot answer pauses the photo as pending", async () => {
+    const s = new Store(frame());
+    s.deferAnswer = "throw";
+    expect(await timedRun(s, "photo-a", scripted([{ failure: rateLimit(60_000) }]), "a")).toBe("pending");
+    expect(s.pauses).toEqual(["pending"]);
+  });
+
+  it("tells the caller about a confirmed rate limit with its Retry-After, and about nothing else", async () => {
+    const limits: (number | null)[] = [];
+    const onRateLimit = (ms: number | null) => { limits.push(ms); };
+    await timedRun(new Store(frame()), "photo-a", scripted([{ failure: rateLimit(60_000) }]), "a", [], { onRateLimit });
+    await timedRun(new Store(frame()), "photo-a", scripted([{ unknown: true }, { unknown: true }]), "a", [], { onRateLimit });
+    await timedRun(new Store(frame()), "photo-a", scripted([{ failure: rateLimit(1_000) }, answer]), "a", [], { onRateLimit });
+    expect(limits).toEqual([60_000]);
+  });
+});
+
 describe("two-ways AI marking", () => {
   it("routes a two-ways item through the AI path, with no parent method or parent state", () => {
     const f = twoWaysFrame(), e = expectedItems(f)[0];
@@ -305,7 +531,7 @@ describe("two-ways AI marking", () => {
     expect(JSON.stringify(items)).not.toContain("66");
     expect(request.system).toContain("method region");
     expect(request.system).toMatch(/does-not-solve/);
-    expect(MARKING_PROMPT_VERSION).toBe("whole-page-scalar-readings-v8");
+    expect(MARKING_PROMPT_VERSION).toBe("whole-page-scalar-readings-v9");
     const props = (request.schema as { properties: { readings: { items: { required: string[]; properties: { verdict: unknown; reason: unknown } } } } }).properties.readings.items;
     expect(props.required).toEqual(expect.arrayContaining(["verdict", "reason"]));
   });
@@ -313,7 +539,7 @@ describe("two-ways AI marking", () => {
     const request = markingRequest(twoWaysFrame(), new Uint8Array([1]));
     // Changing either needs the controller's approval: the paid run is valid only for what ships.
     expect(createHash("sha256").update(JSON.stringify({ system: request.system, schema: request.schema, effort: request.effort, maxTokens: request.maxTokens })).digest("hex")).toBe(FROZEN_PROMPT_SHA256);
-    expect(MARKING_PROMPT_VERSION).toBe("whole-page-scalar-readings-v8");
+    expect(MARKING_PROMPT_VERSION).toBe("whole-page-scalar-readings-v9");
   });
   it("tells the AI to report a step it cannot read and never to leave out or tidy a step", () => {
     const system = markingRequest(twoWaysFrame(), new Uint8Array([1])).system!;
@@ -900,7 +1126,7 @@ describe("S4 whole-page readings", () => {
   });
   it.each([frame, tickFrame, circleFrame])("uses one versioned empty-area rule for number, tick and circle requests", makeFrame => {
     const request = markingRequest(makeFrame(), new Uint8Array([1, 2, 3]));
-    expect(MARKING_PROMPT_VERSION).toBe("whole-page-scalar-readings-v8");
+    expect(MARKING_PROMPT_VERSION).toBe("whole-page-scalar-readings-v9");
     expect(request.system).toMatch(/Blank requires positive visual evidence/);
     expect(request.system).toMatch(/Check for faint writing or marks before reporting blank with empty text/);
     expect(request.system).toMatch(/Never report blank for these conditions/);
@@ -1088,6 +1314,32 @@ describe("S7m spot-the-error answers", () => {
     expect(JSON.stringify(items)).not.toContain("56");
     expect(cropPlan(f.questions).crops).toHaveLength(1);
   });
+
+  // #921: on real photos every Fix it tick came back "multiple-marks" while its number was read. The tick sits in the
+  // same printed row as the Fix it box, and a child's tick runs out of its box over the label. The prompt said what a
+  // choice is, never what one tick looks like or that the number beside it is another region.
+  it("tells the AI what one tick on a Yes/No box is and that the Fix it number beside it is not a second mark", () => {
+    const request = markingRequest(spotFrame(), new Uint8Array([1]));
+    const items = JSON.parse((request.content[0] as { text: string }).text).items;
+    expect(items.map((i: { region: string; kind: string; mark?: string }) => [i.region, i.kind, i.mark])).toEqual([["r1", "choice", "tick"], ["r1-2", "number", undefined]]);
+    expect(MARKING_PROMPT_VERSION).toBe("whole-page-scalar-readings-v9");
+    expect(request.system).toMatch(/A tick drawn in or on an option's box marks that option, even when its long stroke runs out of the box over the option's label; that is one mark, not two\./);
+    expect(request.system).toMatch(/Handwriting in another requested region, such as a number written in an answer box beside the choices, belongs to that region and is never a mark on the choice\./);
+    expect(request.system).toMatch(/Printed boxes, printed labels and printed symbols are never marks\./);
+  });
+
+  it("still sends an unclear tick to our team: a mark in both boxes, a reported double mark, or no reading", () => {
+    const system = markingRequest(spotFrame(), new Uint8Array([1])).system!;
+    expect(system).toMatch(/Multiple, crossed-out or ambiguous marks are uncertain\./);
+    expect(system).toMatch(/A mark that reaches into the box of another option is ambiguous\./);
+    const doubled = tickOutput(null, "66");
+    Object.assign(doubled.readings[0], { issue: "multiple-marks" });
+    for (const out of [doubled, tickOutput("Yes and No", "66"), tickOutput("✓ No", "66")]) {
+      const o = readMarkingOutput(spotFrame(), out)[0];
+      expect(o).toMatchObject({ state: "pending", result: null, certainty: "uncertain" });
+      expect(waitsForTeam({ observation: o, model: MARKING_MODEL })).toBe(true);
+    }
+  });
 });
 
 describe("S4 canonical originals and lifecycle", () => {
@@ -1215,3 +1467,144 @@ it("effective projection replaces append-only originals; Try first and parent ex
   expect(rebuilt.built && rebuilt.profile.standards[0]).toMatchObject({ correct: 1, total: 1 });
   expect(markingEvent(marks[0].expected, marks[0].observation).publish).toBe(false);
 });
+
+describe("#912: a question the photo's edge cuts off", () => {
+  it("is never read from the photo: whatever the model says, it waits for our team as cut off", () => {
+    // The straightened page shows white paper where a cut-off answer was. Disproved if a model reading of it, blank or
+    // written, right or wrong, becomes a mark, or if the questions in the photo are not marked as before.
+    const f: MarkingFrame = { ...frame(), cutOff: [2] };
+    for (const text of ["", "12", "7", null]) {
+      const o = readMarkingOutput(f, output(["0", text, "9"]));
+      expect(o[1], `model read ${JSON.stringify(text)}`).toMatchObject({ state: "pending", result: null, issue: "cut-off", certainty: "uncertain" });
+      expect(o.map((x) => observationProblem(x))).toEqual([null, null, null]);
+      expect([o[0].result, o[2].result]).toEqual(["right", "right"]);
+      const mark: EffectiveMark = { expected: expectedItems(f)[1], observation: o[1], originalEvent: null, eventId: null, at: "2026-11-13T12:00:00Z", model: MARKING_MODEL, prompt: MARKING_PROMPT_VERSION };
+      expect(waitsForTeam(mark)).toBe(true);
+      expect(markingPageView([mark]).items[0].label).toBe("Our team is checking this answer. Part of this answer is cut off. You can also send a new photo of this page.");
+    }
+    // Control: the same reading without the cut is marked.
+    expect(readMarkingOutput(frame(), output(["0", "12", "9"]))[1]).toMatchObject({ state: "scored", result: "right" });
+  });
+
+  it("cuts every region of a two-part item", () => {
+    const f: MarkingFrame = { ...tickFrame(), cutOff: [1] };
+    const o = readMarkingOutput(f, tickOutput("+", "66"))[0];
+    expect(o).toMatchObject({ state: "pending", result: null, issue: "cut-off" });
+    expect(o.regions?.map((r) => r.issue)).toEqual(["cut-off", "cut-off"]);
+    expect(readMarkingOutput(tickFrame(), tickOutput("+", "66"))[0]).toMatchObject({ state: "scored", result: "right" });
+  });
+});
+
+describe("the second look: unsure answers are read once more by the escalation model (decision 2026-11-13)", () => {
+  const f = () => frame("photo-esc", [0, 12, 9]);
+  const second = (text: string | null) => ({ readings: [{ item: "i2", region: "r2", text, state: text === null ? "uncertain" : text === "" ? "blank" : "written", issue: text === null ? "unreadable" : null, verdict: null, reason: null }] });
+  const withOpus = (s: Store) => { s.prices.set(MARKING_ESCALATION_MODEL, 20_000); return s; };
+  const go = (s: Store, first: MarkingClientFactory, escalate?: MarkingClientFactory) => runScanMarking(s, { parent: P, photo: "photo-esc" }, "photo-esc", first, () => new Date(s.clock).toISOString(), { escalate });
+  const item = (s: Store, n: number) => [...s.items.values()].find((m) => m.expected.number === n)!.observation;
+
+  it("sends only the unsure items, with the second-look rule, and its certain mark stands", async () => {
+    const s = withOpus(new Store(f())), asked: AiJsonRequest[] = [];
+    expect(await go(s, client(output(["0", null, "9"])), client(second("12"), asked, 3_000, MARKING_ESCALATION_MODEL))).toBe("finished");
+    expect(asked).toHaveLength(1);
+    const part = asked[0].content.find((c) => c.type === "text")!;
+    if (part.type !== "text") throw new Error("text request required");
+    expect((JSON.parse(part.text).items as { item: string }[]).map((i) => i.item)).toEqual(["i2"]);
+    expect(asked[0].system).toContain("second look");
+    expect([1, 2, 3].map((n) => item(s, n).result)).toEqual(["right", "right", "right"]);
+    expect(s.roles).toEqual([{ model: MARKING_MODEL }, { model: MARKING_ESCALATION_MODEL, role: "escalation" }]);
+    expect(s.escalations.at(-1)).toEqual({ model: MARKING_ESCALATION_MODEL, prompt: MARKING_ESCALATION_PROMPT_VERSION, items: [expectedItems(f())[1].identity.itemId] });
+    // Both dispatches settled once, each with its own cost.
+    expect(s.settles).toEqual(["d0", "d1"]);
+    expect([...s.spend.values()].map((x) => x.charged)).toEqual([null, 3_000]);
+  });
+
+  it("keeps the first read when the second look is unsure too, or blank where the first saw nothing readable", async () => {
+    const s = withOpus(new Store(f()));
+    expect(await go(s, client(output(["0", null, "9"])), client(second(null), [], 3_000, MARKING_ESCALATION_MODEL))).toBe("finished");
+    expect(item(s, 2)).toMatchObject({ state: "pending", result: null });
+    expect(s.escalations.at(-1)).toBeNull();
+    const b = withOpus(new Store(f()));
+    expect(await go(b, client(output(["0", null, "9"])), client(second(""), [], 3_000, MARKING_ESCALATION_MODEL))).toBe("finished");
+    expect(item(b, 2)).toMatchObject({ state: "scored", result: "blank" });
+  });
+
+  it("never asks when the first read is certain, and keeps the first read on any failure or refusal", async () => {
+    const calm = withOpus(new Store(f())), never: AiJsonRequest[] = [];
+    expect(await go(calm, client(output(["0", "12", "9"])), client(second("12"), never, 3_000, MARKING_ESCALATION_MODEL))).toBe("finished");
+    expect(never).toHaveLength(0);
+    expect(calm.roles).toHaveLength(1);
+    // A failed call: the first read stands, its dispatch is settled once.
+    const failed = withOpus(new Store(f()));
+    expect(await go(failed, client(output(["0", null, "9"])), client(async () => { throw new Error("provider down"); }, [], null, MARKING_ESCALATION_MODEL))).toBe("finished");
+    expect(item(failed, 2)).toMatchObject({ state: "pending", result: null });
+    expect(failed.settles).toEqual(["d0", "d1"]);
+    // No price row for the model: refused before any call.
+    const unpriced = new Store(f()), none: AiJsonRequest[] = [];
+    expect(await go(unpriced, client(output(["0", null, "9"])), client(second("12"), none, 3_000, MARKING_ESCALATION_MODEL))).toBe("finished");
+    expect(none).toHaveLength(0);
+    expect(item(unpriced, 2)).toMatchObject({ state: "pending" });
+  });
+
+  it("makes one attempt only: a client retry is refused before admission", async () => {
+    const s = withOpus(new Store(f()));
+    const retrying: MarkingClientFactory = (before) => ({ client: { model: MARKING_ESCALATION_MODEL, async json() { await before(); await before(); return second("12"); } }, costMicros: () => null });
+    expect(await go(s, client(output(["0", null, "9"])), retrying)).toBe("finished");
+    expect(s.roles.filter((r) => r.role === "escalation")).toHaveLength(1);
+    expect(item(s, 2)).toMatchObject({ state: "pending" });
+  });
+
+  it("asks only items this read was asked and left unsure: a retake whose other items were decided earlier asks nothing more (#958 review)", async () => {
+    // Photo a decides items 1 and 2 and leaves 3 unsure; the retake b is asked only item 3, reads it, and needs no second look.
+    const s = withOpus(new Store(f(), frame("photo-esc-b", [0, 12, 9]))), asked: AiJsonRequest[] = [];
+    const run2 = (photo: string, first: MarkingClientFactory) => runScanMarking(s, { parent: P, photo }, photo, first, () => new Date(s.clock).toISOString(), { escalate: client(second("12"), asked, 3_000, MARKING_ESCALATION_MODEL) });
+    expect(await run2("photo-esc", client(output(["0", "12", null])))).toBe("finished");
+    const firstLook = asked.length;
+    expect(await run2("photo-esc-b", client({ readings: [{ item: "i3", region: "r3", state: "written", text: "9" }] }))).toBe("finished");
+    expect(asked).toHaveLength(firstLook);
+    expect(s.roles.filter((r) => r.role === "escalation")).toHaveLength(firstLook);
+    // And when the retake leaves its one item unsure, only that item is sent.
+    const t = withOpus(new Store(f(), frame("photo-esc-b", [0, 12, 9]))), sent: AiJsonRequest[] = [];
+    await runScanMarking(t, { parent: P, photo: "photo-esc" }, "photo-esc", client(output(["0", "12", null])), () => new Date(t.clock).toISOString());
+    await runScanMarking(t, { parent: P, photo: "photo-esc-b" }, "photo-esc-b", client({ readings: [{ item: "i3", region: "r3", state: "uncertain", text: null, issue: "unreadable" }] }), () => new Date(t.clock).toISOString(), { escalate: client({ readings: [] }, sent, 3_000, MARKING_ESCALATION_MODEL) });
+    expect(sent).toHaveLength(1);
+    const part = sent[0].content.find((c) => c.type === "text")!;
+    if (part.type !== "text") throw new Error("text request required");
+    expect((JSON.parse(part.text).items as { item: string }[]).map((i) => i.item)).toEqual(["i3"]);
+  });
+
+  it("leaves questions cut off by the photo's edge out: no call when they are the only unsure ones (#958 review)", async () => {
+    const s = withOpus(new Store({ ...f(), cutOff: [2] })), asked: AiJsonRequest[] = [];
+    expect(await go(s, client(output(["0", "12", "9"])), client(second("12"), asked, 3_000, MARKING_ESCALATION_MODEL))).toBe("finished");
+    expect(asked).toHaveLength(0);
+    expect(item(s, 2)).toMatchObject({ state: "pending", issue: "cut-off" });
+  });
+
+  it("skips the second look when the run's AI time is nearly used, and keeps the first read's marks (#958 review)", async () => {
+    const s = withOpus(new Store(f())), asked: AiJsonRequest[] = [];
+    // The first read takes 140 s of the 150 s budget: 10 s is too little for a whole second call.
+    const slow: MarkingClientFactory = (before) => ({ client: { model: MARKING_MODEL, async json() { await before(); s.clock += 140_000; return output(["0", null, "9"]); } }, costMicros: () => 1_000 });
+    expect(await runScanMarking(s, { parent: P, photo: "photo-esc" }, "photo-esc", slow, () => new Date(s.clock).toISOString(), { escalate: client(second("12"), asked, 3_000, MARKING_ESCALATION_MODEL), clockMs: () => s.clock })).toBe("finished");
+    expect(asked).toHaveLength(0);
+    expect(s.roles.filter((r) => r.role === "escalation")).toHaveLength(0);
+    expect([1, 3].map((n) => item(s, n).result)).toEqual(["right", "right"]);
+    expect(item(s, 2)).toMatchObject({ state: "pending" });
+  });
+
+  it("is refused while the month is past half the cap, so first reads always keep their room (#958 review)", async () => {
+    const s = withOpus(new Store(f())), asked: AiJsonRequest[] = [];
+    const period = new Date(s.clock).toISOString().slice(0, 7);
+    s.spend.set("earlier", { period, reserved: MARKING_ESCALATION_CAP_MICROS - 10_000, charged: MARKING_ESCALATION_CAP_MICROS - 10_000, photo: "other" });
+    expect(await go(s, client(output(["0", null, "9"])), client(second("12"), asked, 3_000, MARKING_ESCALATION_MODEL))).toBe("finished");
+    expect(asked).toHaveLength(0);
+    expect(s.roles.at(-1)).toEqual({ model: MARKING_ESCALATION_MODEL, role: "escalation" });
+    expect([1, 3].map((n) => item(s, n).result)).toEqual(["right", "right"]);
+    expect(item(s, 2)).toMatchObject({ state: "pending" });
+  });
+
+  it("is off unless SCAN_MARKING_ESCALATION is exactly on", () => {
+    expect(markingEscalationClient({ SCAN_MARKING_OPENROUTER_API_KEY: "k" })).toBeUndefined();
+    expect(markingEscalationClient({ SCAN_MARKING_OPENROUTER_API_KEY: "k", SCAN_MARKING_ESCALATION: "On" })).toBeUndefined();
+    expect(markingEscalationClient({ SCAN_MARKING_OPENROUTER_API_KEY: "k", SCAN_MARKING_ESCALATION: "on" })).toBeTypeOf("function");
+  });
+});
+

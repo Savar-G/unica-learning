@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { BRAND } from "@/lib/site";
 
-export const alt = `${BRAND}: A personalized math program that meets your child at their level.`;
+export const alt = `${BRAND}: A personalized math program made for your child to excel.`;
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -25,10 +25,13 @@ export default async function Image() {
             <div style={{ fontSize: 22, letterSpacing: 3, textTransform: "uppercase", marginBottom: 22 }}>Ages 5 to 14, Kindergarten to Grade 9</div>
             <div style={{ display: "flex", flexDirection: "column", fontFamily: "Zodiak", fontSize: 64, lineHeight: 1.05, letterSpacing: -1.5 }}>
               <span>A personalized math</span>
-              <span>program that meets</span>
-              <span>your child</span>
+              <span>program made for</span>
               <div style={{ display: "flex" }}>
-                <span style={{ background: "#FFD23F", padding: "0 8px", marginLeft: -8 }}>at their level.</span>
+                <span style={{ background: "#FFD23F", padding: "0 8px", marginLeft: -8 }}>your child</span>
+                <span style={{ marginLeft: 14 }}>to</span>
+              </div>
+              <div style={{ display: "flex", marginTop: 6 }}>
+                <span style={{ background: "#FFD23F", padding: "0 8px", marginLeft: -8 }}>excel.</span>
               </div>
             </div>
           </div>

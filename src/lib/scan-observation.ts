@@ -307,6 +307,15 @@ export function pageCompletion(expected: readonly ExpectedItem[], observations: 
   return { status: items.length === 0 ? "no-items" : finished === items.length ? "complete" : "incomplete", items, finished, total: items.length };
 }
 
+/**
+ * An item with no result that waits for our team (#715): an old format a person marks, or anything the AI read (or
+ * tried to read) without a sure result. An item not read yet is not the team's. A stored row that apply wrote always has
+ * a model, which is the rule admin_scan_team_queue uses; a reading in hand counts too.
+ */
+export const waitsForTeam = (m: { observation: Observation; model: string | null }) =>
+  m.observation.result === null && (m.observation.state === "parent-pending"
+    || (m.observation.state === "pending" && (m.model !== null || m.observation.certainty !== "not-read")));
+
 // ---------- Which observations may publish an event ----------
 
 export type MarkingEventDecision =

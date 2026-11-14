@@ -45,7 +45,9 @@ export function scanMarkingStore(db: SupabaseClient<Database>): MarkingStore {
           regions: q.regions, teaching: q.teaching }, { source: "workbook", workbookId, page: pageNumber, question: num(q.question_number) }, image);
         return { number: read.number, package: read.content.status === "found" ? read.content.package : null, regions: read.regions, teaching: read.teaching };
       });
-      const frame: MarkingFrame = { parentId: ref.parent, childId: str(p.child_id), photo: ref.photo, workbookId, printedRevision, pageId: str(p.page_id), pageNumber, ready: true, questions };
+      // Questions the photo's edge cut off (#912): read as cut off, never from the photo.
+      const cutOff = Array.isArray(result.cutOff) ? result.cutOff.map(num) : [];
+      const frame: MarkingFrame = { parentId: ref.parent, childId: str(p.child_id), photo: ref.photo, workbookId, printedRevision, pageId: str(p.page_id), pageNumber, ready: true, questions, ...(cutOff.length ? { cutOff } : {}) };
       frames.set(refKey(ref), { frame, path: scanPartPath(ref.parent, ref.photo, str(c.lease_token), "straight"), hash: digestOf(JSON.stringify({ contract, questions })) });
       return frame;
     },
@@ -66,16 +68,28 @@ export function scanMarkingStore(db: SupabaseClient<Database>): MarkingStore {
       // Default sharp output drops EXIF, XMP and ICC metadata. Whole-page coordinates and orientation stay unchanged.
       return new Uint8Array(await sharp(bytes, { limitInputPixels: 48_000_000, failOn: "warning" }).jpeg({ quality: 85 }).toBuffer());
     },
-    async admit(ref, token, model) {
-      const r = await command("admit", ref.parent, ref.photo, token, { model });
+    async admit(ref, token, model, role) {
+      const r = await command("admit", ref.parent, ref.photo, token, role ? { model, role } : { model });
       if (r === "terminal" || r === "budget" || r === "price-unverified" || r === "attempts") return r;
       return { dispatch: str(record(r).dispatch) };
     },
-    async settle(dispatch, costMicros) {
-      const r = await command("settle", null, null, dispatch, { cost: costMicros });
+    async settle(dispatch, costMicros, failure) {
+      // #868: a clean 429 goes with no cost only. The database checks its body again and answers "clean" only when it
+      // recorded the dispatch as one (hold freed, not counted); `true` means it counts and keeps its hold.
+      const clean = costMicros === null && failure?.kind === "rate-limit" ? { failure: failure.kind, status: failure.evidence.status, body: failure.evidence.body } : {};
+      const r = await command("settle", null, null, dispatch, { cost: costMicros, ...clean });
+      if (r === "clean") return true;
       if (r !== true) throw new Error("marking_cost_reconciliation");
+      return false;
     },
-    async extract(ref, token, observations, model) { return await command("extract", ref.parent, ref.photo, token, toJson({ observations, model, prompt: MARKING_PROMPT_VERSION })) === true; },
+    async defer(ref, token) {
+      const r = await command("defer", ref.parent, ref.photo, token);
+      if (r === "pending" || r === "attempts" || r === "terminal") return r;
+      // Never read an unexpected answer as a deferral: the run pauses the job as pending instead. No ids are logged.
+      console.error("[scan-marking] unexpected defer answer", JSON.stringify({ type: r === null ? "null" : typeof r }));
+      throw new Error("marking_defer");
+    },
+    async extract(ref, token, observations, model, escalation) { return await command("extract", ref.parent, ref.photo, token, toJson({ observations, model, prompt: MARKING_PROMPT_VERSION, ...(escalation ? { escalation } : {}) })) === true; },
     async apply(ref, token, _observations, pendingEvents, at) { return await command("apply", ref.parent, ref.photo, token, toJson({ events: pendingEvents, at })) === true; },
     async pause(ref, token, status) { await command("pause", ref.parent, ref.photo, token, { status }); },
     async finish(ref, token) { return await command("finish", ref.parent, ref.photo, token) === true; },

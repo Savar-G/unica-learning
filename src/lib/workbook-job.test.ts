@@ -4,10 +4,11 @@ import { fakeAiClient } from "@/lib/ai-client-fake";
 import { fakeWorkbookItems } from "@/lib/workbook-ai-fake";
 import type { ChildLearnerProfile } from "@/lib/child-profile";
 import { fakePrintEngine } from "@/lib/print-engine-fake";
-import { curriculumFor } from "@/lib/workbook-curriculum";
+import { curriculumFor, curriculumVersion } from "@/lib/workbook-curriculum";
+import type { PlanInput } from "@/lib/workbook-plan";
 import { memoryDraftStore } from "@/lib/workbook-draft-memory";
 import { memoryRunStore } from "@/lib/workbook-job-memory";
-import { runState, runWorkbookJob, startWorkbookRun, SLOT_ATTEMPTS, STALE_SECONDS, type ChildInputs, type WorkbookJobDeps } from "@/lib/workbook-job";
+import { runState, runWorkbookJob, startWorkbookRun, SLOT_ATTEMPTS, STALE_SECONDS, type ChildInputs, type NextBookRunBook, type WorkbookJobDeps } from "@/lib/workbook-job";
 import { generateWorkbook, type FitCheck, type GeneratedWorkbook } from "@/lib/workbook-generator";
 import { placeChild, planNextWorkbook } from "@/lib/workbook-placement";
 import { memoryWorkbookFiles } from "@/lib/workbook-store-memory";
@@ -15,6 +16,7 @@ import { workbookTemplate } from "@/lib/workbook-template";
 import { workbookWorker } from "@/lib/workbook-worker";
 import { keySolver, type Solver } from "@/lib/workbook-solve-check";
 import { firstCustomerProfile } from "@/lib/workbook-sample-profiles";
+import { pageGateKey, type PageGateChecker } from "@/lib/workbook-page-gates";
 
 // "Prepare next workbook" (#312) through its public interface: the in-memory runs, drafts and files, the fake AI client
 // with fixed JSON, the fake print engine and the real page templates (#310). The clock is fake: each AI call takes
@@ -38,7 +40,7 @@ const pageCalls = (requests: AiJsonRequest[]) => requests.filter((r) => r.name =
 
 function setup(o: {
   itemPolicy?: WorkbookJobDeps["itemPolicy"]; inputs?: ChildInputs; ai?: WorkbookJobDeps["ai"]; files?: WorkbookJobDeps["files"]; budgetMs?: number; handOff?: WorkbookJobDeps["handOff"];
-  solver?: WorkbookJobDeps["solver"]; solveCost?: WorkbookJobDeps["solveCost"]; concurrency?: number;
+  solver?: WorkbookJobDeps["solver"]; solveCost?: WorkbookJobDeps["solveCost"]; concurrency?: number; pageGates?: WorkbookJobDeps["pageGates"];
 } = {}) {
   let clock = new Date("2026-10-31T17:00:00.000Z");
   let ids = 0;
@@ -53,7 +55,7 @@ function setup(o: {
     // These recovery cases pin the old policy. The approved-policy case below exercises new frames.
     itemPolicy: o.itemPolicy ?? "legacy",
     runs, drafts, files: o.files ?? files, ai, template: workbookTemplate(), fit: () => fits, engine: fakePrintEngine(),
-    solver: o.solver === undefined ? keySolver() : o.solver, ...(o.solveCost ? { solveCost: o.solveCost } : {}),
+    solver: o.solver === undefined ? keySolver() : o.solver, ...(o.solveCost ? { solveCost: o.solveCost } : {}), ...(o.pageGates ? { pageGates: o.pageGates } : {}),
     source: {
       inputs: async (id) => (id === CHILD ? (o.inputs ?? child()) : null),
       prepareProfile: async () => ({ ok: true, profile: o.inputs?.profile ?? null }),
@@ -84,6 +86,52 @@ async function started(s: ReturnType<typeof setup>) {
 }
 
 describe("a run", () => {
+  it("checks each rendered page with the page layout gate once, stores it at page:<page> and marks a flagged page (#859)", async () => {
+    const asked: number[] = [];
+    const pageGates: PageGateChecker = {
+      model: "typesafe/jev-1.14",
+      check: async (n, png) => {
+        asked.push(n);
+        expect(png.length).toBeGreaterThan(0);
+        const flag = n === 2;
+        return { callKey: pageGateKey(n), questionId: `page-${n}`, model: "typesafe/jev-1.14", thresholdVersion: 1, outcome: flag ? "flag" : "pass", flags: flag ? ["overlap"] : [], probabilities: { overlap: flag ? 0.9 : 0.1 }, reason: flag ? "The page layout gate flagged this page: parts of the page may overlap." : null };
+      },
+    };
+    const s = setup({ pageGates });
+    const id = await started(s);
+    expect(await runWorkbookJob(id, s.deps)).toBe("done");
+    const [revision] = s.runs.revisions;
+    const rendered = revision.rendering!.pages.filter((p) => !p.proof).map((p) => p.number);
+    expect(rendered.length).toBeGreaterThan(1);
+    // Only the pages that rendered: a proof page failed already.
+    expect(asked).toEqual(rendered);
+    const stored = (await s.runs.gates(id)).filter((r) => r.callKey.startsWith("page:"));
+    expect(stored.map((r) => r.callKey)).toEqual(rendered.map((n) => `page:${n}`));
+    const marked = revision.rendering!.pages.filter((p) => p.layoutGate);
+    expect(marked.map((p) => p.number)).toEqual([2]);
+    expect(marked[0].layoutGate).toMatchObject({ outcome: "flag", flags: ["overlap"], reason: expect.stringContaining("overlap") });
+  });
+
+  it("marks the pages a page layout gate outage skipped as not checked, never as passed (#859)", async () => {
+    const asked: number[] = [];
+    const pageGates: PageGateChecker = {
+      model: "typesafe/jev-1.14",
+      check: async (n) => {
+        asked.push(n);
+        return { callKey: pageGateKey(n), questionId: `page-${n}`, model: "typesafe/jev-1.14", thresholdVersion: 1, outcome: "unknown", flags: [], probabilities: {}, reason: null };
+      },
+    };
+    const s = setup({ pageGates });
+    const id = await started(s);
+    expect(await runWorkbookJob(id, s.deps)).toBe("done");
+    const pages = s.runs.revisions[0].rendering!.pages.filter((p) => !p.proof);
+    expect(pages.length).toBeGreaterThan(10);
+    // Every answer errored: the pass stops after 10 requests, and the rest are skipped.
+    expect(asked).toHaveLength(10);
+    expect(pages.every((p) => p.layoutGate?.outcome === "unknown")).toBe(true);
+    expect(pages.filter((p) => !asked.includes(p.number)).every((p) => p.layoutGate!.reason.includes("not checked"))).toBe(true);
+  });
+
   it("stores a draft with its progress, its check results and revision 1 with an image of every page", async () => {
     const s = setup();
     const id = await started(s);
@@ -850,6 +898,89 @@ describe("a run's plan, made once and stored (R379-8-2), and its solve checks ke
     expect(s.runs.solveStore.get(id)!.map((x) => x.callKey).sort()).toEqual([...keys].sort());
     expect(await draftOf(s, id)).toEqual(await draftOf(one, oneId));
     expect((s.ai as ReturnType<typeof fakeAiClient>).requests.length).toBe((one.ai as ReturnType<typeof fakeAiClient>).requests.length);
+  });
+});
+
+describe("a next-book run (#476): made from the snapshot's saved plan", () => {
+  const SNAPSHOT = "00000000-0000-4000-8000-00000000aaaa";
+  const BC = curriculumFor("bc")!;
+  /** Book 2's saved plan input, as the next-book planner would store it, and the plan it makes. */
+  function savedPlan() {
+    let input: PlanInput | undefined;
+    const made = planNextWorkbook({ curriculum: BC, grade: 3, profile: null, workbooks: [{ number: 1, levels: [9] }], number: 2 }, (c) => { input = c; });
+    if (!made.ok || !input) throw new Error("no plan");
+    const planInput = { ...input, curriculum: { key: "bc" as const, version: curriculumVersion("bc")! } };
+    return { ok: true as const, snapshotId: SNAPSHOT, planHash: "f".repeat(64), planInput, plan: made.plan };
+  }
+  function nextBookSetup(answer: NextBookRunBook | Error) {
+    // The child as read now would plan Book 2 at U10 (grade 3, no profile, Book 1 at U10): the saved plan says U9.
+    const s = setup({ inputs: child({ workbooks: [{ number: 1, levels: [10] }] }) });
+    const asked: string[] = [];
+    let prepared = 0;
+    s.deps.source = { ...s.deps.source, prepareProfile: async () => { prepared++; return { ok: true, profile: null }; },
+      nextBookPlan: async (id) => { asked.push(id); if (answer instanceof Error) throw answer; return structuredClone(answer); } };
+    return { ...s, asked, prepared: () => prepared };
+  }
+  async function snapshotRun(s: ReturnType<typeof setup>) {
+    const id = await started(s);
+    s.runs.runs.get(id)!.snapshotId = SNAPSHOT;
+    return id;
+  }
+
+  it("plans from the saved plan input, not from the child read now, and keeps the snapshot on the frame", async () => {
+    const saved = savedPlan();
+    const s = nextBookSetup(saved);
+    const id = await snapshotRun(s);
+    expect(await runWorkbookJob(id, s.deps)).toBe("done");
+    expect(s.asked).toEqual([SNAPSHOT]);
+    expect(s.prepared()).toBe(0);
+    const frame = s.runs.frameStore.get(id)!;
+    expect(frame.plan).toEqual(JSON.parse(JSON.stringify(saved.plan)));
+    expect(frame.plan.level).toBe(9);
+    expect(frame).toMatchObject({ curriculum: "bc", grade: 3, nextBook: { snapshotId: SNAPSHOT, planHash: saved.planHash } });
+    expect(frame.planning).toBeUndefined();
+  });
+
+  it.each([
+    ["curriculum-changed", /made on another version of the workbook curriculum/],
+    ["curriculum-unrecorded", /does not record the curriculum version it was made on/],
+    ["plan-mismatch", /does not make the plan it was saved with/],
+    ["not-frozen", /cannot be read \(not-frozen\)/],
+  ] as const)("fails with a plain error and no AI call when the saved plan is refused: %s", async (reason, error) => {
+    const s = nextBookSetup({ ok: false, reason });
+    const id = await snapshotRun(s);
+    expect(await runWorkbookJob(id, s.deps)).toBe("failed");
+    const run = (await s.runs.run(id))!;
+    expect(run).toMatchObject({ status: "failed", attempts: 1, draftId: null });
+    expect(run.error).toMatch(error);
+    expect((s.ai as ReturnType<typeof fakeAiClient>).requests).toHaveLength(0);
+    expect(s.runs.frameStore.has(id)).toBe(false);
+  });
+
+  it("fails when the saved plan is for another curriculum than the child's", async () => {
+    const saved = savedPlan();
+    const s = nextBookSetup({ ...saved, planInput: { ...saved.planInput, curriculum: { key: "on" as never, version: "x" } } });
+    const id = await snapshotRun(s);
+    expect(await runWorkbookJob(id, s.deps)).toBe("failed");
+    expect((await s.runs.run(id))!.error).toMatch(/another curriculum/);
+    expect((s.ai as ReturnType<typeof fakeAiClient>).requests).toHaveLength(0);
+  });
+
+  it("fails before any AI call when this place cannot read saved plans", async () => {
+    const s = setup();
+    const id = await snapshotRun(s);
+    expect(await runWorkbookJob(id, s.deps)).toBe("failed");
+    expect((await s.runs.run(id))!.error).toMatch(/cannot read the next book's saved plan/);
+    expect((s.ai as ReturnType<typeof fakeAiClient>).requests).toHaveLength(0);
+  });
+
+  it("leaves a run with no snapshot as it was: planned from the child read now", async () => {
+    const s = nextBookSetup(savedPlan());
+    const id = await started(s);
+    expect(await runWorkbookJob(id, s.deps)).toBe("done");
+    expect(s.asked).toEqual([]);
+    expect(s.prepared()).toBe(1);
+    expect(s.runs.frameStore.get(id)!.nextBook).toBeUndefined();
   });
 });
 

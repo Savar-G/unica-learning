@@ -159,7 +159,7 @@ describe("the report email to the parent", () => {
     for (const province of ["BC", "ON"] as const) {
       const quiet = reportEmail({ unsubscribeUrl: UNSUB, view: view(knowsUpTo(3), { province }), parentName: "Priya", url: URL, offer: false });
       for (const body of [quiet.text, quiet.html]) {
-        expect(body).not.toMatch(/Book your results call|first workbook|calendly\.com|Choose a plan|Join the waitlist|step=|CAD \d+|Unsubscribe:|unsubscribe\?t=|How we help|first book|books keep|The books/);
+        expect(body).not.toMatch(/Book your results call|first workbook|cal\.com|calendly\.com|Choose a plan|Join the waitlist|step=|CAD \d+|Unsubscribe:|unsubscribe\?t=|How we help|first book|books keep|The books/);
         expect(body).toContain("You unsubscribed from reminders and emails about our plans, so this email has only the report.");
       }
       expect(quiet.html).toMatch(new RegExp(`<a href="${URL.replace(/[?.]/g, "\\$&")}"[^>]*>See Maya&#39;s full report</a>`));

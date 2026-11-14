@@ -7,6 +7,7 @@ import {
   calibratePhoto,
   calibrationForPhoto,
   cropBox,
+  cropInPhoto,
   cropPlan,
   sheetChecker,
   straightenedPage,
@@ -59,6 +60,11 @@ export interface ScanCalibrationResult {
   straight?: { width: number; height: number };
   crops?: ScanCrop[];
   notSupported?: number[];
+  /**
+   * Questions whose answer the photo's edge cuts off (#912), on a page placed by its QR code: no crop is made, and marking
+   * leaves them to our team as cut off (scan-marking.ts), never read from what is left. Absent when none is cut off.
+   */
+  cutOff?: number[];
   reason?: ScanRefusal;
   /**
    * The sheet check a ready result passed (SHEET_CHECK_VERSION). A ready result with an older or no version was made before
@@ -75,7 +81,7 @@ export const checkedReady = (result: { sheetCheck?: unknown } | null | undefined
   typeof result?.sheetCheck === "number" && result.sheetCheck >= SHEET_CHECK_VERSION;
 
 export type ScanPreview =
-  | { status: "ready"; straight: { part: string; width: number; height: number }; crops: { part: string; number: number; width: number; height: number }[]; notSupported: number[] }
+  | { status: "ready"; straight: { part: string; width: number; height: number }; crops: { part: string; number: number; width: number; height: number }[]; notSupported: number[]; cutOff?: number[] }
   /** `retryInMs`, only for check-timeout: how long until the job's lease is over and another call can check again. */
   | { status: "refused"; reason: ScanRefusal; retryInMs?: number }
   /** Checking is not available: a legacy book, an older revision, or a photo that is no longer active. The photo keeps its place unless it ended. */
@@ -173,16 +179,32 @@ async function beforeDeadline<T>(read: () => Promise<T>, deadline: number): Prom
  * print ends it at once. A spot too faint to read refuses only once no other page's print has been found. "timeout": out
  * of time, and nothing can be said about the sheet.
  */
-async function sheetVerdict(store: ScanCropStore, ask: ReturnType<typeof sheetChecker>, paths: readonly string[], deadline: number): Promise<"this-page" | SheetRefusal | "timeout"> {
+/** The bytes of one batch of the child's other pages. A page that cannot be read fails the job, which a later call tries again. */
+type OtherBatch = Promise<Uint8Array[]>;
+function fetchOthers(store: ScanCropStore, paths: readonly string[], from: number): OtherBatch {
+  const batch = Promise.all(paths.slice(from, from + OTHERS_AT_ONCE).map(async (path) => {
+    const bytes = await store.printedBytes(path);
+    if (!bytes) throw new Error("scan crops: another page's image");
+    return bytes;
+  }));
+  // A batch fetched ahead and never used (the photo was refused first) must not fail the process.
+  batch.catch(() => undefined);
+  return batch;
+}
+
+/**
+ * Speed (#915): each batch's download overlaps the work before it. The first batch is fetched while the photo is
+ * calibrated (`first`), and each next batch while the one before is compared. The comparisons, their order and the
+ * verdict are unchanged.
+ */
+async function sheetVerdict(store: ScanCropStore, ask: ReturnType<typeof sheetChecker>, paths: readonly string[], deadline: number, first?: OtherBatch): Promise<"this-page" | SheetRefusal | "timeout"> {
   let faint = false;
+  let pending: OtherBatch | null = paths.length ? first ?? fetchOthers(store, paths, 0) : null;
   for (let i = 0; i < paths.length; i += OTHERS_AT_ONCE) {
-    const batch = await beforeDeadline(() => Promise.all(paths.slice(i, i + OTHERS_AT_ONCE).map(async (path) => {
-      const bytes = await store.printedBytes(path);
-      // One that cannot be read fails the job, which a later call tries again.
-      if (!bytes) throw new Error("scan crops: another page's image");
-      return decode(bytes, 1);
-    })), deadline);
+    const current = pending!;
+    const batch = await beforeDeadline(async () => Promise.all((await current).map((bytes) => decode(bytes, 1))), deadline);
     if (batch === CHECK_TIMEOUT) return "timeout";
+    pending = i + OTHERS_AT_ONCE < paths.length ? fetchOthers(store, paths, i + OTHERS_AT_ONCE) : null;
     for (const other of batch) {
       if (Date.now() >= deadline) return "timeout";
       const { verdict } = ask([other]);
@@ -216,6 +238,7 @@ export async function readScanPreview(store: ScanCropStore, ref: PhotoRef): Prom
   return {
     status: "ready", straight: { part: STRAIGHT_PART, ...r.straight },
     crops: r.crops.map((c) => ({ part: c.part, number: c.number, width: c.width, height: c.height })), notSupported: r.notSupported ?? [],
+    ...(r.cutOff?.length ? { cutOff: r.cutOff } : {}),
   };
 }
 
@@ -268,6 +291,7 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
   const [photo, printed] = input;
   if (!frame.page.qrToken) return finished("refused", { reason: "qr-mismatch" }, 0);
   const writing = frame.page.questions.flatMap((q) => (q.regions ?? []).flatMap((r) => (r.box ? [r.box] : [])));
+  const firstOthers = frame.page.others.length ? fetchOthers(store, frame.page.others, 0) : undefined;
   const result = calibratePhoto({ photo, printed, contract, pageLink: pageUrl(frame.page.qrToken), writing });
   if (Date.now() >= deadline) return timedOut();
   if (result.status === "unavailable") return { status: "unavailable", reason: result.reason };
@@ -275,15 +299,18 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
   const { calibration } = result;
 
   // The code and the marks are this page's: the print between them must be too, wherever a near twin prints otherwise.
-  const ask = sheetChecker({ photo, printed, transform: calibration.transform, writing });
+  const ask = sheetChecker({ photo, printed, transform: calibration.transform, writing, sheet: calibration });
   if (Date.now() >= deadline) return timedOut();
-  const sheet = await sheetVerdict(store, ask, frame.page.others, deadline);
+  const sheet = await sheetVerdict(store, ask, frame.page.others, deadline, firstOthers);
   if (sheet === "timeout") return timedOut();
   if (sheet !== "this-page") return finished("refused", { reason: sheet }, 0);
 
   // The files of the attempt this one replaced go first. A file of an older attempt stays until the photo's cleanup.
   if (previous) await store.clearLease({ ...ref, token: previous });
-  const plan = cropPlan(frame.page.questions);
+  const planned = cropPlan(frame.page.questions);
+  // A question the photo's edge cuts is not cropped: a crop would show white paper where its answer was (#912).
+  const cutOff = planned.crops.filter((c) => !cropInPhoto(calibration, contract.contract, c.box)).map((c) => c.number);
+  const plan = { ...planned, crops: planned.crops.filter((c) => !cutOff.includes(c.number)) };
   const straight = straightenedPage(photo, calibration, contract.contract);
   const uploads = [
     { part: STRAIGHT_PART, raster: straight, quality: 78 },
@@ -302,6 +329,7 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
   const rasters = new Map(uploads.map((u) => [u.part, u.raster]));
   return finished("ready", {
     sheetCheck: SHEET_CHECK_VERSION, calibration, parts: uploads.map((u) => u.part), straight: { width: straight.width, height: straight.height }, notSupported: plan.notSupported,
+    ...(cutOff.length ? { cutOff } : {}),
     crops: plan.crops.map((c) => {
       const part = cropPart(c.number), r = rasters.get(part)!;
       return { part, number: c.number, itemId: c.itemId, regionId: c.regionId, ...(c.regionIds ? { regionIds: c.regionIds } : {}), box: c.box, width: r.width, height: r.height };
