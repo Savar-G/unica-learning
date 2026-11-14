@@ -58,6 +58,7 @@ class SilentMicrophone extends voice.AudioInput {
 /** The child's speaker. It holds a playback while `held`, as a real phrase takes time to play. */
 class Speaker extends voice.AudioOutput {
   held = false;
+  suppressStart = false;
   cut = 0;
   private captured = 0;
   private waiting = false;
@@ -69,7 +70,7 @@ class Speaker extends voice.AudioOutput {
     this.captured += frame.samplesPerChannel / frame.sampleRate;
     if (this.capturedPlayoutSegments > before && this.capturedPlayoutSegments > this.pendingStarts) {
       this.pendingStarts = this.capturedPlayoutSegments;
-      this.onPlaybackStarted(Date.now());
+      if (!this.suppressStart) this.onPlaybackStarted(Date.now());
     }
   }
   private finish(interrupted: boolean) {
@@ -1087,4 +1088,74 @@ describe("turn-bound telemetry through a live call (latency audit 2026-11-14)", 
     expect(clock.finals.map((f) => f.id)).toEqual(finals.map((f) => f.finalId));
     expect(clock.finals[1].sttFinal - clock.finals[0].sttFinal).toBe(finals[1].at - finals[0].at);
   });
+});
+
+describe("Spec synthesis records through the real LiveKit pipeline", () => {
+ it("each physical sentence synthesis retains separate request marks", async () => {
+  const events: Emitted[]=[];
+  setTelemetry(new CallTelemetry({callId:"local-sentence-call",sink:e=>events.push(e)}));
+  const m=steppedModel(guideTurn(`${FIRST} ${SECOND}`));
+  const c=await voiceCall({model:m.model});
+  c.say("I got 56.");
+  await waitFor(()=>m.running,"model");
+  m.stream(1);
+  await waitFor(()=>c.said().includes(FIRST),"first sentence");
+  m.finish();
+  await waitFor(()=>c.said().includes(SECOND) && c.session.agentState==="listening","second sentence");
+  const turnId=c.samples[0].turnId!;
+  const clock=telemetry().turnClock(turnId) as { utterances: { ttsRequests: number; sentenceId: string; sentenceIndex: number }[] };
+  const ids=events.filter((e):e is Extract<Emitted,{ev:"utterance"}>=>e.ev==="utterance"&&e.turnId===turnId).map(e=>e.utteranceId);
+  const requests=events.filter(e=>e.ev==="mark"&&e.scope==="utterance"&&e.name==="ttsRequest"&&ids.includes(e.id));
+  expect(clock.utterances.reduce((n,u)=>n+u.ttsRequests,0)).toBe(2);
+  expect(requests).toHaveLength(2);
+  expect(new Set(clock.utterances.map(u => u.sentenceId)).size).toBe(2);
+ });
+});
+
+describe("publication after interrupted synthesis",()=>{
+ it.each([false,true])("publication stays with the next audible turn, abandoned=%s",async(abandoned)=>{
+  const events:Emitted[]=[];
+  setTelemetry(new CallTelemetry({callId:"local-publication-call",sink:e=>events.push(e)}));
+  const m=steppedModel(guideTurn(`${FIRST} ${SECOND}`));
+  const c=await voiceCall({model:m.model});
+  c.speaker.suppressStart=abandoned;
+  c.speaker.held=abandoned;
+  c.say("I got 56.");
+  await waitFor(()=>m.running,"first model");
+  m.stream(1);
+  await waitFor(()=>events.some(e=>e.ev==="utterance"&&e.kind==="answer"&&e.turnId!==null),"first answer synthesis");
+  const prior=events.find((e):e is Extract<Emitted,{ev:"utterance"}>=>e.ev==="utterance"&&e.kind==="answer"&&e.turnId!==null)!;
+  await waitFor(()=>events.some(e=>e.ev==="mark"&&e.id===prior.utteranceId&&e.name==="ttsFirstFrame"),"first generated frame");
+  if(abandoned) {c.session.interrupt(); await pause();}
+  m.finish();
+  await waitFor(()=>c.session.agentState==="listening","first turn completion");
+  c.speaker.held=false;c.speaker.suppressStart=false;
+  c.clock.move(1000);
+  c.say("I got 56.");
+  await waitFor(()=>m.running,"next model");
+  m.stream(1);
+  await waitFor(()=>events.filter(e=>e.ev==="utterance"&&e.kind==="answer"&&e.turnId!==null&&e.turnId!==prior.turnId).length>0,"next turn synthesis");
+  m.finish();
+  await waitFor(()=>c.session.agentState==="listening","next turn end");
+  await pause();
+  const next=events.find((e):e is Extract<Emitted,{ev:"utterance"}>=>e.ev==="utterance"&&e.kind==="answer"&&e.turnId!==null&&e.turnId!==prior.turnId)!;
+  const published=(id:string)=>events.filter(e=>e.ev==="mark"&&e.name==="published"&&e.id===id).length;
+  expect(published(prior.utteranceId)).toBe(abandoned?0:1);
+  expect(published(next.utteranceId)).toBe(1);
+ });
+});
+
+describe("nonstreamed turn ownership",()=>{
+ it("the ordinary completed answer keeps its turn ID",async()=>{
+  const events:Emitted[]=[];
+  setTelemetry(new CallTelemetry({callId:"local-fast-call",sink:e=>events.push(e)}));
+  const c=await voiceCall({model:ruleConversationalModel()});
+  const before=events.length;
+  c.say("I got 66.");
+  await waitFor(()=>c.samples.length===1 && c.session.agentState==="listening","complete turn");
+  const turnId=c.samples[0].turnId!;
+  const speeches=events.slice(before).filter(e=>e.ev==="utterance");
+  expect(speeches.length).toBeGreaterThan(0);
+  expect(speeches).toMatchObject([{turnId,kind:"answer"}]);
+ });
 });

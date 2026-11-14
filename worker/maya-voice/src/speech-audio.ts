@@ -63,6 +63,7 @@ export async function countedSynthesis(
       }
     },
     async cancel(reason) {
+      probe?.cancel?.();
       charge();
       await reader.cancel(reason);
     },

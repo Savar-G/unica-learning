@@ -84,7 +84,7 @@ export default defineAgent({
     }
     configureDelivery({ callId });
     // This call's telemetry: ids and clock times by turn, request and speech (./telemetry.ts).
-    setTelemetry(new CallTelemetry({ callId }));
+    setTelemetry(new CallTelemetry({ callId, scopeId: ctx.job.id }));
     const providers = voiceProviders(process.env);
     if (!providers.ok) {
       log("the speech-to-text or voice is not set up:", providers.problems.join("; "));
@@ -132,7 +132,6 @@ export default defineAgent({
     // The opening's speed: the child's microphone published (or the job, when it was there first) to Maya's first sound.
     let firstSound = false;
     session.on(voice.AgentSessionEventTypes.AgentStateChanged, ev => {
-      if (ev.newState === "speaking") telemetry().published();
       if (firstSound || ev.newState !== "speaking") return;
       firstSound = true;
       log("opening first sound", { callId, sinceChildMs: Date.now() - childAt, sinceJobMs: Date.now() - jobAt, marks });

@@ -10,7 +10,7 @@ import { CallTelemetry, LIMITS, type Emitted } from "./telemetry";
 function harness() {
   let at = 1_000;
   const events: Emitted[] = [];
-  const t = new CallTelemetry({ callId: "call-1", now: () => at, sink: (e) => events.push(e) });
+  const t = new CallTelemetry({ callId: "call-1", scopeId: "test", now: () => at, sink: (e) => events.push(e) });
   return { t, events, tick: (ms = 10) => { at += ms; return at; }, now: () => at };
 }
 
@@ -192,8 +192,8 @@ describe("the log", () => {
   it("is bounded: events stop at the limit with one truncation line, and old entries leave memory", () => {
     const h = harness();
     for (let i = 0; i < LIMITS.turns + 20; i++) h.t.turn([h.t.final({ at: h.now() })]);
-    expect(h.t.turnClock("t1")).toBeNull();
-    expect(h.t.turnClock(`t${LIMITS.turns + 20}`)).not.toBeNull();
+    expect(h.t.turnClock("test:t1")).toBeNull();
+    expect(h.t.turnClock(`test:t${LIMITS.turns + 20}`)).not.toBeNull();
     for (let i = 0; i < LIMITS.events; i++) h.t.turn([]);
     expect(h.events.filter((e) => e.ev === "truncated")).toHaveLength(1);
     expect(h.events.length).toBeLessThanOrEqual(LIMITS.events + 1);
@@ -212,5 +212,38 @@ describe("the log", () => {
     await withRequestContext({ source: "prepared_expected", turnId: null, diagnosticHandleId: "sk-secret text here" }, () => f("https://openrouter.ai/v1/chat", { method: "POST" }));
     const sent = h.events.filter((e) => e.ev === "request") as Extract<Emitted, { ev: "request" }>[];
     expect(sent.map((e) => e.handleId)).toEqual(["abc-123#h2", null]);
+  });
+});
+
+
+describe("telemetry lifecycle repairs", () => {
+  it("replacement workers keep distinct turn and physical request IDs for one call", async () => {
+    const events: Emitted[] = [];
+    const old = new CallTelemetry({ callId: "same-call", sink: e => events.push(e) });
+    const next = new CallTelemetry({ callId: "same-call", sink: e => events.push(e) });
+    const first = old.turn([]), second = next.turn([]);
+    let release!: () => void;
+    const waiting = old.runInTurn(first, () => old.fetch(async () => {
+      await new Promise<void>(r => { release = r; }); return new Response("old");
+    })("https://openrouter.ai/model"));
+    await (await next.runInTurn(second, () => next.fetch(async () => new Response("next"))("https://openrouter.ai/model"))).text();
+    release(); await (await waiting).text();
+    expect(first).not.toBe(second);
+    const sent = events.filter((e): e is Extract<Emitted, { ev: "request" }> => e.ev === "request");
+    expect(new Set(sent.map(e => e.requestId)).size).toBe(2);
+    expect(events.filter(e => e.ev === "request_end")).toHaveLength(2);
+  });
+
+  it("response body errors are errors; successful drain and reader cancellation retain their outcomes", async () => {
+    const h = harness();
+    const broken = await h.t.fetch(async () => new Response(new ReadableStream({ start(c) { c.error(new Error("body failure")); } })))("https://openrouter.ai/model");
+    await expect(broken.text()).rejects.toThrow("body failure");
+    const ok = await h.t.fetch(async () => new Response("ok"))("https://openrouter.ai/model");
+    await ok.text();
+    let cancelled = false;
+    const pending = await h.t.fetch(async () => new Response(new ReadableStream<Uint8Array>({ pull(c) { c.enqueue(new Uint8Array([1])); }, cancel() { cancelled = true; } })))("https://openrouter.ai/model");
+    const reader = pending.body!.getReader(); await reader.read(); await reader.cancel();
+    expect(cancelled).toBe(true);
+    expect(h.events.filter(e => e.ev === "request_end")).toMatchObject([{ outcome: "error" }, { outcome: "ok" }, { outcome: "aborted" }]);
   });
 });

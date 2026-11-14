@@ -1,18 +1,20 @@
 // Turn-bound telemetry of one voice call's worker (the latency audit of 2026-11-14, replaces the process-wide marks of
 // the deep dive). Every identity is allocated once and its marks are kept under it, so a later final transcript, an
-// interruption or an overlapping request can never reset or borrow them:
+// interruption or an overlapping request can never reset or borrow them. Every ID starts with its immutable job scope:
 //   final f<N>        one final transcript: its own marks (STT final, detector end, prepare).
 //   turn t<N>         one reply to one or more finals (a paused answer joins two). Immutable `finalIds`.
 //   request r<N>      one physical request to the model provider: source, owning turn (or none yet), and its own
 //                     sent / response headers / first response body chunk marks. A body chunk is not a first token.
 //   utterance u<N>    one speech of the voice: kind (ack, answer, guidance, opening, other), its TTS request, first
-//                     audio frame, first playback and first published times. An acknowledgement is never an answer.
+//                     audio frame and output playback time. `published` is a legacy alias of output playback start,
+//                     not a network-publication or physical-sound mark. An acknowledgement is never an answer.
 //   prepare p<N>      one interim hint the worker gave the call to prepare a reply.
 // A request made before its turn is known (a prepared reply) stays `unbound`; the final that follows lists it as a
 // CANDIDATE (`prepare_candidates`, selection `unreported`) and never as the turn's own: which request the controller
 // used is the controller's to say (docs: logging-build/report.md, "Controller seam"). No link is made by time.
 // Logs hold ids, closed reason codes and clock times only: no words, prompts, model output, audio, keys, URLs or
 // provider error text. Memory and output are bounded (`LIMITS`).
+import { randomUUID } from "node:crypto";
 import { requestContext, withRequestContext, type RequestSource } from "@/lib/maya-request-trace";
 
 export const TELEMETRY_VERSION = 1;
@@ -46,7 +48,7 @@ export type TelemetryEvent =
   | { ev: "prepare_candidates"; finalId: string; prepareIds: string[]; requestIds: string[]; selection: "unreported" }
   | { ev: "request"; requestId: string; source: RequestSource | "unlabelled"; turnId: string | null; binding: "turn" | "unbound"; prepareId: string | null; handleId: string | null; ordinalInTurn: number | null; at: number }
   | { ev: "request_end"; requestId: string; outcome: RequestOutcome; status: StatusClass | null; at: number }
-  | { ev: "utterance"; utteranceId: string; kind: UtteranceKind; turnId: string | null; at: number }
+  | { ev: "utterance"; utteranceId: string; kind: UtteranceKind; turnId: string | null; speechId: string; sentenceId: string; sentenceIndex: number; at: number }
   | { ev: "sentence"; turnId: string; sentenceId: string; index: number; via: "stream" | "turn_end"; at: number }
   | { ev: "admission"; turnId: string; startedAt: number; endedAt: number; ms: number; stt: SttRead; sttMs: number; block: "memory" | "awaited"; blockMs: number; outcome: AdmissionOutcome }
   | { ev: "mark"; scope: "request" | "utterance" | "turn"; id: string; name: RequestMark | UtteranceMark | TurnMark; at: number }
@@ -87,6 +89,11 @@ interface UtteranceRecord {
   turnId: string | null;
   marks: Partial<Record<UtteranceMark, number>>;
   ttsRequests: number;
+  speechId: string;
+  sentenceId: string;
+  sentenceIndex: number;
+  cancelled: boolean;
+  isCancelled?: () => boolean;
 }
 
 const statusClass = (status: number): StatusClass => (status >= 200 && status < 300 ? "2xx" : status >= 300 && status < 400 ? "3xx" : status >= 400 && status < 500 ? "4xx" : status >= 500 && status < 600 ? "5xx" : "other");
@@ -103,13 +110,20 @@ function bounded<V>(map: Map<string, V>, limit: number) {
 export interface UtteranceProbe {
   request(): void;
   firstFrame(): void;
+  cancel?(): void;
+}
+export interface UtteranceOwner {
+  turnId: string | null;
+  kind: UtteranceKind | (() => UtteranceKind);
+  cancelled?: () => boolean;
 }
 
 export class CallTelemetry {
   private seq = 0;
   private dropped = 0;
   private truncated = false;
-  private ids = { f: 0, t: 0, r: 0, u: 0, p: 0 };
+  private ids = { f: 0, t: 0, r: 0, u: 0, p: 0, g: 0 };
+  private readonly scopeId: string;
   private readonly finals = new Map<string, FinalRecord>();
   private readonly turns = new Map<string, TurnRecord>();
   private readonly requests = new Map<string, RequestRecord>();
@@ -118,7 +132,10 @@ export class CallTelemetry {
   private hintsSince: string[] = [];
   private unboundPrepared: string[] = [];
 
-  constructor(private readonly options: { callId?: string | null; now?: () => number; sink?: (event: Emitted) => void } = {}) {}
+  constructor(private readonly options: { callId?: string | null; scopeId?: string; now?: () => number; sink?: (event: Emitted) => void } = {}) {
+    // Only a closed job identity or a random diagnostic scope can enter the log.
+    this.scopeId = options.scopeId && /^[\w-]{1,80}$/.test(options.scopeId) ? options.scopeId : randomUUID();
+  }
 
   private now() { return (this.options.now ?? Date.now)(); }
 
@@ -140,7 +157,7 @@ export class CallTelemetry {
   /** Events that the log bound refused, for the closing line. */
   get droppedEvents() { return this.dropped; }
 
-  private id(kind: keyof CallTelemetry["ids"]) { return `${kind}${++this.ids[kind]}`; }
+  private id(kind: keyof CallTelemetry["ids"]) { return `${this.scopeId}:${kind}${++this.ids[kind]}`; }
 
   // ----- finals and hints -----
 
@@ -246,15 +263,21 @@ export class CallTelemetry {
       if (!response.body) { finish("ok", record.status); return response; }
       let seen = false;
       const status = record.status;
-      const body = response.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
-        transform: (chunk, controller) => {
-          if (!seen) { seen = true; this.requestMark(record, "firstBodyChunk"); }
-          controller.enqueue(chunk);
+      const reader = response.body.getReader();
+      const body = new ReadableStream<Uint8Array>({
+        pull: async controller => {
+          try {
+            const { value, done } = await reader.read();
+            if (done) { finish("ok", status); controller.close(); return; }
+            if (!seen) { seen = true; this.requestMark(record, "firstBodyChunk"); }
+            controller.enqueue(value);
+          } catch (error) {
+            finish(signal?.aborted ? "aborted" : "error", status);
+            controller.error(error);
+          }
         },
-        flush: () => finish("ok", status),
-        // A cancelled reader ends the request. Runtimes without a transformer cancel hook rely on the abort signal.
-        cancel: () => finish("aborted", status),
-      } as Transformer<Uint8Array, Uint8Array>));
+        cancel: async reason => { finish("aborted", status); await reader.cancel(reason); },
+      }, { highWaterMark: 0 });
       return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
     };
   }
@@ -284,25 +307,34 @@ export class CallTelemetry {
 
   /**
    * One speech of the voice. `kind` can be decided when the first words reach the voice (a reply's stream carries the
-   * acknowledgement or the answer, and only then is it known which). The probe is shared by every synthesis call of
-   * the speech (a speech with several sentences makes one per sentence).
+   * acknowledgement or the answer, and only then is it known which). Each physical sentence synthesis has its own
+   * probe under the TTS node's speech ID.
    */
-  utterance(owner: { turnId: string | null; kind: UtteranceKind | (() => UtteranceKind) }): UtteranceProbe {
+  /** One TTS node's spoken sentences. These IDs describe synthesis, not the controller's checked sentence index. */
+  speech(owner: UtteranceOwner): (sentenceIndex: number) => UtteranceProbe {
+    const speechId = this.id("g");
+    return sentenceIndex => this.utterance({ ...owner, speechId, sentenceIndex });
+  }
+
+  utterance(owner: UtteranceOwner & { speechId?: string; sentenceIndex?: number }): UtteranceProbe {
     let record: UtteranceRecord | null = null;
     const open = () => {
       if (record) return record;
       const kind = typeof owner.kind === "function" ? owner.kind() : owner.kind;
       const turnId = owner.turnId && this.turns.has(owner.turnId) ? owner.turnId : null;
-      record = { id: this.id("u"), kind, turnId, marks: {}, ttsRequests: 0 };
+      const speechId = owner.speechId ?? this.id("g");
+      const sentenceIndex = owner.sentenceIndex ?? 0;
+      record = { id: this.id("u"), kind, turnId, speechId, sentenceId: `${speechId}.s${sentenceIndex + 1}`, sentenceIndex, marks: {}, ttsRequests: 0, cancelled: false, isCancelled: owner.cancelled };
       this.utterances.set(record.id, record);
       bounded(this.utterances, LIMITS.utterances);
       if (turnId) this.turns.get(turnId)!.utteranceIds.push(record.id);
-      this.emit({ ev: "utterance", utteranceId: record.id, kind, turnId, at: this.now() });
+      this.emit({ ev: "utterance", utteranceId: record.id, kind, turnId, speechId, sentenceId: record.sentenceId, sentenceIndex, at: this.now() });
       return record;
     };
     return {
       request: () => { const u = open(); u.ttsRequests++; this.utteranceMark(u, "ttsRequest"); },
       firstFrame: () => { if (record) this.utteranceMark(record, "ttsFirstFrame"); },
+      cancel: () => { if (record) record.cancelled = true; },
     };
   }
 
@@ -316,14 +348,14 @@ export class CallTelemetry {
   /** The player started the first audio of a turn's `kind` speech: the turn's first such speech without that mark. */
   playbackStarted(turnId: string | null | undefined, kind: "ack" | "answer") {
     if (!turnId) return;
-    const u = [...this.utterances.values()].find(x => x.turnId === turnId && x.kind === kind && !("playbackStarted" in x.marks));
-    if (u) this.utteranceMark(u, "playbackStarted");
+    const u = [...this.utterances.values()].find(x => x.turnId === turnId && x.kind === kind && !x.cancelled && !x.isCancelled?.() && !("playbackStarted" in x.marks));
+    if (u) { this.utteranceMark(u, "playbackStarted"); this.published(u.id); }
   }
 
-  /** The session began to play audio. Speeches play in order: the oldest speech that has a frame and no such mark. */
-  published() {
-    const u = [...this.utterances.values()].find(x => "ttsFirstFrame" in x.marks && !("published" in x.marks));
-    if (u) this.utteranceMark(u, "published");
+  /** Publication belongs only to a speech identified by actual output playback. A state change alone has no owner. */
+  published(utteranceId?: string) {
+    const u = utteranceId ? this.utterances.get(utteranceId) : undefined;
+    if (u && !u.cancelled && !u.isCancelled?.() && "playbackStarted" in u.marks) this.utteranceMark(u, "published");
   }
 
   // ----- views -----
@@ -356,7 +388,7 @@ export class CallTelemetry {
       ...(answer ? { ttsRequest: answer.marks.ttsRequest !== undefined ? answer.marks.ttsRequest - t0 : null, ttsFirstFrame: answer.marks.ttsFirstFrame !== undefined ? answer.marks.ttsFirstFrame - t0 : null } : {}),
       ...(ack ? { ackTtsRequest: ack.marks.ttsRequest !== undefined ? ack.marks.ttsRequest - t0 : null, ackTtsFirstFrame: ack.marks.ttsFirstFrame !== undefined ? ack.marks.ttsFirstFrame - t0 : null } : {}),
       requests: requests.map(r => ({ id: r.id, source: r.source, prepareId: r.prepareId, handleId: r.handleId, status: r.status, outcome: r.outcome, ...rel(r.marks) })),
-      utterances: utterances.map(u => ({ id: u.id, kind: u.kind, ttsRequests: u.ttsRequests, ...rel(u.marks) })),
+      utterances: utterances.map(u => ({ id: u.id, kind: u.kind, speechId: u.speechId, sentenceId: u.sentenceId, sentenceIndex: u.sentenceIndex, ttsRequests: u.ttsRequests, ...rel(u.marks) })),
     };
   }
 }

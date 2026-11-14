@@ -28,7 +28,7 @@ import { speechWords, type BoardSpeech, type SpeechScope } from "@/lib/board-spe
 import { CuePlaybackOutput } from "./cue-playback";
 import { earlyRest, type EarlyRest } from "./early-speech";
 import { detectorVad, HeardSignals, PrepareSignal, silentFinal } from "./heard-signals";
-import { telemetry, type UtteranceKind } from "./telemetry";
+import { telemetry, type UtteranceKind, type UtteranceOwner } from "./telemetry";
 import { withRequestContext } from "@/lib/maya-request-trace";
 import { boardAudio, countedSynthesis, type SilentSpeech } from "./speech-audio";
 import { VOICE_METER_TICK_MS } from "@/lib/maya-spend";
@@ -212,9 +212,10 @@ export class MayaVoiceAgent extends voice.Agent {
 
   override async ttsNode(text: ReadableStream<string> | AsyncIterable<string>, settings: voice.ModelSettings) {
     // Every line reaches the voice provider here: replies, acknowledgement phrases and guidance said again.
-    const probe = telemetry().utterance(this.utteranceOwner?.() ?? { turnId: null, kind: "other" });
+    const sentence = telemetry().speech(this.utteranceOwner?.() ?? { turnId: null, kind: "other" });
+    let sentenceIndex = 0;
     const synthesize = (input: ReadableStream<string> | AsyncIterable<string>) =>
-      countedSynthesis(input, counted => voice.Agent.default.ttsNode(this, counted, settings), said => void this.call.spoken(said), probe);
+      countedSynthesis(input, counted => voice.Agent.default.ttsNode(this, counted, settings), said => void this.call.spoken(said), sentence(sentenceIndex++));
     // The worker's own opening has an empty plan, and must not wait for the board to connect.
     const ungated = this.ungatedNext;
     this.ungatedNext = false;
@@ -233,7 +234,7 @@ export class MayaVoiceAgent extends voice.Agent {
   /** One-shot: the next speech's audio does not wait for its (empty) board plan to be sent (the worker's own opening). */
   ungatedNext = false;
   /** Who owns the speech whose voice stream starts now (the run knows its turns). Absent: the speech is not attributed. */
-  utteranceOwner: (() => { turnId: string | null; kind: UtteranceKind | (() => UtteranceKind) }) | null = null;
+  utteranceOwner: (() => UtteranceOwner) | null = null;
   /** A speech with a board plan whose voice gave no audio (./speech-audio.ts `boardAudio`). */
   onSilent: ((speech: SilentSpeech) => void) | null = null;
   private starting: Promise<unknown> | null = null;
@@ -1056,12 +1057,13 @@ export class VoiceCallRun {
    * its claim is then stale); else the current reply's own stream, which carries the acknowledgement when one was written
    * into it and the answer otherwise (a reply never carries both: the answer then has a speech of its own); else nobody.
    */
-  private utteranceOwner(): { turnId: string | null; kind: UtteranceKind | (() => UtteranceKind) } {
+  private utteranceOwner(): UtteranceOwner {
     const claim = this.nextUtterance;
     this.nextUtterance = null;
-    if (claim && !claim.handle?.interrupted) return { turnId: claim.turnId, kind: claim.kind };
+    if (claim && !claim.handle?.interrupted) return { turnId: claim.turnId, kind: claim.kind, cancelled: () => !!claim.handle?.interrupted };
     const pace = this.pace;
-    if (pace && !pace.closed && pace.writable) return { turnId: pace.turnId, kind: () => (pace.ackWritten ? "ack" : "answer") };
+    // Closing the text stream does not close its speech. Keep the captured owner until synthesis starts.
+    if (pace && !pace.handle?.interrupted) return { turnId: pace.turnId, kind: () => (pace.ackWritten ? "ack" : "answer"), cancelled: () => !!pace.handle?.interrupted };
     return { turnId: null, kind: "other" };
   }
 
