@@ -5223,17 +5223,7 @@ export function expectedTurns(s: Session): { text: string; why: "right" | "known
     if (value < 0 || out.some((x) => x.text === String(value))) continue;
     const h = heard(String(value));
     if (h.refusal || !plainMathTurn(h.session)) continue;
-    if (turnFacts(h.session).some((f) => f.misconception !== undefined && f.step === s.ladder.step)) {
-      out.push({ text: String(value), why: "known_wrong" });
-      // The same wrong value as a claim, the way a child asks it ("Is 2 minus 8, 6?"): a bounded phrase of the step's own
-      // operands, kept only when code hears it as no committed answer and the step's misconception still shows.
-      if (current?.kind === "subtract-column" && current.regrouped && current.bottom !== null && value === current.bottom - current.top) {
-        const claim = `Is ${current.top} minus ${current.bottom}, ${value}?`;
-        const c = heard(claim);
-        if (!c.refusal && plainMathTurn(c.session) && !heardAnswers(c.session).some((a) => a.verdict === "right") && turnFacts(c.session).some((f) => f.misconception !== undefined && f.step === s.ladder.step)) out.push({ text: claim, why: "known_wrong" });
-      }
-      break;
-    }
+    if (turnFacts(h.session).some((f) => f.misconception !== undefined && f.step === s.ladder.step)) { out.push({ text: String(value), why: "known_wrong" }); break; }
   }
   return out;
 }
@@ -5249,6 +5239,13 @@ export function fitsExpected(s: Session, hypothesis: string): boolean {
   const text = s.turn.text;
   // The current step's own operands too (980571e0 audit): "12 minus 8 is 4." says the expected 4 with the step Maya asked.
   const current = workSteps(pkg).find((st) => st.id === s.ladder.step);
+  // A closed claim of the known reverse-subtraction error can use the existing wrong-value request. The full key,
+  // plain-turn fence and real proposal checks still apply in the adapter. No third automatic request is needed.
+  if (current?.kind === "subtract-column" && current.regrouped && current.bottom !== null) {
+    const top = current.top - (current.lent ? 1 : 0);
+    const wrong = current.bottom - top;
+    if (wrong >= 0 && hypothesis === String(wrong) && text.trim().toLowerCase() === `is ${top} minus ${current.bottom}, ${wrong}?`) return true;
+  }
   const allowed = [...valuesOf(hypothesis), ...printedValues(pkg), ...(current ? stepOperands(current).map(numberValue) : [])];
   if (valuesOf(text).some((v) => !valueIn(v, allowed))) return false;
   if (!valuesOf(hypothesis).every((v) => valueIn(v, valuesOf(text)))) return false;
