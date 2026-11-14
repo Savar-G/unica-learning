@@ -20,6 +20,7 @@ import {
   talkMath,
   valuesIn,
   PHRASES,
+  PATIENT_LINES,
   PROPOSAL_VERSION,
   SAFETY_GUIDANCE,
   TIME_LIMITS,
@@ -932,9 +933,10 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
       // unknown nonnumeric sentence: it could name the winner without using either literal answer label.
       const speech = turn.output.say.join(" ");
       const exactOpening = act === "open" && (speech === openingLine(op) || (op.ref.source === "workbook" && speech === openingLine(op, { page: op.ref.page, number: op.ref.question })));
+      const exactPatient = act === "wait" && speech === PATIENT_LINES[1];
       const confirmation = new Set(act === "confirm" && comparisonSaid && "word" in comparisonSaid
         ? packageLines(op).said(comparisonSaid.word).flatMap(offer => offer.texts.flatMap(sentences)) : []);
-      if (!exactOpening && sentences(speech).some(text => !lineSentences.has(text) && !bankSentences.has(text) && !safety.has(text) && !confirmation.has(text))) {
+      if (!exactOpening && !exactPatient && sentences(speech).some(text => !lineSentences.has(text) && !bankSentences.has(text) && !safety.has(text) && !confirmation.has(text))) {
         fail("math_not_from_code", `Maya turn ${i} used words outside the closed comparison plan before release`);
       }
       const printed = new Set([op.text, ...packageLines(op).question().flatMap(offer => offer.texts)].map(labelSentence));

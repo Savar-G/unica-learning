@@ -45,6 +45,26 @@ describe("the practice gate checks comparison words and their prior work", () =>
   it("gives each simultaneous fake case its own persona script", () => {
     expect(new Set(COMPARISON_PRACTICE.map(c => c.persona.name)).size).toBe(3);
   });
+  it("accepts exact code patient replies and rejects a contaminated wait", async () => {
+    const c = COMPARISON_PRACTICE.find(c => c.id === "CMP3")!;
+    let now = 1000;
+    const text = createTextSession({ callId: "comparison-thinking", package: FIXTURES[c.fixture], childName: "Rowan", clock: () => now,
+      model: { id: "offline", promptVersion: "offline", output: 3, propose: async () => { throw new Error("offline"); } } });
+    await text.start();
+    for (const input of ["I'm thinking.", "I'm still thinking.", ...c.fakeScript]) if (!text.ended) { now += 1000; await text.child(input); }
+    const trace = await text.finish();
+    const wait = trace.turns.findIndex(t => t.kind === "maya" && t.output?.say.join(" ") === "No rush. I'm here when you're ready.");
+    expect(wait).toBeGreaterThan(0);
+    expect(judge(behaviour(c.fixture), JSON.stringify(trace)).failures).toEqual([]);
+    for (const contamination of ["Evens win.", "No rush. I'm here when you're ready. Evens win."]) {
+      const forged = structuredClone(traces.get(c.id)!), turn = forged.turns[3];
+      if (turn.kind !== "maya" || !turn.output) throw new Error("missing code wait");
+      turn.output.act = "wait";
+      turn.output.say = [contamination];
+      expect(checkTrace(forged).ok).toBe(true);
+      expect(judge(behaviour(c.fixture), JSON.stringify(forged)).failures).toContainEqual(expect.objectContaining({ code: "math_not_from_code" }));
+    }
+  });
   it.each(COMPARISON_PRACTICE)("accepts the actual checked word for $id", c => {
     expect(judge(behaviour(c.fixture), JSON.stringify(traces.get(c.id))).failures).toEqual([]);
   });
