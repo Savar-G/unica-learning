@@ -32,8 +32,8 @@ export function SideVariant({ variant }: { variant: string }) {
 // A: three verbs, each with one plain line. The "what she does" answer in the fewest words.
 function VariantA() {
   const rows = [
-    { t: "Sees the exact question", d: "Your child scans the code on the page. Maya opens that question." },
-    { t: "Asks, never tells", d: "One hint at a time, so your child does the thinking." },
+    { t: "Already has the question", d: "Your child picks it from their page, and Maya knows it, numbers and all." },
+    { t: "Talks it through, never tells", d: "Maya asks small questions and draws on a shared board. Your child does the thinking." },
     { t: "Sends them back to the page", d: "The fix happens in the workbook, in pencil." },
   ];
   return (

@@ -88,7 +88,6 @@ export function GuidanceDemo() {
           </li>
         ))}
       </ol>}
-      <p className="gd-cap">This demo shows a planned voice call. Voice calls are not available yet; Maya is available by typed chat.</p>
       <PrototypeSwitcher variants={SIDE_VARIANTS} current={variant} onChange={setVariant} />
     </div>
   );

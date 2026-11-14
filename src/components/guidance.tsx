@@ -15,7 +15,7 @@ export function Guidance() {
       <Rise className="gd-head">
         <p className="eyebrow">Help when they&apos;re stuck</p>
         <h2 id="guidanceT">Meet Maya, our AI Teaching Assistant.</h2>
-        <p className="gd-lead">Children in Grade 3 and up can type to Maya for help with a workbook question.</p>
+        <p className="gd-lead">When your child is stuck on a workbook question, they call Maya and talk it through, one step at a time.</p>
       </Rise>
       <Rise>
         <GuidanceDemo />
