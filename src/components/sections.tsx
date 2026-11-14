@@ -78,8 +78,8 @@ export function Statement() {
   return (
     <section className="statement" aria-label="How Unica is different">
       <Rise as="p">
-        Learning centres follow one set program for every child. <strong>Every Unica workbook is built from your child&apos;s
-        last one:</strong> more practice where they struggled, new challenges when they&apos;re ready.
+        Learning centres follow one set program for every child. <strong>Each Unica workbook is built from how your child
+        did on the last one:</strong> more practice where they struggled, new challenges when they&apos;re ready.
       </Rise>
     </section>
   );
