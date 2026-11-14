@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 vi.mock("next/image", () => ({ default: ({ unoptimized, ...props }: Record<string, unknown>) => { void unoptimized; return createElement("img", props); } }));
 vi.mock("@/lib/supabase-browser", () => ({ browserClient: () => ({ auth: { onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }) } }) }));
-vi.mock("@/lib/scan-photo-browser", () => ({ prepareScanPhoto: async () => new Blob(["normalized"]) }));
+vi.mock("@/lib/scan-photo-browser", () => ({ prepareScanPhoto: async () => new Blob(["normalized"]), phoneCodeCheck: async () => null }));
 import { ScanPages } from "./scan-pages";
 import { ScanPreview } from "./scan-preview";
 

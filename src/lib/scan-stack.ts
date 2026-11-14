@@ -37,6 +37,8 @@ export interface StackUpload {
   reason?: UploadRefusal;
   /** The server had no room for it for a while (#915): it keeps its place and asks again. */
   held?: boolean;
+  /** The phone's early look found no page code (#915): a hint only, the server still reads it and decides. */
+  codeUnread?: boolean;
 }
 
 /** A printed workbook page that belongs to a day. */
@@ -102,6 +104,8 @@ export interface StackTile {
   /** The short reason under a refused or uncheckable tile. */
   reason: string | null;
   refusal: StackReason | null;
+  /** A photo still sending whose code the phone could not read (#915): the server may ask for another photo. */
+  hint?: "code";
 }
 
 export interface StackDay {
@@ -235,7 +239,8 @@ export function buildStack(o: { photos: readonly StackPhoto[]; uploads: readonly
     return { key: u.key, photoId: null, uploadKey: u.key, label: "Unknown page", title: "Unknown page", status: "refused", reason: refusalCopy(reason).short, refusal: reason };
   });
   const addingTiles: StackTile[] = o.uploads.filter((u) => u.status !== "refused")
-    .map((u) => ({ key: u.key, photoId: null, uploadKey: u.key, label: "New photo", title: "New photo", status: u.status === "uploading" && !u.held ? "adding" : "waiting", reason: u.held ? "Waiting for room" : null, refusal: null }));
+    .map((u) => ({ key: u.key, photoId: null, uploadKey: u.key, label: "New photo", title: "New photo", status: u.status === "uploading" && !u.held ? "adding" : "waiting",
+      reason: u.held ? "Waiting for room" : u.codeUnread ? "Code may not read" : null, refusal: null, ...(u.codeUnread ? { hint: "code" as const } : {}) }));
 
   // Refused photos, oldest first, then refused uploads, whose page is not known.
   const refused = [
