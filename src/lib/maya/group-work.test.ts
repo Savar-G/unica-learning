@@ -39,3 +39,26 @@ it.each([
   const turn = call.trace().turns.filter(t => t.kind === "maya").at(-1);
   if (!accepted) expect(turn?.attempts[0].refusal?.code).toBe("answer_not_committed");
 });
+
+it.each([
+  ["one hundred equal groups of zero is zero", true],
+  ["one hundred equal groups of zero is eight", false],
+  ["one hundred and one equal groups of zero is zero", true],
+  ["one hundred and one equal groups of zero is eight", false],
+  ["two hundred and five groups of zero is zero", true],
+  ["two hundred and five groups of zero is eight", false],
+  ["two groups of three is six", true],
+  ["two groups of three is eight", false],
+  ["two equal groups of one is two", true],
+  ["two equal groups of one is three", false],
+] as const)("checks compound group work beside a fraction answer: %s", async (work, accepted) => {
+  const model = scenarioModel();
+  let now = 1000;
+  const call = createTextSession({ callId: "fraction-group-work", package: FIXTURES.D, model, clock: () => now, random: 1, freeTalk: false });
+  model.next([{ act: "open", lines: ["open.hello", "question.problem"] }], {});
+  await call.start();
+  now += 100;
+  model.next([{ act: "accept_answer", lines: ["answer.right"] }], { answers: [[{ type: "fraction", numerator: 7, denominator: 8 }, "result", "right"]] });
+  await call.child(`I got 7/8 because ${work}.`);
+  expect(call.session.solved).toBe(accepted ? "child" : null);
+});

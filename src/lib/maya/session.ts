@@ -3217,6 +3217,7 @@ const VALUE_QUESTION = /^(?:(?:so|okay|ok|um|uh|oh|yes|yeah|and|but)\b[,\s]*)*(?
 const NEXT_QUESTION = /^(?:(?:so|okay|ok|um|uh|oh|and|but|then|now)\b[,\s]*)*(?:what do (?:i|we) do (?:with|about|next|now)|where (?:does|do|should) |do (?:i|we) (?:write|put|carry|keep) |how do (?:i|we) write |what happens to |what about )/;
 const NUMBER_WORD = "zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million";
 const NUMBER_RUN = new RegExp(`\\b(?:${NUMBER_WORD})(?:[\\s-]+(?:${NUMBER_WORD}))*\\b`, "g");
+const MATH_NUMBER_RUN = new RegExp(`\\b(?:${NUMBER_WORD})(?:[\\s-]+(?:${NUMBER_WORD}|and))*\\b`, "g");
 const MATH_LITERALS: Readonly<Record<string, string>> = { one: "1", ten: "10", hundred: "100", thousand: "1000", million: "1000000" };
 /** A place name the commit rule reads ("in the tens", "the ones are 6"). */
 const OWN_PLACES = "ten thousands|hundred thousands|ones|tens|hundreds|thousands|tenths|hundredths|thousandths";
@@ -3549,7 +3550,10 @@ function ownTurn(s: Session, target: WorkedStep | null, value: AnswerValue, opti
   // Each sum: true (falseEquationResults), and a sum that makes a column's total adds that column's own operands.
   // Every sum is true: in a fraction call by falseEquationResults, else worked out here ("2 and 3 make 6" is false).
   // Literal math reads bare number words as values; complete compound runs keep their original meaning.
-  const groupMath = (words: string) => words.replace(NUMBER_RUN, run => MATH_LITERALS[run] ?? run).replace(/\b(?:equal\s+)?groups?\s+of\b/g, " times ");
+  const groupMath = (words: string) => words.replace(MATH_NUMBER_RUN, run => {
+    const whole = plainNumber(run.replace(/\band\b/g, " "));
+    return whole !== null ? String(whole) : run.replace(NUMBER_RUN, part => String(plainNumber(part) ?? MATH_LITERALS[part] ?? part));
+  }).replace(/\b(?:equal\s+)?groups?\s+of\b/g, " times ");
   if (opts.fractions ? falseEquationResults(groupMath(kept), opts).length > 0 : [...groupMath(text).matchAll(EQUATION)].some((m) => !trueEquation(m))) return "false_sum";
   // One number said to be another ("16 is 66.", "9 is 16."); a listed sum ("2, 3, 1 is 6") is a sum.
   // Read overlapping pairs too: an operand suffix ("1 is 6") must not hide a later false equality ("6 equals 5").
