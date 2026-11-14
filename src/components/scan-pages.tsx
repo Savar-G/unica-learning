@@ -600,9 +600,11 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     {status}
     {stack.guide && <section className="scan-guide" aria-label={`${stack.guide.day} pages`}>
       <p className="scan-guide-next">{stack.guide.next ? <><b>Next:</b> {stack.guide.next.title}</> : stack.guide.stillText}</p>
-      {stack.guide.next && <p>{stack.guide.stillText}</p>}
-      <ul>{stack.guide.pages.map((g) => <li key={g.pageId} className={`is-${g.status}`}>{g.title}: {GUIDE_WORDS[g.status]}</li>)}</ul>
-      <p className="small">Scan the pages in any order.</p>
+      {stack.guide.next && <p className="small">{stack.guide.stillText}. Any order is fine.</p>}
+      <details className="scan-guide-all">
+        <summary>See all pages of {stack.guide.day}</summary>
+        <ul>{stack.guide.pages.map((g) => <li key={g.pageId} className={`is-${g.status}`}>{g.title}: {GUIDE_WORDS[g.status]}</li>)}</ul>
+      </details>
     </section>}
     {!listing && <p className="small" role="status">Loading photos...</p>}
     {!phone && empty && <p className="scan-empty">Your pages show here as you take them.</p>}
