@@ -150,6 +150,19 @@ describe("physical human truth", () => {
     const noIssue = tick("\u2212"); noIssue.find(r => r.format === "tick-and-number" && r.photo === "iphone.jpg" && r.region_id === "answer")!.reading_issue = "";
     expect(() => physicalTruth(mapping(), pages(), writeTruthCsv(noIssue))).toThrow("uncertain-truth-needs-issue");
   });
+  it("refuses a wrong label over an unreadable two-ways or word answer, where the reader cannot say wrong", () => {
+    const unreadable = (format: string, region: string) => {
+      const rows = blankTruth();
+      for (const r of rows.filter(r => r.format === format && r.photo === "iphone.jpg")) {
+        r.intended_result = "wrong";
+        if (r.region_id === region) { r.reading_state = "uncertain"; r.reading_issue = "blurry"; }
+        else { r.reading_state = "written"; r.final_written_answer = r.region_id === "method-1" ? "3440 ÷ 8 = 430" : r.region_id === "method-2" ? "8 × 430 = 3440" : "even"; }
+      }
+      return rows;
+    };
+    expect(() => physicalTruth(mapping(), pages(), writeTruthCsv(unreadable("two-ways", "answer")))).toThrow("human-truth-reader-conflict");
+    expect(() => physicalTruth(mapping(), pages(), writeTruthCsv(unreadable("write-words", "answer")))).toThrow("human-truth-reader-conflict");
+  });
   it("counts absent phone pages and rejects unsafe photo maps and symlinks", async () => {
     const one = mapping(); one.photos.pop(); expect(validateMapping(one, pages())).toEqual(["android:pdf-2"]);
     for (const name of ["../photo.jpg", "/photo.jpg", "folder/photo.jpg", "a..jpg"]) { const m = mapping(); m.photos[0].file = name; expect(() => validateMapping(m, pages())).toThrow("unsafe"); }

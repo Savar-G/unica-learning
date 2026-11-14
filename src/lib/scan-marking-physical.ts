@@ -146,6 +146,9 @@ export function physicalTruth(mapping: PhysicalMapping, pages: readonly Physical
     const observations = readMarkingOutput(page.frame, labelled);
     for (const t of truth) {
       const observed = observations.find(o => o.identity.itemId === t.itemId)!;
+      // A wrong label over an unreadable region stands only when code also reads the item as wrong, for every format:
+      // the two-ways and write-words exemptions below never cover it.
+      if (t.result === "wrong" && t.readings.some(r => r.state === "uncertain") && observed.result !== "wrong") fail("human-truth-reader-conflict");
       // A human judges a method; code checks only its arithmetic. A two-ways disagreement is a result to report, not a bad label.
       if (t.format === "two-ways" && (t.result === "right" || t.result === "wrong" || (!TWO_WAYS_METHOD_MARKS && observed.result === null))) continue;
       if (observed.result !== (t.result === "uncertain" ? null : t.result) && !(t.format === "write-words" && t.result === "wrong" && observed.result === null)) fail("human-truth-reader-conflict");
