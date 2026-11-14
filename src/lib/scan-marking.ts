@@ -49,6 +49,11 @@ export const MARKING_RETRY_WAIT_MS = 2_000;
 export const MARKING_RETRY_WAIT_CAP_MS = 10_000;
 const MAX_VERDICT_REASON = 120;
 export const MARKING_CAP_MICROS = 50_000_000;
+/**
+ * The second look is admitted only while the month's spent plus held, with its own worst-case hold, stays at or under
+ * this (#958 review; the SQL admit rule): half the cap, so second-look holds can never use up the room first reads need.
+ */
+export const MARKING_ESCALATION_CAP_MICROS = 25_000_000;
 /** Match the current whole-sheet identity check. A legacy ready label is insufficient. */
 export const MARKING_SHEET_CHECK_VERSION = 1;
 /** Bounded canonical key. Item IDs can be 200 characters; photos never change this key. */
@@ -175,9 +180,13 @@ export function markingRequestFor(frame: MarkingFrame, image: Uint8Array, itemId
   const r = request(image, local);
   return secondLook ? { ...r, system: r.system + SECOND_LOOK } : r;
 }
-/** The items the first read left unsure: AI-marked, still pending. */
-export function unsureItems(observations: readonly Observation[]): string[] {
-  return observations.filter(o => o.method === "code" && o.state === "pending").map(o => o.identity.itemId);
+/**
+ * The items the second look may ask (#958 review): AI-marked items the first read was asked (`asked`) and left pending,
+ * leaving out questions the photo's edge cuts off (`cutOff` numbers), which stay pending whatever any model reads.
+ */
+export function unsureItems(observations: readonly Observation[], frame: MarkingFrame, asked?: readonly string[]): string[] {
+  const cut = new Set(expectedItems(frame).filter(e => frame.cutOff?.includes(e.number)).map(e => e.identity.itemId));
+  return observations.filter(o => o.method === "code" && o.state === "pending" && (!asked || asked.includes(o.identity.itemId)) && !cut.has(o.identity.itemId)).map(o => o.identity.itemId);
 }
 /**
  * The second look's marks replace the first read's only where the first was unsure and the second is a mark (scored).
@@ -327,6 +336,12 @@ class RetryLater extends Error {}
 class SettleFailure extends Error {}
 /** The model call's own limit: one timeout over both attempts. */
 export const MARKING_AI_TIMEOUT_MS = 120_000;
+/**
+ * The time from the claim for every model call of one photo, the second look included (#958 review): the claim's lease
+ * is 180 s, and the image read and the database writes after the calls need the rest. The second look gets only what is
+ * left of this, so a slow first read can never push the job past its lease.
+ */
+export const MARKING_AI_BUDGET_MS = 150_000;
 /** A model call starts only with at least this much time for it; else the photo waits as `pending` (#726). */
 export const MARKING_MIN_AI_MS = 20_000;
 /** The timeout of the model call, given the time the caller still has for it: at most 120 s; null when too short. */
@@ -375,6 +390,7 @@ export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token
     || new Set(expected.map((e) => e.number)).size !== expected.length) return "unavailable";
   const job = await store.claim(ref, token, frame, expected);
   if (typeof job === "string") return job;
+  const claimedAt = (options.clockMs ?? Date.now)();
   let observations = job.extraction;
   let model = MARKING_MODEL;
   let escalation: MarkingEscalation | null = null;
@@ -469,7 +485,7 @@ export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token
         }
       }
       if (options.escalate && image) {
-        const second = await secondLook(store, ref, token, frame, image, observations, options.escalate, options);
+        const second = await secondLook(store, ref, token, frame, image, observations, local.map((a) => a.expected.identity.itemId), claimedAt, options.escalate, options);
         observations = second.observations;
         escalation = second.escalation;
       }
@@ -487,8 +503,8 @@ export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token
  * failure: the first read's observations stand. Its one dispatch is settled exactly once, with the clean 429 kept as
  * evidence (#868), so a refused or rate-limited call frees its hold like any other.
  */
-async function secondLook(store: MarkingStore, ref: MarkingRef, token: string, frame: MarkingFrame, image: Uint8Array, first: Observation[], makeClient: MarkingClientFactory, options: MarkingRunOptions): Promise<{ observations: Observation[]; escalation: MarkingEscalation | null }> {
-  const asked = unsureItems(first);
+async function secondLook(store: MarkingStore, ref: MarkingRef, token: string, frame: MarkingFrame, image: Uint8Array, first: Observation[], firstAsked: readonly string[], claimedAt: number, makeClient: MarkingClientFactory, options: MarkingRunOptions): Promise<{ observations: Observation[]; escalation: MarkingEscalation | null }> {
+  const asked = unsureItems(first, frame, firstAsked);
   const none = { observations: first, escalation: null };
   if (!asked.length) return none;
   let dispatch: string | null = null;
@@ -507,10 +523,13 @@ async function secondLook(store: MarkingStore, ref: MarkingRef, token: string, f
     if (typeof admitted === "string") throw new AdmissionRefusal(admitted);
     dispatch = admitted.dispatch;
   };
+  // Only what is left of the run's AI budget, and of the caller's own time: too little, and the unsure items keep the
+  // first read's result (they go to our team) instead of risking the lease and the first read's marks.
+  const budgetLeft = claimedAt + MARKING_AI_BUDGET_MS - (options.clockMs ?? Date.now)();
+  const timeout = markingAiTimeout(Math.min(budgetLeft, options.aiTimeLeftMs ? options.aiTimeLeftMs() : Infinity));
+  if (timeout === null) return none;
   transport = makeClient(beforeAttempt);
   if (!transport) return none;
-  const timeout = markingAiTimeout(options.aiTimeLeftMs ? options.aiTimeLeftMs() : null);
-  if (timeout === null) return none;
   const signal = options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(timeout)]) : AbortSignal.timeout(timeout);
   try {
     const output = await transport.client.json(markingRequestFor(frame, image, asked, true), signal);

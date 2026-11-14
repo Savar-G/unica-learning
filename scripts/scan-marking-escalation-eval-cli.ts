@@ -46,7 +46,7 @@ async function load(set: string, dir: string, resultsOf: Map<string, Observation
   const photos: Photo[] = Array.isArray(raw.photos) && raw.photos[0]?.photo ? raw.photos.filter((p: { status: string }) => p.status === "ready").map((p: { photo: Photo }) => p.photo) : raw.photos;
   return photos.filter((p) => !only || only(p)).map((photo) => {
     const first = resultsOf.get(photo.id) ?? null;
-    const asked = part === "stress" ? photo.truth.filter((t) => t.result !== "parent").map((t) => t.itemId) : first ? unsureItems(first) : [];
+    const asked = part === "stress" ? photo.truth.filter((t) => t.result !== "parent").map((t) => t.itemId) : first ? unsureItems(first, photo.frame as unknown as Parameters<typeof unsureItems>[1]) : [];
     return { part, photo, dir, first, asked };
   }).filter((c) => c.asked.length);
 }

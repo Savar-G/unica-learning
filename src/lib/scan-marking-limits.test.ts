@@ -3,7 +3,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { MARKING_MAX_DEFERRALS, MARKING_MAX_DISPATCHES, MARKING_MAX_TRANSPORT_DISPATCHES } from "@/lib/scan-marking";
+import { MARKING_ESCALATION_CAP_MICROS, MARKING_MAX_DEFERRALS, MARKING_MAX_DISPATCHES, MARKING_MAX_TRANSPORT_DISPATCHES } from "@/lib/scan-marking";
 
 const sql = readFileSync(join(process.cwd(), "supabase/migrations/20261114023202_scan_marking_clean_failures.sql"), "utf8");
 const one = (pattern: RegExp) => { const all = [...sql.matchAll(new RegExp(pattern, "g"))]; expect(all, String(pattern)).toHaveLength(1); return Number(all[0][1]); };
@@ -27,5 +27,14 @@ describe("the second look in the database", () => {
     expect(escalation).toContain("model=case when j.escalation is not null and j.escalation->'items' ? m.item_id then j.escalation->>'model' else j.model end");
     // The dispatch rules are the same text as #868's: the second look is one more dispatch of the same job.
     expect(escalation).toContain("j.dispatches-(select count(*) from public.scan_marking_dispatches d where d.photo_id=p_photo and d.clean_failure='rate-limit')>=2");
+  });
+  it("admits a second look only within half the month's cap, after the full-cap check first reads keep (#958 review)", () => {
+    const share = readFileSync(join(process.cwd(), "supabase/migrations/20261114052926_scan_marking_escalation_budget_share.sql"), "utf8");
+    const full = share.indexOf("if held+price.maximum_micros>50000000 then return '\"budget\"'; end if;");
+    const half = share.indexOf(`if p_data->>'role'='escalation' and held+price.maximum_micros>${MARKING_ESCALATION_CAP_MICROS} then return '"budget"'; end if;`);
+    expect(full).toBeGreaterThan(0);
+    expect(half).toBeGreaterThan(full);
+    // Only that line differs from the function the escalation migration defined: the rest is its live definition.
+    expect(share.match(/held\+price\.maximum_micros>/g)).toHaveLength(2);
   });
 });

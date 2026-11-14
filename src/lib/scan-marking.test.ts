@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { expectedItems, firstObservation, itemKey, markingEvent, observationProblem, PHOTO_ISSUES, type Observation } from "@/lib/scan-observation";
-import { markingAiTimeout, MARKING_AI_TIMEOUT_MS, MARKING_MAX_DEFERRALS, MARKING_MAX_DISPATCHES, MARKING_MAX_TRANSPORT_DISPATCHES, MARKING_RETRY_WAIT_CAP_MS, MARKING_RETRY_WAIT_MS, type MarkingFailure, MARKING_MIN_AI_MS, TWO_WAYS_METHOD_MARKS, waitsForTeam, effectiveMarkingEvents, effectiveSkillMarks, markingOriginalKey, markingPageView, markingRequest, MARKING_CAP_MICROS, MARKING_MODEL, MARKING_PROMPT_VERSION, MARKING_ESCALATION_MODEL, MARKING_ESCALATION_PROMPT_VERSION, type MarkingEscalation, readMarkingOutput, runScanMarking, validMarkingOutput, type EffectiveMark, type MarkingClientFactory, type MarkingFrame, type MarkingJob, type MarkingRunOptions, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
+import { markingAiTimeout, MARKING_AI_TIMEOUT_MS, MARKING_MAX_DEFERRALS, MARKING_MAX_DISPATCHES, MARKING_MAX_TRANSPORT_DISPATCHES, MARKING_RETRY_WAIT_CAP_MS, MARKING_RETRY_WAIT_MS, type MarkingFailure, MARKING_MIN_AI_MS, TWO_WAYS_METHOD_MARKS, waitsForTeam, effectiveMarkingEvents, effectiveSkillMarks, markingOriginalKey, markingPageView, markingRequest, MARKING_CAP_MICROS, MARKING_ESCALATION_CAP_MICROS, MARKING_MODEL, MARKING_PROMPT_VERSION, MARKING_ESCALATION_MODEL, MARKING_ESCALATION_PROMPT_VERSION, type MarkingEscalation, readMarkingOutput, runScanMarking, validMarkingOutput, type EffectiveMark, type MarkingClientFactory, type MarkingFrame, type MarkingJob, type MarkingRunOptions, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
 import type { AiJsonRequest } from "@/lib/ai-client";
 import { markingEscalationClient } from "@/lib/scan-marking-ai";
 import { checkQuestionPackage, workedSteps, type NumberValue, type Operation, type QuestionPackage } from "@/lib/question-package";
@@ -186,6 +186,8 @@ class Store implements MarkingStore {
     const period = new Date(this.clock).toISOString().slice(0, 7);
     const held = [...this.spend.values()].filter((s) => s.period === period).reduce((sum, s) => sum + (s.charged ?? s.reserved), 0);
     if (held + maximum > MARKING_CAP_MICROS) return "budget" as const;
+    // The SQL rule (#958 review): a second look only while the month stays within half the cap.
+    if (role === "escalation" && held + maximum > MARKING_ESCALATION_CAP_MICROS) return "budget" as const;
     const dispatch = `d${this.spend.size}`; this.spend.set(dispatch, { period, reserved: maximum, charged: null, photo: ref.photo }); j.dispatches++; return { dispatch };
   }
   /** The store's own check (the SQL rule): clean only for a 429 body it accepts; `refuseClean` plays a store that disagrees. */
@@ -1548,6 +1550,54 @@ describe("the second look: unsure answers are read once more by the escalation m
     const retrying: MarkingClientFactory = (before) => ({ client: { model: MARKING_ESCALATION_MODEL, async json() { await before(); await before(); return second("12"); } }, costMicros: () => null });
     expect(await go(s, client(output(["0", null, "9"])), retrying)).toBe("finished");
     expect(s.roles.filter((r) => r.role === "escalation")).toHaveLength(1);
+    expect(item(s, 2)).toMatchObject({ state: "pending" });
+  });
+
+  it("asks only items this read was asked and left unsure: a retake whose other items were decided earlier asks nothing more (#958 review)", async () => {
+    // Photo a decides items 1 and 2 and leaves 3 unsure; the retake b is asked only item 3, reads it, and needs no second look.
+    const s = withOpus(new Store(f(), frame("photo-esc-b", [0, 12, 9]))), asked: AiJsonRequest[] = [];
+    const run2 = (photo: string, first: MarkingClientFactory) => runScanMarking(s, { parent: P, photo }, photo, first, () => new Date(s.clock).toISOString(), { escalate: client(second("12"), asked, 3_000, MARKING_ESCALATION_MODEL) });
+    expect(await run2("photo-esc", client(output(["0", "12", null])))).toBe("finished");
+    const firstLook = asked.length;
+    expect(await run2("photo-esc-b", client({ readings: [{ item: "i3", region: "r3", state: "written", text: "9" }] }))).toBe("finished");
+    expect(asked).toHaveLength(firstLook);
+    expect(s.roles.filter((r) => r.role === "escalation")).toHaveLength(firstLook);
+    // And when the retake leaves its one item unsure, only that item is sent.
+    const t = withOpus(new Store(f(), frame("photo-esc-b", [0, 12, 9]))), sent: AiJsonRequest[] = [];
+    await runScanMarking(t, { parent: P, photo: "photo-esc" }, "photo-esc", client(output(["0", "12", null])), () => new Date(t.clock).toISOString());
+    await runScanMarking(t, { parent: P, photo: "photo-esc-b" }, "photo-esc-b", client({ readings: [{ item: "i3", region: "r3", state: "uncertain", text: null, issue: "unreadable" }] }), () => new Date(t.clock).toISOString(), { escalate: client({ readings: [] }, sent, 3_000, MARKING_ESCALATION_MODEL) });
+    expect(sent).toHaveLength(1);
+    const part = sent[0].content.find((c) => c.type === "text")!;
+    if (part.type !== "text") throw new Error("text request required");
+    expect((JSON.parse(part.text).items as { item: string }[]).map((i) => i.item)).toEqual(["i3"]);
+  });
+
+  it("leaves questions cut off by the photo's edge out: no call when they are the only unsure ones (#958 review)", async () => {
+    const s = withOpus(new Store({ ...f(), cutOff: [2] })), asked: AiJsonRequest[] = [];
+    expect(await go(s, client(output(["0", "12", "9"])), client(second("12"), asked, 3_000, MARKING_ESCALATION_MODEL))).toBe("finished");
+    expect(asked).toHaveLength(0);
+    expect(item(s, 2)).toMatchObject({ state: "pending", issue: "cut-off" });
+  });
+
+  it("skips the second look when the run's AI time is nearly used, and keeps the first read's marks (#958 review)", async () => {
+    const s = withOpus(new Store(f())), asked: AiJsonRequest[] = [];
+    // The first read takes 140 s of the 150 s budget: 10 s is too little for a whole second call.
+    const slow: MarkingClientFactory = (before) => ({ client: { model: MARKING_MODEL, async json() { await before(); s.clock += 140_000; return output(["0", null, "9"]); } }, costMicros: () => 1_000 });
+    expect(await runScanMarking(s, { parent: P, photo: "photo-esc" }, "photo-esc", slow, () => new Date(s.clock).toISOString(), { escalate: client(second("12"), asked, 3_000, MARKING_ESCALATION_MODEL), clockMs: () => s.clock })).toBe("finished");
+    expect(asked).toHaveLength(0);
+    expect(s.roles.filter((r) => r.role === "escalation")).toHaveLength(0);
+    expect([1, 3].map((n) => item(s, n).result)).toEqual(["right", "right"]);
+    expect(item(s, 2)).toMatchObject({ state: "pending" });
+  });
+
+  it("is refused while the month is past half the cap, so first reads always keep their room (#958 review)", async () => {
+    const s = withOpus(new Store(f())), asked: AiJsonRequest[] = [];
+    const period = new Date(s.clock).toISOString().slice(0, 7);
+    s.spend.set("earlier", { period, reserved: MARKING_ESCALATION_CAP_MICROS - 10_000, charged: MARKING_ESCALATION_CAP_MICROS - 10_000, photo: "other" });
+    expect(await go(s, client(output(["0", null, "9"])), client(second("12"), asked, 3_000, MARKING_ESCALATION_MODEL))).toBe("finished");
+    expect(asked).toHaveLength(0);
+    expect(s.roles.at(-1)).toEqual({ model: MARKING_ESCALATION_MODEL, role: "escalation" });
+    expect([1, 3].map((n) => item(s, n).result)).toEqual(["right", "right"]);
     expect(item(s, 2)).toMatchObject({ state: "pending" });
   });
 
