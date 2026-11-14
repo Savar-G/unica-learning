@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { after } from "next/server";
 import { isUuid } from "@/lib/workbook-content";
 import { scanChecksAccess } from "@/lib/scan-marking-access";
-import { runScanCrops } from "@/lib/scan-crops";
+import { readScanPreview, runScanCrops } from "@/lib/scan-crops";
+import { startPhotoCheck } from "@/lib/scan-photo-check-start";
 import { scanCropStore } from "@/lib/scan-crops-store";
 import { normalizeScanPhoto, readScanBody } from "@/lib/scan-photo-image";
 import { scanSession, scanJson, scanView, scanPath, SCAN_BUCKET, cleanupScanPhoto } from "@/lib/scan-photo-server";
@@ -70,6 +71,16 @@ export async function POST(request: Request, { params }: RouteContext<"/api/acco
   if (!isUuid(id) || !await session.photoOpen(id)) return scanJson({ error: "refused" }, 404);
   const result = await session.admin.rpc("change_scan_photo", { p_parent: session.parent, p_id: id, p_action: "save" });
   if (result.error || result.data !== "saved") return scanJson({ error: "refused" }, 409);
+  // #915 (Savar's review): a page check that finished at upload, before the page first listed the photo, leaves the
+  // page nothing to ask, so the photo check starts here once the photo is saved. A claim is taken once per photo.
+  const { admin, parent } = session;
+  after(async () => {
+    try {
+      if (!await scanChecksAccess(admin, parent, process.env, { photo: id })) return;
+      if ((await readScanPreview(scanCropStore(admin), { parent, photo: id })).status !== "ready") return;
+      await startPhotoCheck(admin, parent, id, (run) => run());
+    } catch { /* the page's preview ask starts it */ }
+  });
   return scanJson({ photo: await scanView(session.admin, session.parent, id) });
 }
 
