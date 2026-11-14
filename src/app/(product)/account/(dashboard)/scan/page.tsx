@@ -14,6 +14,7 @@ import { CONTINUE_HERE, continueHerePath, scanPageUrl, scanScreen, scanSignInPat
 import { dayPages } from "@/lib/scan-stack";
 import { isUuid } from "@/lib/workbook-content";
 import { loadFamilyZone } from "@/lib/family-time-server";
+import { PACIFIC_ZONE } from "@/lib/family-time";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import "@/components/scan-tab.css";
 
@@ -58,7 +59,8 @@ export default async function ScanPage({ searchParams }: PageProps<"/account/sca
     parentDashboard(),
     headers(),
     searchParams,
-    loadFamilyZone(db, parent),
+    // The day's score only groups pages by the family's day: a failed read of the zone falls back to Pacific, never stops the page.
+    loadFamilyZone(db, parent).catch(() => PACIFIC_ZONE),
   ]);
   // A plan opens only its own child (src/lib/plan-access.ts), so a sibling is not offered here.
   const family = kids.data ?? [];
