@@ -3,6 +3,7 @@
 // one dispatch: a provider retry must not reuse it. Each client is bound to one handle, never a shared "next" slot.
 import type { AiClient } from "@/lib/ai-client";
 import type { CallBudget, Handle } from "@/lib/maya-spend-block";
+import { requestContext, withRequestContext } from "@/lib/maya-request-trace";
 import { SpendRefused, type MeterHooks } from "@/lib/maya-spend-ai";
 
 export function preparedAi(make: (hooks: MeterHooks) => AiClient, budget: Pick<CallBudget, "canSend">, handle: Handle, base: typeof globalThis.fetch = globalThis.fetch): AiClient {
@@ -24,7 +25,10 @@ export function preparedAi(make: (hooks: MeterHooks) => AiClient, budget: Pick<C
           return response;
         },
       });
-      try { return await client.json(request, signal); }
+      // A prepared request belongs to no turn yet, whatever turn was running when the controller prepared it
+      // (src/lib/maya-request-trace.ts). An interim hint named itself; anything else is the controller's expected turn.
+      const source = requestContext().source === "prepared_interim" ? "prepared_interim" : "prepared_expected";
+      try { return await withRequestContext({ source, turnId: null }, () => client.json(request, signal)); }
       finally {
         // A stop or expiry before dispatch costs zero. No callback means the provider's cost is still unknown.
         if (!dispatched) request.onCost?.(0);
