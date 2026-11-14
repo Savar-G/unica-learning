@@ -131,6 +131,8 @@ const forbidden = new Set(["__proto__", "prototype", "constructor"]);
 export function validName(name: string): boolean {
   return /^[A-Za-z][A-Za-z0-9_]*$/.test(name) && !forbidden.has(name) && !functions.has(name) && !["pi", "True", "False", "and", "or", "not", "in", "for", "if", "else"].includes(name);
 }
+/** A parsed expression: read-only, for code that explains an expression step by step (question-package-steps.ts). */
+export type ExpressionNode = Node;
 type Node =
   | { kind: "value"; value: ExpressionValue }
   | { kind: "name"; name: string }
@@ -528,6 +530,8 @@ function call(name: string, a: ExpressionValue[], budget: EvaluationBudget, reve
 export interface CompiledExpression {
   readonly names: readonly string[];
   readonly inputProfile: { characters: number; tokens: number; depth: number };
+  /** The parsed tree. Evaluate any part of it with evaluateTree. */
+  readonly tree: ExpressionNode;
   evaluate(values?: Bindings, budget?: EvaluationBudget): ExpressionValue;
 }
 /** Parse once, then evaluate with only the supplied own names. Lazy branches retain Python semantics. */
@@ -550,7 +554,12 @@ export function compileExpression(source: string, budget = new EvaluationBudget(
       }
     }
   }
-  return { names: [...parser.names], inputProfile: { characters: source.length, tokens: parser.tokenCount, depth: maximumDepth }, evaluate(values = {}, budget = new EvaluationBudget()) {
+  return { names: [...parser.names], inputProfile: { characters: source.length, tokens: parser.tokenCount, depth: maximumDepth }, tree,
+    evaluate: (values = {}, budget = new EvaluationBudget()) => evaluateTree(tree, values, budget) };
+}
+/** Evaluate a tree from compileExpression, or any part of one, with the same rules as evaluate. */
+export function evaluateTree(tree: ExpressionNode, values: Bindings = {}, budget = new EvaluationBudget()): ExpressionValue {
+  {
     const run = (node: Node, depth = 0): ExpressionValue => {
       budget.step(); budget.depth(depth);
       return budget.created(evaluateNode(node, depth));
@@ -590,7 +599,7 @@ export function compileExpression(source: string, budget = new EvaluationBudget(
       }
     };
     return run(tree);
-  } };
+  }
 }
 export function evaluateExpression(source: string, values: Bindings = {}): ExpressionValue { return compileExpression(source).evaluate(values); }
 export function expressionIsTrue(value: ExpressionValue): boolean { return truth(value); }
