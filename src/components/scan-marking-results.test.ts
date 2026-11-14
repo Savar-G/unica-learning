@@ -43,3 +43,11 @@ describe("the page line agrees with its answers (#715)", () => {
     expect(page([marked], { scored: 1 }, "complete")).toContain("This page has been marked.");
   });
 });
+it("a page whose every answer read blank says it looks unfinished (scan edge sweep, 2026-11-14)", () => {
+  const html = renderToStaticMarkup(createElement(ScanMarkingResults, { result: { ...base, unfinished: true } }));
+  expect(html).toContain("Looks unfinished: scan it when it&#x27;s done.");
+  expect(html).not.toContain("This page is not marked yet.");
+  // Once a later photo marks it, the line is the marked one again.
+  const marked = { ...base, unfinished: true, completion: { ...base.completion, status: "complete" as const }, counts: { scored: 1, unscored: 0, pending: 0, teamChecks: 0 } };
+  expect(renderToStaticMarkup(createElement(ScanMarkingResults, { result: marked }))).toContain("This page has been marked.");
+});

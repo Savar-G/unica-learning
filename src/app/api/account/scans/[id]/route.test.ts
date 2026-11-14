@@ -2,7 +2,9 @@ import { beforeEach, afterEach, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 const f = vi.hoisted(() => ({ start: "started", identify: "identified" as string | string[], normalize: true, uploads: 0, calls: [] as string[], spread: false, admit: "reserved" as string | string[], tokens: [] as string[], saved: [] as string[], refuse: "qr", storageFails: 0, recover: "pending", filed: "child", closed: [] as string[],
   // F5: the page's photo a new photo of it may replace, and that photo's stored check; the photos deleted.
-  held: null as null | { id: string; printed_revision: string; sent_at: string | null }, calibration: null as null | { state: string; printed_revision: string }, deleted: [] as string[] }));
+  held: null as null | { id: string; printed_revision: string; sent_at: string | null }, calibration: null as null | { state: string; printed_revision: string }, deleted: [] as string[],
+  // The held photo's marking job (scan edge sweep, 2026-11-14).
+  job: null as null | { state: string; blocked_reason: string | null } }));
 const ai = vi.hoisted(() => vi.fn(() => { throw new Error("S1 must not dispatch AI"); }));
 vi.mock("@/lib/ai-client", () => ({ aiClient: ai }));
 // #915: the page check starts after the answer, for a family that gets checks.
@@ -28,7 +30,7 @@ vi.mock("@/lib/scan-photo-server", () => ({
   scanSession: async () => ({ parent: "family", photoOpen: async () => true, childOpen: async (child: string) => !f.closed.includes(child), admin: {
     from: (table: string) => ({ select: (columns = "") => {
       const chain = { single: async () => ({ data: { input_bytes: 100, output_bytes: 100, decoded_pixels: 100 } }), eq: () => chain,
-        maybeSingle: async () => ({ data: table === "workbook_pages" ? { id: "page", page_number: 24 } : table === "scan_photos" ? columns.includes("sent_at") ? f.held : { child_id: f.filed } : table === "scan_calibrations" ? f.calibration : null, error: null }) };
+        maybeSingle: async () => ({ data: table === "workbook_pages" ? { id: "page", page_number: 24 } : table === "scan_photos" ? columns.includes("sent_at") ? f.held : { child_id: f.filed } : table === "scan_calibrations" ? f.calibration : table === "scan_marking_jobs" ? f.job : null, error: null }) };
       return chain;
     } }),
     rpc: async (name: string, args: { p_token?: string; p_id?: string; p_action?: string }) => {
@@ -40,7 +42,7 @@ vi.mock("@/lib/scan-photo-server", () => ({
       }
       if (name === "change_scan_photo" && args.p_action === "save") f.saved.push(args.p_id!);
       if (name === "change_scan_photo" && args.p_action === "delete") { f.deleted.push(args.p_id!); return { data: "deleted" }; }
-      if (name === "admit_scan_photo") return { data: Array.isArray(f.admit) ? f.admit.shift() ?? "reserved" : f.admit };
+      if (name === "admit_scan_photo_v2") return { data: Array.isArray(f.admit) ? f.admit.shift() ?? "reserved" : f.admit };
       if (name === "recover_scan_photo") return { data: f.recover };
       return { data: name === "start_scan_photo" ? f.start : name === "change_scan_photo" ? "saved" : "pending" };
     },
@@ -50,7 +52,7 @@ vi.mock("@/lib/scan-photo-server", () => ({
 import { POST, PUT } from "./route";
 const id = "00000000-0000-4000-8000-000000000001";
 const put = () => PUT(new Request(`https://unicalearning.com/api/account/scans/${id}`, { method: "PUT", headers: { Origin: "https://unicalearning.com" }, body: new Uint8Array([1]) }), { params: Promise.resolve({ id }) });
-beforeEach(() => { later.tasks = []; later.checks = true; later.crops = []; later.fail = false; later.preview = "ready"; later.photoChecks = []; f.start = "started"; f.identify = "identified"; f.normalize = true; f.uploads = 0; f.calls = []; f.spread = false; f.admit = "reserved"; f.tokens = []; f.saved = []; f.refuse = "qr"; f.storageFails = 0; f.recover = "pending"; f.filed = "child"; f.closed = []; f.held = null; f.calibration = null; f.deleted = []; ai.mockClear(); vi.stubEnv("OPENROUTER_API_KEY", "synthetic-configured-key"); });
+beforeEach(() => { later.tasks = []; later.checks = true; later.crops = []; later.fail = false; later.preview = "ready"; later.photoChecks = []; f.start = "started"; f.identify = "identified"; f.normalize = true; f.uploads = 0; f.calls = []; f.spread = false; f.admit = "reserved"; f.tokens = []; f.saved = []; f.refuse = "qr"; f.storageFails = 0; f.recover = "pending"; f.filed = "child"; f.closed = []; f.held = null; f.calibration = null; f.deleted = []; f.job = null; ai.mockClear(); vi.stubEnv("OPENROUTER_API_KEY", "synthetic-configured-key"); });
 afterEach(() => vi.unstubAllEnvs());
 it("stores one normalized photo with zero AI dispatches when a key is configured", async () => {
   expect((await put()).status).toBe(200); expect(f.uploads).toBe(1);
@@ -98,7 +100,7 @@ it("stores the two pages of an open book as two photos, each bound by its own co
   // This photo takes the left page; the right page becomes a new photo, admitted, bound, stored and saved.
   expect(f.tokens).toEqual(["qrTokenLeft000000000", "qrTokenRight00000000"]);
   expect(f.uploads).toBe(2);
-  expect(f.calls.filter((c) => c === "admit_scan_photo")).toHaveLength(1);
+  expect(f.calls.filter((c) => c === "admit_scan_photo_v2")).toHaveLength(1);
   expect(answer.spread).toMatchObject({ state: "saved" });
   expect(f.saved).toEqual([answer.spread.id]);
   expect(answer.spread.id).not.toBe(id);
@@ -113,14 +115,14 @@ it("keeps the left page when the right page cannot be admitted, and answers why 
 it("asks again for a slot when the phone's own uploads fill them, instead of dropping the right page (#965 review)", async () => {
   f.spread = true; f.admit = ["busy", "busy", "reserved"];
   const answer = await (await put()).json();
-  expect(f.calls.filter((c) => c === "admit_scan_photo")).toHaveLength(3);
+  expect(f.calls.filter((c) => c === "admit_scan_photo_v2")).toHaveLength(3);
   expect(answer.spread).toMatchObject({ state: "saved" });
   expect(answer.spread.page).toBeUndefined();
 });
 it("names a right page that stays busy, so the parent can photograph it alone (#965 review)", async () => {
   f.spread = true; f.admit = ["busy", "busy", "busy", "busy", "busy"];
   const answer = await (await put()).json();
-  expect(f.calls.filter((c) => c === "admit_scan_photo")).toHaveLength(4);
+  expect(f.calls.filter((c) => c === "admit_scan_photo_v2")).toHaveLength(4);
   expect(answer.spread).toMatchObject({ state: "busy", page: 24 });
 });
 it("reconciles a lost Storage answer for the right page: stored after all, it is saved; not stored, it is left to expire (#965 review)", async () => {
@@ -144,7 +146,7 @@ it("lets the right page take this photo when the left page already has one, and 
   const answer = await (await put()).json();
   expect(f.tokens).toEqual(["qrTokenLeft000000000", "qrTokenRight00000000"]);
   expect(f.uploads).toBe(1);
-  expect(f.calls).not.toContain("admit_scan_photo");
+  expect(f.calls).not.toContain("admit_scan_photo_v2");
   expect(answer.spread).toBeUndefined();
 });
 it("refuses a spread whose pages both refuse, with the first page's reason (#915)", async () => {
@@ -181,5 +183,21 @@ it("keeps a page's photo that is ready, still being checked, of another printing
     const answer = await put();
     expect(answer.status).toBe(422); expect(await answer.json()).toEqual({ error: "duplicate" });
     expect(f.deleted).toEqual([]); expect(f.uploads).toBe(0);
+  }
+});
+
+it("a new photo of a sent page whose marking found every answer blank replaces it (scan edge sweep, 2026-11-14)", async () => {
+  f.identify = ["duplicate", "identified"];
+  f.held = { id: "old", printed_revision: "r1", sent_at: "2026-11-05T12:00:00Z" }; f.job = { state: "finished", blocked_reason: "unfinished" };
+  expect((await put()).status).toBe(200);
+  expect(f.deleted).toEqual(["old"]);
+  expect(f.uploads).toBe(1);
+});
+
+it("keeps a sent page that is marked, being marked or could not be marked: the new photo is a duplicate", async () => {
+  for (const job of [null, { state: "finished", blocked_reason: null }, { state: "finished", blocked_reason: "attempts" }, { state: "queued", blocked_reason: "unfinished" }, { state: "running", blocked_reason: null }]) {
+    f.identify = "duplicate"; f.held = { id: "old", printed_revision: "r1", sent_at: "2026-11-05T12:00:00Z" }; f.job = job; f.uploads = 0;
+    const answer = await put();
+    expect(answer.status).toBe(422); expect(f.deleted).toEqual([]); expect(f.uploads).toBe(0);
   }
 });

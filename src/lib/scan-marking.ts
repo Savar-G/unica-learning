@@ -58,6 +58,34 @@ export const MARKING_ESCALATION_CAP_MICROS = 25_000_000;
 export const MARKING_SHEET_CHECK_VERSION = 1;
 /** Bounded canonical key. Item IDs can be 200 characters; photos never change this key. */
 export const markingOriginalKey = (item: ExpectedItem) => `marking:${createHash("sha256").update(itemKey(item.identity), "utf8").digest("hex")}`;
+/**
+ * A blank the AI gave (scan edge sweep, 2026-11-14): a page photographed before the child finished it. A later sent
+ * photo of the same printing reads it again. A blank a parent or our team set is never read again.
+ */
+export const aiBlank = (o: Observation) => o.state === "scored" && o.result === "blank" && o.actor === "system";
+/**
+ * Whether a later reading replaces an AI blank: only one that saw writing in the answer area, a Right or Wrong, or an
+ * unsure reading with written text (our team checks it). A blank again, or a reading that saw no writing (blurry, cut
+ * off, dark, missing, not read), keeps the blank. The same rule is in the SQL `apply`.
+ */
+export const replacesAiBlank = (next: Observation) => (next.state === "scored" && (next.result === "right" || next.result === "wrong"))
+  || (next.state === "pending" && next.regions.some((r) => (r.text ?? "").trim() !== ""));
+/** The items a run reads: code items not read yet, and AI blanks a later photo may replace. */
+const toRead = (m: EffectiveMark) => m.expected.method === "code" && (m.observation.state === "pending" || aiBlank(m.observation));
+/**
+ * Every code answer on the page reads blank after this run (the items it read, and the rest as they stand), and the
+ * run read at least one: the page looks unfinished, so nothing is marked (scan edge sweep, 2026-11-14).
+ */
+export function unfinishedPage(items: readonly EffectiveMark[], observations: readonly Observation[]): boolean {
+  const read = items.filter(toRead), code = items.filter((m) => m.expected.method === "code");
+  if (!read.length) return false;
+  return code.every((m) => {
+    const key = itemKey(m.expected.identity);
+    if (!read.includes(m)) return m.observation.result === "blank";
+    const o = observations.find((x) => itemKey(x.identity) === key);
+    return !!o && o.state === "scored" && o.result === "blank";
+  });
+}
 export interface MarkingRef { parent: string; photo: string }
 export interface MarkingFrame extends PageForObservation {
   parentId: string;
@@ -89,11 +117,15 @@ export interface MarkingJob {
   items: EffectiveMark[];
   extraction: Observation[] | null;
 }
-export type MarkingStatus = "finished" | "pending" | "busy" | "terminal" | "unavailable" | "off" | "budget" | "price-unverified" | "attempts";
+/**
+ * `unfinished` (scan edge sweep, 2026-11-14): every answer on the page read blank. Nothing is marked and no learning
+ * event is made; the job ends, the parent is told the page looks unfinished, and a new photo of the page replaces it.
+ */
+export type MarkingStatus = "finished" | "pending" | "busy" | "terminal" | "unavailable" | "off" | "budget" | "price-unverified" | "attempts" | "unfinished";
 export interface MarkingStore {
   frame(ref: MarkingRef): Promise<MarkingFrame | null>;
   /** Atomic family/page admission, current pending item versions, and extraction recovery. */
-  claim(ref: MarkingRef, token: string, frame: MarkingFrame, items: ExpectedItem[]): Promise<MarkingJob | Exclude<MarkingStatus, "finished" | "pending" | "off" | "budget" | "price-unverified" | "attempts">>;
+  claim(ref: MarkingRef, token: string, frame: MarkingFrame, items: ExpectedItem[]): Promise<MarkingJob | Exclude<MarkingStatus, "finished" | "pending" | "off" | "budget" | "price-unverified" | "attempts" | "unfinished">>;
   /** One whole normalized page. The adapter strips metadata again before dispatch. */
   image(ref: MarkingRef): Promise<Uint8Array>;
   /** Called by AiClient immediately before EACH transport attempt, including its retry. */
@@ -114,7 +146,10 @@ export interface MarkingStore {
   defer(ref: MarkingRef, token: string): Promise<"pending" | "attempts" | "terminal">;
   /** `escalation`: the second look's record, when it decided any item (its model, prompt and the item ids it decided). */
   extract(ref: MarkingRef, token: string, observations: Observation[], model: string, escalation?: MarkingEscalation | null): Promise<boolean>;
-  /** Apply only still-owned pending versions. Save event intent in the same transaction. */
+  /**
+   * Apply only still-owned versions of pending items, and of AI blanks a later reading replaces (`replacesAiBlank`).
+   * Save event intent in the same transaction.
+   */
   apply(ref: MarkingRef, token: string, observations: Observation[], events: NewLearningEvent[], at: string): Promise<boolean>;
   finish(ref: MarkingRef, token: string): Promise<boolean>;
   pause(ref: MarkingRef, token: string, status: MarkingStatus): Promise<void>;
@@ -396,7 +431,7 @@ export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token
   let escalation: MarkingEscalation | null = null;
   let image: Uint8Array | null = null;
   if (!observations) {
-    const pending = job.items.filter((m) => m.observation.state === "pending" && m.expected.method === "code");
+    const pending = job.items.filter(toRead);
     const local = aliases(frame, expected).filter((a) => pending.some((m) => itemKey(m.expected.identity) === itemKey(a.expected.identity)));
     if (local.length) {
       let dispatch: string | null = null;
@@ -492,6 +527,9 @@ export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token
     } else observations = expected.map((e) => firstObservation(e, frame.photo));
     if (!await store.extract(ref, token, observations, model, escalation)) return "terminal";
   }
+  // Every answer blank (a page photographed before it was done, or the facing page of a spread): no marks, no events.
+  // The reading stays in the job for the admin; the job ends as `unfinished`, and a new photo of the page replaces it.
+  if (unfinishedPage(job.items, observations)) { await store.pause(ref, token, "unfinished"); return "unfinished"; }
   const at = now();
   if (!await store.apply(ref, token, observations, originalEvents(frame, observations, at), at)) return "terminal";
   await store.publish(frame.parentId, frame.childId);

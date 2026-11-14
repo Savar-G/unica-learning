@@ -73,10 +73,14 @@ export async function readScanStack(db: SupabaseClient<Database>, parent: string
   const marksOf = new Map<string, PageMarks>();
   if (sent.length) {
     try {
-      const marks = await scanMarkingStore(db).effective(parent, child);
+      const [marks, jobs] = await Promise.all([scanMarkingStore(db).effective(parent, child),
+        // A page whose every answer read blank (scan edge sweep, 2026-11-14) says so instead of "Marking…".
+        db.from("scan_marking_jobs").select("photo_id").eq("parent_id", parent).eq("blocked_reason", "unfinished").in("photo_id", sent.map((p) => p.id))]);
+      const unfinished = new Set(jobs.error ? [] : jobs.data.map((j) => j.photo_id));
       for (const p of sent) {
         const own = marks.filter((m) => m.expected.identity.workbookId === p.workbook_id && m.expected.identity.pageId === p.page_id && m.expected.identity.printedRevision === p.printed_revision);
-        if (own.length) marksOf.set(p.id, pageMarks(markingPageView(own)));
+        const view = own.length ? pageMarks(markingPageView(own)) : null;
+        if (view) marksOf.set(p.id, unfinished.has(p.id) && view.scored === 0 ? { ...view, unfinished: true } : view);
       }
     } catch { /* marks are optional on the stack */ }
   }

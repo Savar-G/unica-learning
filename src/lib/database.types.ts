@@ -4721,6 +4721,7 @@ export type Database = {
           photo_check: Json | null
           printed_revision: string | null
           reserved_bytes: number
+          send_after: string | null
           sent_at: string | null
           state: string
           stored_bytes: number
@@ -4740,6 +4741,7 @@ export type Database = {
           photo_check?: Json | null
           printed_revision?: string | null
           reserved_bytes: number
+          send_after?: string | null
           sent_at?: string | null
           state?: string
           stored_bytes?: number
@@ -4759,6 +4761,7 @@ export type Database = {
           photo_check?: Json | null
           printed_revision?: string | null
           reserved_bytes?: number
+          send_after?: string | null
           sent_at?: string | null
           state?: string
           stored_bytes?: number
@@ -8733,6 +8736,15 @@ export type Database = {
         }
         Returns: string
       }
+      admit_scan_photo_v2: {
+        Args: {
+          p_bytes: number
+          p_child: string
+          p_id: string
+          p_parent: string
+        }
+        Returns: string
+      }
       admit_workbook_scan_reminder: {
         Args: { p_attempt: string; p_message: string }
         Returns: Json
@@ -9398,6 +9410,14 @@ export type Database = {
           parent_id: string
         }[]
       }
+      due_scan_sends: {
+        Args: { p_limit: number; p_parent: string }
+        Returns: {
+          child_id: string
+          id: string
+          parent_id: string
+        }[]
+      }
       due_workbook_book1_baselines: {
         Args: { p_limit: number }
         Returns: {
@@ -9678,6 +9698,10 @@ export type Database = {
       hold_next_book_snapshot: {
         Args: { p_book: string; p_delivery_audit: number }
         Returns: Json
+      }
+      hold_scan_photos: {
+        Args: { p_ids: string[]; p_parent: string; p_seconds: number }
+        Returns: string[]
       }
       identify_scan_photo: {
         Args: {
@@ -10625,6 +10649,10 @@ export type Database = {
       team_end_plan_start: {
         Args: { p_admin: string; p_card: string; p_generation: number }
         Returns: boolean
+      }
+      unhold_scan_photos: {
+        Args: { p_ids: string[]; p_parent: string }
+        Returns: string[]
       }
       use_workbook_run_attempts: {
         Args: {

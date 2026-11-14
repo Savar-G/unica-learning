@@ -5,6 +5,8 @@
 // `scan_limits.concurrent_uploads`, D-271: 2 uploads at once). A photo the server answers `busy` keeps its place and asks
 // again; it never fails for waiting. After a short wait it is "held": the screen says it is waiting for room, and the
 // asks slow down. Each request has a time limit, so one hung upload frees its slot instead of holding the rest.
+// A photo over the 10-minute limit (`frequency`, `scan_limits.per_ten_minutes`) waits the same way, held at once and asked
+// again every 30 s until the window has room. The day limit (`daily`) does not wait: it is refused until tomorrow.
 
 /** Uploads in flight at once: the server's `scan_limits.concurrent_uploads`. */
 export const UPLOAD_SLOTS = 2;
@@ -26,6 +28,20 @@ const HELD_MS = [5_000, 10_000, 15_000] as const;
 export function busyWait(tries: number): { delayMs: number; held: boolean } {
   if (tries < QUICK_TRIES) return { delayMs: QUICK_MS, held: false };
   return { delayMs: HELD_MS[Math.min(tries - QUICK_TRIES, HELD_MS.length - 1)], held: true };
+}
+
+/** A photo over the 10-minute limit asks again this often: the window frees one photo at a time. */
+const FREQUENCY_MS = 30_000;
+
+/** Whether a refusal keeps the photo in its place to ask again: no room right now (`busy`) or the 10-minute limit. */
+export const waitsForRoom = (code: string) => code === "busy" || code === "frequency";
+
+/**
+ * The wait after refusal `code` number `tries` (0 for the first) for one photo: `busyWait` for `busy`; for the 10-minute
+ * limit, held at once and asked again every 30 s. There is no last try for either.
+ */
+export function roomWait(code: string, tries: number): { delayMs: number; held: boolean } {
+  return code === "frequency" ? { delayMs: FREQUENCY_MS, held: true } : busyWait(tries);
 }
 
 /** The photos to start now: waiting ones not yet running, in the order they were added, up to the free slots. */

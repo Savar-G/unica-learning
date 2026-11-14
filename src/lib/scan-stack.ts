@@ -12,7 +12,8 @@ import type { ScanRefusal } from "@/lib/scan-crops";
 export type CheckState = "none" | "checking" | "ready" | "refused" | "unavailable";
 
 /** Why the upload route refused a photo, as its error codes say, plus "unavailable" when the photo did not reach us. */
-export type UploadRefusal = "qr" | "page" | "duplicate" | "flat" | "image" | "size" | "frequency" | "quota" | "unavailable";
+/** `frequency`: the 10-minute photo limit; `daily`: the day's photo limit (`scan_limits`, admit_scan_photo_v2). */
+export type UploadRefusal = "qr" | "page" | "duplicate" | "flat" | "image" | "size" | "frequency" | "daily" | "quota" | "unavailable";
 
 export type StackReason = ScanRefusal | UploadRefusal;
 
@@ -36,7 +37,9 @@ export interface StackPhoto {
  * A sent page's marks as the stack shows them (#915): `right` of `scored` so far, `toPractise` wrong or blank answers,
  * `waiting` answers not marked yet (read, a second look or our team), `complete` when every answer has its final mark.
  */
-export interface PageMarks { right: number; scored: number; total: number; toPractise: number; waiting: number; complete: boolean }
+export interface PageMarks { right: number; scored: number; total: number; toPractise: number; waiting: number; complete: boolean;
+  /** Every answer read blank (scan edge sweep, 2026-11-14): nothing was marked, and a new photo of the page replaces this one. */
+  unfinished?: boolean }
 
 /** A photo the parent took or chose on this device that has no saved photo yet. */
 export interface StackUpload {
@@ -189,7 +192,8 @@ const REFUSALS: Record<StackReason, { short: string; title: string; action: stri
   duplicate: { short: "Already has a photo", title: "This page already has a photo.", action: "Open its photo on this screen. Delete it first if you need another photo." },
   image: { short: "Cannot open", title: "We cannot open this photo.", action: "Choose a JPG, PNG or WebP photo of one page." },
   size: { short: "Too large", title: "This photo is too large.", action: "Choose a photo smaller than 20 MB." },
-  frequency: { short: "Too many photos", title: "You have sent many photos in a short time.", action: "Wait a few minutes. Then try again." },
+  frequency: { short: "Too many photos", title: "You have sent many photos in the last 10 minutes.", action: "Wait a few minutes. Then try again." },
+  daily: { short: "Today's limit", title: "You've reached today's photo limit.", action: "You can scan more tomorrow." },
   quota: { short: "Storage full", title: "Your family's photo storage is full.", action: "Delete older photos. Then try again." },
   unavailable: { short: "Not sent", title: "We could not send this photo.", action: "Check your connection. Then try again." },
 };

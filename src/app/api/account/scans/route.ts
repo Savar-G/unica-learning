@@ -11,7 +11,8 @@ export async function POST(request: Request) {
     const { id, child, bytes } = await request.json();
     if (!isUuid(id) || !isUuid(child) || !Number.isSafeInteger(bytes)) return scanJson({ error: "refused" }, 400);
     if (!await session.childOpen(child)) return scanJson({ error: "refused" }, 404);
-    const { data, error } = await session.admin.rpc("admit_scan_photo", { p_parent: session.parent, p_child: child, p_id: id, p_bytes: bytes });
+    // v2 tells the 10-minute limit (`frequency`) from the day's (`daily`); the old function answers `frequency` for both.
+    const { data, error } = await session.admin.rpc("admit_scan_photo_v2", { p_parent: session.parent, p_child: child, p_id: id, p_bytes: bytes });
     if (error) return scanJson({ error: "unavailable" }, 503);
     if (!["reserved", "processing", "pending", "saved"].includes(data)) return scanJson({ error: data }, 429);
     return scanJson({ state: data, id });

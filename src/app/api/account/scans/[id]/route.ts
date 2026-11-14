@@ -101,6 +101,8 @@ const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  * has a photo" and left the parent with no way forward. Only a photo whose stored check refused it, as the stack shows it
  * (`stackCheck` in src/lib/scan-stack-server.ts: a finished check of the photo's own printing that is not ready), and that
  * was never sent. A ready photo, a photo still being checked and a sent photo stay: a new photo of those is a duplicate.
+ * One sent photo goes too (scan edge sweep, 2026-11-14): one whose marking found every answer blank (its job ended
+ * `unfinished`, nothing marked), so the parent can scan the page once it is done.
  * True when it went, so the caller identifies the new photo again. Any failed read keeps the old photo.
  */
 async function replaceRefusedPhoto(admin: SupabaseClient<Database>, parent: string, token: string, childOpen: (child: string) => Promise<boolean>): Promise<boolean> {
@@ -108,13 +110,18 @@ async function replaceRefusedPhoto(admin: SupabaseClient<Database>, parent: stri
     const page = await admin.from("workbook_pages").select("id").eq("parent_id", parent).eq("qr_token", token).maybeSingle();
     if (page.error || !page.data) return false;
     const held = await admin.from("scan_photos").select("id,child_id,printed_revision,sent_at").eq("parent_id", parent).eq("page_id", page.data.id).eq("state", "saved").maybeSingle();
-    if (held.error || !held.data || held.data.sent_at) return false;
+    if (held.error || !held.data) return false;
     // The new photo files with the same child: a child whose plan does not open scanning keeps the old photo, as the new
     // one would be refused (#977 review). Asked before anything is deleted.
     if (!await childOpen(held.data.child_id)) return false;
-    const check = await admin.from("scan_calibrations").select("state,printed_revision").eq("parent_id", parent).eq("photo_id", held.data.id).maybeSingle();
-    const c = check.data;
-    if (check.error || !c || c.state === "running" || c.state === "ready" || c.printed_revision !== held.data.printed_revision) return false;
+    if (held.data.sent_at) {
+      const job = await admin.from("scan_marking_jobs").select("state,blocked_reason").eq("parent_id", parent).eq("photo_id", held.data.id).maybeSingle();
+      if (job.error || job.data?.state !== "finished" || job.data.blocked_reason !== "unfinished") return false;
+    } else {
+      const check = await admin.from("scan_calibrations").select("state,printed_revision").eq("parent_id", parent).eq("photo_id", held.data.id).maybeSingle();
+      const c = check.data;
+      if (check.error || !c || c.state === "running" || c.state === "ready" || c.printed_revision !== held.data.printed_revision) return false;
+    }
     const gone = await admin.rpc("change_scan_photo", { p_parent: parent, p_id: held.data.id, p_action: "delete" });
     if (gone.error || gone.data !== "deleted") return false;
     await cleanupScanPhoto(admin, parent, held.data.id);
@@ -144,10 +151,10 @@ async function spreadPhoto(admin: SupabaseClient<Database>, parent: string, chil
   try {
     // The phone sends two photos at a time, and both count against the family's upload slots while they run: this page
     // asks again a few times, a second apart, instead of being dropped as busy (#965 review). Other refusals stand.
-    let admitted = await admin.rpc("admit_scan_photo", { p_parent: parent, p_child: child, p_id: id, p_bytes: page.bytes.length });
+    let admitted = await admin.rpc("admit_scan_photo_v2", { p_parent: parent, p_child: child, p_id: id, p_bytes: page.bytes.length });
     for (let tries = 1; !admitted.error && admitted.data === "busy" && tries < SPREAD_ADMIT_TRIES && Date.now() - received < UPLOAD_CHECK_BUDGET_MS; tries++) {
       await pause(SPREAD_ADMIT_WAIT_MS);
-      admitted = await admin.rpc("admit_scan_photo", { p_parent: parent, p_child: child, p_id: id, p_bytes: page.bytes.length });
+      admitted = await admin.rpc("admit_scan_photo_v2", { p_parent: parent, p_child: child, p_id: id, p_bytes: page.bytes.length });
     }
     if (admitted.error || admitted.data !== "reserved") return { id, state: admitted.error ? "unavailable" : admitted.data };
     const started = await admin.rpc("start_scan_photo", { p_parent: parent, p_id: id });

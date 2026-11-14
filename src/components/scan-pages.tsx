@@ -11,7 +11,7 @@ import { PHOTO_PROBLEM_TEXT, type PhotoCheckView, type PhotoProblem } from "@/li
 import { SCANNING_COOKIE, SCANNING_SECONDS } from "@/lib/scan-tab";
 import { PACIFIC_ZONE, type FamilyZone } from "@/lib/family-time";
 import { scanEventTicket } from "@/lib/scan-track";
-import { busyWait, nextUploads, REQUEST_TIMEOUT_MS, UPLOAD_TIMEOUT_MS } from "@/lib/scan-upload-queue";
+import { nextUploads, REQUEST_TIMEOUT_MS, roomWait, UPLOAD_TIMEOUT_MS, waitsForRoom } from "@/lib/scan-upload-queue";
 import { workbooksPath } from "@/lib/parent-shell";
 import { ScanPreview } from "@/components/scan-preview";
 import { ScanHistory } from "@/components/scan-history";
@@ -32,12 +32,12 @@ type Local = StackUpload & { file: File; replaces?: string; reservation?: string
 
 export type ScanListing = { marking?: boolean; checks: boolean; photos: StackPhoto[]; pages: DayPage[] };
 
-const UPLOAD_REFUSALS: readonly string[] = ["qr", "page", "duplicate", "flat", "image", "size", "frequency", "quota"];
+const UPLOAD_REFUSALS: readonly string[] = ["qr", "page", "duplicate", "flat", "image", "size", "frequency", "daily", "quota"];
 const uploadRefusal = (code: string): UploadRefusal => (UPLOAD_REFUSALS.includes(code) ? code as UploadRefusal : "unavailable");
 /** What the server says of a photo id that can no longer take an upload: the lease ended or the photo went. A new id is needed. */
 const ENDED: readonly string[] = ["expired", "rejected", "deleted", "refused"];
 /** Why a photo could not be sent at all: the capture tray says so on its thumbnail at once. Other refusals wait for Done. */
-const SENDING_PROBLEMS: readonly string[] = ["unavailable", "size", "image", "frequency", "quota"];
+const SENDING_PROBLEMS: readonly string[] = ["unavailable", "size", "image", "frequency", "daily", "quota"];
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 /** How long a photo waits before its check is asked again; a busy check (still running, #915) is asked again sooner. */
 const CHECK_ASK_MS = 6000, BUSY_ASK_MS = 1500, QUICK_BUSY_ASKS = 8;
@@ -438,8 +438,8 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
    * A `busy` answer: the photo keeps its place and asks again, for as long as it is on the screen (#915). After a short
    * wait it shows as waiting for room. False when the photo went (deleted, account or child changed): stop asking.
    */
-  async function waitForRoom(key: string, tries: number, version: number) {
-    const step = busyWait(tries);
+  async function waitForRoom(key: string, code: string, tries: number, version: number) {
+    const step = roomWait(code, tries);
     const here = () => version === epoch.current && sessionCurrent.current && uploadsRef.current.some((x) => x.key === key);
     if (!here()) return false;
     if (step.held && !uploadsRef.current.find((x) => x.key === key)?.held) patchUpload(key, { held: true });
@@ -455,7 +455,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       try { admission = await api("/api/account/scans", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, child, bytes: body.size }) }); }
       catch (error) {
         const code = codeOf(error);
-        if (code === "busy") { if (await waitForRoom(key, busy++, version)) continue; return "unavailable"; }
+        if (waitsForRoom(code)) { if (await waitForRoom(key, code, busy++, version)) continue; return "unavailable"; }
         return ENDED.includes(code) ? "ended" : uploadRefusal(code);
       }
     }
@@ -472,7 +472,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       } catch (error) {
         const code = codeOf(error);
         // The reservation keeps its lease while it waits; a lease that ends answers `expired`, and the photo takes a new id.
-        if (code === "busy") { if (await waitForRoom(key, busy++, version)) { attempt--; continue; } return "unavailable"; }
+        if (waitsForRoom(code)) { if (await waitForRoom(key, code, busy++, version)) { attempt--; continue; } return "unavailable"; }
         // A lost answer: the photo may still be saving. Ask about the same photo, never send it twice.
         if ((code === "uncertain" || code === "unavailable") && attempt < 5) { admission = { state: "check" }; await wait(2000); continue; }
         return ENDED.includes(code) ? "ended" : uploadRefusal(code);
@@ -800,7 +800,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   /** What a page that needs another photo offers. A photo that never reached us is chosen again (or tried again); a saved one is retaken. */
   const fixAction = (t: StackTile, { className = "btn", retake = retakeWords(t) }: { className?: string; retake?: string } = {}) => {
     if (t.uploadKey && t.refusal === "unavailable") return <button type="button" className={className} onClick={() => { patchUpload(t.uploadKey!, { status: "waiting", reason: undefined, codeUnread: undefined }); pump(); }}>Try again</button>;
-    if (t.refusal === "frequency" || t.refusal === "quota" || t.refusal === "duplicate") return null;
+    if (t.refusal === "frequency" || t.refusal === "daily" || t.refusal === "quota" || t.refusal === "duplicate") return null;
     if (!phone) return null;
     return <button type="button" className={className} onClick={() => open(t.uploadKey ? "library" : "camera", retakeKey(t))}>{t.uploadKey ? "Choose another photo" : retake}</button>;
   };
