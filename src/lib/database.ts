@@ -29,6 +29,7 @@ import type { ConnectionKind } from "@/lib/maya-voice";
 import type { CommentRoute } from "@/lib/workbook-comment-route";
 import type { LayoutEditPlan } from "@/lib/workbook-layout-edit";
 import type { QuestionGate } from "@/lib/workbook-gates";
+import type { PageGate } from "@/lib/workbook-page-gates";
 import type { GateOutcome } from "@/lib/workbook-run-gates";
 
 export type { Json };
@@ -82,7 +83,7 @@ type ColumnTypes = KnownColumns<{
   workbook_run_pages: { page: GeneratedPage };
   workbook_run_calls: { call: StoredCall };
   workbook_run_solves: { verdict: RunSolve["verdict"]; log: RunSolve["log"] };
-  workbook_run_gates: { outcome: GateOutcome; flags: QuestionGate[]; probabilities: Partial<Record<QuestionGate, number>> };
+  workbook_run_gates: { outcome: GateOutcome; flags: (QuestionGate | PageGate)[]; probabilities: Partial<Record<QuestionGate | PageGate, number>> };
   workbook_run_frames: { frame: RunFrame };
   workbook_run_ai_calls: { kind: AiCallKind; provider: AiProvider; outcome: AiCallRecord["outcome"] };
   workbook_workers: { primary_ai: AiProvider };

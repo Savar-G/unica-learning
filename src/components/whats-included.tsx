@@ -196,7 +196,7 @@ export function WhatsIncluded() {
           </Section>
 
           <Section className="wi-gd" aria-labelledby="wiTa">
-            <StepHead id="wiTa" eyebrow="AI Teaching Assistant" title="If they get stuck, Maya helps them work it out." lead="Maya, the Unica AI Teaching Assistant, opens the exact question from the workbook on a whiteboard they both see. Your child calls Maya and talks it through. She starts with hints and can show an easier example on the board. Your child answers, asks why, or picks up the pen." />
+            <StepHead id="wiTa" eyebrow="AI Teaching Assistant" title="If they get stuck, Maya helps them work it out." lead="Maya, the Unica AI Teaching Assistant, opens the exact question from the workbook on a whiteboard they both see. Children in Grade 3 and up type to Maya about the question. Maya gives hints and can show an easier example on the board. Your child answers, asks why, or picks up the pen." />
             <Rise className="gd-media">
               <DemoVideo className="gd-wide" src="/video/guidance-demo.mp4" poster="/video/guidance-demo-poster.jpg" label={MAYA_LABEL} />
               <DemoVideo className="gd-board" src="/video/guidance-demo-board.mp4" poster="/video/guidance-demo-board-poster.jpg" label={MAYA_LABEL} />

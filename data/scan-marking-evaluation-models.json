@@ -1,5 +1,6 @@
 [
   { "model": "openai/gpt-6.1-terra", "host": "Azure", "providerName": "Azure", "endpoint": "azure" },
   { "model": "anthropic/claude-sonnet-5.5", "host": "Anthropic", "providerName": "Anthropic", "endpoint": "anthropic" },
-  { "model": "anthropic/claude-sonnet-5.5", "host": "Azure", "providerName": "Azure", "endpoint": "azure/global" }
+  { "model": "anthropic/claude-sonnet-5.5", "host": "Azure", "providerName": "Azure", "endpoint": "azure/global" },
+  { "model": "anthropic/claude-opus-5.5", "host": "Anthropic", "providerName": "Anthropic", "endpoint": "anthropic" }
 ]
