@@ -584,3 +584,20 @@ it("ends on today's marks: a score per page linking to its results, and the day'
   expect(button("Page 12, marking")).toBeDefined();
   expect(text()).toContain("2 of 4 pages marked");
 });
+
+it("offers Send by hand when the automatic send fails, so a page is never stuck unsent (#915)", async () => {
+  undoMs = 1;
+  const server = global.fetch;
+  let failSend = true;
+  vi.stubGlobal("fetch", async (path: string, init?: RequestInit) => {
+    if (path === "/api/account/scans/send" && failSend) { calls.push("POST /api/account/scans/send"); return Response.json({ error: "unavailable" }, { status: 503 }); }
+    return server(path, init);
+  });
+  await render();
+  await choose("library", "p10.jpg");
+  await settle();
+  expect(text()).toContain("We could not send the pages. Try again.");
+  failSend = false;
+  await act(async () => button("Send this page for marking")!.click()); await settle();
+  expect([...photos.values()].filter((p) => p.sentAt).map((p) => p.pageId)).toEqual(["p10"]);
+});

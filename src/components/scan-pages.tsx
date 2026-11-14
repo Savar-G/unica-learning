@@ -200,6 +200,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const held = useRef(new Set<string>());
   const [undone, setUndone] = useState<Set<string>>(() => new Set());
   const [problems, setProblems] = useState<Record<string, PhotoProblem>>({});
+  const [tried, setTried] = useState<Set<string>>(() => new Set());
   const [retakeAt, setRetakeAt] = useState(0);
   const [online, setOnline] = useState(true);
 
@@ -226,7 +227,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     running.current.clear(); wakeAll(); checking.current = false; replacing.current = null;
     setThumbs({}); setUnavailable(new Set()); putUploads([]); setListing(null); setSheet(null); setSending(false); setMessage(null); setLoadFailed(false);
     // A page held for Undo is not sent: it stays ready, and is held again on the next visit.
-    held.current.clear(); filedOf.current.clear(); setBatch([]); setProblems({}); setShots([]); setLanded({}); setElsewhere([]); setCapturing(false); setRetakeAt(0);
+    held.current.clear(); filedOf.current.clear(); setBatch([]); setProblems({}); setTried(new Set()); setShots([]); setLanded({}); setElsewhere([]); setCapturing(false); setRetakeAt(0);
   }, [putUploads, wakeAll]);
 
   const load = useCallback(async () => {
@@ -579,6 +580,8 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       if (check?.state === "done" && check.problem) kept[id] = check.problem; else ok.push(id);
     }
     if (Object.keys(kept).length) setProblems((p) => ({ ...p, ...kept }));
+    // A page whose send did not happen (another send running, or a failed one) is offered to send by hand.
+    setTried((t) => new Set([...t, ...ids]));
     if (ok.length) await send(ok);
   };
   useEffect(() => {
@@ -652,7 +655,8 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const fixes = [...stack.refused, ...problemTiles];
   const fix = fixes.length ? fixes[retakeAt % fixes.length] : null;
   // A page held for Undo, or kept back by it, has no Send of its own on the phone until Undo kept it.
-  const manual = stack.readyIds.filter((id) => !auto || (undone.has(id) && !batch.includes(id)) || problems[id]);
+  // Any ready page not waiting out its Undo after it was held once (undone, kept back, or a send that failed) can be sent by hand.
+  const manual = stack.readyIds.filter((id) => !auto || (!batch.includes(id) && (undone.has(id) || Boolean(problems[id]) || tried.has(id))));
 
   const fixAction = (t: StackTile) => {
     if (t.uploadKey && t.refusal === "unavailable") return <button type="button" className="btn" onClick={() => { patchUpload(t.uploadKey!, { status: "waiting", reason: undefined, codeUnread: undefined }); pump(); }}>Try again</button>;
