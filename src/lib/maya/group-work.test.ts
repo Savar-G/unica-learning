@@ -12,6 +12,17 @@ it.each([
   ["two equal groups of four", 9, false],
   ["one equal group of eight", 8, true],
   ["one equal group of eight", 9, false],
+  ["two equal groups of one", 2, true],
+  ["two equal groups of one", 3, false],
+  ["two groups of one", 3, false],
+  ["one equal group of one", "one", true],
+  ["two equal groups of four", "one", false],
+  ["ten equal groups of one", 10, true],
+  ["ten equal groups of one", 8, false],
+  ["one equal group of ten", 10, true],
+  ["one equal group of ten", 8, false],
+  ["one hundred equal groups of zero", 0, true],
+  ["one hundred equal groups of zero", 8, false],
 ] as const)("checks own group work beside a final answer: %s is %s", async (work, result, accepted) => {
   const model = scenarioModel();
   let now = 1000;
