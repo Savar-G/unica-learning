@@ -135,7 +135,7 @@ it("keeps both saved photos when the older concurrent list reply arrives last", 
 it("starts with the tips, Take photos and Choose from your photos, and shows the photo notice once before the first photo", async () => {
   acknowledged = false;
   await render();
-  expect(text()).toContain("Fold the book back, so only one page shows.");
+  expect(text()).toContain("Lay the book flat. Take one page, or two pages side by side with both fully in the photo.");
   expect(button("Choose from your photos")).toBeDefined();
   const camera = host.querySelector<HTMLInputElement>("input[capture]")!;
   const opened = vi.spyOn(camera, "click").mockImplementation(() => {});

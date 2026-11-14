@@ -581,7 +581,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       {childPicker}
       {focusLine}
       <ul className="scan-tips">
-        <li>{ICONS.fold}<span>Fold the book back, so only one page shows.</span></li>
+        <li>{ICONS.fold}<span>Lay the book flat. Take one page, or two pages side by side with both fully in the photo.</span></li>
         <li>{ICONS.light}<span>Find good light. Keep shadows off the page.</span></li>
         <li>{ICONS.corners}<span>Keep all four corner marks and the small code in the bottom-left corner in view.</span></li>
       </ul>
