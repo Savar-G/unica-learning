@@ -14,7 +14,7 @@ export async function startPhotoCheck(admin: SupabaseClient<Database>, parent: s
   try {
     const client = photoCheckClient(process.env, { feature: "photo_check", parentId: parent, source: { kind: "scan_photo", id: photo } });
     if (!client) return;
-    const store = photoCheckStore(admin), token = randomUUID();
+    const store = photoCheckStore(admin, { photo }), token = randomUUID();
     if (!await claimPhotoCheck(store, { parent, photo }, { client, token })) return;
     await schedule(() => runPhotoCheck(store, { parent, photo }, { client, token }).then(() => undefined, () => undefined));
   } catch { /* the check is optional */ }
