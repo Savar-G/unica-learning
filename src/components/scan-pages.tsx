@@ -62,6 +62,8 @@ const ICONS = {
   corners: <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><path d="M12 15V9h6M30 9h6v6M12 33v6h6M30 39h6v-6" /><rect x="17" y="15" width="14" height="18" fill="#fff" strokeWidth="1.2" /></svg>,
   camera: <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.8l1.4-2h4.6l1.4 2h1.8A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5z" /><circle cx="12" cy="12.5" r="3.5" /></svg>,
   check: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 13l4.5 4.5L19 7" /></svg>,
+  // A page held here, not sent yet (the Undo's wait, or kept back): a clock, never the sent arrow.
+  clock: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></svg>,
 };
 
 const STATUS_WORDS: Record<StackTile["status"], string> = {
@@ -92,7 +94,7 @@ function Tile({ tile, thumb, onOpen }: { tile: StackTile; thumb?: string; onOpen
       <span className="scan-ph">
         {thumb ? <Image unoptimized width={300} height={400} src={thumb} alt="" /> : <span className="scan-ph-empty" />}
         <span className={`scan-flag is-${tile.status}`} aria-hidden="true">
-          {tile.status === "ready" || tile.status === "sent" ? ICONS.check : bad ? "!" : tile.status === "adding" || tile.status === "checking" ? <span className="scan-spin" /> : null}
+          {tile.status === "ready" ? ICONS.clock : tile.status === "sent" ? "↑" : bad ? "!" : tile.status === "adding" || tile.status === "checking" ? <span className="scan-spin" /> : null}
         </span>
       </span>
       <span className="scan-tile-l">{tile.label}</span>
@@ -113,7 +115,7 @@ const flagStore = (key: string) => ({
 /** The glyph and the short word of each strip state: never colour alone. */
 const STRIP_FACE: Record<StripState, { glyph: ReactNode; word: string }> = {
   marked: { glyph: ICONS.check, word: "Marked" }, marking: { glyph: "⋯", word: "Marking" }, sent: { glyph: "↑", word: "Sent" },
-  ready: { glyph: "↑", word: "Ready" }, checking: { glyph: <span className="scan-spin" />, word: "Checking" }, saved: { glyph: "•", word: "Saved" },
+  ready: { glyph: ICONS.clock, word: "Ready" }, checking: { glyph: <span className="scan-spin" />, word: "Checking" }, saved: { glyph: "•", word: "Saved" },
   retake: { glyph: "!", word: "Retake" }, todo: { glyph: null, word: "To scan" },
 };
 
@@ -539,7 +541,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const photos = useMemo(() => (listing?.photos ?? []).map((p) => (unavailable.has(p.id) && p.check === "checking" ? { ...p, check: "unavailable" as const } : p)), [listing, unavailable]);
   const checks = Boolean(listing?.checks);
   const marking = Boolean(listing?.marking);
-  const stack = useMemo(() => buildStack({ photos, uploads, pages: listing?.pages ?? [], checks }), [photos, uploads, listing, checks]);
+  const stack = useMemo(() => buildStack({ photos, uploads, pages: listing?.pages ?? [], checks, offline: !online }), [photos, uploads, listing, checks, online]);
   // A page named as not kept stops being named once a photo of it is in the stack.
   const unkeptNote = spreadNote(unkept.filter((n) => !photos.some((p) => listing?.pages.find((d) => d.id === p.pageId)?.pageNumber === n)));
   const tiles = useMemo(() => [...stack.refused, ...stack.addingTiles, ...stack.days.flatMap((d) => d.tiles), ...stack.sent], [stack]);
@@ -681,11 +683,16 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   // The dock's Send leaves out pages the photo check flagged: those go only by their own "Send anyway".
   const plain = manual.filter((id) => !problems[id]);
 
+  /** "Retake page 19": the page a retake is for, by its printed number. */
+  const retakeWords = (t: StackTile) => `Retake ${t.label.split(" · ")[0].toLowerCase()}`;
+  // While a page with a known code waits for its retake, the dock's main button retakes it (F5), so the new photo replaces
+  // the old one. Other pages still go in with Scan pages beside it.
+  const dockRetake = phone && fix?.photoId ? fix : null;
   const fixAction = (t: StackTile) => {
     if (t.uploadKey && t.refusal === "unavailable") return <button type="button" className="btn" onClick={() => { patchUpload(t.uploadKey!, { status: "waiting", reason: undefined, codeUnread: undefined }); pump(); }}>Try again</button>;
     if (t.refusal === "frequency" || t.refusal === "quota" || t.refusal === "duplicate") return null;
     if (!phone) return null;
-    return <button type="button" className="btn" onClick={() => open(t.uploadKey ? "library" : "camera", retakeKey(t))}>{t.uploadKey ? "Choose another photo" : `Retake ${t.label.split(" · ")[0].toLowerCase()}`}</button>;
+    return <button type="button" className="btn" onClick={() => open(t.uploadKey ? "library" : "camera", retakeKey(t))}>{t.uploadKey ? "Choose another photo" : retakeWords(t)}</button>;
   };
 
   const tileSheet = openTile && <Sheet label={openTile.title} onClose={() => setSheet(null)}>
@@ -701,6 +708,9 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     </> : openTile.hint === "code" && openTile.status !== "waiting" ? <>
       <h2>{refusalCopy("qr").title}</h2>
       <p>This photo is still sending, and we will read the code again. If we still cannot read it, we will ask you for another photo.</p>
+    </> : openTile.hint === "offline" ? <>
+      <h2>This photo is waiting for a connection.</h2>
+      <p>Keep this page open. It sends when you are back online.</p>
     </> : openTile.status === "waiting" ? <>
       <h2>{openTile.reason ? "There is no room for this photo yet." : "This photo is waiting its turn."}</h2>
       <p>{roomNote(stack) ?? "It keeps its place and goes on its own."}</p>
@@ -723,7 +733,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const notice = sheet?.kind === "notice" && <Sheet label="Before you take a photo" onClose={() => { replacing.current = null; setSheet(null); }}>
     <h2>Before you take a photo</h2>
     <p>We keep one private page photo for up to 90 days. We remove photo details such as the location. We do not keep the original camera file.</p>
-    <p>When you ask us to check it, we send the whole page photo to an AI service. Your child&apos;s first name and printed page code can be in the photo.</p>
+    <p>We check each photo as soon as you take it. To do that, we send the whole page photo to an AI service. Your child&apos;s first name and the printed page code can be in the photo.</p>
     <p>You and our admin team can view the photo. You can delete it sooner. We keep marks and the AI&apos;s reading of written answers until your family account is deleted. <Link href="/privacy">Read about privacy</Link>.</p>
     {acknowledged
       ? <button type="button" className="btn" onClick={() => setSheet(null)}>Close</button>
@@ -734,7 +744,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const siblings = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : null;
   const tipList = <ul className="scan-tips">
     <li>{ICONS.fold}<span><b>Open the book flat</b></span></li>
-    <li>{ICONS.light}<span><b>Good light, no flash</b>Keep your hand&apos;s shadow off the page.</span></li>
+    <li>{ICONS.light}<span><b>Good light, no flash</b>Keep your hand&apos;s shadow off the page. If you see a shiny patch, tilt the book or step to the side.</span></li>
     <li>{ICONS.corners}<span><b>Fill the photo with the page</b>Hold the phone close, with the corners and the small code in view.</span></li>
     <li>{ICONS.camera}<span><b>Snap all your pages, then tap Done</b>Already took photos? Pick them from the photo button in the camera.</span></li>
     {/* The code on each page files it with its own child (#915), so siblings' pages go in one scan with no switch. The list
@@ -749,10 +759,15 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     <button type="button" className="btn" data-first-focus onClick={() => setSheet(null)}>Close</button>
   </Sheet>;
 
-  const childPicker = childrenList.length > 1 && !capturing && <label className="scan-child">Child
-    <select value={child} disabled={uploads.some((u) => u.status !== "refused") || sending || batch.length > 0} onChange={(e) => { uploadsRef.current.forEach(release); clearAll(); setMessage(null); setChild(e.target.value); }}>
-      {childrenList.map((c) => <option key={c.id} value={c.id}>{c.first_name}</option>)}
-    </select>
+  // Which child's pages the screen shows (F4): a small switch, only on the home screen. Taking photos needs no choice, since
+  // each page's code files it with its own child, so the tips and the camera screens have none.
+  const childPicker = childrenList.length > 1 && !capturing && <label className="scan-child"><span>Showing:</span>
+    <span className="scan-child-pick">
+      <select value={child} disabled={uploads.some((u) => u.status !== "refused" || u.reason === "unavailable") || sending || batch.length > 0} onChange={(e) => { uploadsRef.current.forEach(release); clearAll(); setMessage(null); setChild(e.target.value); }}>
+        {childrenList.map((c) => <option key={c.id} value={c.id}>{c.first_name}</option>)}
+      </select>
+      <span aria-hidden="true">▾</span>
+    </span>
   </label>;
 
   const inputs = phone && <>
@@ -761,7 +776,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   </>;
 
   const status = message && <p role={message.failed ? "alert" : "status"} className={`acct-alert${message.failed ? "" : " acct-saved"}`}>{message.text}</p>;
-  const offline = !online && <p role="alert" className="scan-offline">You are offline. Photos wait here and send when you are back online.</p>;
+  const offline = !online && <p role="alert" className="scan-offline">You are offline. Keep this page open: your photos send when you are back online.</p>;
   const focusLine = phone && focus && focus.childId === child && <p className="scan-focus">Take a photo of {focus.label}.</p>;
   const elsewhereNote = elsewhere.length > 0 && <p className="scan-spread-note" role="status">{elsewhere.map((e) => `${e.page ? `Page ${e.page}` : "A page"} went to ${e.child}'s pages.`).join(" ")}</p>;
   const undoBar = batch.length > 0 && <div className="scan-undo" role="status">
@@ -779,7 +794,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   if (phone && capturing) {
     const shotOf = (key: string): { status: StackTile["status"] | "elsewhere"; thumb?: string; label: string } => {
       const local = stack.refused.find((t) => t.uploadKey === key) ?? stack.addingTiles.find((t) => t.uploadKey === key);
-      if (local) return { status: local.status, thumb: thumbs[key], label: local.status === "refused" ? `${local.label}, ${local.reason}` : `New photo, ${STATUS_WORDS[local.status].toLowerCase()}` };
+      if (local) return { status: local.status, thumb: thumbs[key], label: local.status === "refused" ? `${local.label}, ${local.reason}` : `New photo, ${(local.reason ?? STATUS_WORDS[local.status]).toLowerCase()}` };
       const id = landed[key];
       const tile = id ? tiles.find((t) => t.photoId === id) : undefined;
       if (tile) return { status: tile.status, thumb: thumbs[id], label: `${tile.label}, ${(tile.reason ?? STATUS_WORDS[tile.status]).toLowerCase()}` };
@@ -801,7 +816,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
         <ol className="scan-shots" aria-label="Photos taken">
           {list.map((s) => <li key={s.key} className={`is-${s.status}`} aria-label={s.label}>
             {s.thumb ? <Image unoptimized width={80} height={106} src={s.thumb} alt="" /> : <span className="scan-ph-empty" />}
-            <span className="scan-shot-flag" aria-hidden="true">{s.status === "ready" || s.status === "sent" || s.status === "saved" || s.status === "elsewhere" ? ICONS.check : s.status === "refused" ? "!" : <span className="scan-spin" />}</span>
+            <span className="scan-shot-flag" aria-hidden="true">{s.status === "ready" || s.status === "sent" || s.status === "saved" || s.status === "elsewhere" ? ICONS.check : s.status === "refused" ? "!" : s.status === "waiting" ? ICONS.clock : <span className="scan-spin" />}</span>
           </li>)}
         </ol>
         <p className="small scan-cam-tip">Camera not opening? Use Photos to pick pictures you already took.</p>
@@ -820,7 +835,6 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   if (phone && listing && !tipsSeen && !tipsDone && !photos.length && !uploads.length && !noBook) {
     return <div className="scan-pages is-start">
       {inputs}
-      {childPicker}
       {focusLine}
       <h2 className="scan-start-h">Scan pages in a few seconds</h2>
       {tipList}
@@ -861,6 +875,21 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     {offline}
     {focusLine}
     {noBook && <p className="scan-empty">No workbook to scan yet. Pages show here when {name}&apos;s first workbook arrives.</p>}
+    {/* A page that needs another photo comes first, above the day (F5): the one thing to do before more pages. */}
+    {fix && <section className="scan-need" aria-label="Pages that need another photo">
+      <div className="scan-need-h"><h2>{retakeLine(fixes.length)}</h2>{fixes.length > 1 && <button type="button" className="scan-link" onClick={() => setRetakeAt((n) => n + 1)}>Next ({(retakeAt % fixes.length) + 1} of {fixes.length})</button>}</div>
+      <p className="scan-need-title"><b>{fix.title}</b>{fix.reason ? ` · ${fix.reason}` : ""}</p>
+      <div className="scan-pair">
+        <figure><button type="button" className="scan-pair-ph" onClick={() => setSheet({ kind: "tile", key: fix.key })} aria-label={`Open your photo of ${fix.title}`}>{thumbOf(fix) ? <Image unoptimized width={300} height={400} src={thumbOf(fix)} alt="" /> : <span className="scan-ph-empty" />}</button><figcaption>Your photo</figcaption></figure>
+        <figure><span className="scan-pair-ph">{GOOD_PHOTO}</span><figcaption>Like this</figcaption></figure>
+      </div>
+      <p>{fix.photoId && problems[fix.photoId] ? PHOTO_PROBLEM_TEXT[problems[fix.photoId]] : fix.refusal ? `${refusalCopy(fix.refusal).title} ${refusalCopy(fix.refusal).action}` : ""}</p>
+      {fix.photoId && problems[fix.photoId]
+        ? <div className="scan-check-actions">{phone && <button type="button" className="btn" onClick={() => open("camera", fix.photoId)}>Take again</button>}
+          <button type="button" className="btn ghost" disabled={sending} onClick={() => { const id = fix.photoId!; setProblems((p) => { const { [id]: _gone, ...rest } = p; void _gone; return rest; }); void send([id]); }}>Send anyway</button></div>
+        : fixAction(fix) ?? (!phone && <p className="small">Take it again with your phone. The page waits there.</p>)}
+    </section>}
+
     {strip && <section className="scan-strip" aria-label={`${strip.day} pages`}>
       <div className="scan-strip-h">
         <h2>{strip.allDone ? "All pages of this workbook are done" : strip.complete ? `${strip.day} done` : strip.day}{strip.complete && <i className="scan-done-tick" aria-hidden="true">{ICONS.check}</i>}</h2>
@@ -876,20 +905,6 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     {undoBar}
     {stack.adding > 0 && <p className="scan-still" role="status">Keep this page open, {stack.adding === 1 ? "1 photo" : `${stack.adding} photos`} still sending.</p>}
     {!listing && <p className="small" role="status">Loading photos...</p>}
-
-    {fix && <section className="scan-need" aria-label="Pages that need another photo">
-      <div className="scan-need-h"><h2>{retakeLine(fixes.length)}</h2>{fixes.length > 1 && <button type="button" className="scan-link" onClick={() => setRetakeAt((n) => n + 1)}>Next ({(retakeAt % fixes.length) + 1} of {fixes.length})</button>}</div>
-      <p className="scan-need-title"><b>{fix.title}</b>{fix.reason ? ` · ${fix.reason}` : ""}</p>
-      <div className="scan-pair">
-        <figure><button type="button" className="scan-pair-ph" onClick={() => setSheet({ kind: "tile", key: fix.key })} aria-label={`Open your photo of ${fix.title}`}>{thumbOf(fix) ? <Image unoptimized width={300} height={400} src={thumbOf(fix)} alt="" /> : <span className="scan-ph-empty" />}</button><figcaption>Your photo</figcaption></figure>
-        <figure><span className="scan-pair-ph">{GOOD_PHOTO}</span><figcaption>Like this</figcaption></figure>
-      </div>
-      <p>{fix.photoId && problems[fix.photoId] ? PHOTO_PROBLEM_TEXT[problems[fix.photoId]] : fix.refusal ? `${refusalCopy(fix.refusal).title} ${refusalCopy(fix.refusal).action}` : ""}</p>
-      {fix.photoId && problems[fix.photoId]
-        ? <div className="scan-check-actions">{phone && <button type="button" className="btn" onClick={() => open("camera", fix.photoId)}>Take again</button>}
-          <button type="button" className="btn ghost" disabled={sending} onClick={() => { const id = fix.photoId!; setProblems((p) => { const { [id]: _gone, ...rest } = p; void _gone; return rest; }); void send([id]); }}>Send anyway</button></div>
-        : fixAction(fix) ?? (!phone && <p className="small">Take it again with your phone. The page waits there.</p>)}
-    </section>}
 
     {today.pages.length > 0 && <section className="scan-today" aria-label="Today's pages">
       <div className="scan-group-h"><h2>Today</h2></div>
@@ -912,7 +927,8 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     {listing && !noBook && (phone || (checks && plain.length > 0)) && <div className="scan-dock">
       {room ? <p className="small scan-room" role="status">{room}</p> : checks && !auto && note && <p className="small">{note}</p>}
       <div className="scan-dock-row">
-        {phone && <button type="button" className="btn" disabled={!child} onClick={() => scan()}>{ICONS.camera}Scan pages</button>}
+        {dockRetake && <button type="button" className="btn is-retake" onClick={() => open("camera", dockRetake.photoId)}>{ICONS.camera}{retakeWords(dockRetake)}</button>}
+        {phone && <button type="button" className={`btn${dockRetake ? " ghost" : ""}`} disabled={!child} onClick={() => scan()}>{dockRetake ? null : ICONS.camera}Scan pages</button>}
         {checks && plain.length > 0 && <button type="button" className={`btn${phone ? " ghost" : ""}`} disabled={sending} onClick={() => void send(plain)}>{sending ? "Sending..." : sendLabel(plain.length)}</button>}
       </div>
       {phone && <button type="button" className="scan-link" onClick={() => setSheet({ kind: "add" })}>How to scan</button>}
