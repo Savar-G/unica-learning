@@ -2,7 +2,7 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-const context = vi.hoisted(() => ({ auth: null as null | ((_event: string, session: { user: { id: string } } | null) => void), prepare: null as null | (() => Promise<Blob>) }));
+const context = vi.hoisted(() => ({ auth: null as null | ((_event: string, session: { user: { id: string } } | null) => void), prepare: null as null | (() => Promise<Blob>), code: null as null | "read" | "unread" }));
 vi.mock("@/lib/supabase-browser", () => ({
   browserClient: () => ({ auth: { onAuthStateChange: (callback: typeof context.auth) => {
     context.auth = callback;
@@ -11,7 +11,7 @@ vi.mock("@/lib/supabase-browser", () => ({
 }));
 vi.mock("next/image", () => ({ default: ({ unoptimized, ...props }: Record<string, unknown>) => { void unoptimized; return createElement("img", props); } }));
 // The prepared photo carries the file's name, so the fake server knows which page it shows.
-vi.mock("@/lib/scan-photo-browser", () => ({ prepareScanPhoto: async (file: File) => context.prepare ? context.prepare() : new Blob([file.name]) }));
+vi.mock("@/lib/scan-photo-browser", () => ({ prepareScanPhoto: async (file: File) => context.prepare ? context.prepare() : new Blob([file.name]), phoneCodeCheck: async () => context.code ?? null }));
 import { ScanPages } from "./scan-pages";
 
 // A fake server: Day 4 has pages p10 to p13. A photo named "p11.jpg" shows page p11; "junk.jpg" has no page code;
@@ -31,6 +31,8 @@ let losePuts: number, loseStatus: boolean, listDown: boolean, kids: { id: string
 const calls: string[] = [];
 // How many sent pages the fake Send says marking started on; null: an answer from before the field existed.
 let marking: number | null;
+// While set, every upload waits for it: a photo stays sending.
+let putGate: Promise<void> | null;
 
 const buttons = () => [...document.querySelectorAll("button")];
 const button = (text: string) => buttons().find((b) => b.textContent === text || b.getAttribute("aria-label") === text);
@@ -46,8 +48,8 @@ const text = () => document.body.textContent ?? "";
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  marking = null;
-  context.auth = null; context.prepare = null; checks = true; acknowledged = true; photos = new Map(); uploading = 0; mostAtOnce = 0; full = false; calls.length = 0;
+  marking = null; putGate = null;
+  context.auth = null; context.prepare = null; context.code = null; checks = true; acknowledged = true; photos = new Map(); uploading = 0; mostAtOnce = 0; full = false; calls.length = 0;
   admitted = []; loseAdmissions = 0; saveFailures = 0; expired = new Set();
   losePuts = 0; loseStatus = false; listDown = false; kids = [{ id: "child", first_name: "Leah" }]; released = [];
   vi.stubGlobal("fetch", async (path: string, init?: RequestInit) => {
@@ -86,6 +88,7 @@ beforeEach(() => {
     if (method === "PUT" && id) {
       if (expired.has(id)) return Response.json({ error: "expired" }, { status: 409 });
       uploading++; mostAtOnce = Math.max(mostAtOnce, uploading);
+      if (putGate) await putGate;
       await new Promise((r) => setTimeout(r, 1));
       uploading--;
       const name = await (init!.body as Blob).text();
@@ -482,4 +485,34 @@ it("without checks, a photo waiting for room says it goes on its own", async () 
   expect(text()).not.toContain("Not sent");
   full = false; await settle(); await settle();
   expect(photos.size).toBe(1);
+});
+
+it("shows the phone's early hint on a photo still sending whose code it could not read, and the server still decides (#915)", async () => {
+  context.code = "unread";
+  let open!: () => void;
+  putGate = new Promise<void>((resolve) => { open = resolve; });
+  await render();
+  await choose("camera", "junk.jpg");
+  // The upload was not held back: it is on its way while the hint shows.
+  expect(calls.some((c) => c.startsWith("PUT /api/account/scans/"))).toBe(true);
+  expect(text()).toContain("Code may not read");
+  await act(async () => button("New photo: Code may not read")!.click()); await settle();
+  expect(text()).toContain("We cannot read the small code in the bottom-left corner.");
+  expect(text()).toContain("This photo is still sending");
+  await act(async () => button("Close")!.click()); await settle();
+  await act(async () => { open(); }); await settle();
+  // The server read no code either: the photo is refused with the same words.
+  expect(text()).toContain("Code not read");
+  expect(text()).not.toContain("Code may not read");
+});
+
+it("shows no hint when the phone reads the code, and a saved photo says Got it while it is checked (#915)", async () => {
+  context.code = "read";
+  let open!: () => void;
+  putGate = new Promise<void>((resolve) => { open = resolve; });
+  await render();
+  await choose("camera", "p11.jpg");
+  expect(text()).not.toContain("Code may not read");
+  await act(async () => { open(); }); await settle();
+  expect(text()).not.toContain("Code may not read");
 });
