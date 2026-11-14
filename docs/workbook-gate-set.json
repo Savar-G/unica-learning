@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "originals": [
     {
       "id": "q1",
@@ -2982,7 +2982,8 @@
         ]
       },
       "originalId": "q1",
-      "gate": "one_right_answer"
+      "gate": "one_right_answer",
+      "kind": "either-instruction"
     },
     {
       "id": "answers-2",
@@ -3005,7 +3006,8 @@
         ]
       },
       "originalId": "q2",
-      "gate": "one_right_answer"
+      "gate": "one_right_answer",
+      "kind": "either-instruction"
     },
     {
       "id": "answers-3",
@@ -3028,7 +3030,8 @@
         ]
       },
       "originalId": "q3",
-      "gate": "one_right_answer"
+      "gate": "one_right_answer",
+      "kind": "either-instruction"
     },
     {
       "id": "answers-4",
@@ -3051,7 +3054,8 @@
         ]
       },
       "originalId": "q4",
-      "gate": "one_right_answer"
+      "gate": "one_right_answer",
+      "kind": "either-instruction"
     },
     {
       "id": "answers-5",
@@ -3074,7 +3078,8 @@
         ]
       },
       "originalId": "q5",
-      "gate": "one_right_answer"
+      "gate": "one_right_answer",
+      "kind": "either-instruction"
     },
     {
       "id": "answers-6",
@@ -3097,7 +3102,8 @@
         ]
       },
       "originalId": "q6",
-      "gate": "one_right_answer"
+      "gate": "one_right_answer",
+      "kind": "either-instruction"
     },
     {
       "id": "answers-7",
@@ -3120,7 +3126,8 @@
         ]
       },
       "originalId": "q7",
-      "gate": "one_right_answer"
+      "gate": "one_right_answer",
+      "kind": "either-instruction"
     },
     {
       "id": "answers-8",
@@ -3143,7 +3150,8 @@
         ]
       },
       "originalId": "q8",
-      "gate": "one_right_answer"
+      "gate": "one_right_answer",
+      "kind": "either-instruction"
     },
     {
       "id": "answers-9",
@@ -3166,7 +3174,8 @@
         ]
       },
       "originalId": "q9",
-      "gate": "one_right_answer"
+      "gate": "one_right_answer",
+      "kind": "either-instruction"
     },
     {
       "id": "answers-10",
@@ -3189,7 +3198,8 @@
         ]
       },
       "originalId": "q10",
-      "gate": "one_right_answer"
+      "gate": "one_right_answer",
+      "kind": "either-instruction"
     },
     {
       "id": "answers-11",
@@ -3212,7 +3222,8 @@
         ]
       },
       "originalId": "q11",
-      "gate": "one_right_answer"
+      "gate": "one_right_answer",
+      "kind": "either-instruction"
     },
     {
       "id": "answers-12",
@@ -3235,7 +3246,8 @@
         ]
       },
       "originalId": "q12",
-      "gate": "one_right_answer"
+      "gate": "one_right_answer",
+      "kind": "either-instruction"
     },
     {
       "id": "answers-13",
@@ -3258,7 +3270,8 @@
         ]
       },
       "originalId": "q13",
-      "gate": "one_right_answer"
+      "gate": "one_right_answer",
+      "kind": "either-instruction"
     },
     {
       "id": "answers-14",
@@ -3281,7 +3294,8 @@
         ]
       },
       "originalId": "q14",
-      "gate": "one_right_answer"
+      "gate": "one_right_answer",
+      "kind": "either-instruction"
     },
     {
       "id": "answers-15",
@@ -3304,7 +3318,8 @@
         ]
       },
       "originalId": "q15",
-      "gate": "one_right_answer"
+      "gate": "one_right_answer",
+      "kind": "either-instruction"
     },
     {
       "id": "answers-16",
@@ -3327,7 +3342,8 @@
         ]
       },
       "originalId": "q37",
-      "gate": "one_right_answer"
+      "gate": "one_right_answer",
+      "kind": "either-instruction"
     },
     {
       "id": "answers-17",
@@ -3350,7 +3366,8 @@
         ]
       },
       "originalId": "q38",
-      "gate": "one_right_answer"
+      "gate": "one_right_answer",
+      "kind": "either-instruction"
     },
     {
       "id": "answers-18",
@@ -3373,7 +3390,8 @@
         ]
       },
       "originalId": "q39",
-      "gate": "one_right_answer"
+      "gate": "one_right_answer",
+      "kind": "either-instruction"
     },
     {
       "id": "answers-19",
@@ -3396,7 +3414,8 @@
         ]
       },
       "originalId": "q40",
-      "gate": "one_right_answer"
+      "gate": "one_right_answer",
+      "kind": "either-instruction"
     },
     {
       "id": "answers-20",
@@ -3419,7 +3438,8 @@
         ]
       },
       "originalId": "q41",
-      "gate": "one_right_answer"
+      "gate": "one_right_answer",
+      "kind": "either-instruction"
     },
     {
       "id": "answers-21",
@@ -3442,7 +3462,8 @@
         ]
       },
       "originalId": "q42",
-      "gate": "one_right_answer"
+      "gate": "one_right_answer",
+      "kind": "either-instruction"
     },
     {
       "id": "answers-22",
@@ -3465,7 +3486,8 @@
         ]
       },
       "originalId": "q43",
-      "gate": "one_right_answer"
+      "gate": "one_right_answer",
+      "kind": "either-instruction"
     },
     {
       "id": "answers-23",
@@ -3488,7 +3510,8 @@
         ]
       },
       "originalId": "q44",
-      "gate": "one_right_answer"
+      "gate": "one_right_answer",
+      "kind": "either-instruction"
     },
     {
       "id": "answers-24",
@@ -3511,7 +3534,8 @@
         ]
       },
       "originalId": "q45",
-      "gate": "one_right_answer"
+      "gate": "one_right_answer",
+      "kind": "either-instruction"
     },
     {
       "id": "answers-25",
@@ -3534,7 +3558,8 @@
         ]
       },
       "originalId": "q46",
-      "gate": "one_right_answer"
+      "gate": "one_right_answer",
+      "kind": "either-instruction"
     },
     {
       "id": "answers-26",
@@ -3557,7 +3582,8 @@
         ]
       },
       "originalId": "q47",
-      "gate": "one_right_answer"
+      "gate": "one_right_answer",
+      "kind": "either-instruction"
     },
     {
       "id": "answers-27",
@@ -3580,7 +3606,8 @@
         ]
       },
       "originalId": "q48",
-      "gate": "one_right_answer"
+      "gate": "one_right_answer",
+      "kind": "either-instruction"
     },
     {
       "id": "answers-28",
@@ -3603,7 +3630,8 @@
         ]
       },
       "originalId": "q49",
-      "gate": "one_right_answer"
+      "gate": "one_right_answer",
+      "kind": "either-instruction"
     },
     {
       "id": "answers-29",
@@ -3626,7 +3654,8 @@
         ]
       },
       "originalId": "q50",
-      "gate": "one_right_answer"
+      "gate": "one_right_answer",
+      "kind": "either-instruction"
     },
     {
       "id": "answers-30",
@@ -3649,7 +3678,680 @@
         ]
       },
       "originalId": "q51",
-      "gate": "one_right_answer"
+      "gate": "one_right_answer",
+      "kind": "either-instruction"
+    },
+    {
+      "id": "answers-v2-1",
+      "source": "gate857-u16",
+      "page": 11,
+      "slot": "1.4",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write a number that is between 78 + 3 and 78 + 10.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q16",
+      "gate": "one_right_answer",
+      "kind": "number-between"
+    },
+    {
+      "id": "answers-v2-2",
+      "source": "first-customer-u16-20261106",
+      "page": 51,
+      "slot": "1.5",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write a number between 260 + 70 and 260 + 90.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q53",
+      "gate": "one_right_answer",
+      "kind": "number-between"
+    },
+    {
+      "id": "answers-v2-3",
+      "source": "first-customer-u16-20261106",
+      "page": 67,
+      "slot": "1.8",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write a whole number that is more than 247 + 6 but less than 247 + 12.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q80",
+      "gate": "one_right_answer",
+      "kind": "number-between"
+    },
+    {
+      "id": "answers-v2-4",
+      "source": "first-customer-u16-20261106",
+      "page": 59,
+      "slot": "1.2",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write a number that comes between 416 + 4 and 416 + 14 on a number line.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q62",
+      "gate": "one_right_answer",
+      "kind": "number-between"
+    },
+    {
+      "id": "answers-v2-5",
+      "source": "gate857-u16",
+      "page": 11,
+      "slot": "1.8",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write a number that is greater than 41 + 17.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q20",
+      "gate": "one_right_answer",
+      "kind": "inequality"
+    },
+    {
+      "id": "answers-v2-6",
+      "source": "first-customer-u16-20261106",
+      "page": 51,
+      "slot": "1.9",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write a number that is less than 784 + 50.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q57",
+      "gate": "one_right_answer",
+      "kind": "inequality"
+    },
+    {
+      "id": "answers-v2-7",
+      "source": "gate857-u16",
+      "page": 11,
+      "slot": "1.9",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write a number bigger than 52 + 11.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q21",
+      "gate": "one_right_answer",
+      "kind": "inequality"
+    },
+    {
+      "id": "answers-v2-8",
+      "source": "first-customer-u16-20261106",
+      "page": 59,
+      "slot": "1.8",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write any number that is smaller than 702 + 8.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q68",
+      "gate": "one_right_answer",
+      "kind": "inequality"
+    },
+    {
+      "id": "answers-v2-9",
+      "source": "first-customer-u16-20261106",
+      "page": 51,
+      "slot": "1.7",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Work out 498 + 30, then round your answer.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q55",
+      "gate": "one_right_answer",
+      "kind": "rounding-unstated"
+    },
+    {
+      "id": "answers-v2-10",
+      "source": "first-customer-u16-20261106",
+      "page": 51,
+      "slot": "1.11",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Round the answer to 771 + 90.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q59",
+      "gate": "one_right_answer",
+      "kind": "rounding-unstated"
+    },
+    {
+      "id": "answers-v2-11",
+      "source": "codex-sol-high-u16-20261105",
+      "page": 19,
+      "slot": "1.3",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Find 364 + 200 and write it as a rounded number.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q99",
+      "gate": "one_right_answer",
+      "kind": "rounding-unstated"
+    },
+    {
+      "id": "answers-v2-12",
+      "source": "first-customer-u16-20261106",
+      "page": 67,
+      "slot": "1.10",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "What is 188 + 7 rounded?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q82",
+      "gate": "one_right_answer",
+      "kind": "rounding-unstated"
+    },
+    {
+      "id": "answers-v2-13",
+      "source": "first-customer-u16-20261106",
+      "page": 59,
+      "slot": "1.5",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "About how much is 559 + 11?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q65",
+      "gate": "one_right_answer",
+      "kind": "estimate"
+    },
+    {
+      "id": "answers-v2-14",
+      "source": "first-customer-u16-20261106",
+      "page": 67,
+      "slot": "1.3",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Estimate 580 + 70.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q75",
+      "gate": "one_right_answer",
+      "kind": "estimate"
+    },
+    {
+      "id": "answers-v2-15",
+      "source": "first-customer-u16-20261106",
+      "page": 59,
+      "slot": "1.12",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Give a good estimate of 921 + 9.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q72",
+      "gate": "one_right_answer",
+      "kind": "estimate"
+    },
+    {
+      "id": "answers-v2-16",
+      "source": "first-customer-u16-20261106",
+      "page": 75,
+      "slot": "1.12",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Roughly how much is 80 + 90?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q96",
+      "gate": "one_right_answer",
+      "kind": "estimate"
+    },
+    {
+      "id": "answers-v2-17",
+      "source": "first-customer-u16-20261106",
+      "page": 51,
+      "slot": "1.4",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "There are 5 bags with 8 marbles in each bag. How many are there?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q52",
+      "gate": "one_right_answer",
+      "kind": "two-counts"
+    },
+    {
+      "id": "answers-v2-18",
+      "source": "first-customer-u16-20261106",
+      "page": 75,
+      "slot": "1.6",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "There are 6 plates with 6 cookies on each plate. How many are on the table?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q90",
+      "gate": "one_right_answer",
+      "kind": "two-counts"
+    },
+    {
+      "id": "answers-v2-19",
+      "source": "first-customer-u16-20261106",
+      "page": 59,
+      "slot": "1.1",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Sam puts 7 pencils in each of 5 cups. How many are there altogether?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q61",
+      "gate": "one_right_answer",
+      "kind": "two-counts"
+    },
+    {
+      "id": "answers-v2-20",
+      "source": "first-customer-u16-20261106",
+      "page": 67,
+      "slot": "1.7",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "A shelf has 7 boxes. Each box holds 8 cans. How many are on the shelf?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q79",
+      "gate": "one_right_answer",
+      "kind": "two-counts"
+    },
+    {
+      "id": "answers-v2-21",
+      "source": "gate857-u16",
+      "page": 11,
+      "slot": "1.10",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "A ribbon is 30 cm long. Lee adds a piece 17 cm long. How long is the ribbon now? Write the length.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q22",
+      "gate": "one_right_answer",
+      "kind": "two-units"
+    },
+    {
+      "id": "answers-v2-22",
+      "source": "gate857-u16",
+      "page": 19,
+      "slot": "1.11",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "One plank is 17 cm long and another is 18 cm long. Laid end to end, how long are they?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q35",
+      "gate": "one_right_answer",
+      "kind": "two-units"
+    },
+    {
+      "id": "answers-v2-23",
+      "source": "first-customer-u16-20261106",
+      "page": 59,
+      "slot": "1.6",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Mia runs 940 m and then 60 m more. How far does she run?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q66",
+      "gate": "one_right_answer",
+      "kind": "two-units"
+    },
+    {
+      "id": "answers-v2-24",
+      "source": "gate857-u16",
+      "page": 11,
+      "slot": "1.11",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "A plant was 40 cm tall and grew 11 cm. How tall is it now?",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q23",
+      "gate": "one_right_answer",
+      "kind": "two-units"
+    },
+    {
+      "id": "answers-v2-25",
+      "source": "gate857-u16",
+      "page": 19,
+      "slot": "1.3",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write a number in the box so that ? + ? = 30 + 6.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q27",
+      "gate": "one_right_answer",
+      "kind": "two-unknowns"
+    },
+    {
+      "id": "answers-v2-26",
+      "source": "gate857-u16",
+      "page": 19,
+      "slot": "1.8",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Find a number that makes ? + ? = 3 + 14 true.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q32",
+      "gate": "one_right_answer",
+      "kind": "two-unknowns"
+    },
+    {
+      "id": "answers-v2-27",
+      "source": "first-customer-u16-20261106",
+      "page": 67,
+      "slot": "1.11",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "Write one number that fits: ? + ? = 569 + 5.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q83",
+      "gate": "one_right_answer",
+      "kind": "two-unknowns"
+    },
+    {
+      "id": "answers-v2-28",
+      "source": "first-customer-u16-20261106",
+      "page": 75,
+      "slot": "1.5",
+      "grade": 5,
+      "interest": null,
+      "question": {
+        "id": "question",
+        "text": "? + ? = 78 + 2. Write one of the missing numbers.",
+        "picture": null,
+        "shown": null,
+        "boxes": [
+          {
+            "id": "answer",
+            "asks": "a box for the answer",
+            "numberOnly": true
+          }
+        ]
+      },
+      "originalId": "q89",
+      "gate": "one_right_answer",
+      "kind": "two-unknowns"
     }
   ]
 }

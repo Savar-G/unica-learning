@@ -5,12 +5,16 @@ import type { PrintedQuestion } from "@/lib/workbook-solve-check";
 export const QUESTION_GATES = ["reading_level", "one_right_answer", "picture_matches", "uses_interest"] as const;
 export type QuestionGate = (typeof QUESTION_GATES)[number];
 
-/** Version 2 uses the held-out labelled-set results in docs/workbook-gate-set-report.md. */
-export const GATE_THRESHOLD_VERSION = 2;
+/**
+ * Version 3 uses the held-out results in docs/workbook-gate-set-report.md with #858's copies of seven other kinds. Jev's
+ * one-right-answer gate passed version 2 on one repeated instruction only; with the other kinds a fold misses the bar
+ * (26/29), and 0.03 caught 8 of their 28 copies, so it is off.
+ */
+export const GATE_THRESHOLD_VERSION = 3;
 export const GATE_THRESHOLDS = {
   "typesafe/jev-1.14": {
     reading_level: { enabled: false, threshold: null, reason: "a held-out fold missed the pass bar" },
-    one_right_answer: { enabled: true, threshold: 0.03 },
+    one_right_answer: { enabled: false, threshold: null, reason: "a held-out fold missed the pass bar with #858's copies of other kinds" },
     picture_matches: { enabled: false, threshold: null, reason: "no real picture questions in the samples" },
     uses_interest: { enabled: false, threshold: null, reason: "no real interest questions in the samples" },
   },
@@ -80,10 +84,11 @@ export function calibrateGate(gate: "reading_level" | "one_right_answer", unchan
 export function gateFlags(model: keyof typeof GATE_THRESHOLDS, probabilities: Partial<Record<QuestionGate, number>>): QuestionGate[] {
   const thresholds = GATE_THRESHOLDS[model];
   return QUESTION_GATES.filter((gate) => {
-    const rule = thresholds[gate];
-    if (!rule.enabled) return false;
+    const rule: { enabled: boolean; threshold: number | null } = thresholds[gate];
+    if (!rule.enabled || rule.threshold === null) return false;
+    const threshold = rule.threshold;
     const probability = probabilities[gate];
     if (probability === undefined || !Number.isFinite(probability) || probability < 0 || probability > 1) throw new Error(`missing or invalid ${gate} probability`);
-    return gate === "reading_level" ? probability >= rule.threshold : 1 - probability < rule.threshold;
+    return gate === "reading_level" ? probability >= threshold : 1 - probability < threshold;
   });
 }

@@ -2,9 +2,16 @@ import { describe, expect, it } from "vitest";
 import { fakeDecisionClient, noul } from "@/lib/decision-client-fake";
 import { calibrateGate, gateFlags, gateRequest, GATE_THRESHOLDS, questionGateProbabilities } from "@/lib/workbook-gates";
 import type { PrintedQuestion } from "@/lib/workbook-solve-check";
-import { evaluateGateFolds, splitGateQuestions, type GateRow } from "@/lib/workbook-gate-evaluation";
+import { evaluateGateFolds, gateCatchesByKind, splitGateQuestions, type GateRow } from "@/lib/workbook-gate-evaluation";
 import results from "../../docs/workbook-gate-set-results.json";
 import set from "../../docs/workbook-gate-set.json";
+
+// The copies of #857's run, whose stored answers these results hold. #858 added copies of other kinds (kind other than
+// "either-instruction") that are measured once the decision model has answered them.
+const firstCopies = set.changed.filter((q) => q.gate === "reading_level" || q.kind === "either-instruction");
+// The stored answers of #857's run: the originals and the first copies.
+const firstIds = new Set([...set.originals.map((q) => q.id), ...firstCopies.map((q) => q.id)]);
+const firstRows = (results.rows as GateRow[]).filter((r) => firstIds.has(r.id));
 
 const question: PrintedQuestion = { id: "question", text: "How many cats?", picture: "Three cats.", shown: null, boxes: [{ id: "answer", asks: "a box for the answer" }] };
 
@@ -30,9 +37,9 @@ describe("question gates", () => {
   });
 
   it("uses the enabled threshold and leaves unmeasured and failed gates off", () => {
-    expect(gateFlags("typesafe/jev-1.14", { one_right_answer: 0.98, reading_level: 1, picture_matches: 1, uses_interest: 1 })).toEqual(["one_right_answer"]);
-    expect(gateFlags("typesafe/jev-1.14", { one_right_answer: 0 })).toEqual([]);
-    expect(() => gateFlags("typesafe/jev-1.14", {})).toThrow(/one_right_answer/);
+    // (Version 3, #858: every Jev gate is off, so nothing is flagged and nothing is asked.)
+    expect(gateFlags("typesafe/jev-1.14", { one_right_answer: 0.98, reading_level: 1, picture_matches: 1, uses_interest: 1 })).toEqual([]);
+    expect(gateFlags("typesafe/jev-1.14", {})).toEqual([]);
     expect(gateFlags("google/gemini-decision-1", {})).toEqual([]);
   });
 
@@ -52,7 +59,7 @@ describe("question gates", () => {
   it("keeps the changed cases linked to their unchanged printed questions", () => {
     const originalById = new Map(set.originals.map((q) => [q.id, q]));
     expect(set.changed.filter((q) => q.gate === "reading_level")).toHaveLength(30);
-    expect(set.changed.filter((q) => q.gate === "one_right_answer")).toHaveLength(30);
+    expect(set.changed.filter((q) => q.gate === "one_right_answer" && q.kind === "either-instruction")).toHaveLength(30);
     for (const changed of set.changed) {
       const original = originalById.get(changed.originalId);
       expect(original).toBeDefined();
@@ -70,7 +77,7 @@ describe("question gates", () => {
       if (JSON.stringify([a.grade, a.interest, a.question]) === JSON.stringify([b.grade, b.interest, b.question])) expect(split.get(a.id)).toBe(split.get(b.id));
     }
     for (const gate of ["reading_level", "one_right_answer"]) {
-      const copies = set.changed.filter((q) => q.gate === gate);
+      const copies = firstCopies.filter((q) => q.gate === gate);
       expect(copies.filter((q) => split.get(q.originalId) === 0)).toHaveLength(15);
       expect(copies.filter((q) => split.get(q.originalId) === 1)).toHaveLength(15);
     }
@@ -83,26 +90,80 @@ describe("question gates", () => {
     };
     for (const model of ["typesafe/jev-1.14", "google/gemini-decision-1"] as const) {
       for (const gate of ["reading_level", "one_right_answer"] as const) {
-        const folds = evaluateGateFolds(set.originals, set.changed, results.rows as GateRow[], model, gate);
+        const folds = evaluateGateFolds(set.originals, firstCopies, firstRows, model, gate);
         expect(folds.map((f) => f.caught)).toEqual(expected[model][gate]);
-        expect(folds.every((f) => f.passed)).toBe(GATE_THRESHOLDS[model][gate].enabled);
+        // (On #857's copies only Jev's one-right-answer gate passed; #858's copies turned it off, below.)
+        expect(folds.every((f) => f.passed)).toBe(model === "typesafe/jev-1.14" && gate === "one_right_answer");
         expect(folds.map((f) => f.changed)).toEqual([15, 15]);
         expect(folds.map((f) => f.unchanged)).toEqual([54, 54]);
       }
     }
-    expect(() => evaluateGateFolds(set.originals, set.changed, results.rows.slice(1) as GateRow[], results.rows[0].model, results.rows[0].gate as "reading_level" | "one_right_answer")).toThrow(/missing/);
+    expect(() => evaluateGateFolds(set.originals, firstCopies, firstRows.slice(1), results.rows[0].model, results.rows[0].gate as "reading_level" | "one_right_answer")).toThrow(/missing/);
   });
 
   it("selects a fold threshold without reading its held-out answers", () => {
-    const rows = results.rows as GateRow[];
-    const before = evaluateGateFolds(set.originals, set.changed, rows, "google/gemini-decision-1", "reading_level");
+    const rows = firstRows;
+    const before = evaluateGateFolds(set.originals, firstCopies, rows, "google/gemini-decision-1", "reading_level");
     const split = splitGateQuestions(set.originals);
     const heldOutIds = new Set(set.originals.filter((q) => split.get(q.id) === 0).map((q) => q.id));
     const altered = rows.map((row) => heldOutIds.has(row.id) && row.model === "google/gemini-decision-1" && row.gate === "reading_level" ? { ...row, probability: 0.9 } : row);
-    const after = evaluateGateFolds(set.originals, set.changed, altered, "google/gemini-decision-1", "reading_level");
+    const after = evaluateGateFolds(set.originals, firstCopies, altered, "google/gemini-decision-1", "reading_level");
     expect(after[0].threshold).toBe(before[0].threshold);
     expect(after[0].falseFlags).toBe(54);
     expect(after[0].passed).toBe(false);
   });
 
+});
+
+describe("#858: multiple-answer copies of other kinds", () => {
+  const added = set.changed.filter((q) => q.gate === "one_right_answer" && q.kind !== "either-instruction");
+  const split = splitGateQuestions(set.originals);
+
+  it("adds at least 20 copies of at least five kinds, each from its own original", () => {
+    expect(added.length).toBeGreaterThanOrEqual(20);
+    const kinds = new Set(added.map((q) => q.kind));
+    expect(kinds.size).toBeGreaterThanOrEqual(5);
+    expect(kinds.has(undefined)).toBe(false);
+    const originals = added.map((q) => q.originalId);
+    expect(new Set(originals).size).toBe(originals.length);
+    const earlier = new Set(firstCopies.filter((q) => q.gate === "one_right_answer").map((q) => q.originalId));
+    expect(originals.filter((id) => earlier.has(id))).toEqual([]);
+    // (None says outright that two answers are right: that is the pattern the first 30 share.)
+    for (const q of added) expect(q.question.text).not.toMatch(/both answers|either/i);
+  });
+
+  it("puts two copies of each kind in each half, so every fold is tested on every kind", () => {
+    for (const kind of new Set(added.map((q) => q.kind))) {
+      const ofKind = added.filter((q) => q.kind === kind);
+      expect(ofKind.filter((q) => split.get(q.originalId) === 0)).toHaveLength(2);
+      expect(ofKind.filter((q) => split.get(q.originalId) === 1)).toHaveLength(2);
+    }
+  });
+
+  it("counts catches by kind with each fold's own threshold, adding up to the fold totals", () => {
+    const rows = firstRows;
+    for (const model of ["typesafe/jev-1.14", "google/gemini-decision-1"]) {
+      const folds = evaluateGateFolds(set.originals, firstCopies, rows, model, "one_right_answer");
+      const byKind = gateCatchesByKind(set.originals, firstCopies, rows, model, "one_right_answer");
+      expect([...byKind.keys()]).toEqual(["either-instruction"]);
+      expect(byKind.get("either-instruction")).toEqual({ caught: folds[0].caught + folds[1].caught, total: 30 });
+    }
+    // A copy of a new kind that the model thinks has one right answer (a failure probability near 0) is a miss in its kind.
+    const copy = added[0];
+    const sure = [...rows.filter((r) => r.model === "typesafe/jev-1.14"), { model: "typesafe/jev-1.14", id: copy.id, gate: "one_right_answer" as const, changed: true, probability: 0.01 }];
+    const withCopy = gateCatchesByKind(set.originals, [...firstCopies, copy], sure, "typesafe/jev-1.14", "one_right_answer");
+    expect(withCopy.get(copy.kind!)).toEqual({ caught: 0, total: 1 });
+  });
+
+  it("turns Jev's one-right-answer gate off: with the other kinds a held-out fold misses the bar (2026-11-13 run)", () => {
+    const rows = results.rows as GateRow[];
+    const copies = set.changed.filter((q) => q.gate === "one_right_answer");
+    const folds = evaluateGateFolds(set.originals, copies, rows, "typesafe/jev-1.14", "one_right_answer");
+    expect(folds.map((f) => [f.caught, f.changed])).toEqual([[26, 29], [27, 29]]);
+    expect(folds.every((f) => f.passed)).toBe(false);
+    expect(GATE_THRESHOLDS["typesafe/jev-1.14"].one_right_answer.enabled).toBe(false);
+    const byKind = Object.fromEntries(gateCatchesByKind(set.originals, copies, rows, "typesafe/jev-1.14", "one_right_answer"));
+    expect(byKind["two-counts"]).toEqual({ caught: 0, total: 4 });
+    expect(byKind["either-instruction"]).toEqual({ caught: 30, total: 30 });
+  });
 });
