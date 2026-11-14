@@ -225,3 +225,96 @@ it.each(["resolve", "reject"])("retry after disconnection owns its room when the
   expect(api.phase).toBe("waiting");
   expect(api.error).toBeNull();
 });
+
+it.each(["ticket", "connect"])("replacement during claimed pending %s never activates the old call", async (stage) => {
+  const rerender = await mount("call-a");
+  holdTickets = stage === "ticket";
+  if (stage === "connect") lk.connect.push("hold");
+  await act(async () => { void api.prepare(); void api.connect(); });
+  await rerender("call-b");
+  holdTickets = false;
+  await act(async () => { void api.connect(); });
+  await release();
+  const oldAudio = voiceStartMarks().filter(m => m.callId === "call-a" && ["mic_begin", "start_audio_begin"].includes(m.event));
+  expect(oldAudio).toEqual([]);
+  expect(tickets).toBe(2);
+});
+
+it("cancelled ready attempt cannot disconnect a later successful connection on delayed mic rejection", async () => {
+  await mount();
+  await act(async () => { await api.prepare(); });
+  let rejectMic!: (e: Error) => void;
+  lk.rooms[0].localParticipant.setMicrophoneEnabled.mockImplementationOnce(() => new Promise<void>((_, reject) => { rejectMic = reject; }));
+  await act(async () => { void api.connect(); });
+  await act(async () => { await api.hangUp(); });
+  await act(async () => { await api.connect(); });
+  expect(lk.rooms).toHaveLength(2);
+  expect(lk.rooms[1].disconnect).not.toHaveBeenCalled();
+  await act(async () => { rejectMic(new Error("old-permission-failed")); });
+  await settle();
+  expect(lk.rooms[1].disconnect).not.toHaveBeenCalled();
+  expect(api.phase).toBe("waiting");
+});
+
+it("cancelled pending reuse cannot disconnect a later successful connection on delayed audio rejection", async () => {
+  await mount();
+  lk.connect.push("hold");
+  await act(async () => { void api.prepare(); });
+  let rejectAudio!: (e: Error) => void;
+  lk.rooms[0].startAudio.mockImplementationOnce(() => new Promise<void>((_, reject) => { rejectAudio = reject; }));
+  await act(async () => { void api.connect(); });
+  await release();
+  await act(async () => { await api.hangUp(); });
+  await act(async () => { await api.connect(); });
+  expect(lk.rooms).toHaveLength(2);
+  await act(async () => { rejectAudio(new Error("old-audio-failed")); });
+  await settle();
+  expect(lk.rooms[1].disconnect).not.toHaveBeenCalled();
+  expect(api.phase).toBe("waiting");
+});
+
+it("unmount during pending reuse mic await cannot start audio after unmount", async () => {
+  await mount();
+  lk.connect.push("hold");
+  await act(async () => { void api.prepare(); });
+  let releaseMic!: () => void;
+  lk.rooms[0].localParticipant.setMicrophoneEnabled.mockImplementationOnce(() => new Promise<void>(resolve => { releaseMic = resolve; }));
+  await act(async () => { void api.connect(); });
+  await release();
+  expect(lk.rooms[0].startAudio).not.toHaveBeenCalled();
+  await act(async () => { root!.unmount(); root = undefined; });
+  await act(async () => { releaseMic(); });
+  await settle();
+  expect(lk.rooms[0].startAudio).not.toHaveBeenCalled();
+});
+
+it("fresh join attaches an already subscribed real SDK audio track only once", async () => {
+  const { RemoteAudioTrack } = await vi.importActual<typeof import('livekit-client')>('livekit-client');
+  class Stream {
+    tracks: MediaStreamTrack[] = [];
+    getTracks() { return this.tracks; }
+    getAudioTracks() { return this.tracks.filter(t => t.kind === 'audio'); }
+    getVideoTracks() { return []; }
+    addTrack(t: MediaStreamTrack) { this.tracks.push(t); }
+    removeTrack(t: MediaStreamTrack) { this.tracks = this.tracks.filter(x => x !== t); }
+  }
+  vi.stubGlobal('MediaStream', Stream);
+  const srcDescriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'srcObject')!;
+  const streams = new WeakMap<HTMLMediaElement, unknown>();
+  Object.defineProperty(HTMLMediaElement.prototype, 'srcObject', { configurable: true, get() { return streams.get(this) ?? null; }, set(value) { streams.set(this, value); } });
+  const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+  try {
+    await mount();
+    lk.connect.push('hold');
+    await act(async () => { void api.connect(); });
+    const track = new RemoteAudioTrack({ id: 'audio-1', kind: 'audio', enabled: true } as MediaStreamTrack, 'TR_1', {} as RTCRtpReceiver);
+    const maya = { identity: 'maya-1', kind: 4, attributes: { 'maya.segment': '1' }, audioTrackPublications: new Map([['TR_1', { track }]]) };
+    lk.rooms[0].remoteParticipants.set(maya.identity, maya);
+    await act(async () => lk.rooms[0].emit('TrackSubscribed', track, {}, maya));
+    expect(track.attachedElements).toHaveLength(1);
+    await release();
+    // The first element is already in the host. Reusing a track must not make a second audible player.
+    expect(track.attachedElements).toHaveLength(1);
+    expect(play).toHaveBeenCalledOnce();
+  } finally { play.mockRestore(); Object.defineProperty(HTMLMediaElement.prototype, 'srcObject', srcDescriptor); }
+});

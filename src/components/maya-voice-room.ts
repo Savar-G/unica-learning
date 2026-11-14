@@ -265,6 +265,7 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
     const r = new Room({ adaptiveStream: false, dynacast: false });
     let terminal = false;
     let closed = false;
+    let used = false;
     const once = new Set<VoiceStartEvent>();
     const markOnce = (event: VoiceStartEvent) => {
       if (once.has(event)) return;
@@ -404,6 +405,8 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
     return {
       room: r,
       use() {
+        if (used) return;
+        used = true;
         room.current = r;
         roomCall.current = callId;
         roomAttempt.current = attempt;
