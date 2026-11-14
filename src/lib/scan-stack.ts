@@ -28,7 +28,15 @@ export interface StackPhoto {
   reason: ScanRefusal | null;
   sentAt: string | null;
   createdAt: string;
+  /** A sent page's marks so far (#915 scan flow), null until marking has read it. */
+  marks?: PageMarks | null;
 }
+
+/**
+ * A sent page's marks as the stack shows them (#915): `right` of `scored` so far, `toPractise` wrong or blank answers,
+ * `waiting` answers not marked yet (read, a second look or our team), `complete` when every answer has its final mark.
+ */
+export interface PageMarks { right: number; scored: number; total: number; toPractise: number; waiting: number; complete: boolean }
 
 /** A photo the parent took or chose on this device that has no saved photo yet. */
 export interface StackUpload {

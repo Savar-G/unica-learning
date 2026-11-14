@@ -52,6 +52,9 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/accou
       if (!["duplicate", "page"].includes(identified.data)) break;
     }
     if (mine < 0) throw new Error(refusal ?? "image");
+    // A code may file the photo with a sibling's book (#915): that child's own plan must open scanning too, or the page
+    // is refused as not this family's, before anything is stored.
+    if (!await filedChildOpen(admin, parent, id, session.childOpen)) throw new Error("page");
     const page = pages[mine];
     const uploaded = await admin.storage.from(SCAN_BUCKET).upload(scanPath(parent, id), page.bytes, { contentType: "image/jpeg", upsert: false, cacheControl: "0" });
     // A lost Storage response is uncertain. Keep the reservation and reconcile on GET/retry/expiry.
@@ -70,7 +73,7 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/accou
     });
     const photo = await scanView(admin, parent, id);
     // The other page of a spread: only when this photo took the first page (a first page already scanned leaves nothing).
-    let other = mine === 0 && pages.length === 2 && photo ? await spreadPhoto(admin, parent, photo.child_id, pages[1], received) : null;
+    let other = mine === 0 && pages.length === 2 && photo ? await spreadPhoto(admin, parent, photo.child_id, pages[1], received, session.childOpen) : null;
     // A second page not saved (other than one that already has a photo): name it, so the parent can photograph it alone.
     if (other && !["saved", "duplicate"].includes(other.state)) {
       const named = await admin.from("workbook_pages").select("page_number").eq("parent_id", parent).eq("qr_token", pages[1].token).maybeSingle();
@@ -95,7 +98,13 @@ const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  * number when known, so the parent is told which page needs its own photo; a page that already has a photo is left
  * alone. Never thrown.
  */
-async function spreadPhoto(admin: SupabaseClient<Database>, parent: string, child: string, page: SpreadPage, received: number): Promise<{ id: string; state: string; page?: number }> {
+/** Whether the child a photo is filed with now has scanning open (#915 sibling filing). A failed read is closed. */
+async function filedChildOpen(admin: SupabaseClient<Database>, parent: string, id: string, childOpen: (child: string) => Promise<boolean>) {
+  const filed = await admin.from("scan_photos").select("child_id").eq("id", id).eq("parent_id", parent).maybeSingle();
+  return !filed.error && !!filed.data && childOpen(filed.data.child_id);
+}
+
+async function spreadPhoto(admin: SupabaseClient<Database>, parent: string, child: string, page: SpreadPage, received: number, childOpen: (child: string) => Promise<boolean>): Promise<{ id: string; state: string; page?: number }> {
   const id = randomUUID();
   const fail = async (state: string) => {
     await admin.rpc("change_scan_photo", { p_parent: parent, p_id: id, p_action: "reject" });
@@ -115,6 +124,7 @@ async function spreadPhoto(admin: SupabaseClient<Database>, parent: string, chil
     if (started.error || started.data !== "started") return fail(started.error ? "unavailable" : started.data);
     const identified = await admin.rpc("identify_scan_photo", { p_parent: parent, p_id: id, p_token: page.token, p_width: page.width, p_height: page.height });
     if (identified.error || identified.data !== "identified") return fail(identified.error ? "unavailable" : identified.data);
+    if (!await filedChildOpen(admin, parent, id, childOpen)) return fail("page");
     const uploaded = await admin.storage.from(SCAN_BUCKET).upload(scanPath(parent, id), page.bytes, { contentType: "image/jpeg", upsert: false, cacheControl: "0" });
     // A lost answer, from Storage or from the finish: the photo may be stored all the same. Nobody's page asks about this
     // photo later, so it is reconciled here, as the first photo's GET does (recover_scan_photo); still unknown, it expires.

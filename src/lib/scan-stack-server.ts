@@ -3,7 +3,9 @@ import { scanPhotoIsActive } from "@/lib/scan-photo-active";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { checkedReady, type ScanRefusal } from "@/lib/scan-crops";
-import { dayPages, type DayPage, type StackPhoto } from "@/lib/scan-stack";
+import { dayPages, type DayPage, type PageMarks, type StackPhoto } from "@/lib/scan-stack";
+import { markingPageView } from "@/lib/scan-marking";
+import { scanMarkingStore } from "@/lib/scan-marking-store";
 
 // The Scan pages stack's read (round r565): one child's active photos with their check, and the printed pages of the days
 // they belong to, in five reads whatever the number of photos. Server only, on the secret key: every read names the family.
@@ -29,6 +31,13 @@ export function stackCheck(c: { state: string; printed_revision: string; sheetCh
   return checkedReady({ sheetCheck: c.sheetCheck }) ? "ready" : "checking";
 }
 
+/** A page's marks summary from its marking view (#915): what the stack's tiles and the day's score line show. */
+export function pageMarks(view: { completion: { status: string; total: number }; counts: { scored: number; teamChecks: number; pending: number }; items: readonly { result: string | null }[] }): PageMarks {
+  const right = view.items.filter((i) => i.result === "right").length;
+  const toPractise = view.items.filter((i) => i.result === "wrong" || i.result === "blank").length;
+  return { right, scored: view.counts.scored, total: view.completion.total, toPractise, waiting: view.counts.pending + view.counts.teamChecks, complete: view.completion.status === "complete" };
+}
+
 export interface StackRead { photos: StackPhoto[]; pages: DayPage[] }
 
 export async function readScanStack(db: SupabaseClient<Database>, parent: string, child: string, checks: boolean, now = Date.now()): Promise<StackRead> {
@@ -49,12 +58,26 @@ export async function readScanStack(db: SupabaseClient<Database>, parent: string
   const number = new Map(workbooks.data.map((w) => [w.id, w.number]));
   const pageNumber = new Map(printed.data.map((p) => [p.id, p.page_number]));
   const calibration = new Map((calibrations.data ?? []).map((c) => [c.photo_id, c]));
+  // Sent pages show their marks (#915): the child's current marks, read once for the whole stack, matched per page and
+  // printing as the results page matches them. A failed read leaves the marks out; the stack still shows.
+  const sent = checks ? live.filter((p) => p.sent_at) : [];
+  const marksOf = new Map<string, PageMarks>();
+  if (sent.length) {
+    try {
+      const marks = await scanMarkingStore(db).effective(parent, child);
+      for (const p of sent) {
+        const own = marks.filter((m) => m.expected.identity.workbookId === p.workbook_id && m.expected.identity.pageId === p.page_id && m.expected.identity.printedRevision === p.printed_revision);
+        if (own.length) marksOf.set(p.id, pageMarks(markingPageView(own)));
+      }
+    } catch { /* marks are optional on the stack */ }
+  }
   const photos: StackPhoto[] = live.map((p) => {
     const c = calibration.get(p.id);
     const check = stackCheck(c ?? null, p.printed_revision, checks);
     return {
       id: p.id, pageId: p.page_id!, workbookId: p.workbook_id!, book: number.get(p.workbook_id!) ?? 1, pageNumber: pageNumber.get(p.page_id!) ?? 0,
       state: p.state as StackPhoto["state"], check, reason: check === "refused" ? refusal(c?.reason) : null, sentAt: p.sent_at, createdAt: p.created_at,
+      ...(p.sent_at ? { marks: marksOf.get(p.id) ?? null } : {}),
     };
   });
   const pages = dayPages(printed.data.map((p) => ({ id: p.id, workbookId: p.workbook_id, book: number.get(p.workbook_id) ?? 1, pageNumber: p.page_number, day: p.day_label, type: p.page_type })));
