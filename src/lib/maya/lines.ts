@@ -11,17 +11,35 @@
 // same. Pure TypeScript: no clock, network or randomness.
 import {
   equivalent,
-  operationText,
+  operationText as baseOperationText,
   sameValue,
   stepText,
-  valueText,
+  valueText as baseValueText,
   type AnswerValue,
   type FractionParts,
   type OperationPackage,
   type Place,
   type WorkedStep,
 } from "@/lib/question-package";
+import { patternOf } from "./pattern";
+import { PATTERN_OPENING, PATTERN_TEMPLATES, patternClose, patternExampleShow, patternHelp, patternTopHint } from "./pattern-lines";
 import { simplestWords, teachSteps } from "./fractions";
+import { topicFrame, topicQuestion } from "./topic-frame";
+import { evaluateFrame, partAt, withEvaluateExample } from "./evaluate";
+import { EVALUATE_TEMPLATES, partEquation, partHelp, partShow } from "./evaluate-lines";
+import { CLAIM_TEMPLATES, claimLines, claimShow, claimView } from "./claim";
+import { CLOCK_TEMPLATES, clockExpr, clockHelp, clockSaid, clockShow, clockWhere } from "./clock-lines";
+import { placeValueLines, type PlaceValueTemplateKey } from "./place-value-lines";
+import { placeOpeningText } from "@/lib/question-package-place-value";
+import { frameInvite, frameLead, framedLines, frameWhy, MISSING_TEMPLATES, type FrameState, type FramedLines } from "./missing-number";
+import { showTrial, trialEquation, trialFeedback, trialHelp, trialRight, TRIAL_RESULT_KEY, TRIAL_TEMPLATES, type TrialLine } from "./trial-factor";
+import { COMPARISON_TEMPLATES, comparisonLines } from "./comparison-lines";
+import { SPOT_TEMPLATES, spotLines, spotView } from "./spot-error";
+
+/** A value as Maya says it: a clock time as the book prints it ("7:03", clock-lines.ts), any other as code writes it. */
+const valueText = (v: AnswerValue) => clockSaid(v) ?? baseValueText(v);
+/** An operation as Maya says it: a clock-time question in the book's words ("50 minutes after 6:13"), any other as code writes it. */
+const operationText = (op: Parameters<typeof baseOperationText>[0]) => clockExpr(op) ?? baseOperationText(op);
 
 /**
  * The version of the line set. Raise it when a line id, a slot or the meaning of a line changes. Version 2:
@@ -29,8 +47,26 @@ import { simplestWords, teachSteps } from "./fractions";
  * answer.parts, how the parts make the answer, said before answer.give on the final step. Version 5: regroup.add, where
  * a column's carry comes from, as step.regroup in addition. Version 6 (#407): fraction steps (common denominator,
  * numerators, simplest form) and check.equal, an equal fraction when the question asks for the simplest form.
+ * Version 9 (#527): held.hello, held.cannot and held.next, Maya's words on a question she cannot teach yet. Version 10
+ * (#605, Savar 2026-11-06: "conversational and human-like"): check.together, check.guess, step.why,
+ * step.order; check.not_yet never praises wrong work.
+ * Version 11 (#605): a held question invites another question on the page, without an inability claim.
+ * Version 13: answer-only clarification and checked regroup explanations from full practice.
+ * Version 14 (Wave A): missing numbers: the framing invites, try.target.frame, and the try-a-number lines; a
+ * check.not_yet line may name the wrong try it answers (`heard`). Version 14 (A4): claim questions (claim.ts):
+ * confirm.claim, confirm.word, close.honest, and the claim wordings of existing lines.
+ * Version 14 (#698, D-327, Savar 2026-11-08: "We should just be straightforward"): a held question says plainly that
+ * Maya cannot teach it yet (held.cannot), then invites another question on the page.
+ * Version 15 (B1a, B1b): place value (place-value-lines.ts): chart.open, and the place-value templates of the shared ids.
+ * Version 16: combines the Wave B and Wave C line sets.
+ * Version 17: spot-the-error lines combined with Wave C.
+ * Version 18: pattern lines combined with spot-the-error and Wave C.
+ * Version 19: the waves combined with #698: close.stuck (the honest close after help alone, #735), check.method (C09),
+ * held.cannot; a question type with its own honest close (closeUnsolved) says it in place of close.stuck.
+ * Version 20 (#884, D-329, Savar 2026-11-12): check.fix, a right answer with a wrong reason.
+ * Version 21 (#884, D-329): three more about.no_secret wordings.
  */
-export const LINES_VERSION = 8;
+export const LINES_VERSION = 22;
 
 export const LINE_IDS = [
   "about.ai",
@@ -40,6 +76,7 @@ export const LINE_IDS = [
   "open.hello",
   "question.problem",
   "question.read",
+  "chart.open",
   "assess.ask",
   "example.intro",
   "example.step",
@@ -54,6 +91,12 @@ export const LINE_IDS = [
   "check.equal",
   "check.explain",
   "check.thinking",
+  "check.together",
+  "check.guess",
+  "check.method",
+  "check.fix",
+  "step.why",
+  "step.order",
   "answer.right",
   "answer.give",
   "answer.parts",
@@ -61,13 +104,21 @@ export const LINE_IDS = [
   "write.yours",
   "confirm.heard",
   "confirm.which",
+  "confirm.answer",
+  "confirm.claim",
+  "confirm.word",
   "input.other",
   "redirect.back",
   "redirect.decline",
   "redirect.workbook",
   "close.solved",
   "close.together",
+  "close.honest",
+  "close.stuck",
   "repair.sorry",
+  "held.hello",
+  "held.cannot",
+  "held.next",
 ] as const;
 export type LineId = (typeof LINE_IDS)[number];
 
@@ -103,8 +154,10 @@ export interface LineOffer {
   texts: string[];
   /** Original wording ids when spoken help removes visual variants. */
   wordingIds?: string[];
-  /** The template the variants come from. */
-  key: TemplateKey;
+  /** The template the variants come from: a shared one, or a place-value one (place-value-lines.ts). */
+  key: TemplateKey | PlaceValueTemplateKey;
+  /** Values filled by code into the approved template. */
+  filled?: Record<string, string | number>;
   /** The text Maya may write on the board with this line: its expression or its equation. */
   board?: string;
 }
@@ -116,8 +169,15 @@ export interface LineOffer {
  * review copy shows each wording once.
  */
 export const TEMPLATES = {
+  ...COMPARISON_TEMPLATES,
   "about.ai": ["I'm not a real person. I'm an AI helper."],
-  "about.no_secret": ["I can't be a secret friend. I don't keep secrets. A grown-up you trust is a good person to talk to."],
+  // Kind, and points to a grown-up the child trusts. Wordings 1 to 3 are from #624 (#884, D-329, Savar 2026-11-12).
+  "about.no_secret": [
+    "I can't be a secret friend. I don't keep secrets. A grown-up you trust is a good person to talk to.",
+    "I'm an AI. I can't keep secrets. A grown-up you trust can help.",
+    "I can't keep secrets, but I'm glad you told me. You can tell a grown-up you trust.",
+    "I can't be a secret friend. A grown-up you trust is great to talk to.",
+  ],
   "shorter.prompt": ["What part should we try again?"],
   "answer.area": ["So the area is {answer} {unit}."],
   "input.spoken": ["You can say your answer again."],
@@ -129,6 +189,12 @@ export const TEMPLATES = {
     "Today we're working on {expr}.", "Our question is {expr}.", "Let's work on {expr} together.", "We're doing {expr} today.",
     "This one is {expr}.", "Here's our question: {expr}.",
   ],
+  // An "other-topic" question (Wave C, topic-frame.ts): code's topic sentence before the operation it gives. Pending
+  // Savar's approval (D-202).
+  "question.framed": [
+    "{frame} Our question is {expr}.", "{frame} So our question is {expr}.", "{frame} So we work on {expr}.",
+    "{frame} So this one is {expr}.", "{frame} Here's our question: {expr}.",
+  ],
   "question.read": [
     "The question says: {sentence}", "Let's read it again: {sentence}", "Here's the question: {sentence}", "It says: {sentence}",
     "Let's read it together: {sentence}", "Here's what it says: {sentence}",
@@ -137,9 +203,25 @@ export const TEMPLATES = {
     "What did you try for {expr}?", "How did you start {expr}?", "Tell me what you did on {expr} so far.", "What have you done on {expr} so far?",
     "How far did you get with {expr}?", "Can you show me how you began {expr}?",
   ],
+  // The first question of an "other-topic" call (Wave C): code's topic sentence, then the usual question.
+  // A scale, minute-hand or money claim (C3b): code's topic sentence, then the work the claim needs. Pending Savar's
+  // approval (D-202).
+  "question.claim.framed": [
+    "{frame} First we work out {expr}.", "{frame} Let's work out {expr} first.", "{frame} We start with {expr}.",
+    "{frame} Let's find {expr} first.", "{frame} First, let's find {expr}.",
+  ],
+  "assess.framed": [
+    "{frame} What did you try for {expr}?", "{frame} How did you start {expr}?", "{frame} What have you done on {expr}?",
+    "{frame} What did you do for {expr}?", "{frame} How did you begin {expr}?",
+  ],
   "example.intro": [
     "Let's try an easier one first: {expr}.", "Here's a smaller one to warm up: {expr}.", "Let me show you an easier one: {expr}.",
     "Let's warm up with an easier one: {expr}.", "First, a smaller one: {expr}.", "I'll show you an easier one first: {expr}.",
+  ],
+  // The easier example of an "other-topic" question (Wave C): its own topic sentence, then its operation.
+  "example.framed": [
+    "Easier one. {frame} It is {expr}.", "A smaller one. {frame} It is {expr}.", "An easier one. {frame} It is {expr}.",
+    "Smaller one first. {frame} It is {expr}.", "Warm-up. {frame} It is {expr}.",
   ],
   "example.step": ["{show}", "Watch this. {show}", "Here's how. {show}", "Look. {show}", "Follow along. {show}", "Like this. {show}"],
   "example.result": ["So {show}.", "And that's it: {show}.", "There we go: {show}.", "All done: {show}.", "So in the end, {show}."],
@@ -183,6 +265,16 @@ export const TEMPLATES = {
     "{eq}. Split {total} into {carry} {big} and {write} {small}. Write {write} in the {from}. Carry {carry} {big} to the {to}.",
     "{eq}. {total} has {carry} {big} and {write} {small}. The {write} stays in the {from}. The {carry} {big} goes to the {to}.",
   ],
+  // A second way to say where a carry comes from (#605), for "why does the 1 go to the tens?" or when the first
+  // regroup line did not land: ten of a place make one of the next. Filled like regroup.add, from the column whose sum
+  // makes the carry.
+  "regroup.why": [
+    "Ten {from} make 1 {unit}. So {total} {from} is {carry} {big} and {write} {small}.",
+    "A column holds up to 9. {total} {from} is too many. So {carry} {big} goes to the {to}.",
+    "Bundle 10 {from} together. That bundle is 1 {unit}. It goes in the {to}.",
+    "Think of {total} {from}. Ten of them trade for 1 {unit}. That 1 {unit} goes to the {to}.",
+    "Count out 10 {from}. Those 10 make 1 {unit}. That is the {carry} in the {to}.",
+  ],
   "operation.add": [
     "Add the {place}: {sum}. What do you get?", "What is {sum}?", "Let's add the {place}: {sum}.", "Add up the {place}: {sum}.",
     "What do you get for {sum}?", "Can you add {sum}?",
@@ -213,6 +305,22 @@ export const TEMPLATES = {
     "{have} is less than {bottom}. So regroup 1 {big} as 10 {place}.", "We need more {place}: trade 1 {big} for 10 {place}.",
     "Regroup 1 {big} as 10 {place}. Now {have} becomes {from}.", "{have} is smaller than {bottom}. So trade 1 {big} for 10 {place}.",
     "There aren't enough {place}. So regroup 1 {big} as 10 {place}.", "Take 1 {big} and make it 10 {place}. Now {have} becomes {from}.",
+  ],
+  // The order of a subtraction (#605, "I take the smaller from the bigger"): the bottom is taken from the top, and a top
+  // that is too small regroups first. Filled from the checked column.
+  "subtract.order": [
+    "We take the bottom number from the top one. {have} is less than {bottom}. So we regroup.",
+    "In subtraction, the top comes first. We can't swap {have} and {bottom}.",
+    "We can't flip it and take {have} from {bottom}. So we regroup first.",
+    "Order matters here. The top is {have}. We take {bottom} away from it.",
+    "The top number goes first. Here it's {have}. We need more {place} to take {bottom}.",
+  ],
+  "subtract.why": [
+    "One of the {leftCount} {leftPlace} becomes 10 {place}. Now there are {leftAfter} {leftPlace} and {from} {place}.",
+    "Trade 1 {big} for 10 {place}. The {leftCount} {leftPlace} become {leftAfter} {leftPlace}, with {from} {place}.",
+    "The 10 {place} come from 1 {big}. That changes {leftCount} {leftPlace} to {leftAfter} {leftPlace}, with {from} {place}.",
+    "Use 1 of the {leftCount} {leftPlace} for 10 {place}. This leaves {leftAfter} {leftPlace} and {from} {place}.",
+    "Change 1 {big} into 10 {place}. Instead of {leftCount} {leftPlace}, there are {leftAfter} {leftPlace} and {from} {place}.",
   ],
   "operation.subtract": [
     "Subtract the {place}: {from} − {bottom}. What do you get?", "What is {from} − {bottom}?", "Now take {bottom} away from {from}.",
@@ -277,6 +385,10 @@ export const TEMPLATES = {
     "What do you get for {current} ÷ {by}?", "Can you work out {current} ÷ {by}?",
   ],
 
+  // The parts of an evaluate question (Wave A, A2: evaluate-lines.ts).
+  ...EVALUATE_TEMPLATES,
+  ...PATTERN_TEMPLATES,
+
   // Fractions (#407): adding and subtracting fractions, then the simplest form when the question asks for it. Every number is filled
   // from the checked step; no line says the final fraction before the child does. Math words of the curriculum stay:
   // numerator, denominator and common denominator (BC 5.3, 8.5), simplest form and lowest terms (BC 7.4).
@@ -329,8 +441,9 @@ export const TEMPLATES = {
   "check.right_step": ["Yes! {eq}.", "That's right: {eq}.", "You got it, {eq}.", "Yes, {eq}.", "Exactly! {eq}.", "Nice, {eq}.", "That's it: {eq}."],
   "check.right_step.plain": ["Yes! {Where} is done.", "That's right. {Where} is done.", "Good, {where} is done.", "Yes, that's {where} done.", "Nice! {Where} is done."],
   "check.not_yet": [
-    "Not quite. Let's look at {where} again.", "Almost! Let's check {where} together.", "Hmm, not yet. Let's try {where} again.",
-    "Close! Let's look at {where} once more.", "Not yet. Let's go back to {where}.", "Good try. Let's check {where} again together.",
+    // #605: wordings 1, 3 and 5 no longer praise wrong work ("Almost!", "Close!", "Good try."); changed in place, so ids stay.
+    "Not quite. Let's look at {where} again.", "Not yet. Let's check {where} together.", "Hmm, not yet. Let's try {where} again.",
+    "That's not it yet. Let's look at {where} once more.", "Not yet. Let's go back to {where}.", "Let's check {where} again together.",
   ],
   // An equal fraction when the question asks for the simplest form (#407): the right amount, not yet in the form asked.
   // {form} is the question's own words: "simplest form" or "lowest terms".
@@ -349,6 +462,25 @@ export const TEMPLATES = {
   "check.thinking": [
     "Tell me what you're thinking.", "Tell me how you thought about it.", "How did you work it out?", "What made you think of it?",
     "Tell me how you did it.", "I'm curious how you figured it out.", "How do you know?",
+  ],
+  // #605 (Savar 2026-11-06). The child's right final answer, said with doubt after Maya already asked "Did you say 66?":
+  // a check of the first step comes next, never a third "Did you say". No math: the step line after it is code's.
+  "check.together": [
+    "That's okay. Let's check it together.", "It's okay to feel unsure. Let's check it together.",
+    "No problem. We can check it together.", "That's fine. Let's check it one part at a time.",
+    "That's alright. Let's check it together.",
+  ],
+  // A right answer the child says they guessed: no praise for the guess as understanding; one light check.
+  "check.guess": [
+    "Lucky guess? Let's check it together.", "A guess is a good start. Let's check it.",
+    "Let's see if your guess works. We'll check it together.", "Okay, let's check that guess together.",
+    "Guesses can be right! Let's check this one together.",
+  ],
+  // A right final answer with a wrong reason (#624, D-329, Savar 2026-11-12): the answer stays, the step is fixed with its
+  // checked equation, and the reason gets no praise.
+  "check.fix": [
+    "Your answer is right. One part needs a fix. It should be {eq}.", "The answer is right. But check {where}: {eq}.",
+    "You have the right answer. One part is off. It should be {eq}.",
   ],
   "answer.right": [
     "Yes! {expr} = {answer}.", "That's right: {expr} = {answer}.", "You got it! {expr} = {answer}.", "Yes, {expr} = {answer}!",
@@ -377,6 +509,7 @@ export const TEMPLATES = {
   ],
 
   "confirm.heard": ["Did you say {heard}?", "I heard {heard}. Is that right?", "Just checking, was that {heard}?", "Was that {heard}?", "So you said {heard}?", "I think I heard {heard}. Is that it?"],
+  "confirm.answer": ["Can you say just your final answer?", "Thanks for explaining. What is your final answer on its own?"],
   "confirm.which": ["Did you say {heard} or {other}?", "Was that {heard} or {other}?", "I'm not sure. {heard} or {other}?", "Did I hear {heard}, or was it {other}?", "Was it {heard} or {other}?"],
   "input.other": [
     "You can write your answer on the board instead.", "If it's easier, write your number on the board.", "Try writing it on the board for me.",
@@ -391,14 +524,70 @@ export const TEMPLATES = {
     "You worked out {expr} today!", "Great job on {expr} today!", "You solved {expr}. Well done!", "Nice work finishing {expr}!",
     "You did it: {expr} is done!", "Well done on {expr} today!",
   ],
+  "close.checked": [
+    "We checked your answer for {expr}. Bye for now!", "Your answer for {expr} is checked. See you next time!",
+    "Your answer for {expr} is right. Bye for now!", "The answer you gave for {expr} is right. See you next time!",
+    "We've checked your answer for {expr}. Goodbye for now!",
+  ],
+  // The honest close of an "other-topic" question left unsolved after the easier example (lessons from review 10,
+  // controller decision (a)): this one is hard, it is fine to stop, and one next step. No number, so no hint at the
+  // answer. Pending Savar's approval (D-202).
+  "close.topic": [
+    "This one is hard, and it's okay to stop. Try the easier one on paper, or ask a grown-up to help.",
+    "This is a hard one. It's fine to stop here. You can ask a grown-up to try it with you.",
+    "This one is hard. It's okay to stop for now. Try the easier one on your paper.",
+    "That was a hard one, and stopping is okay. Ask a grown-up to look at it with you.",
+    "This question is hard. It's fine to stop. Try the smaller one on paper first.",
+  ],
   "close.together": [
     "We worked through {expr} together.", "We finished {expr} together today.", "We got through {expr} together.",
     "Together, we finished {expr}.", "We worked on {expr} together today.",
+  ],
+  // The honest close (#735, decision (a)): the child still only asks for help after the top hint and the easier example.
+  // It says this one is hard and stopping is fine, and names a next step. It holds no number, so no answer and no part of
+  // one. Pending Savar's approval (docs/maya-practice-lines.md, "Pending Savar, #698 fix round 2026-11-08").
+  // The child's own compensation method, named back (practice at 361a05c9, C09): only for a method code recognises in the
+  // child's words, with its numbers from the checked package: {b} an operand, {round} its nearest ten, {diff} how far apart.
+  // "down": {round} is more than {b}, so the child took {diff} away. "up": {round} is less, so they added {diff} back.
+  // Pending Savar's approval (docs/maya-practice-lines.md, "Pending Savar, #698 fix round 2026-11-08").
+  "check.method.down": [
+    "You made {b} into {round}. Then you took {diff} away. That works.",
+    "You turned {b} into {round} and took {diff} away. That works.",
+    "You used {round} for {b}. Then you took {diff} away. Smart!",
+    "You added {round} instead of {b}. Then you took {diff} away. That works.",
+    "{b} is {diff} less than {round}. So you took {diff} away. That works.",
+  ],
+  "check.method.up": [
+    "You made {b} into {round}. Then you added {diff} back. That works.",
+    "You turned {b} into {round} and added {diff} back. That works.",
+    "You used {round} for {b}. Then you added {diff} back. Smart!",
+    "You added {round} instead of {b}. Then you added {diff} more. That works.",
+    "{b} is {diff} more than {round}. So you added {diff} back. That works.",
+  ],
+  "close.stuck": [
+    "This one is hard, and it's okay to stop. Try the easier one on paper, or ask a grown-up for help.",
+    "This is a tricky one. It's fine to stop for now. Try the easier one on paper, or ask a grown-up.",
+    "That was a hard one, and it's okay to stop. Next, try the easier one on paper, or ask a grown-up.",
+    "This one is tough, and stopping is okay. You could try the easier one on paper, or ask a grown-up.",
+    "It's okay to stop here. This one is hard. Try the easier one on paper, or ask a grown-up for help.",
   ],
   "repair.sorry": [
     "Oops, I said that wrong. Let me fix it.", "Sorry, I made a mistake there. Here it is again.", "Wait, I mixed that up. Let me say it again.",
     "Oops, my mistake. Let me try again.", "Sorry, that came out wrong. Here's the right way.",
   ],
+  // A held question (D-327, Savar 2026-11-08): say plainly that Maya cannot teach it yet, then offer another question
+  // on the page. Code adds the AI disclosure only before the first hello. No alternate question is invented or promised.
+  "held.hello": ["Hi, I'm Maya, an AI."],
+  "held.cannot": ["Sorry, I can't teach this question yet."],
+  "held.next": ["Want to pick another question on this page?"],
+  // Missing numbers (Wave A): the framing and the try-a-number lines, from their own modules.
+  ...MISSING_TEMPLATES,
+  ...TRIAL_TEMPLATES,
+  // Claim questions (A4, claim.ts): "True or false: 8 × 850 = 6800." and "Is 6 × 870 greater than 5226?".
+  ...CLAIM_TEMPLATES,
+  // Spot the error (C2, spot-error.ts): "6 × 830 = ? Answer given: 498." Tick yes or no, and fix it.
+  ...SPOT_TEMPLATES,
+  ...CLOCK_TEMPLATES,
 } as const satisfies Record<string, readonly string[]>;
 export type TemplateKey = keyof typeof TEMPLATES;
 
@@ -407,10 +596,14 @@ export type TemplateKey = keyof typeof TEMPLATES;
 type Vars = Record<string, string | number>;
 
 const fill = (template: string, vars: Vars) => template.replace(/\{(\w+)\}/g, (_, name: string) => String(vars[name]));
+/** The values a template's wordings say: a value a builder passes that no wording uses is never said, so it is not filled. */
+const usedVars = (key: TemplateKey, vars: Vars): Vars =>
+  Object.fromEntries(Object.entries(vars).filter(([name]) => TEMPLATES[key].some((t) => t.includes(`{${name}}`))));
 const offer = (line: LineId, key: TemplateKey, vars: Vars, extra: Omit<LineOffer, "line" | "texts" | "key"> = { slots: {} }): LineOffer => ({
   line,
   ...extra,
   key,
+  filled: usedVars(key, vars),
   texts: TEMPLATES[key].map((t) => sentence(fill(t, vars))),
 });
 
@@ -446,13 +639,26 @@ function whereOf(step: WorkedStep): string {
       return "the numerators";
     case "simplify":
       return "the simplest form";
+    case "try-factor":
+      return "the missing number";
+    case "operate":
+      return `${step.left} ${step.op} ${step.right}`;
+    case "claim-compare":
+      return "the result";
+    case "count-on":
+      return clockWhere(step);
     default:
       return "this step";
   }
 }
 
+/** A step of the child's question as its equation ("236 × 6 = 1416"), or null: for code's checks in the session. */
+export const stepEquation = (step: WorkedStep, pkg: OperationPackage): string | null => equationOf(step, pkg, "target");
+
 /** The step's equation, as a line says it and the board writes it ("7 + 9 = 16"), or null for a step with none. */
 function equationOf(step: WorkedStep, pkg: OperationPackage, problem: "target" | "example"): string | null {
+  const part = partEquation(pkg, step, equationOf);
+  if (part !== undefined) return part;
   const op = problem === "target" ? pkg.operation : pkg.easierExample.operation;
   switch (step.kind) {
     case "add-column": {
@@ -472,6 +678,8 @@ function equationOf(step: WorkedStep, pkg: OperationPackage, problem: "target" |
       const by = op.operands[1] as number;
       return `${step.current} ÷ ${by} = ${step.remainder > 0 ? `${step.quotient} R ${step.remainder}` : step.quotient}`;
     }
+    case "claim-compare":
+      return `${operationText(op)} = ${step.value}`;
     case "result":
       return `${operationText(op)} = ${valueText(step.value)}`;
     // Fraction steps (#407): never the final fraction, so a judged step never gives the answer away.
@@ -483,6 +691,8 @@ function equationOf(step: WorkedStep, pkg: OperationPackage, problem: "target" |
       return `${step.numerators[0]} ${step.op === "add" ? "+" : "−"} ${step.numerators[1]} = ${step.numerator}`;
     case "simplify":
       return `${step.from.numerator} ÷ ${step.divisor} = ${step.to.numerator} and ${step.from.denominator} ÷ ${step.divisor} = ${step.to.denominator}`;
+    case "try-factor":
+      return trialEquation(step);
     default:
       return null;
   }
@@ -524,7 +734,10 @@ function fractionShow(step: WorkedStep): string | null {
 
 /** A worked step in words: a fraction step as fractionShow says it, any other as the shared step text. */
 const showOf = (step: WorkedStep, pkg: OperationPackage, problem: "target" | "example") =>
-  fractionShow(step) ?? stepText(step, problem === "target" ? pkg.operation : pkg.easierExample.operation);
+  partShow(step) ?? fractionShow(step) ?? (step.kind === "try-factor" && problem === "target" ? showTrial(step) : null)
+  ?? clockShow(step, problem === "target" ? pkg.operation : pkg.easierExample.operation)
+  ?? claimShow(step, operationText(problem === "target" ? pkg.operation : pkg.easierExample.operation), problem)
+  ?? stepText(step, problem === "target" ? pkg.operation : pkg.easierExample.operation);
 
 /** The top number of a long multiplication as its rows work it: without its point (2.5 × 1.3 works 25 × 13). */
 function rowTop(pkg: OperationPackage, problem: "target" | "example"): number {
@@ -535,10 +748,24 @@ function rowTop(pkg: OperationPackage, problem: "target" | "example"): number {
 }
 
 /** The help lines of one step of the child's question, by hint level: H0 invite, H1 point, H2 give the operation, H3 show. */
-function stepLines(pkg: OperationPackage, step: WorkedStep): LineOffer[] {
+function stepLines(pkg: OperationPackage, step: WorkedStep, framing: FrameState = "due", compact = false): LineOffer[] {
+  const pattern = patternHelp(pkg, step.id, offer);
+  if (pattern) return pattern;
+  const part = partHelp(pkg, step, stepLines, offer);
+  if (part) return part;
   const slots = { step: step.id };
   const where = whereOf(step);
-  const out: LineOffer[] = [offer("step.invite", "step.invite", { where }, { slots, level: 0 })];
+  // A clock-time question's count-on step (clock-lines.ts): its own H1 to H3 after the invite.
+  const clock = clockHelp(pkg, step, offer);
+  if (clock) return [offer("step.invite", "step.invite", { where }, { slots, level: 0 }), ...clock];
+  // A missing number's first work step says the framing first (missing-number.ts); a try step invites a try. A claim's
+  // compare step (claim.ts) has its own H0 to H2.
+  const framed = framedLines(pkg.steps);
+  const first = !!framed && teachSteps(pkg)[0]?.id === step.id;
+  const lead = framed && first ? frameInvite(framed, where, framing) : null;
+  const trial = step.kind === "try-factor" ? trialHelp(step) : [];
+  const out: LineOffer[] = step.kind === "claim-compare" ? [] : [lead ? offer("step.invite", lead.key, lead.vars, { slots, level: 0 })
+    : trial[0] ? trialOffer(trial[0], slots) : offer("step.invite", "step.invite", { where }, { slots, level: 0 })];
   const add = (line: LineId, key: TemplateKey, vars: Vars, level: 1 | 2, board?: string) =>
     out.push(offer(line, key, vars, { slots, level, ...(board ? { board } : {}) }));
   switch (step.kind) {
@@ -546,7 +773,7 @@ function stepLines(pkg: OperationPackage, step: WorkedStep): LineOffer[] {
       const { place, digits, carryIn } = step;
       const terms = [...digits, ...(carryIn > 0 ? [carryIn] : [])];
       const from = carryIn > 0 ? carrySource(pkg, step) : null;
-      if (from) out.push(regroupOffer(pkg, from, { step: step.id }));
+      if (from) out.push(regroupOffer(pkg, from, { step: step.id }), whyOffer(from, { step: step.id }));
       if (terms.length === 1) {
         add("step.point", "point.add.single", { place, term: terms[0] }, 1);
         add("step.operation", "operation.add.single", { place, term: terms[0] }, 2);
@@ -569,6 +796,12 @@ function stepLines(pkg: OperationPackage, step: WorkedStep): LineOffer[] {
       }
       if (have >= 0) add("step.point", lent ? "point.subtract.lent" : "point.subtract", vars, 1);
       if (regrouped && have >= 0) add("step.regroup", "regroup.subtract", vars, 2);
+      const source = pkg.steps.find(s => s.kind === "subtract-column" && s.place === leftOf(place));
+      if (regrouped && have >= 0 && source?.kind === "subtract-column") {
+        const leftCount = source.top + (source.regrouped ? 10 : 0);
+        if (leftCount > 0) add("step.why", "subtract.why", { ...vars, leftCount, leftAfter: leftCount - 1, leftPlace: source.place }, 2);
+      }
+      if (regrouped && have >= 0) add("step.order", "subtract.order", vars, 1);
       add("step.operation", "operation.subtract", vars, 2, `${from} − ${bottom}`);
       break;
     }
@@ -624,12 +857,29 @@ function stepLines(pkg: OperationPackage, step: WorkedStep): LineOffer[] {
     case "simplify":
       out.push(...simplifyLines(step.from, slots));
       break;
+    case "try-factor":
+      out.push(...trial.slice(1).map((t) => trialOffer(t, slots)));
+      break;
+    case "claim-compare":
+      out.push(...(claimLines(pkg, offer)?.claimStep(step.id) ?? []));
+      break;
     default:
       break;
   }
-  const eq = equationOf(step, pkg, "target");
+  // A try step's equation holds the answer: its H3 shows the try next to it, with no board note.
+  const eq = step.kind === "try-factor" ? null : equationOf(step, pkg, "target");
   out.push(offer("step.show", "step.show", { show: showOf(step, pkg, "target") }, { slots, level: 3, ...(eq ? { board: eq } : {}) }));
-  return out;
+  if (!first || !framed) return out;
+  // A missing number's first step: why it does what it does (step.why), and, until the framing was said (FrameState),
+  // every hint after the invite starts with it (or with the child's own, acknowledged), so the first hint said at any
+  // level carries it and none repeats it after.
+  const why = frameWhy(framed);
+  out.push(offer("step.why", why.key, why.vars, { slots, level: 1 }));
+  const before = frameLead(framed, framing);
+  if (!before) return out;
+  // step.why says the framing itself. In a 25-word turn (compact) the framing is the whole first hint; else it leads it.
+  return out.map((o) => ((o.level ?? 0) >= 1 && o.line !== "step.why"
+    ? { ...o, texts: compact ? [before] : o.texts.map((t) => `${before} ${t}`), ...(compact ? { wordingIds: [`${o.key}#frame`] } : {}) } : o));
 }
 
 /**
@@ -642,6 +892,13 @@ function simplifyLines(from: FractionParts, slots: Slots): LineOffer[] {
   if (g <= 1) return [];
   const vars = { n: from.numerator, d: from.denominator, g };
   return [offer("step.point", "point.simplify", vars, { slots, level: 1 }), offer("step.operation", "operation.simplify", vars, { slots, level: 2 })];
+}
+
+/** A try line as an offer (trial-factor.ts): a help line at its level, or a not-yet line that needs its wrong try checked. */
+function trialOffer(t: TrialLine, slots: Slots): LineOffer {
+  if (t.heard === undefined) return offer(t.line, t.key, t.vars, { slots, level: t.level });
+  const s = { ...slots, heard: t.heard };
+  return offer(t.line, t.key, t.vars, { slots: s, requires: { answer: "wrong", step: slots.step!, heard: t.heard } });
 }
 
 const gcd = (a: number, b: number): number => (b === 0 ? Math.abs(a) : gcd(b, a % b));
@@ -665,6 +922,16 @@ function regroupOffer(pkg: OperationPackage, from: Extract<WorkedStep, { kind: "
     small: from.write === 1 ? UNIT[from.place] : from.place, from: from.place, to,
   };
   return offer("step.regroup", "regroup.add", vars, { slots, level: 1, board: eq });
+}
+
+/** The second way to say where a carry comes from (step.why, H1, #605), from the same column as regroupOffer. */
+function whyOffer(from: Extract<WorkedStep, { kind: "add-column" }>, slots: Slots): LineOffer {
+  const to = leftOf(from.place);
+  const vars = {
+    total: from.total, carry: from.carryOut, big: from.carryOut === 1 ? UNIT[to] : to, unit: UNIT[to], write: from.write,
+    small: from.write === 1 ? UNIT[from.place] : from.place, from: from.place, to,
+  };
+  return offer("step.why", "regroup.why", vars, { slots, level: 1 });
 }
 
 /**
@@ -696,48 +963,111 @@ const sentencesOf = (text: string) => text.split(/(?<=[.?!])\s+/).map((s) => s.t
 
 /** Controller-owned opening. Only checked operation data is read aloud, never arbitrary workbook prose. */
 export function workbookOpening(pkg: OperationPackage): string | null {
-  return pkg.ref.source === "workbook" ? WORKBOOK_OPENING
-    .replace("{page}", String(pkg.ref.page)).replace("{number}", String(pkg.ref.question)).replace("{expr}", operationText(pkg.operation)) : null;
+  // A place-value question is named without its number, so the opening fits a grade 3 turn (the number is on the page).
+  const expr = pkg.operation.kind === "place-value" ? placeOpeningText(pkg.operation) : questionExpr(pkg);
+  return pkg.ref.source === "workbook" ? (patternOf(pkg) ? PATTERN_OPENING : WORKBOOK_OPENING)
+    .replace("{page}", String(pkg.ref.page)).replace("{number}", String(pkg.ref.question)).replace("{expr}", expr) : null;
 }
 
-/** One fixed confirmation, outside the model's selectable wordings. */
+/** The question in spoken words ("52 minus 28"): the signs of the written question said as words. */
+export function spokenQuestion(text: string): string {
+  return text.replace(/\s*[\u2212-]\s*(?=\d|\()/g, " minus ").replace(/\s*\+\s*/g, " plus ").replace(/\s*[×x\u00d7]\s*(?=\d|\()/g, " times ")
+    .replace(/\s*÷\s*/g, " divided by ").replace(/\s*=\s*/g, " equals ").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * The opening of a conversational call (D-341, approved by Savar 2026-11-12): code-written, said the moment the call or
+ * chat starts and before the child speaks, with no model call. It carries the AI disclosure. Chat and voice say the
+ * same line; the voice worker speaks it itself (start with openingSpoken).
+ */
+export function openingLine(pkg: OperationPackage, workbook?: { page: number; number: number }): string {
+  // The derived expression gives the pattern's method. Use the same checked label as the workbook opening.
+  const expr = patternOf(pkg) ? "the pattern" : spokenQuestion(pkg.operation.kind === "place-value" ? placeOpeningText(pkg.operation) : questionExpr(pkg));
+  const template = workbook ? OPENING_LINES.workbook : OPENING_LINES.plain;
+  return template.replace("{page}", String(workbook?.page ?? "")).replace("{number}", String(workbook?.number ?? "")).replace("{question}", expr);
+}
+
+/**
+ * The two openings (D-341), approved by Savar and the Chief of Staff on 2026-11-12, each ending with a question (approved
+ * by Savar, 2026-11-12): a call on a workbook page names the page and the question number; any other call names the
+ * question only. The child's answer to the question is the model's first turn.
+ */
+export const OPENING_LINES = {
+  plain: "Hi there! I'm Maya, an AI math helper. We're doing {question} today. Where do you want to start?",
+  workbook: "Hi there! I'm Maya, an AI math helper. We're doing page {page}, number {number} today: {question}. Where do you want to start?",
+} as const;
+
+/** The question as Maya names it: as the page prints it for a missing number or a missing-number evaluate, else its operation. */
+const questionExpr = (pkg: OperationPackage) =>
+  framedLines(pkg.steps)?.printed ?? evaluateFrame(pkg)?.printed ?? operationText(pkg.operation);
+
+/**
+ * One fixed confirmation, outside the model's selectable wordings. It never carries an "other-topic" topic sentence
+ * (topic-frame.ts): with it the opening passes a 25-word turn; the question and assess lines say it next.
+ */
 export const WORKBOOK_OPENING = "Hi, I'm Maya, an AI helper. Let's do page {page}, number {number}: {expr}.";
 
 /**
  * The lines of one checked question package, by situation. The session picks the ones an act may use now; every line
- * is filled from the package's checked numbers and steps.
+ * is filled from the package's checked numbers and steps. A place-value package has its own (place-value-lines.ts).
  */
-export function packageLines(pkg: OperationPackage) {
+export function packageLines(pkg: OperationPackage): PackageLines {
+  const shared = sharedLines(pkg);
+  const lines = pkg.operation.kind === "place-value" ? placeValueLines(pkg as Parameters<typeof placeValueLines>[0], shared) : shared;
+  // A spot-the-error question (spot-error.ts): its own lines over the question's path.
+  return spotLines(pkg, comparisonLines(pkg, lines, offer), shared, offer);
+}
+export type PackageLines = ReturnType<typeof sharedLines>;
+
+function sharedLines(given: OperationPackage) {
+  const pkg = withEvaluateExample(given);
+  const framed: FramedLines | null = framedLines(pkg.steps);
   const expr = operationText(pkg.operation);
-  const exampleExpr = operationText(pkg.easierExample.operation);
+  // A question is named as the page prints it: a missing number ("30 × ? = 1620") or a missing-number evaluate question
+  // ("8 × ? = 7360 − 400"); its math lines keep expr. A missing number's answer is what the operation that finds it gives.
+  const asked = patternOf(pkg) ? (patternOf(pkg)!.missing ? "the missing step" : "the pattern") : questionExpr(pkg);
+  const solved = framed?.inverse ?? expr;
+  const exampleExpr = framedLines(pkg.easierExample.steps)?.printed ?? operationText(pkg.easierExample.operation);
+  const frame = topicFrame(pkg.text, pkg.operation);
+  const exampleFrame = frame ? topicFrame(pkg.easierExample.text, pkg.easierExample.operation) : null;
   const answer = valueText(pkg.answer.value);
   const steps = teachSteps(pkg);
   const find = (id: string) => steps.find((s) => s.id === id);
+  // A claim question (claim.ts) says its own question, result, answer and request to circle the word.
+  const claim = claimLines(pkg, offer);
   return {
     hello: (): LineOffer[] => [offer("open.hello", "open.hello", {})],
     question: (): LineOffer[] => [
-      offer("question.problem", "question.problem", { expr }, { slots: {}, board: expr }),
+      ...(claim ? (frame ? [offer("question.problem", "question.claim.framed", { frame, expr }, { slots: {}, board: expr })] : claim.question()) : [frame ? offer("question.problem", "question.framed", { frame, expr: asked }, { slots: {}, board: asked }) : offer("question.problem", "question.problem", { expr: asked }, { slots: {}, board: asked })]),
       ...sentencesOf(pkg.text).map((s, i) => offer("question.read", "question.read", { sentence: s }, { slots: { sentence: i } })),
     ],
-    assess: (): LineOffer[] => [offer("assess.ask", "assess.ask", { expr })],
-    exampleIntro: (): LineOffer[] => [offer("example.intro", "example.intro", { expr: exampleExpr }, { slots: {}, board: exampleExpr })],
+    assess: (): LineOffer[] => [frame ? offer("assess.ask", "assess.framed", { frame, expr: asked }) : offer("assess.ask", "assess.ask", { expr: asked })],
+    exampleIntro: (): LineOffer[] => claim?.exampleIntro() ?? [exampleFrame
+      ? offer("example.intro", "example.framed", { frame: exampleFrame, expr: exampleExpr }, { slots: {}, board: exampleExpr })
+      : offer("example.intro", patternOf(pkg) ? "pattern.example" : "example.intro", { expr: exampleExpr }, { slots: {}, board: exampleExpr })],
     /** Maya works one step of the easier example. */
     exampleStep: (id: string): LineOffer[] => {
       const step = pkg.easierExample.steps.find((s) => s.id === id);
       if (!step) return [];
-      const show = showOf(step, pkg, "example");
+      if (claim && step.kind === "result") return claim.exampleResult(id);
+      const show = patternExampleShow(pkg, step) ?? showOf(step, pkg, "example");
       const eq = equationOf(step, pkg, "example");
       return [offer("example.step", step.kind === "result" ? "example.result" : "example.step", { show }, { slots: { step: id }, ...(eq ? { board: eq } : {}) })];
     },
-    tryTarget: (): LineOffer[] => [offer("try.target", "try.target", { expr }, { slots: {}, board: expr })],
+    tryTarget: (): LineOffer[] => [framed
+      ? offer("try.target", "try.target.frame", { expr: asked, inverse: framed.inverse }, { slots: {}, board: asked })
+      : offer("try.target", patternOf(pkg) ? "pattern.try" : "try.target", { expr: asked }, { slots: {}, board: asked })],
     /**
      * The help lines of the child's question's step, H0 to H3. The final step ("result", once every work step is done)
      * has one line, an H0 invite to put the whole answer together (#389).
      */
-    help: (id: string): LineOffer[] => {
-      if (id === "result") return [offer("step.invite", "invite.result", { expr }, { slots: { step: "result" }, level: 0 })];
+    help: (id: string, framing: FrameState = "due", compact = false): LineOffer[] => {
+      if (id === "result" && patternOf(pkg)) return patternHelp(pkg, id, offer)!;
+      // On the try path the final step asks for the number (J06): the child has the try, not a division to do.
+      if (id === "result") return claim?.result() ?? [framed?.trial ? offer("step.invite", TRIAL_RESULT_KEY, {}, { slots: { step: "result" }, level: 0 })
+        : offer("step.invite", "invite.result", { expr: solved }, { slots: { step: "result" }, level: 0 })];
       const step = find(id);
-      return step ? stepLines(pkg, step) : [];
+      return step ? stepLines(pkg, step, framing, compact) : [];
     },
     /**
      * The regroup line of the column a carry comes from (the ones of 27 + 39), for a child who plans to write its
@@ -754,31 +1084,67 @@ export function packageLines(pkg: OperationPackage) {
     rightStep: (id: string): LineOffer[] => {
       const step = find(id);
       if (!step) return [];
-      const eq = equationOf(step, pkg, "target");
       const requires = { answer: "right" as const, step: id };
-      return [eq
+      // A right try is the answer itself: said back without the number until the child gives it as the answer.
+      if (step.kind === "try-factor") {
+        const t = trialRight(step);
+        return [offer(t.line, t.key, t.vars, { slots: { step: id }, requires })];
+      }
+      const eq = equationOf(step, pkg, "target");
+      const line = eq
         ? offer("check.right_step", "check.right_step", { eq }, { slots: { step: id }, requires, board: eq })
-        : offer("check.right_step", "check.right_step.plain", { Where: capital(whereOf(step)), where: whereOf(step) }, { slots: { step: id }, requires })];
+        : offer("check.right_step", "check.right_step.plain", { Where: capital(whereOf(step)), where: whereOf(step) }, { slots: { step: id }, requires });
+      // In a yes/no claim (claim.ts), "Yes!" about a step could sound like the claim's answer: those wordings are left out.
+      return [claim?.yesNo ? withoutYes(line) : line];
+    },
+    /**
+     * The same line in its short wordings, with no equation ("Good, the result is done."): for a claim's result whose
+     * equation does not fit beside the claim's question in a 25-word turn (claim.ts, #737 review P2).
+     */
+    rightStepShort: (id: string): LineOffer[] => {
+      const step = find(id);
+      if (!step) return [];
+      const line = offer("check.right_step", "check.right_step.plain", { Where: capital(whereOf(step)), where: whereOf(step) }, { slots: { step: id }, requires: { answer: "right", step: id } });
+      return [claim?.yesNo ? withoutYes(line) : line];
     },
     /** "Not quite.": only after code checked the child's wrong answer for that step. */
     notYet: (id: string): LineOffer[] => {
+      // A wrong try is multiplied out ("236 × 7 = 1652. ..."): on a try step, and on the final answer when the try
+      // finds the answer itself (a missing factor).
+      const trial = id === "result" ? (framed?.trial ?? null) : steps.find((s) => s.id === id && s.kind === "try-factor") ?? null;
+      const tries = trial?.kind === "try-factor" && (id !== "result" || trial.value === (pkg.answer.value.type === "number" ? pkg.answer.value.value : null))
+        ? trialFeedback(trial).map((t) => trialOffer(t, { step: id })) : [];
+      if (id === "result") return [offer("check.not_yet", "check.not_yet", { where: "this answer" }, { slots: { step: id }, requires: { answer: "wrong", step: id } }), ...tries];
       const step = find(id);
-      return step ? [offer("check.not_yet", "check.not_yet", { where: whereOf(step) }, { slots: { step: id }, requires: { answer: "wrong", step: id } })] : [];
+      return step ? [offer("check.not_yet", "check.not_yet", { where: whereOf(step) }, { slots: { step: id }, requires: { answer: "wrong", step: id } }), ...tries] : [];
     },
-    explain: (): LineOffer[] => steps.map((s) => offer("check.explain", "check.explain", { where: whereOf(s) }, { slots: { step: s.id } })),
+    // An evaluate question asks about its parts, never one column of a part ("the ones" of which part?).
+    explain: (): LineOffer[] => steps.filter((s) => !partAt(pkg, s.id)?.inner).map((s) => offer("check.explain", "check.explain", { where: whereOf(s) }, { slots: { step: s.id } })),
+    /** A check of the child's own right answer said with doubt (#605): a lead-in to the first step's line. */
+    together: (): LineOffer[] => [offer("check.together", "check.together", {})],
+    /** A check of a right answer the child says they guessed (#605). */
+    guess: (): LineOffer[] => [offer("check.guess", "check.guess", {})],
+    /** "Your answer is right. One part needs a fix: 7 + 9 = 16.": only after code checked the child's wrong step (#624, D-329). */
+    fix: (id: string): LineOffer[] => {
+      const step = find(id);
+      const eq = step ? equationOf(step, pkg, "target") : null;
+      return step && eq ? [offer("check.fix", "check.fix", { eq, where: whereOf(step) }, { slots: { step: id }, requires: { answer: "wrong", step: id }, board: eq })] : [];
+    },
     thinking: (): LineOffer[] => [offer("check.thinking", "check.thinking", {})],
     /** "Yes! 3/4 + 1/8 = 7/8.", in the form the child gave when it is an equal form code accepted ("= 14/16", #407). */
     answerRight: (form: AnswerValue = pkg.answer.value): LineOffer[] => {
+      if (claim) return claim.answerRight();
       const said = valueText(form);
-      return [offer("answer.right", "answer.right", { expr, answer: said }, { slots: {}, board: `${expr} = ${said}` })];
+      return [offer("answer.right", patternOf(pkg) ? "pattern.answer" : "answer.right", { expr: solved, answer: said }, { slots: {}, board: `${solved} = ${said}` })];
     },
-    answerGive: (): LineOffer[] => [offer("answer.give", "answer.give", { answer })],
+    // A claim's word is given only after two real wrong words once the work is done (D-199, claim.ts).
+    answerGive: (): LineOffer[] => claim?.answerGive() ?? [offer("answer.give", "answer.give", { answer })],
     /** How the parts make the answer ("6 tens and 6 ones make 66."), said before answer.give on the final step (D-199). */
     answerParts: (): LineOffer[] => {
-      const parts = placeParts(pkg.answer.value);
+      const parts = claim ? null : placeParts(pkg.answer.value);
       return parts ? [offer("answer.parts", "answer.parts", parts)] : [];
     },
-    writeAnswer: (form: AnswerValue = pkg.answer.value): LineOffer[] => [offer("write.answer", "write.answer", { answer: valueText(form) })],
+    writeAnswer: (form: AnswerValue = pkg.answer.value): LineOffer[] => claim?.writeAnswer() ?? [offer("write.answer", "write.answer", { answer: valueText(form) })],
     /**
      * An equal fraction when the question asks for the simplest form (#407): "14/16 is the right amount. The question
      * asks for simplest form. Can you simplify it?", only after code checked the child's final answer as that equal form.
@@ -788,7 +1154,13 @@ export function packageLines(pkg: OperationPackage) {
     /** The H1 and H2 help to simplify the child's own equal fraction, on the final step (#407). */
     simplifyOwn: (form: AnswerValue): LineOffer[] =>
       (form.type === "fraction" || form.type === "mixed" ? simplifyLines(form, { step: "result" }) : []),
-    writeYours: (): LineOffer[] => [offer("write.yours", "write.yours", {})],
+    writeYours: (): LineOffer[] => claim?.writeYours() ?? [offer("write.yours", "write.yours", {})],
+    /** A claim's word the child said unsure, or both words: "Which word do you circle: true or false?" (claim.ts). */
+    which: (): LineOffer[] => claim?.which() ?? [],
+    /** A claim question's honest close (claim.ts): no answer, one next step. */
+    honestClose: (): LineOffer[] => claim?.honestClose() ?? [],
+    /** A claim's bare word said back: "You said true. Is true the word you circle?" (claim.ts). */
+    said: (word: string): LineOffer[] => claim?.said(word) ?? [],
     /** "Did you say 15?" for each number Maya may have heard, and "15 or 50?" for each pair that sound alike. */
     heard: (values: readonly AnswerValue[], pairs: readonly [AnswerValue, AnswerValue][]): LineOffer[] => [
       ...unique(values.map(valueText)).map((heard) => offer("confirm.heard", "confirm.heard", { heard }, { slots: { heard } })),
@@ -797,11 +1169,42 @@ export function packageLines(pkg: OperationPackage) {
         return offer("confirm.which", "confirm.which", { heard, other }, { slots: { heard, other } });
       }),
     ],
+    answerOnly: (): LineOffer[] => [offer("confirm.answer", "confirm.answer", {})],
     otherInput: (): LineOffer[] => [offer("input.other", "input.other", {})],
-    redirect: (): LineOffer[] => [offer("redirect.back", "redirect.back", { expr })],
+    redirect: (): LineOffer[] => [offer("redirect.back", "redirect.back", { expr: asked })],
     workbook: (): LineOffer[] => [offer("redirect.workbook", "redirect.workbook", {})],
     decline: (): LineOffer[] => [offer("redirect.decline", "redirect.decline", {})],
-    closeSolved: (by: "child" | "maya"): LineOffer[] => [by === "child" ? offer("close.solved", "close.solved", { expr }) : offer("close.together", "close.together", { expr })],
+    patternClose: (): LineOffer[] => patternClose(pkg, offer),
+    patternTop: (id: string): number | null => patternTopHint(pkg, id, offer),
+    closeSolved: (by: "child" | "maya", workObserved = true): LineOffer[] => [by === "child" ? offer("close.solved", workObserved ? "close.solved" : "close.checked", { expr: asked }) : offer("close.together", "close.together", { expr: asked })],
+    /** The honest close of an "other-topic" question left unsolved after the easier example: never the answer. */
+    closeHonest: (): LineOffer[] => (topicQuestion(pkg.text, pkg.operation) ? [offer("close.honest", "close.topic", {})] : []),
+    /**
+     * A question type's own honest close, said in place of close.stuck (session.ts, honestCloseLines): a pattern's, an
+     * other-topic question's and a claim's; place value, its parts and spot the error give their own. Every other
+     * question has none: it closes with close.stuck (#735), and a missing number left unsolved too (review of #732,
+     * as planned with Lead: Maya when the wave met #698).
+     */
+    closeUnsolved: (): LineOffer[] => {
+      const own = patternClose(pkg, offer);
+      if (own.length > 0) return own;
+      const topic = topicQuestion(pkg.text, pkg.operation) ? [offer("close.honest", "close.topic", {})] : [];
+      return topic.length > 0 ? topic : claim?.honestClose() ?? [];
+    },
+    /** The honest close after help alone (#735): it holds no number, so it gives no answer. */
+    closeStuck: (): LineOffer[] => [offer("close.stuck", "close.stuck", {})],
+    /**
+     * The close after Maya gave the answer, and beside close.stuck: only the approved close.together wording that claims
+     * no finished work ("We worked on {expr} together today."), never "We finished {expr} together" (practice at
+     * 361a05c9, C09 item iii). `{expr}` is the question as the child sees it.
+     */
+    closeGiven: (): LineOffer[] => {
+      const o = offer("close.together", "close.together", { expr: asked });
+      const keep = TEMPLATES["close.together"].map((t, i) => (t === "We worked on {expr} together today." ? i : -1)).filter((i) => i >= 0);
+      return [{ ...o, texts: keep.map((i) => o.texts[i]), wordingIds: keep.map((i) => `${o.key}#${i}`) }];
+    },
+    /** The child's compensation method, named back with the package's numbers: one offer per operand it fits. */
+    method: (): LineOffer[] => compensations(pkg).map((m) => offer("check.method", m.up ? "check.method.up" : "check.method.down", { b: m.b, round: m.round, diff: m.diff }, { slots: { heard: String(m.round) } })),
     repair: (): LineOffer[] => [offer("repair.sorry", "repair.sorry", {})],
     /** The ids of the child's question's work steps, in order. */
     stepIds: steps.map((s) => s.id),
@@ -809,6 +1212,25 @@ export function packageLines(pkg: OperationPackage) {
 }
 
 const unique = (xs: string[]) => [...new Set(xs)];
+
+/** A line without its wordings that start with "Yes", keeping each wording's id. */
+function withoutYes(o: LineOffer): LineOffer {
+  const keep = o.texts.map((_, i) => i).filter((i) => !/^yes\b/i.test(o.texts[i]));
+  return { ...o, texts: keep.map((i) => o.texts[i]), wordingIds: keep.map((i) => o.wordingIds?.[i] ?? `${o.key}#${i}`) };
+}
+
+/**
+ * The compensation forms of a two-number addition (C09): for each operand that is not a whole ten, its nearest ten and
+ * how far apart they are. "27 + 39": 39 to 40 (down: take 1 away), 27 to 30 (down: take 3 away). From the package only.
+ */
+export function compensations(pkg: OperationPackage): { b: number; round: number; diff: number; up: boolean }[] {
+  const op = pkg.operation;
+  if (op.kind !== "add" || op.operands.length !== 2 || !op.operands.every((n) => typeof n === "number" && Number.isInteger(n) && n > 10)) return [];
+  return (op.operands as number[]).flatMap((b) => {
+    const round = Math.round(b / 10) * 10;
+    return round === b ? [] : [{ b, round, diff: Math.abs(round - b), up: round < b }];
+  });
+}
 
 /** The offer a choice names: the same line with the same slots, or null. */
 export function findOffer(offers: readonly LineOffer[], choice: LineChoice): LineOffer | null {
@@ -833,7 +1255,8 @@ export function normalSlots(raw: Slots | Record<string, unknown>): Slots {
  * Every text any line can give for this package, in every variant: what Maya can ever say in math. `heard` adds the
  * confirmation lines for those numbers. For tests and the review copy.
  */
-export function allLineTexts(pkg: OperationPackage, heardValues: readonly AnswerValue[] = []): string[] {
+export function allLineTexts(given: OperationPackage, heardValues: readonly AnswerValue[] = []): string[] {
+  const pkg = claimView(spotView(withEvaluateExample(given)));
   const l = packageLines(pkg);
   const heard = [...new Map(heardValues.map((v) => [valueText(v), v])).values()];
   // An equal fraction the child said (14/16 for 7/8, #407): said back as accepted, or as an equal form to simplify.
@@ -841,12 +1264,27 @@ export function allLineTexts(pkg: OperationPackage, heardValues: readonly Answer
   const offers = [
     ...equalForms.flatMap((v) => [...l.answerRight(v), ...l.writeAnswer(v), ...l.equal(v, simplestWords(pkg)), ...l.simplifyOwn(v)]),
     ...l.hello(), ...l.question(), ...l.assess(), ...l.exampleIntro(), ...pkg.easierExample.steps.flatMap((s) => l.exampleStep(s.id)),
-    ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id), ...l.regroupOut(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.help("result"), ...l.explain(),
+    ...l.tryTarget(), ...l.stepIds.flatMap((id) => [...l.help(id, "due"), ...l.help(id, "heard"), ...l.help(id, "done"), ...l.help(id, "due", true), ...l.help(id, "heard", true), ...l.regroupOut(id), ...l.rightStep(id), ...l.notYet(id)]), ...l.help("result"), ...l.notYet("result"), ...l.explain(),
     ...l.thinking(), ...l.answerRight(), ...l.answerGive(), ...l.answerParts(), ...l.writeAnswer(), ...l.writeYours(), ...l.heard(heard, heard.flatMap((a) => heard.map((b) => [a, b] as [AnswerValue, AnswerValue]))),
-    ...l.otherInput(), ...l.redirect(), ...l.workbook(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("maya"), ...l.repair(),
+    ...l.answerOnly(), ...l.otherInput(), ...l.redirect(), ...l.workbook(), ...l.decline(), ...l.closeSolved("child"), ...l.closeSolved("child", false), ...l.closeSolved("maya"), ...l.closeHonest(), ...l.closeUnsolved(), ...l.closeStuck(), ...l.closeGiven(), ...l.method(), ...l.repair(),
+    ...l.together(), ...l.guess(), ...l.stepIds.flatMap(l.fix), ...l.patternClose(), ...(pkg.steps.some((st) => st.kind === "claim-compare") ? l.stepIds.flatMap((id) => l.rightStepShort(id)) : []), ...l.which(), ...l.honestClose(), ...(pkg.item?.regions.flatMap((r) => (r.kind === "choice" ? r.choices : [])) ?? []).flatMap(l.said),
   ];
-  const extra = [...fixedOffers(), ...areaOffers(pkg)];
+  const extra = [...fixedOffers(), ...areaOffers(pkg), ...heldOffers(true)];
   return [...new Set([...offers, ...offers.map(spokenOffer), ...extra].flatMap((o) => o.texts.map(sentence)))];
+}
+
+/**
+ * Maya's whole turn on a question she cannot teach yet (#527, D-327): hello and that she is an AI when she has not said
+ * hello yet, then plainly that she cannot teach this question yet, then an invitation to pick another question on the
+ * page. A hold found during the call, after the hello, says the last two only. Needs no package.
+ */
+export function heldOffers(hello: boolean): LineOffer[] {
+  return [...(hello ? [offer("held.hello", "held.hello", {})] : []), offer("held.cannot", "held.cannot", {}), offer("held.next", "held.next", {})];
+}
+
+/** The held turn's sentences, as Maya says them and as the desk shows them before a chat. */
+export function heldSentences(hello: boolean): string[] {
+  return heldOffers(hello).map((o) => o.texts[0]);
 }
 
 /** Fixed replies. Each reply is its own turn so the grade 1 limit also holds. */
@@ -864,7 +1302,7 @@ export function areaOffers(pkg: OperationPackage): LineOffer[] {
 /** Spoken versions keep the same checked math and require no visual action. */
 export function spokenOffer(o: LineOffer): LineOffer {
   if (o.line === "input.other") return offer("input.other", "input.spoken", {});
-  const keep = o.texts.map((_, i) => i).filter((i) => !/\b(?:look|watch|see|show me|follow along|find|bring down|write|put|on top|below|underneath|at the bottom)\b/i.test(o.texts[i]));
+  const keep = o.texts.map((_, i) => i).filter((i) => !/\b(?:look|watch|see|show me|follow along|find|bring down|write|put|on top|below|underneath|at the bottom|circle|circled|color|colored|chart)\b/i.test(o.texts[i]));
   // An equation says the same checked step aloud when every wording needs a visual action.
   if (keep.length) return { ...o, texts: keep.map((i) => o.texts[i]), wordingIds: keep.map((i) => `${o.key}#${i}`) };
   if (o.board) return { ...o, texts: [`${o.board}.`], wordingIds: [`spoken:${o.key}:${o.slots.step ?? ""}#0`] };

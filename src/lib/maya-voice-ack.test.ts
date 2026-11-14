@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ACK_PHRASES, acknowledgementProblem, nextAcknowledgement } from "./maya-voice-ack";
+import { ACK_LIMIT_MS, ACK_NOT_STREAMED_MS, ACK_PHRASES, acknowledgementProblem, nextAcknowledgement } from "./maya-voice-ack";
 
 // A word list of its own, so a change to the rule cannot quietly pass the bank.
 const FORBIDDEN = /\d|\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|first|second|third|half|ones|tens|hundreds|place|column|digit|number|add|plus|sum|minus|subtract|take|times|multiply|divide|equal|carry|borrow|regroup|write|look|check|try|answer|right|wrong|correct)\b/i;
@@ -36,6 +36,16 @@ describe("the acknowledgement bank (gate check, #532, D-195)", () => {
     "Good job.",
   ])("refuses %s", (line) => {
     expect(acknowledgementProblem(line)).not.toBeNull();
+  });
+});
+
+describe("when the acknowledgement comes", () => {
+  it("waits 2600 ms for a turn that can stream, after the first streamed sentence of real calls (1.6 to 2.2 s)", () => {
+    expect(ACK_LIMIT_MS).toBe(2600);
+  });
+
+  it("comes at once for a turn that cannot stream", () => {
+    expect(ACK_NOT_STREAMED_MS).toBe(0);
   });
 });
 

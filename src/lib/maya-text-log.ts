@@ -17,7 +17,7 @@ export interface TextLogInitial {
 export type TextLogEvent =
   | { kind: "input"; at: number; event: SessionEvent; error?: TraceError }
   | { kind: "request"; at: number; requestId: number; source: "model" | "repair" }
-  | { kind: "response"; at: number; requestId: number; proposal?: unknown; error?: TraceError; ms: number; fenced?: true }
+  | { kind: "response"; at: number; requestId: number; proposal?: unknown; error?: TraceError; ms: number; fenced?: true; sent?: string[]; firstSayMs?: number }
   | { kind: "review"; at: number; requestId: number; reviews: TalkReview[]; reviewMs?: number }
   | { kind: "fallback"; at: number; proposal: unknown }
   | { kind: "recover"; at: number }
@@ -42,7 +42,9 @@ export interface TextFold {
   obligations: TraceObligation[];
   childState: "listening" | "child_speaking";
   request: { id: number; source: "model" | "repair" } | null;
-  candidate: { requestId: number; proposal: unknown; ms: number; source: "model" | "repair"; fenced?: true } | null;
+  candidate: { requestId: number; proposal: unknown; ms: number; source: "model" | "repair"; fenced?: true; firstSayMs?: number } | null;
+  /** D-341: sentences of the current Maya turn already streamed to the child; every later attempt of the turn starts with them. */
+  sent?: string[];
   attempts: TraceAttempt[];
   deferred: { event: SessionEvent; childId: number | null }[];
   pending: PendingOutput[];
@@ -134,6 +136,7 @@ function cancel(s: TextFold, reason: string, urgent = false, revoke = true) {
   s.request = null;
   s.candidate = null;
   s.attempts = [];
+  delete s.sent;
   // These controller outputs are debts, not speculative state. Cancellation never undoes them.
   const keep = urgent ? ["safety"] : ["open", "repair", "safety"];
   s.pending = s.pending.filter((p) => {
@@ -175,9 +178,11 @@ function receiveReading(s: TextFold, reading: unknown, at: number) {
   s.session = r.session;
   syncSafety(s, at);
   if (s.session.safety.severity !== previous) {
-    const request = s.request, candidate = s.candidate, attempts = s.attempts;
+    // Words already streamed stay said: the guidance follows them in the saved turn (round 4).
+    const request = s.request, candidate = s.candidate, attempts = s.attempts, sent = s.sent;
     cancel(s, "superseded by safety", true);
     s.request = request; s.candidate = candidate; s.attempts = attempts;
+    if (sent?.length) s.sent = sent;
   }
   takeEffects(s, r.effects, at);
 }
@@ -189,7 +194,7 @@ function takeEffects(s: TextFold, effects: Effect[], at: number, attempts: Trace
   const batches = effects.flatMap((e) => e.kind === "board" ? [e.batch] : []);
   if (says.length || attempts.length) {
     const act = says.at(-1)?.act ?? (attempts.at(-1)?.proposal as { act?: Act } | null)?.act ?? "close";
-    const entry: Extract<TraceTurn, { kind: "maya" }> = { kind: "maya", at, state: stateBefore, stateAfter: s.session.state, attempts: attempts.length ? attempts : [{ source: "controller", proposal: null, refusal: null }], output: null };
+    const entry: Extract<TraceTurn, { kind: "maya" }> = { kind: "maya", at, state: stateBefore, stateAfter: s.session.state, finalMisses: s.session.finalMisses ?? 0, attempts: attempts.length ? attempts : [{ source: "controller", proposal: null, refusal: null }], output: null };
     if (says.length || (attempts.length && !attempts.at(-1)?.refusal && !attempts.at(-1)?.error)) {
       const kinds: TraceObligation["kind"][] = act === "open" ? ["opening_due"] : act === "repair" ? ["repair_due"] : act === "safety" ? ["safety_due"] : act === "close" ? ["child_turn_pending", "content_problem"] : s.session.turn === null ? ["child_turn_pending"] : [];
       const ids = s.obligations.filter((o) => o.status === "pending" && kinds.includes(o.kind) && !s.pending.some((p) => p.obligations.includes(o.id))).map((o) => o.id);
@@ -254,7 +259,7 @@ function flushDeferred(s: TextFold) {
 }
 function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt, reviews?: TalkReview[]) {
   const before = s.session.state;
-  const event: SessionEvent = { type: "proposal", at: Math.max(at, s.session.now ?? 0), proposal: value, talkReviews: reviews };
+  const event: SessionEvent = { type: "proposal", at: Math.max(at, s.session.now ?? 0), proposal: value, talkReviews: reviews, ...(attempt.source === "fallback" ? { fallback: true } : {}), ...(s.sent?.length ? { sent: [...s.sent] } : {}) };
   let r = step(s.session, event);
   let controlEvent = event;
   let scene = s.scene;
@@ -275,11 +280,14 @@ function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt
   attempt.refusal = r.refusal;
   const talk = r.effects.flatMap((e) => e.kind === "say" ? e.talk ?? [] : []);
   if (talk.length) attempt.talk = talk;
+  const dropped = r.effects.flatMap((e) => e.kind === "say" ? e.dropped ?? [] : []);
+  if (dropped.length) attempt.dropped = dropped;
   if (attempt.source !== "fallback" || !r.refusal) s.attempts.push(attempt);
   if (r.refusal && !s.session.outcome) { takeEffects(s, r.effects, at); return; }
   s.scene = scene;
   takeEffects(s, r.effects, at, s.attempts, before);
   s.attempts = [];
+  delete s.sent;
   flushDeferred(s);
 }
 export function initialTextState(initial: TextLogInitial): TextFold {
@@ -350,11 +358,12 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
     case "response": {
       if (s.request?.id !== e.requestId) break;
       const source = s.request.source;
+      if (e.sent?.length) s.sent = [...(s.sent ?? []), ...e.sent];
       if (e.error) {
-        s.attempts.push({ source, proposal: null, refusal: null, error: e.error, ms: e.ms });
+        s.attempts.push({ source, proposal: null, refusal: null, error: e.error, ms: e.ms, ...(e.firstSayMs !== undefined ? { firstSayMs: e.firstSayMs } : {}) });
         s.request = null;
       } else {
-        s.candidate = { requestId: e.requestId, proposal: e.proposal, ms: e.ms, source, ...(e.fenced ? { fenced: true as const } : {}) };
+        s.candidate = { requestId: e.requestId, proposal: e.proposal, ms: e.ms, source, ...(e.fenced ? { fenced: true as const } : {}), ...(e.firstSayMs !== undefined ? { firstSayMs: e.firstSayMs } : {}) };
         const reading = e.proposal && typeof e.proposal === "object" ? (e.proposal as { reading?: unknown }).reading : undefined;
         receiveReading(s, reading, e.at);
       }
@@ -364,7 +373,7 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
       if (s.request?.id !== e.requestId || s.candidate?.requestId !== e.requestId) break;
       const candidate = s.candidate;
       s.request = null; s.candidate = null;
-      proposal(s, candidate.proposal, e.at, { source: candidate.source, proposal: candidate.proposal, refusal: null, ms: candidate.ms, ...(candidate.fenced ? { fenced: true as const } : {}), ...(e.reviewMs !== undefined ? { reviewMs: e.reviewMs } : {}) }, e.reviews);
+      proposal(s, candidate.proposal, e.at, { source: candidate.source, proposal: candidate.proposal, refusal: null, ms: candidate.ms, ...(candidate.fenced ? { fenced: true as const } : {}), ...(candidate.firstSayMs !== undefined ? { firstSayMs: candidate.firstSayMs } : {}), ...(e.reviewMs !== undefined ? { reviewMs: e.reviewMs } : {}) }, e.reviews);
       break;
     }
     case "fallback": proposal(s, e.proposal, e.at, { source: "fallback", proposal: e.proposal, refusal: null }); break;

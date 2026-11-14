@@ -113,7 +113,7 @@ describe("a text session with the fake model", () => {
 describe("an unchecked number or board proposal never reaches the child", () => {
   it("repairs a wrong-answer acceptance by asking the model again once, with the refusal", async () => {
     const wrong = v2({ act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [{ value: num(56), step: "result", verdict: "right" }] } });
-    const fixed = v2({ act: "guide", step: "ones", level: 0, parts: [{ line: "step.invite", slots: { step: "ones" } }], reading: { answers: [{ value: num(56), step: "result", verdict: "wrong" }] } });
+    const fixed = v2({ act: "guide", step: "ones", level: 0, parts: [{ line: "check.not_yet", slots: { step: "result" } }, { line: "step.invite", slots: { step: "ones" } }], reading: { answers: [{ value: num(56), step: "result", verdict: "wrong" }] } });
     const { session, model } = scripted([OPEN, wrong, fixed]);
     await session.start();
     const out = await session.child("I got 56.");
@@ -235,8 +235,9 @@ describe("a twice-refused proposal keeps what code can check of its reading (#38
     await session.start();
     const out = await session.child("Seven plus nine is sixteen. Two plus three is five.");
     expect(sources(session)).toEqual(["model", "repair", "fallback"]);
+    // Rule A (2026-11-12): each step is checked on its own, so the right ones are credited and the wrong tens dropped.
     expect(session.session.done).toEqual(["ones"]);
-    expect(lastMayaTurn(session).attempts[2].proposal).toMatchObject({ reading: { answers: [answer(16, "ones", "right")] } });
+    expect((lastMayaTurn(session).attempts[2].proposal as { reading?: { answers?: { step: string }[] } }).reading?.answers?.map((a) => a.step)).toEqual(["ones"]);
     expect(said(out)).not.toMatch(/2 \+ 3 = 5|\b66\b/);
 
     // A reading with only a wrong step read as right keeps nothing: no reading, no step done, no "Yes".
@@ -298,7 +299,7 @@ describe("a twice-refused proposal keeps what code can check of its reading (#38
     const b = scripted([OPEN, accept, writeAgain]);
     await b.session.start();
     await b.session.child("I got 66!");
-    expect(said(await b.session.child("Yay."))).toMatch(/write 66/i);
+    expect(said(await b.session.child("Yay."))).toMatch(/\b(?:write|put) 66\b/i);
   });
 
   it("uses the final-step help line once every column is done: no workaround with the question line", async () => {
@@ -353,16 +354,14 @@ describe("the final answer and the final step (D-199)", () => {
     await session.start();
     await session.child("Seven plus nine is sixteen.");
     await session.child("Two plus three plus one is six.");
-    const once = await session.child("56?");
+    const once = await session.child("56.");
     expect(said(once)).not.toMatch(/\b66\b/);
-    const out = await session.child("65?");
+    const out = await session.child("65.");
     expect(lastMaya(session).attempts.map((a) => [a.source, a.refusal?.code ?? null])).toEqual([["model", "act_not_allowed"], ["repair", "act_not_allowed"], ["fallback", null]]);
-    expect(lastMaya(session).output?.act).toBe("give_answer");
-    expect(said(out)).toMatch(/6 tens and 6 ones make 66\./);
-    expect(said(out)).toMatch(/write 66 on your (paper|page)/i);
-    expect(out.say.flatMap(sentences).every((x) => SAFE.has(x))).toBe(true);
-    const end = await session.child("Okay.");
-    expect(end.ended).toMatchObject({ reason: "solved", assistance: "answer_given", understanding: "uncertain", highestHint: 4 });
+    expect(lastMaya(session).output?.act).toBe("close");
+    expect(said(out)).not.toMatch(/\b66\b/);
+    expect(said(out)).toContain("We worked on");
+    expect(out.ended).toMatchObject({ reason: "maya_closed", understanding: "uncertain" });
     expect(checkTrace(JSON.parse(JSON.stringify(session.trace()))).ok).toBe(true);
   });
 });
@@ -444,7 +443,7 @@ describe("the clock and the end", () => {
 });
 
 describe("inputs from the voice agent (#396)", () => {
-  const GUIDE = v2({ act: "guide", step: "ones", level: 0, parts: [{ line: "step.invite", slots: { step: "ones" } }], reading: { start: "has_work", answers: [{ value: num(56), step: "result", verdict: "wrong" }] } });
+  const GUIDE = v2({ act: "guide", step: "ones", level: 0, parts: [{ line: "check.not_yet", slots: { step: "result" } }, { line: "step.invite", slots: { step: "ones" } }], reading: { start: "has_work", answers: [{ value: num(56), step: "result", verdict: "wrong" }] } });
   const ACCEPT = v2({ act: "accept_answer", parts: [{ line: "answer.right" }], reading: { answers: [{ value: num(66), step: "result", verdict: "right" }] } });
   const CLOSE = v2({ act: "close", parts: [{ warm: "closing" }] });
   const checked = (t: unknown) => expect(checkTrace(JSON.parse(JSON.stringify(t)))).toMatchObject({ ok: true });
@@ -900,14 +899,19 @@ describe("a trace never stores an error's own text (R382-3-1)", () => {
       },
     });
     const raw: unknown[] = [];
-    const session = createTextSession({ callId: "secret-1", package: PKG, model, clock: () => (now += 500), random: 4, onError: (e) => raw.push(e) });
-    await session.start();
-    for (let i = 0; i < errors.length && !session.ended; i++) await session.child("I don't know.");
-    const trace = await session.finish();
-    const json = JSON.stringify(trace);
+    // A fresh call for each pair of model failures keeps the full error matrix binding.
+    // A single call now ends after H3, so later payloads would otherwise never reach the adapter.
+    const traces = [];
+    for (let i = 0; i < errors.length; i += 2) {
+      const session = createTextSession({ callId: `secret-${i}`, package: PKG, model, clock: () => (now += 500), random: 4, onError: (e) => raw.push(e) });
+      await session.start();
+      await session.child("I don't know.");
+      traces.push(await session.finish());
+    }
+    const json = JSON.stringify(traces);
 
     // Every error field is a known code with its fixed wording; the raw errors went only to the debug hook.
-    const errorFields = trace.turns.flatMap((t) => (t.kind === "maya" ? t.attempts.flatMap((a) => (a.error ? [a.error] : [])) : []));
+    const errorFields = traces.flatMap(trace => trace.turns.flatMap((t) => (t.kind === "maya" ? t.attempts.flatMap((a) => (a.error ? [a.error] : [])) : [])));
     expect(errorFields.length).toBeGreaterThanOrEqual(30);
     for (const e of errorFields) expect(e).toEqual({ code: e.code, message: ERROR_MESSAGES[e.code], ...(e.status !== undefined ? { status: e.status } : {}) });
     expect(new Set(errorFields.map((e) => e.code))).toEqual(new Set(["http_401", "http_403", "http_429", "http_5xx", "schema_invalid", "http_4xx", "network", "unknown"]));
@@ -915,7 +919,7 @@ describe("a trace never stores an error's own text (R382-3-1)", () => {
     for (const p of payloads) expect(json, p).not.toContain(p);
     for (const k of keys) for (const piece of [k.slice(0, 10), k.slice(-10)]) expect(json, piece).not.toContain(piece);
     expect(json).not.toMatch(/OpenRouter (answered|could not)/);
-    expect(checkTrace(JSON.parse(json))).toMatchObject({ ok: true });
+    for (const trace of traces) expect(checkTrace(trace)).toMatchObject({ ok: true });
   });
 
   it("classifies the AI client's errors into fixed codes, keeping only the status", () => {
@@ -1021,7 +1025,7 @@ describe("the prompt names only real lines and groups (practice runs 6 and 7)", 
     expect(SYSTEM_PROMPT).toMatch(/then the "step\.invite" line for "result"/);
     expect(SYSTEM_PROMPT).not.toMatch(/then a "question" line/);
     // D-199: after two wrong final answers, the model gives the answer and leaves its words to code.
-    expect(SYSTEM_PROMPT).toMatch(/wrong a second time, code offers only "give_answer": use it with no line/);
+    expect(SYSTEM_PROMPT).toContain("close.stuck followed by close.together");
     // D-202: own words follow the plain-language rules, and the code check refuses the banned phrases.
     expect(SYSTEM_PROMPT).toMatch(/plain-language rules \(D-202\).*Never "in all", "altogether", "all together", "total" or "left over": a code check refuses them/);
   });

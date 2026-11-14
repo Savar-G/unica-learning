@@ -1,0 +1,297 @@
+import { inference, initializeLogger, normalizeLanguage, stt, VADEventType, voice, type VAD, type VADEvent } from "@livekit/agents";
+import { AudioFrame } from "@livekit/rtc-node";
+import { describe, expect, it } from "vitest";
+import { detectorVad, finalSignals, HeardSignals, LEVEL_END_DBFS, PrepareSignal, silentFinal } from "./heard-signals";
+
+initializeLogger({ pretty: false, level: "silent" });
+
+const EN = normalizeLanguage("en");
+const heard = (text: string, confidence: number, words?: { text: string; confidence: number }[], startTime = 0, endTime = 0): stt.SpeechData =>
+  ({ language: EN, text, startTime, endTime, confidence, ...(words ? { words: words.map(w => voice.createTimedString(w)) } : {}) });
+const frame = (amplitude: number, ms = 20) => {
+  const samples = 16 * ms;
+  return new AudioFrame(new Int16Array(samples).fill(amplitude), 16_000, 1, samples);
+};
+
+/** A detector whose events the test sends. */
+function fakeVad() {
+  const queue: VADEvent[] = [];
+  let wake: (() => void) | null = null;
+  const pushed: AudioFrame[] = [];
+  const event = (type: VADEventType, speechDuration: number, speaking: boolean, silenceDuration = 0): VADEvent =>
+    ({ type, samplesIndex: 0, timestamp: 0, speechDuration, silenceDuration, frames: [], probability: speaking ? 0.9 : 0.1, inferenceDuration: 1, speaking, rawAccumulatedSilence: 0, rawAccumulatedSpeech: 0 });
+  const stream = {
+    pushFrame: (f: AudioFrame) => void pushed.push(f),
+    close: () => {},
+    async *[Symbol.asyncIterator]() {
+      for (;;) {
+        while (queue.length) yield queue.shift()!;
+        await new Promise<void>(r => (wake = r));
+      }
+    },
+  };
+  return {
+    vad: { stream: () => stream } as unknown as VAD,
+    pushed,
+    async send(type: VADEventType, speechDuration: number, speaking: boolean, silenceDuration = 0) {
+      queue.push(event(type, speechDuration, speaking, silenceDuration));
+      wake?.();
+      for (let i = 0; i < 3; i++) await new Promise(r => setImmediate(r));
+    },
+  };
+}
+
+describe("the signals of a final transcript (worker log only)", () => {
+  it("does not reuse the prior final's loud-frame time for a quiet new turn", async () => {
+    const v = fakeVad();
+    let now = 1000;
+    const signals = new HeardSignals(v.vad, () => now);
+    try {
+      signals.frame(frame(1000));
+      await v.send(VADEventType.END_OF_SPEECH, 100, false);
+      expect(signals.speechEnd?.levelEndAt).toBe(1000);
+      signals.final([heard("four", 1)]);
+      now = 2000;
+      signals.frame(frame(100));
+      await v.send(VADEventType.END_OF_SPEECH, 100, false);
+      expect(signals.speechEnd?.levelEndAt).toBeNull();
+    } finally { signals.close(); }
+  });
+
+  it("measures words, confidences, the speech-to-text's span and the input level", () => {
+    const s = finalSignals([heard("Yes!", 0.42, [{ text: "Yes!", confidence: 0.42 }], 1.2, 1.5)], { peak: 0, sumSquares: 0, samples: 0 }, 0);
+    expect(s).toEqual({ words: 1, confidence: 0.42, minWordConfidence: 0.42, sttSpeechMs: 300, vadSpeechMs: 0, peakDbfs: -120, rmsDbfs: -120 });
+    const loud = finalSignals([heard("twenty four", 0.9)], { peak: 0.5, sumSquares: 0.01 * 100, samples: 100 }, null);
+    expect(loud).toMatchObject({ words: 2, minWordConfidence: null, sttSpeechMs: null, vadSpeechMs: null, peakDbfs: -6, rmsDbfs: -20 });
+  });
+
+  it("silence: a phantom one-word final has no detector speech and no sound", async () => {
+    const v = fakeVad();
+    const signals = new HeardSignals(v.vad);
+    for (let i = 0; i < 50; i++) signals.frame(frame(0));
+    await v.send(VADEventType.INFERENCE_DONE, 0, false);
+    expect(signals.final([heard("Yes!", 1)])).toMatchObject({ words: 1, vadSpeechMs: 0, peakDbfs: -120 });
+    expect(v.pushed).toHaveLength(50);
+  });
+
+  it("a quiet real 'yes': the detector's speech and the level are counted, once per final", async () => {
+    const v = fakeVad();
+    const signals = new HeardSignals(v.vad);
+    signals.frame(frame(300));
+    await v.send(VADEventType.START_OF_SPEECH, 60, true);
+    await v.send(VADEventType.INFERENCE_DONE, 250, true);
+    // The final comes while the detector still hears the segment: 250 ms now, the rest at the next final.
+    const first = signals.final([heard("yes", 0.8)]);
+    expect(first.vadSpeechMs).toBe(250);
+    expect(first.peakDbfs).toBeGreaterThan(-41);
+    expect(first.peakDbfs).toBeLessThan(-40);
+    await v.send(VADEventType.END_OF_SPEECH, 400, false);
+    expect(signals.final([heard("six", 0.8)]).vadSpeechMs).toBe(150);
+    // Nothing heard since: nothing counted, and no sound.
+    expect(signals.final([heard("no", 0.8)])).toMatchObject({ vadSpeechMs: 0, peakDbfs: -120 });
+  });
+
+  it("with no detector (the fakes) the detector's speech is unknown", () => {
+    const signals = new HeardSignals(undefined);
+    signals.frame(frame(1000));
+    expect(signals.final([heard("24", 0.95)])).toMatchObject({ words: 1, vadSpeechMs: null });
+  });
+
+  it("LiveKit's own Silero detector, as a real call runs it: silence gives no detector speech", async () => {
+    const signals = new HeardSignals(new inference.VAD({ model: "silero" }));
+    try {
+      for (let i = 0; i < 100; i++) {
+        signals.frame(frame(0));
+        if (i % 10 === 0) await new Promise(r => setTimeout(r, 5));
+      }
+      await new Promise(r => setTimeout(r, 200));
+      expect(signals.final([heard("Yes!", 1)])).toMatchObject({ words: 1, vadSpeechMs: 0, peakDbfs: -120 });
+    } finally { signals.close(); }
+  });
+});
+
+describe("the prepare signal (V2b)", () => {
+  function signal(accept = () => true) {
+    const sent: string[] = [];
+    let now = 1000;
+    const p = new PrepareSignal((text) => { if (!accept()) return false; sent.push(text); return true; }, () => now);
+    return { p, sent, at: (t: number) => { now = t; } };
+  }
+
+  it("gives the newest partial as it came, once at the end of speech, and again only for different words", () => {
+    const { p, sent, at } = signal();
+    p.partial("twelve minus");
+    // Before the end of speech: no hint.
+    expect(sent).toEqual([]);
+    p.partial("Twelve minus eight is four");
+    at(1200);
+    p.speechEnd(1200);
+    expect(sent).toEqual(["Twelve minus eight is four"]);
+    // Case, spaces and punctuation are not new words.
+    p.partial("twelve  minus eight, is four.");
+    expect(sent).toHaveLength(1);
+    p.partial("twelve minus eight is four apples");
+    expect(sent).toEqual(["Twelve minus eight is four", "twelve minus eight is four apples"]);
+    const stats = p.final("12 minus 8 is 4.", 2400);
+    expect(stats).toEqual({ interimWordsAtEnd: 5, interimEqualsFinal: false, prepareLeadMs: 1200, prepares: 2, firstPrepareAt: 1200 });
+  });
+
+  it("says whether the final equals the partial at the end of speech, after normalizing", () => {
+    const { p } = signal();
+    p.partial("I don't know");
+    p.speechEnd(500);
+    expect(p.final("I don't know.", 900)).toMatchObject({ interimWordsAtEnd: 3, interimEqualsFinal: true, prepareLeadMs: 400, prepares: 1 });
+  });
+
+  it("stops at a new start of speech until the next end, and never gives the same words twice", () => {
+    const { p, sent } = signal();
+    p.partial("twenty");
+    p.speechEnd(100);
+    p.speechStart();
+    p.partial("twenty four");
+    expect(sent).toEqual(["twenty"]);
+    p.speechEnd(900);
+    expect(sent).toEqual(["twenty", "twenty four"]);
+    p.speechStart();
+    p.speechEnd(1500);
+    expect(sent).toHaveLength(2);
+  });
+
+  it("does not count a dropped hint, and tries it again at the next partial", () => {
+    let open = false;
+    const { p, sent } = signal(() => open);
+    p.partial("four");
+    p.speechEnd(100);
+    expect(sent).toEqual([]);
+    open = true;
+    p.partial("four.");
+    expect(sent).toEqual(["four."]);
+    expect(p.final("4.", 300).prepares).toBe(1);
+  });
+
+  it("has nothing to say with no end of speech before the final, and starts fresh after it", () => {
+    const { p, sent } = signal();
+    p.partial("six");
+    expect(p.final("6.", 100)).toEqual({ interimWordsAtEnd: null, interimEqualsFinal: null, prepareLeadMs: null, prepares: 0, firstPrepareAt: null });
+    p.speechEnd(200);
+    expect(sent).toEqual([]);
+  });
+});
+
+describe("the detector's own end of speech (the hold's check, 2026-11-13)", () => {
+  it("is when the speech ended: the time the end came, less the silence the detector waited for", async () => {
+    let now = 10_000;
+    const v = fakeVad();
+    const signals = new HeardSignals(v.vad, () => now);
+    await v.send(VADEventType.START_OF_SPEECH, 60, true);
+    await v.send(VADEventType.INFERENCE_DONE, 900, true);
+    expect(signals.speechEndAt).toBeNull();
+    // The detector reports the end after 250 ms of silence: the child stopped at 9750.
+    await v.send(VADEventType.END_OF_SPEECH, 900, false, 250);
+    expect(signals.speechEndAt).toBe(9750);
+    // The speech-to-text holds the turn: the end stays the same however long it waits.
+    now = 13_500;
+    await v.send(VADEventType.INFERENCE_DONE, 0, false);
+    expect(signals.speechEndAt).toBe(9750);
+    // A final starts a new window.
+    signals.final([heard("then it's 24", 0.9)]);
+    expect(signals.speechEndAt).toBeNull();
+  });
+
+  it("is forgotten when speech starts again before the final", async () => {
+    let now = 5_000;
+    const v = fakeVad();
+    const signals = new HeardSignals(v.vad, () => now);
+    await v.send(VADEventType.START_OF_SPEECH, 60, true);
+    await v.send(VADEventType.END_OF_SPEECH, 400, false, 250);
+    expect(signals.speechEndAt).toBe(4750);
+    now = 6_000;
+    await v.send(VADEventType.START_OF_SPEECH, 60, true);
+    await v.send(VADEventType.INFERENCE_DONE, 120, true);
+    expect(signals.speechEndAt).toBeNull();
+  });
+
+  it("is unknown with no detector (the fakes)", () => {
+    expect(new HeardSignals(undefined).speechEndAt).toBeNull();
+  });
+});
+
+describe("the worker's own detector (V2, 2026-11-13)", () => {
+  it("is a VAD of its own with the call's minimum silence: the session's VAD keeps LiveKit's", () => {
+    const session = new inference.VAD({ model: "silero" });
+    const own = detectorVad(session, 300) as inference.VAD;
+    expect(own).not.toBe(session);
+    expect(own).toBeInstanceOf(inference.VAD);
+    expect(own.minSilenceDuration).toBe(300);
+    // LiveKit Agents 1.9.5's own default, which the session keeps for its interruptions.
+    expect(session.minSilenceDuration).toBe(250);
+  });
+
+  it("is the session's VAD with no setting, and none with no session VAD (the fakes)", () => {
+    const session = new inference.VAD({ model: "silero" });
+    expect(detectorVad(session, null)).toBe(session);
+    expect(detectorVad(undefined, 300)).toBeUndefined();
+    const other = { stream: () => { throw new Error("unused"); } } as unknown as VAD;
+    expect(detectorVad(other, 300)).toBe(other);
+  });
+
+  it("marks the end of speech, when the detector reported it, and the last loud frame before it", async () => {
+    let now = 20_000;
+    const v = fakeVad();
+    const signals = new HeardSignals(v.vad, () => now);
+    const ends: unknown[] = [];
+    signals.onSpeechEnd = (end) => ends.push(end);
+    signals.frame(frame(3000));
+    now = 20_400;
+    signals.frame(frame(3000));
+    now = 20_420;
+    // Below the level: a quiet room after the child stopped.
+    signals.frame(frame(50));
+    await v.send(VADEventType.START_OF_SPEECH, 60, true);
+    now = 20_700;
+    await v.send(VADEventType.END_OF_SPEECH, 600, false, 250);
+    const end = { endAt: 20_450, heardAt: 20_700, levelEndAt: 20_400 };
+    expect(signals.speechEnd).toEqual(end);
+    expect(ends).toEqual([end]);
+    expect(20 * Math.log10(50 / 32768)).toBeLessThan(LEVEL_END_DBFS);
+  });
+});
+
+describe("the one rule that drops a final transcript (silentFinal)", () => {
+  const LIMIT = -50;
+  it("drops a final with no detector speech and digital silence", () => {
+    expect(silentFinal({ vadSpeechMs: 0, peakDbfs: -120 }, LIMIT)).toBe(true);
+  });
+
+  it("keeps a quiet real answer: any detector speech, however low the level", () => {
+    // "six" said softly: 120 ms of detector speech at a low level.
+    expect(silentFinal({ vadSpeechMs: 120, peakDbfs: -60 }, LIMIT)).toBe(false);
+  });
+
+  it("keeps a final with no detector speech but a peak at or above the limit", () => {
+    expect(silentFinal({ vadSpeechMs: 0, peakDbfs: -50 }, LIMIT)).toBe(false);
+    expect(silentFinal({ vadSpeechMs: 0, peakDbfs: -2.7 }, LIMIT)).toBe(false);
+  });
+
+  it("drops nothing with no detector (the fakes), or with the rule off", () => {
+    expect(silentFinal({ vadSpeechMs: null, peakDbfs: -120 }, LIMIT)).toBe(false);
+    expect(silentFinal({ vadSpeechMs: 0, peakDbfs: -120 }, null)).toBe(false);
+  });
+
+  it("reads the window so far without starting a new one (quiet)", async () => {
+    const v = fakeVad();
+    const signals = new HeardSignals(v.vad);
+    for (let i = 0; i < 10; i++) signals.frame(frame(0));
+    await v.send(VADEventType.INFERENCE_DONE, 0, false);
+    expect(signals.quiet(LIMIT)).toBe(true);
+    // A quiet real "six": the detector hears it, so the window is no longer quiet, and its final is kept.
+    signals.frame(frame(20));
+    await v.send(VADEventType.START_OF_SPEECH, 60, true);
+    await v.send(VADEventType.INFERENCE_DONE, 120, true);
+    expect(signals.quiet(LIMIT)).toBe(false);
+    const six = signals.final([heard("six", 0.8)]);
+    expect(six.vadSpeechMs).toBe(120);
+    expect(six.peakDbfs).toBeLessThan(-50);
+    expect(silentFinal(six, LIMIT)).toBe(false);
+  });
+});

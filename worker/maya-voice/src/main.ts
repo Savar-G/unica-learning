@@ -3,7 +3,9 @@
 // agent name maya-voice, the call id in the job's metadata). For each job it:
 //
 // 1. checks that the room is the call's own and the call is a live voice call;
-// 2. waits for the call's own child (checkJoiner: identity and the token's family attributes) and ignores anyone else;
+// 2. waits for the call's own child (checkJoiner: identity and the token's family attributes) and ignores anyone else.
+//    The child is here when their microphone is published (`childPresence`): the screen joins the room before the
+//    Connect tap and turns the microphone on at the tap;
 // 3. opens the call (src/lib/maya-call.ts `openVoice`), which records the speech-to-text and voice ids on it;
 // 4. runs Maya there with the configured speech-to-text and voice (src/lib/maya-voice.ts `voiceProviders`): the child's
 //    microphone only, no typed chat, no recording; stores when the child and Maya join and leave;
@@ -18,51 +20,50 @@ import { createBoardSender } from "@/lib/board-protocol";
 import { boardRpcTransport } from "@/lib/board-rpc";
 import { createBoardSpeech, cueReport, type CueMeasurement } from "@/lib/board-speech";
 import { fileURLToPath } from "node:url";
-import { cli, defineAgent, ServerOptions, type JobContext } from "@livekit/agents";
-import { DisconnectReason, RoomEvent, RpcError, type RemoteParticipant, type Room } from "@livekit/rtc-node";
+import { cli, defineAgent, ServerOptions, voice, type JobContext } from "@livekit/agents";
+import { DisconnectReason, RoomEvent, RpcError, type RemoteParticipant } from "@livekit/rtc-node";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
-import { callsOn } from "@/lib/maya-call-seams";
+import { callSeams } from "@/lib/maya-call-seams";
+import { mayaCalls } from "@/lib/maya-call";
+import { voiceOpening } from "./opening";
 import { mayaCallStore } from "@/lib/maya-call-store";
-import { asksWordTimings, callOfRoom, checkJoiner, JOIN_WAIT_MS, VOICE_AGENT_NAME, voiceProviders, type VoiceCallFacts } from "@/lib/maya-voice";
+import { asksWordTimings, callKeyterms, callOfRoom, childIdentity, GREETING_TEXT, turnSilences, VOICE_AGENT_NAME, voiceProviders, type TurnSilence, type VoiceCallFacts } from "@/lib/maya-voice";
 import { VoiceCallRun, voiceSession, type CallUpdate } from "./agent";
+import { mark as clockMark, markedFetch, takeMarks } from "./marks";
+import { presenceOf, waitForChild } from "./child-wait";
 import { voiceTurnReport, type VoiceTurnSample } from "./turn-timing";
 import { makeProviders } from "./providers";
+import { configureDelivery } from "./voice-delivery";
 import { referenceJob, referenceRoomName } from "@/lib/maya-workbook-speech";
 import { runWorkbookReference } from "./workbook-reference";
 
 const log = (...a: unknown[]) => console.log("[maya voice]", ...a);
+
+/** How often a worker that waits for the child reads whether the call was cancelled. */
+const CANCEL_POLL_MS = 5000;
 
 /** The worker's database client: the secret key of the worker's own Supabase key (docs/maya-voice.md). */
 function database() {
   const url = process.env.SUPABASE_URL?.trim();
   const key = process.env.SUPABASE_SECRET_KEY?.trim();
   if (!url || !key) throw new Error("SUPABASE_URL and SUPABASE_SECRET_KEY must be set");
-  return createClient<Database>(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
-}
-
-/** The call's child once they are in the room (any other joiner is ignored), or null after JOIN_WAIT_MS. */
-function waitForChild(room: Room, call: VoiceCallFacts): Promise<RemoteParticipant | null> {
-  const fits = (p: RemoteParticipant) => checkJoiner({ room: room.name ?? "", call, identity: p.identity, attributes: p.attributes }).ok;
-  const already = [...room.remoteParticipants.values()].find(fits);
-  if (already) return Promise.resolve(already);
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      room.off(RoomEvent.ParticipantConnected, on);
-      resolve(null);
-    }, JOIN_WAIT_MS);
-    const on = (p: RemoteParticipant) => {
-      if (!fits(p)) return log("ignored a joiner that is not the call's child", call.id);
-      clearTimeout(timer);
-      room.off(RoomEvent.ParticipantConnected, on);
-      resolve(p);
-    };
-    room.on(RoomEvent.ParticipantConnected, on);
-  });
+  // MAYA_DB_TIMING=on logs each database request's time (method, table or function, status, ms): never a body or a key.
+  const timed: typeof fetch = async (input, init) => {
+    const at = Date.now();
+    const response = await fetch(input, init);
+    const path = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url).pathname.replace("/rest/v1/", "");
+    log("db", init?.method ?? "GET", path, response.status, Date.now() - at);
+    return response;
+  };
+  return createClient<Database>(url, key, { auth: { persistSession: false, autoRefreshToken: false }, ...(process.env.MAYA_DB_TIMING === "on" ? { global: { fetch: timed } } : {}) });
 }
 
 export default defineAgent({
   entry: async (ctx: JobContext) => {
+    const jobAt = Date.now();
+    // Marks on the model provider's requests, for the turn's clock times (./marks.ts).
+    globalThis.fetch = markedFetch(globalThis.fetch);
     let selection = null;
     try { selection = referenceJob(JSON.parse(ctx.job.metadata || "{}").reference); } catch { /* Not a reference job. */ }
     if (selection) {
@@ -81,6 +82,7 @@ export default defineAgent({
       log("refused a job whose room is not its call's");
       return ctx.shutdown("not a call room");
     }
+    configureDelivery({ callId });
     const providers = voiceProviders(process.env);
     if (!providers.ok) {
       log("the speech-to-text or voice is not set up:", providers.problems.join("; "));
@@ -95,23 +97,50 @@ export default defineAgent({
     const facts: VoiceCallFacts = { id: record.id, parentId: record.parentId, childId: record.childId, mode: record.mode, status: record.status };
 
     await ctx.connect();
-    const child = await waitForChild(ctx.room, facts);
-    if (!child) {
-      log("the child did not join", callId);
-      return ctx.shutdown("the child did not join");
-    }
-    const opened = await callsOn(db).openVoice(callId, providers.ids, null);
+    // The worker is sent to the room when the ticket is made, before the child connects (src/lib/maya-voice-token.ts),
+    // so the call is opened and the voice session built while the child checks the microphone. Nothing that counts
+    // time, minutes or spend starts before the child is here (in the room with the microphone published): the call
+    // starts (`startedAt`) with the opening.
+    const identity = childIdentity(record.childId);
+    let childAt = Date.now();
+    const marks: Record<string, number> = {};
+    const mark = (name: string) => { marks[name] = Date.now() - childAt; };
+    // The opening needs no model call (D-341): the worker speaks code's own line, and the call's start records it
+    // (`start({ openingSpoken: true })`, ./opening.ts).
+    const calls = mayaCalls(callSeams(db));
+    // The child's first name from the database, never from the room (a participant's name is the browser's to set).
+    // Maya says the name her session's start was given; this one hides the name in what the call stores (openVoice).
+    const childName = await db.from("children").select("first_name").eq("id", record.childId).eq("parent_id", record.parentId).maybeSingle()
+      .then(({ data }) => data?.first_name?.trim() || null, () => null);
+    const opened = await calls.openVoice(callId, providers.ids, childName);
     if (!opened.ok) {
       log("the call could not be opened", callId, opened.error);
       return ctx.shutdown("call not opened");
     }
-    const made = await makeProviders(providers);
-    const session = voiceSession(made);
+    mark("opened");
+    const openingText = voiceOpening(opened.call.session);
+    // The call's question is known now: its answer and its likely wrong answers go to the speech-to-text as keyterms
+    // (numbers only, never the question's text or a name).
+    const made = await makeProviders(providers, { keyterms: callKeyterms(opened.call.session.package) });
+    // The turn delay and interruption settings are for real providers. The fakes keep LiveKit's defaults, as the tests do.
+    mark("providers");
+    const { tuning } = providers;
+    const session = voiceSession(made, made.fake ? {} : { turn: tuning });
+    const patience = made.patience;
+    // The opening's speed: the child's microphone published (or the job, when it was there first) to Maya's first sound.
+    let firstSound = false;
+    session.on(voice.AgentSessionEventTypes.AgentStateChanged, ev => {
+      if (ev.newState === "speaking") clockMark("firstFramePublished");
+      if (firstSound || ev.newState !== "speaking") return;
+      firstSound = true;
+      log("opening first sound", { callId, sinceChildMs: Date.now() - childAt, sinceJobMs: Date.now() - jobAt, marks });
+      setTimeout(() => log("opening marks", { callId, marks }), 9000);
+    });
     const encoder = new TextEncoder();
     const notify = (update: CallUpdate) => {
-      ctx.room.localParticipant?.publishData(encoder.encode(JSON.stringify(update)), { reliable: true, topic: "maya.call", destination_identities: [child.identity] }).catch(() => {});
+      ctx.room.localParticipant?.publishData(encoder.encode(JSON.stringify(update)), { reliable: true, topic: "maya.call", destination_identities: [identity] }).catch(() => {});
     };
-    const sender = createBoardSender({ sessionId: callId, senderId: randomUUID(), snapshot: opened.call.boardSnapshot, transport: boardRpcTransport(ctx.room.localParticipant!, child.identity, randomUUID) });
+    const sender = createBoardSender({ sessionId: callId, senderId: randomUUID(), snapshot: opened.call.boardSnapshot, transport: boardRpcTransport(ctx.room.localParticipant!, identity, randomUUID) });
     const samples: CueMeasurement[] = [];
     const board = createBoardSpeech({ sender, now: () => Date.now(), observe: snapshot => opened.call.observeBoard(snapshot), measure: sample => {
       samples.push(sample);
@@ -119,59 +148,105 @@ export default defineAgent({
     } });
     const turnSamples: VoiceTurnSample[] = [];
     const ackLimit = Number(process.env.MAYA_ACK_LIMIT_MS);
-    const run = new VoiceCallRun(session, opened.call, { board, notify,
+    const run = new VoiceCallRun(session, opened.call, { board, notify, greeting: GREETING_TEXT, ...(openingText ? { opening: openingText, openingMark: mark } : {}),
+      ...(made.fake ? {} : { numberContinueMs: tuning.numberContinueMs, dropSilentPeakDbfs: tuning.dropSilentPeakDbfs, detectorMinSilenceMs: tuning.detectorMinSilenceMs }),
+      ...(patience ? { patience: { ...turnSilences(tuning), set: (limits: TurnSilence) => patience.setSilence(limits) } } : {}),
       ...(process.env.MAYA_ACK_LIMIT_MS?.trim() && Number.isFinite(ackLimit) && ackLimit >= 0 ? { ackLimitMs: ackLimit } : {}),
       measureTurn: sample => {
         turnSamples.push(sample);
-        log("voice turn", { callId, fakeProviders: { speechToText: made.stt.provider === "fake", voice: made.tts.provider === "fake" }, ...sample });
+        log("voice turn", { callId, fakeProviders: { speechToText: made.stt.provider === "fake", voice: made.tts.provider === "fake" }, ...sample, clock: takeMarks() });
       },
       closed: async () => {
         log("board cue report", { callId, fakeAudio: made.tts.provider === "fake", groups: cueReport(samples) });
         log("voice turn report", { callId, fakeProviders: { speechToText: made.stt.provider === "fake", voice: made.tts.provider === "fake" }, ...voiceTurnReport(turnSamples) });
         await ctx.shutdown("call ended");
       } });
-    ctx.addShutdownCallback(() => run.finish({ detail: "the voice worker stopped" }));
 
+    let live = false;
     const local = ctx.room.localParticipant!;
     // What the child's screen shows: whether to offer the typed stand-in for speech.
     await local.setAttributes({ "maya.speech": made.fakeSpeech ? "fake" : "live", "maya.segment": String(run.segment) });
     local.registerRpcMethod("maya.hang_up", async (data) => {
-      if (data.callerIdentity !== child.identity) throw new RpcError(1403, "not this call's child");
+      if (data.callerIdentity !== identity) throw new RpcError(1403, "not this call's child");
       void run.hangUp();
       return "ok";
     });
     if (made.fakeSpeech) {
       const speech = made.fakeSpeech;
       local.registerRpcMethod("maya.fake.say", async (data) => {
-        if (data.callerIdentity !== child.identity) throw new RpcError(1403, "not this call's child");
+        if (data.callerIdentity !== identity) throw new RpcError(1403, "not this call's child");
         const text = (JSON.parse(data.payload || "{}") as { text?: unknown }).text;
         if (typeof text !== "string" || !text.trim() || text.length > 500) throw new RpcError(1400, "say 1 to 500 characters");
         return speech.say(text.trim()) ? "heard" : "not listening";
       });
     }
     ctx.room.on(RoomEvent.ParticipantDisconnected, (p: RemoteParticipant) => {
-      if (p.identity !== child.identity) return;
+      // Before the child was first here (microphone published), a leave changes nothing: the screen joined before the
+      // Connect tap and closed or was cancelled before it. `waitForChild` waits for a join again.
+      if (!live || p.identity !== identity) return;
       void run.childLeft(p.disconnectReason === DisconnectReason.CLIENT_INITIATED ? "hang_up" : "dropped");
     });
-    ctx.room.on(RoomEvent.ParticipantConnected, (p: RemoteParticipant) => {
-      if (checkJoiner({ room: roomName, call: facts, identity: p.identity, attributes: p.attributes }).ok) void run.childJoined();
-    });
+    // A child who comes back is here again with the same rule as the first time: in the room with the microphone
+    // published. The first time is taken below, after the session has started. A child who unpublishes the microphone
+    // but stays in the room stays here: the screen never does that during a call, and the call's limits still end it.
+    const back = (p: RemoteParticipant) => {
+      if (live && presenceOf(ctx.room, facts, p) === "here") void run.childJoined();
+    };
+    ctx.room.on(RoomEvent.ParticipantConnected, back);
+    ctx.room.on(RoomEvent.TrackPublished, (_publication, p: RemoteParticipant) => back(p));
+    ctx.room.on(RoomEvent.TrackSubscribed, (_track, _publication, p: RemoteParticipant) => back(p));
 
-    await run.agentJoined();
-    if (run.done) { await run.done; return; }
+    // The session starts before the child is here, so its audio track is published and the voice is connected when
+    // they come. It hears only the call's child, and nothing is said until they connect.
     await session.start({
       agent: run.agent,
       room: ctx.room,
       // The call's child only, by microphone: no typed chat, no video, and the call (not LiveKit) decides when it ends.
-      inputOptions: { participantIdentity: child.identity, textEnabled: false, closeOnDisconnect: false },
+      inputOptions: { participantIdentity: identity, textEnabled: false, closeOnDisconnect: false },
       // Disable session recording. Direct-provider retention needs separate verified settings (docs/maya-voice.md).
       record: false,
     });
     run.attachBoardAudio();
     run.attachTurnTiming();
-    await run.childJoined();
+    made.tts.prewarm();
+    const readyAt = Date.now();
+    // A call cancelled before the tap (the desk cancels its pre-made call after 60 s, or when the child leaves the
+    // microphone check) frees this worker at once: the wait reads the call's status every 5 s.
+    let poll: ReturnType<typeof setInterval> | null = null;
+    const cancelled = new Promise<"cancelled">((resolve) => {
+      poll = setInterval(() => {
+        void mayaCallStore(db).get(callId).then((now) => { if (now && now.status !== "live") resolve("cancelled"); }, () => {});
+      }, CANCEL_POLL_MS);
+    });
+    const outcome = await Promise.race([waitForChild(ctx.room, facts, { log: message => log(message, callId) }), cancelled]);
+    if (poll !== null) clearInterval(poll);
+    if (outcome === "cancelled") {
+      log("the call ended before the child's microphone", callId);
+      await run.standDown();
+      return ctx.shutdown("the call ended before the child's microphone");
+    }
+    const waited = outcome;
+    if (!waited.child) {
+      // The call stays live for its ticket: a child who connects later gets a new worker through the token. Nothing was
+      // counted: the connection rows, the minutes and the call's start all wait for the microphone.
+      const why = waited.why === "no_join" ? "the child did not join" : "the child joined but never turned on the microphone";
+      log(why, callId);
+      await run.standDown();
+      return ctx.shutdown(why);
+    }
+    // The child is here: their microphone is published. `sinceChildMs` in "opening first sound" counts from now.
+    childAt = Date.now();
+    marks.readyBeforeChild = childAt - readyAt;
+    ctx.addShutdownCallback(() => run.finish({ detail: "the voice worker stopped" }));
+    // The connection rows and the session start do not wait for each other.
+    const joined = run.agentJoined().then(() => mark("agentJoined"));
+    live = true;
+    // A child who left since opens the call when they are back (the handlers above).
+    const stillHere = ctx.room.remoteParticipants.get(identity);
+    await Promise.all([joined, stillHere && presenceOf(ctx.room, facts, stillHere) === "here" ? run.childJoined().then(() => mark("childJoined")) : null]);
+    if (run.done) { await run.done; return; }
     // Word timings are asked for, not known to arrive: the "board cue" lines show `word` or `sentence` for each batch.
-    log("call running", callId, providers.ids.speechToText, providers.ids.voice, { wordTimings: asksWordTimings(providers.voice) ? "requested" : "sentence ends only" });
+    log("call running", callId, providers.ids.speechToText, providers.ids.voice, { wordTimings: asksWordTimings(providers.voice) ? "requested" : "sentence ends only", tuning: made.fake ? "fake providers: LiveKit defaults" : tuning });
   },
 });
 

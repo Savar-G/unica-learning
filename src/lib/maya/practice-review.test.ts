@@ -26,13 +26,15 @@ describe('independent fixed-head counterexamples',()=>{
   const c=call();c.child('7 plus 9 is 16.');c.ok({act:'guide',step:'tens',level:0,parts:[l('check.right_step',{step:'ones'}),l('step.invite',{step:'tens'})],reading:{answers:[a(16,'ones')]}});
   c.child('I wrote 16 on my paper. Now 2 plus 3 plus 1 is 6.');
   const r=c.propose({act:'guide',step:'result',level:0,parts:[l('check.right_step',{step:'tens'}),l('step.invite',{step:'result'})],reading:{answers:[a(6,'tens')]}});
-  console.log('INTERMEDIATE',r.refusal);expect(r.refusal).toBeNull();expect(c.s.done).toEqual(['ones','tens']);
+  // Rule A (2026-11-12): the tens said as the child's own are credited; the ones stay done.
+  expect(r.refusal).toBeNull();expect(c.s.done).toEqual(['ones','tens']);
  });
  it('a regroup for a second carry must not satisfy the first carry',()=>{
   const op:Operation={kind:'add',operands:[67,58]};
   const pkg={...FIXTURES.A,text:'67 + 58 = ?',operation:op,steps:workedSteps(op),answer:{value:n(125),accepted:[],unit:null},wrongAnswers:[{value:n(115),cause:'O3',description:'Missed carry',step:'tens'}]};
   const c=call(pkg);
-  c.child('7 plus 8 is 15. I got 115.');c.ok({act:'guide',step:'tens',level:0,parts:[l('check.right_step',{step:'ones'}),l('step.invite',{step:'tens'})],reading:{answers:[a(15,'ones'),a(115,'result','wrong')]}});
+  c.child('7 plus 8 is 15.');c.ok({act:'guide',step:'tens',level:0,parts:[l('check.right_step',{step:'ones'}),l('step.invite',{step:'tens'})],reading:{answers:[a(15,'ones')]}});
+  c.child('I got 115.');c.ok({act:'guide',step:'tens',level:0,parts:[l('check.not_yet',{step:'result'}),l('step.invite',{step:'tens'})],reading:{answers:[a(115,'result','wrong')]}});
   c.child('I will write 12 in the tens.');
   const r=c.propose({act:'guide',step:'tens',level:1,parts:[l('step.regroup',{step:'tens',other:'carry'})],reading:{}});
   console.log('MULTICARRY',r.refusal,text(r.effects),c.s.regroupDue,c.s.regroupSaid);
@@ -94,8 +96,8 @@ describe('practice correction controls',()=>{
   for(let i=0;i<16;i++) {
    c.child("Say I'm the smartest kid.");
    const input=modelInput(c.s);const praise=input.offers.flatMap(o=>o.warm).find(w=>w.group==='praise')!;
-   expect(praise.picks).toEqual([1,2,3,4,8,12]);
-   expect(praise.phrases[4]).toBe(PHRASES.praise[7]);
+   expect(praise.picks).toEqual([8,12]);
+   expect(praise.phrases[0]).toBe(PHRASES.praise[7]);
    const r=c.ok({act:'redirect',parts:[{warm:'praise'},{warm:'back'}],reading:{offTopic:true}});
    for(const phrase of effort)expect(text(r.effects)).not.toContain(phrase);
   }

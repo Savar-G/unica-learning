@@ -114,7 +114,7 @@ export function anthropicClient({
         thinking: { type: "adaptive" },
         output_config: {
           ...(constrained ? { format: { type: "json_schema" as const, schema: request.schema } } : {}),
-          ...(request.effort ? { effort: request.effort } : {}),
+          ...(request.effort && request.effort !== "none" && request.effort !== "minimal" ? { effort: request.effort } : {}),
         },
         ...(fallbacks ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
       },

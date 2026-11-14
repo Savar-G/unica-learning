@@ -306,7 +306,18 @@ describe("the line set", () => {
 
   it("has a few child-friendly variants for every line, with no math in a variant's own words", () => {
     for (const [key, variants] of Object.entries(TEMPLATES)) {
-      if (["about.ai", "about.no_secret", "shorter.prompt", "answer.area", "input.spoken"].includes(key)) {
+      // Savar approved fixed comparison wording for first ship on 2026-11-13.
+      if (key === "comparison.words") {
+        expect(variants).toEqual(["{words}"]);
+        continue;
+      }
+      // The no-secret reply has four kind wordings (#884, D-329); each still fits one short turn.
+      if (key === "about.no_secret") {
+        expect(variants.length).toBeGreaterThanOrEqual(2);
+        for (const v of variants) expect(v.split(/\s+/).length, v).toBeLessThanOrEqual(25);
+        continue;
+      }
+      if (["about.ai", "shorter.prompt", "answer.area", "input.spoken", "held.hello", "held.cannot", "held.next"].includes(key)) {
         expect(variants).toHaveLength(1);
         expect(variants[0].split(/\s+/).length).toBeLessThanOrEqual(25);
         continue;
@@ -338,8 +349,12 @@ describe("the line set", () => {
   });
 
   it("judges a step only after code checked the child's answer", () => {
-    const c = call();
-    c.send({ type: "child_turn", at: 0, text: "I think it's 15." });
+    let s = createSession({ callId: "checked-line", package: ADD });
+    const send = (event: SessionEvent) => { const r = step(s, event); s = r.session; return r; };
+    send({ type: "start", at: 0 });
+    expect(send({ type: "proposal", at: 0, proposal: { version: 2, act: "open", parts: [{ line: "open.hello" }] } }).refusal).toBeNull();
+    send({ type: "child_turn", at: 0, text: "I got 15." });
+    const c = { refusal: (p: Record<string, unknown>) => step(s, { type: "proposal", at: 0, proposal: { version: 2, ...p } }).refusal };
     const wrong15 = { answers: [{ value: num(15), step: "ones", verdict: "wrong" }] };
     // "Yes! 7 + 9 = 16." needs a right answer for the ones; "Not quite." needs a checked wrong one.
     expect(c.refusal({ act: "guide", step: "ones", level: 0, parts: [{ line: "check.right_step", slots: { step: "ones" } }], reading: wrong15 })).toMatchObject({ code: "line_not_offered" });
@@ -358,7 +373,7 @@ describe("the line set", () => {
   it("offers the model every act's lines, and only the steps not done yet, then the final step", () => {
     const c = call();
     const offers = lineOffers(c.s);
-    expect(Object.keys(offers).sort()).toEqual(["accept_answer", "clarify", "confirm", "example_step", "guide", "try_target"].sort());
+    expect(Object.keys(offers).sort()).toEqual(["accept_answer", "clarify", "example_step", "guide", "redirect", "try_target"].sort());
     const guideSteps = new Set(offers.guide!.flatMap((o) => (o.line.startsWith("step.") ? [o.slots.step] : [])));
     expect([...guideSteps]).toEqual(["ones", "tens", "result"]);
     expect(offers.guide!.every((o) => o.texts.length >= 2)).toBe(true);
@@ -445,9 +460,9 @@ describe("the proposal schema", () => {
     expect(r.effects[0]).toMatchObject({ kind: "say", text: expect.stringMatching(/^[^0-9]+[.!?] .*7.*9\.$/) });
   });
 
-  it("refuses version 1, with its free-text say", () => {
+  it("refuses version 1, with its free-text say (a say with no version is version 3 since D-341)", () => {
     const c = call();
-    expect(step(c.s, { type: "proposal", at: 0, proposal: { act: "guide", step: "ones", level: 0, say: "Look at the 7." } }).refusal).toMatchObject({ code: "invalid_proposal" });
+    expect(step(c.s, { type: "proposal", at: 0, proposal: { version: 1, act: "guide", step: "ones", level: 0, say: "Look at the 7." } }).refusal).toMatchObject({ code: "invalid_proposal" });
   });
 });
 

@@ -2,7 +2,14 @@
 // Ordinary help has no vocabulary test. A model can add restrictions, never an allowed expression.
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import { equivalent, type AnswerValue, type Operation, type OperationPackage } from "@/lib/question-package";
+import { missingScope } from "./missing-number";
+import { spotScope } from "./spot-error";
 import { completeExpression, readNumbers } from "./numbers";
+import { topicNumbers, topicRelations } from "./topic-frame";
+import { placeRelations } from "@/lib/question-package-place-value";
+import { isPartsOperation, partsRelations } from "@/lib/question-package-place-parts";
+import { frameProblems, partProblems } from "./evaluate";
+import { patternProblems } from "./pattern";
 
 export const SCOPE_REASONS = ["outside_work", "other_person", "changed_problem", "other_topic", "unverified_request", "model_scope"] as const;
 export type ScopeReason = typeof SCOPE_REASONS[number];
@@ -44,6 +51,8 @@ function sumOfTerms(requested: AnswerValue[], terms: number[]): boolean {
 /** Values and operations come only from the checked package, including its checked prerequisite work. */
 function allowedMath(pkg: OperationPackage, exampleChosen: boolean) {
   const expressions: Allowed[] = [], sums: number[][] = [], values: AnswerValue[] = [];
+  /** A flipped column of this question ("8 - 2" for 2 - 8): the child's own error on it, so never another problem (#605). */
+  const flip = (top: number, bottom: number) => expressions.push({ operation: "subtract", operands: [num(bottom), num(top)] });
   const add = (operation: ScopeOperation, operands: AnswerValue[]) => { expressions.push({ operation, operands }); values.push(...operands); };
   const collect = (v: unknown): void => {
     if (typeof v === "number" && Number.isFinite(v)) values.push(num(v));
@@ -54,11 +63,22 @@ function allowedMath(pkg: OperationPackage, exampleChosen: boolean) {
       Object.values(v).forEach(collect);
     }
   };
-  for (const p of [pkg, ...(exampleChosen ? [pkg.easierExample] : [])]) {
+  const problems = [pkg, ...(exampleChosen ? [pkg.easierExample] : [])];
+  // An evaluate question's parts are one-step problems of their own, and a missing-number frame checks its number (evaluate.ts).
+  for (const p of [...problems, ...problems.flatMap((x) => [...partProblems(x.operation), ...patternProblems(x)]), ...frameProblems(pkg)]) {
     const op = family(p.operation);
-    collect(p.operation.operands); collect(p.steps); collect(p === pkg ? pkg.answer.value : pkg.easierExample.answer);
+    collect(p.operation.operands); collect(p.steps); collect(p === pkg ? pkg.answer.value : p.answer);
+    // An "other-topic" question's checked counted numbers (topic-frame.ts): the die's odd or even numbers.
+    collect(topicNumbers(p.text, p.operation));
+    // A clock-time question's checked minute relations, and an area claim's other area (topic-frame.ts, C3c).
+    for (const r of topicRelations(p.operation, p.text)) add(r.op, r.operands.map(num));
     const operands = p.operation.operands.map(v => typeof v === "number" ? num(v) : v).filter(value);
     if (op && operands.length === p.operation.operands.length) add(op, operands);
+    if (p.operation.kind === "comparison" && p.operation.context === "rectangle-areas") for (const factors of [[p.operation.operands[0], p.operation.operands[1]], [p.operation.operands[2], p.operation.operands[3]]]) add("multiply", factors.map(num));
+    // Place value (B1a): the digit times its place, and code's wrong-answer work, as the child says it.
+    if (p.operation.kind === "place-value") for (const [d, worth] of placeRelations(p.operation)) add("multiply", [num(d), num(worth)]);
+    // B1b: a sum's two values and their multiplications.
+    if (p.operation.kind === "place-value" && isPartsOperation(p.operation)) for (const r of partsRelations(p.operation)) add(r.op, r.operands.map(num));
     const placeTerms = operands.flatMap(v => {
       if (v.type !== "number" || v.value < 0) return [];
       const [whole, fraction = ""] = String(v.value).split(".");
@@ -82,6 +102,8 @@ function allowedMath(pkg: OperationPackage, exampleChosen: boolean) {
         add("subtract", [num(st.top - Number(st.lent) + (st.regrouped ? 10 : 0)), num(st.bottom)]);
         if (st.regrouped) add("add", [num(st.top - Number(st.lent)), num(10)]);
         if (st.lent) add("subtract", [num(st.top), num(1)]);
+        flip(st.top, st.bottom);
+        if (st.lent) flip(st.top - 1, st.bottom);
       }
       if (st.kind === "multiply-digit" && st.top !== null) {
         add("multiply", [num(st.top), num(st.multiplier)]);
@@ -92,7 +114,21 @@ function allowedMath(pkg: OperationPackage, exampleChosen: boolean) {
         add("multiply", [num(st.quotient), num(p.operation.operands[1])]);
         add("subtract", [num(st.current), num(st.product)]);
       }
+      // A claim's compare (A4, claim.ts): the difference of the result and the printed number, either way round, and for a
+      // claim checked by division ("Mia says 6 × 8 = 56. Check with 56 ÷ 8.") the printed product and the checked one.
+      if (st.kind === "claim-compare") {
+        const [hi, lo] = st.value >= st.shown ? [st.value, st.shown] : [st.shown, st.value];
+        add("subtract", [num(hi), num(lo)]);
+        flip(hi, lo);
+        if (p.operation.kind === "divide") {
+          add("multiply", [num(st.shown), num(p.operation.operands[1])]);
+          add("multiply", [num(st.value), num(p.operation.operands[1])]);
+        }
+      }
+      // Spot the error (spot-error.ts): a dropped or added zero, "498 times 10 is 4980".
+      for (const [n, ten] of spotScope(st)) { add("multiply", [num(n), num(ten)]); add("divide", [num(n * ten), num(ten)]); }
       if (st.kind === "combine-numerators") add(st.op, st.numerators.map(num));
+      for (const [op, operands] of missingScope(st)) add(op, operands.map(num));
       if (st.kind === "common-denominator") for (let i = 0; i < st.from.length; i++) {
         add("multiply", [num(st.from[i].numerator), num(st.factors[i])]);
         add("multiply", [num(st.from[i].denominator), num(st.factors[i])]);

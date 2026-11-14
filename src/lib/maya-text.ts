@@ -32,6 +32,14 @@ import {
   fallbacks,
   nextActs,
   step,
+  streamPlan,
+  plainMathTurn,
+  expectedTurns,
+  fitsExpected,
+  streamSentence,
+  codeStance,
+  fillName,
+  clearStop,
   LINES_VERSION,
   PROPOSAL_VERSION,
   type Outcome,
@@ -40,15 +48,56 @@ import {
   type Severity,
   type WordingHistory,
 } from "@/lib/maya";
-import { modelInput, type MayaModel } from "@/lib/maya-model";
-import { reviewInput, runReview, REVIEW_TIME_LIMIT_MS, type TalkReviewer } from "@/lib/maya-talk-review";
+import { modelInput, turnBrief, type MayaModel, type ModelInput } from "@/lib/maya-model";
+import { preparedReplies, preparedKey, normalizeTurn, MAX_PREPARES_PER_TURN, type PrepareHypothesis, type PreparedReply, type PrepareRecord } from "@/lib/maya-prepared";
+import type { SpendHandle, SpendSeam } from "@/lib/maya-spend-seam";
+import { sentencesOf } from "@/lib/maya/say-check";
+
+/**
+ * The `say` string at the start of a version 3 reply as it streams in (D-341: `say` is the first key): its text so far,
+ * with JSON escapes read, and whether its closing quote has come. Null before the key.
+ */
+export function partialSay(soFar: string): { text: string; complete: boolean; kind: string | null } | null {
+  // Round 4, P2-7: "kind" may come first; "say" follows it.
+  const m = /^\s*\{\s*(?:"kind"\s*:\s*"([a-z]*)"\s*,\s*)?"say"\s*:\s*"/.exec(soFar);
+  if (!m) return null;
+  const kind = m[1] ?? (/^\s*\{\s*"say"/.test(soFar) ? "math" : null);
+  let text = "";
+  for (let i = m[0].length; i < soFar.length; i++) {
+    const c = soFar[i];
+    if (c === '"') return { text, complete: true, kind };
+    if (c !== "\\") { text += c; continue; }
+    const e = soFar[i + 1];
+    if (e === undefined) break;
+    if (e === "u") {
+      const hex = soFar.slice(i + 2, i + 6);
+      if (hex.length < 4) break;
+      text += String.fromCharCode(parseInt(hex, 16));
+      i += 5;
+      continue;
+    }
+    text += ({ n: "\n", t: "\t", r: "\r", b: "\b", f: "\f" } as Record<string, string>)[e] ?? e;
+    i += 1;
+  }
+  return { text, complete: false, kind };
+}
+import { reviewInput, runReview, CONVERSATION_REVIEW_TIME_LIMIT_MS, REVIEW_TIME_LIMIT_MS, type TalkReviewer } from "@/lib/maya-talk-review";
+import type { TalkReviewResult } from "@/lib/maya";
 import { readFromFence } from "@/lib/ai-fenced";
 import { classifyError, packageHash, redactText, redactTrace, traceCounts, TRACE_KIND, TRACE_VERSION, type MayaTrace, type TraceBoardBatch, type TraceTurn, type TraceObligation } from "@/lib/maya-trace";
 
 /** At most this many Maya turns in a row without the child (the easier example is up to four). */
 export const MAX_MAYA_TURNS = 8;
+/** D-341: the time one Maya turn may take in chat for the model and its repair, in ms. */
+export const TURN_BUDGET_MS = 6_000;
 
 export interface TextSessionOptions {
+  /** Budget owner refuses speculative takes when only two live attempts remain. No seam disables preparation. */
+  spend?: SpendSeam;
+  /** One request-bound model for the already paid handle. Normal turns still use `model`. */
+  prepareModel?: (handle: SpendHandle) => MayaModel | null;
+  /** Prepare expected and known-wrong values after a delivered turn. Default on when spend is supplied. */
+  prepareExpected?: boolean;
   confirmWorkbook?: boolean;
   callId: string;
   /** The question package (untrusted; the session checks it). */
@@ -71,8 +120,22 @@ export interface TextSessionOptions {
   freeTalk?: boolean;
   /** The call's end when it is shorter than 10 minutes (ms). A resumed call keeps the limits it started with. */
   limitMs?: number;
-  /** The free-talk review (src/lib/maya-talk-review.ts), or null. */
+  /** The free-talk review (src/lib/maya-talk-review.ts), or null. D-341: it reads each reply that is not plain math talk. */
   reviewer?: TalkReviewer | null;
+  /**
+   * D-341: the time one Maya turn may take for the model and its repair (default TURN_BUDGET_MS). When it is spent,
+   * Maya says code's own line (fallbacks). Voice sets less.
+   */
+  turnBudgetMs?: number;
+  /**
+   * D-341, the streaming contract agreed with the voice lead. Each sentence of Maya's output goes to `onSayPart` in
+   * index order, one at a time, only after it passed the per-sentence checks; a sentence sent is never cancelled.
+   * `onSayCancel(fromIndex)` is only for indexes not sent yet; `onSayEnd` ends the output. Today the hooks are called
+   * once the whole reply is checked (no token streaming yet); the saved turn holds exactly the spoken sentences in order.
+   */
+  onSayPart?: (sentence: string, index: number, boardCues: Batch[]) => void;
+  onSayCancel?: (fromIndex: number) => void;
+  onSayEnd?: () => void;
   /** The time limit of one review (default REVIEW_TIME_LIMIT_MS); a late review fails the line. */
   reviewTimeLimitMs?: number;
   /**
@@ -114,6 +177,7 @@ export interface SavedTextSession {
   obligations?: TraceObligation[];
   childState?: "listening" | "child_speaking";
   problems?: string[];
+  preparations?: PrepareRecord[];
 }
 
 /** How a call that has not ended yet ends when it is finished. */
@@ -125,12 +189,20 @@ export interface FinishOptions {
 
 /** What reached the child after one input: Maya's sentences and board batches, all accepted by the session. */
 export interface TextOutput {
+  prepared?: "hit" | "miss" | "none";
+  preparedLeadMs?: number;
+  preparedKind?: "interim" | "expected";
   say: string[];
   board: Batch[];
   /** The outcome when the call ended with this input. */
   ended: Outcome | null;
   /** The safety guidance to keep on screen after the call, or null. */
   safetyMessage: string | null;
+  /**
+   * D-341, round 2: the child is thinking ("um", "wait"): Maya said at most a short patient line and now waits. A voice
+   * worker may skip speech after the first patient line.
+   */
+  wait?: boolean;
   /**
    * Maya must stop talking now and drop board batches not yet shown (the session's `cancel_output`): the child talked
    * over her, she said words that were not her text, or the content hold began. `say` and `board` come after the stop.
@@ -139,8 +211,16 @@ export interface TextOutput {
 }
 
 export interface TextSession {
-  /** Starts the call: Maya's opening. */
-  start(): Promise<TextOutput>;
+  /**
+   * Starts the call: Maya's opening. In a conversational call (D-341) it is code's opening line (openingLine) with the
+   * question staged on the board, and no model call. `openingSpoken`: the voice worker speaks that line itself, so it
+   * comes back with no say (the trace records it, the board batch comes back as usual).
+   */
+  start(options?: { openingSpoken?: boolean }): Promise<TextOutput>;
+  /** Starts a speculative request. It never changes saved state or speaks. False means no request was needed or allowed. */
+  prepare(hypothesis: PrepareHypothesis | string): boolean;
+  /** Cancels pending model work and preparation when the caller stops or loses ownership. Changes no saved input. */
+  cancelPending(): void;
   /** One child turn as text. */
   child(text: string, options?: { uncertain?: boolean; alternatives?: string[] }): Promise<TextOutput>;
   /**
@@ -199,7 +279,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   if (resume?.v === 6 && (!resume.initial || !Array.isArray(resume.log))) throw new Error("maya text: the saved event log is missing");
   if (resume && (![1, 6].includes(resume.v) || (resume.v === 6 ? resume.initial!.session.callId : resume.session.callId) !== options.callId)) throw new Error("maya text: the saved session is not this call's");
   const initial: TextLogInitial = resume?.v === 6 && resume.initial ? structuredClone(resume.initial) : {
-    session: resume ? structuredClone(resume.session) : createSession({ callId: options.callId, confirmWorkbook: options.confirmWorkbook, channel: options.channel, package: options.package, random: options.random, grade: options.grade, history: options.history, childName: options.childName, freeTalk: options.freeTalk === true, limitMs: options.limitMs }),
+    session: resume ? structuredClone(resume.session) : createSession({ callId: options.callId, confirmWorkbook: options.confirmWorkbook, channel: options.channel, package: options.package, random: options.random, grade: options.grade, history: options.history, childName: options.childName, freeTalk: options.freeTalk === true, limitMs: options.limitMs, conversational: model.output === 3 }),
     endedAt: resume?.endedAt ?? null, turns: resume?.turns ?? [], board: resume?.board ?? [],
     approved: resume?.approved, obligations: resume?.obligations, childState: resume?.childState, problems: resume?.problems,
   };
@@ -213,6 +293,74 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   let active: AbortController | null = null;
   let generation = 0;
   let queue: Promise<unknown> = Promise.resolve();
+  let turnEndsAt = Number.POSITIVE_INFINITY;
+  let quietOpening = false;
+  let scheduled = 0;
+  let prepareCount = 0;
+  let preparationStopped = false;
+  const preparations: PrepareRecord[] = structuredClone(resume?.preparations ?? []);
+  const costs = new Map<PrepareRecord, PreparedReply>();
+  const cache = options.spend && model.output === 3 ? preparedReplies(model, options.spend, () => now(), options.prepareModel) : null;
+  let committing: { generation: number; entries: Map<string, PreparedReply>; at: number } | null = null;
+  let preparedOutput: Pick<TextOutput, "prepared" | "preparedLeadMs" | "preparedKind"> = {};
+  function record(entry: PreparedReply, value: PrepareRecord) { preparations.push(value); costs.set(value, entry); }
+  function discard(entries: Map<string, PreparedReply>, reason: NonNullable<PrepareRecord["reason"]>) {
+    for (const entry of entries.values()) record(entry, cache!.discard(entry, reason, now()));
+  }
+  function clearPrepares(reason: NonNullable<PrepareRecord["reason"]>) {
+    if (!cache) return;
+    discard(cache.takeAll(), reason);
+    if (committing) { discard(committing.entries, reason); committing = null; }
+  }
+  function prepare(hypothesis: PrepareHypothesis | string): boolean {
+    if (preparationStopped || !cache || scheduled || active || needsRecovery || folded.session.startedAt === null || folded.session.outcome || folded.request || folded.candidate || folded.pending.length || folded.session.turn) return false;
+    const h = typeof hypothesis === "string" ? { text: hypothesis, reason: "interim" as const } : hypothesis;
+    if (!h.text.trim() || h.text.length > 1_000) return false;
+    const at = now();
+    const copy = foldTextEvent(restoreTextCheckpoint(saveTextCheckpoint(folded)), { kind: "input", at, event: { type: "child_turn", at, text: h.text } });
+    if (!plainMathTurn(copy.session) || copy.session.outcome) return false;
+    const brief = turnBrief(copy.session);
+    const key = preparedKey(copy.session, brief);
+    if (cache.get(key)) { cache.share(key, h); return false; }
+    if (prepareCount >= MAX_PREPARES_PER_TURN) return false;
+    const handle = options.spend!.take("speculative");
+    if (!handle) return false;
+    prepareCount++;
+    return cache.start(key, brief, h, handle);
+  }
+  function prepareNext() {
+    if (!cache || preparationStopped || options.prepareExpected === false) return;
+    for (const h of expectedTurns(folded.session)) prepare({ text: h.text, reason: "expected" });
+  }
+  function preparedForTurn(): PreparedReply | undefined {
+    const batch = committing;
+    committing = null;
+    if (!batch || !cache) return;
+    const plain = plainMathTurn(folded.session);
+    const brief = turnBrief(folded.session);
+    const key = preparedKey(folded.session, brief);
+    let selected: PreparedReply | undefined;
+    for (const entry of batch.entries.values()) {
+      if (!entry.available()) {
+        record(entry, cache.discard(entry, "stale", batch.at));
+        continue;
+      }
+      const h = batch.generation === generation && plain && key === entry.key ? entry.hypotheses.find((h) => h.reason === "interim" ? normalizeTurn(h.text) === normalizeTurn(brief.childTurn ?? "") : fitsExpected(folded.session, h.text)) : undefined;
+      if (h && !selected) {
+        selected = entry;
+        const rec = cache.used(entry, batch.at);
+        rec.kind = h.reason;
+        record(entry, rec);
+        preparedOutput = { prepared: "hit", preparedLeadMs: rec.leadMs, preparedKind: h.reason };
+      } else record(entry, cache.discard(entry, !plain ? "not_plain" : key !== entry.key ? "key" : "text", batch.at));
+    }
+    if (!selected && batch.entries.size) preparedOutput = { prepared: "miss" };
+    return selected;
+  }
+  /** Sentences streamed for the output being built (D-341), in the order they were sent. */
+  const streamedThisOutput: string[] = [];
+  /** Reviews the stream started for its sentences (round 4), by sentence: the whole-reply review reuses them. */
+  const streamReviews = new Map<string, Promise<TalkReviewResult>>();
   const newOutput = (): TextOutput => ({ say: [], board: [], ended: null, safetyMessage: null, cancelled: false });
   const now = () => {
     let at = 0;
@@ -242,23 +390,92 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     finally { controller.signal.removeEventListener("abort", abort); }
   }
   async function request(source: "model" | "repair", controller: AbortController) {
+    const prepared = source === "model" ? preparedForTurn() : undefined;
     const requestId = nextRequestId++;
     const repair = source === "repair" && folded.attempts.at(-1)?.refusal ? {
       proposal: folded.attempts.at(-1)!.proposal,
       refusal: folded.attempts.at(-1)!.refusal!,
     } : null;
-    const input = modelInput(folded.session, repair);
+    const input = model.output === 3 ? turnBrief(folded.session, repair ? { said: repair.proposal, refusal: repair.refusal } : null) as unknown as ModelInput : modelInput(folded.session, repair);
     const at = Math.max(clock(), now());
     append({ kind: "request", at, requestId, source });
     if (folded.session.outcome || folded.request?.id !== requestId) return;
-    // The handler logs even a late response from a provider that ignores abort.
-    const response = Promise.resolve().then(() => model.propose(input, controller.signal)).then((proposal) => {
-      // A proposal the client read from inside one code fence is counted in the trace (`fenced`), never told apart otherwise.
-      append({ kind: "response", at: now(), requestId, proposal, ...(readFromFence(proposal) ? { fenced: true as const } : {}), ms: now() - at });
-    }, (error) => {
+    // D-341: the turn's time budget. When it is spent, the request counts as a time-out and code's line follows.
+    const left = Math.max(0, turnEndsAt - Date.now());
+    let budgetTimer: ReturnType<typeof setTimeout> | undefined;
+    const budget = new Promise<"budget">((resolve) => { budgetTimer = setTimeout(() => resolve("budget"), left); });
+    // D-341: on a plain math turn, each sentence of `say` that passes the stream's checks goes to the child as it arrives.
+    const sent: string[] = [];
+    let firstSayMs: number | undefined;
+    streamReviews.clear();
+    // Round 4: code's plan for the turn is settled before the call; the "kind" the model writes first decides how its
+    // sentences go out: math or help stream (math-only sentences at once, others after their own review, started the
+    // moment the sentence is complete); any other kind reviews every sentence first; safety streams nothing.
+    const plan = model.output === 3 && options.onSayPart && !folded.sent?.length && folded.pending.length === 0 ? streamPlan(folded.session) : null;
+    const session = folded.session;
+    let streamDone = false;
+    let words = 0;
+    let seen = 0;
+    const queue: { sentence: string; state: "ready" | "pending" | "drop" }[] = [];
+    const flush = () => {
+      while (queue.length && queue[0].state !== "pending") {
+        const next = queue.shift()!;
+        if (next.state === "drop" || streamDone && next.state !== "ready") continue;
+        firstSayMs ??= now() - at;
+        options.onSayPart!(fillName(next.sentence, session), sent.length, []);
+        sent.push(next.sentence);
+      }
+    };
+    const onText = plan ? (soFar: string) => {
+      if (streamDone || folded.request?.id !== requestId || controller.signal.aborted) return;
+      const said = partialSay(soFar);
+      if (!said || !said.kind) return;
+      if (said.kind === "safety") { streamDone = true; return; }
+      const reviewAll = said.kind !== "math" && said.kind !== "help" && !plan.greeting;
+      const parts = sentencesOf(said.text);
+      const complete = said.complete ? parts : parts.slice(0, -1);
+      for (const sentence of complete.slice(seen)) {
+        const how = streamSentence(sentence, plan, seen, words, reviewAll, complete.slice(0, seen));
+        if (how === "stop" || (how === "review" && !options.reviewer)) { streamDone = true; return; }
+        seen++;
+        words += sentence.split(/\s+/).filter(Boolean).length;
+        const item: { sentence: string; state: "ready" | "pending" | "drop" } = { sentence, state: how === "send" ? "ready" : "pending" };
+        queue.push(item);
+        if (how === "review") {
+          const started = runReview(options.reviewer!, reviewInput(session, sentence, plan.stance), options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS);
+          streamReviews.set(sentence, started);
+          void started.then((result) => {
+            item.state = result.verdict === "pass" && !streamDone ? "ready" : "drop";
+            if (!streamDone) flush();
+          });
+        }
+      }
+      flush();
+    } : undefined;
+    const streamed = () => {
+      streamDone = true;
+      streamedThisOutput.push(...sent.map((x) => fillName(x, session)));
+      return sent.length ? { sent: [...sent], firstSayMs } : {};
+    };
+    // The handler logs even a late response from a provider that ignores abort; a response after the budget is stale.
+    const answered = Promise.resolve().then(() => prepared ? prepared.use(onText, controller.signal) : model.propose(input, controller.signal, onText)).then((proposal) => ({ proposal }), (error: unknown) => ({ error }));
+    const response = Promise.race([answered, budget]).then((got) => {
+      clearTimeout(budgetTimer);
+      if (got === "budget") {
+        streamDone = true;
+        if (folded.request?.id === requestId) append({ kind: "response", at: now(), requestId, error: classifyError(new Error("the turn's time is up"), "model"), ms: now() - at, ...streamed() });
+        return;
+      }
+      if ("proposal" in got) {
+        // A proposal the client read from inside one code fence is counted in the trace (`fenced`), never told apart otherwise.
+        streamDone = true;
+        append({ kind: "response", at: now(), requestId, proposal: got.proposal, ...(readFromFence(got.proposal) ? { fenced: true as const } : {}), ms: now() - at, ...streamed() });
+        return;
+      }
+      streamDone = true;
       const stale = folded.request?.id !== requestId;
-      append({ kind: "response", at: now(), requestId, error: classifyError(error, "model"), ms: now() - at });
-      if (!stale) options.onError?.(error, { turn: folded.turns.length, source });
+      append({ kind: "response", at: now(), requestId, error: classifyError(got.error, "model"), ms: now() - at, ...streamed() });
+      if (!stale) options.onError?.(got.error, { turn: folded.turns.length, source });
     });
     if (await wait(response, controller) === stopped || controller.signal.aborted) return;
     await reviewCandidate(controller);
@@ -268,11 +485,13 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     if (!candidate) return;
     const requestId = candidate.requestId;
     // Priority readings are already folded before any external free-talk review.
-    const first = step(folded.session, { type: "proposal", at: now(), proposal: candidate.proposal });
+    const first = step(folded.session, { type: "proposal", at: now(), proposal: candidate.proposal, ...(folded.sent?.length ? { sent: [...folded.sent] } : {}) });
     const texts = [...new Set(first.refusal ? [] : first.effects.flatMap((e) => e.kind === "say" ? e.talk ?? [] : []).filter((t) => t.code === null && t.review === "not_run").map((t) => t.proposed))];
     const t0 = now();
     const before = folded.session;
-    const reviews = options.reviewer ? Promise.all(texts.map(async (text) => ({ text, result: await runReview(options.reviewer!, reviewInput(before, text), options.reviewTimeLimitMs ?? REVIEW_TIME_LIMIT_MS, (error) => options.onError?.(error, { turn: folded.turns.length, source: "review" })) }))) : Promise.resolve([]);
+    const stance = before.conversational ? codeStance(before) : "none";
+    // A sentence the stream already sent to its review is not reviewed twice (round 4).
+    const reviews = options.reviewer ? Promise.all(texts.map(async (text) => ({ text, result: await (streamReviews.get(text) ?? runReview(options.reviewer!, reviewInput(before, text, stance), options.reviewTimeLimitMs ?? (before.conversational ? CONVERSATION_REVIEW_TIME_LIMIT_MS : REVIEW_TIME_LIMIT_MS), (error) => options.onError?.(error, { turn: folded.turns.length, source: "review" }))) }))) : Promise.resolve([]);
     const reviewed = reviews.then((results) => {
       append({ kind: "review", at: now(), requestId, reviews: results, ...(texts.length && options.reviewer ? { reviewMs: now() - t0 } : {}) });
     });
@@ -297,6 +516,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     sendGuidance();
     for (let n = 0; n < MAX_MAYA_TURNS && !controller.signal.aborted; n++) {
       if (folded.session.outcome) break;
+      turnEndsAt = Date.now() + (options.turnBudgetMs ?? TURN_BUDGET_MS);
       const urgent = folded.session.safety.flagged || folded.session.contentProblem !== null;
       if (folded.childState === "child_speaking" && !urgent) break;
       if (nextActs(folded.session).expect !== "maya") break;
@@ -305,12 +525,20 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         closeByCode();
         break;
       }
+      // D-341, round 3: a plain stop is closed in code's approved words at once, with no model call.
+      if (folded.session.conversational && folded.session.stopRequested && !safety.flagged && folded.session.turn && clearStop(folded.session.turn.text) && !folded.candidate && !folded.attempts.length) {
+        // The goodbye is two approved closing phrases: "Thanks for working on this with me. Bye for now!"
+        append({ kind: "fallback", at: now(), proposal: { version: PROPOSAL_VERSION, act: "close", parts: [{ warm: "closing", pick: 8 }, { warm: "closing", pick: 4 }] } });
+        if (!folded.session.outcome) closeByCode();
+        break;
+      }
       if (folded.candidate) await reviewCandidate(controller);
       else if (!folded.attempts.length) await request("model", controller);
       if (controller.signal.aborted) break;
       // With the danger known, a refused proposal gets code's guidance now, not a second model call.
       const safetyDue = folded.session.safety.flagged && !folded.session.safety.guided;
-      if (folded.attempts.at(-1)?.source === "model" && folded.attempts.at(-1)?.refusal && !folded.session.outcome && !safetyDue) await request("repair", controller);
+      // Words already streamed cannot be taken back: a refusal then goes straight to code's line after them.
+      if (folded.attempts.at(-1)?.source === "model" && folded.attempts.at(-1)?.refusal && !folded.session.outcome && !safetyDue && Date.now() < turnEndsAt && !folded.sent?.length) await request("repair", controller);
       if (controller.signal.aborted) break;
       if (folded.attempts.length && !folded.session.outcome) {
         const refused = folded.attempts.filter((a) => a.refusal !== null).map((a) => a.proposal);
@@ -325,6 +553,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   }
   function schedule(respond = true): Promise<TextOutput> {
     const version = generation;
+    scheduled++;
     const next = queue.then(async () => {
       if (version !== generation) return { ...newOutput(), cancelled: true };
       const controller = new AbortController();
@@ -338,8 +567,12 @@ export function createTextSession(options: TextSessionOptions): TextSession {
           append({ kind: "cancelled", at: now() });
           return out;
         }
-        const out = textOutput(folded);
+        const out: TextOutput = { ...textOutput(folded), ...preparedOutput, ...((folded.session.thinking ?? 0) > 0 && !folded.session.outcome ? { wait: true } : {}) };
+        if (out.ended) clearPrepares("ended");
+        const streamedNow = [...streamedThisOutput];
+        streamedThisOutput.length = 0;
         append({ kind: "delivered", at: now() });
+        sayParts(out, streamedNow);
         return out;
       } catch (error) {
         options.onError?.(error, "session");
@@ -347,13 +580,33 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         throw error;
       } finally { if (active === controller) active = null; }
     });
-    queue = next.catch(() => undefined);
-    return next;
+    const settled = next.finally(() => { scheduled--; });
+    queue = settled.catch(() => undefined);
+    return settled;
+  }
+  /** The streaming hooks (D-341): each sentence in order, once the whole reply passed its checks, then the end. */
+  function sayParts(out: TextOutput, streamedSentences: readonly string[] = []) {
+    if (quietOpening) { quietOpening = false; return; }
+    if (!options.onSayPart && !options.onSayEnd) return;
+    // Sentences streamed while the reply came in were sent already, in order: the rest follow them.
+    const queue = [...streamedSentences];
+    let index = 0;
+    for (const [k, said] of out.say.entries()) for (const sentence of sentencesOf(said)) {
+      if (queue[0] === sentence) { queue.shift(); index++; continue; }
+      options.onSayPart?.(sentence, index++, k === 0 && index === 1 ? out.board : []);
+    }
+    options.onSayEnd?.();
   }
   function receive(event: SessionEvent, respond = true): Promise<TextOutput> {
     recover();
     const nonInterrupting = event.type === "writing" || event.type === "tick" || event.type === "start" || event.type === "content_problem" || event.type === "maya_said";
     if (!nonInterrupting) { generation++; active?.abort(); }
+    if (event.type === "child_turn" && event.final !== false) {
+      if (committing && cache) discard(committing.entries, "stale");
+      committing = cache ? { generation, entries: cache.takeAll(), at: event.at } : null;
+      prepareCount = 0;
+      preparedOutput = cache ? { prepared: "none" } : {};
+    } else if (event.type !== "maya_said" && event.type !== "tick" && event.type !== "writing" && event.type !== "start") clearPrepares("stale");
     const approval = event.type === "maya_said" && matchesApproval(folded, event.text);
     append({ kind: "input", at: event.at, event });
     if (approval) return Promise.resolve(newOutput());
@@ -365,6 +618,10 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     }
     return schedule(respond);
   }
+  function preparationRecords() {
+    for (const [rec, entry] of costs) Object.assign(rec, entry.cost() ?? {});
+    return structuredClone(preparations);
+  }
   function trace(): MayaTrace {
     const { session, turns, board, obligations, endedAt } = folded;
     const outcome = folded.pending.length ? null : session.outcome;
@@ -375,12 +632,25 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       question: { id: typeof raw.id === "string" ? raw.id : null, ref: raw.ref ?? null, text: typeof raw.text === "string" ? raw.text : null, hash: packageHash(options.package) },
       freeTalk: session.freeTalk, reviewer: options.reviewer ? { id: options.reviewer.id, promptVersion: options.reviewer.promptVersion } : null,
       scopeRefusals: structuredClone(session.scopeRefusals ?? []),
+      ...(preparations.length ? { preparations: preparationRecords() } : {}),
       obligations: structuredClone(obligations), turns: structuredClone(turns), board: structuredClone(board), outcome, counts: traceCounts(turns),
     }, options.childName ?? null);
   }
   return {
-    start: () => receive({ type: "start", at: now() }),
-    child: (text, opts = {}) => receive({ type: "child_turn", at: now(), text, ...structuredClone(opts) }),
+    start: async (opts = {}) => {
+      quietOpening = opts.openingSpoken === true;
+      const out = await receive({ type: "start", at: now() });
+      // D-341: the voice worker speaks the opening itself; the trace keeps it and the board batch comes back.
+      prepareNext();
+      return opts.openingSpoken ? { ...out, say: [] } : out;
+    },
+    prepare,
+    cancelPending: () => { preparationStopped = true; generation++; active?.abort(); clearPrepares("ended"); },
+    child: (text, opts = {}) => {
+      const pending = receive({ type: "child_turn", at: now(), text, ...structuredClone(opts) });
+      const version = generation;
+      return pending.then((out) => { if (version === generation && !out.cancelled) { if (committing) { discard(committing.entries, "not_plain"); committing = null; } prepareNext(); } return out; });
+    },
     partial: (text) => receive({ type: "child_turn", at: now(), text, final: false }, false),
     mayaSaid: (text) => receive({ type: "maya_said", at: now(), text }),
     contentProblem: (detail) => receive({ type: "content_problem", at: now(), detail: redactText(detail) }),
@@ -392,13 +662,13 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     get ended() { return folded.session.outcome !== null; },
     finish: async (end = {}, oldFailed) => {
       const { reason = "technical_issue", detail = "the session was closed before the call ended", failed = false }: FinishOptions = typeof end === "string" ? { detail: end, failed: oldFailed ?? false } : end;
-      recover(); generation++; active?.abort();
+      recover(); generation++; active?.abort(); clearPrepares("ended");
       if (folded.session.startedAt === null) append({ kind: "input", at: now(), event: { type: "start", at: now() } });
       append({ kind: "input", at: now(), event: reason === "child_stopped" ? { type: "hang_up", at: now() } : { type: "technical", at: now(), detail: redactText(detail) }, ...(failed ? { error: classifyError(null, "local") } : {}) });
       await schedule(false);
       return trace();
     },
     trace,
-    saved: async () => structuredClone({ v: 6 as const, initial, checkpoint, nextRequestId, log, session: folded.session, turns: folded.turns, board: folded.board, endedAt: folded.endedAt, approved: folded.approved, obligations: folded.obligations, childState: folded.childState }),
+    saved: async () => structuredClone({ ...(preparations.length ? { preparations: preparationRecords() } : {}), v: 6 as const, initial, checkpoint, nextRequestId, log, session: folded.session, turns: folded.turns, board: folded.board, endedAt: folded.endedAt, approved: folded.approved, obligations: folded.obligations, childState: folded.childState }),
   };
 }

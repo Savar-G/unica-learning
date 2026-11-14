@@ -7,13 +7,15 @@ import { SCOPE_REASONS } from "@/lib/maya/scope";
 //
 // Plain JSON. Pure TypeScript except `packageHash`, which uses node:crypto (server and scripts only).
 import { createHash } from "node:crypto";
-import { ACTS, SAFETY_GUIDANCE, ASSISTANCE, INTERRUPTS, MAIN_STATES, NEVER_SAY_IDS, PHRASES, type Act, type Outcome, type RefusalCode, type SessionState, type TalkCheck } from "@/lib/maya";
+import { ACTS, SAFETY_GUIDANCE, ASSISTANCE, heldSentences, INTERRUPTS, MAIN_STATES, NEVER_SAY_IDS, PATIENT_LINES, PHRASES, type Act, type Outcome, type RefusalCode, type SessionState, type TalkCheck } from "@/lib/maya";
 
 /** Why a proposal was refused: the session's refusal, or "board_refused" when the board core refused a batch the session built. */
 export interface TraceRefusal {
   code: RefusalCode | "board_refused";
   reason: string;
   allowed: Act[];
+  /** D-341: the say check's reason ("review" for the review of a non-math turn). */
+  say?: string;
 }
 
 /**
@@ -25,11 +27,20 @@ export interface TraceRefusal {
  * words than her approved text start a repair) and `content_problem` (the package turned out wrong during the call).
  * Each records `cancelled`: whether Maya's output was stopped. Version 5 records input obligations and the
  * delivered turn that served each one, or the reason it was dropped. Version 6 adds controller safety output on
- * terminal events. Version 7 adds scope refusal reasons and times. `checkTrace` reads all seven versions.
+ * terminal events. Version 7 adds scope refusal reasons and times. Version 8 (#527) adds controller held output: on a
+ * question Maya cannot teach, code's exact held lines at the start, with no model; in version 8 that is the text before
+ * D-327 (`PRE_D314_HELD`). Version 9 (D-327) holds the held lines that say plainly Maya cannot teach the question yet
+ * (hello, can't teach, another question); a version 9 trace with the old text is refused. Version 10 records the configured call limits. `checkTrace` reads all ten
+ * versions.
  */
-export const TRACE_VERSION = 7;
+export const TRACE_VERSION = 10;
 /** The trace versions `checkTrace` reads. */
-export const TRACE_VERSIONS = [1, 2, 3, 4, 5, 6, 7] as const;
+export const TRACE_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+/**
+ * The held turn as version 8 traces stored it, before D-327 (line sets 11 to 13). Frozen here: stored admin test
+ * calls from preview deployments may hold it, and they stay readable.
+ */
+export const PRE_D314_HELD = "Hi, I'm Maya, an AI. Want to pick another question on this page?";
 export const TRACE_KIND = "maya-trace";
 
 export const OBLIGATION_KINDS = ["start_pending", "safety_due", "opening_due", "repair_due", "child_turn_pending", "content_problem"] as const;
@@ -136,6 +147,10 @@ export interface TraceAttempt {
   talk?: TraceTalk[];
   /** Version 3: how long the free-talk reviews of this attempt took, by the passed-in clock. */
   reviewMs?: number;
+  /** D-341: how long until the first sentence of this attempt was checked and streamed to the child, by the passed-in clock. */
+  firstSayMs?: number;
+  /** Round 4: sentences of the model's reply its review did not pass: never said. */
+  dropped?: { text: string; reason: string }[];
   /**
    * The client read this proposal from inside one Markdown code fence (a request sent without `response_format`, first
    * ship practice at 6de7e777). Absent otherwise, and in traces from before. Counted by `fencedReplies`.
@@ -165,6 +180,8 @@ export type TraceTurn =
       /** The session state before and after the turn. */
       state: SessionState;
       stateAfter: SessionState;
+      /** Count of committed wrong final answers after this turn, from the controller. */
+      finalMisses?: number;
       attempts: TraceAttempt[];
       /** Null when nothing was output: every attempt failed and the call ended as a technical issue. */
       output: TraceOutput | null;
@@ -192,6 +209,8 @@ export interface TraceBoardBatch {
 }
 
 export interface MayaTrace {
+  /** C2: committed preparation decisions. No hypothetical child text is stored. */
+  preparations?: import("@/lib/maya-prepared").PrepareRecord[];
   kind: typeof TRACE_KIND;
   /** The shape's version: this code writes TRACE_VERSION and reads every one of TRACE_VERSIONS. */
   version: (typeof TRACE_VERSIONS)[number];
@@ -228,6 +247,8 @@ export interface TraceCounts {
   modelErrors: number;
   /** Maya turns where nothing was output. */
   silent: number;
+  /** D-341: the model's own words refused by the say checks (and the review, "review"), by reason. */
+  sayRefusals?: Record<string, number>;
 }
 
 /** The counts of a trace's turns. */
@@ -242,6 +263,7 @@ export function traceCounts(turns: readonly TraceTurn[]): TraceCounts {
     fallbacks: maya.filter((t) => t.output && t.attempts.at(-1)?.source === "fallback").length,
     modelErrors: attempts.filter((a) => a.error !== undefined).length,
     silent: maya.filter((t) => t.output === null).length,
+    sayRefusals: attempts.reduce<Record<string, number>>((n, a) => (a.refusal?.say ? { ...n, [a.refusal.say]: (n[a.refusal.say] ?? 0) + 1 } : n), {}),
   };
 }
 
@@ -271,7 +293,8 @@ export function packageHash(pkg: unknown): string {
 const RUNNERS = ["text", "livekit-text", "voice"];
 const SOURCES = ["model", "repair", "fallback", "controller"];
 const STATES: readonly string[] = [...MAIN_STATES, ...INTERRUPTS];
-const REASONS = ["solved", "child_stopped", "time_limit", "no_response", "technical_issue", "content_issue", "safety"];
+// "maya_closed" (2026-11-12): Maya's own close of an unsolved call. Any version may hold it; older traces recorded that close as child_stopped.
+const REASONS = ["solved", "child_stopped", "time_limit", "no_response", "technical_issue", "content_issue", "safety", "maya_closed"];
 const PAPER = ["child_confirmed", "declined", "unknown"];
 const UNDERSTANDING = ["evidence_observed", "uncertain"];
 const HASH = /^sha256:[0-9a-f]{64}$/;
@@ -370,7 +393,7 @@ function checkOrder(attempts: Record<string, unknown>[], path: string) {
   if (attempts[1]?.source === "repair") need(attempts[0].refusal !== null, `${path}[1]`, "a repair only after a refusal, not after a model error");
 }
 
-function checkTurn(t: unknown, path: string): Record<string, unknown> {
+function checkTurn(t: unknown, path: string, version: number): Record<string, unknown> {
   need(isObject(t), path, "a turn");
   const x = t as Record<string, unknown>;
   need(isNum(x.at), `${path}.at`, "a time");
@@ -406,14 +429,27 @@ function checkTurn(t: unknown, path: string): Record<string, unknown> {
     case "maya": {
       need(oneOf(STATES, x.state), `${path}.state`, "a session state");
       need(oneOf(STATES, x.stateAfter), `${path}.stateAfter`, "a session state");
+      if (x.finalMisses !== undefined) need(isCount(x.finalMisses), `${path}.finalMisses`, "a count");
       need(Array.isArray(x.attempts) && x.attempts.length > 0 && x.attempts.length <= 3, `${path}.attempts`, "1 to 3 attempts");
       const attempts = x.attempts as Record<string, unknown>[];
       if (attempts[0]?.source === "controller") {
         const o = x.output as { act?: unknown; say?: unknown; board?: unknown } | null;
-        need(attempts.length === 1 && attempts[0].proposal === null && attempts[0].refusal === null && attempts[0].error === undefined && o?.act === "safety" && Array.isArray(o.say) && o.say.length === 1 && Object.values(SAFETY_GUIDANCE).some((text) => text === (o.say as unknown[])[0]) && Array.isArray(o.board) && o.board.length === 0, path, "controller output is exact safety guidance only");
+        // Code's own words with no model: safety guidance, or the held lines on a question Maya cannot teach (#527):
+        // the text before D-327 in version 8 and earlier, the D-327 text from version 9.
+        const held = version <= 8 ? PRE_D314_HELD : heldSentences(true).join(" ");
+        const exact = o?.act === "safety" ? Object.values(SAFETY_GUIDANCE) as string[] : o?.act === "close" ? [held] : [];
+        // D-341: the code-written opening of a conversational call, with the question staged on the board.
+        const opening = o?.act === "open" && Array.isArray(o?.say) && o.say.length === 1 && typeof o.say[0] === "string" &&
+          (/^Hi there! I'm Maya, an AI math helper\. We're doing .+ today\.(?: Where do you want to start\?)?$/.test(o.say[0]) || /^Hi there! I'm Maya, an AI math helper\. We're doing page \d+, number \d+ today: .+\.(?: Where do you want to start\?)?$/.test(o.say[0])) &&
+          Array.isArray(o?.board) && o.board.length <= 1;
+        // D-341, round 2: code's patient line for a child who is thinking, with the name as a redacted trace writes it.
+        const patient = o?.act === "wait" && Array.isArray(o?.say) && o.say.length === 1 && Array.isArray(o?.board) && o.board.length === 0 &&
+          PATIENT_LINES.some((line) => [line, line.replace(/,? ?\{name\}/g, "")].includes((o.say as unknown[])[0] as string));
+        need(attempts.length === 1 && attempts[0].proposal === null && attempts[0].refusal === null && attempts[0].error === undefined && Array.isArray(o?.say) && o.say.length === 1 && (opening || patient || (exact.includes(o.say[0] as string) && Array.isArray(o?.board) && o.board.length === 0)), path, "controller output is exact safety guidance, the exact held lines, the code opening or a patient line only");
       }
       // A chat's close after the safety guidance is code's own: no model is asked for it (#589).
-      if (attempts.length === 1 && attempts[0]?.source === "fallback") need(x.state === "SAFETY" && (x.output as { act?: unknown } | null)?.act === "close", `${path}.attempts`, "a fallback with no model attempt is only the close after safety guidance");
+      // D-341, round 3: also a plain stop, closed in code's approved words with no model call.
+      if (attempts.length === 1 && attempts[0]?.source === "fallback") need((x.output as { act?: unknown } | null)?.act === "close", `${path}.attempts`, "a fallback with no model attempt is only a close: after safety guidance, or a plain stop");
       attempts.forEach((a, i) => checkAttempt(a, `${path}.attempts[${i}]`));
       checkOrder(attempts, `${path}.attempts`);
       need("output" in x, `${path}.output`, "present (null when nothing was output)");
@@ -456,6 +492,18 @@ function check(raw: unknown): MayaTrace {
   const r = raw as Record<string, unknown>;
   need((TRACE_VERSIONS as readonly unknown[]).includes(r.version), "version", `one of ${TRACE_VERSIONS.join(", ")}, not ${String(r.version)}`);
   need(isName(r.callId), "callId", "a call id");
+  if (r.preparations !== undefined) {
+    need(Array.isArray(r.preparations), "preparations", "a list of preparation decisions");
+    for (const raw of r.preparations as unknown[]) {
+      need(isObject(raw), "preparations", "a preparation decision");
+      const p = raw as Record<string, unknown>;
+      need(Object.keys(p).every((key) => ["kind", "leadMs", "status", "reason", "usd", "estimated"].includes(key)), "preparations", "metadata only");
+      need(oneOf(["interim", "expected"], p.kind) && isNum(p.leadMs) && (p.leadMs as number) >= 0 && oneOf(["used", "discarded"], p.status), "preparations", "a known kind, status and nonnegative lead time");
+      need(p.status === "used" ? p.reason === undefined : oneOf(["key", "text", "not_plain", "stale", "ended"], p.reason), "preparations", "a discard reason only for a discarded reply");
+      need(p.usd === undefined || isNum(p.usd) && (p.usd as number) >= 0, "preparations", "a nonnegative cost");
+      need(p.estimated === undefined || p.estimated === true && p.usd !== undefined, "preparations", "an estimate only with a cost");
+    }
+  }
   if (r.version === 7 || r.scopeRefusals !== undefined) {
     need(Array.isArray(r.scopeRefusals), "scopeRefusals", "a list of reason codes and times");
     for (const refusal of r.scopeRefusals as unknown[]) need(isObject(refusal) && typeof refusal.at === "number" && Number.isFinite(refusal.at) &&
@@ -482,7 +530,7 @@ function check(raw: unknown): MayaTrace {
   } else need(r.reviewer === undefined, "reviewer", "absent before version 3");
 
   need(Array.isArray(r.turns), "turns", "a list");
-  const turns = (r.turns as unknown[]).map((t, i) => checkTurn(t, `turns[${i}]`));
+  const turns = (r.turns as unknown[]).map((t, i) => checkTurn(t, `turns[${i}]`, r.version as number));
   turns.forEach((t, i) => need(i === 0 || (t.at as number) >= (turns[i - 1].at as number), `turns[${i}].at`, "not before the turn before it"));
   turns.forEach((t, i) => {
     if (t.kind !== "maya" || (r.version as number) >= 3) return;
@@ -513,6 +561,7 @@ function check(raw: unknown): MayaTrace {
   need(r.outcome === null || r.startedAt !== null, "startedAt", "set for a call that ended");
   turns.forEach((t, i) => {
     if (t.kind === "maya") need(!(t.attempts as Record<string, unknown>[]).some((a) => a.source === "controller") || (r.version as number) >= 6, `turns[${i}].attempts`, "controller safety output starts in version 6");
+    if (t.kind === "maya") need((t.output as { act?: unknown } | null)?.act !== "close" || !(t.attempts as Record<string, unknown>[]).some((a) => a.source === "controller") || (r.version as number) >= 8, `turns[${i}].attempts`, "controller held output starts in version 8");
   });
   // The voice agent's input turns come in version 4.
   turns.forEach((t, i) => need(!["partial", "maya_said", "content_problem"].includes(t.kind as string) || (r.version as number) >= 4, `turns[${i}].kind`, `not ${String(t.kind)} before version 4`));
@@ -615,12 +664,34 @@ export function configuredSecrets(env: Record<string, string | undefined> = proc
  * Text with the child's name as {name} and every secret as [secret]: the configured secret values first (whatever
  * their shape), then the secret patterns. Redact before cutting text short, so a cut never leaves part of a key.
  */
-export function redactText(text: string, childName: string | null = null, secrets: readonly string[] = configuredSecrets()): string {
+export function redactText(text: string, childName: string | null = null, secrets: readonly string[] = configuredSecrets(), keep: readonly string[] = []): string {
   let out = secrets.reduce((t, v) => t.split(v).join("[secret]"), text);
   out = SECRETS.reduce((t, [re, to]) => t.replace(re, to), out);
   const name = childName?.trim();
-  if (name) out = out.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escape(name)}(?![\\p{L}\\p{N}])`, "giu"), "{name}");
-  return out;
+  if (!name) return out;
+  // The question's own words keep a name they hold (F1, practice PTP4: "Leo has 32 beads ..." read back to a child named
+  // Leo). The question is printed in the workbook and stored in the trace as it is, so this hides nothing more.
+  const kept: string[] = [];
+  for (const phrase of keep) {
+    if (!phrase) continue;
+    out = out.split(phrase).join(`\u0000${kept.length}\u0000`);
+    kept.push(phrase);
+  }
+  out = out.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escape(name)}(?![\\p{L}\\p{N}])`, "giu"), "{name}");
+  return out.replace(/\u0000(\d+)\u0000/g, (_, i: string) => kept[Number(i)]);
+}
+
+/** The sentences of the question's own text that hold the child's name: what Maya reads back keeps them (redactText). */
+function questionPhrases(trace: MayaTrace, childName: string | null): string[] {
+  const name = childName?.trim();
+  const text = (trace as { question?: { text?: string } | null }).question?.text ?? "";
+  if (!name || !text) return [];
+  const holds = new RegExp(`(?<![\\p{L}\\p{N}])${escape(name)}(?![\\p{L}\\p{N}])`, "iu");
+  // Whole sentences only, with or without their end mark, longest first: a name-only clause ("Ana, Ben and Cy", "Mia:")
+  // would let the name through in Maya's other words ("Hi Ana!"), so it is never kept on its own (re-review).
+  const sentences = text.split(/(?<=[.?!])\s+/).map((x) => x.trim()).filter(Boolean);
+  const pieces = sentences.flatMap((x) => [x, x.replace(/[.?!]+$/, "")]).filter((x) => x.replace(holds, "").replace(/[^\p{L}\p{N}]+/gu, "").length > 0);
+  return [...new Set(pieces.filter((x) => holds.test(x)))].sort((a, b) => b.length - a.length);
 }
 
 const redactDeep = (x: unknown, name: string | null): unknown =>
@@ -631,6 +702,7 @@ const redactDeep = (x: unknown, name: string | null): unknown =>
  * wrote: child turns, Maya's sentences, proposals, errors and technical details. Codes, states and commands stay.
  */
 export function redactTrace(trace: MayaTrace, childName: string | null): MayaTrace {
+  const keep = questionPhrases(trace, childName);
   const turns = trace.turns.map((t): TraceTurn => {
     switch (t.kind) {
       case "child":
@@ -651,7 +723,7 @@ export function redactTrace(trace: MayaTrace, childName: string | null): MayaTra
             ...(a.talk ? { talk: a.talk.map((x) => redactDeep(x, childName) as TraceTalk) } : {}),
             // Errors are codes and fixed wording: nothing to redact.
           })),
-          output: t.output ? { ...t.output, say: t.output.say.map((x) => redactText(x, childName)) } : null,
+          output: t.output ? { ...t.output, say: t.output.say.map((x) => redactText(x, childName, configuredSecrets(), keep)) } : null,
         };
       default:
         return t;

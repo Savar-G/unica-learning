@@ -6,6 +6,7 @@ import { OurBoard } from "@/components/our-board";
 import { Icon } from "@/components/desk-icons";
 
 const ERROR = "Your message could not be sent. Try again in a moment.";
+class ChatRefusal extends Error {}
 /** How long the chat's ink waits after a change before it goes to the call (#534). */
 const BOARD_SAVE_MS = 1500;
 /** A browser sends a request after the page has gone (keepalive) only below about 64 KB. */
@@ -268,6 +269,7 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
   const pending = useRef<{ id: string; messageId: string; revision: number; text: string } | null>(null);
   const epoch = useRef(0);
   const requestBusy = useRef(false);
+  const referenceStart = useRef<{ id: string; text: string } | null>(null);
   const key = `unica-chat:${at.book}:${at.page}:${at.question}`;
   const [uncertain, setUncertain] = useState(false);
   /**
@@ -278,6 +280,7 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
   const [callInk, setCallInk] = useState<{ id: string; log: InkEvent[] | "loading" } | null>(null);
   const board = useInkSaver(child);
   const request = useCallback(async (action: { type: string; [field: string]: unknown }, generation = epoch.current) => {
+    if (generation !== epoch.current) return null;
     const res = await fetch("/api/desk/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(action) });
     const answer = await res.json() as ChatReply;
     if (generation !== epoch.current) return null;
@@ -292,7 +295,7 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
       } else setUncertain(true);
     }
     // The message cap and Maya's spending cap (D-290) are told by the usage, not as an error.
-    if (answer.error && !["cap", "week_used", "paused"].includes(answer.error)) throw Error(ERROR);
+    if (answer.error && !["cap", "week_used", "paused"].includes(answer.error)) throw new ChatRefusal(answer.errorLine ?? ERROR);
     setError(null);
     return answer;
   }, []);
@@ -318,7 +321,7 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
     queueMicrotask(() => {
       if (generation !== epoch.current) return;
       setChat(null); setError(null); setBusy(false); setUncertain(false); setOwnerKey(key);
-      pending.current = null; startId.current = id;
+      pending.current = null; startId.current = id; referenceStart.current = null;
       if (initial && id) {
         const chatId = id;
         void request({ type: "read", id: chatId }, generation).catch(() => { if (generation === epoch.current) setError(ERROR); });
@@ -370,16 +373,25 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
     return () => { stopped = true; clearTimeout(timer); };
   }, [chat?.pending, uncertain, refresh]);
   const act = async (type: "start" | "child" | "end", text?: string): Promise<boolean> => {
-    if (requestBusy.current || at.question === null) return false;
+    if (requestBusy.current || (type === "start" && !text?.trim() && at.question === null && !chat?.question)) return false;
     requestBusy.current = true;
     setBusy(true); setError(null);
     const generation = epoch.current;
     try {
       if (type === "start") {
-        const id = (chat?.ended ? null : startId.current) ?? crypto.randomUUID();
+        const reference = text?.trim();
+        if (reference && chat && !chat.ended) {
+          await board.finish(chat.id);
+          const ended = await request({ type: "end", id: chat.id, revision: chat.revision }, generation);
+          if (!ended?.chat?.ended) return false;
+        }
+        if (reference && referenceStart.current?.text !== reference) referenceStart.current = { id: crypto.randomUUID(), text: reference };
+        const id = reference ? referenceStart.current!.id : (chat?.ended ? null : startId.current) ?? crypto.randomUUID();
         startId.current = id;
         try { sessionStorage.setItem(key, id); } catch { /* A reload can start a new session. */ }
-        await request({ type, id, question: { source: "workbook", workbookId: at.book, page: at.page, question: at.question } }, generation);
+        await request(reference ? { type, id, workbookId: at.book, reference }
+          : { type, id, question: chat?.question ?? { source: "workbook", workbookId: at.book, page: at.page, question: at.question } }, generation);
+        referenceStart.current = null;
       } else if (chat) {
         if (type === "child") {
           pending.current ??= { id: chat.id, messageId: crypto.randomUUID(), revision: chat.revision, text: text ?? "" };
@@ -391,9 +403,9 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
         }
       }
       return true;
-    } catch {
+    } catch (failure) {
       if (generation === epoch.current) {
-        setError(ERROR);
+        setError(failure instanceof ChatRefusal ? failure.message : ERROR);
         if (pending.current) setUncertain(true);
       }
       return false;
@@ -403,27 +415,29 @@ export function useDeskChat(initial: ChatUsage | null, at: { book: string; page:
 }
 export type DeskChatState = ReturnType<typeof useDeskChat>;
 
-export function ChatControls({ state, picked }: { state: DeskChatState; picked: boolean }) {
+export function ChatControls({ state, picked, held = false }: { state: DeskChatState; picked: boolean; held?: boolean }) {
   const [text, setText] = useState("");
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!text.trim()) return;
-    if (await state.act("child", text)) setText("");
+    const selecting = !state.chat || state.chat.ended || /^\s*page\b/i.test(text);
+    if (await state.act(selecting ? "start" : "child", text)) setText("");
   };
   if (state.usage?.left === 0) return <p className="desk-bubble" role="status">{chatCapLine()}</p>;
   const stopped = chatSpendLine(state.usage);
   if (stopped && (!state.chat || state.chat.ended)) return <p className="desk-bubble" role="status">{stopped}</p>;
-  const closed = !state.usage?.left || state.chat?.ended;
+  const closed = !state.usage?.left;
+  const selecting = !state.chat || state.chat.ended;
   return <>
     {state.chat?.pending && <p className="desk-event" role="status">Maya is working on your message…</p>}
     {state.error && <><p className="desk-error" role="alert">{state.error}</p><button type="button" className="desk-chat-end" onClick={() => void state.retry()}>Try again</button></>}
-    {!state.chat || state.chat.ended ? <button className="desk-pick" type="button" disabled={!picked || state.busy || !state.usage?.left}
+    {!state.chat || state.chat.ended ? !held && <button className="desk-pick" type="button" disabled={!picked || state.busy || !state.usage?.left}
       onClick={() => void state.act("start")}>{state.busy ? "Opening chat…" : state.chat?.ended ? "Chat again" : "Chat with Maya"}</button>
       : <button className="desk-chat-end" type="button" disabled={state.busy || state.uncertain || state.chat?.pending} onClick={() => void state.act("end")}>End chat</button>}
     <form className="desk-compose" onSubmit={submit}>
-      <input type="text" value={text} onChange={(e) => setText(e.target.value)} maxLength={500} disabled={state.busy || state.uncertain || state.chat?.pending || !state.chat || !!closed}
-        placeholder="Write to Maya" aria-label="Write to Maya" />
-      <button type="submit" disabled={state.busy || state.uncertain || state.chat?.pending || !state.chat || !!closed || !text.trim()} aria-label="Send"><Icon name="send" size={20} /></button>
+      <input type="text" value={text} onChange={(e) => setText(e.target.value)} maxLength={selecting ? 100 : 500} disabled={state.busy || state.uncertain || state.chat?.pending || !!closed}
+        placeholder={selecting ? "Page 4, number 3" : "Write to Maya"} aria-label={selecting ? "Page and question number" : "Write to Maya"} />
+      <button type="submit" disabled={state.busy || state.uncertain || state.chat?.pending || !!closed || !text.trim()} aria-label="Send"><Icon name="send" size={20} /></button>
     </form>
   </>;
 }

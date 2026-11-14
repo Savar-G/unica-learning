@@ -117,7 +117,7 @@ describe("steps the child already did are never asked again", () => {
     c.maya({ act: "example_step", step: "ones", parts: [ln("example.intro"), ln("example.step", { step: "ones" })], reading: { start: "no_start" } });
     c.maya({ act: "example_step", step: "tens", parts: [ln("example.step", { step: "tens" })] });
     c.maya({ act: "example_step", step: "result", parts: [ln("example.step", { step: "result" })] });
-    c.child("Fine. I got 16 for 7 plus 9.");
+    c.child("7 plus 9 is 16.");
     const reading = { start: "has_work" as const, answers: [ans(16, "ones", "right")] };
     expect(c.propose({ act: "try_target", parts: [ln("try.target")], reading }).refusal).toMatchObject({ code: "act_not_allowed" });
     const text = c.maya({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading });
@@ -134,14 +134,16 @@ describe("steps the child already did are never asked again", () => {
     const c = call();
     c.child("7 plus 9 is 16.");
     c.maya({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { start: "has_work", answers: [ans(16, "ones", "right")] } });
-    c.child("For the tens, I did 2 plus 3, that's 5, plus the 1 I carried. So I got 6 tens.");
+    c.child("2 plus 3 plus 1 is 6.");
     expect(c.acts).not.toEqual(["confirm"]);
     c.maya({ act: "guide", step: "result", level: 0, parts: [ln("check.right_step", { step: "tens" }), ln("step.invite", { step: "result" })], reading: { answers: [ans(6, "tens", "right")] } });
     expect(c.session.done).toEqual(["ones", "tens"]);
   });
 
   it("never reads a digit the child points at as their final answer ('the one I carried')", () => {
-    expect(readAnswer("I think it's sixty-six. I added the one I carried.")).toMatchObject({ final: num(66), sure: true });
+    // Two sentences with numbers: the final stays 66, and Maya confirms it (PR #624 review round 3).
+    expect(readAnswer("I think it's sixty-six. I added the one I carried.")).toMatchObject({ final: num(66), sure: false });
+    expect(readAnswer("I think it's sixty-six, I added the one I carried.").final).toEqual(num(66));
     expect(readAnswer("I got 16, so I wrote the 6.").final).toEqual(num(16));
     expect(readAnswer("Yes, I carried the one from sixteen.").final).toEqual(num(16));
     // The answer's own sentence is still the one checked: a later sentence with a pointed-at digit hides nothing.
@@ -182,9 +184,9 @@ describe("steps the child already did are never asked again", () => {
 
   it("never confirms or judges again a right answer that stands", () => {
     const c = call();
-    c.child("7 plus 9 is 16, carry the ten, 2 plus 3 plus 1 is 6. I got 66.");
+    c.child("7 plus 9 is 16, carry the ten, 2 plus 3 plus 1 is 6, so I got 66.");
     c.maya({ act: "accept_answer", parts: [ln("answer.right")], reading: { start: "has_work", answers: [ans(16, "ones", "right"), ans(6, "tens", "right"), ans(66, "result", "right")] } });
-    c.child("Yay, I got 66! I'm done. Thanks, Maya, you're the best!");
+    c.child("Yay, I got 66! Thanks, Maya, you're the best!");
     expect(c.acts).not.toContain("confirm");
     // The model's "unclear" and its repeated right answers carry nothing new once the answer stands.
     const r = c.propose({ act: "ask_write", parts: [ln("write.answer")], understanding: "evidence_observed", reading: { unclear: true, answers: [ans(66, "result", "right"), ans(16, "ones", "right")] } });
@@ -196,7 +198,7 @@ describe("steps the child already did are never asked again", () => {
     const c = call();
     c.child("I got 66.");
     c.maya({ act: "accept_answer", parts: [ln("answer.right")], reading: { answers: [ans(66, "result", "right")] } });
-    c.child("Yay, I'm done. Thanks, Maya!");
+    c.child("Yay! Thanks, Maya!");
     expect(c.propose({ act: "ask_write", parts: [ln("answer.right")], understanding: "uncertain" }).refusal).toMatchObject({ code: "invalid_proposal" });
     expect(c.propose({ act: "ask_write", parts: [ln("write.answer")], understanding: "uncertain" }).refusal).toBeNull();
   });
@@ -208,13 +210,18 @@ describe("steps the child already did are never asked again", () => {
     c.child("I think the tens make 66.");
     expect(c.propose({ act: "guide", step: "tens", level: 1, parts: [ln("check.not_yet", { step: "tens" }), ln("step.point", { step: "tens" })], reading: { answers: [ans(66, "tens", "wrong")] } }).refusal)
       .toMatchObject({ code: "rejects_right_answer" });
-    expect(c.propose({ act: "accept_answer", parts: [ln("answer.right")], reading: { answers: [ans(66, "result", "right")] } }).refusal).toBeNull();
+    // Rule A (2026-11-12): "I think" is a hedge, so the answer goes to the confirm before it is accepted.
+    expect(c.propose({ act: "accept_answer", parts: [ln("answer.right")], reading: { answers: [ans(66, "result", "right")] } }).refusal).toMatchObject({ code: "answer_not_committed" });
   });
 
   it("does not ask how the child did a step they worked out aloud", () => {
     const c = call();
-    c.child("7 plus 9 is 16, carry the ten, 2 plus 3 plus 1 is 6. I got 66.");
-    c.maya({ act: "accept_answer", parts: [ln("answer.right")], reading: { start: "has_work", answers: [ans(16, "ones", "right"), ans(6, "tens", "right"), ans(66, "result", "right")] } });
+    c.child("7 plus 9 is 16.");
+    c.maya({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { start: "has_work", answers: [ans(16, "ones", "right")] } });
+    c.child("2 plus 3 plus 1 is 6.");
+    c.maya({ act: "guide", step: "result", level: 0, parts: [ln("check.right_step", { step: "tens" }), ln("step.invite", { step: "result" })], reading: { answers: [ans(6, "tens", "right")] } });
+    c.child("I got 66.");
+    c.maya({ act: "accept_answer", parts: [ln("answer.right")], reading: { answers: [ans(66, "result", "right")] } });
     c.child("Yes!");
     const offered = (lineOffers(c.session).ask_write ?? []).map((o) => o.line);
     expect(offered).not.toContain("check.explain");
@@ -231,9 +238,13 @@ describe("steps the child already did are never asked again", () => {
   it("judges a wrong final answer the child gave before their working, and keeps the right step in it", () => {
     const c = call();
     c.child("Hi! I got 56. I did 7 plus 9 is 16, so I wrote the 6. Then 2 plus 3 is 5.");
-    c.maya({ act: "guide", step: "tens", level: 1, parts: [ln("check.right_step", { step: "ones" }), ln("check.not_yet", { step: "tens" }), ln("step.regroup", { step: "tens" })],
-      reading: { start: "has_work", answers: [ans(56, "result", "wrong"), ans(16, "ones", "right"), ans(5, "tens", "wrong")] } });
-    expect(c.session.done).toEqual(["ones"]);
+    // The whole turn is no template: the ones get no credit from it, and the wrong final answer is still judged.
+    expect(c.propose({ act: "guide", step: "tens", level: 1, parts: [ln("check.right_step", { step: "ones" }), ln("check.not_yet", { step: "tens" }), ln("step.regroup", { step: "tens" })],
+      reading: { start: "has_work", answers: [ans(56, "result", "wrong"), ans(16, "ones", "right"), ans(5, "tens", "wrong")] } }).refusal).toMatchObject({ code: "answer_not_committed" });
+    c.maya({ act: "guide", step: "ones", level: 0, parts: [ln("check.not_yet", { step: "result" }), ln("step.invite", { step: "ones" })],
+      reading: { start: "has_work", answers: [ans(56, "result", "wrong")] } });
+    expect(c.session.lastResult).toBe("wrong");
+    expect(c.session.done).toEqual([]);
     // Never a right answer accepted that way, and never once the final answer the child kept is right.
     const d = call();
     d.child("I got 56. No wait, I got 66.");
@@ -269,7 +280,7 @@ describe("where a carried 1 comes from, before any line names it", () => {
   it("does not mark the next carry as explained when one column receives and makes a carry", () => {
     const operation: Operation = { kind: "add", operands: [67, 58] };
     const c = call(false, { ...PACKAGE, text: "67 + 58 = ?", operation, steps: workedSteps(operation), answer: { value: num(125), accepted: [], unit: null }, wrongAnswers: [{ value: num(115), cause: "O3", description: "Forgets the ten from the ones", step: "tens" }] });
-    c.child("I got 15 for 7 plus 8.");
+    c.child("7 plus 8 is 15.");
     c.maya({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { start: "has_work", answers: [ans(15, "ones", "right")] } });
     c.child("I got 115.");
     c.maya({ act: "guide", step: "tens", level: 1, parts: [ln("step.regroup", { step: "tens" })], reading: { answers: [ans(115, "result", "wrong")] } });
@@ -281,8 +292,8 @@ describe("where a carried 1 comes from, before any line names it", () => {
   it("says the regroup line after a lost carry, before 'the 1 you carried'", () => {
     const c = call();
     c.child("I got 56.");
-    c.maya({ act: "guide", step: "ones", level: 0, parts: [ln("step.invite", { step: "ones" })], reading: { start: "has_work", answers: [ans(56, "result", "wrong")] } });
-    c.child("I added the ones, 7 plus 9. I got 16, so I wrote the 6.");
+    c.maya({ act: "guide", step: "ones", level: 0, parts: [ln("check.not_yet", { step: "result" }), ln("step.invite", { step: "ones" })], reading: { start: "has_work", answers: [ans(56, "result", "wrong")] } });
+    c.child("7 plus 9 is 16.");
     c.maya({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { answers: [ans(16, "ones", "right")] } });
     c.child("I added the tens, 2 plus 3 is 5.");
     const reading = { answers: [ans(5, "tens", "wrong")] };
@@ -302,7 +313,7 @@ describe("where a carried 1 comes from, before any line names it", () => {
     const c = call();
     c.child("7 plus 9 is 16.");
     c.maya({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { start: "has_work", answers: [ans(16, "ones", "right")] } });
-    c.child("Is it 4?");
+    c.child("4.");
     c.maya({ act: "guide", step: "tens", level: 1, parts: [ln("step.point", { step: "tens" })], reading: { answers: [ans(4, "tens", "wrong")] } });
     c.child("What 1? I didn't carry anything.");
     expect(regroupTexts(c).length).toBeGreaterThan(0);
@@ -322,15 +333,15 @@ describe("where a carried 1 comes from, before any line names it", () => {
     const text = c.maya({ act: "guide", step: "ones", level: 1, parts: [ln("step.regroup", { step: "ones", other: "carry" })], reading });
     expect(text).toMatch(/6/);
     expect(c.session.done).toEqual([]);
-    c.child("Oh. I write 6 and carry 1 ten.");
+    c.child("I write 6 and carry 1.");
     c.maya({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { answers: [ans(6, "ones", "right")] } });
     expect(c.session.done).toEqual(["ones"]);
   });
 
   it("does not call for a regroup when the child carried", () => {
     const c = call();
-    c.child("7 plus 9 is 16, so I wrote the 6 and carried the 1.");
-    c.maya({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { start: "has_work", answers: [ans(16, "ones", "right")] } });
+    c.child("I wrote 6 and carried 1.");
+    c.maya({ act: "guide", step: "tens", level: 0, parts: [ln("check.right_step", { step: "ones" }), ln("step.invite", { step: "tens" })], reading: { start: "has_work", answers: [ans(6, "ones", "right")] } });
     c.child("2 plus 3 is 4.");
     // A wrong tens sum that is not the lost carry: the ordinary hint ladder.
     expect(c.propose({ act: "guide", step: "tens", level: 1, parts: [ln("step.point", { step: "tens" })], reading: { answers: [ans(4, "tens", "wrong")] } }).refusal).toBeNull();
