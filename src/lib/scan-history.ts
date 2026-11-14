@@ -4,8 +4,14 @@ export type HistoryStatus = "never-scanned" | "pending" | "review" | "failed" | 
 /** "review": our team is checking an answer the AI was unsure of. No label asks a parent to judge an answer (#715). */
 export const HISTORY_LABELS: Record<HistoryStatus, string> = { "never-scanned": "No photo yet", pending: "Not marked yet", review: "Our team is checking", failed: "Could not mark", blank: "All answers blank", unscored: "Not scored", ready: "Results ready" };
 export interface HistoryPhoto { id: string; state: string; expiresAt: string; sentAt: string | null; at: string }
-export interface HistoryJob { photo: string; state: string; blocked: string | null; dispatches: number }
-export interface HistorySpend { id: string; model: string; at: string; reserved: number; charged: number | null; outcome: string }
+export interface HistoryJob { photo: string; state: string; blocked: string | null; dispatches: number;
+  /**
+   * The job's own latest dispatch (#868): its clean failure (`rate-limit` for a clean 429 the database confirmed, else
+   * null) and when it was settled (null while its charge is unknown). Absent from an older reader, null with no dispatch.
+   */
+  lastDispatch?: { cleanFailure: string | null; settledAt: string | null } | null }
+/** `outcome` `deferred`: a clean 429 (#868), charge 0, kept apart from marking failures. `cleanFailure` is its flag. */
+export interface HistorySpend { id: string; model: string; at: string; reserved: number; charged: number | null; outcome: string; cleanFailure?: string | null }
 export interface HistoryRecord {
   id: string; childId: string; childName: string; workbookId: string; book: number; revision: string; day: string; pageNumber: number;
   marks: EffectiveMark[]; photos: HistoryPhoto[]; jobs: HistoryJob[]; spend: HistorySpend[];
@@ -24,8 +30,11 @@ export const completedPage = (p: HistoryPage) => ["ready", "blank", "unscored"].
  * run's own time. After that, or for any other waiting job, admins see it in the failed filter.
  */
 export const DEFERRAL_FRESH_MS = 20 * 60_000;
-/** One canonical page, irrespective of the number or lifecycle of its evidence photos. No score is inferred. */
-export function historyPage(r: HistoryRecord, now: number): HistoryPage {
+/**
+ * One canonical page, irrespective of the number or lifecycle of its evidence photos. No score is inferred. `scope`:
+ * a parent's history or the admins' monitor, which alone counts a job still waiting as failed (#868).
+ */
+export function historyPage(r: HistoryRecord, now: number, scope: "parent" | "admin" = "parent"): HistoryPage {
   const view = markingPageView(r.marks);
   const readable = (p: HistoryPhoto | undefined) => Boolean(p && p.state === "saved" && Date.parse(p.expiresAt) > now);
   // A photo that can still mark the page: readable, and sent (or already claimed by a job). A never-sent retake cannot.
@@ -34,13 +43,13 @@ export function historyPage(r: HistoryRecord, now: number): HistoryPage {
   // of the page (a sent retake) can still mark it.
   const stranded = r.jobs.some((j) => j.state !== "finished" && !live(r.photos.find((p) => p.id === j.photo))) && !r.photos.some(live);
   const couldNotMark = stranded || r.jobs.some((j) => j.blocked === "attempts") || r.photos.some((p) => p.state === "rejected");
-  // A `pending` job waits for a later run (#868): the parent reads "Not marked yet". Only a recent deferral on a clean 429
-  // (the page's latest dispatch charged 0, settled within DEFERRAL_FRESH_MS) is simply on its way; any other waiting job
-  // (no client, time-outs, 5xx, or a deferral the recovery run has not taken up again) stays in the admins' failed filter.
-  const latest = [...r.spend].sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).at(-1);
-  const freshDeferral = latest?.charged === 0 && now - Date.parse(latest.at) <= DEFERRAL_FRESH_MS;
+  // A `pending` job waits for a later run (#868): everyone reads "Not marked yet". Admins also see it in the failed filter
+  // unless the job's own latest dispatch is a clean 429 settled within DEFERRAL_FRESH_MS (time-outs, 5xx answers, a call
+  // that never started, or a deferral no run has taken up again). A closed plan (`off`) is no failure, as before.
+  const freshDeferral = (j: HistoryJob) => j.lastDispatch?.cleanFailure === "rate-limit" && j.lastDispatch.settledAt !== null
+    && now - Date.parse(j.lastDispatch.settledAt) <= DEFERRAL_FRESH_MS;
   // A job on a photo that is gone is the stranded rule's (a live retake takes over the page).
-  const stuck = !freshDeferral && r.jobs.some((j) => j.state !== "finished" && (j.blocked === "pending" || j.blocked === "off")
+  const stuck = scope === "admin" && r.jobs.some((j) => j.state !== "finished" && j.blocked === "pending" && !freshDeferral(j)
     && live(r.photos.find((p) => p.id === j.photo)));
   const failedJob = couldNotMark || stuck;
   const complete = view.completion.status === "complete";
@@ -70,7 +79,8 @@ export function historyCosts(records: readonly HistoryRecord[], pages: readonly 
     logicalCalls: records.reduce((n, r) => n + r.jobs.filter((j) => j.dispatches > 0).length, 0), attempts: spend.length,
     accepted, perAccepted: accepted > 0 && !unknown.length ? reported / accepted : null, split: [...split.values()].sort((a, b) => `${a.date}:${a.model}:${a.outcome}`.localeCompare(`${b.date}:${b.model}:${b.outcome}`)) };
 }
-export interface HistoryStore { read(filter: HistoryFilter): Promise<{ pages: HistoryRecord[]; budget: HistoryBudget | null } | null> }
+/** `admin`: the read is the admins' monitor, with dispatch data; absent or false: a parent's history. */
+export interface HistoryStore { read(filter: HistoryFilter): Promise<{ pages: HistoryRecord[]; budget: HistoryBudget | null; admin?: boolean } | null> }
 /** Parent and Admin use this exact reader. Keyset cursors advance even through nonmatching status pages. */
 /**
  * `skipChildren`: children whose pages are left out of the list and of its counts and costs (the admin's test families,
@@ -93,12 +103,13 @@ export async function readScanHistory(store: HistoryStore, filter: HistoryFilter
     const batch = await store.read({ ...storeFilter, after });
     if (!batch) return null;
     budget = batch.budget;
+    const scope = batch.admin ? "admin" : "parent";
     if (!batch.pages.length) break;
     for (const r of batch.pages) {
       if (after && r.id <= after) throw new Error("history_cursor");
       after = r.id;
       if ((filter.child && r.childId !== filter.child) || (filter.workbook && r.workbookId !== filter.workbook) || skipChildren.has(r.childId)) continue;
-      const p = historyPage(r, now);
+      const p = historyPage(r, now, scope);
       if (!ordered && !inFilter(p)) continue;
       if (!ordered && matches.length === limit) { more = true; break; }
       matches.push({ r, p });

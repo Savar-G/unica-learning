@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { expectedItems, firstObservation, itemKey, markingEvent, observationProblem, PHOTO_ISSUES, type Observation } from "@/lib/scan-observation";
 import { markingAiTimeout, MARKING_AI_TIMEOUT_MS, MARKING_MAX_DEFERRALS, MARKING_MAX_DISPATCHES, MARKING_MAX_TRANSPORT_DISPATCHES, MARKING_RETRY_WAIT_CAP_MS, MARKING_RETRY_WAIT_MS, type MarkingFailure, MARKING_MIN_AI_MS, TWO_WAYS_METHOD_MARKS, waitsForTeam, effectiveMarkingEvents, effectiveSkillMarks, markingOriginalKey, markingPageView, markingRequest, MARKING_CAP_MICROS, MARKING_MODEL, MARKING_PROMPT_VERSION, readMarkingOutput, runScanMarking, validMarkingOutput, type EffectiveMark, type MarkingClientFactory, type MarkingFrame, type MarkingJob, type MarkingRunOptions, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
@@ -431,20 +431,30 @@ describe("#868: a clean 429 waits, frees its hold and defers the photo; every ot
     expect(await timedRun(full, "photo-a", scripted([answer]), "a")).toBe("attempts");
   });
 
-  it("a refused admission right after a confirmed clean 429 still tells the caller about the rate limit", async () => {
-    for (const refusal of ["budget", "attempts"] as const) {
+  it("a dispatch-count refusal right after a confirmed clean 429 tells the caller about the rate limit; other refusals do not", async () => {
+    for (const [refusal, told] of [["attempts", [1_000]], ["budget", []], ["price-unverified", []], ["terminal", []]] as const) {
       const s = new Store(frame()), limits: (number | null)[] = [];
       const admit = s.admit.bind(s);
       let calls = 0;
       s.admit = async (ref, token, model) => ++calls === 2 ? refusal : admit(ref, token, model);
       expect(await timedRun(s, "photo-a", scripted([{ failure: rateLimit(1_000) }, answer]), "a", [], { onRateLimit: (ms) => { limits.push(ms); } })).toBe(refusal);
-      expect(limits).toEqual([1_000]);
+      expect(limits, refusal).toEqual(told);
     }
     // A refusal with no clean 429 before it is no rate limit.
     const s = new Store(frame()), limits: unknown[] = [];
-    s.admit = async () => "budget";
-    expect(await timedRun(s, "photo-a", scripted([answer]), "a", [], { onRateLimit: (ms) => { limits.push(ms); } })).toBe("budget");
+    s.admit = async () => "attempts";
+    expect(await timedRun(s, "photo-a", scripted([answer]), "a", [], { onRateLimit: (ms) => { limits.push(ms); } })).toBe("attempts");
     expect(limits).toEqual([]);
+  });
+
+  it("a cancelled call stops its 429 wait at once, sends no retry and defers the photo", async () => {
+    const s = new Store(frame()), requests: AiJsonRequest[] = [], cancel = new AbortController();
+    const started = Date.now();
+    setTimeout(() => cancel.abort(), 20);
+    expect(await runScanMarking(s, { parent: P, photo: "photo-a" }, "a", scripted([{ failure: rateLimit(9_000) }, answer], requests), () => new Date(s.clock).toISOString(), { signal: cancel.signal })).toBe("pending");
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(requests).toHaveLength(1);
+    expect(s.jobs.get("photo-a")!.deferrals).toBe(1);
   });
 
   it("defers only when the store confirmed the 429 clean: otherwise it counts, keeps its hold and spends no deferral", async () => {
@@ -458,6 +468,7 @@ describe("#868: a clean 429 waits, frees its hold and defers the photo; every ot
   });
 
   it("a settle that throws still pauses the photo as pending; it is retried once at the end, never as clean, and a settled dispatch never again", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
     for (const failing of ["d0", "d1"]) {
       const s = new Store(frame()), sent: [string, MarkingFailure | null][] = [];
       const settle = s.settle.bind(s);
@@ -472,6 +483,10 @@ describe("#868: a clean 429 waits, frees its hold and defers the photo; every ot
       // Every other dispatch was settled exactly once.
       for (const id of s.spend.keys()) if (id !== failing) expect(s.settles.filter((x) => x === id)).toHaveLength(1);
     }
+    // Each settle that failed twice is logged once, with no ids.
+    expect(log).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(log.mock.calls)).not.toMatch(/d0|d1|photo-a/);
+    log.mockRestore();
   });
 
   it("a defer the store cannot answer pauses the photo as pending", async () => {

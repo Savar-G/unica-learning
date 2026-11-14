@@ -36,8 +36,6 @@ it("keeps blank, unscored, pending, failed, never scanned and ready separate", (
 it("a job waiting as pending for a later run is still being marked, never Could not mark (#868)", () => {
   const waiting = unread(record(1, null)); waiting.jobs[0].state = "queued"; waiting.jobs[0].blocked = "pending";
   waiting.photos[0].state = "saved"; waiting.photos[0].expiresAt = "2027-01-01";
-  // Deferred on a clean 429 a minute ago: its hold freed, charge 0.
-  waiting.spend[0].charged = 0; waiting.spend[0].at = new Date(now - 60_000).toISOString();
   expect(historyPage(waiting, now)).toMatchObject({ status: "pending", label: "Not marked yet", failedJob: false });
 });
 it("a waiting job whose photo expired can no longer be marked: Could not mark, and in the failed filter (#868)", async () => {
@@ -65,21 +63,31 @@ it("a never-sent retake cannot mark the page: the stranded job still reads Could
   r.photos[1].sentAt = "2026-11-05T23:00:00Z";
   expect(historyPage(r, now)).toMatchObject({ status: "pending", failedJob: false });
 });
-it("admins see a waiting job in the failed filter unless it is a recent clean-429 deferral; parents read Not marked yet", async () => {
-  const waiting = (n: number, blocked: string, charged: number | null, at: number) => {
-    const r = unread(record(n, null)); r.jobs[0].state = "queued"; r.jobs[0].blocked = blocked;
+it("admins see a waiting job in the failed filter unless its own latest dispatch is a recent clean 429; parents never do", async () => {
+  const at = (ms: number) => new Date(ms).toISOString();
+  const waiting = (n: number, blocked: string, last: HistoryRecord["jobs"][number]["lastDispatch"]) => {
+    const r = unread(record(n, null)); r.jobs[0].state = "queued"; r.jobs[0].blocked = blocked; r.jobs[0].lastDispatch = last;
     r.photos[0].state = "saved"; r.photos[0].expiresAt = "2027-01-01T00:00:00Z";
-    r.spend = [{ ...r.spend[0], id: id(800 + n), at: "2026-11-05T00:00:00Z", charged: 2000 }, { ...r.spend[0], id: id(850 + n), at: new Date(at).toISOString(), charged }];
     return r;
   };
-  const deferred = waiting(1, "pending", 0, now - 60_000);
-  const old = waiting(2, "pending", 0, now - DEFERRAL_FRESH_MS - 1);
-  const timedOut = waiting(3, "pending", null, now - 60_000);
-  const noClient = waiting(4, "off", null, now - 60_000);
-  const neverCalled = waiting(5, "pending", null, now); neverCalled.spend = [];
-  expect(historyPage(deferred, now)).toMatchObject({ status: "pending", label: "Not marked yet", failedJob: false });
-  for (const r of [old, timedOut, noClient, neverCalled]) expect(historyPage(r, now)).toMatchObject({ status: "pending", label: "Not marked yet", failedJob: true });
-  expect((await readScanHistory(source([deferred, old, timedOut, noClient, neverCalled], 100), { status: "failed" }, now))!.pages.map((p) => p.pageNumber)).toEqual([2, 3, 4, 5]);
+  const deferred = waiting(1, "pending", { cleanFailure: "rate-limit", settledAt: at(now - 60_000) });
+  const old = waiting(2, "pending", { cleanFailure: "rate-limit", settledAt: at(now - DEFERRAL_FRESH_MS - 1) });
+  const timedOut = waiting(3, "pending", { cleanFailure: null, settledAt: null });
+  const neverCalled = waiting(4, "pending", null);
+  // A closed plan is no failure, as before #868.
+  const closed = waiting(5, "off", null);
+  // Freshness is the job's own: a fresh clean 429 on another job of the page does not cover a stuck one.
+  const mixed = waiting(6, "pending", { cleanFailure: null, settledAt: null });
+  mixed.photos.push({ ...mixed.photos[0], id: id(992) });
+  mixed.jobs.push({ ...mixed.jobs[0], photo: id(992), lastDispatch: { cleanFailure: "rate-limit", settledAt: at(now - 60_000) } });
+  const all = [deferred, old, timedOut, neverCalled, closed, mixed];
+  for (const r of all) expect(historyPage(r, now, "admin"), r.day).toMatchObject({ status: "pending", label: "Not marked yet" });
+  expect(all.map((r) => historyPage(r, now, "admin").failedJob)).toEqual([false, true, true, true, false, true]);
+  const admin: HistoryStore = { read: async (f) => ({ pages: all.filter((r) => !f.after || r.id > f.after), budget: null, admin: true }) };
+  expect((await readScanHistory(admin, { status: "failed" }, now))!.pages.map((p) => p.pageNumber)).toEqual([2, 3, 4, 6]);
+  // The parent scope has no dispatch data: a waiting job on a live sent photo is never in its "could not mark" filter.
+  expect(all.map((r) => historyPage(r, now).failedJob)).toEqual([false, false, false, false, false, false]);
+  expect((await readScanHistory(source(all, 100), { status: "failed" }, now))!.pages).toEqual([]);
 });
 it("an unsure page says our team is checking it; a page not read yet says Not marked yet; neither asks the parent (#715)", () => {
   const unsure = record(1, null), notRead = unread(record(2, null));
@@ -166,4 +174,23 @@ it.each(["review", "failed", "scanned"] as const)("keeps the printed cursor when
   expect(second.pages.map((p) => p.pageNumber)).toEqual(Array.from({ length: 25 }, (_, n) => n + 26));
   expect(second.counted).toBe(25);
   expect(second.costs.reported).toBe(50_000);
+});
+it("the RPC adapter reads each job's latest dispatch and the monitor's deferred 429s, and marks the monitor read as admin (#868)", async () => {
+  const r = unread(record(1, null)), at = new Date(now - 60_000).toISOString();
+  r.jobs[0] = { ...r.jobs[0], state: "queued", blocked: "pending", lastDispatch: { cleanFailure: "rate-limit", settledAt: at } };
+  r.photos[0] = { ...r.photos[0], state: "saved", expiresAt: "2027-01-01T00:00:00Z" };
+  r.spend = [{ ...r.spend[0], charged: 0, outcome: "deferred", cleanFailure: "rate-limit" }];
+  const raw = { ...r, marks: r.marks.map((m) => ({ expected: m.expected, observation: m.observation, original_event: m.originalEvent, event_id: m.eventId, evidence_at: m.at, model: m.model, prompt: m.prompt })) };
+  const old = structuredClone(raw) as typeof raw & { jobs: Record<string, unknown>[]; spend: Record<string, unknown>[] };
+  delete old.jobs[0].lastDispatch; delete old.spend[0].cleanFailure;
+  let answer: unknown = raw;
+  const db = createClient<Database>("https://synthetic.invalid", "fake", { global: { fetch: async (_url, init) => Response.json({ pages: JSON.parse(String(init?.body)).p_data.after ? [] : [answer], budget: null }) } });
+  const admin = (await readScanHistory(scanHistoryStore(db, { admin: P }), { status: "failed" }, now))!;
+  expect(admin.pages).toEqual([]);
+  const all = (await readScanHistory(scanHistoryStore(db, { admin: P }), {}, now))!;
+  expect(all.costs.split).toEqual([expect.objectContaining({ outcome: "deferred", reported: 0, reserved: 0 })]);
+  // An older database (no lastDispatch): admins see the waiting job in the failed filter; the parent never does.
+  answer = old;
+  expect((await readScanHistory(scanHistoryStore(db, { admin: P }), { status: "failed" }, now))!.pages).toHaveLength(1);
+  expect((await readScanHistory(scanHistoryStore(db, { parent: P }), { child: C, status: "failed" }, now))!.pages).toEqual([]);
 });

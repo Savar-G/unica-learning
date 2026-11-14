@@ -302,9 +302,11 @@ export interface MarkingRunOptions {
    * provider is limiting us, so the recovery run stops there instead of spending every queued photo's deferrals.
    */
   onRateLimit?: (retryAfterMs: number | null) => void;
-  /** For tests: the clock (ms) and the wait before a 429's retry. Absent: Date.now and a timer. */
+  /** Cancels the model call, and with it any 429 wait, at once. */
+  signal?: AbortSignal;
+  /** For tests: the clock (ms) and the wait before a 429's retry. Absent: Date.now and a timer that ends early on `signal`. */
   clockMs?: () => number;
-  sleep?: (ms: number) => Promise<void>;
+  sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
 }
 /** One bounded server job. Reload, cron and admin recovery all call this same path. */
 export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token: string, makeClient: MarkingClientFactory, now: () => string, options: MarkingRunOptions = {}): Promise<MarkingStatus> {
@@ -326,7 +328,14 @@ export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token
       let transport: MarkingTransport | null = null;
       let deadline = Infinity;
       const clockMs = options.clockMs ?? Date.now;
-      const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+      const sleep = options.sleep ?? ((ms: number, signal: AbortSignal) => new Promise<void>((resolve) => {
+        if (signal.aborted) { resolve(); return; }
+        const done = () => { clearTimeout(timer); signal.removeEventListener("abort", done); resolve(); };
+        const timer = setTimeout(done, ms);
+        signal.addEventListener("abort", done, { once: true });
+      }));
+      // The call's signal: its timeout and the caller's cancel. Set when the call starts.
+      let callSignal: AbortSignal = options.signal ?? new AbortController().signal;
       // The clean 429 the store last confirmed (#868), or null: only it may wait, defer or skip the dispatch count.
       let confirmed: MarkingFailure | null = null;
       // A dispatch whose settle threw: tried once more at the end with its cost only (never as clean), as before #868.
@@ -347,8 +356,10 @@ export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token
         if (await settleOpen()) {
           // #868: wait before retrying a clean 429, only when the wait and a whole call still fit the call's time.
           const wait = markingRetryWait(confirmed!.retryAfterMs, deadline - clockMs());
-          if (wait === null) throw new RetryLater();
-          if (wait > 0) await sleep(wait);
+          if (wait === null || callSignal.aborted) throw new RetryLater();
+          if (wait > 0) await sleep(wait, callSignal);
+          // A call cancelled during the wait sends no retry: the photo is deferred as if the wait did not fit.
+          if (callSignal.aborted) throw new RetryLater();
         }
         const admitted = await store.admit(ref, token, transport!.client.model);
         if (typeof admitted === "string") throw new AdmissionRefusal(admitted);
@@ -363,14 +374,16 @@ export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token
         const timeout = markingAiTimeout(options.aiTimeLeftMs ? options.aiTimeLeftMs() : null);
         if (timeout === null) { await store.pause(ref, token, "pending"); return "pending"; }
         deadline = clockMs() + timeout;
-        const output = await transport.client.json(request(image, local), AbortSignal.timeout(timeout));
+        callSignal = options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(timeout)]) : AbortSignal.timeout(timeout);
+        const output = await transport.client.json(request(image, local), callSignal);
         // Use the complete local alias set when reading: aliases do not change when only pending items were requested.
         observations = readMarkingOutput(frame, output);
       } catch (e) {
         // #868: a refusal right after a clean 429 the store confirmed is still the provider limiting us: the caller hears of
         // it before the refusal pauses the photo.
         if (e instanceof AdmissionRefusal) {
-          if (confirmedRetryAfter() !== undefined) options.onRateLimit?.(confirmedRetryAfter()!);
+          // Only a dispatch-count refusal is caused by the rate limit; budget, price, lease and switch refusals are not.
+          if (e.status === "attempts" && confirmedRetryAfter() !== undefined) options.onRateLimit?.(confirmedRetryAfter()!);
           await store.pause(ref, token, e.status); return e.status;
         }
         // #868: defer only on a clean 429 the store confirmed (the last attempt, or one whose wait did not fit). A
@@ -390,7 +403,11 @@ export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token
         // Only the answered path still has an open dispatch here: every failure path settled (or tried to settle) it once.
         if (dispatch) { const open = dispatch; dispatch = null; await store.settle(open, transport.costMicros()); }
         // One more try of a settle that threw. If it throws again the full hold stays, and the photo is already paused.
-        if (unsettled) { const { open, cost } = unsettled; unsettled = null; await store.settle(open, cost).catch(() => {}); }
+        if (unsettled) {
+          const { open, cost } = unsettled; unsettled = null;
+          // Counts only: no dispatch, family or photo id.
+          await store.settle(open, cost).catch(() => { console.error("[scan-marking] a dispatch could not be settled twice; its full hold stays"); });
+        }
       }
     } else observations = expected.map((e) => firstObservation(e, frame.photo));
     if (!await store.extract(ref, token, observations, model)) return "terminal";
