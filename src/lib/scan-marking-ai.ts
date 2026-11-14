@@ -1,7 +1,7 @@
 // Use the existing AiClient/OpenRouter path. One admission per transport attempt. No subscription queue.
 import { costingFetch, openRouterClient, type OpenRouterProvider } from "@/lib/ai-openrouter";
 import { recordAiUsage, type AiUsageTag } from "@/lib/ai-usage";
-import { MARKING_MODEL, type MarkingClientFactory, type MarkingFailure } from "@/lib/scan-marking";
+import { MARKING_ESCALATION_MODEL, MARKING_MODEL, type MarkingClientFactory, type MarkingFailure } from "@/lib/scan-marking";
 import { markingFailure } from "@/lib/scan-marking-failure";
 import models from "../../data/scan-marking-models.json";
 import evaluationModels from "../../data/scan-marking-evaluation-models.json";
@@ -36,6 +36,18 @@ function productionRoute(pinned: { model: string; endpoint: string }): OpenRoute
   if (GOOGLE_ENDPOINTS.some((g) => pinned.endpoint === g || pinned.endpoint.startsWith(`${g}/`))) return null;
   return { only: [pinned.endpoint], order: [pinned.endpoint], allow_fallbacks: false, require_parameters: true,
     ignore: [`${pinned.endpoint}/flex`, `${pinned.endpoint}/priority`] };
+}
+
+/**
+ * The second look (decision 2026-11-13): MARKING_ESCALATION_MODEL on the production route (Anthropic, then Azure global;
+ * never Google), one attempt. Null (no second look) unless SCAN_MARKING_ESCALATION is exactly "on"; the database refuses
+ * its admission too until the model's price row is enabled.
+ */
+export function markingEscalationClient(env: MarkingEnv = process.env, fetch?: typeof globalThis.fetch, usage?: AiUsageTag): MarkingClientFactory | undefined {
+  if (env.SCAN_MARKING_ESCALATION !== "on") return undefined;
+  const route = productionRoute({ model: MARKING_ESCALATION_MODEL, endpoint: "anthropic" });
+  if (!route) return undefined;
+  return markingAiClient(env, fetch, { model: MARKING_ESCALATION_MODEL, provider: route, maxRetries: 0 }, usage);
 }
 
 export function markingAiClient(env: Readonly<Record<string, string | undefined>> = process.env, fetch?: typeof globalThis.fetch, route?: { model: string; provider: OpenRouterProvider; maxRetries?: number }, usage?: AiUsageTag): MarkingClientFactory {
