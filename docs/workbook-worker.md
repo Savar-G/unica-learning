@@ -177,3 +177,11 @@ The review schema was applied through the Management API in this order: `workboo
 ## First pages
 
 The worker also makes the first pages of Workbook 1 that wait for the Mac (`public.workbook_first_pages` with runner `mac`, docs/first-pages.md), after the runs and edits of its queue. They use the same AI settings. Nothing queues them while `FIRST_PAGES_ENABLED` is off, except an admin's one test.
+
+## Next-book runs (#476)
+
+A run admitted from a next-book snapshot (`admit_next_book_run`, `docs/next-book-snapshot.md`) starts on runner `server`;
+`prepareNextBook` routes it with `route_workbook_run` to `workbookRunner()`, so the worker takes it like any Mac run. Its
+first job call plans only from the snapshot's saved `plan_input` (`nextBookRunBook`), not from the child read now. A plan
+made on another curriculum version, one with no recorded version, or one that does not hash to the saved plan fails the
+run with a plain error before any AI call.

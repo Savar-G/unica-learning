@@ -23,3 +23,4 @@ function savedVersion(raw: string | string[] | undefined): number | undefined {
   const n = typeof raw === "string" && /^\d{1,4}$/.test(raw) ? Number(raw) : NaN;
   return Number.isInteger(n) && n > 0 ? n : undefined;
 }
+

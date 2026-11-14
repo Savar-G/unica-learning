@@ -12,10 +12,9 @@ import type { FrozenNextBookSnapshot, NextBookPlanner } from "./next-book-snapsh
 import type { NextBookServerOptions } from "./next-book-snapshot-server";
 
 /**
- * False until the workbook worker makes a run with a snapshot_id from its saved plan_input. Until then such a run is
- * planned with planNextWorkbook and does not use the marks, so both callers prepare test families
- * (public.test_accounts) only, whatever NEXT_BOOK_PREPARE_ENABLED says. Set it to true in the change that makes the
- * worker read plan_input.
+ * While false, both callers prepare test families (public.test_accounts) only, whatever NEXT_BOOK_PREPARE_ENABLED says.
+ * The workbook job makes a run with a snapshot_id from its saved plan_input (nextBookRunBook, #476) and the run is routed
+ * to the Mac worker; what is left before it turns true is in docs/next-book-snapshot.md, "Not built yet".
  */
 export const NEXT_BOOK_REAL_FAMILIES = false;
 

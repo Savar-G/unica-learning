@@ -68,15 +68,50 @@ Before "Approve for print", an admin can refresh the draft when more pages were 
   no new mark. A refresh that started before an approval cannot freeze after it.
 - Marks that arrive after approval are not used by that book. They stay for the profile and the book after next.
 
+**The admin screens** (`src/lib/next-book-refresh.ts`, `next-book-refresh-server.ts`, `src/components/workbook-ship-actions.tsx`).
+On the admin run page of a next-book draft not yet approved:
+
+- `draftNewMarks` compares against the revision the draft's pages were drawn from (the snapshot of the run that made
+  the draft), not the chain's latest revision: an update draws nothing again, so marks a later revision used still count
+  as marks not in this draft. With new marks the page shows "New marks since this draft: Days 8-9 (2 pages)." and an
+  "Update with new marks" button (disabled with "The planner is not ready yet." when no planner is wired). After an
+  update it adds "Plan updated with the new marks (plan version n). The pages are not drawn again yet." and keeps the
+  button only when more marks arrived since. A revision written but not planned shows "Plan version n was saved but not
+  planned yet. Press Update with new marks again." A read that fails shows "New marks status is unavailable."
+- The run page reads the check in the browser through `GET /api/admin/workbooks/runs/<id>/new-marks` (admins only), once
+  when it opens and again after each press, only for a run with a `snapshot_id`. The page's refresh loop never runs it:
+  it reads the book's marks with the service key.
+- "Update with new marks" posts to `POST /api/admin/workbooks/runs/<id>/update-marks` (admins only, 404 for everyone
+  else): `updateDraftWithNewMarks` calls `refreshNextBookSnapshot`, then `prepareNextBook({ kind: "snapshot" })` to plan
+  the new revision. It starts no run. Its line: "Plan updated with the new marks (plan version n). The pages are not drawn
+  again yet.", "The new marks were saved, but the plan was not updated. Press Update with new marks again.", or the
+  refusal ("No new marks since this draft.", "This draft is already approved for print.", "Book 1 changed, so this draft
+  can no longer be updated."). Pressing it again after a failed plan plans the same revision. A successful update from
+  the "Update first?" question closes it.
+- "Approve for print" runs the same check on the server (`approveCheckingNewMarks` in the approve route). With new marks
+  and no `despiteNewMarks: true` it approves nothing and answers `{ ok: false, askUpdate }` (409); the page asks "Update
+  first?" with "Update with new marks", "Approve anyway" and "Cancel". The check fails closed for a next-book draft: when
+  it cannot be read the answer is `{ ok: false, askUpdate: "The new marks could not be checked", checkUnavailable: true }`
+  and the page asks "Approve anyway?". A draft whose run has no snapshot is never checked. The approval is confirmed once.
+  "Approve anyway" approves through the usual `approve_workbook_draft` (its `workbook-approved` audit entry), then notes
+  an `approved-with-new-marks` audit entry (the snapshot revision, days, pages and items, or `checkUnavailable`). The
+  service role may only read `workbook_audit`, so the note is written by `note_workbook_approved_with_new_marks`
+  (migration `20261114011147_workbook_approved_with_new_marks.sql`, applied 2026-11-14), which accepts it only for a
+  draft that already has its approval entry. If the note fails, the approval stands (`noted: false`) and the route logs it.
+- Not built: drawing again only the pages whose plan changed. Until the planner owner builds it, an update stores the new
+  plan beside the draft and the printed pages stay those of the first plan.
+
 ## Who calls it
 
 Two callers run `prepareNextBook`. Both use one planner resolver, `nextBookPlanner()` in `src/lib/next-book-planner.ts`.
 With no planner (`null`), neither caller reads or writes anything: no claim becomes a chain, no hold row is written, no
 run starts.
 
-**Test families only, for now.** The worker still plans a run with `planNextWorkbook` and does not read the saved
-`plan_input`, so a book 2 run would not use the marks. Until it does, `NEXT_BOOK_REAL_FAMILIES` (`src/lib/next-book-planner.ts`)
-is `false`, and both callers prepare only families in `public.test_accounts`, whatever `NEXT_BOOK_PREPARE_ENABLED` says:
+**Test families only, for now.** `NEXT_BOOK_REAL_FAMILIES` (`src/lib/next-book-planner.ts`) is `false`, so both callers
+prepare only families in `public.test_accounts`, whatever `NEXT_BOOK_PREPARE_ENABLED` says. The worker now makes a
+snapshot run from its saved `plan_input` ("The run" below); what is left before the flip is listed under "Not built yet".
+
+While it is `false`:
 
 - the admin button refuses any other family before any write, with "Only test families can get the next book for now.";
 - the automatic step admits a family only when it is listed in `WORKBOOK_SCAN_TEST_PARENT_IDS` and still marked as a
@@ -87,7 +122,27 @@ with `test-families-only` unless the family is still in `public.test_accounts`. 
 (migration `20261109195323_next_book_admit_row_lock.sql`), so a removal of the mark, by any path, waits for the
 admission, and a removal that came first leaves no row to admit. A family unmarked while its plan runs gets no run. The admin page then shows "Only test families can get the next book for now."
 
-Set it to `true` in the change that makes the worker read `plan_input`.
+## The run
+
+**Routed to the runner (D-200).** `admit_next_book_run` starts the run through `start_workbook_run`, which leaves it on
+the column default runner `'server'`, and the Mac worker claims only `'mac'` runs. `prepareNextBook` therefore calls
+`deps.route(runId)` after each admission, and again whenever a chain that already has a run is prepared, so a route that
+failed is tried again. The server wiring (`nextBookSnapshotServer`) routes with `route_workbook_run` to `workbookRunner()`,
+the same runner "Prepare next workbook" uses: the Mac worker unless `WORKBOOK_RUNNER` is `server`. `route_workbook_run`
+changes nothing for a run already on that runner or one being worked on. No migration: the function exists
+(`20261101_workbook_mac_runner.sql`, `20261101_workbook_route_lease.sql`). With `WORKBOOK_RUNNER=server` nothing starts
+the job of a next-book run on Vercel; an admin starts it from the run page.
+
+**Made from the saved plan (#476).** A run with a `snapshot_id` makes its plan, on its first job call, only from the
+snapshot's saved plan (`makeNextBookFrame` in `src/lib/workbook-job.ts`, through `WorkbookJobSource.nextBookPlan`).
+The Supabase source calls `nextBookRunBook(store, snapshotId, curriculumVersion)` (`src/lib/next-book-snapshot.ts`):
+`nextBookRunPlan` reads `plan_input` on the curriculum version it was made on, then the pure `planWorkbook` plans that
+input again, and the result must hash to the saved `plan_hash` (as `planNextBookFromSnapshot` made it), else
+`plan-mismatch`. The child is not read again for the plan: no profile refresh, no placement, no book instructions. The
+frame keeps `nextBook: { snapshotId, planHash }` and then takes the same capacity steps and fingerprints as any run; a
+resume uses the stored frame. A refusal (`curriculum-changed`, `curriculum-unrecorded`, `plan-mismatch`, or a snapshot
+that cannot be read) fails the run with a plain error before any AI call, and nothing is planned again. A run without a
+`snapshot_id` is planned as before.
 
 ## The planner
 
@@ -117,9 +172,17 @@ The answer is stored as the planner gives it: `planHash`, `planningInput`, the p
 question has a `null` key), and `consumed` with `version` (the planner's `effectiveVersion`), `firstVersion` and
 `correctionIds`. `consumed` is checked against the ledger by key and version, in code and in `save_next_book_plan`.
 
-The planner refuses a Book 1 record made on another curriculum digest (`curriculum-version-changed` in
-`src/lib/workbook-book1-baseline.ts`; the planner's sentence is "The Book 1 starting plan is unavailable."). That chain
-stays frozen and due until the planner accepts it.
+**The plan's curriculum version (#812).** Book 2 is planned on today's curriculum, templates included (Book 1's
+structure must still hold, `docs/next-book-curriculum-history.md`). The only version label inside the progress decisions
+is Book 1's, so `planNextBookFromSnapshot` sets `planningInput.curriculum` to `{ key, version: curriculumVersion(key) }`
+at planning time; `planHash` covers it, and `save_next_book_plan` stores it inside `plan_input` (any object), so no
+migration is needed. The worker reads the plan with `nextBookRunPlan(store, snapshotId, curriculumVersion)`
+(`src/lib/next-book-snapshot.ts`): it refuses `curriculum-changed` when the version it runs on differs, and
+`curriculum-unrecorded` for a plan saved before this field existed. Nothing is planned again on a refusal.
+
+The planner refuses a Book 1 record whose curriculum structure changed since, or whose version is not in the archive
+(`nextBookCurriculumCompat`, `docs/next-book-curriculum-history.md`). That chain stays frozen and due until the planner
+accepts it.
 
 **The automatic step.** Its own cron route, `POST /api/next-book-prepare` (`src/app/api/next-book-prepare/route.ts`).
 Supabase `pg_cron` posts to it every 15 minutes (job `next-book-prepare`, migration `20261109173906_next_book_prepare_cron.sql`), with the
@@ -175,7 +238,15 @@ line, with times in the family's time zone:
 | queued | Next book queued. |
 | refused, next book exists | This book already has a next book. |
 | no planner | The planner is not ready yet. |
-| not a test family (until the worker reads `plan_input`) | Only test families can get the next book for now. |
+| not a test family (while `NEXT_BOOK_REAL_FAMILIES` is `false`) | Only test families can get the next book for now. |
+
+**The admin page "Snapshot plan" (#473).** `/admin/children/<id>/snapshot-plan`, linked from "Plan the next book" on the
+admin child page. It reads the child's latest snapshot row with the admin's session and writes nothing. For each skill it
+lists the decision from the marks, the new steps the next book starts, the spaced reviews due and missed, the Fix it items
+carried over and the marks held for a later book with their reason; held marks with no skill are counted by reason. The
+row keeps the planner's input, not its plan, so the page runs the planner again on that input and shows the new steps
+only when the result hashes to the saved plan hash; otherwise it says the planner has changed since the snapshot
+(`src/lib/next-book-plan-view.ts`, `src/components/admin-snapshot-plan.tsx`).
 
 ## Where things are
 
@@ -206,7 +277,8 @@ The database functions are service-only:
 
 ## Not built yet
 
-- The worker does not read `plan_input` yet. The planner owner adds that for runs with a `snapshot_id`.
-- The real planner is wired. Until the worker reads `plan_input`, both callers prepare test families only
-  (`NEXT_BOOK_REAL_FAMILIES` is `false`).
-- The run is not routed to the Mac worker. A queued run stays on the default runner until a caller routes it.
+- `NEXT_BOOK_REAL_FAMILIES` is still `false`. The worker reads `plan_input` and the run is routed to the Mac worker
+  (above). Before the flip: one test family's book 2 made end to end on the Mac worker from a snapshot (the run page
+  shows it on the Mac, its frame has `nextBook`), drawing again the pages an "Update with new marks" changed, and
+  Savar's go-ahead with `NEXT_BOOK_PREPARE_ENABLED`.
+- A source book after Book 1 answers `unsupported-source-book`.
