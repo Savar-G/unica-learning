@@ -14,6 +14,8 @@ export const SIDE_VARIANTS = [
   { key: "I", name: "A with small drawings" },
   { key: "J", name: "A with the logo grid" },
   { key: "K", name: "A on a card" },
+  { key: "L", name: "J with the full-colour logo" },
+  { key: "M", name: "J, logo builds up" },
 ];
 
 /** B and G span the full width under the video instead of a side column. */
@@ -41,6 +43,8 @@ export function SideVariant({ variant }: { variant: string }) {
       {variant === "I" && <VariantI />}
       {variant === "J" && <VariantJ />}
       {variant === "K" && <VariantK />}
+      {variant === "L" && <VariantL />}
+      {variant === "M" && <VariantM />}
     </>
   );
 }
@@ -233,7 +237,60 @@ function VariantK() {
   );
 }
 
+// The real logo: yellow top left, blue top right, orange centre, green bottom left, warm grey bottom right.
+const LOGO: Record<number, string> = { 0: "#FFD23F", 2: "#3366F0", 4: "#FF6430", 6: "#16A06A", 8: "#B8B3AA" };
+
+function Grid({ fill, dim, size = 34 }: { fill: Record<number, string>; dim?: number; size?: number }) {
+  return (
+    <span className="pv-lg" style={{ width: size, height: size }}>
+      {Array.from({ length: 9 }, (_, k) => (
+        <i key={k} style={{ background: fill[k] ?? "#fff", opacity: dim !== undefined && k !== dim && fill[k] ? 0.28 : 1 }} />
+      ))}
+    </span>
+  );
+}
+
+// L: each cue is the full-colour logo; that row's tile stays bright and the other colours fade back.
+function VariantL() {
+  const lit = [0, 2, 6];
+  return (
+    <div className="pv-a">
+      <p className="pv-kick">What Maya does</p>
+      {POINTS.map((r, i) => (
+        <div key={r.t} className="pv-l-row">
+          <Grid fill={LOGO} dim={lit[i]} />
+          <div><p className="pv-a-t">{r.t}</p><p className="pv-a-d">{r.d}</p></div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// M: the logo builds up as you read: one colour, then two, then the whole logo with Maya's work done.
+function VariantM() {
+  const steps: Record<number, string>[] = [
+    { 0: LOGO[0] },
+    { 0: LOGO[0], 2: LOGO[2], 4: LOGO[4] },
+    LOGO,
+  ];
+  return (
+    <div className="pv-a">
+      <p className="pv-kick">What Maya does</p>
+      {POINTS.map((r, i) => (
+        <div key={r.t} className="pv-l-row">
+          <Grid fill={steps[i]} />
+          <div><p className="pv-a-t">{r.t}</p><p className="pv-a-d">{r.d}</p></div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 const CSS = `
+.pv-l-row { display: grid; grid-template-columns: 34px 1fr; gap: 14px; align-items: start; }
+.pv-lg { display: grid; grid-template-columns: repeat(3, 1fr); box-sizing: border-box; border-top: 1.5px solid #111; border-left: 1.5px solid #111; margin-top: 2px; }
+.pv-lg i { border-right: 1.5px solid #111; border-bottom: 1.5px solid #111; transition: opacity .3s; }
+
 .pv-i-row { display: grid; grid-template-columns: 34px 1fr; gap: 12px; align-items: start; }
 .pv-i-ic { width: 34px; height: 34px; border: 1.5px solid #111; display: grid; place-items: center; box-sizing: border-box; }
 .pv-i-ic svg { width: 20px; height: 20px; fill: none; stroke: #111; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
