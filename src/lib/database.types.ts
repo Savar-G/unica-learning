@@ -7774,6 +7774,32 @@ export type Database = {
           },
         ]
       }
+      workbook_scan_reminder_unreachable: {
+        Row: {
+          email_hash: string
+          noted_at: string
+          parent_id: string
+        }
+        Insert: {
+          email_hash: string
+          noted_at?: string
+          parent_id: string
+        }
+        Update: {
+          email_hash?: string
+          noted_at?: string
+          parent_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_scan_reminder_unreachable_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: true
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workbook_scan_trigger_claims: {
         Row: {
           backstop_at: string | null
@@ -8167,6 +8193,10 @@ export type Database = {
       _workbook_scan_reminder_due_set: {
         Args: { p_at: string; p_message?: string; p_parent: string }
         Returns: Json
+      }
+      _workbook_scan_reminder_email_hash: {
+        Args: { p_email: string }
+        Returns: string
       }
       _workbook_scan_reminder_program: {
         Args: { p_at: string; p_child: string; p_parent: string }
@@ -9791,6 +9821,10 @@ export type Database = {
       note_workbook_book1_baseline_try: {
         Args: { p_draft: string; p_revision: number }
         Returns: Json
+      }
+      note_workbook_scan_reminder_unreachable: {
+        Args: { p_parent: string }
+        Returns: string
       }
       pacific_day: { Args: { ts: string }; Returns: string }
       pacific_day_start: { Args: { d: string }; Returns: string }

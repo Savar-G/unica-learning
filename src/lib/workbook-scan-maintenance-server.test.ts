@@ -8,7 +8,10 @@ vi.mock("server-only", () => ({}));
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const env = { WORKBOOK_SCAN_PROGRESS_ENABLED: "test-only", WORKBOOK_SCAN_REMINDERS_ENABLED: "test-only", WORKBOOK_SCAN_TEST_PARENT_IDS: id(1) };
 function setup({ delivery = true, test = true, revokeBeforeAdmission = false, providerUnknown = false, failingRead = false,
-  deliveryCount = 1, linksGate = "", clockPending = false, failGateAt = Infinity, families = false, plan = "paying", skipped = 0, closePlanAt = Infinity, reminders = "" } = {}) {
+  deliveryCount = 1, linksGate = "", clockPending = false, failGateAt = Infinity, families = false, plan = "paying", skipped = 0, closePlanAt = Infinity, reminders = "",
+  unreachable = [] as string[] } = {}) {
+  // #962: parents with no usable address, and those the run noted (the due list then leaves them out, as the SQL does).
+  const noted = new Set<string>();
   // The parent a reminder is for: the listed test parent, or (reminders in families mode) the real family id(20).
   const owner = reminders === "families" ? id(20) : id(1);
   const calls: { name: string; body: Record<string, unknown>; query: URLSearchParams }[] = [], deliveries: string[] = [], copies: Record<string, unknown>[] = [];
@@ -28,7 +31,7 @@ function setup({ delivery = true, test = true, revokeBeforeAdmission = false, pr
           const rows = [...Array.from({ length: skipped }, (_, i) => ({ workbook_id: id(i + 1), parent_id: id(i + 21), child_id: id(2), number: 1, delivery_audit_id: i + 1 })),
             { workbook_id: id(7), parent_id: id(20), child_id: id(2), number: 1, delivery_audit_id: 23 }];
           data = body.p_kind === "unseeded" || body.p_kind === "inactivity" || body.p_kind === "reminder-due"
-            ? rows.filter(row => !body.p_after || row.workbook_id > body.p_after).slice(0, body.p_limit) : [];
+            ? rows.filter(row => (!body.p_after || row.workbook_id > body.p_after) && !(body.p_kind === "reminder-due" && noted.has(row.parent_id))).slice(0, body.p_limit) : [];
           break;
         }
         case "child_plan_states": {
@@ -45,7 +48,11 @@ function setup({ delivery = true, test = true, revokeBeforeAdmission = false, pr
           count = clockPending ? 1 : 0; break;
         case "record_workbook_scan_delivery_calendar": data = { status: "waiting" }; break;
         case "read_workbook_scan_inactivity_context": data = { status: "read", observed_at: "2026-11-07T08:00:00Z", identity: null }; break;
-        case "parents": data = [{ id: owner, email: "owned-qa@example.invalid" }]; break;
+        case "parents": {
+          const asked = url.searchParams.get("id")?.replace(/^eq\./, "") ?? owner;
+          data = [{ id: asked, email: unreachable.includes(asked) ? "no address on file" : "owned-qa@example.invalid" }]; break;
+        }
+        case "note_workbook_scan_reminder_unreachable": noted.add(body.p_parent); data = "noted"; break;
         case "read_workbook_scan_reminder_due": data = { status: "ready", episode_ids: [id(3)], child_ids: [id(2)] }; break;
         case "claim_workbook_scan_reminder":
           hash = body.p_unsubscribe_hash;
@@ -78,7 +85,7 @@ function setup({ delivery = true, test = true, revokeBeforeAdmission = false, pr
     origin: "https://unicalearning.com", provider, gapMs: 0 });
   if (!server) throw new Error("missing configured server");
   const progress = createWorkbookScanProgressSweep(db, { env: { ...env, WORKBOOK_SCAN_PROGRESS_ENABLED: families ? "families" : "test-only", WORKBOOK_SCAN_REMINDERS_ENABLED: reminders || (delivery ? "test-only" : "off") } })!;
-  return { db, provider, server, calls, deliveries, copies, run: async () => {
+  return { db, provider, server, calls, deliveries, copies, noted, run: async () => {
     const result = await progress.run({ now: () => 0, endAt: 100 });
     const reminders = await server.run({ now: () => 0, endAt: 100 });
     return { ...result, reminders: reminders.reminders };
@@ -103,6 +110,35 @@ describe("scan maintenance server release and integration", () => {
       p_book: id(7), p_backstop: "2026-11-22T12:00:00.000Z",
     });
     expect(f.calls.some(c => c.name === "claim_workbook_scan_reminder" || c.name === "admit_workbook_scan_reminder")).toBe(false);
+    expect(f.deliveries).toEqual([]);
+  });
+  it("notes a family it cannot email and moves on, so five ahead of a reachable family never block it (#962)", async () => {
+    const blocked = Array.from({ length: 5 }, (_, i) => id(i + 21));
+    const f = setup({ families: true, reminders: "families", skipped: 5, unreachable: blocked });
+    // First run: the five unreachable families fill the bounded selection; each is noted, nothing is claimed or sent.
+    const first = await f.run();
+    expect(first.reminders).toEqual({ not_sent: 5 });
+    expect([...f.noted].sort()).toEqual(blocked);
+    expect(f.calls.some(c => c.name === "claim_workbook_scan_reminder")).toBe(false);
+    expect(f.deliveries).toEqual([]);
+    // Next run: the noted families are left out of the due list, so the reachable one gets its reminder, once.
+    f.calls.length = 0;
+    const second = await f.run();
+    expect(second.reminders).toEqual({ sent: 1 });
+    expect(f.deliveries).toEqual(["owned-qa@example.invalid"]);
+    expect(f.calls.filter(c => c.name === "parents").map(c => c.query.get("id"))).toEqual([`eq.${id(20)}`]);
+    expect(f.calls.find(c => c.name === "claim_workbook_scan_reminder")?.body).toMatchObject({ p_parent: id(20) });
+    // A third run sends nothing more: the sent reminder's episode is used and the noted families stay out.
+    f.calls.length = 0;
+    const third = await f.run();
+    expect(f.deliveries).toEqual(["owned-qa@example.invalid"]);
+    expect(f.calls.filter(c => c.name === "note_workbook_scan_reminder_unreachable")).toEqual([]);
+    expect(third.reminders).not.toHaveProperty("sent");
+  });
+  it("never notes or emails a real family while reminders are test-only (#962)", async () => {
+    const f = setup({ families: true, skipped: 2, unreachable: [id(21), id(22)] });
+    await f.run();
+    expect(f.calls.some(c => c.name === "note_workbook_scan_reminder_unreachable" || c.name === "claim_workbook_scan_reminder")).toBe(false);
     expect(f.deliveries).toEqual([]);
   });
   it("reads the reminder switch: families only with families progress, test-only by default (#475)", () => {

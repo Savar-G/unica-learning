@@ -641,6 +641,7 @@ export const DATABASE_CHECKS: readonly { table: string; name: string; definition
   {"table":"workbook_scan_reminder_attempts","name":"workbook_scan_reminder_attempts_state_check","definition":"CHECK ((state = ANY (ARRAY['reserved'::text, 'admitted'::text, 'sent'::text, 'refused'::text, 'unknown'::text, 'released'::text])))"},
   {"table":"workbook_scan_reminder_messages","name":"workbook_scan_reminder_messages_attempt_count_check","definition":"CHECK (((attempt_count >= 1) AND (attempt_count <= 3)))"},
   {"table":"workbook_scan_reminder_messages","name":"workbook_scan_reminder_messages_state_check","definition":"CHECK ((state = ANY (ARRAY['reserved'::text, 'admitted'::text, 'sent'::text, 'refused'::text, 'unknown'::text, 'released'::text])))"},
+  {"table":"workbook_scan_reminder_unreachable","name":"workbook_scan_reminder_unreachable_email_hash_check","definition":"CHECK ((email_hash ~ '^[0-9a-f]{32}$'::text))"},
   {"table":"workbook_scan_trigger_claims","name":"workbook_scan_trigger_claims_check","definition":"CHECK (((reason = 'day7_scanned'::text) OR (backstop_at IS NOT NULL)))"},
   {"table":"workbook_scan_trigger_claims","name":"workbook_scan_trigger_claims_reason_check","definition":"CHECK ((reason = ANY (ARRAY['day7_scanned'::text, 'delivery_backstop'::text])))"},
   {"table":"workbook_scan_trigger_claims","name":"workbook_scan_trigger_claims_receipt_ids_check","definition":"CHECK ((cardinality(receipt_ids) > 0))"},
