@@ -38,7 +38,7 @@ export interface DayStrip {
 }
 
 const STATE_WORDS: Record<StripState, string> = {
-  marked: "marked", marking: "marking", sent: "sent for marking", ready: "sending for marking", checking: "checking",
+  marked: "marked", marking: "marking", sent: "sent for marking", ready: "ready to send", checking: "checking",
   saved: "saved", retake: "needs another photo", todo: "still to scan",
 };
 export const stripWords = (state: StripState) => STATE_WORDS[state];

@@ -112,7 +112,7 @@ const flagStore = (key: string) => ({
 /** The glyph and the short word of each strip state: never colour alone. */
 const STRIP_FACE: Record<StripState, { glyph: ReactNode; word: string }> = {
   marked: { glyph: ICONS.check, word: "Marked" }, marking: { glyph: "⋯", word: "Marking" }, sent: { glyph: "↑", word: "Sent" },
-  ready: { glyph: "↑", word: "Sending" }, checking: { glyph: <span className="scan-spin" />, word: "Checking" }, saved: { glyph: "•", word: "Saved" },
+  ready: { glyph: "↑", word: "Ready" }, checking: { glyph: <span className="scan-spin" />, word: "Checking" }, saved: { glyph: "•", word: "Saved" },
   retake: { glyph: "!", word: "Retake" }, todo: { glyph: null, word: "To scan" },
 };
 
@@ -198,7 +198,18 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   // Auto-send with Undo (#915): the pages held on the phone, the ones already held once, the ones Undo kept back.
   const [batch, setBatch] = useState<string[]>([]);
   const held = useRef(new Set<string>());
-  const [undone, setUndone] = useState<Set<string>>(() => new Set());
+  // Undo sticks (#915): the pages a parent kept back stay kept back on this phone, across a child switch and a later visit.
+  const undoneKey = `unica.scan-undone.v1:${parent}`;
+  const [undone, setUndone] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(undoneKey) ?? "[]") as string[]); } catch { return new Set(); }
+  });
+  const keepUndone = (ids: string[]) => setUndone((u) => {
+    const next = new Set([...u, ...ids]);
+    try { localStorage.setItem(undoneKey, JSON.stringify([...next].slice(-200))); } catch { /* blocked storage: this visit remembers */ }
+    return next;
+  });
+  /** How many times a page waited for its photo check (#855) before its send; a page still checking waits again. */
+  const waits = useRef(new Map<string, number>());
   const [problems, setProblems] = useState<Record<string, PhotoProblem>>({});
   const [tried, setTried] = useState<Set<string>>(() => new Set());
   const [retakeAt, setRetakeAt] = useState(0);
@@ -558,11 +569,11 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const auto = phone && checks;
   useEffect(() => {
     if (!auto) return;
-    const fresh = stack.readyIds.filter((id) => !held.current.has(id));
+    const fresh = stack.readyIds.filter((id) => !held.current.has(id) && !undone.has(id));
     if (!fresh.length) return;
     for (const id of fresh) held.current.add(id);
     setBatch((b) => [...b, ...fresh]);
-  }, [auto, stack.readyIds]);
+  }, [auto, stack.readyIds, undone]);
   const commitRef = useRef<(ids: string[]) => Promise<void>>(async () => {});
   commitRef.current = async (ids: string[]) => {
     const version = epoch.current;
@@ -573,15 +584,19 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       return { id, answer };
     }));
     if (version !== epoch.current || !sessionCurrent.current) return;
-    const ok: string[] = [], kept: Record<string, PhotoProblem> = {};
+    const ok: string[] = [], kept: Record<string, PhotoProblem> = {}, again: string[] = [];
     for (const { id, answer } of looked) {
       if (!answer || answer.preview?.status !== "ready") { held.current.delete(id); continue; }
       const check = answer.photoCheck;
-      if (check?.state === "done" && check.problem) kept[id] = check.problem; else ok.push(id);
+      if (check?.state === "done" && check.problem) kept[id] = check.problem;
+      // A check still running waits for its answer (twice at most), so a photo it would flag is not sent before it says so.
+      else if (check?.state === "pending" && (waits.current.get(id) ?? 0) < 2) { waits.current.set(id, (waits.current.get(id) ?? 0) + 1); again.push(id); }
+      else ok.push(id);
     }
     if (Object.keys(kept).length) setProblems((p) => ({ ...p, ...kept }));
+    if (again.length) setBatch((b) => [...b, ...again.filter((id) => !b.includes(id))]);
     // A page whose send did not happen (another send running, or a failed one) is offered to send by hand.
-    setTried((t) => new Set([...t, ...ids]));
+    setTried((t) => new Set([...t, ...ids.filter((id) => !again.includes(id))]));
     if (ok.length) await send(ok);
   };
   useEffect(() => {
@@ -589,8 +604,16 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     const timer = setTimeout(() => void commitRef.current(batch), undoMs);
     return () => clearTimeout(timer);
   }, [batch, undoMs]);
+  // A parent who leaves the page during the wait still has the pages sent: the wait ends when the page is hidden.
+  const batchRef = useRef(batch);
+  batchRef.current = batch;
+  useEffect(() => {
+    const flush = () => { if (document.visibilityState === "hidden" && batchRef.current.length) void commitRef.current(batchRef.current); };
+    document.addEventListener("visibilitychange", flush); window.addEventListener("pagehide", flush);
+    return () => { document.removeEventListener("visibilitychange", flush); window.removeEventListener("pagehide", flush); };
+  }, []);
   function undo() {
-    setUndone((u) => new Set([...u, ...batch]));
+    keepUndone(batch);
     setBatch([]);
     setMessage({ text: batch.length === 1 ? "Not sent. The page waits here. Open it to send it." : "Not sent. The pages wait here. Open one to send it.", failed: false });
   }
@@ -657,6 +680,8 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   // A page held for Undo, or kept back by it, has no Send of its own on the phone until Undo kept it.
   // Any ready page not waiting out its Undo after it was held once (undone, kept back, or a send that failed) can be sent by hand.
   const manual = stack.readyIds.filter((id) => !auto || (!batch.includes(id) && (undone.has(id) || Boolean(problems[id]) || tried.has(id))));
+  // The dock's Send leaves out pages the photo check flagged: those go only by their own "Send anyway".
+  const plain = manual.filter((id) => !problems[id]);
 
   const fixAction = (t: StackTile) => {
     if (t.uploadKey && t.refusal === "unavailable") return <button type="button" className="btn" onClick={() => { patchUpload(t.uploadKey!, { status: "waiting", reason: undefined, codeUnread: undefined }); pump(); }}>Try again</button>;
@@ -737,7 +762,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const focusLine = phone && focus && focus.childId === child && <p className="scan-focus">Take a photo of {focus.label}.</p>;
   const elsewhereNote = elsewhere.length > 0 && <p className="scan-spread-note" role="status">{elsewhere.map((e) => `${e.page ? `Page ${e.page}` : "A page"} went to ${e.child}'s pages.`).join(" ")}</p>;
   const undoBar = batch.length > 0 && <div className="scan-undo" role="status">
-    <span><i aria-hidden="true">{ICONS.check}</i>{batch.length === 1 ? "1 page sent for marking" : `${batch.length} pages sent for marking`}</span>
+    <span><i aria-hidden="true">{ICONS.check}</i>{batch.length === 1 ? "1 page sends for marking in a moment" : `${batch.length} pages send for marking in a moment`}</span>
     <button type="button" className="scan-link" onClick={undo}>Undo</button>
   </div>;
 
@@ -769,6 +794,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
         <p className="scan-cam-say" aria-live="polite">{list.length ? "Keep going: snap the next page, or tap Done." : "Take a photo of the first page."}</p>
         {offline}
         {elsewhereNote}
+        {undoBar}
         <ol className="scan-shots" aria-label="Photos taken">
           {list.map((s) => <li key={s.key} className={`is-${s.status}`} aria-label={s.label}>
             {s.thumb ? <Image unoptimized width={80} height={106} src={s.thumb} alt="" /> : <span className="scan-ph-empty" />}
@@ -880,11 +906,11 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       {group("sent", "Sent earlier", earlier, <p className="scan-gap">{marking ? "Open a page to view its results." : "Marking is not ready yet. These pages wait here."}</p>)}
     </details>}
 
-    {listing && !noBook && (phone || (checks && manual.length > 0)) && <div className="scan-dock">
+    {listing && !noBook && (phone || (checks && plain.length > 0)) && <div className="scan-dock">
       {room ? <p className="small scan-room" role="status">{room}</p> : checks && !auto && note && <p className="small">{note}</p>}
       <div className="scan-dock-row">
         {phone && <button type="button" className="btn" disabled={!child} onClick={() => scan()}>{ICONS.camera}Scan pages</button>}
-        {checks && manual.length > 0 && <button type="button" className={`btn${phone ? " ghost" : ""}`} disabled={sending} onClick={() => void send(manual)}>{sending ? "Sending..." : sendLabel(manual.length)}</button>}
+        {checks && plain.length > 0 && <button type="button" className={`btn${phone ? " ghost" : ""}`} disabled={sending} onClick={() => void send(plain)}>{sending ? "Sending..." : sendLabel(plain.length)}</button>}
       </div>
       {phone && <button type="button" className="scan-link" onClick={() => setSheet({ kind: "add" })}>How to scan</button>}
     </div>}

@@ -53,7 +53,7 @@ const text = () => document.body.textContent ?? "";
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   marking = null; putGate = null; undoMs = 60_000; filedTo = null; markingOn = false;
-  try { localStorage.setItem("unica.scan-tips.v1:parent", "seen"); } catch {}
+  try { localStorage.setItem("unica.scan-tips.v1:parent", "seen"); localStorage.removeItem("unica.scan-undone.v1:parent"); } catch {}
   context.auth = null; context.prepare = null; context.code = null; checks = true; acknowledged = true; photos = new Map(); uploading = 0; mostAtOnce = 0; full = false; calls.length = 0;
   admitted = []; loseAdmissions = 0; saveFailures = 0; expired = new Set();
   losePuts = 0; loseStatus = false; listDown = false; kids = [{ id: "child", first_name: "Leah" }]; released = [];
@@ -189,9 +189,9 @@ it("takes several chosen photos two at a time, saves each with no confirm, and g
   expect(button("Save this page")).toBeUndefined();
   expect(text()).toContain("Day 4");
   expect(button("Page 11, still to scan")).toBeDefined();
-  expect(button("Page 10, sending for marking")).toBeDefined();
+  expect(button("Page 10, ready to send")).toBeDefined();
   // Auto-send (#915): the pages that passed are held here with Undo; nothing is sent yet.
-  expect(text()).toContain("3 pages sent for marking");
+  expect(text()).toContain("3 pages send for marking in a moment");
   expect(button("Undo")).toBeDefined();
   expect(calls).not.toContain("POST /api/account/scans/send");
   expect(logged.mock.calls.filter(([m]) => String(m).includes('unique "key"'))).toEqual([]);
@@ -203,14 +203,14 @@ it("does not ask for another photo of a page that already has one, and focus nev
   await choose("library", "copy-p10.jpg");
   expect(text()).toContain("Already has a photo");
   expect(button("Take the photo again")).toBeUndefined();
-  await act(async () => button("Page 10, sending for marking")!.click()); await settle();
+  await act(async () => button("Page 10, ready to send")!.click()); await settle();
   expect(document.activeElement?.textContent).toBe("Close");
 });
 
 it("closes an open photo with the corner Close button", async () => {
   await render();
   await choose("library", "p10.jpg", "p11.jpg");
-  await act(async () => button("Page 10, sending for marking")!.click()); await settle();
+  await act(async () => button("Page 10, ready to send")!.click()); await settle();
   const x = document.querySelector<HTMLButtonElement>(".scan-sheet-x");
   expect(x?.getAttribute("aria-label")).toBe("Close");
   expect(document.querySelector(".scan-sheet")).not.toBeNull();
@@ -242,15 +242,37 @@ it("Undo keeps the pages here, unsent, and each can still be sent from its page"
   undoMs = 200;
   await render();
   await choose("library", "p10.jpg", "p11.jpg");
-  expect(text()).toContain("2 pages sent for marking");
+  expect(text()).toContain("2 pages send for marking in a moment");
   await act(async () => button("Undo")!.click());
   await act(async () => { await new Promise((r) => setTimeout(r, 300)); }); await settle();
   expect(calls).not.toContain("POST /api/account/scans/send");
   expect(text()).toContain("Not sent. The pages wait here.");
   expect(button("Send 2 pages for marking")).toBeDefined();
-  await act(async () => button("Page 10, sending for marking")!.click()); await settle();
+  await act(async () => button("Page 10, ready to send")!.click()); await settle();
   await act(async () => button("Send for marking")!.click()); await settle();
   expect([...photos.values()].filter((p) => p.sentAt).map((p) => p.pageId)).toEqual(["p10"]);
+});
+
+it("an Undo sticks on a later visit: the kept-back page is not held and sent again", async () => {
+  undoMs = 50;
+  await render();
+  await choose("library", "p10.jpg");
+  await act(async () => button("Undo")!.click()); await settle();
+  await act(async () => root.unmount()); root = createRoot(host); await render();
+  await act(async () => { await new Promise((r) => setTimeout(r, 150)); }); await settle();
+  expect(button("Undo")).toBeUndefined();
+  expect(calls).not.toContain("POST /api/account/scans/send");
+  expect(button("Send this page for marking")).toBeDefined();
+});
+
+it("sends the held pages at once when the parent leaves the page during the Undo wait", async () => {
+  await render();
+  await choose("library", "p10.jpg");
+  expect(calls).not.toContain("POST /api/account/scans/send");
+  Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+  await act(async () => { document.dispatchEvent(new Event("visibilitychange")); }); await settle();
+  Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+  expect(calls).toContain("POST /api/account/scans/send");
 });
 
 it.each([
@@ -301,7 +323,7 @@ it("retakes a refused page: the camera opens in the tap, and the old photo goes 
   expect(calls.indexOf(`DELETE /api/account/scans/${old}`)).toBeGreaterThan(-1);
   expect(photos.has(old)).toBe(false);
   expect([...photos.values()].map((p) => [p.pageId, p.check])).toEqual([["p11", "ready"]]);
-  expect(button("Page 11, sending for marking")).toBeDefined();
+  expect(button("Page 11, ready to send")).toBeDefined();
 });
 
 it("asks for no check and offers no Send unless the server says this family has checks", async () => {
@@ -372,7 +394,7 @@ it("asks to save again when a save fails after the upload, so the page reaches i
   expect(saves(id)).toBe(2);
   expect(photos.get(id)?.state).toBe("saved");
   expect(photos.get(id)?.check).toBe("ready");
-  expect(button("Page 10, sending for marking")).toBeDefined();
+  expect(button("Page 10, ready to send")).toBeDefined();
 });
 
 it("retries a failed save of a photo left pending on the next refresh, and not in a tight loop", async () => {
@@ -396,7 +418,7 @@ it("shows and deletes a sent photo when the only open page is one ready photo", 
   seed("sent", "p10", { sentAt: "2026-11-05T08:00:00Z" });
   seed("ready", "p11");
   await render();
-  expect(button("Page 11, sending for marking")).toBeDefined();
+  expect(button("Page 11, ready to send")).toBeDefined();
   const tile = button("Page 10 · Day 4: Sent for marking");
   expect(tile).toBeDefined();
   await act(async () => tile!.click());
