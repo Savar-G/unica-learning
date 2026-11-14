@@ -13,7 +13,7 @@ const num = (value: number) => ({ type: "number" as const, value });
 const deskPackage: QuestionPackage = {
   ...pkg, id: "synthetic-532-178", text: "532 - 178 = ?", level: 10,
   skill: { standard: "3.3", skills: ["3.3-subtract-within-1000"] },
-  answer: { ...pkg.answer, value: num(354) }, operation: { kind: "subtract", operands: [532, 178] },
+  answer: { value: num(354), accepted: [], unit: null }, operation: { kind: "subtract", operands: [532, 178] },
   steps: workedSteps({ kind: "subtract", operands: [532, 178] }),
   wrongAnswers: [{ value: num(446), cause: "O1", description: "Subtracts the smaller digit from the larger in each column", step: "ones" }],
 };
@@ -24,7 +24,7 @@ async function turn(text: string, prepareExpected = true, more: { package?: Ques
   const spend = memorySpendSeam(100);
   const model = conversationalFake({ answer: () => ask() });
   const recs: { reason?: string; kind: string; status: string }[] = [];
-  const session = createTextSession({ callId: "claim", package: pkg, ...more, channel: "voice", clock: () => t, model, spend, prepareExpected, reviewer: fakeTalkReviewer(), onPreparation: (r) => { recs.push(r); } });
+  const session = createTextSession({ callId: "claim", package: pkg, ...more, clock: () => t, model, spend, prepareExpected, reviewer: fakeTalkReviewer(), onPreparation: (r) => { recs.push(r); } });
   await session.start(); t += 5_000;
   const before = model.briefs.length;
   await session.child("Hi Maya."); t += 5_000;
@@ -58,8 +58,8 @@ describe("a prepared claim", () => {
   it.each([
     { surface: "admin", freeTalk: true, grade: 3, package: pkg },
     { surface: "desk", freeTalk: false, grade: 4, package: deskPackage },
-  ])("uses the existing wrong-value request in the $surface settings", async ({ surface: _surface, ...more }) => {
-    const { out, model, session } = await turn("Is 2 minus 8, 6?", true, more);
+  ])("uses the existing wrong-value request in the $surface settings", async ({ freeTalk, grade, package: question }) => {
+    const { out, model, session } = await turn("Is 2 minus 8, 6?", true, { freeTalk, grade, package: question });
     expect(out).toMatchObject({ prepared: "hit", preparedKind: "expected" });
     expect(model.briefs.map((b) => b.childTurn)).not.toContain("Is 2 minus 8, 6?");
     expect(session.session.done).toEqual([]);
