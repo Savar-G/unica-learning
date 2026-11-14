@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import fixtures from "./scan-marking-comparison.test-fixtures.json";
 import publicEvidence from "../../data/scan-marking-endpoint-evidence-20261106.json";
-import { COMPARISON_DEFERRAL_POLICY, COMPARISON_FORMATS, COMPARISON_MODELS, COMPARISON_SETTINGS, SYNTHETIC_IDS, assessComparisonEndpoint, assertComparisonResultIdentity, assertComparisonResume, cheapestPassing, clean429, comparisonProvider, comparisonReports, deferredAttempt, hashBytes, hashValue, labelledOutput, preflightEndpoint, projectMatrix, recoverComparisonResults, reserveMaximum, scoreComparison, selectComparisonModels, transportUsage, teamLine, teamReason, upgradeFixed40Manifest, validateComparisonManifest, type AttemptRecord, type CapturedResponse, type ComparisonFormat, type ComparisonManifest, type ComparisonModel, type ComparisonPhoto, type ComparisonPreflight, type ComparisonResult, type EndpointSnapshot, type LabelledReading } from "@/lib/scan-marking-comparison";
+import routeEvidence from "../../data/scan-marking-route-evidence-20261114.json";
+import { COMPARISON_DEFERRAL_POLICY, COMPARISON_FORMATS, COMPARISON_MODELS, COMPARISON_SETTINGS, SYNTHETIC_IDS, assessComparisonEndpoint, assertComparisonResultIdentity, assertComparisonResume, cheapestPassing, clean429, comparisonProvider, comparisonReports, deferredAttempt, hashBytes, hashValue, labelledOutput, preflightEndpoint, projectMatrix, recoverComparisonResults, reserveMaximum, scoreComparison, selectComparisonModels, transportUsage, teamLine, teamReason, upgradeFixed40Manifest, validateComparisonManifest, comparisonManifestFromBytes, FIXED40_V7_MANIFEST_SHA256, type AttemptRecord, type CapturedResponse, type ComparisonFormat, type ComparisonManifest, type ComparisonModel, type ComparisonPhoto, type ComparisonPreflight, type ComparisonResult, type EndpointSnapshot, type LabelledReading } from "@/lib/scan-marking-comparison";
 import { runComparisonMatrix, runComparisonPhoto, type EvaluationBudget, type EvaluationJournal } from "@/lib/scan-marking-comparison-run";
 import { markingRequest, readMarkingOutput, TWO_WAYS_METHOD_MARKS, validMarkingOutput } from "@/lib/scan-marking";
 import { checkQuestionPackage, type QuestionPackage } from "@/lib/question-package";
@@ -94,6 +95,57 @@ describe("fixed model and endpoint policy", () => {
     const m = COMPARISON_MODELS.find(m => m.endpoint === "azure")!, e = evidence(m), route = comparisonProvider(m, e);
     expect(route.only).toEqual(["azure"]); expect(route.allow_fallbacks).toBe(false);
     expect(route.ignore).toEqual(snapshot(m).data.endpoints.filter(e => e.tag.startsWith("azure/")).map(e => e.tag).sort());
+  });
+});
+
+describe("Sonnet on the production route's endpoints (#900)", () => {
+  const routeSnapshot = () => copy(routeEvidence.snapshot) as EndpointSnapshot;
+  it("selects one exact endpoint by model@endpoint, and a plain model id keeps the historical Vertex pair", () => {
+    expect(selectComparisonModels(["anthropic/claude-sonnet-5.5"])).toEqual([{ model: "anthropic/claude-sonnet-5.5", host: "Google Vertex", providerName: "Google", endpoint: "google-vertex/global" }]);
+    expect(selectComparisonModels(["anthropic/claude-sonnet-5.5@anthropic"])).toEqual([{ model: "anthropic/claude-sonnet-5.5", host: "Anthropic", providerName: "Anthropic", endpoint: "anthropic" }]);
+    expect(selectComparisonModels(["anthropic/claude-sonnet-5.5@azure/global"])).toEqual([{ model: "anthropic/claude-sonnet-5.5", host: "Azure", providerName: "Azure", endpoint: "azure/global" }]);
+    expect(() => selectComparisonModels(["anthropic/claude-sonnet-5.5@anthropic", "anthropic/claude-sonnet-5.5@azure/global"])).toThrow("invalid-comparison-model-selection");
+    expect(() => selectComparisonModels(["anthropic/claude-sonnet-5.5@amazon-bedrock"])).toThrow("invalid-comparison-model-selection");
+    expect(selectComparisonModels(null)).toEqual(COMPARISON_MODELS);
+  });
+  it("pins each endpoint alone, with no ZDR flag, because neither is on the ZDR list", () => {
+    for (const [id, tag, provider] of [["anthropic/claude-sonnet-5.5@anthropic", "anthropic", "Anthropic"], ["anthropic/claude-sonnet-5.5@azure/global", "azure/global", "Azure"]]) {
+      const [model] = selectComparisonModels([id]), state = assessComparisonEndpoint(model, routeSnapshot(), copy(routeEvidence.zdr));
+      if (state.status !== "ready") throw new Error(state.reason);
+      expect(state.evidence.endpoint.provider_name).toBe(provider);
+      expect(state.evidence.policy).toBe("not-zdr");
+      expect(state.maximumMicros).toBe(4_040_960);
+      expect(comparisonProvider(model, state.evidence)).toEqual({ only: [tag], order: [tag], allow_fallbacks: false, require_parameters: true, ignore: [] });
+    }
+  });
+  it("runs, checks and reports all 40 photos for the selected endpoint, not the Vertex pair", async () => {
+    const data = manifest(), selected = selectComparisonModels(["anthropic/claude-sonnet-5.5@anthropic"]), [model] = selected;
+    const bytes = new Uint8Array([1, 2, 3]), mem = memory(), results: ComparisonResult[] = [], providers: unknown[] = [];
+    for (const p of data.photos) p.image.sha256 = hashBytes(bytes);
+    const state = assessComparisonEndpoint(model, routeSnapshot(), copy(routeEvidence.zdr));
+    if (state.status !== "ready") throw new Error(state.reason);
+    // The memory ledger holds every reservation, so the fake bound is small; the real one is checked above.
+    const history = [state.evidence], run = hashBytes("sonnet-anthropic"), ready = { ...state, maximumMicros: 10_000 };
+    await runComparisonMatrix({ run, manifest: data, preflight: [ready], history, results, records: [], maxRunMicros: 15_000_000, maxAttempts: 1, save: async () => {}, models: selected,
+      dispatch: (m, p, proof, maximumMicros, batch, prior) => runComparisonPhoto({ run, photo: p, image: bytes, model: m, evidence: proof, maximumMicros, maxRunMicros: 15_000_000,
+        budget: mem.budget, journal: mem.journal, env: { SCAN_MARKING_OPENROUTER_API_KEY: "synthetic" }, maxAttempts: 1, batch, prior,
+        fetch: async (_url, init) => { providers.push(JSON.parse(String(init?.body)).provider); return response(p, m); } }),
+    });
+    expect(results).toHaveLength(40);
+    expect(results.every(r => r.status === "complete" && r.attempts.every(a => a.usage.provider === "Anthropic"))).toBe(true);
+    expect(providers.every(p => JSON.stringify(p) === JSON.stringify({ only: ["anthropic"], order: ["anthropic"], allow_fallbacks: false, require_parameters: true, ignore: [] }))).toBe(true);
+    expect(() => assertComparisonResultIdentity(data, results, history, run, selected)).not.toThrow();
+    expect(() => assertComparisonResultIdentity(data, results, history, run)).toThrow("identity");
+    const reports = comparisonReports(data, [ready], results, history, new Map(), selected);
+    expect(reports.map(r => [r.model, r.endpoint, r.status, r.passed])).toEqual([["anthropic/claude-sonnet-5.5", "anthropic", "tested", true]]);
+  });
+  it("refuses an answer served by the other route endpoint", async () => {
+    const [model] = selectComparisonModels(["anthropic/claude-sonnet-5.5@anthropic"]), mem = memory(), p = photo();
+    const state = assessComparisonEndpoint(model, routeSnapshot(), copy(routeEvidence.zdr));
+    if (state.status !== "ready") throw new Error(state.reason);
+    const options = runOptions(p, mem);
+    const out = await runComparisonPhoto({ ...options, model, evidence: state.evidence, fetch: async () => response(p, { ...model, providerName: "Azure" }) });
+    expect(out.failure).toBe("served-provider-model-or-generation-mismatch");
   });
 });
 
@@ -297,6 +349,15 @@ describe("synthetic manifest and fixed truth", () => {
     const centers = await syntheticChoiceCenters(bytes, region);
     expect(centers.map(c => [c.x, c.y])).toEqual([[24.5,44.5],[114.5,44.5],[204.5,44.5],[294.5,44.5]]);
     await expect(syntheticChoiceCenters(bytes, { ...region, choices: ["+", "-"] })).rejects.toThrow("geometry");
+  });
+  it("reads a saved manifest as it is unless its bytes are exactly the fixed-40 v7 file", () => {
+    const data = manifest(), bytes = new TextEncoder().encode(JSON.stringify(data));
+    expect(hashBytes(bytes)).not.toBe(FIXED40_V7_MANIFEST_SHA256);
+    expect(comparisonManifestFromBytes(bytes)).toEqual(data);
+    const parent = copy(data); (parent.photos[0].truth[0] as { result: string }).result = "parent";
+    const read = comparisonManifestFromBytes(new TextEncoder().encode(JSON.stringify(parent)));
+    expect((read.photos[0].truth[0] as { result: string }).result).toBe("parent");
+    expect(() => validateComparisonManifest(read)).toThrow();
   });
   it("turns the saved fixed-40 parent rows into blank AI-marked rows, and changes nothing else", () => {
     const current = manifest(), legacy = copy(current) as unknown as { photos: { truth: { format: string; result: string; readings: unknown[] }[] }[] };
