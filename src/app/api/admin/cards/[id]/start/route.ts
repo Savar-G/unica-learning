@@ -1,3 +1,4 @@
+import { liveReferralStarts } from "@/lib/referral-server";
 import { adminSession, type CardSetupRow } from "@/lib/admin-store";
 import { adminClient } from "@/lib/supabase-auth";
 import { isUuid } from "@/lib/assessment-store";
@@ -52,7 +53,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/cards
     try {
       const price = planPrice(Number(card.price), card.plan);
       const startedAt = Date.now();
-      const result = await startPlan(s, { cardSetup: card.id, customer: card.stripe_customer_id, price, deliveryConfirmed: true });
+      const result = await startPlan(s, { cardSetup: card.id, customer: card.stripe_customer_id, price, deliveryConfirmed: true }, undefined, undefined, liveReferralStarts(s));
       if (!result.ok) return Response.json(result, { status: 409 });
       const access = await openAccess({ customer: card.stripe_customer_id, cardSetup: card.id, generation: result.generation, startedAt });
       return Response.json({ ...result, access, confirmation: await confirm(card.id, result.generation, result.monthlyPrice ?? price, result.firstChargeAt, new URL(request.url).origin) });

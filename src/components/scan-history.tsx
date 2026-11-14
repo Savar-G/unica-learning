@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { browserClient } from "@/lib/supabase-browser";
-import type { HistoryPage } from "@/lib/scan-history";
+import { historyLine, type HistoryPage } from "@/lib/scan-history";
 import "./scan-pages.css";
 
 export interface HistoryListing { pages: HistoryPage[]; counts: Record<string, number>; after: string | null }
@@ -84,10 +84,7 @@ export function ScanHistoryView({ listing = null, state, status = "all", workboo
           {[...groups.values()].map(group => <section key={`${group[0].workbookId}:${group[0].day}`} className="scan-group">
             <h3>Workbook {group[0].book} · {group[0].day}</h3>
             <ul>{group.map(page => <li key={page.id}>
-              <b>Page {page.pageNumber}</b>: {page.status === "never-scanned" ? "No saved results" : page.label}
-              {page.status === "ready" && <> · {page.right} of {page.counts.scored} right</>}
-              {page.blank > 0 && <> · {page.blank} blank</>}
-              {page.counts.unscored > 0 && <> · {page.counts.unscored} not scored</>}
+              <b>Page {page.pageNumber}</b>: {historyLine(page)}
               {page.photo && !page.photoAvailable && <span> · Photo no longer available</span>}
               {page.photo && <Link className="scan-link" prefetch={false} href={`/account/scan/results/${page.photo}`}
                 aria-label={`View page results for workbook ${page.book}, ${page.day}, page ${page.pageNumber}`}>

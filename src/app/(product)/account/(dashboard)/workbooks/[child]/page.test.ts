@@ -33,6 +33,8 @@ it("composes history for only the selected child and its current and past shippe
   const html = renderToStaticMarkup(await page());
   expect(fake.history).toHaveBeenLastCalledWith({ parent: "parent", child: "child", books: ["own-book", "past-book"] });
   expect(html).toContain("Selected page history");
+  // The scan screen's "See all pages" link lands here (#915).
+  expect(html).toMatch(/id="page-history"[^>]*>[^]*Selected page history/);
   expect(html).toContain('href="/account/workbooks/child/answers/past-book"');
   expect(html).not.toContain('href="/account/workbooks/child/answers/own-book"');
   expect(html).not.toContain("sibling-book");

@@ -4,6 +4,7 @@ import {beforeEach,expect,it,vi} from "vitest";
 import type {Database} from "@/lib/database";
 const f=vi.hoisted(()=>({db:null as unknown,client:null as unknown}));
 vi.mock("server-only",()=>({}));
+vi.mock("@/lib/referral-server",()=>({liveReferralStarts:()=>undefined}));
 vi.mock("@/lib/supabase-auth",()=>({adminClient:()=>f.db}));
 vi.mock("@/lib/stripe",async original=>({...await original<typeof import("@/lib/stripe")>(),stripe:()=>f.client}));
 import {checkCardRow} from "@/lib/card-reconcile";

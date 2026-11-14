@@ -16,6 +16,7 @@ import { isUuid } from "@/lib/workbook-content";
 import { loadFamilyZone } from "@/lib/family-time-server";
 import { PACIFIC_ZONE } from "@/lib/family-time";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
+import { workbooksHistoryShown, workbooksPage } from "@/lib/workbooks-page-server";
 import "@/components/scan-tab.css";
 
 export const metadata = pageMetadata({ path: "/account/scan", title: "Scan pages", description: "Save a finished workbook page.", index: false });
@@ -52,7 +53,7 @@ async function focusedPage(db: Db, workbook: unknown, page: unknown): Promise<{ 
 
 export default async function ScanPage({ searchParams }: PageProps<"/account/scan">) {
   if (!(await parentId(await sessionClient()))) redirect(scanSignInPath);
-  const { db, parent, childOpen } = await scanSession();
+  const { db, admin, parent, childOpen } = await scanSession();
   const [kids, notice, dashboard, h, query, timeZone] = await Promise.all([
     db.from("children").select("id,first_name").eq("parent_id", parent).order("created_at"),
     db.from("scan_photo_notices").select("parent_id").eq("parent_id", parent).maybeSingle(),
@@ -71,13 +72,17 @@ export default async function ScanPage({ searchParams }: PageProps<"/account/sca
   // The page's child when a QR code opened it, else the child in view in the dashboard (the last child viewed), else the oldest.
   const inView = list.find((k) => k.id === focus?.childId) ?? pickChild(list, null, dashboard?.remembered ?? null);
   const ordered = inView ? [inView, ...list.filter((k) => k.id !== inView.id)] : list;
+  // "See all pages" opens the child's Workbooks page history only where that page shows it, by the page's own read; a
+  // child without it keeps the history inline on this screen. A failed read keeps it inline too.
+  const allPages = (await Promise.all(ordered.map(async (k) =>
+    workbooksHistoryShown(await workbooksPage(db, parent, admin, k.id, { dashboard: Boolean(dashboard) }).catch(() => null)) ? k.id : null))).filter((id): id is string => id !== null);
   const screen = scanScreen(userAgent({ headers: h }).device.type, query[CONTINUE_HERE] === "1");
   const back = !dashboard && <p><Link href="/account">Back to your account</Link></p>;
 
   if (screen === "camera") {
     return <SupportPage label="Your account" title="Scan pages">
       {back}
-      <ScanPages timeZone={timeZone} childrenList={ordered} parent={parent} noticeAcknowledged={Boolean(notice.data)} focus={focus} />
+      <ScanPages timeZone={timeZone} childrenList={ordered} parent={parent} noticeAcknowledged={Boolean(notice.data)} focus={focus} allPages={allPages} />
     </SupportPage>;
   }
 
@@ -96,7 +101,7 @@ export default async function ScanPage({ searchParams }: PageProps<"/account/sca
       </div>
       {inView && <section className="scan-away-stack" aria-label="From your phone">
         <h2>From your phone</h2>
-        <ScanPages timeZone={timeZone} mode="desktop" childrenList={ordered} parent={parent} noticeAcknowledged={Boolean(notice.data)} />
+        <ScanPages timeZone={timeZone} mode="desktop" childrenList={ordered} parent={parent} noticeAcknowledged={Boolean(notice.data)} allPages={allPages} />
       </section>}
     </div>
   </SupportPage>;

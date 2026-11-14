@@ -1,3 +1,4 @@
+import { REFERRAL_EVENTS, handleReferralEvent } from "@/lib/referral-server";
 import Stripe from "stripe";
 import { checkCustomerCard } from "@/lib/card-reconcile";
 import { liveCardChecks } from "@/lib/card-sweep-server";
@@ -11,6 +12,8 @@ import { livePlanStates } from "@/lib/plan-state-server";
 // A subscription created or updated event also brings the child's Stripe side to their newest card (#554, card-reconcile.ts). A
 // Stripe failure there flags the row, and the sweep comes back, so it does not change the answer. Only a row that cannot be read
 // or flagged answers 500. A corrective write raises one more event, and that event finds nothing to change.
+
+export const maxDuration = 60;
 
 const CARD_EVENTS: ReadonlySet<string> = new Set(["customer.subscription.created", "customer.subscription.updated"]);
 const planType = (type: string): type is PlanEventType => (PLAN_EVENT_TYPES as readonly string[]).includes(type);
@@ -37,7 +40,11 @@ export async function POST(request: Request): Promise<Response> {
     return new Response(null, { status: 400 });
   }
   // A type the site does not keep: taken, so Stripe does not send it again.
-  if (!planType(signed.type)) return new Response(null, { status: 204 });
+  if (!planType(signed.type) && !REFERRAL_EVENTS.has(signed.type)) return new Response(null, { status: 204 });
+  let referralStatus = 204;
+  try { await handleReferralEvent(signed); }
+  catch (e) { console.error("[stripe-webhook] referral event needs retry", e instanceof Error ? e.message : "failed"); referralStatus = 500; }
+  if (!planType(signed.type)) return new Response(null, { status: referralStatus });
   const event: PlanEvent = { id: signed.id, type: signed.type, created: signed.created, customer: customerOf(signed.data.object) };
 
   const states = livePlanStates();
@@ -45,7 +52,7 @@ export async function POST(request: Request): Promise<Response> {
     console.error("[stripe-webhook] the database or Stripe key is not set");
     return new Response(null, { status: 503 });
   }
-  let status = 204;
+  let status = referralStatus;
   try {
     const outcome = await applyPlanEvent(event, states);
     // An old booking's customer has no card setup. Nothing can use its events, and the log keeps the trace.

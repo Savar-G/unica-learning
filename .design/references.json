@@ -231,6 +231,26 @@
    ],
    "priority": "archived",
    "note": "Superseded by Savar FigJam board 2026-10-03 (D-014)"
+  },
+  {
+   "source": "docs/referrals.md",
+   "author": "user",
+   "annotation": "Savar approved both family discounts, family-wide scope, generated codes/share links, Account card, Unica code entry, inline pricing text and FAQ.",
+   "take": [
+    "Existing Account card and form patterns",
+    "Keep the free month and sibling price",
+    "No new landing-page section"
+   ],
+   "avoid": [
+    "A permanent 50% monthly-price claim",
+    "Other family identity in referral details"
+   ],
+   "applies_to": [
+    "content",
+    "interaction",
+    "layout"
+   ],
+   "priority": "primary"
   }
  ]
 }
