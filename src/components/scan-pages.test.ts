@@ -459,7 +459,9 @@ it("shows and deletes a sent photo when the only open page is one ready photo", 
   seed("ready", "p11");
   await render();
   expect(button("Page 11, ready, not sent yet")).toBeDefined();
-  const tile = button("Page 10 · Day 4: Sent for marking");
+  // No "Sent earlier" list (2026-11-14): the sent page opens from its strip tile.
+  expect(text()).not.toContain("Sent earlier");
+  const tile = button("Page 10, sent for marking");
   expect(tile).toBeDefined();
   await act(async () => tile!.click());
   // The sheet's own Delete: the one page's Delete sits behind the sheet.

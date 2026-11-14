@@ -1197,8 +1197,6 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
 
   const stripKeys = new Set(strip?.tiles.map((t) => t.tileKey).filter(Boolean));
   const others = stack.days.map((d) => ({ ...d, tiles: d.tiles.filter((t) => !stripKeys.has(t.key)) })).filter((d) => d.tiles.length);
-  const todayIds = new Set(today.pages.map((p) => p.id));
-  const earlier = stack.sent.filter((t) => !todayIds.has(t.photoId ?? ""));
   const group = (key: string, title: string, list: StackTile[], extra?: ReactNode, aside?: string) => <section key={key} className="scan-group" aria-label={title}>
     <div className="scan-group-h"><h2>{title}</h2>{aside && <span className="scan-count">{aside}</span>}</div>
     {extra}
@@ -1271,10 +1269,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
 
     {stack.addingTiles.length > 0 && group("new", "New photos", stack.addingTiles, undefined, addingCount(stack))}
     {others.map((d) => group(d.key, d.label, d.tiles, undefined, d.tiles.length === 1 ? "1 photo" : `${d.tiles.length} photos`))}
-    {/* The strip already shows each page's state, so earlier sent pages stay folded away. */}
-    {earlier.length > 0 && <details className="scan-earlier"><summary>Sent earlier ({earlier.length})</summary>
-      {group("sent", "Sent earlier", earlier, <p className="scan-gap">{marking ? "Open a page to view its results." : "Marking is not ready yet. These pages wait here."}</p>)}
-    </details>}
+    {/* No "Sent earlier" list (2026-11-14): the strip's ‹ and › reach the earlier days' pages. */}
 
     {/* No page history on this screen (2026-11-14): the strip's ‹ steps back through earlier days. "See all pages" only
         where the child's Workbooks page shows its history; else nothing more. */}

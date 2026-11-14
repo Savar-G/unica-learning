@@ -285,8 +285,6 @@ span.scan-pair-ph { cursor: default; }
 .scan-tray-go { min-height: 56px; display: flex; align-items: center; justify-content: center; gap: 10px; border: 0; border-radius: 14px; background: var(--ink); color: #fff; font: 600 16.5px var(--sans, inherit); cursor: pointer; }
 .scan-cam-foot .scan-link { justify-self: center; font-size: 15px; }
 .scan-cam button:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
-.scan-earlier summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-size: 15px; text-decoration: underline; text-underline-offset: 3px; }
-.scan-earlier[open] summary { margin-bottom: 8px; }
 
 /* "See all pages": the one way from home to every saved page result (the Page history on the Workbooks page). */
 .scan-all { margin: 0; }
