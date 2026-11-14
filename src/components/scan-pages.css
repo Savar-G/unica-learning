@@ -38,6 +38,7 @@
 
 /* The stack */
 .scan-summary { color: var(--ink-2); }
+.scan-spread-note { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--card); color: var(--ink); font-size: 15px; }
 .scan-group { display: grid; gap: 10px; }
 .scan-group-h { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .scan-group-h h2 { font-size: 17px; font-weight: 500; letter-spacing: -.01em; }

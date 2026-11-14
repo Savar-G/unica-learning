@@ -5,7 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { browserClient } from "@/lib/supabase-browser";
 import { phoneCodeCheck, prepareScanPhoto } from "@/lib/scan-photo-browser";
-import { addingCount, buildStack, refusalCopy, roomNote, sendLabel, stackSummary, waitingNote, type DayPage, type StackPhoto, type StackTile, type StackUpload, type UploadRefusal } from "@/lib/scan-stack";
+import { addingCount, buildStack, refusalCopy, roomNote, sendLabel, spreadNote, stackSummary, waitingNote, type DayPage, type StackPhoto, type StackTile, type StackUpload, type UploadRefusal } from "@/lib/scan-stack";
 import { SCANNING_COOKIE, SCANNING_SECONDS } from "@/lib/scan-tab";
 import { scanEventTicket } from "@/lib/scan-track";
 import { ScanHelp } from "@/components/scan-help";
@@ -28,7 +28,7 @@ const GUIDE_WORDS = { done: "done", retake: "needs another photo", todo: "not sc
 
 export type ScanListing = { marking?: boolean; checks: boolean; photos: StackPhoto[]; pages: DayPage[] };
 
-const UPLOAD_REFUSALS: readonly string[] = ["qr", "page", "duplicate", "image", "size", "frequency", "quota"];
+const UPLOAD_REFUSALS: readonly string[] = ["qr", "page", "duplicate", "flat", "image", "size", "frequency", "quota"];
 const uploadRefusal = (code: string): UploadRefusal => (UPLOAD_REFUSALS.includes(code) ? code as UploadRefusal : "unavailable");
 /** What the server says of a photo id that can no longer take an upload: the lease ended or the photo went. A new id is needed. */
 const ENDED: readonly string[] = ["expired", "rejected", "deleted", "refused"];
@@ -121,6 +121,8 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const [uploads, setUploads] = useState<Local[]>([]);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const [unavailable, setUnavailable] = useState<Set<string>>(() => new Set());
+  // Second pages of two-page photos the server could not keep (#965): named once, until the parent photographs them.
+  const [unkept, setUnkept] = useState<number[]>([]);
   const [sheet, setSheet] = useState<{ kind: "add" } | { kind: "notice"; then: "camera" | "library" | null } | { kind: "tile"; key: string } | null>(null);
   const [acknowledged, setAcknowledged] = useState(noticeAcknowledged);
   const [message, setMessage] = useState<{ text: string; failed: boolean } | null>(null);
@@ -365,6 +367,8 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       try {
         const data = admission.state === "reserved" ? await api(`/api/account/scans/${id}`, { method: "PUT", body }, UPLOAD_TIMEOUT_MS) : await api(`/api/account/scans/${id}`);
         const state = data.photo?.state;
+        const second = data.spread as { state?: string; page?: number } | undefined;
+        if (second?.page && version === epoch.current && !["saved", "duplicate"].includes(second.state ?? "")) setUnkept((pages) => pages.includes(second.page!) ? pages : [...pages, second.page!].sort((a, b) => a - b));
         if (state === "pending" || state === "saved") return "sent";
         throw new Error(state === "processing" ? "uncertain" : ENDED.includes(state) ? state : "image");
       } catch (error) {
@@ -467,6 +471,8 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const photos = useMemo(() => (listing?.photos ?? []).map((p) => (unavailable.has(p.id) && p.check === "checking" ? { ...p, check: "unavailable" as const } : p)), [listing, unavailable]);
   const checks = Boolean(listing?.checks);
   const stack = useMemo(() => buildStack({ photos, uploads, pages: listing?.pages ?? [], checks }), [photos, uploads, listing, checks]);
+  // A page named as not kept stops being named once a photo of it is in the stack.
+  const unkeptNote = spreadNote(unkept.filter((n) => !photos.some((p) => listing?.pages.find((d) => d.id === p.pageId)?.pageNumber === n)));
   const tiles = [...stack.refused, ...stack.addingTiles, ...stack.days.flatMap((d) => d.tiles), ...stack.sent];
   const openTile = sheet?.kind === "tile" ? tiles.find((t) => t.key === sheet.key) ?? null : null;
   const thumbOf = (t: StackTile) => thumbs[t.photoId ?? t.uploadKey ?? ""];
@@ -599,7 +605,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       {childPicker}
       {focusLine}
       <ul className="scan-tips">
-        <li>{ICONS.fold}<span>Fold the book back, so only one page shows.</span></li>
+        <li>{ICONS.fold}<span>Lay the book flat. Take one page, or two pages side by side with both fully in the photo.</span></li>
         <li>{ICONS.light}<span>Find good light. Keep shadows off the page.</span></li>
         <li>{ICONS.corners}<span>Keep all four corner marks and the small code in the bottom-left corner in view.</span></li>
       </ul>
@@ -628,6 +634,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     {help}
     {childPicker}
     {listing && stackSummary(stack, checks) && <p className="lead scan-summary">{stackSummary(stack, checks)}</p>}
+    {unkeptNote && <p className="scan-spread-note" role="status">{unkeptNote}</p>}
     {focusLine}
     {status}
     {stack.guide && <section className="scan-guide" aria-label={`${stack.guide.day} pages`}>

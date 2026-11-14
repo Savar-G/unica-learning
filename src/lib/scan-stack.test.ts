@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addingCount, buildStack, dayPages, refusalCopy, roomNote, sendLabel, stackSummary, waitingNote, type StackPhoto, type StackUpload } from "@/lib/scan-stack";
+import { spreadNote, addingCount, buildStack, dayPages, refusalCopy, roomNote, sendLabel, stackSummary, waitingNote, type StackPhoto, type StackUpload } from "@/lib/scan-stack";
 
 const BOOK = "book-1";
 // Workbook 1: a cover, Day 4 with pages 10 to 13, Day 5 with pages 14 to 16.
@@ -261,5 +261,16 @@ describe("the scan guide", () => {
 
   it("says all pages are scanned when none are left", () => {
     expect(buildStack({ photos: [1, 2, 3, 4].map((n) => shot(n)), uploads: [], pages: named.filter((p) => p.day === "Day 1"), checks: true }).guide?.stillText).toBe("All pages of Day 1 are scanned.");
+  });
+});
+
+describe("two-page photos (#965)", () => {
+  it("names the second pages the server could not keep, and asks for a photo of each alone", () => {
+    expect(spreadNote([])).toBeNull();
+    expect(spreadNote([24])).toBe("Page 24 was in a photo of two pages, but we could not keep it. Take a photo of that page on its own.");
+    expect(spreadNote([24, 26])).toBe("Pages 24 and 26 were in a photo of two pages, but we could not keep them. Take a photo of each on its own.");
+  });
+  it("tells the parent to lay the book flat when the pages are not flat", () => {
+    expect(refusalCopy("flat")).toMatchObject({ short: "Pages not flat", title: "The pages are not flat in this photo." });
   });
 });
