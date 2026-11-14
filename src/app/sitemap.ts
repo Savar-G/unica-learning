@@ -12,13 +12,13 @@ import { blogPath, BLOG_POSTS } from "@/lib/blog";
 const newest = (dates: string[]) => dates.reduce((a, b) => (b > a ? b : a), "");
 const PATHS: { path: string; updated?: string }[] = [
   { path: "/", updated: "2026-11-13" },
-  { path: "/pricing", updated: "2026-11-11" },
+  { path: "/pricing", updated: "2026-11-13" },
   { path: "/math-assessment", updated: "2026-11-05" },
-  { path: "/our-story", updated: "2026-11-08" },
+  { path: "/our-story", updated: "2026-11-13" },
   { path: "/compare", updated: "2026-11-13" },
   { path: "/rewards", updated: "2026-11-11" },
-  { path: "/whats-included", updated: "2026-11-11" },
-  { path: "/curriculum", updated: "2026-11-09" },
+  { path: "/whats-included", updated: "2026-11-13" },
+  { path: "/curriculum", updated: "2026-11-13" },
   { path: "/sample-report", updated: "2026-11-11" },
   { path: "/contact", updated: "2026-10-18" },
   { path: "/privacy", updated: "2026-11-13" },

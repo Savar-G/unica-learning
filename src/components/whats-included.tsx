@@ -72,14 +72,14 @@ const SOURCES: { title: string; sub: string; thumb: React.ReactNode; showed: str
   {
     title: "From her marked pages", sub: "Every page scanned on our website",
     thumb: <div className="th-page"><MarkedPage width={260} marks /></div>,
-    showed: "When she borrows, she takes the smaller digit from the bigger one, like 5 − 0 instead of 0 − 5. Carrying: all right.",
-    changes: ["more", "less"], labels: ["borrowing across zero", "carrying"],
+    showed: "When she subtracts across a zero, she takes the smaller digit from the bigger one, like 5 − 0 instead of 0 − 5. Adding: all right.",
+    changes: ["more", "less"], labels: ["subtracting across a zero", "adding"],
   },
   {
     title: "From her sessions with Maya", sub: "The AI Teaching Assistant",
     thumb: <div className="th-maya"><img src={`${ASSETS}/maya.png`} alt="" /><span>Let&apos;s look at 300 − 128 together.</span></div>,
-    showed: "Most of her questions to Maya were about borrowing. On 300 − 128 she needed Maya's steps, then finished on her own.",
-    changes: ["more"], labels: ["borrowing across zero"],
+    showed: "Most of her questions to Maya were about subtracting. On 300 − 128 she needed Maya's steps, then finished on her own.",
+    changes: ["more"], labels: ["subtracting across a zero"],
   },
   {
     title: "From her first assessment", sub: "And the monthly re-check",
@@ -89,7 +89,7 @@ const SOURCES: { title: string; sub: string; thumb: React.ReactNode; showed: str
   },
 ];
 const COVER_CHANGES: Change[] = [
-  { tag: "more", label: "more", text: "Borrowing across zero", from: [1, 2] },
+  { tag: "more", label: "more", text: "Subtracting across a zero", from: [1, 2] },
   { tag: "new", label: "new", text: "Multiplying by 10", from: [3] },
   { tag: "less", label: "less", text: "Carrying, now strong", from: [1] },
   { tag: "rev", label: "rev", text: "Unit fractions", from: [3] },
@@ -196,7 +196,7 @@ export function WhatsIncluded() {
           </Section>
 
           <Section className="wi-gd" aria-labelledby="wiTa">
-            <StepHead id="wiTa" eyebrow="AI Teaching Assistant" title="If they get stuck, Maya helps them work it out." lead="Maya, the Unica AI Teaching Assistant, opens the exact question from the workbook on a whiteboard they both see. Children in Grade 3 and up type to Maya about the question. Maya gives hints and can show an easier example on the board. Your child answers, asks why, or picks up the pen." />
+            <StepHead id="wiTa" eyebrow="AI Teaching Assistant" title="If they get stuck, Maya helps them work it out." lead="Maya, the Unica AI Teaching Assistant, opens the exact question from the workbook on a whiteboard they both see. Your child asks Maya about the question. She starts with hints and can show an easier example on the board. Your child answers, asks why, or picks up the pen." />
             <Rise className="gd-media">
               <DemoVideo className="gd-wide" src="/video/guidance-demo.mp4" poster="/video/guidance-demo-poster.jpg" label={MAYA_LABEL} />
               <DemoVideo className="gd-board" src="/video/guidance-demo-board.mp4" poster="/video/guidance-demo-board-poster.jpg" label={MAYA_LABEL} />
