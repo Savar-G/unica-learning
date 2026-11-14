@@ -569,7 +569,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       <ul className="scan-tips">
         <li>{ICONS.fold}<span>Fold the book back, so only one page shows.</span></li>
         <li>{ICONS.light}<span>Find good light. Keep shadows off the page.</span></li>
-        <li>{ICONS.corners}<span>Keep all four corners and the QR code in view.</span></li>
+        <li>{ICONS.corners}<span>Keep all four corners and the small code in the bottom-left corner in view.</span></li>
       </ul>
       <p className="small scan-privacy-line">Photos are private and kept for 90 days. <button type="button" className="scan-link" onClick={() => setSheet({ kind: "notice", then: null })}>More about photos</button></p>
       {status}
