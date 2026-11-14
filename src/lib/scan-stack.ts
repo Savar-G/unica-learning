@@ -177,11 +177,17 @@ const listed = (n: readonly number[]) => (n.length < 2 ? `${n[0]}` : `${n.slice(
 
 type Built = { photo: StackPhoto; tile: StackTile }[];
 
-/** The guide for the day of the newest photo not yet sent: a page with a photo is done unless refused (retake); the rest are to do. */
+/**
+ * The guide for the latest day, in book order, that has a photo not yet sent (a retake of an earlier page never moves
+ * it back): a page with a photo is done unless refused (retake); the rest are to do.
+ */
 function guideOf(o: { photos: readonly StackPhoto[]; pages: readonly DayPage[] }, tiles: Built, dayLabel: (p: DayPage) => string, pageLabel: (p: DayPage) => string): StackGuide | null {
   const pageById = new Map(o.pages.map((p) => [p.id, p]));
-  const current = tiles.filter((t) => t.tile.status !== "sent" && pageById.has(t.photo.pageId))
-    .sort((a, b) => b.photo.createdAt.localeCompare(a.photo.createdAt))[0];
+  const order = new Map(o.pages.map((p, i) => [p.id, i]));
+  const open = tiles.filter((t) => t.tile.status !== "sent" && pageById.has(t.photo.pageId));
+  // The workbook of the newest photo; within it, the latest page in book order.
+  const book = [...open].sort((a, b) => b.photo.createdAt.localeCompare(a.photo.createdAt))[0]?.photo.workbookId;
+  const current = open.filter((t) => t.photo.workbookId === book).sort((a, b) => order.get(b.photo.pageId)! - order.get(a.photo.pageId)!)[0];
   const anchor = current && pageById.get(current.photo.pageId);
   if (!anchor) return null;
   const standing = new Map(tiles.map((t) => [t.photo.pageId, t.tile.status === "refused" ? "retake" as const : "done" as const]));
@@ -191,7 +197,7 @@ function guideOf(o: { photos: readonly StackPhoto[]; pages: readonly DayPage[] }
   });
   const left = pages.filter((p) => p.status !== "done").length;
   const day = dayLabel(anchor);
-  const stillText = left ? `${left === 1 ? "1 page" : `${left} pages`} left in ${day}` : `All pages of ${day} are scanned`;
+  const stillText = left ? `${left === 1 ? "1 page" : `${left} pages`} left in ${day}.` : `All pages of ${day} are scanned.`;
   return { day, stillText, next: pages.find((p) => p.status === "todo") ?? null, pages };
 }
 
@@ -275,6 +281,8 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 
 /** "13 photos. 8 pages are ready to send." Without checks: "2 photos saved." */
 export function stackSummary(stack: Stack, checks: boolean): string {
+  // Right after Send: the sent pages have their own note; "0 photos" would read as if they were lost.
+  if (!stack.counts.photos && stack.sent.length) return "";
   const photos = plural(stack.counts.photos, "photo", "photos");
   if (!checks) return `${photos} saved.`;
   const ready = stack.counts.ready;

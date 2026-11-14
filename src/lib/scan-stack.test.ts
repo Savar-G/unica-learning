@@ -232,8 +232,8 @@ describe("the scan guide", () => {
 
   it("counts the pages left in this day only, a page needing another photo included", () => {
     const guide = buildStack({ photos: [shot(1), shot(2, { check: "refused", reason: "faint" })], uploads: [], pages: day1, checks: true }).guide;
-    expect(guide?.stillText).toBe("3 pages left in Day 1");
-    expect(buildStack({ photos: [1, 2, 3, 4, 5].map((n) => shot(n)), uploads: [], pages: withDay2, checks: true }).guide?.stillText).toBe("1 page left in Day 2");
+    expect(guide?.stillText).toBe("3 pages left in Day 1.");
+    expect(buildStack({ photos: [1, 2, 3, 4, 5].map((n) => shot(n)), uploads: [], pages: withDay2, checks: true }).guide?.stillText).toBe("1 page left in Day 2.");
   });
 
   it("never lists an earlier day the parent did not finish (#915)", () => {
@@ -241,11 +241,18 @@ describe("the scan guide", () => {
     const later = { ...shot(5), createdAt: "2026-11-06T12:00:00Z" };
     const guide = buildStack({ photos: [shot(2), later], uploads: [], pages: withDay2, checks: true }).guide;
     expect(guide?.day).toBe("Day 2");
-    expect(guide?.stillText).toBe("1 page left in Day 2");
+    expect(guide?.stillText).toBe("1 page left in Day 2.");
     expect(guide?.pages.map((p) => p.title)).toEqual(["Page 5 · Day 2, Challenge", "Page 6 · Day 2, Practice"]);
   });
 
+  it("keeps the latest day when an earlier page is retaken afterwards (#915 review)", () => {
+    // Day 2 photographed first, then a Day 1 page added later: the guide stays on Day 2.
+    const day2 = { ...shot(5), createdAt: "2026-11-06T09:00:00Z" };
+    const retake = { ...shot(2), createdAt: "2026-11-06T12:00:00Z" };
+    expect(buildStack({ photos: [day2, retake], uploads: [], pages: withDay2, checks: true }).guide?.day).toBe("Day 2");
+  });
+
   it("says all pages are scanned when none are left", () => {
-    expect(buildStack({ photos: [1, 2, 3, 4].map((n) => shot(n)), uploads: [], pages: named.filter((p) => p.day === "Day 1"), checks: true }).guide?.stillText).toBe("All pages of Day 1 are scanned");
+    expect(buildStack({ photos: [1, 2, 3, 4].map((n) => shot(n)), uploads: [], pages: named.filter((p) => p.day === "Day 1"), checks: true }).guide?.stillText).toBe("All pages of Day 1 are scanned.");
   });
 });
