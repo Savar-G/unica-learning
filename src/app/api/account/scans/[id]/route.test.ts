@@ -3,6 +3,12 @@ vi.mock("server-only", () => ({}));
 const f = vi.hoisted(() => ({ start: "started", identify: "identified", normalize: true, uploads: 0, calls: [] as string[] }));
 const ai = vi.hoisted(() => vi.fn(() => { throw new Error("S1 must not dispatch AI"); }));
 vi.mock("@/lib/ai-client", () => ({ aiClient: ai }));
+// #915: the page check starts after the answer, for a family that gets checks.
+const later = vi.hoisted(() => ({ tasks: [] as (() => Promise<void>)[], checks: true, crops: [] as string[], fail: false }));
+vi.mock("next/server", () => ({ after: (task: () => Promise<void>) => { later.tasks.push(task); } }));
+vi.mock("@/lib/scan-marking-access", () => ({ scanChecksAccess: async () => later.checks }));
+vi.mock("@/lib/scan-crops-store", () => ({ scanCropStore: () => ({}) }));
+vi.mock("@/lib/scan-crops", () => ({ runScanCrops: async (_s: unknown, ref: { photo: string }) => { if (later.fail) throw new Error("storage"); later.crops.push(ref.photo); return { status: "ready" }; } }));
 vi.mock("@/lib/scan-photo-image", () => ({
   readScanBody: async () => new Uint8Array([1]),
   normalizeScanPhoto: async () => {
@@ -27,7 +33,7 @@ vi.mock("@/lib/scan-photo-server", () => ({
 import { PUT } from "./route";
 const id = "00000000-0000-4000-8000-000000000001";
 const put = () => PUT(new Request(`https://unicalearning.com/api/account/scans/${id}`, { method: "PUT", headers: { Origin: "https://unicalearning.com" }, body: new Uint8Array([1]) }), { params: Promise.resolve({ id }) });
-beforeEach(() => { f.start = "started"; f.identify = "identified"; f.normalize = true; f.uploads = 0; f.calls = []; ai.mockClear(); vi.stubEnv("OPENROUTER_API_KEY", "synthetic-configured-key"); });
+beforeEach(() => { later.tasks = []; later.checks = true; later.crops = []; later.fail = false; f.start = "started"; f.identify = "identified"; f.normalize = true; f.uploads = 0; f.calls = []; ai.mockClear(); vi.stubEnv("OPENROUTER_API_KEY", "synthetic-configured-key"); });
 afterEach(() => vi.unstubAllEnvs());
 it("stores one normalized photo with zero AI dispatches when a key is configured", async () => {
   expect((await put()).status).toBe(200); expect(f.uploads).toBe(1);
@@ -43,4 +49,17 @@ it("does not create an object for a refused family admission, unreadable QR or w
 it("returns the original pending photo on a repeated PUT without another object", async () => {
   f.start = "pending"; expect((await put()).status).toBe(200); expect(f.uploads).toBe(0);
   expect(f.calls).toEqual(["start_scan_photo"]);
+});
+it("starts the page check right after the photo is stored, only for a family that gets checks (#915)", async () => {
+  expect((await put()).status).toBe(200);
+  expect(later.tasks).toHaveLength(1);
+  await later.tasks[0](); expect(later.crops).toEqual([id]);
+  later.tasks = []; later.crops = []; later.checks = false;
+  expect((await put()).status).toBe(200); await later.tasks[0](); expect(later.crops).toEqual([]);
+  // A failed background check leaves the photo stored: the page asks again.
+  later.tasks = []; later.checks = true; later.fail = true;
+  expect((await put()).status).toBe(200); await expect(later.tasks[0]()).resolves.toBeUndefined();
+  // A refused photo starts no check.
+  later.tasks = []; f.identify = "page"; expect((await put()).status).toBe(422); expect(later.tasks).toHaveLength(0);
+  expect(ai).not.toHaveBeenCalled();
 });

@@ -1,4 +1,9 @@
+import { randomUUID } from "node:crypto";
+import { after } from "next/server";
 import { isUuid } from "@/lib/workbook-content";
+import { scanChecksAccess } from "@/lib/scan-marking-access";
+import { runScanCrops } from "@/lib/scan-crops";
+import { scanCropStore } from "@/lib/scan-crops-store";
 import { normalizeScanPhoto, readScanBody } from "@/lib/scan-photo-image";
 import { scanSession, scanJson, scanView, scanPath, SCAN_BUCKET, cleanupScanPhoto } from "@/lib/scan-photo-server";
 
@@ -37,6 +42,13 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/accou
     const finished = await admin.rpc("finish_scan_photo", { p_parent: parent, p_id: id, p_bytes: normalized.bytes.length });
     if (finished.error) return scanJson({ error: "uncertain" }, 503);
     if (finished.data !== "pending") throw new Error(finished.data);
+    // Speed (#915): the page check starts here, as soon as the photo is stored, instead of waiting for the page to save
+    // the photo, list the stack again and ask. The job is the same one the preview route runs, under the same lease: a
+    // later ask gets its result, a busy family slot leaves it to that ask, and any error leaves the photo as it was.
+    after(async () => {
+      try { if (await scanChecksAccess(admin, parent, process.env, { photo: id })) await runScanCrops(scanCropStore(admin), { parent, photo: id }, randomUUID()); }
+      catch { /* the page asks again */ }
+    });
     return scanJson({ photo: await scanView(admin, parent, id) });
   } catch (error) {
     await admin.rpc("change_scan_photo", { p_parent: parent, p_id: id, p_action: "reject" });
