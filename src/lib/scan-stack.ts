@@ -12,7 +12,7 @@ import type { ScanRefusal } from "@/lib/scan-crops";
 export type CheckState = "none" | "checking" | "ready" | "refused" | "unavailable";
 
 /** Why the upload route refused a photo, as its error codes say, plus "unavailable" when the photo did not reach us. */
-export type UploadRefusal = "qr" | "page" | "duplicate" | "image" | "size" | "frequency" | "quota" | "unavailable";
+export type UploadRefusal = "qr" | "page" | "duplicate" | "flat" | "image" | "size" | "frequency" | "quota" | "unavailable";
 
 export type StackReason = ScanRefusal | UploadRefusal;
 
@@ -28,7 +28,15 @@ export interface StackPhoto {
   reason: ScanRefusal | null;
   sentAt: string | null;
   createdAt: string;
+  /** A sent page's marks so far (#915 scan flow), null until marking has read it. */
+  marks?: PageMarks | null;
 }
+
+/**
+ * A sent page's marks as the stack shows them (#915): `right` of `scored` so far, `toPractise` wrong or blank answers,
+ * `waiting` answers not marked yet (read, a second look or our team), `complete` when every answer has its final mark.
+ */
+export interface PageMarks { right: number; scored: number; total: number; toPractise: number; waiting: number; complete: boolean }
 
 /** A photo the parent took or chose on this device that has no saved photo yet. */
 export interface StackUpload {
@@ -104,8 +112,11 @@ export interface StackTile {
   /** The short reason under a refused or uncheckable tile. */
   reason: string | null;
   refusal: StackReason | null;
-  /** A photo still sending whose code the phone could not read (#915): the server may ask for another photo. */
-  hint?: "code";
+  /**
+   * `code`: a photo still sending whose code the phone could not read (#915): the server may ask for another photo.
+   * `offline`: a photo that did not reach us only because the phone is offline: it waits and sends when the phone is back.
+   */
+  hint?: "code" | "offline";
 }
 
 export interface StackDay {
@@ -151,12 +162,21 @@ export function dayPages(pages: readonly { id: string; workbookId: string; book:
   return out.sort((a, b) => a.book - b.book || a.pageNumber - b.pageNumber);
 }
 
+/**
+ * The page's code was read, but the page could not be lined up with its printed scan marks (marks missing, marks that do
+ * not fit, ink that does not follow the page, or a hidden corner). The check cannot tell an edge cut off from glare, a page
+ * too far away or a curled corner, so it never says "cut off": on the printed books these came mostly from a page too
+ * small in the photo or a shiny patch from the light. No reason means an edge is cut off for certain.
+ */
+const LINE_UP = { short: "Hold closer", title: "We could not line up this photo with the page.", action: "Hold the phone closer so the page fills the photo, and tilt it away from the light." };
+
 const REFUSALS: Record<StackReason, { short: string; title: string; action: string }> = {
-  "marks-missing": { short: "Cut off", title: "Part of the page is cut off.", action: "Keep all four corner marks and the small code in the bottom-left corner in the photo. Then take another photo." },
-  "marks-inconsistent": { short: "Not flat", title: "The page is bent or not flat in this photo.", action: "Lay the page flat on a table and hold the phone straight above it. Then take another photo." },
-  "page-mismatch": { short: "Wrong page", title: "The page in this photo does not match its code.", action: "Take a photo of one page on its own, with its own code in the bottom-left corner in view. Then take another photo." },
+  "marks-missing": LINE_UP,
+  "marks-inconsistent": LINE_UP,
+  "page-mismatch": LINE_UP,
   "orientation-unclear": { short: "Turned", title: "We cannot tell which way up this page is.", action: "Hold the page upright. Then take another photo." },
   "ambiguous-page": { short: "More than one page", title: "We cannot tell which page this photo is of.", action: "Fold the book back or take the page out, so only one page shows and fills the photo." },
+  "corner-covered": { short: "Corner covered", title: "Something covers a corner of the page.", action: "Move your hand and anything on the page out of the way, so the whole page shows. Then take another photo." },
   "qr-mismatch": { short: "Code not read", title: "We cannot read the small code in the bottom-left corner.", action: "Hold the phone steady and keep that corner in view, with no glare or shadow on the code. Then take another photo." },
   "another-page": { short: "Another page", title: "Part of this photo looks like a different page.", action: "Take a photo of this page on its own, flat, with nothing on top of it." },
   faint: { short: "Hard to read", title: "Part of the page is too bright, faint or covered to read.", action: "Use even light without the flash, and keep fingers and objects off the page. Then take another photo." },
@@ -164,8 +184,9 @@ const REFUSALS: Record<StackReason, { short: string; title: string; action: stri
   "printed-page-changed": { short: "Cannot check", title: "We cannot line up this photo with the printed page.", action: "Take another photo of the whole page, flat and in good light." },
   failed: { short: "Cannot check", title: "We cannot line up this photo with the printed page.", action: "Take another photo of the whole page, flat and in good light." },
   qr: { short: "Code not read", title: "We cannot read the small code in the bottom-left corner.", action: "Hold the phone steady and keep that corner in view, with no glare, shadow or finger on the code. Then take another photo." },
-  page: { short: "Wrong workbook", title: "This page is not in this child's workbook.", action: "Check the child, then take a photo of a page from this workbook." },
-  duplicate: { short: "Already has a photo", title: "This page already has a photo.", action: "Open its photo in the stack. Delete it first if you need another photo." },
+  page: { short: "Cannot add", title: "We cannot add this page to your scans.", action: "Take a photo of a page from a workbook you scan here." },
+  flat: { short: "Pages not flat", title: "The pages are not flat in this photo.", action: "Lay the book flat so both pages are flat, or take one page at a time. Then take another photo." },
+  duplicate: { short: "Already has a photo", title: "This page already has a photo.", action: "Open its photo on this screen. Delete it first if you need another photo." },
   image: { short: "Cannot open", title: "We cannot open this photo.", action: "Choose a JPG, PNG or WebP photo of one page." },
   size: { short: "Too large", title: "This photo is too large.", action: "Choose a photo smaller than 20 MB." },
   frequency: { short: "Too many photos", title: "You have sent many photos in a short time.", action: "Wait a few minutes. Then try again." },
@@ -205,7 +226,11 @@ function guideOf(o: { photos: readonly StackPhoto[]; pages: readonly DayPage[] }
   return { day, stillText, next: pages.find((p) => p.status === "todo") ?? null, pages };
 }
 
-export function buildStack(o: { photos: readonly StackPhoto[]; uploads: readonly StackUpload[]; pages: readonly DayPage[]; checks: boolean }): Stack {
+/**
+ * `offline`: the phone is offline now. A photo that failed only for the connection ("unavailable") is then not a bad photo:
+ * it shows with the new photos as waiting for the connection, and the page sends it again when the phone is back online.
+ */
+export function buildStack(o: { photos: readonly StackPhoto[]; uploads: readonly StackUpload[]; pages: readonly DayPage[]; checks: boolean; offline?: boolean }): Stack {
   const pageById = new Map(o.pages.map((p) => [p.id, p]));
   const books = new Set(o.photos.map((p) => p.workbookId));
   const dayLabel = (p: DayPage) => (books.size > 1 ? `Workbook ${p.book} · ${p.day}` : p.day);
@@ -233,13 +258,16 @@ export function buildStack(o: { photos: readonly StackPhoto[]; uploads: readonly
   const ordered = [...o.photos].sort((a, b) => a.book - b.book || a.pageNumber - b.pageNumber);
   const tiles = ordered.map((photo) => ({ photo, tile: tileOf(photo) }));
 
-  const refusedUploads: StackTile[] = o.uploads.filter((u) => u.status === "refused").map((u) => {
+  const waitsForConnection = (u: StackUpload) => Boolean(o.offline) && u.status === "refused" && (u.reason ?? "unavailable") === "unavailable";
+  const refusedUploads: StackTile[] = o.uploads.filter((u) => u.status === "refused" && !waitsForConnection(u)).map((u) => {
     const reason = u.reason ?? "unavailable";
     return { key: u.key, photoId: null, uploadKey: u.key, label: "Unknown page", title: "Unknown page", status: "refused", reason: refusalCopy(reason).short, refusal: reason };
   });
-  const addingTiles: StackTile[] = o.uploads.filter((u) => u.status !== "refused")
-    .map((u) => ({ key: u.key, photoId: null, uploadKey: u.key, label: "New photo", title: "New photo", status: u.status === "uploading" && !u.held ? "adding" : "waiting",
-      reason: u.held ? "Waiting for room" : u.codeUnread ? "Code may not read" : null, refusal: null, ...(u.codeUnread ? { hint: "code" as const } : {}) }));
+  const addingTiles: StackTile[] = o.uploads.filter((u) => u.status !== "refused" || waitsForConnection(u))
+    .map((u): StackTile => waitsForConnection(u)
+      ? { key: u.key, photoId: null, uploadKey: u.key, label: "New photo", title: "New photo", status: "waiting", reason: "Waiting for connection", refusal: null, hint: "offline" }
+      : { key: u.key, photoId: null, uploadKey: u.key, label: "New photo", title: "New photo", status: u.status === "uploading" && !u.held ? "adding" : "waiting",
+        reason: u.held ? "Waiting for room" : u.codeUnread ? "Code may not read" : null, refusal: null, ...(u.codeUnread ? { hint: "code" as const } : {}) });
 
   // Refused photos, oldest first, then refused uploads, whose page is not known.
   const refused = [
@@ -280,6 +308,13 @@ export function buildStack(o: { photos: readonly StackPhoto[]; uploads: readonly
     guide: guideOf(o, tiles, dayLabel, pageLabel),
     one: open.length === 1 && open[0].photoId && open[0].status !== "refused" ? open[0] : null,
   };
+}
+
+/** The second page of a two-page photo that could not be saved: which page to photograph on its own (#965). */
+export function spreadNote(pages: readonly number[]): string | null {
+  if (!pages.length) return null;
+  const list = pages.length === 1 ? `Page ${pages[0]}` : `Pages ${pages.slice(0, -1).join(", ")} and ${pages[pages.length - 1]}`;
+  return `${list} ${pages.length === 1 ? "was" : "were"} in a photo of two pages, but we could not keep ${pages.length === 1 ? "it" : "them"}. Take a photo of ${pages.length === 1 ? "that page" : "each"} on its own.`;
 }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;

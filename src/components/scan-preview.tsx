@@ -14,6 +14,7 @@ const REFUSED: Record<ScanRefusal, string> = {
   "page-mismatch": "This photo does not match the printed page in its code. To check it, take another photo of the right page.",
   "orientation-unclear": "We could not tell which way up this page is. To check it, take another photo with the page upright.",
   "ambiguous-page": "We cannot tell which page this photo is of. To check it, fold the book back or take the page out, so only one page shows and fills the photo.",
+  "corner-covered": "A corner of the page is covered, so we cannot be sure the answers there are this page's. To check it, move anything lying on the page and take another photo.",
   "qr-mismatch": "We could not read the small code in the bottom-left corner. To check it, hold the phone steady and keep that corner in view, with no glare or shadow on the code.",
   "another-page": "Part of this photo looks like a different page. To check it, take another photo of this page on its own, flat, with nothing on top of it.",
   faint: "Part of the page is too bright, faint or covered to read. To check it, use even light without the flash and keep fingers and objects off the page.",

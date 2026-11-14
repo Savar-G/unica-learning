@@ -16,9 +16,9 @@ const ERROR: Record<string, string> = {
   failed: "The email could not start. Nothing was sent. Reload the page before trying again.",
 };
 
-export function WorkbookEmails({ cardId, parentName, parentEmail, childName, records, observedAt, workbookNumber, allowReady = true }: {
+export function WorkbookEmails({ cardId, parentName, parentEmail, childName, records, observedAt, workbookNumber, allowReady = true, walkthrough = "" }: {
   cardId: string; parentName: string; parentEmail: string; childName: string; records: WorkbookEmailRecord[]; observedAt: number;
-  workbookNumber?: number; allowReady?: boolean;
+  workbookNumber?: number; allowReady?: boolean; walkthrough?: string;
 }) {
   const router = useRouter();
   const sending = useRef(false);
@@ -47,7 +47,7 @@ export function WorkbookEmails({ cardId, parentName, parentEmail, childName, rec
   const canReady = allowReady && !dispatch && !isHeld("dispatch", dispatch) && !isHeld("ready", ready) && retryable(ready);
   const canSend = (kind: WorkbookNoticeKind) => kind === "welcome" ? canWelcome : kind === "ready" ? canReady : canDispatch;
   const validNumber = Number.isInteger(number) && number >= 1 && number <= 10000;
-  const email = preview ? workbookEmail({ parentName, childName, kind: preview, workbookNumber: number, delivery }) : null;
+  const email = preview ? workbookEmail({ parentName, childName, kind: preview, workbookNumber: number, delivery, walkthrough }) : null;
 
   function changed() { setPreview(null); setNotice(""); }
   async function send(kind: WorkbookNoticeKind) {

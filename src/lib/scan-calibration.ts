@@ -67,12 +67,17 @@ export interface Calibration {
    */
   mesh?: Mesh;
   /**
-   * "qr": a corner mark was cut off by the photo's edge, so the page was placed from its QR code and its print, and the
-   * marks still in the photo. `marks` then holds where the cut-off marks would be, outside the photo. Absent: four marks.
+   * "qr": a corner mark was cut off by the photo's edge or hidden in it (a hand's shadow, #912), so the page was placed
+   * from its QR code and its print, and the marks found. `marks` then holds where the other marks would be. Absent: four marks.
    */
   placedBy?: "qr";
   /** The marks that were outside the photo, for a page placed by its QR code. */
   missingMarks?: ScanMark[];
+  /**
+   * The marks in the photo that could not be found as this page's own (a hand's shadow over a corner, #912), for a page
+   * placed by its QR code: never used, never replaced by a nearer sheet's mark. Absent when every mark in view was found.
+   */
+  hiddenMarks?: ScanMark[];
 }
 
 /** A sheet's bend: coefficients of 1, u, v, u², uv, v² for each direction, u and v from -0.5 to 0.5 across the page. */
@@ -120,8 +125,10 @@ export function photoPoint(c: Pick<Calibration, "transform" | "bend" | "mesh">, 
  * - ambiguous-page: more than one rectangle in the photo follows it, as with two copies of a page;
  * - orientation-unclear: two ways up fit about equally well;
  * - qr-mismatch: where the page printed its QR code, the photo's code is missing, moved, or another page's;
+ * - corner-covered: a corner mark is hidden, and an answer near that corner is not shown as this page's own (something
+ *   lies over it, or the corner is curled), so its crop could hold another sheet's writing (#966 review).
  */
-export type CalibrationRefusal = "marks-missing" | "marks-inconsistent" | "page-mismatch" | "ambiguous-page" | "orientation-unclear" | "qr-mismatch";
+export type CalibrationRefusal = "marks-missing" | "marks-inconsistent" | "page-mismatch" | "ambiguous-page" | "orientation-unclear" | "qr-mismatch" | "corner-covered";
 
 export type CalibrationResult =
   | { status: "calibrated"; calibration: Calibration }
@@ -613,15 +620,85 @@ function shapedCells(a: Float32Array, width: number, cells: readonly { x: number
   return shaped;
 }
 
-/** The best correlation of a cell with the photo's grid within FIT_SHIFT grid pixels of its place. */
-function cellMatch(c: ShapedCell, a: Float32Array, b: Float32Array, width: number, height: number): number {
+/**
+ * Toner shine (coil-bound book, 2026-11-14): laser toner is glossy, so where a sheet bows toward its binding under a lamp
+ * the print can come out lighter than the paper around it, as hollow or silver letters, while the paper stays matte. Its
+ * grey then no longer follows the print, though every stroke is still there in its place. So a cell that does not follow
+ * is read once more with the photo folded around its paper level, the median grey near it (`shineFold`): print lighter
+ * than the paper counts as print too. A fold changes the photo wherever it is lighter than that median, which is half its
+ * paper, so a cell is read again only where it shows shine: pixels on it lighter than the paper by more than its noise
+ * (SHINE_NOISE, SHINE_LIFT_MIN, SHINE_MIN), at least half of them, out to SHINE_REACH, on or beside this page's print
+ * (SHINE_ON_PRINT), as shine on toner is. Plain paper, its noise, a shadow's lit side or a sheet's edge over blank paper
+ * light the paper as much as the print, and are not read again. A comparison of two prints (the near twins) has no shine
+ * and is never folded. The thresholds are the same: blank paper still shows nothing, and another sheet's print counts
+ * only where it lines up with this page's, as before.
+ */
+const SHINE_REACH = 8;
+/** The fewest grey levels above the paper a pixel must be to count as shine, whatever the noise. */
+const SHINE_LIFT_MIN = 3;
+/** How many of the paper's noise deviations (from its quartiles) above the paper a pixel must be to count as shine. */
+const SHINE_NOISE = 3;
+/** The fewest shining pixels on a cell or tile (out to FIT_SHIFT) for it to be read again. */
+const SHINE_MIN = 3;
+/**
+ * The share of the shining pixels around a cell or tile that must be on this page's print or within FIT_SHIFT of it. Over
+ * the coil-bound book's real photos (2026-11-14) shine on the print reached 0.4 to 1, and in simulations a shadow's edges
+ * over blank paper or another page passed a ring tile about as often as with no fold at all (98 of 1434 tiles; 91 with no
+ * fold; 163 with every tile folded).
+ */
+const SHINE_ON_PRINT = 0.5;
+
+const shineHistogram = new Uint32Array(256);
+
+/**
+ * The paper level to fold a cell or tile (`at`, in grid pixels) around: the median grey of the photo's grid out to
+ * SHINE_REACH. Null when it does not shine (see SHINE_REACH). `ink`: the printed page's ink in the grid.
+ */
+function shineFold(b: Float32Array, ink: Uint8Array, width: number, height: number, at: { x0: number; y0: number; x1: number; y1: number }): number | null {
+  const x0 = Math.max(0, at.x0 - SHINE_REACH), y0 = Math.max(0, at.y0 - SHINE_REACH);
+  const x1 = Math.min(width, at.x1 + SHINE_REACH), y1 = Math.min(height, at.y1 + SHINE_REACH);
+  const n = (x1 - x0) * (y1 - y0);
+  if (n <= 0) return null;
+  shineHistogram.fill(0);
+  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) shineHistogram[Math.max(0, Math.min(255, Math.floor(b[y * width + x])))]++;
+  // The grey at a share of the area, from its histogram, to a grey level.
+  const level = (q: number) => {
+    const k = Math.floor((n - 1) * q);
+    let seen = 0;
+    for (let v = 0; v < 256; v++) { seen += shineHistogram[v]; if (seen > k) return v + 0.5; }
+    return 255.5;
+  };
+  const paper = level(0.5);
+  // The paper's noise from its quieter side: print darkens one side and shine lightens the other.
+  const sigma = Math.min(paper - level(0.25), level(0.75) - paper) / 0.6745;
+  const top = paper + Math.max(SHINE_LIFT_MIN, SHINE_NOISE * sigma);
+  const nearPrint = (x: number, y: number) => {
+    for (let j = Math.max(0, y - FIT_SHIFT); j <= Math.min(height - 1, y + FIT_SHIFT); j++)
+      for (let i = Math.max(0, x - FIT_SHIFT); i <= Math.min(width - 1, x + FIT_SHIFT); i++) if (ink[j * width + i]) return true;
+    return false;
+  };
+  let on = 0, lit = 0, onPrint = 0;
+  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+    if (b[y * width + x] <= top) continue;
+    lit++;
+    if (x >= at.x0 - FIT_SHIFT && x < at.x1 + FIT_SHIFT && y >= at.y0 - FIT_SHIFT && y < at.y1 + FIT_SHIFT) on++;
+    if (nearPrint(x, y)) onPrint++;
+  }
+  return on >= SHINE_MIN && onPrint >= lit * SHINE_ON_PRINT ? paper : null;
+}
+
+/** The photo's grey; with `paper`, folded around it: lighter grey mirrored below it (`shineFold`). */
+const folded = (v: number, paper?: number) => (paper === undefined || v <= paper ? v : 2 * paper - v);
+
+/** The best correlation of a cell with the photo's grid within FIT_SHIFT grid pixels of its place; with `paper`, folded around it (`shineFold`). */
+function cellMatch(c: ShapedCell, a: Float32Array, b: Float32Array, width: number, height: number, paper?: number): number {
   const n = FIT_CELL * FIT_CELL;
   let best = -1;
   for (let dy = -FIT_SHIFT; dy <= FIT_SHIFT; dy++) for (let dx = -FIT_SHIFT; dx <= FIT_SHIFT; dx++) {
     if (c.y + dy < 0 || c.x + dx < 0 || c.y + dy + FIT_CELL > height || c.x + dx + FIT_CELL > width) continue;
     let sumB = 0, sumBB = 0, sumAB = 0;
     for (let j = 0; j < FIT_CELL; j++) for (let i = 0; i < FIT_CELL; i++) {
-      const p = a[(c.y + j) * width + c.x + i], q = b[(c.y + dy + j) * width + c.x + dx + i];
+      const p = a[(c.y + j) * width + c.x + i], q = folded(b[(c.y + dy + j) * width + c.x + dx + i], paper);
       sumB += q; sumBB += q * q; sumAB += p * q;
     }
     const spreadB = n * sumBB - sumB * sumB;
@@ -629,6 +706,16 @@ function cellMatch(c: ShapedCell, a: Float32Array, b: Float32Array, width: numbe
     if (r > best) best = r;
   }
   return best;
+}
+
+/**
+ * Whether a cell shows this page's print in the photo: its grey follows the print, or, where the cell shines, does once
+ * folded. `ink` null: no fold, for a comparison of two prints, which never shine.
+ */
+function cellShows(c: ShapedCell, a: Float32Array, b: Float32Array, ink: Uint8Array | null, width: number, height: number): boolean {
+  if (cellMatch(c, a, b, width, height) >= CELL_MATCH) return true;
+  const paper = ink ? shineFold(b, ink, width, height, { x0: c.x, y0: c.y, x1: c.x + FIT_CELL, y1: c.y + FIT_CELL }) : null;
+  return paper !== null && cellMatch(c, a, b, width, height, paper) >= CELL_MATCH;
 }
 
 /** How far inside the photo's edge, in photo pixels, a cell must be to be compared: its reach and its blur stay in the photo. */
@@ -659,10 +746,12 @@ function pageFit(printed: PrintedInk, photoSums: Uint32Array, photo: { width: nu
   const { a, b } = fitGrids(printed, photoSums, photo, t);
   const shaped = shapedCells(a, width, cells);
   if (shaped.length === 0) return 0;
+  // Toner shine is a photo's (cellShows): a comparison of two prints, as with a near twin, has none.
+  const shine = atLeast === MIN_PAGE_FIT ? printed.ink : null;
   const count = (inView: readonly ShapedCell[], grid: Float32Array) => {
     const allowed = Math.floor(inView.length * (1 - atLeast));
     let missed = 0;
-    for (const c of inView) if (cellMatch(c, a, grid, width, height) < CELL_MATCH && ++missed > allowed) break;
+    for (const c of inView) if (!cellShows(c, a, grid, shine, width, height) && ++missed > allowed) break;
     return { missed, allowed, fit: 1 - missed / inView.length };
   };
   const flatView = visibleCells(shaped, photo, t);
@@ -1385,8 +1474,15 @@ function wholePhotoQr(photo: Raster): FoundQr | null {
   return wholeQrCache.get(photo)!;
 }
 
-/** The upload's zoomed reads (scan-photo-image.ts): each zoom with its windows, half the photo's width and height, lower first. */
-const QR_ZOOM_PASSES = [[2, [[0, 0.5], [0.25, 0.5], [0.5, 0.5], [0, 0.25], [0.25, 0.25], [0.5, 0.25], [0, 0], [0.25, 0], [0.5, 0]]], [3, [[0, 0.5], [0.5, 0.5], [0, 0], [0.5, 0]]]] as const;
+/** The upload's zoomed reads (scan-photo-image.ts), kept the same: change the two together. */
+// Each pass: its zoom, its window as a part of the photo's width and height, and the windows' top-left corners.
+// First a quarter-size window low on the left, where the page prints its code: a real photo's code that no half window
+// reads (a coil, a hand's shadow or the next page beside it in the same window) reads there (Aarav's book, 2026-11-14).
+const QR_ZOOM_PASSES = [
+  [2, 0.25, [[0, 0.75], [0.125, 0.75], [0, 0.625], [0.125, 0.625]]],
+  [2, 0.5, [[0, 0.5], [0.25, 0.5], [0.5, 0.5], [0, 0.25], [0.25, 0.25], [0.5, 0.25], [0, 0], [0.25, 0], [0.5, 0]]],
+  [3, 0.5, [[0, 0.5], [0.5, 0.5], [0, 0], [0.5, 0]]],
+] as const;
 const photoQrCache = new WeakMap<Raster, FoundQr | null>();
 
 /**
@@ -1396,8 +1492,10 @@ const photoQrCache = new WeakMap<Raster, FoundQr | null>();
 function photoQr(photo: Raster): FoundQr | null {
   if (photoQrCache.has(photo)) return photoQrCache.get(photo)!;
   let found = wholePhotoQr(photo);
-  const width = Math.floor(photo.width / 2), height = Math.floor(photo.height / 2);
-  search: for (const [zoom, windows] of found || width < 16 || height < 16 ? [] : QR_ZOOM_PASSES) for (const [sx, sy] of windows) {
+  const small = Math.floor(photo.width / 2) < 16 || Math.floor(photo.height / 2) < 16;
+  search: for (const [zoom, part, windows] of found || small ? [] : QR_ZOOM_PASSES) for (const [sx, sy] of windows) {
+    const width = Math.floor(photo.width * part), height = Math.floor(photo.height * part);
+    if (width < 16 || height < 16) continue;
     const x0 = Math.min(Math.round(sx * photo.width), photo.width - width), y0 = Math.min(Math.round(sy * photo.height), photo.height - height);
     const read = readQr(enlarged(photoBox(photo, { x: x0, y: y0, width, height }), zoom), "attemptBoth");
     if (read) { found = { ...read, corners: read.corners.map((c) => ({ x: x0 + c.x / zoom, y: y0 + c.y / zoom })) }; break search; }
@@ -1435,6 +1533,8 @@ const QR_PLACE_MIN_PATCHES = 8;
 const MARK_ARM = 0.022;
 /** How near a mark in view must be to where the placed page puts it, in arms. */
 const MARK_NEAR = 3;
+/** The fewest of the page's own marks a page placed by its code must show when a mark in view is hidden (#912). */
+const MIN_FOUND_WITH_HIDDEN = 2;
 /**
  * How near a mark placed by the code must be, in arms, before it may pin the sheet. A sheet lying on the rest of the
  * book has the under-sheet's mark 2 arms or more from where the print puts this page's own (#912 review), so a mark
@@ -1446,7 +1546,103 @@ const MARK_ALIGNMENT = Math.cos((30 * Math.PI) / 180);
 /** How much more a mark found in view counts in the placement's map than one patch of print. */
 const MARK_WEIGHT = 10;
 
-interface QrPlacement { t: Transform; turns: 0 | 1 | 2 | 3; fit: number; mesh?: Mesh; marks: Point[]; missing: ScanMark[] }
+/**
+ * An answer near a hidden mark (#966 review). The print fit skips every cell that touches a writing box, so a sheet lying
+ * over one corner can cover the mark and an answer box and still pass. Then that box's crop would hold the other sheet's
+ * writing. So each answer box in a hidden mark's quarter of the page must show its own frame: the print in a ring around
+ * the box (its outline and what is printed beside it, never where a child writes) must follow the printed page, as a
+ * correlation, which does not care about shade, so a hand's shadow passes and a covering sheet or a curled corner does not.
+ * A box with no print in its ring is judged by the print cells next to it instead; a box with neither is not shown.
+ */
+const RING_OUT = 8;
+/** How far inside the box's edge the ring stops, in grid pixels: the box's own outline, never the writing inside it. */
+const RING_IN = 2;
+/** The ring is read in tiles this many grid pixels wide, so a shadow's edge across one part of it leaves the rest to judge. */
+const RING_TILE = 8;
+/** The share of a box's printed ring tiles that must follow the print. A covering sheet leaves none; a shadow's edge a few. */
+const RING_TILES_MATCH = 0.6;
+/** The fewest printed ring tiles that can show a box's frame. */
+const RING_TILES_MIN = 3;
+/** The share of the print cells beside a box with no outline that must hold this page's print. */
+const NEAR_CELLS_MATCH = 0.75;
+/** The fewest print cells beside a box with no outline that can show it. */
+const NEAR_CELLS_MIN = 2;
+
+/**
+ * The best correlation of the printed grid with the photo's over the given pixels, within FIT_SHIFT; null when the print
+ * there is one even shade. With `paper`, the photo is folded around it first (toner shine, `shineFold`).
+ */
+function ringMatch(xs: readonly number[], ys: readonly number[], a: Float32Array, b: Float32Array, width: number, height: number, paper?: number): number | null {
+  const n = xs.length;
+  if (n === 0) return null;
+  let sumA = 0, sumAA = 0;
+  for (let k = 0; k < n; k++) { const v = a[ys[k] * width + xs[k]]; sumA += v; sumAA += v * v; }
+  const spreadA = n * sumAA - sumA * sumA;
+  if (spreadA < n * n * FLAT_SPREAD) return null;
+  let best = -1;
+  for (let dy = -FIT_SHIFT; dy <= FIT_SHIFT; dy++) for (let dx = -FIT_SHIFT; dx <= FIT_SHIFT; dx++) {
+    let m = 0, sA = 0, sAA = 0, sB = 0, sBB = 0, sAB = 0;
+    for (let k = 0; k < n; k++) {
+      const x = xs[k] + dx, y = ys[k] + dy;
+      if (x < 0 || y < 0 || x >= width || y >= height) continue;
+      const p = a[ys[k] * width + xs[k]], q = folded(b[y * width + x], paper);
+      m++; sA += p; sAA += p * p; sB += q; sBB += q * q; sAB += p * q;
+    }
+    const spA = m * sAA - sA * sA, spB = m * sBB - sB * sB;
+    if (m < n * 0.9 || spA <= 0 || spB <= 0) continue;
+    const r = (m * sAB - sA * sB) / Math.sqrt(spA * spB);
+    if (r > best) best = r;
+  }
+  return best;
+}
+
+/** Whether every answer box in the quarter of a hidden mark shows this page's own frame in the photo. */
+function answersNearHiddenShown(o: { ink: PrintedInk; photoSums: Uint32Array; photo: { width: number; height: number }; t: Transform; mesh?: Mesh; writing: readonly Box[]; hidden: readonly Point[]; page: { width: number; height: number } }): boolean {
+  const { ink, photo, t, writing, page } = o;
+  if (!o.hidden.length || !writing.length) return true;
+  const { width, height } = ink;
+  const shape: SheetShape | undefined = o.mesh ? (x, y) => meshAt(o.mesh!, x, y) : undefined;
+  const { a, b } = fitGrids(ink, o.photoSums, photo, t, shape);
+  const at = (x: number, y: number) => applyTransform(t, shape ? shape(x, y) : { x, y });
+  const inPhoto = (q: Point) => q.x >= EDGE && q.y >= EDGE && q.x <= photo.width - EDGE && q.y <= photo.height - EDGE;
+  const quarter = (box: Box, m: Point) => ((box.x + box.width / 2 < page.width / 2) === (m.x < page.width / 2)) && ((box.y + box.height / 2 < page.height / 2) === (m.y < page.height / 2));
+  // Where a child writes, in grid pixels: never part of a ring.
+  const inside = writing.map((w) => ({ x0: Math.floor(w.x / 2) + RING_IN, y0: Math.floor(w.y / 2) + RING_IN, x1: Math.ceil((w.x + w.width) / 2) - RING_IN, y1: Math.ceil((w.y + w.height) / 2) - RING_IN }));
+  const written = (x: number, y: number) => inside.some((w) => x >= w.x0 && x < w.x1 && y >= w.y0 && y < w.y1);
+  const nearShaped = shapedCells(a, width, ink.cells);
+  for (const box of writing) {
+    if (!o.hidden.some((m) => quarter(box, m))) continue;
+    // A box the photo does not hold whole is never cut out (cropInPhoto): there is nothing of it to misread.
+    if (![at(box.x, box.y), at(box.x + box.width, box.y), at(box.x, box.y + box.height), at(box.x + box.width, box.y + box.height)].every(inPhoto)) continue;
+    const x0 = Math.max(0, Math.floor(box.x / 2) - RING_OUT), y0 = Math.max(0, Math.floor(box.y / 2) - RING_OUT);
+    const x1 = Math.min(width, Math.ceil((box.x + box.width) / 2) + RING_OUT), y1 = Math.min(height, Math.ceil((box.y + box.height) / 2) + RING_OUT);
+    let tiles = 0, matched = 0;
+    for (let ty = y0; ty < y1; ty += RING_TILE) for (let tx = x0; tx < x1; tx += RING_TILE) {
+      const xs: number[] = [], ys: number[] = [];
+      for (let y = ty; y < Math.min(y1, ty + RING_TILE); y++) for (let x = tx; x < Math.min(x1, tx + RING_TILE); x++) {
+        if (written(x, y) || !inPhoto(at(x * 2, y * 2))) continue;
+        xs.push(x); ys.push(y);
+      }
+      if (xs.length < (RING_TILE * RING_TILE) / 3) continue;
+      const r = ringMatch(xs, ys, a, b, width, height);
+      if (r === null) continue;
+      tiles++;
+      if (r >= CELL_MATCH) { matched++; continue; }
+      // A frame in toner shine: read again with the shine folded, when the tile shines (`shineFold`).
+      const paper = shineFold(b, ink.ink, width, height, { x0: tx, y0: ty, x1: Math.min(x1, tx + RING_TILE), y1: Math.min(y1, ty + RING_TILE) });
+      if (paper !== null && (ringMatch(xs, ys, a, b, width, height, paper) ?? -1) >= CELL_MATCH) matched++;
+    }
+    if (tiles >= RING_TILES_MIN) { if (matched < tiles * RING_TILES_MATCH) return false; continue; }
+    // No outline and no print in the ring: the print cells next to the box must hold this page's print.
+    const reach = FIT_CELL * 2;
+    const near = visibleCells(nearShaped.filter((c) => c.x + FIT_CELL > x0 - reach && c.x < x1 + reach && c.y + FIT_CELL > y0 - reach && c.y < y1 + reach), photo, t, shape);
+    if (near.length < NEAR_CELLS_MIN) return false;
+    if (near.filter((c) => cellShows(c, a, b, ink.ink, width, height)).length < near.length * NEAR_CELLS_MATCH) return false;
+  }
+  return true;
+}
+
+interface QrPlacement { t: Transform; turns: 0 | 1 | 2 | 3; fit: number; mesh?: Mesh; marks: Point[]; missing: ScanMark[]; hidden: ScanMark[] }
 
 /**
  * A page placed by its QR code and its print, when its four marks cannot place it: a mark cut off by the photo's edge, or
@@ -1455,7 +1651,7 @@ interface QrPlacement { t: Transform; turns: 0 | 1 | 2 | 3; fit: number; mesh?: 
  * four marks (pageFit, MIN_PAGE_FIT, the cells in view). The caller still requires the code where the page printed it.
  * Null when the page cannot be placed this way: the caller's refusal stands.
  */
-function placedByQr(photo: Raster, printedQr: FoundQr, ink: PrintedInk, greySums: Uint32Array, shapes: readonly MarkShape[], stored: readonly Point[], page: { width: number; height: number }): QrPlacement | null {
+function placedByQr(photo: Raster, printedQr: FoundQr, ink: PrintedInk, greySums: Uint32Array, shapes: readonly MarkShape[], stored: readonly Point[], page: { width: number; height: number }, writing: readonly Box[] = []): QrPlacement | "corner-covered" | null {
   const code = photoQr(photo);
   if (!code || code.link !== printedQr.link) return null;
   // The code is small: its corners say where it is, how large and which way up, and only the print can say more.
@@ -1497,7 +1693,7 @@ function placedByQr(photo: Raster, printedQr: FoundQr, ink: PrintedInk, greySums
   const at = (p: Point) => photoPointOf(t!, first.mesh, p);
   const scale = distance(at({ x: 0, y: page.height / 2 }), at({ x: page.width, y: page.height / 2 })) / page.width;
   const arm = MARK_ARM * page.width * scale;
-  const found: { at: number; corner: Point }[] = [], missing: ScanMark[] = [];
+  const found: { at: number; corner: Point }[] = [], missing: ScanMark[] = [], hidden: ScanMark[] = [];
   for (let k = 0; k < 4; k++) {
     const p = at(stored[k]);
     const inward = { x: stored[k].x < page.width / 2 ? 1 : -1, y: stored[k].y < page.height / 2 ? 1 : -1 };
@@ -1522,9 +1718,13 @@ function placedByQr(photo: Raster, printedQr: FoundQr, ink: PrintedInk, greySums
       const tips = s.tips.map((tip) => unit(s.corner, tip));
       if (arms.every((d) => tips.some((e) => dot(d, e) >= MARK_ALIGNMENT))) nearest = s;
     }
-    if (!nearest || distance(nearest.corner, p) > MARK_SURE * arm) return null;
+    // A mark in view that is not there as this page's own (in a hand's shadow, or only a mark farther off, as a sheet
+    // under the page shows) is hidden: never pinned, so a neighbouring sheet never bends the page. The code and the print
+    // still have to place the page, with enough of its own marks found (below).
+    if (!nearest || distance(nearest.corner, p) > MARK_SURE * arm) { hidden.push(SCAN_MARKS[k]); continue; }
     found.push({ at: k, corner: nearest.corner });
   }
+  if (hidden.length && found.length < MIN_FOUND_WITH_HIDDEN) return null;
   let placed: Transform | null = t, sheet = first, fit = firstFit;
   if (!found.length && fit < MIN_PAGE_FIT) return null;
   if (found.length) {
@@ -1543,7 +1743,9 @@ function placedByQr(photo: Raster, printedQr: FoundQr, ink: PrintedInk, greySums
   const right = { x: applyTransform(placed, { x: page.width, y: page.height / 2 }).x - applyTransform(placed, { x: 0, y: page.height / 2 }).x, y: applyTransform(placed, { x: page.width, y: page.height / 2 }).y - applyTransform(placed, { x: 0, y: page.height / 2 }).y };
   const turns = (((Math.round(Math.atan2(right.y, right.x) / (Math.PI / 2)) % 4) + 4) % 4) as 0 | 1 | 2 | 3;
   const marks = stored.map((s, k) => found.find((f) => f.at === k)?.corner ?? photoPointOf(placed, sheet.mesh, s));
-  return { t: placed, turns, fit, ...(sheet.mesh ? { mesh: sheet.mesh } : {}), marks, missing };
+  // A hidden corner passes only when the answers near it show this page's own frame (#966 review).
+  if (hidden.length && !answersNearHiddenShown({ ink, photoSums: greySums, photo, t: placed, mesh: sheet.mesh, writing, hidden: hidden.map((m) => stored[SCAN_MARKS.indexOf(m)]), page })) return "corner-covered";
+  return { t: placed, turns, fit, ...(sheet.mesh ? { mesh: sheet.mesh } : {}), marks, missing, hidden };
 }
 
 const photoPointOf = (t: Transform, mesh: Mesh | undefined, p: Point) => applyTransform(t, mesh ? meshAt(mesh, p.x, p.y) : p);
@@ -1556,8 +1758,8 @@ const photoPointOf = (t: Transform, mesh: Mesh | undefined, p: Point) => applyTr
  * asks sheetChecker about the child's other pages, a few at a time.
  *
  * A sheet that is not flat is aligned part by part (pageFit, #912). A photo whose four marks do not place the page, as when
- * the photo's edge cuts one off, is placed by its QR code and print instead (placedByQr), never by a mark that is in view
- * but missing: a covered mark still refuses.
+ * the photo's edge cuts one off or a hand's shadow hides one, is placed by its QR code and print instead (placedByQr):
+ * a hidden mark is never used and never replaced by another sheet's, and the print must still follow (#912).
  */
 export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: PhotoContract; pageLink: string; writing?: readonly Box[] }): CalibrationResult {
   if (o.contract.status !== "available") return { status: "unavailable", reason: o.contract.reason };
@@ -1617,15 +1819,17 @@ export function calibratePhoto(o: { photo: Raster; printed: Raster; contract: Ph
   };
   if (oneSheet) {
     // The code and print place the page; each mark is then the one nearest where the page puts it (placedByQr).
-    const placed = placedByQr(photo, printedQr, ink, greySums, shapes, stored, pageSize);
+    const placed = placedByQr(photo, printedQr, ink, greySums, shapes, stored, pageSize, o.writing);
+    if (placed === "corner-covered") return { status: "refused", reason: placed };
     if (!placed) return { status: "refused", reason: "ambiguous-page" };
-    return calibration(placed, placed.missing.length ? { placedBy: "qr", missingMarks: placed.missing } : {});
+    return calibration(placed, placed.missing.length || placed.hidden.length ? { placedBy: "qr", missingMarks: placed.missing, ...(placed.hidden.length ? { hiddenMarks: placed.hidden } : {}) } : {});
   }
   // Placed by its code only when four marks did not line up as a page: a page whose marks did, but whose print does not
   // follow, is another page.
   if (followers.length === 0 && (refusal === "marks-missing" || refusal === "marks-inconsistent")) {
-    const placed = placedByQr(photo, printedQr, ink, greySums, shapes, stored, pageSize);
-    return placed ? calibration(placed, { placedBy: "qr", missingMarks: placed.missing }) : { status: "refused", reason: refusal };
+    const placed = placedByQr(photo, printedQr, ink, greySums, shapes, stored, pageSize, o.writing);
+    if (placed === "corner-covered") return { status: "refused", reason: placed };
+    return placed ? calibration(placed, { placedBy: "qr", missingMarks: placed.missing, ...(placed.hidden.length ? { hiddenMarks: placed.hidden } : {}) }) : { status: "refused", reason: refusal };
   }
   if (followers.length === 0) return { status: "refused", reason: refusal };
   const [best] = followers;

@@ -221,7 +221,7 @@ describe("the plan start email, one per generation (review round 5 of PR #593)",
     expect((await sendPlanStartEmail(f.db, key(1), f.transport)).status).toBe("sent");
     const message = f.messages[0];
     expect(message.text.includes("Maya")).toBe(grade >= 3);
-    expect(message.text).not.toMatch(/\bcalls?\b|\bvoice\b/i);
+    expect(message.text.split("What happens next:")[0]).not.toMatch(/\bcalls?\b|\bvoice\b/i);
     expect(f.records.get(1)?.email_text).toBe(message.text);
     expect(f.records.get(1)?.email_html).toBe(message.html);
     expect(message.html).toContain('href="https://unicalearning.com/account/feedback"');

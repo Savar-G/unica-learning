@@ -1,3 +1,5 @@
+import type { OnboardingCheckInLoad } from "@/lib/admin-onboarding";
+import { OnboardingCheckIns } from "@/components/admin-onboarding";
 // Workbooks > Plans and delivery (D-313, D-315): "Needs you" first (free months to start, plan starts Stripe never
 // answered, books on hold, workbook emails to check), then the families by plan state, then every saved card and the
 // waitlist. Each card's plan start and workbook emails are the existing controls (admin-records.tsx), shown once on the
@@ -176,8 +178,9 @@ function GroupHead({ id, title, count, hint }: { id: string; title: string; coun
  * The page. `show`: the "Show test families" switch; `isTest`: the test and team families (tagged while shown, never
  * counted). `holds`: the books on hold (loadAdminScanHolds). `baselines`: the Book 1 starting records to save (loadAdminBook1Baselines). `cardsMore`, `waitMore`: the lists stopped at their limit.
  */
-export function PlansView({ cards, waitlist, holds, baselines, show, isTest, now, cardsMore, waitMore }: {
+export function PlansView({ cards, waitlist, holds, baselines, checkIns = { rows: [], unavailable: false }, show, isTest, now, cardsMore, waitMore }: {
   cards: PlanCard[]; waitlist: (WaitlistRow & People)[]; holds: { rows: Hold[]; unavailable: boolean; more: boolean }; baselines: Book1BaselineLoad;
+  checkIns?: OnboardingCheckInLoad;
   show: boolean; isTest: (parentId: string) => boolean; now: Date; cardsMore: boolean; waitMore: boolean;
 }) {
   const tag = (id: string) => show && isTest(id);
@@ -188,18 +191,19 @@ export function PlansView({ cards, waitlist, holds, baselines, show, isTest, now
   const count = (k: NeedReason) => groups[k].filter((g) => real(g.card.parent_id)).length;
   const holdCount = holds.rows.filter((h) => real(h.parentId, h.testFamily)).length;
   const baselineCount = baselines.rows.filter((b) => real(b.parentId, b.testFamily)).length;
-  const total = count("start_due") + count("start_stuck") + holdCount + baselineCount + count("email");
+  const total = count("start_due") + count("start_stuck") + holdCount + baselineCount + count("email") + checkIns.rows.filter((r) => real(r.parentId)).length;
   const needGroup = (k: NeedReason) => groups[k].length > 0 && <NeedGroup id={`pl-${k}`} title={NEED_TITLE[k].title} hint={NEED_TITLE[k].hint} count={count(k)}>
     {groups[k].map((g) => <NeedCard key={g.card.id} c={g.card} reasons={g.reasons} now={now} isTest={tag(g.card.parent_id)} />)}
   </NeedGroup>;
-  const any = needs.size > 0 || holds.rows.length > 0 || baselines.rows.length > 0;
+  const any = needs.size > 0 || holds.rows.length > 0 || baselines.rows.length > 0 || checkIns.rows.length > 0;
   return <div className="adm-pl">
     <section aria-labelledby="pl-you">
       <GroupHead id="pl-you" title="Needs you" count={total} hint="Start each free month only after Book 1 has arrived at the family's home." />
-      {!any && !holds.unavailable && !baselines.unavailable && <div className="adm-pl-calm">
+      {!any && !holds.unavailable && !baselines.unavailable && !checkIns.unavailable && <div className="adm-pl-calm">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
         <p><b>Nothing waits for us.</b> A free month to start, a plan start Stripe did not answer, a book on hold, a Book 1 record to save or an email to check shows here.</p>
       </div>}
+      <OnboardingCheckIns load={checkIns} isTest={tag} />
       {needGroup("start_due")}
       {needGroup("start_stuck")}
       {(holds.rows.length > 0 || holds.unavailable) && <NeedGroup id="pl-holds" title="Books on hold" hint="No pages scanned by day 21, so the next book waits for the family's scans." count={holdCount}>
