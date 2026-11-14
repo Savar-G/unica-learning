@@ -604,7 +604,10 @@ function comparisonEarlyLabel(pkg: OperationPackage, act: Act, speech: string, b
   promptTexts.push(pkg.text, openingLine(pkg));
   if (pkg.ref.source === "workbook") promptTexts.push(openingLine(pkg, { page: pkg.ref.page, number: pkg.ref.question }));
   const prompts = new Set(promptTexts.flatMap(sentencesOf).map(labelSentence));
-  for (const text of promptTexts) known.add(labelSentence(text));
+  for (const text of promptTexts) {
+    known.add(labelSentence(text));
+    for (const part of sentencesOf(text)) known.add(labelSentence(part));
+  }
   const examples = new Set([...lines.exampleIntro(), ...pkg.easierExample.steps.flatMap(st => lines.exampleStep(st.id))]
     .flatMap(o => o.texts.flatMap(sentencesOf)).map(labelSentence));
   const read = comparisonFinal(child, op);
@@ -925,6 +928,19 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
     const saidWord = comparisonSaid && "word" in comparisonSaid ? comparisonSaid.word : answer?.type === "choice" && op ? claimSaid({ pkg: op, text: lastChild, heardAsked: false, wordAsked: null }) : null;
     if (!released && comparison && op) {
       const drawn = t.board.filter(batch => turn.output!.board.includes(batch.transactionId)).flatMap(batch => boardTexts(batch.commands));
+      // This kind uses a checked code plan, including in a conversational call. Do not infer the meaning of an
+      // unknown nonnumeric sentence: it could name the winner without using either literal answer label.
+      const speech = turn.output.say.join(" ");
+      const exactOpening = act === "open" && (speech === openingLine(op) || (op.ref.source === "workbook" && speech === openingLine(op, { page: op.ref.page, number: op.ref.question })));
+      const confirmation = new Set(act === "confirm" && comparisonSaid && "word" in comparisonSaid
+        ? packageLines(op).said(comparisonSaid.word).flatMap(offer => offer.texts.flatMap(sentences)) : []);
+      if (!exactOpening && sentences(speech).some(text => !lineSentences.has(text) && !bankSentences.has(text) && !safety.has(text) && !confirmation.has(text))) {
+        fail("math_not_from_code", `Maya turn ${i} used words outside the closed comparison plan before release`);
+      }
+      const printed = new Set([op.text, ...packageLines(op).question().flatMap(offer => offer.texts)].map(labelSentence));
+      if (drawn.some(text => !notes.has(text) && !printed.has(labelSentence(text)))) {
+        fail("math_not_from_code", `Maya turn ${i} drew words outside the closed comparison plan before release`);
+      }
       if (comparisonEarlyLabel(op, act, turn.output.say.join(" "), drawn, lastChild)) fail("answer_too_early", `Maya turn ${i} stated or drew a comparison answer label before release`);
     }
     if (!released && !comparison && answer?.type === "choice" && act !== "example_step" && !(act === "confirm" && saidWord === answer.value)) {

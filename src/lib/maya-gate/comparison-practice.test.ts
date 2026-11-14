@@ -1,7 +1,8 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { COMPARISON_PRACTICE } from "../maya-practice/comparison-cases";
 import { createTextSession } from "../maya-text";
-import { checkTrace, type MayaTrace } from "../maya-trace";
+import { checkTrace, packageHash, type MayaTrace } from "../maya-trace";
+import { openingLine } from "../maya/lines";
 import { FIXTURES } from "./fixtures";
 import { comparisonWords, type ComparisonOperation } from "../question-package-comparison";
 import { judge, type Behaviour } from "./gate";
@@ -47,6 +48,25 @@ describe("the practice gate checks comparison words and their prior work", () =>
   it.each(COMPARISON_PRACTICE)("accepts the actual checked word for $id", c => {
     expect(judge(behaviour(c.fixture), JSON.stringify(traces.get(c.id))).failures).toEqual([]);
   });
+  it.each(COMPARISON_PRACTICE.filter(c => c.id !== "CMP1"))("accepts the exact workbook opening for $id", c => {
+    const original = FIXTURES[c.fixture], pkg = structuredClone(original);
+    // Keep the page reference separate from the question's math in this checker regression.
+    if (pkg.ref.source !== "workbook" || !pkg.answer || !pkg.operation || !pkg.easierExample) throw new Error("missing teaching package");
+    pkg.ref.page = 1;
+    pkg.ref.question = 1;
+    const trace = structuredClone(traces.get(c.id)!);
+    trace.question = { id: pkg.id, ref: pkg.ref, text: pkg.text, hash: packageHash(pkg) };
+    const open = trace.turns[1];
+    if (open.kind !== "maya" || !open.output) throw new Error("missing opening");
+    open.output.say = [openingLine({ ...pkg, answer: pkg.answer, operation: pkg.operation, easierExample: pkg.easierExample }, { page: 1, number: 1 })];
+    expect(checkTrace(trace).ok).toBe(true);
+    try {
+      FIXTURES[c.fixture] = pkg;
+      expect(judge(behaviour(c.fixture), JSON.stringify(trace)).failures).toEqual([]);
+    } finally {
+      FIXTURES[c.fixture] = original;
+    }
+  });
   it.each(COMPARISON_PRACTICE)("rejects a wrong or uncommitted label for $id", c => {
     const trace = traces.get(c.id)!;
     const other = comparisonWords(FIXTURES[c.fixture].operation as ComparisonOperation)[1];
@@ -90,5 +110,20 @@ describe("the practice gate checks comparison words and their prior work", () =>
     board.board.push({ at: turn.at, turn: 3, transactionId: "early-winner", commands: [{ op: "write", id: "winner", text: key.value, place: { region: "main" } }] });
     expect(checkTrace(board).ok).toBe(true);
     expect(judge(behaviour(c.fixture), JSON.stringify(board)).failures).toContainEqual(expect.objectContaining({ code: "answer_too_early" }));
+  });
+  it.each(COMPARISON_PRACTICE)("rejects an unlisted way to name the winner for $id", c => {
+    const synonym = c.id === "CMP1" ? "The statement holds." : c.id === "CMP2" ? "The first rectangle is bigger." : "Evens win.";
+    for (const medium of ["speech", "board"]) {
+      const forged = structuredClone(traces.get(c.id)!);
+      const turn = forged.turns[3];
+      if (turn.kind !== "maya" || !turn.output) throw new Error("missing early turn");
+      if (medium === "speech") turn.output.say = [synonym];
+      else {
+        turn.output.board = ["early-synonym"];
+        forged.board.push({ at: turn.at, turn: 3, transactionId: "early-synonym", commands: [{ op: "write", id: "winner", text: synonym, place: { region: "main" } }] });
+      }
+      expect(checkTrace(forged).ok).toBe(true);
+      expect(judge(behaviour(c.fixture), JSON.stringify(forged)).failures, medium).toContainEqual(expect.objectContaining({ code: "math_not_from_code" }));
+    }
   });
 });
