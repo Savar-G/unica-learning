@@ -137,6 +137,23 @@ describe.skipIf(!chromium)("binding a photo to its printed page", () => {
     expect(m.objects.has(scanPartPath(PARENT, id, "00000000-0000-4000-8000-000000000001", "straight"))).toBe(false);
   }, 60_000);
 
+  it("takes a page lying on the rest of the book, whose sheet below shows its marks beside the page's own (#912)", async () => {
+    // Disproved if the sheet below, showing its marks beside the page's own, makes the page refused or misplaced. (The
+    // mixed-mark rectangles that refused real photos as "ambiguous-page" did not follow the print in synthetic photos;
+    // the real Robin set is the evidence for the fix, this keeps the case covered.)
+    const below = pages.find((p) => p !== page)!;
+    const size = { width: 2100, height: 2800 };
+    const onto = { ...size, channels: 1 as const, data: new Uint8Array(size.width * size.height).fill(96) };
+    const top = uprightCorners(size, PAGE_SIZE, 260);
+    photographed(written(below, EIGHT), size, rotatedCorners(top.map((c) => ({ x: c.x + 110, y: c.y + 80 })), 2, { x: 1050, y: 1400 }), { onto });
+    photographed(written(page, THREE), size, top, { onto });
+    const photo = await greyRaster(await photoJpeg(onto));
+    const result = calibrate(photo, page);
+    if (result.status !== "calibrated") throw new Error(`refused: ${result.reason}`);
+    const reads = page.plan.crops.map((c: CropItem) => readDigit(cropBox(photo, result.calibration, page.contract, c.box), cropCut(c.box), c.box));
+    expect(reads).toEqual(page.plan.crops.map(() => 3));
+  }, 60_000);
+
   it("refuses two copies that both show their QR code: it cannot know which sheet was meant", async () => {
     const photo = await greyRaster(await twoCopies(written(page, THREE), written(page, EIGHT)));
     expect(calibrate(photo, page)).toEqual({ status: "refused", reason: "ambiguous-page" });
