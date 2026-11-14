@@ -179,7 +179,33 @@ it("keeps a page's photo that is ready, still being checked, of another printing
   ] as const) {
     f.identify = "duplicate"; f.held = { ...held }; f.calibration = calibration && { ...calibration }; f.uploads = 0;
     const answer = await put();
-    expect(answer.status).toBe(422); expect(await answer.json()).toEqual({ error: "duplicate" });
+    // The answer names the page (#4); only the ready photo not sent may be replaced, and only by the parent's choice.
+    expect(answer.status).toBe(422); expect(await answer.json()).toMatchObject({ error: "duplicate", page: 24 });
     expect(f.deleted).toEqual([]); expect(f.uploads).toBe(0);
   }
+});
+
+// Scan edge sweep #4: a duplicate names its page, and a ready photo not sent may be replaced by the parent's choice.
+const putReplacing = (replace: string) => PUT(new Request(`https://unicalearning.com/api/account/scans/${id}?replace=${replace}`, { method: "PUT", headers: { Origin: "https://unicalearning.com" }, body: new Uint8Array([1]) }), { params: Promise.resolve({ id }) });
+it("names the page of a duplicate, and the photo it may replace only when that one is ready and not sent (#4)", async () => {
+  f.identify = "duplicate"; f.held = { id: "old", printed_revision: "r1", sent_at: null }; f.calibration = { state: "ready", printed_revision: "r1" };
+  let r = await put();
+  expect(r.status).toBe(422); expect(await r.json()).toEqual({ error: "duplicate", page: 24, replaceable: "old" });
+  // A plain new photo never deletes a ready photo.
+  expect(f.deleted).toEqual([]);
+  f.held = { id: "old", printed_revision: "r1", sent_at: "2026-11-14T10:00:00Z" };
+  r = await put();
+  expect(await r.json()).toEqual({ error: "duplicate", page: 24 });
+});
+it("replaces the page's ready photo, not sent, only when the parent chose this photo instead of it (#4)", async () => {
+  f.identify = ["duplicate", "identified"]; f.held = { id: "old", printed_revision: "r1", sent_at: null }; f.calibration = { state: "ready", printed_revision: "r1" };
+  expect((await putReplacing("00000000-0000-4000-8000-0000000000aa")).status).toBe(422);
+  expect(f.deleted).toEqual([]);
+  f.identify = ["duplicate", "identified"]; f.held = { id: "00000000-0000-4000-8000-0000000000aa", printed_revision: "r1", sent_at: null };
+  expect((await putReplacing("00000000-0000-4000-8000-0000000000aa")).status).toBe(200);
+  expect(f.deleted).toEqual(["00000000-0000-4000-8000-0000000000aa"]);
+  // A sent photo is never replaced.
+  f.deleted = []; f.identify = ["duplicate", "identified"]; f.held = { id: "00000000-0000-4000-8000-0000000000aa", printed_revision: "r1", sent_at: "2026-11-14T10:00:00Z" };
+  expect((await putReplacing("00000000-0000-4000-8000-0000000000aa")).status).toBe(422);
+  expect(f.deleted).toEqual([]);
 });

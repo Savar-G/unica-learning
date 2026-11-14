@@ -2,7 +2,7 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
-const context = vi.hoisted(() => ({ auth: null as null | ((_event: string, session: { user: { id: string } } | null) => void), prepare: null as null | (() => Promise<Blob>), code: null as null | "read" | "unread" }));
+const context = vi.hoisted(() => ({ auth: null as null | ((_event: string, session: { user: { id: string } } | null) => void), prepare: null as null | (() => Promise<Blob>), code: null as null | "read" | "unread", encodings: [] as number[] }));
 vi.mock("@/lib/supabase-browser", () => ({
   browserClient: () => ({ auth: { onAuthStateChange: (callback: typeof context.auth) => {
     context.auth = callback;
@@ -11,7 +11,11 @@ vi.mock("@/lib/supabase-browser", () => ({
 }));
 vi.mock("next/image", () => ({ default: ({ unoptimized, ...props }: Record<string, unknown>) => { void unoptimized; return createElement("img", props); } }));
 // The prepared photo carries the file's name, so the fake server knows which page it shows.
-vi.mock("@/lib/scan-photo-browser", () => ({ prepareScanPhoto: async (file: File) => context.prepare ? context.prepare() : new Blob([file.name]), phoneCodeCheck: async () => context.code ?? null }));
+vi.mock("@/lib/scan-photo-browser", () => ({
+  prepareScanPhoto: async (file: File, encoding?: { maxSide: number }) => { context.encodings.push(encoding?.maxSide ?? 0); return context.prepare ? context.prepare() : new Blob([file.name]); },
+  phoneCodeCheck: async () => context.code ?? null, scanThumbnail: async () => null,
+  PHOTO_ENCODING: { maxSide: 2800, qualities: [0.9] }, SMALLER_ENCODING: { maxSide: 2000, qualities: [0.75] },
+}));
 import { CAPTURE_CLASS, CAPTURE_ENTRY, PICK_RETURN_MS, ScanPages } from "./scan-pages";
 import { refusalCopy } from "@/lib/scan-stack";
 
@@ -40,11 +44,15 @@ let undoMs: number;
 let filedTo: { child_id: string; child: string } | null, markingOn: boolean;
 // Children whose Workbooks page shows their page history (the server decides, src/lib/workbooks-page-server.ts).
 let allPages: string[];
+// The holds the page wrote on the server (#3): `{ ids, seconds }`, or `{ ids, undo: true }`.
+let holds: { ids: string[]; seconds?: number; undo?: boolean }[];
+// How long a duplicate's note shows (#4): long by default.
+let duplicateMs: number;
 
 const buttons = () => [...document.querySelectorAll("button")];
 const button = (text: string) => buttons().find((b) => b.textContent === text || b.getAttribute("aria-label") === text);
 const settle = async () => { for (let i = 0; i < 30; i++) await act(async () => { await new Promise((r) => setTimeout(r, 0)); }); };
-const render = async () => { await act(async () => root.render(createElement(ScanPages, { childrenList: kids, parent: "parent", noticeAcknowledged: acknowledged, undoMs, allPages }))); await settle(); };
+const render = async () => { await act(async () => root.render(createElement(ScanPages, { childrenList: kids, parent: "parent", noticeAcknowledged: acknowledged, undoMs, allPages, duplicateMs }))); await settle(); };
 const choose = async (input: "camera" | "library", ...names: string[]) => {
   const el = host.querySelector<HTMLInputElement>(input === "camera" ? "input[capture]" : "input[multiple]")!;
   Object.defineProperty(el, "files", { configurable: true, value: names.map((n) => new File(["x"], n, { type: "image/jpeg" })) });
@@ -55,7 +63,7 @@ const text = () => document.body.textContent ?? "";
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  marking = null; putGate = null; undoMs = 60_000; filedTo = null; markingOn = false; allPages = ["child"];
+  marking = null; putGate = null; undoMs = 60_000; filedTo = null; markingOn = false; allPages = ["child"]; holds = []; context.encodings = []; duplicateMs = 60_000;
   try { localStorage.setItem("unica.scan-tips.v1:parent", "seen"); localStorage.removeItem("unica.scan-undone.v1:parent"); } catch {}
   context.auth = null; context.prepare = null; context.code = null; checks = true; acknowledged = true; photos = new Map(); uploading = 0; mostAtOnce = 0; full = false; calls.length = 0;
   admitted = []; loseAdmissions = 0; saveFailures = 0; expired = new Set();
@@ -66,7 +74,7 @@ beforeEach(() => {
     if (path === "/api/account/scans/notice") { acknowledged = true; return Response.json({ acknowledged: true }); }
     if (path.startsWith("/api/account/scans?child=")) {
       if (listDown) return Response.json({ error: "unavailable" }, { status: 503 });
-      if (path.endsWith("=other")) return Response.json({ checks, pages: PAGES, photos: [] });
+      if (path.includes("child=other")) return Response.json({ checks, pages: PAGES, photos: [] });
       return Response.json({ checks, marking: markingOn, pages: PAGES, photos: [...photos.values()].map(({ two, ...p }) => { void two; return p; }) });
     }
     if (path === "/api/account/scans" && method === "POST") {
@@ -76,6 +84,7 @@ beforeEach(() => {
       if (loseAdmissions > 0) { loseAdmissions--; throw new TypeError("the answer was lost"); }
       return Response.json({ state: photos.get(asked)?.state ?? "reserved", id: asked });
     }
+    if (path === "/api/account/scans/hold") { holds.push(JSON.parse(String(init!.body))); return Response.json({ held: [] }); }
     if (path === "/api/account/scans/send") {
       const ids: string[] = JSON.parse(String(init!.body)).ids;
       for (const pid of ids) { const p = photos.get(pid); if (p && p.check === "ready" && p.state === "saved") p.sentAt = "2026-11-05T12:00:00Z"; }
@@ -104,7 +113,11 @@ beforeEach(() => {
       if (!page) return Response.json({ error: "qr" }, { status: 422 });
       // As the server does (F5): a new photo of a page whose photo the check refused, never sent, replaces it.
       for (const [old, p] of photos) if (p.pageId === page.id && p.state === "saved" && p.check === "refused" && !p.sentAt) photos.delete(old);
-      if ([...photos.values()].some((p) => p.pageId === page.id)) return Response.json({ error: "duplicate" }, { status: 422 });
+      // A duplicate names its page, and its photo when that one is ready and not sent (#4); `?replace=` swaps that one.
+      const first = [...photos.values()].find((p) => p.pageId === page.id);
+      const replace = new URL(path, "https://x").searchParams.get("replace");
+      if (first && replace === first.id && first.check === "ready" && !first.sentAt) photos.delete(first.id);
+      else if (first) return Response.json({ error: "duplicate", page: page.pageNumber, ...(first.check === "ready" && !first.sentAt ? { replaceable: first.id } : {}) }, { status: 422 });
       photos.set(id, { id, pageId: page.id, workbookId: "book", book: 1, pageNumber: page.pageNumber, state: "pending", check: checks ? "checking" : "none", reason: null, sentAt: null, createdAt: `2026-11-05T10:00:0${photos.size}Z`, two: name.startsWith("two") });
       if (losePuts > 0) { losePuts--; throw new TypeError("the answer was lost"); }
       if (filedTo) { photos.delete(id); return Response.json({ photo: { id, state: "pending", ...filedTo, page: page.pageNumber } }); }
@@ -215,7 +228,8 @@ it("does not ask for another photo of a page that already has one, and focus nev
   await render();
   await choose("library", "p10.jpg", "p11.jpg");
   await choose("library", "copy-p10.jpg");
-  expect(text()).toContain("Already has a photo");
+  expect(text()).toContain("Page 10 is already scanned.");
+  expect(text()).not.toContain("need another photo");
   expect(button("Take the photo again")).toBeUndefined();
   await act(async () => button("Page 10, ready, not sent yet")!.click()); await settle();
   expect(document.activeElement?.textContent).toBe("Close");
@@ -1053,13 +1067,13 @@ it("keeps one live line across the first photo, and says each photo is added (#9
   expect(live.textContent).toBe("Photo 2 added");
 });
 
-it("says on its thumbnail at once when a photo cannot be sent, and offers Choose another photo (#915)", async () => {
+it("says on its thumbnail at once when a photo cannot be sent, and offers Choose another photo for a chosen photo (#915)", async () => {
   await render();
   await openCapture();
   const library = host.querySelector<HTMLInputElement>("input[multiple]")!;
   const opened = vi.mocked(library.click);
   context.prepare = async () => { throw new Error("size"); };
-  await choose("camera", "p10.jpg");
+  await choose("library", "p10.jpg");
   const shot = host.querySelector(".scan-shots li")!;
   expect(shot.querySelector("[role=img]")?.getAttribute("aria-label")).toBe("Photo 1, too large");
   expect(shot.textContent).toContain("Too large");
@@ -1070,4 +1084,172 @@ it("says on its thumbnail at once when a photo cannot be sent, and offers Choose
   context.prepare = null;
   await choose("library", "p10.jpg");
   expect([...host.querySelectorAll(".scan-shots [role=img]")].map((e) => e.getAttribute("aria-label"))).toEqual(["Photo 1, added"]);
+});
+
+// Scan edge sweep (2026-11-14): #1 sibling pages, #3 leaving during Undo, #4 duplicates, #5 lost uploads, #6 camera retakes.
+
+it("sends a page the code filed with a sibling together with this child's pages, after its own check (#1)", async () => {
+  undoMs = 30;
+  const server = global.fetch;
+  const sends: string[][] = [], sibling = new Set<string>();
+  vi.stubGlobal("fetch", async (path: string, init?: RequestInit) => {
+    const id = /\/api\/account\/scans\/([^/?]+)/.exec(path)?.[1];
+    if (id && sibling.has(id) && path.endsWith("/preview")) { calls.push(`${init?.method ?? "GET"} ${path}`); return Response.json({ preview: { status: "ready" }, photoCheck: null }); }
+    if (path === "/api/account/scans/send") { const ids = JSON.parse(String(init!.body)).ids; sends.push(ids); calls.push("POST /api/account/scans/send"); return Response.json({ sent: ids, marking: 0 }); }
+    const response = await server(path, init);
+    if (init?.method === "PUT" && filedTo) sibling.add(id!);
+    return response;
+  });
+  await render();
+  filedTo = { child_id: "sibling", child: "Aisha" };
+  await choose("library", "p12.jpg");
+  filedTo = null;
+  await choose("library", "p10.jpg");
+  await act(async () => { await new Promise((r) => setTimeout(r, 120)); }); await settle();
+  const [aisha] = [...sibling];
+  expect(calls).toContain(`POST /api/account/scans/${aisha}/preview`);
+  expect(sends.flat()).toEqual(expect.arrayContaining([aisha, [...photos.values()].find((p) => p.pageId === "p10")!.id]));
+});
+
+it("keeps the Undo's hold on the server, lets it go on Undo, and asks for due pages on the first load (#3)", async () => {
+  undoMs = 5_000;
+  await render();
+  expect(calls.filter((c) => c.startsWith("GET /api/account/scans?child=child"))[0]).toBe("GET /api/account/scans?child=child&due=1");
+  expect(calls.filter((c) => c.includes("due=1"))).toHaveLength(1);
+  await choose("library", "p10.jpg");
+  const id = [...photos.keys()][0];
+  expect(holds).toEqual([{ ids: [id], seconds: 5 }]);
+  // Leaving during the Undo: the phone's hold goes, the server's stays and sends the page when its wait ends.
+  await act(async () => button("Undo")!.click()); await settle();
+  expect(holds[1]).toEqual({ ids: [id], undo: true });
+  expect(text()).toContain("Not sent. The page waits here.");
+});
+
+it("gives each page its own Undo wait: a newer page does not hold back an older one (#3)", async () => {
+  undoMs = 400;
+  await render();
+  await choose("library", "p10.jpg");
+  await act(async () => { await new Promise((r) => setTimeout(r, 250)); }); await settle();
+  await choose("library", "p11.jpg");
+  await act(async () => { await new Promise((r) => setTimeout(r, 250)); }); await settle();
+  // p10 waited its own 400 ms; p11 is still in its wait.
+  expect([...photos.values()].filter((p) => p.sentAt).map((p) => p.pageId)).toEqual(["p10"]);
+  expect(text()).toContain("1 page sends for marking in a moment");
+  await act(async () => { await new Promise((r) => setTimeout(r, 400)); }); await settle();
+  expect([...photos.values()].filter((p) => p.sentAt).map((p) => p.pageId).sort()).toEqual(["p10", "p11"]);
+});
+
+it("asks before the page closes while a photo is still queued on the phone, and not after (#3)", async () => {
+  let open!: () => void;
+  putGate = new Promise((r) => { open = r; });
+  await render();
+  await choose("camera", "p10.jpg");
+  const asked = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(asked);
+  expect(asked.defaultPrevented).toBe(true);
+  putGate = null; open(); await settle();
+  const later = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(later);
+  expect(later.defaultPrevented).toBe(false);
+});
+
+it("shows a duplicate as information that clears itself, outside the pages that need another photo (#4)", async () => {
+  duplicateMs = 80;
+  await render();
+  await choose("library", "p10.jpg");
+  photos.get([...photos.keys()][0])!.sentAt = "2026-11-05T12:00:00Z";
+  await choose("library", "again-p10.jpg");
+  expect(text()).toContain("Page 10 is already scanned.");
+  expect(text()).not.toMatch(/need(s)? another photo/);
+  expect(button("Use this new photo instead")).toBeUndefined();
+  await act(async () => { await new Promise((r) => setTimeout(r, 150)); }); await settle();
+  expect(text()).not.toContain("already scanned");
+});
+
+it("offers Use this new photo instead for a ready photo not sent, and the new photo replaces it (#4)", async () => {
+  await render();
+  await choose("library", "p10.jpg");
+  const first = [...photos.keys()][0];
+  await choose("library", "better-p10.jpg");
+  expect(text()).toContain("Page 10 is already scanned.");
+  await act(async () => button("Use this new photo instead")!.click()); await settle();
+  expect(calls.some((c) => c.startsWith("PUT ") && c.endsWith(`?replace=${first}`))).toBe(true);
+  expect(photos.has(first)).toBe(false);
+  expect([...photos.values()].map((p) => p.pageId)).toEqual(["p10"]);
+  expect(text()).not.toContain("already scanned");
+});
+
+it("sends an upload again when the server says it never arrived, never saying it cannot open the photo (#5)", async () => {
+  const server = global.fetch;
+  let lost = true;
+  vi.stubGlobal("fetch", async (path: string, init?: RequestInit) => {
+    const id = /\/api\/account\/scans\/([^/?]+)/.exec(path)?.[1];
+    if (init?.method === "PUT" && lost) { lost = false; calls.push(`PUT ${path}`); throw new TypeError("the connection dropped"); }
+    if ((init?.method ?? "GET") === "GET" && id && !photos.has(id) && !path.endsWith("/image") && !path.endsWith("/preview")) return Response.json({ photo: { id, state: "reserved" } });
+    return server(path, init);
+  });
+  await render();
+  await choose("library", "p10.jpg");
+  // A lost answer is asked about after 2 s; a photo still only reserved is sent again a second later.
+  await act(async () => { await new Promise((r) => setTimeout(r, 3500)); }); await settle();
+  expect(calls.filter((c) => c.startsWith("PUT "))).toHaveLength(2);
+  expect(text()).not.toContain(refusalCopy("image").title);
+  expect([...photos.values()].map((p) => p.pageId)).toEqual(["p10"]);
+});
+
+it("after one timeout, sends the photo again encoded smaller (#5)", async () => {
+  const server = global.fetch;
+  const controllers: AbortController[] = [];
+  vi.spyOn(AbortSignal, "timeout").mockImplementation(() => { const c = new AbortController(); controllers.push(c); return c.signal; });
+  let timedOut = false;
+  vi.stubGlobal("fetch", async (path: string, init?: RequestInit) => {
+    const id = /\/api\/account\/scans\/([^/?]+)/.exec(path)?.[1];
+    if (init?.method === "PUT" && !timedOut) { timedOut = true; calls.push(`PUT ${path}`); controllers.find((c) => c.signal === init.signal)!.abort(); throw new DOMException("timed out", "TimeoutError"); }
+    if ((init?.method ?? "GET") === "GET" && id && !photos.has(id) && !path.endsWith("/image") && !path.endsWith("/preview")) return Response.json({ photo: { id, state: "reserved" } });
+    return server(path, init);
+  });
+  await render();
+  await choose("library", "p10.jpg");
+  await act(async () => { await new Promise((r) => setTimeout(r, 3500)); }); await settle();
+  expect(context.encodings).toEqual([2800, 2000]);
+  expect([...photos.values()].map((p) => p.pageId)).toEqual(["p10"]);
+});
+
+it("keeps the photo with Try again when a limit refused it, as the refusal is not about the photo (#5)", async () => {
+  const server = global.fetch;
+  let limited = true;
+  vi.stubGlobal("fetch", async (path: string, init?: RequestInit) => {
+    if (path === "/api/account/scans" && init?.method === "POST" && limited) { calls.push("POST /api/account/scans"); return Response.json({ error: "frequency" }, { status: 429 }); }
+    return server(path, init);
+  });
+  await render();
+  await choose("library", "p10.jpg");
+  expect(text()).toContain(refusalCopy("frequency").short);
+  limited = false;
+  await act(async () => button("Try again")!.click()); await settle();
+  expect([...photos.values()].map((p) => p.pageId)).toEqual(["p10"]);
+});
+
+it("retakes a camera shot with the camera, never the phone's photos (#6)", async () => {
+  await render();
+  await openCapture();
+  const camera = host.querySelector<HTMLInputElement>("input[capture]")!, library = host.querySelector<HTMLInputElement>("input[multiple]")!;
+  context.prepare = async () => { throw new Error("size"); };
+  await choose("camera", "p10.jpg");
+  vi.mocked(camera.click).mockClear(); vi.mocked(library.click).mockClear();
+  expect(button("Choose another photo")).toBeUndefined();
+  await act(async () => button("Retake")!.click());
+  expect(camera.click).toHaveBeenCalledOnce();
+  expect(library.click).not.toHaveBeenCalled();
+});
+
+it("says a photo the phone could not encode is not sent, with Try again, never too large (#9)", async () => {
+  context.prepare = async () => { throw new Error("unavailable"); };
+  await render();
+  await choose("library", "p10.jpg");
+  expect(text()).not.toContain(refusalCopy("size").short);
+  expect(text()).toContain(refusalCopy("unavailable").short);
+  context.prepare = null;
+  await act(async () => button("Try again")!.click()); await settle();
+  expect([...photos.values()].map((p) => p.pageId)).toEqual(["p10"]);
 });

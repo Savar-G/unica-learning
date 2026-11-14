@@ -636,8 +636,8 @@ describe("two-ways AI marking", () => {
     expect(view.counts.teamChecks).toBe(0);
   });
   it.each([
-    ["a blurry method", null, STRIP, "2520", "blurry", "Our team is checking this answer. The photo is blurry here. You can also send a new photo of this page."],
-    ["a cut-off second method", SPLIT, null, "2520", "cut-off", "Our team is checking this answer. Part of this answer is cut off. You can also send a new photo of this page."],
+    ["a blurry method", null, STRIP, "2520", "blurry", "Our team is checking this answer. The photo is blurry here."],
+    ["a cut-off second method", SPLIT, null, "2520", "cut-off", "Our team is checking this answer. Part of this answer is cut off."],
     ["an unreadable answer", SPLIT, STRIP, null, "unreadable", "Our team is checking this answer."],
     ["a method the AI cannot write out", null, STRIP, "2520", "method-form", "Our team is checking this answer."],
     ["a method the model calls an answer form", null, STRIP, "2520", "answer-form", "Our team is checking this answer."],
@@ -860,7 +860,7 @@ describe("#715: no screen asks a parent to judge an answer", () => {
     "a bad photo (%s) can still ask for a new photo, and asks for no judgment", (issue, reason) => {
       const f = frame(), o = readMarkingOutput(f, { readings: [{ item: "i1", region: "r1", state: "uncertain", text: null, issue }] })[0];
       const label = view(f, o).items[0].label;
-      expect(label).toBe(`Our team is checking this answer. ${reason} You can also send a new photo of this page.`);
+      expect(label).toBe(`Our team is checking this answer. ${reason}`);
       expect(label).not.toMatch(ASKS_PARENT);
     });
   it("an item waiting for a person (an old parent-checked format) is our team's, not the parent's", () => {
@@ -1121,7 +1121,7 @@ describe("S4 whole-page readings", () => {
     expect(observationProblem(mark.observation)).toBeNull();
     // The reason stays; our team checks every unsure item, and a bad photo may also be sent again (#715).
     expect(markingPageView([mark]).items[0].label).toBe(fixture.result !== null ? fixture.reason
-      : PHOTO_ISSUES.includes(fixture.issue) ? `Our team is checking this answer. ${fixture.reason} You can also send a new photo of this page.` : "Our team is checking this answer.");
+      : PHOTO_ISSUES.includes(fixture.issue) ? `Our team is checking this answer. ${fixture.reason}` : "Our team is checking this answer.");
     if (fixture.result === null) expect(s.events).toHaveLength(0);
   });
   it.each([frame, tickFrame, circleFrame])("uses one versioned empty-area rule for number, tick and circle requests", makeFrame => {
@@ -1480,7 +1480,7 @@ describe("#912: a question the photo's edge cuts off", () => {
       expect([o[0].result, o[2].result]).toEqual(["right", "right"]);
       const mark: EffectiveMark = { expected: expectedItems(f)[1], observation: o[1], originalEvent: null, eventId: null, at: "2026-11-13T12:00:00Z", model: MARKING_MODEL, prompt: MARKING_PROMPT_VERSION };
       expect(waitsForTeam(mark)).toBe(true);
-      expect(markingPageView([mark]).items[0].label).toBe("Our team is checking this answer. Part of this answer is cut off. You can also send a new photo of this page.");
+      expect(markingPageView([mark]).items[0].label).toBe("Our team is checking this answer. Part of this answer is cut off.");
     }
     // Control: the same reading without the cut is marked.
     expect(readMarkingOutput(frame(), output(["0", "12", "9"]))[1]).toMatchObject({ state: "scored", result: "right" });

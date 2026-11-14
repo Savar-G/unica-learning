@@ -47,6 +47,10 @@ export interface StackUpload {
   held?: boolean;
   /** The phone's early look found no page code (#915): a hint only, the server still reads it and decides. */
   codeUnread?: boolean;
+  /** A duplicate's page, as the server names it (#4): "Page 27 is already scanned". */
+  page?: number;
+  /** A duplicate of a page whose photo is ready and not sent (#4): that photo's id, which this new photo may replace. */
+  replaceable?: string;
 }
 
 /** A printed workbook page that belongs to a day. */
@@ -117,6 +121,8 @@ export interface StackTile {
    * `offline`: a photo that did not reach us only because the phone is offline: it waits and sends when the phone is back.
    */
   hint?: "code" | "offline";
+  /** A duplicate (#4): the page's ready photo, not sent, that this new photo may replace. */
+  replaceable?: string;
 }
 
 export interface StackDay {
@@ -130,6 +136,11 @@ export interface StackDay {
 
 export interface Stack {
   refused: StackTile[];
+  /**
+   * New photos of a page that already has a photo (#4): information, not a problem, so they are not in `refused` and
+   * not in the list of pages that need another photo. "Page 27 is already scanned."
+   */
+  duplicates: StackTile[];
   /** Photos still on their way to the server, sending or waiting: their page is not known yet. */
   adding: number;
   /** Of those, how many are waiting their turn, and how many of those the server had no room for (#915). */
@@ -186,7 +197,7 @@ const REFUSALS: Record<StackReason, { short: string; title: string; action: stri
   qr: { short: "Code not read", title: "We cannot read the small code in the bottom-left corner.", action: "Hold the phone steady and keep that corner in view, with no glare, shadow or finger on the code. Then take another photo." },
   page: { short: "Cannot add", title: "We cannot add this page to your scans.", action: "Take a photo of a page from a workbook you scan here." },
   flat: { short: "Pages not flat", title: "The pages are not flat in this photo.", action: "Lay the book flat so both pages are flat, or take one page at a time. Then take another photo." },
-  duplicate: { short: "Already has a photo", title: "This page already has a photo.", action: "Open its photo on this screen. Delete it first if you need another photo." },
+  duplicate: { short: "Already scanned", title: "This page is already scanned.", action: "We kept its first photo." },
   image: { short: "Cannot open", title: "We cannot open this photo.", action: "Choose a JPG, PNG or WebP photo of one page." },
   size: { short: "Too large", title: "This photo is too large.", action: "Choose a photo smaller than 20 MB." },
   frequency: { short: "Too many photos", title: "You have sent many photos in a short time.", action: "Wait a few minutes. Then try again." },
@@ -259,7 +270,12 @@ export function buildStack(o: { photos: readonly StackPhoto[]; uploads: readonly
   const tiles = ordered.map((photo) => ({ photo, tile: tileOf(photo) }));
 
   const waitsForConnection = (u: StackUpload) => Boolean(o.offline) && u.status === "refused" && (u.reason ?? "unavailable") === "unavailable";
-  const refusedUploads: StackTile[] = o.uploads.filter((u) => u.status === "refused" && !waitsForConnection(u)).map((u) => {
+  const isDuplicate = (u: StackUpload) => u.status === "refused" && u.reason === "duplicate";
+  const duplicates: StackTile[] = o.uploads.filter(isDuplicate).map((u) => {
+    const label = u.page ? `Page ${u.page}` : "This page";
+    return { key: u.key, photoId: null, uploadKey: u.key, label, title: label, status: "refused", reason: refusalCopy("duplicate").short, refusal: "duplicate", ...(u.replaceable ? { replaceable: u.replaceable } : {}) };
+  });
+  const refusedUploads: StackTile[] = o.uploads.filter((u) => u.status === "refused" && !waitsForConnection(u) && !isDuplicate(u)).map((u) => {
     const reason = u.reason ?? "unavailable";
     return { key: u.key, photoId: null, uploadKey: u.key, label: "Unknown page", title: "Unknown page", status: "refused", reason: refusalCopy(reason).short, refusal: reason };
   });
@@ -298,17 +314,20 @@ export function buildStack(o: { photos: readonly StackPhoto[]; uploads: readonly
   const checking = addingTiles.length + tiles.filter((t) => t.tile.status === "checking").length;
   const open = [...refused, ...addingTiles, ...days.flatMap((d) => d.tiles)];
   return {
-    refused, adding: addingTiles.length, addingTiles, days, sent,
+    refused, duplicates, adding: addingTiles.length, addingTiles, days, sent,
     waiting: addingTiles.filter((t) => t.status === "waiting").length,
     held: o.uploads.filter((u) => u.status !== "refused" && u.held).length,
     readyIds: ready.map((t) => t.photo.id),
     // The photos of this batch: a photo already sent for marking is not counted again (#915).
-    counts: { photos: o.photos.length - sent.length + o.uploads.length, ready: ready.length, refused: refused.length, checking },
+    counts: { photos: o.photos.length - sent.length + o.uploads.length - duplicates.length, ready: ready.length, refused: refused.length, checking },
     // A refused page keeps its card and its retake, even alone.
     guide: guideOf(o, tiles, dayLabel, pageLabel),
     one: open.length === 1 && open[0].photoId && open[0].status !== "refused" ? open[0] : null,
   };
 }
+
+/** A duplicate as information (#4): "Page 27 is already scanned." */
+export const duplicateNote = (t: StackTile) => `${t.label} is already scanned.`;
 
 /** The second page of a two-page photo that could not be saved: which page to photograph on its own (#965). */
 export function spreadNote(pages: readonly number[]): string | null {

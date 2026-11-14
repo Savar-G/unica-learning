@@ -4,7 +4,7 @@ vi.mock("server-only", () => ({}));
 const CHILD = "22222222-2222-4222-8222-222222222222", OTHER_CHILD = "33333333-3333-4333-8333-333333333333";
 const PHOTO = "44444444-4444-4444-8444-444444444444";
 const f = vi.hoisted(() => ({ marked: false, plan: { open: true, reason: "open" } as { open: boolean; reason: string }, asked: [] as unknown[], sent: [] as unknown[],
-  later: [] as (() => unknown)[], afterFails: false, rows: ["44444444-4444-4444-8444-444444444444"] as string[] }));
+  later: [] as (() => unknown)[], afterFails: false, rows: ["44444444-4444-4444-8444-444444444444"] as string[], siblingPlan: { open: false, reason: "no_plan" } as { open: boolean; reason: string } }));
 // The work after the answer is captured, not run: src/lib/scan-send-marking.test.ts runs it.
 vi.mock("next/server", () => ({ after: (task: () => unknown) => { if (f.afterFails) throw Error("no request scope"); f.later.push(task); } }));
 vi.mock("@/lib/supabase-auth", () => ({ adminClient: () => null }));
@@ -20,27 +20,34 @@ vi.mock("@/lib/scan-marking-access", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/scan-marking-access")>();
   const gate = async (input: { parentId: string; childId: string }) => {
     f.asked.push(input);
-    return input.childId === "22222222-2222-4222-8222-222222222222" ? f.plan as never : { open: false, reason: "no_plan" } as const;
+    return input.childId === "22222222-2222-4222-8222-222222222222" ? f.plan as never : input.childId === "55555555-5555-4555-8555-555555555555" ? f.siblingPlan as never : { open: false, reason: "no_plan" } as const;
   };
   return { ...actual, childPlanAccess: gate, scanChecksAccess: (...args: Parameters<typeof actual.scanChecksAccess>) => actual.scanChecksAccess(args[0], args[1], args[2], args[3], gate) };
 });
-// The family's children: only CHILD is this family's.
-const children = { from: (table: string) => ({ select: () => ({ eq: (_c: string, id: string) => ({ eq: (_p: string, owner: string) => ({
-  maybeSingle: async () => ({ data: table === "children" && owner === "family" && id === "22222222-2222-4222-8222-222222222222" ? { id } : null, error: null }),
-}) }) }) }) };
+// The family's children: CHILD and SIBLING are this family's (only CHILD's plan is open); each photo is filed with a child.
+const SIBLING = "55555555-5555-4555-8555-555555555555", SIBLING_PHOTO = "66666666-6666-4666-8666-666666666666";
+const filed = vi.hoisted(() => new Map<string, string>());
+const children = { from: (table: string) => ({ select: () => ({ eq: (_c: string, id: string) => ({
+  eq: (_p: string, owner: string) => ({
+    maybeSingle: async () => ({ data: table === "children" && owner === "family" && ["22222222-2222-4222-8222-222222222222", "55555555-5555-4555-8555-555555555555"].includes(id) ? { id } : null, error: null }),
+  }),
+  // scan_photos: this family's photos (parent_id "family"), with the child each is filed with.
+  in: async (_i: string, ids: string[]) => ({ data: id === "family" ? ids.filter((p) => filed.has(p)).map((p) => ({ id: p, child_id: filed.get(p)! })) : [], error: null }),
+}) }) }) };
 vi.mock("@/lib/scan-photo-server", () => ({
   scanJson: (data: unknown, status = 200) => Response.json(data, { status }),
-  scanSession: async () => ({ parent: "family", admin: { ...children, rpc: async (name: string, args: unknown) => { f.sent.push({ name, args }); return { data: f.rows, error: null }; } } }),
+  scanSession: async () => ({ parent: "family", admin: { ...children, rpc: async (name: string, args: { p_ids: string[] }) => { f.sent.push({ name, args }); return { data: f.rows.filter((r) => args.p_ids.includes(r)), error: null }; } } }),
 }));
 import { maxDuration, POST } from "./route";
 import { SEND_MARKING_LIMIT_MS } from "@/lib/scan-send-marking";
 
-const send = (child = CHILD) => POST(new Request("https://unicalearning.com/api/account/scans/send", {
-  method: "POST", headers: { Origin: "https://unicalearning.com" }, body: JSON.stringify({ child, ids: [PHOTO] }),
+const send = (child = CHILD, ids = [PHOTO]) => POST(new Request("https://unicalearning.com/api/account/scans/send", {
+  method: "POST", headers: { Origin: "https://unicalearning.com" }, body: JSON.stringify({ child, ids }),
 }));
 
 beforeEach(() => {
-  Object.assign(f, { marked: false, plan: { open: true, reason: "open" }, asked: [], sent: [], later: [], afterFails: false, rows: [PHOTO] });
+  Object.assign(f, { marked: false, plan: { open: true, reason: "open" }, siblingPlan: { open: false, reason: "no_plan" }, asked: [], sent: [], later: [], afterFails: false, rows: [PHOTO, SIBLING_PHOTO] });
+  filed.clear(); filed.set(PHOTO, CHILD); filed.set(SIBLING_PHOTO, SIBLING);
   runs.length = 0;
   vi.stubEnv("SCAN_MARKING_ENABLED", "families");
 });
@@ -63,9 +70,33 @@ it.each(["no_plan", "ended", "payment_failed", "paused", "unknown", "read_failed
   expect(f.sent).toEqual([]); expect(f.later).toEqual([]);
 });
 
-it("families mode refuses Send for another family's child or a stopped sibling", async () => {
+it("families mode refuses Send for another family's photo or a stopped sibling's", async () => {
+  // Another family's photo is not read at all; the child the page sends is no longer what decides.
+  filed.delete(PHOTO);
   expect((await send(OTHER_CHILD)).status).toBe(404);
+  expect((await send(CHILD, [SIBLING_PHOTO])).status).toBe(404);
   expect(f.sent).toEqual([]);
+});
+
+it("sends a sibling's page in the same Send, grouped by the child each photo is filed with (#1)", async () => {
+  f.siblingPlan = { open: true, reason: "open" };
+  const r = await send(CHILD, [PHOTO, SIBLING_PHOTO]);
+  expect(r.status).toBe(200); expect(await r.json()).toEqual({ sent: [PHOTO, SIBLING_PHOTO].sort(), marking: 2 });
+  expect(f.sent).toEqual([
+    { name: "send_scan_photos", args: { p_parent: "family", p_child: CHILD, p_ids: [PHOTO] } },
+    { name: "send_scan_photos", args: { p_parent: "family", p_child: SIBLING, p_ids: [SIBLING_PHOTO] } },
+  ]);
+});
+
+it("never sends a page of a sibling whose plan is closed, and still sends this child's (#1)", async () => {
+  const r = await send(CHILD, [PHOTO, SIBLING_PHOTO]);
+  expect(r.status).toBe(200); expect(await r.json()).toEqual({ sent: [PHOTO], marking: 1 });
+  expect(f.sent).toEqual([{ name: "send_scan_photos", args: { p_parent: "family", p_child: CHILD, p_ids: [PHOTO] } }]);
+});
+
+it("still takes Send without the child, as the photos name it", async () => {
+  const r = await POST(new Request("https://unicalearning.com/api/account/scans/send", { method: "POST", headers: { Origin: "https://unicalearning.com" }, body: JSON.stringify({ ids: [PHOTO] }) }));
+  expect(await r.json()).toEqual({ sent: [PHOTO], marking: 1 });
 });
 
 it("families mode keeps Send for test families and admins without a plan", async () => {
