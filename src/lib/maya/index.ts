@@ -15,6 +15,7 @@ export {
   fitsExpected,
   streamSentence,
   codePlan,
+  confirmAsk,
   codeStance,
   fillName,
   hideName,

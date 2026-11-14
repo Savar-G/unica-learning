@@ -429,16 +429,23 @@ describe("the speech-to-text's silence limit while Maya asks for a number", () =
   it("is raised when she asks the child to try the question, and put back when the child's turn arrives", async () => {
     const log = patienceLog();
     const speech = new ProbeSTT();
-    const c = await voiceCall({ patience: log.patience, speech });
+    // The rule model's first proposal for "Yes." is refused. A voice call has no time for a second model request
+    // (`modelRepair: false`), so the refusal goes straight to code's own line, which asks the child a question to work on.
+    const inner = ruleMayaModel();
+    const repairs: unknown[] = [];
+    const model: MayaModel = { ...inner, propose: (input, signal) => { if (input.repair) repairs.push(input.repair); return inner.propose(input, signal); } };
+    const c = await voiceCall({ patience: log.patience, speech, model });
     // The opening ends with "Shall we get going?": a question to answer yes or no, so the limit stays as it is.
     expect(c.said().at(-1)).toBe("I'm Maya, an AI math helper.");
     expect(log.sets).toEqual([]);
-    // The child agrees, and Maya hands over the question: "Try 27 + 39 the same way." (the voice is given "plus"). The
-    // next turn may wait longer.
+    // The child agrees, and Maya's first refused proposal falls back to code's line "What can you do there?". It asks for
+    // the child's own work, so the next turn may wait longer.
     speech.says("Yes.");
     await waitFor(() => log.sets.length === 1 && c.session.agentState === "listening", "her request");
     expect(log.sets).toEqual([number]);
-    expect(c.said().at(-1)).toBe("Try 27 plus 39 the same way.");
+    expect(c.said().at(-1)).toBe("What can you do there?");
+    // No repair request was made for the refusal.
+    expect(repairs).toEqual([]);
     // The child's turn arrives: the limits go back to the normal ones at once, before Maya's answer is known.
     speech.says("I got 56.");
     await waitFor(() => log.sets.length >= 2, "the turn");

@@ -22,7 +22,7 @@ import type { QuestionPackage } from "@/lib/question-package";
 import { VoiceCallRun, voiceSession, type Timers } from "./agent";
 import { FakeTTS } from "./fake-providers";
 import { makeProviders } from "./providers";
-import { TURN_PARTS, voiceTurnReport, type VoiceTurnSample } from "./turn-timing";
+import { TURN_PARTS, TurnClock, voiceTurnReport, type VoiceTurnSample } from "./turn-timing";
 
 // Maya's silence (#532), through LiveKit's own pipeline with the fake speech-to-text and voice: no room, no account, no
 // network. The system clock is frozen and only the test moves it, so every time below is exact. The fakes prove the
@@ -511,12 +511,14 @@ describe("the acknowledgement in one call (#532)", () => {
 
 describe("the parts of one turn (#532)", () => {
   it("add up to the total, each part exact, against the test's own stopwatch", async () => {
-    // Each fake moves the clock by its own known amount, so a part given to the wrong place fails its exact value. The
-    // first proposal is refused, so a repair runs, and the repair's free talk needs a review. The talk is calm: D-310
-    // refuses a cheerful exclamation before any review, which would leave no review to time.
+    // Each fake moves the clock by its own known amount, so a part given to the wrong place fails its exact value. A voice
+    // call has no time for a second model request (`modelRepair: false`): the first refused proposal goes straight to
+    // code's line, with one model attempt and no repair and no review. A second attempt or a review would move the clock
+    // (700 and 300 ms) and show in the parts, so the zero parts below are measured, not assumed.
     const inner = ruleMayaModel();
     let clockMove = (ms: number) => void ms;
     let asked = 0;
+    let reviews = 0;
     const model: MayaModel = {
       id: "fake", promptVersion: inner.promptVersion,
       propose: async (input, signal) => {
@@ -530,7 +532,7 @@ describe("the parts of one turn (#532)", () => {
     };
     const reviewer = fakeTalkReviewer(() => ({ verdict: "pass" }));
     const c = await voiceCall({ model, ackLimitMs: 0, seams: {
-      reviewer: () => ({ ...reviewer, review: (input, signal) => { clockMove(300); return reviewer.review(input, signal); } }),
+      reviewer: () => ({ ...reviewer, review: (input, signal) => { reviews++; clockMove(300); return reviewer.review(input, signal); } }),
     } });
     clockMove = c.clock.move;
 
@@ -554,12 +556,35 @@ describe("the parts of one turn (#532)", () => {
     const stopwatch = c.speaker.starts.at(-1)! - stoppedAt;
     expect(s.answerMs).toBe(stopwatch);
     expect(s.firstSoundMs).toBe(stopwatch);
+    // The first refusal fell back to code's line: one model attempt, no repair attempt, no review, and none of the repair's words.
+    expect(asked).toBe(1);
+    expect(reviews).toBe(0);
+    expect(c.said().join(" ")).not.toContain("dogs");
     // Nothing waits between the ready answer and its words reaching the voice: no later save, and no board answer.
+    expect(s.parts).toEqual({ heardMs: 300, modelMs: 2000, repairMs: 0, reviewMs: 0, codeMs: 50, ackHoldMs: 0, boardMs: 0, voiceMs: 120 });
+    expect(sum(s)).toBe(s.answerMs);
+    expect(s.answerMs).toBe(2470);
+    // The fake speech-to-text gives no word times; its end of speech came with its final transcript.
+    expect(s).toMatchObject({ sttWaitMs: null, speechEnd: null, waitMs: null });
+  });
+
+  it("keep a repair and a review that a supplied trace reports exact, and still add up to the total", () => {
+    // Voice calls run no repair, but the sample's parts still take a repair and a review from the controller's trace
+    // (`ready`), so a trace that holds them (a text call, an old call) is timed by the same public clock.
+    let now = 10_000;
+    const clock = new TurnClock(() => now, 10_000, 10_300);
+    now = 10_300;
+    // The controller's turn: 2000 model, 700 repair, 300 review, and 50 of code.
+    now = 10_300 + 2000 + 700 + 300 + 50;
+    clock.ready({ modelMs: 2000, repairMs: 700, reviewMs: 300 });
+    clock.held();
+    clock.staged();
+    now += 120;
+    expect(clock.sound()).toBe("answer");
+    const s = clock.sample("answered");
     expect(s.parts).toEqual({ heardMs: 300, modelMs: 2000, repairMs: 700, reviewMs: 300, codeMs: 50, ackHoldMs: 0, boardMs: 0, voiceMs: 120 });
     expect(sum(s)).toBe(s.answerMs);
     expect(s.answerMs).toBe(3470);
-    // The fake speech-to-text gives no word times; its end of speech came with its final transcript.
-    expect(s).toMatchObject({ sttWaitMs: null, speechEnd: null, waitMs: null });
   });
 
   it("measure the speech-to-text's own wait from the child's last word, before the turn's clock starts", async () => {

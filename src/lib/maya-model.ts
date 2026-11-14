@@ -18,6 +18,7 @@ import {
   numbersBrief,
   turnFacts,
   codeVerdicts,
+  confirmAsk,
   saysWritten,
   MODEL_OUTPUT_SCHEMA,
   PROPOSAL_SCHEMA,
@@ -282,6 +283,16 @@ export function briefParts(brief: TurnBrief): [stable: string, turn: string] {
   return whole.startsWith(head) ? [head, whole.slice(head.length)] : ["", whole];
 }
 
+/**
+ * The note that goes with the act "confirm" when a confirm owes a number now (the say rule `mustAsk`, through
+ * `confirmAsk`), or null. It binds only a reply that uses "confirm": a brief that does not offer the act has no note.
+ * The prepared key (`preparedKeys`) reads the same note, so it never strips any other.
+ */
+export function confirmNote(session: Session): string | null {
+  const ask = confirmAsk(session);
+  return ask ? `If you use the act "confirm", ask if the child said ${ask.key}: "Did you say ${ask.key}?" Name ${ask.key} only as the number they said, in a question, never as an equation or a result.` : null;
+}
+
 /** Notes for the turn: what code will do itself, and what the turn must not do. */
 function turnNotes(session: Session): string[] {
   const notes: string[] = [];
@@ -297,6 +308,10 @@ function turnNotes(session: Session): string[] {
     const next = session.package.easierExample.steps[session.exampleShown];
     if (next) notes.push(`If you work the easier example now, show its next step yourself, with its result, and ask nothing until the example ends: ${stepText(next, session.package.easierExample.operation)}${session.exampleShown === 0 && !session.exampleIntroduced ? " Say first that it is a new, easier problem." : ""}`);
   }
+  // Live practice at 980571e0: a confirm owed "Did you say 5?" (the rule `mustAsk`), and the brief never named it, so the reply
+  // was refused and its repair too. The note says what code will check.
+  const ask = acts.includes("confirm") ? confirmNote(session) : null;
+  if (ask) notes.push(ask);
   if (session.noBoard) notes.push("The child cannot see the board: say everything in words.");
   const main = session.state === "ASSESS" || session.resume === "ASSESS";
   if (main && session.done.length === 0 && session.turn && /\b(?:help|don'?t get|don'?t know|stuck|no idea|how (?:do|to) (?:i )?start)\b/i.test(session.turn.text)) {

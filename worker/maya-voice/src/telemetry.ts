@@ -12,10 +12,18 @@
 // A request made before its turn is known (a prepared reply) stays `unbound`; the final that follows lists it as a
 // CANDIDATE (`prepare_candidates`, selection `unreported`) and never as the turn's own: which request the controller
 // used is the controller's to say (docs: logging-build/report.md, "Controller seam"). No link is made by time.
+// preparation_decision d<N>  what the call's controller reported about one prepared reply (VoiceCall.onPreparation): kind,
+// used|discarded, lead, closed reason, the exact diagnostic handle id, cost only when the record states it. `used` means
+// SELECTED by the controller, never that its proposal passed validation: a selected proposal that is later refused stays
+// "used" here. Silence is not "none" and not acceptance: with no decision a turn's `preparationSelection` stays
+// `unreported`. A decision joins a physical prepared request ONLY by the exact handle id inside this registry; no id, an
+// id this registry never saw, an evicted request or two requests with one id leave the request null. A decision made
+// before its request keeps `binding: unresolved` and gets one `preparation_binding` update if that exact request comes.
 // Logs hold ids, closed reason codes and clock times only: no words, prompts, model output, audio, keys, URLs or
 // provider error text. Memory and output are bounded (`LIMITS`).
 import { randomUUID } from "node:crypto";
 import { requestContext, withRequestContext, type RequestSource } from "@/lib/maya-request-trace";
+import type { PrepareRecord } from "@/lib/maya-prepared";
 
 export const TELEMETRY_VERSION = 1;
 
@@ -52,12 +60,21 @@ export type TelemetryEvent =
   | { ev: "sentence"; turnId: string; sentenceId: string; index: number; via: "stream" | "turn_end"; at: number }
   | { ev: "admission"; turnId: string; startedAt: number; endedAt: number; ms: number; stt: SttRead; sttMs: number; block: "memory" | "awaited"; blockMs: number; outcome: AdmissionOutcome }
   | { ev: "mark"; scope: "request" | "utterance" | "turn"; id: string; name: RequestMark | UtteranceMark | TurnMark; at: number }
+  | { ev: "preparation_decision"; decisionId: string; kind: PrepareRecord["kind"]; status: PrepareRecord["status"]; leadMs: number; reason: NonNullable<PrepareRecord["reason"]> | null; handleId: string | null; usd: number | null; estimated: true | null; turnId: string | null; requestId: string | null; binding: DecisionBinding; at: number }
+  | { ev: "preparation_binding"; decisionId: string; requestId: string | null; binding: Exclude<DecisionBinding, "none"> }
   | { ev: "truncated"; dropped: number };
+
+/** exact: one physical request carries the decision's handle id. unresolved: none seen yet. ambiguous: several do. none: the record named no usable handle. */
+export type DecisionBinding = "exact" | "unresolved" | "ambiguous" | "none";
 
 export type Emitted = TelemetryEvent & { v: typeof TELEMETRY_VERSION; seq: number; callId: string | null };
 
 /** The bounds of one call's telemetry: entries kept in memory, and events written to the log. */
-export const LIMITS = { finals: 64, turns: 64, requests: 128, utterances: 96, events: 4000 } as const;
+export const LIMITS = { finals: 64, turns: 64, requests: 128, utterances: 96, decisions: 64, events: 4000 } as const;
+
+const KINDS: readonly string[] = ["interim", "expected"];
+const STATUSES: readonly string[] = ["used", "discarded"];
+const REASONS: readonly string[] = ["key", "text", "not_plain", "stale", "ended"];
 
 interface FinalRecord {
   id: string;
@@ -71,7 +88,22 @@ interface TurnRecord {
   marks: Record<string, number>;
   requestIds: string[];
   utteranceIds: string[];
+  decisionIds: string[];
+  decisionCount: number;
   sentences: number;
+}
+interface DecisionRecord {
+  id: string;
+  kind: PrepareRecord["kind"];
+  status: PrepareRecord["status"];
+  leadMs: number;
+  reason: NonNullable<PrepareRecord["reason"]> | null;
+  handleId: string | null;
+  usd: number | null;
+  estimated: true | null;
+  turnId: string | null;
+  requestId: string | null;
+  binding: DecisionBinding;
 }
 interface RequestRecord {
   id: string;
@@ -122,12 +154,17 @@ export class CallTelemetry {
   private seq = 0;
   private dropped = 0;
   private truncated = false;
-  private ids = { f: 0, t: 0, r: 0, u: 0, p: 0, g: 0 };
+  private ids = { f: 0, t: 0, r: 0, u: 0, p: 0, g: 0, d: 0 };
   private readonly scopeId: string;
   private readonly finals = new Map<string, FinalRecord>();
   private readonly turns = new Map<string, TurnRecord>();
   private readonly requests = new Map<string, RequestRecord>();
   private readonly utterances = new Map<string, UtteranceRecord>();
+  private readonly decisions = new Map<string, DecisionRecord>();
+  /** Duplicate knowledge survives request eviction. Each handle keeps constant-size state, never an expanding ID list. */
+  private readonly handleRequests = new Map<string, { requestId: string | null; ambiguous: boolean; historyKnown: boolean }>();
+  /** Once the bounded handle history loses an entry, an unseen handle cannot be assumed new. */
+  private handleHistoryLost = false;
   /** Hints given since the last final, and prepared requests sent with no turn since the last final. */
   private hintsSince: string[] = [];
   private unboundPrepared: string[] = [];
@@ -195,7 +232,7 @@ export class CallTelemetry {
     const id = this.id("t");
     const ids = finalIds.filter((x): x is string => typeof x === "string");
     const last = ids.length ? this.finals.get(ids[ids.length - 1]) : undefined;
-    this.turns.set(id, { id, finalIds: ids, marks: { ...(last?.marks ?? {}) }, requestIds: [], utteranceIds: [], sentences: 0 });
+    this.turns.set(id, { id, finalIds: ids, marks: { ...(last?.marks ?? {}) }, requestIds: [], utteranceIds: [], decisionIds: [], decisionCount: 0, sentences: 0 });
     bounded(this.turns, LIMITS.turns);
     this.emit({ ev: "turn", turnId: id, finalIds: ids, at });
     return id;
@@ -293,7 +330,72 @@ export class CallTelemetry {
     if (turn) turn.requestIds.push(id);
     else if (record.source === "prepared_interim" || record.source === "prepared_expected") this.unboundPrepared.push(id);
     this.emit({ ev: "request", requestId: id, source: record.source, turnId, binding: turnId ? "turn" : "unbound", prepareId: record.prepareId, handleId: record.handleId, ordinalInTurn: turn ? turn.requestIds.length : null, at: this.now() });
+    if (record.handleId && (record.source === "prepared_interim" || record.source === "prepared_expected")) this.joinRequest(record.handleId, id);
     return record;
+  }
+
+  // ----- preparation decisions -----
+
+  private requestOfHandle(handleId: string): { binding: Exclude<DecisionBinding, "none">; requestId: string | null } {
+    const h = this.handleRequests.get(handleId);
+    if (h?.ambiguous) return { binding: "ambiguous", requestId: null };
+    if (!h?.historyKnown || !h.requestId || !this.requests.has(h.requestId)) return { binding: "unresolved", requestId: null };
+    return { binding: "exact", requestId: h.requestId };
+  }
+
+  /** A prepared request appeared. Eviction can remove detail, but it cannot prove uniqueness. */
+  private joinRequest(handleId: string, requestId: string) {
+    const prior = this.handleRequests.get(handleId);
+    const retainedDuplicate = [...this.decisions.values()].some(d => d.handleId === handleId &&
+      (d.binding === "ambiguous" || (d.requestId !== null && d.requestId !== requestId)));
+    const ambiguous = !!prior || retainedDuplicate;
+    const state = { requestId: ambiguous ? null : requestId, ambiguous, historyKnown: prior?.historyKnown ?? !this.handleHistoryLost };
+    this.handleRequests.delete(handleId);
+    this.handleRequests.set(handleId, state);
+    if (this.handleRequests.size > LIMITS.requests) {
+      this.handleRequests.delete(this.handleRequests.keys().next().value as string);
+      this.handleHistoryLost = true;
+    }
+    const match = this.requestOfHandle(handleId);
+    for (const d of this.decisions.values()) {
+      if (d.handleId !== handleId || d.binding === "ambiguous") continue;
+      if (d.binding === match.binding && d.requestId === match.requestId) continue;
+      d.binding = match.binding;
+      d.requestId = match.requestId;
+      this.emit({ ev: "preparation_binding", decisionId: d.id, requestId: d.requestId, binding: match.binding });
+    }
+  }
+
+  /**
+   * What the controller reported about one prepared reply (VoiceCall.onPreparation). Only closed fields are read and
+   * kept; a record without a closed kind, status and lead is dropped whole. `used` is the controller's SELECTION: this
+   * never says the proposal was accepted. The owning turn is the async request context's turn, when this registry has
+   * it; a decision made at the call's end or outside a child turn keeps a null turn.
+   */
+  preparationDecision(input: unknown): string | null {
+    if (!input || typeof input !== "object") return null;
+    const r = input as Record<string, unknown>;
+    if (typeof r.kind !== "string" || !KINDS.includes(r.kind) || typeof r.status !== "string" || !STATUSES.includes(r.status)) return null;
+    if (typeof r.leadMs !== "number" || !Number.isFinite(r.leadMs) || r.leadMs < 0) return null;
+    const reason = typeof r.reason === "string" && REASONS.includes(r.reason) ? (r.reason as NonNullable<PrepareRecord["reason"]>) : null;
+    // A cost is known only when the record states one: absent stays null, a stated zero stays zero.
+    const usd = typeof r.usd === "number" && Number.isFinite(r.usd) && r.usd >= 0 ? r.usd : null;
+    const handleId = closedId(typeof r.diagnosticHandleId === "string" ? r.diagnosticHandleId : null);
+    const ctxTurn = requestContext().turnId;
+    const turnId = ctxTurn && this.turns.has(ctxTurn) ? ctxTurn : null;
+    const matched = handleId ? this.requestOfHandle(handleId) : { binding: "none" as const, requestId: null };
+    const binding: DecisionBinding = matched.binding;
+    const d: DecisionRecord = { id: this.id("d"), kind: r.kind as PrepareRecord["kind"], status: r.status as PrepareRecord["status"], leadMs: r.leadMs, reason, handleId, usd, estimated: r.estimated === true ? true : null, turnId, requestId: matched.requestId, binding };
+    this.decisions.set(d.id, d);
+    bounded(this.decisions, LIMITS.decisions);
+    if (turnId) {
+      const turn = this.turns.get(turnId)!;
+      turn.decisionCount++;
+      turn.decisionIds.push(d.id);
+      if (turn.decisionIds.length > LIMITS.decisions) turn.decisionIds.shift();
+    }
+    this.emit({ ev: "preparation_decision", decisionId: d.id, kind: d.kind, status: d.status, leadMs: d.leadMs, reason: d.reason, handleId: d.handleId, usd: d.usd, estimated: d.estimated, turnId: d.turnId, requestId: d.requestId, binding: d.binding, at: this.now() });
+    return d.id;
   }
 
   private requestMark(record: RequestRecord, name: RequestMark) {
@@ -371,6 +473,7 @@ export class CallTelemetry {
     if (!turn) return null;
     const requests = turn.requestIds.map(id => this.requests.get(id)).filter((r): r is RequestRecord => !!r);
     const utterances = turn.utteranceIds.map(id => this.utterances.get(id)).filter((u): u is UtteranceRecord => !!u);
+    const decisions = turn.decisionIds.map(id => this.decisions.get(id)).filter((d): d is DecisionRecord => !!d);
     const times: number[] = [...Object.values(turn.marks), ...requests.flatMap(r => Object.values(r.marks)), ...utterances.flatMap(u => Object.values(u.marks))];
     for (const id of turn.finalIds) times.push(...Object.values(this.finals.get(id)?.marks ?? {}));
     if (!times.length) return null;
@@ -387,6 +490,14 @@ export class CallTelemetry {
       ...(first ? { modelSent: first.marks.sent !== undefined ? first.marks.sent - t0 : null, modelHeaders: first.marks.headers !== undefined ? first.marks.headers - t0 : null, modelFirstChunk: first.marks.firstBodyChunk !== undefined ? first.marks.firstBodyChunk - t0 : null } : {}),
       ...(answer ? { ttsRequest: answer.marks.ttsRequest !== undefined ? answer.marks.ttsRequest - t0 : null, ttsFirstFrame: answer.marks.ttsFirstFrame !== undefined ? answer.marks.ttsFirstFrame - t0 : null } : {}),
       ...(ack ? { ackTtsRequest: ack.marks.ttsRequest !== undefined ? ack.marks.ttsRequest - t0 : null, ackTtsFirstFrame: ack.marks.ttsFirstFrame !== undefined ? ack.marks.ttsFirstFrame - t0 : null } : {}),
+      // Explicit decisions only. No decision: `unreported`, never "none" and never "accepted".
+      preparationSelection: turn.decisionCount ? "reported" : "unreported",
+      preparationDecisionCount: turn.decisionCount,
+      preparationDetailsEvicted: Math.max(0, turn.decisionCount - decisions.length),
+      preparations: decisions.map(d => {
+        const q = d.requestId ? this.requests.get(d.requestId) : undefined;
+        return { id: d.id, kind: d.kind, status: d.status, leadMs: d.leadMs, reason: d.reason, handleId: d.handleId, usd: d.usd, estimated: d.estimated, binding: d.binding, requestId: q ? q.id : null, ...(q ? { request: { source: q.source, status: q.status, outcome: q.outcome, ...rel(q.marks) } } : {}) };
+      }),
       requests: requests.map(r => ({ id: r.id, source: r.source, prepareId: r.prepareId, handleId: r.handleId, status: r.status, outcome: r.outcome, ...rel(r.marks) })),
       utterances: utterances.map(u => ({ id: u.id, kind: u.kind, speechId: u.speechId, sentenceId: u.sentenceId, sentenceIndex: u.sentenceIndex, ttsRequests: u.ttsRequests, ...rel(u.marks) })),
     };

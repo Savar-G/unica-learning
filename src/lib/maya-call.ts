@@ -76,6 +76,8 @@ import type { LearningEvents, NewLearningEvent } from "@/lib/learning-events";
 import type { NoteStep } from "@/lib/maya-call-note";
 import { clearStop, heardWordings, learningEvent, limitsOf, mayaPackageCheck, nextActs, SAFETY_GUIDANCE, streamPlan, type Outcome, type Session, type Severity, type WordingHistory, type WordingHistoryStore } from "@/lib/maya";
 import { createHandleDiagnosticIds } from "@/lib/maya-handle-diagnostic";
+import type { PrepareRecord } from "@/lib/maya-prepared";
+import { withRequestContext } from "@/lib/maya-request-trace";
 import { modelInput, type MayaModel } from "@/lib/maya-model";
 import type { TalkReviewer } from "@/lib/maya-talk-review";
 import { createTextSession, type FinishOptions, type SavedTextSession, type TextOutput, type TextSession, type TextSessionOptions } from "@/lib/maya-text";
@@ -486,6 +488,8 @@ export interface VoiceCall {
    * own turn then holds only what comes after it. The save follows behind, as `settled` shows.
    */
   onGuidance(listener: (turn: VoiceTurn) => void): void;
+  /** Diagnostic decisions from the controller, including discards outside a child turn. The observer gets a copy. */
+  onPreparation?(listener: (record: PrepareRecord) => void): void;
   /** Saved accepted final words when this handle restored a controller that had already ended. */
   readonly pendingFinal: VoiceTurn | null;
   readonly boardSnapshot: BoardSnapshot;
@@ -875,7 +879,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
   }
 
   /** A call's text session. Admin test calls have free talk on (D-197), with the model's review; chat has it off. A resumed call keeps its flag. */
-  function textSession(record: Pick<CallRecord, "id" | "parentId" | "childId"> & { kind: CallKind }, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number, grade?: number, confirmWorkbook?: boolean, onGuidance?: (output: TextOutput) => void, sayHooks?: Pick<TextSessionOptions, "onSayPart" | "onSayCancel" | "onSayEnd">, spend?: SpendCall, preparing?: Pick<TextSessionOptions, "spend" | "prepareModel">): TextSession {
+  function textSession(record: Pick<CallRecord, "id" | "parentId" | "childId"> & { kind: CallKind }, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number, grade?: number, confirmWorkbook?: boolean, onGuidance?: (output: TextOutput) => void, sayHooks?: Pick<TextSessionOptions, "onSayPart" | "onSayCancel" | "onSayEnd" | "modelRepair" | "onPreparation" | "withModelAttempt">, spend?: SpendCall, preparing?: Pick<TextSessionOptions, "spend" | "prepareModel" | "prepareHandleId">): TextSession {
     return createTextSession({
       onGuidance, ...sayHooks, ...preparing,
       callId: record.id, channel: record.kind === "chat" ? "chat" : undefined, package: pkg, model, clock: seams.clock, random: seed, history, childName, runner: "text", resume: saved, limitMs, grade, confirmWorkbook,
@@ -1157,6 +1161,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       const prepareHandleId = createHandleDiagnosticIds(voiceSpend.budgetKey ?? record.id);
       // C2 speculative requests use this budget through a request-bound model, without a second reservation.
       let hearGuidance: ((turn: VoiceTurn) => void) | null = null;
+      let hearPreparation: ((record: PrepareRecord) => void) | null = null;
       // Every trace turn before this index has been told to the worker in an earlier turn.
       let told = 0;
       /** The worker's ear on the child turn that runs now (VoiceSay). Other inputs give their words with their turn. */
@@ -1171,7 +1176,11 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         onSayPart: (sentence, index) => listener?.part?.(sentence, index),
         onSayCancel: (fromIndex) => listener?.cancel?.(fromIndex),
         onSayEnd: () => listener?.end?.(),
-      }, voiceSpend, budget ? { spend: budget.seam, prepareModel: (handle) => seams.model(record.model, voiceSpend, { prepared: { budget, handle, diagnosticHandleId: prepareHandleId(handle) } }) } : undefined);
+        // A voice call has no time for a second model request: a refused first proposal goes straight to code's line.
+        modelRepair: false,
+        onPreparation: (record) => hearPreparation?.(record),
+        withModelAttempt: (source, run) => withRequestContext({ source, prepareId: null, diagnosticHandleId: null }, run),
+      }, voiceSpend, budget ? { spend: budget.seam, prepareHandleId, prepareModel: (handle) => seams.model(record.model, voiceSpend, { prepared: { budget, handle, diagnosticHandleId: prepareHandleId(handle) } }) } : undefined);
       told = session.trace().turns.length;
       const last = restored.turns.at(-1);
       const pendingFinal: VoiceTurn | null = restored.session.outcome ? record.live?.pendingVoice ?? {
@@ -1451,6 +1460,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         },
         get working() { return working > 0; },
         onGuidance(listener) { hearGuidance = listener; },
+        onPreparation(listener) { hearPreparation = listener; },
         prepare: (input) => !inactive() && !session.ended && !working && !pastClock(session.session) && !!budget && session.prepare(input),
         get pendingFinal() {
           return pendingFinal ? structuredClone(pendingFinal) : null;

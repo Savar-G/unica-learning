@@ -479,6 +479,11 @@ export class VoiceCallRun {
     this.agent.onSilent = speech => this.silentSpeech(speech);
     this.agent.utteranceOwner = () => this.utteranceOwner();
     call.onGuidance(turn => this.guidanceNow(turn));
+    // The controller's prepared-reply decisions (optional: an older call has no setter, and selection stays unreported).
+    // The registry is captured now, so a late callback never logs into a replacement call's registry. A failing setter,
+    // listener or log never reaches the call.
+    const registry = telemetry();
+    try { call.onPreparation?.(record => { try { registry.preparationDecision(record); } catch { /* a log never fails a call */ } }); } catch { /* the setter is an observer */ }
     session.on(voice.AgentSessionEventTypes.UserInputTranscribed, ev => { if (ev.transcript.trim()) this.wordsHeard(); });
     session.on(voice.AgentSessionEventTypes.UserStateChanged, ev => {
       if (ev.newState === "speaking") {

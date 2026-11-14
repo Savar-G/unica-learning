@@ -49,7 +49,7 @@ import {
   type WordingHistory,
 } from "@/lib/maya";
 import { modelInput, turnBrief, type MayaModel, type ModelInput } from "@/lib/maya-model";
-import { preparedReplies, preparedKey, normalizeTurn, MAX_PREPARES_PER_TURN, type PrepareHypothesis, type PreparedReply, type PrepareRecord } from "@/lib/maya-prepared";
+import { preparedReplies, preparedKey, preparedKeys, sameTurn, MAX_PREPARES_PER_TURN, type PrepareHypothesis, type PreparedReply, type PrepareRecord } from "@/lib/maya-prepared";
 import type { SpendHandle, SpendSeam } from "@/lib/maya-spend-seam";
 import { readReuse, withReadReuse } from "@/lib/maya/read-reuse";
 import { sentencesOf } from "@/lib/maya/say-check";
@@ -97,6 +97,25 @@ export interface TextSessionOptions {
   spend?: SpendSeam;
   /** One request-bound model for the already paid handle. Normal turns still use `model`. */
   prepareModel?: (handle: SpendHandle) => MayaModel | null;
+  /**
+   * Diagnostics only: the id of a spend handle, from the ONE call-local getter the caller already uses to tag the
+   * physical request (a WeakMap on the handle object; the session invents no id and mutates no handle). It is copied
+   * into the used or discarded preparation record. A getter that throws or gives no plain token leaves the id missing.
+   */
+  prepareHandleId?: (handle: SpendHandle) => string;
+  /**
+   * Diagnostics only: called with a shallow copy of each preparation record right after the session stored it. It
+   * cannot change the saved record; a throw or a rejected promise is ignored and changes no speech, credit or state.
+   */
+  onPreparation?: (record: PrepareRecord) => void | Promise<void>;
+  /**
+   * Diagnostics only: an optional envelope around ONLY the ordinary model request (`model.propose`) of a turn, with
+   * its source (`model`, or `repair` after a refusal). `run` must be called synchronously by the wrapper, so an
+   * async context it opens (the caller's request context) binds to the real dispatch. `run` sends at most one
+   * request however often it is called, and a wrapper that throws or never calls it changes nothing: the session
+   * uses the one cached result. A prepared reply is not wrapped (its request carries its own source).
+   */
+  withModelAttempt?: <T>(source: "model" | "repair", run: () => T) => T;
   /** Prepare expected and known-wrong values after a delivered turn. Default on when spend is supplied. */
   prepareExpected?: boolean;
   confirmWorkbook?: boolean;
@@ -128,6 +147,12 @@ export interface TextSessionOptions {
    * Maya says code's own line (fallbacks). Voice sets less.
    */
   turnBudgetMs?: number;
+  /**
+   * Whether a refused first proposal gets a second model request that fixes it (default true). A voice call sets false:
+   * the repair costs two seconds of silence and failed in live practice (980571e0), so the first refusal goes straight
+   * to code's own line. Chat and admin text calls keep the repair. Safety is code's guidance either way.
+   */
+  modelRepair?: boolean;
   /**
    * D-341, the streaming contract agreed with the voice lead. Each sentence of Maya's output goes to `onSayPart` in
    * index order, one at a time, only after it passed the per-sentence checks; a sentence sent is never cancelled.
@@ -304,10 +329,18 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   let preparationStopped = false;
   const preparations: PrepareRecord[] = structuredClone(resume?.preparations ?? []);
   const costs = new Map<PrepareRecord, PreparedReply>();
-  const cache = options.spend && model.output === 3 ? preparedReplies(model, options.spend, () => now(), options.prepareModel) : null;
+  const cache = options.spend && model.output === 3 ? preparedReplies(model, options.spend, () => now(), options.prepareModel, options.prepareHandleId) : null;
   let committing: { generation: number; entries: Map<string, PreparedReply>; at: number } | null = null;
   let preparedOutput: Pick<TextOutput, "prepared" | "preparedLeadMs" | "preparedKind"> = {};
-  function record(entry: PreparedReply, value: PrepareRecord) { preparations.push(value); costs.set(value, entry); }
+  function record(entry: PreparedReply, value: PrepareRecord) {
+    preparations.push(value); costs.set(value, entry);
+    // Diagnostics only, after the record is stored: a copy, and no failure of the hook reaches the call.
+    if (!options.onPreparation) return;
+    try {
+      const out = options.onPreparation({ ...value });
+      if (out && typeof (out as Promise<void>).then === "function") (out as Promise<void>).then(undefined, () => undefined);
+    } catch { /* the hook is an observer */ }
+  }
   function discard(entries: Map<string, PreparedReply>, reason: NonNullable<PrepareRecord["reason"]>) {
     for (const entry of entries.values()) record(entry, cache!.discard(entry, reason, now()));
   }
@@ -342,21 +375,22 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     if (!batch || !cache) return;
     const plain = plainMathTurn(folded.session);
     const brief = turnBrief(folded.session);
-    const key = preparedKey(folded.session, brief);
+    const keys = preparedKeys(folded.session, brief);
     let selected: PreparedReply | undefined;
     for (const entry of batch.entries.values()) {
       if (!entry.available()) {
         record(entry, cache.discard(entry, "stale", batch.at));
         continue;
       }
-      const h = batch.generation === generation && plain && key === entry.key ? entry.hypotheses.find((h) => h.reason === "interim" ? normalizeTurn(h.text) === normalizeTurn(brief.childTurn ?? "") : fitsExpected(folded.session, h.text)) : undefined;
+      const keyFits = keys.includes(entry.key);
+      const h = batch.generation === generation && plain && keyFits ? entry.hypotheses.find((h) => h.reason === "interim" ? sameTurn(h.text, brief.childTurn ?? "") : fitsExpected(folded.session, h.text)) : undefined;
       if (h && !selected) {
         selected = entry;
         const rec = cache.used(entry, batch.at);
         rec.kind = h.reason;
         record(entry, rec);
         preparedOutput = { prepared: "hit", preparedLeadMs: rec.leadMs, preparedKind: h.reason };
-      } else record(entry, cache.discard(entry, !plain ? "not_plain" : key !== entry.key ? "key" : "text", batch.at));
+      } else record(entry, cache.discard(entry, !plain ? "not_plain" : !keyFits ? "key" : "text", batch.at));
     }
     if (!selected && batch.entries.size) preparedOutput = { prepared: "miss" };
     return selected;
@@ -392,6 +426,25 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     const stop = new Promise<typeof stopped>((resolve) => { abort = () => resolve(stopped); controller.signal.addEventListener("abort", abort, { once: true }); });
     try { return await Promise.race([promise, stop]); }
     finally { controller.signal.removeEventListener("abort", abort); }
+  }
+  /** One ordinary model request, labelled for the diagnostic envelope. The request is sent once, by the first call of `run`. */
+  function attempt(source: "model" | "repair", send: () => Promise<unknown>): Promise<unknown> {
+    const result = Promise.withResolvers<unknown>();
+    let started = false;
+    const run = (): Promise<unknown> => {
+      if (!started) {
+        started = true;
+        try { result.resolve(send()); } catch (error) { result.reject(error); }
+      }
+      return result.promise;
+    };
+    if (options.withModelAttempt) {
+      try {
+        const seen = options.withModelAttempt(source, run) as unknown;
+        if (seen && typeof (seen as Promise<unknown>).then === "function") (seen as Promise<unknown>).then(undefined, () => undefined);
+      } catch { /* the envelope is an observer */ }
+    }
+    return run();
   }
   async function request(source: "model" | "repair", controller: AbortController) {
     const prepared = source === "model" ? preparedForTurn() : undefined;
@@ -462,7 +515,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       return sent.length ? { sent: [...sent], firstSayMs } : {};
     };
     // The handler logs even a late response from a provider that ignores abort; a response after the budget is stale.
-    const answered = Promise.resolve().then(() => prepared ? prepared.use(onText, controller.signal) : model.propose(input, controller.signal, onText)).then((proposal) => ({ proposal }), (error: unknown) => ({ error }));
+    const answered = Promise.resolve().then(() => prepared ? prepared.use(onText, controller.signal) : attempt(source, () => model.propose(input, controller.signal, onText))).then((proposal) => ({ proposal }), (error: unknown) => ({ error }));
     const response = Promise.race([answered, budget]).then((got) => {
       clearTimeout(budgetTimer);
       if (got === "budget") {
@@ -542,7 +595,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       // With the danger known, a refused proposal gets code's guidance now, not a second model call.
       const safetyDue = folded.session.safety.flagged && !folded.session.safety.guided;
       // Words already streamed cannot be taken back: a refusal then goes straight to code's line after them.
-      if (folded.attempts.at(-1)?.source === "model" && folded.attempts.at(-1)?.refusal && !folded.session.outcome && !safetyDue && Date.now() < turnEndsAt && !folded.sent?.length) await request("repair", controller);
+      if (options.modelRepair !== false && folded.attempts.at(-1)?.source === "model" && folded.attempts.at(-1)?.refusal && !folded.session.outcome && !safetyDue && Date.now() < turnEndsAt && !folded.sent?.length) await request("repair", controller);
       if (controller.signal.aborted) break;
       if (folded.attempts.length && !folded.session.outcome) {
         const refused = folded.attempts.filter((a) => a.refusal !== null).map((a) => a.proposal);
