@@ -1,0 +1,51 @@
+{
+  "method": "Aside u0, local integrated source",
+  "httpStatus": 200,
+  "responseBytes": 189286,
+  "viewports": [
+    {
+      "height": 1100,
+      "scrollY": 6538.5,
+      "rect": {
+        "x": 80,
+        "y": 416.640625,
+        "width": 1280,
+        "height": 43.390625,
+        "top": 416.640625,
+        "right": 1360,
+        "bottom": 460.03125,
+        "left": 80
+      },
+      "opacity": "1",
+      "width": 1440,
+      "scrollWidth": 1440,
+      "referral": "Share Unica with another family. They get 50% off their first paid month. After their first successful payment, your family gets 50% off one paid month too. The discount covers each enrolled child, including the sibling price. Your free month stays. Referral rules.",
+      "gradeFootnote": "*The Unica Teaching Assistant is for Grade 3 and up.",
+      "rules": "/terms#referrals",
+      "visible": true
+    },
+    {
+      "height": 844,
+      "scrollY": 6686.5,
+      "rect": {
+        "x": 16,
+        "y": 422.2265625,
+        "width": 358,
+        "height": 108.4765625,
+        "top": 422.2265625,
+        "right": 374,
+        "bottom": 530.703125,
+        "left": 16
+      },
+      "opacity": "1",
+      "width": 390,
+      "scrollWidth": 390,
+      "referral": "Share Unica with another family. They get 50% off their first paid month. After their first successful payment, your family gets 50% off one paid month too. The discount covers each enrolled child, including the sibling price. Your free month stays. Referral rules.",
+      "gradeFootnote": "*The Unica Teaching Assistant is for Grade 3 and up.",
+      "rules": "/terms#referrals",
+      "visible": true
+    }
+  ],
+  "ownedTabsClosed": true,
+  "limit": "Local rendered layout check. No production billing journey."
+}

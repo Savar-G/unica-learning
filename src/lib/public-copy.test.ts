@@ -26,16 +26,14 @@ describe("the FAQ describes the online math assessment", () => {
     expect(a).toMatch(/own progress report/);
   });
 
-  it("describes Maya chat and its limits on the public FAQ and summaries", () => {
+  it("describes Maya and her limits on the public FAQ and summaries", () => {
     const how = answer(/How does the AI Teaching Assistant work/);
     expect(how).toMatch(/Grade 3 and up/);
-    expect(how).toMatch(/type to Maya/);
+    expect(how).toMatch(/call Maya/);
     expect(how).toMatch(/cannot teach a question yet/);
-    expect(how).toMatch(/60 messages a day/);
-    expect(how).toMatch(/Weekly limits/);
+    expect(how).toMatch(/weekly limits/);
     for (const text of [how, answer(/screen time/), llmsTxt(), pricingMarkdown(), PARENT_NOTE]) {
       expect(text).toMatch(/Grade 3 and up/);
-      expect(text).not.toMatch(/voice call|talk with the Teaching Assistant/i);
     }
   });
 

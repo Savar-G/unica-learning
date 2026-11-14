@@ -4,6 +4,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import ScanPage from "./page";
 
 vi.mock("server-only", () => ({}));
+vi.mock("@/lib/family-time-server", () => ({ loadFamilyZone: async () => "America/Toronto" }));
 
 const PHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1";
 const TABLET = "Mozilla/5.0 (Linux; Android 14; SM-X710) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";

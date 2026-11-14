@@ -210,6 +210,7 @@ Migrations `20261106213840_workbook_scan_receipts` and `20261107073840_workbook_
 | `workbook_scan_reminder_messages` | One inactivity reminder email, linked to its `email_log` row | Cascade from `parents` and `email_log` | Removed by the `delete_child_scan_reminders` trigger on `children` (below) | Family write fence |
 | `workbook_scan_reminder_links` | Which child and episode a reminder message covers | Cascade from the episode, the message and `parents` | Cascade from `children` | Family write fence; child write fence except on releasing an unsent reservation |
 | `workbook_scan_reminder_attempts` | Each send attempt of a reminder message | Cascade from the message and `parents` | With its message | Family write fence |
+| `workbook_scan_reminder_unreachable` | A parent whose reminder could not be sent for want of a usable address, with an md5 of the address it had (#962; migration `20261114065325_workbook_scan_reminder_unreachable`) | Cascade from `parents` | None (no child column) | Family write fence |
 
 The reminder messages and their attempts belong to the parent and have no child column. Before a child row is deleted, the trigger `delete_child_scan_reminders` (`delete_child_workbook_scan_reminders()`) deletes that child's reminder messages, which cascades to their links and attempts. It also deletes their `email_copies` and, while the family stays, marks those `email_log` rows `copy_redacted`. The parent's email log row and its unsubscribe token stay, as in the other child email deletions.
 

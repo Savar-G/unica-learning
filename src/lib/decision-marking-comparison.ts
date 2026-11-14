@@ -5,8 +5,13 @@
 // Truth groups: `right` rows count toward the confirm rate; `wrong`, `blank` and `uncertain` rows count toward false
 // Right; `parent` rows are listed and left out. An error, a refusal, a block or a time-out is never a pass: that item is
 // not confirmed at any threshold. Known wrong answers are never shown to the model.
-// Local tool only: synthetic photos, no real child data, no database. The CLI is scripts/decision-marking-comparison-cli.ts.
+// Slice B (#853): the same comparison on the real phone photos of the made-up Robin booklet (`physicalComparisonSet`,
+// from scan-marking-physical's set.json): only the photos the page check accepted can be cropped, the set must hold at
+// least 40 wrong and 20 blank items, and `comparisonWinner` names the model and threshold that pass on both sets.
+// Local tool only: made-up child, no real child data, no database. The CLI is scripts/decision-marking-comparison-cli.ts.
 import { cropPlan } from "@/lib/scan-calibration";
+import { SYNTHETIC_IDS } from "@/lib/scan-marking-comparison";
+import { FROZEN_KIT } from "@/lib/scan-marking-physical";
 import { markingRegions, type MarkingRegion } from "@/lib/scan-marking-regions";
 import { packageItem, valueText, type QuestionPackage } from "@/lib/question-package";
 import type { Box, PrintedRegion } from "@/lib/workbook-print-contract";
@@ -41,9 +46,10 @@ export interface SetPhoto {
   frame: { pageNumber: number; questions: readonly SetQuestion[] };
   truth: readonly { itemId: string; format: string; result: TruthResult }[];
 }
-/** The parts of the fixed 40 manifest (scan-marking-comparison) this comparison reads. */
+/** The parts of the fixed 40 manifest (scan-marking-comparison) this comparison reads; a physical set has the same shape. */
 export interface SetManifest {
-  synthetic: true;
+  /** false for the real phone photos of the made-up booklet (#853). */
+  synthetic: boolean;
   identity: { containsRealData: false };
   photos: readonly SetPhoto[];
 }
@@ -96,9 +102,12 @@ export function regionQuestion(region: MarkingRegion, pkg: QuestionPackage, only
   return { type: "noul", instructions: `Does this box show ${forms.map((f) => (unit ? `${f} ${unit}` : f)).join(" or ")}?`, yes: YES_BOX, no: NO_BOX };
 }
 
-/** The items to ask about, the parent rows left out, from the manifest. Throws on a row the crop plan cannot ask about. */
+/**
+ * The items to ask about, and the rows left out, from the manifest: parent rows, and items with a method region (two
+ * ways), which our team marks while the method switch is off. Throws on a row the crop plan cannot ask about.
+ */
 export function comparisonItems(manifest: SetManifest): { items: ComparisonItem[]; leftOut: LeftOut[] } {
-  if (manifest.synthetic !== true || manifest.identity?.containsRealData !== false) throw new Error("synthetic-set-required");
+  if (manifest.identity?.containsRealData !== false) throw new Error("made-up-child-set-required");
   const items: ComparisonItem[] = [], leftOut: LeftOut[] = [];
   for (const photo of manifest.photos) {
     const plan = cropPlan(photo.frame.questions);
@@ -111,7 +120,10 @@ export function comparisonItems(manifest: SetManifest): { items: ComparisonItem[
       if (!q?.package || !plan.crops.some((c) => c.itemId === row.itemId)) throw new Error(`no-crop-for-item:${photo.id}:${row.itemId}`);
       const scored = markingRegions(q);
       const boxes = packageItem(q.package).regions.filter((r) => r.kind === "box").length;
-      if (scored.some((r) => r.kind === "method")) throw new Error(`method-region-not-asked:${photo.id}:${row.itemId}`);
+      if (scored.some((r) => r.kind === "method")) {
+        leftOut.push({ photo: photo.id, itemId: row.itemId, format: row.format });
+        continue;
+      }
       items.push({
         photo: photo.id, clear: photo.clear, itemId: row.itemId, number: q.number, format: row.format, result: row.result,
         regions: scored.map((r) => ({ regionId: r.id, box: r.box, question: regionQuestion(r, q.package!, boxes === 1) })),
@@ -119,6 +131,63 @@ export function comparisonItems(manifest: SetManifest): { items: ComparisonItem[
     }
   }
   return { items, leftOut };
+}
+
+/** #853: the real set must hold at least this many wrong and blank items, so 0 false Right cannot pass for lack of them. */
+export const PHYSICAL_MIN_ITEMS = { wrong: 40, blank: 20 } as const;
+
+/** The parts of scan-marking-physical's set.json (version robin-physical-v2) this comparison reads. */
+export interface PhysicalSetFile {
+  version: string;
+  proofClass?: string;
+  kit?: Readonly<Record<string, string>>;
+  devices?: readonly string[];
+  photos: readonly { mapping: { file: string; device: string }; status: string; reason: string | null; photo: SetPhoto & { image: SetPhoto["image"] & { sha256?: string } } }[];
+}
+export interface PhysicalSet {
+  manifest: SetManifest;
+  /** Photos the page check refused: they have no straightened page, so no region of them can be cropped or asked. */
+  refused: { file: string; reason: string | null }[];
+  devices: string[];
+  /** The spec's set is both phones; an iPhone-only set is recorded as such and never stands in for it. */
+  bothPhones: boolean;
+  /** The source set's proof class, kept in the report: `physical-input` real photos, or a `local-fake` control. */
+  proofClass: "physical-input" | "local-fake";
+}
+
+/** The real Robin set from scan-marking-physical's set.json: the photos the page check accepted, each named by its file. */
+export function physicalComparisonSet(file: PhysicalSetFile, o: { allowFake?: boolean } = {}): PhysicalSet {
+  if (file?.version !== "robin-physical-v2" || !Array.isArray(file.photos)) throw new Error("physical-set-required");
+  // #853 review: only the real photos of the frozen, made-up Robin booklet. A local fake set is a control, read only by a
+  // fake run; any other proof class, kit or child is refused, all before a key is read.
+  const proofClass = file.proofClass;
+  if (proofClass !== "physical-input" && !(proofClass === "local-fake" && o.allowFake)) throw new Error("physical-set-proof-class");
+  const kit = file.kit ?? {};
+  if (Object.keys(kit).length !== Object.keys(FROZEN_KIT).length || Object.entries(FROZEN_KIT).some(([k, v]) => kit[k] !== v)) throw new Error("physical-set-not-the-robin-kit");
+  const ready = file.photos.filter((p) => p.status === "ready");
+  for (const p of ready) {
+    // The kit's items: the made-up Robin workbook's, and its three made-up scalar items (fraction, decimal, word).
+    if (!p.photo.truth.length || p.photo.truth.some((t: { itemId: string }) => !t.itemId.startsWith(`${SYNTHETIC_IDS.workbook}:`) && !/^synthetic-scalar-[1-3]$/.test(t.itemId))) throw new Error("physical-set-not-robin");
+    if (!/^[0-9a-f]{64}$/.test(p.photo.image.sha256 ?? "")) throw new Error("physical-set-image-hash-required");
+  }
+  const devices = [...new Set(file.devices?.length ? file.devices : ready.map((p) => p.mapping.device))].sort();
+  return {
+    manifest: { synthetic: false, identity: { containsRealData: false }, photos: ready.map((p) => ({ ...p.photo, id: p.mapping.file })) },
+    refused: file.photos.filter((p) => p.status !== "ready").map((p) => ({ file: p.mapping.file, reason: p.reason })),
+    devices, bothPhones: devices.includes("iphone") && devices.includes("android"), proofClass,
+  };
+}
+
+/** Each asked photo's image file must have the hash its set recorded: checked before a key is read. */
+export function checkPhysicalImages(file: PhysicalSetFile, sha256Of: (path: string) => string): void {
+  for (const p of file.photos.filter((x) => x.status === "ready")) if (sha256Of(p.photo.image.path) !== p.photo.image.sha256) throw new Error(`physical-set-image-changed: ${p.mapping.file}`);
+}
+
+/** The real set's shortfall against PHYSICAL_MIN_ITEMS, as a refusal reason; null when it has enough. */
+export function physicalShortfall(items: readonly ComparisonItem[]): string | null {
+  const wrong = items.filter((i) => i.result === "wrong").length, blank = items.filter((i) => i.result === "blank").length;
+  if (wrong >= PHYSICAL_MIN_ITEMS.wrong && blank >= PHYSICAL_MIN_ITEMS.blank) return null;
+  return `physical-set-too-few-items: ${wrong} wrong (needs ${PHYSICAL_MIN_ITEMS.wrong}), ${blank} blank (needs ${PHYSICAL_MIN_ITEMS.blank})`;
 }
 
 /** The crop of a region: its box with a margin, inside the page. Whole pixels. */
@@ -365,7 +434,9 @@ export function modelReport(model: string, items: readonly ComparisonItem[], res
 
 export interface ComparisonReport {
   version: number;
-  synthetic: true;
+  synthetic: boolean;
+  /** The real set's facts (#853); null for the synthetic set. */
+  physical: { devices: string[]; bothPhones: boolean; proofClass: "physical-input" | "local-fake"; refused: { file: string; reason: string | null }[] } | null;
   fake: boolean;
   photos: number;
   items: { right: number; wrong: number; blank: number; uncertain: number };
@@ -376,10 +447,11 @@ export interface ComparisonReport {
   models: ModelReport[];
 }
 
-export function comparisonReport(o: { items: readonly ComparisonItem[]; leftOut: readonly LeftOut[]; photos: number; fake: boolean; results: Readonly<Record<string, readonly AskResult[]>>; cap?: CostCap }): ComparisonReport {
+export function comparisonReport(o: { items: readonly ComparisonItem[]; leftOut: readonly LeftOut[]; photos: number; fake: boolean; results: Readonly<Record<string, readonly AskResult[]>>; cap?: CostCap; physical?: Omit<PhysicalSet, "manifest"> }): ComparisonReport {
   const count = (result: string) => o.items.filter((i) => i.result === result).length;
   return {
-    version: COMPARISON_VERSION, synthetic: true, fake: o.fake, photos: o.photos,
+    version: COMPARISON_VERSION, synthetic: !o.physical, physical: o.physical ? { devices: o.physical.devices, bothPhones: o.physical.bothPhones, proofClass: o.physical.proofClass, refused: o.physical.refused } : null,
+    fake: o.fake, photos: o.photos,
     items: { right: count("right"), wrong: count("wrong"), blank: count("blank"), uncertain: count("uncertain") },
     requestsPerModel: o.items.reduce((n, i) => n + i.regions.length, 0),
     leftOut: [...o.leftOut],
@@ -396,8 +468,9 @@ export function reportMarkdown(r: ComparisonReport): string {
   const lines = [
     `# Decision second-opinion comparison${r.fake ? " (fake HTTP: not a model result)" : ""}`,
     "",
-    `Synthetic fixed set: ${r.photos} photos; items asked: ${r.items.right} right, ${r.items.wrong} wrong, ${r.items.blank} blank, ${r.items.uncertain} uncertain; ${r.requestsPerModel} requests per model. Parent rows left out: ${r.leftOut.length}.`,
-    `Pass bar: 0 false Right, with every wrong, blank and uncertain request answered, and at least ${PASS_CONFIRM_RATE * 100}% of right items confirmed at the same threshold. Synthetic ink does not prove real handwriting.`,
+    `${r.physical ? `Real phone photos of the made-up Robin booklet (${r.physical.devices.join(" and ")})` : "Synthetic fixed set"}: ${r.photos} photos; items asked: ${r.items.right} right, ${r.items.wrong} wrong, ${r.items.blank} blank, ${r.items.uncertain} uncertain; ${r.requestsPerModel} requests per model. Rows left out (parent or team-marked two ways): ${r.leftOut.length}.`,
+    ...(r.physical ? [`Photos the page check refused (not asked: no straightened page to crop): ${r.physical.refused.length}${r.physical.refused.length ? ` (${r.physical.refused.map((x) => `${x.file}: ${x.reason ?? "refused"}`).join("; ")})` : ""}.`, ...(r.physical.bothPhones ? [] : ["One phone only: Android not tested. This set does not stand in for the spec's two-phone set."])] : []),
+    `Pass bar: 0 false Right, with every wrong, blank and uncertain request answered, and at least ${PASS_CONFIRM_RATE * 100}% of right items confirmed at the same threshold.${r.physical ? "" : " Synthetic ink does not prove real handwriting."}`,
     ...(r.cap ? [`Cost cap: USD ${r.cap.maxUsd}; spent USD ${r.cap.spentUsd.toFixed(6)} (known costs, and the bound of each attempt with a missing cost).${r.cap.stopped ? " The run stopped at the cost cap: a cost was above its bound, so the pinned prices are out of date, and no new request was sent." : ""}`] : []),
     "",
     "| Model | Lowest 0-false-Right threshold | Confirm rate there | Passes | Cost | Cost per photo | p50 latency | p95 latency | Errors |",
@@ -410,6 +483,43 @@ export function reportMarkdown(r: ComparisonReport): string {
     lines.push("", "Reliability (item P(yes) band against the share of right items):", "", "| P(yes) | Items | Right | Right rate |", "|---|---|---|---|");
     for (const b of m.reliability) lines.push(`| ${b.band} | ${b.items} | ${b.right} | ${pct(b.rightRate)} |`);
   }
-  if (r.leftOut.length) lines.push("", "## Parent rows left out", "", ...r.leftOut.map((l) => `- ${l.photo}: ${l.itemId} (${l.format})`));
+  if (r.leftOut.length) lines.push("", "## Rows left out (parent or team-marked two ways)", "", ...r.leftOut.map((l) => `- ${l.photo}: ${l.itemId} (${l.format})`));
   return lines.join("\n") + "\n";
+}
+
+/** A model and threshold that pass the bar on both sets (#853), with the confirm rate on each. */
+export interface Winner { model: string; threshold: number; syntheticConfirmRate: number; physicalConfirmRate: number }
+export interface WinnerResult { winner: Winner | null; candidates: Winner[]; notes: string[] }
+
+/**
+ * The winner (spec #850 slice B): for each model in both reports with every non-right request answered, the lowest
+ * threshold that gives 0 false Right and at least 80% of right items confirmed on both sets at once; of the models that
+ * have one, the higher confirm rate on the real photos. A fake report never names a winner.
+ */
+export function comparisonWinner(synthetic: ComparisonReport, physical: ComparisonReport): WinnerResult {
+  if (!synthetic.synthetic || !physical.physical) throw new Error("winner-needs-a-synthetic-and-a-physical-report");
+  const notes: string[] = [];
+  if (synthetic.fake || physical.fake) return { winner: null, candidates: [], notes: ["A fake HTTP report is not a model result: no winner."] };
+  if (!physical.physical.bothPhones) notes.push("The real set is one phone only (Android not tested): this result does not meet the spec's two-phone set.");
+  const candidates: Winner[] = [];
+  for (const p of physical.models) {
+    const s = synthetic.models.find((m) => m.model === p.model);
+    if (!s) { notes.push(`${p.model}: not in the synthetic report.`); continue; }
+    if (s.incomplete || p.incomplete) { notes.push(`${p.model}: ${[s.incomplete && `synthetic ${s.incomplete}`, p.incomplete && `real ${p.incomplete}`].filter(Boolean).join("; ")}.`); continue; }
+    const both = p.thresholds.find((pt) => {
+      const st = s.thresholds.find((t) => t.threshold === pt.threshold);
+      return !!st && st.falseRight === 0 && pt.falseRight === 0 && st.confirmRate >= PASS_CONFIRM_RATE && pt.confirmRate >= PASS_CONFIRM_RATE;
+    });
+    if (!both) { notes.push(`${p.model}: no threshold passes the bar on both sets.`); continue; }
+    candidates.push({ model: p.model, threshold: both.threshold, syntheticConfirmRate: s.thresholds.find((t) => t.threshold === both.threshold)!.confirmRate, physicalConfirmRate: both.confirmRate });
+  }
+  const winner = [...candidates].sort((a, b) => b.physicalConfirmRate - a.physicalConfirmRate || a.threshold - b.threshold)[0] ?? null;
+  return { winner, candidates, notes };
+}
+
+export function winnerMarkdown(w: WinnerResult): string {
+  const head = w.winner
+    ? `Winner: ${w.winner.model} at threshold ${w.winner.threshold.toFixed(2)} (confirms ${pct(w.winner.physicalConfirmRate)} of right items on the real photos, ${pct(w.winner.syntheticConfirmRate)} on the synthetic set, with 0 false Right on both).`
+    : "No model passes the bar on both sets.";
+  return ["## Winner", "", head, ...w.candidates.filter((c) => c !== w.winner).map((c) => `- Also passes: ${c.model} at ${c.threshold.toFixed(2)} (real ${pct(c.physicalConfirmRate)}).`), ...w.notes.map((n) => `- ${n}`)].join("\n") + "\n";
 }

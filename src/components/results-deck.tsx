@@ -196,7 +196,7 @@ export function ResultsDeckView({ deck }: { deck: ResultsDeck }) {
           {[
             ["A workbook in the mail", "Paper practice, built from the results and the BC curriculum."],
             ["Practice every day", "Short daily pages, with a schedule to follow in the book and online."],
-            chat ? ["Help when they're stuck", "Children in Grade 3 and up can type to Maya, the AI Teaching Assistant, about a workbook question. They still do the work."] : ["Go over the marks together", "Each marked page can explain the steps on anything they missed."],
+            chat ? ["Help when they're stuck", "Children in Grade 3 and up can call Maya, the AI Teaching Assistant, about a workbook question. They still do the work."] : ["Go over the marks together", "Each marked page can explain the steps on anything they missed."],
             ["Scan, and the next book adapts", "Scan the finished pages with your phone. The next book builds on what they've got."],
           ].map(([t, d], i) => (
             <div key={t}>

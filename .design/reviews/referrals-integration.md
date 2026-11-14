@@ -17,3 +17,13 @@ Savar then authorized live Stripe configuration through Aside. All 12 missing ev
 During this round, GitHub reported new conflicts with remote main a9ff3b15a4f80ead1b087dd0cb14def1690af3d5. The branch merged that remote main. The resolution keeps the pricing update date, keeps both scan and referral state registrations, and preserves the new hero decision as D-340. The referral decision moves to D-341 to keep its identifier unique. The referral core, Stripe adapter and parent input source are unchanged from the last validated candidate.
 
 Official database types and checks were regenerated. The state-registration check passed 24 tests. The fresh full gate passed for this integration: 700 files, 21,167 tests, one skipped, ESLint and build. The complete log is `.design/evidence/referrals/final-gate.log`. Application production merge and deployment remain with Savar.
+
+## Authorized merge round
+
+Savar requested the production merge and task cleanup on 14 November 2026. Remote main had advanced to 0569b755e44f0a7502c1bc19f12949e53f8000c3 and caused new conflicts. The resolution retains both the referral recovery and scan-team email work in the reminders route, both the Teaching Assistant footnote and referral explanation in pricing, and the latest sitemap dates. The referral decision moves to D-344 because current main uses D-341 through D-343.
+
+The plan-start email keeps the new onboarding guidance and the referral payment disclosure. The new upstream onboarding test still expected the old price sentence and prohibited referral text. It failed against this integration. Its assertion now checks the full referral disclosure and keeps the cancellation and guidance checks. All 46 email tests pass. The payment core, store, Stripe adapter and subscription start source did not change in this integration. Official database types and 664 checks were regenerated from the hosted schema.
+
+The fresh full gate passed: 706 files, 21,434 tests, one skipped, ESLint and build. The complete latest log is `.design/evidence/referrals/final-gate.log`. This proves the integrated local checks. The unchanged provider and hosted proof from the earlier rounds keeps its stated limits.
+
+Aside verified both pricing notes, the referral rules link and the visible referral explanation at 1440 px and 390 px. Neither viewport had horizontal overflow. The local page returned HTTP 200 with 189,286 bytes. Smooth scrolling was disabled for the hidden-pane check so the scroll completed. Owned tabs were closed. Evidence: `.design/evidence/referrals/merge-pricing-browser.json`.

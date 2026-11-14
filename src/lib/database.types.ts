@@ -7774,6 +7774,32 @@ export type Database = {
           },
         ]
       }
+      workbook_scan_reminder_unreachable: {
+        Row: {
+          email_hash: string
+          noted_at: string
+          parent_id: string
+        }
+        Insert: {
+          email_hash: string
+          noted_at?: string
+          parent_id: string
+        }
+        Update: {
+          email_hash?: string
+          noted_at?: string
+          parent_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workbook_scan_reminder_unreachable_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: true
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workbook_scan_trigger_claims: {
         Row: {
           backstop_at: string | null
@@ -8167,6 +8193,10 @@ export type Database = {
       _workbook_scan_reminder_due_set: {
         Args: { p_at: string; p_message?: string; p_parent: string }
         Returns: Json
+      }
+      _workbook_scan_reminder_email_hash: {
+        Args: { p_email: string }
+        Returns: string
       }
       _workbook_scan_reminder_program: {
         Args: { p_at: string; p_child: string; p_parent: string }
@@ -9066,7 +9096,7 @@ export type Database = {
           }
         | {
             Args: {
-              p_family: boolean
+              p_access: string
               p_id: string
               p_parent: string
               p_stale_seconds: number
@@ -9509,7 +9539,7 @@ export type Database = {
           }
         | {
             Args: {
-              p_family: boolean
+              p_access: string
               p_id: string
               p_parent: string
               p_result: Json
@@ -9792,6 +9822,10 @@ export type Database = {
         Args: { p_draft: string; p_revision: number }
         Returns: Json
       }
+      note_workbook_scan_reminder_unreachable: {
+        Args: { p_parent: string }
+        Returns: string
+      }
       pacific_day: { Args: { ts: string }; Returns: string }
       pacific_day_start: { Args: { d: string }; Returns: string }
       parent_explanation_command: {
@@ -9825,7 +9859,15 @@ export type Database = {
           object_id: string
         }[]
       }
+      photo_check_access_open: {
+        Args: { p_access: string; p_id: string; p_parent: string }
+        Returns: boolean
+      }
       photo_check_eligible: { Args: { p_parent: string }; Returns: boolean }
+      photo_check_plan_open: {
+        Args: { p_id: string; p_parent: string }
+        Returns: boolean
+      }
       ping: { Args: never; Returns: number }
       plan_control_context: {
         Args: { p_card: string; p_parent: string }

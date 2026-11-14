@@ -1,0 +1,1510 @@
+{
+  "summary": {
+    "model": "typesafe/jev-1.14",
+    "runs": 2,
+    "kinds": {
+      "clear": 18,
+      "blurry": 0,
+      "glare": 11,
+      "shadow": 8,
+      "faint": 0
+    },
+    "refusedBeforeTheCheck": [
+      {
+        "file": "iphone-page-2-blurry.jpg",
+        "kind": "blurry",
+        "reason": "qr"
+      },
+      {
+        "file": "iphone-page-3-blurry.jpg",
+        "kind": "blurry",
+        "reason": "calibration:marks-missing"
+      },
+      {
+        "file": "iphone-page-4-blurry.jpg",
+        "kind": "blurry",
+        "reason": "calibration:ambiguous-page"
+      },
+      {
+        "file": "iphone-page-5-blurry.jpg",
+        "kind": "blurry",
+        "reason": "calibration:marks-missing"
+      },
+      {
+        "file": "iphone-page-6-blurry.jpg",
+        "kind": "blurry",
+        "reason": "qr"
+      },
+      {
+        "file": "iphone-page-8-blurry.jpg",
+        "kind": "blurry",
+        "reason": "qr"
+      },
+      {
+        "file": "iphone-page-7-blurry.jpg",
+        "kind": "blurry",
+        "reason": "qr"
+      },
+      {
+        "file": "iphone-page-9-blurry.jpg",
+        "kind": "blurry",
+        "reason": "calibration:marks-inconsistent"
+      },
+      {
+        "file": "iphone-page-10-blurry.jpg",
+        "kind": "blurry",
+        "reason": "qr"
+      },
+      {
+        "file": "iphone-page-11-blurry.jpg",
+        "kind": "blurry",
+        "reason": "qr"
+      },
+      {
+        "file": "iphone-page-3-glare.jpg",
+        "kind": "glare",
+        "reason": "calibration:ambiguous-page"
+      },
+      {
+        "file": "iphone-page-8-glare.jpg",
+        "kind": "glare",
+        "reason": "qr"
+      },
+      {
+        "file": "iphone-page-7-glare.jpg",
+        "kind": "glare",
+        "reason": "calibration:page-mismatch"
+      },
+      {
+        "file": "iphone-page-9-glare.jpg",
+        "kind": "glare",
+        "reason": "qr"
+      },
+      {
+        "file": "iphone2-page-5.jpg",
+        "kind": "clear",
+        "reason": "qr"
+      },
+      {
+        "file": "iphone2-page-10.jpg",
+        "kind": "clear",
+        "reason": "qr"
+      }
+    ],
+    "photos": [
+      {
+        "id": "iphone-page-2.jpg",
+        "kind": "clear",
+        "sha256": "120280992f81d9827a31eed5dc4c4307e6fa51fdfc6ba3f29c09ea7d8313dad5"
+      },
+      {
+        "id": "iphone-page-3.jpg",
+        "kind": "clear",
+        "sha256": "f313face3c2226ef32fead3d0c47c95f8e614e29bfa99732e5affcd3143c4474"
+      },
+      {
+        "id": "iphone-page-4.jpg",
+        "kind": "clear",
+        "sha256": "1be6de8ec87ba1252bc868d11d299251d04029fffadce44426fd86fd3b050793"
+      },
+      {
+        "id": "iphone-page-5.jpg",
+        "kind": "clear",
+        "sha256": "ac856640dde0567bc6426d2ea4d5a8fc986574bae1c84072969d54e1ecbe0a4a"
+      },
+      {
+        "id": "iphone-page-6.jpg",
+        "kind": "clear",
+        "sha256": "b83059077568f889ab65f116a7d1516593cd6e0e7400f1aeb85027ce62cdbfc5"
+      },
+      {
+        "id": "iphone-page-7.jpg",
+        "kind": "clear",
+        "sha256": "6ccdbc9e1549aa399e88c206916bc8572fa82259f057623712524ed34951badd"
+      },
+      {
+        "id": "iphone-page-8.jpg",
+        "kind": "clear",
+        "sha256": "7cf17164c4ecc9c28d6d5b64f52c8d0f072a2a4fffa919a51c72800da4477009"
+      },
+      {
+        "id": "iphone-page-9.jpg",
+        "kind": "clear",
+        "sha256": "38ada9e15654a89b5f82cc9bb62726a917f44b8b4418cac65bc6d98ed56fde40"
+      },
+      {
+        "id": "iphone-page-10.jpg",
+        "kind": "clear",
+        "sha256": "69eab3de734040ef3ab91f9f24c3fc9c63323b44984724132ae77c4f3f08b60a"
+      },
+      {
+        "id": "iphone-page-11.jpg",
+        "kind": "clear",
+        "sha256": "8359c096d8c74fd237985f14b9fcca70a85b016e3b0fd8d32c518874582aa5d5"
+      },
+      {
+        "id": "iphone-page-3-shadow.jpg",
+        "kind": "shadow",
+        "sha256": "13041fc8c01fb02943d4757fe15cabad5e47030dcd8b25b2ff0ba23715b7334f"
+      },
+      {
+        "id": "iphone-page-8-shadow.jpg",
+        "kind": "shadow",
+        "sha256": "31533ee8d6ffb80876dbb29983cd493056beba59261db2a061a649abcc70a181"
+      },
+      {
+        "id": "iphone-page-11-shadow.jpg",
+        "kind": "shadow",
+        "sha256": "9f58e06ecc265f58f5225aaf2730c3084a95d98e1db67a95616dce65677c40ad"
+      },
+      {
+        "id": "iphone-page-2-glare.jpg",
+        "kind": "glare",
+        "sha256": "5ccc61ecb356b2487819ac79a69b87ae65be4cff88bb3aafe8b392ed003bb12b"
+      },
+      {
+        "id": "iphone-page-4-glare.jpg",
+        "kind": "glare",
+        "sha256": "06de6b6110564e0b323744410aaf98c391789c04bcd7395560e7a96516139208"
+      },
+      {
+        "id": "iphone-page-5-glare.jpg",
+        "kind": "glare",
+        "sha256": "31015c9b33028be01cdd772cd8c5f3a8ac9d50c8b3c5ca94e782384ca33dd3e8"
+      },
+      {
+        "id": "iphone-page-6-glare.jpg",
+        "kind": "glare",
+        "sha256": "deb3f18e8ca07fa8c2ff9fd8f80ffdbc676e583e0077920df2a3d0394f19fe0d"
+      },
+      {
+        "id": "iphone-page-10-glare.jpg",
+        "kind": "glare",
+        "sha256": "7358269070c7ad8c05168070de88cb43763050c2d6c4d21ddc162449caf90f92"
+      },
+      {
+        "id": "iphone-page-11-glare.jpg",
+        "kind": "glare",
+        "sha256": "ba93d88b0a61d40d1c9556586db4d49c45a8a2cf2732c0de1a7cdfc76353afdf"
+      },
+      {
+        "id": "iphone2-page-2.jpg",
+        "kind": "clear",
+        "sha256": "95d2dacd8d3b482dae2dc69cdd611356f1df7b3cce4d56cf9ceabc4eac998b6c"
+      },
+      {
+        "id": "iphone2-page-3.jpg",
+        "kind": "clear",
+        "sha256": "ae8fec3034e690645431613cd942ac63cffb4dea6430cc22897ada96820c7569"
+      },
+      {
+        "id": "iphone2-page-4.jpg",
+        "kind": "clear",
+        "sha256": "d886f5a350538ac6ff599c8ab5e34c7fa3c8e96a584e31c3596425df8aab69db"
+      },
+      {
+        "id": "iphone2-page-6.jpg",
+        "kind": "clear",
+        "sha256": "97668e19d373f7865e61c7dedb14b266b7ac0ec8cbf8ec65c59f20165051b970"
+      },
+      {
+        "id": "iphone2-page-8.jpg",
+        "kind": "clear",
+        "sha256": "eca82f198f600bd284ca3549f9a7a98f27b21f472817e9cca8d74211f651c68a"
+      },
+      {
+        "id": "iphone2-page-7.jpg",
+        "kind": "clear",
+        "sha256": "27c4873200fff6ce0b84da8aebe21a55ea1f5d86913d5e1531dcea0e942e531f"
+      },
+      {
+        "id": "iphone2-page-9.jpg",
+        "kind": "clear",
+        "sha256": "c423cdc840b38fc1ff796ea5bf17c66181e245f89c3b2286c77a9e2be352de21"
+      },
+      {
+        "id": "iphone2-page-11.jpg",
+        "kind": "clear",
+        "sha256": "21ed4efcb5915388fccc64e4f1c4d1360d6b7b539e1156b1b4533704fa025aa4"
+      },
+      {
+        "id": "iphone2-page-8-glare2.jpg",
+        "kind": "glare",
+        "sha256": "d89b88dcdf6a4532f6942ce23761ab4c75cd492c779541a5c877b5e186a87c88"
+      },
+      {
+        "id": "iphone2-page-10-glare2.jpg",
+        "kind": "glare",
+        "sha256": "8d6e739ca00c990240905f1646c1706a5810f68cdc4579bb568895c584904f73"
+      },
+      {
+        "id": "iphone2-page-6-glare2.jpg",
+        "kind": "glare",
+        "sha256": "19679d6808eb47f7ca70c8f02735c50debea057942168b012785989ab71e9c05"
+      },
+      {
+        "id": "iphone2-page-4-glare2.jpg",
+        "kind": "glare",
+        "sha256": "1e9413a7bba06e56d89be65c64a7312e02774ae8863a6e24ead1a84f516142b3"
+      },
+      {
+        "id": "iphone2-page-2-glare2.jpg",
+        "kind": "glare",
+        "sha256": "0099952e105a1e290757f3f4b65253078a50dec8f98716284e334b2fcf7f8957"
+      },
+      {
+        "id": "iphone2-page-3-shadow2.jpg",
+        "kind": "shadow",
+        "sha256": "5200555098702426af355e004c80ee599f03bf40a6d7cddf05c104d0a10879b2"
+      },
+      {
+        "id": "iphone2-page-5-shadow2.jpg",
+        "kind": "shadow",
+        "sha256": "e4a047912614d93f55158e8f4831de48a427f71dfe36cbac4b7deced7a18a5e9"
+      },
+      {
+        "id": "iphone2-page-7-shadow2.jpg",
+        "kind": "shadow",
+        "sha256": "359a308a91b6eabb210cce74fb638b9f1e1009d8bb89635d5de27ae435a24fa9"
+      },
+      {
+        "id": "iphone2-page-9-shadow2.jpg",
+        "kind": "shadow",
+        "sha256": "de3005fd260579d5cfb211c0373bc0897cc613a72d6c99d48a9e66e059e27cdb"
+      },
+      {
+        "id": "iphone2-page-11-shadow2.jpg",
+        "kind": "shadow",
+        "sha256": "dc29557321035937744bc8f0d2dc0c1599969da0f48add6341dcfde1567630a9"
+      }
+    ],
+    "thresholds": [
+      {
+        "problem": "blurry",
+        "threshold": null,
+        "caught": 0,
+        "rows": 0,
+        "photos": 0,
+        "clear": 36,
+        "failed": 0,
+        "maxClear": 0.13,
+        "ownValues": [],
+        "tied": [
+          0.5,
+          0.99
+        ],
+        "enough": false,
+        "passes": false
+      },
+      {
+        "problem": "glare",
+        "threshold": 0.67,
+        "caught": 2,
+        "rows": 22,
+        "photos": 11,
+        "clear": 36,
+        "failed": 0,
+        "maxClear": 0.2,
+        "ownValues": [
+          0.04,
+          0.04,
+          0.05,
+          0.06,
+          0.07,
+          0.08,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.13,
+          0.13,
+          0.13,
+          0.13,
+          0.13,
+          0.14,
+          0.14,
+          0.14,
+          0.17,
+          0.2,
+          0.84,
+          0.84
+        ],
+        "tied": [
+          0.5,
+          0.84
+        ],
+        "enough": true,
+        "passes": false
+      },
+      {
+        "problem": "shadow",
+        "threshold": 0.52,
+        "caught": 3,
+        "rows": 16,
+        "photos": 8,
+        "clear": 36,
+        "failed": 0,
+        "maxClear": 0.45,
+        "ownValues": [
+          0.06,
+          0.06,
+          0.21,
+          0.22,
+          0.25,
+          0.28,
+          0.29,
+          0.3,
+          0.35,
+          0.35,
+          0.36,
+          0.36,
+          0.48,
+          0.54,
+          0.82,
+          0.85
+        ],
+        "tied": [
+          0.5,
+          0.54
+        ],
+        "enough": true,
+        "passes": false
+      },
+      {
+        "problem": "faint",
+        "threshold": null,
+        "caught": 0,
+        "rows": 0,
+        "photos": 0,
+        "clear": 36,
+        "failed": 0,
+        "maxClear": 0.05,
+        "ownValues": [],
+        "tied": [
+          0.5,
+          0.99
+        ],
+        "enough": false,
+        "passes": false
+      }
+    ],
+    "spentUsd": 0.016745,
+    "unpricedAttempts": 0,
+    "p50Ms": 268,
+    "p95Ms": 407,
+    "failed": 0,
+    "maxUsd": 0.1
+  },
+  "rows": [
+    {
+      "run": 1,
+      "photo": "iphone-page-2.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.08,
+        "glare": 0.09,
+        "shadow": 0.21,
+        "faint": 0.02
+      },
+      "ms": 988,
+      "error": null,
+      "usd": 0.000226254,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone-page-3.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.07,
+        "glare": 0.06,
+        "shadow": 0.09,
+        "faint": 0.03
+      },
+      "ms": 337,
+      "error": null,
+      "usd": 0.00022638,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone-page-4.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.09,
+        "glare": 0.11,
+        "shadow": 0.1,
+        "faint": 0.02
+      },
+      "ms": 266,
+      "error": null,
+      "usd": 0.000226212,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone-page-5.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.1,
+        "glare": 0.14,
+        "shadow": 0.13,
+        "faint": 0.03
+      },
+      "ms": 275,
+      "error": null,
+      "usd": 0.000226296,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone-page-6.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.06,
+        "glare": 0.03,
+        "shadow": 0.04,
+        "faint": 0.02
+      },
+      "ms": 264,
+      "error": null,
+      "usd": 0.000226422,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone-page-7.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.09,
+        "glare": 0.17,
+        "shadow": 0.09,
+        "faint": 0.03
+      },
+      "ms": 275,
+      "error": null,
+      "usd": 0.000226254,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone-page-8.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.1,
+        "glare": 0.09,
+        "shadow": 0.12,
+        "faint": 0.04
+      },
+      "ms": 303,
+      "error": null,
+      "usd": 0.000226338,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone-page-9.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.08,
+        "glare": 0.08,
+        "shadow": 0.16,
+        "faint": 0.04
+      },
+      "ms": 265,
+      "error": null,
+      "usd": 0.000226254,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone-page-10.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.08,
+        "glare": 0.09,
+        "shadow": 0.11,
+        "faint": 0.02
+      },
+      "ms": 240,
+      "error": null,
+      "usd": 0.000226254,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone-page-11.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.07,
+        "glare": 0.13,
+        "shadow": 0.11,
+        "faint": 0.04
+      },
+      "ms": 255,
+      "error": null,
+      "usd": 0.000226338,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone-page-3-shadow.jpg",
+      "kind": "shadow",
+      "probabilities": {
+        "blurry": 0.11,
+        "glare": 0.17,
+        "shadow": 0.36,
+        "faint": 0.04
+      },
+      "ms": 289,
+      "error": null,
+      "usd": 0.000226254,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone-page-8-shadow.jpg",
+      "kind": "shadow",
+      "probabilities": {
+        "blurry": 0.1,
+        "glare": 0.14,
+        "shadow": 0.22,
+        "faint": 0.04
+      },
+      "ms": 275,
+      "error": null,
+      "usd": 0.000226338,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone-page-11-shadow.jpg",
+      "kind": "shadow",
+      "probabilities": {
+        "blurry": 0.1,
+        "glare": 0.21,
+        "shadow": 0.25,
+        "faint": 0.03
+      },
+      "ms": 262,
+      "error": null,
+      "usd": 0.000226338,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone-page-2-glare.jpg",
+      "kind": "glare",
+      "probabilities": {
+        "blurry": 0.11,
+        "glare": 0.13,
+        "shadow": 0.19,
+        "faint": 0.02
+      },
+      "ms": 238,
+      "error": null,
+      "usd": 0.000226296,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone-page-4-glare.jpg",
+      "kind": "glare",
+      "probabilities": {
+        "blurry": 0.11,
+        "glare": 0.13,
+        "shadow": 0.15,
+        "faint": 0.04
+      },
+      "ms": 303,
+      "error": null,
+      "usd": 0.000226212,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone-page-5-glare.jpg",
+      "kind": "glare",
+      "probabilities": {
+        "blurry": 0.1,
+        "glare": 0.13,
+        "shadow": 0.14,
+        "faint": 0.04
+      },
+      "ms": 317,
+      "error": null,
+      "usd": 0.000226254,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone-page-6-glare.jpg",
+      "kind": "glare",
+      "probabilities": {
+        "blurry": 0.08,
+        "glare": 0.04,
+        "shadow": 0.05,
+        "faint": 0.05
+      },
+      "ms": 290,
+      "error": null,
+      "usd": 0.00022638,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone-page-10-glare.jpg",
+      "kind": "glare",
+      "probabilities": {
+        "blurry": 0.3,
+        "glare": 0.84,
+        "shadow": 0.49,
+        "faint": 0.09
+      },
+      "ms": 291,
+      "error": null,
+      "usd": 0.00022638,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone-page-11-glare.jpg",
+      "kind": "glare",
+      "probabilities": {
+        "blurry": 0.07,
+        "glare": 0.08,
+        "shadow": 0.08,
+        "faint": 0.03
+      },
+      "ms": 248,
+      "error": null,
+      "usd": 0.000226422,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone2-page-2.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.1,
+        "glare": 0.12,
+        "shadow": 0.45,
+        "faint": 0.03
+      },
+      "ms": 350,
+      "error": null,
+      "usd": 0.000226296,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone2-page-3.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.09,
+        "glare": 0.11,
+        "shadow": 0.2,
+        "faint": 0.03
+      },
+      "ms": 316,
+      "error": null,
+      "usd": 0.00022617,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone2-page-4.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.13,
+        "glare": 0.19,
+        "shadow": 0.22,
+        "faint": 0.04
+      },
+      "ms": 258,
+      "error": null,
+      "usd": 0.000226254,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone2-page-6.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.07,
+        "glare": 0.06,
+        "shadow": 0.07,
+        "faint": 0.04
+      },
+      "ms": 256,
+      "error": null,
+      "usd": 0.000226254,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone2-page-8.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.1,
+        "glare": 0.13,
+        "shadow": 0.22,
+        "faint": 0.04
+      },
+      "ms": 400,
+      "error": null,
+      "usd": 0.000226212,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone2-page-7.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.09,
+        "glare": 0.14,
+        "shadow": 0.24,
+        "faint": 0.03
+      },
+      "ms": 250,
+      "error": null,
+      "usd": 0.000226296,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone2-page-9.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.07,
+        "glare": 0.07,
+        "shadow": 0.18,
+        "faint": 0.03
+      },
+      "ms": 264,
+      "error": null,
+      "usd": 0.00022617,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone2-page-11.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.09,
+        "glare": 0.14,
+        "shadow": 0.37,
+        "faint": 0.03
+      },
+      "ms": 302,
+      "error": null,
+      "usd": 0.000226338,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone2-page-8-glare2.jpg",
+      "kind": "glare",
+      "probabilities": {
+        "blurry": 0.09,
+        "glare": 0.12,
+        "shadow": 0.22,
+        "faint": 0.04
+      },
+      "ms": 264,
+      "error": null,
+      "usd": 0.00022638,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone2-page-10-glare2.jpg",
+      "kind": "glare",
+      "probabilities": {
+        "blurry": 0.08,
+        "glare": 0.12,
+        "shadow": 0.13,
+        "faint": 0.03
+      },
+      "ms": 376,
+      "error": null,
+      "usd": 0.00022638,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone2-page-6-glare2.jpg",
+      "kind": "glare",
+      "probabilities": {
+        "blurry": 0.09,
+        "glare": 0.06,
+        "shadow": 0.08,
+        "faint": 0.03
+      },
+      "ms": 257,
+      "error": null,
+      "usd": 0.000226296,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone2-page-4-glare2.jpg",
+      "kind": "glare",
+      "probabilities": {
+        "blurry": 0.11,
+        "glare": 0.2,
+        "shadow": 0.21,
+        "faint": 0.04
+      },
+      "ms": 315,
+      "error": null,
+      "usd": 0.000226128,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone2-page-2-glare2.jpg",
+      "kind": "glare",
+      "probabilities": {
+        "blurry": 0.09,
+        "glare": 0.14,
+        "shadow": 0.23,
+        "faint": 0.03
+      },
+      "ms": 779,
+      "error": null,
+      "usd": 0.000226254,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone2-page-3-shadow2.jpg",
+      "kind": "shadow",
+      "probabilities": {
+        "blurry": 0.1,
+        "glare": 0.19,
+        "shadow": 0.29,
+        "faint": 0.04
+      },
+      "ms": 251,
+      "error": null,
+      "usd": 0.00022638,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone2-page-5-shadow2.jpg",
+      "kind": "shadow",
+      "probabilities": {
+        "blurry": 0.16,
+        "glare": 0.31,
+        "shadow": 0.85,
+        "faint": 0.08
+      },
+      "ms": 268,
+      "error": null,
+      "usd": 0.000226296,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone2-page-7-shadow2.jpg",
+      "kind": "shadow",
+      "probabilities": {
+        "blurry": 0.11,
+        "glare": 0.33,
+        "shadow": 0.54,
+        "faint": 0.05
+      },
+      "ms": 256,
+      "error": null,
+      "usd": 0.000226338,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone2-page-9-shadow2.jpg",
+      "kind": "shadow",
+      "probabilities": {
+        "blurry": 0.09,
+        "glare": 0.05,
+        "shadow": 0.06,
+        "faint": 0.04
+      },
+      "ms": 260,
+      "error": null,
+      "usd": 0.00022638,
+      "unpriced": 0
+    },
+    {
+      "run": 1,
+      "photo": "iphone2-page-11-shadow2.jpg",
+      "kind": "shadow",
+      "probabilities": {
+        "blurry": 0.11,
+        "glare": 0.23,
+        "shadow": 0.35,
+        "faint": 0.04
+      },
+      "ms": 263,
+      "error": null,
+      "usd": 0.000226254,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone-page-2.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.08,
+        "glare": 0.1,
+        "shadow": 0.18,
+        "faint": 0.02
+      },
+      "ms": 248,
+      "error": null,
+      "usd": 0.000226338,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone-page-3.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.08,
+        "glare": 0.06,
+        "shadow": 0.07,
+        "faint": 0.03
+      },
+      "ms": 283,
+      "error": null,
+      "usd": 0.000226338,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone-page-4.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.09,
+        "glare": 0.1,
+        "shadow": 0.1,
+        "faint": 0.03
+      },
+      "ms": 274,
+      "error": null,
+      "usd": 0.000226422,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone-page-5.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.09,
+        "glare": 0.14,
+        "shadow": 0.16,
+        "faint": 0.03
+      },
+      "ms": 276,
+      "error": null,
+      "usd": 0.000226338,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone-page-6.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.06,
+        "glare": 0.04,
+        "shadow": 0.05,
+        "faint": 0.02
+      },
+      "ms": 253,
+      "error": null,
+      "usd": 0.000226002,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone-page-7.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.09,
+        "glare": 0.17,
+        "shadow": 0.09,
+        "faint": 0.03
+      },
+      "ms": 271,
+      "error": null,
+      "usd": 0.000226254,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone-page-8.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.09,
+        "glare": 0.07,
+        "shadow": 0.11,
+        "faint": 0.04
+      },
+      "ms": 304,
+      "error": null,
+      "usd": 0.000226464,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone-page-9.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.07,
+        "glare": 0.07,
+        "shadow": 0.14,
+        "faint": 0.04
+      },
+      "ms": 250,
+      "error": null,
+      "usd": 0.00022638,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone-page-10.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.07,
+        "glare": 0.09,
+        "shadow": 0.11,
+        "faint": 0.02
+      },
+      "ms": 255,
+      "error": null,
+      "usd": 0.000226296,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone-page-11.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.08,
+        "glare": 0.14,
+        "shadow": 0.14,
+        "faint": 0.04
+      },
+      "ms": 293,
+      "error": null,
+      "usd": 0.00022638,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone-page-3-shadow.jpg",
+      "kind": "shadow",
+      "probabilities": {
+        "blurry": 0.11,
+        "glare": 0.18,
+        "shadow": 0.36,
+        "faint": 0.05
+      },
+      "ms": 263,
+      "error": null,
+      "usd": 0.000226254,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone-page-8-shadow.jpg",
+      "kind": "shadow",
+      "probabilities": {
+        "blurry": 0.1,
+        "glare": 0.14,
+        "shadow": 0.21,
+        "faint": 0.04
+      },
+      "ms": 290,
+      "error": null,
+      "usd": 0.000226212,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone-page-11-shadow.jpg",
+      "kind": "shadow",
+      "probabilities": {
+        "blurry": 0.09,
+        "glare": 0.21,
+        "shadow": 0.28,
+        "faint": 0.03
+      },
+      "ms": 277,
+      "error": null,
+      "usd": 0.000226254,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone-page-2-glare.jpg",
+      "kind": "glare",
+      "probabilities": {
+        "blurry": 0.1,
+        "glare": 0.13,
+        "shadow": 0.19,
+        "faint": 0.02
+      },
+      "ms": 248,
+      "error": null,
+      "usd": 0.00022638,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone-page-4-glare.jpg",
+      "kind": "glare",
+      "probabilities": {
+        "blurry": 0.11,
+        "glare": 0.14,
+        "shadow": 0.15,
+        "faint": 0.03
+      },
+      "ms": 285,
+      "error": null,
+      "usd": 0.000226296,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone-page-5-glare.jpg",
+      "kind": "glare",
+      "probabilities": {
+        "blurry": 0.11,
+        "glare": 0.13,
+        "shadow": 0.13,
+        "faint": 0.04
+      },
+      "ms": 282,
+      "error": null,
+      "usd": 0.000226254,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone-page-6-glare.jpg",
+      "kind": "glare",
+      "probabilities": {
+        "blurry": 0.08,
+        "glare": 0.04,
+        "shadow": 0.04,
+        "faint": 0.05
+      },
+      "ms": 282,
+      "error": null,
+      "usd": 0.000226296,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone-page-10-glare.jpg",
+      "kind": "glare",
+      "probabilities": {
+        "blurry": 0.33,
+        "glare": 0.84,
+        "shadow": 0.55,
+        "faint": 0.09
+      },
+      "ms": 377,
+      "error": null,
+      "usd": 0.00022638,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone-page-11-glare.jpg",
+      "kind": "glare",
+      "probabilities": {
+        "blurry": 0.07,
+        "glare": 0.07,
+        "shadow": 0.09,
+        "faint": 0.03
+      },
+      "ms": 263,
+      "error": null,
+      "usd": 0.00022617,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone2-page-2.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.1,
+        "glare": 0.11,
+        "shadow": 0.41,
+        "faint": 0.03
+      },
+      "ms": 234,
+      "error": null,
+      "usd": 0.00022617,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone2-page-3.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.09,
+        "glare": 0.11,
+        "shadow": 0.17,
+        "faint": 0.03
+      },
+      "ms": 252,
+      "error": null,
+      "usd": 0.000226296,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone2-page-4.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.12,
+        "glare": 0.2,
+        "shadow": 0.26,
+        "faint": 0.03
+      },
+      "ms": 739,
+      "error": null,
+      "usd": 0.00022617,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone2-page-6.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.07,
+        "glare": 0.05,
+        "shadow": 0.08,
+        "faint": 0.03
+      },
+      "ms": 250,
+      "error": null,
+      "usd": 0.000226212,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone2-page-8.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.1,
+        "glare": 0.12,
+        "shadow": 0.27,
+        "faint": 0.04
+      },
+      "ms": 261,
+      "error": null,
+      "usd": 0.000226212,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone2-page-7.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.09,
+        "glare": 0.13,
+        "shadow": 0.22,
+        "faint": 0.03
+      },
+      "ms": 276,
+      "error": null,
+      "usd": 0.000226254,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone2-page-9.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.08,
+        "glare": 0.07,
+        "shadow": 0.17,
+        "faint": 0.05
+      },
+      "ms": 407,
+      "error": null,
+      "usd": 0.000226296,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone2-page-11.jpg",
+      "kind": "clear",
+      "probabilities": {
+        "blurry": 0.08,
+        "glare": 0.15,
+        "shadow": 0.32,
+        "faint": 0.04
+      },
+      "ms": 244,
+      "error": null,
+      "usd": 0.000226422,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone2-page-8-glare2.jpg",
+      "kind": "glare",
+      "probabilities": {
+        "blurry": 0.1,
+        "glare": 0.12,
+        "shadow": 0.24,
+        "faint": 0.05
+      },
+      "ms": 377,
+      "error": null,
+      "usd": 0.00022617,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone2-page-10-glare2.jpg",
+      "kind": "glare",
+      "probabilities": {
+        "blurry": 0.08,
+        "glare": 0.12,
+        "shadow": 0.14,
+        "faint": 0.02
+      },
+      "ms": 230,
+      "error": null,
+      "usd": 0.000226296,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone2-page-6-glare2.jpg",
+      "kind": "glare",
+      "probabilities": {
+        "blurry": 0.08,
+        "glare": 0.05,
+        "shadow": 0.05,
+        "faint": 0.04
+      },
+      "ms": 355,
+      "error": null,
+      "usd": 0.000226338,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone2-page-4-glare2.jpg",
+      "kind": "glare",
+      "probabilities": {
+        "blurry": 0.1,
+        "glare": 0.17,
+        "shadow": 0.19,
+        "faint": 0.03
+      },
+      "ms": 235,
+      "error": null,
+      "usd": 0.000226254,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone2-page-2-glare2.jpg",
+      "kind": "glare",
+      "probabilities": {
+        "blurry": 0.09,
+        "glare": 0.14,
+        "shadow": 0.25,
+        "faint": 0.03
+      },
+      "ms": 234,
+      "error": null,
+      "usd": 0.000226212,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone2-page-3-shadow2.jpg",
+      "kind": "shadow",
+      "probabilities": {
+        "blurry": 0.11,
+        "glare": 0.19,
+        "shadow": 0.3,
+        "faint": 0.04
+      },
+      "ms": 246,
+      "error": null,
+      "usd": 0.00022617,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone2-page-5-shadow2.jpg",
+      "kind": "shadow",
+      "probabilities": {
+        "blurry": 0.16,
+        "glare": 0.3,
+        "shadow": 0.82,
+        "faint": 0.07
+      },
+      "ms": 264,
+      "error": null,
+      "usd": 0.000226296,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone2-page-7-shadow2.jpg",
+      "kind": "shadow",
+      "probabilities": {
+        "blurry": 0.1,
+        "glare": 0.3,
+        "shadow": 0.48,
+        "faint": 0.05
+      },
+      "ms": 247,
+      "error": null,
+      "usd": 0.000226338,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone2-page-9-shadow2.jpg",
+      "kind": "shadow",
+      "probabilities": {
+        "blurry": 0.09,
+        "glare": 0.06,
+        "shadow": 0.06,
+        "faint": 0.04
+      },
+      "ms": 231,
+      "error": null,
+      "usd": 0.000226254,
+      "unpriced": 0
+    },
+    {
+      "run": 2,
+      "photo": "iphone2-page-11-shadow2.jpg",
+      "kind": "shadow",
+      "probabilities": {
+        "blurry": 0.1,
+        "glare": 0.23,
+        "shadow": 0.35,
+        "faint": 0.04
+      },
+      "ms": 273,
+      "error": null,
+      "usd": 0.00022617,
+      "unpriced": 0
+    }
+  ]
+}

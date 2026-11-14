@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "model": "anthropic/claude-opus-5.5",
+  "at": "2026-11-14T05:16:18.683Z",
+  "spentUsd": 0.999882,
+  "unpriced": 0,
+  "failures": 0,
+  "parts": {
+    "robin16": {
+      "second": {
+        "asked": 10,
+        "definite": 3,
+        "unsure": 7,
+        "wrongMarks": 0,
+        "wrongAsRight": 0,
+        "right": 3,
+        "byTruth": {
+          "wrong->wrong": 1,
+          "right->right": 2
+        }
+      },
+      "merged": {
+        "asked": 58,
+        "definite": 51,
+        "unsure": 7,
+        "wrongMarks": 1,
+        "wrongAsRight": 0,
+        "right": 50,
+        "byTruth": {
+          "right->right": 29,
+          "blank->blank": 7,
+          "wrong->wrong": 14,
+          "right->wrong": 1
+        }
+      }
+    },
+    "fixed40": {
+      "second": {
+        "asked": 73,
+        "definite": 0,
+        "unsure": 73,
+        "wrongMarks": 0,
+        "wrongAsRight": 0,
+        "right": 0,
+        "byTruth": {}
+      },
+      "merged": {
+        "asked": 73,
+        "definite": 0,
+        "unsure": 73,
+        "wrongMarks": 0,
+        "wrongAsRight": 0,
+        "right": 0,
+        "byTruth": {}
+      }
+    },
+    "stress": {
+      "second": {
+        "asked": 149,
+        "definite": 133,
+        "unsure": 16,
+        "wrongMarks": 0,
+        "wrongAsRight": 0,
+        "right": 133,
+        "byTruth": {
+          "right->right": 84,
+          "wrong->wrong": 33,
+          "blank->blank": 16
+        }
+      }
+    }
+  },
+  "passes": {
+    "robin16": true,
+    "fixed40": true,
+    "stress": true
+  },
+  "wrongMarks": []
+}

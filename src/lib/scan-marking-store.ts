@@ -68,8 +68,8 @@ export function scanMarkingStore(db: SupabaseClient<Database>): MarkingStore {
       // Default sharp output drops EXIF, XMP and ICC metadata. Whole-page coordinates and orientation stay unchanged.
       return new Uint8Array(await sharp(bytes, { limitInputPixels: 48_000_000, failOn: "warning" }).jpeg({ quality: 85 }).toBuffer());
     },
-    async admit(ref, token, model) {
-      const r = await command("admit", ref.parent, ref.photo, token, { model });
+    async admit(ref, token, model, role) {
+      const r = await command("admit", ref.parent, ref.photo, token, role ? { model, role } : { model });
       if (r === "terminal" || r === "budget" || r === "price-unverified" || r === "attempts") return r;
       return { dispatch: str(record(r).dispatch) };
     },
@@ -89,7 +89,7 @@ export function scanMarkingStore(db: SupabaseClient<Database>): MarkingStore {
       console.error("[scan-marking] unexpected defer answer", JSON.stringify({ type: r === null ? "null" : typeof r }));
       throw new Error("marking_defer");
     },
-    async extract(ref, token, observations, model) { return await command("extract", ref.parent, ref.photo, token, toJson({ observations, model, prompt: MARKING_PROMPT_VERSION })) === true; },
+    async extract(ref, token, observations, model, escalation) { return await command("extract", ref.parent, ref.photo, token, toJson({ observations, model, prompt: MARKING_PROMPT_VERSION, ...(escalation ? { escalation } : {}) })) === true; },
     async apply(ref, token, _observations, pendingEvents, at) { return await command("apply", ref.parent, ref.photo, token, toJson({ events: pendingEvents, at })) === true; },
     async pause(ref, token, status) { await command("pause", ref.parent, ref.photo, token, { status }); },
     async finish(ref, token) { return await command("finish", ref.parent, ref.photo, token) === true; },

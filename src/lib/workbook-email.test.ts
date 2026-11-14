@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { planStartEmail, shownWorkbookEmailStatus, workbookDelivery, workbookEmail } from "@/lib/workbook-email";
+
+afterEach(() => vi.unstubAllEnvs());
 
 const mail = { method: "mail" as const, carrier: "Canada Post", trackingNumber: "ABC123", trackingUrl: "https://example.com/track?code=ABC123&lang=en" };
 const parent = { parentName: "Priya", childName: "Asha", workbookNumber: 1 };
@@ -28,11 +30,11 @@ describe("workbook delivery details", () => {
 
 describe("workbook emails", () => {
   const contact = "If anything does not work, or if you have feedback, email contact@unicalearning.com or use https://unicalearning.com/account/feedback.";
-  it.each(["ready", "hand", "courier"] as const)("matches Savar's approved %s text before the existing signature", (kind) => {
+  it.each(["ready", "hand", "courier"] as const)("keeps the %s delivery details and the onboarding preview before the signature", (kind) => {
     const input = { parentName: "Sam", childName: "Alex", workbookNumber: 1 };
     const email = workbookEmail({ ...input, kind: kind === "ready" ? "ready" : "dispatch", delivery: kind === "courier" ? { method: "mail", carrier: "Canada Post", trackingNumber: "1234 5678 9012", trackingUrl: "" } : kind === "hand" ? { method: "hand" } : null });
     const content = kind === "ready" ? ["Hi Sam,", "Your workbook is ready and will be shipped soon. You have nothing to do right now. We will email you again when it is on its way.", contact]
-      : ["Hi Sam,", `Alex's workbook 1 is on its way${kind === "hand" ? " by hand delivery" : ""}.`, ...(kind === "courier" ? ["Carrier: Canada Post\nTracking number: 1234 5678 9012"] : []), "What to do next: keep the workbook together when it arrives. We will email you the instructions when your free month starts.", contact];
+      : ["Hi Sam,", `Alex's workbook 1 is on its way${kind === "hand" ? " by hand delivery" : ""}.`, ...(kind === "courier" ? ["Carrier: Canada Post\nTracking number: 1234 5678 9012"] : []), "When the workbook arrives, follow the schedule on page 2. Let your child try the day's pages, then scan the finished pages at https://unicalearning.com/account/scan. We use those scans to plan the next workbook.", contact];
     expect(email.subject).toBe(`Alex's workbook is ${kind === "ready" ? "ready" : "on its way"}`);
     expect(email.text.split("\n\nThank you,")[0]).toBe(content.join("\n\n"));
     const plainHtml = email.html.replace(/<br>/g, "\n").replace(/<[^>]*>/g, "").replace(/&#39;/g, "'");
@@ -118,7 +120,7 @@ describe("the free month confirmation", () => {
     for (const format of [message.text, message.html]) {
       if (grade === 3 || grade === 9) expect(format).toContain("can chat with Maya, our AI Teaching Assistant");
       else expect(format).not.toContain("Maya");
-      expect(format).not.toMatch(/\bcalls?\b|\bvoice\b/i);
+      expect(format.split("What happens next:")[0]).not.toMatch(/\bcalls?\b|\bvoice\b/i);
       expect(format).toContain("https://unicalearning.com/account/schedule");
       expect(format).toContain("https://unicalearning.com/account/scan");
       expect(format).toContain("https://unicalearning.com/account/feedback");
@@ -126,7 +128,7 @@ describe("the free month confirmation", () => {
     }
     for (const path of ["schedule", "scan", "feedback", "plan"]) expect(message.html).toContain(`href="https://unicalearning.com/account/${path}"`);
   });
-  it("matches Savar's approved free-month words, with unchanged signature and footer", () => {
+  it("includes the updated onboarding words, with unchanged plan disclosures, signature and footer", () => {
     const message = planStartEmail({ parentName: "Sam", childName: "Alex", grade: 3, price: 79.99, firstCharge: "December 15, 2026", marking: true, explain: true });
     const expected = `Hi Sam,
 
@@ -138,6 +140,16 @@ As a parent, here are your responsibilities:
 2. Scan the finished pages. After Alex finishes the pages, scan them: https://unicalearning.com/account/scan. Each page has its own QR code.
 3. Read the marks. You will see which questions are right and wrong. On a wrong answer, press "Explain this problem" for a simple explanation that you can use with Alex.
 4. Set up Maya. If Alex gets stuck, Alex can chat with Maya, our AI Teaching Assistant. Sign in at https://unicalearning.com/account, set a PIN, agree to the Maya notice, then open Alex's desk.
+
+What happens next: Your next workbook arrives two weeks after this one, on day 15. We build it from the pages you scan, so scan each day's finished pages to help us choose what comes next.
+
+Good habits:
+• Pick the same time each day.
+• Let your child try alone first.
+• Missed a day? Pick up where you left off.
+• Scan once, after the day's pages are done.
+
+Reply to this email, or book a free 15-minute call if you would like help getting started: https://cal.com/unicalearning/15min
 
 Why 5 days? Two days off each week give Alex time to rest, or to look back at the week's pages, and come back ready to learn. A steady 5 days builds a habit. Working every day can wear kids out and make math feel like a chore, for Alex and for you.
 
@@ -205,7 +217,43 @@ describe("the plan start email's reminder words (PR #803 review)", () => {
       expect(m.text).toContain("we charge up to CAD 59.99 to your saved card");
       expect(m.text).toContain("Your regular price is CAD 59.99 a month until you cancel");
       expect(m.text).toContain("An eligible referral benefit gives 50% off one paid month");
+      expect(m.text).toContain('To cancel, sign in and open https://unicalearning.com/account/plan, then press "Cancel plan".');
+      expect(m.text).toContain("Good habits:");
     });
     rendered.forEach((m, i) => expect(m.text.includes(" We will email you a reminder 7 days before the first charge.")).toBe(cases[i].reminder !== false));
+  });
+});
+
+describe("onboarding instructions (#970)", () => {
+  const input = { parentName: "Sam", childName: "Alex", grade: 3, price: 59.99, firstCharge: "December 15, 2026", marking: true, explain: true };
+  const dispatch = () => workbookEmail({ ...parent, kind: "dispatch", delivery: { method: "hand" } });
+  it.each([undefined, "", "  ", "javascript:alert(1)", "http://video.invalid", "https://user:pass@video.invalid", "not a URL"])("omits an unconfigured or unsafe video %s", (url) => {
+    vi.stubEnv("ONBOARDING_WALKTHROUGH_URL", url);
+    for (const email of [planStartEmail(input), dispatch()]) {
+      expect(email.text).not.toContain("3-minute walkthrough");
+      expect(email.html).not.toContain("3-minute walkthrough");
+    }
+  });
+  it("links the configured video near the top in text and HTML, but not in welcome or ready notices", () => {
+    vi.stubEnv("ONBOARDING_WALKTHROUGH_URL", "https://video.invalid/watch?a=1&b=2");
+    for (const email of [planStartEmail(input), dispatch()]) {
+      expect(email.text).toContain("Watch the 3-minute walkthrough: https://video.invalid/watch?a=1&b=2");
+      expect(email.html).toContain('href="https://video.invalid/watch?a=1&amp;b=2"');
+      expect(email.text.indexOf("walkthrough")).toBeLessThan(email.text.indexOf("scan"));
+    }
+    for (const kind of ["welcome", "ready"] as const) expect(workbookEmail({ ...parent, kind, delivery: null }).text).not.toContain("walkthrough");
+  });
+  it("includes the next-book explanation, shared habits, help call and referral disclosures", async () => {
+    const { GETTING_STARTED_HABITS } = await import("@/lib/getting-started");
+    const { BOOKING_URL, safeBookingUrl } = await import("@/lib/contact");
+    const email = planStartEmail(input);
+    for (const habit of GETTING_STARTED_HABITS) expect(email.text).toContain(habit);
+    expect(email.text).toContain("on day 15");
+    expect(email.text).toContain("We build it from the pages you scan");
+    expect(email.text).toContain("Reply to this email, or book a free 15-minute call");
+    expect(email.html).toContain(`href="${safeBookingUrl(BOOKING_URL)}"`);
+    expect(email.text).toContain("Your plan: On December 15, 2026, we charge up to CAD 59.99 to your saved card. Your regular price is CAD 59.99 a month until you cancel. An eligible referral benefit gives 50% off one paid month. Delivery is included.");
+    expect(email.text).toContain('To cancel, sign in and open https://unicalearning.com/account/plan, then press "Cancel plan". If you cancel before December 15, 2026, you pay nothing.');
+    expect(email.text).not.toContain("\u2014");
   });
 });

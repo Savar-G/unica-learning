@@ -1,8 +1,9 @@
 // The local comparison of the per-answer second opinion (#851): typesafe/jev-1.14 and google/gemini-decision-1 on the
-// fixed 40 synthetic photos. Run through scripts/decision-marking-comparison.mjs; docs/decision-marking-comparison.md.
+// fixed 40 synthetic photos, or (#853, --physical) on the real phone photos of the made-up Robin booklet. Run through scripts/decision-marking-comparison.mjs; docs/decision-marking-comparison.md.
 // Reads the set folder and never writes into it. Writes under .workbook-sample/decision-comparison/ (gitignored).
 // The key comes only from DECISIONS_OPENROUTER_API_KEY in the process environment; this script never prints it.
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -13,6 +14,11 @@ import {
   COMPARISON_MODELS,
   askAll,
   comparisonItems,
+  comparisonWinner,
+  physicalComparisonSet,
+  checkPhysicalImages,
+  physicalShortfall,
+  winnerMarkdown,
   costCap,
   comparisonReport,
   cropRect,
@@ -21,12 +27,19 @@ import {
   reportMarkdown,
   type AskResult,
   type ComparisonItem,
+  type ComparisonReport,
+  type PhysicalSet,
+  type PhysicalSetFile,
   type RegionAsk,
   type SetManifest,
 } from "../src/lib/decision-marking-comparison";
 
-const HELP = `node scripts/decision-marking-comparison.mjs --set DIR [--estimate | --fake-http] [--max-usd 2] [--models a,b] [--out DIR] [--save-crops]
+const HELP = `node scripts/decision-marking-comparison.mjs (--set DIR | --physical DIR [--synthetic-report FILE]) [--estimate | --fake-http] [--max-usd 2] [--models a,b] [--out DIR] [--save-crops]
 --set DIR: the fixed 40 folder (manifest.json and photos/). Read only.
+--physical DIR: a scan-marking-physical output folder (set.json and images/) of the real Robin phone photos (#853). Only
+  the photos its page check accepted are asked. A set with fewer than 40 wrong or 20 blank items is refused before any
+  key is read (--estimate still prints the estimate and the refusal). Read only.
+--synthetic-report FILE: with --physical, the synthetic run's report.json; the report then names the winner.
 --estimate: print the cost estimate and stop. No key is read and nothing is sent.
 --fake-http: run the real adapter against a fake fetch. No key; the report is marked fake.
 --max-usd: the cost cap of the run (default 2). A run whose estimate is above it does not start. Each request reserves
@@ -51,12 +64,12 @@ function fakeFetch(): typeof globalThis.fetch {
 async function main() {
   const { values: v } = parseArgs({
     options: {
-      set: { type: "string" }, out: { type: "string" }, estimate: { type: "boolean" }, "fake-http": { type: "boolean" },
+      set: { type: "string" }, physical: { type: "string" }, "synthetic-report": { type: "string" }, out: { type: "string" }, estimate: { type: "boolean" }, "fake-http": { type: "boolean" },
       "max-usd": { type: "string", default: "2" }, models: { type: "string" }, concurrency: { type: "string", default: "4" },
       "save-crops": { type: "boolean" }, help: { type: "boolean" },
     },
   });
-  if (v.help || !v.set) {
+  if (v.help || !!v.set === !!v.physical) {
     console.log(HELP);
     if (!v.help) process.exitCode = 1;
     return;
@@ -65,13 +78,26 @@ async function main() {
   if (!Number.isFinite(maxUsd) || maxUsd <= 0) throw new Error("--max-usd must be a positive number");
   const models = v.models ? v.models.split(",").map((m) => m.trim()).filter(Boolean) : [...COMPARISON_MODELS];
   for (const m of models) if (!Object.hasOwn(DECISION_MODELS, m)) throw new Error(`not in the pinned decision model table: ${m}`);
-  const set = resolve(v.set);
+  if (v["synthetic-report"] && !v.physical) throw new Error("--synthetic-report goes with --physical");
+  const set = resolve((v.set ?? v.physical)!);
   const fake = !!v["fake-http"];
   const out = resolve(v.out ?? `.workbook-sample/decision-comparison/${new Date().toISOString().replace(/[:.]/g, "-")}${fake ? "-fake" : ""}`);
   if (out === set || out.startsWith(set + "/")) throw new Error("the output folder must be outside the set folder");
 
-  const manifest = JSON.parse(await readFile(resolve(set, "manifest.json"), "utf8")) as SetManifest;
+  let physical: PhysicalSet | null = null;
+  let manifest: SetManifest;
+  if (v.physical) {
+    const file = JSON.parse(await readFile(resolve(set, "set.json"), "utf8")) as PhysicalSetFile;
+    physical = physicalComparisonSet(file, { allowFake: fake });
+    checkPhysicalImages(file, (path) => createHash("sha256").update(readFileSync(resolve(set, path))).digest("hex"));
+    manifest = physical.manifest;
+  } else manifest = JSON.parse(await readFile(resolve(set, "manifest.json"), "utf8")) as SetManifest;
   const { items, leftOut } = comparisonItems(manifest);
+  const shortfall = physical ? physicalShortfall(items) : null;
+  if (physical) {
+    console.log(`Real set: ${manifest.photos.length} photos asked (${physical.devices.join(", ")}${physical.bothPhones ? "" : "; one phone only, Android not tested"}), ${physical.refused.length} refused by the page check.`);
+    console.log(`Items: ${["right", "wrong", "blank", "uncertain"].map((r) => `${items.filter((i) => i.result === r).length} ${r}`).join(", ")}; ${leftOut.length} left out (team-marked two ways).`);
+  }
   const photos = new Map(manifest.photos.map((p) => [p.id, p]));
 
   // The estimate: every request's size from its crop, at each model's input price, with one retry each.
@@ -91,7 +117,9 @@ async function main() {
   };
   estimate.totalUsd = Math.round(Object.values(estimate.models).reduce((a, b) => a + b, 0) * 1e6) / 1e6;
   console.log(JSON.stringify({ estimate }, null, 2));
+  if (shortfall) console.log(`A run is refused: ${shortfall}.`);
   if (v.estimate) return;
+  if (shortfall) throw new Error(shortfall);
   if (estimate.totalUsd > maxUsd) throw new Error(`the estimate USD ${estimate.totalUsd} is above --max-usd ${maxUsd}: not started`);
 
   const clients: DecisionClient[] = models.map((model) => {
@@ -147,9 +175,15 @@ async function main() {
   }
 
   if (cap.stopped) console.log("The run stopped at the cost cap: a cost was above its bound, so the pinned prices are out of date.");
-  const report = comparisonReport({ items, leftOut, photos: manifest.photos.length, fake, results, cap });
+  const report = comparisonReport({ items, leftOut, photos: manifest.photos.length, fake, results, cap, ...(physical ? { physical: { refused: physical.refused, devices: physical.devices, bothPhones: physical.bothPhones, proofClass: physical.proofClass } } : {}) });
   await writeFile(resolve(out, "report.json"), JSON.stringify(report, null, 2) + "\n");
-  const md = reportMarkdown(report);
+  let md = reportMarkdown(report);
+  if (v["synthetic-report"]) {
+    const winner = comparisonWinner(JSON.parse(await readFile(resolve(v["synthetic-report"]), "utf8")) as ComparisonReport, report);
+    await writeFile(resolve(out, "winner.json"), JSON.stringify(winner, null, 2) + "\n");
+    md += "\n" + winnerMarkdown(winner);
+    console.log(winnerMarkdown(winner));
+  }
   await writeFile(resolve(out, "report.md"), md);
   console.log(md.split("\n").slice(0, 8 + report.models.length).join("\n"));
   console.log(`Report: ${resolve(out, "report.md")}`);

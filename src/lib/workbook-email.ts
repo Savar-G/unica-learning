@@ -1,8 +1,9 @@
 import { familyPlanWords as w } from "@/lib/family-plan-words";
-import { SUPPORT_EMAIL } from "@/lib/contact";
+import { BOOKING_URL, safeBookingUrl, SUPPORT_EMAIL } from "@/lib/contact";
 import { emailDocument, emailFooterText, emailSignatureText } from "@/lib/email-brand";
 import { PLAN_REMINDER_PARENT } from "@/lib/plan-reminder";
 import { cad } from "@/lib/site";
+import { DISPATCH_PREVIEW, GETTING_STARTED_HABITS, NEXT_WORKBOOK, walkthroughUrl } from "@/lib/getting-started";
 
 /** The emails an admin previews and sends from the card's panel. */
 export type WorkbookNoticeKind = "welcome" | "ready" | "dispatch";
@@ -54,10 +55,21 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ENTITY[c]);
 const paragraphHtml = (s: string) => esc(s).replace(/https:\/\/unicalearning\.com\/account(?:\/(?:schedule|scan|feedback|plan))?(?=[.,\s]|$)/g,
   (url) => `<a href="${url}" style="color:#0c0c0e">${url}</a>`).replaceAll("\n", "<br>");
 
-export function workbookEmail(p: { parentName: string; childName: string; kind: WorkbookNoticeKind; workbookNumber: number; delivery: WorkbookDelivery | null }) {
+function onboardingParagraph(s: string, video: string, booking = ""): string {
+  if (video && s === `Watch the 3-minute walkthrough: ${video}`) {
+    return `<a href="${esc(video)}" style="color:#0c0c0e">Watch the 3-minute walkthrough</a>`;
+  }
+  if (booking && s.startsWith("Reply to this email") && s.endsWith(booking)) {
+    return `${paragraphHtml(s.slice(0, -booking.length))}<a href="${esc(booking)}" style="color:#0c0c0e">${esc(booking)}</a>`;
+  }
+  return paragraphHtml(s);
+}
+
+export function workbookEmail(p: { parentName: string; childName: string; kind: WorkbookNoticeKind; workbookNumber: number; delivery: WorkbookDelivery | null; walkthrough?: string }) {
   const welcome = p.kind === "welcome";
   const ready = p.kind === "ready";
   const delivery = workbookDelivery(p.delivery);
+  const video = p.kind === "dispatch" ? walkthroughUrl(p.walkthrough) : "";
   if (!welcome && (!Number.isInteger(p.workbookNumber) || p.workbookNumber < 1 || p.workbookNumber > 10000 || (!ready && !delivery))) throw Error("Invalid workbook notice");
   const subject = welcome ? "Your first workbook with Unica Learning" : `${p.childName}'s workbook is ${ready ? "ready" : "on its way"}`;
   const paragraphs = welcome ? [
@@ -75,16 +87,17 @@ export function workbookEmail(p: { parentName: string; childName: string; kind: 
   ] : [
     `Hi ${p.parentName},`,
     `${p.childName}'s workbook ${p.workbookNumber} is on its way${delivery?.method === "hand" ? " by hand delivery" : ""}.`,
+    ...(video ? [`Watch the 3-minute walkthrough: ${video}`] : []),
     ...(delivery?.method === "mail" ? [`Carrier: ${delivery.carrier}\nTracking number: ${delivery.trackingNumber}`,
       ...(delivery.trackingUrl ? [`Track your workbook: ${delivery.trackingUrl}`] : [])] : []),
-    "What to do next: keep the workbook together when it arrives. We will email you the instructions when your free month starts.",
+    DISPATCH_PREVIEW,
     `If anything does not work, or if you have feedback, email ${SUPPORT_EMAIL} or use https://unicalearning.com/account/feedback.`,
   ];
   const footer = { why: "You received this email about your Unica Learning program." };
   // The founders sign the welcome (D-225); the team signs the dispatch notices.
   const signer = welcome ? "founders" as const : "team" as const;
   const text = [...paragraphs, emailSignatureText(undefined, signer), emailFooterText({ ...footer, signer })].join("\n\n");
-  const body = `<tr><td style="padding:0 24px">${paragraphs.map((s) => `<p style="margin:0 0 16px">${paragraphHtml(s)}</p>`).join("")}${p.kind === "dispatch" && delivery?.method === "mail" && delivery.trackingUrl
+  const body = `<tr><td style="padding:0 24px">${paragraphs.map((s) => `<p style="margin:0 0 16px">${onboardingParagraph(s, video)}</p>`).join("")}${p.kind === "dispatch" && delivery?.method === "mail" && delivery.trackingUrl
     ? `<p><a href="${esc(delivery.trackingUrl)}" style="color:#0c0c0e">Track your workbook</a></p>` : ""}</td></tr>`;
   return { subject, text, html: emailDocument({ title: subject, preview: welcome || ready ? "We will email you when your workbook is on its way." : "Your workbook delivery details.", body, footer: { ...footer, signer } }) };
 }
@@ -97,6 +110,8 @@ export function workbookEmail(p: { parentName: string; childName: string; kind: 
  * (explanationAvailable); without it, step 3 keeps the marks and drops its Explain sentence.
  */
 export function planStartEmail(p: { parentName: string; childName: string; grade: number; price: number; firstCharge: string; marking: boolean; explain: boolean; sharedWindow?: boolean; free?: boolean; reminder?: boolean }) {
+  const video = walkthroughUrl();
+  const booking = safeBookingUrl(BOOKING_URL);
   const subject = p.sharedWindow ? w.emailSubject(p.childName) : `Welcome to Unica Learning: how ${p.childName}'s free month works`;
   const steps = [
     `1. Follow the schedule, 5 days a week. The workbook has 10 days, so it takes 2 weeks. Do one day on 5 days of each week, for example Monday to Friday with the weekend off. You can choose any 5 days, but do the days in order, Day 1 to Day 10. See which pages ${p.childName} does each day: https://unicalearning.com/account/schedule. The same schedule is on page 2 of the workbook.`,
@@ -111,8 +126,12 @@ export function planStartEmail(p: { parentName: string; childName: string; grade
   const paragraphs = [
     `Hi ${p.parentName},`,
     ...(p.sharedWindow ? [`Thanks for joining Unica Learning. ${w.planStarted(p.childName)}`, ...(p.free ? ["Nothing has been charged."] : [])] : [`Thanks for joining Unica Learning. ${p.childName}'s first workbook has arrived, so your free first month has started. Nothing has been charged.`]),
+    ...(video ? [`Watch the 3-minute walkthrough: ${video}`] : []),
     "As a parent, here are your responsibilities:",
     steps.join("\n"),
+    `What happens next: ${NEXT_WORKBOOK}`,
+    `Good habits:\n${GETTING_STARTED_HABITS.map((habit) => `• ${habit}`).join("\n")}`,
+    `Reply to this email${booking ? `, or book a free 15-minute call if you would like help getting started: ${booking}` : " if you would like help getting started."}`,
     `Why 5 days? Two days off each week give ${p.childName} time to rest, or to look back at the week's pages, and come back ready to learn. A steady 5 days builds a habit. Working every day can wear kids out and make math feel like a chore, for ${p.childName} and for you.`,
     `If anything is broken, if anything does not work, or if you have feedback, email ${SUPPORT_EMAIL} or use https://unicalearning.com/account/feedback.`,
     `Your plan: On ${p.firstCharge}, we charge up to CAD ${cad(p.price)} to your saved card. Your regular price is CAD ${cad(p.price)} a month until you cancel. An eligible referral benefit gives 50% off one paid month. Delivery is included.${p.reminder !== false ? ` ${PLAN_REMINDER_PARENT}` : ""}`,
@@ -120,6 +139,6 @@ export function planStartEmail(p: { parentName: string; childName: string; grade
   ];
   const footer = { why: "You received this email about your Unica Learning program." };
   const text = [...paragraphs, emailSignatureText(), emailFooterText(footer)].join("\n\n");
-  const body = `<tr><td style="padding:0 24px">${paragraphs.map((s) => `<p style="margin:0 0 16px">${paragraphHtml(s)}</p>`).join("")}</td></tr>`;
+  const body = `<tr><td style="padding:0 24px">${paragraphs.map((s) => `<p style="margin:0 0 16px">${onboardingParagraph(s, video, booking)}</p>`).join("")}</td></tr>`;
   return { subject, text, html: emailDocument({ title: subject, preview: p.free === false ? w.emailPreview : `Your first charge is on ${p.firstCharge}. Cancel before then and you pay nothing.`, body, footer }) };
 }

@@ -139,3 +139,15 @@ it("not-checked formats and too-long trusted wording cannot dispatch", async () 
   f.memory.put(ref, { ...value, package: { ...pkg, text: "x".repeat(2401) } }); expect((await f.run()).status).toBe("unavailable");
   expect(f.fake.requests).toHaveLength(0); expect(f.memory.spend.size).toBe(0);
 });
+import stepPackages from "@/lib/parent-problem-explanation-steps.fixtures.json";
+it.each([
+  ["a pattern story", 0, "20", ["11 + 10 = 21"]],
+  ["a pattern's missing term", 1, "40", ["2 × 10 = 20", "19 + 20 = 39"]],
+  ["place value", 2, "7", ["The thousands digit of 13187 is 3.", "So the answer is 3."]],
+  ["a missing number", 3, "4", ["865 ÷ 173 = 5"]],
+] as const)("%s with no operation carries the code-written template steps (#971)", (_name, at, readAnswer, steps) => {
+  const stored = (stepPackages as { id: string; ref: { page: number; question: number } }[])[at];
+  const input = explanationInput({ ...value, package: stored, itemId: stored.id, pageNumber: stored.ref.page, number: stored.ref.question, schemaVersion: 2, readAnswer, context: "x" });
+  expect(input).not.toBeNull();
+  expect(JSON.parse((input!.request.content[0] as { text: string }).text).steps).toEqual(steps);
+});

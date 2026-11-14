@@ -1,3 +1,4 @@
+import { walkthroughUrl } from "@/lib/getting-started";
 import { notFound } from "next/navigation";
 import { getWorkbook, requireAdmin } from "@/lib/admin-store";
 import { AdminWorkbook } from "@/components/admin-workbook";
@@ -20,7 +21,7 @@ export default async function AdminWorkbookPage({ params }: PageProps<"/admin/wo
     printed ? getWorkbookEmailPanel(admin, detail.workbook) : Promise.resolve(null),
   ]);
   const emails = printed ? panel
-    ? <WorkbookEmails key={`${panel.cardId}:${detail.workbook.number}`} {...panel} workbookNumber={detail.workbook.number} allowReady={detail.workbook.status === "printed"} />
+    ? <WorkbookEmails walkthrough={walkthroughUrl()} key={`${panel.cardId}:${detail.workbook.number}`} {...panel} workbookNumber={detail.workbook.number} allowReady={detail.workbook.status === "printed"} />
     : <p className="adm-note">Workbook emails are unavailable because this child has no confirmed saved card.</p>
     : <p className="adm-note">Print this workbook before sending its ready or delivery email.</p>;
   return <AdminWorkbook email={admin.email} detail={detail} why={<><InstructionsUsed trace={instructions} /><WhyThisBook why={why} /></>} emails={emails} />;

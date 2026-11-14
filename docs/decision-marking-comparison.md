@@ -62,3 +62,20 @@ DECISIONS_OPENROUTER_API_KEY="$(security find-generic-password -s decisions-open
 The pass bar is 0 false Right and at least 80% of right items confirmed at the same threshold. A request with no answer (an error, or not sent under the cap) is not confirmed. If a wrong, blank or uncertain row has a request with no answer, the threshold table counts only the answered rows, so its 0 false Right is not proven: the model does not pass, and the report says "incomplete: <n> non-right requests failed". "High confidence" means P(yes) at or above the lowest 0-false-Right threshold. Synthetic ink does not prove real handwriting. Production use also needs the bar on real phone photos (slice B) and decision #849.
 
 Each `results-<model>.json` file keeps each request's P(yes), error kind and message, latency, cost and provider. Latency is measured on this Mac, from the start to the end of each request, retries included.
+
+## The real-photo set (#853, spec #850 slice B)
+
+`--physical DIR` runs the same comparison on the real phone photos of the made-up Robin booklet. `DIR` is an output folder of `scripts/scan-marking-physical.mjs` (its `set.json` and `images/`), for example from `--estimate`. The script reads it and never writes into it.
+
+- Only the photos the page check accepted are asked. A refused photo has no straightened page, so none of its regions can be cropped. The report lists the refused photos and their reasons.
+- A two-ways item labelled right or wrong is left out with the parent rows, because our team marks it while the method switch is off.
+- The set must hold at least 40 wrong and 20 blank items (`PHYSICAL_MIN_ITEMS`). With fewer, a run is refused before any key is read. `--estimate` still prints the estimate and the refusal.
+- The report records the phones. A one-phone set says "Android not tested" and does not stand in for the spec's two-phone set.
+- `--synthetic-report FILE` (the synthetic run's `report.json`) adds `winner.json` and a Winner section. For each model with every non-right request answered, it takes the lowest threshold that gives 0 false Right and at least 80% of right items confirmed on both sets at once. Of the models that have one, the winner is the one with the higher confirm rate on the real photos. A fake run names no winner.
+
+```sh
+node scripts/decision-marking-comparison.mjs --physical /path/to/robin-physical-estimate --estimate
+node scripts/decision-marking-comparison.mjs --physical /path/to/robin-physical-estimate --synthetic-report .workbook-sample/decision-comparison/<synthetic run>/report.json --max-usd 0.5
+```
+
+The first iPhone set (2026-11-14: 33 photos, 16 accepted by the page check) holds 33 wrong and 17 blank items among the accepted photos, so it is refused. Estimate for its 129 requests per model: USD 0.0134 on Jev and USD 0.0318 on Gemini Decision.
