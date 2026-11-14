@@ -2,7 +2,7 @@ import { ReadableStream } from "node:stream/web";
 import { USERDATA_TIMED_TRANSCRIPT, voice } from "@livekit/agents";
 import type { AudioFrame } from "@livekit/rtc-node";
 import { speechKey } from "@/lib/maya/speech";
-import { mark } from "./marks";
+import type { UtteranceProbe } from "./telemetry";
 import { SPEECH_SCOPE_DATA, speechSentences, speechWords, type BoardSpeech, type SpeechScope } from "@/lib/board-speech";
 import { spokenStream, spokenWords } from "@/lib/maya-voice-spoken";
 import { delivery, deliveryLog, LeadTrim } from "./voice-delivery";
@@ -18,6 +18,8 @@ export async function countedSynthesis(
   text: ReadableStream<string> | AsyncIterable<string>,
   synthesize: (text: ReadableStream<string>) => Promise<ReadableStream<AudioFrame> | null>,
   count: (text: string) => void,
+  /** The telemetry of this speech: the first words given to the voice, and its first audio frame (./telemetry.ts). */
+  probe?: UtteranceProbe,
 ): Promise<ReadableStream<AudioFrame> | null> {
   let sent = "";
   const chunks = text[Symbol.asyncIterator]();
@@ -28,7 +30,7 @@ export async function countedSynthesis(
         const { value, done } = await chunks.next();
         const said = done ? spoken.end() : spoken.push(value);
         if (said) {
-          if (!sent) mark("ttsRequest");
+          if (!sent) probe?.request();
           sent += said;
           controller.enqueue(said);
         }
@@ -52,7 +54,7 @@ export async function countedSynthesis(
       try {
         const { value, done } = await reader.read();
         if (done) { charge(); return controller.close(); }
-        if (!heard) mark("ttsFirstFrame");
+        if (!heard) probe?.firstFrame();
         heard = true;
         controller.enqueue(value);
       } catch (e) {
@@ -61,6 +63,7 @@ export async function countedSynthesis(
       }
     },
     async cancel(reason) {
+      probe?.cancel?.();
       charge();
       await reader.cancel(reason);
     },

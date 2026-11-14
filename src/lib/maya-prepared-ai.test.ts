@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { openRouterClient } from "@/lib/ai-openrouter";
 import { preparedAi } from "@/lib/maya-prepared-ai";
+import { requestContext, withRequestContext } from "@/lib/maya-request-trace";
 import { createBudget, type Handle } from "@/lib/maya-spend-block";
 import { createTextSession } from "@/lib/maya-text";
 import { conversationalMayaModel } from "@/lib/maya-model";
@@ -136,5 +137,27 @@ describe("one prepared request uses one existing budget handle", () => {
     await session.finish(); await t.budget.stop();
     expect(t.budget.totals()).toMatchObject({ speculative: 4200, speculativeUsed: 0 });
     expect(t.settled).toEqual([4200]);
+  });
+});
+
+describe("the diagnostic handle id reaches the physical request", () => {
+  const seen = async (id: string | undefined, outer?: string) => {
+    const t = setup(); await t.budget.open();
+    const handle = t.budget.seam.take("speculative")!;
+    const ids: Array<string | null | undefined> = [];
+    const net = vi.fn(async () => { ids.push(requestContext().diagnosticHandleId); return stream(0.001); });
+    const client = preparedAi((hooks) => ({ model: "fake", json: async () => { await new Promise((r) => setTimeout(r, 5)); await hooks.onRequest(); await hooks.fetch("https://unused.invalid"); return {} as never; } }), t.budget, handle, net, id);
+    await withRequestContext({ diagnosticHandleId: outer }, () => client.json(request, signal()));
+    return { ids, net, t, handle };
+  };
+  it("carries the same id after construction and an await", async () => {
+    const r = await seen("scope#h1");
+    expect(r.ids).toEqual(["scope#h1"]);
+    expect(r.net).toHaveBeenCalledTimes(1);
+  });
+  it("does not borrow an inherited handle id, and keeps two concurrent handles apart", async () => {
+    expect((await seen(undefined, "other#h9")).ids).toEqual([null]);
+    const [a, b] = await Promise.all([seen("s#h1", "s#h2"), seen("s#h2", "s#h1")]);
+    expect([a.ids, b.ids]).toEqual([["s#h1"], ["s#h2"]]);
   });
 });
