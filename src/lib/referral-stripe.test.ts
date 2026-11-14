@@ -4,10 +4,10 @@ vi.mock("server-only", () => ({}));
 import { referralPages, stripeReferrals, REFERRAL_COUPON_ID } from "@/lib/referral-stripe";
 
 function fixture() {
-  const state = { planStatus:"active",status:"draft",amount:5999,paid:0,mode:false,manual:false,refund:0,dispute:"",discounts:[] as unknown[],itemDiscount:false,auto:true,metadata:{} as Record<string,string>,couponPercent:50,couponExists:true };
+  const state = { reason:"subscription_cycle",planStatus:"active",status:"draft",amount:5999,paid:0,mode:false,manual:false,refund:0,dispute:"",discounts:[] as unknown[],itemDiscount:false,auto:true,metadata:{} as Record<string,string>,couponPercent:50,couponExists:true };
   const writes: {path:string;body:URLSearchParams;key:string|null}[]=[];
   const coupon=(expanded:boolean)=>({id:REFERRAL_COUPON_ID,livemode:state.mode,valid:true,percent_off:state.couponPercent,amount_off:null,duration:"once",redeem_by:null,max_redemptions:null,...(expanded?{applies_to:{products:["unica_math"]}}:{})});
-  const raw=()=>({id:"in_1",customer:"cus_1",parent:{subscription_details:{subscription:"sub_1"}},livemode:state.mode,status:state.status,subtotal:state.amount,amount_paid:state.paid,status_transitions:{paid_at:state.paid?1800000000:null},billing_reason:"subscription_cycle",discounts:state.discounts,auto_advance:state.auto,metadata:state.metadata});
+  const raw=()=>({id:"in_1",customer:"cus_1",parent:{subscription_details:{subscription:"sub_1"}},livemode:state.mode,status:state.status,subtotal:state.amount,amount_paid:state.paid,status_transitions:{paid_at:state.paid?1800000000:null},billing_reason:state.reason,discounts:state.discounts,auto_advance:state.auto,metadata:state.metadata});
   const client=new Stripe("sk_test_referral",{maxNetworkRetries:0,httpClient:Stripe.createFetchHttpClient(async(input,init)=>{
     const url=new URL(String(input)),path=url.pathname,method=init?.method??"GET",body=new URLSearchParams(String(init?.body??""));
     if(method==="DELETE"&&path==="/v1/invoices/in_1"){writes.push({path,body,key:new Headers(init?.headers).get("Idempotency-Key")});state.status="void";return Response.json({id:"in_1",object:"invoice",deleted:true});}
@@ -42,6 +42,10 @@ function fixture() {
 const reservation={id:"op",key:"referral-op-0",parent:"p",child:"c",customer:"cus_1",invoice:"in_1",subscription:"sub_1",coupon:REFERRAL_COUPON_ID,product:"unica_math",cents:5999,state:"reserved" as const,startKey:null,createdAt:0,allowed:true,policy:"clear" as const};
 
 describe("Stripe referral adapter uses current provider objects",()=>{
+ it("uses the subscription creation key only for its initial invoice",async()=>{
+  const f=fixture();expect((await f.provider.invoice("in_1")).startKey).toBeNull();
+  f.state.reason="subscription_create";expect((await f.provider.invoice("in_1")).startKey).toBe("start-1");
+ });
  it("expands the product restriction on the first coupon creation",async()=>{
   const f=fixture();f.state.couponExists=false;expect(await f.provider.coupon()).toEqual({id:REFERRAL_COUPON_ID,product:"unica_math"});
   expect(f.writes[0].body.get("applies_to[products][0]")).toBe("unica_math");

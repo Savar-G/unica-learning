@@ -92,11 +92,12 @@ export function memoryReferrals(now: () => number = () => 1_800_000_000_000) {
         operations.push(op); return { ok: true, reservation: { ...op } };
       }
       case "finish": case "start_result": {
-        const op = operations.find(o => c.operation ? o.id === c.operation : c.key ? o.startKey === c.key : o.invoice === c.invoice && (!c.coupon || o.coupon === c.coupon));
+        const op = c.operation ? operations.find(o => o.id === c.operation) : operations.find(o => o.invoice === c.invoice && !!c.invoice && (!c.coupon || o.coupon === c.coupon))
+          ?? (c.action === "start_result" && c.key ? operations.find(o => o.startKey === c.key && (!o.invoice || o.invoice === c.invoice)) : undefined);
         if (!op) return { ok: true };
+        if (op.state === "used" || op.state === "absent") return { ok: true };
         if (c.invoice) op.invoice = c.invoice;
         if (c.subscription) op.subscription = c.subscription;
-        if (op.state === "used") return { ok: true };
         if (c.result === "detached") { op.state = rewards.find(r => r.id === op.reward)!.risk === "revoke" ? "absent" : "applied"; return { ok: true }; }
         if (c.result === "refused" || c.result === "absent") op.state = "absent";
         else if (c.result === "used") { op.state = "used"; rewards.find(r => r.id === op.reward)!.children.set(op.child, "used"); }

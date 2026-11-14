@@ -1,9 +1,9 @@
--- Synthetic rows only. Run after the migration. The final ROLLBACK is required.
+-- Synthetic rows only. Run after both referral migrations. The final ROLLBACK is required.
 begin;
 do $$
 declare
   p uuid:=gen_random_uuid(); q uuid:=gen_random_uuid(); admin uuid:=gen_random_uuid(); c uuid:=gen_random_uuid(); d uuid:=gen_random_uuid();
-  a uuid; b uuid; code text; result jsonb; op jsonb; mail uuid:=gen_random_uuid(); earned uuid; stamp bigint:=floor(extract(epoch from clock_timestamp())*1000)+1000;
+  a uuid; b uuid; code text; result jsonb; op jsonb; mail uuid:=gen_random_uuid(); earned uuid; zero_op uuid; next_op uuid; old_owner uuid; old_account uuid; n integer; stamp bigint:=floor(extract(epoch from clock_timestamp())*1000)+1000;
 begin
   if has_function_privilege('anon','public.referral_command(jsonb)','execute') or has_function_privilege('authenticated','public.referral_command(jsonb)','execute') then raise exception 'public command privilege'; end if;
   if not has_function_privilege('service_role','public.referral_command(jsonb)','execute') then raise exception 'service command privilege'; end if;
@@ -46,6 +46,21 @@ begin
   if result->'reservation'->>'coupon'<>'synthetic_coupon' then raise exception 'parameters not frozen'; end if;
   if not exists(select 1 from public.family_card_operations where id=(op->>'id')::uuid) then raise exception 'missing deletion hold'; end if;
   perform public.referral_command(jsonb_build_object('action','start_result','operation',op->>'id','invoice','synthetic_use_'||c,'result','used'));
+  -- A released zero creation stays terminal after its entitlement funds another invoice.
+  result:=public.referral_command(jsonb_build_object('action','start','parent',q,'child',d,'customer','synthetic_'||d,'key','synthetic_zero_'||d,'cents',5999,'coupon','synthetic_coupon','product','unica_math','paid',true));
+  zero_op:=(result->'reservation'->>'id')::uuid;
+  if zero_op is null then raise exception 'missing zero control reservation'; end if;
+  perform public.referral_command(jsonb_build_object('action','start_result','key','synthetic_zero_'||d,'invoice','synthetic_zero_invoice_'||d,'result','absent'));
+  result:=public.referral_command(jsonb_build_object('action','reserve','parent',q,'child',d,'customer','synthetic_'||d,'invoice','synthetic_next_'||d,'subscription','synthetic_sub','cents',5999,'coupon','synthetic_coupon','product','unica_math','paid',true));
+  next_op:=(result->'reservation'->>'id')::uuid;
+  if next_op is null then raise exception 'released entitlement not reused'; end if;
+  perform public.referral_command(jsonb_build_object('action','start_result','key','synthetic_zero_'||d,'invoice','synthetic_zero_invoice_'||d,'result','applied'));
+  if (select state from public.referral_operations where id=zero_op)<>'absent' then raise exception 'late zero replay reactivated'; end if;
+  -- The exact invoice wins over a retained subscription creation key.
+  perform public.referral_command(jsonb_build_object('action','finish','invoice','synthetic_next_'||d,'key','synthetic_zero_'||d,'result','absent'));
+  if (select state from public.referral_operations where id=next_op)<>'absent' or exists(select 1 from public.family_card_operations where id=next_op) then raise exception 'invoice completion selected creation'; end if;
+  perform public.referral_command(jsonb_build_object('action','start_result','key','synthetic_zero_'||d,'invoice','synthetic_unrelated_'||d,'result','applied'));
+  if (select invoice from public.referral_operations where id=zero_op) is distinct from 'synthetic_zero_invoice_'||d then raise exception 'creation rebound to renewal'; end if;
   -- A previewed post-use correction changes attribution without moving a fixed cohort or duplicating its award.
   perform public.referral_command(jsonb_build_object('action','overview','parent',admin));
   select referral_accounts.code into code from public.referral_accounts where parent_id=admin;
@@ -63,5 +78,19 @@ begin
   delete from public.parents where id=q;
   if not exists(select 1 from public.referral_rewards where source_id=b and account_id=a and kind='earned') then raise exception 'cross-family reward erased'; end if;
   if exists(select 1 from public.referral_customers where account_id=b) or (select referral_accounts.code is not null from public.referral_accounts where id=b) then raise exception 'cross-family identifiers retained'; end if;
+  -- Older removed or deleting recipients cannot occupy the bounded email queue.
+  for n in 1..40 loop
+    old_owner:=gen_random_uuid(); insert into auth.users(id) values(old_owner);
+    insert into public.parents(id,name,email,postal) values(old_owner,'Synthetic Queue','queue@referral.invalid','V6B1A1');
+    old_account:=public.referral_account(old_owner);
+    insert into public.referral_rewards(account_id,source_id,kind) values(old_account,old_account,'earned');
+    if n<=20 then delete from public.parents where id=old_owner;
+    else update public.parents set deletion_requested_at=clock_timestamp() where id=old_owner; end if;
+  end loop;
+  insert into public.referral_rewards(account_id,source_id,kind) select id,id,'earned' from public.referral_accounts where parent_id=admin;
+  for n in 1..2 loop
+    result:=public.referral_command(jsonb_build_object('action','due','operation','email','limit',20));
+    if jsonb_array_length(result->'due'->'emails')<>1 or result->'due'->'emails'->0->>'parent' is distinct from admin::text then raise exception 'deleted recipients blocked email queue'; end if;
+  end loop;
 end $$;
 rollback;

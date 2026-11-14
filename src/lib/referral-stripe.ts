@@ -80,7 +80,7 @@ export function stripeReferrals(s: Stripe, live: boolean): ReferralProvider {
     const couponIds = discounts.flatMap(d => typeof d !== "string" && !d.deleted && d.source.type === "coupon" ? [idOf(d.source.coupon)].filter((x): x is string => !!x) : []);
     if (discounts.some(d => typeof d === "string")) throw new Error("Referral discounts not expanded");
     if (!["draft", "open", "paid", "void", "uncollectible"].includes(raw.status ?? "")) throw new Error("Referral invoice status unreadable");
-    return { id: raw.id, customer, subscription, startKey: plan?.metadata.start_key ?? null, status: raw.status as ReferralInvoice["status"], cents: raw.subtotal,
+    return { id: raw.id, customer, subscription, startKey: raw.billing_reason === "subscription_create" ? plan?.metadata.start_key ?? null : null, status: raw.status as ReferralInvoice["status"], cents: raw.subtotal,
       paidCents: raw.amount_paid, paidAt: raw.status_transitions.paid_at ? raw.status_transitions.paid_at * 1000 : null,
       actualPayment, modeMatches: true, program, monthly, renewal: raw.billing_reason === "subscription_cycle",
       risk, couponIds: couponIds.filter(id => id === REFERRAL_COUPON_ID), otherDiscount: inheritedDiscount || itemDiscount || discounts.length > couponIds.filter(id => id === REFERRAL_COUPON_ID).length };

@@ -176,6 +176,7 @@
         "needs": "Settle the initial reports and recheck repairs"
       }
     ],
-    "latest_review": ".design/reviews/referrals-repair-round-1.md"
+    "latest_review": ".design/reviews/referrals-repair-round-1.md",
+    "verification": "Both hosted migrations and expanded rollback probe passed. Generated types/checks completed. Twelve Stripe test-mode checks and parent/admin Aside checks passed. Full gate passed: 692 files, 21029 tests, one skipped, ESLint and build. Settlement repairs await independent recheck. Live Stripe configuration remains unverified."
   }
 }

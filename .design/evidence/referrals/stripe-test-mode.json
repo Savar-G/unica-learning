@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-14T01:09:52.874Z",
+  "at": "2026-11-14T01:57:08.804Z",
   "provider": "Stripe test mode",
   "results": [
     {
@@ -8,6 +8,14 @@
     },
     {
       "name": "trial_stays_free_without_consuming_coupon",
+      "pass": true
+    },
+    {
+      "name": "initial_invoice_retains_its_creation_key",
+      "pass": true
+    },
+    {
+      "name": "renewal_ignores_the_retained_subscription_creation_key",
       "pass": true
     },
     {

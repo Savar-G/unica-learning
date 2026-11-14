@@ -1,0 +1,59 @@
+{
+  "at": "2026-11-14T01:44:51.866Z",
+  "tables": [
+    {
+      "table": "referral_accounts",
+      "parentRows": 0,
+      "anonDenied": true,
+      "anonStatus": 401
+    },
+    {
+      "table": "referral_corrections",
+      "parentRows": 0,
+      "anonDenied": true,
+      "anonStatus": 401
+    },
+    {
+      "table": "referral_customers",
+      "parentRows": 0,
+      "anonDenied": true,
+      "anonStatus": 401
+    },
+    {
+      "table": "referral_rewards",
+      "parentRows": 0,
+      "anonDenied": true,
+      "anonStatus": 401
+    },
+    {
+      "table": "referral_entitlements",
+      "parentRows": 0,
+      "anonDenied": true,
+      "anonStatus": 401
+    },
+    {
+      "table": "referral_operations",
+      "parentRows": 0,
+      "anonDenied": true,
+      "anonStatus": 401
+    },
+    {
+      "table": "referral_invoice_risk",
+      "parentRows": 0,
+      "anonDenied": true,
+      "anonStatus": 401
+    },
+    {
+      "table": "referral_start_choices",
+      "parentRows": 0,
+      "anonDenied": true,
+      "anonStatus": 401
+    }
+  ],
+  "rpc": {
+    "parent": "denied",
+    "admin": "denied",
+    "anon": "denied"
+  },
+  "positiveControl": true
+}

@@ -81,12 +81,21 @@ The local runner uses an in-memory PostgreSQL engine. Its base tables and family
 ```sh
 npm install --prefix .referral-tools --no-save --package-lock=false @electric-sql/pglite
 node scripts/referral-sql-local.mjs
+node scripts/referral-settlement-sql-local.mjs
 ```
 
 `PGLITE_MODULE` can point to another installed PGlite module. The temporary installation was removed after the implementation check. It is not a project dependency.
 
-## Parent release work
+The settlement control bundles the public domain functions and runs them with the actual command SQL. It covers late zero-invoice replay after benefit reuse, a paid renewal with the retained subscription creation key, and a bounded email queue behind removed recipients. These cases fail on the earlier candidate and pass after the settlement repair. They remain local source and SQL proof.
 
-Apply `supabase/migrations/20261113234609_family_referrals.sql` through the approved migration path. First confirm that its version is unique against the latest hosted history. Run `supabase/tests/referrals_rollback.sql` on the hosted schema. It uses synthetic rows in a rolled-back transaction. Regenerate `database.types.ts` and `database.checks.ts`. No generated file was edited by the implementation worker.
+## Hosted and release state
 
-Then verify the restricted key and event subscriptions in Stripe test mode. Test actual sibling prices and lower historical offers, the trial, immediate paid start/Restart, failed payment, refund/dispute ordering, accepted-write/response loss, a missed webhook, stopped old invoices, and the finalization limits above. Check parent/admin rendering and keyboard/mobile behavior. Run the final full test/lint/build gate and independent review. This local implementation does not establish hosted SQL, Stripe, browser or release proof.
+Both additive migrations were applied through Supabase MCP. Local `20261113234609_family_referrals.sql` maps to hosted `20261114013255_family_referrals`. Local `20261114014837_referral_settlement.sql` maps to hosted `20261114015329_referral_settlement`. The expanded `supabase/tests/referrals_rollback.sql` passed on the hosted schema and rolled back its synthetic data. Database types and check constraints were generated from the hosted schema. No generated file was edited by hand.
+
+Hosted Data API controls returned zero referral rows to a signed-in parent, denied anonymous reads, and denied command RPC execution to parent, admin and anonymous sessions. An admin positive control read the synthetic family row. See `.design/evidence/referrals/hosted-rls.json`.
+
+Twelve Stripe test-mode adapter checks passed, including the 7999/5999-cent prices, the trial, nonzero card payment, partial/full refund, zero credit-funded invoice, finalized receivable, following full-price renewal, initial creation key and absent renewal creation key. Local tests cover lower prices, failed/manual payments, disputes, lost responses and recovery. This is separate provider and ledger proof, not one combined hosted billing journey.
+
+Aside checked the actual local parent flow against hosted Auth and the ledger: self-referral refusal, preserved manual draft, signed-in share redirect and automatic fill after draft removal, code confirmation, persistence after reload, copy action, and desktop/phone layout. It checked the admin preview, correction and persisted audit. All owned tabs were closed. The previous local browser session was restored. Three synthetic marked test families were deleted. No real customer email or production payment was sent.
+
+Production configuration remains a merge prerequisite. Vercel returned `[SENSITIVE]` for the production Stripe key on 14 November 2026 UTC. No usable live key was obtained. Live webhook subscriptions and restricted-key permissions remain unverified. Keep the exact event and permission list above in the release check. No production Stripe configuration was changed.

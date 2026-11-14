@@ -124,8 +124,9 @@ export async function recordReferralInvoice(invoice: ReferralInvoice, { store }:
   if (!invoice.modeMatches) throw new Error("Referral provider mode mismatch");
   const owner = await store.owner(invoice.customer);
   const readOrder = order ?? await store.readOrder();
-  // Bind an immediate creation before releasing a zero-value invoice. Replays must not reactivate that claim.
-  if (owner && invoice.startKey && invoice.couponIds.length) accepted(await store.command({ action: "start_result", key: invoice.startKey, invoice: invoice.id, subscription: invoice.subscription ?? "", result: "applied" }));
+  // Bind a definitive unused creation directly as absent. A renewal never owns its subscription's creation key.
+  const release = invoice.status === "void" || (invoice.status === "paid" && (invoice.paidCents === 0 || !invoice.couponIds.length));
+  if (owner && invoice.startKey && !invoice.renewal && (invoice.couponIds.length || release)) accepted(await store.command({ action: "start_result", ...owner, key: invoice.startKey, invoice: invoice.id, subscription: invoice.subscription ?? "", result: release ? "absent" : "applied" }));
   if (invoice.status === "void" || (invoice.status === "paid" && invoice.paidCents === 0)) {
     accepted(await store.command({ action: "finish", invoice: invoice.id, result: "absent" }));
     return;
@@ -143,7 +144,7 @@ export async function recordReferralInvoice(invoice: ReferralInvoice, { store }:
     accepted(await store.command({ action: "finish", ...owner, invoice: invoice.id, coupon: invoice.couponIds[0], result: "used" }));
   } else if (invoice.status === "paid" && invoice.paidCents > 0) {
     // Payment without our coupon is decisive. A pending coupon write can no longer change this invoice.
-    accepted(await store.command({ action: "finish", ...owner, invoice: invoice.id, key: invoice.startKey ?? undefined, result: "absent" }));
+    accepted(await store.command({ action: "finish", ...owner, invoice: invoice.id, result: "absent" }));
   }
 }
 

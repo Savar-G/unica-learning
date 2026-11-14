@@ -32,6 +32,7 @@ try {
   const subscription = await stripe.subscriptions.create({ customer: first.id, items: [{ price: firstPrice.id }], trial_end: trialEnd, metadata: { start_key: "synthetic-referral-proof-trial" } });
   const zero = await provider.invoice(typeof subscription.latest_invoice === "string" ? subscription.latest_invoice : subscription.latest_invoice.id);
   check("trial_stays_free_without_consuming_coupon", zero.paidCents === 0 && !zero.actualPayment && zero.couponIds.length === 0);
+  check("initial_invoice_retains_its_creation_key", zero.startKey === "synthetic-referral-proof-trial");
   await stripe.testHelpers.testClocks.advance(clock.id, { frozen_time: trialEnd });
   for (let attempt = 0; attempt < 100; attempt++) {
     const current = await stripe.testHelpers.testClocks.retrieve(clock.id);
@@ -42,6 +43,7 @@ try {
   const invoices = await stripe.invoices.list({ customer: first.id, subscription: subscription.id, limit: 100 });
   const renewal = invoices.data.find(i => i.billing_reason === "subscription_cycle" && i.status === "draft");
   if (!renewal) throw Error("The first paid renewal is not an editable draft");
+  check("renewal_ignores_the_retained_subscription_creation_key", (await provider.invoice(renewal.id)).startKey === null);
   const reservation = { id: `proof-${clock.id}`, key: `proof-${clock.id}-first`, parent: "synthetic", child: "synthetic-first", customer: first.id, invoice: renewal.id, subscription: subscription.id, coupon: coupon.id, product: coupon.product, cents: 7999, allowed: true, policy: "clear", state: "reserved", startKey: null, createdAt: Date.now() };
   await provider.apply(await provider.invoice(renewal.id), reservation);
   await provider.apply(await provider.invoice(renewal.id), reservation);
