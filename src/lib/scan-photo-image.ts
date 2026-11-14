@@ -99,8 +99,10 @@ const QR_ZOOM_PASSES = [
  */
 async function pageCode(jpeg: Buffer, size: { width: number; height: number }): Promise<PageCode | null> {
   const whole = await sharp(jpeg).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  // A read that is not a page link (a misread, or another code in view) does not end the search: the windows still look.
   const first = readQr(whole.data, whole.info.width, whole.info.height);
-  if (first) return codeOf(first, 0, 0, 1);
+  const wholeCode = first && codeOf(first, 0, 0, 1);
+  if (wholeCode) return wholeCode;
   if (Math.floor(size.width / 2) < 16 || Math.floor(size.height / 2) < 16) return null;
   for (const [zoom, part, windows] of QR_ZOOM_PASSES) for (const [x, y] of windows) {
     const width = Math.floor(size.width * part), height = Math.floor(size.height * part);
@@ -109,7 +111,8 @@ async function pageCode(jpeg: Buffer, size: { width: number; height: number }): 
     const { data, info } = await sharp(jpeg).extract({ left, top, width, height })
       .resize({ width: width * zoom, height: height * zoom, fit: "fill", kernel: "lanczos3" }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
     const found = read(data, info.width, info.height);
-    if (found) return codeOf(found, left, top, zoom);
+    const code = found && codeOf(found, left, top, zoom);
+    if (code) return code;
   }
   return null;
 }

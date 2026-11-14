@@ -51,6 +51,19 @@ describe("scan photo normalization", () => {
     expect((await normalizeScanPhoto(bytes)).token).toBe(token);
     await expect(normalizeScanPhoto(await photo(`https://other.example/tutor/p/${token}`))).rejects.toThrow("qr");
   });
+  it("keeps looking when the first code it reads is not a page link, and finds the page's own small code low on the left", async () => {
+    // A real photo (2026-11-14) gave a whole-photo read that was no page link; the search stopped there and refused the
+    // photo, though its own code read at once in a crop. Disproved if this photo is refused for its code.
+    const sheet = blankPage(1275, 1650);
+    drawPrintedContent(sheet);
+    drawQr(sheet, { x: 90, y: 1513, width: 87, height: 87 }, `https://unicalearning.com/tutor/p/${token}`);
+    drawQr(sheet, { x: 340, y: 80, width: 600, height: 600 }, "https://example.com/not-a-page");
+    const raster = photographed(sheet, { width: 1500, height: 1900 }, uprightCorners({ width: 1500, height: 1900 }, { width: 1275, height: 1650 }, 60), { shade: 0.2 });
+    const bytes = await rasterSharp(raster).blur(1).jpeg({ quality: 82 }).toBuffer();
+    const { data, info } = await sharp(bytes).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    expect(jsQR(new Uint8ClampedArray(data), info.width, info.height, { inversionAttempts: "attemptBoth" })?.data).toBe("https://example.com/not-a-page");
+    expect((await normalizeScanPhoto(bytes)).token).toBe(token);
+  });
   it("splits an open book's two pages into two page photos, each with only its own code, and leaves one page alone (#915)", async () => {
     // A sheet whose code sits where the template prints it: a 0.0572-wide symbol centred 0.114 from the left edge.
     const sheet = (name: string) => {
