@@ -143,7 +143,7 @@ function planControl(name: string, state: string, cardId: string) {
 
 function scanListing(state: string): ScanListing | null {
   if (state === "loading" || state === "unavailable") return null;
-  return { checks: true, marking: true, pages: [{ id: "sample-page", workbookId: "sample-book", book: 3, pageNumber: 4, day: "Day 1", pageOfDay: 1, pagesInDay: 2 }],
+  return { checks: true, marking: true, pages: [{ id: "sample-page", workbookId: "sample-book", book: 3, pageNumber: 4, day: "Day 1", pageOfDay: 1, pagesInDay: 2, name: "Warm-up" }],
     photos: state === "empty" ? [] : [{ id: "sample-photo", pageId: "sample-page", workbookId: "sample-book", book: 3, pageNumber: 4, state: "saved", check: state === "refused" ? "refused" : "ready", reason: state === "refused" ? "marks-missing" : null, sentAt: state === "sent" ? "2026-11-05T20:00:00Z" : null, createdAt: "2026-11-05T19:00:00Z" }] };
 }
 

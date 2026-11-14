@@ -829,6 +829,46 @@ function photoBox(photo: Raster, b: Box): Raster {
   return { width: b.width, height: b.height, channels: 1, data };
 }
 
+/** How much the zoomed read of the photo's own pixels enlarges them: the upload's zoom (scan-photo-image.ts). */
+const QR_ZOOM = 2;
+
+/** A lanczos (a = 3) weight: the kernel sharp enlarges with. */
+const lanczos = (x: number) => {
+  if (x === 0) return 1;
+  if (Math.abs(x) >= 3) return 0;
+  const p = Math.PI * x;
+  return (3 * Math.sin(p) * Math.sin(p / 3)) / (p * p);
+};
+
+/** A one-channel raster enlarged `k` times with a lanczos kernel, as the upload's zoomed read enlarges its crops. */
+function enlarged(r: Raster, k: number): Raster {
+  const taps = (size: number) => Array.from({ length: size * k }, (_, o) => {
+    const s = (o + 0.5) / k - 0.5, base = Math.floor(s);
+    const at: number[] = [], weights: number[] = [];
+    for (let i = base - 2; i <= base + 3; i++) { at.push(Math.max(0, Math.min(size - 1, i))); weights.push(lanczos(s - i)); }
+    const sum = weights.reduce((a, b) => a + b, 0);
+    return { at, weights: weights.map((w) => w / sum) };
+  });
+  const across = taps(r.width), down = taps(r.height), W = r.width * k, H = r.height * k;
+  const rows = new Float32Array(W * r.height);
+  for (let y = 0; y < r.height; y++) for (let x = 0; x < W; x++) {
+    const { at, weights } = across[x];
+    let v = 0;
+    for (let i = 0; i < at.length; i++) v += r.data[y * r.width + at[i]] * weights[i];
+    rows[y * W + x] = v;
+  }
+  const data = new Uint8Array(W * H);
+  for (let y = 0; y < H; y++) {
+    const { at, weights } = down[y];
+    for (let x = 0; x < W; x++) {
+      let v = 0;
+      for (let i = 0; i < at.length; i++) v += rows[at[i] * W + x] * weights[i];
+      data[y * W + x] = Math.max(0, Math.min(255, Math.round(v)));
+    }
+  }
+  return { width: W, height: H, channels: 1, data };
+}
+
 /** Where the printed code's modules are: the centre of each column and each row, in page pixels, and a module's size. */
 interface QrGrid { columns: number[]; rows: number[]; pitch: number }
 
@@ -944,8 +984,13 @@ function qrBound(photo: Raster, t: Transform, printed: FoundQr, grid: QrGrid | n
   const x0 = Math.max(0, Math.floor(seenAt.x)), y0 = Math.max(0, Math.floor(seenAt.y));
   const x1 = Math.min(photo.width, Math.ceil(seenAt.x + seenAt.width)), y1 = Math.min(photo.height, Math.ceil(seenAt.y + seenAt.height));
   if (x1 > x0 && y1 > y0) {
-    const own = readQr(photoBox(photo, { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }));
+    const box = photoBox(photo, { x: x0, y: y0, width: x1 - x0, height: y1 - y0 });
+    const own = readQr(box);
     if (own) return !!decides(own, (c) => applyTransform(inverse, { x: x0 + c.x, y: y0 + c.y }));
+    // The same pixels enlarged as the upload's zoomed read enlarges them, so a code the upload read in a zoomed crop
+    // reads here too.
+    const zoomed = readQr(enlarged(box, QR_ZOOM));
+    if (zoomed) return !!decides(zoomed, (c) => applyTransform(inverse, { x: x0 + c.x / QR_ZOOM, y: y0 + c.y / QR_ZOOM }));
   }
   // Then module by module where the page printed it: what a phone's small or soft code needs.
   const byModule = gridQr(photo, t, printed, grid);

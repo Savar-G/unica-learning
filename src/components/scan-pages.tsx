@@ -5,22 +5,26 @@ import Link from "next/link";
 import Image from "next/image";
 import { browserClient } from "@/lib/supabase-browser";
 import { prepareScanPhoto } from "@/lib/scan-photo-browser";
-import { buildStack, refusalCopy, sendLabel, stackSummary, waitingNote, type DayPage, type StackPhoto, type StackTile, type StackUpload, type UploadRefusal } from "@/lib/scan-stack";
+import { addingCount, buildStack, refusalCopy, roomNote, sendLabel, stackSummary, waitingNote, type DayPage, type StackPhoto, type StackTile, type StackUpload, type UploadRefusal } from "@/lib/scan-stack";
 import { SCANNING_COOKIE, SCANNING_SECONDS } from "@/lib/scan-tab";
 import { scanEventTicket } from "@/lib/scan-track";
+import { busyWait, nextUploads, REQUEST_TIMEOUT_MS, UPLOAD_TIMEOUT_MS } from "@/lib/scan-upload-queue";
 import { ScanHistory } from "@/components/scan-history";
 import { ScanPreview } from "@/components/scan-preview";
 import "./scan-pages.css";
 
 // Scan pages (spec #368, round r565 picked, D-269 to D-276), step 1 of D-276: the shared stack on the phone's own file
 // input. The live camera comes later, after the real-phone test. Each photo uploads and saves as soon as it is taken or
-// chosen, with no confirm per page (D-269); the browser sends one at a time, because the server takes 2 at once (D-271).
+// chosen, with no confirm per page (D-269). A batch chosen from the phone's photos goes up in any order, 2 at a time
+// (D-271, #915, src/lib/scan-upload-queue.ts); a photo the server has no room for keeps its place and waits.
 // Checks and Send are for test families and admins only until marking ships (D-252): the list route says which.
 // Images arrive only through the checked image route, live as object URLs and are revoked when they go away.
 
 type Mode = "phone" | "desktop";
 /** `reservation`: the photo id asked for at admission. It stays with the queued photo, so a lost answer takes no second upload slot. */
 type Local = StackUpload & { file: File; replaces?: string; reservation?: string };
+const GUIDE_WORDS = { done: "done", retake: "needs another photo", todo: "not scanned yet" } as const;
+
 export type ScanListing = { marking?: boolean; checks: boolean; photos: StackPhoto[]; pages: DayPage[] };
 
 const UPLOAD_REFUSALS: readonly string[] = ["qr", "page", "duplicate", "image", "size", "frequency", "quota"];
@@ -28,12 +32,12 @@ const uploadRefusal = (code: string): UploadRefusal => (UPLOAD_REFUSALS.includes
 /** What the server says of a photo id that can no longer take an upload: the lease ended or the photo went. A new id is needed. */
 const ENDED: readonly string[] = ["expired", "rejected", "deleted", "refused"];
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-/** How long a photo waits for the server's one upload slot, in tries 1.5 seconds apart. */
-const BUSY_TRIES = 40;
 
-async function api(path: string, init?: RequestInit) {
+/** Every request has a time limit, so one hung upload cannot hold its slot (#915). A request past it is a lost answer. */
+async function api(path: string, init?: RequestInit, timeout = REQUEST_TIMEOUT_MS) {
   let response: Response;
-  try { response = await fetch(path, { ...init, cache: "no-store" }); } catch { throw new Error("unavailable"); }
+  const signal = typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(timeout) : undefined;
+  try { response = await fetch(path, { ...init, cache: "no-store", signal }); } catch { throw new Error("unavailable"); }
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error ?? "unavailable");
   return data;
@@ -53,10 +57,10 @@ const ICONS = {
 };
 
 const STATUS_WORDS: Record<StackTile["status"], string> = {
-  adding: "Sending", checking: "Checking", ready: "Ready", saved: "Saved", refused: "Needs another photo", unavailable: "Cannot be checked", sent: "Sent for marking",
+  adding: "Sending", waiting: "Waiting to send", checking: "Checking", ready: "Ready", saved: "Saved", refused: "Needs another photo", unavailable: "Cannot be checked", sent: "Sent for marking",
 };
 
-/** A bottom sheet on a phone, a centred dialog on a wider screen. Esc and the backdrop close it. */
+/** A bottom sheet on a phone, a centred dialog on a wider screen. A Close button, Esc and the backdrop close it. */
 function Sheet({ label, onClose, children }: { label: string; onClose: () => void; children: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -68,6 +72,7 @@ function Sheet({ label, onClose, children }: { label: string; onClose: () => voi
     return () => { if (d.open && typeof d.close === "function") d.close(); };
   }, []);
   return <dialog ref={ref} className="scan-sheet" aria-label={label} onCancel={(e) => { e.preventDefault(); onClose(); }} onClick={(e) => { if (e.target === ref.current) onClose(); }}>
+    <div className="scan-sheet-bar"><button type="button" className="scan-sheet-x" aria-label="Close" onClick={onClose}><span aria-hidden="true">×</span></button></div>
     <div className="scan-sheet-body">{children}</div>
   </dialog>;
 }
@@ -83,7 +88,7 @@ function Tile({ tile, thumb, onOpen }: { tile: StackTile; thumb?: string; onOpen
         </span>
       </span>
       <span className="scan-tile-l">{tile.label}</span>
-      {tile.reason ? <span className="scan-tile-s">{tile.reason}</span> : tile.status === "checking" || tile.status === "adding" || tile.status === "sent" ? <span className="scan-tile-s">{STATUS_WORDS[tile.status]}</span> : null}
+      {tile.reason ? <span className="scan-tile-s">{tile.reason}</span> : tile.status === "checking" || tile.status === "adding" || tile.status === "waiting" || tile.status === "sent" ? <span className="scan-tile-s">{STATUS_WORDS[tile.status]}</span> : null}
     </button>
   </li>;
 }
@@ -103,7 +108,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   parent: string;
   noticeAcknowledged: boolean;
   mode?: Mode;
-  /** The page a QR code opened (D-276 build note): its child and its name, "Day 4 · Page 2". */
+  /** The page a QR code opened (D-276 build note): its child and its name, "Page 17 · Day 4". */
   focus?: { childId: string; label: string } | null;
 }) {
   const [child, setChild] = useState(focus?.childId ?? childrenList[0]?.id ?? "");
@@ -124,9 +129,14 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const camera = useRef<HTMLInputElement>(null);
   const library = useRef<HTMLInputElement>(null);
   const epoch = useRef(0);
+  const listRequest = useRef(0);
+  const appliedList = useRef(0);
   const sessionCurrent = useRef(true);
   const uploadsRef = useRef<Local[]>([]);
-  const pumping = useRef(false);
+  /** The uploads in flight (at most UPLOAD_SLOTS), and the waits for room that Send or a delete cuts short. */
+  const running = useRef(new Set<string>());
+  const naps = useRef(new Set<() => void>());
+  const pumpRef = useRef<() => void>(() => {});
   const checking = useRef(false);
   const asked = useRef(new Map<string, number>());
   const savedAsked = useRef(new Set<string>());
@@ -143,20 +153,31 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     urls.current.set(key, url);
     setThumbs((t) => ({ ...t, [key]: url }));
   }, []);
+  /** Ends every wait for room now: the photo asks the server again at once. */
+  const wakeAll = useCallback(() => { for (const wake of [...naps.current]) wake(); }, []);
+  /** A wait that `wakeAll` can cut short. */
+  const nap = (ms: number) => new Promise<void>((resolve) => {
+    const done = () => { clearTimeout(timer); naps.current.delete(done); resolve(); };
+    const timer = setTimeout(done, ms);
+    naps.current.add(done);
+  });
   const clearAll = useCallback(() => {
     epoch.current++;
     for (const url of urls.current.values()) URL.revokeObjectURL(url);
     urls.current.clear(); fetching.current.clear(); asked.current.clear(); savedAsked.current.clear();
-    pumping.current = false; checking.current = false; replacing.current = null;
+    running.current.clear(); wakeAll(); checking.current = false; replacing.current = null;
     setThumbs({}); setUnavailable(new Set()); putUploads([]); setListing(null); setSheet(null); setSending(false); setMessage(null); setLoadFailed(false);
-  }, [putUploads]);
+  }, [putUploads, wakeAll]);
 
   const load = useCallback(async () => {
     const version = epoch.current;
     if (!sessionCurrent.current) return null;
+    const request = ++listRequest.current;
     let data: ScanListing;
-    try { data = await api(`/api/account/scans?child=${child}`); } catch (error) { if (version !== epoch.current || !sessionCurrent.current) return null; throw error; }
-    if (version !== epoch.current || !sessionCurrent.current) return null;
+    try { data = await api(`/api/account/scans?child=${child}`); } catch (error) { if (version !== epoch.current || !sessionCurrent.current || request < appliedList.current) return null; throw error; }
+    if (version !== epoch.current || !sessionCurrent.current || request < appliedList.current) return null;
+    // Concurrent uploads can finish their list reads in either order. An older snapshot cannot remove a newer photo.
+    appliedList.current = request;
     setListing(data); setLoadFailed(false);
     return data;
   }, [child]);
@@ -270,7 +291,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     let id = u.reservation ?? crypto.randomUUID();
     for (let fresh = false; ; fresh = true) {
       patchUpload(u.key, { reservation: id });
-      const result = await sendPhoto(id, body, version);
+      const result = await sendPhoto(u.key, id, body, version);
       if (result === "sent") break;
       if (result !== "ended") return result;
       if (fresh) return "unavailable";
@@ -283,27 +304,43 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     return { id, thumb: body };
   }
 
-  async function sendPhoto(id: string, body: Blob, version: number): Promise<"sent" | "ended" | UploadRefusal> {
+  /**
+   * A `busy` answer: the photo keeps its place and asks again, for as long as it is on the screen (#915). After a short
+   * wait it shows as waiting for room. False when the photo went (deleted, account or child changed): stop asking.
+   */
+  async function waitForRoom(key: string, tries: number, version: number) {
+    const step = busyWait(tries);
+    const here = () => version === epoch.current && sessionCurrent.current && uploadsRef.current.some((x) => x.key === key);
+    if (!here()) return false;
+    if (step.held && !uploadsRef.current.find((x) => x.key === key)?.held) patchUpload(key, { held: true });
+    await nap(step.delayMs);
+    return here();
+  }
+
+  async function sendPhoto(key: string, id: string, body: Blob, version: number): Promise<"sent" | "ended" | UploadRefusal> {
     let admission: { state: string } | null = null;
-    for (let attempt = 0; !admission; attempt++) {
+    let busy = 0;
+    while (!admission) {
       if (version !== epoch.current) return "unavailable";
       try { admission = await api("/api/account/scans", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, child, bytes: body.size }) }); }
       catch (error) {
         const code = codeOf(error);
-        if (code === "busy" && attempt < BUSY_TRIES) { await wait(1500); continue; }
+        if (code === "busy") { if (await waitForRoom(key, busy++, version)) continue; return "unavailable"; }
         return ENDED.includes(code) ? "ended" : uploadRefusal(code);
       }
     }
+    if (uploadsRef.current.find((x) => x.key === key)?.held) patchUpload(key, { held: false });
     for (let attempt = 0; ; attempt++) {
       if (version !== epoch.current) return "unavailable";
       try {
-        const data = admission.state === "reserved" ? await api(`/api/account/scans/${id}`, { method: "PUT", body }) : await api(`/api/account/scans/${id}`);
+        const data = admission.state === "reserved" ? await api(`/api/account/scans/${id}`, { method: "PUT", body }, UPLOAD_TIMEOUT_MS) : await api(`/api/account/scans/${id}`);
         const state = data.photo?.state;
         if (state === "pending" || state === "saved") return "sent";
         throw new Error(state === "processing" ? "uncertain" : ENDED.includes(state) ? state : "image");
       } catch (error) {
         const code = codeOf(error);
-        if (code === "busy" && attempt < BUSY_TRIES) { await wait(1500); continue; }
+        // The reservation keeps its lease while it waits; a lease that ends answers `expired`, and the photo takes a new id.
+        if (code === "busy") { if (await waitForRoom(key, busy++, version)) { attempt--; continue; } return "unavailable"; }
         // A lost answer: the photo may still be saving. Ask about the same photo, never send it twice.
         if ((code === "uncertain" || code === "unavailable") && attempt < 5) { admission = { state: "check" }; await wait(2000); continue; }
         return ENDED.includes(code) ? "ended" : uploadRefusal(code);
@@ -319,33 +356,42 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     if (u?.reservation) void api(`/api/account/scans/${u.reservation}/release`, { method: "POST" }).catch(() => {});
   }
 
-  const pump = useCallback(async () => {
-    if (pumping.current || !sessionCurrent.current) return;
-    pumping.current = true;
-    const version = epoch.current;
+  /** One photo, start to end. Its slot frees when it ends, and the next waiting photo starts. */
+  async function runUpload(next: Local, version: number) {
     try {
-      for (;;) {
-        const next = uploadsRef.current.find((u) => u.status === "waiting");
-        if (!next || version !== epoch.current) return;
-        patchUpload(next.key, { status: "uploading" });
-        const emit = scanEventTicket(() => sessionCurrent.current && version === epoch.current);
-        const result = await uploadOne(next, version);
-        if (version !== epoch.current || !sessionCurrent.current) return;
-        emit("scan_upload_outcome", typeof result === "string" ? result === "unavailable" ? "failed" : "refused" : "saved");
-        if (typeof result === "string") patchUpload(next.key, { status: "refused", reason: result });
-        else {
-          keepUrl(result.id, URL.createObjectURL(result.thumb));
-          const old = urls.current.get(next.key);
-          if (old) { URL.revokeObjectURL(old); urls.current.delete(next.key); }
-          putUploads(uploadsRef.current.filter((u) => u.key !== next.key));
-        }
-        if (next.replaces) { const old = urls.current.get(next.replaces); if (old) { URL.revokeObjectURL(old); urls.current.delete(next.replaces); } }
-        await load().catch(() => {});
+      patchUpload(next.key, { status: "uploading" });
+      const emit = scanEventTicket(() => sessionCurrent.current && version === epoch.current);
+      const result = await uploadOne(next, version);
+      if (version !== epoch.current || !sessionCurrent.current) return;
+      emit("scan_upload_outcome", typeof result === "string" ? result === "unavailable" ? "failed" : "refused" : "saved");
+      if (typeof result === "string") patchUpload(next.key, { status: "refused", reason: result, held: false });
+      else {
+        keepUrl(result.id, URL.createObjectURL(result.thumb));
+        const old = urls.current.get(next.key);
+        if (old) { URL.revokeObjectURL(old); urls.current.delete(next.key); }
+        putUploads(uploadsRef.current.filter((u) => u.key !== next.key));
       }
-    } finally { if (version === epoch.current) pumping.current = false; }
-    // uploadOne reads `child` from this render; the queue restarts on a child change (clearAll).
+      if (next.replaces) { const old = urls.current.get(next.replaces); if (old) { URL.revokeObjectURL(old); urls.current.delete(next.replaces); } }
+      await load().catch(() => {});
+    } finally {
+      if (version === epoch.current) { running.current.delete(next.key); pumpRef.current(); }
+    }
+  }
+
+  // The queue: up to UPLOAD_SLOTS photos in flight, the others waiting their turn in the order they were added.
+  const pump = useCallback(() => {
+    if (!sessionCurrent.current) return;
+    const version = epoch.current;
+    for (const key of nextUploads(uploadsRef.current, running.current)) {
+      const next = uploadsRef.current.find((u) => u.key === key);
+      if (!next) continue;
+      running.current.add(key);
+      void runUpload(next, version);
+    }
+    // runUpload reads `child` from this render; the queue restarts on a child change (clearAll).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [child, load, keepUrl, patchUpload, putUploads]);
+  useEffect(() => { pumpRef.current = pump; }, [pump]);
 
   function add(files: FileList | null) {
     if (!files?.length || !sessionCurrent.current) return;
@@ -364,7 +410,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     putUploads([...list, ...added]);
     noteScanning();
     setMessage(null); setSheet(null);
-    void pump();
+    pump();
   }
 
   /** Opens the phone's camera or its photos, inside the tap (Safari needs the user's tap). The notice comes first, once. */
@@ -405,6 +451,8 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       if (version !== epoch.current) return;
       const n = (data.sent as string[]).filter((id) => ids.includes(id)).length;
       setMessage({ text: sentWords(n, typeof data.marking === "number" ? data.marking : 0), failed: false });
+      // Sent pages may free room: photos waiting for it ask again now.
+      wakeAll();
       await load().catch(() => {});
     } catch { if (version === epoch.current) setMessage({ text: "We could not send the pages. Try again.", failed: true }); }
     finally { if (version === epoch.current) setSending(false); }
@@ -430,6 +478,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       const url = urls.current.get(t.photoId);
       if (url) { URL.revokeObjectURL(url); urls.current.delete(t.photoId); }
       setMessage({ text: "Photo deleted.", failed: false });
+      wakeAll();
       await load();
     } catch { if (version === epoch.current && sessionCurrent.current) setMessage({ text: "We could not delete this photo. Try again.", failed: true }); }
   }
@@ -439,6 +488,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   // Another photo does not help when the page already has one, or when the photos must wait.
   const firstRefused = stack.refused.find((t) => t.refusal !== "frequency" && t.refusal !== "quota" && t.refusal !== "unavailable" && t.refusal !== "duplicate");
   const note = waitingNote(stack);
+  const room = roomNote(stack);
 
   const tileSheet = openTile && <Sheet label={openTile.title} onClose={() => setSheet(null)}>
     <div className="scan-sheet-ph">{thumbOf(openTile) ? <Image unoptimized width={600} height={800} src={thumbOf(openTile)} alt={`Photo of ${openTile.title} for ${name}`} /> : <span className="scan-ph-empty" />}</div>
@@ -447,9 +497,12 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       <h2>{refusalCopy(openTile.refusal).title}</h2>
       <p>{refusalCopy(openTile.refusal).action}</p>
       {openTile.uploadKey && openTile.refusal === "unavailable"
-        ? <button type="button" className="btn" onClick={() => { patchUpload(openTile.uploadKey!, { status: "waiting", reason: undefined }); setSheet(null); void pump(); }}>Try again</button>
+        ? <button type="button" className="btn" onClick={() => { patchUpload(openTile.uploadKey!, { status: "waiting", reason: undefined }); setSheet(null); pump(); }}>Try again</button>
         : phone && <button type="button" className="btn" onClick={() => open(openTile.uploadKey ? "library" : "camera", retakeKey(openTile))}>{openTile.uploadKey ? "Choose another photo" : "Take another photo"}</button>}
       {!phone && <p className="small">Take it again with your phone. The page waits there.</p>}
+    </> : openTile.status === "waiting" ? <>
+      <h2>{openTile.reason ? "There is no room for this photo yet." : "This photo is waiting its turn."}</h2>
+      <p>{roomNote(stack) ?? "It keeps its place and goes on its own."}</p>
     </> : <>
       <h2>{openTile.status === "ready" ? (checkProblem?.photo === openTile.photoId ? "Check this photo." : "We can read this page.") : openTile.status === "sent" ? "Sent for marking." : openTile.status === "unavailable" ? "We cannot check pages of this printing yet." : openTile.status === "saved" ? "Photo saved." : "We are checking this page."}</h2>
       {openTile.status === "unavailable" && <p>The photo stays here.</p>}
@@ -477,8 +530,9 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
 
   const addSheet = sheet?.kind === "add" && <Sheet label="Add pages" onClose={() => setSheet(null)}>
     <h2>Add pages</h2>
-    <button type="button" className="btn" onClick={() => open("camera")}>Start scanning</button>
-    <button type="button" className="btn ghost" onClick={() => open("library")}>Choose photos</button>
+    <button type="button" className="btn" onClick={() => open("camera")}>Take photos</button>
+    <button type="button" className="btn ghost" onClick={() => open("library")}>Choose from your photos</button>
+    <p className="small">You can choose several at once, in any order.</p>
   </Sheet>;
 
   const childPicker = childrenList.length > 1 && <label className="scan-child">Child
@@ -500,11 +554,12 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       <button type="button" className="btn ghost" onClick={() => void load().catch(() => setLoadFailed(true))}>Try again</button></div>;
   }
 
-  // The start screen (picked): the tips, then Choose photos and Start scanning in the thumb's reach.
+  // The start screen (picked): the tips, then the two ways in, in the thumb's reach (#915): take photos now, or choose
+  // photos already taken, as many as the parent likes, in any order.
   if (phone && empty) {
     return <div className="scan-pages is-start">
       {inputs}
-      <p className="lead">Take a photo of each finished page. {checks ? "We check each photo, then you send the pages for marking." : `Later, we will use the photos to mark ${name}'s work.`}</p>
+      <p className="lead">Take a photo of each finished page, or choose photos you already took. {checks ? "We check each photo, then you send the pages for marking." : `Later, we will use the photos to mark ${name}'s work.`}</p>
       {childPicker}
       {focusLine}
       <ul className="scan-tips">
@@ -515,10 +570,11 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       <p className="small scan-privacy-line">Photos are private and kept for 90 days. <button type="button" className="scan-link" onClick={() => setSheet({ kind: "notice", then: null })}>More about photos</button></p>
       {status}
       <div className="scan-dock">
-        <div className="scan-dock-row">
-          <button type="button" className="btn ghost" disabled={!child} onClick={() => open("library")}>Choose photos</button>
-          <button type="button" className="btn" disabled={!child} onClick={() => open("camera")}>Start scanning</button>
+        <div className="scan-dock-row is-choice">
+          <button type="button" className="btn" disabled={!child} onClick={() => open("camera")}>Take photos</button>
+          <button type="button" className="btn ghost" disabled={!child} onClick={() => open("library")}>Choose from your photos</button>
         </div>
+        <p className="small">You can choose several at once, in any order.</p>
       </div>
       {notice}
     </div>;
@@ -537,6 +593,12 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     {listing && <p className="lead scan-summary">{stackSummary(stack, checks)}</p>}
     {focusLine}
     {status}
+    {stack.guide && <section className="scan-guide" aria-label={`${stack.guide.day} pages`}>
+      <p className="scan-guide-next">{stack.guide.next ? <><b>Next:</b> {stack.guide.next.title}</> : stack.guide.stillText}</p>
+      {stack.guide.next && <p>{stack.guide.stillText}</p>}
+      <ul>{stack.guide.pages.map((g) => <li key={g.pageId} className={`is-${g.status}`}>{g.title}: {GUIDE_WORDS[g.status]}</li>)}</ul>
+      <p className="small">Scan the pages in any order.</p>
+    </section>}
     {!listing && <p className="small" role="status">Loading photos...</p>}
     {!phone && empty && <p className="scan-empty">Your pages show here as you take them.</p>}
 
@@ -547,7 +609,6 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       <div className="scan-one-t">
         <p className="scan-one-id"><b>{one.title}</b><span>{name}</span></p>
         <p className={`scan-state is-${one.status}`}>{one.status === "ready" ? <><i>{ICONS.check}</i>We can read this page.</> : one.status === "refused" ? one.reason : STATUS_WORDS[one.status]}</p>
-        {stack.days[0]?.missingText && <p className="small">{stack.days[0].missingText}</p>}
       </div>
     </section> : <>
       {stack.refused.length > 0 && <section className="scan-need" aria-label="Pages that need another photo">
@@ -557,13 +618,13 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
           ? <button type="button" className="btn ghost" onClick={() => open(firstRefused.uploadKey ? "library" : "camera", retakeKey(firstRefused))}>{stack.refused.length === 1 ? "Take the photo again" : `Take ${stack.refused.length} photos again`}</button>
           : !phone && <p className="small">{stack.refused.length === 1 ? "Take it again with your phone. The page waits there." : "Take them again with your phone. The pages wait there."}</p>}
       </section>}
-      {stack.addingTiles.length > 0 && group("new", "New photos", stack.addingTiles, undefined, stack.adding === 1 ? "Sending 1 photo" : `Sending ${stack.adding} photos`)}
+      {stack.addingTiles.length > 0 && group("new", "New photos", stack.addingTiles, undefined, addingCount(stack))}
       {stack.days.map((d) => group(d.key, d.label, d.tiles, d.missingText ? <p className="scan-gap">{d.missingText}</p> : undefined, d.tiles.length === 1 ? "1 photo" : `${d.tiles.length} photos`))}
     </>}
     {stack.sent.length > 0 && group("sent", "Sent for marking", stack.sent, <p className="scan-gap">{listing?.marking ? "Open a page to view its results." : "Marking is not ready yet. These pages wait here."}</p>)}
 
     {listing && (phone || (checks && tiles.length > 0)) && <div className="scan-dock">
-      {checks && note && <p className="small">{note}</p>}
+      {room ? <p className="small scan-room" role="status">{room}</p> : checks && note && <p className="small">{note}</p>}
       <div className="scan-dock-row">
         {phone && (one
           ? <button type="button" className="btn ghost scan-add" onClick={() => setSheet({ kind: "add" })}>+ Page</button>
