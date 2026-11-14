@@ -1392,8 +1392,15 @@ function wholePhotoQr(photo: Raster): FoundQr | null {
   return wholeQrCache.get(photo)!;
 }
 
-/** The upload's zoomed reads (scan-photo-image.ts): each zoom with its windows, half the photo's width and height, lower first. */
-const QR_ZOOM_PASSES = [[2, [[0, 0.5], [0.25, 0.5], [0.5, 0.5], [0, 0.25], [0.25, 0.25], [0.5, 0.25], [0, 0], [0.25, 0], [0.5, 0]]], [3, [[0, 0.5], [0.5, 0.5], [0, 0], [0.5, 0]]]] as const;
+/** The upload's zoomed reads (scan-photo-image.ts), kept the same: change the two together. */
+// Each pass: its zoom, its window as a part of the photo's width and height, and the windows' top-left corners.
+// First a quarter-size window low on the left, where the page prints its code: a real photo's code that no half window
+// reads (a coil, a hand's shadow or the next page beside it in the same window) reads there (Aarav's book, 2026-11-14).
+const QR_ZOOM_PASSES = [
+  [2, 0.25, [[0, 0.75], [0.125, 0.75], [0, 0.625], [0.125, 0.625]]],
+  [2, 0.5, [[0, 0.5], [0.25, 0.5], [0.5, 0.5], [0, 0.25], [0.25, 0.25], [0.5, 0.25], [0, 0], [0.25, 0], [0.5, 0]]],
+  [3, 0.5, [[0, 0.5], [0.5, 0.5], [0, 0], [0.5, 0]]],
+] as const;
 const photoQrCache = new WeakMap<Raster, FoundQr | null>();
 
 /**
@@ -1403,8 +1410,10 @@ const photoQrCache = new WeakMap<Raster, FoundQr | null>();
 function photoQr(photo: Raster): FoundQr | null {
   if (photoQrCache.has(photo)) return photoQrCache.get(photo)!;
   let found = wholePhotoQr(photo);
-  const width = Math.floor(photo.width / 2), height = Math.floor(photo.height / 2);
-  search: for (const [zoom, windows] of found || width < 16 || height < 16 ? [] : QR_ZOOM_PASSES) for (const [sx, sy] of windows) {
+  const small = Math.floor(photo.width / 2) < 16 || Math.floor(photo.height / 2) < 16;
+  search: for (const [zoom, part, windows] of found || small ? [] : QR_ZOOM_PASSES) for (const [sx, sy] of windows) {
+    const width = Math.floor(photo.width * part), height = Math.floor(photo.height * part);
+    if (width < 16 || height < 16) continue;
     const x0 = Math.min(Math.round(sx * photo.width), photo.width - width), y0 = Math.min(Math.round(sy * photo.height), photo.height - height);
     const read = readQr(enlarged(photoBox(photo, { x: x0, y: y0, width, height }), zoom), "attemptBoth");
     if (read) { found = { ...read, corners: read.corners.map((c) => ({ x: x0 + c.x / zoom, y: y0 + c.y / zoom })) }; break search; }
