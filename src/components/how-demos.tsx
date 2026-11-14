@@ -106,7 +106,7 @@ const taScript = async (a: Act<T>) => {
 };
 
 const TA_STEPS = [
-  "Ones: 0 − 8? Borrow from the hundreds.",
+  "Ones: 0 − 8? Take 1 from the hundreds.",
   "Tens become 9. Ones become 10.",
   "10 − 8 = 2, and 9 − 2 = 7.",
 ];
@@ -162,7 +162,7 @@ const SUMS: [number, number, number, boolean][] = [
 function SumsPage({ marks }: { marks: boolean }) {
   return (
     <div className="us-page">
-      <div className="us-page-h">Subtracting with borrowing</div>
+      <div className="us-page-h">Subtracting 2-digit numbers</div>
       <div className="us-grid">
         {SUMS.map(([a, b, c, ok], i) => (
           <div className="us-q" key={i}>
