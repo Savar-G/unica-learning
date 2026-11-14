@@ -471,6 +471,8 @@ export interface Session {
   wordAsked?: string | null;
   /** Maya's last accepted turn asked the claim itself (claim.ts, claimQuestionAsked): only then is a bare word a claim turn. */
   claimAsked?: boolean;
+  /** The last accepted prompt asked which of the two current comparison values is greater. */
+  comparisonAsked?: boolean;
   /**
    * The loop guard (PR #698): the current column whose total the child said in child turns in a row that code could not
    * credit (heldStepNow), how many, and whether Maya then asked its confirm. A saved session from before has no field.
@@ -618,7 +620,7 @@ function committedTurn(s: Session, step = "result"): boolean {
     if (!comparisonEligible(s)) return false;
     if (step === "result") return comparisonWord(s)?.committed === true;
     const st = s.package!.steps.find(x => x.id === step);
-    return !!st && (st.kind === "comparison" ? comparisonRelation(s.turn!.text, comparisonOf(s.package)!, st) !== null
+    return !!st && (st.kind === "comparison" ? comparisonRelation(s.turn!.text, comparisonOf(s.package)!, st, s.comparisonAsked === true) !== null
       : st.kind === "comparison-count" ? comparisonCount(s.turn!.text, st) !== null : committedNumber(s, { step, value: turnRead(s).final ?? number(-1), verdict: "wrong" }));
   }
   const claim = sessionClaim(s.package);
@@ -998,6 +1000,13 @@ function gate(s: Session, reading: Reading): Allowed | null {
   if (s.replies?.length) return { acts: ["redirect"], code: "fixed_reply_first", reason: "Say only the next code reply, with no warm or free talk." };
   if (s.silence === "close_due") return { acts: ["close"], code: "act_not_allowed", reason: "No answer after the check-in: close." };
   if (s.silence === "check_due" && !s.turn) return { acts: ["check_in"], code: "act_not_allowed", reason: "The child has been quiet: one short check-in, with no new help." };
+  // A bare final comparison label needs its exact say-back before it can be committed.
+  // This semantic confirmation is required even when the conversational fallback offers ordinary help.
+  if (s.opened && s.solved === null && comparisonConfirm(s) !== null && workSteps(s.package!).every(st => behind(s).includes(st.id))) {
+    return s.confirmTries < 2
+      ? { acts: ["confirm"], code: "confirm_first", reason: "Confirm the child's comparison word before accepting it." }
+      : { acts: s.offeredOtherInput ? ["close"] : ["offer_other_input", "close"], code: "confirm_first", reason: "Two word confirmations did not settle the answer: offer another input or close." };
+  }
   // Once the answer stands, the model's unclear reading does not hold the turn (practice: "I heard 66. Is that right?"
   // after "That's right: 27 + 39 = 66"); a number code cannot read still does.
   // The hello comes first: Maya says she is an AI before she asks anything about the child's turn.
@@ -2172,6 +2181,8 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   // Only a turn that asks the claim itself lets a bare word answer it next (claim.ts).
   if ((sessionClaim(pkg) && claimQuestionAsked(spoken.chosen)) || (comparisonOf(pkg) && spoken.chosen.some(o => o.line === "step.invite" && o.slots.step === "result"))) s.claimAsked = true;
   else delete s.claimAsked;
+  if (comparisonOf(pkg) && spoken.chosen.some(o => ["step.invite", "step.point", "step.operation"].includes(o.line) && o.slots.step === "compare")) s.comparisonAsked = true;
+  else delete s.comparisonAsked;
   if (p.act !== "confirm") {
     delete s.heardAsked;
     delete s.stepAsked;
@@ -2563,7 +2574,7 @@ function comparisonConfirm(s: Session): { kind: "which" } | { kind: "said"; word
 function comparisonSemantic(s: Session, st: WorkedStep | undefined): AnswerValue | null {
   const op = comparisonOf(s.package);
   if (!op || !st || !comparisonEligible(s)) return null;
-  return st.kind === "comparison" ? comparisonRelation(s.turn!.text, op, st) : st.kind === "comparison-count" ? comparisonCount(s.turn!.text, st) : null;
+  return st.kind === "comparison" ? comparisonRelation(s.turn!.text, op, st, s.comparisonAsked === true) : st.kind === "comparison-count" ? comparisonCount(s.turn!.text, st) : null;
 }
 
 function comparisonAnswers(s: Session, given: ChildAnswer[] | undefined): ChildAnswer[] | undefined {
@@ -3031,7 +3042,9 @@ function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue, earlier
     // Re-review: a step Maya showed with the claim's value ("6 × 8 = 48" shown, then "48.") makes the result a copy too.
     const shownValue = workSteps(pkg).some((st) => st.id !== step.id && shownStep(s, st) && stepAnswers(st).some((v) => saidAs(v, value)));
     const heard = { text: s.turn.text, uncertain: s.turn.uncertain, operation: pkg.operation, value: step.value, resultAsked: s.resultAsked ?? null, shown: (s.ladder.step === step.id && s.ladder.hint >= 3) || shownValue };
-    return claimStepHeard(heard) || spotStepHeard({ ...heard, pkg });
+    const patternLast = isSpot(pkg) && !!patternOf(pkg) && heardOneWay(s) && !shownValue &&
+      compareTurnHeard(s, step, value, workSteps(pkg).filter(st => st.id !== step.id).map(st => st.id));
+    return claimStepHeard(heard) || spotStepHeard({ ...heard, pkg }) || patternLast;
   }
   if (step.kind === "operate" || step.kind === "count-on" || step.kind === "try-factor") {
     const body = wholeTurn(s.turn.text);
@@ -3940,11 +3953,11 @@ function copiesStep(step: AddColumn, next: AddColumn | null, text: string, examp
  * 80", compareEquationSaid), once every part before the last is done. A hedge, a question, another speaker or another
  * sentence fits none. After H3 on the last part or the compare, the value and the equation only copy what Maya showed.
  */
-function compareTurnHeard(s: Session, step: Extract<WorkedStep, { kind: "claim-compare" }>, value: AnswerValue): boolean {
+function compareTurnHeard(s: Session, step: Extract<WorkedStep, { kind: "claim-compare" }>, value: AnswerValue, prior?: readonly string[]): boolean {
   const pkg = s.package;
   if (!pkg || !s.turn || s.turn.uncertain || s.done.includes(step.id)) return false;
   const body = wholeTurn(s.turn.text);
-  const before = stepsBeforeLastPart(pkg);
+  const before = prior ?? stepsBeforeLastPart(pkg);
   if (body === null || before.some((id) => !s.done.includes(id))) return false;
   const copy = s.ladder.hint >= 3 && !!s.ladder.step && !before.includes(s.ladder.step);
   const total = saidAs(number(step.value), value);

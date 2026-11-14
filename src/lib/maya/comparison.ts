@@ -9,9 +9,11 @@ export function comparisonOf(pkg: Pick<OperationPackage, "operation"> | null): C
 }
 
 /** Preserve a wrong asserted direction. The controller, not this parser, judges its truth. */
-export function comparisonRelation(text: string, op: ComparisonOperation, step: Extract<WorkedStep, { kind: "comparison" }>): AnswerValue | null {
+export function comparisonRelation(text: string, op: ComparisonOperation, step: Extract<WorkedStep, { kind: "comparison" }>, choseGreater = false): AnswerValue | null {
   const body = wholeTurn(text);
   if (!body) return null;
+  const chosen = choseGreater ? wholeValue(body) : null;
+  if (chosen === step.left || chosen === step.right) return comparisonAnswer(op, chosen === step.left);
   const m = /^(.+?) is (greater|more|bigger|larger|less|smaller|fewer) than (.+)$/.exec(body) ?? /^(.+?)\s*([<>])\s*(.+)$/.exec(body);
   if (!m) return null;
   const a = wholeValue(m[1]), b = wholeValue(m[3]);

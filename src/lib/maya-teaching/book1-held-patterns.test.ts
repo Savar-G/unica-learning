@@ -58,4 +58,14 @@ describe("the remaining Book 1 pattern forms", () => {
     expect(text.session.outcome?.reason).toBe("maya_closed");
     expect(text.session.assistance).not.toContain("answer_given");
   });
+
+  it("credits the plant's own final addition before its spot verdict", async () => {
+    const pkg = teachingPackage(asSpot(printedPattern("plant3", 45, 5), 6));
+    const text = createTextSession({ callId: "plant-final", package: pkg, clock: () => 1000,
+      model: { id: "offline", promptVersion: "offline", output: 3, propose: async () => { throw new Error("offline"); } } });
+    await text.start(); await text.child("3 times 5 is 15.");
+    expect(text.session.done).toContain("e1");
+    await text.child("45 plus 15 is 60."); expect(text.session.done).toContain("claim");
+    await text.child("The answer is no."); expect(text.session.solved).toBe("child");
+  });
 });

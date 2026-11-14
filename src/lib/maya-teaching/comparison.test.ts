@@ -8,6 +8,7 @@ import { createSession, heldReason } from "../maya";
 import { printedWorkbookQuestion } from "../workbook-maya-operation";
 import { createTextSession } from "../maya-text";
 import { MAYA_TEACHING_LIMITS } from "./limits";
+import { packageLines } from "../maya/lines";
 
 vi.mock("server-only", () => ({}));
 const printed = fixtures as unknown as QuestionPackage[];
@@ -111,6 +112,53 @@ describe("closed two-sided comparisons", () => {
     expect(out.say.join(" ")).not.toContain("The first one is larger");
     expect(out.say.join(" ")).not.toContain("The answer is 7 by 6");
     expect(text.session.solved).toBeNull();
+  });
+
+  it.each(printed.filter(p => p.item?.format === "circle"))("preserves the printed circle task for $id", p => {
+    const l = packageLines(teachingPackage(p) as OperationPackage);
+    for (const o of [...l.help("result"), ...l.writeAnswer(), ...l.writeYours()]) {
+      expect(o.texts.some(t => /\bwrite\b/i.test(t))).toBe(false);
+    }
+    expect(l.help("result").some(o => o.texts.some(t => /circle/i.test(t)))).toBe(true);
+    expect([...l.writeAnswer(), ...l.writeYours()].every(o => o.texts.every(t => /circle/i.test(t)))).toBe(true);
+  });
+
+  it.each(["COMPARE_FRACTIONS", "COMPARE_AREAS", "COMPARE_DIE"] as const)("confirms a bare final label once for %s", async fixture => {
+    const { FIXTURES } = await import("../maya-gate/fixtures");
+    const pkg = FIXTURES[fixture] as OperationPackage;
+    const text = createTextSession({ callId: fixture, package: pkg, clock: () => 1000, model: { ...offline, output: 3 } });
+    await text.start();
+    for (const st of pkg.steps) {
+      if (st.kind === "operate") await text.child(`${st.left} times ${st.right} is ${st.value}`);
+      if (st.kind === "comparison-count") await text.child(String(st.value));
+      if (st.kind === "comparison") await text.child(`${st.left} is greater than ${st.right}`);
+    }
+    const answer = comparisonAnswer(pkg.operation as ComparisonOperation).value;
+    const out = await text.child(answer);
+    expect(out.say.join(" ")).toContain(answer);
+    expect(out.say.join(" ")).toContain("?");
+    expect(text.session.wordAsked).toBe(answer); expect(text.session.solved).toBeNull();
+    await text.child("Yes."); expect(text.session.solved).toBe("child");
+  });
+
+  it.each(["COMPARE_FRACTIONS", "COMPARE_AREAS", "COMPARE_DIE"] as const)("reads the chosen greater number only after its own prompt for %s", async fixture => {
+    const { FIXTURES } = await import("../maya-gate/fixtures");
+    const pkg = FIXTURES[fixture] as OperationPackage;
+    const text = createTextSession({ callId: fixture, package: pkg, clock: () => 1000, model: { ...offline, output: 3 } });
+    await text.start();
+    const compare = pkg.steps.find(st => st.kind === "comparison")!;
+    if (compare.kind !== "comparison") throw new Error("missing comparison");
+    // An unasked bare number cannot create comparison work at the opening.
+    await text.child(String(compare.left)); expect(text.session.done).not.toContain("compare");
+    for (const st of pkg.steps) {
+      if (st.kind === "operate") await text.child(`${st.left} times ${st.right} is ${st.value}`);
+      if (st.kind === "comparison-count") await text.child(String(st.value));
+    }
+    // The fraction has no side work. Ask for help to reach its explicit compare invite.
+    if (pkg.operation.kind === "comparison" && pkg.operation.context === "same-denominator") await text.child("Help me compare them.");
+    expect(text.session.done).not.toContain("compare");
+    await text.child(String(compare.right)); expect(text.session.done).not.toContain("compare");
+    await text.child(String(compare.left)); expect(text.session.done).toContain("compare");
   });
 });
 

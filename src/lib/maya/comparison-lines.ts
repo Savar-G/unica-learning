@@ -27,7 +27,9 @@ export function comparisonLines(pkg: OperationPackage, shared: PackageLines, off
       : `Compare ${step.left} and ${step.right}. Which is greater?`, step.id, level);
     return [];
   };
-  const final = () => say("step.invite", `Which answer will you write: ${words[0]} or ${words[1]}?`, "result", 0);
+  const circle = pkg.item?.format === "circle";
+  const final = () => circle ? [offer("step.invite", "confirm.claim", { first: words[0], second: words[1] }, { slots: { step: "result" }, level: 0 })]
+    : say("step.invite", `Which answer will you write: ${words[0]} or ${words[1]}?`, "result", 0);
   const close = () => say("close.honest", "This comparison needs more practice. Ask a grown-up to work on it with you.");
   return {
     ...shared,
@@ -51,9 +53,12 @@ export function comparisonLines(pkg: OperationPackage, shared: PackageLines, off
     },
     tryTarget: () => say("try.target", "Now compare the amounts in your question."),
     answerRight: () => say("answer.right", "That answer is right."), answerGive: () => [], answerParts: () => [],
-    writeAnswer: () => say("write.answer", "Write your answer on the page."), writeYours: () => say("write.yours", "Write your answer on the page."),
-    which: () => say("confirm.claim", `Which answer do you mean: ${words[0]} or ${words[1]}?`),
-    said: word => words.includes(word) ? [offer("confirm.word", "comparison.words", { words: `You said ${word}. Is that your answer?` }, { slots: { heard: word } })] : [],
+    writeAnswer: () => circle ? [offer("write.answer", "write.claim", { word: pkg.answer.value.type === "choice" ? pkg.answer.value.value : "" }, { slots: {} })] : say("write.answer", "Write your answer on the page."),
+    writeYours: () => circle ? [offer("write.yours", "write.claim.yours", {}, { slots: {} })] : say("write.yours", "Write your answer on the page."),
+    which: () => circle ? [offer("confirm.claim", "confirm.claim", { first: words[0], second: words[1] }, { slots: {} })] : say("confirm.claim", `Which answer do you mean: ${words[0]} or ${words[1]}?`),
+    said: word => words.includes(word) ? [circle
+      ? offer("confirm.word", "confirm.claim.said", { heard: word }, { slots: { heard: word } })
+      : offer("confirm.word", "comparison.words", { words: `You said ${word}. Is that your answer?` }, { slots: { heard: word } })] : [],
     honestClose: close, closeHonest: close, closeUnsolved: close,
     stepIds: pkg.steps.filter(s => s.kind !== "result").map(s => s.id),
   };

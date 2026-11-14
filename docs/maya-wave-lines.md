@@ -882,9 +882,10 @@ Approved by Savar, 2026-11-13. Independent copy review passed at `1931e996` agai
 
 ## Remaining Book 1 comparisons, 2026-11-13
 
-Status: pending independent copy review and Savar approval. These 79 distinct lines are the full new rendered comparison line list for the 11 stored Book 1 comparisons. The existing five pattern-why replacements are approved above. No practice, merge, production or family release approval follows from this list.
+Status: pending independent copy review and Savar approval. These 75 distinct lines are the full new rendered comparison line list for the 11 stored Book 1 comparisons. The existing five pattern-why replacements are approved above. No practice, merge, production or family release approval follows from this list.
 
 The common controller owns order and credit. The child must supply both side values, the numerical relation and the final word. Target help never states the relation or winning word. The code uses these checked sentences for comparison math in both conversational and older adapters. It keeps the existing model and reviewer for other question kinds.
+
 
 1. Which is bigger: 7 by 6 or 5 by 6?
 2. Tell me how you will compare them.
@@ -914,56 +915,54 @@ The common controller owns order and credit. The child must supply both side val
 26. Try a new example. All pieces have the same size. True or false: 1 piece > 2 pieces.
 27. For this example, the answer is false.
 28. The fractions have the same denominator. Compare the numerators: 5 and 3. Which is greater?
-29. Which answer will you write: true or false?
-30. Which answer do you mean: true or false?
-31. You said true. Is that your answer?
-32. You said false. Is that your answer?
-33. 5/6 > 2/6.
-34. Try a new example. All pieces have the same size. True or false: 1 piece > 3 pieces.
-35. 1 is less than 3.
-36. The fractions have the same denominator. Compare the numerators: 5 and 2. Which is greater?
-37. 9/10 > 4/10.
-38. The fractions have the same denominator. Compare the numerators: 9 and 4. Which is greater?
-39. 2/5 > 1/5.
-40. Try a new example. All pieces have the same size. True or false: 3 pieces > 4 pieces.
-41. 3 is less than 4.
-42. The fractions have the same denominator. Compare the numerators: 2 and 1. Which is greater?
-43. Which is more likely on a die numbered 1 to 6: even or less than 2?
-44. Try a new example. A bag has 7 red counters and 8 blue counters. Which colour is more likely on one random draw?
-45. 7 is less than 8.
-46. For this example, the answer is blue.
-47. Which numbers on the die are even? How many are there?
-48. Which numbers on the die are less than 2? How many are there?
-49. Compare 3 and 1. Which is greater?
-50. Which answer will you write: even or less than 2?
-51. Which answer do you mean: even or less than 2?
-52. You said even. Is that your answer?
-53. You said less than 2. Is that your answer?
-54. 5/6 > 1/6.
-55. Try a new example. All pieces have the same size. True or false: 2 pieces > 3 pieces.
-56. 2 is less than 3.
-57. The fractions have the same denominator. Compare the numerators: 5 and 1. Which is greater?
-58. 7/9 > 5/9.
-59. The fractions have the same denominator. Compare the numerators: 7 and 5. Which is greater?
-60. 6/10 > 5/10.
-61. The fractions have the same denominator. Compare the numerators: 6 and 5. Which is greater?
-62. 4/5 > 1/5.
-63. The fractions have the same denominator. Compare the numerators: 4 and 1. Which is greater?
-64. Which is bigger: 3 by 6 or 8 by 2?
-65. Try a new example. Which is bigger: 1 by 1 or 1 by 4?
-66. 1 row of 4 squares makes 4 squares.
-67. 1 is less than 4.
-68. For this example, the answer is 1 by 4.
-69. Find the first area: 3 × 6. What is it?
-70. Count 3 rows of 6 squares. What is the area?
-71. That area is 18 squares.
-72. Find the second area: 8 × 2. What is it?
-73. Count 8 rows of 2 squares. What is the area?
-74. That area is 16 squares.
-75. Compare 18 and 16. Which is greater?
-76. Which answer will you write: 3 by 6 or 8 by 2?
-77. Which answer do you mean: 3 by 6 or 8 by 2?
-78. You said 3 by 6. Is that your answer?
-79. You said 8 by 2. Is that your answer?
+29. 5/6 > 2/6.
+30. Try a new example. All pieces have the same size. True or false: 1 piece > 3 pieces.
+31. 1 is less than 3.
+32. The fractions have the same denominator. Compare the numerators: 5 and 2. Which is greater?
+33. 9/10 > 4/10.
+34. The fractions have the same denominator. Compare the numerators: 9 and 4. Which is greater?
+35. 2/5 > 1/5.
+36. Try a new example. All pieces have the same size. True or false: 3 pieces > 4 pieces.
+37. 3 is less than 4.
+38. The fractions have the same denominator. Compare the numerators: 2 and 1. Which is greater?
+39. Which is more likely on a die numbered 1 to 6: even or less than 2?
+40. Try a new example. A bag has 7 red counters and 8 blue counters. Which colour is more likely on one random draw?
+41. 7 is less than 8.
+42. For this example, the answer is blue.
+43. Which numbers on the die are even? How many are there?
+44. Which numbers on the die are less than 2? How many are there?
+45. Compare 3 and 1. Which is greater?
+46. Which answer will you write: even or less than 2?
+47. Which answer do you mean: even or less than 2?
+48. You said even. Is that your answer?
+49. You said less than 2. Is that your answer?
+50. 5/6 > 1/6.
+51. Try a new example. All pieces have the same size. True or false: 2 pieces > 3 pieces.
+52. 2 is less than 3.
+53. The fractions have the same denominator. Compare the numerators: 5 and 1. Which is greater?
+54. 7/9 > 5/9.
+55. The fractions have the same denominator. Compare the numerators: 7 and 5. Which is greater?
+56. 6/10 > 5/10.
+57. The fractions have the same denominator. Compare the numerators: 6 and 5. Which is greater?
+58. 4/5 > 1/5.
+59. The fractions have the same denominator. Compare the numerators: 4 and 1. Which is greater?
+60. Which is bigger: 3 by 6 or 8 by 2?
+61. Try a new example. Which is bigger: 1 by 1 or 1 by 4?
+62. 1 row of 4 squares makes 4 squares.
+63. 1 is less than 4.
+64. For this example, the answer is 1 by 4.
+65. Find the first area: 3 × 6. What is it?
+66. Count 3 rows of 6 squares. What is the area?
+67. That area is 18 squares.
+68. Find the second area: 8 × 2. What is it?
+69. Count 8 rows of 2 squares. What is the area?
+70. That area is 16 squares.
+71. Compare 18 and 16. Which is greater?
+72. Which answer will you write: 3 by 6 or 8 by 2?
+73. Which answer do you mean: 3 by 6 or 8 by 2?
+74. You said 3 by 6. Is that your answer?
+75. You said 8 by 2. Is that your answer?
+
+The eight printed circle items use the existing approved circle invitations, say-back confirmations and paper-action lines. The two rectangle items and the die item keep their printed write-words task.
 
 For the missing-rule target whose answer equals the term gap count, omit the count-bearing lead and its why offer. The remaining first-part lead is the existing sentence "Subtract the start.". The existing subtraction prompts remain. This repair keeps the answer guard.
