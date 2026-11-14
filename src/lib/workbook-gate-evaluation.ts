@@ -2,7 +2,7 @@
 import { calibrateGate } from "@/lib/workbook-gates";
 
 type Gate = "reading_level" | "one_right_answer";
-export type GateCase = { id: string; grade: number; interest: string | null; question: unknown; originalId?: string; gate?: string };
+export type GateCase = { id: string; grade: number; interest: string | null; question: unknown; originalId?: string; gate?: string; kind?: string };
 export type GateRow = { model: string; id: string; gate: Gate; changed: boolean; probability: number };
 
 /** Assign groups in input order, then move the last singleton if needed to equalise the halves. */
@@ -59,4 +59,23 @@ export function evaluateGateFolds(originals: readonly GateCase[], changed: reado
     const falseFlags = test.unchanged.filter(flags).length;
     return { testSide, threshold: selected.threshold, caught, changed: test.changed.length, falseFlags, unchanged: test.unchanged.length, passed: caught / test.changed.length >= 0.9 && falseFlags / test.unchanged.length <= 0.05 };
   });
+}
+
+/**
+ * #858: how many changed copies of each kind the held-out folds catch, each copy judged by the threshold its fold chose
+ * on the other half (as evaluateGateFolds counts them). Shows whether a gate that passes overall misses one kind.
+ */
+export function gateCatchesByKind(originals: readonly GateCase[], changed: readonly GateCase[], rows: readonly GateRow[], model: string, gate: Gate) {
+  const folds = evaluateGateFolds(originals, changed, rows, model, gate);
+  const split = splitGateQuestions(originals);
+  const byKind = new Map<string, { caught: number; total: number }>();
+  for (const copy of changed.filter((q) => q.gate === gate)) {
+    const fold = folds.find((f) => f.testSide === split.get(copy.originalId!))!;
+    const row = rows.find((r) => r.model === model && r.gate === gate && r.id === copy.id)!;
+    const flagged = gate === "reading_level" ? row.probability >= fold.threshold : 1 - row.probability < fold.threshold;
+    const kind = copy.kind ?? "unlabelled";
+    const entry = byKind.get(kind) ?? { caught: 0, total: 0 };
+    byKind.set(kind, { caught: entry.caught + (flagged ? 1 : 0), total: entry.total + 1 });
+  }
+  return byKind;
 }

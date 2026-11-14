@@ -237,3 +237,19 @@ it("stops at the first admitted photo with no marking client, and goes on past a
   const run = await recoverScanMarking(db, env, open, { now: () => clock.t, startedAt: 0, mark: noClient as never });
   expect(run).toEqual({ status: "processed", results: ["off", "off"] });
 });
+
+// #868: a clean 429 is the provider limiting us, not this photo. The run stops at the first photo deferred on one, so a
+// long limit does not spend a deferral of every queued photo; a later run (15 minutes on) takes them up again.
+it("stops at the first photo deferred on a rate limit, and logs it", async () => {
+  photos(5);
+  const log = vi.spyOn(console, "info").mockImplementation(() => {});
+  const limited = async (_db: unknown, _parent: string, photo: string, _env: unknown, _plan: unknown, options: ProcessMarkingOptions) => {
+    if (photo === "photo-00") return "pending"; // a photo whose call failed some other way: the run goes on
+    options.onRateLimit?.(60_000);
+    return "pending";
+  };
+  const run = await recoverScanMarking(db, env, open, { now: () => clock.t, startedAt: 0, mark: limited as never });
+  expect(run).toEqual({ status: "processed", results: ["pending", "pending"] });
+  expect(JSON.stringify(log.mock.calls.at(-1))).toContain("rate_limited");
+  log.mockRestore();
+});

@@ -1,7 +1,8 @@
 // Use the existing AiClient/OpenRouter path. One admission per transport attempt. No subscription queue.
 import { costingFetch, openRouterClient, type OpenRouterProvider } from "@/lib/ai-openrouter";
 import { recordAiUsage, type AiUsageTag } from "@/lib/ai-usage";
-import { MARKING_MODEL, type MarkingClientFactory } from "@/lib/scan-marking";
+import { MARKING_MODEL, type MarkingClientFactory, type MarkingFailure } from "@/lib/scan-marking";
+import { markingFailure } from "@/lib/scan-marking-failure";
 import models from "../../data/scan-marking-models.json";
 import evaluationModels from "../../data/scan-marking-evaluation-models.json";
 
@@ -46,15 +47,17 @@ export function markingAiClient(env: Readonly<Record<string, string | undefined>
     const model = pinned.model;
     const provider = route?.provider ?? productionRoute(pinned);
     if (!provider) return null;
-    let cost: number | null = null;
+    let cost: number | null = null, failure: MarkingFailure | null = null;
     const client = openRouterClient({
       apiKey, model,
       provider, maxRetries: route?.maxRetries,
       fetch: costingFetch((usd) => { cost = Math.ceil(usd * 1_000_000); }, fetch),
-      onRequest: async () => { await beforeAttempt(); cost = null; },
+      // #868: a clean 429, read from the error body the client already read. A request with no answer stays null.
+      onErrorAnswer: (status, body, headers) => { failure = markingFailure(status, body, headers); },
+      onRequest: async () => { await beforeAttempt(); cost = null; failure = null; },
       // The AI usage ledger (D-330) only reads the answer's usage; the admission and the cost above are untouched.
       onUsage: (u) => recordAiUsage(usage ?? { feature: "marking" }, { provider: "openrouter", model, inputTokens: u.inputTokens, outputTokens: u.outputTokens, costUsd: u.costUsd, generationId: u.id }),
     });
-    return client ? { client, costMicros: () => cost } : null;
+    return client ? { client, costMicros: () => cost, failure: () => failure } : null;
   };
 }
