@@ -22,6 +22,8 @@ interface TestRoom {
   localParticipant: { setMicrophoneEnabled: ReturnType<typeof vi.fn>; performRpc: ReturnType<typeof vi.fn> };
 }
 const rooms = vi.hoisted(() => [] as TestRoom[]);
+/** How the next room's connect behaves: at once, or not until the test lets it go. */
+const lk = vi.hoisted(() => ({ connect: [] as Array<"ok" | "hold">, held: [] as Array<() => void> }));
 vi.mock("livekit-client", () => {
   class Room {
     remoteParticipants = new Map<string, Participant>();
@@ -32,7 +34,10 @@ vi.mock("livekit-client", () => {
     registerTextStreamHandler() {}
     on(event: string, fn: (...args: unknown[]) => void) { this.handlers.set(event, [...this.handlers.get(event) ?? [], fn]); }
     emit(event: string, ...args: unknown[]) { for (const fn of this.handlers.get(event) ?? []) fn(...args); }
-    async connect(url: string, token: string) { this.connected = [url, token]; }
+    async connect(url: string, token: string) {
+      if (lk.connect.shift() === "hold") await new Promise<void>((resolve) => lk.held.push(resolve));
+      this.connected = [url, token];
+    }
     startAudio = vi.fn(async () => {});
     disconnect = vi.fn(async () => { this.emit("Disconnected"); });
   }
@@ -82,7 +87,7 @@ let host: HTMLDivElement;
 let visibility: DocumentVisibilityState = "visible";
 afterEach(async () => {
   await act(async () => root?.unmount());
-  root = undefined; host?.remove(); rooms.length = 0;
+  root = undefined; host?.remove(); rooms.length = 0; lk.connect.length = 0; lk.held.length = 0;
   Object.assign(server, { live: new Set(), ended: new Set(), tickets: 0, sent: [], lose: [], hold: [], held: [], refuse: null });
   visibility = "visible";
   vi.unstubAllGlobals(); vi.useRealTimers();
@@ -378,4 +383,76 @@ it("waits for a start still under way when the child taps quickly, and joins wit
   expect(rooms[0].connected).toEqual(["ws://fake", "t1"]);
   expect(rooms[0].localParticipant.setMicrophoneEnabled).toHaveBeenCalledOnce();
   expect(host.textContent).toContain("Maya is joining…");
+});
+
+it("takes the room still joining at Start the call: one start, no second ticket, one room, the microphone after it joined", async () => {
+  lk.connect.push("hold");
+  const f = await mount();
+  await f.click("Call Maya");
+  expect(rooms).toHaveLength(1);
+  await f.click("Start the call");
+  expect(server.sent.map((s) => s.type)).toEqual(["start"]);
+  expect(rooms).toHaveLength(1);
+  expect(rooms[0].disconnect).not.toHaveBeenCalled();
+  expect(rooms[0].localParticipant.setMicrophoneEnabled).not.toHaveBeenCalled();
+  expect(rooms[0].startAudio).not.toHaveBeenCalled();
+  await act(async () => { lk.held.forEach((go) => go()); });
+  await settle();
+  expect(server.sent.map((s) => s.type)).toEqual(["start"]);
+  expect(rooms).toHaveLength(1);
+  expect(rooms[0].localParticipant.setMicrophoneEnabled).toHaveBeenCalledOnce();
+  expect(rooms[0].startAudio).toHaveBeenCalledOnce();
+  expect(joined()).toHaveLength(1);
+  expect(host.textContent).toContain("Maya is joining…");
+});
+
+it("joins the next call's room before Start the call after Back to my page, though Maya's worker left without its end message", async () => {
+  const f = await mount();
+  await f.click("Call Maya");
+  await f.click("Start the call");
+  const first = sentOf("start")[0].id;
+  const maya = { identity: "maya-1", kind: 4, attributes: { "maya.segment": "1", "lk.agent.state": "listening" } };
+  rooms[0].remoteParticipants.set(maya.identity, maya);
+  await act(async () => rooms[0].emit("ParticipantConnected", maya));
+  expect(host.textContent).toContain("On the call");
+  // The worker saved the end and left; its end message never came. The child's room is still joined.
+  server.live.delete(first); server.ended.add(first);
+  rooms[0].remoteParticipants.delete(maya.identity);
+  await act(async () => rooms[0].emit("ParticipantDisconnected", maya));
+  await settle();
+  await f.click("Back to my page");
+  await f.click("Call Maya");
+  // The first call's room is left, and the new call's room joins before the tap, with the microphone off.
+  expect(rooms[0].disconnect).toHaveBeenCalled();
+  expect(rooms).toHaveLength(2);
+  expect(rooms[1].connected).toEqual(["ws://fake", "t2"]);
+  expect(rooms[1].localParticipant.setMicrophoneEnabled).not.toHaveBeenCalled();
+  await f.click("Start the call");
+  expect(sentOf("token")).toEqual([]);
+  expect(rooms).toHaveLength(2);
+  expect(rooms[1].localParticipant.setMicrophoneEnabled).toHaveBeenCalledOnce();
+  expect(joined()).toEqual([rooms[1]]);
+});
+
+it("joins the next call's room before Start the call after a call that ended normally", async () => {
+  const f = await mount();
+  await f.click("Call Maya");
+  await f.click("Start the call");
+  const first = sentOf("start")[0].id;
+  const maya = { identity: "maya-1", kind: 4, attributes: { "maya.segment": "1", "lk.agent.state": "listening" } };
+  rooms[0].remoteParticipants.set(maya.identity, maya);
+  await act(async () => rooms[0].emit("ParticipantConnected", maya));
+  server.live.delete(first); server.ended.add(first);
+  // The worker's end message: the screen leaves the room itself.
+  await act(async () => rooms[0].emit("DataReceived", new TextEncoder().encode(JSON.stringify({ ended: true, segment: 1 })), maya, 0, "maya.call"));
+  await settle();
+  expect(rooms[0].disconnect).toHaveBeenCalled();
+  await f.click("Back to my page");
+  await f.click("Call Maya");
+  expect(rooms).toHaveLength(2);
+  expect(rooms[1].connected).toEqual(["ws://fake", "t2"]);
+  await f.click("Start the call");
+  expect(sentOf("token")).toEqual([]);
+  expect(rooms).toHaveLength(2);
+  expect(joined()).toEqual([rooms[1]]);
 });
