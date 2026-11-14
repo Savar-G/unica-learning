@@ -35,8 +35,8 @@ it("reads the whole photo first, then each quarter at 2x, and stops at the first
   const seen: string[] = [];
   const look = await phoneCodeLooks(async (r) => { seen.push(`${r.zoom}:${r.x},${r.y}`); return seen.length === 3 ? page : seen.length === 2 ? "https://example.com/x" : null; });
   expect(look).toBe("read");
-  expect(seen).toEqual(["1:0,0", "2:0,0.5", "2:0.5,0.5"]);
-  expect(PHONE_CODE_READS).toHaveLength(5);
+  expect(seen).toEqual(["1:0,0.5", "1:0,0", "2:0,0.5"]);
+  expect(PHONE_CODE_READS).toHaveLength(6);
 });
 
 it("says unread only after every read, and nothing when out of time or a read fails", async () => {

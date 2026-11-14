@@ -527,10 +527,10 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       <h2>{refusalCopy(openTile.refusal).title}</h2>
       <p>{refusalCopy(openTile.refusal).action}</p>
       {openTile.uploadKey && openTile.refusal === "unavailable"
-        ? <button type="button" className="btn" onClick={() => { patchUpload(openTile.uploadKey!, { status: "waiting", reason: undefined }); setSheet(null); pump(); }}>Try again</button>
+        ? <button type="button" className="btn" onClick={() => { patchUpload(openTile.uploadKey!, { status: "waiting", reason: undefined, codeUnread: undefined }); setSheet(null); pump(); }}>Try again</button>
         : phone && <button type="button" className="btn" onClick={() => open(openTile.uploadKey ? "library" : "camera", retakeKey(openTile))}>{openTile.uploadKey ? "Choose another photo" : "Take another photo"}</button>}
       {!phone && <p className="small">Take it again with your phone. The page waits there.</p>}
-    </> : openTile.hint === "code" ? <>
+    </> : openTile.hint === "code" && openTile.status !== "waiting" ? <>
       <h2>{refusalCopy("qr").title}</h2>
       <p>This photo is still sending, and we will read the code again. If we still cannot read it, we will ask you for another photo.</p>
     </> : openTile.status === "waiting" ? <>

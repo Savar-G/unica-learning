@@ -29,8 +29,12 @@ export function isPageCodeLink(link: string): boolean {
   return url.protocol === "https:" && url.hostname === "unicalearning.com" && /^\/tutor\/p\/[A-Za-z0-9_-]{16,64}$/.test(url.pathname) && !url.search && !url.hash;
 }
 
-/** The reads, in order: the whole photo, then each quarter enlarged 2× (lower quarters first: the code prints low on the left). */
-export const PHONE_CODE_READS = [{ zoom: 1, x: 0, y: 0, part: 1 }, ...([[0, 0.5], [0.5, 0.5], [0, 0], [0.5, 0]] as const).map(([x, y]) => ({ zoom: 2, x, y, part: 0.5 }))] as const;
+/**
+ * The reads, in order: first the lower-left quarter as it is (the code prints there; a quarter is a quarter of the
+ * pixels, so most photos are read in one short step), then the whole photo, then each quarter enlarged 2× (lower
+ * quarters first). A read that finds a page code ends the look, so the extra first read only adds a chance to read.
+ */
+export const PHONE_CODE_READS = [{ zoom: 1, x: 0, y: 0.5, part: 0.5 }, { zoom: 1, x: 0, y: 0, part: 1 }, ...([[0, 0.5], [0.5, 0.5], [0, 0], [0.5, 0]] as const).map(([x, y]) => ({ zoom: 2, x, y, part: 0.5 }))] as const;
 
 /**
  * The phone's own early look at the page code (#915), before the server's answer: "read" when a read finds a page code,
@@ -58,13 +62,13 @@ export async function phoneCodeCheck(photo: Blob): Promise<"read" | "unread" | n
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d", { willReadFrequently: true });
     if (!context) return null;
-    return await phoneCodeLooks(async ({ zoom, x, y, part }) => {
+    try { return await phoneCodeLooks(async ({ zoom, x, y, part }) => {
       await new Promise((resolve) => setTimeout(resolve, 0));
       const sw = Math.round(image.width * part), sh = Math.round(image.height * part);
       canvas.width = sw * zoom; canvas.height = sh * zoom;
       context.drawImage(image, Math.round(x * image.width), Math.round(y * image.height), sw, sh, 0, 0, canvas.width, canvas.height);
       const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
       return jsQR(pixels.data, pixels.width, pixels.height, { inversionAttempts: "attemptBoth" })?.data ?? null;
-    });
+    }); } finally { canvas.width = 0; canvas.height = 0; }
   } catch { return null; } finally { image.close(); }
 }
