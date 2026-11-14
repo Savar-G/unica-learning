@@ -5,8 +5,8 @@ import { resolve } from "node:path";
 import sharp from "sharp";
 import fixtures from "./scan-marking-comparison.test-fixtures.json";
 import type { QuestionPackage } from "./question-package";
-import { COMPARISON_FORMATS, SYNTHETIC_IDS, hashBytes, hashValue, labelledOutput, reserveMaximum, validateComparisonManifest, type ComparisonManifest, type ComparisonPhoto, type ComparisonResult, type EndpointEvidence } from "./scan-marking-comparison";
-import { reviewedPhysicalStates, FROZEN_KIT, PHYSICAL_EXPECTED, PHYSICAL_MODELS, PHYSICAL_PARALLEL_REQUESTS, PHYSICAL_VERSION, parseTruthCsv, physicalCreditPreflight, physicalEstimate, physicalEstimateLines, physicalFixedReport, physicalFixedSideBySide, physicalPhotoId, physicalReport, physicalSettings, physicalSideBySide, physicalTruth, truthTemplate, validateMapping, writeTruthCsv, type PhysicalMapping, type PhysicalPage, type PhysicalSet } from "./scan-marking-physical";
+import { COMPARISON_FORMATS, SYNTHETIC_IDS, selectComparisonModels, hashBytes, hashValue, labelledOutput, reserveMaximum, validateComparisonManifest, type ComparisonManifest, type ComparisonPhoto, type ComparisonResult, type EndpointEvidence } from "./scan-marking-comparison";
+import { reviewedPhysicalStates, reviewedPhysicalSource, PHYSICAL_REVIEWED_EVIDENCE_SHA256, FROZEN_KIT, PHYSICAL_EXPECTED, PHYSICAL_MODELS, PHYSICAL_PARALLEL_REQUESTS, PHYSICAL_VERSION, parseTruthCsv, physicalCreditPreflight, physicalEstimate, physicalEstimateLines, physicalFixedReport, physicalFixedSideBySide, physicalPhotoId, physicalReport, physicalSettings, physicalSideBySide, physicalTruth, truthTemplate, validateMapping, writeTruthCsv, type PhysicalMapping, type PhysicalPage, type PhysicalSet } from "./scan-marking-physical";
 import { calibratePhysicalPhoto, executePhysical, fakePhysicalHttp, openPreparedPhysical, physicalBudget, regularBytes, replayPhysical, sealPhysicalPlan } from "../../scripts/scan-marking-physical-cli";
 import { durableJson, fileJournal } from "../../scripts/scan-marking-comparison-cli";
 import type { EvaluationBudget, EvaluationJournal } from "./scan-marking-comparison-run";
@@ -127,6 +127,41 @@ describe("physical human truth", () => {
       r.final_written_answer = r.region_id === "answer" ? "430" : r.region_id === "method-1" ? "3440 ÷ 8 = 430" : "8 × 430 = 3440";
     }
     expect(physicalTruth(mapping(), pages(), writeTruthCsv(rows)).get("iphone.jpg")!.find(t => t.format === "two-ways")!.result).toBe("wrong");
+  });
+  // #852: a wrong operation ticked makes the item wrong even when the answer box cannot be read.
+  it("accepts an unreadable answer under a wrong item only when the reader also reads it wrong", () => {
+    const tick = (operation: string) => {
+      const rows = blankTruth();
+      for (const r of rows.filter(r => r.format === "tick-and-number" && r.photo === "iphone.jpg")) {
+        r.intended_result = "wrong";
+        if (r.region_id === "operation") { r.reading_state = "written"; r.final_written_answer = operation; }
+        if (r.region_id === "answer") { r.reading_state = "uncertain"; r.reading_issue = "blurry"; }
+      }
+      return rows;
+    };
+    const truth = physicalTruth(mapping(), pages(), writeTruthCsv(tick("\u2212"))).get("iphone.jpg")!.find(t => t.format === "tick-and-number")!;
+    expect(truth.result).toBe("wrong");
+    expect(truth.readings.find(r => r.regionId === "answer")).toMatchObject({ state: "uncertain", issue: "blurry" });
+    // The right operation with an unreadable answer leaves the item unknown: a "wrong" label there is refused.
+    expect(() => physicalTruth(mapping(), pages(), writeTruthCsv(tick("+")))).toThrow("human-truth-reader-conflict");
+    // An unreadable region still never sits under a right item, and still needs its issue.
+    const right = tick("\u2212"); for (const r of right.filter(r => r.format === "tick-and-number" && r.photo === "iphone.jpg")) r.intended_result = "right";
+    expect(() => physicalTruth(mapping(), pages(), writeTruthCsv(right))).toThrow("uncertain-truth-needs-issue");
+    const noIssue = tick("\u2212"); noIssue.find(r => r.format === "tick-and-number" && r.photo === "iphone.jpg" && r.region_id === "answer")!.reading_issue = "";
+    expect(() => physicalTruth(mapping(), pages(), writeTruthCsv(noIssue))).toThrow("uncertain-truth-needs-issue");
+  });
+  it("refuses a wrong label over an unreadable two-ways or word answer, where the reader cannot say wrong", () => {
+    const unreadable = (format: string, region: string) => {
+      const rows = blankTruth();
+      for (const r of rows.filter(r => r.format === format && r.photo === "iphone.jpg")) {
+        r.intended_result = "wrong";
+        if (r.region_id === region) { r.reading_state = "uncertain"; r.reading_issue = "blurry"; }
+        else { r.reading_state = "written"; r.final_written_answer = r.region_id === "method-1" ? "3440 ÷ 8 = 430" : r.region_id === "method-2" ? "8 × 430 = 3440" : "even"; }
+      }
+      return rows;
+    };
+    expect(() => physicalTruth(mapping(), pages(), writeTruthCsv(unreadable("two-ways", "answer")))).toThrow("human-truth-reader-conflict");
+    expect(() => physicalTruth(mapping(), pages(), writeTruthCsv(unreadable("write-words", "answer")))).toThrow("human-truth-reader-conflict");
   });
   it("counts absent phone pages and rejects unsafe photo maps and symlinks", async () => {
     const one = mapping(); one.photos.pop(); expect(validateMapping(one, pages())).toEqual(["android:pdf-2"]);
@@ -606,5 +641,76 @@ describe("public physical geometry", () => {
     await expect(calibratePhysicalPhoto(cut, page, "a".repeat(28), image, [])).rejects.toThrow("calibration");
     const wrong = structuredClone(contract); wrong.marks.points.tr.x -= 300;
     await expect(calibratePhysicalPhoto(bytes, { ...page, printContract: wrong }, "a".repeat(28), image, [])).rejects.toThrow("calibration");
+  });
+});
+
+// #852: the production route on one phone. Sonnet 5.5 on anthropic, iPhone photos only.
+describe("one phone on the production route", () => {
+  const [PRODUCTION] = selectComparisonModels(["anthropic/claude-sonnet-5.5@anthropic"]);
+  const iphoneOnly = (): PhysicalMapping => ({ ...mapping(), photos: mapping().photos.filter(p => p.device === "iphone") });
+  async function oneSetAndPlan(proofClass: PhysicalSet["proofClass"] = "local-fake") {
+    const out = await temp(); await mkdir(resolve(out, "images"));
+    await durableJson(resolve(out, "owner.json"), { owner: "local-test-owner" }, true);
+    const bytes = await sharp({ create: { width: 1000, height: 1400, channels: 3, background: "white" } }).jpeg().toBuffer();
+    const map = iphoneOnly(), truths = physicalTruth(map, pages(), writeTruthCsv(blankTruth().filter(r => r.photo === "iphone.jpg")));
+    const set: PhysicalSet = { version: PHYSICAL_VERSION, proofClass, kit: FROZEN_KIT, draftSha256: hashBytes("supplied-synthetic-test-draft"), revision: "a".repeat(28), truthSha256: hashBytes("supplied-synthetic-blank-readings"), mappingSha256: hashValue(map),
+      missing: validateMapping(map, pages(), ["iphone"]), photos: [], inventory: map.photos.map(m => ({ file: m.file, rawSha256: hashBytes(bytes), reason: null })), devices: ["iphone"] };
+    for (const m of map.photos) {
+      const id = physicalPhotoId(m.file), photo: ComparisonPhoto = { id, clear: true, image: { path: `images/${id}.jpg`, sha256: hashBytes(bytes), width: 1000, height: 1400, metadataFree: true }, frame: { ...pages()[0].frame, photo: id }, truth: truths.get(m.file)! };
+      await writeFile(resolve(out, photo.image.path), bytes); await writeFile(resolve(out, `images/${id}-oriented.jpg`), bytes);
+      set.photos.push({ mapping: m, status: "ready", reason: null, rawSha256: hashBytes(bytes), normalizedSha256: hashBytes(bytes), calibration: { suppliedSyntheticGeometry: true }, crops: [], photo });
+    }
+    await durableJson(resolve(out, "set.json"), set, true);
+    const { plan, run } = await sealPhysicalPlan(out, set, root, 1_000_000, null, [PRODUCTION]);
+    return { out, set, plan, run };
+  }
+  it("counts only the run's phones and refuses a photo from another phone", () => {
+    expect(validateMapping(iphoneOnly(), pages(), ["iphone"])).toEqual([]);
+    expect(validateMapping(iphoneOnly(), pages())).toEqual(["android:pdf-2"]);
+    expect(() => validateMapping(mapping(), pages(), ["iphone"])).toThrow("photo-device-not-in-run");
+  });
+  it("pins the enabled production evidence and keeps a both-phone plan's settings as they were", () => {
+    const [state] = reviewedPhysicalStates([PRODUCTION]);
+    expect(hashValue(state.evidence)).toBe(PHYSICAL_REVIEWED_EVIDENCE_SHA256["anthropic/claude-sonnet-5.5@anthropic"]);
+    expect(state.evidence.endpoint).toMatchObject({ tag: "anthropic", provider_name: "Anthropic" });
+    expect(state.maximumMicros).toBe(4_040_960);
+    expect(reviewedPhysicalSource([PRODUCTION]).snapshotDate).toBe("2026-11-14");
+    expect(reviewedPhysicalSource().snapshotDate).toBe("2026-11-06");
+    // A pair with no pinned evidence is refused, and so are two pairs of one model.
+    expect(() => reviewedPhysicalStates(selectComparisonModels(["z-ai/glm-5.3-flash"]))).toThrow("reviewed-evidence-changed");
+    expect(() => physicalSettings(1_000_000, [PRODUCTION, SONNET])).toThrow("invalid-physical-models");
+    expect(physicalSettings(1_000_000, [PRODUCTION], ["iphone"])).toMatchObject({ models: [{ model: PRODUCTION.model, endpoint: "anthropic", providerName: "Anthropic" }], devices: ["iphone"], bothPhones: false, prompt: "whole-page-scalar-readings-v9" });
+    expect(physicalSettings(1_000_000)).not.toHaveProperty("devices");
+    expect(() => physicalSettings(1_000_000, PHYSICAL_MODELS, [])).toThrow("invalid-physical-devices");
+    const estimate = physicalEstimate(23, [state], 1_000_000);
+    expect(estimate.models.map(m => [m.model, m.requests])).toEqual([[PRODUCTION.model, 23]]);
+    expect(physicalEstimateLines(estimate)[0]).toMatch(/^Estimate: USD [\d.]+ \(Sonnet 5\.5: 23 x /);
+  });
+  it("runs one model on iPhone photos and never reports the two-phone bar as met", async () => {
+    const input = await oneSetAndPlan();
+    await fakePhysicalHttp(input.out, input.set, input.plan, input.run);
+    const results = JSON.parse(await readFile(resolve(input.out, "results.json"), "utf8")) as ComparisonResult[];
+    expect(results.map(r => r.model)).toEqual([PRODUCTION.model]);
+    const report = physicalReport(input.set, results, input.plan.evidences, input.run);
+    expect(report).toMatchObject({ devices: ["iphone"], bothPhones: false, meetsTwoPhoneBar: false, complete: true });
+    expect(report.models.map(m => [m.model, m.endpoint])).toEqual([[PRODUCTION.model, "anthropic"]]);
+    const text = physicalSideBySide(report);
+    expect(text).toContain("iPhone only: Android not tested. This run cannot meet the two-phone #852 bar.");
+    expect(text).toContain("Sonnet 5.5 (anthropic)");
+    expect(text).not.toContain("Terra");
+    // Replay checks result identity against the run's own pair, not the model's first pinned pair.
+    const replayed = JSON.parse(await readFile(resolve(await replayPhysical(input.out, resolve(await temp(), "replay"), root), "report.json"), "utf8"));
+    expect(replayed).toMatchObject({ bothPhones: false, meetsTwoPhoneBar: false, models: [{ model: PRODUCTION.model, endpoint: "anthropic" }] });
+  });
+  it("dispatches a paid one-phone run only to the production pair after its price refresh", async () => {
+    const input = await oneSetAndPlan("physical-input"), mem = memoryBudget(), refreshed: string[] = [], asked: string[] = [];
+    const budget: EvaluationBudget = { ...mem.budget, refresh: async ({ approved }) => { refreshed.push(hashValue(approved)); return { verified: true }; } };
+    const fetcher: typeof fetch = async (_url, init) => { const body = JSON.parse(String(init?.body)); asked.push(`${body.model}:${body.provider?.only?.join(",")}`); return response(input.set.photos[0].photo, PRODUCTION); };
+    const results = await executePhysical({ ...input, root, budget: () => budget, env: () => ({ SCAN_MARKING_OPENROUTER_API_KEY: FAKE_KEY }), preflight: async () => input.plan.evidences.map(evidence => ({ evidence, maximumMicros: 100_000 })), fetch: fetcher, creditFetch: enough as typeof fetch });
+    expect(refreshed).toEqual([PHYSICAL_REVIEWED_EVIDENCE_SHA256["anthropic/claude-sonnet-5.5@anthropic"]]);
+    expect(results.map(r => r.model)).toEqual([PRODUCTION.model]);
+    expect(asked).toHaveLength(1); expect(asked[0]).toMatch(/^anthropic\/claude-sonnet-5\.5:/);
+    const report = JSON.parse(await readFile(resolve(input.out, "report.json"), "utf8"));
+    expect(report).toMatchObject({ bothPhones: false, meetsTwoPhoneBar: false });
   });
 });

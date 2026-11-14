@@ -33,6 +33,10 @@ const uploadRefusal = (code: string): UploadRefusal => (UPLOAD_REFUSALS.includes
 /** What the server says of a photo id that can no longer take an upload: the lease ended or the photo went. A new id is needed. */
 const ENDED: readonly string[] = ["expired", "rejected", "deleted", "refused"];
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+/** How long a photo waits before its check is asked again; a busy check (still running, #915) is asked again sooner. */
+const CHECK_ASK_MS = 6000, BUSY_ASK_MS = 1500, QUICK_BUSY_ASKS = 8;
+/** The stack is read this often while a page is being checked, so a finished check shows within about 2 s (#915). */
+const CHECKING_POLL_MS = 2000;
 
 /** Every request has a time limit, so one hung upload cannot hold its slot (#915). A request past it is a lost answer. */
 async function api(path: string, init?: RequestInit, timeout = REQUEST_TIMEOUT_MS) {
@@ -140,6 +144,8 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const pumpRef = useRef<() => void>(() => {});
   const checking = useRef(false);
   const asked = useRef(new Map<string, number>());
+  // Quick asks per photo while its upload-time check runs (#915); after them, the usual wait between asks.
+  const busyAsked = useRef(new Map<string, number>());
   const savedAsked = useRef(new Set<string>());
   const fetching = useRef(new Set<string>());
   const urls = useRef(new Map<string, string>());
@@ -258,7 +264,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     try {
       for (;;) {
         const now = Date.now();
-        const next = listing.photos.filter((p) => p.state === "saved" && p.check === "checking" && !unavailable.has(p.id) && now - (asked.current.get(p.id) ?? 0) > 6000)
+        const next = listing.photos.filter((p) => p.state === "saved" && p.check === "checking" && !unavailable.has(p.id) && now - (asked.current.get(p.id) ?? 0) > CHECK_ASK_MS)
           .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
         if (!next || version !== epoch.current) return;
         asked.current.set(next.id, now);
@@ -267,6 +273,13 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
         const status = answer?.preview?.status;
         if (status === "unavailable") setUnavailable((s) => new Set(s).add(next.id));
         if (status === "ready" || status === "refused") { await load().catch(() => {}); return; }
+        // Busy: the check started at upload (#915) is still running. Ask again soon, not after the usual wait.
+        if (status === "busy") {
+          const n = (busyAsked.current.get(next.id) ?? 0) + 1;
+          busyAsked.current.set(next.id, n);
+          if (n <= QUICK_BUSY_ASKS && document.visibilityState === "visible") { await wait(BUSY_ASK_MS); asked.current.set(next.id, 0); continue; }
+          return;
+        }
         if (status !== "unavailable") return;
       }
     } finally { if (version === epoch.current) checking.current = false; }
@@ -274,12 +287,13 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   useEffect(() => { void runChecks(); }, [runChecks]);
 
   // Live: while a page is being checked, and always on a desktop beside the phone (D-273).
-  const live = mode === "desktop" || Boolean(listing?.photos.some((p) => p.check === "checking" || p.state === "pending"));
+  const checkingNow = Boolean(listing?.photos.some((p) => p.check === "checking" || p.state === "pending"));
+  const live = mode === "desktop" || checkingNow;
   useEffect(() => {
     if (!live || !child) return;
-    const timer = setInterval(() => { if (document.visibilityState === "visible") void load().catch(() => {}); }, mode === "desktop" ? 5000 : 4000);
+    const timer = setInterval(() => { if (document.visibilityState === "visible") void load().catch(() => {}); }, checkingNow ? CHECKING_POLL_MS : mode === "desktop" ? 5000 : 4000);
     return () => clearInterval(timer);
-  }, [live, child, load, mode]);
+  }, [live, child, load, mode, checkingNow]);
 
   async function uploadOne(u: Local, version: number): Promise<{ id: string; thumb: Blob } | UploadRefusal> {
     if (version !== epoch.current || !sessionCurrent.current) return "unavailable";
@@ -595,14 +609,16 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     {inputs}
     {help}
     {childPicker}
-    {listing && <p className="lead scan-summary">{stackSummary(stack, checks)}</p>}
+    {listing && stackSummary(stack, checks) && <p className="lead scan-summary">{stackSummary(stack, checks)}</p>}
     {focusLine}
     {status}
     {stack.guide && <section className="scan-guide" aria-label={`${stack.guide.day} pages`}>
       <p className="scan-guide-next">{stack.guide.next ? <><b>Next:</b> {stack.guide.next.title}</> : stack.guide.stillText}</p>
-      {stack.guide.next && <p>{stack.guide.stillText}</p>}
-      <ul>{stack.guide.pages.map((g) => <li key={g.pageId} className={`is-${g.status}`}>{g.title}: {GUIDE_WORDS[g.status]}</li>)}</ul>
-      <p className="small">Scan the pages in any order.</p>
+      {stack.guide.next && <p className="small">{stack.guide.stillText} Any order is fine.</p>}
+      <details className="scan-guide-all">
+        <summary>See all pages of {stack.guide.day}</summary>
+        <ul>{stack.guide.pages.map((g) => <li key={g.pageId} className={`is-${g.status}`}>{g.title}: {GUIDE_WORDS[g.status]}</li>)}</ul>
+      </details>
     </section>}
     {!listing && <p className="small" role="status">Loading photos...</p>}
     {!phone && empty && <p className="scan-empty">Your pages show here as you take them.</p>}
