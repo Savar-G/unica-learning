@@ -61,7 +61,7 @@ export type TelemetryEvent =
   | { ev: "admission"; turnId: string; startedAt: number; endedAt: number; ms: number; stt: SttRead; sttMs: number; block: "memory" | "awaited"; blockMs: number; outcome: AdmissionOutcome }
   | { ev: "mark"; scope: "request" | "utterance" | "turn"; id: string; name: RequestMark | UtteranceMark | TurnMark; at: number }
   | { ev: "preparation_decision"; decisionId: string; kind: PrepareRecord["kind"]; status: PrepareRecord["status"]; leadMs: number; reason: NonNullable<PrepareRecord["reason"]> | null; handleId: string | null; usd: number | null; estimated: true | null; turnId: string | null; requestId: string | null; binding: DecisionBinding; at: number }
-  | { ev: "preparation_binding"; decisionId: string; requestId: string | null; binding: "exact" | "ambiguous" }
+  | { ev: "preparation_binding"; decisionId: string; requestId: string | null; binding: Exclude<DecisionBinding, "none"> }
   | { ev: "truncated"; dropped: number };
 
 /** exact: one physical request carries the decision's handle id. unresolved: none seen yet. ambiguous: several do. none: the record named no usable handle. */
@@ -89,6 +89,7 @@ interface TurnRecord {
   requestIds: string[];
   utteranceIds: string[];
   decisionIds: string[];
+  decisionCount: number;
   sentences: number;
 }
 interface DecisionRecord {
@@ -160,8 +161,10 @@ export class CallTelemetry {
   private readonly requests = new Map<string, RequestRecord>();
   private readonly utterances = new Map<string, UtteranceRecord>();
   private readonly decisions = new Map<string, DecisionRecord>();
-  /** Physical prepared requests by exact handle id, in this registry only. */
-  private readonly handleRequests = new Map<string, string[]>();
+  /** Duplicate knowledge survives request eviction. Each handle keeps constant-size state, never an expanding ID list. */
+  private readonly handleRequests = new Map<string, { requestId: string | null; ambiguous: boolean; historyKnown: boolean }>();
+  /** Once the bounded handle history loses an entry, an unseen handle cannot be assumed new. */
+  private handleHistoryLost = false;
   /** Hints given since the last final, and prepared requests sent with no turn since the last final. */
   private hintsSince: string[] = [];
   private unboundPrepared: string[] = [];
@@ -229,7 +232,7 @@ export class CallTelemetry {
     const id = this.id("t");
     const ids = finalIds.filter((x): x is string => typeof x === "string");
     const last = ids.length ? this.finals.get(ids[ids.length - 1]) : undefined;
-    this.turns.set(id, { id, finalIds: ids, marks: { ...(last?.marks ?? {}) }, requestIds: [], utteranceIds: [], decisionIds: [], sentences: 0 });
+    this.turns.set(id, { id, finalIds: ids, marks: { ...(last?.marks ?? {}) }, requestIds: [], utteranceIds: [], decisionIds: [], decisionCount: 0, sentences: 0 });
     bounded(this.turns, LIMITS.turns);
     this.emit({ ev: "turn", turnId: id, finalIds: ids, at });
     return id;
@@ -333,27 +336,33 @@ export class CallTelemetry {
 
   // ----- preparation decisions -----
 
-  /** The prepared requests of this registry that carry `handleId` and are still kept. */
-  private requestsOfHandle(handleId: string): string[] {
-    return (this.handleRequests.get(handleId) ?? []).filter(id => this.requests.has(id));
+  private requestOfHandle(handleId: string): { binding: Exclude<DecisionBinding, "none">; requestId: string | null } {
+    const h = this.handleRequests.get(handleId);
+    if (h?.ambiguous) return { binding: "ambiguous", requestId: null };
+    if (!h?.historyKnown || !h.requestId || !this.requests.has(h.requestId)) return { binding: "unresolved", requestId: null };
+    return { binding: "exact", requestId: h.requestId };
   }
 
-  /** A prepared request with a handle id appeared: it can complete a decision that came first (never one by time or order). */
+  /** A prepared request appeared. Eviction can remove detail, but it cannot prove uniqueness. */
   private joinRequest(handleId: string, requestId: string) {
-    const ids = [...(this.handleRequests.get(handleId) ?? []), requestId];
+    const prior = this.handleRequests.get(handleId);
+    const retainedDuplicate = [...this.decisions.values()].some(d => d.handleId === handleId &&
+      (d.binding === "ambiguous" || (d.requestId !== null && d.requestId !== requestId)));
+    const ambiguous = !!prior || retainedDuplicate;
+    const state = { requestId: ambiguous ? null : requestId, ambiguous, historyKnown: prior?.historyKnown ?? !this.handleHistoryLost };
     this.handleRequests.delete(handleId);
-    this.handleRequests.set(handleId, ids);
-    bounded(this.handleRequests, LIMITS.requests);
+    this.handleRequests.set(handleId, state);
+    if (this.handleRequests.size > LIMITS.requests) {
+      this.handleRequests.delete(this.handleRequests.keys().next().value as string);
+      this.handleHistoryLost = true;
+    }
+    const match = this.requestOfHandle(handleId);
     for (const d of this.decisions.values()) {
-      if (d.handleId !== handleId) continue;
-      if (d.binding === "unresolved") {
-        if (this.requestsOfHandle(handleId).length === 1) { d.binding = "exact"; d.requestId = requestId; }
-        else { d.binding = "ambiguous"; d.requestId = null; }
-      } else if (d.binding === "exact" && d.requestId !== requestId) {
-        // A second physical request under the same id: the earlier exact join can no longer be trusted.
-        d.binding = "ambiguous"; d.requestId = null;
-      } else continue;
-      this.emit({ ev: "preparation_binding", decisionId: d.id, requestId: d.requestId, binding: d.binding });
+      if (d.handleId !== handleId || d.binding === "ambiguous") continue;
+      if (d.binding === match.binding && d.requestId === match.requestId) continue;
+      d.binding = match.binding;
+      d.requestId = match.requestId;
+      this.emit({ ev: "preparation_binding", decisionId: d.id, requestId: d.requestId, binding: match.binding });
     }
   }
 
@@ -374,12 +383,17 @@ export class CallTelemetry {
     const handleId = closedId(typeof r.diagnosticHandleId === "string" ? r.diagnosticHandleId : null);
     const ctxTurn = requestContext().turnId;
     const turnId = ctxTurn && this.turns.has(ctxTurn) ? ctxTurn : null;
-    const matched = handleId ? this.requestsOfHandle(handleId) : [];
-    const binding: DecisionBinding = !handleId ? "none" : matched.length === 1 ? "exact" : matched.length === 0 ? "unresolved" : "ambiguous";
-    const d: DecisionRecord = { id: this.id("d"), kind: r.kind as PrepareRecord["kind"], status: r.status as PrepareRecord["status"], leadMs: r.leadMs, reason, handleId, usd, estimated: r.estimated === true ? true : null, turnId, requestId: binding === "exact" ? matched[0] : null, binding };
+    const matched = handleId ? this.requestOfHandle(handleId) : { binding: "none" as const, requestId: null };
+    const binding: DecisionBinding = matched.binding;
+    const d: DecisionRecord = { id: this.id("d"), kind: r.kind as PrepareRecord["kind"], status: r.status as PrepareRecord["status"], leadMs: r.leadMs, reason, handleId, usd, estimated: r.estimated === true ? true : null, turnId, requestId: matched.requestId, binding };
     this.decisions.set(d.id, d);
     bounded(this.decisions, LIMITS.decisions);
-    if (turnId) this.turns.get(turnId)!.decisionIds.push(d.id);
+    if (turnId) {
+      const turn = this.turns.get(turnId)!;
+      turn.decisionCount++;
+      turn.decisionIds.push(d.id);
+      if (turn.decisionIds.length > LIMITS.decisions) turn.decisionIds.shift();
+    }
     this.emit({ ev: "preparation_decision", decisionId: d.id, kind: d.kind, status: d.status, leadMs: d.leadMs, reason: d.reason, handleId: d.handleId, usd: d.usd, estimated: d.estimated, turnId: d.turnId, requestId: d.requestId, binding: d.binding, at: this.now() });
     return d.id;
   }
@@ -477,7 +491,9 @@ export class CallTelemetry {
       ...(answer ? { ttsRequest: answer.marks.ttsRequest !== undefined ? answer.marks.ttsRequest - t0 : null, ttsFirstFrame: answer.marks.ttsFirstFrame !== undefined ? answer.marks.ttsFirstFrame - t0 : null } : {}),
       ...(ack ? { ackTtsRequest: ack.marks.ttsRequest !== undefined ? ack.marks.ttsRequest - t0 : null, ackTtsFirstFrame: ack.marks.ttsFirstFrame !== undefined ? ack.marks.ttsFirstFrame - t0 : null } : {}),
       // Explicit decisions only. No decision: `unreported`, never "none" and never "accepted".
-      preparationSelection: decisions.length ? "reported" : "unreported",
+      preparationSelection: turn.decisionCount ? "reported" : "unreported",
+      preparationDecisionCount: turn.decisionCount,
+      preparationDetailsEvicted: Math.max(0, turn.decisionCount - decisions.length),
       preparations: decisions.map(d => {
         const q = d.requestId ? this.requests.get(d.requestId) : undefined;
         return { id: d.id, kind: d.kind, status: d.status, leadMs: d.leadMs, reason: d.reason, handleId: d.handleId, usd: d.usd, estimated: d.estimated, binding: d.binding, requestId: q ? q.id : null, ...(q ? { request: { source: q.source, status: q.status, outcome: q.outcome, ...rel(q.marks) } } : {}) };

@@ -265,3 +265,71 @@ describe("decisions, through the registry's public interface", () => {
     expect(small.t.droppedEvents).toBeGreaterThan(0);
   });
 });
+
+describe("preparation reporting after eviction", () => {
+  const setup = () => {
+    const r = registry();
+    const request = async (handle: string, source: "model" | "prepared_interim" = "prepared_interim") => {
+      const response = await withRequestContext({ source, turnId: null, diagnosticHandleId: handle }, () =>
+        r.t.fetch(async () => new Response(null, { status: 204 }))("https://openrouter.ai/test"));
+      expect(response.status).toBe(204);
+    };
+    const decide = (handle: string) => r.t.preparationDecision({ kind: "interim", status: "used", leadMs: 50, diagnosticHandleId: handle });
+    return { ...r, request, decide };
+  };
+
+  it("keeps a normal exact join, but does not invent details for an evicted unique request", async () => {
+    const r = setup();
+    await r.request("job#h1");
+    r.decide("job#h1");
+    expect(r.of("preparation_decision").at(-1)).toMatchObject({ binding: "exact", requestId: "job:r1" });
+    for (let i = 0; i < LIMITS.requests; i++) await r.request("job#h99", "model");
+    r.decide("job#h1");
+    expect(r.of("preparation_decision").at(-1)).toMatchObject({ binding: "unresolved", requestId: null });
+  });
+
+  it("never restores uniqueness when eviction removes one of two requests under a handle", async () => {
+    const r = setup();
+    await r.request("job#h1");
+    await r.request("job#h1");
+    for (let i = 0; i < LIMITS.requests - 1; i++) await r.request("job#h99", "model");
+    r.decide("job#h1");
+    expect(r.of("request")).toHaveLength(LIMITS.requests + 1);
+    expect(r.of("preparation_decision").at(-1)).toMatchObject({ binding: "ambiguous", requestId: null });
+  });
+
+  it("does not claim uniqueness when the bounded handle history itself has forgotten a handle", async () => {
+    const r = setup();
+    for (let i = 0; i <= LIMITS.requests; i++) await r.request(`job#h${i + 1}`);
+    // A retained handle with complete history still has a proved exact match.
+    r.decide(`job#h${LIMITS.requests + 1}`);
+    expect(r.of("preparation_decision").at(-1)?.binding).toBe("exact");
+    await r.request("job#h1");
+    r.decide("job#h1");
+    expect(r.of("preparation_decision").at(-1)?.binding).not.toBe("exact");
+    expect(r.of("preparation_decision").at(-1)?.requestId).toBeNull();
+  });
+
+  it("keeps a retained turn reported when the bounded decision details leave", () => {
+    const r = setup();
+    const first = r.t.turn([r.t.final({ at: 5_000 })]);
+    r.t.runInTurn(first, () => r.decide("job#h1"));
+    expect(r.t.turnClock(first)).toMatchObject({ preparationSelection: "reported" });
+    for (let i = 0; i < LIMITS.decisions / 2; i++) {
+      const later = r.t.turn([r.t.final({ at: 5_100 + i })]);
+      r.t.runInTurn(later, () => { r.decide(`job#h${i * 2 + 2}`); r.decide(`job#h${i * 2 + 3}`); });
+    }
+    expect(r.t.turnClock(first)).toMatchObject({ preparationSelection: "reported", preparationDecisionCount: 1, preparationDetailsEvicted: 1, preparations: [] });
+  });
+
+  it("bounds one turn's retained detail IDs while keeping its reporting count", () => {
+    const r = setup();
+    const turn = r.t.turn([r.t.final({ at: 5_000 })]);
+    r.t.runInTurn(turn, () => {
+      for (let i = 0; i < LIMITS.decisions + 10; i++) r.decide(`job#h${i + 1}`);
+    });
+    const view = r.t.turnClock(turn) as { preparations: unknown[] };
+    expect(view).toMatchObject({ preparationSelection: "reported", preparationDecisionCount: LIMITS.decisions + 10, preparationDetailsEvicted: 10 });
+    expect(view.preparations).toHaveLength(LIMITS.decisions);
+  });
+});
