@@ -1,4 +1,5 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { availableParallelism } from "node:os";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { ACTS, INTERRUPTS, MAIN_STATES, type Act, type SessionState } from "@/lib/maya";
@@ -22,15 +23,24 @@ let ms = 0;
 
 beforeAll(async () => {
   const t0 = performance.now();
+  const cpuStart = process.cpuUsage();
   for (const b of BEHAVIOURS) errors.set(b.id, (await runGateBehaviour(b, store)).error);
   for (const b of BEHAVIOURS) verdicts.set(b.id, judgeSaved(b, store));
   ms = performance.now() - t0;
+  if (process.env.CI) {
+    const cpu = process.cpuUsage(cpuStart);
+    console.info(JSON.stringify({ check: "maya-behaviour-timing", pid: process.pid, parallelism: availableParallelism(),
+      worker: process.env.VITEST_POOL_ID ?? null, behaviours: BEHAVIOURS.length,
+      wallMs: ms, cpuMs: (cpu.user + cpu.system) / 1000 }));
+  }
   const dir = process.env.MAYA_GATE_TRACES;
   if (dir) {
     mkdirSync(dir, { recursive: true });
     for (const id of store.ids()) writeFileSync(join(dir, `${id}.json`), store.load(id)!);
   }
-});
+// Every behaviour runs in this one hook: give it CI's test time limit, not the 10 s hook default (the CI runner took over
+// 10 s once the claim behaviours were added; locally it takes about 3 s).
+}, 60_000);
 
 const RESEARCH_IDS = Array.from({ length: 40 }, (_, i) => `C${String(i + 1).padStart(2, "0")}`);
 const baseId = (id: string) => id.replace(/[a-z]$/, "");
@@ -70,13 +80,14 @@ describe("the behaviour gate", () => {
     const unreachable: SessionState[] = ["READY"];
     for (const s of [...MAIN_STATES, ...INTERRUPTS].filter((x) => !unreachable.includes(x))) expect(states.has(s), s).toBe(true);
     const acts = new Set<Act | null>(all.flatMap((v) => v.acts));
-    for (const a of ACTS) expect(acts.has(a), a).toBe(true);
+    for (const a of ACTS.filter((act) => act !== "give_answer")) expect(acts.has(a), a).toBe(true);
+    expect(acts.has("give_answer")).toBe(false);
     const kinds = new Set(all.flatMap((v) => v.trace!.turns.map((t) => (t.kind === "writing" ? `writing:${t.status}` : t.kind))));
     for (const k of ["start", "child", "tick", "writing:started", "writing:done", "technical", "maya", "partial", "maya_said", "content_problem"]) expect(kinds.has(k), k).toBe(true);
     const reasons = new Set(all.map((v) => v.trace!.outcome!.reason));
-    expect([...reasons].sort()).toEqual(["child_stopped", "content_issue", "no_response", "safety", "solved", "technical_issue", "time_limit"]);
+    expect([...reasons].sort()).toEqual(["child_stopped", "content_issue", "maya_closed", "no_response", "safety", "solved", "technical_issue", "time_limit"]);
     const sources = new Set(all.flatMap((v) => v.trace!.turns.flatMap((t) => (t.kind === "maya" ? t.attempts.map((a) => a.source) : []))));
-    expect([...sources].sort()).toEqual(["fallback", "model", "repair"]);
+    expect([...sources].sort()).toEqual(["controller", "fallback", "model", "repair"]);
   });
 
   it("records the voice agent's inputs in the saved trace (#396), with whether each stopped Maya's output", () => {

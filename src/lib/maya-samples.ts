@@ -60,4 +60,9 @@ export const SAMPLE_PACKAGES: Record<string, QuestionPackage> = {
     { value: num(43), cause: "O1", description: "Takes the smaller ones digit from the larger", step: "ones" },
     { value: num(47), cause: "regroup-forget", description: "Does not take the ten from the tens", step: "tens" },
   ]),
+  // Savar's test of conversational Maya (D-341): "Is 2 minus 8, 6?" takes the smaller ones digit from the larger.
+  "subtract-52-28": sample("subtract-52-28", "subtract", 52, 28, [42, 7], [
+    { value: num(36), cause: "O1", description: "Takes the smaller ones digit from the larger", step: "ones" },
+    { value: num(34), cause: "regroup-forget", description: "Does not take the ten from the tens", step: "tens" },
+  ]),
 };

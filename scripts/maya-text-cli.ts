@@ -16,6 +16,9 @@
 //   --seed <n>               the wording seed (default 1)
 //   --name <child name>      the child's name, said now and then by code
 //   --list                   list the sample questions
+//   --real-clock             the real clock with a script, so the trace times each model call
+//   --legacy                 Maya's version 2 model (code-written lines), for a before-and-after comparison
+//   --effort <level>         none, minimal, low (default), medium or high: how much the model thinks first
 //
 // Script lines: a child turn, or "/wait <seconds>" (the clock moves on and the pause policy runs), "/write start",
 // "/write done", "/quit" (the child hangs up: child_stopped). "#" starts a comment. With --script or piped input the
@@ -27,8 +30,8 @@ import { execFileSync } from "node:child_process";
 import { aiClient } from "@/lib/ai-client";
 import { anthropicClient } from "@/lib/ai-anthropic";
 import { livekitTextSession } from "@/lib/maya-livekit-text";
-import { aiMayaModel, type MayaModel } from "@/lib/maya-model";
-import { ruleMayaModel } from "@/lib/maya-model-fake";
+import { aiMayaModel, conversationalMayaModel, type MayaModel } from "@/lib/maya-model";
+import { ruleConversationalModel } from "@/lib/maya-model-fake";
 import { aiTalkReviewer, fakeTalkReviewer, REVIEW_DEFAULT_MODEL, type TalkReviewer } from "@/lib/maya-talk-review";
 import { redactText } from "@/lib/maya-trace";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
@@ -45,10 +48,16 @@ interface Options {
   seed: number;
   name: string | null;
   list: boolean;
+  /** The real clock with a script, so the trace times each model call (latency checks). */
+  realClock: boolean;
+  /** Maya's version 2 model (code-written lines), for a before-and-after comparison. */
+  legacy: boolean;
+  /** How much the model thinks first (D-341 latency checks); default CONVERSATION_EFFORT. */
+  effort: "none" | "minimal" | "low" | "medium" | "high" | null;
 }
 
 function parse(argv: string[]): Options {
-  const o: Options = { question: "add-27-39", model: "fake", freeTalk: true, script: null, runner: "livekit", trace: null, seed: 1, name: null, list: false };
+  const o: Options = { question: "add-27-39", model: "fake", freeTalk: true, script: null, runner: "livekit", trace: null, seed: 1, name: null, list: false, realClock: false, legacy: false, effort: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const v = () => {
@@ -72,6 +81,13 @@ function parse(argv: string[]): Options {
     else if (a === "--seed") o.seed = Number(v());
     else if (a === "--name") o.name = v();
     else if (a === "--list") o.list = true;
+    else if (a === "--real-clock") o.realClock = true;
+    else if (a === "--legacy") o.legacy = true;
+    else if (a === "--effort") {
+      const e = v();
+      if (!["none", "minimal", "low", "medium", "high"].includes(e)) throw new Error("--effort is none, minimal, low, medium or high");
+      o.effort = e as Options["effort"];
+    }
     else throw new Error(`unknown option ${a}`);
   }
   return o;
@@ -104,10 +120,10 @@ function anthropicKey(): string {
 
 /** Maya's model and the free-talk review (D-197) for the chosen model. */
 function models(o: Options, root: string): { maya: MayaModel; reviewer: TalkReviewer } {
-  if (o.model === "fake") return { maya: ruleMayaModel(), reviewer: fakeTalkReviewer() };
+  if (o.model === "fake") return { maya: ruleConversationalModel(), reviewer: fakeTalkReviewer() };
   if (o.model === "anthropic") {
     const key = anthropicKey();
-    return { maya: aiMayaModel(anthropicClient({ apiKey: key })), reviewer: aiTalkReviewer(anthropicClient({ apiKey: key, model: "claude-haiku-5-5" })) };
+    return { maya: conversationalMayaModel(anthropicClient({ apiKey: key })), reviewer: aiTalkReviewer(anthropicClient({ apiKey: key, model: "claude-haiku-5-5" })) };
   }
   const maya = model(o, root);
   const review = aiClient(process.env, process.env.MAYA_REVIEW_MODEL?.trim() || REVIEW_DEFAULT_MODEL);
@@ -115,7 +131,7 @@ function models(o: Options, root: string): { maya: MayaModel; reviewer: TalkRevi
 }
 
 function model(o: Options, root: string): MayaModel {
-  if (o.model === "fake") return ruleMayaModel();
+  if (o.model === "fake") return ruleConversationalModel();
   const env: Record<string, string | undefined> = { ...process.env };
   const file = join(root, ".env.local");
   if (!env.OPENROUTER_API_KEY && existsSync(file)) {
@@ -127,7 +143,7 @@ function model(o: Options, root: string): MayaModel {
   }
   const client = aiClient(env);
   if (!client) throw new Error("--model openrouter needs OPENROUTER_API_KEY (in the environment or .env.local). The AI is off without it.");
-  return aiMayaModel(client);
+  return o.legacy ? aiMayaModel(client) : conversationalMayaModel(client, o.effort ? { effort: o.effort } : {});
 }
 
 async function main() {
@@ -143,11 +159,13 @@ async function main() {
 
   const typed = !o.script && process.stdin.isTTY;
   let simulated = Date.now();
-  const clock = typed ? () => Date.now() : () => simulated;
+  const clock = typed || o.realClock ? () => Date.now() : () => simulated;
   const callId = `text-${new Date().toISOString().replace(/[:.]/g, "-")}`;
   const text = createTextSession({
     callId, package: pkg, model: m, clock, random: o.seed, childName: o.name, runner: o.runner === "livekit" ? "livekit-text" : "text",
     freeTalk: o.freeTalk, reviewer: o.freeTalk ? reviewer : null,
+    // D-341: stream each checked sentence as it arrives, as the voice worker does; the trace times the first one.
+    onSayPart: () => {},
     onError: (e, where) => console.error(`[maya-text] ${typeof where === "string" ? where : `turn ${where.turn} ${where.source}`}: ${e instanceof Error ? e.message : String(e)}`),
   });
   console.log(`-- Maya text session ${callId}: ${typeof pkg.text === "string" ? pkg.text : o.question} (model ${m.id}, runner ${o.runner}, free talk ${o.freeTalk ? `on, review ${reviewer.id}` : "off"})`);

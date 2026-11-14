@@ -40,7 +40,7 @@ export function timedTurns(maya: MayaModel, reviewer: TalkReviewer | null, now: 
   const m = recorder(maya.id, now);
   const r = reviewer ? recorder(reviewer.id, now) : null;
   return {
-    maya: { id: maya.id, promptVersion: maya.promptVersion, propose: (input, signal) => m.timed(() => maya.propose(input, signal)) } as MayaModel,
+    maya: { id: maya.id, promptVersion: maya.promptVersion, ...(maya.output ? { output: maya.output } : {}), propose: (input, signal) => m.timed(() => maya.propose(input, signal)) } as MayaModel,
     reviewer: reviewer && r ? { id: reviewer.id, promptVersion: reviewer.promptVersion, review: (input, signal) => r.timed(() => reviewer.review(input, signal)) } as TalkReviewer : null,
     report: (): TurnTimeReport => ({ maya: m.report(), review: r?.report() ?? null }),
   };

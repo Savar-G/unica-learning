@@ -111,12 +111,13 @@ describe("the notice text", () => {
     expect(text).not.toMatch(/openrouter|anthropic|claude|supabase|resend|livekit|assemblyai|inworld|stripe/i);
   });
 
-  it("says Maya is an AI, what we keep, that a chat has no audio, and the limit", () => {
+  it("says Maya is an AI, what we keep, that no audio is saved, and the limits (D-336)", () => {
     expect(text).toMatch(/Maya is an AI, not a person/);
     expect(text).toMatch(/We keep each chat, a note about it and a learning record/);
-    expect(text).toMatch(/A chat has no audio/);
+    expect(text).toMatch(/We do not save any audio/);
     expect(text).toMatch(/60 messages a day/);
-    expect(text).toMatch(/Chat is for Grade 3 and up/);
+    expect(text).toMatch(/Chat and calls are for Grade 3 and up/);
+    expect(text).toMatch(/A call lasts at most 10 minutes, and each child can talk with Maya for at most 30 minutes a week/);
   });
 
   it("says the chat can go to the AI after it ends, that other details can remain, and the recap's limit", () => {

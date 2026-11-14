@@ -25,6 +25,7 @@ import {
   kitConfig,
   makeVoice,
   MIN_LISTENERS,
+  operatorReport,
   readAnswers,
   renderLine,
   score,
@@ -70,39 +71,6 @@ function readKey(dir: string): Key {
   return JSON.parse(readFileSync(path, "utf8")) as Key;
 }
 
-const median = (xs: number[]) => {
-  const s = [...xs].sort((a, b) => a - b);
-  return s.length ? s[Math.floor((s.length - 1) / 2)] : null;
-};
-
-function operatorReport(key: Key, measures: Measure[]): string {
-  const out = ["# Listening test: operator report", "", "This report names the vendors. Keep it from the listeners until they are done.", ""];
-  if (key.fake) out.push("**Fake voice.** The files are silence and the word timings are made up by the fake. This run proves the kit works, nothing about any real voice.", "");
-  out.push(`Made ${key.madeAt}, seed ${key.seed}. Every text went through the same LiveKit Agents for Node TTS stream the worker uses, one sentence at a time, as the worker sends it.`, "");
-  out.push("## Word timings", "", "Matched words are counted with the worker's board alignment (speech-audio.ts). All matched: the board follows each word. Fewer: the rest waits for the sentence's audio end.", "");
-  out.push("| Voice | Route | Files with timed words | Timing check (s04, words) | Words matched, part 1 | Words matched, part 2 (digits) | Median first audio (ms) | Errors |", "|---|---|---|---|---|---|---|---|");
-  for (const v of key.voices) {
-    const mine = measures.filter(m => m.voice === v.key);
-    const sum = (part: "voice" | "math") => {
-      const xs = mine.filter(m => m.part === part);
-      return `${xs.reduce((n, m) => n + m.matched, 0)} of ${xs.reduce((n, m) => n + m.expected, 0)}`;
-    };
-    const check = mine.find(m => m.part === "voice" && m.sentence === "s04");
-    const errors = mine.filter(m => m.error).length;
-    out.push(`| ${v.name}, ${v.voice} | ${v.route} | ${mine.filter(m => m.timedWords > 0).length} of ${mine.length} | ${check ? `${check.matched} of ${check.expected}` : "-"} | ${sum("voice")} | ${sum("math")} | ${median(mine.flatMap(m => (m.firstAudioMs === null ? [] : [m.firstAudioMs]))) ?? "-"} | ${errors} |`);
-  }
-  out.push("", "## How each voice got the math lines (part 2)", "", "The timed words a voice returned for each line as written. They may repeat the text sent, not what the voice said: the listeners' misread marks decide.", "");
-  for (const v of key.voices) {
-    out.push(`### ${v.name}, ${v.voice}`, "");
-    for (const m of measures.filter(x => x.voice === v.key && x.part === "math")) {
-      const s = SENTENCES.find(x => x.id === m.sentence)!;
-      out.push(`- ${s.id}: sent "${s.written}"; timed words: ${m.timedText ? `"${m.timedText}"` : "none"}${m.error ? `; error: ${m.error}` : ""}`);
-    }
-    out.push("");
-  }
-  return `${out.join("\n")}\n`;
-}
-
 async function make() {
   const dir = folder();
   if (existsSync(dir) && readdirSync(dir).length) {
@@ -131,7 +99,7 @@ async function make() {
         const r = await renderLine(voice, text, { timeoutMs });
         clips.push({ file: item.file, samples: r.samples, sampleRate: r.sampleRate });
         measures.push({
-          voice: v.key, part: item.part, sentence: s.id, timedWords: r.timedWords, matched: r.matched, expected: r.expected, firstAudioMs: r.firstAudioMs,
+          voice: v.key, part: item.part, sentence: s.id, timedWords: r.timedWords, startedWords: r.startedWords, matched: r.matched, expected: r.expected, firstAudioMs: r.firstAudioMs,
           audioMs: Math.round((r.samples.length / r.sampleRate) * 1000), error: r.error, timedText: r.timed.map(t => t.text.trim()).join(" "),
         });
         process.stdout.write(r.error ? `\n${item.file} error: ${r.error}\n` : ".");

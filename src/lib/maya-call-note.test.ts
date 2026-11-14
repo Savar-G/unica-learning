@@ -53,7 +53,8 @@ const PKG: QuestionPackage = {
 /** The easier example first, then the child's own question with hints, solved (scripts/maya-text/no-start.txt). */
 const NO_START = ["I don't know how to start.", "Okay.", "Is it 56?", "Can you help me?", "16", "66", "Because the ones made a ten, so I carried it.", "I wrote it."];
 /** The child answers each step at once (scripts/maya-text/solves-alone.txt shape). */
-const ALONE = ["I think it's 66.", "Because 7 and 9 make 16, so I carried the one.", "I wrote it."];
+// Rule A (2026-11-12): "I think" is a hedge, so the solved-alone script says the answer plainly.
+const ALONE = ["It's 66.", "Because 7 and 9 make 16, so I carried the one.", "I wrote it."];
 
 type Ended = { call: CallRecord; package: QuestionPackage; event: NewLearningEvent | null };
 
@@ -133,6 +134,22 @@ describe("chat parent notes", () => {
     expect(result.ok).toBe(true);
     expect(s.store.rows()).toHaveLength(1);
     expect(s.store.rows()[0].transcript.some((t) => t.speaker === "child")).toBe(true);
+  });
+});
+
+describe("a held call's note (#527)", () => {
+  it("says Maya asked the child to pick another question only when the delivered transcript holds those words", async () => {
+    // A call that ended while the close after a content problem was still pending: the outcome is content_issue, but
+    // the child never heard the held lines.
+    const { ended } = await endedTestCall(["I don't know how to start."]);
+    const trace = { ...ended.call.trace!, outcome: { ...ended.call.trace!.outcome!, reason: "content_issue" as const } };
+    const call = { ...asFamily(ended), trace };
+    expect(JSON.stringify(trace.turns)).not.toContain("Pick another question");
+    const s = setup(null, [call]);
+    const note = written(await s.notes.write({ call, package: ended.package, event: null }));
+    const shown = noteSentences(note, "Leah");
+    expect(shown).toContain("Maya cannot help with this kind of question yet, so the call ended.");
+    expect(shown.join(" ")).not.toMatch(/pick another question|grown-up/i);
   });
 });
 

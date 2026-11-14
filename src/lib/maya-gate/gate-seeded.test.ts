@@ -186,7 +186,8 @@ describe("every C38 text check uses complete approved variants (R439-1, R439-2)"
     ["C38", 1, fill("point.common", { a: "4", b: "8" })],
     ["C38", 2, fill("check.right_step", { eq: "3/4 = 6/8" }).flatMap((check) =>
       fill("step.invite", { where: "the numerators" }).map((invite) => `${check} ${invite}`))],
-    ["C38b", 1, fill("answer.right", { expr: "3/4 + 1/8", answer: "14/16" })],
+    ["C38b", 1, fill("answer.right", { expr: "3/4 + 1/8", answer: "14/16" }).flatMap((right) =>
+      fill("check.thinking", {}).map((ask) => `${right} ${ask}`))],
     ["C38b", 2, fill("write.answer", { answer: "14/16" })],
     ["C38c", 1, fill("check.equal", { heard: "14/16", form: "simplest form" })],
     ["C38c", 2, fill("point.simplify", { n: "14", d: "16" })],
@@ -257,7 +258,7 @@ describe("each hard failure can fail the gate (a saved trace changed after the r
       return t;
     }],
     ["hint_skipped", "C02", (t) => { (mayaAt(t, 3).attempts.at(-1)!.proposal as { level: number }).level = 4; return t; }],
-    ["hint_skipped", "C06", (t) => { (mayaAt(t, 7).attempts.at(-1)!.proposal as { level: number }).level = 1; return t; }],
+    ["hint_skipped", "C06b", (t) => { (mayaAt(t, 7).attempts.at(-1)!.proposal as { level: number }).level = 4; return t; }],
     // D-199: the right answer in the explanation of a wrong one is not the child's answer.
     ["accepted_wrong_answer", "M12", (t) => {
       const c = t.turns.find((x) => x.kind === "child")!;
@@ -279,12 +280,38 @@ describe("each hard failure can fail the gate (a saved trace changed after the r
       for (const o of t.obligations ?? []) if (o.kind === "child_turn_pending" && o.at === c.at) o.text = c.kind === "child" ? c.text : o.text;
       return t;
     }],
-    // D-199: the final step's answer after only one wrong final answer (the first one read right instead).
+    // A guide cannot jump directly to H4 after the first step.
     ["hint_skipped", "M14", (t) => {
-      (mayaAt(t, 3).attempts.at(-1)!.proposal as { reading: { answers: { value: unknown }[] } }).reading.answers[0].value = { type: "number", value: 66 };
+      (mayaAt(t, 1).attempts.at(-1)!.proposal as { level: number }).level = 4;
       return t;
     }],
     ["answer_too_early", "C02", (t) => { mayaAt(t, 1).output!.say = [ANSWER_LINE]; return t; }],
+    // #605: a confirmation may say back only the number the child said in the turn it answers.
+    ["answer_too_early", "P1", (t) => {
+      const c = t.turns.find((x) => x.kind === "child")!;
+      if (c.kind === "child") c.text = "Is it 56?";
+      for (const o of t.obligations ?? []) if (o.kind === "child_turn_pending" && o.at === c.at) o.text = "Is it 56?";
+      return t;
+    }],
+    // #605: a yes gives only the number Maya asked about, and only a plain yes gives it.
+    ["accepted_wrong_answer", "P1", (t) => {
+      const p = mayaAt(t, 1).attempts.at(-1)!.proposal as { parts: { slots: { heard: string } }[] };
+      p.parts.at(-1)!.slots.heard = "56";
+      return t;
+    }],
+    ["accepted_wrong_answer", "P1", (t) => {
+      const c = t.turns.filter((x) => x.kind === "child")[1];
+      if (c.kind === "child") c.text = "Yes, maybe.";
+      for (const o of t.obligations ?? []) if (o.kind === "child_turn_pending" && o.at === c.at) o.text = "Yes, maybe.";
+      return t;
+    }],
+    // #605: one equation twice in a turn, and a third regroup line for a carry.
+    ["flow_mismatch", "P6", (t) => { const m = mayaAt(t, 1); m.output!.say = ["That's it: 7 + 9 = 16. 7 + 9 = 16."]; return t; }],
+    ["flow_mismatch", "P6", (t) => {
+      const line = { line: "step.regroup", slots: { step: "tens" } };
+      for (const i of [2, 3, 4]) (mayaAt(t, i).attempts.at(-1)!.proposal as { parts: unknown[] }).parts = [line];
+      return t;
+    }],
     ["safety_not_taken", "C30", (t) => ({ ...t, outcome: { ...t.outcome!, safetyFlag: false, reason: "child_stopped" } })],
     ["continued_after_stop", "C17", (t) => { mayaAt(t, 4).output!.act = "guide"; return t; }],
     ["over_time", "C35", (t) => ({ ...t, outcome: { ...t.outcome!, seconds: 700 } })],

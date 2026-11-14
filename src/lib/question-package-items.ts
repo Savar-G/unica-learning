@@ -55,6 +55,8 @@ export interface ItemContext {
    * rules: simplest form, the unit the question asks for) and its wrong answers; null when it has none.
    */
   computed: { operation: Operation; answer: AnswerValue; accepted: AnswerValue[]; wrongAnswers: WrongAnswer[] } | null;
+  /** Only from a caller's explicit limits (OperationLimits.templateShown, Maya's spot-the-error path): see errorProblem. */
+  templateShown?: boolean;
 }
 
 export interface ItemProblem {
@@ -768,10 +770,13 @@ function figureAgreement(f: Figure, checks: ItemCheck[], read: CheckInput): Item
 const ruleOf = (c: ItemCheck) => RULES[c.kind] as CheckRule<ItemCheck>;
 
 /** What is wrong with the shown wrong solution of an item, or null. */
-function errorProblem(format: ItemFormat, error: unknown, ctx: ItemContext): string | null {
+function errorProblem(format: ItemFormat, error: unknown, ctx: ItemContext, checks: readonly ItemCheck[] = []): string | null {
   if (format !== "spot-the-error") return error === null ? null : "only a spot-the-error item shows a wrong solution";
   const computed = ctx.computed;
-  if (error === null) return computed ? "a spot-the-error item with an operation needs its shown error" : null;
+  // Maya's spot-the-error path (C2) adds an operation to a stored item whose template checks "Is it right?": that check
+  // stands for the shown error. Only with the caller's explicit option; the default keeps today's rule.
+  const byTemplate = ctx.templateShown === true && checks.some((c) => isObject(c) && c.kind === "template-shown");
+  if (error === null) return computed && !byTemplate ? "a spot-the-error item with an operation needs its shown error" : null;
   if (!computed) return "a shown wrong solution needs the question's operation";
   if (!isObject(error) || (error.step !== null && typeof error.step !== "string")) return "the shown error needs an answer, and a step or null";
   const value = ctx.valueProblem(error.answer, "the shown answer");
@@ -815,7 +820,7 @@ export function itemProblem(item: unknown, ctx: ItemContext): ItemProblem | null
     if (open) return fail(`the region "${open.id}" is scored, so it needs an answer`);
   }
   if (item.error === undefined) return fail("the item does not say whether it shows a wrong solution");
-  const error = errorProblem(format, item.error, ctx);
+  const error = errorProblem(format, item.error, ctx, Array.isArray(item.checks) ? (item.checks as ItemCheck[]) : []);
   if (error) return fail(error);
   const figure = item.figure ?? null;
   if (figure !== null) {

@@ -23,6 +23,7 @@ export interface Meter {
   ledger: SpendLedger;
   charge: Charge;
   callId: string | null;
+  budgetKey?: string;
   newId: () => string;
   safetyRead?: boolean;
 }
@@ -50,10 +51,11 @@ export function meteredAi(make: (hooks: MeterHooks) => AiClient, meter: Meter, w
     async json(request, signal) {
       /** The reservation of the attempt under way. */
       const attempt: { id: string | null; sent: boolean } = { id: null, sent: false };
+      let dispatchRefusal: SpendRefused | null = null;
       const onRequest = async () => {
         const id = meter.newId();
         try {
-          const reserved = await ledger.reserve({ id, charge, callId: meter.callId, what, micros: usdToMicros(RESERVE_USD[what], ledger.config), force: safetyRead });
+          const reserved = await ledger.reserve({ id, charge, callId: meter.callId, budgetKey: meter.budgetKey, what, micros: usdToMicros(RESERVE_USD[what], ledger.config), force: safetyRead });
           if (!reserved.ok) throw new SpendRefused(reserved.state);
           attempt.id = id;
           attempt.sent = false;
@@ -73,6 +75,12 @@ export function meteredAi(make: (hooks: MeterHooks) => AiClient, meter: Meter, w
           }
         }
         const id = attempt.id;
+        if (!safetyRead && id && !ledger.canSend(id)) {
+          attempt.id = null;
+          await settle(id, 0);
+          dispatchRefusal = new SpendRefused("paused");
+          throw dispatchRefusal;
+        }
         attempt.sent = true;
         let res: Response;
         try {
@@ -82,6 +90,27 @@ export function meteredAi(make: (hooks: MeterHooks) => AiClient, meter: Meter, w
           if (id) await settle(id, null);
           throw e;
         }
+        const costOf = (cost: unknown) => (typeof cost === "number" && Number.isFinite(cost) && cost >= 0 ? cost : res.ok ? null : 0);
+        // D-341: a streamed answer goes back at once, so Maya's first sentence is not held; its cost is in the last
+        // event of the stream, read beside it and settled when the stream ends.
+        if (res.ok && (res.headers.get("content-type") ?? "").includes("text/event-stream")) {
+          attempt.id = null;
+          const copy = res.clone();
+          void copy.text().then((text) => {
+            let cost: unknown;
+            for (const line of text.split("\n")) {
+              if (!line.startsWith("data:")) continue;
+              try {
+                const usage = (JSON.parse(line.slice(5).trim()) as { usage?: { cost?: unknown } }).usage;
+                if (usage?.cost !== undefined) cost = usage.cost;
+              } catch {
+                // Not JSON ([DONE]).
+              }
+            }
+            return id ? settle(id, costOf(cost)) : undefined;
+          }, () => (id ? settle(id, null) : undefined));
+          return res;
+        }
         let cost: unknown;
         try {
           cost = (JSON.parse(await res.clone().text()) as { usage?: { cost?: unknown } }).usage?.cost;
@@ -89,11 +118,14 @@ export function meteredAi(make: (hooks: MeterHooks) => AiClient, meter: Meter, w
           cost = undefined;
         }
         attempt.id = null;
-        if (id) await settle(id, typeof cost === "number" && Number.isFinite(cost) && cost >= 0 ? cost : res.ok ? null : 0);
+        if (id) await settle(id, costOf(cost));
         return res;
       };
       try {
         return await make({ fetch: counted, onRequest }).json(request, signal);
+      } catch (e) {
+        // A provider client may wrap fetch errors. Keep a local budget refusal visible to the call's safety path.
+        throw dispatchRefusal ?? e;
       } finally {
         // An attempt reserved and then stopped before it was sent cost nothing.
         if (attempt.id) await settle(attempt.id, attempt.sent ? null : 0);

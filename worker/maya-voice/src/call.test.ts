@@ -9,11 +9,11 @@ import { createBoardSpeech, type CueMeasurement } from "@/lib/board-speech";
 import { templateSkills } from "@/lib/assessment";
 import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
-import { memoryWordingHistoryStore, PAUSES, TIME_LIMITS } from "@/lib/maya";
+import { memoryWordingHistoryStore, openingLine, PAUSES, TIME_LIMITS } from "@/lib/maya";
 import { mayaCalls, type CallSeams } from "@/lib/maya-call";
 import { memoryCallStore, memoryConnectionLog } from "@/lib/maya-call-memory";
 import type { MayaModel } from "@/lib/maya-model";
-import { ruleMayaModel } from "@/lib/maya-model-fake";
+import { reply as v3Reply, ruleConversationalModel, ruleMayaModel } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { callSpend, createSpendLedger, spendConfig, SPEND_CLOSE, WEEK_MICROS } from "@/lib/maya-spend";
 import { memorySpendStore } from "@/lib/maya-spend-memory";
@@ -22,6 +22,7 @@ import { RECONNECT_GRACE_MS, voiceProviders } from "@/lib/maya-voice";
 import type { QuestionPackage } from "@/lib/question-package";
 import { mayaWorkbookFixture } from "@/lib/maya-workbook-fixture";
 import { selectWorkbookQuestion } from "@/lib/maya-workbook-question";
+import { spokenMath } from "@/lib/maya-voice-spoken";
 import { VoiceCallRun, voiceSession, type CallUpdate, type Timers } from "./agent";
 import { FakeTTS } from "./fake-providers";
 import { makeProviders } from "./providers";
@@ -191,15 +192,16 @@ async function voiceCall(options: { spend?: (clock: () => number) => CallSeams["
     await opened.call.settled();
     return said().slice(before).join(" ");
   };
-  return { sender, receiver, board, samples, id: started.view.id, calls, store, connections, rebuild, run, session, said, childSays, clock, updates, closed, call: opened.call, seams };
+  return { sender, receiver, board, samples, id: started.view.id, calls, store, connections, rebuild, run, session, said, childSays, clock, updates, closed, call: opened.call, seams, tts: voiceOut, speech: providers.fakeSpeech! };
 }
 
 describe("a voice call through LiveKit with the fake providers", () => {
   it("confirms a spoken workbook reference before teaching through fake audio and board transport", async () => {
     const c = await voiceCall({ workbookReference: "page four, number three", board: true });
     await c.run.childJoined();
-    await waitFor(() => c.said().join(" ").includes("27 + 39."), "the workbook confirmation");
-    expect(c.said().join(" ")).toBe("Hi, I'm Maya, an AI helper. Let's do page 4, number 3: 27 + 39.");
+    // The voice is given the sign as a word (spokenMath); the board and the transcript keep "27 + 39".
+    await waitFor(() => c.said().join(" ").includes("27 plus 39."), "the workbook confirmation");
+    expect(c.said().join(" ")).toBe("Hi, I'm Maya, an AI helper. Let's do page 4, number 3: 27 plus 39.");
     expect(c.store.rows()[0].question).toMatchObject({ source: "workbook", page: 4, question: 3 });
     const reply = await c.childSays("I don't know how to start.");
     expect(reply.length).toBeGreaterThan(0);
@@ -208,7 +210,16 @@ describe("a voice call through LiveKit with the fake providers", () => {
     expect(c.said().join(" ").indexOf("Let's do page 4, number 3")).toBeLessThan(c.said().join(" ").lastIndexOf(reply));
   });
   it("opens when the child joins, carries each spoken turn to Maya and her words back, and stores the call", async () => {
-    const c = await voiceCall();
+    // The model every real call has now (D-341, src/lib/maya-call-seams.ts): its fake is the conversational rule player,
+    // which does not check a number it heard badly. The two hearing turns are scripted as a real model answers them.
+    const rule = ruleConversationalModel();
+    const model: MayaModel = { ...rule, propose: async (input, signal, onText) => {
+      const turn = (input as { childTurn?: string | null }).childTurn;
+      if (turn === "I got sixty six") return v3Reply("Did you say 66?", "confirm");
+      if (turn === "No, I said 66.") return v3Reply("Yes, 27 + 39 = 66. How did you work it out?", "accept_answer", { reading: { correctsHearing: true, answers: [{ value: { type: "number", value: 66 }, step: "result", problem: "target", verdict: "right" }] } });
+      return rule.propose(input, signal, onText);
+    } };
+    const c = await voiceCall({ model });
     await c.clock.advance(2);
     await c.run.childJoined();
     await waitFor(() => c.said().length === 1, "Maya's opening");
@@ -226,9 +237,13 @@ describe("a voice call through LiveKit with the fake providers", () => {
 
     const live = (await c.calls.view(c.id))!;
     expect(live.transcript.filter((l) => l.speaker === "child").map((l) => l.text)).toEqual(["I got 56.", "I got sixty six", "No, I said 66."]);
-    // Every word Maya spoke is a word the call stored for her, in order (the easier example's steps are one reply).
+    // Every word Maya spoke is a word the call stored for her, in order (the easier example's steps are one reply). The
+    // stored text keeps its math signs; the voice was given them as words.
     const stored = live.transcript.filter((l) => l.speaker === "maya").map((l) => l.text.replaceAll("{name}", "Leah"));
-    expect(c.said().join(" ")).toBe(stored.join(" "));
+    // D-341: the opening is code's own line, which names the question in spoken words (openingLine, spokenQuestion).
+    expect(stored[0]).toBe(openingLine(PKG as Parameters<typeof openingLine>[0]));
+    expect(stored.some((l) => l.includes("27 + 39"))).toBe(true);
+    expect(c.said().join(" ")).toBe(spokenMath(stored.join(" ")));
 
     await c.clock.advance(10);
     await c.run.hangUp();
@@ -613,6 +628,74 @@ it.each([true, false])("#329 carries accepted controller batches through AgentSe
 });
 
 
+// Call 01f456de (2026-11-13): an answer whose voice gave no audio left its batch staged and unseen, and the next plan,
+// built on that batch, was refused, which ended the call. Now the batch is shown, the worker log says so, and the words
+// are said once more.
+it("a reply with no audio shows its board, is said once more, and the call goes on", async () => {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  try {
+    const c = await voiceCall({ board: true });
+    await c.run.childJoined();
+    await waitFor(() => c.session.agentState === "listening" && c.said().length > 0, "opening playout");
+    await c.board.settled();
+    c.tts.silentNext = 1;
+    const reply = await c.childSays("I don't know.");
+    await waitFor(() => c.session.agentState === "listening", "the words said again");
+    await c.board.settled();
+    expect(c.tts.silenced).toHaveLength(1);
+    expect(reply.startsWith(c.tts.silenced[0])).toBe(true);
+    const stored = (await c.calls.view(c.id))!.transcript.filter(l => l.speaker === "maya").at(-1)!.text.replaceAll("{name}", "Leah");
+    expect(c.said().join(" ").split(spokenMath(stored)).length - 1).toBe(1);
+    expect(warn).toHaveBeenCalledWith("[maya voice] speech had no audio", c.id, expect.objectContaining({ heardAny: false, repeat: false }));
+    // The reply's batches are on the child's board, as Maya's saved board says, and none is left waiting.
+    const saved = c.store.rows()[0].live!.text.board.map(b => b.transactionId);
+    expect(saved.length).toBeGreaterThan(0);
+    const shown = c.receiver.snapshot().events.flatMap(e => e.kind === "batch" ? [e.batchId] : []);
+    expect(shown).toEqual(saved);
+    expect(c.receiver.staged()).toEqual([]);
+    expect((await c.calls.view(c.id))!.status).toBe("live");
+    await c.childSays("Is it 66?");
+    expect((await c.calls.view(c.id))!.status).toBe("live");
+  } finally { warn.mockRestore(); }
+});
+
+it("logs the signals of each final transcript, never its words", async () => {
+  const info = vi.spyOn(console, "info").mockImplementation(() => {});
+  try {
+    const c = await voiceCall();
+    await c.run.childJoined();
+    await waitFor(() => c.said().length > 0, "Maya's opening");
+    await c.childSays("I got 56.", { confidence: 0.61 });
+    const lines = info.mock.calls.filter(call => call[0] === "[maya voice] final transcript");
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toEqual(["[maya voice] final transcript", c.id, expect.objectContaining({ words: 3, confidence: 0.61, vadSpeechMs: null, peakDbfs: -120 })]);
+    expect(JSON.stringify(lines)).not.toMatch(/56|got/);
+  } finally { info.mockRestore(); }
+});
+
+it("a reply whose words are silent twice is said again only once, and the call goes on", async () => {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  try {
+    const c = await voiceCall({ board: true });
+    await c.run.childJoined();
+    await waitFor(() => c.session.agentState === "listening" && c.said().length > 0, "opening playout");
+    await c.board.settled();
+    const before = c.said().length;
+    c.tts.silentNext = 2;
+    // The reply and its one repeat both give no audio.
+    expect(c.speech.say("I don't know.")).toBe(true);
+    await waitFor(() => c.tts.silenced.length === 2 && warn.mock.calls.some(call => (call[2] as { repeat?: boolean } | undefined)?.repeat === true), "the second silence");
+    await waitFor(() => c.session.agentState === "listening", "the repeat's end");
+    await c.board.settled();
+    expect(c.tts.silenced[1]).toBe(c.tts.silenced[0]);
+    expect(c.said().length).toBe(before);
+    expect(c.receiver.staged()).toEqual([]);
+    expect((await c.calls.view(c.id))!.status).toBe("live");
+    // The child is answered as usual after it.
+    await c.childSays("Is it 66?");
+  } finally { warn.mockRestore(); }
+});
+
 it("R450-2 keeps a dropped call recoverable when the board stop cannot reach the child", async () => {
   const c = await voiceCall();
   const session = controlSession();
@@ -622,6 +705,8 @@ it("R450-2 keeps a dropped call recoverable when the board stop cannot reach the
   const context = new llm.ChatContext();
   context.addMessage({ role: "user", content: "I don't know." });
   await readReply(await run.agent.llmNode(context, {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {}));
+  // The words go to the voice while the plan goes out; the plan is on the receiver before any of their audio plays.
+  await c.board.settled();
   const pending = c.receiver.staged();
   expect(pending).toHaveLength(3);
   const scope = c.board.capture(pending[0].utteranceId!)!;
@@ -664,6 +749,7 @@ it("R450-8 old playback completion cannot cancel the next controller turn", asyn
     const context = new llm.ChatContext();
     context.addMessage({ role: "user", content: "I don't know." });
     await readReply(await run.agent.llmNode(context, {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {}));
+    await c.board.settled();
     const expected = c.receiver.staged().map(b => b.batchId);
     expect(expected).toHaveLength(3);
     const newScope = c.board.capture(stages.mock.calls.at(-1)![0])!;
@@ -704,6 +790,7 @@ it("R450-9 an interrupt before native forwarding leaves no unmatched playback se
     const context = new llm.ChatContext();
     context.addMessage({ role: "user", content: "I don't know." });
     await readReply(await run.agent.llmNode(context, {} as Parameters<VoiceCallRun["agent"]["llmNode"]>[1], {}));
+    await c.board.settled();
     expect(c.receiver.staged()).toHaveLength(3);
     const scope = c.board.capture(stages.mock.calls.at(-1)![0])!;
     const next = new AudioFrame(new Int16Array(2400), 24000, 1, 2400);

@@ -33,6 +33,11 @@ const MAX_OPERATIONS = 8;
 /** Bounds the reader's depth too, so brackets nested thousands deep are refused, never a stack overflow. */
 const MAX_LENGTH = 120;
 const MAX_LITERAL = 99999;
+/**
+ * The largest number the computing functions read: they work an expression the check passed, under today's limits or
+ * under wider ones a caller passed explicitly (evaluateWithin). The check is the only place a literal is refused.
+ */
+const MAX_WORKED_LITERAL = 999_999_999;
 const MAX_PLACES = 3;
 const MAX_VALUE = 1000000000;
 const MAX_VALUE_PLACES = 6;
@@ -99,7 +104,7 @@ type Node =
 
 const SIGNS: readonly string[] = ["+", "−", "×", "÷"];
 
-function tokenize(text: string): Token[] {
+function tokenize(text: string, maxLiteral: number): Token[] {
   const tokens: Token[] = [];
   for (let pos = 0; pos < text.length;) {
     const ch = text[pos];
@@ -110,7 +115,7 @@ function tokenize(text: string): Token[] {
     const at = { pos, space: pos > 0 && text[pos - 1] === " " };
     const number = /^(\d+)(?:\.(\d+))?/.exec(text.slice(pos));
     if (number) {
-      if ((number[2] ?? "").length > MAX_PLACES || Number(number[1]) > MAX_LITERAL) throw new Refusal(BIG_LITERAL);
+      if ((number[2] ?? "").length > MAX_PLACES || Number(number[1]) > maxLiteral) throw new Refusal(BIG_LITERAL);
       tokens.push({ ...at, k: "num", value: rational(big(number[1] + (number[2] ?? "")), TEN ** big((number[2] ?? "").length)) });
       pos += number[0].length;
     } else if (/[a-z]/.test(ch)) {
@@ -131,9 +136,9 @@ function tokenize(text: string): Token[] {
 }
 
 /** Reads an expression; throws a Refusal for one written wrong or one code cannot read. */
-function parse(text: string): Node {
+function parse(text: string, maxLiteral = MAX_LITERAL): Node {
   if (text.length > MAX_LENGTH) throw new Refusal(beyond(`code checks expressions only up to ${MAX_LENGTH} characters`));
-  const tokens = tokenize(text);
+  const tokens = tokenize(text, maxLiteral);
   const malformed = () => new Refusal(fail(`the expression ${text} is not written right`));
   let i = 0;
   const signAt = (signs: Sign[]) => {
@@ -322,8 +327,8 @@ function givenValues(op: EvaluateOperation, tree: Node): { name: string; value: 
 const valueMap = (values: { name: string; value: number }[]) => new Map(values.map((v) => [v.name, fromNumber(v.value, MAX_PLACES)!]));
 
 /** The work of an evaluation: the values put in, then each operation. The operation must be valid. */
-function evaluation(op: EvaluateOperation): { steps: WorkedStep[]; value: Rational; statement: string } {
-  const tree = parse(op.operands[0]);
+function evaluation(op: EvaluateOperation, maxLiteral = MAX_WORKED_LITERAL): { steps: WorkedStep[]; value: Rational; statement: string } {
+  const tree = parse(op.operands[0], maxLiteral);
   const values = givenValues(op, tree);
   const filled = normalize(substitute(tree, valueMap(values)));
   const { steps, value } = work(filled);
@@ -341,15 +346,39 @@ function evaluateProblem(op: Fields): OperationProblem | null {
     if (typeof value !== "number" || !Number.isFinite(value)) return fail(`the value for ${name} is not a number`);
     if (fromNumber(value, MAX_PLACES) === null || Math.floor(Math.abs(value)) > MAX_LITERAL) return BIG_LITERAL;
   }
-  const tree = attempt(() => parse(expression));
+  const tree = attempt(() => parse(expression, MAX_LITERAL));
   if (!tree.ok) return tree.problem;
   const names = unknowns(tree.value);
   const missing = names.find((n) => !Object.hasOwn(values, n));
   if (missing) return fail(`the expression has ${missing}, but no value for it`);
   const unused = Object.keys(values).find((n) => !names.includes(n));
   if (unused) return fail(`the value for ${unused} is not in the expression`);
-  const result = attempt(() => evaluation(op as EvaluateOperation));
+  const result = attempt(() => evaluation(op as EvaluateOperation, MAX_LITERAL));
   return result.ok ? null : result.problem;
+}
+
+/**
+ * An evaluation under wider whole-number limits that a caller passes explicitly (Maya's session adapter, #724): no
+ * unknowns, every number and every worked value a whole number from 0 to `wholeResult`. Null when it holds; else why
+ * not. Only question-package-math.ts calls it, for an evaluation today's check refuses as beyond code.
+ */
+export function evaluateWithin(op: Fields, wholeResult: number): OperationProblem | null {
+  if (!isOne(op.operands) || typeof op.operands[0] !== "string" || op.operands[0].trim() === "") return fail("the operation needs an expression");
+  const expression: string = op.operands[0];
+  if (op.values !== undefined && (!isObject(op.values) || Object.keys(op.values).length > 0)) return beyond("code widens only expressions with no unknowns");
+  const tree = attempt(() => parse(expression, wholeResult));
+  if (!tree.ok) return tree.problem;
+  if (unknowns(tree.value).length > 0) return fail("the expression has an unknown with no value");
+  const result = attempt(() => evaluation(op as EvaluateOperation, wholeResult));
+  if (!result.ok) return result.problem;
+  const whole = (r: Rational) => r[1] === big(1) && r[0] >= ZERO && r[0] <= big(wholeResult);
+  const numbers = expression.match(/\d+(?:\.\d+)?/g) ?? [];
+  const steps = result.value.steps.filter((st): st is OperateStep => st.kind === "operate");
+  const fits = (n: number) => Number.isSafeInteger(n) && n >= 0 && n <= wholeResult;
+  if (!numbers.every((t) => /^\d+$/.test(t) && fits(Number(t))) || !whole(result.value.value) || !steps.every((st) => fits(st.left) && fits(st.right) && fits(st.value))) {
+    return beyond(`code widens only expressions of whole numbers up to ${wholeResult}`);
+  }
+  return null;
 }
 
 // ---------- Solve ----------
@@ -434,7 +463,7 @@ export const ALGEBRA_KINDS: { [K in AlgebraKind]: KindRules<Of<K>> } = {
     problem: evaluateProblem,
     text: (op) => {
       const [expression] = op.operands;
-      const values = givenValues(op, parse(expression));
+      const values = givenValues(op, parse(expression, MAX_WORKED_LITERAL));
       const given = values.map((v) => `${v.name} = ${numberText(fromNumber(v.value, MAX_PLACES)!)}`).join(" and ");
       return values.length > 0 ? `${expression} when ${given}` : expression;
     },

@@ -29,7 +29,12 @@ export function memoryCallStore(options: { testFamilies: readonly string[]; cloc
     async insert(c) {
       if (rows.has(c.id)) throw new Error("maya call insert: duplicate id");
       if (c.kind === "admin_test" && !options.testFamilies.includes(c.parentId)) throw new Error("maya call insert: maya_call_not_test_family");
+      if (c.kind === "family" && (c.mode !== "voice" || c.question.source !== "workbook")) throw new Error("maya call insert: maya_family_voice");
       if (c.status === "live" && !c.live) throw new Error("maya call insert: a live call needs its saved state");
+      // As the unique index maya_calls_one_live_family_call: one live family voice call per child.
+      if (c.kind === "family" && c.status === "live" && [...rows.values()].some((r) => r.kind === "family" && r.status === "live" && r.childId === c.childId)) {
+        throw new Error('maya call insert: duplicate key value violates unique constraint "maya_calls_one_live_family_call"');
+      }
       rows.set(c.id, copy(c));
       wrote(c.id);
     },

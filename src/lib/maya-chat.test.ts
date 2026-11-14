@@ -153,7 +153,7 @@ describe("family days and release switch", () => {
   it("labels the chat limit in the desk header: left today, Grade 3 and up for a younger child, else the daily limit", () => {
     const zone = "America/Vancouver", now = Date.parse("2026-11-05T17:00:00Z");
     expect(chatLimitLabel(chatUsage(12, now, zone), null)).toBe("48 left today");
-    expect(chatLimitLabel(null, "Chat with Maya is for Grade 3 and up, because it needs typing. Calls with Maya start soon.")).toBe("Grade 3 and up");
+    expect(chatLimitLabel(null, "Chat and calls with Maya are for Grade 3 and up.")).toBe("Grade 3 and up");
     expect(chatLimitLabel(null, null)).toBe("60 messages a day");
     expect(chatLimitLabel(null, "any closed line", true)).toBe("Closed");
   });

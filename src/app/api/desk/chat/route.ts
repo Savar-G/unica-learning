@@ -13,8 +13,12 @@ export async function POST(request: Request) {
   let action: ChatAction;
   try { action = JSON.parse(body); } catch { return json({ error: "invalid" }, 400); }
   if (!action || !isUuid(action.id) || !["start", "read", "child", "end"].includes(action.type)) return json({ error: "invalid" }, 400);
-  if (action.type === "start" && (!action.question || action.question.source !== "workbook" || !isUuid(action.question.workbookId) ||
-    !Number.isSafeInteger(action.question.page) || action.question.page < 1 || !Number.isSafeInteger(action.question.question) || action.question.question < 1)) return json({ error: "invalid" }, 400);
+  if (action.type === "start") {
+    const typed = action.reference !== undefined || action.workbookId !== undefined;
+    if (typed ? action.question !== undefined || !isUuid(action.workbookId) || typeof action.reference !== "string" || action.reference.length > 100
+      : !action.question || action.question.source !== "workbook" || !isUuid(action.question.workbookId) ||
+        !Number.isSafeInteger(action.question.page) || action.question.page < 1 || !Number.isSafeInteger(action.question.question) || action.question.question < 1) return json({ error: "invalid" }, 400);
+  }
   if ((action.type === "child" || action.type === "end") && (!Number.isSafeInteger(action.revision) || action.revision < 0)) return json({ error: "invalid" }, 400);
   if (action.type === "child" && (!isUuid(action.messageId) || typeof action.text !== "string" || !action.text.trim() || action.text.length > MAX_CHILD_TEXT)) return json({ error: "invalid" }, 400);
   try {

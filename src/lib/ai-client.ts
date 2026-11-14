@@ -18,7 +18,8 @@ export const AI_SOLVE_DEFAULT_MODEL = "anthropic/claude-haiku-5.5";
 
 /** One part of what the model reads: text, or an image as bytes. */
 export type AiPart =
-  | { type: "text"; text: string }
+  /** `cache`: a prompt-cache breakpoint after this part (a client that cannot cache ignores it). */
+  | { type: "text"; text: string; cache?: true }
   | { type: "image"; mediaType: "image/png" | "image/jpeg" | "image/webp"; data: Uint8Array };
 
 /** One request for JSON output. */
@@ -31,10 +32,22 @@ export interface AiJsonRequest {
   content: AiPart[];
   /** A JSON Schema for the output: an object, with additionalProperties false and every property required. */
   schema: Record<string, unknown>;
-  /** How much the model thinks first; omitted means the model's default. */
-  effort?: "low" | "medium" | "high";
+  /** How much the model thinks first; omitted (or "none") means the model's default. */
+  effort?: "none" | "minimal" | "low" | "medium" | "high";
+  /**
+   * D-341: the output text so far, each time more of it arrives. A client that can stream sends the request as a stream
+   * and calls this as the text grows; one that cannot ignores it. The result is the same parsed JSON either way.
+   */
+  onText?: (soFar: string) => void;
   /** The most output tokens, thinking included. */
   maxTokens?: number;
+  /** A prompt-cache breakpoint after the instructions (a client that cannot cache ignores it). */
+  cacheSystem?: true;
+  /**
+   * The cost of this request in US dollars, when the provider reports it (once per answered attempt). A request that
+   * is aborted or gets no answer reports nothing.
+   */
+  onCost?: (usd: number) => void;
 }
 
 export interface AiClient {

@@ -4,6 +4,7 @@
 // approval). Both sides are normalised the same way, never matched loosely: case, spaces and punctuation; a number in
 // digits or in words ("27", "twenty-seven"); the math signs as their spoken words; and contractions ("let's", "let us").
 // Pure TypeScript; it never throws.
+import { reuseInUse, reuseRead } from "./read-reuse";
 
 const ONES = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve",
   "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
@@ -79,12 +80,18 @@ export function saidAsApproved(said: string, approved: string): boolean {
 
 /** The word count used for every teaching turn, after speech normalisation. */
 export function speechWords(text: string): number {
+  const reuse = reuseInUse();
+  return reuse && typeof text === "string" ? reuseRead(reuse.words, text, () => speechWordsNow(text), (n) => n) : speechWordsNow(text);
+}
+
+function speechWordsNow(text: string): number {
   // A mixed number says "and" between its whole and fraction parts. A fraction's numerator and denominator
   // each use their own number words ("three eighths"). No spoken conjunction is removed.
   const explicit = text
     .replace(/\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b/g, (digits) => digits.replace(/,/g, ""))
     .replace(/(?<![\d./])(\d+)\s+(\d+)\s*\/\s*(\d+)(?![\d/])/g, "$1 and $2/$3")
-    .replace(/[−–-](?=\s*\d)/g, " minus ")
+    // A missing number's printed equation says its minus before the "?" too ("9000 − ? = 3000").
+    .replace(/[−–-](?=\s*[\d?])/g, " minus ")
     .replace(/(?<![\d.])\.(?=\d)/g, "0.")
     .replace(/%/g, " percent ")
     .replace(/\d{13,}/g, (digits) => [...digits].map((d) => ONES[Number(d)]).join(" "));

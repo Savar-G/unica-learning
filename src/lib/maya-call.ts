@@ -74,14 +74,16 @@ import { createHistory, inkLog, mayaWrites, readInkEvent, withChildInk, withInkL
 import { fitView, type PlayStep } from "@/lib/board-svg";
 import type { LearningEvents, NewLearningEvent } from "@/lib/learning-events";
 import type { NoteStep } from "@/lib/maya-call-note";
-import { heardWordings, learningEvent, limitsOf, SAFETY_GUIDANCE, type Outcome, type Session, type Severity, type WordingHistory, type WordingHistoryStore } from "@/lib/maya";
+import { clearStop, heardWordings, learningEvent, limitsOf, mayaPackageCheck, nextActs, SAFETY_GUIDANCE, streamPlan, type Outcome, type Session, type Severity, type WordingHistory, type WordingHistoryStore } from "@/lib/maya";
 import { modelInput, type MayaModel } from "@/lib/maya-model";
 import type { TalkReviewer } from "@/lib/maya-talk-review";
-import { createTextSession, type FinishOptions, type SavedTextSession, type TextOutput, type TextSession } from "@/lib/maya-text";
+import { createTextSession, type FinishOptions, type SavedTextSession, type TextOutput, type TextSession, type TextSessionOptions } from "@/lib/maya-text";
 import { packageHash, type MayaTrace } from "@/lib/maya-trace";
-import { checkQuestionPackage, type QuestionPackage, type QuestionRef } from "@/lib/question-package";
+import { type QuestionPackage, type QuestionRef } from "@/lib/question-package";
+import { teachingPackage } from "@/lib/maya-teaching";
 import { connectedSeconds, VOICE_CALL_STALE_MS, type ConnectionEvent, type ConnectionKind } from "@/lib/maya-voice";
 import { spendCloseOf, SPEND_CLOSE, type CallSpend, type SpendCall, type SpendState, type VoiceMeter } from "@/lib/maya-spend";
+import type { CallBudget, Handle } from "@/lib/maya-spend-block";
 import { SpendRefused } from "@/lib/maya-spend-ai";
 export type { SpendCall } from "@/lib/maya-spend";
 
@@ -93,7 +95,7 @@ export const NOTE_SWEEP = 3;
 /** The version of the call record's shape (record_version). */
 export const CALL_RECORD_VERSION = 1;
 
-export type CallKind = "admin_test" | "chat";
+export type CallKind = "admin_test" | "chat" | "family";
 export type CallStatus = "live" | "ended";
 
 /**
@@ -247,6 +249,11 @@ export interface CallStore {
   readInk(id: string): Promise<InkEvent[]>;
 }
 
+export interface CallModelOptions {
+  safetyRead?: boolean;
+  prepared?: { budget: CallBudget; handle: Handle };
+}
+
 export interface CallSeams {
   store: CallStore;
   /** The children's wording history: read before a call, added to when it ends. */
@@ -259,7 +266,7 @@ export interface CallSeams {
    * the fake); an id asks for that model again, or null when it is no longer available. `safetyRead`: the model reads the
    * child's words for danger at the cap (src/lib/maya-spend-ai.ts).
    */
-  model(id: string | null, call?: SpendCall, how?: { safetyRead?: boolean }): MayaModel | null;
+  model(id: string | null, call?: SpendCall, how?: CallModelOptions): MayaModel | null;
   /**
    * The free-talk review (D-197) for a call on this model, or null (then every free-talk piece becomes a bank phrase).
    * Optional: without it a call has no review.
@@ -271,6 +278,8 @@ export interface CallSeams {
   isTestFamily(parentId: string): Promise<boolean>;
   /** Server authorization for a child chat. Absent means refused. */
   canChat?(parentId: string, childId: string): Promise<boolean>;
+  /** Server authorization for a child's voice call from the family desk (kind "family"). Absent means refused. */
+  canCallVoice?(parentId: string, childId: string): Promise<boolean>;
   /**
    * The parent's note of an ended call (#331, src/lib/maya-call-note.ts), run after the learning event. Optional.
    * "done" when the note is stored or refused for good (the note module refuses test calls and test families itself);
@@ -389,7 +398,7 @@ export interface StartInput {
   startedBy: string | null;
   /** The call's id when the caller made it first (a desk chat names its call before it exists). */
   id?: string;
-  /** The call's end when it is shorter than 10 minutes (ms). No production caller passes it; tests use it for short calls. */
+  /** The call's end when it is shorter than 10 minutes (ms). A family voice call passes it when the child's week has less than 10 minutes left; tests use it for short calls. */
   limitMs?: number;
 }
 
@@ -414,6 +423,26 @@ export interface VoiceTurn {
   guidance?: string;
   /** How long this input spent on the model, its repair and the free-talk reviews (#532). Absent when no input ran. */
   time?: { modelMs: number; repairMs: number; reviewMs: number };
+  /**
+   * D-341: the child is thinking ("um", "wait"). `say` holds at most one short patient line, and nothing more is said
+   * until the child speaks or the silence rule comes: no thinking phrase for this turn.
+   */
+  wait?: boolean;
+}
+
+/**
+ * The worker's ear on one child turn while it runs (D-341, the streaming contract of src/lib/maya-text.ts). `begun`
+ * comes once, when the child's words reached the session and before any model call: `model` false when no model call
+ * is made (a thinking turn, a call that ended), `streams` false when the reply cannot stream, so its first words wait for
+ * the whole reply (`conversational` false: a version 2 model, which never streams). `part` gives each checked sentence in index order, once; a sentence given is never taken back.
+ * `cancel(fromIndex)` drops sentences from that index that were not given yet; `end` ends the output. The finished
+ * turn (`VoiceTurn.say`) holds the same sentences in the same order, then any that follow.
+ */
+export interface VoiceSay {
+  begun?(plan: { model: boolean; streams: boolean; conversational: boolean }): void;
+  part?(sentence: string, index: number): void;
+  cancel?(fromIndex: number): void;
+  end?(): void;
 }
 
 /**
@@ -450,8 +479,12 @@ export interface VoiceCall {
   acknowledge(id: string): Promise<boolean>;
   /** Persist receiver outcomes with their presentation times, under this worker's revision. */
   observeBoard(snapshot: BoardSnapshot): Promise<void>;
-  start(): Promise<VoiceTurn>;
-  child(text: string, options?: { uncertain?: boolean; alternatives?: string[] }): Promise<VoiceTurn>;
+  /** `openingSpoken`: the worker speaks the opening itself, so the turn comes back with no say (D-341). */
+  start(options?: { openingSpoken?: boolean }): Promise<VoiceTurn>;
+  /** Prepares an interim reply without speech, credit or a saved input. */
+  prepare(input: { text: string; reason: "interim" }): boolean;
+  /** `say` hears this turn's sentences while it runs (VoiceSay), before the save behind it. */
+  child(text: string, options?: { uncertain?: boolean; alternatives?: string[] }, say?: VoiceSay): Promise<VoiceTurn>;
   tick(): Promise<VoiceTurn>;
   writing(status: "started" | "done"): Promise<VoiceTurn>;
   /** Ends from the last durable state without waiting for active model work. */
@@ -789,12 +822,16 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
     return { record: ended, say: heeded.guidance, safetyMessage: safety.flagged && safety.severity ? SAFETY_GUIDANCE[safety.severity] : null };
   }
 
+  /** The child's name a saved voice session says (its start's), so a trace stored from it hides that name. */
+  const savedName = (text: SavedTextSession): string | null => text.initial?.session.variety.name?.trim() || text.session.variety.name?.trim() || null;
+
   /** The model, telling `refused` when the ledger refuses one of its requests in the middle of a turn. */
   const watched = (model: MayaModel, refused: (state: Exclude<SpendState, "open">) => void): MayaModel => ({
     ...model,
-    async propose(input, signal) {
+    // D-341: `onText` goes through, so a voice call's reply can stream (a chat passes none).
+    async propose(input, signal, onText, onCost) {
       try {
-        return await model.propose(input, signal);
+        return await model.propose(input, signal, onText, onCost);
       } catch (e) {
         if (e instanceof SpendRefused) refused(e.state);
         throw e;
@@ -819,11 +856,11 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
   }
 
   /** A call's text session. Admin test calls have free talk on (D-197), with the model's review; chat has it off. A resumed call keeps its flag. */
-  function textSession(record: Pick<CallRecord, "id" | "parentId" | "childId"> & { kind: CallKind }, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number, grade?: number, confirmWorkbook?: boolean, onGuidance?: (output: TextOutput) => void): TextSession {
+  function textSession(record: Pick<CallRecord, "id" | "parentId" | "childId"> & { kind: CallKind }, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number, grade?: number, confirmWorkbook?: boolean, onGuidance?: (output: TextOutput) => void, sayHooks?: Pick<TextSessionOptions, "onSayPart" | "onSayCancel" | "onSayEnd">, spend?: SpendCall, preparing?: Pick<TextSessionOptions, "spend" | "prepareModel">): TextSession {
     return createTextSession({
-      onGuidance,
+      onGuidance, ...sayHooks, ...preparing,
       callId: record.id, channel: record.kind === "chat" ? "chat" : undefined, package: pkg, model, clock: seams.clock, random: seed, history, childName, runner: "text", resume: saved, limitMs, grade, confirmWorkbook,
-      freeTalk: record.kind !== "chat", reviewer: seams.reviewer?.(model.id, spendCall(record)) ?? null,
+      freeTalk: record.kind !== "chat" && record.kind !== "family", reviewer: seams.reviewer?.(model.id, spend ?? spendCall(record)) ?? null,
     });
   }
 
@@ -938,7 +975,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
   }
 
   /** Stores the outcome of a call that has just ended, then writes its event and rebuilds the profile. Null on a conflict. */
-  async function end(record: CallRecord, pkg: QuestionPackage, session: TextSession, how: FinishOptions = {}, extra?: (endedAt: number) => Promise<CallChange>, noEvent = false, capped = false): Promise<CallRecord | null> {
+  async function end(record: CallRecord, pkg: QuestionPackage, session: TextSession, how: FinishOptions = {}, extra?: (endedAt: number) => Promise<CallChange>, noEvent = false, capped = false, noNote = false): Promise<CallRecord | null> {
     const trace = await session.finish(how);
     // The cap's close reads as a call that ran out of time, unless safety, content or a solved question comes first.
     const outcome = capped && trace.outcome?.reason === "technical_issue" ? { ...trace.outcome, reason: "time_limit" as const } : trace.outcome;
@@ -950,8 +987,10 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       status: "ended",
       // Kept until the learning event is written (afterEnd).
       live: { package: pkg, text: await session.saved(), ...(noEvent ? { cancelled: true as const } : {}) },
-      // Kept until the parent's note is written (notes). A call Maya never joined has no learning event.
-      notePending: seams.note ? { package: pkg, event: noEvent ? null : learningEvent(session.session, { parentId: record.parentId, childId: record.childId }) } : null,
+      // Kept until the parent's note is written (notes). A call Maya never joined has no learning event, and a voice call
+      // she never joined has no note either (#904 review): no talk happened, and the child may have stopped it or the
+      // weekly voice time refused it.
+      notePending: seams.note && !noNote ? { package: pkg, event: noEvent ? null : learningEvent(session.session, { parentId: record.parentId, childId: record.childId }) } : null,
       trace,
       boardHistory: record.mode === "voice" ? record.boardHistory ?? boardHistoryOf(trace) : boardHistoryOf(trace),
       outcome,
@@ -981,11 +1020,15 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
   async function newCall(input: Parameters<MayaCalls["start"]>[0], mode: CallRecord["mode"]): Promise<{ ok: true; record: CallRecord; session: TextSession; pkg: QuestionPackage } | Extract<CallResult, { ok: false }>> {
     if (input.kind === "chat") {
       if (mode !== "text" || !(await seams.canChat?.(input.parentId, input.childId))) return { ok: false, error: "not_test_family" };
+    } else if (input.kind === "family") {
+      // A child's own voice call from the family desk: voice only, and only where the server says this child may call.
+      if (mode !== "voice" || !(await seams.canCallVoice?.(input.parentId, input.childId))) return { ok: false, error: "not_test_family" };
     } else if (!(await seams.isTestFamily(input.parentId))) return { ok: false, error: "not_test_family" };
-    const check = checkQuestionPackage(input.package);
+    // Every call (chat, voice, admin) teaches from the package Maya makes from the stored one; the stored one is unchanged.
+    const check = mayaPackageCheck(teachingPackage(input.package));
     if (!check.ok) return { ok: false, error: "invalid_question" };
     const pkg = check.package;
-    if (input.kind === "chat" && pkg.ref.source !== "workbook") return { ok: false, error: "invalid_question" };
+    if ((input.kind === "chat" || input.kind === "family") && pkg.ref.source !== "workbook") return { ok: false, error: "invalid_question" };
     const id = input.id ?? seams.newId();
     const call: SpendCall = { id, kind: input.kind, parentId: input.parentId, childId: input.childId };
     if (seams.spend) {
@@ -994,7 +1037,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
     }
     const model = seams.model(null, call);
     if (!model) return { ok: false, error: "model_unavailable" };
-    const session = textSession({ id, kind: input.kind, parentId: input.parentId, childId: input.childId }, pkg, model, mode === "voice" ? null : input.childName, undefined, seams.seed(), await readHistory(input.childId), input.limitMs, input.grade, input.confirmWorkbook);
+    const session = textSession({ id, kind: input.kind, parentId: input.parentId, childId: input.childId }, pkg, model, input.childName, undefined, seams.seed(), await readHistory(input.childId), input.limitMs, input.grade, input.confirmWorkbook);
     const empty = session.trace();
     const record: CallRecord = {
       id,
@@ -1061,36 +1104,53 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       return result(made.record, made.session.trace(), null);
     },
 
-    async openVoice(id, providers) {
+    async openVoice(id, providers, childName) {
       const log = seams.connections;
       if (!log) return { ok: false, error: "unavailable" };
       const found = await store.get(id);
       if (!found) return { ok: false, error: "not_found" };
       if (found.mode !== "voice") return { ok: false, error: "not_voice" };
       if (found.status !== "live" || !found.live) return { ok: false, error: "ended" };
-      let refusal: Exclude<SpendState, "open"> | null = null;
-      const asked = found.live.text.session.outcome ? idleModel(found) : seams.model(found.model, spendCall(found));
+      // Refusals of the call's model requests, counted: a turn that saw the count move while it ran was refused. Per turn,
+      // as turns can overlap (a silence check-in and a child turn); one shared flag lost a refusal (latency plan V1).
+      let refusals = 0;
+      let lastRefusal: Exclude<SpendState, "open"> = "week_used";
+      const voiceSpend: SpendCall = { ...spendCall(found), budgetKey: seams.newId() };
+      const asked = found.live.text.session.outcome ? idleModel(found) : seams.model(found.model, voiceSpend);
       if (!asked) return { ok: false, error: "model_unavailable" };
-      const model = watched(asked, (state) => { refusal = state; });
+      const model = watched(asked, (state) => { refusals++; lastRefusal = state; });
       const restored = structuredClone(found.live.text);
-      restored.session.variety.name = null;
-      restored.session.variety.nameAt = null;
+      // Savar, 2026-11-12: Maya may say the child's first name on a voice call, as in chat. The session keeps the name
+      // its start was given (startVoice, from the server). Every trace this handle stores hides it as {name}: the name
+      // the session says, else the one the worker read from the database (`childName`).
+      const name = savedName(restored) ?? childName?.trim() ?? null;
       const claim: CallChange = { speechToText: providers.speechToText, voice: providers.voice, live: { ...found.live, text: restored } };
       if (!(await store.update(found.id, found.revision, claim))) return { ok: false, error: "conflict" };
       let record: CallRecord = { ...found, ...claim, revision: found.revision + 1 };
       const pkg = found.live.package;
       // The call's speech-to-text and voice in the spending ledger (D-290).
-      const meter: VoiceMeter | null = seams.spend ? seams.spend.voice(spendCall(record)) : null;
+      const meter: VoiceMeter | null = seams.spend ? seams.spend.voice(voiceSpend) : null;
+      // The call's model attempts are paid from its budget block (src/lib/maya-spend-block.ts, latency plan V1): the first
+      // block is reserved now, in the background; the first turn waits for it only if it has not answered.
+      const budget: CallBudget | null = seams.spend ? seams.spend.budget(voiceSpend) : null;
+      void budget?.open();
+      // C2 speculative requests use this budget through a request-bound model, without a second reservation.
       let hearGuidance: ((turn: VoiceTurn) => void) | null = null;
       // Every trace turn before this index has been told to the worker in an earlier turn.
       let told = 0;
-      const session = textSession(record, pkg, model, null, restored, undefined, undefined, undefined, undefined, undefined, (out) => {
+      /** The worker's ear on the child turn that runs now (VoiceSay). Other inputs give their words with their turn. */
+      let listener: VoiceSay | null = null;
+      const session = textSession(record, pkg, model, name, restored, undefined, undefined, undefined, undefined, undefined, (out) => {
         persist(out);
         const from = told;
         told = session.trace().turns.length;
         // Only a worker that lost the call to another stays silent.
         if (!replaced && record.status !== "ended") hearGuidance?.(voiceTurn(out, from));
-      });
+      }, {
+        onSayPart: (sentence, index) => listener?.part?.(sentence, index),
+        onSayCancel: (fromIndex) => listener?.cancel?.(fromIndex),
+        onSayEnd: () => listener?.end?.(),
+      }, voiceSpend, budget ? { spend: budget.seam, prepareModel: (handle) => seams.model(record.model, voiceSpend, { prepared: { budget, handle } }) } : undefined);
       told = session.trace().turns.length;
       const last = restored.turns.at(-1);
       const pendingFinal: VoiceTurn | null = restored.session.outcome ? record.live?.pendingVoice ?? {
@@ -1100,10 +1160,12 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       const acknowledged = [...(found.live.acknowledged ?? [])];
       let lost = false;
       let replaced = false;
+      const stopBudget = () => { session.cancelPending(); return budget?.stop(); };
+      const lose = (confirmed = false) => { lost = true; if (confirmed) replaced = true; void stopBudget(); };
       let queue: Promise<void> = Promise.resolve();
       const later = (work: () => Promise<void>) => {
         queue = queue.then(work).catch((e) => {
-          lost = true;
+          lose();
           console.error("[maya voice] save failed", record.id, e instanceof Error ? e.message : String(e));
         });
       };
@@ -1125,8 +1187,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           const change: CallChange = { live: { package: pkg, text: await session.saved(), ...(pendingVoice ? { pendingVoice } : {}), ...(acknowledged.length ? { acknowledged: [...acknowledged] } : {}) }, startedAt: session.trace().startedAt };
           const saved = await store.update(record.id, record.revision, change) ? { ...record, ...change, revision: record.revision + 1 } : null;
           if (!saved) {
-            lost = true;
-            replaced = true;
+            lose(true);
             console.error("[maya voice] the call changed elsewhere; this worker stops writing", record.id);
             return;
           }
@@ -1149,7 +1210,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
             time.reviewMs += a.reviewMs ?? 0;
           }
           if (!t.output) continue;
-          word += speechWords(t.output.say.join(" ")).length;
+          // The trace hides the name as {name}, one word; the voice says the name, which can be two ("Mary Ann").
+          word += speechWords(name ? t.output.say.join(" ").replaceAll("{name}", name) : t.output.say.join(" ")).length;
           for (const id of t.output.board) ends.set(id, word);
         }
         const boardCues = out.board.map(batch => ({ batch, word: ends.get(batch.transactionId) ?? speechWords(out.say.join(" ")).length }));
@@ -1157,25 +1219,49 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         // The close keeps its priority after it ended the call: a reply that crosses the closing time can end as "solved".
         const closing = state.startedAt !== null && state.now !== null && state.now - state.startedAt >= limitsOf(state).closingAtMs;
         const priority = state.safety.flagged || state.state === "TIME_CLOSE" || state.outcome?.reason === "time_limit" || closing;
-        const guidance = out.say.find((text) => (Object.values(SAFETY_GUIDANCE) as string[]).includes(text));
-        return { say: out.say, newBatches: out.board.length, boardCues, safetyMessage: out.safetyMessage, ended: out.ended !== null, priority, time, ...(guidance ? { guidance } : {}) };
+        // Round 4: a turn that streamed sentences and then turned into safety holds them and the guidance in one line.
+        const guidance = (Object.values(SAFETY_GUIDANCE) as string[]).find((g) => out.say.some((text) => text === g || text.endsWith(` ${g}`)));
+        return { say: out.say, newBatches: out.board.length, boardCues, safetyMessage: out.safetyMessage, ended: out.ended !== null, priority, time, ...(guidance ? { guidance } : {}), ...(out.wait ? { wait: true } : {}) };
       };
       let working = 0;
-      /** The child's words the running input is working on, for the safety read when the call closes under it. */
-      let hearing: string | undefined;
-      /** The cap's state for the next paid request: speech-to-text reserved ahead, then the ledger. */
-      const capNow = async (): Promise<SpendState> => {
-        if (!seams.spend) return "open";
-        const stt = meter ? await meter.ensure() : "open";
-        return stt !== "open" ? stt : seams.spend.state(spendCall(record));
+      /** The turns admitted and not done, each with the child's words it carries (a check-in carries none). */
+      const inflight = new Set<{ words?: string }>();
+      /** Child words a refused turn left unread while another turn ran: the turn that closes the call reads them. */
+      const owed: string[] = [];
+      /**
+       * The words a closing safety read holds: `own`, the owed words, and the words of every other turn still in flight,
+       * whose answers are lost when the call closes under them.
+       */
+      const unread = (own?: string, me?: object): string | undefined => {
+        const words = [...(own ? [own] : []), ...owed.splice(0), ...[...inflight].filter((t) => t !== me && t.words).map((t) => t.words!)];
+        return words.length ? words.join(" ") : undefined;
+      };
+      /** Speech-to-text reserved ahead (its own requests, only when its block is near its end). */
+      const sttNow = async (): Promise<SpendState> => {
+        if (!meter) return "open";
+        const current = meter.state();
+        if (current !== null) {
+          // Keep valid admitted coverage while renewal runs on the worker's timer or beside this turn.
+          if (current === "open") void meter.ensure();
+          return current;
+        }
+        const renewed = await meter.ensure();
+        return renewed === "open" ? meter.state() ?? "paused" : renewed;
+      };
+      /** After a turn: speech-to-text, then the block (in memory unless its allowance is 0; then its refill decides). */
+      const capAfterTurn = async (): Promise<SpendState> => {
+        const stt = await sttNow();
+        return stt !== "open" ? stt : budget ? budget.ensure() : "open";
       };
       /** Ends the call because of the cap after `said` (what this input already says), with code's closing line. */
       const capClose = async (state: Exclude<SpendState, "open">, said: VoiceTurn | null, childText?: string): Promise<VoiceTurn> => {
         let closed: Awaited<ReturnType<typeof closeAtCap>> = null;
         later(async () => {
           if (lost || record.status === "ended" || !record.live) return;
-          closed = await closeAtCap(record, state, null, connected, childText);
-          if (!closed) { lost = true; replaced = true; }
+          // Close admission synchronously. A held settlement cannot delay the forced safety read or guidance.
+          void stopBudget();
+          closed = await closeAtCap(record, state, name, connected, childText);
+          if (!closed) { lose(true); }
           else record = closed.record;
         });
         // Speech-to-text runs until the worker ends the call after the closing line: `end` settles it then.
@@ -1189,10 +1275,63 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           ...(done.guidance ? { guidance: done.guidance } : {}),
         };
       };
-      const turn = async (run: () => Promise<TextOutput>, childText?: string): Promise<VoiceTurn> => {
+      /** Whether the input just given to the session asks the model, and whether its reply can stream (streamPlan). */
+      const planOf = () => {
+        const s = session.session;
+        // D-341, round 3: a plain stop is code's goodbye with no model call (the text adapter's pump reads the same).
+        const codeStop = s.conversational === true && s.stopRequested && !s.safety.flagged && !!s.turn && clearStop(s.turn.text);
+        const asks = s.outcome === null && nextActs(s).expect === "maya" && !codeStop;
+        return { model: asks, conversational: model.output === 3, streams: asks && model.output === 3 && streamPlan(s) !== null };
+      };
+      /**
+       * One input. `need`: free model attempts the gate asks for, 2 for a turn with no child words (a check-in), so the
+       * last attempt stays for the child.
+       */
+      const turn = async (run: () => Promise<TextOutput>, childText?: string, say?: VoiceSay, need: 1 | 2 = 1): Promise<VoiceTurn> => {
         if (inactive()) return none;
-        const capped = await capNow();
-        if (capped !== "open") return capClose(capped, null, childText);
+        const stt = await sttNow();
+        if (stt !== "open") return capClose(stt, null, unread(childText));
+        if (inactive()) return none;
+        const me: { words?: string } = { words: childText };
+        inflight.add(me);
+        let ticket: Handle | null = null;
+        try {
+          if (budget) {
+            // The gate stays before the input, and is in memory and synchronous: no await between it and the session
+            // taking the input. Beside the input, a paid request went out at the cap and the safety read lost its
+            // guidance (tried 2026-11-13); a hold awaited before the input let overlapping turns lose the guidance
+            // (review of 2026-11-13).
+            ticket = budget.admit(need);
+            if (!ticket) {
+              // A check-in never closes the call under another turn, and never takes the child's last attempt.
+              if (!childText && (inflight.size > 1 || budget.attempts() >= 1)) return none;
+              // The allowance is 0: the block's refill decides (the call is at the cap, or the ledger cannot answer).
+              const state = await budget.ensure();
+              if (inactive()) return none;
+              // The model refill can outlast admitted STT coverage. Hold no model ticket during a new STT wait.
+              if (state === "open" && meter && meter.state() !== "open") {
+                const coverage = await sttNow();
+                if (inactive()) return none;
+                const current = meter.state();
+                if (coverage !== "open") return capClose(coverage, null, unread(childText, me));
+                if (current !== "open") return capClose(current ?? "paused", null, unread(childText, me));
+              }
+              ticket = state === "open" ? budget.admit(need) : null;
+              if (!ticket) {
+                if (!childText && (inflight.size > 1 || budget.attempts() >= 1)) return none;
+                return capClose(state === "open" ? "week_used" : state, null, unread(childText, me));
+              }
+            }
+            budget.newTurn();
+          }
+          return await admitted(me, ticket, run, childText, say);
+        } finally {
+          inflight.delete(me);
+          if (ticket) budget?.release(ticket);
+        }
+      };
+      /** An admitted input (`ticket`: its model attempt from the block). */
+      const admitted = async (me: { words?: string }, ticket: Handle | null, run: () => Promise<TextOutput>, childText?: string, say?: VoiceSay): Promise<VoiceTurn> => {
         let input = run;
         if (childText && pastClock(session.session) && !session.session.safety.flagged) {
           // Words after the call's clock: read for danger first, as the session would end the call unread.
@@ -1206,7 +1345,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
             later(async () => {
               const flag = risen(record.flag, { level, at: iso(seams.clock()) });
               if (lost || record.status === "ended" || !flag) return;
-              if (!(await store.update(record.id, record.revision, { flag }))) { lost = true; replaced = true; return; }
+              if (!(await store.update(record.id, record.revision, { flag }))) { lose(true); return; }
               record = { ...record, flag, revision: record.revision + 1 };
               await alert(record);
             });
@@ -1214,13 +1353,25 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
             if (inactive()) return none;
           }
         }
-        refusal = null;
+        const seen = refusals;
         const before = session.trace().turns.length;
         working++;
-        hearing = childText;
         let out: TextOutput;
-        try { out = await input(); } finally { working--; hearing = undefined; }
+        listener = say ?? null;
+        try {
+          // The input is in the session once `input` returns its promise, before any model call.
+          const running = input();
+          if (say?.begun) { try { say.begun(planOf()); } catch { /* the worker's ear never fails the turn */ } }
+          out = await running;
+        } finally { working--; listener = null; }
+        // The input's model requests are over: an admitted attempt none of them took goes back before the cap's check.
+        if (ticket) budget?.release(ticket);
+        // Refused in this turn's time (any refusal while it ran counts: the turns share one model).
+        const stopped: Exclude<SpendState, "open"> | null = refusals !== seen ? lastRefusal : null;
         persist(out);
+        // The cap's check after the turn runs beside the save. A request refused in the turn decides without it.
+        const capAfter = session.ended || stopped ? null : capAfterTurn();
+        void capAfter?.catch(() => {});
         await queue;
         if (inactive()) return none;
         const from = Math.max(before, told);
@@ -1228,10 +1379,16 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         const said = voiceTurn(out, from);
         if (!session.ended) {
           // The words this input chose are said; then the cap closes the call when it is reached. A request refused in
-          // the middle of the turn left the child's words unread, so they get the safety read.
-          const stopped: Exclude<SpendState, "open"> | null = refusal;
-          const after = stopped ?? await capNow();
-          if (after !== "open") return capClose(after, said, stopped ? childText : undefined);
+          // the middle of the turn left the child's words unread, so they get the safety read. While another turn still
+          // runs, that turn closes the call after its own words, and reads the words owed.
+          const after = stopped ?? await (capAfter ?? capAfterTurn());
+          if (after !== "open" || owed.length > 0) {
+            if (inflight.size > 1) {
+              if (stopped && childText) owed.push(childText);
+              return said;
+            }
+            return capClose(after !== "open" ? after : lastRefusal, said, unread(stopped ? childText : undefined, me));
+          }
         }
         return said;
       };
@@ -1254,6 +1411,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         },
         get working() { return working > 0; },
         onGuidance(listener) { hearGuidance = listener; },
+        prepare: (input) => !inactive() && !session.ended && !working && !pastClock(session.session) && !!budget && session.prepare(input),
         get pendingFinal() {
           return pendingFinal ? structuredClone(pendingFinal) : null;
         },
@@ -1266,7 +1424,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           later(async () => {
             if (lost || record.status !== "live" || !record.live) return;
             const change: CallChange = { live: { ...record.live, acknowledged: [...acknowledged] } };
-            if (!(await store.update(record.id, record.revision, change))) { lost = true; replaced = true; return; }
+            if (!(await store.update(record.id, record.revision, change))) { lose(true); return; }
             record = { ...record, ...change, revision: record.revision + 1 };
             saved = true;
           });
@@ -1279,24 +1437,25 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
             if (lost || record.status === "ended") return;
             const boardHistory = voiceBoardHistory(copy, record.live?.text.session.startedAt ?? seams.clock(), seams.clock(), record.boardHistory);
             const change: CallChange = { boardHistory };
-            if (!(await store.update(record.id, record.revision, change))) { lost = true; replaced = true; return; }
+            if (!(await store.update(record.id, record.revision, change))) { lose(true); return; }
             record = { ...record, ...change, revision: record.revision + 1 };
           });
           await queue;
           if (lost) throw new Error("The observed board could not be saved.");
         },
-        start: () => turn(() => session.start()),
-        child: (text, options) => turn(() => session.child(text.trim().slice(0, MAX_CHILD_TEXT), options), text.trim().slice(0, MAX_CHILD_TEXT)),
-        tick: () => turn(() => session.tick()),
-        writing: (status) => turn(() => session.writing(status)),
+        start: (options) => turn(() => session.start(options)),
+        child: (text, options, say) => turn(() => session.child(text.trim().slice(0, MAX_CHILD_TEXT), options), text.trim().slice(0, MAX_CHILD_TEXT), say),
+        tick: () => turn(() => session.tick(), undefined, undefined, 2),
+        writing: (status) => turn(() => session.writing(status), undefined, undefined, 2),
         async limit() {
+          void stopBudget();
           later(async () => {
             if (lost || record.status === "ended" || !record.live) return;
             // Restore only accepted, saved work. An outstanding model answer cannot delay the deadline.
-            const final = textSession(record, pkg, idleModel(record), null, record.live.text);
+            const final = textSession(record, pkg, idleModel(record), name, record.live.text);
             await final.tick();
             const ended = await end(record, pkg, final, {}, connected, record.startedAt === null);
-            if (!ended) { lost = true; replaced = true; }
+            if (!ended) { lose(true); }
             else record = ended;
           });
           await queue;
@@ -1309,34 +1468,38 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
             try {
               // The store serializes ownership and append with replacement claims.
               const at = await log.append({ ...event, callId: record.id, parentId: record.parentId, childId: record.childId }, record.revision);
-              if (at === null) { lost = true; replaced = true; return; }
+              if (at === null) { lose(true); return; }
               record = { ...record, revision: record.revision + 1 };
             } catch (e) {
-              lost = true;
+              lose();
               console.error("[maya voice] connection event not stored", record.id, kind, e instanceof Error ? e.message : String(e));
             }
           });
           await queue;
         },
         async meter() {
+          // The worker's 10-second tick also renews and retires the budget block by age (in the background).
+          budget?.tick();
           if (!meter || inactive() || session.ended) return null;
           const state = await meter.ensure();
           if (state === "open" || inactive() || session.ended) return null;
           // Speech-to-text cannot be renewed: the call closes now, also during a model request (its answer is not said,
           // and the child's words it was reading get the safety read). Waiting for it would keep the room listening.
-          return capClose(state, null, working > 0 ? hearing : undefined);
+          return capClose(state, null, unread());
         },
         spoken: (text) => meter?.spoken(text) ?? Promise.resolve(),
         async end(how) {
+          // Stop admissions before waiting for a save or the STT meter.
+          const settledBudget = stopBudget();
           await queue;
           await meter?.stop();
-          if (lost) return;
+          if (lost) { await settledBudget; return; }
           if (record.status === "live") {
             later(async () => {
               // A fatal close or hang-up must not wait for an unfinished model turn.
-              const final = textSession(record, pkg, idleModel(record), null, record.live!.text);
+              const final = textSession(record, pkg, idleModel(record), name, record.live!.text);
               const ended = await end(record, pkg, final, how, connected, record.startedAt === null);
-              if (!ended) { lost = true; replaced = true; }
+              if (!ended) { lose(true); }
               else record = ended;
             });
           } else if (!record.learningEventId || !record.profileRebuiltAt) {
@@ -1345,6 +1508,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
             });
           }
           await queue;
+          await settledBudget;
         },
         settled: () => queue,
       };
@@ -1360,7 +1524,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         if (input.type !== "end" || !record.trace) return { ok: false, error: "conflict" };
         // An ended call: send the alert, write the event and rebuild the profile when an earlier try did not.
         await alert(record);
-        const final = record.live ? textSession(record, record.live.package, idleModel(record), childName, record.live.text) : null;
+        const final = record.live ? textSession(record, record.live.package, idleModel(record), savedName(record.live.text) ?? childName, record.live.text) : null;
         const done = await afterEnd(record, final);
         return result(done, done.trace!, null);
       }
@@ -1370,7 +1534,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         // be running (the worker stopped without ending it).
         const started = record.startedAt === null ? null : Date.parse(record.startedAt);
         if (input.type !== "end" || (started !== null && seams.clock() - started < VOICE_CALL_STALE_MS)) return { ok: false, error: "voice_call" };
-        const session = textSession(record, record.live.package, idleModel(record), childName, record.live.text);
+        const session = textSession(record, record.live.package, idleModel(record), savedName(record.live.text) ?? childName, record.live.text);
         const detail = started === null ? "Maya did not join the voice call" : "the voice call stopped without an end";
         // Connection times that cannot be read refuse the end (the read throws), so a later end stores the connected
         // seconds from them rather than 0 seconds (#528 review). As in the worker's own end, the room time counts through the last
@@ -1379,22 +1543,25 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           const events = seams.connections ? await seams.connections.read(record.id) : [];
           return { connectedSeconds: connectedSeconds(events, Math.max(endedAt, ...events.map((e) => e.at))) };
         };
-        const ended = await end(record, record.live.package, session, { detail }, stored, started === null);
+        const ended = await end(record, record.live.package, session, { detail }, stored, started === null, false, started === null);
         return ended ? result(ended, ended.trace!, null) : { ok: false, error: "conflict" };
       }
       const { package: pkg, text: saved } = record.live;
+      // The name the saved session holds hides itself in the stored trace when the caller gives none: the sweep and an
+      // admin end pass no name, and the trace hid only the name it was given (a chat's trace kept the real name, 2026-11-13).
+      const name = savedName(saved) ?? childName;
       if (input.type !== "end") {
         // At the cap Maya teaches no more, and only the child's own words are read, for safety.
         const state = await spendState(record);
         if (state !== "open") {
-          const closed = await closeAtCap(record, state, childName, undefined, input.type === "child" ? input.text.trim() : undefined);
+          const closed = await closeAtCap(record, state, name, undefined, input.type === "child" ? input.text.trim() : undefined);
           if (!closed) return { ok: false, error: "conflict" };
           return { ok: true, view: callView(closed.record, closed.record.trace!, await alertsOf(closed.record)), output: { say: closed.say, newBatches: 0, safetyMessage: closed.safetyMessage } };
         }
       }
       if (input.type === "child") {
         // Words that come after the call's clock get their safety read before the clock ends the call.
-        const late = await closeAtClock(record, childName, input.text.trim());
+        const late = await closeAtClock(record, name, input.text.trim());
         if (late) return { ok: true, view: callView(late.record, late.record.trace!, await alertsOf(late.record)), output: { say: late.say, newBatches: 0, safetyMessage: late.safetyMessage } };
       }
       let refusal: Exclude<SpendState, "open"> | null = null;
@@ -1402,11 +1569,11 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       const model = asked && watched(asked, (state) => { refusal = state; });
       if (!model) {
         // The model this call started with is gone (the key was removed): the call ends, recorded with its own model.
-        const session = textSession(record, pkg, idleModel(record), childName, saved);
+        const session = textSession(record, pkg, idleModel(record), name, saved);
         const ended = await end(record, pkg, session, { detail: "the model this call started with is no longer available" });
         return ended ? result(ended, ended.trace!, null) : { ok: false, error: "conflict" };
       }
-      const session = textSession(record, pkg, model, childName, saved);
+      const session = textSession(record, pkg, model, name, saved);
       let out: TextOutput | null = null;
       let saved2: CallRecord | null = null;
       if (input.type === "end") {
@@ -1425,7 +1592,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         const stopped: Exclude<SpendState, "open"> | null = refusal;
         const state = stopped ?? await spendState(saved2);
         if (state !== "open") {
-          const closed = await closeAtCap(saved2, state, childName, undefined, stopped && input.type === "child" ? input.text.trim() : undefined);
+          const closed = await closeAtCap(saved2, state, name, undefined, stopped && input.type === "child" ? input.text.trim() : undefined);
           if (!closed) return { ok: false, error: "conflict" };
           return {
             ok: true, view: callView(closed.record, closed.record.trace!, await alertsOf(closed.record)),
