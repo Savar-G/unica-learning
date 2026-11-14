@@ -29,8 +29,13 @@ export const MARKING_MAX_DISPATCHES = 2;
  * time-out, 408, 5xx or lost answer may have been charged: it uses up a dispatch and keeps its full hold, as before.
  */
 export const MARKING_MAX_DEFERRALS = 3;
-/** Backstop over every transport dispatch of one job: the 2 counted ones and one clean 429 per deferral (the database checks the same number). */
-export const MARKING_MAX_TRANSPORT_DISPATCHES = MARKING_MAX_DISPATCHES + MARKING_MAX_DEFERRALS;
+/**
+ * Backstop over every transport dispatch of one job: the 2 counted ones and up to 2 clean 429s for each deferral (a 429
+ * and its retry after the wait), so all MARKING_MAX_DEFERRALS deferrals are reachable: 8. The database checks the same
+ * number (`scan-marking-limits.test.ts`). Clean 429s free their holds, so a job keeps at most 2 full holds, plus the
+ * one dispatch in flight before its settle.
+ */
+export const MARKING_MAX_TRANSPORT_DISPATCHES = MARKING_MAX_DISPATCHES + 2 * MARKING_MAX_DEFERRALS;
 /** The wait before retrying a 429 that names no Retry-After. */
 export const MARKING_RETRY_WAIT_MS = 2_000;
 /** The longest wait before retrying a 429. A longer Retry-After defers the photo instead. */
@@ -326,7 +331,8 @@ export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token
       let confirmed: MarkingFailure | null = null;
       // A dispatch whose settle threw: tried once more at the end with its cost only (never as clean), as before #868.
       let unsettled: { open: string; cost: number | null } | null = null;
-      const confirmedRetryAfter = () => confirmed?.retryAfterMs ?? null;
+      /** The confirmed clean 429's Retry-After (ms or null); undefined when the last settle confirmed none. */
+      const confirmedRetryAfter = () => confirmed ? confirmed.retryAfterMs : undefined;
       /** Settles the open dispatch once (it is closed before the call, so no path settles it twice). True: a clean 429 the store confirmed. */
       const settleOpen = async () => {
         if (!dispatch) return false;
@@ -361,7 +367,12 @@ export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token
         // Use the complete local alias set when reading: aliases do not change when only pending items were requested.
         observations = readMarkingOutput(frame, output);
       } catch (e) {
-        if (e instanceof AdmissionRefusal) { await store.pause(ref, token, e.status); return e.status; }
+        // #868: a refusal right after a clean 429 the store confirmed is still the provider limiting us: the caller hears of
+        // it before the refusal pauses the photo.
+        if (e instanceof AdmissionRefusal) {
+          if (confirmedRetryAfter() !== undefined) options.onRateLimit?.(confirmedRetryAfter()!);
+          await store.pause(ref, token, e.status); return e.status;
+        }
         // #868: defer only on a clean 429 the store confirmed (the last attempt, or one whose wait did not fit). A
         // settle that fails, or any other failure, counts: the photo waits as `pending` as before.
         let clean = false;
@@ -369,7 +380,7 @@ export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token
           try { clean = e instanceof RetryLater || await settleOpen(); } catch { clean = false; }
         }
         if (clean) {
-          options.onRateLimit?.(confirmedRetryAfter());
+          options.onRateLimit?.(confirmedRetryAfter()!);
           try { return await store.defer(ref, token); } catch { /* An unreadable defer answer pauses as before. */ }
         }
         // No provider output or exception text is logged or stored.

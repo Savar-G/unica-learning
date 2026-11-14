@@ -19,25 +19,40 @@ export interface HistoryPage extends Omit<HistoryRecord, "marks" | "photos" | "j
   counts: ReturnType<typeof markingPageView>["counts"]; right: number; blank: number; wrong: number;
 }
 export const completedPage = (p: HistoryPage) => ["ready", "blank", "unscored"].includes(p.status);
+/**
+ * How long a job deferred on a clean 429 (#868) still reads as on its way: one recovery interval (15 minutes) plus a
+ * run's own time. After that, or for any other waiting job, admins see it in the failed filter.
+ */
+export const DEFERRAL_FRESH_MS = 20 * 60_000;
 /** One canonical page, irrespective of the number or lifecycle of its evidence photos. No score is inferred. */
 export function historyPage(r: HistoryRecord, now: number): HistoryPage {
   const view = markingPageView(r.marks);
-  // A `pending` job waits for a later run (a model call that did not finish, #868): it is still being marked, not failed,
-  // while its photo can still be read. A job that never finished on a photo now gone (expired, deleted) can never be
-  // marked: it failed, unless a live photo of the page (a retake) can still mark it.
-  const live = (p: HistoryRecord["photos"][number] | undefined) => Boolean(p && p.state === "saved" && Date.parse(p.expiresAt) > now);
+  const readable = (p: HistoryPhoto | undefined) => Boolean(p && p.state === "saved" && Date.parse(p.expiresAt) > now);
+  // A photo that can still mark the page: readable, and sent (or already claimed by a job). A never-sent retake cannot.
+  const live = (p: HistoryPhoto | undefined) => readable(p) && (p!.sentAt !== null || r.jobs.some((j) => j.photo === p!.id));
+  // A job that never finished on a photo now gone (expired, deleted) can never be marked: it failed, unless a live photo
+  // of the page (a sent retake) can still mark it.
   const stranded = r.jobs.some((j) => j.state !== "finished" && !live(r.photos.find((p) => p.id === j.photo))) && !r.photos.some(live);
-  const failedJob = stranded || r.jobs.some((j) => j.blocked === "attempts") || r.photos.some((p) => p.state === "rejected");
+  const couldNotMark = stranded || r.jobs.some((j) => j.blocked === "attempts") || r.photos.some((p) => p.state === "rejected");
+  // A `pending` job waits for a later run (#868): the parent reads "Not marked yet". Only a recent deferral on a clean 429
+  // (the page's latest dispatch charged 0, settled within DEFERRAL_FRESH_MS) is simply on its way; any other waiting job
+  // (no client, time-outs, 5xx, or a deferral the recovery run has not taken up again) stays in the admins' failed filter.
+  const latest = [...r.spend].sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).at(-1);
+  const freshDeferral = latest?.charged === 0 && now - Date.parse(latest.at) <= DEFERRAL_FRESH_MS;
+  // A job on a photo that is gone is the stranded rule's (a live retake takes over the page).
+  const stuck = !freshDeferral && r.jobs.some((j) => j.state !== "finished" && (j.blocked === "pending" || j.blocked === "off")
+    && live(r.photos.find((p) => p.id === j.photo)));
+  const failedJob = couldNotMark || stuck;
   const complete = view.completion.status === "complete";
   const blank = r.marks.filter((m) => m.observation.result === "blank").length;
   const status: HistoryStatus = complete ? view.counts.scored === 0 ? "unscored" : blank === view.counts.scored ? "blank" : "ready"
     // One rule with the results page and the team list: an answer our team is checking wins.
     : view.counts.teamChecks > 0 ? "review"
-    : failedJob ? "failed" : r.photos.length || r.marks.length ? "pending" : "never-scanned";
+    : couldNotMark ? "failed" : r.photos.length || r.marks.length ? "pending" : "never-scanned";
   const photo = r.photos.find((p) => p.sentAt !== null) ?? r.photos.at(-1);
   return { id: r.id, childId: r.childId, childName: r.childName, workbookId: r.workbookId, book: r.book, revision: r.revision, day: r.day, pageNumber: r.pageNumber,
     // Same rule as the results page line: a page with some marks and some answers not read yet says so.
-    status, label: status === "pending" && view.counts.scored > 0 ? "Some answers not marked yet" : HISTORY_LABELS[status], photo: photo?.id ?? null, photoAvailable: Boolean(photo && photo.state === "saved" && Date.parse(photo.expiresAt) > now), failedJob,
+    status, label: status === "pending" && view.counts.scored > 0 ? "Some answers not marked yet" : HISTORY_LABELS[status], photo: photo?.id ?? null, photoAvailable: readable(photo), failedJob,
     counts: view.counts, right: r.marks.filter((m) => m.observation.result === "right").length, blank, wrong: r.marks.filter((m) => m.observation.result === "wrong").length };
 }
 /** Aggregates only the displayed, filtered canonical records. Unknown costs remain reservations. */

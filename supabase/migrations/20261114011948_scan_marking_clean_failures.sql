@@ -3,16 +3,17 @@
 -- after the database checks the body again, and answers "clean". The run that meets one defers the job (queued, blocked
 -- reason `pending`); a deferral is spent only when the job's latest dispatch is such a 429. After 3 deferrals the next
 -- one sends the unread items to the team, as `attempts` does. A time-out, 408, 5xx or lost answer may have been charged:
--- it counts as a dispatch and keeps its full hold, exactly as before. At most 5 dispatches per job in all (2 counted and
--- one clean 429 per deferral), and at most 2 full holds kept per photo. Additive: the deployed site sends no `failure`
+-- it counts as a dispatch and keeps its full hold, exactly as before. At most 8 dispatches per job in all (2 counted and
+-- up to 2 clean 429s, a 429 and its retry, per deferral), and at most 2 full holds kept per photo, plus the one dispatch
+-- in flight before its settle. Additive: the deployed site sends no `failure`
 -- to `settle` and never calls `defer`, so its calls answer and count exactly as before.
 alter table public.scan_marking_dispatches add column clean_failure text
   check (clean_failure in ('rate-limit'));
 alter table public.scan_marking_jobs add column deferrals int not null default 0 check (deferrals between 0 and 3);
 alter table public.scan_marking_jobs drop constraint scan_marking_jobs_dispatches_check,
-  add constraint scan_marking_jobs_dispatches_check check (dispatches between 0 and 5);
+  add constraint scan_marking_jobs_dispatches_check check (dispatches between 0 and 8);
 alter table public.scan_marking_dispatches drop constraint scan_marking_dispatches_attempt_check,
-  add constraint scan_marking_dispatches_attempt_check check (attempt between 1 and 5);
+  add constraint scan_marking_dispatches_attempt_check check (attempt between 1 and 8);
 
 create or replace function public.scan_marking_automatic_command(p_action text, p_parent uuid, p_photo uuid, p_token uuid, p_data jsonb default '{}') returns jsonb
 language plpgsql security definer set search_path = '' as $$
@@ -139,9 +140,9 @@ begin
   if j.photo_id is null or j.lease_token is distinct from p_token or j.lease_until<=clock_timestamp() or j.state not in ('running','extracted') then return '"terminal"'; end if;
   if p_action='admit' then
     if j.extraction is not null then return '"attempts"'; end if;
-    -- #868: only a clean 429 does not use up one of the two dispatches. Five dispatches in all is the backstop.
+    -- #868: only a clean 429 does not use up one of the two dispatches. Eight dispatches in all is the backstop.
     if j.dispatches-(select count(*) from public.scan_marking_dispatches d where d.photo_id=p_photo and d.clean_failure='rate-limit')>=2
-      or j.dispatches>=5 then return '"attempts"'; end if;
+      or j.dispatches>=8 then return '"attempts"'; end if;
     select * into price from public.scan_marking_prices where model=p_data->>'model' and enabled;
     if not found or price.maximum_micros is null or price.verified_at is null or price.max_pixels < b.image_width::bigint*b.image_height::bigint then return '"price-unverified"'; end if;
     -- A cheaper model cannot enter the production path without a separate approved comparison.

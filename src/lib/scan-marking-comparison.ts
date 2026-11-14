@@ -200,13 +200,22 @@ function showsGeneration(v: unknown): boolean {
   if (typeof v === "string") { try { return showsGeneration(JSON.parse(v)); } catch { return false; } }
   return v !== null && typeof v === "object" && Object.entries(v).some(([k, x]) => ["id", "generation_id", "generationId", "usage", "choices"].includes(k) || showsGeneration(x));
 }
+/**
+ * The clean429-v1 envelope rule on a parsed 429 body: OpenRouter's own error (code 429, a message) with no generation or
+ * usage at any depth. The evaluation (`clean429`) and production marking (#868, `markingFailure`) both read it.
+ */
+export function clean429Envelope(data: unknown): boolean {
+  const error = record(record(data).error);
+  return typeof data === "object" && data !== null && !Array.isArray(data) && error.code === 429 && typeof error.message === "string"
+    && error.message.length > 0 && !showsGeneration(data);
+}
 /** A transport error envelope, never a label or the model's answer, authorizes a hold. */
 export function clean429(value: CapturedResponse | undefined): boolean {
   if (!value || value.status !== 429 || typeof value.body !== "string" || !value.body.length) return false;
   try {
     const data = record(JSON.parse(value.body)), error = record(data.error);
-    return hashValue(data) === hashValue(value.envelope) && error.code === 429 && typeof error.message === "string" && error.message.length > 0
-      && !showsGeneration(data) && hashValue(value.openrouter_metadata ?? null) === hashValue(data.openrouter_metadata ?? error.metadata ?? null);
+    return hashValue(data) === hashValue(value.envelope) && clean429Envelope(data)
+      && hashValue(value.openrouter_metadata ?? null) === hashValue(data.openrouter_metadata ?? error.metadata ?? null);
   } catch { return false; }
 }
 export interface ComparisonAttempt {

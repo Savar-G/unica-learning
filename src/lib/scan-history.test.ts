@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vitest";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
-import { historyCosts, historyPage, readScanHistory, type HistoryRecord, type HistoryStore } from "./scan-history";
+import { DEFERRAL_FRESH_MS, historyCosts, historyPage, readScanHistory, type HistoryRecord, type HistoryStore } from "./scan-history";
 import { scanHistoryStore } from "./scan-history-reader";
 vi.mock("server-only", () => ({}));
 const P = "11111111-1111-4111-8111-111111111111", C = "22222222-2222-4222-8222-222222222222", W = "33333333-3333-4333-8333-333333333333";
@@ -36,6 +36,8 @@ it("keeps blank, unscored, pending, failed, never scanned and ready separate", (
 it("a job waiting as pending for a later run is still being marked, never Could not mark (#868)", () => {
   const waiting = unread(record(1, null)); waiting.jobs[0].state = "queued"; waiting.jobs[0].blocked = "pending";
   waiting.photos[0].state = "saved"; waiting.photos[0].expiresAt = "2027-01-01";
+  // Deferred on a clean 429 a minute ago: its hold freed, charge 0.
+  waiting.spend[0].charged = 0; waiting.spend[0].at = new Date(now - 60_000).toISOString();
   expect(historyPage(waiting, now)).toMatchObject({ status: "pending", label: "Not marked yet", failedJob: false });
 });
 it("a waiting job whose photo expired can no longer be marked: Could not mark, and in the failed filter (#868)", async () => {
@@ -53,6 +55,31 @@ it("a waiting job whose photo expired can no longer be marked: Could not mark, a
   const retake = expired(5, "expired", "2026-11-05T00:00:00Z");
   retake.photos.push({ ...retake.photos[0], id: id(990), state: "saved", expiresAt: "2027-01-01T00:00:00Z" });
   expect(historyPage(retake, now)).toMatchObject({ status: "pending", failedJob: false });
+});
+it("a never-sent retake cannot mark the page: the stranded job still reads Could not mark", () => {
+  const r = unread(record(6, null)); r.jobs[0].state = "queued"; r.jobs[0].blocked = "pending";
+  r.photos[0].state = "expired";
+  r.photos.push({ ...r.photos[0], id: id(991), state: "saved", expiresAt: "2027-01-01T00:00:00Z", sentAt: null });
+  expect(historyPage(r, now)).toMatchObject({ status: "failed", failedJob: true });
+  // Once sent (or claimed by a job) the retake can still mark it.
+  r.photos[1].sentAt = "2026-11-05T23:00:00Z";
+  expect(historyPage(r, now)).toMatchObject({ status: "pending", failedJob: false });
+});
+it("admins see a waiting job in the failed filter unless it is a recent clean-429 deferral; parents read Not marked yet", async () => {
+  const waiting = (n: number, blocked: string, charged: number | null, at: number) => {
+    const r = unread(record(n, null)); r.jobs[0].state = "queued"; r.jobs[0].blocked = blocked;
+    r.photos[0].state = "saved"; r.photos[0].expiresAt = "2027-01-01T00:00:00Z";
+    r.spend = [{ ...r.spend[0], id: id(800 + n), at: "2026-11-05T00:00:00Z", charged: 2000 }, { ...r.spend[0], id: id(850 + n), at: new Date(at).toISOString(), charged }];
+    return r;
+  };
+  const deferred = waiting(1, "pending", 0, now - 60_000);
+  const old = waiting(2, "pending", 0, now - DEFERRAL_FRESH_MS - 1);
+  const timedOut = waiting(3, "pending", null, now - 60_000);
+  const noClient = waiting(4, "off", null, now - 60_000);
+  const neverCalled = waiting(5, "pending", null, now); neverCalled.spend = [];
+  expect(historyPage(deferred, now)).toMatchObject({ status: "pending", label: "Not marked yet", failedJob: false });
+  for (const r of [old, timedOut, noClient, neverCalled]) expect(historyPage(r, now)).toMatchObject({ status: "pending", label: "Not marked yet", failedJob: true });
+  expect((await readScanHistory(source([deferred, old, timedOut, noClient, neverCalled], 100), { status: "failed" }, now))!.pages.map((p) => p.pageNumber)).toEqual([2, 3, 4, 5]);
 });
 it("an unsure page says our team is checking it; a page not read yet says Not marked yet; neither asks the parent (#715)", () => {
   const unsure = record(1, null), notRead = unread(record(2, null));

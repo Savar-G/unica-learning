@@ -413,18 +413,38 @@ describe("#868: a clean 429 waits, frees its hold and defers the photo; every ot
     expect(await timedRun(s, "photo-a", scripted([{ unknown: true }, answer]), "b")).toBe("attempts");
   });
 
-  it("a job makes at most 2 counted dispatches plus one per deferral, 5 in all, whatever the failures were", async () => {
-    expect(MARKING_MAX_TRANSPORT_DISPATCHES).toBe(5);
+  it("a job reaches all 3 deferrals with two clean 429s a run, then goes to the team: 8 dispatches, no hold kept", async () => {
+    expect(MARKING_MAX_TRANSPORT_DISPATCHES).toBe(8);
     const s = new Store(frame()), requests: AiJsonRequest[] = [];
     // Each run: a 429, a short wait, its retry also a 429: two dispatches, both clean, then a deferral.
-    for (let n = 0; n < 4; n++) await timedRun(s, "photo-a", scripted([{ failure: rateLimit(1_000) }, { failure: rateLimit(1_000) }], requests), `r${n}`);
-    expect(s.jobs.get("photo-a")).toMatchObject({ dispatches: 5, done: true });
-    expect(requests).toHaveLength(5);
+    for (let n = 1; n <= MARKING_MAX_DEFERRALS; n++) {
+      expect(await timedRun(s, "photo-a", scripted([{ failure: rateLimit(1_000) }, { failure: rateLimit(1_000) }], requests), `r${n}`)).toBe("pending");
+      expect(s.jobs.get("photo-a")).toMatchObject({ deferrals: n, dispatches: 2 * n, done: false });
+    }
+    expect(await timedRun(s, "photo-a", scripted([{ failure: rateLimit(1_000) }, { failure: rateLimit(1_000) }], requests), "last")).toBe("attempts");
+    expect(s.jobs.get("photo-a")).toMatchObject({ dispatches: 8, done: true });
+    expect(requests).toHaveLength(8);
     expect([...s.spend.values()].every((x) => x.charged === 0)).toBe(true);
     const full = new Store(frame());
     await full.claim({ parent: P, photo: "photo-a" }, "x", frame());
     full.jobs.get("photo-a")!.dispatches = MARKING_MAX_TRANSPORT_DISPATCHES; full.jobs.get("photo-a")!.until = 0;
     expect(await timedRun(full, "photo-a", scripted([answer]), "a")).toBe("attempts");
+  });
+
+  it("a refused admission right after a confirmed clean 429 still tells the caller about the rate limit", async () => {
+    for (const refusal of ["budget", "attempts"] as const) {
+      const s = new Store(frame()), limits: (number | null)[] = [];
+      const admit = s.admit.bind(s);
+      let calls = 0;
+      s.admit = async (ref, token, model) => ++calls === 2 ? refusal : admit(ref, token, model);
+      expect(await timedRun(s, "photo-a", scripted([{ failure: rateLimit(1_000) }, answer]), "a", [], { onRateLimit: (ms) => { limits.push(ms); } })).toBe(refusal);
+      expect(limits).toEqual([1_000]);
+    }
+    // A refusal with no clean 429 before it is no rate limit.
+    const s = new Store(frame()), limits: unknown[] = [];
+    s.admit = async () => "budget";
+    expect(await timedRun(s, "photo-a", scripted([answer]), "a", [], { onRateLimit: (ms) => { limits.push(ms); } })).toBe("budget");
+    expect(limits).toEqual([]);
   });
 
   it("defers only when the store confirmed the 429 clean: otherwise it counts, keeps its hold and spends no deferral", async () => {
