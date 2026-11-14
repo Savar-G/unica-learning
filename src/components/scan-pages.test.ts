@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 const context = vi.hoisted(() => ({ auth: null as null | ((_event: string, session: { user: { id: string } } | null) => void), prepare: null as null | (() => Promise<Blob>), code: null as null | "read" | "unread", encodings: [] as number[] }));
 vi.mock("@/lib/supabase-browser", () => ({
   browserClient: () => ({ auth: { onAuthStateChange: (callback: typeof context.auth) => {
@@ -23,6 +23,9 @@ import { refusalCopy } from "@/lib/scan-stack";
 // "two-p12.jpg" shows two sheets, which the check refuses.
 type Photo = { id: string; pageId: string; workbookId: string; book: number; pageNumber: number; state: "pending" | "saved"; check: string; reason: string | null; sentAt: string | null; createdAt: string; marks?: unknown };
 const PAGES = [10, 11, 12, 13].map((n, i) => ({ id: `p${n}`, workbookId: "book", book: 1, pageNumber: n, day: "Day 4", pageOfDay: i + 1, pagesInDay: 4 }));
+// Earlier days of the same book, before Day 4, for the strip's ‹ and › (2026-11-14). Empty unless a test sets them.
+let earlierPages: typeof PAGES = [];
+const allBookPages = () => [...earlierPages, ...PAGES];
 let root: Root, host: HTMLDivElement;
 let checks: boolean, acknowledged: boolean;
 let photos: Map<string, Photo & { two: boolean }>;
@@ -63,7 +66,7 @@ const text = () => document.body.textContent ?? "";
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  marking = null; putGate = null; undoMs = 60_000; filedTo = null; markingOn = false; allPages = ["child"]; holds = []; context.encodings = []; duplicateMs = 60_000; holdFailures = 0; captureRenewMs = 270_000;
+  marking = null; putGate = null; undoMs = 60_000; filedTo = null; markingOn = false; earlierPages = []; allPages = ["child"]; holds = []; context.encodings = []; duplicateMs = 60_000; holdFailures = 0; captureRenewMs = 270_000;
   try { localStorage.setItem("unica.scan-tips.v1:parent", "seen"); localStorage.removeItem("unica.scan-undone.v1:parent"); } catch {}
   context.auth = null; context.prepare = null; context.code = null; checks = true; acknowledged = true; photos = new Map(); uploading = 0; mostAtOnce = 0; full = false; calls.length = 0;
   admitted = []; loseAdmissions = 0; saveFailures = 0; expired = new Set();
@@ -75,7 +78,7 @@ beforeEach(() => {
     if (path.startsWith("/api/account/scans?child=")) {
       if (listDown) return Response.json({ error: "unavailable" }, { status: 503 });
       if (path.includes("child=other")) return Response.json({ checks, pages: PAGES, photos: [] });
-      return Response.json({ checks, marking: markingOn, pages: PAGES, photos: [...photos.values()].map(({ two, ...p }) => { void two; return p; }) });
+      return Response.json({ checks, marking: markingOn, pages: allBookPages(), photos: [...photos.values()].map(({ two, ...p }) => { void two; return p; }) });
     }
     if (path === "/api/account/scans" && method === "POST") {
       const asked: string = JSON.parse(String(init!.body)).id;
@@ -259,8 +262,9 @@ it("steps through the pages that need another photo while a page that passed is 
   expect(text()).toContain("2 pages need another photo");
   expect(text()).toContain("Your photo");
   expect(text()).toContain("Like this");
-  const first = text().includes("Code not read") ? "Code not read" : "More than one page";
-  const second = first === "Code not read" ? "More than one page" : "Code not read";
+  const unread = "We couldn't tell which page this is.";
+  const first = text().includes(unread) ? unread : "More than one page";
+  const second = first === unread ? "More than one page" : unread;
   expect(text()).not.toContain(second);
   await act(async () => button("Next (1 of 2)")!.click());
   expect(text()).toContain(second);
@@ -374,7 +378,7 @@ it("asks for no check and offers no Send unless the server says this family has 
 });
 
 const seed = (id: string, pageId: string, fields: Partial<Photo> = {}) => {
-  const page = PAGES.find((p) => p.id === pageId)!;
+  const page = allBookPages().find((p) => p.id === pageId)!;
   photos.set(id, { id, pageId, workbookId: "book", book: 1, pageNumber: page.pageNumber, state: "saved", check: "ready", reason: null, sentAt: null, createdAt: `2026-11-05T09:00:0${photos.size}Z`, two: false, ...fields });
 };
 const saves = (id: string) => calls.filter((c) => c === `POST /api/account/scans/${id}`).length;
@@ -455,7 +459,9 @@ it("shows and deletes a sent photo when the only open page is one ready photo", 
   seed("ready", "p11");
   await render();
   expect(button("Page 11, ready, not sent yet")).toBeDefined();
-  const tile = button("Page 10 · Day 4: Sent for marking");
+  // No "Sent earlier" list (2026-11-14): the sent page opens from its strip tile.
+  expect(text()).not.toContain("Sent earlier");
+  const tile = button("Page 10, sent for marking");
   expect(tile).toBeDefined();
   await act(async () => tile!.click());
   // The sheet's own Delete: the one page's Delete sits behind the sheet.
@@ -568,13 +574,16 @@ it("keeps photos the server has no room for in their place, says so, and sends t
   await choose("library", "p10.jpg");
   full = true;
   await choose("library", "p11.jpg", "p12.jpg", "p13.jpg");
-  expect(text()).toContain("Waiting for room");
+  // The tile says only Loading…; the dock says there is no room yet.
+  expect(text()).toContain("There is no room for more photos yet");
+  expect(text()).not.toContain("Waiting for room");
+  expect(button("New photo: Loading…")).toBeDefined();
   expect(text()).not.toContain("Not sent");
   expect(photos.size).toBe(1);
   full = false;
   // The first page went for marking on its own; the waiting photos ask again and go.
   await settle(); await settle();
-  expect(text()).not.toContain("Waiting for room");
+  expect(text()).not.toContain("There is no room for more photos yet");
   expect([...photos.values()].map((p) => p.pageId).sort()).toEqual(["p10", "p11", "p12", "p13"]);
 });
 
@@ -582,41 +591,29 @@ it("without checks, a photo waiting for room says it goes on its own", async () 
   shortWaits(); checks = false; full = true;
   await render();
   await choose("library", "p10.jpg");
-  expect(text()).toContain("Waiting for room");
+  expect(text()).not.toContain("Waiting for room");
   expect(text()).toContain("There is no room for more photos yet. The waiting photo keeps its place and goes when there is room.");
   expect(text()).not.toContain("Not sent");
   full = false; await settle(); await settle();
   expect(photos.size).toBe(1);
 });
 
-it("shows the phone's early hint on a photo still sending whose code it could not read, and the server still decides (#915)", async () => {
+it("a new photo in progress says only Loading…, never a code warning, and the server's refusal names the code (2026-11-14)", async () => {
   context.code = "unread";
   let open!: () => void;
   putGate = new Promise<void>((resolve) => { open = resolve; });
   await render();
   await choose("camera", "junk.jpg");
-  // The upload was not held back: it is on its way while the hint shows.
   expect(calls.some((c) => c.startsWith("PUT /api/account/scans/"))).toBe(true);
-  expect(text()).toContain("Code may not read");
-  await act(async () => button("New photo: Code may not read")!.click()); await settle();
-  expect(text()).toContain("We cannot read the small code in the bottom-left corner.");
-  expect(text()).toContain("This photo is still sending");
-  await act(async () => button("Close")!.click()); await settle();
+  expect(button("New photo: Loading…")).toBeDefined();
+  expect(text()).not.toContain("Code may not read");
+  expect([...document.querySelectorAll(".scan-tile-s")].map((e) => e.textContent)).toEqual(["Loading…"]);
   await act(async () => { open(); }); await settle();
-  // The server read no code either: the photo is refused with the same words.
-  expect(text()).toContain("Code not read");
-  expect(text()).not.toContain("Code may not read");
-});
-
-it("shows no hint when the phone reads the code (#915)", async () => {
-  context.code = "read";
-  let open!: () => void;
-  putGate = new Promise<void>((resolve) => { open = resolve; });
-  await render();
-  await choose("camera", "p11.jpg");
-  expect(text()).not.toContain("Code may not read");
-  await act(async () => { open(); }); await settle();
-  expect(text()).not.toContain("Code may not read");
+  // The server read no code: the photo is refused with the plain refusal copy.
+  expect(text()).not.toContain("Code not read");
+  await act(async () => button("Open your photo of Unknown page")!.click()); await settle();
+  expect(text()).toContain("We couldn't tell which page this is. Take the photo again with the whole page in view, including the small code in the bottom-left corner.");
+  expect(text()).not.toMatch(/Code (may )?not read/);
 });
 
 it("says where a page went when its code filed it with a sibling's book (#915)", async () => {
@@ -826,14 +823,63 @@ it("has no Page history on the scan screen: one See all pages link opens the chi
   expect(host.querySelector('a[href="/account/scan/results/a"]')).not.toBeNull();
 });
 
-it("keeps the page history on the scan screen for a child whose Workbooks page would not show it", async () => {
+it("shows no page history and no link for a child whose Workbooks page would not show it (2026-11-14)", async () => {
   markingOn = true; allPages = [];
   seed("a", "p10", { sentAt: new Date().toISOString(), marks: { right: 7, scored: 8, total: 8, toPractise: 1, waiting: 0, complete: true } });
   await render();
-  expect(text()).not.toContain("See all pages");
-  expect(text()).toContain("Page history");
-  expect(host.querySelector("#scan-history")).not.toBeNull();
-  expect([...host.querySelectorAll("a")].find((a) => a.textContent === "See all progress")?.getAttribute("href")).toBe("#scan-history");
+  expect(text()).not.toMatch(/See all pages|See all progress|Page history|Show:|Saved results stay/);
+  expect(host.querySelector("#scan-history")).toBeNull();
+  expect(host.querySelector("select")).toBeNull();
+  expect(calls.some((c) => c.includes("/api/account/scans/history"))).toBe(false);
+});
+
+describe("the strip's ‹ and › step through the book's days (2026-11-14)", () => {
+  const day = (n: number, numbers: number[]) => numbers.map((p, i) => ({ id: `p${p}`, workbookId: "book", book: 1, pageNumber: p, day: `Day ${n}`, pageOfDay: i + 1, pagesInDay: numbers.length }));
+  const heading = () => host.querySelector(".scan-strip h2")!.textContent;
+  const step = async (label: "Previous day" | "Next day") => { await act(async () => button(label)!.click()); await settle(); };
+  const marks = { right: 3, scored: 4, total: 4, toPractise: 1, waiting: 0, complete: true };
+  beforeEach(() => {
+    markingOn = true;
+    earlierPages = [...day(1, [1, 2]), ...day(2, [3, 4, 5]), ...day(3, [6, 7, 8, 9])];
+    seed("d1", "p1", { sentAt: "2026-11-01T09:00:00Z", marks }); seed("d1b", "p2", { sentAt: "2026-11-01T09:00:00Z", marks });
+    seed("d3", "p7", { sentAt: "2026-11-03T09:00:00Z", marks });
+    seed("now", "p11", { sentAt: new Date().toISOString(), marks });
+  });
+
+  it("opens on the current day, steps back to Day 1 and stops there, and steps forward to the current day and stops", async () => {
+    await render();
+    expect(heading()).toBe("Day 4");
+    expect((button("Next day") as HTMLButtonElement).disabled).toBe(true);
+    expect((button("Previous day") as HTMLButtonElement).disabled).toBe(false);
+    await step("Previous day");
+    expect(heading()).toBe("Day 3");
+    expect(host.querySelector(".scan-strip-count")!.textContent).toBe("1 of 4 pages marked");
+    expect(button("Page 7, marked")).toBeDefined(); expect(button("Page 6, still to scan")).toBeDefined();
+    expect(text()).not.toContain("Next: ");
+    await step("Previous day"); await step("Previous day");
+    expect(heading()).toContain("Day 1");
+    expect(host.querySelector(".scan-strip-count")!.textContent).toBe("2 of 2 pages marked");
+    expect((button("Previous day") as HTMLButtonElement).disabled).toBe(true);
+    await step("Previous day");
+    expect(heading()).toContain("Day 1");
+    await step("Next day"); expect(heading()).toBe("Day 2");
+    await step("Next day"); await step("Next day"); expect(heading()).toBe("Day 4");
+    expect((button("Next day") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("opens an earlier day's page results from its tile", async () => {
+    await render();
+    await step("Previous day");
+    await act(async () => button("Page 7, marked")!.click()); await settle();
+    expect(document.querySelector('.scan-sheet a[href="/account/scan/results/d3"]')?.textContent).toBe("View page results");
+  });
+
+  it("gives the arrows their accessible labels", async () => {
+    await render();
+    await step("Previous day"); expect(heading()).toBe("Day 3");
+    expect(button("Previous day")!.getAttribute("aria-label")).toBe("Previous day");
+    expect(button("Next day")!.getAttribute("aria-label")).toBe("Next day");
+  });
 });
 
 it("shows no See all pages link while marking is closed, as the Workbooks page has no history then", async () => {

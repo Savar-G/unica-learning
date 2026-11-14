@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import Link from "next/link";
 import Image from "next/image";
 import { browserClient } from "@/lib/supabase-browser";
-import { PHOTO_ENCODING, phoneCodeCheck, prepareScanPhoto, scanThumbnail, SMALLER_ENCODING } from "@/lib/scan-photo-browser";
+import { PHOTO_ENCODING, prepareScanPhoto, scanThumbnail, SMALLER_ENCODING } from "@/lib/scan-photo-browser";
 import { addingCount, buildStack, duplicateNote, refusalCopy, roomNote, sendLabel, spreadNote, waitingNote, type DayPage, type StackPhoto, type StackTile, type StackUpload, type UploadRefusal } from "@/lib/scan-stack";
 import { dayStrip, pageScore, retakeLine, scoreLine, todaysPages, type StripState, type StripTile } from "@/lib/scan-day-strip";
 import { PHOTO_PROBLEM_TEXT, type PhotoCheckView, type PhotoProblem } from "@/lib/scan-photo-check-text";
@@ -14,7 +14,6 @@ import { scanEventTicket } from "@/lib/scan-track";
 import { nextUploads, REQUEST_TIMEOUT_MS, roomWait, UPLOAD_TIMEOUT_MS, waitsForRoom } from "@/lib/scan-upload-queue";
 import { workbooksPath } from "@/lib/parent-shell";
 import { ScanPreview } from "@/components/scan-preview";
-import { ScanHistory } from "@/components/scan-history";
 import "./scan-pages.css";
 
 // Scan pages (spec #368, round r565 picked, D-269 to D-276; the screen from round r915-scan-flow, #915): tips on the first
@@ -92,7 +91,7 @@ const ICONS = {
 };
 
 const STATUS_WORDS: Record<StackTile["status"], string> = {
-  adding: "Sending", waiting: "Waiting to send", checking: "Checking", ready: "Ready", saved: "Saved", refused: "Needs another photo", unavailable: "Cannot be checked", sent: "Sent for marking",
+  adding: "Loading…", waiting: "Loading…", checking: "Loading…", ready: "Ready", saved: "Saved", refused: "Needs another photo", unavailable: "Cannot be checked", sent: "Sent for marking",
 };
 
 /** A bottom sheet on a phone, a centred dialog on a wider screen. A Close button, Esc and the backdrop close it. */
@@ -192,7 +191,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   timeZone?: FamilyZone;
   /**
    * Children whose Workbooks page shows their Page history (src/lib/workbooks-page-server.ts): "See all pages" links
-   * there. Any other child keeps the history on this screen, so the link never opens a page that is not found.
+   * there. Any other child gets no link and no history here (2026-11-14), so the link never opens a page that is not found.
    */
   allPages?: readonly string[];
 }) {
@@ -232,8 +231,6 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const fetching = useRef(new Set<string>());
   const urls = useRef(new Map<string, string>());
   const replacing = useRef<string | null>(null);
-  /** The phone's early code looks (#915), one photo at a time so several new photos never decode at once. */
-  const codeLooks = useRef<Promise<void>>(Promise.resolve());
   const name = childrenList.find((c) => c.id === child)?.first_name ?? "your child";
   // #915: the first-visit tips, remembered per parent in this browser.
   const tipsFlag = useMemo(() => flagStore(`unica.scan-tips.v1:${parent}`), [parent]);
@@ -446,7 +443,6 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     if (version !== epoch.current || !sessionCurrent.current) return "unavailable";
     // One body for every try of this photo: a timed-out upload swaps in a smaller encoding for the next try (#5).
     const body = { blob, smaller: Boolean(u.smaller), file: u.file };
-    lookForCode(u.key, blob, version);
     // The same id again after a lost answer: the server answers with that photo's state and takes no second slot.
     let id = u.reservation ?? crypto.randomUUID();
     for (let fresh = false; ; fresh = true) {
@@ -462,18 +458,6 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     // A failed save is asked again when the list next shows this photo as pending.
     await api(`/api/account/scans/${id}`, { method: "POST" }).catch(() => { if (version === epoch.current) savedAsked.current.delete(id); });
     return { id, thumb: body.blob };
-  }
-
-  /**
-   * The phone's early look at the page code while the photo sends (#915). It never holds the upload back: an unread code
-   * only adds a hint to the tile, and the server reads the code again and alone decides.
-   */
-  function lookForCode(key: string, body: Blob, version: number) {
-    const sending = () => version === epoch.current && uploadsRef.current.some((x) => x.key === key && x.status !== "refused");
-    codeLooks.current = codeLooks.current.then(async () => {
-      if (!sending()) return;
-      if (await phoneCodeCheck(body) === "unread" && sending()) patchUpload(key, { codeUnread: true });
-    }).catch(() => {});
   }
 
   /**
@@ -698,6 +682,13 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const thumbOf = (t: StackTile) => thumbs[t.photoId ?? t.uploadKey ?? ""];
   const phone = mode === "phone";
   const strip = useMemo(() => dayStrip({ photos, pages: listing?.pages ?? [], tiles, marking }), [photos, listing, tiles, marking]);
+  // The strip's ‹ and › (2026-11-14): how many days back from the current day the parent stepped. It belongs to one
+  // child's current day, so a new current day or another child starts on the current day again.
+  const stripAt = `${child}|${strip?.workbookId ?? ""}|${strip?.day ?? ""}`;
+  const [dayBack, setDayBack] = useState({ at: stripAt, n: 0 });
+  const back = dayBack.at === stripAt ? dayBack.n : 0;
+  const shownStrip = useMemo(() => (back ? dayStrip({ photos, pages: listing?.pages ?? [], tiles, marking, back }) : strip), [back, strip, photos, listing, tiles, marking]);
+  const stepDay = (by: number) => setDayBack({ at: stripAt, n: Math.max(0, back + by) });
   const today = todaysPages(photos, now(), timeZone);
 
   async function send(ids: string[] = stack.readyIds) {
@@ -902,7 +893,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     setBatch((b) => b.filter((id) => id !== old));
     // The old photo leaves the Undo: its server hold goes, so the server never sends it while the swap runs.
     releaseHolds([old]);
-    patchUpload(key, { status: "waiting", reason: undefined, replaceOf: old, replaceable: undefined, page: undefined, reservation: undefined, codeUnread: undefined });
+    patchUpload(key, { status: "waiting", reason: undefined, replaceOf: old, replaceable: undefined, page: undefined, reservation: undefined });
     pump();
   }
   /** The input a retake opens (#6): a saved page and a camera shot open the camera, a photo chosen from the phone's photos opens them again. */
@@ -916,7 +907,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       if (!on) return;
       const failed = uploadsRef.current.filter((u) => u.status === "refused" && u.reason === "unavailable");
       if (!failed.length) return;
-      putUploads(uploadsRef.current.map((u) => (failed.includes(u) ? { ...u, status: "waiting" as const, reason: undefined, codeUnread: undefined } : u)));
+      putUploads(uploadsRef.current.map((u) => (failed.includes(u) ? { ...u, status: "waiting" as const, reason: undefined } : u)));
       pumpRef.current();
     };
     update();
@@ -1023,7 +1014,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   /** What a page that needs another photo offers. A photo that never reached us is chosen again (or tried again); a saved one is retaken. */
   // A refusal not about the photo itself (#5) keeps the photo and offers Try again; a limit says to wait first.
   const fixAction = (t: StackTile, { className = "btn", retake = retakeWords(t) }: { className?: string; retake?: string } = {}) => {
-    if (t.uploadKey && NOT_THE_PHOTO.includes(t.refusal ?? "")) return <button type="button" className={className} onClick={() => { patchUpload(t.uploadKey!, { status: "waiting", reason: undefined, codeUnread: undefined }); pump(); }}>Try again</button>;
+    if (t.uploadKey && NOT_THE_PHOTO.includes(t.refusal ?? "")) return <button type="button" className={className} onClick={() => { patchUpload(t.uploadKey!, { status: "waiting", reason: undefined }); pump(); }}>Try again</button>;
     if (t.refusal === "frequency" || t.refusal === "daily" || t.refusal === "quota" || t.refusal === "duplicate") return null;
     if (!phone) return null;
     // A camera shot is never in the phone's photos (#6): its retake opens the camera.
@@ -1039,17 +1030,14 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       <h2>{refusalCopy(openTile.refusal).title}</h2>
       <p>{refusalCopy(openTile.refusal).action}</p>
       {openTile.uploadKey && NOT_THE_PHOTO.includes(openTile.refusal ?? "")
-        ? <button type="button" className="btn" onClick={() => { patchUpload(openTile.uploadKey!, { status: "waiting", reason: undefined, codeUnread: undefined }); setSheet(null); pump(); }}>Try again</button>
+        ? <button type="button" className="btn" onClick={() => { patchUpload(openTile.uploadKey!, { status: "waiting", reason: undefined }); setSheet(null); pump(); }}>Try again</button>
         : phone && <button type="button" className="btn" onClick={() => open(retakeInput(openTile), retakeKey(openTile))}>{retakeInput(openTile) === "library" ? "Choose another photo" : "Take another photo"}</button>}
       {!phone && <p className="small">Take it again with your phone. The page waits there.</p>}
-    </> : openTile.hint === "code" && openTile.status !== "waiting" ? <>
-      <h2>{refusalCopy("qr").title}</h2>
-      <p>This photo is still sending, and we will read the code again. If we still cannot read it, we will ask you for another photo.</p>
     </> : openTile.hint === "offline" ? <>
       <h2>This photo is waiting for a connection.</h2>
       <p>Keep this page open. It sends when you are back online.</p>
     </> : openTile.status === "waiting" ? <>
-      <h2>{openTile.reason ? "There is no room for this photo yet." : "This photo is waiting its turn."}</h2>
+      <h2>{openTile.hint === "room" ? "There is no room for this photo yet." : "This photo is waiting its turn."}</h2>
       <p>{roomNote(stack) ?? "It keeps its place and goes on its own."}</p>
     </> : <>
       <h2>{openTile.status === "ready" ? (checkProblem?.photo === openTile.photoId ? "Check this photo." : "We can read this page.") : openTile.status === "sent" ? "Sent for marking." : openTile.status === "unavailable" ? "We cannot check pages of this printing yet." : openTile.status === "saved" ? "Photo saved." : "We are checking this page."}</h2>
@@ -1209,8 +1197,6 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
 
   const stripKeys = new Set(strip?.tiles.map((t) => t.tileKey).filter(Boolean));
   const others = stack.days.map((d) => ({ ...d, tiles: d.tiles.filter((t) => !stripKeys.has(t.key)) })).filter((d) => d.tiles.length);
-  const todayIds = new Set(today.pages.map((p) => p.id));
-  const earlier = stack.sent.filter((t) => !todayIds.has(t.photoId ?? ""));
   const group = (key: string, title: string, list: StackTile[], extra?: ReactNode, aside?: string) => <section key={key} className="scan-group" aria-label={title}>
     <div className="scan-group-h"><h2>{title}</h2>{aside && <span className="scan-count">{aside}</span>}</div>
     {extra}
@@ -1225,7 +1211,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     </button>
   </li>;
   const line = scoreLine(name, today);
-  // The child's Workbooks page shows the history: link there. Else the history stays here, as before #915.
+  // The child's Workbooks page shows the history: link there. Else nothing here (2026-11-14): the strip steps back.
   const historyThere = allPages.includes(child);
 
   return <div className={`scan-pages is-stack${phone ? "" : " is-desktop"}`}>
@@ -1249,14 +1235,18 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
         : fixAction(fix) ?? (!phone && <p className="small">Take it again with your phone. The page waits there.</p>)}
     </section>}
 
-    {strip && <section className="scan-strip" aria-label={`${strip.day} pages`}>
+    {shownStrip && <section className="scan-strip" aria-label={`${shownStrip.day} pages`}>
       <div className="scan-strip-h">
-        <h2>{strip.allDone ? "All pages of this workbook are done" : strip.complete ? `${strip.day} done` : strip.day}{strip.complete && <i className="scan-done-tick" aria-hidden="true">{ICONS.check}</i>}</h2>
-        <p className="scan-strip-count">{strip.countText}</p>
+        <div className="scan-strip-day">
+          <button type="button" className="scan-strip-step" aria-label="Previous day" disabled={!shownStrip.hasPrevious} onClick={() => stepDay(1)}><span aria-hidden="true">‹</span></button>
+          <h2 aria-live="polite">{shownStrip.allDone ? "All pages of this workbook are done" : shownStrip.complete ? `${shownStrip.day} done` : shownStrip.day}{shownStrip.complete && <i className="scan-done-tick" aria-hidden="true">{ICONS.check}</i>}</h2>
+          <button type="button" className="scan-strip-step" aria-label="Next day" disabled={shownStrip.back === 0} onClick={() => stepDay(-1)}><span aria-hidden="true">›</span></button>
+        </div>
+        <p className="scan-strip-count">{shownStrip.countText}</p>
       </div>
-      <ul className="scan-strip-tiles">{strip.tiles.map(stripTile)}</ul>
-      {strip.nextDay && <p className="small">Next: {strip.nextDay}. Scan its pages when they are finished. Any order is fine.</p>}
-      {!strip.complete && <p className="small">Any order is fine.</p>}
+      <ul className="scan-strip-tiles">{shownStrip.tiles.map(stripTile)}</ul>
+      {shownStrip.nextDay && <p className="small">Next: {shownStrip.nextDay}. Scan its pages when they are finished. Any order is fine.</p>}
+      {!shownStrip.complete && shownStrip.back === 0 && <p className="small">Any order is fine.</p>}
     </section>}
     {unkeptNote && <p className="scan-spread-note" role="status">{unkeptNote}</p>}
     {elsewhereNote}
@@ -1274,20 +1264,16 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
           ? <Link href={`/account/scan/results/${p.id}`}><span><b>{pageName(p)}</b><span className={p.marks?.complete && !p.marks.toPractise ? "is-good" : ""}>{pageScore(p.marks)}</span></span><span aria-hidden="true">›</span></Link>
           : <span className="scan-results-row"><b>{pageName(p)}</b><span>Sent for marking. Marking is not ready yet.</span></span>}
       </li>)}</ul>
-      {marking && <p className="small">Questions to practise come back in the next workbook. {historyThere
-        ? <Link className="scan-link" href={allPagesPath(child)}>See all progress</Link> : <a className="scan-link" href="#scan-history">See all progress</a>}</p>}
+      {marking && <p className="small">Questions to practise come back in the next workbook.{historyThere && <> <Link className="scan-link" href={allPagesPath(child)}>See all progress</Link></>}</p>}
     </section>}
 
     {stack.addingTiles.length > 0 && group("new", "New photos", stack.addingTiles, undefined, addingCount(stack))}
     {others.map((d) => group(d.key, d.label, d.tiles, undefined, d.tiles.length === 1 ? "1 photo" : `${d.tiles.length} photos`))}
-    {/* The strip already shows each page's state, so earlier sent pages stay folded away. */}
-    {earlier.length > 0 && <details className="scan-earlier"><summary>Sent earlier ({earlier.length})</summary>
-      {group("sent", "Sent earlier", earlier, <p className="scan-gap">{marking ? "Open a page to view its results." : "Marking is not ready yet. These pages wait here."}</p>)}
-    </details>}
+    {/* No "Sent earlier" list (2026-11-14): the strip's ‹ and › reach the earlier days' pages. */}
 
-    {marking && child && (historyThere
-      ? <p className="small scan-all"><Link className="scan-link" href={allPagesPath(child)}>See all pages</Link></p>
-      : <div id="scan-history"><ScanHistory key={`${parent}:${child}`} parent={parent} child={child} /></div>)}
+    {/* No page history on this screen (2026-11-14): the strip's ‹ steps back through earlier days. "See all pages" only
+        where the child's Workbooks page shows its history; else nothing more. */}
+    {marking && child && historyThere && <p className="small scan-all"><Link className="scan-link" href={allPagesPath(child)}>See all pages</Link></p>}
 
     {listing && !noBook && (phone || (checks && plain.length > 0)) && <div className="scan-dock">
       {room ? <p className="small scan-room" role="status">{room}</p> : checks && !auto && note && <p className="small">{note}</p>}
