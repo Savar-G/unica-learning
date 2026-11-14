@@ -1433,6 +1433,12 @@ const QR_PLACE_MIN_PATCHES = 8;
 const MARK_ARM = 0.022;
 /** How near a mark in view must be to where the placed page puts it, in arms. */
 const MARK_NEAR = 3;
+/**
+ * How near a mark placed by the code must be, in arms, before it may pin the sheet. A sheet lying on the rest of the
+ * book has the under-sheet's mark 2 arms or more from where the print puts this page's own (#912 review), so a mark
+ * farther than this is never taken: the photo is refused rather than bent toward a neighbouring sheet.
+ */
+const MARK_SURE = 1.5;
 /** How far a mark's arms may point from the page's edges where the placed sheet puts them: 30 degrees. */
 const MARK_ALIGNMENT = Math.cos((30 * Math.PI) / 180);
 /** How much more a mark found in view counts in the placement's map than one patch of print. */
@@ -1514,7 +1520,7 @@ function placedByQr(photo: Raster, printedQr: FoundQr, ink: PrintedInk, greySums
       const tips = s.tips.map((tip) => unit(s.corner, tip));
       if (arms.every((d) => tips.some((e) => dot(d, e) >= MARK_ALIGNMENT))) nearest = s;
     }
-    if (!nearest) return null;
+    if (!nearest || distance(nearest.corner, p) > MARK_SURE * arm) return null;
     found.push({ at: k, corner: nearest.corner });
   }
   let placed: Transform | null = t, sheet = first, fit = firstFit;
