@@ -37,7 +37,10 @@ import { gateWordCount } from "./word-count";
 import { openingLine, packageLines, TEMPLATES } from "@/lib/maya/lines";
 import { equationHolds, equationsOf, numberValue, sameSayValue, valuesOf } from "@/lib/maya/say-check";
 import { patternRows } from "@/lib/maya/pattern";
-import { withEvaluateExample } from "@/lib/maya/evaluate";
+import { partEquationSaid, withEvaluateExample } from "@/lib/maya/evaluate";
+import { comparisonOf, comparisonFinal, comparisonRelation, comparisonCount } from "@/lib/maya/comparison";
+import { comparisonAnswer, comparisonWords } from "@/lib/question-package-comparison";
+import { wholeTurn, wholeValue } from "@/lib/maya/numbers";
 import { claimFinal, claimSaid, claimView } from "@/lib/maya/claim";
 import { spotView } from "@/lib/maya/spot-error";
 import { FLAG_LEVELS, UNSAFE_REQUEST_FLAG, type AlertState, type AlertStatus, type CallFlag, type CallStatus, type FlagLevel } from "@/lib/maya-call";
@@ -571,6 +574,16 @@ export function flagLevelsOf(t: MayaTrace): FlagLevel[] {
   return FLAG_LEVELS.filter((l) => levels.has(l));
 }
 
+/** The gate reads a comparison word from the child text, never from the controller's verdict. */
+function comparisonFinalForGate(pkg: OperationPackage, text: string, askedWord: string | null, heardAsked: boolean): AnswerValue | null {
+  const op = comparisonOf(pkg);
+  if (!op) return null;
+  const words = comparisonWords(op), body = wholeTurn(text);
+  if (!heardAsked && askedWord && words.includes(askedWord) && body && /^(?:yes|yeah|yep|yup)$/.test(body)) return comparisonAnswer(op, askedWord === words[0]);
+  const read = comparisonFinal(text, op);
+  return read && "word" in read && read.committed ? comparisonAnswer(op, read.word === words[0]) : null;
+}
+
 /** Judges one behaviour from its saved trace (and a call run's saved call). Every failure found is listed; none means the run passed. */
 export function judge(b: Behaviour, saved: string | undefined, savedCall?: string, checkedPackage?: QuestionPackage): Verdict {
   const empty = (failures: Finding[], trace: MayaTrace | null = null): Verdict => ({ id: b.id, failures, counts: null, states: [], acts: [], trace });
@@ -757,6 +770,9 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
   /** The one number Maya's last accepted turn asked about ("Did you say 66?"): a plain yes gives it (#605). */
   let askedHeard: AnswerValue | null = null;
   const answer = op?.answer.value ?? null;
+  const comparison = comparisonOf(op);
+  let comparisonAsked = false;
+  let childCertain = true;
   // The question's own numbers, fractions too (#407): saying one gives nothing away.
   const ownAnswer = op && answer ? (op.operation.operands as unknown[]).some((n) => equivalent(typeof n === "number" ? { type: "number", value: n } : n as AnswerValue, answer)) : true;
   const opts = readOptionsFor(op);
@@ -775,6 +791,7 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
   for (const [i, turn] of t.turns.entries()) {
     if (turn.kind === "child") {
       lastChild = turn.text;
+      childCertain = turn.uncertain !== true;
       childSaid.push(...valuesIn(turn.text, opts));
       childSince = true;
       continue;
@@ -787,6 +804,20 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
     const p = proposalOf(turn);
     if (stopAt !== null && !["close", "safety"].includes(act)) fail("continued_after_stop", `Maya turn ${i} was ${act} after a stop`);
     if (start !== null && turn.at - start > TIME_LIMITS.endAtMs) fail("over_time", `Maya turn ${i} came ${Math.round((turn.at - start) / 1000)} s into the call`);
+    if (comparison && op && childSince && childCertain) {
+      const current = teachSteps(op).find(st => !doneSteps.has(st.id));
+      const body = wholeTurn(lastChild), bare = body === null ? null : wholeValue(body);
+      if (current?.kind === "comparison") {
+        const relation = comparisonRelation(lastChild, comparison, current, comparisonAsked);
+        if (relation && sameValue(relation, current.value)) doneSteps.add(current.id);
+      } else if (current?.kind === "operate" && body !== null &&
+          (bare === current.value || partEquationSaid(body, current) || (askedHeard?.type === "number" && askedHeard.value === current.value && GATE_YES.test(lastChild)))) {
+        doneSteps.add(current.id);
+      } else if (current?.kind === "comparison-count") {
+        const count = comparisonCount(lastChild, current);
+        if (count?.type === "number" && count.value === current.value) doneSteps.add(current.id);
+      }
+    }
     if (act === "accept_answer" && op) {
       // The child's final answer: the last number kept outside their explanation (D-199), right for the question as it is
       // worded (#407: an equal fraction when the question does not ask for the simplest form).
@@ -794,13 +825,13 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
       const yes = askedHeard !== null && GATE_YES.test(lastChild) ? askedHeard : null;
       // A claim's committed word, by the claim reader's allow-list: a bare word is never one, a plain yes to "Did you say
       // ...?" never, and a plain yes to "Is no the word you circle?" commits that word.
-      const word = yes === null ? claimFinal(op, lastChild, askedWord, askedHeard !== null) : null;
+      const word = yes === null ? (comparisonFinalForGate(op, lastChild, askedWord, askedHeard !== null) ?? claimFinal(op, lastChild, askedWord, askedHeard !== null)) : null;
       // The commit rule (rule A, 2026-11-12): the right answer said as the child's own, with no hedge, no other person and
       // no question about it, even with the child's working beside it ("I got 66. I put the 6 and the 6 together."). The
       // judge's own reading, apart from the controller's.
       const own = yes === null && word === null && !read.sure && !read.choice ? read.kept.find((v) => rightForQuestion(op, v) && gateOwnAnswer(lastChild, v, opts)) ?? null : null;
       const final = yes ?? word ?? own ?? read.final;
-      if (!final || (yes === null && word === null && own === null && !read.sure) || !rightForQuestion(op, final)) fail("accepted_wrong_answer", `Maya turn ${i} accepted an answer after "${lastChild}"`);
+      if (!final || (yes === null && word === null && own === null && !read.sure) || !rightForQuestion(op, final) || (comparison && (!childCertain || !workIds.every(id => doneSteps.has(id))))) fail("accepted_wrong_answer", `Maya turn ${i} accepted an answer after "${lastChild}"`);
     }
     // Wrong final answers once every work step is done (D-199), read from the accepted readings: a step counts done when
     // the judge finds the reading's value right for it, and a final answer counts wrong by isRightAnswer.
@@ -809,6 +840,8 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
         if ((a.problem ?? "target") !== "target" || a.step === "result") continue;
         // A part's column of an evaluate question is a step of the child's question too (evaluate.ts).
         const at = (op.steps.find((st) => st.id === a.step) ?? teachSteps(op).find((st) => st.id === a.step)) as Record<string, unknown> | undefined;
+        // Comparison work is read independently above, in order, from the actual child text.
+        if (comparison) continue;
         // What a column step makes: its total, the digit written, its value or its quotient; a fraction step's new
         // numerator (#407).
         const makes = at ? ["total", "write", "value", "quotient", "numerator"].flatMap((k) => (typeof at[k] === "number" ? [{ type: "number" as const, value: at[k] }] : [])) : [];
@@ -832,7 +865,7 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
       const wrongFinal = (p.reading?.answers ?? []).some((a) => (a.problem ?? "target") === "target" && a.step === "result" && !rightForQuestion(op, a.value) && !isEqualForm(op, a.value));
       // A claim's word is read by code, never put in the reading (claim.ts): a committed wrong word in the child's last turn
       // counts, by the claim reader's allow-list. Help, doubt and a question are never a miss (D-199, Savar Brain P6).
-      const word = childSince && answer?.type === "choice" && !CLAIM_NOT_A_MISS.test(lastChild) ? claimFinal(op, lastChild, askedWord, askedHeard !== null) : null;
+      const word = childSince && (answer?.type === "choice" || comparison) && !CLAIM_NOT_A_MISS.test(lastChild) ? (comparisonFinalForGate(op, lastChild, askedWord, askedHeard !== null) ?? claimFinal(op, lastChild, askedWord, askedHeard !== null)) : null;
       const wrongWord = word !== null && !rightForQuestion(op, word);
       if (allDone && (wrongFinal || wrongWord)) wrongFinals += 1;
     }
@@ -849,8 +882,9 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
     }
     // A claim's word (A4) is said only after it is released: never "circle no" or "it's no" before. Naming both words in the
     // claim's question ("Circle yes or no.") gives nothing away, and the easier example circles its own word.
-    const saidWord = answer?.type === "choice" && op ? claimSaid({ pkg: op, text: lastChild, heardAsked: false, wordAsked: null }) : null;
-    if (!released && answer?.type === "choice" && act !== "example_step" && !(act === "confirm" && saidWord === answer.value)) {
+    const comparisonSaid = comparison ? comparisonFinal(lastChild, comparison) : null;
+    const saidWord = comparisonSaid && "word" in comparisonSaid ? comparisonSaid.word : answer?.type === "choice" && op ? claimSaid({ pkg: op, text: lastChild, heardAsked: false, wordAsked: null }) : null;
+    if (!released && answer && "value" in answer && (answer.type === "choice" || comparison) && act !== "example_step" && !(act === "confirm" && saidWord === answer.value)) {
       const said = new RegExp(`\\b(?:circle|answer is|it'?s|it is|so it'?s)\\s+${answer.value}\\b(?!\\s+or\\b)`, "i");
       if (said.test(turn.output.say.join(" "))) fail("answer_too_early", `Maya turn ${i} said the claim's word before it was released`);
     }
@@ -870,6 +904,7 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
     const parts = (accepted(turn)?.proposal as { parts?: { line?: string; slots?: { heard?: string | null } | null }[] } | null)?.parts ?? [];
     const asked = act === "confirm" ? parts.filter((x) => x.line === "confirm.heard" || x.line === "confirm.which") : [];
     askedHeard = asked.length === 1 && asked[0].line === "confirm.heard" && asked[0].slots?.heard ? valuesIn(asked[0].slots.heard, opts)[0] ?? null : null;
+    comparisonAsked = comparison !== null && parts.some(x => ["step.invite", "step.point", "step.operation"].includes(x.line ?? "") && (x.slots as { step?: string } | undefined)?.step === "compare");
     askedWord = act === "confirm" ? (parts.find((x) => x.line === "confirm.word")?.slots?.heard ?? null) : null;
   }
 

@@ -31,7 +31,8 @@ describe("a why question on a pattern gets code's answer to the why (F2)", () =>
       { text: "115 minus 35 is 80.", read: { answers: [[80, "e1", "right"]] }, plans: [{ act: "guide", step: "result", level: 0, lines: ["check.right_step", "step.invite"] }] },
       { text: "Why do I divide by eight?", plans: [...plans] },
     ]);
-    expect(said[1]).toMatch(/8 jumps/);
+    expect(said[1]).toContain("The 1st and 9th terms are 8 equal jumps apart.");
+    expect(said[1]).toContain("Find one jump: 80 ÷ 8.");
     expect(said[1]).not.toMatch(/Share the increase across 8 equal steps/);
   });
 
