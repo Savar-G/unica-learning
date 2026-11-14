@@ -59,7 +59,7 @@ export function Hero() {
     <header id="top" className="hero hero-wb">
       <div className="txt">
         <p className="kicker">{HERO.kicker}</p>
-        <h1>{HERO.title} <span className="mark">{HERO.highlight}</span></h1>
+        <h1>{HERO.title} <span className="mark">{HERO.child}</span> {HERO.join} <span className="mark">{HERO.highlight}</span></h1>
         <p className="lead">{HERO.lead}</p>
         <div className="ctas">
           <GetStarted src="hero" />
