@@ -26,6 +26,7 @@ import {
   type IconName,
 } from "@/ds";
 import { HomeCompare } from "./compare";
+import { HELP_NOTE } from "@/lib/compare";
 import { Knot, Rise, type Vars } from "./drawn";
 
 import adapt4 from "@/assets/img/loop-adapt-4.jpg";
@@ -218,6 +219,7 @@ export function Compare() {
       </Rise>
       <Rise>
         <HomeCompare />
+        <p className="hc-note">{HELP_NOTE}</p>
       </Rise>
     </Section>
   );

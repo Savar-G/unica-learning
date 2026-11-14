@@ -11,11 +11,11 @@ import { blogPath, BLOG_POSTS } from "@/lib/blog";
 // the build date. Search engines and IndexNow (scripts/indexnow.mjs) read it as "this page changed".
 const newest = (dates: string[]) => dates.reduce((a, b) => (b > a ? b : a), "");
 const PATHS: { path: string; updated?: string }[] = [
-  { path: "/", updated: "2026-11-11" },
+  { path: "/", updated: "2026-11-13" },
   { path: "/pricing", updated: "2026-11-11" },
   { path: "/math-assessment", updated: "2026-11-05" },
   { path: "/our-story", updated: "2026-11-08" },
-  { path: "/compare", updated: "2026-11-11" },
+  { path: "/compare", updated: "2026-11-13" },
   { path: "/rewards", updated: "2026-11-11" },
   { path: "/whats-included", updated: "2026-11-11" },
   { path: "/curriculum", updated: "2026-11-09" },
