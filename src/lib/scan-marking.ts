@@ -11,6 +11,7 @@ import { checkWordsReading } from "@/lib/scan-marking-words";
 import type { PrintedRegion } from "@/lib/workbook-print-contract";
 import type { LearningEvent, NewLearningEvent } from "@/lib/learning-events";
 import type { SkillMark } from "@/lib/assessment/skill-state";
+import type { ScanCleanFailure } from "@/lib/scan-states";
 
 export const MARKING_PROMPT_VERSION = "whole-page-scalar-readings-v8";
 export const MARKING_MODEL = "anthropic/claude-sonnet-5.5";
@@ -22,13 +23,14 @@ export const TWO_WAYS_METHOD_MARKS = true;
 export const MARKING_MAX_TOKENS = 4096;
 export const MARKING_MAX_DISPATCHES = 2;
 /**
- * #868: a clean provider failure (`MarkingFailure`) does not use up one of the job's MARKING_MAX_DISPATCHES. The run
- * that meets one ends and the job waits as `pending` for a later run (a deferral). After this many deferrals the next
- * one sends the unread items to our team, as two used dispatches do.
+ * #868: only a clean 429 (`MarkingFailure`) the store confirmed (its hold freed, charge 0) does not use up one of the
+ * job's MARKING_MAX_DISPATCHES. The run that meets one ends and the job waits as `pending` for a later run (a
+ * deferral). After this many deferrals the next one sends the unread items to our team, as two used dispatches do. A
+ * time-out, 408, 5xx or lost answer may have been charged: it uses up a dispatch and keeps its full hold, as before.
  */
 export const MARKING_MAX_DEFERRALS = 3;
-/** Backstop over every transport dispatch of one job, clean or not (the database checks the same number). */
-export const MARKING_MAX_TRANSPORT_DISPATCHES = 10;
+/** Backstop over every transport dispatch of one job: the 2 counted ones and one clean 429 per deferral (the database checks the same number). */
+export const MARKING_MAX_TRANSPORT_DISPATCHES = MARKING_MAX_DISPATCHES + MARKING_MAX_DEFERRALS;
 /** The wait before retrying a 429 that names no Retry-After. */
 export const MARKING_RETRY_WAIT_MS = 2_000;
 /** The longest wait before retrying a 429. A longer Retry-After defers the photo instead. */
@@ -75,14 +77,16 @@ export interface MarkingStore {
   admit(ref: MarkingRef, token: string, model: string): Promise<{ dispatch: string } | "terminal" | "budget" | "price-unverified" | "attempts">;
   /**
    * Can reconcile after deletion. The dispatch record contains no family or file references. Unknown keeps its full hold.
-   * With no cost and a clean `failure` (#868), the dispatch stops counting against MARKING_MAX_DISPATCHES; only a 429 the
-   * store itself checks as clean from `evidence` also frees its hold. Every other failure keeps the full hold.
+   * With no cost and a clean 429 `failure` (#868), the store checks the 429 body itself; only when it accepts it does the
+   * dispatch free its hold and stop counting against MARKING_MAX_DISPATCHES, and only then is the answer `true`. Every
+   * other answer (false, or nothing from an older store) means the dispatch counts and keeps its full hold.
    */
-  settle(dispatch: string, costMicros: number | null, failure?: MarkingFailure | null): Promise<void>;
+  settle(dispatch: string, costMicros: number | null, failure?: MarkingFailure | null): Promise<boolean | void>;
   /**
-   * #868: the run met a clean provider failure. The job waits as `pending` (its lease released), or, after
+   * #868: the run met a clean 429 the store confirmed. The job waits as `pending` (its lease released), or, after
    * MARKING_MAX_DEFERRALS deferrals, ends as `attempts` with its unread items sent to our team; `terminal` when the
-   * lease was lost.
+   * lease was lost. The store spends a deferral only when the job's latest dispatch is a clean 429 it recorded; else it
+   * pauses the job as `pending`. Throws on an answer it cannot read.
    */
   defer(ref: MarkingRef, token: string): Promise<"pending" | "attempts" | "terminal">;
   extract(ref: MarkingRef, token: string, observations: Observation[], model: string): Promise<boolean>;
@@ -96,23 +100,23 @@ export interface MarkingStore {
   effective(parent: string, child: string): Promise<EffectiveMark[]>;
 }
 /**
- * A provider failure of the latest transport attempt that shows no sign the model ran (#868): no cost, no generation id,
- * no usage. `rate-limit`: a 429 whose OpenRouter error envelope is clean (`clean429`). `provider-error`: a 408 or 5xx
- * with such an envelope, or with no JSON body. `no-answer`: a time-out or a lost connection. Only the first can free its
- * hold: the others may still have reached the model.
+ * A provider failure of the latest transport attempt that shows no sign the model ran (#868): a 429 whose OpenRouter
+ * error envelope is clean (`clean429`: no cost, no generation id, no usage). A time-out, 408, 5xx or lost answer is
+ * never one: it may still have reached the model.
  */
 export interface MarkingFailure {
-  kind: "rate-limit" | "no-answer" | "provider-error";
+  /** One of SCAN_CLEAN_FAILURES, the values of `scan_marking_dispatches.clean_failure`. */
+  kind: ScanCleanFailure;
   /** The 429's Retry-After, in ms; null when absent or unreadable. */
   retryAfterMs: number | null;
-  /** The HTTP status and the error body as received, for the store to check again; null with no answer. */
-  evidence: { status: number; body: string } | null;
+  /** The HTTP status and the error body as received, for the store to check again. */
+  evidence: { status: number; body: string };
 }
 export interface MarkingTransport {
   client: AiClient;
   /** Cost of the latest transport response, never a model-written JSON property. */
   costMicros(): number | null;
-  /** The clean failure of the latest transport attempt, or null (an answer, or a failure that may have been charged). */
+  /** The clean 429 of the latest transport attempt, or null (an answer, or a failure that may have been charged). */
   failure?(): MarkingFailure | null;
 }
 /** The factory must bind beforeAttempt to the existing AiClient transport hook. Tests use the same hook. */
@@ -288,6 +292,11 @@ export interface MarkingRunOptions {
    * database deadline, less what extract, apply and publish need after the call. Absent: 120 s.
    */
   aiTimeLeftMs?: () => number;
+  /**
+   * Called when the run defers the photo on a clean 429 the store confirmed, with its Retry-After (ms, or null): the
+   * provider is limiting us, so the recovery run stops there instead of spending every queued photo's deferrals.
+   */
+  onRateLimit?: (retryAfterMs: number | null) => void;
   /** For tests: the clock (ms) and the wait before a 429's retry. Absent: Date.now and a timer. */
   clockMs?: () => number;
   sleep?: (ms: number) => Promise<void>;
@@ -313,18 +322,25 @@ export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token
       let deadline = Infinity;
       const clockMs = options.clockMs ?? Date.now;
       const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
-      const lastFailure = () => transport?.failure?.() ?? null;
+      // The clean 429 the store last confirmed (#868), or null: only it may wait, defer or skip the dispatch count.
+      let confirmed: MarkingFailure | null = null;
+      // A dispatch whose settle threw: tried once more at the end with its cost only (never as clean), as before #868.
+      let unsettled: { open: string; cost: number | null } | null = null;
+      const confirmedRetryAfter = () => confirmed?.retryAfterMs ?? null;
+      /** Settles the open dispatch once (it is closed before the call, so no path settles it twice). True: a clean 429 the store confirmed. */
       const settleOpen = async () => {
-        if (!dispatch) return;
-        try { await store.settle(dispatch, transport?.costMicros() ?? null, lastFailure()); } catch { throw new SettleFailure(); }
+        if (!dispatch) return false;
+        const open = dispatch, cost = transport?.costMicros() ?? null, failure = cost === null ? transport?.failure?.() ?? null : null;
         dispatch = null;
+        let clean: boolean;
+        try { clean = (await store.settle(open, cost, failure)) === true; } catch { unsettled = { open, cost }; throw new SettleFailure(); }
+        confirmed = clean ? failure : null;
+        return clean && failure !== null;
       };
       const beforeAttempt = async () => {
-        await settleOpen();
-        const last = lastFailure();
-        if (last?.kind === "rate-limit") {
-          // #868: wait before retrying a 429, only when the wait and a whole call still fit the call's time.
-          const wait = markingRetryWait(last.retryAfterMs, deadline - clockMs());
+        if (await settleOpen()) {
+          // #868: wait before retrying a clean 429, only when the wait and a whole call still fit the call's time.
+          const wait = markingRetryWait(confirmed!.retryAfterMs, deadline - clockMs());
           if (wait === null) throw new RetryLater();
           if (wait > 0) await sleep(wait);
         }
@@ -346,16 +362,24 @@ export async function runScanMarking(store: MarkingStore, ref: MarkingRef, token
         observations = readMarkingOutput(frame, output);
       } catch (e) {
         if (e instanceof AdmissionRefusal) { await store.pause(ref, token, e.status); return e.status; }
-        // #868: the last attempt failed cleanly (or its 429 wait did not fit): settle it first, then defer the photo.
-        if (!(e instanceof SettleFailure) && (e instanceof RetryLater || lastFailure())) {
-          await settleOpen();
-          return await store.defer(ref, token);
+        // #868: defer only on a clean 429 the store confirmed (the last attempt, or one whose wait did not fit). A
+        // settle that fails, or any other failure, counts: the photo waits as `pending` as before.
+        let clean = false;
+        if (!(e instanceof SettleFailure)) {
+          try { clean = e instanceof RetryLater || await settleOpen(); } catch { clean = false; }
+        }
+        if (clean) {
+          options.onRateLimit?.(confirmedRetryAfter());
+          try { return await store.defer(ref, token); } catch { /* An unreadable defer answer pauses as before. */ }
         }
         // No provider output or exception text is logged or stored.
         await store.pause(ref, token, "pending");
         return "pending";
       } finally {
-        if (dispatch) await store.settle(dispatch, transport.costMicros(), lastFailure());
+        // Only the answered path still has an open dispatch here: every failure path settled (or tried to settle) it once.
+        if (dispatch) { const open = dispatch; dispatch = null; await store.settle(open, transport.costMicros()); }
+        // One more try of a settle that threw. If it throws again the full hold stays, and the photo is already paused.
+        if (unsettled) { const { open, cost } = unsettled; unsettled = null; await store.settle(open, cost).catch(() => {}); }
       }
     } else observations = expected.map((e) => firstObservation(e, frame.photo));
     if (!await store.extract(ref, token, observations, model)) return "terminal";

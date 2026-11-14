@@ -38,6 +38,22 @@ it("a job waiting as pending for a later run is still being marked, never Could 
   waiting.photos[0].state = "saved"; waiting.photos[0].expiresAt = "2027-01-01";
   expect(historyPage(waiting, now)).toMatchObject({ status: "pending", label: "Not marked yet", failedJob: false });
 });
+it("a waiting job whose photo expired can no longer be marked: Could not mark, and in the failed filter (#868)", async () => {
+  const expired = (n: number, state: string, expiresAt: string) => {
+    const r = unread(record(n, null)); r.jobs[0].state = "queued"; r.jobs[0].blocked = "pending";
+    r.photos[0].state = state; r.photos[0].expiresAt = expiresAt; return r;
+  };
+  const pages = [expired(1, "saved", "2026-11-05T00:00:00Z"), expired(2, "expired", "2026-11-05T00:00:00Z"), expired(3, "saved", "2026-11-06T00:00:00Z")];
+  for (const r of pages) expect(historyPage(r, now)).toMatchObject({ status: "failed", label: "Could not mark", failedJob: true });
+  expect((await readScanHistory(source(pages, 100), { status: "failed" }, now))!.pages.map((p) => p.pageNumber)).toEqual([1, 2, 3]);
+  // A job still running on an expired photo cannot finish either.
+  const running = expired(4, "saved", "2026-11-05T00:00:00Z"); running.jobs[0].state = "running"; running.jobs[0].blocked = null;
+  expect(historyPage(running, now).status).toBe("failed");
+  // A live retake of the same page can still mark it: Not marked yet.
+  const retake = expired(5, "expired", "2026-11-05T00:00:00Z");
+  retake.photos.push({ ...retake.photos[0], id: id(990), state: "saved", expiresAt: "2027-01-01T00:00:00Z" });
+  expect(historyPage(retake, now)).toMatchObject({ status: "pending", failedJob: false });
+});
 it("an unsure page says our team is checking it; a page not read yet says Not marked yet; neither asks the parent (#715)", () => {
   const unsure = record(1, null), notRead = unread(record(2, null));
   notRead.jobs = []; notRead.photos[0].state = "saved"; notRead.photos[0].expiresAt = "2027-01-01";

@@ -27,6 +27,14 @@ export type ScanJobState = (typeof SCAN_JOB_STATES)[number];
 export const SCAN_BLOCKED_REASONS = ["off", "budget", "price-unverified", "attempts", "pending"] as const;
 export type ScanBlockedReason = (typeof SCAN_BLOCKED_REASONS)[number];
 
+/**
+ * Why a marking dispatch stopped counting against the job's two dispatches (public.scan_marking_dispatches.clean_failure,
+ * migration 20261114011948_scan_marking_clean_failures, #868; null for every other dispatch). Only a 429 whose body the
+ * database accepted as OpenRouter's clean error envelope: its hold is freed (charge 0). A time-out or 5xx is never one.
+ */
+export const SCAN_CLEAN_FAILURES = ["rate-limit"] as const;
+export type ScanCleanFailure = (typeof SCAN_CLEAN_FAILURES)[number];
+
 /** A page calibration (public.scan_calibrations.state, #455). */
 export const SCAN_CALIBRATION_STATES = ["running", "ready", "refused"] as const;
 export type ScanCalibrationState = (typeof SCAN_CALIBRATION_STATES)[number];

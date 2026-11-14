@@ -40,6 +40,11 @@ export interface ProcessMarkingOptions {
    * pauses it, and so would every next photo. The recovery run stops there (#706).
    */
   onNoClient?: () => void;
+  /**
+   * Called when the photo was deferred on a clean 429 the database confirmed (`runScanMarking`'s `onRateLimit`, #868):
+   * the provider is limiting us, so the recovery run stops there, as it does with no client.
+   */
+  onRateLimit?: (retryAfterMs: number | null) => void;
 }
 export async function processScanMarking(db: SupabaseClient<Database>, parent: string, photo: string, env: Env = process.env, plan: ChildPlanAccess = childPlanAccess, options: ProcessMarkingOptions = {}) {
   const decision = await markingDecision(db, parent, env, { photo }, plan);
@@ -56,7 +61,7 @@ export async function processScanMarking(db: SupabaseClient<Database>, parent: s
   // Recover committed intents and profile work even after image expiry or a worker crash after application.
   await store.publish(parent, child);
   const result = await runScanMarking(store, { parent, photo }, crypto.randomUUID(), markingAiClient(env, undefined, undefined, { feature: "marking", parentId: parent, childId: child, source: { kind: "scan_photo", id: photo } }), () => new Date().toISOString(),
-    { aiTimeLeftMs: options.aiTimeLeftMs });
+    { aiTimeLeftMs: options.aiTimeLeftMs, onRateLimit: options.onRateLimit });
   await rebuildOrDefer(db, child, options);
   return result;
 }
@@ -127,7 +132,8 @@ export async function readScanMarking(db: SupabaseClient<Database>, parent: stri
  *
  * Every answer of a photo goes on to the next photo: `busy` (the family's one slot, or a claim another run holds),
  * `off` (a closed plan: committed marks are published, no claim and no model call), `pending`, `budget`, `terminal`
- * and an error. Such a photo stays in the list, so a later run takes it again. Only a failed list read ends the run.
+ * and an error. Such a photo stays in the list, so a later run takes it again. Only a failed list read ends the run, and
+ * two answers stop it after their photo: no marking client (#706) and a photo deferred on a provider rate limit (#868).
  * When the list ends (an empty answer), the function has set its cursor back to the start; the run asks once more, so
  * the restart does not waste the run. The run stops at the first photo it already had, because the list has wrapped.
  *
@@ -168,8 +174,12 @@ export async function recoverScanMarking(db: SupabaseClient<Database>, env: Env 
   // (No marking client: each admitted photo would only be claimed and paused. Stop after the first one, #706.)
   let noClient = false;
   options.onNoClient = () => { noClient = true; };
+  // (A rate limit, #868: the provider refuses us for its Retry-After. The run pauses there, so the waiting photos keep
+  // their deferrals for the next run, 15 minutes on, instead of each spending one on the same limit.)
+  let rateLimited: number | null | undefined;
+  options.onRateLimit = (retryAfterMs) => { rateLimited = retryAfterMs; };
   let restarted = false;
-  while (!noClient && seen.size < RECOVERY_MAX_PHOTOS && now() - startedAt < RECOVERY_START_MS) {
+  while (!noClient && rateLimited === undefined && seen.size < RECOVERY_MAX_PHOTOS && now() - startedAt < RECOVERY_START_MS) {
     const rows = await db.rpc("recover_scan_marking_oldest", { p_limit: 1 });
     if (rows.error) throw new Error("marking_recovery");
     const value: unknown = rows.data;
@@ -199,6 +209,7 @@ export async function recoverScanMarking(db: SupabaseClient<Database>, env: Env 
   const counts: Record<string, number> = {};
   for (const r of results) counts[r] = (counts[r] ?? 0) + 1;
   if (profilesPending) counts.profile_pending = profilesPending;
+  if (rateLimited !== undefined) { counts.rate_limited = 1; if (rateLimited !== null) counts.retry_after_s = Math.ceil(rateLimited / 1000); }
   // Counts only: no family, child or photo id.
   console.info("[scan-marking-recovery]", JSON.stringify(counts));
   return { status: "processed", results };

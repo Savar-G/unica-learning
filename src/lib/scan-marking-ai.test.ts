@@ -72,17 +72,28 @@ describe("#868: the transport names a clean provider failure", () => {
       expect(await failureOf(async () => Response.json(body, { status: 429 }))).toBeNull();
     expect(await failureOf(async () => Response.json({ error: { code: 502, message: "x" }, usage: { cost: 0.002 } }, { status: 502 }))).toBeNull();
   });
-  it("a 5xx or 408 with a clean envelope or no JSON body is a provider error, and keeps no Retry-After", async () => {
-    expect(await failureOf(async () => Response.json({ error: { code: 502, message: "Bad gateway" } }, { status: 502, headers: { "retry-after": "1" } })))
-      .toEqual({ kind: "provider-error", retryAfterMs: null, evidence: { status: 502, body: '{"error":{"code":502,"message":"Bad gateway"}}' } });
-    expect((await failureOf(async () => new Response("upstream down", { status: 503 })))?.kind).toBe("provider-error");
-    expect((await failureOf(async () => new Response("", { status: 408 })))?.kind).toBe("provider-error");
+  it("a 5xx, 408, time-out or lost connection is never a clean failure: it may have been charged", async () => {
+    expect(await failureOf(async () => Response.json({ error: { code: 502, message: "Bad gateway" } }, { status: 502, headers: { "retry-after": "1" } }))).toBeNull();
+    expect(await failureOf(async () => new Response("upstream down", { status: 503 }))).toBeNull();
+    expect(await failureOf(async () => new Response("", { status: 408 }))).toBeNull();
+    expect(await failureOf(async () => { throw Object.assign(new Error("t"), { name: "TimeoutError" }); })).toBeNull();
+    expect(await failureOf(async () => { throw new TypeError("fetch failed"); })).toBeNull();
   });
-  it("a time-out or a lost connection is no answer; an answer or a refused request is no clean failure", async () => {
-    expect(await failureOf(async () => { throw Object.assign(new Error("t"), { name: "TimeoutError" }); })).toEqual({ kind: "no-answer", retryAfterMs: null, evidence: null });
-    expect((await failureOf(async () => { throw new TypeError("fetch failed"); }))?.kind).toBe("no-answer");
+  it("an answer or a refused request is no clean failure", async () => {
     expect(await failureOf(async () => Response.json({ choices: [{ finish_reason: "stop", message: { content: "not json" } }] }))).toBeNull();
     expect(await failureOf(async () => Response.json({ error: { code: 400, message: "bad" } }, { status: 400 }))).toBeNull();
+  });
+  it("reads Retry-After only as whole seconds or an HTTP date (IMF-fixdate); anything else uses the default wait", async () => {
+    const after = async (value: string) => (await failureOf(async () => new Response(clean429, { status: 429, headers: { "retry-after": value } })))?.retryAfterMs;
+    expect(await after("0")).toBe(0);
+    expect(await after("120")).toBe(120_000);
+    for (const value of ["3.5", "-1", "1e3", "+3", "0x10", "3 s", "2026-11-14T00:00:00Z", "Saturday, 14-Nov-26 00:00:00 GMT", "Sat Nov 14 00:00:00 2026",
+      "Sat, 32 Nov 2026 00:00:00 GMT", "Fri, 14 Nov 2026 00:00:00 GMT", "Sat, 14 Nov 2026 00:00:00 UTC", "Sat, 14 Nov 2026 00:00:00 +0000"])
+      expect(await after(value), value).toBeNull();
+    const at = new Date(Math.ceil((Date.now() + 5_000) / 1000) * 1000).toUTCString();
+    const dated = await after(at);
+    expect(dated).toBeGreaterThan(3_000); expect(dated).toBeLessThanOrEqual(6_000);
+    expect(await after(new Date(Date.now() - 60_000).toUTCString())).toBe(0);
   });
   it("each attempt starts with no failure, so a retry that answers clears it", async () => {
     let n = 0;

@@ -72,14 +72,20 @@ export function scanMarkingStore(db: SupabaseClient<Database>): MarkingStore {
       return { dispatch: str(record(r).dispatch) };
     },
     async settle(dispatch, costMicros, failure) {
-      // #868: a clean failure goes with no cost only. The database checks a 429's body again before it frees the hold.
-      const clean = costMicros === null && failure ? { failure: failure.kind, ...(failure.evidence ? { status: failure.evidence.status, body: failure.evidence.body } : {}) } : {};
+      // #868: a clean 429 goes with no cost only. The database checks its body again and answers "clean" only when it
+      // recorded the dispatch as one (hold freed, not counted); `true` means it counts and keeps its hold.
+      const clean = costMicros === null && failure?.kind === "rate-limit" ? { failure: failure.kind, status: failure.evidence.status, body: failure.evidence.body } : {};
       const r = await command("settle", null, null, dispatch, { cost: costMicros, ...clean });
+      if (r === "clean") return true;
       if (r !== true) throw new Error("marking_cost_reconciliation");
+      return false;
     },
     async defer(ref, token) {
       const r = await command("defer", ref.parent, ref.photo, token);
-      return r === "attempts" || r === "terminal" ? r : "pending";
+      if (r === "pending" || r === "attempts" || r === "terminal") return r;
+      // Never read an unexpected answer as a deferral: the run pauses the job as pending instead. No ids are logged.
+      console.error("[scan-marking] unexpected defer answer", JSON.stringify({ type: r === null ? "null" : typeof r }));
+      throw new Error("marking_defer");
     },
     async extract(ref, token, observations, model) { return await command("extract", ref.parent, ref.photo, token, toJson({ observations, model, prompt: MARKING_PROMPT_VERSION })) === true; },
     async apply(ref, token, _observations, pendingEvents, at) { return await command("apply", ref.parent, ref.photo, token, toJson({ events: pendingEvents, at })) === true; },

@@ -1,16 +1,18 @@
--- #868: a clean provider failure of scan marking (a 429, a time-out or lost connection, a 408 or 5xx, each with no
--- reported cost) no longer uses up one of a job's two dispatches. Only a 429 whose body is OpenRouter's clean error
--- envelope (clean429-v1: no generation or usage at any depth) frees its hold: it never ran. A time-out or a 5xx may
--- have run, so it keeps its full hold in the monthly cap. The run that meets one defers the job (queued, blocked
--- reason `pending`); after 3 deferrals the next one sends the unread items to the team, as `attempts` does. At most
--- 10 dispatches per job in all. Additive: the old `settle` (no `failure`) and `pause` calls behave as before.
+-- #868: only a clean 429 of scan marking (OpenRouter's own error envelope, clean429-v1: no generation or usage at any
+-- depth, and no reported cost) is exempt from a job's two dispatches. It never ran, so `settle` frees its hold (charge 0)
+-- after the database checks the body again, and answers "clean". The run that meets one defers the job (queued, blocked
+-- reason `pending`); a deferral is spent only when the job's latest dispatch is such a 429. After 3 deferrals the next
+-- one sends the unread items to the team, as `attempts` does. A time-out, 408, 5xx or lost answer may have been charged:
+-- it counts as a dispatch and keeps its full hold, exactly as before. At most 5 dispatches per job in all (2 counted and
+-- one clean 429 per deferral), and at most 2 full holds kept per photo. Additive: the deployed site sends no `failure`
+-- to `settle` and never calls `defer`, so its calls answer and count exactly as before.
 alter table public.scan_marking_dispatches add column clean_failure text
-  check (clean_failure in ('rate-limit','no-answer','provider-error'));
+  check (clean_failure in ('rate-limit'));
 alter table public.scan_marking_jobs add column deferrals int not null default 0 check (deferrals between 0 and 3);
 alter table public.scan_marking_jobs drop constraint scan_marking_jobs_dispatches_check,
-  add constraint scan_marking_jobs_dispatches_check check (dispatches between 0 and 10);
+  add constraint scan_marking_jobs_dispatches_check check (dispatches between 0 and 5);
 alter table public.scan_marking_dispatches drop constraint scan_marking_dispatches_attempt_check,
-  add constraint scan_marking_dispatches_attempt_check check (attempt between 1 and 10);
+  add constraint scan_marking_dispatches_attempt_check check (attempt between 1 and 5);
 
 create or replace function public.scan_marking_automatic_command(p_action text, p_parent uuid, p_photo uuid, p_token uuid, p_data jsonb default '{}') returns jsonb
 language plpgsql security definer set search_path = '' as $$
@@ -24,33 +26,31 @@ begin
   if p_action='settle' then
     if p_parent is not null or p_photo is not null or p_token is null then return 'false'; end if;
     if p_data->>'cost' is null then
-      -- #868: a clean provider failure with no cost. Anything this cannot check keeps today's rule: the full hold stays
-      -- and the dispatch counts. A cost always wins: it is settled below and never treated as clean.
-      if p_data->>'failure' is null or p_data->>'failure' not in ('rate-limit','no-answer','provider-error') then return 'true'; end if;
-      if p_data->>'failure'<>'no-answer' then
-        if jsonb_typeof(p_data->'status') is distinct from 'number' or jsonb_typeof(p_data->'body') is distinct from 'string'
-          or length(p_data->>'body')>20000 then return 'true'; end if;
-        begin evidence := (p_data->>'body')::jsonb;
-        exception when invalid_text_representation then evidence := null; end;
-        if p_data->>'failure'='rate-limit' then
-          -- The same rule as clean429-v1: OpenRouter's own 429 envelope, with no generation or usage at any depth.
-          if p_data->'status' is distinct from '429'::jsonb or jsonb_typeof(evidence) is distinct from 'object'
-            or jsonb_typeof(evidence->'error') is distinct from 'object' or evidence->'error'->'code' is distinct from '429'::jsonb
-            or jsonb_typeof(evidence->'error'->'message') is distinct from 'string' or length(evidence->'error'->>'message')=0
-            or public.scan_marking_evaluation_has_generation(evidence) then return 'true'; end if;
-        elsif ((p_data->>'status')::numeric<>408 and (p_data->>'status')::numeric not between 500 and 599)
-          or (evidence is not null and public.scan_marking_evaluation_has_generation(evidence)) then return 'true';
-        end if;
-      end if;
+      -- #868: a clean 429 with no cost. Anything this cannot check keeps today's rule: the full hold stays, the dispatch
+      -- counts, and the answer is `true`. A cost always wins: it is settled below and never treated as clean.
+      if p_data->>'failure' is distinct from 'rate-limit' or p_data->'status' is distinct from '429'::jsonb
+        or jsonb_typeof(p_data->'body') is distinct from 'string' or length(p_data->>'body')>20000 then return 'true'; end if;
+      -- The same rule as clean429-v1: OpenRouter's own 429 envelope, with no generation or usage at any depth. A body
+      -- that cannot be read as JSON (a \u0000 escape, 22P05, or any other cast error) is not clean.
+      begin
+        evidence := (p_data->>'body')::jsonb;
+        if jsonb_typeof(evidence) is distinct from 'object'
+          or jsonb_typeof(evidence->'error') is distinct from 'object' or evidence->'error'->'code' is distinct from '429'::jsonb
+          or jsonb_typeof(evidence->'error'->'message') is distinct from 'string' or length(evidence->'error'->>'message')=0
+          or public.scan_marking_evaluation_has_generation(evidence) then return 'true'; end if;
+      exception when others then return 'true';
+      end;
       perform pg_advisory_xact_lock(hashtextextended('scan-marking-global-budget',0));
       -- Only a production dispatch whose charge is still unknown. After a family deletion the link is gone: the hold stays.
-      update public.scan_marking_dispatches d set clean_failure=p_data->>'failure'
+      update public.scan_marking_dispatches d set clean_failure='rate-limit'
         where d.id=p_token and d.clean_failure is null
           and exists(select 1 from public.scan_marking_spend x where x.id=d.id and x.charged_micros is null);
-      -- Only a clean 429 never ran, so only it frees its hold. A time-out or a 5xx may still have run: it keeps it.
-      if found and p_data->>'failure'='rate-limit' then
+      if found then
         update public.scan_marking_spend set charged_micros=0,settled_at=now() where id=p_token and charged_micros is null;
       end if;
+      -- "clean" only when this dispatch is recorded as a clean 429 with its hold freed (a repeat settle answers the same).
+      if exists(select 1 from public.scan_marking_dispatches d join public.scan_marking_spend x on x.id=d.id
+        where d.id=p_token and d.clean_failure='rate-limit' and x.charged_micros=0) then return '"clean"'; end if;
       return 'true';
     end if;
     held := (p_data->>'cost')::bigint;
@@ -139,9 +139,9 @@ begin
   if j.photo_id is null or j.lease_token is distinct from p_token or j.lease_until<=clock_timestamp() or j.state not in ('running','extracted') then return '"terminal"'; end if;
   if p_action='admit' then
     if j.extraction is not null then return '"attempts"'; end if;
-    -- #868: a clean provider failure does not use up one of the two dispatches. Ten dispatches in all is the backstop.
-    if j.dispatches-(select count(*) from public.scan_marking_dispatches d where d.photo_id=p_photo and d.clean_failure is not null)>=2
-      or j.dispatches>=10 then return '"attempts"'; end if;
+    -- #868: only a clean 429 does not use up one of the two dispatches. Five dispatches in all is the backstop.
+    if j.dispatches-(select count(*) from public.scan_marking_dispatches d where d.photo_id=p_photo and d.clean_failure='rate-limit')>=2
+      or j.dispatches>=5 then return '"attempts"'; end if;
     select * into price from public.scan_marking_prices where model=p_data->>'model' and enabled;
     if not found or price.maximum_micros is null or price.verified_at is null or price.max_pixels < b.image_width::bigint*b.image_height::bigint then return '"price-unverified"'; end if;
     -- A cheaper model cannot enter the production path without a separate approved comparison.
@@ -183,9 +183,12 @@ begin
     return 'true';
   elsif p_action in ('pause','defer') then
     st := p_data->>'status';
-    -- #868: a run that met a clean provider failure waits as pending; after 3 deferrals the next one goes to the team.
+    -- #868: a run that met a clean 429 waits as pending; after 3 deferrals the next one goes to the team. A deferral is
+    -- spent only when the job's latest dispatch is a clean 429 recorded above; else the job is paused as pending.
     if p_action='defer' then
-      if j.deferrals>=3 then st := 'attempts';
+      if (select d.clean_failure from public.scan_marking_dispatches d where d.photo_id=p_photo order by d.attempt desc limit 1)
+        is distinct from 'rate-limit' then st := 'pending';
+      elsif j.deferrals>=3 then st := 'attempts';
       else st := 'pending'; update public.scan_marking_jobs set deferrals=deferrals+1 where photo_id=p_photo;
       end if;
     end if;

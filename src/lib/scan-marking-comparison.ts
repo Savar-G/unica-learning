@@ -196,7 +196,7 @@ export function transportUsage(value: unknown): TransportUsage {
 export const COMPARISON_DEFERRAL_POLICY = Object.freeze({ version: "clean429-v1", delayMs: 900_000, finalBatches: 1, globalConcurrency: 1, modelConcurrency: 1 });
 export interface CapturedResponse { status: number; body: string | null; openrouter_metadata: unknown; envelope: unknown }
 /** Whether a parsed answer holds generation or usage evidence at any depth, JSON inside a string included. */
-export function showsGeneration(v: unknown): boolean {
+function showsGeneration(v: unknown): boolean {
   if (typeof v === "string") { try { return showsGeneration(JSON.parse(v)); } catch { return false; } }
   return v !== null && typeof v === "object" && Object.entries(v).some(([k, x]) => ["id", "generation_id", "generationId", "usage", "choices"].includes(k) || showsGeneration(x));
 }
