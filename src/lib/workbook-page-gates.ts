@@ -12,12 +12,16 @@ export const PAGE_GATES = ["text_cut_off", "overlap", "box_too_small"] as const;
 export type PageGate = (typeof PAGE_GATES)[number];
 
 /** Raise when a threshold changes; each stored row keeps the version it was judged with. */
-export const PAGE_GATE_THRESHOLD_VERSION = 1;
+export const PAGE_GATE_THRESHOLD_VERSION = 2;
 type Terms = { enabled: true; threshold: number } | { enabled: false; threshold: null; reason: string };
-const NOT_CALIBRATED: Terms = { enabled: false, threshold: null, reason: "not calibrated on sample and changed pages yet (#859)" };
 export type PageGateTerms = Readonly<Record<PageGate, Terms>>;
 export const PAGE_GATE_THRESHOLDS: Readonly<Record<string, PageGateTerms>> = {
-  "typesafe/jev-1.14": { text_cut_off: NOT_CALIBRATED, overlap: NOT_CALIBRATED, box_too_small: NOT_CALIBRATED },
+  // Version 2 (2026-11-13, docs/workbook-page-gate-set-report.md): fitted on the whole set; both folds passed.
+  "typesafe/jev-1.14": {
+    text_cut_off: { enabled: true, threshold: 0.48 },
+    overlap: { enabled: true, threshold: 0.74 },
+    box_too_small: { enabled: false, threshold: null, reason: "changed and unchanged pages overlap (0.13-0.56 against up to 0.43)" },
+  },
 };
 
 /** The longest side of the image the model reads (TypeSafe refuses larger, "Invalid image dimensions"; the photo check uses the same). A page is scaled down to it, never up. */

@@ -10,6 +10,6 @@ The halves are made without reading any answer: a copy stays in its source page'
 | typesafe/jev-1.14 | overlap | 6/6, 0/26, 0.75 | 6/6, 0/26, 0.68 | yes |
 | typesafe/jev-1.14 | box_too_small | 0/6, 0/26, 0.47 | 3/6, 2/26, 0.37 | no |
 
-Across the whole set: text_cut_off catches 12/12 with no false flag between 0.27 and 0.67 (proposed threshold 0.48); overlap catches 12/12 between 0.54 and 0.94 (proposed 0.74); box_too_small does not separate (changed copies 0.13 to 0.56, unchanged pages up to 0.43). The gates stay off in PAGE_GATE_THRESHOLDS until the workbook_run_page_gates migration is applied: before it, a stored page result breaks the table's checks.
+Across the whole set: text_cut_off catches 12/12 with no false flag between 0.27 and 0.67 (proposed threshold 0.48); overlap catches 12/12 between 0.54 and 0.94 (proposed 0.74); box_too_small does not separate (changed copies 0.13 to 0.56, unchanged pages up to 0.43). PAGE_GATE_THRESHOLDS (version 2) turns on text_cut_off at 0.48 and overlap at 0.74; box_too_small stays off. The workbook_run_page_gates migration is applied (version 20261114010024).
 
 The model runs cost USD 0.019692 with 0 unpriced attempts.

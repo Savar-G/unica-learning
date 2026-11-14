@@ -18,12 +18,13 @@ const on: PageGateTerms = {
 const signal = () => new AbortController().signal;
 
 describe("the page layout gate", () => {
-  it("is off for every model until it is calibrated, so a run asks nothing", () => {
-    for (const model of Object.keys(PAGE_GATE_THRESHOLDS)) expect(activePageGates(pageGateTerms(model))).toEqual([]);
+  it("turns on only the calibrated gates (text cut off, overlap) for Jev, and none for another model", () => {
+    expect(activePageGates(pageGateTerms("typesafe/jev-1.14"))).toEqual(["text_cut_off", "overlap"]);
+    expect(PAGE_GATE_THRESHOLDS["typesafe/jev-1.14"].box_too_small.enabled).toBe(false);
     expect(activePageGates(pageGateTerms("some/other-model"))).toEqual([]);
-    const client = fakeDecisionClient({ answer: () => { throw new Error("must not be asked"); } });
-    expect(pageGateChecker(client)).toBeNull();
-    expect(decisionPageGateChecker({ DECISIONS_OPENROUTER_API_KEY: "synthetic" })).toBeNull();
+    const other = fakeDecisionClient({ model: "some/other-model", answer: () => { throw new Error("must not be asked"); } });
+    expect(pageGateChecker(other)).toBeNull();
+    expect(decisionPageGateChecker({ DECISIONS_OPENROUTER_API_KEY: "synthetic" })?.model).toBe("typesafe/jev-1.14");
   });
 
   it("sends one scaled page image and only the gates that are on, and flags a page at or above a threshold", async () => {
