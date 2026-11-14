@@ -124,7 +124,7 @@ describe("prepare then commit", () => {
     const { session } = setup({ model, prepareExpected: true });
     await session.start();
     const before = session.session.done;
-    expect(model.briefs.map((b) => b.childTurn)).toEqual(["4", "6"]);
+    expect(model.briefs.map((b) => b.childTurn)).toEqual(["4", "6", "Is 2 minus 8, 6?"]);
     expect(before).toEqual([]);
     const out = await session.child("4");
     expect(out).toMatchObject({ prepared: "hit", preparedKind: "expected" });

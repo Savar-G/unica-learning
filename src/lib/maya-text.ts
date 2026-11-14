@@ -383,7 +383,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         continue;
       }
       const keyFits = keys.includes(entry.key);
-      const h = batch.generation === generation && plain && keyFits ? entry.hypotheses.find((h) => h.reason === "interim" ? sameTurn(h.text, brief.childTurn ?? "") : fitsExpected(folded.session, h.text)) : undefined;
+      const h = batch.generation === generation && plain && keyFits ? entry.hypotheses.find((h) => h.reason === "interim" || /\?\s*$/.test(h.text) ? sameTurn(h.text, brief.childTurn ?? "") : fitsExpected(folded.session, h.text)) : undefined;
       if (h && !selected) {
         selected = entry;
         const rec = cache.used(entry, batch.at);

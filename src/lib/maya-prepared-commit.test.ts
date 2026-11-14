@@ -34,8 +34,8 @@ describe("C2 key: an expected value binds the real turn that says it in the same
     const before = (model as { briefs: TurnBrief[] }).briefs.length;
     const recorded = session.trace().preparations?.length ?? 0;
     const out = await session.child("12 minus 8 is 4.");
-    // This turn: the expected 4 is used; the known-wrong 6 is discarded: code's facts for 6 differ (its key).
-    expect(session.trace().preparations?.slice(recorded).map((p) => [p.kind, p.status, p.reason ?? null])).toEqual([["expected", "used", null], ["expected", "discarded", "key"]]);
+    // This turn: the expected 4 is used; the known-wrong 6 and its claim form are discarded: code's facts for 6 differ (its key).
+    expect(session.trace().preparations?.slice(recorded).map((p) => [p.kind, p.status, p.reason ?? null])).toEqual([["expected", "used", null], ["expected", "discarded", "key"], ["expected", "discarded", "key"]]);
     expect(out).toMatchObject({ prepared: "hit", preparedKind: "expected" });
     // No live request for the real turn (later briefs are the next step's own preparations).
     expect((model as { briefs: TurnBrief[] }).briefs.slice(before).map((b) => b.childTurn)).not.toContain("12 minus 8 is 4.");

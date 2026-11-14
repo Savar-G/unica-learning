@@ -5223,7 +5223,17 @@ export function expectedTurns(s: Session): { text: string; why: "right" | "known
     if (value < 0 || out.some((x) => x.text === String(value))) continue;
     const h = heard(String(value));
     if (h.refusal || !plainMathTurn(h.session)) continue;
-    if (turnFacts(h.session).some((f) => f.misconception !== undefined && f.step === s.ladder.step)) { out.push({ text: String(value), why: "known_wrong" }); break; }
+    if (turnFacts(h.session).some((f) => f.misconception !== undefined && f.step === s.ladder.step)) {
+      out.push({ text: String(value), why: "known_wrong" });
+      // The same wrong value as a claim, the way a child asks it ("Is 2 minus 8, 6?"): a bounded phrase of the step's own
+      // operands, kept only when code hears it as no committed answer and the step's misconception still shows.
+      if (current?.kind === "subtract-column" && current.regrouped && current.bottom !== null && value === current.bottom - current.top) {
+        const claim = `Is ${current.top} minus ${current.bottom}, ${value}?`;
+        const c = heard(claim);
+        if (!c.refusal && plainMathTurn(c.session) && !heardAnswers(c.session).some((a) => a.verdict === "right") && turnFacts(c.session).some((f) => f.misconception !== undefined && f.step === s.ladder.step)) out.push({ text: claim, why: "known_wrong" });
+      }
+      break;
+    }
   }
   return out;
 }
