@@ -11,9 +11,9 @@ export const SIDE_VARIANTS = [
   { key: "C", name: "Maya will / won't" },
   { key: "D", name: "Parent promise + checklist" },
   { key: "E", name: "Parent moment + chips" },
-  { key: "F", name: "A's points: big numbers" },
-  { key: "G", name: "A's points: strip under video" },
-  { key: "H", name: "A's points: call timeline" },
+  { key: "I", name: "A with small drawings" },
+  { key: "J", name: "A with the logo grid" },
+  { key: "K", name: "A on a card" },
 ];
 
 /** B and G span the full width under the video instead of a side column. */
@@ -38,6 +38,9 @@ export function SideVariant({ variant }: { variant: string }) {
       {variant === "F" && <VariantF />}
       {variant === "G" && <VariantG />}
       {variant === "H" && <VariantH />}
+      {variant === "I" && <VariantI />}
+      {variant === "J" && <VariantJ />}
+      {variant === "K" && <VariantK />}
     </>
   );
 }
@@ -179,7 +182,68 @@ function VariantE() {
   );
 }
 
+// I: A, with a small drawn icon in a logo-colour tile instead of the plain square.
+function VariantI() {
+  const icons = [
+    <svg key="1" viewBox="0 0 20 20"><rect x="4" y="3" width="12" height="14" rx="1.5" /><path d="M7 7h6M7 10h6M7 13h3" /></svg>,
+    <svg key="2" viewBox="0 0 20 20"><path d="M3 5.5A2.5 2.5 0 0 1 5.5 3h9A2.5 2.5 0 0 1 17 5.5v5a2.5 2.5 0 0 1-2.5 2.5H9l-4 3.5V13A2 2 0 0 1 3 11z" /></svg>,
+    <svg key="3" viewBox="0 0 20 20"><path d="M4 16l2.5-.6L15.5 6.4a1.6 1.6 0 0 0-2.3-2.3L4.6 13.1z" /><path d="M12 5.5l2.4 2.4" /></svg>,
+  ];
+  return (
+    <div className="pv-a">
+      <p className="pv-kick">What Maya does</p>
+      {POINTS.map((r, i) => (
+        <div key={r.t} className="pv-i-row">
+          <span className="pv-i-ic" style={{ background: r.c }}>{icons[i]}</span>
+          <div><p className="pv-a-t">{r.t}</p><p className="pv-a-d">{r.d}</p></div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// J: A, where each cue is a small copy of the 3x3 logo with one tile lit in that row's colour.
+function VariantJ() {
+  const lit = [0, 2, 6];
+  return (
+    <div className="pv-a">
+      <p className="pv-kick">What Maya does</p>
+      {POINTS.map((r, i) => (
+        <div key={r.t} className="pv-j-row">
+          <span className="pv-j-grid">{Array.from({ length: 9 }, (_, k) => <i key={k} style={k === lit[i] ? { background: r.c } : undefined} />)}</span>
+          <div><p className="pv-a-t">{r.t}</p><p className="pv-a-d">{r.d}</p></div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// K: A as it is, on a soft white card with lines between the rows, so it reads as one block beside the video.
+function VariantK() {
+  return (
+    <div className="pv-k">
+      <p className="pv-kick">What Maya does</p>
+      {POINTS.map((r) => (
+        <div key={r.t} className="pv-k-row">
+          <span className="pv-a-dot" style={{ background: r.c }} />
+          <div><p className="pv-a-t">{r.t}</p><p className="pv-a-d">{r.d}</p></div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 const CSS = `
+.pv-i-row { display: grid; grid-template-columns: 34px 1fr; gap: 12px; align-items: start; }
+.pv-i-ic { width: 34px; height: 34px; border: 1.5px solid #111; display: grid; place-items: center; box-sizing: border-box; }
+.pv-i-ic svg { width: 20px; height: 20px; fill: none; stroke: #111; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.pv-j-row { display: grid; grid-template-columns: 30px 1fr; gap: 12px; align-items: start; }
+.pv-j-grid { display: grid; grid-template-columns: repeat(3, 1fr); width: 27px; height: 27px; margin-top: 3px; border-top: 1.5px solid #111; border-left: 1.5px solid #111; box-sizing: border-box; }
+.pv-j-grid i { border-right: 1.5px solid #111; border-bottom: 1.5px solid #111; background: #fff; }
+.pv-k { background: #fff; border-radius: 14px; padding: 20px 22px 8px; box-shadow: 0 0 0 1px rgba(0,0,0,.06), 0 20px 40px -24px rgba(30,40,80,.35); }
+.pv-k-row { display: grid; grid-template-columns: 14px 1fr; gap: 12px; align-items: start; padding: 14px 0; border-top: 1px solid var(--line); }
+.pv-k-row .pv-a-dot { margin-top: 6px; }
+
 .pv-f { list-style: none; margin: 0; padding: 0; }
 .pv-f li { padding: 16px 0; border-top: 1px solid var(--line); }
 .pv-f li:last-child { border-bottom: 1px solid var(--line); }
