@@ -14,6 +14,8 @@ An enrolled child has a program plan, including a free, paused or cancelled plan
 
 A full refund or lost dispute on the qualifying payment removes only unused benefits from that referral. Never increase a paid invoice or recover an already used discount. An open dispute holds unused benefits until the outcome is known. Partial refunds preserve the reward. Fetch current provider state before applying a refund or dispute event. Out-of-order events must not restore a revoked benefit.
 
+A discount already fixed on a finalized invoice stays on that invoice. Keep the monthly amount still owed and its payment retries. Revoke unallocated benefits and remove editable draft discounts. Do not cancel an entire monthly invoice to reverse a referral discount.
+
 ## Parent experience
 
 - The Account page shows the family's code, a copy-code action, a copy-link action, pending-referral count and earned/remaining-reward counts. It never names the other family or exposes its invoice, child or payment details.

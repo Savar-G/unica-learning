@@ -35,6 +35,36 @@ function fixture() {
 const draft = { status: "draft" as const, paidCents: 0, paidAt: null, actualPayment: false };
 
 describe("referral public commands", () => {
+  it("keeps an incoming benefit after a credit-funded zero initial invoice, including replay", async () => {
+    const f = fixture();
+    await f.redeem();
+    const reservation = await referralStarts(f.services).reserve({ card: "card-c", customer: "cus-c", key: "zero-start", cents: 7999 });
+    expect(reservation).not.toBeNull();
+    const zero = f.invoice("zero-start-invoice", "c", { status: "paid", paidCents: 0, actualPayment: false, renewal: false, startKey: "zero-start", couponIds: ["half"] });
+    await recordReferralInvoice(zero, f.services);
+    await recordReferralInvoice(zero, f.services);
+    f.invoice("next-paid-renewal", "c", draft);
+    await reconcileReferralInvoice("next-paid-renewal", f.services);
+    expect(f.applied).toHaveLength(1);
+    expect(f.applied[0].invoice).toBe("next-paid-renewal");
+    expect(f.memory.snapshot().rewards.filter(r => r.kind === "earned")).toHaveLength(0);
+  });
+  it("tracks a committed finalized discount through revocation until the monthly invoice is paid", async () => {
+    const f = fixture();
+    await f.redeem();
+    const qualifying = await f.earn();
+    const renewal = f.invoice("source-renewal", "a", draft);
+    await reconcileReferralInvoice(renewal.id, f.services);
+    renewal.status = "open";
+    qualifying.risk = "revoke";
+    f.services.provider.withdraw = async () => "committed";
+    await reconcileReferralInvoice(renewal.id, f.services);
+    expect(f.memory.snapshot().operations.find(o => o.invoice === renewal.id)?.state).toBe("applied");
+    renewal.status = "paid"; renewal.paidCents = 4000; renewal.actualPayment = true; renewal.paidAt = qualifying.paidAt! + 1000;
+    await reconcileReferralInvoice(renewal.id, f.services);
+    expect(f.memory.snapshot().operations.find(o => o.invoice === renewal.id)?.state).toBe("used");
+    expect(f.applied).toHaveLength(1);
+  });
   it("normalizes a permanent code and never exposes the other family's identity", async () => {
     const f = fixture(); const result = await f.redeem();
     expect(result.ok).toBe(true);

@@ -135,10 +135,14 @@ export function stripeReferrals(s: Stripe, live: boolean): ReferralProvider {
       if (retained.length === raw.discounts.length) return;
       if (raw.status === "paid") return;
       if (raw.status === "open" || raw.status === "uncollectible") {
-        // Finalized monetary values cannot be changed. Stop automatic collection during the dispute.
+        // Finalization commits the discount to this period. Revocation cannot cancel the whole monthly debt.
         if (reservation.policy === "revoke") {
-          await s.invoices.voidInvoice(raw.id, {}, { ...CARD_WRITE, idempotencyKey: reservation.key + "-void" });
-          return;
+          if (raw.metadata?.referral_hold === reservation.id) {
+            const previous = raw.metadata.referral_restore_auto;
+            if (previous !== "true" && previous !== "false") throw new Error("Referral collection setting unavailable");
+            await s.invoices.update(raw.id, { auto_advance: previous === "true", metadata: { referral_hold: "", referral_restore_auto: "" } }, { ...CARD_WRITE, idempotencyKey: reservation.key + "-retain-finalized" });
+          }
+          return "committed";
         }
         await s.invoices.update(raw.id, { auto_advance: false, metadata: { referral_hold: reservation.id, referral_restore_auto: raw.metadata?.referral_restore_auto ?? String(raw.auto_advance) } }, { ...CARD_WRITE, idempotencyKey: reservation.key + "-hold" });
         return;
@@ -157,10 +161,10 @@ export function stripeReferrals(s: Stripe, live: boolean): ReferralProvider {
     },
     async coupon() {
       let coupon: Stripe.Coupon;
-      try { coupon = await s.coupons.retrieve(REFERRAL_COUPON_ID, {}, CARD_READ); }
+      try { coupon = await s.coupons.retrieve(REFERRAL_COUPON_ID, { expand: ["applies_to"] }, CARD_READ); }
       catch (e) {
         if (!(e instanceof Stripe.errors.StripeInvalidRequestError) || e.code !== "resource_missing") throw e;
-        coupon = await s.coupons.create({ id: REFERRAL_COUPON_ID, name: "Family referral: one paid month", percent_off: 50, duration: "once", applies_to: { products: [PLAN_PRODUCT.id] } }, { ...CARD_WRITE, idempotencyKey: "referral-coupon-half-v1" });
+        coupon = await s.coupons.create({ id: REFERRAL_COUPON_ID, name: "Family referral: one paid month", percent_off: 50, duration: "once", applies_to: { products: [PLAN_PRODUCT.id] }, expand: ["applies_to"] }, { ...CARD_WRITE, idempotencyKey: "referral-coupon-half-v1" });
       }
       checkMode(coupon.livemode);
       if (!coupon.valid || coupon.percent_off !== 50 || coupon.amount_off !== null || coupon.duration !== "once" || coupon.redeem_by !== null || coupon.max_redemptions !== null

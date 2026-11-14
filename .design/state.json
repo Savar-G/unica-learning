@@ -143,5 +143,39 @@
     "latest_review": ".design/reviews/phone-results-call-2026-11-11-r681.md",
     "verified_source_head": "4285ebf3268ca82f5aae5551e0f7b47b98bd10d7",
     "verification": "649 files and 20595 tests passed, one skipped; lint and build passed; Sol high recheck passed; owned-test-family Aside checks passed. Full gate log not saved."
+  },
+  "family_referrals": {
+    "round": "r683",
+    "route": "direct",
+    "job_kind": "new",
+    "surface": "product",
+    "constraint_mode": "existing-system",
+    "phase": "review",
+    "contract": ".design/experiments/r683/contract.md",
+    "manifest": ".design/experiments/r683/manifest.json",
+    "gates": {
+      "contract": "skipped by direct route",
+      "direction": "specified by Savar",
+      "ship": "pending Savar merge"
+    },
+    "latest_evidence": [
+      ".design/evidence/referrals/stripe-test-mode.json",
+      ".design/evidence/referrals/pricing-desktop.png",
+      ".design/evidence/referrals/pricing-phone.png"
+    ],
+    "open_decisions": [],
+    "blockers": [
+      {
+        "id": "REF-MIGRATION",
+        "reason": "Hosted migration and generated types pending",
+        "needs": "Complete SQL review, apply and probe migration, regenerate types/checks"
+      },
+      {
+        "id": "REF-REVIEW",
+        "reason": "Independent settlement pending",
+        "needs": "Settle the initial reports and recheck repairs"
+      }
+    ],
+    "latest_review": ".design/reviews/referrals-repair-round-1.md"
   }
 }

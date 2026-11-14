@@ -55,7 +55,8 @@ export interface ReferralProvider {
   retire?(reservation: ReferralReservation): Promise<"used" | "absent" | "pending">;
   enrolled?(customer: string): Promise<boolean>;
   startAllowed?(customer: string): Promise<boolean>;
-  withdraw?(invoice: ReferralInvoice, reservation: ReferralReservation): Promise<void>;
+  /** A finalized invoice has already committed its discount. Preserve its receivable and track payment. */
+  withdraw?(invoice: ReferralInvoice, reservation: ReferralReservation): Promise<"committed" | void>;
   invoices(customer: string): Promise<ReferralInvoice[]>;
   invoice(id: string): Promise<ReferralInvoice>;
   coupon(): Promise<{ id: string; product: string }>;
@@ -119,12 +120,16 @@ export async function recordReferralInvoice(invoice: ReferralInvoice, { store }:
   if (!invoice.modeMatches) throw new Error("Referral provider mode mismatch");
   const owner = await store.owner(invoice.customer);
   const readOrder = order ?? await store.readOrder();
-  if (invoice.status === "void" || (invoice.status === "paid" && invoice.paidCents === 0)) accepted(await store.command({ action: "finish", invoice: invoice.id, result: "absent" }));
+  // Bind an immediate creation before releasing a zero-value invoice. Replays must not reactivate that claim.
+  if (owner && invoice.startKey && invoice.couponIds.length) accepted(await store.command({ action: "start_result", key: invoice.startKey, invoice: invoice.id, subscription: invoice.subscription ?? "", result: "applied" }));
+  if (invoice.status === "void" || (invoice.status === "paid" && invoice.paidCents === 0)) {
+    accepted(await store.command({ action: "finish", invoice: invoice.id, result: "absent" }));
+    return;
+  }
   if (!owner) {
     accepted(await store.command({ action: "risk", invoice: invoice.id, risk: invoice.risk, readOrder }));
     return;
   }
-  if (invoice.startKey && invoice.couponIds.length) accepted(await store.command({ action: "start_result", key: invoice.startKey, invoice: invoice.id, subscription: invoice.subscription ?? "", result: "applied" }));
   if (invoice.status === "paid" && invoice.paidCents > 0) {
     accepted(await store.command({ action: "paid", ...owner, invoice: invoice.id, subscription: invoice.subscription ?? "", cents: invoice.paidCents, risk: invoice.risk,
       paidAt: invoice.paidAt ?? 0, paid: invoice.actualPayment && invoice.program && invoice.monthly && !!invoice.subscription, readOrder }));
@@ -184,8 +189,8 @@ export async function reconcileReferralInvoice(id: string, services: Referrals):
   reservation = await currentReservation(reservation, services);
   if (!reservation.allowed) {
     if (!services.provider.withdraw) throw new Error("Referral withdrawal unavailable");
-    await services.provider.withdraw(invoice, reservation);
-    accepted(await services.store.command({ action: "finish", operation: reservation.id, result: "detached" }));
+    const result = await services.provider.withdraw(invoice, reservation);
+    accepted(await services.store.command({ action: "finish", operation: reservation.id, result: result === "committed" ? "applied" : "detached" }));
     return;
   }
   await services.provider.apply(invoice, reservation);
