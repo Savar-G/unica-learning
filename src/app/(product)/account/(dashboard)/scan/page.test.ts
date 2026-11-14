@@ -19,6 +19,18 @@ const state = vi.hoisted(() => ({
   remembered: null as string | null,
   dashboard: true,
   qr: [] as string[],
+  // Children whose Workbooks page shows their page history; a child in `broken` fails that read.
+  history: ["c1"] as string[],
+  broken: [] as string[],
+  pageReads: [] as { child: string; dashboard: boolean }[],
+}));
+vi.mock("@/lib/workbooks-page-server", () => ({
+  workbooksPage: async (_db: unknown, _parent: string, _admin: unknown, child: string, { dashboard }: { dashboard: boolean }) => {
+    state.pageReads.push({ child, dashboard });
+    if (state.broken.includes(child)) throw new Error("read failed");
+    return dashboard ? { view: { books: [{ id: "b" }] }, historyAvailable: state.history.includes(child) } : null;
+  },
+  workbooksHistoryShown: (page: { historyAvailable: boolean } | null) => Boolean(page?.historyAvailable),
 }));
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/account/scan",
@@ -57,15 +69,15 @@ vi.mock("@/lib/scan-photo-server", () => ({
   },
 }));
 vi.mock("@/components/scan-pages", () => ({
-  ScanPages: ({ childrenList, mode = "phone", focus }: { childrenList: { first_name: string }[]; mode?: string; focus?: { label: string } | null }) =>
-    createElement("p", null, `${mode === "desktop" ? "pages from the phone" : "camera flow"}: ${childrenList.map((c) => c.first_name).join(", ")}${focus ? ` · ${focus.label}` : ""}`),
+  ScanPages: ({ childrenList, mode = "phone", focus, allPages = [] }: { childrenList: { first_name: string }[]; mode?: string; focus?: { label: string } | null; allPages?: string[] }) =>
+    createElement("p", { "data-history": allPages.join(",") }, `${mode === "desktop" ? "pages from the phone" : "camera flow"}: ${childrenList.map((c) => c.first_name).join(", ")}${focus ? ` · ${focus.label}` : ""}`),
 }));
 
 const render = async (query: Record<string, string> = {}) =>
   renderToStaticMarkup((await ScanPage({ searchParams: Promise.resolve(query), params: Promise.resolve({}) } as never)) as ReactElement);
 
 beforeEach(() => {
-  Object.assign(state, { signedIn: true, released: true, ua: PHONE, remembered: null, dashboard: true, qr: [] });
+  Object.assign(state, { signedIn: true, released: true, ua: PHONE, remembered: null, dashboard: true, qr: [], history: ["c1"], broken: [], pageReads: [] });
 });
 
 it("opens the camera flow on a phone and on a tablet", async () => {
@@ -143,3 +155,17 @@ it("carries no page on Take the pictures on this device when the address names n
   expect(await render({ w: "not-an-id", p: "12" })).toContain('href="/account/scan?here=1"');
 });
 
+
+it("links See all pages only for a child whose Workbooks page shows the history, by that page's own read (#915)", async () => {
+  expect(await render()).toContain('data-history="c1">camera flow');
+  expect(state.pageReads).toEqual([{ child: "c1", dashboard: true }, { child: "c2", dashboard: true }]);
+  // A failed read keeps the history on the scan screen.
+  state.broken = ["c1"];
+  expect(await render()).toContain('data-history="">');
+  // No dashboard: the Workbooks page is not found, so no child gets the link.
+  state.broken = []; state.dashboard = false;
+  expect(await render()).toContain('data-history="">');
+  state.ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+  state.dashboard = true;
+  expect(await render()).toContain('data-history="c1">pages from the phone: Iris, Leo');
+});

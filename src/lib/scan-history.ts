@@ -24,6 +24,20 @@ export interface HistoryPage extends Omit<HistoryRecord, "marks" | "photos" | "j
   status: HistoryStatus; label: string; photo: string | null; photoAvailable: boolean; failedJob: boolean;
   counts: ReturnType<typeof markingPageView>["counts"]; right: number; blank: number; wrong: number;
 }
+/**
+ * A page's line in the parent's history: its state, then counts. Each count says what it is: an answer our team still
+ * checks (the AI was unsure), and an answer left blank, which is marked blank for certain and waits for no one.
+ */
+export function historyLine(p: HistoryPage): string {
+  const n = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+  const parts = [p.status === "never-scanned" ? "No saved results"
+    : p.status === "review" && p.counts.teamChecks > 0 ? n(p.counts.teamChecks, "answer for our team to check", "answers for our team to check") : p.label];
+  if (p.status === "ready") parts.push(`${p.right} of ${p.counts.scored} right`);
+  // "All answers blank" already says it.
+  if (p.blank > 0 && p.status !== "blank") parts.push(`${p.blank} left blank`);
+  if (p.counts.unscored > 0) parts.push(`${p.counts.unscored} not scored`);
+  return parts.join(" · ");
+}
 export const completedPage = (p: HistoryPage) => ["ready", "blank", "unscored"].includes(p.status);
 /**
  * How long a job deferred on a clean 429 (#868) still reads as on its way: one recovery interval (15 minutes) plus a

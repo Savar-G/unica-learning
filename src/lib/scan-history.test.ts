@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vitest";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
-import { DEFERRAL_FRESH_MS, historyCosts, historyPage, readScanHistory, type HistoryRecord, type HistoryStore } from "./scan-history";
+import { DEFERRAL_FRESH_MS, historyCosts, historyLine, historyPage, readScanHistory, type HistoryRecord, type HistoryStore } from "./scan-history";
 import { scanHistoryStore } from "./scan-history-reader";
 vi.mock("server-only", () => ({}));
 const P = "11111111-1111-4111-8111-111111111111", C = "22222222-2222-4222-8222-222222222222", W = "33333333-3333-4333-8333-333333333333";
@@ -106,6 +106,17 @@ it("an unsure page says our team is checking it; a page not read yet says Not ma
   // Photo gone and never read: still not marked, never a team claim.
   notRead.photos[0].expiresAt = "2026-01-01";
   expect(historyPage(notRead, now)).toMatchObject({ status: "pending", label: "Not marked yet" });
+});
+it("the history line counts answers for our team apart from answers left blank, singular and plural", () => {
+  const base = historyPage(record(1), now);
+  const line = (patch: Partial<typeof base>, counts: Partial<typeof base.counts> = {}) => historyLine({ ...base, ...patch, counts: { ...base.counts, ...counts } });
+  expect(line({ status: "review", label: "Our team is checking", blank: 1 }, { teamChecks: 1 })).toBe("1 answer for our team to check · 1 left blank");
+  expect(line({ status: "review", label: "Our team is checking", blank: 2 }, { teamChecks: 3 })).toBe("3 answers for our team to check · 2 left blank");
+  expect(line({ status: "review", label: "Our team is checking", blank: 0 }, { teamChecks: 2 })).toBe("2 answers for our team to check");
+  expect(line({ status: "ready", label: "Results ready", right: 5, blank: 1 }, { scored: 7 })).toBe("Results ready · 5 of 7 right · 1 left blank");
+  expect(line({ status: "blank", label: "All answers blank", blank: 4 })).toBe("All answers blank");
+  expect(line({ status: "never-scanned", label: "No photo yet" })).toBe("No saved results");
+  expect(line({ status: "unscored", label: "Not scored", blank: 0 }, { unscored: 1 })).toBe("Not scored · 1 not scored");
 });
 it("advances across every cursor page and filters before counting or costing the displayed set", async () => {
   const data = Array.from({ length: 108 }, (_, n) => record(n + 1, n % 3 === 0 ? null : "right"));

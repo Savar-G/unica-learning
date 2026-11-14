@@ -98,7 +98,7 @@ it("keeps the canonical result states distinct without inferring a missing scan"
     photo: status === "never-scanned" ? null : "expired", right: status === "ready" ? 2 : 0, blank: status === "blank" ? 1 : 0,
     counts: { scored: 3, unscored: status === "unscored" ? 1 : 0, teamChecks: status === "review" ? 1 : 0, pending: status === "pending" ? 1 : 0 } }));
   const html = renderToStaticMarkup(createElement(ScanHistoryView, { listing: listing(pages), state: "ready" }));
-  expect(html).toContain("2 of 3 right"); expect(html).toContain("1 blank"); expect(html).toContain("1 not scored");
+  expect(html).toContain("2 of 3 right"); expect(html).toContain("1 answer for our team to check"); expect(html).not.toContain("1 left blank"); expect(html).toContain("1 not scored");
   expect(html).toContain("View page results"); expect(html).not.toMatch(/continue checking|parent check|answers to check/i); expect(html).toContain("Photo no longer available");
   expect(html).toContain("No saved results"); expect(html).not.toContain("No photo yet");
   expect(html.indexOf("Workbook 3")).toBeLessThan(html.indexOf("Workbook 2"));

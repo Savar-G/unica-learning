@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
 const context = vi.hoisted(() => ({ auth: null as null | ((_event: string, session: { user: { id: string } } | null) => void), prepare: null as null | (() => Promise<Blob>), code: null as null | "read" | "unread" }));
 vi.mock("@/lib/supabase-browser", () => ({
   browserClient: () => ({ auth: { onAuthStateChange: (callback: typeof context.auth) => {
@@ -12,7 +12,7 @@ vi.mock("@/lib/supabase-browser", () => ({
 vi.mock("next/image", () => ({ default: ({ unoptimized, ...props }: Record<string, unknown>) => { void unoptimized; return createElement("img", props); } }));
 // The prepared photo carries the file's name, so the fake server knows which page it shows.
 vi.mock("@/lib/scan-photo-browser", () => ({ prepareScanPhoto: async (file: File) => context.prepare ? context.prepare() : new Blob([file.name]), phoneCodeCheck: async () => context.code ?? null }));
-import { CAPTURE_CLASS, PICK_RETURN_MS, ScanPages } from "./scan-pages";
+import { CAPTURE_CLASS, CAPTURE_ENTRY, PICK_RETURN_MS, ScanPages } from "./scan-pages";
 import { refusalCopy } from "@/lib/scan-stack";
 
 // A fake server: Day 4 has pages p10 to p13. A photo named "p11.jpg" shows page p11; "junk.jpg" has no page code;
@@ -38,11 +38,13 @@ let putGate: Promise<void> | null;
 let undoMs: number;
 // A sibling whose book the next upload's code belongs to (#915), and whether marking is open in the list.
 let filedTo: { child_id: string; child: string } | null, markingOn: boolean;
+// Children whose Workbooks page shows their page history (the server decides, src/lib/workbooks-page-server.ts).
+let allPages: string[];
 
 const buttons = () => [...document.querySelectorAll("button")];
 const button = (text: string) => buttons().find((b) => b.textContent === text || b.getAttribute("aria-label") === text);
 const settle = async () => { for (let i = 0; i < 30; i++) await act(async () => { await new Promise((r) => setTimeout(r, 0)); }); };
-const render = async () => { await act(async () => root.render(createElement(ScanPages, { childrenList: kids, parent: "parent", noticeAcknowledged: acknowledged, undoMs }))); await settle(); };
+const render = async () => { await act(async () => root.render(createElement(ScanPages, { childrenList: kids, parent: "parent", noticeAcknowledged: acknowledged, undoMs, allPages }))); await settle(); };
 const choose = async (input: "camera" | "library", ...names: string[]) => {
   const el = host.querySelector<HTMLInputElement>(input === "camera" ? "input[capture]" : "input[multiple]")!;
   Object.defineProperty(el, "files", { configurable: true, value: names.map((n) => new File(["x"], n, { type: "image/jpeg" })) });
@@ -53,7 +55,7 @@ const text = () => document.body.textContent ?? "";
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  marking = null; putGate = null; undoMs = 60_000; filedTo = null; markingOn = false;
+  marking = null; putGate = null; undoMs = 60_000; filedTo = null; markingOn = false; allPages = ["child"];
   try { localStorage.setItem("unica.scan-tips.v1:parent", "seen"); localStorage.removeItem("unica.scan-undone.v1:parent"); } catch {}
   context.auth = null; context.prepare = null; context.code = null; checks = true; acknowledged = true; photos = new Map(); uploading = 0; mostAtOnce = 0; full = false; calls.length = 0;
   admitted = []; loseAdmissions = 0; saveFailures = 0; expired = new Set();
@@ -117,7 +119,16 @@ beforeEach(() => {
   vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:photo"); vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); try { history.replaceState(null, ""); } catch {} });
+/** A browser whose file input has no `cancel` event (older Safari): the focus return is the only sign of a cancel. */
+const withoutCancel = () => {
+  let owner: object | null = document.createElement("input");
+  while (owner && !Object.prototype.hasOwnProperty.call(owner, "oncancel")) owner = Object.getPrototypeOf(owner);
+  if (!owner) return () => {};
+  const descriptor = Object.getOwnPropertyDescriptor(owner, "oncancel")!;
+  delete (owner as Record<string, unknown>).oncancel;
+  return () => Object.defineProperty(owner, "oncancel", descriptor);
+};
 
 it("keeps both saved photos when the older concurrent list reply arrives last", async () => {
   checks = false;
@@ -178,7 +189,7 @@ it("opens the phone's photos for several at once from the capture screen", async
   const library = host.querySelector<HTMLInputElement>("input[multiple]")!;
   expect(library.accept).toContain("image/jpeg");
   const opened = vi.spyOn(library, "click").mockImplementation(() => {});
-  await act(async () => button("Choose from your photos")!.click());
+  await act(async () => button("Choose from Photos")!.click());
   expect(opened).toHaveBeenCalledOnce();
 });
 
@@ -795,6 +806,16 @@ it("has no Page history on the scan screen: one See all pages link opens the chi
   expect(host.querySelector('a[href="/account/scan/results/a"]')).not.toBeNull();
 });
 
+it("keeps the page history on the scan screen for a child whose Workbooks page would not show it", async () => {
+  markingOn = true; allPages = [];
+  seed("a", "p10", { sentAt: new Date().toISOString(), marks: { right: 7, scored: 8, total: 8, toPractise: 1, waiting: 0, complete: true } });
+  await render();
+  expect(text()).not.toContain("See all pages");
+  expect(text()).toContain("Page history");
+  expect(host.querySelector("#scan-history")).not.toBeNull();
+  expect([...host.querySelectorAll("a")].find((a) => a.textContent === "See all progress")?.getAttribute("href")).toBe("#scan-history");
+});
+
 it("shows no See all pages link while marking is closed, as the Workbooks page has no history then", async () => {
   await render();
   expect(text()).not.toContain("See all pages");
@@ -824,11 +845,13 @@ it("goes straight home when the camera is cancelled before the first photo: the 
 });
 
 it("goes straight home when the phone's photos close with no file and the browser sends no cancel: the focus return (#915)", async () => {
+  const restore = withoutCancel();
+  onTestFinished(restore);
   await render();
   vi.spyOn(host.querySelector<HTMLInputElement>("input[capture]")!, "click").mockImplementation(() => {});
   vi.spyOn(host.querySelector<HTMLInputElement>("input[multiple]")!, "click").mockImplementation(() => {});
   await act(async () => button("Scan pages")!.click());
-  await act(async () => button("Choose from your photos")!.click());
+  await act(async () => button("Choose from Photos")!.click());
   // A focus with no leave first is not a return from the picker.
   await act(async () => { window.dispatchEvent(new Event("focus")); await new Promise((r) => setTimeout(r, PICK_RETURN_MS + 100)); }); await settle();
   expect(text()).toContain("Take a photo of the first page.");
@@ -845,7 +868,7 @@ it("keeps the capture screen when a photo arrives after the focus return, and wh
   await choose("camera", "p10.jpg");
   await act(async () => { await new Promise((r) => setTimeout(r, PICK_RETURN_MS + 100)); }); await settle();
   expect(text()).toContain("Page 10 looks good");
-  await act(async () => button("Take the next page")!.click());
+  await act(async () => button("Take next page")!.click());
   await act(async () => { camera.dispatchEvent(new Event("cancel")); }); await settle();
   expect(text()).toContain("Page 10 looks good");
   expect(document.documentElement.classList.contains(CAPTURE_CLASS)).toBe(true);
@@ -880,6 +903,95 @@ it("shows the latest photo large with its verdict, a film strip of the others, a
   // The new photo takes the old one's place.
   expect(host.querySelectorAll(".scan-shots button")).toHaveLength(3);
   expect(text()).toContain("Page 12 looks good");
-  expect(button("Take the next page")?.textContent).toContain("Take next page");
-  expect(button("Choose from your photos")?.textContent).toBe("Choose from Photos");
+  // Each control's accessible name holds its visible label (WCAG 2.5.3).
+  expect(button("Take next page")?.textContent).toContain("Take next page");
+  expect(button("Choose from Photos")?.hasAttribute("aria-label")).toBe(false);
+});
+
+const openCapture = async () => {
+  vi.spyOn(host.querySelector<HTMLInputElement>("input[capture]")!, "click").mockImplementation(() => {});
+  vi.spyOn(host.querySelector<HTMLInputElement>("input[multiple]")!, "click").mockImplementation(() => {});
+  await act(async () => button("Scan pages")!.click());
+};
+const pickerAway = async (ms: number) => { await act(async () => { window.dispatchEvent(new Event("blur")); window.dispatchEvent(new Event("focus")); await new Promise((r) => setTimeout(r, ms)); }); await settle(); };
+
+it("a slow first photo never closes capture where the input has a cancel event: no timer (#915)", async () => {
+  await render();
+  await openCapture();
+  await pickerAway(PICK_RETURN_MS + 300);
+  expect(text()).toContain("Take a photo of the first page.");
+  await choose("camera", "p10.jpg");
+  expect(text()).toContain("Page 10 looks good");
+  expect(document.documentElement.classList.contains(CAPTURE_CLASS)).toBe(true);
+});
+
+it("a first photo that arrives after 1.2 s opens the capture screen again, with nothing sent meanwhile (#915)", async () => {
+  onTestFinished(withoutCancel());
+  undoMs = 5;
+  await render();
+  await openCapture();
+  await pickerAway(PICK_RETURN_MS + 300);
+  expect(onHome()).toBe(true);
+  await choose("camera", "p10.jpg");
+  await act(async () => { await new Promise((r) => setTimeout(r, 50)); }); await settle();
+  expect(text()).toContain("Page 10 looks good");
+  expect(document.documentElement.classList.contains(CAPTURE_CLASS)).toBe(true);
+  // Auto-send waits for Done.
+  expect(calls.some((c) => c === "POST /api/account/scans/send")).toBe(false);
+  await act(async () => button("Done")!.click()); await settle();
+  await act(async () => { await new Promise((r) => setTimeout(r, 50)); }); await settle();
+  expect(calls.some((c) => c === "POST /api/account/scans/send")).toBe(true);
+});
+
+it("Back while capturing closes the capture screen and stays on Scan pages; Done takes back only its own entry (#915)", async () => {
+  await render();
+  const back = vi.spyOn(history, "back").mockImplementation(() => {});
+  await openCapture();
+  expect((history.state as Record<string, unknown> | null)?.[CAPTURE_ENTRY]).toBe(true);
+  // The browser's Back: the entry before the capture screen's is current again.
+  await act(async () => { history.replaceState(null, ""); window.dispatchEvent(new PopStateEvent("popstate", { state: null })); }); await settle();
+  expect(onHome()).toBe(true);
+  expect(back).not.toHaveBeenCalled();
+  await openCapture();
+  await act(async () => button("Done")!.click()); await settle();
+  expect(back).toHaveBeenCalledOnce();
+  // An entry that is no longer ours is never taken back.
+  await openCapture();
+  history.replaceState(null, "");
+  await act(async () => button("Close the camera")!.click()); await settle();
+  expect(back).toHaveBeenCalledOnce();
+});
+
+it("moves focus to the capture screen's close button, and back to Scan pages when it closes (#915)", async () => {
+  await render();
+  vi.spyOn(history, "back").mockImplementation(() => {});
+  await openCapture(); await settle();
+  expect(document.activeElement?.getAttribute("aria-label")).toBe("Close the camera");
+  await act(async () => button("Done")!.click()); await settle();
+  expect(document.activeElement?.textContent).toContain("Scan pages");
+});
+
+it("keeps one live line across the first photo, and says when an earlier photo later fails its check (#915)", async () => {
+  await render();
+  await openCapture();
+  const live = host.querySelector(".scan-tray-msg")!;
+  expect(live.getAttribute("aria-live")).toBe("polite");
+  await choose("camera", "two-p12.jpg");
+  expect(live.isConnected).toBe(true);
+  expect(live.textContent).toContain("Page 12: retake this one");
+  await choose("camera", "p11.jpg");
+  expect(host.querySelector(".scan-tray-msg")).toBe(live);
+  expect(host.querySelector(".sr-only[aria-live]")?.textContent).toBe("Page 12 needs another photo.");
+});
+
+it("offers Choose another photo on the capture card for a photo refused before it reached us (#915)", async () => {
+  await render();
+  await openCapture();
+  const library = host.querySelector<HTMLInputElement>("input[multiple]")!;
+  const opened = vi.mocked(library.click);
+  await choose("camera", "junk.jpg");
+  expect(button("Retake this page")).toBeUndefined();
+  opened.mockClear();
+  await act(async () => button("Choose another photo")!.click());
+  expect(opened).toHaveBeenCalledOnce();
 });
