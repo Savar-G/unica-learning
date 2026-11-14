@@ -620,15 +620,36 @@ function shapedCells(a: Float32Array, width: number, cells: readonly { x: number
   return shaped;
 }
 
-/** The best correlation of a cell with the photo's grid within FIT_SHIFT grid pixels of its place. */
-function cellMatch(c: ShapedCell, a: Float32Array, b: Float32Array, width: number, height: number): number {
+/**
+ * Toner shine (coil-bound book, 2026-11-14): laser toner is glossy, so where a sheet bows toward its binding under a lamp
+ * the print can come out lighter than the paper around it, as hollow or silver letters, while the paper stays matte. Its
+ * grey then no longer follows the print, though every stroke is still there in its place. So a cell that does not follow
+ * is read once more with the photo folded around its paper level (the median grey near the cell): print darker or lighter
+ * than the paper both count as print. Where the photo is darker than its paper, as all print in a photo without shine is,
+ * the fold changes nothing, and the thresholds are the same: blank paper still shows nothing, and another sheet's print
+ * counts only where it lines up with this page's, as before.
+ */
+const SHINE_REACH = 8;
+
+/** The median grey of the photo's grid around a cell, out to SHINE_REACH: its paper level. */
+function paperLevel(c: { x: number; y: number }, b: Float32Array, width: number, height: number): number {
+  const values: number[] = [];
+  for (let y = Math.max(0, c.y - SHINE_REACH); y < Math.min(height, c.y + FIT_CELL + SHINE_REACH); y++)
+    for (let x = Math.max(0, c.x - SHINE_REACH); x < Math.min(width, c.x + FIT_CELL + SHINE_REACH); x++) values.push(b[y * width + x]);
+  values.sort((p, q) => p - q);
+  return values[values.length >> 1];
+}
+
+/** The best correlation of a cell with the photo's grid within FIT_SHIFT grid pixels of its place; with `paper`, folded around it (SHINE_REACH). */
+function cellMatch(c: ShapedCell, a: Float32Array, b: Float32Array, width: number, height: number, paper?: number): number {
   const n = FIT_CELL * FIT_CELL;
   let best = -1;
   for (let dy = -FIT_SHIFT; dy <= FIT_SHIFT; dy++) for (let dx = -FIT_SHIFT; dx <= FIT_SHIFT; dx++) {
     if (c.y + dy < 0 || c.x + dx < 0 || c.y + dy + FIT_CELL > height || c.x + dx + FIT_CELL > width) continue;
     let sumB = 0, sumBB = 0, sumAB = 0;
     for (let j = 0; j < FIT_CELL; j++) for (let i = 0; i < FIT_CELL; i++) {
-      const p = a[(c.y + j) * width + c.x + i], q = b[(c.y + dy + j) * width + c.x + dx + i];
+      const v = b[(c.y + dy + j) * width + c.x + dx + i];
+      const p = a[(c.y + j) * width + c.x + i], q = paper === undefined ? v : paper - Math.abs(v - paper);
       sumB += q; sumBB += q * q; sumAB += p * q;
     }
     const spreadB = n * sumBB - sumB * sumB;
@@ -636,6 +657,11 @@ function cellMatch(c: ShapedCell, a: Float32Array, b: Float32Array, width: numbe
     if (r > best) best = r;
   }
   return best;
+}
+
+/** Whether a cell shows this page's print in the photo: its grey follows the print, or does once folded (toner shine). */
+function cellShows(c: ShapedCell, a: Float32Array, b: Float32Array, width: number, height: number): boolean {
+  return cellMatch(c, a, b, width, height) >= CELL_MATCH || cellMatch(c, a, b, width, height, paperLevel(c, b, width, height)) >= CELL_MATCH;
 }
 
 /** How far inside the photo's edge, in photo pixels, a cell must be to be compared: its reach and its blur stay in the photo. */
@@ -669,7 +695,7 @@ function pageFit(printed: PrintedInk, photoSums: Uint32Array, photo: { width: nu
   const count = (inView: readonly ShapedCell[], grid: Float32Array) => {
     const allowed = Math.floor(inView.length * (1 - atLeast));
     let missed = 0;
-    for (const c of inView) if (cellMatch(c, a, grid, width, height) < CELL_MATCH && ++missed > allowed) break;
+    for (const c of inView) if (!cellShows(c, a, grid, width, height) && ++missed > allowed) break;
     return { missed, allowed, fit: 1 - missed / inView.length };
   };
   const flatView = visibleCells(shaped, photo, t);
@@ -1477,8 +1503,11 @@ const NEAR_CELLS_MATCH = 0.75;
 /** The fewest print cells beside a box with no outline that can show it. */
 const NEAR_CELLS_MIN = 2;
 
-/** The best correlation of the printed grid with the photo's over the given pixels, within FIT_SHIFT; null when the print there is one even shade. */
-function ringMatch(xs: readonly number[], ys: readonly number[], a: Float32Array, b: Float32Array, width: number, height: number): number | null {
+/**
+ * The best correlation of the printed grid with the photo's over the given pixels, within FIT_SHIFT; null when the print
+ * there is one even shade. With `paper`, the photo is folded around that grey first (toner shine, SHINE_REACH).
+ */
+function ringMatch(xs: readonly number[], ys: readonly number[], a: Float32Array, b: Float32Array, width: number, height: number, paper?: number): number | null {
   const n = xs.length;
   if (n === 0) return null;
   let sumA = 0, sumAA = 0;
@@ -1491,7 +1520,7 @@ function ringMatch(xs: readonly number[], ys: readonly number[], a: Float32Array
     for (let k = 0; k < n; k++) {
       const x = xs[k] + dx, y = ys[k] + dy;
       if (x < 0 || y < 0 || x >= width || y >= height) continue;
-      const p = a[ys[k] * width + xs[k]], q = b[y * width + x];
+      const v = b[y * width + x], p = a[ys[k] * width + xs[k]], q = paper === undefined ? v : paper - Math.abs(v - paper);
       m++; sA += p; sAA += p * p; sB += q; sBB += q * q; sAB += p * q;
     }
     const spA = m * sAA - sA * sA, spB = m * sBB - sB * sB;
@@ -1533,14 +1562,16 @@ function answersNearHiddenShown(o: { ink: PrintedInk; photoSums: Uint32Array; ph
       const r = ringMatch(xs, ys, a, b, width, height);
       if (r === null) continue;
       tiles++;
-      if (r >= CELL_MATCH) matched++;
+      // A frame in toner shine: read again folded around the tile's paper grey (the median of what the photo shows there).
+      const paper = () => xs.map((x, k) => b[ys[k] * width + x]).sort((p, q) => p - q)[xs.length >> 1];
+      if (r >= CELL_MATCH || (ringMatch(xs, ys, a, b, width, height, paper()) ?? -1) >= CELL_MATCH) matched++;
     }
     if (tiles >= RING_TILES_MIN) { if (matched < tiles * RING_TILES_MATCH) return false; continue; }
     // No outline and no print in the ring: the print cells next to the box must hold this page's print.
     const reach = FIT_CELL * 2;
     const near = visibleCells(nearShaped.filter((c) => c.x + FIT_CELL > x0 - reach && c.x < x1 + reach && c.y + FIT_CELL > y0 - reach && c.y < y1 + reach), photo, t, shape);
     if (near.length < NEAR_CELLS_MIN) return false;
-    if (near.filter((c) => cellMatch(c, a, b, width, height) >= CELL_MATCH).length < near.length * NEAR_CELLS_MATCH) return false;
+    if (near.filter((c) => cellShows(c, a, b, width, height)).length < near.length * NEAR_CELLS_MATCH) return false;
   }
   return true;
 }
