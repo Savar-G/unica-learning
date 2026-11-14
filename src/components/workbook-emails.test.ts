@@ -99,3 +99,10 @@ it.each(["ready", "dispatch"] as const)("permits a busy %s retry only after refr
   await act(async () => root.render(createElement(WorkbookEmails, { ...props, records: [{ ...row }] })));
   expect(button(action).disabled).toBe(true);
 });
+
+it("uses the server-provided walkthrough URL in the dispatch preview without sending it from the browser", async () => {
+  await act(async () => root.render(createElement(WorkbookEmails, { ...props, walkthrough: "https://video.invalid/walkthrough" })));
+  await click("Hand delivery");
+  expect(container.querySelector('[aria-label="Email preview"]')?.textContent).toContain("Watch the 3-minute walkthrough: https://video.invalid/walkthrough");
+  expect(f.fetch).not.toHaveBeenCalled();
+});

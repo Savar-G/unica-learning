@@ -55,7 +55,7 @@ Hi Sam,
 
 Alex's workbook 1 is on its way by hand delivery.
 
-What to do next: keep the workbook together when it arrives. We will email you the instructions when your free month starts.
+When the workbook arrives, follow the schedule on page 2. Let your child try the day's pages, then scan the finished pages at https://unicalearning.com/account/scan. We use those scans to plan the next workbook.
 
 If anything does not work, or if you have feedback, email contact@unicalearning.com or use https://unicalearning.com/account/feedback.
 
@@ -78,7 +78,7 @@ Alex's workbook 1 is on its way.
 Carrier: Canada Post
 Tracking number: 1234 5678 9012
 
-What to do next: keep the workbook together when it arrives. We will email you the instructions when your free month starts.
+When the workbook arrives, follow the schedule on page 2. Let your child try the day's pages, then scan the finished pages at https://unicalearning.com/account/scan. We use those scans to plan the next workbook.
 
 If anything does not work, or if you have feedback, email contact@unicalearning.com or use https://unicalearning.com/account/feedback.
 
@@ -103,7 +103,7 @@ Tracking number: 1234 5678 9012
 
 Track your workbook: https://example.invalid/tracking/1234
 
-What to do next: keep the workbook together when it arrives. We will email you the instructions when your free month starts.
+When the workbook arrives, follow the schedule on page 2. Let your child try the day's pages, then scan the finished pages at https://unicalearning.com/account/scan. We use those scans to plan the next workbook.
 
 If anything does not work, or if you have feedback, email contact@unicalearning.com or use https://unicalearning.com/account/feedback.
 
@@ -177,3 +177,35 @@ Questions? Reply to this email.
 Unica Learning, 16557 87A Ave, Surrey, BC V4N 5B2
 unicalearning.com
 You received this email about your Unica Learning program.
+
+
+## Onboarding additions (#970)
+
+The dispatch preview above replaces the earlier promise to send instructions later.
+Both dispatch and plan-start messages show `Watch the 3-minute walkthrough` near
+the top only when `ONBOARDING_WALKTHROUGH_URL` is a valid HTTPS URL without
+credentials. Blank or invalid configuration hides the whole line. Set the URL
+when the final video is ready; the email builders read it when making the message.
+Already claimed or sent messages keep their saved copy and are not resent.
+Welcome and ready notices do not include the walkthrough.
+
+The plan-start message adds the day 15 next-workbook explanation, the four habits
+in `src/lib/getting-started.ts`, and a reply-or-book-call help line. The call URL
+comes from `src/lib/contact.ts`; disabling booking keeps reply-by-email available.
+The plan, first charge, reminder and cancellation paragraphs stay unchanged.
+Maya's existing chat wording and Grade 3+ condition stay unchanged.
+The welcome-guide link waits for #967.
+
+### Personal Day 2 follow-up
+
+`/admin/next-steps` has a daily **Day 2 check-ins today** list. Two local calendar
+days after a completed initial plan start, the team can open a personal email
+draft: “How did the first day go? Did scanning work?” Nothing is sent automatically.
+The list groups siblings by family and follows the admin's test-family switch;
+test families never count. It is independent of card-list pagination.
+
+This is a daily contact list, not a persistent task tracker. It stays visible for
+the due local day, even after the team sends a message; it does not claim that
+opening a draft completes a contact. Missed contacts do not carry over. This small
+manual workflow is the chosen implementation while families are few. A persistent
+completion/overdue ledger can be added separately if the team needs it.

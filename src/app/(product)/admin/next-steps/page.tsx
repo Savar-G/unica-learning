@@ -1,3 +1,4 @@
+import { loadOnboardingCheckIns } from "@/lib/admin-onboarding-server";
 import { loadAdminBook1Baselines } from "@/lib/admin-book1-baselines-server";
 import { loadAdminScanHolds } from "@/lib/admin-scan-progress-server";
 import { LIST_MAX, listNextSteps, requireAdmin } from "@/lib/admin-store";
@@ -19,9 +20,10 @@ export default async function NextStepsPage({ searchParams }: PageProps<"/admin/
   const offset = listOffset(query, LIST_MAX);
   const view = await loadTestFamilies(admin);
   // Each read leaves the hidden test families out in the database, before its limit.
-  const [{ cards, waitlist }, holds, baselines] = await Promise.all([listNextSteps(admin, offset, view.hidden), loadAdminScanHolds(admin, view), loadAdminBook1Baselines(admin, view)]);
+  const now = new Date();
+  const [{ cards, waitlist }, holds, baselines, checkIns] = await Promise.all([listNextSteps(admin, offset, view.hidden), loadAdminScanHolds(admin, view), loadAdminBook1Baselines(admin, view), loadOnboardingCheckIns(admin, view, now.getTime())]);
   return <AdminFrame email={admin.email} title="Plans and delivery" lead="Start each free month after Book 1 arrives, and keep every saved card and the waitlist in view." testNote={view.show}>
-    <PlansView cards={cards.rows} waitlist={waitlist.rows} holds={holds} baselines={baselines} show={view.show} isTest={view.isTest} now={new Date()} cardsMore={cards.more} waitMore={waitlist.more} />
+    <PlansView checkIns={checkIns} cards={cards.rows} waitlist={waitlist.rows} holds={holds} baselines={baselines} show={view.show} isTest={view.isTest} now={now} cardsMore={cards.more} waitMore={waitlist.more} />
     <More more={cards.more || waitlist.more} max={LIST_MAX} offset={offset} action="/admin/next-steps" />
   </AdminFrame>;
 }

@@ -1,3 +1,4 @@
+vi.mock("@/lib/admin-onboarding-server", () => ({ loadOnboardingCheckIns: async () => ({ rows: [], unavailable: false }) }));
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
