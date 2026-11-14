@@ -33,7 +33,7 @@ describe("buildStack", () => {
   it("puts refused pages first with their short reason, and a refused upload as an unknown page", () => {
     const uploads: StackUpload[] = [{ key: "u1", status: "refused", reason: "qr" }];
     const stack = buildStack({ photos: [photo("a", 10), photo("b", 12, { check: "refused", reason: "ambiguous-page" })], uploads, pages, checks: true });
-    expect(stack.refused.map((t) => [t.label, t.reason])).toEqual([["Page 12 · Day 4", "Two pages"], ["Unknown page", "Not a workbook page"]]);
+    expect(stack.refused.map((t) => [t.label, t.reason])).toEqual([["Page 12 · Day 4", "More than one page"], ["Unknown page", "Code not read"]]);
     expect(stack.days[0].tiles.map((t) => t.label)).toEqual(["Page 10"]);
     // A refused page still has a photo: it is not a gap.
     expect(stack.days[0].missing).toEqual([11, 13]);
@@ -66,7 +66,8 @@ describe("buildStack", () => {
     expect(stack.sent.map((t) => [t.label, t.status])).toEqual([["Page 11 · Day 4", "sent"]]);
     expect(stack.readyIds).toEqual(["a"]);
     expect(stack.days[0].missing).toEqual([12, 13]);
-    expect(stack.counts.photos).toBe(2);
+    // The count is this batch's: the sent page is not counted again.
+    expect(stack.counts.photos).toBe(1);
   });
 
   it.each(["checking", "refused", "unavailable", "none"] as const)("an earlier Send does not hide a current %s check", (check) => {
@@ -124,6 +125,9 @@ describe("words", () => {
     expect(stackSummary(stack, true)).toBe("2 photos. 1 page is ready to send.");
     const none = buildStack({ photos: [photo("b", 11, { check: "checking" })], uploads: [], pages, checks: true });
     expect(stackSummary(none, true)).toBe("1 photo. No pages are ready to send yet.");
+    // Photos already sent for marking are not counted again: only this batch (#915).
+    const withSent = buildStack({ photos: [photo("old", 9, { sentAt: "2026-11-05T11:00:00Z" }), photo("a", 10)], uploads: [], pages, checks: true });
+    expect(stackSummary(withSent, true)).toBe("1 photo. 1 page is ready to send.");
     expect(waitingNote(buildStack({ photos: [photo("a", 10)], uploads: [], pages, checks: true }))).toBeNull();
   });
 
@@ -135,20 +139,27 @@ describe("words", () => {
       expect(copy.action).toMatch(/\.$/);
       expect(`${copy.short} ${copy.title} ${copy.action}`).not.toMatch(/\b(she|her|AI|OpenRouter)\b/);
     }
-    expect(refusalCopy("ambiguous-page").action).toContain("Fold the book back");
+    expect(refusalCopy("ambiguous-page").action).toContain("only one page shows");
     expect(refusalCopy("marks-missing").short).toBe("Cut off");
     expect(refusalCopy("page-mismatch").short).toBe("Wrong page");
   });
 });
 
-it("tells the parent what to fix when the page's QR code cannot be read (#915)", () => {
+it("tells the parent what went wrong and the one thing to do, for each photo refusal (#915)", () => {
+  // The code is named by where it is, with what to change: steady, in view, no glare or shadow.
   for (const reason of ["qr", "qr-mismatch"] as const) {
-    const { action } = refusalCopy(reason);
-    expect(action).toContain("QR code in view and sharp");
-    expect(action).toContain("no shadow");
-    expect(action).toContain("closer");
+    const { title, action } = refusalCopy(reason);
+    expect(title).toBe("We cannot read the small code in the bottom-left corner.");
+    expect(action).toContain("Hold the phone steady");
+    expect(action).toMatch(/no glare.*shadow/);
   }
-  expect(refusalCopy("qr").short).toBe("Not a workbook page");
+  expect(refusalCopy("qr").short).toBe("Code not read");
+  expect(refusalCopy("marks-missing").action).toContain("all four corner marks");
+  expect(refusalCopy("marks-inconsistent").action).toContain("Lay the page flat on a table");
+  expect(refusalCopy("faint").action).toContain("without the flash");
+  // Every refusal ends with what to do, in one sentence the parent can act on.
+  for (const reason of ["qr", "qr-mismatch", "marks-missing", "marks-inconsistent", "page-mismatch", "ambiguous-page", "faint", "failed"] as const)
+    expect(refusalCopy(reason).action).toMatch(/\.$/);
 });
 
 describe("photos waiting to send (#915)", () => {
@@ -181,8 +192,8 @@ describe("photos waiting to send (#915)", () => {
 it("names the sheet check's refusals in their own words (#456)", () => {
   // Disproved if a page refused for another page or for glare shows the "cannot line up" words of a failed check.
   expect(refusalCopy("another-page").title).toBe("Part of this photo looks like a different page.");
-  expect(refusalCopy("faint").title).toBe("Part of the page is too bright or faint to read.");
-  expect(refusalCopy("faint").action).toBe("Take another photo without glare.");
+  expect(refusalCopy("faint").title).toBe("Part of the page is too bright, faint or covered to read.");
+  expect(refusalCopy("faint").action).toBe("Use even light without the flash, and keep fingers and objects off the page. Then take another photo.");
   expect(refusalCopy("check-timeout").action).toBe("Try again in a minute.");
 });
 
@@ -226,23 +237,29 @@ describe("the scan guide", () => {
   const day1 = named.filter((p) => p.day === "Day 1");
   const withDay2 = [...named, { ...named[4], id: "m2", pageNumber: 6, pageOfDay: 2, pagesInDay: 2, name: "Practice" }];
 
-  it("says plainly what is still to scan, counting pages not scanned or needing another photo", () => {
+  it("counts the pages left in this day only, a page needing another photo included", () => {
     const guide = buildStack({ photos: [shot(1), shot(2, { check: "refused", reason: "faint" })], uploads: [], pages: day1, checks: true }).guide;
-    expect(guide?.stillText).toBe("Still to scan: 3 pages (Page 2, Page 3, Page 4)");
+    expect(guide?.stillText).toBe("3 pages left in Day 1.");
+    expect(buildStack({ photos: [1, 2, 3, 4, 5].map((n) => shot(n)), uploads: [], pages: withDay2, checks: true }).guide?.stillText).toBe("1 page left in Day 2.");
   });
 
-  it("names the day with each page when the missing pages span days, and uses the singular for one", () => {
-    const one = buildStack({ photos: [1, 2, 3, 4, 5].map((n) => shot(n)), uploads: [], pages: withDay2, checks: true }).guide;
-    expect(one?.stillText).toBe("Still to scan: 1 page (Page 6)");
-    const spanning = buildStack({ photos: [shot(2), shot(5)], uploads: [], pages: withDay2, checks: true }).guide;
-    expect(spanning?.stillText).toBe("Still to scan: 4 pages (Page 1 · Day 1, Page 3 · Day 1, Page 4 · Day 1, Page 6 · Day 2)");
+  it("never lists an earlier day the parent did not finish (#915)", () => {
+    // Day 1 has one photo; the parent is now scanning Day 2: only Day 2's pages are counted.
+    const later = { ...shot(5), createdAt: "2026-11-06T12:00:00Z" };
+    const guide = buildStack({ photos: [shot(2), later], uploads: [], pages: withDay2, checks: true }).guide;
+    expect(guide?.day).toBe("Day 2");
+    expect(guide?.stillText).toBe("1 page left in Day 2.");
+    expect(guide?.pages.map((p) => p.title)).toEqual(["Page 5 · Day 2, Challenge", "Page 6 · Day 2, Practice"]);
   });
 
-  it("leaves out days with no photo yet", () => {
-    expect(buildStack({ photos: [shot(1)], uploads: [], pages: withDay2, checks: true }).guide?.stillText).toBe("Still to scan: 3 pages (Page 2, Page 3, Page 4)");
+  it("keeps the latest day when an earlier page is retaken afterwards (#915 review)", () => {
+    // Day 2 photographed first, then a Day 1 page added later: the guide stays on Day 2.
+    const day2 = { ...shot(5), createdAt: "2026-11-06T09:00:00Z" };
+    const retake = { ...shot(2), createdAt: "2026-11-06T12:00:00Z" };
+    expect(buildStack({ photos: [day2, retake], uploads: [], pages: withDay2, checks: true }).guide?.day).toBe("Day 2");
   });
 
   it("says all pages are scanned when none are left", () => {
-    expect(buildStack({ photos: [1, 2, 3, 4].map((n) => shot(n)), uploads: [], pages: named.filter((p) => p.day === "Day 1"), checks: true }).guide?.stillText).toBe("All pages of Day 1 are scanned");
+    expect(buildStack({ photos: [1, 2, 3, 4].map((n) => shot(n)), uploads: [], pages: named.filter((p) => p.day === "Day 1"), checks: true }).guide?.stillText).toBe("All pages of Day 1 are scanned.");
   });
 });

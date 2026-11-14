@@ -196,8 +196,8 @@ it("keeps a refused photo first with its reason while the other pages go on, and
   await render();
   await choose("library", "junk.jpg", "p10.jpg", "two-p11.jpg");
   expect(text()).toContain("2 pages need another photo");
-  expect(text()).toContain("Not a workbook page");
-  expect(text()).toContain("Two pages");
+  expect(text()).toContain("Code not read");
+  expect(text()).toContain("More than one page");
   expect(text()).toContain("Unknown page");
   expect(button("Send this page for marking")).toBeDefined();
   await act(async () => button("Send this page for marking")!.click()); await settle();

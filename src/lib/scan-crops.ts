@@ -179,16 +179,32 @@ async function beforeDeadline<T>(read: () => Promise<T>, deadline: number): Prom
  * print ends it at once. A spot too faint to read refuses only once no other page's print has been found. "timeout": out
  * of time, and nothing can be said about the sheet.
  */
-async function sheetVerdict(store: ScanCropStore, ask: ReturnType<typeof sheetChecker>, paths: readonly string[], deadline: number): Promise<"this-page" | SheetRefusal | "timeout"> {
+/** The bytes of one batch of the child's other pages. A page that cannot be read fails the job, which a later call tries again. */
+type OtherBatch = Promise<Uint8Array[]>;
+function fetchOthers(store: ScanCropStore, paths: readonly string[], from: number): OtherBatch {
+  const batch = Promise.all(paths.slice(from, from + OTHERS_AT_ONCE).map(async (path) => {
+    const bytes = await store.printedBytes(path);
+    if (!bytes) throw new Error("scan crops: another page's image");
+    return bytes;
+  }));
+  // A batch fetched ahead and never used (the photo was refused first) must not fail the process.
+  batch.catch(() => undefined);
+  return batch;
+}
+
+/**
+ * Speed (#915): each batch's download overlaps the work before it. The first batch is fetched while the photo is
+ * calibrated (`first`), and each next batch while the one before is compared. The comparisons, their order and the
+ * verdict are unchanged.
+ */
+async function sheetVerdict(store: ScanCropStore, ask: ReturnType<typeof sheetChecker>, paths: readonly string[], deadline: number, first?: OtherBatch): Promise<"this-page" | SheetRefusal | "timeout"> {
   let faint = false;
+  let pending: OtherBatch | null = paths.length ? first ?? fetchOthers(store, paths, 0) : null;
   for (let i = 0; i < paths.length; i += OTHERS_AT_ONCE) {
-    const batch = await beforeDeadline(() => Promise.all(paths.slice(i, i + OTHERS_AT_ONCE).map(async (path) => {
-      const bytes = await store.printedBytes(path);
-      // One that cannot be read fails the job, which a later call tries again.
-      if (!bytes) throw new Error("scan crops: another page's image");
-      return decode(bytes, 1);
-    })), deadline);
+    const current = pending!;
+    const batch = await beforeDeadline(async () => Promise.all((await current).map((bytes) => decode(bytes, 1))), deadline);
     if (batch === CHECK_TIMEOUT) return "timeout";
+    pending = i + OTHERS_AT_ONCE < paths.length ? fetchOthers(store, paths, i + OTHERS_AT_ONCE) : null;
     for (const other of batch) {
       if (Date.now() >= deadline) return "timeout";
       const { verdict } = ask([other]);
@@ -275,6 +291,7 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
   const [photo, printed] = input;
   if (!frame.page.qrToken) return finished("refused", { reason: "qr-mismatch" }, 0);
   const writing = frame.page.questions.flatMap((q) => (q.regions ?? []).flatMap((r) => (r.box ? [r.box] : [])));
+  const firstOthers = frame.page.others.length ? fetchOthers(store, frame.page.others, 0) : undefined;
   const result = calibratePhoto({ photo, printed, contract, pageLink: pageUrl(frame.page.qrToken), writing });
   if (Date.now() >= deadline) return timedOut();
   if (result.status === "unavailable") return { status: "unavailable", reason: result.reason };
@@ -284,7 +301,7 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
   // The code and the marks are this page's: the print between them must be too, wherever a near twin prints otherwise.
   const ask = sheetChecker({ photo, printed, transform: calibration.transform, writing, sheet: calibration });
   if (Date.now() >= deadline) return timedOut();
-  const sheet = await sheetVerdict(store, ask, frame.page.others, deadline);
+  const sheet = await sheetVerdict(store, ask, frame.page.others, deadline, firstOthers);
   if (sheet === "timeout") return timedOut();
   if (sheet !== "this-page") return finished("refused", { reason: sheet }, 0);
 
