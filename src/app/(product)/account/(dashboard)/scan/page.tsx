@@ -13,6 +13,7 @@ import { pickChild } from "@/lib/parent-shell";
 import { CONTINUE_HERE, continueHerePath, scanPageUrl, scanScreen, scanSignInPath } from "@/lib/scan-tab";
 import { dayPages } from "@/lib/scan-stack";
 import { isUuid } from "@/lib/workbook-content";
+import { loadFamilyZone } from "@/lib/family-time-server";
 import { parentId, sessionClient } from "@/lib/supabase-auth";
 import "@/components/scan-tab.css";
 
@@ -51,12 +52,13 @@ async function focusedPage(db: Db, workbook: unknown, page: unknown): Promise<{ 
 export default async function ScanPage({ searchParams }: PageProps<"/account/scan">) {
   if (!(await parentId(await sessionClient()))) redirect(scanSignInPath);
   const { db, parent, childOpen } = await scanSession();
-  const [kids, notice, dashboard, h, query] = await Promise.all([
+  const [kids, notice, dashboard, h, query, timeZone] = await Promise.all([
     db.from("children").select("id,first_name").eq("parent_id", parent).order("created_at"),
     db.from("scan_photo_notices").select("parent_id").eq("parent_id", parent).maybeSingle(),
     parentDashboard(),
     headers(),
     searchParams,
+    loadFamilyZone(db, parent),
   ]);
   // A plan opens only its own child (src/lib/plan-access.ts), so a sibling is not offered here.
   const family = kids.data ?? [];
@@ -73,7 +75,7 @@ export default async function ScanPage({ searchParams }: PageProps<"/account/sca
   if (screen === "camera") {
     return <SupportPage label="Your account" title="Scan pages">
       {back}
-      <ScanPages childrenList={ordered} parent={parent} noticeAcknowledged={Boolean(notice.data)} focus={focus} />
+      <ScanPages timeZone={timeZone} childrenList={ordered} parent={parent} noticeAcknowledged={Boolean(notice.data)} focus={focus} />
     </SupportPage>;
   }
 
@@ -92,7 +94,7 @@ export default async function ScanPage({ searchParams }: PageProps<"/account/sca
       </div>
       {inView && <section className="scan-away-stack" aria-label="From your phone">
         <h2>From your phone</h2>
-        <ScanPages mode="desktop" childrenList={ordered} parent={parent} noticeAcknowledged={Boolean(notice.data)} />
+        <ScanPages timeZone={timeZone} mode="desktop" childrenList={ordered} parent={parent} noticeAcknowledged={Boolean(notice.data)} />
       </section>}
     </div>
   </SupportPage>;

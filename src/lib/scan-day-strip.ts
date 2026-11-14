@@ -1,3 +1,4 @@
+import { localDay, PACIFIC_ZONE, type FamilyZone } from "@/lib/family-time";
 import type { DayPage, PageMarks, StackPhoto, StackTile } from "@/lib/scan-stack";
 
 // The new scan screen's day strip (#915, round r915-scan-flow): the day the parent is on, one tile per printed page,
@@ -83,7 +84,11 @@ export function dayStrip(o: { photos: readonly StackPhoto[]; pages: readonly Day
   return {
     workbookId: newestBook, day: anchor.day, tiles, done, total: tiles.length,
     countText: `${done} of ${tiles.length} ${tiles.length === 1 ? "page" : "pages"} ${o.marking ? "marked" : "scanned"}`,
-    complete, nextDay: complete ? next : null, allDone: complete && !next,
+    complete, nextDay: complete ? next : null, allDone: complete && !next && inBook.every((p) => {
+      const photo = photoOf.get(p.id);
+      const state = stateOf(photo ? tileOf.get(photo.id) : undefined, photo, o.marking);
+      return o.marking ? state === "marked" : state !== "todo" && state !== "retake";
+    }),
   };
 }
 
@@ -95,16 +100,13 @@ export function pageScore(marks: PageMarks | null | undefined): string {
   return `${marks.right} of ${marks.scored} so far · ${marks.waiting} being checked`;
 }
 
-/** The local calendar day of a time, in this browser. */
-const localDay = (iso: string) => { const d = new Date(iso); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
-
 /**
  * The pages sent today, newest book order, and the day's score over the answers marked so far:
  * "Danyal got 17 of 19 right on today's pages". Null when nothing sent today has a mark yet.
  */
-export function todaysPages(photos: readonly StackPhoto[], now: number): { pages: StackPhoto[]; right: number; scored: number; marking: number } {
-  const today = localDay(new Date(now).toISOString());
-  const pages = photos.filter((p) => p.sentAt && localDay(p.sentAt) === today).sort((a, b) => a.book - b.book || a.pageNumber - b.pageNumber);
+export function todaysPages(photos: readonly StackPhoto[], now: number, timeZone: FamilyZone = PACIFIC_ZONE): { pages: StackPhoto[]; right: number; scored: number; marking: number } {
+  const today = localDay(now, timeZone);
+  const pages = photos.filter((p) => p.sentAt && localDay(p.sentAt, timeZone) === today).sort((a, b) => a.book - b.book || a.pageNumber - b.pageNumber);
   let right = 0, scored = 0, marking = 0;
   for (const p of pages) {
     if (p.marks) { right += p.marks.right; scored += p.marks.scored; }

@@ -9,6 +9,7 @@ import { addingCount, buildStack, refusalCopy, roomNote, sendLabel, spreadNote, 
 import { dayStrip, pageScore, retakeLine, scoreLine, todaysPages, type StripState, type StripTile } from "@/lib/scan-day-strip";
 import { PHOTO_PROBLEM_TEXT, type PhotoCheckView, type PhotoProblem } from "@/lib/scan-photo-check-text";
 import { SCANNING_COOKIE, SCANNING_SECONDS } from "@/lib/scan-tab";
+import { PACIFIC_ZONE, type FamilyZone } from "@/lib/family-time";
 import { scanEventTicket } from "@/lib/scan-track";
 import { busyWait, nextUploads, REQUEST_TIMEOUT_MS, UPLOAD_TIMEOUT_MS } from "@/lib/scan-upload-queue";
 import { ScanHistory } from "@/components/scan-history";
@@ -100,7 +101,7 @@ function Tile({ tile, thumb, onOpen }: { tile: StackTile; thumb?: string; onOpen
   </li>;
 }
 
-/** How long a page that passed waits on the phone, with Undo, before it is sent for marking (#915). Nothing reaches the server before. */
+/** How long a page that passed waits on the phone, with Undo, before it is sent for marking (#915). The photo is already saved; marking is held back. */
 export const UNDO_MS = 10_000;
 
 const flagStore = (key: string) => ({
@@ -132,7 +133,7 @@ function sentWords(sent: number, started: number) {
   return `${pages} sent for marking. Marks show here when they are ready.`;
 }
 
-export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "phone", focus = null, initial, undoMs = UNDO_MS, now = Date.now }: {
+export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "phone", focus = null, initial, undoMs = UNDO_MS, now = Date.now, timeZone = PACIFIC_ZONE }: {
   childrenList: { id: string; first_name: string }[];
   /** Optional server presentation state; the controller still reloads the signed-in family on mount. */
   initial?: { listing: ScanListing | null; loadFailed?: boolean };
@@ -144,6 +145,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   /** How long the Undo holds a page (#915); tests pass a short one. */
   undoMs?: number;
   now?: () => number;
+  timeZone?: FamilyZone;
 }) {
   const [child, setChild] = useState(focus?.childId ?? childrenList[0]?.id ?? "");
   const [listing, setListing] = useState<ScanListing | null>(initial?.listing ?? null);
@@ -545,7 +547,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const thumbOf = (t: StackTile) => thumbs[t.photoId ?? t.uploadKey ?? ""];
   const phone = mode === "phone";
   const strip = useMemo(() => dayStrip({ photos, pages: listing?.pages ?? [], tiles, marking }), [photos, listing, tiles, marking]);
-  const today = todaysPages(photos, now());
+  const today = todaysPages(photos, now(), timeZone);
 
   async function send(ids: string[] = stack.readyIds) {
     if (!ids.length || sending || !sessionCurrent.current) return;
@@ -565,15 +567,15 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
 
   // Auto-send (#915): on the phone, with checks, every page that passes is held here for the Undo, then sent. Each page is
   // held once per visit; Undo keeps it here, ready, to send from its sheet. A new page restarts the wait, so a parent still
-  // taking photos sends them together. Nothing reaches the server until the wait ends.
+  // taking photos sends them together. Saved photos are not submitted for marking until the wait ends.
   const auto = phone && checks;
   useEffect(() => {
-    if (!auto) return;
+    if (!auto || capturing) return;
     const fresh = stack.readyIds.filter((id) => !held.current.has(id) && !undone.has(id));
     if (!fresh.length) return;
     for (const id of fresh) held.current.add(id);
     setBatch((b) => [...b, ...fresh]);
-  }, [auto, stack.readyIds, undone]);
+  }, [auto, capturing, stack.readyIds, undone]);
   const commitRef = useRef<(ids: string[]) => Promise<void>>(async () => {});
   commitRef.current = async (ids: string[]) => {
     const version = epoch.current;
@@ -589,8 +591,10 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       if (!answer || answer.preview?.status !== "ready") { held.current.delete(id); continue; }
       const check = answer.photoCheck;
       if (check?.state === "done" && check.problem) kept[id] = check.problem;
-      // A check still running waits for its answer (twice at most), so a photo it would flag is not sent before it says so.
-      else if (check?.state === "pending" && (waits.current.get(id) ?? 0) < 2) { waits.current.set(id, (waits.current.get(id) ?? 0) + 1); again.push(id); }
+      // A pending check is never implicit permission to send. After two waits, leave the page for an explicit send.
+      else if (check?.state === "pending") {
+        if ((waits.current.get(id) ?? 0) < 2) { waits.current.set(id, (waits.current.get(id) ?? 0) + 1); again.push(id); }
+      }
       else ok.push(id);
     }
     if (Object.keys(kept).length) setProblems((p) => ({ ...p, ...kept }));
@@ -601,19 +605,11 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   };
   useEffect(() => {
     if (!batch.length) return;
+    if (capturing) return;
     const timer = setTimeout(() => void commitRef.current(batch), undoMs);
     return () => clearTimeout(timer);
-  }, [batch, undoMs]);
-  // A parent who closes the page during the wait still has the pages sent: the wait ends when the page goes away.
-  // Only on close (pagehide), never when the page is merely hidden: opening the phone's camera for the next photo hides
-  // the page on Android, and Undo must still work then.
-  const batchRef = useRef(batch);
-  batchRef.current = batch;
-  useEffect(() => {
-    const flush = () => { if (batchRef.current.length) void commitRef.current(batchRef.current); };
-    window.addEventListener("pagehide", flush);
-    return () => window.removeEventListener("pagehide", flush);
-  }, []);
+  }, [batch, capturing, undoMs]);
+  // Leaving the page cancels the hold through clearAll; a saved page waits again on the next visit.
   function undo() {
     keepUndone(batch);
     setBatch([]);

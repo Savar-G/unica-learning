@@ -38,7 +38,9 @@ it("follows the latest page scanned in book order, in any order, and names the n
   const done = strip([photo("p3", sent), photo("p4", sent), photo("p5", sent)])!;
   expect([done.day, done.complete, done.nextDay, done.allDone]).toEqual(["Day 1", true, "Day 2", false]);
   const last = strip([photo("p6", sent), photo("p7", sent)])!;
-  expect([last.complete, last.allDone]).toEqual([true, true]);
+  expect([last.complete, last.allDone]).toEqual([true, false]);
+  const wholeBook = strip(pages.map((p) => photo(p.id, sent)))!;
+  expect(wholeBook.allDone).toBe(true);
 });
 
 it("counts scanned pages when marking is not open", () => {
@@ -57,4 +59,12 @@ it("words a page's score and the day's score", () => {
   expect(scoreLine("Danyal", today)).toBe("Danyal got 17 of 19 right on today's pages");
   expect(scoreLine("Danyal", { right: 0, scored: 0, marking: 1 })).toBeNull();
   expect(retakeLine(3)).toBe("3 pages need another photo");
+});
+
+
+it("groups today's pages by the family zone, including its dated Pacific override", () => {
+  const photos = [photo("p3", { sentAt: "2026-11-14T06:30:00Z", marks: full }), photo("p4", { sentAt: "2026-11-14T07:30:00Z", marks: full })];
+  const now = Date.parse("2026-11-14T08:00:00Z");
+  expect(todaysPages(photos, now, "America/Vancouver").pages.map((p) => p.pageId)).toEqual(["p4"]);
+  expect(todaysPages(photos, now, "America/Toronto").pages.map((p) => p.pageId)).toEqual(["p3", "p4"]);
 });

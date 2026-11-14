@@ -254,7 +254,7 @@ it("Undo keeps the pages here, unsent, and each can still be sent from its page"
 });
 
 it("an Undo sticks on a later visit: the kept-back page is not held and sent again", async () => {
-  undoMs = 50;
+  undoMs = 5_000;
   await render();
   await choose("library", "p10.jpg");
   await act(async () => button("Undo")!.click()); await settle();
@@ -265,7 +265,7 @@ it("an Undo sticks on a later visit: the kept-back page is not held and sent aga
   expect(button("Send this page for marking")).toBeDefined();
 });
 
-it("keeps the Undo wait while the page is only hidden (the phone's camera is open), and sends when the page closes", async () => {
+it("keeps the Undo wait while the page is only hidden (the phone's camera is open), and keeps the page unsent when the page closes", async () => {
   await render();
   await choose("library", "p10.jpg");
   Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
@@ -274,7 +274,7 @@ it("keeps the Undo wait while the page is only hidden (the phone's camera is ope
   expect(calls).not.toContain("POST /api/account/scans/send");
   expect(button("Undo")).toBeDefined();
   await act(async () => { window.dispatchEvent(new Event("pagehide")); }); await settle();
-  expect(calls).toContain("POST /api/account/scans/send");
+  expect(calls).not.toContain("POST /api/account/scans/send");
 });
 
 it.each([
@@ -636,4 +636,33 @@ it("tells a family with two children that any page goes to the right child, and 
   await render();
   expect(text()).toContain("Scanning for Leah and Omar?");
   expect(text()).toContain("Each one goes to the right child.");
+});
+
+
+it("does not start the send hold until Done, even when photos are already checked", async () => {
+  undoMs = 10;
+  await render();
+  await act(async () => button("Scan pages")!.click());
+  await choose("library", "p10.jpg");
+  await act(async () => { await new Promise((r) => setTimeout(r, 80)); }); await settle();
+  expect(calls).not.toContain("POST /api/account/scans/send");
+  expect(button("Undo")).toBeUndefined();
+  await act(async () => button("Done")!.click());
+  await act(async () => { await new Promise((r) => setTimeout(r, 80)); }); await settle();
+  expect(calls).toContain("POST /api/account/scans/send");
+});
+
+it("never automatically sends a photo whose photo check remains pending beyond two waits", async () => {
+  undoMs = 5;
+  const server = global.fetch;
+  vi.stubGlobal("fetch", async (path: string, init?: RequestInit) => {
+    const response = await server(path, init);
+    if (path.endsWith("/preview")) return Response.json({ ...(await response.json()), photoCheck: { state: "pending" } });
+    return response;
+  });
+  await render();
+  await choose("library", "p10.jpg");
+  await act(async () => { await new Promise((r) => setTimeout(r, 120)); }); await settle();
+  expect(calls).not.toContain("POST /api/account/scans/send");
+  expect(button("Send this page for marking")).toBeDefined();
 });
