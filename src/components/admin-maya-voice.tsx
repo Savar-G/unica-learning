@@ -54,7 +54,7 @@ export function VoicePanel({ callId, childName, started, onUpdate, onEnded, onCa
 }) {
   const mic = useMicCheck();
   const [said, setSaid] = useState("");
-  const { phase: call, maya, error: errorCode, seconds, fakeSpeech, sending, hearing, audioHost, prepare, leave, connect: join, hangUp, say: sendSaid } = useMayaVoiceRoom({
+  const { phase: call, maya, error: errorCode, seconds, fakeSpeech, sending, hearing, audioHost, prepare, leave, connect: join, hangUp, say: sendSaid, markTap } = useMayaVoiceRoom({
     callId,
     async getTicket() {
       const res = await fetch(`/api/admin/maya/calls/${callId}/token`, { method: "POST" });
@@ -86,6 +86,7 @@ export function VoicePanel({ callId, childName, started, onUpdate, onEnded, onCa
   }
 
   function connect() {
+    markTap(started ? "connect_again" : "connect");
     mic.release();
     void join();
   }

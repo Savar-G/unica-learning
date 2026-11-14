@@ -10,6 +10,7 @@ import {
   type VoiceFlow,
 } from "@/lib/desk-voice-screen";
 import type { DeskVoiceCall, DeskVoiceReply, VoiceTicket, VoiceUsage } from "@/lib/maya-voice-desk";
+import { voiceStartTrace } from "@/lib/maya-voice-start-trace";
 
 // The child's voice call with Maya on the desk (D-197 voice MVP). One call control beside chat: the child picks a
 // question, taps Call Maya, checks the microphone, and the call starts on the server (POST /api/desk/voice). The room
@@ -193,7 +194,11 @@ export function useDeskVoice(initial: { usage: VoiceUsage } | null, at: { book: 
    */
   const startCall = useCallback(async (id: string, question: VoiceQuestion) => {
     await Promise.race([cancelling.current, wait(CANCEL_WAIT_MS)]);
-    const r = await post({ type: "start", id, question });
+    try { voiceStartTrace().mark(id, null, "call_start_begin"); } catch {}
+    const r = await post({ type: "start", id, question }).then((a) => {
+      try { voiceStartTrace().mark(id, null, "call_start_end", { ok: !!a?.ticket }); } catch {}
+      return a;
+    });
     if (r?.error !== "busy" || r.call) return r;
     let freed = false;
     for (const other of [...loose.current]) {
@@ -292,6 +297,7 @@ export function useDeskVoice(initial: { usage: VoiceUsage } | null, at: { book: 
     if (flow !== "mic" || mic.state !== "working" || at.question === null) return;
     const id = callId;
     const p = premade.current?.id === id ? premade.current : null;
+    room.markTap("start_the_call", p?.state === "ready" ? "ready" : p ? "starting" : "none");
     setBase(usage);
     releaseMic();
     if (p?.state === "ready" && p.reply?.call) {
@@ -382,6 +388,7 @@ export function useDeskVoice(initial: { usage: VoiceUsage } | null, at: { book: 
 
   /** Joins again after a drop, with a new ticket. */
   const tryAgain = () => {
+    room.markTap("try_again");
     live.current.hungUp = false;
     setHungUp(false);
     void room.connect();
