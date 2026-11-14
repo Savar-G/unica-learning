@@ -1,4 +1,4 @@
-import { expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { markingAiClient } from "@/lib/scan-marking-ai";
 import { MARKING_MODEL } from "@/lib/scan-marking";
 import { OPENROUTER_URL } from "@/lib/ai-openrouter";
@@ -50,4 +50,44 @@ it("uses only the dedicated key and marking model override in a real captured tr
   await ai!.client.json(request, new AbortController().signal);
   expect(authorization).toBe("Bearer dedicated"); expect(model).toBe("z-ai/glm-5.3-flash");
   expect(markingAiClient({ SCAN_MARKING_OPENROUTER_API_KEY: "synthetic", SCAN_MARKING_MODEL: "unmapped-host" }, fake)(async () => {})).toBeNull();
+});
+describe("#868: the transport names a clean provider failure", () => {
+  const env = { SCAN_MARKING_OPENROUTER_API_KEY: "synthetic" };
+  const clean429 = JSON.stringify({ error: { code: 429, message: "Rate limit exceeded", metadata: { provider_name: "Anthropic" } } });
+  async function failureOf(answer: () => Promise<Response>) {
+    const transport = markingAiClient(env, answer, { model: MARKING_MODEL, provider: { require_parameters: true }, maxRetries: 0 })(async () => {})!;
+    await transport.client.json(request, new AbortController().signal).catch(() => null);
+    return transport.failure!();
+  }
+  it("reads a clean 429 with its Retry-After in seconds or as a date, and keeps the body for the store", async () => {
+    expect(await failureOf(async () => new Response(clean429, { status: 429, headers: { "retry-after": "3" } })))
+      .toEqual({ kind: "rate-limit", retryAfterMs: 3_000, evidence: { status: 429, body: clean429 } });
+    const at = new Date(Date.now() + 5_000).toUTCString();
+    const dated = await failureOf(async () => new Response(clean429, { status: 429, headers: { "retry-after": at } }));
+    expect(dated?.retryAfterMs).toBeGreaterThan(3_000); expect(dated?.retryAfterMs).toBeLessThanOrEqual(5_000);
+    expect((await failureOf(async () => new Response(clean429, { status: 429, headers: { "retry-after": "soon" } })))?.retryAfterMs).toBeNull();
+  });
+  it("a 429 or 5xx that shows a generation, usage or a cost is not clean", async () => {
+    for (const body of [{ error: { code: 429, message: "x" }, usage: { cost: 0.01 } }, { id: "gen-1", error: { code: 429, message: "x" } }, { error: { code: 429, message: "x", metadata: { raw: '{"usage":{}}' } } }, { error: { code: 503, message: "x" } }])
+      expect(await failureOf(async () => Response.json(body, { status: 429 }))).toBeNull();
+    expect(await failureOf(async () => Response.json({ error: { code: 502, message: "x" }, usage: { cost: 0.002 } }, { status: 502 }))).toBeNull();
+  });
+  it("a 5xx or 408 with a clean envelope or no JSON body is a provider error, and keeps no Retry-After", async () => {
+    expect(await failureOf(async () => Response.json({ error: { code: 502, message: "Bad gateway" } }, { status: 502, headers: { "retry-after": "1" } })))
+      .toEqual({ kind: "provider-error", retryAfterMs: null, evidence: { status: 502, body: '{"error":{"code":502,"message":"Bad gateway"}}' } });
+    expect((await failureOf(async () => new Response("upstream down", { status: 503 })))?.kind).toBe("provider-error");
+    expect((await failureOf(async () => new Response("", { status: 408 })))?.kind).toBe("provider-error");
+  });
+  it("a time-out or a lost connection is no answer; an answer or a refused request is no clean failure", async () => {
+    expect(await failureOf(async () => { throw Object.assign(new Error("t"), { name: "TimeoutError" }); })).toEqual({ kind: "no-answer", retryAfterMs: null, evidence: null });
+    expect((await failureOf(async () => { throw new TypeError("fetch failed"); }))?.kind).toBe("no-answer");
+    expect(await failureOf(async () => Response.json({ choices: [{ finish_reason: "stop", message: { content: "not json" } }] }))).toBeNull();
+    expect(await failureOf(async () => Response.json({ error: { code: 400, message: "bad" } }, { status: 400 }))).toBeNull();
+  });
+  it("each attempt starts with no failure, so a retry that answers clears it", async () => {
+    let n = 0;
+    const transport = markingAiClient(env, async () => ++n === 1 ? new Response(clean429, { status: 429 }) : Response.json({ usage: { cost: 0.001 }, choices: [{ finish_reason: "stop", message: { content: "{}" } }] }))(async () => {})!;
+    await transport.client.json(request, new AbortController().signal);
+    expect(transport.failure!()).toBeNull(); expect(transport.costMicros()).toBe(1_000);
+  });
 });

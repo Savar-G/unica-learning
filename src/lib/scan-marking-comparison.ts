@@ -195,17 +195,18 @@ export function transportUsage(value: unknown): TransportUsage {
 /** Evaluation scheduling only. This is separate from the production prompt and schema. */
 export const COMPARISON_DEFERRAL_POLICY = Object.freeze({ version: "clean429-v1", delayMs: 900_000, finalBatches: 1, globalConcurrency: 1, modelConcurrency: 1 });
 export interface CapturedResponse { status: number; body: string | null; openrouter_metadata: unknown; envelope: unknown }
+/** Whether a parsed answer holds generation or usage evidence at any depth, JSON inside a string included. */
+export function showsGeneration(v: unknown): boolean {
+  if (typeof v === "string") { try { return showsGeneration(JSON.parse(v)); } catch { return false; } }
+  return v !== null && typeof v === "object" && Object.entries(v).some(([k, x]) => ["id", "generation_id", "generationId", "usage", "choices"].includes(k) || showsGeneration(x));
+}
 /** A transport error envelope, never a label or the model's answer, authorizes a hold. */
 export function clean429(value: CapturedResponse | undefined): boolean {
   if (!value || value.status !== 429 || typeof value.body !== "string" || !value.body.length) return false;
   try {
     const data = record(JSON.parse(value.body)), error = record(data.error);
-    const forbidden = (v: unknown): boolean => {
-      if (typeof v === "string") { try { return forbidden(JSON.parse(v)); } catch { return false; } }
-      return v !== null && typeof v === "object" && Object.entries(v).some(([k, x]) => ["id", "generation_id", "generationId", "usage", "choices"].includes(k) || forbidden(x));
-    };
     return hashValue(data) === hashValue(value.envelope) && error.code === 429 && typeof error.message === "string" && error.message.length > 0
-      && !forbidden(data) && hashValue(value.openrouter_metadata ?? null) === hashValue(data.openrouter_metadata ?? error.metadata ?? null);
+      && !showsGeneration(data) && hashValue(value.openrouter_metadata ?? null) === hashValue(data.openrouter_metadata ?? error.metadata ?? null);
   } catch { return false; }
 }
 export interface ComparisonAttempt {

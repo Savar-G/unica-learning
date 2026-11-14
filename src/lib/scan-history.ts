@@ -22,7 +22,8 @@ export const completedPage = (p: HistoryPage) => ["ready", "blank", "unscored"].
 /** One canonical page, irrespective of the number or lifecycle of its evidence photos. No score is inferred. */
 export function historyPage(r: HistoryRecord, now: number): HistoryPage {
   const view = markingPageView(r.marks);
-  const failedJob = r.jobs.some((j) => j.blocked === "attempts" || j.blocked === "pending") || r.photos.some((p) => p.state === "rejected");
+  // A `pending` job waits for a later run (a model call that did not finish, #868): it is still being marked, not failed.
+  const failedJob = r.jobs.some((j) => j.blocked === "attempts") || r.photos.some((p) => p.state === "rejected");
   const complete = view.completion.status === "complete";
   const blank = r.marks.filter((m) => m.observation.result === "blank").length;
   const status: HistoryStatus = complete ? view.counts.scored === 0 ? "unscored" : blank === view.counts.scored ? "blank" : "ready"

@@ -33,6 +33,11 @@ it("keeps blank, unscored, pending, failed, never scanned and ready separate", (
   unread(pending); pending.jobs[0].state = "running"; pending.photos[0].state = "saved"; pending.photos[0].expiresAt = "2027-01-01"; failed.jobs[0].state = "queued"; failed.jobs[0].blocked = "attempts"; unread(failed); empty.marks = []; empty.photos = []; empty.jobs = [];
   expect([blank, unscored, pending, failed, empty, record(6)].map((r) => historyPage(r, now).status)).toEqual(["blank", "unscored", "pending", "failed", "never-scanned", "ready"]);
 });
+it("a job waiting as pending for a later run is still being marked, never Could not mark (#868)", () => {
+  const waiting = unread(record(1, null)); waiting.jobs[0].state = "queued"; waiting.jobs[0].blocked = "pending";
+  waiting.photos[0].state = "saved"; waiting.photos[0].expiresAt = "2027-01-01";
+  expect(historyPage(waiting, now)).toMatchObject({ status: "pending", label: "Not marked yet", failedJob: false });
+});
 it("an unsure page says our team is checking it; a page not read yet says Not marked yet; neither asks the parent (#715)", () => {
   const unsure = record(1, null), notRead = unread(record(2, null));
   notRead.jobs = []; notRead.photos[0].state = "saved"; notRead.photos[0].expiresAt = "2027-01-01";

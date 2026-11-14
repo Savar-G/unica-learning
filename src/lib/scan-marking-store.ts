@@ -71,9 +71,15 @@ export function scanMarkingStore(db: SupabaseClient<Database>): MarkingStore {
       if (r === "terminal" || r === "budget" || r === "price-unverified" || r === "attempts") return r;
       return { dispatch: str(record(r).dispatch) };
     },
-    async settle(dispatch, costMicros) {
-      const r = await command("settle", null, null, dispatch, { cost: costMicros });
+    async settle(dispatch, costMicros, failure) {
+      // #868: a clean failure goes with no cost only. The database checks a 429's body again before it frees the hold.
+      const clean = costMicros === null && failure ? { failure: failure.kind, ...(failure.evidence ? { status: failure.evidence.status, body: failure.evidence.body } : {}) } : {};
+      const r = await command("settle", null, null, dispatch, { cost: costMicros, ...clean });
       if (r !== true) throw new Error("marking_cost_reconciliation");
+    },
+    async defer(ref, token) {
+      const r = await command("defer", ref.parent, ref.photo, token);
+      return r === "attempts" || r === "terminal" ? r : "pending";
     },
     async extract(ref, token, observations, model) { return await command("extract", ref.parent, ref.photo, token, toJson({ observations, model, prompt: MARKING_PROMPT_VERSION })) === true; },
     async apply(ref, token, _observations, pendingEvents, at) { return await command("apply", ref.parent, ref.photo, token, toJson({ events: pendingEvents, at })) === true; },

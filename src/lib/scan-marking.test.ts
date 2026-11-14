@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
 import { expectedItems, firstObservation, itemKey, markingEvent, observationProblem, PHOTO_ISSUES, type Observation } from "@/lib/scan-observation";
-import { markingAiTimeout, MARKING_AI_TIMEOUT_MS, MARKING_MIN_AI_MS, TWO_WAYS_METHOD_MARKS, waitsForTeam, effectiveMarkingEvents, effectiveSkillMarks, markingOriginalKey, markingPageView, markingRequest, MARKING_CAP_MICROS, MARKING_MODEL, MARKING_PROMPT_VERSION, readMarkingOutput, runScanMarking, validMarkingOutput, type EffectiveMark, type MarkingClientFactory, type MarkingFrame, type MarkingJob, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
+import { markingAiTimeout, MARKING_AI_TIMEOUT_MS, MARKING_MAX_DEFERRALS, MARKING_MAX_DISPATCHES, MARKING_MAX_TRANSPORT_DISPATCHES, MARKING_RETRY_WAIT_CAP_MS, MARKING_RETRY_WAIT_MS, type MarkingFailure, MARKING_MIN_AI_MS, TWO_WAYS_METHOD_MARKS, waitsForTeam, effectiveMarkingEvents, effectiveSkillMarks, markingOriginalKey, markingPageView, markingRequest, MARKING_CAP_MICROS, MARKING_MODEL, MARKING_PROMPT_VERSION, readMarkingOutput, runScanMarking, validMarkingOutput, type EffectiveMark, type MarkingClientFactory, type MarkingFrame, type MarkingJob, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
 import type { AiJsonRequest } from "@/lib/ai-client";
 import { checkQuestionPackage, workedSteps, type NumberValue, type Operation, type QuestionPackage } from "@/lib/question-package";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
@@ -145,11 +145,11 @@ it("shows page results in printed question order without changing the canonical 
 class Store implements MarkingStore {
   frames = new Map<string, MarkingFrame>();
   items = new Map<string, EffectiveMark>();
-  jobs = new Map<string, MarkingJob & { until: number; dispatches: number; done: boolean }>();
+  jobs = new Map<string, MarkingJob & { until: number; dispatches: number; done: boolean; deferrals?: number }>();
   terminal = new Set<string>(); frozen = false; deleted = false;
   clock = Date.parse("2026-11-05T12:00:00Z");
   prices = new Map([[MARKING_MODEL, 10_000], ["comparison-model", 10_000]]);
-  spend = new Map<string, { period: string; reserved: number; charged: number | null }>();
+  spend = new Map<string, { period: string; reserved: number; charged: number | null; photo?: string; clean?: MarkingFailure["kind"] }>();
   events: LearningEvent[] = [];
   owners = new Map<string, string>();
   pendingReceipts = new Map<string, { photo: string; version: number }>();
@@ -168,21 +168,36 @@ class Store implements MarkingStore {
       if (item.observation.state === "pending") this.owners.set(key, ref.photo);
     }
     const old = this.jobs.get(ref.photo);
-    const j = { token, items: structuredClone([...this.items.values()]), extraction: old?.extraction ?? null, until: this.clock + 180_000, dispatches: old?.dispatches ?? 0, done: false };
+    const j = { token, items: structuredClone([...this.items.values()]), extraction: old?.extraction ?? null, until: this.clock + 180_000, dispatches: old?.dispatches ?? 0, deferrals: old?.deferrals ?? 0, done: false };
     this.jobs.set(ref.photo, j); return j;
   }
   async image() { this.imageReads++; return new Uint8Array([1, 2, 3]); }
   async admit(ref: MarkingRef, token: string, model: string) {
     if (!this.live(ref, token)) return "terminal" as const;
     const j = this.jobs.get(ref.photo)!;
-    if (j.dispatches >= 2) return "attempts" as const;
+    // The SQL rule (#868): a clean provider failure does not use up one of the two dispatches; ten in all is the backstop.
+    const clean = [...this.spend.values()].filter((x) => x.photo === ref.photo && x.clean).length;
+    if (j.dispatches - clean >= MARKING_MAX_DISPATCHES || j.dispatches >= MARKING_MAX_TRANSPORT_DISPATCHES) return "attempts" as const;
     const maximum = this.prices.get(model); if (!maximum) return "price-unverified" as const;
     const period = new Date(this.clock).toISOString().slice(0, 7);
     const held = [...this.spend.values()].filter((s) => s.period === period).reduce((sum, s) => sum + (s.charged ?? s.reserved), 0);
     if (held + maximum > MARKING_CAP_MICROS) return "budget" as const;
-    const dispatch = `d${this.spend.size}`; this.spend.set(dispatch, { period, reserved: maximum, charged: null }); j.dispatches++; return { dispatch };
+    const dispatch = `d${this.spend.size}`; this.spend.set(dispatch, { period, reserved: maximum, charged: null, photo: ref.photo }); j.dispatches++; return { dispatch };
   }
-  async settle(id: string, cost: number | null) { const s = this.spend.get(id)!; if (cost !== null && cost <= s.reserved && s.charged === null) s.charged = cost; }
+  async settle(id: string, cost: number | null, failure: MarkingFailure | null = null) {
+    const s = this.spend.get(id)!;
+    if (cost !== null) { if (cost <= s.reserved && s.charged === null) s.charged = cost; return; }
+    if (!failure || s.charged !== null || s.clean) return;
+    s.clean = failure.kind;
+    // Only a 429 whose envelope shows no generation released its hold; the other clean failures keep it.
+    if (failure.kind === "rate-limit" && failure.evidence?.status === 429) s.charged = 0;
+  }
+  async defer(ref: MarkingRef, token: string) {
+    if (!this.live(ref, token)) return "terminal" as const;
+    const job = this.jobs.get(ref.photo)!;
+    if ((job.deferrals ?? 0) >= MARKING_MAX_DEFERRALS) { await this.pause(ref, token, "attempts"); return "attempts" as const; }
+    job.deferrals = (job.deferrals ?? 0) + 1; job.until = 0; return "pending" as const;
+  }
   async extract(ref: MarkingRef, token: string, o: Observation[], model: string) { if (!this.live(ref, token)) return false; this.jobs.get(ref.photo)!.extraction = structuredClone(o); for (const m of this.items.values()) m.model = model; return true; }
   async apply(ref: MarkingRef, token: string, observations: Observation[], events: NewLearningEvent[], at: string) {
     if (!this.live(ref, token)) return false;
@@ -283,6 +298,107 @@ describe("#726: the model call fits the caller's deadline", () => {
     expect(await timed("later")).toBe("finished");
     expect(requests).toHaveLength(1);
     expect(s.spend.size).toBe(1);
+  });
+});
+
+/** One scripted transport attempt: a failure the transport classified, a failure it could not (unknown), or an answer. */
+type Step = { failure: MarkingFailure } | { unknown: true } | { answer: unknown; cost?: number };
+/** Behaves like the real adapter: admission before each attempt, one retry of a retryable failure, cost and failure per attempt. */
+function scripted(steps: Step[], requests: AiJsonRequest[] = []): MarkingClientFactory {
+  return (before) => {
+    let cost: number | null = null, failure: MarkingFailure | null = null;
+    return { costMicros: () => cost, failure: () => failure, client: { model: MARKING_MODEL, async json(r) {
+      for (let attempt = 0; ; attempt++) {
+        await before(); cost = null; failure = null;
+        const step = steps.shift()!; requests.push(r);
+        if ("answer" in step) { cost = step.cost ?? null; return step.answer; }
+        if ("failure" in step) failure = step.failure;
+        if (attempt >= 1) throw new Error("OpenRouter failed");
+      }
+    } } };
+  };
+}
+const rateLimit = (retryAfterMs: number | null = null): MarkingFailure => ({ kind: "rate-limit", retryAfterMs, evidence: { status: 429, body: '{"error":{"code":429,"message":"Rate limit exceeded"}}' } });
+const noAnswer: MarkingFailure = { kind: "no-answer", retryAfterMs: null, evidence: null };
+const serverError: MarkingFailure = { kind: "provider-error", retryAfterMs: null, evidence: { status: 502, body: '{"error":{"code":502,"message":"Bad gateway"}}' } };
+
+describe("#868: a clean provider failure waits, frees its hold and defers the photo", () => {
+  function timedRun(s: Store, photo: string, ai: MarkingClientFactory, token: string, waits: number[] = []) {
+    return runScanMarking(s, { parent: P, photo }, token, ai, () => new Date(s.clock).toISOString(),
+      { clockMs: () => s.clock, sleep: async (ms) => { waits.push(ms); s.clock += ms; } });
+  }
+  const answer = { answer: output(["0", "12", "9"]), cost: 2_000 };
+
+  it("waits the Retry-After of a 429, retries, and frees the 429's hold", async () => {
+    const s = new Store(frame()), waits: number[] = [], requests: AiJsonRequest[] = [];
+    expect(await timedRun(s, "photo-a", scripted([{ failure: rateLimit(3_000) }, answer], requests), "a", waits)).toBe("finished");
+    expect(waits).toEqual([3_000]);
+    expect(requests).toHaveLength(2);
+    expect([...s.spend.values()].map((x) => x.charged)).toEqual([0, 2_000]);
+  });
+
+  it("waits a short default when a 429 names no time", async () => {
+    const s = new Store(frame()), waits: number[] = [];
+    expect(await timedRun(s, "photo-a", scripted([{ failure: rateLimit() }, answer]), "a", waits)).toBe("finished");
+    expect(waits).toEqual([MARKING_RETRY_WAIT_MS]);
+  });
+
+  it("does not retry now when the wait is over the cap or would not leave time for the call, and defers the photo", async () => {
+    for (const [retryAfter, left] of [[MARKING_RETRY_WAIT_CAP_MS + 1, 120_000], [5_000, MARKING_MIN_AI_MS + 4_000]] as const) {
+      const s = new Store(frame()), waits: number[] = [], requests: AiJsonRequest[] = [];
+      const run = runScanMarking(s, { parent: P, photo: "photo-a" }, "a", scripted([{ failure: rateLimit(retryAfter) }, answer], requests), () => new Date(s.clock).toISOString(),
+        { clockMs: () => s.clock, sleep: async (ms) => { waits.push(ms); s.clock += ms; }, aiTimeLeftMs: () => left });
+      expect(await run).toBe("pending");
+      expect(waits).toEqual([]);
+      expect(requests).toHaveLength(1);
+      expect([...s.spend.values()].map((x) => x.charged)).toEqual([0]);
+      expect(s.jobs.get("photo-a")).toMatchObject({ deferrals: 1, done: false });
+    }
+  });
+
+  it("a deferred photo keeps both dispatches for a later run, and goes to the team only after the last deferral", async () => {
+    const s = new Store(frame()), requests: AiJsonRequest[] = [];
+    for (let n = 1; n <= MARKING_MAX_DEFERRALS; n++) {
+      expect(await timedRun(s, "photo-a", scripted([{ failure: noAnswer }, { failure: serverError }], requests), `run-${n}`)).toBe("pending");
+      expect(s.jobs.get("photo-a")).toMatchObject({ deferrals: n, done: false });
+      expect(s.teamQueue()).toHaveLength(0);
+    }
+    expect(await timedRun(s, "photo-a", scripted([{ failure: noAnswer }, { failure: noAnswer }], requests), "last")).toBe("attempts");
+    expect(s.jobs.get("photo-a")!.done).toBe(true);
+    expect(s.teamQueue()).toHaveLength(3);
+    // No answer and a server error may still have run: every one of their holds stays counted in full.
+    expect([...s.spend.values()].every((x) => x.charged === null && x.reserved === 10_000)).toBe(true);
+    expect(requests).toHaveLength(2 * (MARKING_MAX_DEFERRALS + 1));
+  });
+
+  it("a deferred photo is marked by a later run with its two dispatches", async () => {
+    const s = new Store(frame());
+    expect(await timedRun(s, "photo-a", scripted([{ failure: rateLimit(60_000) }]), "a")).toBe("pending");
+    expect(await timedRun(s, "photo-a", scripted([{ unknown: true }, answer]), "b")).toBe("finished");
+    expect(s.jobs.get("photo-a")!.dispatches).toBe(3);
+  });
+
+  it("a failure that may have been charged still uses up a dispatch and keeps its hold", async () => {
+    const s = new Store(frame());
+    expect(await timedRun(s, "photo-a", scripted([{ unknown: true }, { unknown: true }]), "a")).toBe("pending");
+    expect(s.jobs.get("photo-a")!.deferrals).toBe(0);
+    expect(await timedRun(s, "photo-a", scripted([answer]), "b")).toBe("attempts");
+    expect([...s.spend.values()].map((x) => x.charged)).toEqual([null, null]);
+  });
+
+  it("a clean failure after a charged one defers, and the charged one still counts", async () => {
+    const s = new Store(frame());
+    expect(await timedRun(s, "photo-a", scripted([{ unknown: true }, { failure: rateLimit(1_000) }]), "a")).toBe("pending");
+    expect(s.jobs.get("photo-a")!.deferrals).toBe(1);
+    // The clean 429 did not count, so one counted dispatch is left: its retry is refused.
+    expect(await timedRun(s, "photo-a", scripted([{ unknown: true }, answer]), "b")).toBe("attempts");
+  });
+
+  it("stops at ten transport dispatches in all, whatever the failures were", async () => {
+    const s = new Store(frame());
+    await s.claim({ parent: P, photo: "photo-a" }, "x", frame());
+    s.jobs.get("photo-a")!.dispatches = MARKING_MAX_TRANSPORT_DISPATCHES; s.jobs.get("photo-a")!.until = 0;
+    expect(await timedRun(s, "photo-a", scripted([answer]), "a")).toBe("attempts");
   });
 });
 

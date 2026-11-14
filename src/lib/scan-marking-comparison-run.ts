@@ -189,7 +189,7 @@ export async function runComparisonPhoto(options: {
       await journal.save(currentKey!, { state: deferredAttempt(attempt) && !journalFailed && !budgetFailed ? "deferred" : attempt.usage.costMicros === null ? "unknown" : "settled", attempt, response: responseEvidence, ...(responseEvidence ?? {}) });
     },
     extract: async (_ref, _token, value) => { observations = value; return true; },
-    apply: async () => true, finish: async () => true, pause: async () => {}, publish: async () => 0, effective: async () => [],
+    apply: async () => true, finish: async () => true, pause: async () => {}, defer: async () => "pending", publish: async () => 0, effective: async () => [],
   };
   let status: string;
   try {
@@ -197,7 +197,8 @@ export async function runComparisonPhoto(options: {
       const transport = factory(before);
       if (!transport) return null;
       const client = transport.client;
-      return { ...transport, client: { model: client.model, json: async (request, signal) => {
+      // The evaluation keeps its own clean429-v1 deferral: no production failure, wait or deferral (#868) enters it.
+      return { costMicros: transport.costMicros, client: { model: client.model, json: async (request, signal) => {
         let output: unknown;
         try { output = await client.json(request, signal); }
         catch (error) {
