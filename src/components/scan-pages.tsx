@@ -604,13 +604,15 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     const timer = setTimeout(() => void commitRef.current(batch), undoMs);
     return () => clearTimeout(timer);
   }, [batch, undoMs]);
-  // A parent who leaves the page during the wait still has the pages sent: the wait ends when the page is hidden.
+  // A parent who closes the page during the wait still has the pages sent: the wait ends when the page goes away.
+  // Only on close (pagehide), never when the page is merely hidden: opening the phone's camera for the next photo hides
+  // the page on Android, and Undo must still work then.
   const batchRef = useRef(batch);
   batchRef.current = batch;
   useEffect(() => {
-    const flush = () => { if (document.visibilityState === "hidden" && batchRef.current.length) void commitRef.current(batchRef.current); };
-    document.addEventListener("visibilitychange", flush); window.addEventListener("pagehide", flush);
-    return () => { document.removeEventListener("visibilitychange", flush); window.removeEventListener("pagehide", flush); };
+    const flush = () => { if (batchRef.current.length) void commitRef.current(batchRef.current); };
+    window.addEventListener("pagehide", flush);
+    return () => window.removeEventListener("pagehide", flush);
   }, []);
   function undo() {
     keepUndone(batch);

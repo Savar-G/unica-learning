@@ -265,13 +265,15 @@ it("an Undo sticks on a later visit: the kept-back page is not held and sent aga
   expect(button("Send this page for marking")).toBeDefined();
 });
 
-it("sends the held pages at once when the parent leaves the page during the Undo wait", async () => {
+it("keeps the Undo wait while the page is only hidden (the phone's camera is open), and sends when the page closes", async () => {
   await render();
   await choose("library", "p10.jpg");
-  expect(calls).not.toContain("POST /api/account/scans/send");
   Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
   await act(async () => { document.dispatchEvent(new Event("visibilitychange")); }); await settle();
   Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+  expect(calls).not.toContain("POST /api/account/scans/send");
+  expect(button("Undo")).toBeDefined();
+  await act(async () => { window.dispatchEvent(new Event("pagehide")); }); await settle();
   expect(calls).toContain("POST /api/account/scans/send");
 });
 
