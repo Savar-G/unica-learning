@@ -11,6 +11,7 @@ import "@/components/statement.css";
 import { FaqMore } from "@/components/faq-more";
 import { StartLink, StartNote } from "@/components/start-link";
 import { ADDITIONAL_CHILD_PRICE, BRAND, HERO, OFFER_ENDS, PLANS, SOCIAL_LINKS, cad } from "@/lib/site";
+import { SUPPORT_EMAIL } from "@/lib/contact";
 import { FAQ } from "@/lib/faq";
 import {
   BeliefList,
@@ -176,6 +177,7 @@ export function Pricing() {
           price={PLANS.one.price}
           offer={{ price: "Free", note: "your first month!", then: `Then CAD ${cad(PLANS.one.price)} a month.` }}
           priceNote={
+            <>
             <span className="plan-family">
               <svg viewBox="0 0 34 34" aria-hidden="true">
                 <circle cx="12" cy="11" r="5" fill="var(--sun)" />
@@ -188,6 +190,14 @@ export function Pricing() {
                 <span className="plan-family-save">CAD {cad(SIBLING_SAVING)} less a month for each additional child.</span>
               </span>
             </span>
+            <span className="plan-family plan-refer">
+              <svg viewBox="0 0 34 34" aria-hidden="true"><rect x="5" y="14" width="24" height="15" rx="2" fill="var(--sun)" /><rect x="3" y="9" width="28" height="6" rx="1.5" fill="var(--coral, #FF6430)" /><path d="M17 9v20" stroke="#fff" strokeWidth="2.5" /><path d="M17 9c-3-5-9-4-7 0M17 9c3-5 9-4 7 0" fill="none" stroke="var(--coral, #FF6430)" strokeWidth="2" /></svg>
+              <span>
+                <b>Know a family who&apos;d love this?</b> Refer them, and you both get 50% off a month.{" "}
+                <span className="plan-family-save">Email us their name at <a href={`mailto:${SUPPORT_EMAIL}?subject=Referral`}>{SUPPORT_EMAIL}</a>.</span>
+              </span>
+            </span>
+            </>
           }
           features={[
             "Free online math assessment and report, before you choose a plan",
