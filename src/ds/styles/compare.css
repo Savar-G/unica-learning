@@ -75,6 +75,7 @@
    (.hc-us-field, the hero and closing colours), one block behind the whole column. Cells are placed with
    --r/--c (wide) and --pr/--pc (phone) from HomeCompare. Under 900px the row label sits above the tutor and
    centre cells, and our cell spans both rows, so the field never breaks. */
+.hc-note { margin: 14px 0 0; font: 400 12.5px/1.5 var(--mono); color: var(--ink-3); }
 .hc-full { display: inline-block; margin: 14px 0 0; font-weight: 500; color: var(--ink); text-underline-offset: 4px; }
 .sec-head.hc-head-block { margin-bottom: 0; }
 .hc { display: grid; grid-template-columns: minmax(150px, 0.8fr) repeat(3, minmax(0, 1fr)); margin-top: clamp(36px, 5vw, 64px); }
