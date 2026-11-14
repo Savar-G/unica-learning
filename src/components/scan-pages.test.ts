@@ -99,6 +99,8 @@ beforeEach(() => {
       const name = await (init!.body as Blob).text();
       const page = PAGES.find((p) => name.includes(p.id));
       if (!page) return Response.json({ error: "qr" }, { status: 422 });
+      // As the server does (F5): a new photo of a page whose photo the check refused, never sent, replaces it.
+      for (const [old, p] of photos) if (p.pageId === page.id && p.state === "saved" && p.check === "refused" && !p.sentAt) photos.delete(old);
       if ([...photos.values()].some((p) => p.pageId === page.id)) return Response.json({ error: "duplicate" }, { status: 422 });
       photos.set(id, { id, pageId: page.id, workbookId: "book", book: 1, pageNumber: page.pageNumber, state: "pending", check: checks ? "checking" : "none", reason: null, sentAt: null, createdAt: `2026-11-05T10:00:0${photos.size}Z`, two: name.startsWith("two") });
       if (losePuts > 0) { losePuts--; throw new TypeError("the answer was lost"); }
@@ -189,7 +191,7 @@ it("takes several chosen photos two at a time, saves each with no confirm, and g
   expect(button("Save this page")).toBeUndefined();
   expect(text()).toContain("Day 4");
   expect(button("Page 11, still to scan")).toBeDefined();
-  expect(button("Page 10, ready to send")).toBeDefined();
+  expect(button("Page 10, ready, not sent yet")).toBeDefined();
   // Auto-send (#915): the pages that passed are held here with Undo; nothing is sent yet.
   expect(text()).toContain("3 pages send for marking in a moment");
   expect(button("Undo")).toBeDefined();
@@ -203,14 +205,14 @@ it("does not ask for another photo of a page that already has one, and focus nev
   await choose("library", "copy-p10.jpg");
   expect(text()).toContain("Already has a photo");
   expect(button("Take the photo again")).toBeUndefined();
-  await act(async () => button("Page 10, ready to send")!.click()); await settle();
+  await act(async () => button("Page 10, ready, not sent yet")!.click()); await settle();
   expect(document.activeElement?.textContent).toBe("Close");
 });
 
 it("closes an open photo with the corner Close button", async () => {
   await render();
   await choose("library", "p10.jpg", "p11.jpg");
-  await act(async () => button("Page 10, ready to send")!.click()); await settle();
+  await act(async () => button("Page 10, ready, not sent yet")!.click()); await settle();
   const x = document.querySelector<HTMLButtonElement>(".scan-sheet-x");
   expect(x?.getAttribute("aria-label")).toBe("Close");
   expect(document.querySelector(".scan-sheet")).not.toBeNull();
@@ -248,7 +250,7 @@ it("Undo keeps the pages here, unsent, and each can still be sent from its page"
   expect(calls).not.toContain("POST /api/account/scans/send");
   expect(text()).toContain("Not sent. The pages wait here.");
   expect(button("Send 2 pages for marking")).toBeDefined();
-  await act(async () => button("Page 10, ready to send")!.click()); await settle();
+  await act(async () => button("Page 10, ready, not sent yet")!.click()); await settle();
   await act(async () => button("Send for marking")!.click()); await settle();
   expect([...photos.values()].filter((p) => p.sentAt).map((p) => p.pageId)).toEqual(["p10"]);
 });
@@ -325,7 +327,7 @@ it("retakes a refused page: the camera opens in the tap, and the old photo goes 
   expect(calls.indexOf(`DELETE /api/account/scans/${old}`)).toBeGreaterThan(-1);
   expect(photos.has(old)).toBe(false);
   expect([...photos.values()].map((p) => [p.pageId, p.check])).toEqual([["p11", "ready"]]);
-  expect(button("Page 11, ready to send")).toBeDefined();
+  expect(button("Page 11, ready, not sent yet")).toBeDefined();
 });
 
 it("asks for no check and offers no Send unless the server says this family has checks", async () => {
@@ -396,7 +398,7 @@ it("asks to save again when a save fails after the upload, so the page reaches i
   expect(saves(id)).toBe(2);
   expect(photos.get(id)?.state).toBe("saved");
   expect(photos.get(id)?.check).toBe("ready");
-  expect(button("Page 10, ready to send")).toBeDefined();
+  expect(button("Page 10, ready, not sent yet")).toBeDefined();
 });
 
 it("retries a failed save of a photo left pending on the next refresh, and not in a tight loop", async () => {
@@ -420,7 +422,7 @@ it("shows and deletes a sent photo when the only open page is one ready photo", 
   seed("sent", "p10", { sentAt: "2026-11-05T08:00:00Z" });
   seed("ready", "p11");
   await render();
-  expect(button("Page 11, ready to send")).toBeDefined();
+  expect(button("Page 11, ready, not sent yet")).toBeDefined();
   const tile = button("Page 10 · Day 4: Sent for marking");
   expect(tile).toBeDefined();
   await act(async () => tile!.click());
@@ -665,4 +667,115 @@ it("never automatically sends a photo whose photo check remains pending beyond t
   await act(async () => { await new Promise((r) => setTimeout(r, 120)); }); await settle();
   expect(calls).not.toContain("POST /api/account/scans/send");
   expect(button("Send this page for marking")).toBeDefined();
+});
+
+it("adds the glare tip to the first-visit tips and to How to scan", async () => {
+  try { localStorage.removeItem("unica.scan-tips.v1:parent"); } catch {}
+  await render();
+  expect(text()).toContain("Keep your hand's shadow off the page. If you see a shiny patch, tilt the book or step to the side.");
+  await act(async () => button("Choose from your photos")!.click());
+  await choose("library", "p10.jpg");
+  await act(async () => button("Done")!.click()); await settle();
+  await act(async () => button("How to scan")!.click());
+  expect(text()).toContain("If you see a shiny patch, tilt the book or step to the side.");
+});
+
+it("says the photo is checked as soon as it is taken, in the photo notice", async () => {
+  acknowledged = false;
+  await render();
+  vi.spyOn(host.querySelector<HTMLInputElement>("input[capture]")!, "click").mockImplementation(() => {});
+  await act(async () => button("Scan pages")!.click());
+  expect(text()).toContain("We check each photo as soon as you take it. To do that, we send the whole page photo to an AI service. Your child's first name and the printed page code can be in the photo.");
+  expect(text()).not.toContain("When you ask us to check it");
+  expect(text()).toContain("We keep one private page photo for up to 90 days.");
+});
+
+it("asks to hold the phone closer, never says cut off, when a page with a read code could not be lined up", async () => {
+  seed("cut", "p11", { check: "refused", reason: "marks-missing" });
+  await render();
+  expect(text()).toContain("Hold the phone closer so the page fills the photo, and tilt it away from the light.");
+  expect(text()).not.toMatch(/cut off/i);
+});
+
+it("puts the page that needs another photo above the day, and the dock's main button retakes it (F5)", async () => {
+  seed("bad", "p11", { check: "refused", reason: "corner-covered" });
+  await render();
+  const need = host.querySelector(".scan-need")!, strip = host.querySelector(".scan-strip")!;
+  expect(need.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  const dock = [...host.querySelectorAll<HTMLButtonElement>(".scan-dock button")];
+  expect(dock[0].textContent).toBe("Retake page 11");
+  expect(dock.map((b) => b.textContent)).toContain("Scan pages");
+  vi.spyOn(host.querySelector<HTMLInputElement>("input[capture]")!, "click").mockImplementation(() => {});
+  await act(async () => dock[0].click());
+  await choose("camera", "p11.jpg");
+  expect(calls).toContain("DELETE /api/account/scans/bad");
+  expect([...photos.values()].map((p) => [p.pageId, p.check])).toEqual([["p11", "ready"]]);
+  expect(host.querySelector(".scan-need")).toBeNull();
+  expect([...host.querySelectorAll(".scan-dock button")].map((b) => b.textContent)).not.toContain("Retake page 11");
+});
+
+it("a plain scan of a page that needs another photo replaces its photo, not refused as already scanned (F5)", async () => {
+  seed("bad", "p11", { check: "refused", reason: "marks-missing" });
+  await render();
+  vi.spyOn(host.querySelector<HTMLInputElement>("input[capture]")!, "click").mockImplementation(() => {});
+  await act(async () => button("Scan pages")!.click());
+  await choose("camera", "p11.jpg");
+  expect(host.querySelector('[aria-label="Page 11, ready"]')).not.toBeNull();
+  await act(async () => button("Done")!.click()); await settle();
+  expect(photos.has("bad")).toBe(false);
+  expect(text()).not.toContain("Already has a photo");
+  expect(host.querySelector(".scan-need")).toBeNull();
+});
+
+it("shows a photo that failed while offline as waiting for the connection, not as a bad photo, and sends it when back online (F3)", async () => {
+  const server = global.fetch;
+  let offline = false;
+  vi.stubGlobal("fetch", async (path: string, init?: RequestInit) => {
+    if (offline && path !== "/api/account/scans?child=child") { calls.push(`offline ${path}`); throw new TypeError("offline"); }
+    return server(path, init);
+  });
+  await render();
+  offline = true;
+  Object.defineProperty(navigator, "onLine", { configurable: true, get: () => false });
+  await act(async () => { window.dispatchEvent(new Event("offline")); }); await settle();
+  expect(text()).toContain("You are offline. Keep this page open: your photos send when you are back online.");
+  await choose("library", "p10.jpg");
+  expect(host.querySelector(".scan-need")).toBeNull();
+  expect(text()).not.toContain("needs another photo");
+  expect(text()).not.toContain("Not sent");
+  expect(text()).toContain("New photos");
+  expect(text()).toContain("Waiting for connection");
+  await act(async () => button("New photo: Waiting for connection")!.click()); await settle();
+  expect(text()).toContain("This photo is waiting for a connection.");
+  await act(async () => button("Close")!.click()); await settle();
+  offline = false;
+  Object.defineProperty(navigator, "onLine", { configurable: true, get: () => true });
+  await act(async () => { window.dispatchEvent(new Event("online")); }); await settle();
+  expect(text()).not.toContain("Waiting for connection");
+  expect([...photos.values()].map((p) => p.pageId)).toEqual(["p10"]);
+});
+
+it("has no child picker on the tips or camera screens, and a small Showing switch on home (F4)", async () => {
+  try { localStorage.removeItem("unica.scan-tips.v1:parent"); } catch {}
+  kids = [{ id: "child", first_name: "Leah" }, { id: "other", first_name: "Sam" }];
+  await render();
+  expect(text()).toContain("Scanning for Leah and Sam?");
+  expect(host.querySelector("select")).toBeNull();
+  vi.spyOn(host.querySelector<HTMLInputElement>("input[capture]")!, "click").mockImplementation(() => {});
+  await act(async () => button("Scan pages")!.click());
+  expect(host.querySelector("select")).toBeNull();
+  await act(async () => button("Done")!.click()); await settle();
+  const pick = host.querySelector<HTMLSelectElement>(".scan-child select")!;
+  expect(pick.closest("label")!.textContent).toContain("Showing:");
+  expect(pick.selectedOptions[0].textContent).toBe("Leah");
+});
+
+it("gives a page held for Undo a clock, never the sent arrow, and keeps the arrow for a sent page (F9)", async () => {
+  seed("sent", "p10", { sentAt: "2026-11-05T08:00:00Z" });
+  seed("held", "p11");
+  await render();
+  const tile = (label: string) => button(label)!.querySelector(".scan-strip-glyph")!;
+  expect(tile("Page 10, sent for marking").textContent).toBe("↑");
+  expect(tile("Page 11, ready, not sent yet").textContent).not.toBe("↑");
+  expect(tile("Page 11, ready, not sent yet").querySelector("svg circle")).not.toBeNull();
 });

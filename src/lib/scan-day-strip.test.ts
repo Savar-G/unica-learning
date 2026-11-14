@@ -68,3 +68,8 @@ it("groups today's pages by the family zone, including its dated Pacific overrid
   expect(todaysPages(photos, now, "America/Vancouver").pages.map((p) => p.pageId)).toEqual(["p4"]);
   expect(todaysPages(photos, now, "America/Toronto").pages.map((p) => p.pageId)).toEqual(["p3", "p4"]);
 });
+
+it("tells a screen reader a page held here is not sent yet, apart from a sent page (F9)", () => {
+  const s = strip([photo("p3", { sentAt: "2026-11-14T10:01:00Z" }), photo("p4")], false)!;
+  expect(s.tiles.slice(0, 2).map((t) => [t.state, t.label])).toEqual([["sent", "Page 3, sent for marking"], ["ready", "Page 4, ready, not sent yet"]]);
+});

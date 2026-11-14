@@ -140,8 +140,7 @@ describe("words", () => {
       expect(`${copy.short} ${copy.title} ${copy.action}`).not.toMatch(/\b(she|her|AI|OpenRouter)\b/);
     }
     expect(refusalCopy("ambiguous-page").action).toContain("only one page shows");
-    expect(refusalCopy("marks-missing").short).toBe("Cut off");
-    expect(refusalCopy("page-mismatch").short).toBe("Wrong page");
+    expect(refusalCopy("marks-missing").short).toBe("Hold closer");
   });
 });
 
@@ -154,8 +153,16 @@ it("tells the parent what went wrong and the one thing to do, for each photo ref
     expect(action).toMatch(/no glare.*shadow/);
   }
   expect(refusalCopy("qr").short).toBe("Code not read");
-  expect(refusalCopy("marks-missing").action).toContain("all four corner marks");
-  expect(refusalCopy("marks-inconsistent").action).toContain("Lay the page flat on a table");
+  // The code was read but the page could not be lined up: the check cannot tell a cut-off edge from glare or a page too
+  // small in the photo, so it says what fixes both, and never "cut off".
+  for (const reason of ["marks-missing", "marks-inconsistent", "corner-covered", "page-mismatch"] as const) {
+    const { title, action } = refusalCopy(reason);
+    expect(title).toBe("We could not line up this photo with the page.");
+    expect(action).toBe("Hold the phone closer so the page fills the photo, and tilt it away from the light.");
+  }
+  for (const reason of ["marks-missing", "marks-inconsistent", "page-mismatch", "orientation-unclear", "ambiguous-page", "corner-covered", "qr-mismatch", "another-page", "faint", "check-timeout", "printed-page-changed", "failed", "qr", "page", "flat", "duplicate", "image", "size", "frequency", "quota", "unavailable"] as const) {
+    expect(Object.values(refusalCopy(reason)).join(" ")).not.toMatch(/cut off|check the child|the stack/i);
+  }
   expect(refusalCopy("faint").action).toContain("without the flash");
   // Every refusal ends with what to do, in one sentence the parent can act on.
   for (const reason of ["qr", "qr-mismatch", "marks-missing", "marks-inconsistent", "page-mismatch", "ambiguous-page", "faint", "failed"] as const)
@@ -272,5 +279,19 @@ describe("two-page photos (#965)", () => {
   });
   it("tells the parent to lay the book flat when the pages are not flat", () => {
     expect(refusalCopy("flat")).toMatchObject({ short: "Pages not flat", title: "The pages are not flat in this photo." });
+  });
+});
+
+describe("offline uploads (F3)", () => {
+  const failed: StackUpload = { key: "local:1", status: "refused", reason: "unavailable" };
+  it("shows a photo that failed only for the connection with the new photos, waiting for the connection, while offline", () => {
+    const stack = buildStack({ photos: [], uploads: [failed, { key: "local:2", status: "refused", reason: "qr" }], pages, checks: true, offline: true });
+    expect(stack.refused.map((t) => t.key)).toEqual(["local:2"]);
+    expect(stack.addingTiles).toEqual([expect.objectContaining({ key: "local:1", status: "waiting", reason: "Waiting for connection", hint: "offline", refusal: null })]);
+  });
+  it("keeps a failed photo as one to try again once the phone is online", () => {
+    const stack = buildStack({ photos: [], uploads: [failed], pages, checks: true });
+    expect(stack.refused.map((t) => [t.key, t.reason])).toEqual([["local:1", "Not sent"]]);
+    expect(stack.addingTiles).toEqual([]);
   });
 });

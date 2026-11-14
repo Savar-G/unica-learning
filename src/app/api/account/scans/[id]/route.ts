@@ -44,7 +44,10 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/accou
     const pages: SpreadPage[] = normalized.spread ?? [{ bytes: normalized.bytes, token: normalized.token, width: normalized.width, height: normalized.height }];
     let mine = -1, refusal: string | null = null;
     for (const [i, page] of pages.entries()) {
-      const identified = await admin.rpc("identify_scan_photo", { p_parent: parent, p_id: id, p_token: page.token, p_width: page.width, p_height: page.height });
+      const identify = () => admin.rpc("identify_scan_photo", { p_parent: parent, p_id: id, p_token: page.token, p_width: page.width, p_height: page.height });
+      let identified = await identify();
+      // A new photo of a page whose photo needs another photo is its retake, however it was taken (F5).
+      if (!identified.error && identified.data === "duplicate" && await replaceRefusedPhoto(admin, parent, page.token)) identified = await identify();
       if (identified.error) throw new Error("unavailable");
       if (identified.data === "identified") { mine = i; break; }
       refusal ??= identified.data;
@@ -98,6 +101,30 @@ const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  * number when known, so the parent is told which page needs its own photo; a page that already has a photo is left
  * alone. Never thrown.
  */
+/**
+ * A page's photo that the check refused, not sent, goes when a new photo of that page arrives (F5): the parent may retake
+ * it with the retake button, which deletes it first, or with a plain Scan pages, which before this was refused as "already
+ * has a photo" and left the parent with no way forward. Only a photo whose stored check refused it, as the stack shows it
+ * (`stackCheck` in src/lib/scan-stack-server.ts: a finished check of the photo's own printing that is not ready), and that
+ * was never sent. A ready photo, a photo still being checked and a sent photo stay: a new photo of those is a duplicate.
+ * True when it went, so the caller identifies the new photo again. Any failed read keeps the old photo.
+ */
+async function replaceRefusedPhoto(admin: SupabaseClient<Database>, parent: string, token: string): Promise<boolean> {
+  try {
+    const page = await admin.from("workbook_pages").select("id").eq("parent_id", parent).eq("qr_token", token).maybeSingle();
+    if (page.error || !page.data) return false;
+    const held = await admin.from("scan_photos").select("id,printed_revision,sent_at").eq("parent_id", parent).eq("page_id", page.data.id).eq("state", "saved").maybeSingle();
+    if (held.error || !held.data || held.data.sent_at) return false;
+    const check = await admin.from("scan_calibrations").select("state,printed_revision").eq("parent_id", parent).eq("photo_id", held.data.id).maybeSingle();
+    const c = check.data;
+    if (check.error || !c || c.state === "running" || c.state === "ready" || c.printed_revision !== held.data.printed_revision) return false;
+    const gone = await admin.rpc("change_scan_photo", { p_parent: parent, p_id: held.data.id, p_action: "delete" });
+    if (gone.error || gone.data !== "deleted") return false;
+    await cleanupScanPhoto(admin, parent, held.data.id);
+    return true;
+  } catch { return false; }
+}
+
 /** Whether the child a photo is filed with now has scanning open (#915 sibling filing). A failed read is closed. */
 async function filedChildOpen(admin: SupabaseClient<Database>, parent: string, id: string, childOpen: (child: string) => Promise<boolean>) {
   const filed = await admin.from("scan_photos").select("child_id").eq("id", id).eq("parent_id", parent).maybeSingle();
@@ -122,7 +149,9 @@ async function spreadPhoto(admin: SupabaseClient<Database>, parent: string, chil
     if (admitted.error || admitted.data !== "reserved") return { id, state: admitted.error ? "unavailable" : admitted.data };
     const started = await admin.rpc("start_scan_photo", { p_parent: parent, p_id: id });
     if (started.error || started.data !== "started") return fail(started.error ? "unavailable" : started.data);
-    const identified = await admin.rpc("identify_scan_photo", { p_parent: parent, p_id: id, p_token: page.token, p_width: page.width, p_height: page.height });
+    const identify = () => admin.rpc("identify_scan_photo", { p_parent: parent, p_id: id, p_token: page.token, p_width: page.width, p_height: page.height });
+    let identified = await identify();
+    if (!identified.error && identified.data === "duplicate" && await replaceRefusedPhoto(admin, parent, page.token)) identified = await identify();
     if (identified.error || identified.data !== "identified") return fail(identified.error ? "unavailable" : identified.data);
     if (!await filedChildOpen(admin, parent, id, childOpen)) return fail("page");
     const uploaded = await admin.storage.from(SCAN_BUCKET).upload(scanPath(parent, id), page.bytes, { contentType: "image/jpeg", upsert: false, cacheControl: "0" });

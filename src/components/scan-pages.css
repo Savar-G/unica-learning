@@ -2,8 +2,15 @@
 .scan-pages { --scan-leaf: #16a06a; --scan-leaf-ink: #0d6e48; --scan-accent-ink: #b43d12; display: grid; gap: 20px; }
 .scan-pages .lead { margin: 0; }
 .scan-pages h2 { margin: 0; }
-.scan-child { display: grid; gap: 8px; max-width: 360px; font-weight: 600; }
-.scan-child select { width: 100%; min-height: 48px; padding: 10px 12px; color: var(--ink); background: var(--paper, #fff); border: 1px solid var(--line); border-radius: 4px; font: inherit; }
+/* Which child's pages show (F4): a small "Showing: Leah ▾" switch, not a form field. Photos need no choice of child. */
+.scan-child { display: inline-flex; align-items: center; gap: 2px; justify-self: start; font-size: 15px; color: var(--ink-2); }
+.scan-child-pick { position: relative; display: inline-flex; align-items: center; }
+.scan-child select { appearance: none; -webkit-appearance: none; min-height: 44px; padding: 0 22px 0 6px; border: 0; border-radius: 6px; background: none; color: var(--ink); font: inherit; font-weight: 600; cursor: pointer; }
+.scan-child select:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+.scan-child select:disabled { color: var(--ink-2); cursor: default; }
+.scan-child-pick > span { position: absolute; right: 6px; pointer-events: none; color: var(--ink); }
+/* A site rule spaces every list item after the first (.support-page li + li): the screen's grids and lists keep their own gaps (F8). */
+.support-page .scan-pages :is(.scan-strip-tiles, .scan-tiles, .scan-shots, .scan-tips, .scan-results) > li { margin: 0; }
 .scan-link { display: inline-flex; align-items: center; min-height: 44px; border: 0; background: none; padding: 0; color: inherit; font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .scan-link:focus-visible, .scan-tile-button:focus-visible, .scan-one-ph:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
 .scan-privacy-line { margin: 0; display: flex; flex-wrap: wrap; align-items: center; column-gap: 6px; }
@@ -20,8 +27,11 @@
 .scan-dock { display: grid; gap: 8px; padding-top: 4px; }
 .scan-dock .small { margin: 0; text-align: center; color: var(--ink-2); }
 .scan-dock .scan-link { justify-self: center; }
-.scan-dock-row { display: flex; gap: 10px; align-items: stretch; }
-.scan-dock-row .btn { flex: 1; min-height: 52px; justify-content: center; }
+.scan-dock-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; }
+.scan-dock-row .btn { flex: 1 1 140px; min-height: 52px; justify-content: center; }
+/* While a retake waits, "Retake page 19" leads on one line and Scan pages sits beside it, smaller (F5). */
+.scan-dock-row .btn.is-retake { flex: 2 1 190px; white-space: nowrap; }
+.scan-dock-row .btn.is-retake + .btn { flex: 1 1 110px; }
 .scan-dock-row .btn.scan-add { flex: none; min-width: 56px; padding: 0 16px; display: inline-flex; align-items: center; }
 .scan-dock-row .btn:disabled { opacity: .45; cursor: default; }
 /* The start screen's two ways in (#915), stacked: Take photos, then Choose from your photos */
@@ -71,7 +81,8 @@
 /* Refused pages first, in a soft tangerine card */
 .scan-need { display: grid; gap: 12px; padding: 14px; background: var(--accent-soft); border-radius: 12px; }
 .scan-need h2 { font-size: 17px; font-weight: 500; }
-.scan-need .btn { min-height: 48px; justify-content: center; background: #fff; color: var(--ink); border: 1px solid var(--btn, #2b2622); }
+/* The retake is the main thing to do here (F5): a primary button. */
+.scan-need .btn { min-height: 48px; justify-content: center; }
 .scan-need .small { margin: 0; }
 @media (min-width: 700px) { .scan-need .btn { justify-self: start; min-width: 280px; } }
 
@@ -194,6 +205,9 @@
 .scan-strip-glyph svg { width: 15px; height: 15px; }
 .scan-strip-tile.is-marked .scan-strip-glyph { background: var(--scan-leaf-ink); color: #fff; }
 .scan-strip-tile.is-retake .scan-strip-glyph { background: var(--scan-accent-ink); color: #fff; }
+/* Sent: a filled arrow. Ready (held for Undo, or kept back): a clock on the plain disc, so the two never look alike (F9). */
+.scan-strip-tile.is-sent .scan-strip-glyph { background: var(--ink); color: #fff; }
+.scan-strip-tile.is-ready .scan-strip-glyph svg { width: 17px; height: 17px; }
 .scan-strip-n { font: 500 13px/1.1 var(--mono); color: var(--ink); }
 .scan-strip-w { font-size: 12px; line-height: 1.1; color: var(--ink-2); }
 .scan-strip-tile.is-retake .scan-strip-w { color: var(--scan-accent-ink); font-weight: 600; }
