@@ -8,7 +8,7 @@ import "server-only";
 import type { ProgressHistory, ProgressOriginal, ProgressSnapshot } from "./workbook-progress";
 import type { FrozenWorkbookSourcesV2 } from "./workbook-progress-source";
 import type { HistoryFence } from "./workbook-progress-history";
-import type { PlanInput, WorkbookPlan } from "./workbook-plan";
+import { planWorkbook, type PlanInput, type WorkbookPlan } from "./workbook-plan";
 import type { ItemIdentity } from "./scan-observation";
 import { sourceHash } from "./workbook-progress-hash";
 
@@ -157,6 +157,8 @@ export interface NextBookSnapshotStore {
   read(id: string): Promise<NextBookSnapshotRecord | null>;
   /** The latest live revision of the chain whose run made this draft. */
   latestForDraft(draftId: string): Promise<NextBookSnapshotRecord | null>;
+  /** The revision whose plan the draft's pages were drawn from: the snapshot of the run that made the draft. */
+  drawnForDraft(draftId: string): Promise<NextBookSnapshotRecord | null>;
   /** The captured marking jobs of the row's receipts. A job that no longer exists (photo deleted) is not waited on. */
   jobs(id: string): Promise<("finished" | "waiting")[]>;
   /** Every marked (not pending) result of the row's source book now, on dated pages. */
@@ -294,6 +296,13 @@ export interface NextBookDeps {
   capture: NextBookCapture;
   planner: NextBookPlanner;
   run: RunLimits;
+  /**
+   * Moves the chain's queued run to the runner that makes it (#476, D-200): admit_next_book_run starts it on the default
+   * runner ('server'), and the Mac worker claims only 'mac' runs. Called after each admission and again whenever a
+   * chain that has a run is prepared, so a route that failed is tried again; route_workbook_run changes nothing for a run
+   * already on that runner or being worked on. Absent: the run stays where admission put it.
+   */
+  route?(runId: string): Promise<unknown>;
 }
 
 const refusedOutcome = (reason: string, snapshotId?: string): PrepareOutcome => snapshotId ? { status: "refused", reason, snapshotId } : { status: "refused", reason };
@@ -376,8 +385,20 @@ async function planOnce(row: NextBookSnapshotRecord, deps: NextBookDeps): Promis
   return { ok: false, outcome: refusedOutcome(saved.reason, row.id) };
 }
 
+/**
+ * Routing after admit_next_book_run committed never undoes the admission: a failure is logged and the run stays queued.
+ * The next prepare of the chain routes it again.
+ */
+async function routeQuietly(deps: NextBookDeps, runId: string): Promise<void> {
+  try { await deps.route?.(runId); }
+  catch (e) { console.error("[next book] route failed; the next prepare routes it again", runId, e instanceof Error ? e.message : String(e)); }
+}
+
 async function advance(row: NextBookSnapshotRecord, deps: NextBookDeps, now: number, by: SnapshotActor | null): Promise<PrepareOutcome> {
-  if (row.runId) return { status: "queued", snapshotId: row.id, runId: row.runId };
+  if (row.runId) {
+    await routeQuietly(deps, row.runId);
+    return { status: "queued", snapshotId: row.id, runId: row.runId };
+  }
   const frozen = await freeze(row, deps, now);
   if (!frozen.ok) return frozen.outcome;
   const planned = await planOnce(frozen.row, deps);
@@ -385,7 +406,10 @@ async function advance(row: NextBookSnapshotRecord, deps: NextBookDeps, now: num
   const r = planned.row;
   if (r.revision > 1) return { status: "planned", snapshotId: r.id, revision: r.revision, admission: "refresh" };
   const admitted = await deps.store.admit(r.id, by ?? r.actor, deps.run);
-  if (admitted.status === "started") return { status: "queued", snapshotId: r.id, runId: admitted.runId };
+  if (admitted.status === "started") {
+    await routeQuietly(deps, admitted.runId);
+    return { status: "queued", snapshotId: r.id, runId: admitted.runId };
+  }
   if (admitted.status === "refused") return refusedOutcome(admitted.reason, r.id);
   // The child's active run (or a stalled one start_workbook_run takes up) comes first; prepare again after it.
   return { status: "planned", snapshotId: r.id, revision: r.revision, admission: admitted.status };
@@ -427,6 +451,55 @@ export async function readNextBookSnapshot(store: NextBookSnapshotStore, snapsho
   if (row.snapshotHash !== snapshotHash(row.frozen)) return { ok: false, reason: "hash-mismatch" };
   return { ok: true, snapshot: frozenView(row)!, draftId: row.draftId, planInput: row.plan?.planInput ?? null, planHash: row.plan?.planHash ?? null,
     consumed: row.plan?.consumed ?? null, plannerHeld: row.plan?.held ?? null, runId: row.runId };
+}
+
+export type NextBookRunPlan =
+  | { ok: true; snapshotId: string; planHash: string; planInput: PlanInput }
+  | { ok: false; reason: Extract<NextBookSnapshotRead, { ok: false }>["reason"] | "not-planned" | "curriculum-unrecorded" | "curriculum-changed" };
+
+/**
+ * #812. The saved plan_input a run with this snapshot_id is made from, only on the curriculum version the plan was made
+ * on: a plan from before the version was recorded, or a worker on another version (`version(key)`, the worker's own
+ * curriculumVersion), is refused and nothing is planned again. The plan names its version; Book 1's label is not it.
+ */
+export async function nextBookRunPlan(store: NextBookSnapshotStore, snapshotId: string,
+  version: (key: string) => string | null): Promise<NextBookRunPlan> {
+  const read = await readNextBookSnapshot(store, snapshotId);
+  if (!read.ok) return read;
+  if (!read.planInput || !read.planHash) return { ok: false, reason: "not-planned" };
+  const c = read.planInput.curriculum;
+  if (!c || typeof c.key !== "string" || typeof c.version !== "string" || !c.version) return { ok: false, reason: "curriculum-unrecorded" };
+  if (version(c.key) !== c.version) return { ok: false, reason: "curriculum-changed" };
+  return { ok: true, snapshotId, planHash: read.planHash, planInput: read.planInput };
+}
+
+export type NextBookRunBook =
+  | { ok: true; snapshotId: string; planHash: string; planInput: PlanInput; plan: WorkbookPlan }
+  | { ok: false; reason: Extract<NextBookRunPlan, { ok: false }>["reason"] | "plan-mismatch" };
+
+/**
+ * #476. What a run with this snapshot_id makes its book from: nextBookRunPlan's saved plan input, planned again with the
+ * pure planWorkbook, and refused (plan-mismatch) unless the input and that plan hash to the saved plan_hash, as
+ * planNextBookFromSnapshot made it. The child is never read again: the input holds what the planner used.
+ */
+export async function nextBookRunBook(store: NextBookSnapshotStore, snapshotId: string,
+  version: (key: string) => string | null): Promise<NextBookRunBook> {
+  const saved = await nextBookRunPlan(store, snapshotId, version);
+  if (!saved.ok) return saved;
+  const plan = replaySavedPlan(saved.planInput, saved.planHash);
+  return plan ? { ...saved, plan } : { ok: false, reason: "plan-mismatch" };
+}
+
+/**
+ * The saved plan input planned again with the pure planWorkbook, or null unless the input and that plan hash to the saved
+ * plan hash (as planNextBookFromSnapshot made it). Pure: the run's book and the admin's Snapshot plan view both use it.
+ */
+export function replaySavedPlan(input: PlanInput, planHash: string): WorkbookPlan | null {
+  try {
+    const planned = planWorkbook(structuredClone(input));
+    if (!planned.ok) return null;
+    return sourceHash(plainJson({ planningInput: input, plan: planned.plan })) === planHash ? plainJson(planned.plan) : null;
+  } catch { return null; }
 }
 
 export type NewEvidence = { ok: true; days: number[]; pages: number; items: number } | { ok: false; reason: "not-found" | "not-frozen" | "evidence-regressed" | "invalid-evidence" };

@@ -253,6 +253,13 @@ export function memoryNextBookSnapshots(clock: () => number = Date.now) {
       return clone(chain[0]);
     },
 
+    async drawnForDraft(draftId) {
+      await yieldTurn();
+      const run = state.runs.find(r => r.draftId === draftId && r.snapshotId);
+      const drawn = run && state.snapshots.find(s => s.id === run.snapshotId);
+      return drawn ? clone(drawn) : null;
+    },
+
     async jobs(snapshotId) {
       await yieldTurn();
       const s = state.snapshots.find(x => x.id === snapshotId);

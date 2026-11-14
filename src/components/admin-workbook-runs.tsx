@@ -27,7 +27,7 @@ import { RunRefresh } from "@/components/admin-run-refresh";
 import { RunOnServer } from "@/components/run-on-server";
 import { StopWorkbookRun } from "@/components/stop-workbook-run";
 import { AuditLog } from "@/components/admin-workbook-audit";
-import { ApproveDraft } from "@/components/workbook-ship-actions";
+import { ApproveDraft, NextBookApproval } from "@/components/workbook-ship-actions";
 import { approvalProblems } from "@/lib/workbook-ship";
 import type { AiCallSummary } from "@/lib/workbook-ai";
 import { Fold } from "@/components/admin-fold";
@@ -438,7 +438,10 @@ function Approval({ detail, name }: { detail: RunDetail; name: string }) {
     return <div className="adm-note adm-wb-full" role="note">{flagLine}<b>Not ready to approve.</b> Every check must pass first:
       <ul className="adm-wb-list">{problems.map((p) => <li key={p}>{p}</li>)}</ul></div>;
   }
-  return <>{flagLine}<ApproveDraft runId={run.id} revision={draft.revision} workbookPath={adminWorkbookPath(draft.workbook.id)} child={name} pending={detail.comments.filter(c => ["pending", "failed", "stale"].includes(c.status)).length} /></>;
+  const approve = { runId: run.id, revision: draft.revision, workbookPath: adminWorkbookPath(draft.workbook.id), child: name,
+    pending: detail.comments.filter(c => ["pending", "failed", "stale"].includes(c.status)).length };
+  // D-308: a next-book draft (its run has a snapshot) reads its new marks check in the browser, once, off the refresh loop.
+  return <>{flagLine}{run.snapshotId ? <NextBookApproval {...approve} /> : <ApproveDraft {...approve} />}</>;
 }
 
 const ICON_OK = <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>;

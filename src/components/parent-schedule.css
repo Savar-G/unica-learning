@@ -16,3 +16,7 @@
   .ps-table td .ps-second { grid-column: 2; margin-top: 0; }
   .ps-table caption { display: block; padding: 16px; }
 }
+.ps-gaps { margin: 20px 0 0; padding: 12px 16px; border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); border-radius: 10px; background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.ps-table tbody tr.ps-gap-row th { box-shadow: inset 3px 0 0 var(--accent); }
+.ps-table .ps-gap { color: #a8380f; font-weight: 500; }
+@media (max-width: 699px) { .ps-table tbody tr.ps-gap-row { box-shadow: inset 3px 0 0 var(--accent); } .ps-table tbody tr.ps-gap-row th { box-shadow: none; } }

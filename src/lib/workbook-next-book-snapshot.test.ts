@@ -12,7 +12,8 @@ import { book2Planning, jsonHash } from "./workbook-book1-baseline";
 import { curriculumStructure, curriculumStructureOf, curriculumVersion } from "./workbook-curriculum";
 import type { CurriculumCompatSource } from "./workbook-curriculum/compat";
 import type { CurriculumData } from "./workbook-curriculum/types";
-import { planLevel } from "./workbook-plan";
+import { planLevel, planWorkbook } from "./workbook-plan";
+import { sourceHash } from "./workbook-progress-hash";
 import { skillUnits } from "./workbook-teaching-frame";
 
 describe("next book from a frozen U16 capture", () => {
@@ -85,6 +86,10 @@ describe("next book from a frozen U16 capture", () => {
     expect(result.ok, JSON.stringify(result)).toBe(true);
     if (!result.ok) return;
     expect(result.planHash).toMatch(/^[0-9a-f]{64}$/);
+    // #476: the worker plans again from the saved (jsonb) input and must find the saved hash (nextBookRunBook).
+    const stored = JSON.parse(JSON.stringify(result.planningInput));
+    const again = planWorkbook(stored);
+    expect(again.ok && sourceHash(JSON.parse(JSON.stringify({ planningInput: stored, plan: again.plan })))).toBe(result.planHash);
     expect(result.planningInput.reviews).toEqual(expect.arrayContaining(job.frame.plan.reviewsAfter));
     expect(result.planningInput.missedReviews).toEqual(expect.arrayContaining([expect.objectContaining({ skill: "4.1-expanded-form" })]));
     expect(result.planningInput.misses).toEqual(expect.arrayContaining([expect.objectContaining({ question: expect.objectContaining({ page: wrong.page, question: wrong.number }) })]));
@@ -165,7 +170,16 @@ describe("next book after a curriculum change", () => {
       issuedSkills: [...new Set(baseline.initialIssues.map(i => i.selection.skill))] };
     const unchanged = planNextBookFromSnapshot({ sources, snapshot });
     expect(unchanged.ok, JSON.stringify(unchanged)).toBe(true);
-    expect(planNextBookFromSnapshot({ sources, snapshot }, { curricula: templates })).toEqual(unchanged);
+    // The saved plan records the curriculum it was planned on: today's version, not Book 1's label.
+    if (!unchanged.ok) return;
+    expect(unchanged.planningInput.curriculum).toEqual({ key: "bc", version: curriculumVersion("bc") });
+    const relabelled = planNextBookFromSnapshot({ sources, snapshot }, { curricula: templates });
+    expect(relabelled.ok, JSON.stringify(relabelled)).toBe(true);
+    if (!relabelled.ok) return;
+    expect(relabelled.planningInput.curriculum).toEqual({ key: "bc", version: LATER });
+    expect(relabelled.planHash).not.toBe(unchanged.planHash);
+    const unlabelled = (r: typeof unchanged & { ok: true }) => ({ ...r, planHash: "", planningInput: { ...r.planningInput, curriculum: undefined } });
+    expect(unlabelled(relabelled)).toEqual(unlabelled(unchanged));
 
     // Structural changes: each is refused with its first difference, by both planning paths.
     const issued = baseline.initialIssues.map(i => i.selection).find(s => s.step === 2)!;

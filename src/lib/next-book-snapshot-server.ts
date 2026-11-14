@@ -12,6 +12,9 @@ import { captureNextBookEvidence, sourcesRequest } from "./next-book-capture";
 import { workbookPreviewRequest, type WorkbookProgressSourceStoreV2 } from "./workbook-progress-source";
 import { RUN_ATTEMPTS, STALE_SECONDS } from "./workbook-job";
 import { nextBookSnapshotStore } from "./next-book-snapshot-store";
+import { routeWorkbookRun } from "./workbook-job-store";
+import { updateDraftWithNewMarks } from "./next-book-refresh";
+import { workbookRunner } from "./workbook-ai";
 import { newEvidenceSince, prepareNextBook, readNextBookSnapshot, refreshNextBookSnapshot, type NextBookCapture,
   type NextBookDeps, type NextBookPlanner, type NextBookTrigger, type SnapshotActor } from "./next-book-snapshot";
 
@@ -50,11 +53,15 @@ export function nextBookSnapshotServer(options: NextBookServerOptions, db: Supab
   if (!db) return null;
   const store = nextBookSnapshotStore(db);
   const capture = book1Capture(workbookProgressSourceStore(db, book1SourceReader(book1BaselineSql(db))));
-  const deps: NextBookDeps = { store, capture, planner: options.planner, run: { maxAttempts: RUN_ATTEMPTS, staleSeconds: STALE_SECONDS, testOnly: options.testOnly } };
+  const deps: NextBookDeps = { store, capture, planner: options.planner, run: { maxAttempts: RUN_ATTEMPTS, staleSeconds: STALE_SECONDS, testOnly: options.testOnly },
+    // D-200: the run goes to the runner "Prepare next workbook" uses (the Mac worker unless WORKBOOK_RUNNER is "server").
+    route: runId => routeWorkbookRun(db, runId, workbookRunner()) };
   return {
     prepare: (trigger: NextBookTrigger, now = Date.now()) => prepareNextBook(trigger, deps, now),
     read: (snapshotId: string) => readNextBookSnapshot(store, snapshotId),
     newEvidenceSince: (snapshotId: string) => newEvidenceSince(store, snapshotId),
     refresh: (draftId: string, actor: SnapshotActor, now = Date.now()) => refreshNextBookSnapshot(draftId, actor, deps, now),
+    /** D-308 "Update with new marks": the refresh, then its plan. */
+    update: (draftId: string, actor: SnapshotActor, now = Date.now()) => updateDraftWithNewMarks(draftId, actor, deps, now),
   };
 }

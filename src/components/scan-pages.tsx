@@ -8,6 +8,7 @@ import { prepareScanPhoto } from "@/lib/scan-photo-browser";
 import { addingCount, buildStack, refusalCopy, roomNote, sendLabel, stackSummary, waitingNote, type DayPage, type StackPhoto, type StackTile, type StackUpload, type UploadRefusal } from "@/lib/scan-stack";
 import { SCANNING_COOKIE, SCANNING_SECONDS } from "@/lib/scan-tab";
 import { scanEventTicket } from "@/lib/scan-track";
+import { ScanHelp } from "@/components/scan-help";
 import { busyWait, nextUploads, REQUEST_TIMEOUT_MS, UPLOAD_TIMEOUT_MS } from "@/lib/scan-upload-queue";
 import { ScanHistory } from "@/components/scan-history";
 import { ScanPreview } from "@/components/scan-preview";
@@ -549,8 +550,10 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const status = message && <p role={message.failed ? "alert" : "status"} className={`acct-alert${message.failed ? "" : " acct-saved"}`}>{message.text}</p>;
   const focusLine = phone && focus && focus.childId === child && <p className="scan-focus">Take a photo of {focus.label}.</p>;
 
+  const help = <ScanHelp key={parent} parent={parent} mode={mode} checks={checks} marking={Boolean(listing?.marking)} />;
+
   if (loadFailed && !listing) {
-    return <div className="scan-pages">{childPicker}<p role="alert" className="acct-alert">We cannot load photos. Try again.</p>
+    return <div className="scan-pages">{help}{childPicker}<p role="alert" className="acct-alert">We cannot load photos. Try again.</p>
       <button type="button" className="btn ghost" onClick={() => void load().catch(() => setLoadFailed(true))}>Try again</button></div>;
   }
 
@@ -559,6 +562,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   if (phone && empty) {
     return <div className="scan-pages is-start">
       {inputs}
+      {help}
       <p className="lead">Take a photo of each finished page, or choose photos you already took. {checks ? "We check each photo, then you send the pages for marking." : `Later, we will use the photos to mark ${name}'s work.`}</p>
       {childPicker}
       {focusLine}
@@ -589,6 +593,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const one = phone && stack.one;
   return <div className={`scan-pages is-stack${phone ? "" : " is-desktop"}`}>
     {inputs}
+    {help}
     {childPicker}
     {listing && <p className="lead scan-summary">{stackSummary(stack, checks)}</p>}
     {focusLine}
