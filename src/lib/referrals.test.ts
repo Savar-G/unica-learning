@@ -35,6 +35,39 @@ function fixture() {
 const draft = { status: "draft" as const, paidCents: 0, paidAt: null, actualPayment: false };
 
 describe("referral public commands", () => {
+  it("releases a reserved discount after a definitive full-price payment and keeps it for the next renewal", async () => {
+    const f = fixture(); await f.redeem();
+    const invoice = f.invoice("paid-without-discount", "c", draft);
+    f.services.provider.apply = async () => { throw Error("Invoice finalized before the write"); };
+    await expect(reconcileReferralInvoice(invoice.id, f.services)).rejects.toThrow("finalized");
+    invoice.status = "paid"; invoice.paidCents = 7999; invoice.actualPayment = true; invoice.paidAt = 1_800_000_001_000;
+    await reconcileReferralInvoice(invoice.id, f.services);
+    expect(f.memory.snapshot().operations.find(o => o.invoice === invoice.id)?.state).toBe("absent");
+    let applied = false;
+    f.services.provider.apply = async () => { applied = true; };
+    f.invoice("later-renewal", "c", draft);
+    await reconcileReferralInvoice("later-renewal", f.services);
+    expect(applied).toBe(true);
+  });
+  it("refuses a stale reward email recipient after correction and sends only to the current family", async () => {
+    const f = fixture(); await f.redeem(); await f.earn();
+    f.memory.addFamily("correct", "U-CORRECT1", []);
+    const base = f.services.store.command.bind(f.services.store);
+    let changed = false;
+    f.services.store.command = async command => {
+      if (command.action === "email_claim" && !changed) {
+        changed = true;
+        const preview = await base({ action: "preview", parent: "new", code: "U-CORRECT1", actor: "admin", reason: "Correct family" });
+        await base({ action: "correct", parent: "new", actor: "admin", preview: preview.preview!.token });
+      }
+      return base(command);
+    };
+    const mail = memoryTransport();
+    await sendReferralRewards(f.services.store, mail.transport, origin, () => true);
+    expect(mail.delivered).toHaveLength(0);
+    await sendReferralRewards(f.services.store, mail.transport, origin, () => true);
+    expect(mail.delivered.map(m => m.to)).toEqual(["correct@example.test"]);
+  });
   it("keeps an incoming benefit after a credit-funded zero initial invoice, including replay", async () => {
     const f = fixture();
     await f.redeem();
@@ -48,6 +81,15 @@ describe("referral public commands", () => {
     expect(f.applied).toHaveLength(1);
     expect(f.applied[0].invoice).toBe("next-paid-renewal");
     expect(f.memory.snapshot().rewards.filter(r => r.kind === "earned")).toHaveLength(0);
+  });
+  it("does not transfer a reward while an email result is unknown", async () => {
+    const f = fixture(); await f.redeem(); await f.earn();
+    f.memory.addFamily("correct", "U-CORRECT1", []);
+    const mail = memoryTransport(); mail.answerNext("lose_answer");
+    await sendReferralRewards(f.services.store, mail.transport, origin, () => true);
+    const preview = await f.services.store.command({ action: "preview", parent: "new", code: "U-CORRECT1", actor: "admin", reason: "Correct family" });
+    expect(await f.services.store.command({ action: "correct", parent: "new", actor: "admin", preview: preview.preview!.token })).toMatchObject({ ok: false, error: "email_pending" });
+    expect(f.memory.snapshot().rewards.find(r => r.kind === "earned")?.parent).toBe("source");
   });
   it("tracks a committed finalized discount through revocation until the monthly invoice is paid", async () => {
     const f = fixture();

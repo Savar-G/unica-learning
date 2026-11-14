@@ -1,4 +1,4 @@
-import { referralCode, type ReferralOverview, type ReferralResult } from "@/lib/referral-contract";
+import { referralCode, type ReferralError, type ReferralOverview, type ReferralResult } from "@/lib/referral-contract";
 
 export const REFERRAL_RISKS = ["clear", "hold", "revoke"] as const;
 export const REFERRAL_OPERATION_STATES = ["reserved", "applied", "used", "absent"] as const;
@@ -14,6 +14,7 @@ export interface ReferralCommand {
   operation?: string; result?: "applied" | "used" | "absent" | "refused" | "detached";
   actor?: string; reason?: string; preview?: string; reward?: string; token?: string;
   emailState?: "sent" | "refused" | "unknown"; emailId?: string; copy?: unknown;
+  recipient?: string;
   limit?: number; now?: number;
 }
 export interface ReferralReservation {
@@ -30,7 +31,7 @@ export interface ReferralDue {
   riskInvoices?: string[]; customers: ReferralOwner[]; reservations: ReferralReservation[]; emails: ReferralEmail[];
 }
 export interface ReferralReply {
-  ok: boolean; error?: "invalid" | "self_referral" | "already_paid" | "already_applied" | "unavailable" | "family_unavailable" | "rate_limited";
+  ok: boolean; error?: "invalid" | "self_referral" | "already_paid" | "already_applied" | "unavailable" | "family_unavailable" | "rate_limited" | "email_pending";
   overview?: ReferralOverview; reservation?: ReferralReservation | null; due?: ReferralDue;
   preview?: { token: string; before: string | null; after: string; used: number; unused: number; paid: boolean };
   financial?: { needed: boolean; customers: string[] };
@@ -41,6 +42,9 @@ export interface ReferralStore {
   owner(customer: string): Promise<ReferralOwner | null>;
   customers(parent: string): Promise<string[]>;
   readOrder(): Promise<number>;
+}
+function parentError(reply: ReferralReply): ReferralError {
+  return reply.error === "email_pending" ? "unavailable" : reply.error ?? "unavailable";
 }
 export interface ReferralInvoice {
   id: string; customer: string; subscription: string | null; startKey?: string | null; child?: string;
@@ -94,7 +98,7 @@ export async function referralOverview(parent: string, services: Referrals, orig
   try {
     await refreshReferralHistory(parent, services);
     const reply = await services.store.command({ action: "overview", parent });
-    if (!reply.ok || !reply.overview) return { ok: false, error: reply.error ?? "unavailable" };
+    if (!reply.ok || !reply.overview) return { ok: false, error: parentError(reply) };
     return { ok: true, overview: { ...reply.overview, shareUrl: new URL(`/start?referral=${reply.overview.code}`, origin).href } };
   } catch { return { ok: false, error: "unavailable" }; }
 }
@@ -103,14 +107,14 @@ export async function applyReferral(parent: string, input: unknown, services: Re
   const code = referralCode(input);
   try {
     const attempt = await services.store.command({ action: "attempt", parent });
-    if (!attempt.ok) return { ok: false, error: attempt.error ?? "unavailable" };
+    if (!attempt.ok) return { ok: false, error: parentError(attempt) };
     // Count invalid attempts too. The atomic admission below also checks history and payment reservations.
     if (!code) {
       return { ok: false, error: "invalid" };
     }
     await refreshReferralHistory(parent, services);
     const result = await services.store.command({ action: "apply", parent, code });
-    if (!result.ok) return { ok: false, error: result.error ?? "unavailable" };
+    if (!result.ok) return { ok: false, error: parentError(result) };
     return referralOverview(parent, services, origin);
   } catch { return { ok: false, error: "unavailable" }; }
 }
@@ -137,6 +141,9 @@ export async function recordReferralInvoice(invoice: ReferralInvoice, { store }:
   accepted(await store.command({ action: "risk", ...owner, invoice: invoice.id, risk: invoice.risk, readOrder }));
   if (invoice.status === "paid" && invoice.paidCents > 0 && invoice.couponIds.length) {
     accepted(await store.command({ action: "finish", ...owner, invoice: invoice.id, coupon: invoice.couponIds[0], result: "used" }));
+  } else if (invoice.status === "paid" && invoice.paidCents > 0) {
+    // Payment without our coupon is decisive. A pending coupon write can no longer change this invoice.
+    accepted(await store.command({ action: "finish", ...owner, invoice: invoice.id, key: invoice.startKey ?? undefined, result: "absent" }));
   }
 }
 

@@ -15,7 +15,7 @@ create table public.card_setups(id uuid primary key default gen_random_uuid(),pa
 create table public.plan_starts(card_setup_id uuid,parent_id uuid,state text,trial_end timestamptz);
 create table public.child_plan_states(child_id uuid,kind text);
 create table public.child_deletions(child_id uuid);
-create table public.admin_users(user_id uuid);
+create table public.admin_users(user_id uuid,email text,name text);
 create table public.family_delete_holds(parent_id uuid,lease_until timestamptz);
 create table public.family_deletions(parent_id uuid);
 create table public.family_card_operations(id uuid primary key,parent_id uuid references parents(id) on delete cascade);

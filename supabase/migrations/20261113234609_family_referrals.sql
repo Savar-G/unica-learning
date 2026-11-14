@@ -36,6 +36,7 @@ create table public.referral_rewards (
   risk text not null default 'clear' check (risk in ('clear','hold','revoke')),
   email_state text check (email_state in ('sending','sent','unknown')),
   email_token uuid,
+  email_to text,
   email_id text,
   email_copy jsonb,
   unique(source_id,kind)
@@ -141,6 +142,16 @@ declare
 begin
   if pg_catalog.pg_column_size(p_command)>600000 then raise exception 'referral_input'; end if;
   perform pg_catalog.pg_advisory_xact_lock(743602130119::bigint);
+  -- A due-list entry can become stale before its claim. Never recreate or contact its former owner.
+  if cmd like 'email_%' then
+    select * into r from public.referral_rewards where id=(p_command->>'reward')::uuid;
+    select * into a from public.referral_accounts where id=r.account_id;
+    if p is null or a.parent_id is distinct from p or not exists(select 1 from public.parents
+      where id=p and email=p_command->>'recipient' and deletion_requested_at is null)
+      or exists(select 1 from public.family_deletions where parent_id=p) then
+      return jsonb_build_object('ok',true,'token',null,'admitted',false);
+    end if;
+  end if;
   if p is not null then
     select * into a from public.referral_accounts where parent_id=p;
     if cmd in ('apply','preview') then select * into b from public.referral_accounts where code=p_command->>'code' and parent_id is not null; end if;
@@ -343,7 +354,10 @@ begin
     if correction.id is null or correction.account_id<>a.id or correction.actor<>(p_command->>'actor')::uuid
       or correction.applied_at is not null or correction.before_id is distinct from a.referrer or correction.revision<>revision then return jsonb_build_object('ok',false,'error','invalid'); end if;
     -- A started reward stays with its fixed children, including used invoices. There is no second award.
-    update public.referral_rewards set account_id=correction.after_id,email_copy=null,email_id=null,email_token=null where source_id=a.id and kind='earned' and started_at is null;
+    if exists(select 1 from public.referral_rewards where source_id=a.id and kind='earned' and started_at is null and email_state in ('sending','unknown')) then
+      return jsonb_build_object('ok',false,'error','email_pending');
+    end if;
+    update public.referral_rewards set account_id=correction.after_id,email_copy=null,email_id=null,email_token=null,email_to=null where source_id=a.id and kind='earned' and started_at is null;
     if a.first_actual then
       insert into public.referral_rewards(account_id,source_id,kind,risk) values(correction.after_id,a.id,'earned',coalesce((select risk from public.referral_invoice_risk where invoice=a.first_invoice),'clear')) on conflict(source_id,kind) do nothing;
     end if;
@@ -355,19 +369,20 @@ begin
     if cmd='email_claim' then
       if r.kind<>'earned' or r.risk<>'clear' or r.email_state is not null or a.parent_id is null then return jsonb_build_object('ok',true,'token',null); end if;
       perform public.assert_family_writable(a.parent_id);
-      update public.referral_rewards set email_state='sending',email_tried_at=clock_timestamp(),email_token=(p_command->>'token')::uuid where id=r.id;
+      update public.referral_rewards set email_state='sending',email_tried_at=clock_timestamp(),email_token=(p_command->>'token')::uuid,email_to=p_command->>'recipient' where id=r.id;
       return jsonb_build_object('ok',true,'token',p_command->>'token');
     elsif cmd='email_admit' then
-      return jsonb_build_object('ok',true,'admitted',r.risk='clear' and a.parent_id is not null
+      return jsonb_build_object('ok',true,'admitted',r.risk='clear' and r.email_state='sending'
+        and r.email_token=(p_command->>'token')::uuid and r.email_to=p_command->>'recipient' and a.parent_id=p
         and exists(select 1 from public.parents where id=a.parent_id and deletion_requested_at is null)
         and not exists(select 1 from public.family_deletions where parent_id=a.parent_id));
     elsif cmd='email_result' then
       update public.referral_rewards set email_state=case p_command->>'emailState' when 'refused' then null else p_command->>'emailState' end,
-        email_id=p_command->>'emailId' where id=r.id and email_token=(p_command->>'token')::uuid;
+        email_id=p_command->>'emailId' where id=r.id and email_token=(p_command->>'token')::uuid and email_to=p_command->>'recipient';
     elsif cmd='email_copy' then
       if a.parent_id is null then return jsonb_build_object('ok',true); end if;
       perform public.assert_family_writable(a.parent_id);
-      update public.referral_rewards set email_copy=p_command->'copy' where id=r.id and email_token=(p_command->>'token')::uuid and a.parent_id is not null;
+      update public.referral_rewards set email_copy=p_command->'copy' where id=r.id and email_token=(p_command->>'token')::uuid and email_to=p_command->>'recipient' and a.parent_id=p;
     end if;
   else raise exception 'referral_command';
   end if;
@@ -403,7 +418,7 @@ begin
     delete from public.referral_invoice_risk where account_id=a and invoice is distinct from (select first_invoice from public.referral_accounts where id=a);
     update public.referral_operations set customer=null,invoice=null,subscription=null,start_key=null where parent_id=old.id;
     delete from public.referral_customers where account_id=a;
-    update public.referral_rewards set email_copy=null,email_id=null,email_token=null where account_id=a;
+    update public.referral_rewards set email_copy=null,email_id=null,email_token=null,email_to=null where account_id=a;
     update public.referral_corrections set reason='Family removed',preview='{}',revision='[]' where account_id=a or before_id=a or after_id=a;
   end if;
   return old;

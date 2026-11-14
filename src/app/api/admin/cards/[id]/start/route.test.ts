@@ -7,6 +7,7 @@ vi.mock("@/lib/workbook-store", () => ({ workbookStore: () => ({ childWorkbooks:
 vi.mock("@/lib/stripe", () => ({ stripe: f.stripe, startPlan: f.start }));
 vi.mock("@/lib/supabase-auth", () => ({ adminClient: f.admin }));
 vi.mock("@/lib/workbook-email-server", () => ({ sendPlanStartEmail: f.confirm }));
+vi.mock("@/lib/referral-server", () => ({ liveReferralStarts: () => ({ reserve: "referral-reservation-seam" }) }));
 vi.mock("@/lib/family-deletion-store", () => ({ holdPlanStart: f.hold, endCardOperation: f.release }));
 const planStates = vi.hoisted(() => ({ value: null as unknown }));
 vi.mock("@/lib/plan-state-server", () => ({ livePlanStates: () => planStates.value }));
@@ -93,7 +94,7 @@ it("requires the separate existing billing confirmation even with a receipt", as
 });
 it("passes the existing billing parameters unchanged once workbook 1's receipt exists", async () => {
   expect((await POST(request(), context)).status).toBe(200);
-  expect(f.start).toHaveBeenCalledExactlyOnceWith({ provider: "fake" }, { cardSetup: id, customer: "customer", price: 79.99, deliveryConfirmed: true });
+  expect(f.start).toHaveBeenCalledExactlyOnceWith({ provider: "fake" }, { cardSetup: id, customer: "customer", price: 79.99, deliveryConfirmed: true }, undefined, undefined, { reserve: "referral-reservation-seam" });
 });
 it("refuses a non-admin before any billing or workbook read", async () => {
   f.session.mockResolvedValue(null);

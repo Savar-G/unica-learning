@@ -119,16 +119,17 @@ export function memoryReferrals(now: () => number = () => 1_800_000_000_000) {
         const p = previews.get(c.preview!);
         if (!p || p.actor !== c.actor || p.parent !== f!.id || p.from !== f!.from) return { ok: false, error: "invalid" };
         const earned = rewards.find(r => r.source === f!.id && r.kind === "earned");
+        if (earned && !earned.started && earned.email !== null && earned.email !== "sent") return { ok: false, error: "email_pending" };
         if (earned && !earned.started) earned.parent = p.to;
         else if (!earned && f!.first?.actual) reward(p.to, f!.id, "earned");
         f!.from = p.to; audits.push({ actor: p.actor, reason: p.reason, parent: p.parent }); previews.delete(c.preview!); return { ok: true };
       }
       case "email_claim": {
         const r = rewards.find(r => r.id === c.reward && r.kind === "earned" && r.risk === "clear");
-        if (!r || r.email !== null || family(r.parent).deleted) return { ok: true, token: null };
+        if (!r || r.email !== null || family(r.parent).deleted || r.parent !== c.parent || c.recipient !== `${r.parent}@example.test`) return { ok: true, token: null };
         r.email = c.token!; return { ok: true, token: c.token };
       }
-      case "email_admit": { const r = rewards.find(r => r.id === c.reward); return { ok: true, admitted: !!r && r.risk === "clear" && !family(r.parent).deleted }; }
+      case "email_admit": { const r = rewards.find(r => r.id === c.reward); return { ok: true, admitted: !!r && r.parent === c.parent && c.recipient === `${r.parent}@example.test` && r.email === c.token && r.risk === "clear" && !family(r.parent).deleted }; }
       case "email_result": { const r = rewards.find(r => r.id === c.reward && r.email === c.token); if (r) r.email = c.emailState === "refused" ? null : c.emailState!; return { ok: true }; }
       case "email_copy": return { ok: true };
     }

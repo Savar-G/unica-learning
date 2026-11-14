@@ -13,7 +13,7 @@ export function AdminReferrals() {
       const result: ReferralReply = await response.json();
       if (result.ok && action === "preview" && result.preview) setPreview(result.preview);
       else if (result.ok) { setMessage("Correction recorded. Paid invoices stay unchanged."); setPreview(undefined); }
-      else { setMessage("The correction was not confirmed. Read a new preview before you try again."); setPreview(undefined); }
+      else { setMessage(result.error === "email_pending" ? "The reward email is being sent, or its delivery result is unknown. Confirm the email result before you move this reward." : "The correction was not confirmed. Read a new preview before you try again."); setPreview(undefined); }
     } catch { setMessage("The result is unknown. Read a new preview before you try again."); setPreview(undefined); }
     finally { setBusy(false); }
   }

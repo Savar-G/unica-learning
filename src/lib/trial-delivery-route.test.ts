@@ -9,6 +9,7 @@ vi.mock("@/lib/workbook-delivery-store", () => ({ workbookDeliveryStore: () => (
 vi.mock("@/lib/supabase-auth", () => ({ adminClient: () => ({}) }));
 vi.mock("@/lib/family-deletion-store", () => ({ holdPlanStart: async () => "held", endCardOperation: async () => {} }));
 vi.mock("@/lib/workbook-email-server", () => ({ sendPlanStartEmail: state.confirm }));
+vi.mock("@/lib/referral-server", () => ({ liveReferralStarts: () => ({ reserve: "referral-reservation-seam" }) }));
 const { POST } = await import("@/app/api/admin/cards/[id]/start/route");
 const id = "11111111-1111-4111-8111-111111111111";
 const ctx = { params: Promise.resolve({ id }) };
@@ -48,7 +49,7 @@ describe("the admin delivery confirmation route", () => {
   });
   it("starts only the stored customer's plan after delivery confirmation", async () => {
     expect((await POST(request({ deliveryConfirmed: true, customer: "cus_forged", price: 1 }), ctx)).status).toBe(200);
-    expect(state.start).toHaveBeenCalledWith({}, { cardSetup: id, customer: "cus_real", price: 79.99, deliveryConfirmed: true });
+    expect(state.start).toHaveBeenCalledWith({}, { cardSetup: id, customer: "cus_real", price: 79.99, deliveryConfirmed: true }, undefined, undefined, { reserve: "referral-reservation-seam" });
   });
   it("sends the confirmation with the plan's price and Stripe's first charge date", async () => {
     const response = await POST(request({ deliveryConfirmed: true }), ctx);

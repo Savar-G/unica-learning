@@ -134,7 +134,7 @@ export function PlanControlView({ name, mode, pending, open, busy, weeks, previe
             {preview.late && <p>The next workbook keeps its mailing range. The pause applies from workbook {preview.targetNumber}. We will show that mailing range after the next workbook ships.</p>}
             <p>{preview.remaining} weeks remain in {preview.year} after this pause.</p>
           </>}
-          {mode === "restart" && <p>{restart ? `We charge CAD ${restart.price.toFixed(2)} immediately, then CAD ${restart.price.toFixed(2)} each month until you cancel. ` : "Restart begins a paid plan immediately. Review the price before you confirm. "}There is no second free month.</p>}
+          {mode === "restart" && <p>{restart ? `We charge no more than CAD ${restart.price.toFixed(2)} immediately. If a referral reward applies, this charge is CAD ${(Math.floor(Math.round(restart.price * 100) / 2) / 100).toFixed(2)}. Your regular price is CAD ${restart.price.toFixed(2)} a month until you cancel. ` : "Restart begins a paid plan immediately. Review the price before you confirm. "}There is no second free month.</p>}
           <div className="acct-plan-buttons">
             <button type="button" className="btn" disabled={busy} onClick={() => send(!!(preview || restart))}>{busy ? "Please wait..." : preview || restart ? `Confirm ${mode}` : pending ? `Check ${mode}` : mode === "pause" ? "Review new dates" : "Review price"}</button>
             <button type="button" className="btn ghost" disabled={busy} onClick={close}>{pending ? "Close" : "Keep current plan"}</button>

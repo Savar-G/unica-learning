@@ -3345,6 +3345,415 @@ export type Database = {
           },
         ]
       }
+      referral_accounts: {
+        Row: {
+          applied_at: number | null
+          attempts: string[]
+          code: string | null
+          first_actual: boolean
+          first_invoice: string | null
+          first_paid_at: number | null
+          first_payment_at: number | null
+          had_paid: boolean
+          history_blocked: boolean
+          history_complete: boolean
+          id: string
+          parent_id: string | null
+          referrer: string | null
+          risk_checked_at: string
+        }
+        Insert: {
+          applied_at?: number | null
+          attempts?: string[]
+          code?: string | null
+          first_actual?: boolean
+          first_invoice?: string | null
+          first_paid_at?: number | null
+          first_payment_at?: number | null
+          had_paid?: boolean
+          history_blocked?: boolean
+          history_complete?: boolean
+          id?: string
+          parent_id?: string | null
+          referrer?: string | null
+          risk_checked_at?: string
+        }
+        Update: {
+          applied_at?: number | null
+          attempts?: string[]
+          code?: string | null
+          first_actual?: boolean
+          first_invoice?: string | null
+          first_paid_at?: number | null
+          first_payment_at?: number | null
+          had_paid?: boolean
+          history_blocked?: boolean
+          history_complete?: boolean
+          id?: string
+          parent_id?: string | null
+          referrer?: string | null
+          risk_checked_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referral_accounts_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: true
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_accounts_referrer_fkey"
+            columns: ["referrer"]
+            isOneToOne: false
+            referencedRelation: "referral_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      referral_corrections: {
+        Row: {
+          account_id: string
+          actor: string | null
+          after_id: string
+          applied_at: string | null
+          before_id: string | null
+          created_at: string
+          id: string
+          preview: Json
+          reason: string
+          revision: Json
+        }
+        Insert: {
+          account_id: string
+          actor?: string | null
+          after_id: string
+          applied_at?: string | null
+          before_id?: string | null
+          created_at?: string
+          id?: string
+          preview: Json
+          reason: string
+          revision: Json
+        }
+        Update: {
+          account_id?: string
+          actor?: string | null
+          after_id?: string
+          applied_at?: string | null
+          before_id?: string | null
+          created_at?: string
+          id?: string
+          preview?: Json
+          reason?: string
+          revision?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referral_corrections_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "referral_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_corrections_after_id_fkey"
+            columns: ["after_id"]
+            isOneToOne: false
+            referencedRelation: "referral_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_corrections_before_id_fkey"
+            columns: ["before_id"]
+            isOneToOne: false
+            referencedRelation: "referral_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      referral_customers: {
+        Row: {
+          account_id: string
+          checked_at: string
+          child_id: string | null
+          customer: string
+          tried_at: string
+        }
+        Insert: {
+          account_id: string
+          checked_at?: string
+          child_id?: string | null
+          customer: string
+          tried_at?: string
+        }
+        Update: {
+          account_id?: string
+          checked_at?: string
+          child_id?: string | null
+          customer?: string
+          tried_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referral_customers_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "referral_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_customers_child_id_fkey"
+            columns: ["child_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      referral_entitlements: {
+        Row: {
+          child_id: string | null
+          id: string
+          reward_id: string
+          used_at: string | null
+        }
+        Insert: {
+          child_id?: string | null
+          id?: string
+          reward_id: string
+          used_at?: string | null
+        }
+        Update: {
+          child_id?: string | null
+          id?: string
+          reward_id?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referral_entitlements_child_id_fkey"
+            columns: ["child_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_entitlements_reward_id_fkey"
+            columns: ["reward_id"]
+            isOneToOne: false
+            referencedRelation: "referral_rewards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      referral_invoice_risk: {
+        Row: {
+          account_id: string
+          invoice: string
+          read_order: number
+          risk: string
+        }
+        Insert: {
+          account_id: string
+          invoice: string
+          read_order: number
+          risk: string
+        }
+        Update: {
+          account_id?: string
+          invoice?: string
+          read_order?: number
+          risk?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referral_invoice_risk_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "referral_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      referral_operations: {
+        Row: {
+          cents: number
+          checked_at: string
+          child_id: string | null
+          coupon: string
+          created_at: string
+          customer: string | null
+          entitlement_id: string
+          id: string
+          invoice: string | null
+          parent_id: string | null
+          product: string
+          start_key: string | null
+          state: string
+          subscription: string | null
+        }
+        Insert: {
+          cents: number
+          checked_at?: string
+          child_id?: string | null
+          coupon: string
+          created_at?: string
+          customer?: string | null
+          entitlement_id: string
+          id?: string
+          invoice?: string | null
+          parent_id?: string | null
+          product: string
+          start_key?: string | null
+          state?: string
+          subscription?: string | null
+        }
+        Update: {
+          cents?: number
+          checked_at?: string
+          child_id?: string | null
+          coupon?: string
+          created_at?: string
+          customer?: string | null
+          entitlement_id?: string
+          id?: string
+          invoice?: string | null
+          parent_id?: string | null
+          product?: string
+          start_key?: string | null
+          state?: string
+          subscription?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referral_operations_child_id_fkey"
+            columns: ["child_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_operations_entitlement_id_fkey"
+            columns: ["entitlement_id"]
+            isOneToOne: false
+            referencedRelation: "referral_entitlements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_operations_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      referral_rewards: {
+        Row: {
+          account_id: string
+          email_copy: Json | null
+          email_id: string | null
+          email_state: string | null
+          email_to: string | null
+          email_token: string | null
+          email_tried_at: string
+          id: string
+          kind: string
+          position: number
+          risk: string
+          risk_revision: number
+          source_id: string
+          started_at: string | null
+        }
+        Insert: {
+          account_id: string
+          email_copy?: Json | null
+          email_id?: string | null
+          email_state?: string | null
+          email_to?: string | null
+          email_token?: string | null
+          email_tried_at?: string
+          id?: string
+          kind: string
+          position?: never
+          risk?: string
+          risk_revision?: number
+          source_id: string
+          started_at?: string | null
+        }
+        Update: {
+          account_id?: string
+          email_copy?: Json | null
+          email_id?: string | null
+          email_state?: string | null
+          email_to?: string | null
+          email_token?: string | null
+          email_tried_at?: string
+          id?: string
+          kind?: string
+          position?: never
+          risk?: string
+          risk_revision?: number
+          source_id?: string
+          started_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referral_rewards_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "referral_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_rewards_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "referral_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      referral_start_choices: {
+        Row: {
+          cents: number
+          customer: string
+          operation_id: string | null
+          parent_id: string | null
+          start_key: string
+        }
+        Insert: {
+          cents: number
+          customer: string
+          operation_id?: string | null
+          parent_id?: string | null
+          start_key: string
+        }
+        Update: {
+          cents?: number
+          customer?: string
+          operation_id?: string | null
+          parent_id?: string | null
+          start_key?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referral_start_choices_operation_id_fkey"
+            columns: ["operation_id"]
+            isOneToOne: false
+            referencedRelation: "referral_operations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_start_choices_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "parents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       report_retries: {
         Row: {
           alert_email_id: string | null
@@ -9339,6 +9748,15 @@ export type Database = {
         Args: { p_child: string }
         Returns: undefined
       }
+      note_workbook_approved_with_new_marks: {
+        Args: {
+          p_by: string
+          p_by_email: string
+          p_detail: Json
+          p_draft: string
+        }
+        Returns: Json
+      }
       note_workbook_book1_baseline_try: {
         Args: { p_draft: string; p_revision: number }
         Returns: Json
@@ -9563,6 +9981,13 @@ export type Database = {
       redact_child_email_logs: {
         Args: { c: string; p: string }
         Returns: undefined
+      }
+      referral_account: { Args: { p: string }; Returns: string }
+      referral_command: { Args: { p_command: Json }; Returns: Json }
+      referral_next_read: { Args: never; Returns: number }
+      referral_operation_json: {
+        Args: { o: Database["public"]["Tables"]["referral_operations"]["Row"] }
+        Returns: Json
       }
       refresh_scan_marking_evaluation_price: {
         Args: {
