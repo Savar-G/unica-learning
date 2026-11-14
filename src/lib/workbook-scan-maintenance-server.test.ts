@@ -8,7 +8,9 @@ vi.mock("server-only", () => ({}));
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const env = { WORKBOOK_SCAN_PROGRESS_ENABLED: "test-only", WORKBOOK_SCAN_REMINDERS_ENABLED: "test-only", WORKBOOK_SCAN_TEST_PARENT_IDS: id(1) };
 function setup({ delivery = true, test = true, revokeBeforeAdmission = false, providerUnknown = false, failingRead = false,
-  deliveryCount = 1, linksGate = "", clockPending = false, failGateAt = Infinity, families = false, plan = "paying", skipped = 0, closePlanAt = Infinity } = {}) {
+  deliveryCount = 1, linksGate = "", clockPending = false, failGateAt = Infinity, families = false, plan = "paying", skipped = 0, closePlanAt = Infinity, reminders = "" } = {}) {
+  // The parent a reminder is for: the listed test parent, or (reminders in families mode) the real family id(20).
+  const owner = reminders === "families" ? id(20) : id(1);
   const calls: { name: string; body: Record<string, unknown>; query: URLSearchParams }[] = [], deliveries: string[] = [], copies: Record<string, unknown>[] = [];
   let state = "reserved", hash = "", revoked = false, gateReads = 0, planReads = 0, failNextGate = false;
   const db = createClient<Database>("https://maintenance.example.invalid", "synthetic-key", {
@@ -43,7 +45,7 @@ function setup({ delivery = true, test = true, revokeBeforeAdmission = false, pr
           count = clockPending ? 1 : 0; break;
         case "record_workbook_scan_delivery_calendar": data = { status: "waiting" }; break;
         case "read_workbook_scan_inactivity_context": data = { status: "read", observed_at: "2026-11-07T08:00:00Z", identity: null }; break;
-        case "parents": data = [{ id: id(1), email: "owned-qa@example.invalid" }]; break;
+        case "parents": data = [{ id: owner, email: "owned-qa@example.invalid" }]; break;
         case "read_workbook_scan_reminder_due": data = { status: "ready", episode_ids: [id(3)], child_ids: [id(2)] }; break;
         case "claim_workbook_scan_reminder":
           hash = body.p_unsubscribe_hash;
@@ -51,14 +53,14 @@ function setup({ delivery = true, test = true, revokeBeforeAdmission = false, pr
           data = state === "unknown" || state === "sent" ? { status: "busy" } : { status: "claimed", message_id: id(4),
             attempt_token: id(5), email_log_id: id(6), attempt: 1, episode_ids: [id(3)], child_ids: [id(2)] };
           break;
-        case "workbook_scan_reminder_messages": data = [{ id: id(4), parent_id: id(1), email_log_id: id(6), state, attempt_count: 1, attempt_token: id(5) }]; break;
-        case "workbook_scan_reminder_attempts": data = [{ token: id(5), parent_id: id(1), message_id: id(4), attempt: 1, state }]; break;
-        case "email_log": data = [{ id: id(6), parent_id: id(1), kind: "scan_inactivity", status: "claimed", attempts: 1,
+        case "workbook_scan_reminder_messages": data = [{ id: id(4), parent_id: owner, email_log_id: id(6), state, attempt_count: 1, attempt_token: id(5) }]; break;
+        case "workbook_scan_reminder_attempts": data = [{ token: id(5), parent_id: owner, message_id: id(4), attempt: 1, state }]; break;
+        case "email_log": data = [{ id: id(6), parent_id: owner, kind: "scan_inactivity", status: "claimed", attempts: 1,
           unsubscribe_hash: hash, copy_child_ids: [id(2)], copy_redacted: false }]; break;
         case "workbook_scan_reminder_links":
           if (linksGate === "remove") revoked = true;
           if (linksGate === "fail") failNextGate = true;
-          data = [{ episode_id: id(3), message_id: id(4), parent_id: id(1), child_id: id(2), released: false }]; count = 1; break;
+          data = [{ episode_id: id(3), message_id: id(4), parent_id: owner, child_id: id(2), released: false }]; count = 1; break;
         case "admit_workbook_scan_reminder": state = "admitted"; data = { status: "admitted", message_id: id(4), attempt_token: id(5), email_log_id: id(6), episode_ids: [id(3)] }; break;
         case "finish_workbook_scan_reminder": state = body.p_outcome; data = { status: "recorded" }; break;
         case "email_copies": copies.push(body); data = []; break;
@@ -72,10 +74,10 @@ function setup({ delivery = true, test = true, revokeBeforeAdmission = false, pr
     return providerUnknown ? { status: "unknown" as const, error: "synthetic lost reply" }
       : { status: "sent" as const, emailId: "synthetic-provider-1" };
   } };
-  const server = createWorkbookScanMaintenanceServer(db, { env: { ...env, WORKBOOK_SCAN_PROGRESS_ENABLED: families ? "families" : "test-only", WORKBOOK_SCAN_REMINDERS_ENABLED: delivery ? "test-only" : "off" },
+  const server = createWorkbookScanMaintenanceServer(db, { env: { ...env, WORKBOOK_SCAN_PROGRESS_ENABLED: families ? "families" : "test-only", WORKBOOK_SCAN_REMINDERS_ENABLED: reminders || (delivery ? "test-only" : "off") },
     origin: "https://unicalearning.com", provider, gapMs: 0 });
   if (!server) throw new Error("missing configured server");
-  const progress = createWorkbookScanProgressSweep(db, { env: { ...env, WORKBOOK_SCAN_PROGRESS_ENABLED: families ? "families" : "test-only", WORKBOOK_SCAN_REMINDERS_ENABLED: delivery ? "test-only" : "off" } })!;
+  const progress = createWorkbookScanProgressSweep(db, { env: { ...env, WORKBOOK_SCAN_PROGRESS_ENABLED: families ? "families" : "test-only", WORKBOOK_SCAN_REMINDERS_ENABLED: reminders || (delivery ? "test-only" : "off") } })!;
   return { db, provider, server, calls, deliveries, copies, run: async () => {
     const result = await progress.run({ now: () => 0, endAt: 100 });
     const reminders = await server.run({ now: () => 0, endAt: 100 });
@@ -87,7 +89,9 @@ describe("scan maintenance server release and integration", () => {
   it.each([{}, { ...env, WORKBOOK_SCAN_PROGRESS_ENABLED: "on" }, { ...env, WORKBOOK_SCAN_TEST_PARENT_IDS: "" },
     { ...env, WORKBOOK_SCAN_TEST_PARENT_IDS: "bad" }, { ...env, WORKBOOK_SCAN_TEST_PARENT_IDS: `${id(1)},${id(1)}` },
     { ...env, WORKBOOK_SCAN_TEST_PARENT_IDS: Array.from({ length: 21 }, (_, i) => id(i + 1)).join(",") },
-    { ...env, WORKBOOK_SCAN_REMINDERS_ENABLED: "on" }])("keeps absent or invalid release configuration off: %j", input => {
+    { ...env, WORKBOOK_SCAN_REMINDERS_ENABLED: "on" },
+    // Reminders for real families need the progress switch in families mode too.
+    { ...env, WORKBOOK_SCAN_REMINDERS_ENABLED: "families" }])("keeps absent or invalid release configuration off: %j", input => {
     expect(scanMaintenanceRelease(input)).toBeNull();
   });
 
@@ -99,6 +103,36 @@ describe("scan maintenance server release and integration", () => {
       p_book: id(7), p_backstop: "2026-11-22T12:00:00.000Z",
     });
     expect(f.calls.some(c => c.name === "claim_workbook_scan_reminder" || c.name === "admit_workbook_scan_reminder")).toBe(false);
+    expect(f.deliveries).toEqual([]);
+  });
+  it("reads the reminder switch: families only with families progress, test-only by default (#475)", () => {
+    expect(scanMaintenanceRelease({ ...env, WORKBOOK_SCAN_PROGRESS_ENABLED: "families", WORKBOOK_SCAN_REMINDERS_ENABLED: "families" })?.reminders).toBe("families");
+    expect(scanMaintenanceRelease(env)?.reminders).toBe("test-only");
+    expect(scanMaintenanceRelease({ ...env, WORKBOOK_SCAN_REMINDERS_ENABLED: undefined })).toMatchObject({ reminders: "off", delivery: false });
+  });
+  it("sends a real family its reminder in families mode, the database deciding who is due, without reading a plan (#475)", async () => {
+    const f = setup({ families: true, reminders: "families" });
+    const result = await f.run();
+    expect(result.reminders).toEqual({ sent: 1 });
+    expect(f.deliveries).toEqual(["owned-qa@example.invalid"]);
+    expect(f.calls.find(c => c.name === "claim_workbook_scan_reminder")?.body).toMatchObject({ p_parent: id(20) });
+    // The email path read no plan: only the progress sweep (before it) reads child_plan_states.
+    const claimAt = f.calls.findIndex(c => c.name === "claim_workbook_scan_reminder");
+    expect(f.calls.slice(claimAt).some(c => c.name === "child_plan_states")).toBe(false);
+  });
+  it("sends no reminder to a real family while reminders stay test-only, even in families progress mode", async () => {
+    const f = setup({ families: true, reminders: "test-only" });
+    await f.run();
+    expect(f.calls.some(c => c.name === "claim_workbook_scan_reminder" || c.name === "admit_workbook_scan_reminder")).toBe(false);
+    expect(f.deliveries).toEqual([]);
+  });
+  it("refuses a reminder to an unlisted test family in families mode", async () => {
+    const f = setup({ families: false, reminders: "" });
+    const server = createWorkbookScanMaintenanceServer(f.db, { env: { ...env, WORKBOOK_SCAN_PROGRESS_ENABLED: "families", WORKBOOK_SCAN_REMINDERS_ENABLED: "families", WORKBOOK_SCAN_TEST_PARENT_IDS: id(9) },
+      origin: "https://unicalearning.com", provider: f.provider, gapMs: 0 })!;
+    // id(20) carries a test marker here (the mock answers a marker), and it is not listed: no claim, no email.
+    await server.run({ now: () => 0, endAt: 100 });
+    expect(f.calls.some(c => c.name === "claim_workbook_scan_reminder")).toBe(false);
     expect(f.deliveries).toEqual([]);
   });
   it("pages past five closed plans and reaches the next admitted book", async () => {

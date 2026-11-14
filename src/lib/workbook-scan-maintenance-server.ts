@@ -45,11 +45,24 @@ export function createWorkbookScanMaintenanceServer(db: SupabaseClient<Database>
     if (error) { permissionReadFailed = true; throw new Error("scan_maintenance_test_gate_read"); }
     return data?.parent_id === parent;
   }
+  /**
+   * Who may get a reminder email: a listed test parent with its marker; and, with reminders in `families` mode, a real
+   * family (no test marker). The plan is not read here (no email reads the plan gate): every due read, claim and
+   * admission in the database runs `_workbook_scan_reminder_program`, which refuses a family without a running plan.
+   */
+  async function reminderParent(parent: string): Promise<boolean> {
+    if (permissionReadFailed) throw new Error("scan_maintenance_test_gate_read");
+    if (release!.parents.includes(parent.toLowerCase())) return testParent(parent);
+    if (release!.reminders !== "families") return false;
+    const { data, error } = await db.from("test_accounts").select("parent_id").eq("parent_id", parent).maybeSingle();
+    if (error) { permissionReadFailed = true; throw new Error("scan_maintenance_test_gate_read"); }
+    return !data;
+  }
   async function allowed(parent: string, child?: string): Promise<boolean> {
     if (permissionReadFailed) throw new Error("scan_maintenance_test_gate_read");
     return !!child && await testParent(parent);
   }
-  const store = workbookScanReminderSendStore(db, { beforeAdmit: handle => testParent(handle.parentId) });
+  const store = workbookScanReminderSendStore(db, { beforeAdmit: handle => reminderParent(handle.parentId) });
   const sender = createWorkbookScanReminderSender({ gapMs: options.gapMs, transport: options.provider,
     store });
   return {
@@ -67,13 +80,15 @@ export function createWorkbookScanMaintenanceServer(db: SupabaseClient<Database>
             if (options.signal?.aborted || time.now() >= time.endAt) throw new Error("scan_maintenance_selection_timeout");
             const rows = await listWorkbookScanRecoveryBooks(db, kind, limit, after);
             for (const row of rows) {
-              if (kind === "reminder-due" ? await testParent(row.parentId) : await allowed(row.parentId, row.childId)) selected.push(row);
+              if (kind === "reminder-due" ? await reminderParent(row.parentId) : await allowed(row.parentId, row.childId)) selected.push(row);
               if (selected.length === limit) return selected;
             }
             after = rows.length === limit ? rows[rows.length - 1].workbookId : null;
           } while (after);
           return selected;
-        }, allowed,
+        },
+        // This server runs only the reminders phase: its gate is who may get a reminder.
+        allowed: async (parent, child) => !!child && await reminderParent(parent),
         clocks: { ...clockStore, reconcile: async ids => {
           await clockStore.reconcile(ids);
           selectedBooks.push(...ids);
@@ -81,7 +96,7 @@ export function createWorkbookScanMaintenanceServer(db: SupabaseClient<Database>
         progress: workbookScanProgressStore(db), calendars: workbookScanInactivityStore(db),
         due: parent => readWorkbookScanReminderDue(db, parent),
         ...(release.delivery ? { send: async (parent: string, episodeIds: readonly string[], signal?: AbortSignal) => {
-          if (!await testParent(parent)) return { status: "not_sent" as const, reason: "release-off", released: false };
+          if (!await reminderParent(parent)) return { status: "not_sent" as const, reason: "release-off", released: false };
           const { data, error } = await db.from("parents").select("id,email").eq("id", parent).is("deletion_requested_at", null).maybeSingle();
           if (error) throw new Error("scan_maintenance_recipient_read");
           if (!data || data.id !== parent || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {

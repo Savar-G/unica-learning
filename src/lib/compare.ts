@@ -46,7 +46,7 @@ export const ROWS: { id: RowId; label: string; cells: Record<OptionId, [Mark, st
       tutor: ["yes", "Explains live"],
       centre: ["part", "Ask the instructor at the centre"],
       online: ["part", "Hints, videos or worked answers on screen"],
-      us: ["yes", "Children in Grade 3 and up can chat with the Teaching Assistant"],
+      us: ["yes", "Help from Maya, our AI Teaching Assistant"],
     },
   },
   {
@@ -96,12 +96,12 @@ export const ONE_BY_ONE: { id: Exclude<OptionId, "us">; tag: string; title: stri
     id: "tutor",
     tag: "vs Private tutors",
     title: `A tutor is there for the session. ${BRAND} is there for the days in between.`,
-    summary: `Practice 15–30 minutes a day at home, built from your child's own work. Children in Grade 3 and up can type to the Teaching Assistant for help.`,
+    summary: `Practice 15–30 minutes a day at home, built from your child's own work. When they're stuck, Maya, our AI Teaching Assistant, helps with hints.`,
     goodTitle: "A tutor is good at",
     good: ["Explaining live and answering questions", "Adjusting to your child each session", "Help with homework and tests"],
     hardTitle: "Harder with a tutor",
     hard: ["Often an hour or two a week; the other days are up to you", "$40-$100 an hour: about $170-$430 a month for 1 hour a week", "How much you hear about gaps depends on the tutor"],
-    us: ["Practice 5 days a week, built from their recent work", "Children in Grade 3 and up can chat with the Teaching Assistant. A report and worked solutions after every scan", `$${PLANS.one.price} a month. You can keep a tutor too.`],
+    us: ["Practice 5 days a week, built from their recent work", "Help from Maya, our AI Teaching Assistant. A report and worked solutions after every scan", `$${PLANS.one.price} a month. You can keep a tutor too.`],
   },
   {
     id: "centre",
@@ -112,7 +112,7 @@ export const ONE_BY_ONE: { id: Exclude<OptionId, "us">; tag: string; title: stri
     good: ["A set program and a daily habit", "A placement test to start", "Instructors at the centre"],
     hardTitle: "Harder with a centre",
     hard: ["You drive there, often twice a week, and wait", "Your child moves along a set path", "About $200 per subject a month, often plus an enrolment fee"],
-    us: ["Every page is built from their own work", "Children in Grade 3 and up can chat with the Teaching Assistant", `$${PLANS.one.price} a month, no enrolment fee`],
+    us: ["Every page is built from their own work", "Help from Maya, our AI Teaching Assistant", `$${PLANS.one.price} a month, no enrolment fee`],
   },
   {
     id: "online",
@@ -123,16 +123,17 @@ export const ONE_BY_ONE: { id: Exclude<OptionId, "us">; tag: string; title: stri
     good: ["Adapting to answers right away", "Low cost, and some are free", "Practice anywhere, any time"],
     hardTitle: "Harder with an online platform",
     hard: ["Practice happens on a screen", "Answers are tapped or typed, so the working on paper is never marked", "Help explains the question, without seeing how your child worked it"],
-    us: ["Your child works with pencil and paper; the screen stays with you", "You take a photo; we mark the work and show you the gaps", "Children in Grade 3 and up can type to the Teaching Assistant for help."],
+    us: ["Your child works with pencil and paper; the screen stays with you", "You take a photo; we mark the work and show you the gaps", "When they're stuck, Maya, our AI Teaching Assistant, helps with hints."],
   },
 ];
 
 export const COMPARE_FAQ: { question: string; answer: string }[] = [
-  { question: "Is this as good as a tutor?", answer: `They do different things. A tutor is a person who explains live, usually an hour or two a week. ${BRAND} is practice 5 days a week, built from your child's own work. Children in Grade 3 and up can type to the Teaching Assistant for help. You can use both.` },
-  { question: "How much of my time does it take?", answer: "Your child works on paper, 15-30 minutes a day. You scan finished pages with your phone and read the report. Children in Grade 3 and up can type to the Teaching Assistant for help." },
+  { question: "Is this as good as a tutor?", answer: `They do different things. A tutor is a person who explains live, usually an hour or two a week. ${BRAND} is practice 5 days a week, built from your child's own work. When they're stuck, Maya, our AI Teaching Assistant, helps with hints. You can use both.` },
+  { question: "How much of my time does it take?", answer: "Your child works on paper, 15-30 minutes a day. You scan finished pages with your phone and read the report. When they're stuck, Maya, our AI Teaching Assistant, helps with hints." },
   { question: "What if my child is ahead or behind?", answer: "The free assessment finds their level, whatever their grade. Their pages start there: more practice on the gaps, and new topics when they're ready." },
   { question: `Does ${BRAND} replace school?`, answer: `No. ${BRAND} works alongside school. It follows your child's curriculum, so practice at home matches class, and moves ahead when your child is ready.` },
   { question: "Can we keep our tutor?", answer: `Yes. A tutor can explain live, and ${BRAND} gives your child daily practice between sessions.` },
-  { question: "Is there any screen time?", answer: "Daily practice is on paper. The free math assessment is online. You use our website to scan finished pages and see progress. Children in Grade 3 and up can type to the Teaching Assistant for help." },
+  { question: "Is there any screen time?", answer: "Daily practice is on paper. The free math assessment is online. You use our website to scan finished pages and see progress. When they're stuck, Maya, our AI Teaching Assistant, helps with hints." },
   { question: "Where do these prices come from?", answer: "Public price lists and rate pages, checked October 2026. Tutor prices are for 1 hour a week. Prices are in Canadian dollars, except some online platforms that list US prices. They vary by tutor, centre and plan." },
 ];
+

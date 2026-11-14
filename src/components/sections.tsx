@@ -193,7 +193,7 @@ export function Pricing() {
             "Free online math assessment and report, before you choose a plan",
             "A program built from your child's level and gaps",
             "2 paper workbooks a month, mailed home",
-            "The Unica Teaching Assistant: chat for Grade 3 and up",
+            "The Unica Teaching Assistant*",
             "The parent dashboard on our website: answer checks, solutions and progress reports",
             "Rewards for every page and every week",
             "Delivery included. Cancel anytime",
@@ -203,6 +203,7 @@ export function Pricing() {
           cta={<div className="plan-cta"><GetStarted src="price" /><StartNote /></div>}
         />
       </PlanGrid>
+      <p className="plan-foot">*The Unica Teaching Assistant is for Grade 3 and up.</p>
     </Section>
   );
 }
