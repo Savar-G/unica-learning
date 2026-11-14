@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { markingAiClient } from "@/lib/scan-marking-ai";
+import { MARKING_CLAUDE_ENDPOINTS, markingAiClient, markingClientReady } from "@/lib/scan-marking-ai";
 import { MARKING_MODEL } from "@/lib/scan-marking";
 import { OPENROUTER_URL } from "@/lib/ai-openrouter";
 
@@ -101,4 +101,28 @@ describe("#868: the transport names a clean provider failure", () => {
     await transport.client.json(request, new AbortController().signal);
     expect(transport.failure!()).toBeNull(); expect(transport.costMicros()).toBe(1_000);
   });
+});
+
+// #900 (D-337): a child's page photo goes to Claude only on Anthropic or Azure's global endpoint, never to Google.
+it("sends production marking to Anthropic or Azure global only, never to Google", async () => {
+  const bodies: Record<string, unknown>[] = [];
+  const fake: typeof fetch = async (_url, init) => {
+    bodies.push(JSON.parse(String(init?.body)));
+    return Response.json({ choices: [{ finish_reason: "stop", message: { content: '{"readings":[]}' } }] });
+  };
+  for (const model of [MARKING_MODEL, "anthropic/claude-haiku-5.5"]) {
+    const t = markingAiClient({ SCAN_MARKING_OPENROUTER_API_KEY: "synthetic", SCAN_MARKING_MODEL: model }, fake)(async () => {});
+    await t!.client.json(request, new AbortController().signal);
+  }
+  expect(MARKING_CLAUDE_ENDPOINTS).toEqual(["anthropic", "azure/global"]);
+  for (const b of bodies) {
+    expect(b.provider).toEqual({ only: ["anthropic", "azure/global"], order: ["anthropic", "azure/global"], allow_fallbacks: false, require_parameters: true, ignore: ["google-vertex", "google-ai-studio"] });
+    expect(JSON.stringify(b.provider)).not.toMatch(/"only":\[[^\]]*google/);
+  }
+});
+it("has no production client for a model that runs only on Google", () => {
+  const env = { SCAN_MARKING_OPENROUTER_API_KEY: "synthetic", SCAN_MARKING_MODEL: "google/gemini-3.8-flash" };
+  expect(markingAiClient(env, fetch)(async () => {})).toBeNull();
+  expect(markingClientReady(env)).toBe(false);
+  expect(markingClientReady({ SCAN_MARKING_OPENROUTER_API_KEY: "synthetic" })).toBe(true);
 });

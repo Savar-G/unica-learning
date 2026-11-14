@@ -17,11 +17,13 @@ export async function runComparisonMatrix(options: {
   save(blocks: ReadonlyMap<string, string>, projection: unknown): Promise<void>;
   now?: () => number;
   wait?: (ms: number) => Promise<void>;
+  /** The run's selected pairs. Without it a model id names its first pinned pair. */
+  models?: readonly ComparisonModel[];
 }) {
   const { manifest, results } = options, blocks = new Map<string, string>();
   if (!Number.isSafeInteger(options.maxRunMicros) || options.maxRunMicros < 1 || options.maxRunMicros > 15_000_000) throw new Error("invalid-matrix-cap");
   assertComparisonResume(options.records, results);
-  assertComparisonResultIdentity(manifest, results, options.history, options.run);
+  assertComparisonResultIdentity(manifest, results, options.history, options.run, options.models);
   for (const p of options.preflight) if (p.status === "blocked") blocks.set(p.model, p.reason);
   const spent = () => {
     assertComparisonResume([], results);
@@ -33,11 +35,11 @@ export async function runComparisonMatrix(options: {
     if (prior && (batch === 0 || prior.status !== "deferred" || prior.batch === 1)) return;
     if (batch === 0 && deferred(state.model).length) return;
     if (spent() + state.maximumMicros > options.maxRunMicros) { blocks.set(state.model, "next-reservation-over-run-cap"); return; }
-    const model = COMPARISON_ALLOWED_MODELS.find(m => m.model === state.model);
+    const model = (options.models ?? COMPARISON_ALLOWED_MODELS).find(m => m.model === state.model);
     if (!model) throw new Error("invalid-comparison-model-selection");
     const result = await options.dispatch(model, photo, state.evidence, state.maximumMicros, batch, prior);
     if (prior) results.splice(results.indexOf(prior), 1, result); else results.push(result);
-    assertComparisonResultIdentity(manifest, results, options.history, options.run);
+    assertComparisonResultIdentity(manifest, results, options.history, options.run, options.models);
     spent(); // Unknown usage stops here, before another model can dispatch.
     if (result.attempts.length === (prior?.attempts.length ?? 0)) {
       // Only a verified price rejection has no charged liability and is local to this model.

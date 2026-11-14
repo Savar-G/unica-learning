@@ -45,7 +45,9 @@ export function scanMarkingStore(db: SupabaseClient<Database>): MarkingStore {
           regions: q.regions, teaching: q.teaching }, { source: "workbook", workbookId, page: pageNumber, question: num(q.question_number) }, image);
         return { number: read.number, package: read.content.status === "found" ? read.content.package : null, regions: read.regions, teaching: read.teaching };
       });
-      const frame: MarkingFrame = { parentId: ref.parent, childId: str(p.child_id), photo: ref.photo, workbookId, printedRevision, pageId: str(p.page_id), pageNumber, ready: true, questions };
+      // Questions the photo's edge cut off (#912): read as cut off, never from the photo.
+      const cutOff = Array.isArray(result.cutOff) ? result.cutOff.map(num) : [];
+      const frame: MarkingFrame = { parentId: ref.parent, childId: str(p.child_id), photo: ref.photo, workbookId, printedRevision, pageId: str(p.page_id), pageNumber, ready: true, questions, ...(cutOff.length ? { cutOff } : {}) };
       frames.set(refKey(ref), { frame, path: scanPartPath(ref.parent, ref.photo, str(c.lease_token), "straight"), hash: digestOf(JSON.stringify({ contract, questions })) });
       return frame;
     },
