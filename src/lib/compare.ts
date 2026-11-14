@@ -46,7 +46,7 @@ export const ROWS: { id: RowId; label: string; cells: Record<OptionId, [Mark, st
       tutor: ["yes", "Explains live"],
       centre: ["part", "Ask the instructor at the centre"],
       online: ["part", "Hints, videos or worked answers on screen"],
-      us: ["yes", "Help from Maya, our AI Teaching Assistant*"],
+      us: ["yes", "Help from Maya, our AI Teaching Assistant"],
     },
   },
   {
@@ -137,5 +137,3 @@ export const COMPARE_FAQ: { question: string; answer: string }[] = [
   { question: "Where do these prices come from?", answer: "Public price lists and rate pages, checked October 2026. Tutor prices are for 1 hour a week. Prices are in Canadian dollars, except some online platforms that list US prices. They vary by tutor, centre and plan." },
 ];
 
-/** The footnote for the asterisk on our "Help when they're stuck" cell (D-341): shown under the home and /compare tables. */
-export const HELP_NOTE = "*Maya is for Grade 3 and up.";
