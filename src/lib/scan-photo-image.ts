@@ -82,26 +82,37 @@ function tokenOf(link: string): string | null {
  * lower first): 2× over nine crops, then 3× over the four quarters, which still cover the whole photo. 3× reads a code
  * only a few pixels a module, as in a photo taken from higher up (two clear Robin photos read only at 3×, 2026-11-14).
  */
-const QR_ZOOM_PASSES = [[2, [[0, 0.5], [0.25, 0.5], [0.5, 0.5], [0, 0.25], [0.25, 0.25], [0.5, 0.25], [0, 0], [0.25, 0], [0.5, 0]]], [3, [[0, 0.5], [0.5, 0.5], [0, 0], [0.5, 0]]]] as const;
+// Each pass: its zoom, its window as a part of the photo's width and height, and the windows' top-left corners.
+// First a quarter-size window low on the left, where the page prints its code: a real photo's code that no half window
+// reads (a coil, a hand's shadow or the next page beside it in the same window) reads there (Aarav's book, 2026-11-14).
+const QR_ZOOM_PASSES = [
+  [2, 0.25, [[0, 0.75], [0.125, 0.75], [0, 0.625], [0.125, 0.625]]],
+  [2, 0.5, [[0, 0.5], [0.25, 0.5], [0.5, 0.5], [0, 0.25], [0.25, 0.25], [0.5, 0.25], [0, 0], [0.25, 0], [0.5, 0]]],
+  [3, 0.5, [[0, 0.5], [0.5, 0.5], [0, 0], [0.5, 0]]],
+] as const;
 
 /**
- * The page's token from its QR code: first over the whole photo, then in crops zoomed 2× and then 3×, where a phone photo's small
+ * The page's token from its QR code: first over the whole photo, then in crops zoomed 2× and then 3× (QR_ZOOM_PASSES), where a phone photo's small
  * code reads when the whole photo's does not. The page prints its code low on the left, so the lower crops come first.
  * Calibration reads the code in place at the same zooms (`qrBound` in scan-calibration.ts), so a photo taken here for its
  * code is not refused there for it; change the two together.
  */
 async function pageCode(jpeg: Buffer, size: { width: number; height: number }): Promise<PageCode | null> {
   const whole = await sharp(jpeg).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  // A read that is not a page link (a misread, or another code in view) does not end the search: the windows still look.
   const first = readQr(whole.data, whole.info.width, whole.info.height);
-  if (first) return codeOf(first, 0, 0, 1);
-  const width = Math.floor(size.width / 2), height = Math.floor(size.height / 2);
-  if (width < 16 || height < 16) return null;
-  for (const [zoom, windows] of QR_ZOOM_PASSES) for (const [x, y] of windows) {
+  const wholeCode = first && codeOf(first, 0, 0, 1);
+  if (wholeCode) return wholeCode;
+  if (Math.floor(size.width / 2) < 16 || Math.floor(size.height / 2) < 16) return null;
+  for (const [zoom, part, windows] of QR_ZOOM_PASSES) for (const [x, y] of windows) {
+    const width = Math.floor(size.width * part), height = Math.floor(size.height * part);
+    if (width < 16 || height < 16) continue;
     const left = Math.min(Math.round(x * size.width), size.width - width), top = Math.min(Math.round(y * size.height), size.height - height);
     const { data, info } = await sharp(jpeg).extract({ left, top, width, height })
       .resize({ width: width * zoom, height: height * zoom, fit: "fill", kernel: "lanczos3" }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
     const found = read(data, info.width, info.height);
-    if (found) return codeOf(found, left, top, zoom);
+    const code = found && codeOf(found, left, top, zoom);
+    if (code) return code;
   }
   return null;
 }
