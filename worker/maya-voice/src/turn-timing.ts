@@ -55,11 +55,15 @@ export interface FinalMark {
   detectorEndAt: number | null;
   /** What the prepare signal did before this final (./heard-signals.ts `PrepareSignal`). */
   prepare?: PrepareStats | null;
+  /** This final's identity in the telemetry (./telemetry.ts). */
+  finalId?: string;
 }
 
 /** What else the worker logs with a turn, beside its times. */
 export interface TurnExtras {
   prepare?: PrepareStats | null;
+  /** Called once per mark the turn's own clock takes, for the telemetry (./telemetry.ts). */
+  onMark?: (name: "turnReady" | "answerQueued") => void;
 }
 
 /** The end time (seconds, on the speech-to-text's audio clock) of the last word of a final transcript. */
@@ -101,6 +105,8 @@ export function heardMarks(mark: FinalMark | null, vadEndAt: number | null, onTu
 }
 
 export interface VoiceTurnSample {
+  /** The turn's identity in the telemetry (./telemetry.ts); set by the run, not by the clock. */
+  turnId?: string;
   outcome: TurnOutcome;
   /** End of speech to the first sound of this reply: the acknowledgement or the answer. Null when nothing was heard. */
   firstSoundMs: number | null;
@@ -179,12 +185,12 @@ export class TurnClock {
     private readonly extras: TurnExtras = {},
   ) {}
 
-  ready(time: ControllerTime) { this.controller = time; this.readyAt = this.now(); }
+  ready(time: ControllerTime) { this.controller = time; this.readyAt = this.now(); this.extras.onMark?.("turnReady"); }
   /** The first sentence of the reply came while the turn still ran (D-341). */
   firstPart() { this.partAt ??= this.now(); }
   held() { this.heldAt = this.now(); }
   /** The words went to the voice. */
-  staged() { this.stagedAt = this.now(); this.answerQueued = true; }
+  staged() { this.stagedAt = this.now(); this.answerQueued = true; this.extras.onMark?.("answerQueued"); }
   /** The answer's board plan reached the child's screen. */
   planSent() { this.sentAt ??= this.now(); }
   ackQueued(id: string) { this.ackId = id; }

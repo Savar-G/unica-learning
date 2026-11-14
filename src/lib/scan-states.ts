@@ -21,10 +21,11 @@ export const SCAN_JOB_STATES = ["queued", "running", "extracted", "finished"] as
 export type ScanJobState = (typeof SCAN_JOB_STATES)[number];
 
 /**
- * Why a marking job was paused (public.scan_marking_jobs.blocked_reason; null when a claim cleared it). `attempts` is
- * the one reason that finishes the job, and a finish keeps the last reason.
+ * Why a marking job was paused (public.scan_marking_jobs.blocked_reason; null when a claim cleared it). `attempts` and
+ * `unfinished` (every answer read blank, nothing marked; scan edge sweep, 2026-11-14) finish the job, and a finish keeps
+ * the last reason.
  */
-export const SCAN_BLOCKED_REASONS = ["off", "budget", "price-unverified", "attempts", "pending"] as const;
+export const SCAN_BLOCKED_REASONS = ["off", "budget", "price-unverified", "attempts", "pending", "unfinished"] as const;
 export type ScanBlockedReason = (typeof SCAN_BLOCKED_REASONS)[number];
 
 /**

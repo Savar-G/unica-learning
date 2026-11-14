@@ -21,7 +21,7 @@ interface TestRoom {
   localParticipant: { setMicrophoneEnabled: ReturnType<typeof vi.fn>; performRpc: ReturnType<typeof vi.fn> };
 }
 /** How the next room's connect behaves: at once, never (until the test lets it), or with an error. */
-const control = vi.hoisted(() => ({ connect: [] as Array<"ok" | "hold" | "fail">, held: [] as Array<() => void> }));
+const control = vi.hoisted(() => ({ connect: [] as Array<"ok" | "hold" | "fail" | "holdfail">, held: [] as Array<() => void>, ticket: [] as Array<"ok" | "hold">, ticketHeld: [] as Array<() => void> }));
 const rooms = vi.hoisted(() => [] as TestRoom[]);
 vi.mock("livekit-client", () => {
   class Room {
@@ -36,7 +36,8 @@ vi.mock("livekit-client", () => {
     async connect(url: string, token: string) {
       const how = control.connect.shift() ?? "ok";
       if (how === "fail") throw new Error("connect");
-      if (how === "hold") await new Promise<void>((resolve) => control.held.push(resolve));
+      if (how === "hold" || how === "holdfail") await new Promise<void>((resolve) => control.held.push(resolve));
+      if (how === "holdfail") throw new Error("connect");
       this.connected = [url, token];
     }
     startAudio = vi.fn(async () => {});
@@ -50,7 +51,7 @@ let host: HTMLDivElement;
 let tickets = 0;
 afterEach(async () => {
   await act(async () => root?.unmount());
-  root = undefined; host?.remove(); rooms.length = 0; control.connect.length = 0; control.held.length = 0; tickets = 0;
+  root = undefined; host?.remove(); rooms.length = 0; control.connect.length = 0; control.held.length = 0; control.ticket.length = 0; control.ticketHeld.length = 0; tickets = 0;
   vi.unstubAllGlobals(); vi.useRealTimers();
 });
 
@@ -60,7 +61,11 @@ async function mount(opts: { started?: boolean } = {}) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("requestAnimationFrame", vi.fn(() => 1));
   vi.stubGlobal("cancelAnimationFrame", vi.fn());
-  vi.stubGlobal("fetch", vi.fn(async () => ({ json: async () => ({ ok: true, ticket: { url: "ws://fake", token: `t${++tickets}` } }) })));
+  vi.stubGlobal("fetch", vi.fn(async () => {
+    const token = `t${++tickets}`;
+    if (control.ticket.shift() === "hold") await new Promise<void>((resolve) => control.ticketHeld.push(resolve));
+    return { json: async () => ({ ok: true, ticket: { url: "ws://fake", token } }) };
+  }));
   vi.stubGlobal("AudioContext", class {
     createAnalyser() { return { fftSize: 512, getByteTimeDomainData: (a: Uint8Array) => a.fill(128) }; }
     createMediaStreamSource() { return { connect() {} }; }
@@ -160,20 +165,89 @@ it("falls back to the full join in the tap when the early join failed", async ()
   expect(host.textContent).toContain("Maya is listening");
 });
 
-it("falls back to the full join when the early join is not done at the tap, and leaves the unfinished room", async () => {
+it("uses the early join still connecting at the tap: one ticket, one room, and the microphone and audio only once it joined", async () => {
   control.connect.push("hold");
   const f = await mount();
   await f.click("Check the microphone");
   await f.click("Connect");
-  expect(rooms).toHaveLength(2);
-  expect(rooms[0].disconnect).toHaveBeenCalled();
+  // The tap waits for the join under way: no second ticket, no second room, nothing turned on yet.
+  expect(tickets).toBe(1);
+  expect(rooms).toHaveLength(1);
+  expect(rooms[0].disconnect).not.toHaveBeenCalled();
   expect(rooms[0].localParticipant.setMicrophoneEnabled).not.toHaveBeenCalled();
-  expect(rooms[1].localParticipant.setMicrophoneEnabled).toHaveBeenCalledOnce();
-  // The early join that ends after the tap changes nothing.
+  expect(rooms[0].startAudio).not.toHaveBeenCalled();
+  expect(host.textContent).toContain("Connecting…");
   await act(async () => { control.held.forEach((go) => go()); });
   await settle();
-  expect(rooms).toHaveLength(2);
+  expect(tickets).toBe(1);
+  expect(rooms).toHaveLength(1);
+  expect(rooms[0].disconnect).not.toHaveBeenCalled();
+  expect(rooms[0].localParticipant.setMicrophoneEnabled).toHaveBeenCalledOnce();
+  expect(rooms[0].startAudio).toHaveBeenCalledOnce();
   expect(host.textContent).toContain("Waiting for Maya to join");
+  const voice = mayaIn(rooms[0]);
+  await settle();
+  expect(voice.track.attach).toHaveBeenCalledOnce();
+  expect(host.textContent).toContain("Maya is listening");
+});
+
+it("uses the early join still waiting for its ticket at the tap, with no second ticket", async () => {
+  control.ticket.push("hold");
+  const f = await mount();
+  expect(rooms).toHaveLength(0);
+  await f.click("Check the microphone");
+  await f.click("Connect");
+  expect(tickets).toBe(1);
+  await act(async () => { control.ticketHeld.forEach((go) => go()); });
+  await settle();
+  expect(tickets).toBe(1);
+  expect(rooms).toHaveLength(1);
+  expect(rooms[0].connected).toEqual(["ws://fake", "t1"]);
+  expect(rooms[0].localParticipant.setMicrophoneEnabled).toHaveBeenCalledOnce();
+  expect(host.textContent).toContain("Waiting for Maya to join");
+});
+
+it("joins in full once when the early join the tap waited for fails", async () => {
+  control.connect.push("holdfail");
+  const f = await mount();
+  await f.click("Check the microphone");
+  await f.click("Connect");
+  expect(tickets).toBe(1);
+  await act(async () => { control.held.forEach((go) => go()); });
+  await settle();
+  // The held join failed: the tap joins in full with a new ticket, once, and the failed room stays off.
+  expect(rooms[0].localParticipant.setMicrophoneEnabled).not.toHaveBeenCalled();
+  expect(tickets).toBe(2);
+  expect(rooms).toHaveLength(2);
+  expect(rooms[1].connected).toEqual(["ws://fake", "t2"]);
+  expect(rooms[1].localParticipant.setMicrophoneEnabled).toHaveBeenCalledOnce();
+  expect(host.textContent).toContain("Waiting for Maya to join");
+});
+
+it("leaves an early join cancelled while it connects, when it finishes late, and turns nothing on", async () => {
+  control.connect.push("hold");
+  const f = await mount();
+  await f.click("Cancel the call");
+  await act(async () => { control.held.forEach((go) => go()); });
+  await settle();
+  expect(rooms[0].disconnect).toHaveBeenCalled();
+  expect(rooms[0].localParticipant.setMicrophoneEnabled).not.toHaveBeenCalled();
+  expect(rooms[0].startAudio).not.toHaveBeenCalled();
+});
+
+it("leaves the early join and turns nothing on when the screen closes while the tap waits for it", async () => {
+  control.connect.push("hold");
+  const f = await mount();
+  await f.click("Check the microphone");
+  await f.click("Connect");
+  await act(async () => root!.unmount());
+  root = undefined;
+  await act(async () => { control.held.forEach((go) => go()); });
+  await settle();
+  expect(rooms).toHaveLength(1);
+  expect(rooms[0].disconnect).toHaveBeenCalled();
+  expect(rooms[0].localParticipant.setMicrophoneEnabled).not.toHaveBeenCalled();
+  expect(rooms[0].startAudio).not.toHaveBeenCalled();
 });
 
 it("falls back to the full join when the joined room dropped before the tap", async () => {

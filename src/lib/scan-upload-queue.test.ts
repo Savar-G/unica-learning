@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { busyWait, nextUploads, UPLOAD_SLOTS } from "@/lib/scan-upload-queue";
+import { busyWait, nextUploads, roomWait, UPLOAD_SLOTS, waitsForRoom } from "@/lib/scan-upload-queue";
 
 describe("busyWait", () => {
   it("asks again quickly at first, without showing the photo as waiting", () => {
@@ -37,5 +37,22 @@ describe("nextUploads", () => {
 
   it("does not let a removed photo that is still finishing hold a slot", () => {
     expect(nextUploads([u("b", "waiting"), u("c", "waiting")], new Set(["gone"]))).toEqual(["b", "c"]);
+  });
+});
+
+describe("roomWait (scan edge sweep, 2026-11-14)", () => {
+  it("keeps a photo over the 10-minute limit in its place, shown as waiting, and asks again every 30 s with no last try", () => {
+    expect(waitsForRoom("frequency")).toBe(true);
+    expect(roomWait("frequency", 0)).toEqual({ delayMs: 30_000, held: true });
+    expect(roomWait("frequency", 10_000)).toEqual({ delayMs: 30_000, held: true });
+  });
+
+  it("waits for room on busy exactly as before", () => {
+    expect(waitsForRoom("busy")).toBe(true);
+    for (const tries of [0, 19, 20, 22, 500]) expect(roomWait("busy", tries)).toEqual(busyWait(tries));
+  });
+
+  it("does not wait on the day's limit or any other refusal", () => {
+    for (const code of ["daily", "quota", "size", "duplicate", "unavailable"]) expect(waitsForRoom(code)).toBe(false);
   });
 });

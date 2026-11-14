@@ -3,7 +3,7 @@ import { templateSkills } from "@/lib/assessment";
 import { learningEvents } from "@/lib/learning-events";
 import { memoryLearningEventStore } from "@/lib/learning-events-memory";
 import { memoryWordingHistoryStore, SAFETY_GUIDANCE } from "@/lib/maya";
-import { mayaCalls, type CallResult, type CallSeams, type SpendCall } from "@/lib/maya-call";
+import { mayaCalls, type AdmissionSample, type CallResult, type CallSeams, type SpendCall } from "@/lib/maya-call";
 import { memoryCallStore, memoryConnectionLog } from "@/lib/maya-call-memory";
 import { childChatView } from "@/lib/maya-chat";
 import type { MayaModel } from "@/lib/maya-model";
@@ -889,5 +889,56 @@ describe("a voice call's budget block (latency plan V1, 2026-11-13)", () => {
     w.mark();
     ok(await w.calls.input(r.view.id, r.view.revision, { type: "child", text: "I got 66." }, "Leah"));
     expect(w.at[0]).toEqual(["used", "reserve"]);
+  });
+});
+
+describe("the admission interval of a voice turn (latency audit 2026-11-14)", () => {
+  async function turnWith(listen: boolean, atCap: boolean) {
+    const t = setup({ voiceIsTheChilds: true });
+    const view = ok(await t.calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: TEST_PKG, startedBy: "admin-1" })).view;
+    const opened = await t.calls.openVoice(view.id, { speechToText: "fake", voice: "fake" }, "Leah");
+    if (!opened.ok) throw new Error(opened.error);
+    await opened.call.start();
+    if (atCap) { t.leave(0); t.advance(60_000); }
+    const samples: AdmissionSample[] = [];
+    const before = t.sent.count;
+    const turn = await opened.call.child("I got 66.", undefined, listen ? { admission: (a) => samples.push(a) } : undefined);
+    const rows = t.spendStore.rows().map((r) => ({ what: r.what, reserved: r.reserved }));
+    await opened.call.end({ reason: "child_stopped" });
+    await opened.call.settled();
+    return { samples, turn, sent: t.sent.count - before, rows };
+  }
+
+  it("reports one sample for an admitted turn, and changes nothing the turn does or pays", async () => {
+    const watched = await turnWith(true, false);
+    const plain = await turnWith(false, false);
+    expect(watched.samples).toHaveLength(1);
+    expect(watched.samples[0]).toMatchObject({ outcome: "admitted", block: "memory", blockMs: 0 });
+    expect(watched.samples[0].endedAt).toBeGreaterThanOrEqual(watched.samples[0].startedAt);
+    // The same dispatch, the same words, the same reservations with and without the listener.
+    expect(watched.sent).toBe(plain.sent);
+    expect(watched.turn.say).toEqual(plain.turn.say);
+    expect(watched.rows).toEqual(plain.rows);
+  });
+
+  it("reports the refusal at the cap with the awaited speech-to-text read, and the turn closes as it does unwatched", async () => {
+    const watched = await turnWith(true, true);
+    const plain = await turnWith(false, true);
+    expect(watched.samples).toHaveLength(1);
+    expect(watched.samples[0]).toMatchObject({ outcome: "cap", stt: "network" });
+    expect(watched.turn).toMatchObject({ say: [SPEND_CLOSE.week_used.line], ended: true });
+    expect(watched.sent).toBe(plain.sent);
+    expect(watched.turn.say).toEqual(plain.turn.say);
+    expect(watched.rows).toEqual(plain.rows);
+  });
+
+  it("never fails a turn when the listener throws", async () => {
+    const t = setup({ voiceIsTheChilds: true });
+    const view = ok(await t.calls.startVoice({ kind: "admin_test", parentId: PARENT, childId: CHILD, childName: "Leah", package: TEST_PKG, startedBy: "admin-1" })).view;
+    const opened = await t.calls.openVoice(view.id, { speechToText: "fake", voice: "fake" }, "Leah");
+    if (!opened.ok) throw new Error(opened.error);
+    await opened.call.start();
+    const turn = await opened.call.child("I got 66.", undefined, { admission: () => { throw new Error("log failed"); } });
+    expect(turn.say.length).toBeGreaterThan(0);
   });
 });

@@ -118,6 +118,8 @@ type NullArgs = KnownArgs<{
   propose_workbook_scan_inactivity: "p_activity";
   finish_workbook_scan_reminder: "p_email_id";
   submit_feedback: "p_child";
+  // The recovery run asks for every family's due sends.
+  due_scan_sends: "p_parent";
   // A Day 7 or backstop claim has no admin, and the admin action has no claim; automatic admission has no actor.
   claim_next_book_snapshot: "p_trigger" | "p_book" | "p_actor" | "p_email";
   admit_next_book_run: "p_by" | "p_email";

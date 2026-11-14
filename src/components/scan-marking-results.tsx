@@ -9,13 +9,15 @@ import { ScanMarkChange } from "./scan-mark-change";
  * The page line agrees with its answers (#715). Our team checking an answer wins over an unmarked answer: it is the
  * thing happening now, and it does not claim the other answers are marked.
  */
-export function pageLine(result: Pick<ReturnType<typeof markingPageView>, "completion" | "counts">): string {
+export function pageLine(result: Pick<ReturnType<typeof markingPageView>, "completion" | "counts"> & { unfinished?: boolean }): string {
+  // Every answer read blank (scan edge sweep, 2026-11-14): nothing was marked.
+  if (result.unfinished && result.completion.status !== "complete" && result.counts.scored === 0) return "Looks unfinished: scan it when it's done.";
   if (result.completion.status === "complete") return result.counts.scored === 0 ? "This page has no scored answers." : "This page has been marked.";
   if (result.counts.teamChecks > 0) return "Our team is checking some answers on this page.";
   return result.counts.scored > 0 ? "Some answers on this page are not marked yet." : "This page is not marked yet.";
 }
 /** `zone`: the family's time zone (src/lib/family-time.ts), resolved on the server; Pacific when none is given. */
-export function ScanMarkingResults({ result, showHeading = true, photo, parent, itemExplanation, zone = PACIFIC_ZONE }: { zone?: FamilyZone; parent?: string; photo?: string; result: ReturnType<typeof markingPageView> & { photoAvailable: boolean; budgetHeld?: boolean }; showHeading?: boolean; itemExplanation?: (item: ReturnType<typeof markingPageView>["items"][number]) => ReactNode }) {
+export function ScanMarkingResults({ result, showHeading = true, photo, parent, itemExplanation, zone = PACIFIC_ZONE }: { zone?: FamilyZone; parent?: string; photo?: string; result: ReturnType<typeof markingPageView> & { photoAvailable: boolean; budgetHeld?: boolean; unfinished?: boolean }; showHeading?: boolean; itemExplanation?: (item: ReturnType<typeof markingPageView>["items"][number]) => ReactNode }) {
   return <section className="scan-preview scan-marking-results" aria-label="Page results">
     {showHeading && <h2>Page results</h2>}
     {result.budgetHeld && <p role="status">We cannot check more pages right now</p>}

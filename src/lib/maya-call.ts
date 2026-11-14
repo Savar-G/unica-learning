@@ -75,6 +75,7 @@ import { fitView, type PlayStep } from "@/lib/board-svg";
 import type { LearningEvents, NewLearningEvent } from "@/lib/learning-events";
 import type { NoteStep } from "@/lib/maya-call-note";
 import { clearStop, heardWordings, learningEvent, limitsOf, mayaPackageCheck, nextActs, SAFETY_GUIDANCE, streamPlan, type Outcome, type Session, type Severity, type WordingHistory, type WordingHistoryStore } from "@/lib/maya";
+import { createHandleDiagnosticIds } from "@/lib/maya-handle-diagnostic";
 import { modelInput, type MayaModel } from "@/lib/maya-model";
 import type { TalkReviewer } from "@/lib/maya-talk-review";
 import { createTextSession, type FinishOptions, type SavedTextSession, type TextOutput, type TextSession, type TextSessionOptions } from "@/lib/maya-text";
@@ -251,7 +252,7 @@ export interface CallStore {
 
 export interface CallModelOptions {
   safetyRead?: boolean;
-  prepared?: { budget: CallBudget; handle: Handle };
+  prepared?: { budget: CallBudget; handle: Handle; diagnosticHandleId?: string };
 }
 
 export interface CallSeams {
@@ -438,7 +439,25 @@ export interface VoiceTurn {
  * `cancel(fromIndex)` drops sentences from that index that were not given yet; `end` ends the output. The finished
  * turn (`VoiceTurn.say`) holds the same sentences in the same order, then any that follow.
  */
+/**
+ * What the spend gate waited for before one turn's input, measured at its seam (`turn`), for the worker's telemetry.
+ * Times are the call's clock. It adds no read, no reservation and no wait: it only times the ones the gate makes.
+ */
+export interface AdmissionSample {
+  startedAt: number;
+  endedAt: number;
+  /** Speech-to-text coverage: no meter, a state already held (cached), or a read that was awaited (network). */
+  stt: "none" | "cached" | "network";
+  sttMs: number;
+  /** The model block: taken in memory with no wait, or awaited (its allowance was 0, so the refill decided). */
+  block: "memory" | "awaited";
+  blockMs: number;
+  outcome: "admitted" | "cap" | "inactive" | "error";
+}
+
 export interface VoiceSay {
+  /** The turn's admission interval, once, when the gate is done (also when it refuses the turn). */
+  admission?(sample: AdmissionSample): void;
   begun?(plan: { model: boolean; streams: boolean; conversational: boolean }): void;
   part?(sentence: string, index: number): void;
   cancel?(fromIndex: number): void;
@@ -1134,6 +1153,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       // block is reserved now, in the background; the first turn waits for it only if it has not answered.
       const budget: CallBudget | null = seams.spend ? seams.spend.budget(voiceSpend) : null;
       void budget?.open();
+      // One diagnostic id per handle object for this call, shared with the controller's prepareHandleId hook. Log labels only.
+      const prepareHandleId = createHandleDiagnosticIds(voiceSpend.budgetKey ?? record.id);
       // C2 speculative requests use this budget through a request-bound model, without a second reservation.
       let hearGuidance: ((turn: VoiceTurn) => void) | null = null;
       // Every trace turn before this index has been told to the worker in an earlier turn.
@@ -1150,7 +1171,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         onSayPart: (sentence, index) => listener?.part?.(sentence, index),
         onSayCancel: (fromIndex) => listener?.cancel?.(fromIndex),
         onSayEnd: () => listener?.end?.(),
-      }, voiceSpend, budget ? { spend: budget.seam, prepareModel: (handle) => seams.model(record.model, voiceSpend, { prepared: { budget, handle } }) } : undefined);
+      }, voiceSpend, budget ? { spend: budget.seam, prepareModel: (handle) => seams.model(record.model, voiceSpend, { prepared: { budget, handle, diagnosticHandleId: prepareHandleId(handle) } }) } : undefined);
       told = session.trace().turns.length;
       const last = restored.turns.at(-1);
       const pendingFinal: VoiceTurn | null = restored.session.outcome ? record.live?.pendingVoice ?? {
@@ -1237,14 +1258,16 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         return words.length ? words.join(" ") : undefined;
       };
       /** Speech-to-text reserved ahead (its own requests, only when its block is near its end). */
-      const sttNow = async (): Promise<SpendState> => {
-        if (!meter) return "open";
+      const sttNow = async (seen?: (read: "none" | "cached" | "network") => void): Promise<SpendState> => {
+        if (!meter) { seen?.("none"); return "open"; }
         const current = meter.state();
         if (current !== null) {
+          seen?.("cached");
           // Keep valid admitted coverage while renewal runs on the worker's timer or beside this turn.
           if (current === "open") void meter.ensure();
           return current;
         }
+        seen?.("network");
         const renewed = await meter.ensure();
         return renewed === "open" ? meter.state() ?? "paused" : renewed;
       };
@@ -1289,9 +1312,18 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
        */
       const turn = async (run: () => Promise<TextOutput>, childText?: string, say?: VoiceSay, need: 1 | 2 = 1): Promise<VoiceTurn> => {
         if (inactive()) return none;
-        const stt = await sttNow();
-        if (stt !== "open") return capClose(stt, null, unread(childText));
-        if (inactive()) return none;
+        // The admission interval, timed at its own awaits (telemetry only; the gate itself is unchanged).
+        const gate = say?.admission ? { startedAt: seams.clock(), stt: "none" as "none" | "cached" | "network", sttMs: 0, block: "memory" as "memory" | "awaited", blockMs: 0, done: false } : null;
+        const report = (outcome: AdmissionSample["outcome"]) => {
+          if (!gate || gate.done) return;
+          gate.done = true;
+          try { say!.admission!({ startedAt: gate.startedAt, endedAt: seams.clock(), stt: gate.stt, sttMs: gate.sttMs, block: gate.block, blockMs: gate.blockMs, outcome }); } catch { /* the worker's ear never fails the turn */ }
+        };
+        const sttStart = gate ? seams.clock() : 0;
+        const stt = await sttNow(gate ? (read) => { gate.stt = read; } : undefined);
+        if (gate) gate.sttMs = seams.clock() - sttStart;
+        if (stt !== "open") { report("cap"); return capClose(stt, null, unread(childText)); }
+        if (inactive()) { report("inactive"); return none; }
         const me: { words?: string } = { words: childText };
         inflight.add(me);
         let ticket: Handle | null = null;
@@ -1306,26 +1338,34 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
               // A check-in never closes the call under another turn, and never takes the child's last attempt.
               if (!childText && (inflight.size > 1 || budget.attempts() >= 1)) return none;
               // The allowance is 0: the block's refill decides (the call is at the cap, or the ledger cannot answer).
+              const ensureStart = gate ? seams.clock() : 0;
               const state = await budget.ensure();
-              if (inactive()) return none;
+              if (gate) { gate.block = "awaited"; gate.blockMs = seams.clock() - ensureStart; }
+              if (inactive()) { report("inactive"); return none; }
               // The model refill can outlast admitted STT coverage. Hold no model ticket during a new STT wait.
               if (state === "open" && meter && meter.state() !== "open") {
-                const coverage = await sttNow();
-                if (inactive()) return none;
+                const coverageStart = gate ? seams.clock() : 0;
+                const coverage = await sttNow(gate ? (read) => { if (read === "network") gate.stt = "network"; } : undefined);
+                if (gate) gate.sttMs += seams.clock() - coverageStart;
+                if (inactive()) { report("inactive"); return none; }
                 const current = meter.state();
-                if (coverage !== "open") return capClose(coverage, null, unread(childText, me));
-                if (current !== "open") return capClose(current ?? "paused", null, unread(childText, me));
+                if (coverage !== "open") { report("cap"); return capClose(coverage, null, unread(childText, me)); }
+                if (current !== "open") { report("cap"); return capClose(current ?? "paused", null, unread(childText, me)); }
               }
               ticket = state === "open" ? budget.admit(need) : null;
               if (!ticket) {
+                report("cap");
                 if (!childText && (inflight.size > 1 || budget.attempts() >= 1)) return none;
                 return capClose(state === "open" ? "week_used" : state, null, unread(childText, me));
               }
             }
             budget.newTurn();
           }
+          report("admitted");
           return await admitted(me, ticket, run, childText, say);
         } finally {
+          // Left without a verdict (an exception before the input): not a refusal, not an admission.
+          report("error");
           inflight.delete(me);
           if (ticket) budget?.release(ticket);
         }

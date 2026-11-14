@@ -1,8 +1,8 @@
 import { markingPageView, type EffectiveMark } from "@/lib/scan-marking";
 
-export type HistoryStatus = "never-scanned" | "pending" | "review" | "failed" | "blank" | "unscored" | "ready";
+export type HistoryStatus = "never-scanned" | "pending" | "unfinished" | "review" | "failed" | "blank" | "unscored" | "ready";
 /** "review": our team is checking an answer the AI was unsure of. No label asks a parent to judge an answer (#715). */
-export const HISTORY_LABELS: Record<HistoryStatus, string> = { "never-scanned": "No photo yet", pending: "Not marked yet", review: "Our team is checking", failed: "Could not mark", blank: "All answers blank", unscored: "Not scored", ready: "Results ready" };
+export const HISTORY_LABELS: Record<HistoryStatus, string> = { "never-scanned": "No photo yet", pending: "Not marked yet", unfinished: "Looks unfinished: scan it when it's done", review: "Our team is checking", failed: "Could not mark", blank: "All answers blank", unscored: "Not scored", ready: "Results ready" };
 export interface HistoryPhoto { id: string; state: string; expiresAt: string; sentAt: string | null; at: string }
 export interface HistoryJob { photo: string; state: string; blocked: string | null; dispatches: number;
   /**
@@ -67,11 +67,15 @@ export function historyPage(r: HistoryRecord, now: number, scope: "parent" | "ad
     && live(r.photos.find((p) => p.id === j.photo)));
   const failedJob = couldNotMark || stuck;
   const complete = view.completion.status === "complete";
+  // Every answer read blank (scan edge sweep, 2026-11-14): the job ended unmarked. A later photo of the page that is sent
+  // (with or without its job yet) or any job still running makes it "Not marked yet" again.
+  const unfinished = r.jobs.some((j) => j.blocked === "unfinished") && !r.jobs.some((j) => j.state !== "finished")
+    && !r.photos.some((p) => live(p) && !r.jobs.some((j) => j.photo === p.id));
   const blank = r.marks.filter((m) => m.observation.result === "blank").length;
   const status: HistoryStatus = complete ? view.counts.scored === 0 ? "unscored" : blank === view.counts.scored ? "blank" : "ready"
     // One rule with the results page and the team list: an answer our team is checking wins.
     : view.counts.teamChecks > 0 ? "review"
-    : couldNotMark ? "failed" : r.photos.length || r.marks.length ? "pending" : "never-scanned";
+    : couldNotMark ? "failed" : unfinished ? "unfinished" : r.photos.length || r.marks.length ? "pending" : "never-scanned";
   const photo = r.photos.find((p) => p.sentAt !== null) ?? r.photos.at(-1);
   return { id: r.id, childId: r.childId, childName: r.childName, workbookId: r.workbookId, book: r.book, revision: r.revision, day: r.day, pageNumber: r.pageNumber,
     // Same rule as the results page line: a page with some marks and some answers not read yet says so.

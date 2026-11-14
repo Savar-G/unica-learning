@@ -28,7 +28,8 @@ import { speechWords, type BoardSpeech, type SpeechScope } from "@/lib/board-spe
 import { CuePlaybackOutput } from "./cue-playback";
 import { earlyRest, type EarlyRest } from "./early-speech";
 import { detectorVad, HeardSignals, PrepareSignal, silentFinal } from "./heard-signals";
-import { mark, markLast, resetMarks } from "./marks";
+import { telemetry, type UtteranceKind, type UtteranceOwner } from "./telemetry";
+import { withRequestContext } from "@/lib/maya-request-trace";
 import { boardAudio, countedSynthesis, type SilentSpeech } from "./speech-audio";
 import { VOICE_METER_TICK_MS } from "@/lib/maya-spend";
 import { limitsOf, sentencesOf } from "@/lib/maya";
@@ -111,12 +112,19 @@ export class MayaVoiceAgent extends voice.Agent {
   /** The held words were already waited on once, so the turn that joins them is not waited on again. */
   private extended = false;
   /** The prepare signal of this call's speech (V2b). */
-  private readonly prepareSignal = new PrepareSignal(text => this.hooks.prepare?.(text) ?? false);
+  private readonly prepareSignal = new PrepareSignal(text => {
+    // The hint gets its id before the call can start a request, so that request carries it (never a turn: none is known yet).
+    const t = telemetry();
+    const prepareId = t.reserveHint();
+    const accepted = withRequestContext({ source: "prepared_interim", turnId: null, prepareId }, () => this.hooks.prepare?.(text) ?? false);
+    if (accepted) t.hintAccepted(prepareId);
+    return accepted;
+  });
   constructor(
     private readonly call: VoiceCall,
     private readonly onTurn: (turn: VoiceTurn) => Promise<boolean>,
     private readonly board: { sync: BoardSpeech; scope(): SpeechScope | null } | undefined,
-    private readonly reply: (stoppedAt: number | undefined, work: (say: VoiceSay) => Promise<VoiceTurn[]>, mark: FinalMark | null) => ReadableStream<string | FlushSentinel>,
+    private readonly reply: (stoppedAt: number | undefined, work: (say: VoiceSay) => Promise<VoiceTurn[]>, mark: FinalMark | null, finalIds?: readonly (string | undefined)[]) => ReadableStream<string | FlushSentinel>,
     private readonly hooks: AgentHooks = { greetingOver: async () => {}, childWentOn: async () => false },
   ) {
     super({ instructions: "Maya's words come from her session through the text adapter, not from these instructions." });
@@ -187,17 +195,11 @@ export class MayaVoiceAgent extends voice.Agent {
             }
             finals.push(event.alternatives.map((a) => ({ text: a.text, confidence: a.confidence })));
             // The last word's end, never the transcript's own end time, which can hold the turn's end (`finalMark`).
-            marks.push({ ...finalMark(event.alternatives[0], inputStartedAt, finalAt, detectorEndAt), prepare: prepared });
-            resetMarks();
-            mark("sttFinal", finalAt);
-            if (prepared.firstPrepareAt !== null) markLast("prepare", prepared.firstPrepareAt);
+            // This final's marks belong to it alone, under its own id: a later final cannot reset or borrow them (./telemetry.ts).
             // The detector's end of speech (put back by its minimum silence), when it reported it, and the last loud input
             // frame before it: the browser's audio end lines up with `levelEnd` (docs/maya-voice.md, "Clock marks").
-            if (detectorEnd) {
-              markLast("detectorEnd", detectorEnd.endAt);
-              markLast("detectorHeard", detectorEnd.heardAt);
-              if (detectorEnd.levelEndAt !== null) markLast("levelEnd", detectorEnd.levelEndAt);
-            }
+            const finalId = telemetry().final({ at: finalAt, detectorEndAt: detectorEnd?.endAt ?? null, detectorHeardAt: detectorEnd?.heardAt ?? null, levelEndAt: detectorEnd?.levelEndAt ?? null, prepareAt: prepared.firstPrepareAt });
+            marks.push({ ...finalMark(event.alternatives[0], inputStartedAt, finalAt, detectorEndAt), prepare: prepared, finalId });
             console.info("[maya voice] final transcript", callId, heard);
           }
           // Kept speech: a start held back goes first.
@@ -210,8 +212,10 @@ export class MayaVoiceAgent extends voice.Agent {
 
   override async ttsNode(text: ReadableStream<string> | AsyncIterable<string>, settings: voice.ModelSettings) {
     // Every line reaches the voice provider here: replies, acknowledgement phrases and guidance said again.
+    const sentence = telemetry().speech(this.utteranceOwner?.() ?? { turnId: null, kind: "other" });
+    let sentenceIndex = 0;
     const synthesize = (input: ReadableStream<string> | AsyncIterable<string>) =>
-      countedSynthesis(input, counted => voice.Agent.default.ttsNode(this, counted, settings), said => void this.call.spoken(said));
+      countedSynthesis(input, counted => voice.Agent.default.ttsNode(this, counted, settings), said => void this.call.spoken(said), sentence(sentenceIndex++));
     // The worker's own opening has an empty plan, and must not wait for the board to connect.
     const ungated = this.ungatedNext;
     this.ungatedNext = false;
@@ -229,6 +233,8 @@ export class MayaVoiceAgent extends voice.Agent {
 
   /** One-shot: the next speech's audio does not wait for its (empty) board plan to be sent (the worker's own opening). */
   ungatedNext = false;
+  /** Who owns the speech whose voice stream starts now (the run knows its turns). Absent: the speech is not attributed. */
+  utteranceOwner: (() => UtteranceOwner) | null = null;
   /** A speech with a board plan whose voice gave no audio (./speech-audio.ts `boardAudio`). */
   onSilent: ((speech: SilentSpeech) => void) | null = null;
   private starting: Promise<unknown> | null = null;
@@ -264,7 +270,7 @@ export class MayaVoiceAgent extends voice.Agent {
       return this.reply(stoppedSpeakingAt(chatCtx), async (say) => [
         ...((await this.starting, opening) ? [await this.call.start()] : []),
         await this.call.child(heard.text, heard.uncertain ? { uncertain: true, alternatives: heard.alternatives } : undefined, opening ? undefined : say),
-      ], heldMarks.at(-1) ?? null);
+      ], heldMarks.at(-1) ?? null, heldMarks.map(m => m.finalId));
     }
     if (!opening) return null;
     const turn = await this.call.start();
@@ -297,6 +303,8 @@ export const realTimers: Timers = { now: () => Date.now(), set: (ms, run) => set
 
 /** One child turn on its way to the child: its marks, and the acknowledgement that may come before the answer. */
 interface TurnPace {
+  /** This turn's identity in the telemetry (./telemetry.ts): its marks, requests and speeches are kept under it. */
+  turnId: string;
   clock: TurnClock;
   generation: number;
   /** The reply's stream can still take words. */
@@ -465,10 +473,11 @@ export class VoiceCallRun {
   ) {
     this.segment = call.revision;
     this.agent = new MayaVoiceAgent(call, turn => this.after(turn), options.board ? { sync: options.board, scope: () => this.boardScope } : undefined,
-      (stoppedAt, work, mark) => this.reply(stoppedAt, work, mark),
+      (stoppedAt, work, mark, finalIds) => this.reply(stoppedAt, work, mark, finalIds),
       { greetingOver: () => this.greetingOver(), childWentOn: text => this.childWentOn(text), prepare: text => this.prepareHint(text) });
     this.agent.hearing = { dropSilentPeakDbfs: options.dropSilentPeakDbfs ?? null, ...(options.heardVad ? { vad: options.heardVad } : {}), detectorMinSilenceMs: options.detectorMinSilenceMs ?? null };
     this.agent.onSilent = speech => this.silentSpeech(speech);
+    this.agent.utteranceOwner = () => this.utteranceOwner();
     call.onGuidance(turn => this.guidanceNow(turn));
     session.on(voice.AgentSessionEventTypes.UserInputTranscribed, ev => { if (ev.transcript.trim()) this.wordsHeard(); });
     session.on(voice.AgentSessionEventTypes.UserStateChanged, ev => {
@@ -507,7 +516,10 @@ export class VoiceCallRun {
   attachTurnTiming() {
     const audio = this.session.output.audio;
     audio?.on(voice.AudioOutput.EVENT_PLAYBACK_STARTED, () => {
-      if (this.pace?.clock.sound() === "answer") this.closeTurn(this.pace, "answered");
+      const pace = this.pace;
+      const sound = pace?.clock.sound() ?? null;
+      if (pace && sound) telemetry().playbackStarted(pace.turnId, sound);
+      if (pace && sound === "answer") this.closeTurn(pace, "answered");
     });
     audio?.on(voice.AudioOutput.EVENT_PLAYBACK_FINISHED, () => {
       if (this.pace?.clock.ackHeard) this.cutAck(this.pace);
@@ -577,7 +589,7 @@ export class VoiceCallRun {
     const openingScope = this.boardScope;
     this.agent.ungatedNext = true;
     this.options.openingMark?.("say");
-    const speech = this.session.say(text, { addToChatCtx: true });
+    const speech = this.sayAs(text, { addToChatCtx: true }, { turnId: null, kind: "opening" });
     const generation = this.generation;
     void speech.waitForPlayout().catch(() => {}).then(() => this.options.openingMark?.(`playout:${speech.interrupted ? "interrupted" : "whole"}`));
     const starting = (async () => {
@@ -645,14 +657,14 @@ export class VoiceCallRun {
     if (stale()) return;
     if (!(await this.call.acknowledge(GREETING_ID))) return;
     if (stale()) return;
-    const speech = this.session.say(text, { addToChatCtx: true });
+    const speech = this.sayAs(text, { addToChatCtx: true }, { turnId: null, kind: "opening" });
     // A speech whose playback never ends holds LiveKit's queue, and the opening with it: stop it after the longest wait.
     const hold = this.timers.set(GREETING_HOLD_LIMIT_MS, () => speech.interrupt(true));
     this.greeted = speech.waitForPlayout().catch(() => {}).then(() => { this.timers.clear(hold); });
   }
 
   /** The stream of a child turn's reply. It is returned at once: the turn runs behind it. */
-  private reply(stoppedAt: number | undefined, work: (say: VoiceSay) => Promise<VoiceTurn[]>, mark: FinalMark | null = null) {
+  private reply(stoppedAt: number | undefined, work: (say: VoiceSay) => Promise<VoiceTurn[]>, mark: FinalMark | null = null, finalIds?: readonly (string | undefined)[]) {
     this.replies++;
     this.setPatience(false);
     this.closeTurn();
@@ -665,8 +677,10 @@ export class VoiceCallRun {
     // The child's own end of speech: the speech-to-text's end of the last word, else the worker's own detector, else
     // LiveKit's first end of speech if it came before the final transcript (`heardMarks`).
     const heard = heardMarks(mark, this.speechEndSeenAt, sinceThen);
+    const turnId = telemetry().turn(finalIds ?? [mark?.finalId]);
     const pace: TurnPace = {
-      clock: new TurnClock(this.timers.now, speechEndedAt, heardAt, heard, { prepare: mark?.prepare ?? null }), generation: this.generation,
+      turnId,
+      clock: new TurnClock(this.timers.now, speechEndedAt, heardAt, heard, { prepare: mark?.prepare ?? null, onMark: name => telemetry().turnMark(turnId, name) }), generation: this.generation,
       writable: true, ready: false, closed: false, handle: this.speech, guided: false, ackStopped: false, ackWritten: false, ownSpeech: false, limit: null, hold: null, ack: null, ackOver: null, write: () => {}, end: () => {},
       early: noEarly(), measured: false, plan: null, ackLimitAt: null,
     };
@@ -716,13 +730,15 @@ export class VoiceCallRun {
     pace.ackLimitAt = limit > 0 ? heardAt + limit : null;
     if (pace.ackLimitAt !== null) this.ackAt(pace, pace.ackLimitAt);
     let turns: VoiceTurn[];
-    try { turns = await work(this.listen(pace)); }
+    try { turns = await telemetry().runInTurn(pace.turnId, () => work(this.listen(pace))); }
     finally {
       pace.ready = true;
       pace.early.closed = true;
       pace.early.waiting.length = 0;
       this.clearLimit(pace);
     }
+    // The finished turn is the accepted output of a reply that did not stream: its first sentence (streamed ones came earlier).
+    if (turns.some(t => t.say.length)) telemetry().sentence(pace.turnId, 0, "turn_end");
     // The guidance went out on its own, and this turn's marks with it. What is left is the close.
     if (pace.guided) return this.sayFirst(null, this.unsaid(pace, turns));
     pace.clock.ready(timeOf(turns));
@@ -770,7 +786,10 @@ export class VoiceCallRun {
         // A conversational reply that cannot stream takes 2 to 5 s: the phrase comes at once.
         if (plan.conversational && !plan.streams) this.ackAt(pace, this.timers.now() + ACK_NOT_STREAMED_MS);
       },
+      admission: sample => telemetry().admission(pace.turnId, sample),
       part: (sentence, index) => {
+        // The accepted-output seam: the session checked this sentence. Whether the worker still says it is decided below.
+        telemetry().sentence(pace.turnId, index, "stream");
         if (early.closed) return;
         // No thinking phrase starts once a sentence has come.
         this.clearLimit(pace);
@@ -842,7 +861,7 @@ export class VoiceCallRun {
         for (const t of queued.splice(0)) c.enqueue(t);
         if (ended) c.close();
       } });
-      early.speech = this.session.say(text, { addToChatCtx: true });
+      early.speech = this.sayAs(text, { addToChatCtx: true }, { turnId: pace.turnId, kind: "answer" });
     })().catch(() => { early.closed = true; ended = true; });
   }
 
@@ -907,7 +926,7 @@ export class VoiceCallRun {
     try { await this.stageBoard({ boardCues: shifted }, false); }
     catch (error) { this.boardFailed(error); if (generation === this.generation && this.childHere) void this.finish({ detail: "the speech board could not be staged" }); return this.closeTurn(pace); }
     const scope = this.boardScope;
-    const speech = rest ? this.session.say(rest, { addToChatCtx: true }) : null;
+    const speech = rest ? this.sayAs(rest, { addToChatCtx: true }, { turnId: pace.turnId, kind: "answer" }) : null;
     // No words left: the batches are shown at once, once they are on the receiver.
     if (!speech && scope && this.options.board) { const board = this.options.board; this.boardTask(board.sent(scope).then(() => board.show(scope)), scope); }
     for (const turn of turns) await this.after(turn, speech ?? early.speech ?? undefined, () => false, !speech);
@@ -971,7 +990,7 @@ export class VoiceCallRun {
         return this.closeTurn(pace);
       }
       pace?.clock.staged();
-      speech = this.session.say(text, { addToChatCtx: true });
+      speech = this.sayAs(text, { addToChatCtx: true }, { turnId: pace?.turnId ?? null, kind: guidance ? "guidance" : "answer" });
       if (guidance) this.followGuidance(guidance, speech);
     } else this.closeTurn(pace, "no_words");
     for (const turn of turns) await this.after(turn, speech, () => false);
@@ -1016,9 +1035,36 @@ export class VoiceCallRun {
     // A reply can hold the queue, as it waits for the model's close. It has no words to say in a flagged call.
     this.pace?.handle?.interrupt(true);
     await this.stageBoard({}, false);
-    const speech = this.session.say(text, { addToChatCtx: true });
+    const speech = this.sayAs(text, { addToChatCtx: true }, { turnId: null, kind: "guidance" });
     this.followGuidance(text, speech, true);
     await speech.waitForPlayout();
+  }
+
+  /** The next speech this run asks the session for, and who owns it (one-shot, like `ungatedNext`). */
+  private nextUtterance: { turnId: string | null; kind: UtteranceKind; handle: voice.SpeechHandle | null } | null = null;
+
+  /** `session.say` with the speech's owner named for the telemetry. The speech and its words are the session's, unchanged. */
+  private sayAs(text: string | ReadableStream<string>, options: { addToChatCtx: boolean }, owner: { turnId: string | null; kind: UtteranceKind }): voice.SpeechHandle {
+    const claim = { ...owner, handle: null as voice.SpeechHandle | null };
+    this.nextUtterance = claim;
+    const speech = this.session.say(text, options);
+    claim.handle = speech;
+    return speech;
+  }
+
+  /**
+   * Who owns the speech whose voice stream starts now. A named speech first (unless it was cut before its voice started:
+   * its claim is then stale); else the current reply's own stream, which carries the acknowledgement when one was written
+   * into it and the answer otherwise (a reply never carries both: the answer then has a speech of its own); else nobody.
+   */
+  private utteranceOwner(): UtteranceOwner {
+    const claim = this.nextUtterance;
+    this.nextUtterance = null;
+    if (claim && !claim.handle?.interrupted) return { turnId: claim.turnId, kind: claim.kind, cancelled: () => !!claim.handle?.interrupted };
+    const pace = this.pace;
+    // Closing the text stream does not close its speech. Keep the captured owner until synthesis starts.
+    if (pace && !pace.handle?.interrupted) return { turnId: pace.turnId, kind: () => (pace.ackWritten ? "ack" : "answer"), cancelled: () => !!pace.handle?.interrupted };
+    return { turnId: null, kind: "other" };
   }
 
   /** No newer turn replaced this one, and its speech can still play. */
@@ -1103,7 +1149,7 @@ export class VoiceCallRun {
   private measure(pace: TurnPace, outcome: TurnOutcome) {
     if (pace.measured) return;
     pace.measured = true;
-    this.options.measureTurn?.(pace.clock.sample(outcome));
+    this.options.measureTurn?.({ ...pace.clock.sample(outcome), turnId: pace.turnId });
   }
 
   private boardTask(task: Promise<unknown>, scope: SpeechScope) {
@@ -1147,7 +1193,7 @@ export class VoiceCallRun {
       await staging;
       if (!mine || this.boardScope !== mine || generation !== this.generation || !fresh()) return;
       this.resaid.add(`${mine.utteranceId}:${mine.generation}`);
-      this.session.say(text, { addToChatCtx: false });
+      this.sayAs(text, { addToChatCtx: false }, { turnId: null, kind: "other" });
     })().catch(() => {});
   }
 
@@ -1261,7 +1307,7 @@ export class VoiceCallRun {
       this.replayingFinal = true;
       try {
         await this.stageBoard(final);
-        const speech = final.say.length ? this.session.say(final.say.join(" "), { addToChatCtx: true }) : null;
+        const speech = final.say.length ? this.sayAs(final.say.join(" "), { addToChatCtx: true }, { turnId: null, kind: "answer" }) : null;
         await this.after(final, speech, () => false);
       } catch { await this.finish({ detail: "the saved final speech failed" }); }
     } else if (this.call.session.startedAt === null || said) {
@@ -1340,7 +1386,7 @@ export class VoiceCallRun {
         return;
       }
       this.closeTurn();
-      const speech = turn.say.length ? this.session.say(turn.say.join(" "), { addToChatCtx: true }) : null;
+      const speech = turn.say.length ? this.sayAs(turn.say.join(" "), { addToChatCtx: true }, { turnId: null, kind: "answer" }) : null;
       await this.after(turn, speech, () => false);
     } catch { if (generation === this.generation && this.childHere) await this.finish({ detail: "the voice turn failed" }); }
   }

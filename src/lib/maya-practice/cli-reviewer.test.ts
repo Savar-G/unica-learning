@@ -25,7 +25,7 @@ it.each(["subscription", "fake", "estimate"])("the real chat CLI keeps its sente
           export async function runSuite(_cases, _plan, deps) {
             const input = { conversation: true, promptVersion: "test", line: "You noticed the starting amount.", childTurn: null, transcript: [] };
             const result = deps.reviewer ? await deps.reviewer.review(input, new AbortController().signal) : null;
-            writeFileSync(process.env.MAYA_TEST_RECEIPT, JSON.stringify({ freeTalk: deps.freeTalk, reviewer: deps.reviewer?.id ?? null, result }));
+            writeFileSync(process.env.MAYA_TEST_RECEIPT, JSON.stringify({ freeTalk: deps.freeTalk, reviewer: deps.reviewer?.id ?? null, turnBudgetMs: deps.turnBudgetMs ?? null, reviewTimeLimitMs: deps.reviewTimeLimitMs ?? null, result }));
             process.exit(0);
           }` }));
         build.onLoad({ filter: /ai-claude-cli-practice\.ts$/ }, () => ({ loader: "js", contents: `
@@ -41,7 +41,7 @@ it.each(["subscription", "fake", "estimate"])("the real chat CLI keeps its sente
     });
     expect(JSON.parse(readFileSync(receipt, "utf8"))).toEqual(mode === "estimate"
       ? { freeTalk: false, reviewer: "claude-haiku-5-5", priced: true }
-      : { freeTalk: false, reviewer: mode === "fake" ? "fake-review" : "claude-haiku-5-5", result: { verdict: "pass" } });
+      : { freeTalk: false, reviewer: mode === "fake" ? "fake-review" : "claude-haiku-5-5", turnBudgetMs: mode === "fake" ? null : 360_000, reviewTimeLimitMs: mode === "fake" ? null : 60_000, result: { verdict: "pass" } });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

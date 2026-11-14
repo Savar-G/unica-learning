@@ -15,7 +15,7 @@ const callers: [file: string, rule: "markingAccess" | "scanChecksAccess", scope:
   ["src/app/api/account/scans/history/route.ts", "markingAccess", /\{ child \}/, 1],
   ["src/app/api/account/scans/route.ts", "markingAccess", /\{ child \}/, 1],
   ["src/app/api/account/scans/route.ts", "scanChecksAccess", /\{ child \}/, 1],
-  ["src/app/api/account/scans/send/route.ts", "scanChecksAccess", /\{ child: child as string \}/, 1],
+  ["src/app/api/account/scans/send/route.ts", "scanChecksAccess", /\{ child: c \}/, 1],
   ["src/app/api/account/scans/[id]/preview/route.ts", "scanChecksAccess", /\{ photo: id \}/, 1],
   ["src/app/api/account/scans/[id]/preview/[part]/route.ts", "scanChecksAccess", /\{ photo: id \}/, 1],
 ];

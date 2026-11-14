@@ -92,8 +92,8 @@ export function meteredClient(env: Env, ledger: SpendLedger, meter: { charge: Ch
 }
 
 /** A speculative request uses its existing handle. It retains Maya's provider route and the AI usage log. */
-export function preparedClient(env: Env, budget: CallBudget, handle: Handle, meter: { charge: Charge; callId: string | null }, model?: string): AiClient | null {
+export function preparedClient(env: Env, budget: CallBudget, handle: Handle, meter: { charge: Charge; callId: string | null; diagnosticHandleId?: string }, model?: string): AiClient | null {
   if (!budget.canSend(handle) || !aiClient(env, model)) return null;
   const usage: AiUsageTag = { feature: "maya", parentId: meter.charge.parentId, childId: meter.charge.childId, source: meter.callId ? { kind: "maya_call", id: meter.callId } : null };
-  return preparedAi((hooks) => mayaAiClient(env, model, { ...hooks, usage })!, budget, handle);
+  return preparedAi((hooks) => mayaAiClient(env, model, { ...hooks, usage })!, budget, handle, undefined, meter.diagnosticHandleId);
 }

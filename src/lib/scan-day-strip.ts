@@ -94,6 +94,7 @@ export function dayStrip(o: { photos: readonly StackPhoto[]; pages: readonly Day
 
 /** A sent page's score: "7 of 8 · 1 to practise", "3 of 3", "2 so far · 1 being checked", or "Marking…". */
 export function pageScore(marks: PageMarks | null | undefined): string {
+  if (marks?.unfinished) return "Looks unfinished: scan it when it's done";
   if (!marks || (!marks.scored && !marks.complete)) return "Marking…";
   const practise = marks.toPractise ? ` · ${marks.toPractise} to practise` : "";
   if (marks.complete) return `${marks.right} of ${marks.total}${practise}`;

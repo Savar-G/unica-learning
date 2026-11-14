@@ -14,12 +14,15 @@
 // plays nothing, so Maya's voice track is already subscribed when the child taps. The tap (`connect`) then only turns
 // the microphone on, starts the audio (Safari plays remote audio only inside a tap) and attaches Maya's voice. Maya's
 // worker counts the child as here only when the microphone is published, so nothing of the call starts before the tap.
-// A room that is not ready at the tap is left, and the tap joins in full as before.
+// A room still joining at the tap is taken as it is: the tap waits for that join (at most PREJOIN_WAIT_MS) instead of
+// asking for a second ticket and a second room. Only a join that failed, timed out, dropped or belongs to another call
+// id is left, and the tap then joins in full as before. Browser marks of the start: src/lib/maya-voice-start-trace.ts.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Room as LkRoom } from "livekit-client";
 import { createBoardReceiver, type BoardSnapshot } from "@/lib/board-protocol";
 import { BOARD_RPC, boardRpcHandler } from "@/lib/board-rpc";
 import type { VoiceTicket } from "@/lib/maya-voice";
+import { newAttemptId, voiceStartTrace, type PrejoinDropReason, type PrejoinReason, type PrejoinStage, type VoiceStartDetail, type VoiceStartEvent, type VoiceTapLabel } from "@/lib/maya-voice-start-trace";
 import { addHeard, childTranscription, clearHeard, heardFinals, heardSegment, heardText, TRANSCRIPTION_TOPIC, type HeardSegment } from "@/lib/maya-voice-hearing";
 
 export type MicState = "idle" | "asking" | "working" | "blocked" | "none" | "failed";
@@ -42,13 +45,32 @@ export const MAYA_JOIN_MS = 45_000;
  */
 export const PREJOIN_LIFE_MS = 4.5 * 60_000;
 
+/**
+ * The longest the tap waits for a join before the tap that is still under way (ms). After it, that join is left and the
+ * tap joins in full. Network trouble can still make either join fail; this only bounds the wait on the first.
+ */
+export const PREJOIN_WAIT_MS = 10_000;
+
 const MIC_OPTIONS = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
 
 type LiveKit = typeof import("livekit-client");
 /** A room with every handler on it. `use` makes it the call's room; until then its handlers do nothing. */
-interface BuiltRoom { room: LkRoom; use(): void; readMaya(): void; watchJoin(): void }
-/** A room joined before the Connect tap: `ready` once it is connected (the microphone off, nothing played). */
-interface Prepared { built: BuiltRoom | null; ready: boolean; timer: ReturnType<typeof setTimeout> | null }
+interface BuiltRoom { room: LkRoom; use(): void; readMaya(): void; watchJoin(): void; closed(): boolean }
+/**
+ * A room joined before the Connect tap, for one call id. `stage` is how far the join is; `state` is who owns it: the
+ * join itself (`pending`, then `ready`), the tap (`claimed`: the join goes on and hands its room to the tap), or nobody
+ * (`dropped`: the join leaves its room when it ends). `settled` gives the joined room, or null when the join failed or
+ * was dropped.
+ */
+interface Prepared {
+  callId: string;
+  attempt: string;
+  built: BuiltRoom | null;
+  stage: Exclude<PrejoinStage, "none">;
+  state: "pending" | "ready" | "claimed" | "dropped";
+  timer: ReturnType<typeof setTimeout> | null;
+  settled: Promise<BuiltRoom | null>;
+}
 
 export const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
@@ -157,14 +179,42 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
   const liveSince = useRef<number | null>(null);
   /** The room joined before the Connect tap, while it waits for the tap. Never the call's room (`room`) at once. */
   const prepared = useRef<Prepared | null>(null);
+  /** The call id of the call's room (`room`). */
+  const roomCall = useRef<string | null>(null);
+  /** Each tap, hang-up and close takes a new number: a tap still waiting when the number changed does nothing. */
+  const turn = useRef(0);
+  const tapping = useRef<{ callId: string; turn: number; done: Promise<void> } | null>(null);
+  const claimed = useRef<Prepared | null>(null);
+  const previousCall = useRef(callId);
+  /** The connection attempt of the call's room, for the marks. */
+  const roomAttempt = useRef<string | null>(null);
+  const mark = useCallback((attempt: string | null, event: VoiceStartEvent, detail?: VoiceStartDetail) => {
+    try { voiceStartTrace().mark(callId, attempt, event, detail); } catch {}
+  }, [callId]);
+
+  /** Drops a room joined before the tap: its join leaves the room when it ends, and a joined room is left now. */
+  const dropPrepared = useCallback((p: Prepared, drop: PrejoinDropReason) => {
+    if (prepared.current === p) prepared.current = null;
+    if (p.state === "dropped") return;
+    p.state = "dropped";
+    if (p.timer) clearTimeout(p.timer);
+    try { voiceStartTrace().mark(p.callId, p.attempt, "prepare_dropped", { drop }); } catch {}
+    void p.built?.room.disconnect();
+  }, []);
+
+  const invalidate = useCallback(() => {
+    turn.current++;
+    tapping.current = null;
+    const p = claimed.current;
+    claimed.current = null;
+    if (p) dropPrepared(p, "abandoned");
+  }, [dropPrepared]);
 
   /** Leaves the room joined before the Connect tap, if there is one: the call was cancelled or the screen closed. */
   const leave = useCallback(() => {
     const p = prepared.current;
-    prepared.current = null;
-    if (p?.timer) clearTimeout(p.timer);
-    void p?.built?.room.disconnect();
-  }, []);
+    if (p) dropPrepared(p, "left");
+  }, [dropPrepared]);
 
   // The live timer.
   useEffect(() => {
@@ -173,11 +223,30 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
     return () => clearInterval(t);
   }, [phase]);
 
-  // Leaving the page hangs up, and leaves a room joined before the tap.
+  // Leaving the page hangs up, and leaves a room joined before the tap. A tap still waiting for its join stops.
   useEffect(() => () => {
+    invalidate();
     void room.current?.disconnect();
     leave();
-  }, [leave]);
+  }, [leave, invalidate]);
+
+  // Another call id (the desk's next call): the room of the call before is left, so it never stays joined with its
+  // microphone on, and never stops the next call's room from joining before the tap. A room the call before still holds
+  // is one whose worker left without its end message (the screen keeps a dropped room for its recovery controls).
+  useEffect(() => {
+    if (previousCall.current === callId) return;
+    previousCall.current = callId;
+    invalidate();
+    const early = prepared.current;
+    if (early && early.callId !== callId) dropPrepared(early, "other_call");
+    const r = room.current;
+    if (!r || roomCall.current === callId) return;
+    room.current = null;
+    roomCall.current = null;
+    agent.current = null;
+    liveSince.current = null;
+    void r.disconnect();
+  }, [callId, invalidate, dropPrepared]);
 
   // While live, read the call now and then too, in case a data message was missed.
   useEffect(() => {
@@ -190,11 +259,23 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
    * A new room with every handler on it. The handlers act only while it is the call's room (`room.current`), so a room
    * joined before the Connect tap shows nothing, plays nothing and answers no board request until `use`.
    */
-  const build = useCallback(({ Room, RoomEvent, Track, ParticipantKind }: LiveKit): BuiltRoom => {
+  const build = useCallback(({ Room, RoomEvent, Track, ParticipantKind }: LiveKit, attempt: string): BuiltRoom => {
     const onUpdate = () => latest.current.onUpdate();
     const onEnded = () => latest.current.onEnded();
     const r = new Room({ adaptiveStream: false, dynacast: false });
     let terminal = false;
+    let closed = false;
+    let used = false;
+    const once = new Set<VoiceStartEvent>();
+    const markOnce = (event: VoiceStartEvent) => {
+      if (once.has(event)) return;
+      once.add(event);
+      try { voiceStartTrace().mark(callId, attempt, event); } catch {}
+    };
+    /** Marks the first time an attached voice element of Maya plays. */
+    const watchPlayback = (el: HTMLMediaElement) => {
+      try { el.addEventListener("playing", () => { if (room.current === r) markOnce("remote_playback"); }, { once: true }); } catch {}
+    };
     let newestSegment = -1;
     let notification: Promise<void> | null = null;
     const refreshEnded = () => notification ??= Promise.resolve().then(onEnded);
@@ -220,11 +301,13 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
         return;
       }
       newestSegment = Math.max(newestSegment, segmentOf(p));
+      markOnce("agent_present");
       setFakeSpeech(p.attributes["maya.speech"] === "fake");
       const s = p.attributes["lk.agent.state"];
       setMaya(s === "listening" || s === "thinking" || s === "speaking" ? s : null);
       if (liveSince.current === null) {
         liveSince.current = Date.now();
+        markOnce("maya_live");
         setError(null);
         setPhase("live");
       }
@@ -259,13 +342,18 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
       })();
     });
     // Maya's voice plays only in the call's room: a room joined before the tap keeps her track subscribed, not attached.
-    r.on(RoomEvent.TrackSubscribed, (track) => {
+    r.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
+      if (track.kind === Track.Kind.Audio && isMaya(participant)) markOnce("agent_track_subscribed");
       if (room.current !== r || track.kind !== Track.Kind.Audio) return;
       const el = track.attach();
+      watchPlayback(el);
       host.current?.appendChild(el);
     });
     r.on(RoomEvent.TrackUnsubscribed, (track) => track.detach().forEach((el) => el.remove()));
-    r.on(RoomEvent.ParticipantConnected, readMaya);
+    r.on(RoomEvent.ParticipantConnected, (p) => {
+      if (isMaya(p)) markOnce("agent_present");
+      readMaya();
+    });
     r.on(RoomEvent.ParticipantDisconnected, readMaya);
     r.on(RoomEvent.ParticipantAttributesChanged, readMaya);
     r.on(RoomEvent.DataReceived, (payload, participant, _kind, topic) => {
@@ -296,14 +384,14 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
       }
     });
     r.on(RoomEvent.Disconnected, () => {
+      closed = true;
       // A room joined before the tap that drops is forgotten: the tap joins in full.
       const early = prepared.current;
-      if (early?.built?.room === r) {
-        if (early.timer) clearTimeout(early.timer);
-        prepared.current = null;
-      }
+      if (early?.built?.room === r) dropPrepared(early, "disconnected");
       if (room.current !== r) return;
       room.current = null;
+      roomCall.current = null;
+      invalidate();
       agent.current = null;
       liveSince.current = null;
       setMaya(null);
@@ -317,16 +405,24 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
     return {
       room: r,
       use() {
+        if (used) return;
+        used = true;
         room.current = r;
+        roomCall.current = callId;
+        roomAttempt.current = attempt;
         endNotification.current = { room: r, notify: refreshEnded };
         changed(true);
         // Maya's voice tracks the room subscribed before the tap.
         for (const p of r.remoteParticipants.values()) {
           for (const publication of p.audioTrackPublications?.values() ?? []) {
-            if (publication.track) host.current?.appendChild(publication.track.attach());
+            if (!publication.track) continue;
+            const el = publication.track.attach();
+            watchPlayback(el);
+            host.current?.appendChild(el);
           }
         }
       },
+      closed: () => closed,
       readMaya,
       watchJoin() {
         setTimeout(() => {
@@ -335,94 +431,210 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
             setPhase("failed");
             void r.disconnect();
             room.current = null;
+            roomCall.current = null;
           }
         }, MAYA_JOIN_MS);
       },
     };
-  }, [callId, setLine]);
+  }, [callId, setLine, dropPrepared, invalidate]);
 
   /**
    * Joins the call's room before the Connect tap, with the microphone off and no sound: Maya's voice track is then
    * subscribed when the child taps (the opening's speed, Savar 2026-11-13). The screen shows nothing of it: the phase
-   * stays as it is. Does nothing while a call's room or a prepared room exists. The room is left after PREJOIN_LIFE_MS,
-   * by `leave`, when it drops, and when the screen closes; a failure leaves nothing behind. The tap then joins in full.
+   * stays as it is. Does nothing while a call's room of this call or a room joined before the tap exists. The room is
+   * left after PREJOIN_LIFE_MS, by `leave`, when it drops, and when the screen closes; a failure leaves nothing behind.
+   * A tap during the join takes it (`connect`), and the join then hands its room to the tap instead of keeping it.
    */
   const prepare = useCallback(async () => {
-    if (room.current || prepared.current) return;
-    const mine: Prepared = { built: null, ready: false, timer: null };
+    if ((room.current && roomCall.current === callId) || prepared.current) return;
+    let settle: (b: BuiltRoom | null) => void = () => {};
+    const settled = new Promise<BuiltRoom | null>((resolve) => { settle = resolve; });
+    const mine: Prepared = { callId, attempt: newAttemptId(), built: null, stage: "ticket", state: "pending", timer: null, settled };
     prepared.current = mine;
-    const gone = () => prepared.current !== mine;
+    const at = mine.attempt;
+    const dropped = () => mine.state === "dropped";
+    mark(at, "prepare_requested");
+    let step: "ticket" | "module" | "connect" = "ticket";
     try {
+      mark(at, "ticket_begin");
       const ticket = await latest.current.getTicket();
-      if (gone()) return;
-      const built = build(await import("livekit-client"));
-      if (gone()) return;
+      mark(at, "ticket_end", { ok: true });
+      if (dropped()) return settle(null);
+      step = "module";
+      mine.stage = "module";
+      const lk = await import("livekit-client");
+      mark(at, "module_ready");
+      if (dropped()) return settle(null);
+      const built = build(lk, at);
       mine.built = built;
+      step = "connect";
+      mine.stage = "connect";
+      mark(at, "room_connect_begin");
       // No `prepareConnection` first: it only warms the same connection that `connect` opens at once.
       await built.room.connect(ticket.url, ticket.token);
-      if (gone()) return void built.room.disconnect();
-      mine.ready = true;
-      mine.timer = setTimeout(() => { if (!gone()) leave(); }, PREJOIN_LIFE_MS);
+      mark(at, "room_connect_end", { ok: true });
+      if (dropped()) {
+        void built.room.disconnect();
+        return settle(null);
+      }
+      mine.stage = "ready";
+      if (mine.state === "pending") {
+        mine.state = "ready";
+        mark(at, "prepare_ready");
+        mine.timer = setTimeout(() => { if (prepared.current === mine) dropPrepared(mine, "expired"); }, PREJOIN_LIFE_MS);
+      }
+      settle(built);
     } catch {
-      if (!gone()) prepared.current = null;
+      if (step === "ticket") mark(at, "ticket_end", { ok: false });
+      else if (step === "connect") mark(at, "room_connect_end", { ok: false });
+      if (prepared.current === mine) prepared.current = null;
+      if (mine.state !== "dropped") {
+        mine.state = "dropped";
+        mark(at, "prepare_dropped", { drop: "failed" });
+      }
       void mine.built?.room.disconnect();
+      settle(null);
     }
-  }, [build, leave]);
+  }, [build, callId, mark, dropPrepared]);
 
-  const connect = useCallback(async () => {
+  /** Marks the named start control. The screen calls it in the tap's own handler, before any wait. */
+  const markTap = useCallback((label: VoiceTapLabel, premade?: "ready" | "starting" | "none") => {
+    mark(null, "tap", premade ? { label, premade } : { label });
+  }, [mark]);
+
+  /** The tap on a joined room: Maya's subscribed voice, the microphone on and the audio started. */
+  const goLive = useCallback(async (b: BuiltRoom, attempt: string, audioFirst: boolean, current: () => boolean) => {
+    if (!current()) { void b.room.disconnect(); return; }
+    if (claimed.current?.built === b) claimed.current = null;
+    b.use();
+    // Maya is known before the microphone goes on: her worker connects her board as soon as it hears the child.
+    b.readMaya();
+    const startAudio = () => {
+      mark(attempt, "start_audio_begin");
+      const audio = b.room.startAudio().then(() => mark(attempt, "start_audio_end", { ok: true }), (e) => { mark(attempt, "start_audio_end", { ok: false }); throw e; });
+      audio.catch(() => {});
+      return audio;
+    };
+    // A room joined before the tap starts the audio at once, inside the tap (Safari plays remote audio only in a tap).
+    const audio = audioFirst ? startAudio() : null;
+    mark(attempt, "mic_begin");
+    try { await b.room.localParticipant.setMicrophoneEnabled(true, MIC_OPTIONS); } catch (e) { mark(attempt, "mic_end", { ok: false }); throw e; }
+    mark(attempt, "mic_end", { ok: true });
+    if (!current()) { void b.room.disconnect(); return; }
+    await (audio ?? startAudio());
+    if (!current()) { void b.room.disconnect(); return; }
+    setPhase((c) => (c === "connecting" ? "waiting" : c));
+    b.readMaya();
+    b.watchJoin();
+  }, [mark]);
+
+  /** One tap (`connect`) with its turn: takes the room joined before the tap, or joins in full. */
+  const join = useCallback(async (mine: number) => {
+    const current = () => turn.current === mine && latest.current.callId === callId;
     setError(null);
     setPhase("connecting");
     setLine([]);
     liveSince.current = null;
     agent.current = null;
-    const early = prepared.current;
-    prepared.current = null;
-    if (early?.timer) clearTimeout(early.timer);
-    if (early?.ready && early.built) {
-      // The room is joined: the tap only turns the microphone on and starts the audio, with no wait before the audio
-      // starts (Safari plays remote audio only inside a tap).
-      const b = early.built;
-      try {
-        b.use();
-        // Maya is known before the microphone goes on: her worker connects her board as soon as it hears the child.
-        b.readMaya();
-        const audio = b.room.startAudio();
-        audio.catch(() => {});
-        await b.room.localParticipant.setMicrophoneEnabled(true, MIC_OPTIONS);
-        await audio;
-        setPhase((c) => (c === "connecting" ? "waiting" : c));
-        b.readMaya();
-        b.watchJoin();
-      } catch (e) {
-        setError(e instanceof Error ? e.message || "failed" : "failed");
-        setPhase("failed");
-        void room.current?.disconnect();
-        room.current = null;
-      }
-      return;
-    }
-    // Not prepared, or not joined yet: leave that room and join in full, as before.
-    void early?.built?.room.disconnect();
-    try {
-      const ticket = await latest.current.getTicket();
-      const b = build(await import("livekit-client"));
-      b.use();
-      await b.room.connect(ticket.url, ticket.token);
-      await b.room.localParticipant.setMicrophoneEnabled(true, MIC_OPTIONS);
-      // Safari plays remote audio only after a tap: this runs inside the Connect tap.
-      await b.room.startAudio();
-      setPhase((c) => (c === "connecting" ? "waiting" : c));
-      b.readMaya();
-      b.watchJoin();
-    } catch (e) {
+    const fail = (e: unknown) => {
+      if (!current()) return;
       setError(e instanceof Error ? e.message || "failed" : "failed");
       setPhase("failed");
       void room.current?.disconnect();
       room.current = null;
+      roomCall.current = null;
+    };
+    const early = prepared.current;
+    prepared.current = null;
+    claimed.current = early;
+    if (early?.timer) clearTimeout(early.timer);
+    const stage: PrejoinStage = early ? early.stage : "none";
+    let reason: PrejoinReason = "not_prepared";
+    if (early && early.callId !== callId) {
+      reason = "other_call";
+      dropPrepared(early, "other_call");
+    } else if (early && early.state === "ready" && early.built && !early.built.closed()) {
+      // The room is joined: the tap only turns the microphone on and starts the audio, with no wait before the audio
+      // starts (Safari plays remote audio only inside a tap).
+      early.state = "claimed";
+      mark(early.attempt, "prejoin_decision", { decision: "reuse_ready", reason: "ready", prejoin: stage });
+      try { await goLive(early.built, early.attempt, true, current); } catch (e) { fail(e); }
+      return;
+    } else if (early && early.state === "pending") {
+      // Still joining: the tap takes that join, with its ticket and its room, and waits for it (at most PREJOIN_WAIT_MS).
+      early.state = "claimed";
+      mark(early.attempt, "prejoin_decision", { decision: "reuse_pending", reason: "pending", prejoin: stage });
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      const late = new Promise<"timeout">((resolve) => { timer = setTimeout(() => resolve("timeout"), PREJOIN_WAIT_MS); });
+      const got = await Promise.race([early.settled, late]);
+      if (timer) clearTimeout(timer);
+      if (!current()) {
+        // Hung up or closed while waiting: that room is left, and nothing is turned on.
+        dropPrepared(early, "abandoned");
+        if (got && got !== "timeout") void got.room.disconnect();
+        return;
+      }
+      if (got && got !== "timeout" && !got.closed()) {
+        mark(early.attempt, "prejoin_wait_end", { ok: true });
+        try { await goLive(got, early.attempt, false, current); } catch (e) { fail(e); }
+        return;
+      }
+      mark(early.attempt, "prejoin_wait_end", { ok: false });
+      reason = got === "timeout" ? "prejoin_timeout" : "prejoin_failed";
+      dropPrepared(early, got === "timeout" ? "abandoned" : "failed");
+    } else if (early) {
+      reason = "closed";
+      dropPrepared(early, "disconnected");
     }
-  }, [build, setLine]);
+    // Not prepared, or that join cannot be used: join in full, as before.
+    const attempt = newAttemptId();
+    mark(attempt, "prejoin_decision", { decision: "fresh", reason, prejoin: stage });
+    let step: "ticket" | "connect" | "other" = "ticket";
+    try {
+      mark(attempt, "ticket_begin");
+      const ticket = await latest.current.getTicket();
+      mark(attempt, "ticket_end", { ok: true });
+      if (!current()) return;
+      step = "other";
+      const lk = await import("livekit-client");
+      mark(attempt, "module_ready");
+      if (!current()) return;
+      const b = build(lk, attempt);
+      b.use();
+      step = "connect";
+      mark(attempt, "room_connect_begin");
+      await b.room.connect(ticket.url, ticket.token);
+      mark(attempt, "room_connect_end", { ok: true });
+      step = "other";
+      if (!current()) {
+        if (room.current === b.room) { room.current = null; roomCall.current = null; }
+        void b.room.disconnect();
+        return;
+      }
+      // Safari plays remote audio only after a tap: this runs inside the Connect tap.
+      await goLive(b, attempt, false, current);
+    } catch (e) {
+      if (step === "ticket") mark(attempt, "ticket_end", { ok: false });
+      else if (step === "connect") mark(attempt, "room_connect_end", { ok: false });
+      if (current()) fail(e);
+    }
+  }, [build, callId, dropPrepared, goLive, mark, setLine]);
+
+  /** The tap under way, by its turn: a second tap during it joins the same one (no second ticket or room). */
+  const connect = useCallback((): Promise<void> => {
+    const now = tapping.current;
+    if (now && now.callId === callId && now.turn === turn.current) return now.done;
+    const mine = ++turn.current;
+    const done = join(mine).finally(() => {
+      if (tapping.current?.turn === mine) { tapping.current = null; claimed.current = null; }
+    });
+    tapping.current = { callId, turn: mine, done };
+    return done;
+  }, [join, callId]);
 
   const hangUp = useCallback(async () => {
+    // A tap still waiting for its join stops: nothing of it turns on.
+    invalidate();
     const r = room.current;
     if (!r) return;
     const notify = endNotification.current?.room === r ? endNotification.current.notify : null;
@@ -435,6 +647,7 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
     } finally {
       if (room.current === r) {
         room.current = null;
+        roomCall.current = null;
         agent.current = null;
         liveSince.current = null;
         setMaya(null);
@@ -443,7 +656,7 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
       }
       await notify?.();
     }
-  }, []);
+  }, [invalidate]);
 
   /** Typed words for a worker with fake speech-to-text. True when Maya's worker took them. */
   const say = useCallback(async (words: string): Promise<boolean> => {
@@ -463,5 +676,5 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
 
   /** The child's words Maya is hearing now, for the child's last bubble in light text; null when there are none. */
   const hearing = heardText(heard);
-  return { phase, maya, error, seconds, fakeSpeech, sending, hearing, audioHost, prepare, leave, connect, hangUp, say };
+  return { phase, maya, error, seconds, fakeSpeech, sending, hearing, audioHost, prepare, leave, connect, hangUp, say, markTap };
 }

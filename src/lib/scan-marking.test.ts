@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { expectedItems, firstObservation, itemKey, markingEvent, observationProblem, PHOTO_ISSUES, type Observation } from "@/lib/scan-observation";
-import { markingAiTimeout, MARKING_AI_TIMEOUT_MS, MARKING_MAX_DEFERRALS, MARKING_MAX_DISPATCHES, MARKING_MAX_TRANSPORT_DISPATCHES, MARKING_RETRY_WAIT_CAP_MS, MARKING_RETRY_WAIT_MS, type MarkingFailure, MARKING_MIN_AI_MS, TWO_WAYS_METHOD_MARKS, waitsForTeam, effectiveMarkingEvents, effectiveSkillMarks, markingOriginalKey, markingPageView, markingRequest, MARKING_CAP_MICROS, MARKING_ESCALATION_CAP_MICROS, MARKING_MODEL, MARKING_PROMPT_VERSION, MARKING_ESCALATION_MODEL, MARKING_ESCALATION_PROMPT_VERSION, type MarkingEscalation, readMarkingOutput, runScanMarking, validMarkingOutput, type EffectiveMark, type MarkingClientFactory, type MarkingFrame, type MarkingJob, type MarkingRunOptions, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
+import { markingAiTimeout, MARKING_AI_TIMEOUT_MS, MARKING_MAX_DEFERRALS, MARKING_MAX_DISPATCHES, MARKING_MAX_TRANSPORT_DISPATCHES, MARKING_RETRY_WAIT_CAP_MS, MARKING_RETRY_WAIT_MS, type MarkingFailure, MARKING_MIN_AI_MS, TWO_WAYS_METHOD_MARKS, waitsForTeam, effectiveMarkingEvents, effectiveSkillMarks, markingOriginalKey, markingPageView, markingRequest, MARKING_CAP_MICROS, MARKING_ESCALATION_CAP_MICROS, MARKING_MODEL, MARKING_PROMPT_VERSION, MARKING_ESCALATION_MODEL, MARKING_ESCALATION_PROMPT_VERSION, type MarkingEscalation, readMarkingOutput, runScanMarking, validMarkingOutput, unfinishedPage, type EffectiveMark, type MarkingClientFactory, type MarkingFrame, type MarkingJob, type MarkingRunOptions, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
 import type { AiJsonRequest } from "@/lib/ai-client";
 import { markingEscalationClient } from "@/lib/scan-marking-ai";
 import { checkQuestionPackage, workedSteps, type NumberValue, type Operation, type QuestionPackage } from "@/lib/question-package";
@@ -243,6 +243,8 @@ class Store implements MarkingStore {
       }
       job.done = true;
     }
+    // The SQL rule: an unfinished page ends its job and lets go of its items, unmarked.
+    if (status === "unfinished") { job.done = true; for (const [key, owner] of this.owners) if (owner === ref.photo) this.owners.delete(key); }
     job.until = 0;
   }
   async finish(ref: MarkingRef, token: string) { if (!this.live(ref, token)) return false; this.jobs.get(ref.photo)!.done = true; return true; }
@@ -636,8 +638,8 @@ describe("two-ways AI marking", () => {
     expect(view.counts.teamChecks).toBe(0);
   });
   it.each([
-    ["a blurry method", null, STRIP, "2520", "blurry", "Our team is checking this answer. The photo is blurry here. You can also send a new photo of this page."],
-    ["a cut-off second method", SPLIT, null, "2520", "cut-off", "Our team is checking this answer. Part of this answer is cut off. You can also send a new photo of this page."],
+    ["a blurry method", null, STRIP, "2520", "blurry", "Our team is checking this answer. The photo is blurry here."],
+    ["a cut-off second method", SPLIT, null, "2520", "cut-off", "Our team is checking this answer. Part of this answer is cut off."],
     ["an unreadable answer", SPLIT, STRIP, null, "unreadable", "Our team is checking this answer."],
     ["a method the AI cannot write out", null, STRIP, "2520", "method-form", "Our team is checking this answer."],
     ["a method the model calls an answer form", null, STRIP, "2520", "answer-form", "Our team is checking this answer."],
@@ -860,7 +862,7 @@ describe("#715: no screen asks a parent to judge an answer", () => {
     "a bad photo (%s) can still ask for a new photo, and asks for no judgment", (issue, reason) => {
       const f = frame(), o = readMarkingOutput(f, { readings: [{ item: "i1", region: "r1", state: "uncertain", text: null, issue }] })[0];
       const label = view(f, o).items[0].label;
-      expect(label).toBe(`Our team is checking this answer. ${reason} You can also send a new photo of this page.`);
+      expect(label).toBe(`Our team is checking this answer. ${reason}`);
       expect(label).not.toMatch(ASKS_PARENT);
     });
   it("an item waiting for a person (an old parent-checked format) is our team's, not the parent's", () => {
@@ -1109,8 +1111,11 @@ describe("S4 whole-page readings", () => {
     { evidence: "readable written right answer", state: "written", text: "7", issue: null, result: "right", reason: "Right", rule: /transcribe the handwritten number with every digit, sign and decimal point/ },
     { evidence: "readable written wrong answer", state: "written", text: "8", issue: null, result: "wrong", reason: "Wrong", rule: /Never solve a question/ },
   ] as const)("delivers the shared rule and preserves the returned reading for $evidence", async fixture => {
-    const f = frame("photo-a", [7]), s = new Store(f), requests: AiJsonRequest[] = [];
-    const response = { readings: [{ item: "i1", region: "r1", state: fixture.state, text: fixture.text, issue: fixture.issue, verdict: null, reason: null }] };
+    // A blank needs a written answer beside it: a page whose every answer is blank is unfinished and gets no marks.
+    const blank = fixture.result === "blank";
+    const f = frame("photo-a", blank ? [7, 4] : [7]), s = new Store(f), requests: AiJsonRequest[] = [];
+    const response = { readings: [{ item: "i1", region: "r1", state: fixture.state, text: fixture.text, issue: fixture.issue, verdict: null, reason: null },
+      ...blank ? [{ item: "i2", region: "r2", state: "written", text: "4", issue: null, verdict: null, reason: null }] : []] };
     expect(validMarkingOutput(f, response)).toBe(true);
     expect(await run(s, f.photo, client(response, requests))).toBe("finished");
     expect(requests).toHaveLength(1);
@@ -1121,7 +1126,7 @@ describe("S4 whole-page readings", () => {
     expect(observationProblem(mark.observation)).toBeNull();
     // The reason stays; our team checks every unsure item, and a bad photo may also be sent again (#715).
     expect(markingPageView([mark]).items[0].label).toBe(fixture.result !== null ? fixture.reason
-      : PHOTO_ISSUES.includes(fixture.issue) ? `Our team is checking this answer. ${fixture.reason} You can also send a new photo of this page.` : "Our team is checking this answer.");
+      : PHOTO_ISSUES.includes(fixture.issue) ? `Our team is checking this answer. ${fixture.reason}` : "Our team is checking this answer.");
     if (fixture.result === null) expect(s.events).toHaveLength(0);
   });
   it.each([frame, tickFrame, circleFrame])("uses one versioned empty-area rule for number, tick and circle requests", makeFrame => {
@@ -1279,12 +1284,12 @@ describe("S7l show-work final answers", () => {
   it("keeps working as photo evidence without scoring it or using it to fill an empty final answer", async () => {
     const f = showWorkFrame(), s = new Store(f), requests: AiJsonRequest[] = [];
     const response = { readings: [...output([""]).readings, { item: "i1", region: "work", text: "66", state: "written" }] };
-    expect(await run(s, f.photo, client(response, requests))).toBe("finished");
+    // Working is never an answer: the page's only final answer is empty, so the page is unfinished and gets no mark.
+    expect(await run(s, f.photo, client(response, requests))).toBe("unfinished");
     const marks = await s.effective(P, C);
-    expect(marks[0].observation.result).toBe("blank");
-    expect(marks[0].observation.evidence?.photoRevision).toBe(f.photo);
-    expect(markingPageView(marks).completion.status).toBe("complete");
-    expect(s.events).toHaveLength(1);
+    expect(marks[0].observation).toMatchObject({ state: "pending", result: null });
+    expect(markingPageView(marks).completion.status).not.toBe("complete");
+    expect(s.events).toHaveLength(0);
     const items = JSON.parse((requests[0].content[0] as { text: string }).text).items;
     expect(items).toEqual([{ item: "i1", region: "r1", kind: "number", box: f.questions[0].regions![0].box }]);
     expect(cropPlan(f.questions).notSupported).toEqual([]);
@@ -1480,7 +1485,7 @@ describe("#912: a question the photo's edge cuts off", () => {
       expect([o[0].result, o[2].result]).toEqual(["right", "right"]);
       const mark: EffectiveMark = { expected: expectedItems(f)[1], observation: o[1], originalEvent: null, eventId: null, at: "2026-11-13T12:00:00Z", model: MARKING_MODEL, prompt: MARKING_PROMPT_VERSION };
       expect(waitsForTeam(mark)).toBe(true);
-      expect(markingPageView([mark]).items[0].label).toBe("Our team is checking this answer. Part of this answer is cut off. You can also send a new photo of this page.");
+      expect(markingPageView([mark]).items[0].label).toBe("Our team is checking this answer. Part of this answer is cut off.");
     }
     // Control: the same reading without the cut is marked.
     expect(readMarkingOutput(frame(), output(["0", "12", "9"]))[1]).toMatchObject({ state: "scored", result: "right" });
@@ -1608,3 +1613,47 @@ describe("the second look: unsure answers are read once more by the escalation m
   });
 });
 
+
+describe("unfinished pages (scan edge sweep, 2026-11-14)", () => {
+  // frame(): question 1 is 0, question 2 is 12, question 3 is 9. photo-b is a later photo of the same printing.
+  const page = () => new Store(frame("photo-a"), frame("photo-b"));
+
+  it("a page whose every answer reads blank is unfinished: no marks, no events, and a new photo of it marks it", async () => {
+    const s = page();
+    expect(await run(s, "photo-a", client(output(["", "", ""])))).toBe("unfinished");
+    expect(s.pauses).toEqual(["unfinished"]);
+    expect(s.events).toHaveLength(0);
+    const before = await s.effective(P, C);
+    expect(before.map((m) => [m.observation.state, m.observation.result])).toEqual([["pending", null], ["pending", null], ["pending", null]]);
+    expect(markingPageView(before).completion.status).not.toBe("complete");
+    // The reading is kept for the admin, in the job only.
+    expect(s.jobs.get("photo-a")?.extraction?.every((o) => o.result === "blank")).toBe(true);
+    // The finished page, photographed again.
+    expect(await run(s, "photo-b", client(output(["0", "12", ""])))).toBe("finished");
+    const after = await s.effective(P, C);
+    expect(after.map((m) => m.observation.result)).toEqual(["right", "right", "blank"]);
+    expect(after.every((m) => m.observation.evidence?.photoRevision === "photo-b")).toBe(true);
+    await s.publish();
+    expect(s.events).toHaveLength(3);
+  });
+
+  it("an answer read beside the blanks makes the page marked, and its blanks are final", async () => {
+    const s = page();
+    expect(await run(s, "photo-a", client(output(["0", "", ""])))).toBe("finished");
+    expect((await s.effective(P, C)).map((m) => m.observation.result)).toEqual(["right", "blank", "blank"]);
+    // A later photo never reads a final mark again, a blank included: a later answer is a second try.
+    const requests: AiJsonRequest[] = [];
+    expect(await run(s, "photo-b", client(output(["0", "12", "9"]), requests))).toBe("finished");
+    expect(requests).toHaveLength(0);
+    expect((await s.effective(P, C)).map((m) => [m.observation.result, m.observation.evidence?.photoRevision])).toEqual([["right", "photo-a"], ["blank", "photo-a"], ["blank", "photo-a"]]);
+  });
+
+  it("the page rule", () => {
+    const e = expectedItems(frame());
+    const marks = e.map((x) => ({ expected: x, observation: firstObservation(x, "photo-a"), originalEvent: null, eventId: null, at: "", model: null, prompt: null }));
+    const all = e.map((x) => ({ ...firstObservation(x, "photo-a"), state: "scored" as const, result: "blank" as const }));
+    expect(unfinishedPage(marks, all)).toBe(true);
+    expect(unfinishedPage(marks, all.map((o, n) => n === 2 ? { ...o, state: "pending" as const, result: null } : o))).toBe(false);
+    expect(unfinishedPage(marks.map((m) => ({ ...m, observation: { ...m.observation, state: "scored" as const, result: "right" as const } })), all)).toBe(false);
+  });
+});
