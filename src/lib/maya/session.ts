@@ -74,12 +74,12 @@ export const SAFETY_GUIDANCE = {
 } as const;
 
 /**
- * The operation kinds Maya teaches: whole numbers and decimals, and adding and subtracting fractions (#407), whose steps
+ * The operation kinds Maya teaches: whole numbers, missing parts (#526), decimals, and adding and subtracting fractions (#407), whose steps
  * and answers code checks and whose spoken forms code reads. A question with a worked step Maya has no lines for is held
  * too (fractions.ts: a mixed or whole operand). Multiplying, dividing, simplifying and equivalent fractions are held.
  */
 export const TEACHABLE_KINDS: readonly OperationKind[] = [
-  "add", "subtract", "multiply", "divide", "decimal-add", "decimal-subtract", "decimal-multiply", "fraction-add", "fraction-subtract",
+  "add", "subtract", "missing-addend", "multiply", "divide", "decimal-add", "decimal-subtract", "decimal-multiply", "fraction-add", "fraction-subtract",
 ];
 
 export const MAIN_STATES = ["READY", "OPEN", "ASSESS", "MODEL_EXAMPLE", "TRY_TARGET", "GUIDE_TARGET", "CHECK", "WRITE_CLOSE", "CLOSE", "CONTENT_HOLD"] as const;
@@ -535,6 +535,9 @@ function stepAnswers(step: WorkedStep): AnswerValue[] {
       return [number(step.value)];
     case "divide-digit":
       return [number(step.quotient)];
+    case "count-up":
+      // The answer is the number of hops, never the endpoint or a number passed on the way.
+      return [number(step.said.length)];
     // Fraction steps (#407), each in its exact written form: 6/8 answers the common denominator of 3/4 + 1/8, 3/4 does not.
     case "common-denominator": {
       const changed = step.to.filter((_, i) => step.factors[i] > 1);
@@ -1198,7 +1201,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
       // the child did make the answer, from the checked answer (D-199, D-195).
       const l = packageLines(pkg!);
       // Code adds math lines, so this turn is a math turn whatever the parts are (CODE_MATH_ACTS).
-      const added = [...(final ? l.answerParts() : []), ...l.answerGive()];
+      const added = [...(final || pkg!.operation.kind === "missing-addend" ? l.answerParts() : []), ...l.answerGive()];
       for (const [index, rawLine] of added.entries()) {
         const line = s.noBoard ? spokenOffer(rawLine) : rawLine;
         const reserve = added.slice(index + 1).reduce((n, o) => n + Math.min(...o.texts.map(speechWords)), 0);
@@ -1393,10 +1396,16 @@ function checkAnswers(s: Session, answers: ChildAnswer[], checked: Checked[]): {
     }
     // The final answer by the question's wording (#407: an equal fraction may be right); a step by its own values.
     const right = a.step === "result" ? (problem === "target" ? rightForQuestion(pkg, a.value) : isRightAnswer(operation, answer, a.value)) : answersStep(at, a.value);
-    // A doubtful final answer cannot establish correct work, including an equal
-    // fraction that still needs simplest form and therefore carries a "wrong" verdict.
+    // The target count is also the missing amount. It needs the same commitment as a final answer.
+    // Keep explicit count descriptions readable without removing any doubt, question or correction words.
+    const targetCount = problem === "target" && at.kind === "count-up";
+    const countText = targetCount && /^\s*(?:because\s+)?i\s+counted\b/i.test(s.turn.text)
+      ? s.turn.text.replace(/^\s*because\s+(?=i\s+counted\b)/i, "").replace(/\b(?:numbers?|hops?|jumps?|steps?)\b/gi, "")
+      : s.turn.text;
+    const sure = read.sure || (targetCount && readAnswer(countText, readOptionsFor(pkg)).sure);
+    // An equal fraction that still needs simplest form also requires commitment before checked progress.
     const checkedProgress = a.verdict === "right" || (problem === "target" && isEqualForm(pkg, a.value));
-    if (checkedProgress && a.step === "result" && !read.sure) return { code: "answer_not_committed", reason: `The child was not sure of ${valueText(a.value)}: confirm it before treating it as checked progress.` };
+    if (checkedProgress && (a.step === "result" || targetCount) && !sure) return { code: "answer_not_committed", reason: `The child was not sure of ${valueText(a.value)}: confirm it before treating it as checked progress.` };
     if (a.verdict === "right" && !right) return { code: "accepts_wrong_answer", reason: `${valueText(a.value)} is not right for ${a.step}: the checked math says otherwise.` };
     if (a.verdict === "wrong" && right) return { code: "rejects_right_answer", reason: `${valueText(a.value)} is right for ${a.step}.` };
     // The child's sure final answer is right: never "not yet" for it as a step (practice: "I think the tens make 66."
@@ -1783,12 +1792,20 @@ const boardTexts = (board: unknown[], only?: "text" | "value") =>
 function revealsAnswer(s: Session, p: Proposal, texts: string[]): boolean {
   const pkg = s.package!;
   const answer = pkg.answer.value;
-  const ownNumber = operandValues(pkg.operation).some((v) => equivalent(v, answer));
+  const ownNumber = operandValues(pkg.operation).some((v) => equivalent(v, answer)) ||
+    // A missing part can equal a number in the easier example (1 + ? = 3 has the example 1 + ? = 2). That number
+    // names the example, not the target answer. Only example_step has this exception; its lines and board are still
+    // bound to the checked example, and its answer is checked by the package to differ from the target's answer.
+    (p.act === "example_step" && pkg.operation.kind === "missing-addend" && operandValues(pkg.easierExample.operation).some((v) => equivalent(v, answer)));
+  // Repeating a candidate the child said is hearing confirmation, not a supplied answer. The offered numeric
+  // confirmation is bound to this turn by heardIn; the confirm act cannot score it or mark work done.
+  const heardCount = p.act === "confirm" && pkg.operation.kind === "missing-addend" &&
+    readNumbers(s.turn?.text ?? "").values.some((v) => equivalent(v, answer));
   // An equal form the child said (14/16 for 7/8, #407) gives nothing away when Maya says it back; the answer's own
   // written form still does.
   const said = childValues(s);
   const reveals = (v: AnswerValue) => equivalent(v, answer) && (sameValue(v, answer) || !said.some((c) => sameValue(c, v)));
-  if (!ownNumber && texts.some((t) => valuesIn(t).some(reveals))) return true;
+  if (!ownNumber && !heardCount && texts.some((t) => valuesIn(t).some(reveals))) return true;
   const highest = answer.type === "number" ? PLACE_NAMES[String(Math.trunc(Math.abs(answer.value))).length - 1] : undefined;
   return (p.board ?? []).some((raw) => {
     const c = raw as Partial<Command>;

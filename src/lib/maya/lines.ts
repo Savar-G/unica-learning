@@ -29,8 +29,9 @@ import { simplestWords, teachSteps } from "./fractions";
  * answer.parts, how the parts make the answer, said before answer.give on the final step. Version 5: regroup.add, where
  * a column's carry comes from, as step.regroup in addition. Version 6 (#407): fraction steps (common denominator,
  * numerators, simplest form) and check.equal, an equal fraction when the question asks for the simplest form.
+ * Version 9 (#526): missing parts, count-up help and examples, and completed number-bond equations.
  */
-export const LINES_VERSION = 8;
+export const LINES_VERSION = 9;
 
 export const LINE_IDS = [
   "about.ai",
@@ -190,6 +191,42 @@ export const TEMPLATES = {
   "operation.add.single": [
     "Bring down the {term} in the {place}.", "There is nothing to add in the {place}. Bring down the {term}.", "Just bring down the {term} in the {place}.",
     "The {place} only have the {term}. Bring it down.", "Bring the {term} straight down in the {place}.",
+  ],
+
+  // #526: count-up is the worked step of a missing-addend operation. Target help gives the method, not the missing
+  // amount. Only the easier example and released answer say that amount. All values come from checked steps.
+  "point.count": [
+    "We have {from}. We need {to}.", "Start with {from}. We want to reach {to}.", "The number we have is {from}. We need {to}.",
+    "We start at {from}. We want to get to {to}.", "We know {from}. We want to make {to}.",
+  ],
+  "intro.count": [
+    "Let's try an easier question first: {expr}.", "Here's an easier question: {expr}.",
+    "First, an easier question: {expr}.", "Let's start with an easier question: {expr}.",
+    "I'll help with an easier question first: {expr}.",
+  ],
+  "operation.count": [
+    "Start at {from}. Count on to {to}. How many more?", "Count on from {from} to {to}. How many more do you need?",
+    "Begin at {from}. Count on until you reach {to}. How many more?", "Start with {from}. Count up to {to}. How many more?",
+    "How many more do you need to count from {from} to {to}?",
+  ],
+  "show.count": [
+    "Start at {from}. Count each number after {from}. Stop at {to}. How many numbers did you say?",
+    "Start at {from}. Count on until {to}. Count the numbers you say after {from}. How many did you say?",
+    "Begin at {from}. Count on to {to}. Count each number after {from}. How many numbers did you say?",
+    "Count on from {from}. Stop at {to}. Count each number you say after {from}. How many did you say?",
+    "Begin at {from}. Stop when you reach {to}. Count the numbers you say after {from}. How many did you say?",
+  ],
+  "example.count": [
+    "Start at {from}. Count {more} more to reach {to}.", "Count {more} more from {from}. You reach {to}.",
+    "Begin at {from}. Count on {more}. You reach {to}.", "From {from}, count {more} more. You reach {to}.",
+    "Start with {from}. Count on {more} to reach {to}.",
+  ],
+  "example.count.sequence": [
+    "Start at {from}. Count on to {to}: {sequence}. That is {more} more.",
+    "From {from}, count on: {sequence}. You count {more} numbers to reach {to}.",
+    "Begin at {from}. Count on: {sequence}. That is {more} more to reach {to}.",
+    "Count on from {from} to {to}: {sequence}. You count {more} numbers.",
+    "Start with {from}. Count on: {sequence}. You reach {to} with {more} more.",
   ],
 
   "point.subtract": [
@@ -446,6 +483,8 @@ function whereOf(step: WorkedStep): string {
       return "the numerators";
     case "simplify":
       return "the simplest form";
+    case "count-up":
+      return "the missing part";
     default:
       return "this step";
   }
@@ -473,7 +512,9 @@ function equationOf(step: WorkedStep, pkg: OperationPackage, problem: "target" |
       return `${step.current} ÷ ${by} = ${step.remainder > 0 ? `${step.quotient} R ${step.remainder}` : step.quotient}`;
     }
     case "result":
-      return `${operationText(op)} = ${valueText(step.value)}`;
+      return op.kind === "missing-addend" ? stepText(step, op) : `${operationText(op)} = ${valueText(step.value)}`;
+    case "count-up":
+      return `${step.from} + ${step.said.length} = ${step.to}`;
     // Fraction steps (#407): never the final fraction, so a judged step never gives the answer away.
     case "common-denominator": {
       const changed = changedFractions(step);
@@ -542,6 +583,12 @@ function stepLines(pkg: OperationPackage, step: WorkedStep): LineOffer[] {
   const add = (line: LineId, key: TemplateKey, vars: Vars, level: 1 | 2, board?: string) =>
     out.push(offer(line, key, vars, { slots, level, ...(board ? { board } : {}) }));
   switch (step.kind) {
+    case "count-up":
+      add("step.point", "point.count", { from: step.from, to: step.to }, 1);
+      add("step.operation", "operation.count", { from: step.from, to: step.to }, 2);
+      // Showing the procedure is H3. The count itself is also the final answer, so it stays held until H4.
+      out.push(offer("step.show", "show.count", { from: step.from, to: step.to }, { slots, level: 3 }));
+      return out;
     case "add-column": {
       const { place, digits, carryIn } = step;
       const terms = [...digits, ...(carryIn > 0 ? [carryIn] : [])];
@@ -720,11 +767,22 @@ export function packageLines(pkg: OperationPackage) {
       ...sentencesOf(pkg.text).map((s, i) => offer("question.read", "question.read", { sentence: s }, { slots: { sentence: i } })),
     ],
     assess: (): LineOffer[] => [offer("assess.ask", "assess.ask", { expr })],
-    exampleIntro: (): LineOffer[] => [offer("example.intro", "example.intro", { expr: exampleExpr }, { slots: {}, board: exampleExpr })],
+    exampleIntro: (): LineOffer[] => [offer("example.intro", pkg.operation.kind === "missing-addend" ? "intro.count" : "example.intro", { expr: exampleExpr }, { slots: {}, board: exampleExpr })],
     /** Maya works one step of the easier example. */
     exampleStep: (id: string): LineOffer[] => {
       const step = pkg.easierExample.steps.find((s) => s.id === id);
       if (!step) return [];
+      if (step.kind === "count-up") {
+        const extra = { slots: { step: id }, board: equationOf(step, pkg, "example")! };
+        const vars = { from: step.from, to: step.to, more: step.said.length, sequence: step.said.join(", ") };
+        const compact = offer("example.step", "example.count", vars, extra);
+        // A long spoken list can exceed 25 words. Keep the compact checked count available. A number passed on the
+        // way is not the target answer, but the answer-release guard still holds that numeral until the target is done.
+        if (!step.said.length || (pkg.answer.value.type === "number" && step.said.includes(pkg.answer.value.value))) return [compact];
+        const sequence = offer("example.step", "example.count.sequence", vars, extra);
+        return [{ ...compact, texts: [...compact.texts, ...sequence.texts],
+          wordingIds: [...compact.texts.map((_, i) => `${compact.key}#${i}`), ...sequence.texts.map((_, i) => `${sequence.key}#${i}`)] }];
+      }
       const show = showOf(step, pkg, "example");
       const eq = equationOf(step, pkg, "example");
       return [offer("example.step", step.kind === "result" ? "example.result" : "example.step", { show }, { slots: { step: id }, ...(eq ? { board: eq } : {}) })];
@@ -754,7 +812,9 @@ export function packageLines(pkg: OperationPackage) {
     rightStep: (id: string): LineOffer[] => {
       const step = find(id);
       if (!step) return [];
-      const eq = equationOf(step, pkg, "target");
+      // The hop count is also the final answer. A checked count step acknowledges the method without stating the
+      // missing amount before the child commits their final answer.
+      const eq = step.kind === "count-up" ? null : equationOf(step, pkg, "target");
       const requires = { answer: "right" as const, step: id };
       return [eq
         ? offer("check.right_step", "check.right_step", { eq }, { slots: { step: id }, requires, board: eq })
@@ -770,11 +830,17 @@ export function packageLines(pkg: OperationPackage) {
     /** "Yes! 3/4 + 1/8 = 7/8.", in the form the child gave when it is an equal form code accepted ("= 14/16", #407). */
     answerRight: (form: AnswerValue = pkg.answer.value): LineOffer[] => {
       const said = valueText(form);
+      if (pkg.operation.kind === "missing-addend") {
+        const [from, to] = pkg.operation.operands;
+        return [offer("answer.right", "answer.right", { expr: `${from} + ${said}`, answer: to }, { slots: {}, board: `${from} + ${said} = ${to}` })];
+      }
       return [offer("answer.right", "answer.right", { expr, answer: said }, { slots: {}, board: `${expr} = ${said}` })];
     },
     answerGive: (): LineOffer[] => [offer("answer.give", "answer.give", { answer })],
     /** How the parts make the answer ("6 tens and 6 ones make 66."), said before answer.give on the final step (D-199). */
     answerParts: (): LineOffer[] => {
+      const count = pkg.steps.find((s) => s.kind === "count-up");
+      if (count?.kind === "count-up") return [offer("answer.parts", "example.count", { from: count.from, to: count.to, more: count.said.length })];
       const parts = placeParts(pkg.answer.value);
       return parts ? [offer("answer.parts", "answer.parts", parts)] : [];
     },
