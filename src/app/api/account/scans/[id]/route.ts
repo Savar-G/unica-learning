@@ -30,10 +30,14 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/accou
   const { id } = await params;
   if (!isUuid(id) || !await session.photoOpen(id)) return scanJson({ error: "refused" }, 404);
   const { admin, parent } = session;
+  // "Use this new photo instead" (scan edge sweep #4): the page's ready photo, not sent, that this new photo replaces.
+  const replace = new URL(request.url).searchParams.get("replace");
   const start = await admin.rpc("start_scan_photo", { p_parent: parent, p_id: id });
   if (start.error) return scanJson({ error: "unavailable" }, 503);
   if (["pending", "saved"].includes(start.data)) return scanJson({ photo: await scanView(admin, parent, id) });
   if (start.data !== "started") return scanJson({ error: start.data }, 409);
+  // The page a duplicate refusal names, and the photo it may replace (#4): the parent is told "Page 27 is already scanned".
+  let duplicate: Awaited<ReturnType<typeof duplicateOf>> = null;
   try {
     const limits = await admin.from("scan_limits").select("input_bytes,output_bytes,decoded_pixels").single();
     if (limits.error) throw new Error("unavailable");
@@ -42,18 +46,20 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/accou
     // A photo of an open book (#915) has two pages: this photo takes the first one its own code binds, and the other
     // becomes a photo of its own below. A single page is one page, exactly as before.
     const pages: SpreadPage[] = normalized.spread ?? [{ bytes: normalized.bytes, token: normalized.token, width: normalized.width, height: normalized.height }];
-    let mine = -1, refusal: string | null = null;
+    let mine = -1, refusal: string | null = null, refusedToken: string | null = null;
     for (const [i, page] of pages.entries()) {
       const identify = () => admin.rpc("identify_scan_photo", { p_parent: parent, p_id: id, p_token: page.token, p_width: page.width, p_height: page.height });
       let identified = await identify();
-      // A new photo of a page whose photo needs another photo is its retake, however it was taken (F5).
-      if (!identified.error && identified.data === "duplicate" && await replaceRefusedPhoto(admin, parent, page.token, session.childOpen)) identified = await identify();
+      // A new photo of a page whose photo needs another photo is its retake, however it was taken (F5). A ready photo,
+      // not sent, goes only when the parent asked for this photo instead of it (#4).
+      if (!identified.error && identified.data === "duplicate" && await replaceRefusedPhoto(admin, parent, page.token, session.childOpen, isUuid(replace) ? replace : null)) identified = await identify();
       if (identified.error) throw new Error("unavailable");
       if (identified.data === "identified") { mine = i; break; }
-      refusal ??= identified.data;
+      if (refusal === null) { refusal = identified.data; refusedToken = page.token; }
       // Only a page that already has a photo, or is not this child's, lets the other page of a spread take this photo.
       if (!["duplicate", "page"].includes(identified.data)) break;
     }
+    if (mine < 0 && refusal === "duplicate" && refusedToken) duplicate = await duplicateOf(admin, parent, refusedToken);
     if (mine < 0) throw new Error(refusal ?? "image");
     // A code may file the photo with a sibling's book (#915): that child's own plan must open scanning too, or the page
     // is refused as not this family's, before anything is stored.
@@ -87,7 +93,8 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/accou
     await admin.rpc("change_scan_photo", { p_parent: parent, p_id: id, p_action: "reject" });
     await cleanupScanPhoto(admin, parent, id);
     const code = error instanceof Error && ["qr", "size", "page", "duplicate", "flat"].includes(error.message) ? error.message : "image";
-    return scanJson({ error: code }, 422);
+    // A duplicate names its page, and the photo the new one may replace (a ready photo not sent): never a problem (#4).
+    return scanJson(code === "duplicate" && duplicate ? { error: code, ...duplicate } : { error: code }, 422);
   }
 }
 
@@ -100,10 +107,11 @@ const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  * it with the retake button, which deletes it first, or with a plain Scan pages, which before this was refused as "already
  * has a photo" and left the parent with no way forward. Only a photo whose stored check refused it, as the stack shows it
  * (`stackCheck` in src/lib/scan-stack-server.ts: a finished check of the photo's own printing that is not ready), and that
- * was never sent. A ready photo, a photo still being checked and a sent photo stay: a new photo of those is a duplicate.
+ * was never sent. A photo still being checked and a sent photo stay: a new photo of those is a duplicate. A ready photo
+ * stays too, unless `ready` names it: the parent pressed "Use this new photo instead" on the duplicate (#4).
  * True when it went, so the caller identifies the new photo again. Any failed read keeps the old photo.
  */
-async function replaceRefusedPhoto(admin: SupabaseClient<Database>, parent: string, token: string, childOpen: (child: string) => Promise<boolean>): Promise<boolean> {
+async function replaceRefusedPhoto(admin: SupabaseClient<Database>, parent: string, token: string, childOpen: (child: string) => Promise<boolean>, ready: string | null = null): Promise<boolean> {
   try {
     const page = await admin.from("workbook_pages").select("id").eq("parent_id", parent).eq("qr_token", token).maybeSingle();
     if (page.error || !page.data) return false;
@@ -114,12 +122,32 @@ async function replaceRefusedPhoto(admin: SupabaseClient<Database>, parent: stri
     if (!await childOpen(held.data.child_id)) return false;
     const check = await admin.from("scan_calibrations").select("state,printed_revision").eq("parent_id", parent).eq("photo_id", held.data.id).maybeSingle();
     const c = check.data;
-    if (check.error || !c || c.state === "running" || c.state === "ready" || c.printed_revision !== held.data.printed_revision) return false;
-    const gone = await admin.rpc("change_scan_photo", { p_parent: parent, p_id: held.data.id, p_action: "delete" });
+    if (check.error || !c || c.state === "running" || c.printed_revision !== held.data.printed_revision) return false;
+    // A ready photo goes only when the parent chose this new photo instead of that one (#4).
+    if (c.state === "ready" && held.data.id !== ready) return false;
+    // The delete itself rechecks everything under the family lock (`replace_ready_scan_photo`): still saved, unsent,
+    // active, with no marking job and a finished check of its own printing. A photo sent meanwhile is kept.
+    const gone = await admin.rpc("replace_ready_scan_photo", { p_parent: parent, p_old: held.data.id, p_page: page.data.id });
     if (gone.error || gone.data !== "deleted") return false;
     await cleanupScanPhoto(admin, parent, held.data.id);
     return true;
   } catch { return false; }
+}
+
+/**
+ * The page a duplicate is of (#4): its printed number, and `replaceable`, the id of the page's photo when that photo is
+ * ready and not sent, so the parent may use the new photo instead. Null on a failed read: a plain duplicate.
+ */
+async function duplicateOf(admin: SupabaseClient<Database>, parent: string, token: string): Promise<{ page: number; replaceable?: string } | null> {
+  try {
+    const page = await admin.from("workbook_pages").select("id,page_number").eq("parent_id", parent).eq("qr_token", token).maybeSingle();
+    if (page.error || !page.data) return null;
+    const held = await admin.from("scan_photos").select("id,printed_revision,sent_at").eq("parent_id", parent).eq("page_id", page.data.id).eq("state", "saved").maybeSingle();
+    if (held.error || !held.data || held.data.sent_at) return { page: page.data.page_number };
+    const check = await admin.from("scan_calibrations").select("state,printed_revision").eq("parent_id", parent).eq("photo_id", held.data.id).maybeSingle();
+    const ready = !check.error && check.data?.state === "ready" && check.data.printed_revision === held.data.printed_revision;
+    return ready ? { page: page.data.page_number, replaceable: held.data.id } : { page: page.data.page_number };
+  } catch { return null; }
 }
 
 /** Whether the child a photo is filed with now has scanning open (#915 sibling filing). A failed read is closed. */

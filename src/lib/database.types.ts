@@ -4721,6 +4721,8 @@ export type Database = {
           photo_check: Json | null
           printed_revision: string | null
           reserved_bytes: number
+          send_after: string | null
+          send_undone_at: string | null
           sent_at: string | null
           state: string
           stored_bytes: number
@@ -4740,6 +4742,8 @@ export type Database = {
           photo_check?: Json | null
           printed_revision?: string | null
           reserved_bytes: number
+          send_after?: string | null
+          send_undone_at?: string | null
           sent_at?: string | null
           state?: string
           stored_bytes?: number
@@ -4759,6 +4763,8 @@ export type Database = {
           photo_check?: Json | null
           printed_revision?: string | null
           reserved_bytes?: number
+          send_after?: string | null
+          send_undone_at?: string | null
           sent_at?: string | null
           state?: string
           stored_bytes?: number
@@ -8733,6 +8739,15 @@ export type Database = {
         }
         Returns: string
       }
+      admit_scan_photo_v2: {
+        Args: {
+          p_bytes: number
+          p_child: string
+          p_id: string
+          p_parent: string
+        }
+        Returns: string
+      }
       admit_workbook_scan_reminder: {
         Args: { p_attempt: string; p_message: string }
         Returns: Json
@@ -9370,6 +9385,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      defer_scan_sends: {
+        Args: { p_ids: string[]; p_parent: string; p_seconds: number }
+        Returns: number
+      }
       due_plan_cancel_alerts: {
         Args: { p_before: string; p_limit?: number }
         Returns: {
@@ -9395,6 +9414,14 @@ export type Database = {
           customer: string
           event_at: string
           kind: string
+          parent_id: string
+        }[]
+      }
+      due_scan_sends: {
+        Args: { p_limit: number; p_parent: string }
+        Returns: {
+          child_id: string
+          id: string
           parent_id: string
         }[]
       }
@@ -9678,6 +9705,10 @@ export type Database = {
       hold_next_book_snapshot: {
         Args: { p_book: string; p_delivery_audit: number }
         Returns: Json
+      }
+      hold_scan_photos: {
+        Args: { p_ids: string[]; p_parent: string; p_seconds: number }
+        Returns: string[]
       }
       identify_scan_photo: {
         Args: {
@@ -10093,6 +10124,10 @@ export type Database = {
         Args: { p_card: string; p_generation: number; p_token: string }
         Returns: boolean
       }
+      release_scan_holds: {
+        Args: { p_ids: string[]; p_parent: string }
+        Returns: string[]
+      }
       release_scan_photo: {
         Args: { p_id: string; p_parent: string }
         Returns: string
@@ -10139,6 +10174,21 @@ export type Database = {
           p_token: string
         }
         Returns: Json
+      }
+      replace_ready_scan_photo: {
+        Args: { p_old: string; p_page: string; p_parent: string }
+        Returns: string
+      }
+      replace_unfinished_scan_photo: {
+        Args: {
+          p_bytes: number
+          p_height: number
+          p_id: string
+          p_parent: string
+          p_token: string
+          p_width: number
+        }
+        Returns: string
       }
       report_retries_due: {
         Args: { p_email_age_s: number; p_limit: number; p_min_age_s: number }
@@ -10533,6 +10583,10 @@ export type Database = {
         Args: { p_parent: string }
         Returns: undefined
       }
+      send_due_scan_photos: {
+        Args: { p_child: string; p_ids: string[]; p_parent: string }
+        Returns: string[]
+      }
       send_scan_photos: {
         Args: { p_child: string; p_ids: string[]; p_parent: string }
         Returns: string[]
@@ -10625,6 +10679,10 @@ export type Database = {
       team_end_plan_start: {
         Args: { p_admin: string; p_card: string; p_generation: number }
         Returns: boolean
+      }
+      unhold_scan_photos: {
+        Args: { p_ids: string[]; p_parent: string }
+        Returns: string[]
       }
       use_workbook_run_attempts: {
         Args: {
