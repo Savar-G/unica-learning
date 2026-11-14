@@ -26,7 +26,7 @@ export interface ScanTeamEmailStore {
 }
 
 export type ScanTeamEmailResult =
-  | { status: "no_address" | "too_early" | "none_waiting" | "already_sent" | "refused" | "unknown" | "sent" | "out_of_time"; waiting?: number }
+  | { status: "off" | "no_address" | "too_early" | "none_waiting" | "already_sent" | "refused" | "unknown" | "sent" | "out_of_time"; waiting?: number }
   | { status: "failed" };
 
 export const SCAN_TEAM_EMAIL_HOUR = 8;
@@ -74,8 +74,10 @@ function dayLedger(store: ScanTeamEmailStore, waiting: number, time?: RunTime): 
 export async function runScanTeamEmail(
   store: ScanTeamEmailStore,
   now: number,
-  { to, origin, transport = resendTransport(), time }: { to: string | null | undefined; origin: string; transport?: MailTransport; time?: RunTime },
+  { enabled, to, origin, transport = resendTransport(), time }: { enabled: string | null | undefined; to: string | null | undefined; origin: string; transport?: MailTransport; time?: RunTime },
 ): Promise<ScanTeamEmailResult> {
+  // SCAN_TEAM_EMAIL_ENABLED: only the exact value "on" sends; unset or anything else reads nothing and sends nothing.
+  if (enabled !== "on") return { status: "off" };
   const address = to?.trim();
   if (!address) {
     console.error("[scan team email] SIGNUP_NOTIFY_EMAIL is not set; no email");

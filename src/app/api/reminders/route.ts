@@ -111,9 +111,9 @@ export async function POST(request: Request) {
     // Run beside the other work, with bounded database calls and time for one request and its ledger write.
     const teamDb = adminClient(AbortSignal.timeout(Math.max(1, now + 55_000 - Date.now())), { retry: false });
     scanTeam = teamDb ? runScanTeamEmail(scanTeamEmailStore(teamDb), now, {
-      to: process.env.SIGNUP_NOTIFY_EMAIL, origin, transport, time: { now: () => Date.now(), endAt: now + 55_000 },
+      enabled: process.env.SCAN_TEAM_EMAIL_ENABLED, to: process.env.SIGNUP_NOTIFY_EMAIL, origin, transport, time: { now: () => Date.now(), endAt: now + 55_000 },
     }).then((r) => {
-      if (!["too_early", "none_waiting", "already_sent"].includes(r.status)) console.info("[scan team email] run", JSON.stringify(r));
+      if (!["off", "too_early", "none_waiting", "already_sent"].includes(r.status)) console.info("[scan team email] run", JSON.stringify(r));
       return r;
     }, (e) => {
       console.error("[scan team email] run failed", e instanceof Error ? e.message : e);

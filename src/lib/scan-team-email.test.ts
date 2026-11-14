@@ -15,15 +15,23 @@ const pst = (day: number, hh: number, mm = 0) => Date.UTC(2026, 10, day, hh + 7,
 function setup(waiting: number) {
   const mail = memoryTransport();
   const db = memoryScanTeamEmailStore(waiting);
-  const run = (now: number, to: string | null = TO) => runScanTeamEmail(db.store, now, { to, origin: ORIGIN, transport: mail.transport });
+  const run = (now: number, to: string | null = TO) => runScanTeamEmail(db.store, now, { enabled: "on", to, origin: ORIGIN, transport: mail.transport });
   return { mail, db, run };
 }
 
 describe("the team's daily scan email", () => {
+  it("is off unless SCAN_TEAM_EMAIL_ENABLED is exactly on: no read, no claim, no email", async () => {
+    for (const enabled of [undefined, null, "", "true", "ON", " on"]) {
+      const { mail, db } = setup(3);
+      expect(await runScanTeamEmail(db.store, pst(13, 9), { enabled, to: TO, origin: ORIGIN, transport: mail.transport })).toEqual({ status: "off" });
+      expect(mail.delivered).toHaveLength(0);
+      expect(db.days.size).toBe(0);
+    }
+  });
   it("claims nothing when a reminders run has no time for a complete send", async () => {
     const { mail, db } = setup(3), start = pst(13, 9);
     const count = vi.spyOn(db.store, "waitingCount");
-    expect(await runScanTeamEmail(db.store, start, { to: TO, origin: ORIGIN, transport: mail.transport,
+    expect(await runScanTeamEmail(db.store, start, { enabled: "on", to: TO, origin: ORIGIN, transport: mail.transport,
       time: { now: () => start + 55_000, endAt: start + 55_000 } })).toMatchObject({ status: "out_of_time" });
     expect(count).not.toHaveBeenCalled();
     expect(db.days.size).toBe(0); expect(mail.delivered).toHaveLength(0);
@@ -34,7 +42,7 @@ describe("the team's daily scan email", () => {
     try {
       const { mail, db } = setup(3), start = pst(13, 9); vi.setSystemTime(start);
       db.store.waitingCount = async () => new Promise<number>(() => {});
-      const result = runScanTeamEmail(db.store, start, { to: TO, origin: ORIGIN, transport: mail.transport,
+      const result = runScanTeamEmail(db.store, start, { enabled: "on", to: TO, origin: ORIGIN, transport: mail.transport,
         time: { now: () => Date.now(), endAt: start + 55_000 } });
       await vi.advanceTimersByTimeAsync(2_000);
       expect(await result).toMatchObject({ status: "out_of_time" });
@@ -49,7 +57,7 @@ describe("the team's daily scan email", () => {
       const delivered: string[] = [];
       const transport = pacedTransport({ send: async (m) => { delivered.push(m.subject); return { status: "sent", emailId: "test" }; } }, 40_000);
       await transport.send({ sender: { to: "savar" }, to: TO, subject: "Other reminder", text: "Other reminder" });
-      const result = runScanTeamEmail(db.store, start, { to: TO, origin: ORIGIN, transport,
+      const result = runScanTeamEmail(db.store, start, { enabled: "on", to: TO, origin: ORIGIN, transport,
         time: { now: () => Date.now(), endAt: start + 55_000 } });
       await vi.advanceTimersByTimeAsync(40_000);
       expect(await result).toMatchObject({ status: "out_of_time" });
