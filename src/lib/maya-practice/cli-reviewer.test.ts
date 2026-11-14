@@ -37,7 +37,7 @@ it.each(["subscription", "fake", "estimate"])("the real chat CLI keeps its sente
     });
     const provider = mode === "estimate" ? ["--anthropic", "--estimate"] : [mode === "fake" ? "--fake" : "--subscription"];
     execFileSync(process.execPath, [join(dir, "cli.cjs"), ...provider, "--channel", "chat", "--cases", "C07", "--runs", "1", "--out", join(dir, "run")], {
-      cwd: root, encoding: "utf8", env: { PATH: process.env.PATH, HOME: dir, NODE_ENV: "test", NODE_PATH: join(root, "node_modules"), MAYA_TEST_RECEIPT: receipt }, timeout: 20_000,
+      cwd: root, encoding: "utf8", env: { PATH: dir, HOME: dir, NODE_ENV: "test", NODE_PATH: join(root, "node_modules"), MAYA_TEST_RECEIPT: receipt }, timeout: 20_000,
     });
     expect(JSON.parse(readFileSync(receipt, "utf8"))).toEqual(mode === "estimate"
       ? { freeTalk: false, reviewer: "claude-haiku-5-5", priced: true }

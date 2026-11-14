@@ -31,6 +31,23 @@ const rightOnes = (c: ReturnType<typeof call>, n = 16) => c.propose({
 
 describe("PR624 round 5: explicit answers and column roles", () => {
   it.each([
+    "2 plus 3 plus 1 is 6 equals 5, so I got 66.",
+    "2 plus 3 plus 1 is 6 is 5, so I got 66.",
+    "Two plus three plus one is six equals five, so I got sixty-six.",
+  ])("does not skip a false equality after a true equation: %s", text => {
+    const c = call(); c.child(text);
+    const result = c.propose({ act: "accept_answer", parts: [line("answer.right")], reading: { answers: [{ value: value(66), step: "result", verdict: "right" }] } });
+    expect(result.refusal?.code).toBe("answer_not_committed");
+    expect(c.session.solved).toBeNull();
+  });
+
+  it("keeps a true equality after a true equation", () => {
+    const c = call(); c.child("2 plus 3 plus 1 is 6 equals 6, so I got 66.");
+    expect(c.propose({ act: "accept_answer", parts: [line("answer.right")], reading: { answers: [{ value: value(66), step: "result", verdict: "right" }] } }).refusal).toBeNull();
+    expect(c.session.solved).toBe("child");
+  });
+
+  it.each([
     "I got 66, I added 7 and 9 so my final is 16.",
     "I got sixty-six, I added seven and nine so my final is sixteen.",
     "I got 66, I added 7 and 9 so I wrote 16.",

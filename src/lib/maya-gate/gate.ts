@@ -37,7 +37,7 @@ import {
 } from "@/lib/maya";
 import { gateWordCount } from "./word-count";
 import { openingLine, packageLines, TEMPLATES } from "@/lib/maya/lines";
-import { equationHolds, equationsOf, numberValue, sameSayValue, sentencesOf, valuesOf } from "@/lib/maya/say-check";
+import { equationHolds, equationsOf, numberValue, sameSayValue, sayNumbers, sentencesOf, valuesOf } from "@/lib/maya/say-check";
 import { patternRows } from "@/lib/maya/pattern";
 import { partEquationSaid, withEvaluateExample } from "@/lib/maya/evaluate";
 import { comparisonOf, comparisonFinal, comparisonRelation, comparisonCount } from "@/lib/maya/comparison";
@@ -404,6 +404,36 @@ export const packageOf = (b: Behaviour): QuestionPackage => FIXTURES[b.fixture];
  * explanation, and holds no hedge ("think", "maybe", "guess", "probably", "or", "not sure"), no other person and no
  * request for help.
  */
+function ownEquationsHold(sentence: string): boolean {
+  let text = sentence.replace(/[−–]/g, "-").replace(/×/g, " times ").replace(/÷/g, " divided by ").replace(/\bgroups? of\b/g, "times");
+  // The speech reader omits bare "one" when it could mean an object. Keep it as a value in own math, except pointers.
+  const initial = sayNumbers(text);
+  for (const m of [...text.matchAll(/\bone\b/g)].reverse()) {
+    if (initial.some(n => n.at <= m.index! && n.end >= m.index! + m[0].length) || /\b(?:this|that|the|a|an)\s*$/.test(text.slice(0, m.index!))) continue;
+    text = text.slice(0, m.index!) + "1" + text.slice(m.index! + m[0].length);
+  }
+  const equations = equationsOf(text);
+  for (const e of equations) {
+    const truth = equationHolds(e);
+    if (truth === null || truth === e.negated) return false;
+  }
+  // The expression reader needs an operator. Check scalar equalities independently, outside those expressions.
+  const numbers = sayNumbers(text);
+  const ranges = equations.map(e => {
+    const tokens = [...e.operands, e.result];
+    return [Math.min(...tokens.map(n => n.at)), Math.max(...tokens.map(n => n.end))];
+  });
+  for (let i = 1; i < numbers.length; i++) {
+    const [left, right] = [numbers[i - 1], numbers[i]];
+    const between = text.slice(left.end, right.at).trim();
+    const equality = /^(?:is|are|was|equals?|makes?|gives?|=|is equal to|are equal to)$/.test(between);
+    const negated = /^(?:is not|are not|was not|isn't|aren't|wasn't|does not equal|doesn't equal|!=|≠)$/.test(between);
+    if ((!equality && !negated) || ranges.some(([a, b]) => left.at >= a && right.end <= b)) continue;
+    if (sameSayValue(left, right) === negated) return false;
+  }
+  return true;
+}
+
 function gateOwnAnswer(text: string, value: AnswerValue, opts: ReturnType<typeof readOptionsFor>, confirmed = false): boolean {
   let t = text.toLowerCase().replace(/[’‘]/g, "'");
   if (/\b(?:think|maybe|guess|guessed|probably|perhaps|or|not sure|unsure|would say|mom|dad|teacher|brother|sister|friend|she|he|they|says|help|show me|tell me)\b/.test(t)) return false;
@@ -416,7 +446,7 @@ function gateOwnAnswer(text: string, value: AnswerValue, opts: ReturnType<typeof
   }).join(" ");
   // Another's number, a copy, a near amount, or Maya's own words said back (re-review P3): its own forms, no controller code.
   if (/\b(?:said|told|copied|copy|peeked|about|around|roughly|likely|according to|you showed)\b|\b[a-z]+\s*:\s*\d/.test(t)) return false;
-  if (t.split(/(?<=[.!?])\s+/).some(x => !/\?\s*$/.test(x) && equationsOf(x).some(e => equationHolds(e) === !!e.negated))) return false;
+  if (t.split(/(?<=[.!?])\s+/).some(x => !/\?\s*$/.test(x) && !ownEquationsHold(x))) return false;
   return t.split(/(?<=[.!?])\s+/).some((x) => !x.trim().endsWith("?") && valuesIn(x.split(/\b(?:because|since|cause|cuz|coz)\b/)[0], opts).some((v) => sameValue(v, value) || equivalent(v, value)));
 }
 
