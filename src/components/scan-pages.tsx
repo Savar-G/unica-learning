@@ -12,7 +12,7 @@ import { SCANNING_COOKIE, SCANNING_SECONDS } from "@/lib/scan-tab";
 import { PACIFIC_ZONE, type FamilyZone } from "@/lib/family-time";
 import { scanEventTicket } from "@/lib/scan-track";
 import { busyWait, nextUploads, REQUEST_TIMEOUT_MS, UPLOAD_TIMEOUT_MS } from "@/lib/scan-upload-queue";
-import { ScanHistory } from "@/components/scan-history";
+import { workbooksPath } from "@/lib/parent-shell";
 import { ScanPreview } from "@/components/scan-preview";
 import "./scan-pages.css";
 
@@ -102,6 +102,13 @@ function Tile({ tile, thumb, onOpen }: { tile: StackTile; thumb?: string; onOpen
     </button>
   </li>;
 }
+
+/** The class on <html> while the capture screen is open: the account's header, title and tab bar hide, and the screen fills the viewport. */
+export const CAPTURE_CLASS = "scan-capturing";
+/** After the phone's camera or photos close, how long a chosen file has to arrive before the pick counts as cancelled. */
+export const PICK_RETURN_MS = 1200;
+/** Where a parent reads every saved page result: the Page history on the child's Workbooks page. */
+export const allPagesPath = (child: string) => `${workbooksPath(child)}#page-history`;
 
 /** How long a page that passed waits on the phone, with Undo, before it is sent for marking (#915). The photo is already saved; marking is held back. */
 export const UNDO_MS = 10_000;
@@ -195,7 +202,13 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   // The capture screen (#915): open while the parent keeps taking photos; the shots are this session's local photos.
   const [capturing, setCapturing] = useState(false);
   const [shots, setShots] = useState<string[]>([]);
+  // The photo shown large on the capture screen; null: the latest.
+  const [shotAt, setShotAt] = useState<string | null>(null);
   const [landed, setLanded] = useState<Record<string, string>>({});
+  // A pick from the capture screen that ends with no photo (#915): with no shot yet, the capture screen closes.
+  const capturingRef = useRef(false);
+  const shotsRef = useRef<string[]>([]);
+  const pickWatch = useRef<(() => void) | null>(null);
   /** Pages a code filed with a sibling's book (#915): "Page 12 went to Aisha's pages." */
   const [elsewhere, setElsewhere] = useState<{ page: number | null; child: string }[]>([]);
   const filedOf = useRef(new Map<string, { child_id?: string; child?: string; page?: number }>());
@@ -510,7 +523,9 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       try { keepUrl(u.key, URL.createObjectURL(u.file)); } catch {}
     }
     putUploads([...list, ...added]);
-    setShots((s) => [...s, ...added.map((u) => u.key)]);
+    // A retake takes the place of the photo it replaces on the capture screen.
+    setShots((s) => [...s.filter((k) => !replaces || (k !== replaces && landed[k] !== replaces)), ...added.map((u) => u.key)]);
+    setShotAt(null);
     if (!tipsSeen) { tipsFlag.write(); setTipsDone(true); }
     noteScanning();
     setMessage(null); setSheet(null);
@@ -528,14 +543,36 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     }
     replacing.current = replaces;
     setSheet(null);
-    (which === "camera" ? camera : library).current?.click();
+    pick(which);
+  }
+
+  /** Opens the input and watches for a return with no file: the `cancel` event where the browser has one, else focus or the page showing again. */
+  function pick(which: "camera" | "library") {
+    const input = (which === "camera" ? camera : library).current;
+    if (!input) return;
+    pickWatch.current?.();
+    let away = false, timer: ReturnType<typeof setTimeout> | undefined;
+    const stop = () => {
+      clearTimeout(timer);
+      input.removeEventListener("cancel", cancelled); input.removeEventListener("change", stop);
+      window.removeEventListener("blur", leave); window.removeEventListener("focus", back); document.removeEventListener("visibilitychange", seen);
+      if (pickWatch.current === stop) pickWatch.current = null;
+    };
+    const cancelled = () => { stop(); if (capturingRef.current && shotsRef.current.length === 0) setCapturing(false); };
+    const leave = () => { away = true; };
+    const back = () => { if (!away) return; clearTimeout(timer); timer = setTimeout(cancelled, PICK_RETURN_MS); };
+    const seen = () => { if (document.visibilityState === "hidden") leave(); else back(); };
+    input.addEventListener("cancel", cancelled); input.addEventListener("change", stop);
+    window.addEventListener("blur", leave); window.addEventListener("focus", back); document.addEventListener("visibilitychange", seen);
+    pickWatch.current = stop;
+    input.click();
   }
 
   function acknowledge(then: "camera" | "library" | null) {
     const version = epoch.current;
     void api("/api/account/scans/notice", { method: "POST" }).then(() => { if (version === epoch.current) setAcknowledged(true); }).catch(() => {});
     setAcknowledged(true); setSheet(null);
-    if (then) (then === "camera" ? camera : library).current?.click();
+    if (then) pick(then);
   }
 
   const photos = useMemo(() => (listing?.photos ?? []).map((p) => (unavailable.has(p.id) && p.check === "checking" ? { ...p, check: "unavailable" as const } : p)), [listing, unavailable]);
@@ -662,9 +699,18 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
 
   /** "Scan pages": the capture screen, and the camera in the same tap. */
   function scan(which: "camera" | "library" = "camera") {
-    setShots([]); setCapturing(true);
+    setShots([]); setShotAt(null); setCapturing(true);
     open(which);
   }
+  useEffect(() => { capturingRef.current = phone && capturing; shotsRef.current = shots; });
+  useEffect(() => () => pickWatch.current?.(), []);
+  // The capture screen is full screen (#915): the account's frame hides only while it is open.
+  useEffect(() => {
+    if (!(phone && capturing)) return;
+    const html = document.documentElement;
+    html.classList.add(CAPTURE_CLASS);
+    return () => html.classList.remove(CAPTURE_CLASS);
+  }, [phone, capturing]);
   function done() {
     setCapturing(false);
     if (!tipsSeen) { tipsFlag.write(); setTipsDone(true); }
@@ -792,38 +838,76 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   // Step 3: the capture screen. The phone's own camera opens for each photo (one tap each, as browsers ask); between
   // photos the parent sees each shot get its tick, then takes the next page, picks photos, or taps Done.
   if (phone && capturing) {
-    const shotOf = (key: string): { status: StackTile["status"] | "elsewhere"; thumb?: string; label: string } => {
+    type Shot = { key: string; status: StackTile["status"] | "elsewhere"; thumb?: string; label: string; tile?: StackTile; page?: number | null };
+    const shotOf = (key: string): Omit<Shot, "key"> => {
       const local = stack.refused.find((t) => t.uploadKey === key) ?? stack.addingTiles.find((t) => t.uploadKey === key);
-      if (local) return { status: local.status, thumb: thumbs[key], label: local.status === "refused" ? `${local.label}, ${local.reason}` : `New photo, ${(local.reason ?? STATUS_WORDS[local.status]).toLowerCase()}` };
+      if (local) return { status: local.status, thumb: thumbs[key], tile: local, label: local.status === "refused" ? `${local.label}, ${local.reason}` : `New photo, ${(local.reason ?? STATUS_WORDS[local.status]).toLowerCase()}` };
       const id = landed[key];
       const tile = id ? tiles.find((t) => t.photoId === id) : undefined;
-      if (tile) return { status: tile.status, thumb: thumbs[id], label: `${tile.label}, ${(tile.reason ?? STATUS_WORDS[tile.status]).toLowerCase()}` };
-      if (id && filedOf.current.get(id)?.child_id && filedOf.current.get(id)?.child_id !== child) return { status: "elsewhere", thumb: thumbs[id], label: `Page ${filedOf.current.get(id)?.page ?? ""}, went to ${filedOf.current.get(id)?.child}'s pages` };
+      if (tile) return { status: tile.status, thumb: thumbs[id], tile, label: `${tile.label}, ${(tile.reason ?? STATUS_WORDS[tile.status]).toLowerCase()}` };
+      const filed = id ? filedOf.current.get(id) : undefined;
+      if (filed?.child_id && filed.child_id !== child) return { status: "elsewhere", thumb: thumbs[id], page: filed.page ?? null, label: `Page ${filed.page ?? ""}, went to ${filed.child}'s pages` };
       return { status: "checking", thumb: id ? thumbs[id] : undefined, label: "New photo, checking" };
     };
-    const list = shots.map((k) => ({ key: k, ...shotOf(k) }));
+    const list: Shot[] = shots.map((k) => ({ key: k, ...shotOf(k) }));
+    const shown = list.find((s) => s.key === shotAt) ?? list[list.length - 1];
+    // The day's pages that have a photo, out of the day's pages: "Day 4 · 3 of 8".
+    const head = strip ? `${strip.day} · ${strip.tiles.filter((t) => t.state !== "todo").length} of ${strip.tiles.length}` : list.length === 1 ? "1 photo" : `${list.length} photos`;
+    const faceOf = (s: Shot) => {
+      const problem = s.tile?.photoId ? problems[s.tile.photoId] : undefined;
+      if (s.status === "refused" || problem) return "bad" as const;
+      if (s.status === "unavailable") return "bad" as const;
+      return s.status === "ready" || s.status === "sent" || s.status === "saved" || s.status === "elsewhere" ? "ok" as const : "chk" as const;
+    };
+    const flagOf = (s: Shot) => { const f = faceOf(s); return f === "ok" ? ICONS.check : f === "bad" ? "!" : s.status === "waiting" ? ICONS.clock : <span className="scan-spin" />; };
+    const pageOf = (s: Shot) => /^Page \d+/.exec(s.tile?.label ?? "")?.[0] ?? (s.page ? `Page ${s.page}` : null);
+    const card = (s: Shot) => {
+      const face = faceOf(s), page = pageOf(s), t = s.tile;
+      const problem = t?.photoId ? problems[t.photoId] : undefined;
+      let title: string, line: string, action: ReactNode = null;
+      if (s.status === "elsewhere") { title = s.label.replace(", went", " went"); line = "Take the next page, or tap Done."; }
+      else if (face === "ok") { title = `${page ?? "This page"} looks good`; line = checks ? "We'll mark it when you tap Done." : "Saved. Tap Done when you have them all."; }
+      else if (face === "bad" && t) {
+        title = `${page ?? "This page"}: retake this one`;
+        line = problem ? PHOTO_PROBLEM_TEXT[problem] : t.refusal ? refusalCopy(t.refusal).action : t.reason ?? "";
+        const words = page ? `Retake ${page.toLowerCase()}` : "Retake this page";
+        action = t.uploadKey && t.refusal === "unavailable"
+          ? <button type="button" className="scan-tray-retake" onClick={() => { patchUpload(t.uploadKey!, { status: "waiting", reason: undefined, codeUnread: undefined }); pump(); }}>Try again</button>
+          : t.refusal === "frequency" || t.refusal === "quota" || t.refusal === "duplicate" ? null
+            : <button type="button" className="scan-tray-retake" onClick={() => open("camera", retakeKey(t))}>{words}</button>;
+      } else { title = page ? `Checking ${page.toLowerCase()}…` : "Checking your photo…"; line = "Takes a few seconds. You can take the next page now."; }
+      return <div className={`scan-tray-card is-${face}`}>
+        <div className="scan-tray-ph" role="img" aria-label={s.label}>
+          {s.thumb ? <Image unoptimized width={600} height={800} src={s.thumb} alt="" /> : <span className="scan-ph-empty" />}
+          <span className="scan-tray-flag" aria-hidden="true">{flagOf(s)}</span>
+        </div>
+        <p className="scan-tray-msg" aria-live="polite"><b>{title}</b><span>{line}</span></p>
+        {action}
+      </div>;
+    };
     return <div className="scan-pages is-capture">
       {inputs}
-      <div className="scan-cam" role="region" aria-label="Scan pages">
+      <div className="scan-cam scan-tray" role="region" aria-label="Scan pages">
         <div className="scan-cam-top">
           <button type="button" className="scan-cam-x" onClick={done} aria-label="Close the camera"><span aria-hidden="true">✕</span></button>
-          <p>{strip ? `${strip.day} · ` : ""}{list.length === 1 ? "1 photo" : `${list.length} photos`}</p>
+          <p><b>{head}</b></p>
+          <button type="button" className="scan-cam-done" onClick={done}>Done</button>
         </div>
-        <p className="scan-cam-say" aria-live="polite">{list.length ? "Keep going: snap the next page, or tap Done." : "Take a photo of the first page."}</p>
         {offline}
         {elsewhereNote}
         {undoBar}
-        <ol className="scan-shots" aria-label="Photos taken">
-          {list.map((s) => <li key={s.key} className={`is-${s.status}`} aria-label={s.label}>
-            {s.thumb ? <Image unoptimized width={80} height={106} src={s.thumb} alt="" /> : <span className="scan-ph-empty" />}
-            <span className="scan-shot-flag" aria-hidden="true">{s.status === "ready" || s.status === "sent" || s.status === "saved" || s.status === "elsewhere" ? ICONS.check : s.status === "refused" ? "!" : s.status === "waiting" ? ICONS.clock : <span className="scan-spin" />}</span>
+        {shown ? card(shown) : <div className="scan-tray-card"><p className="scan-tray-msg" aria-live="polite"><b>Take a photo of the first page.</b><span>Fill the photo with the page, with all four corners in view.</span></p></div>}
+        {list.length > 1 && <ol className="scan-shots" aria-label="Photos taken">
+          {list.map((s) => <li key={s.key} className={`is-${faceOf(s)}${s === shown ? " is-current" : ""}`}>
+            <button type="button" aria-label={s.label} aria-pressed={s === shown} onClick={() => setShotAt(s.key)}>
+              {s.thumb ? <Image unoptimized width={80} height={106} src={s.thumb} alt="" /> : <span className="scan-ph-empty" />}
+              <span className="scan-shot-flag" aria-hidden="true">{flagOf(s)}</span>
+            </button>
           </li>)}
-        </ol>
-        <p className="small scan-cam-tip">Camera not opening? Use Photos to pick pictures you already took.</p>
-        <div className="scan-cam-row">
-          <button type="button" className="scan-cam-side" onClick={() => open("library")} aria-label="Choose from your photos">Photos</button>
-          <button type="button" className="scan-shutter" onClick={() => open("camera")} aria-label={list.length ? "Take the next page" : "Take a photo"}><span aria-hidden="true" /></button>
-          <button type="button" className="scan-cam-side is-done" onClick={done}>Done</button>
+        </ol>}
+        <div className="scan-cam-foot">
+          <button type="button" className="scan-tray-go" onClick={() => open("camera")} aria-label={list.length ? "Take the next page" : "Take a photo"}><span aria-hidden="true">◉</span> {list.length ? "Take next page" : "Take a photo"}</button>
+          <button type="button" className="scan-link" onClick={() => open("library")} aria-label="Choose from your photos">Choose from Photos</button>
         </div>
       </div>
       {notice}
@@ -914,7 +998,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
           ? <Link href={`/account/scan/results/${p.id}`}><span><b>{pageName(p)}</b><span className={p.marks?.complete && !p.marks.toPractise ? "is-good" : ""}>{pageScore(p.marks)}</span></span><span aria-hidden="true">›</span></Link>
           : <span className="scan-results-row"><b>{pageName(p)}</b><span>Sent for marking. Marking is not ready yet.</span></span>}
       </li>)}</ul>
-      {marking && <p className="small">Questions to practise come back in the next workbook. <a className="scan-link" href="#scan-history">See all progress</a></p>}
+      {marking && <p className="small">Questions to practise come back in the next workbook. <Link className="scan-link" href={allPagesPath(child)}>See all progress</Link></p>}
     </section>}
 
     {stack.addingTiles.length > 0 && group("new", "New photos", stack.addingTiles, undefined, addingCount(stack))}
@@ -923,6 +1007,8 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     {earlier.length > 0 && <details className="scan-earlier"><summary>Sent earlier ({earlier.length})</summary>
       {group("sent", "Sent earlier", earlier, <p className="scan-gap">{marking ? "Open a page to view its results." : "Marking is not ready yet. These pages wait here."}</p>)}
     </details>}
+
+    {marking && child && <p className="small scan-all"><Link className="scan-link" href={allPagesPath(child)}>See all pages</Link></p>}
 
     {listing && !noBook && (phone || (checks && plain.length > 0)) && <div className="scan-dock">
       {room ? <p className="small scan-room" role="status">{room}</p> : checks && !auto && note && <p className="small">{note}</p>}
@@ -933,7 +1019,6 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       </div>
       {phone && <button type="button" className="scan-link" onClick={() => setSheet({ kind: "add" })}>How to scan</button>}
     </div>}
-    {marking && <div id="scan-history"><ScanHistory key={`${parent}:${child}`} parent={parent} child={child} /></div>}
     {tileSheet}
     {notice}
     {tipsSheet}

@@ -46,7 +46,7 @@ export function ParentWorkbooks({ child, current, next, books, history }: Workbo
           {current.delivery.trackingUrl && <a className="btn ghost" href={current.delivery.trackingUrl} target="_blank" rel="noopener noreferrer">Track the package <span aria-hidden="true">↗</span></a>}
         </section>
       )}
-      {history && <div className="pw-card pw-section pw-history">{history}</div>}
+      {history && <div id="page-history" className="pw-card pw-section pw-history">{history}</div>}
       {books.length > 0 && (
         <section className="pw-card pw-section" aria-labelledby="pw-books">
           <h2 id="pw-books">Answer keys</h2>
