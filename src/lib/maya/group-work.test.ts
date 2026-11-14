@@ -1,0 +1,30 @@
+import { expect, it, vi } from "vitest";
+import { createTextSession } from "@/lib/maya-text";
+import { FIXTURES } from "@/lib/maya-gate/fixtures";
+import { scenarioModel } from "@/lib/maya-gate/gate";
+
+vi.mock("server-only", () => ({}));
+
+it.each([
+  ["two groups of four", 8, true],
+  ["two groups of four", 9, false],
+  ["two equal groups of four", 8, true],
+  ["two equal groups of four", 9, false],
+  ["one equal group of eight", 8, true],
+  ["one equal group of eight", 9, false],
+] as const)("checks own group work beside a final answer: %s is %s", async (work, result, accepted) => {
+  const model = scenarioModel();
+  let now = 1000;
+  const call = createTextSession({ callId: "own-group-work", package: FIXTURES.PT_LONG, model, clock: () => now, random: 1, freeTalk: false });
+  model.next([{ act: "open", lines: ["open.hello", "question.problem"] }], {});
+  await call.start();
+  now += 100;
+  model.next([{ act: "guide", step: "result", level: 0, lines: ["check.right_step", "step.invite"] }], { answers: [[80, "e1", "right"]], start: "has_work" });
+  await call.child("115 minus 35 is 80.");
+  now += 100;
+  model.next([{ act: "accept_answer", lines: ["answer.right"] }], { answers: [[10, "result", "right"]] });
+  await call.child(`You said to divide 80 by 8. I got 10 because ${work} is ${result}.`);
+  expect(call.session.solved).toBe(accepted ? "child" : null);
+  const turn = call.trace().turns.filter(t => t.kind === "maya").at(-1);
+  if (!accepted) expect(turn?.attempts[0].refusal?.code).toBe("answer_not_committed");
+});

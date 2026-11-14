@@ -3547,7 +3547,8 @@ function ownTurn(s: Session, target: WorkedStep | null, value: AnswerValue, opti
   }
   // Each sum: true (falseEquationResults), and a sum that makes a column's total adds that column's own operands.
   // Every sum is true: in a fraction call by falseEquationResults, else worked out here ("2 and 3 make 6" is false).
-  if (opts.fractions ? falseEquationResults(kept, opts).length > 0 : [...text.matchAll(EQUATION)].some((m) => !trueEquation(m))) return "false_sum";
+  const groupMath = (words: string) => words.replace(/\bone\s+(?=(?:equal\s+)?groups?\s+of\b)/g, "1 ").replace(/\b(?:equal\s+)?groups?\s+of\b/g, " times ");
+  if (opts.fractions ? falseEquationResults(groupMath(kept), opts).length > 0 : [...groupMath(text).matchAll(EQUATION)].some((m) => !trueEquation(m))) return "false_sum";
   // One number said to be another ("16 is 66.", "9 is 16."); a listed sum ("2, 3, 1 is 6") is a sum.
   // Read overlapping pairs too: an operand suffix ("1 is 6") must not hide a later false equality ("6 equals 5").
   for (const m of text.matchAll(/(?=\b(\d+)\s+(?:is|equals|makes?|=)\s+(\d+)(?!\d|[./]\d))/g)) {
