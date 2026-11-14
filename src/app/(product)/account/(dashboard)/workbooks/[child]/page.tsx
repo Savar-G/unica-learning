@@ -3,11 +3,8 @@ import { ParentWorkbooks } from "@/components/parent-workbooks";
 import { ScanHistory, ScanHistoryView } from "@/components/scan-history";
 import { pageMetadata } from "@/lib/metadata";
 import { parentDashboard } from "@/lib/parent-dashboard-server";
-import { readWorkbooks } from "@/lib/parent-view";
-import { parentViewReader } from "@/lib/parent-view-server";
 import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
-import { scanChildAccess } from "@/lib/scan-pages-access";
-import { markingAccess } from "@/lib/scan-marking-server";
+import { workbooksPage } from "@/lib/workbooks-page-server";
 
 export const metadata = pageMetadata({ path: "/account/workbooks", title: "Workbooks", description: "Your child's workbooks.", index: false });
 
@@ -15,12 +12,10 @@ export const metadata = pageMetadata({ path: "/account/workbooks", title: "Workb
 async function load(childId: string) {
   const session = await sessionClient(), parent = await parentId(session);
   if (!parent) redirect("/sign-in");
-  if (!(await parentDashboard())) notFound();
-  const admin = adminClient();
-  const view = await readWorkbooks(parentViewReader(session, parent, admin), childId, Date.now());
-  if (!view) notFound();
-  const historyAvailable = admin && await scanChildAccess(parent, childId, admin) && await markingAccess(admin, parent, process.env, { child: view.child.id });
-  return { view, parent, historyAvailable };
+  // The scan screen's "See all pages" link asks this same read (src/lib/workbooks-page-server.ts).
+  const page = await workbooksPage(session, parent, adminClient(), childId, { dashboard: Boolean(await parentDashboard()) });
+  if (!page) notFound();
+  return { ...page, parent };
 }
 
 export default async function Workbooks({ params }: PageProps<"/account/workbooks/[child]">) {
