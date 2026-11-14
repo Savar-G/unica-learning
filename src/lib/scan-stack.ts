@@ -176,7 +176,7 @@ const REFUSALS: Record<StackReason, { short: string; title: string; action: stri
   "page-mismatch": LINE_UP,
   "orientation-unclear": { short: "Turned", title: "We cannot tell which way up this page is.", action: "Hold the page upright. Then take another photo." },
   "ambiguous-page": { short: "More than one page", title: "We cannot tell which page this photo is of.", action: "Fold the book back or take the page out, so only one page shows and fills the photo." },
-  "corner-covered": LINE_UP,
+  "corner-covered": { short: "Corner covered", title: "Something covers a corner of the page.", action: "Move your hand and anything on the page out of the way, so the whole page shows. Then take another photo." },
   "qr-mismatch": { short: "Code not read", title: "We cannot read the small code in the bottom-left corner.", action: "Hold the phone steady and keep that corner in view, with no glare or shadow on the code. Then take another photo." },
   "another-page": { short: "Another page", title: "Part of this photo looks like a different page.", action: "Take a photo of this page on its own, flat, with nothing on top of it." },
   faint: { short: "Hard to read", title: "Part of the page is too bright, faint or covered to read.", action: "Use even light without the flash, and keep fingers and objects off the page. Then take another photo." },

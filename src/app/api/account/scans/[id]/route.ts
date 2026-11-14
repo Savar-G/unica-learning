@@ -47,7 +47,7 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/accou
       const identify = () => admin.rpc("identify_scan_photo", { p_parent: parent, p_id: id, p_token: page.token, p_width: page.width, p_height: page.height });
       let identified = await identify();
       // A new photo of a page whose photo needs another photo is its retake, however it was taken (F5).
-      if (!identified.error && identified.data === "duplicate" && await replaceRefusedPhoto(admin, parent, page.token)) identified = await identify();
+      if (!identified.error && identified.data === "duplicate" && await replaceRefusedPhoto(admin, parent, page.token, session.childOpen)) identified = await identify();
       if (identified.error) throw new Error("unavailable");
       if (identified.data === "identified") { mine = i; break; }
       refusal ??= identified.data;
@@ -96,12 +96,6 @@ const SPREAD_ADMIT_TRIES = 4, SPREAD_ADMIT_WAIT_MS = 1000;
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * The second page of a spread (#915), as its own photo: admitted, bound by its own code, stored and saved like any upload,
- * then checked. Any refusal leaves the first page as it is and is answered as the second page's state, with its page
- * number when known, so the parent is told which page needs its own photo; a page that already has a photo is left
- * alone. Never thrown.
- */
-/**
  * A page's photo that the check refused, not sent, goes when a new photo of that page arrives (F5): the parent may retake
  * it with the retake button, which deletes it first, or with a plain Scan pages, which before this was refused as "already
  * has a photo" and left the parent with no way forward. Only a photo whose stored check refused it, as the stack shows it
@@ -109,12 +103,15 @@ const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  * was never sent. A ready photo, a photo still being checked and a sent photo stay: a new photo of those is a duplicate.
  * True when it went, so the caller identifies the new photo again. Any failed read keeps the old photo.
  */
-async function replaceRefusedPhoto(admin: SupabaseClient<Database>, parent: string, token: string): Promise<boolean> {
+async function replaceRefusedPhoto(admin: SupabaseClient<Database>, parent: string, token: string, childOpen: (child: string) => Promise<boolean>): Promise<boolean> {
   try {
     const page = await admin.from("workbook_pages").select("id").eq("parent_id", parent).eq("qr_token", token).maybeSingle();
     if (page.error || !page.data) return false;
-    const held = await admin.from("scan_photos").select("id,printed_revision,sent_at").eq("parent_id", parent).eq("page_id", page.data.id).eq("state", "saved").maybeSingle();
+    const held = await admin.from("scan_photos").select("id,child_id,printed_revision,sent_at").eq("parent_id", parent).eq("page_id", page.data.id).eq("state", "saved").maybeSingle();
     if (held.error || !held.data || held.data.sent_at) return false;
+    // The new photo files with the same child: a child whose plan does not open scanning keeps the old photo, as the new
+    // one would be refused (#977 review). Asked before anything is deleted.
+    if (!await childOpen(held.data.child_id)) return false;
     const check = await admin.from("scan_calibrations").select("state,printed_revision").eq("parent_id", parent).eq("photo_id", held.data.id).maybeSingle();
     const c = check.data;
     if (check.error || !c || c.state === "running" || c.state === "ready" || c.printed_revision !== held.data.printed_revision) return false;
@@ -131,6 +128,12 @@ async function filedChildOpen(admin: SupabaseClient<Database>, parent: string, i
   return !filed.error && !!filed.data && childOpen(filed.data.child_id);
 }
 
+/**
+ * The second page of a spread (#915), as its own photo: admitted, bound by its own code, stored and saved like any upload,
+ * then checked. Any refusal leaves the first page as it is and is answered as the second page's state, with its page
+ * number when known, so the parent is told which page needs its own photo; a page that already has a photo is left
+ * alone. Never thrown.
+ */
 async function spreadPhoto(admin: SupabaseClient<Database>, parent: string, child: string, page: SpreadPage, received: number, childOpen: (child: string) => Promise<boolean>): Promise<{ id: string; state: string; page?: number }> {
   const id = randomUUID();
   const fail = async (state: string) => {
@@ -151,7 +154,7 @@ async function spreadPhoto(admin: SupabaseClient<Database>, parent: string, chil
     if (started.error || started.data !== "started") return fail(started.error ? "unavailable" : started.data);
     const identify = () => admin.rpc("identify_scan_photo", { p_parent: parent, p_id: id, p_token: page.token, p_width: page.width, p_height: page.height });
     let identified = await identify();
-    if (!identified.error && identified.data === "duplicate" && await replaceRefusedPhoto(admin, parent, page.token)) identified = await identify();
+    if (!identified.error && identified.data === "duplicate" && await replaceRefusedPhoto(admin, parent, page.token, childOpen)) identified = await identify();
     if (identified.error || identified.data !== "identified") return fail(identified.error ? "unavailable" : identified.data);
     if (!await filedChildOpen(admin, parent, id, childOpen)) return fail("page");
     const uploaded = await admin.storage.from(SCAN_BUCKET).upload(scanPath(parent, id), page.bytes, { contentType: "image/jpeg", upsert: false, cacheControl: "0" });

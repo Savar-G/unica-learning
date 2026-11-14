@@ -763,7 +763,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   // each page's code files it with its own child, so the tips and the camera screens have none.
   const childPicker = childrenList.length > 1 && !capturing && <label className="scan-child"><span>Showing:</span>
     <span className="scan-child-pick">
-      <select value={child} disabled={uploads.some((u) => u.status !== "refused") || sending || batch.length > 0} onChange={(e) => { uploadsRef.current.forEach(release); clearAll(); setMessage(null); setChild(e.target.value); }}>
+      <select value={child} disabled={uploads.some((u) => u.status !== "refused" || u.reason === "unavailable") || sending || batch.length > 0} onChange={(e) => { uploadsRef.current.forEach(release); clearAll(); setMessage(null); setChild(e.target.value); }}>
         {childrenList.map((c) => <option key={c.id} value={c.id}>{c.first_name}</option>)}
       </select>
       <span aria-hidden="true">▾</span>

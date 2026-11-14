@@ -155,7 +155,9 @@ it("tells the parent what went wrong and the one thing to do, for each photo ref
   expect(refusalCopy("qr").short).toBe("Code not read");
   // The code was read but the page could not be lined up: the check cannot tell a cut-off edge from glare or a page too
   // small in the photo, so it says what fixes both, and never "cut off".
-  for (const reason of ["marks-missing", "marks-inconsistent", "corner-covered", "page-mismatch"] as const) {
+  // A hidden corner whose answers do not show this page's own frame: something lies on the page, so it says so (#977 review).
+  expect(refusalCopy("corner-covered").title).toBe("Something covers a corner of the page.");
+  for (const reason of ["marks-missing", "marks-inconsistent", "page-mismatch"] as const) {
     const { title, action } = refusalCopy(reason);
     expect(title).toBe("We could not line up this photo with the page.");
     expect(action).toBe("Hold the phone closer so the page fills the photo, and tilt it away from the light.");
