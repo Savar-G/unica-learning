@@ -11,10 +11,20 @@ export const SIDE_VARIANTS = [
   { key: "C", name: "Maya will / won't" },
   { key: "D", name: "Parent promise + checklist" },
   { key: "E", name: "Parent moment + chips" },
+  { key: "F", name: "A's points: big numbers" },
+  { key: "G", name: "A's points: strip under video" },
+  { key: "H", name: "A's points: call timeline" },
 ];
 
-/** B spans the full width under the video instead of a side column. */
-export const WIDE_VARIANTS = new Set(["B"]);
+/** B and G span the full width under the video instead of a side column. */
+export const WIDE_VARIANTS = new Set(["B", "G"]);
+
+// The three points Cedric chose (variant A); F, G and H show them in other designs.
+const POINTS = [
+  { t: "Already has the question", d: "Your child picks it from their page, and Maya sees exactly what they see.", c: "#FFD23F" },
+  { t: "Talks it through, never tells", d: "Maya asks small questions and draws on a shared board. Your child does the thinking.", c: "#3366F0" },
+  { t: "Sends them back to the page", d: "The fix happens in the workbook, in pencil.", c: "#16A06A" },
+];
 
 export function SideVariant({ variant }: { variant: string }) {
   return (
@@ -25,26 +35,73 @@ export function SideVariant({ variant }: { variant: string }) {
       {variant === "C" && <VariantC />}
       {variant === "D" && <VariantD />}
       {variant === "E" && <VariantE />}
+      {variant === "F" && <VariantF />}
+      {variant === "G" && <VariantG />}
+      {variant === "H" && <VariantH />}
     </>
   );
 }
 
 // A: three verbs, each with one plain line. The "what she does" answer in the fewest words.
 function VariantA() {
-  const rows = [
-    { t: "Already has the question", d: "Your child picks it from their page, and Maya knows it, numbers and all." },
-    { t: "Talks it through, never tells", d: "Maya asks small questions and draws on a shared board. Your child does the thinking." },
-    { t: "Sends them back to the page", d: "The fix happens in the workbook, in pencil." },
-  ];
   return (
     <div className="pv-a">
       <p className="pv-kick">What Maya does</p>
-      {rows.map((r, i) => (
+      {POINTS.map((r) => (
         <div key={r.t} className="pv-a-row">
-          <span className="pv-a-dot" style={{ background: ["#FFD23F", "#3366F0", "#16A06A"][i] }} />
+          <span className="pv-a-dot" style={{ background: r.c }} />
           <div><p className="pv-a-t">{r.t}</p><p className="pv-a-d">{r.d}</p></div>
         </div>
       ))}
+    </div>
+  );
+}
+
+// F: the same points as big editorial numbers with rules between them.
+function VariantF() {
+  return (
+    <ol className="pv-f">
+      {POINTS.map((r, i) => (
+        <li key={r.t}>
+          <span className="pv-f-n">0{i + 1}</span>
+          <p className="pv-f-t">{r.t}</p>
+          <p className="pv-f-d">{r.d}</p>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+// G: the same points as three columns across the full width under the video, a logo colour bar on each.
+function VariantG() {
+  return (
+    <div className="pv-g">
+      {POINTS.map((r) => (
+        <div key={r.t} className="pv-g-col" style={{ borderTopColor: r.c }}>
+          <p className="pv-g-t">{r.t}</p>
+          <p className="pv-g-d">{r.d}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// H: the same points as the arc of one call, joined by a line, Maya's avatar at the top.
+function VariantH() {
+  const when = ["Your child calls", "During the call", "After the call"];
+  return (
+    <div className="pv-h">
+      <p className="pv-kick">How a call with Maya goes</p>
+      <ol>
+        {POINTS.map((r, i) => (
+          <li key={r.t}>
+            <span className="pv-h-dot" style={{ borderColor: r.c }} />
+            <p className="pv-h-when">{when[i]}</p>
+            <p className="pv-h-t">{r.t}</p>
+            <p className="pv-h-d">{r.d}</p>
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }
@@ -123,6 +180,27 @@ function VariantE() {
 }
 
 const CSS = `
+.pv-f { list-style: none; margin: 0; padding: 0; }
+.pv-f li { padding: 16px 0; border-top: 1px solid var(--line); }
+.pv-f li:last-child { border-bottom: 1px solid var(--line); }
+.pv-f-n { display: block; font-family: var(--serif, inherit); font-size: 40px; line-height: 1; color: var(--accent); }
+.pv-f-t { margin: 8px 0 0; font-size: 18px; font-weight: 500; color: var(--ink); }
+.pv-f-d { margin: 4px 0 0; font-size: 14.5px; line-height: 1.45; color: var(--ink-2); }
+
+.pv-g { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(16px, 2.5vw, 32px); margin-top: 8px; }
+.pv-g-col { border-top: 4px solid; padding-top: 16px; }
+.pv-g-t { margin: 0; font-size: 21px; font-weight: 500; line-height: 1.25; color: var(--ink); }
+.pv-g-d { margin: 8px 0 0; font-size: 15.5px; line-height: 1.5; color: var(--ink-2); }
+@media (max-width: 899px) { .pv-g { grid-template-columns: 1fr; } }
+
+.pv-h ol { list-style: none; margin: 10px 0 0; padding: 0; position: relative; }
+.pv-h ol::before { content: ""; position: absolute; left: 7px; top: 10px; bottom: 24px; width: 2px; background: var(--line); }
+.pv-h li { position: relative; padding: 0 0 22px 32px; }
+.pv-h-dot { position: absolute; left: 0; top: 3px; width: 16px; height: 16px; border-radius: 50%; border: 4px solid; background: #fff; box-sizing: border-box; }
+.pv-h-when { margin: 0; font: 500 11.5px/1.4 var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); }
+.pv-h-t { margin: 3px 0 0; font-size: 18px; font-weight: 500; color: var(--ink); }
+.pv-h-d { margin: 4px 0 0; font-size: 14.5px; line-height: 1.45; color: var(--ink-2); }
+
 .gd-body[data-proto-wide] { grid-template-columns: 1fr; }
 .pv-kick { margin: 0 0 6px; font: 500 12px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
 
