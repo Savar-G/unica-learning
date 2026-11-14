@@ -109,7 +109,7 @@ export async function runVoice(ctx: ChatContext, action: VoiceAction, deps: Voic
   };
   const reply = async (r: CallRecord | null, more: { ticket?: DeskVoiceReply["ticket"]; error?: string } = {}): Promise<DeskVoiceReply> => {
     const view = r && recordView(r);
-    return { call: view ? deskVoiceCall(view) : null, ...(more.ticket ? { ticket: more.ticket } : {}), usage: await usage(), ...(more.error ? { error: more.error } : {}) };
+    return { call: view ? deskVoiceCall(view, name) : null, ...(more.ticket ? { ticket: more.ticket } : {}), usage: await usage(), ...(more.error ? { error: more.error } : {}) };
   };
   /** A fresh ticket for this live call of this child, or the reason it cannot be given. */
   const ticket = async (r: CallRecord) => {

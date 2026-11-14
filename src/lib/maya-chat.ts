@@ -34,12 +34,21 @@ export function chatUsage(used: number, now: number, zone: FamilyZone): ChatUsag
 /** The only new Maya line. Its time comes from the family's clock on the server. */
 export const chatCapLine = () => "You used all your messages for today. We can chat again tomorrow.";
 
+/**
+ * The saved trace hides the child's name as {name}. The child's own screen gets it back: filled when the name is known,
+ * else the placeholder and its comma or space are left out. Plain text splitting, so no name can act as a pattern.
+ */
+export function showName(text: string, name: string | null | undefined): string {
+  const n = name?.trim();
+  return n ? text.split("{name}").join(n) : text.replace(/,? ?\{name\}/g, "").replace(/\s{2,}/g, " ").trim();
+}
+
 /** Children receive the conversation and board, never model diagnostics or saved teaching state. */
-export function childChatView(view: CallView): ChatView {
+export function childChatView(view: CallView, childName?: string | null): ChatView {
   return {
     id: view.id, revision: view.revision, ended: view.status === "ended",
     ...(view.question.source === "workbook" ? { question: view.question } : {}),
-    transcript: view.transcript.filter((t) => t.speaker !== "note"), batches: view.batches,
+    transcript: view.transcript.filter((t) => t.speaker !== "note").map((t) => ({ ...t, text: showName(t.text, childName) })), batches: view.batches,
     hint: Math.min(3, view.outcome?.highestHint ?? 0),
     safetyMessage: view.outcome?.safetyFlag ? SAFETY_GUIDANCE[view.outcome.safetySeverity ?? "concern"] : null,
   };
