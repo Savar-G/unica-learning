@@ -68,6 +68,8 @@ describe("a family the switch does not open to", () => {
     expect(out).not.toContain("pd-");
     expect(out).toContain("CAD 79.99 a month.");
     expect(out).toContain("Start Leah&#x27;s plan");
+    expect(out).toContain('aria-label="Family referrals"');
+    expect(out.indexOf("Have a referral code?")).toBeLessThan(out.indexOf("Start Leah&#x27;s plan"));
   });
 
   it("gets today's report from the email's plan link, with a saved card, byte for byte", async () => {

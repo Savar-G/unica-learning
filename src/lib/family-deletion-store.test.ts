@@ -3,6 +3,8 @@ import Stripe from "stripe";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
+const referralDeletion = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock("@/lib/referral-deletion", () => ({ preserveReferralBeforeDeletion: referralDeletion }));
 const { retentionCandidates, runFamilyDeletion } = await import("@/lib/family-deletion-store");
 
 const parent = "11111111-1111-4111-8111-111111111111";
@@ -166,6 +168,14 @@ describe("the copy without names before a deletion", () => {
     expect(f.calls.indexOf("save_family_test_copy")).toBeGreaterThan(f.calls.indexOf("decide_family_deletion"));
     expect(f.calls.findIndex((c) => c === "save_family_test_copy")).toBeLessThan(f.calls.findIndex((c) => c.includes("/storage/")));
     expect(f.calls.findIndex((c) => c.includes("/storage/"))).toBeLessThan(f.calls.findIndex((c) => c.includes("/auth/v1/admin/users/")));
+  });
+
+  it("keeps Auth and the deletion request when referral payment history is unreadable", async () => {
+    const f = family(false);
+    referralDeletion.mockRejectedValueOnce(new Error("Referral history unreadable"));
+    await expect(runFamilyDeletion(f.db, parent, f.db)).rejects.toThrow("Referral history unreadable");
+    expect(f.calls.some(c => c.includes("/auth/") || c === "complete_family_deletion")).toBe(false);
+    expect(f.calls.at(-1)).toBe("release_family_deletion");
   });
 
   it("deletes nothing and keeps the request when the copy's database functions are missing", async () => {

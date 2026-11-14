@@ -12,7 +12,7 @@ import { blogPath, BLOG_POSTS } from "@/lib/blog";
 const newest = (dates: string[]) => dates.reduce((a, b) => (b > a ? b : a), "");
 const PATHS: { path: string; updated?: string }[] = [
   { path: "/", updated: "2026-11-13" },
-  { path: "/pricing", updated: "2026-11-11" },
+  { path: "/pricing", updated: "2026-11-13" },
   { path: "/math-assessment", updated: "2026-11-05" },
   { path: "/our-story", updated: "2026-11-08" },
   { path: "/compare", updated: "2026-11-11" },
@@ -22,7 +22,7 @@ const PATHS: { path: string; updated?: string }[] = [
   { path: "/sample-report", updated: "2026-11-11" },
   { path: "/contact", updated: "2026-10-18" },
   { path: "/privacy", updated: "2026-11-13" },
-  { path: "/terms", updated: "2026-11-09" },
+  { path: "/terms", updated: "2026-11-13" },
   { path: "/resources", updated: newest(RESOURCES.map((r) => r.meta.updated)) },
   ...RESOURCES.map((r) => ({ path: resourcePath(r.meta.slug), updated: r.meta.updated })),
   { path: "/blog", updated: newest(BLOG_POSTS.map((p) => p.meta.updated)) },

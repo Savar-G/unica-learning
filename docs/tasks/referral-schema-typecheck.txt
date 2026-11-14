@@ -1,0 +1,55 @@
+src/app/(product)/admin/referrals/page.tsx(11,37): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(relation: "ad_visit_steps" | "ad_visits" | "admin_users" | "ai_usage_events" | "anonymous_test_links" | "anonymous_tests" | "answers" | "assessment_facts" | "assessments" | "booking_family_links" | ... 129 more ... | "workbooks"): PostgrestQueryBuilder<...>', gave the following error.
+    Argument of type '"referral_corrections"' is not assignable to parameter of type '"ad_visit_steps" | "ad_visits" | "admin_users" | "ai_usage_events" | "anonymous_test_links" | "anonymous_tests" | "answers" | "assessment_facts" | "assessments" | "booking_family_links" | ... 129 more ... | "workbooks"'.
+  Overload 2 of 2, '(relation: never): PostgrestQueryBuilder<{ PostgrestVersion: "14.18"; }, { Tables: DbTables; Views: {}; Functions: Functions; Enums: {}; CompositeTypes: {}; }, never, never, never>', gave the following error.
+    Argument of type '"referral_corrections"' is not assignable to parameter of type 'never'.
+src/app/(product)/admin/referrals/page.tsx(13,111): error TS2339: Property 'id' does not exist on type 'SelectQueryError<"column 'id' does not exist on 'ad_visit_steps'."> | SelectQueryError<"column 'id' does not exist on 'ad_visits'."> | ... 137 more ... | SelectQueryError<...>'.
+  Property 'id' does not exist on type 'SelectQueryError<"column 'id' does not exist on 'ad_visit_steps'.">'.
+src/app/(product)/admin/referrals/page.tsx(14,15): error TS2339: Property 'applied_at' does not exist on type 'SelectQueryError<"column 'id' does not exist on 'ad_visit_steps'."> | SelectQueryError<"column 'id' does not exist on 'ad_visits'."> | ... 137 more ... | SelectQueryError<...>'.
+  Property 'applied_at' does not exist on type 'SelectQueryError<"column 'id' does not exist on 'ad_visit_steps'.">'.
+src/app/(product)/admin/referrals/page.tsx(14,62): error TS2339: Property 'created_at' does not exist on type 'SelectQueryError<"column 'id' does not exist on 'ad_visit_steps'."> | SelectQueryError<"column 'id' does not exist on 'ad_visits'."> | ... 137 more ... | SelectQueryError<...>'.
+  Property 'created_at' does not exist on type 'SelectQueryError<"column 'id' does not exist on 'ad_visit_steps'.">'.
+src/app/(product)/admin/referrals/page.tsx(14,89): error TS2339: Property 'account_id' does not exist on type 'SelectQueryError<"column 'id' does not exist on 'ad_visit_steps'."> | SelectQueryError<"column 'id' does not exist on 'ad_visits'."> | ... 137 more ... | SelectQueryError<...>'.
+  Property 'account_id' does not exist on type 'SelectQueryError<"column 'id' does not exist on 'ad_visit_steps'.">'.
+src/app/(product)/admin/referrals/page.tsx(14,114): error TS2339: Property 'actor' does not exist on type 'SelectQueryError<"column 'id' does not exist on 'ad_visit_steps'."> | SelectQueryError<"column 'id' does not exist on 'ad_visits'."> | ... 137 more ... | SelectQueryError<...>'.
+  Property 'actor' does not exist on type 'SelectQueryError<"column 'id' does not exist on 'ad_visit_steps'.">'.
+src/app/(product)/admin/referrals/page.tsx(14,154): error TS2339: Property 'reason' does not exist on type 'SelectQueryError<"column 'id' does not exist on 'ad_visit_steps'."> | SelectQueryError<"column 'id' does not exist on 'ad_visits'."> | ... 137 more ... | SelectQueryError<...>'.
+  Property 'reason' does not exist on type 'SelectQueryError<"column 'id' does not exist on 'ad_visit_steps'.">'.
+src/lib/referral-store.ts(10,44): error TS2345: Argument of type '"referral_command"' is not assignable to parameter of type '"_admit_workbook_scan_receipt" | "_claim_workbook_scan_trigger" | "_lock_workbook_scan_book" | "_lock_workbook_scan_reminder_parent" | "_maya_family_window" | "_maya_minutes_used" | ... 326 more ... | "yield_workbook_run"'.
+src/lib/referral-store.ts(20,38): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(relation: "ad_visit_steps" | "ad_visits" | "admin_users" | "ai_usage_events" | "anonymous_test_links" | "anonymous_tests" | "answers" | "assessment_facts" | "assessments" | "booking_family_links" | ... 129 more ... | "workbooks"): PostgrestQueryBuilder<...>', gave the following error.
+    Argument of type '"referral_customers"' is not assignable to parameter of type '"ad_visit_steps" | "ad_visits" | "admin_users" | "ai_usage_events" | "anonymous_test_links" | "anonymous_tests" | "answers" | "assessment_facts" | "assessments" | "booking_family_links" | ... 129 more ... | "workbooks"'.
+  Overload 2 of 2, '(relation: never): PostgrestQueryBuilder<{ PostgrestVersion: "14.18"; }, { Tables: DbTables; Views: {}; Functions: Functions; Enums: {}; CompositeTypes: {}; }, never, never, never>', gave the following error.
+    Argument of type '"referral_customers"' is not assignable to parameter of type 'never'.
+src/lib/referral-store.ts(20,93): error TS2345: Argument of type '"customer"' is not assignable to parameter of type 'never'.
+src/lib/referral-store.ts(23,37): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(relation: "ad_visit_steps" | "ad_visits" | "admin_users" | "ai_usage_events" | "anonymous_test_links" | "anonymous_tests" | "answers" | "assessment_facts" | "assessments" | "booking_family_links" | ... 129 more ... | "workbooks"): PostgrestQueryBuilder<...>', gave the following error.
+    Argument of type '"referral_accounts"' is not assignable to parameter of type '"ad_visit_steps" | "ad_visits" | "admin_users" | "ai_usage_events" | "anonymous_test_links" | "anonymous_tests" | "answers" | "assessment_facts" | "assessments" | "booking_family_links" | ... 129 more ... | "workbooks"'.
+  Overload 2 of 2, '(relation: never): PostgrestQueryBuilder<{ PostgrestVersion: "14.18"; }, { Tables: DbTables; Views: {}; Functions: Functions; Enums: {}; CompositeTypes: {}; }, never, never, never>', gave the following error.
+    Argument of type '"referral_accounts"' is not assignable to parameter of type 'never'.
+src/lib/referral-store.ts(23,81): error TS2345: Argument of type '"id"' is not assignable to parameter of type 'never'.
+src/lib/referral-store.ts(23,100): error TS2339: Property 'account_id' does not exist on type 'SelectQueryError<"column 'account_id' does not exist on 'ad_visit_steps'."> | SelectQueryError<"column 'account_id' does not exist on 'ad_visits'."> | ... 137 more ... | SelectQueryError<...>'.
+  Property 'account_id' does not exist on type 'SelectQueryError<"column 'account_id' does not exist on 'ad_visit_steps'.">'.
+src/lib/referral-store.ts(25,28): error TS2339: Property 'parent_id' does not exist on type 'SelectQueryError<"column 'parent_id' does not exist on 'ad_visit_steps'."> | SelectQueryError<"column 'parent_id' does not exist on 'ad_visits'."> | ... 137 more ... | SelectQueryError<...>'.
+  Property 'parent_id' does not exist on type 'SelectQueryError<"column 'parent_id' does not exist on 'ad_visit_steps'.">'.
+src/lib/referral-store.ts(25,63): error TS2339: Property 'parent_id' does not exist on type 'SelectQueryError<"column 'parent_id' does not exist on 'ad_visit_steps'."> | SelectQueryError<"column 'parent_id' does not exist on 'ad_visits'."> | ... 137 more ... | SelectQueryError<...>'.
+  Property 'parent_id' does not exist on type 'SelectQueryError<"column 'parent_id' does not exist on 'ad_visit_steps'.">'.
+src/lib/referral-store.ts(25,95): error TS2339: Property 'child_id' does not exist on type 'SelectQueryError<"column 'account_id' does not exist on 'ad_visit_steps'."> | SelectQueryError<"column 'account_id' does not exist on 'ad_visits'."> | ... 137 more ... | SelectQueryError<...>'.
+  Property 'child_id' does not exist on type 'SelectQueryError<"column 'account_id' does not exist on 'ad_visit_steps'.">'.
+src/lib/referral-store.ts(33,70): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(relation: "ad_visit_steps" | "ad_visits" | "admin_users" | "ai_usage_events" | "anonymous_test_links" | "anonymous_tests" | "answers" | "assessment_facts" | "assessments" | "booking_family_links" | ... 129 more ... | "workbooks"): PostgrestQueryBuilder<...>', gave the following error.
+    Argument of type '"referral_accounts"' is not assignable to parameter of type '"ad_visit_steps" | "ad_visits" | "admin_users" | "ai_usage_events" | "anonymous_test_links" | "anonymous_tests" | "answers" | "assessment_facts" | "assessments" | "booking_family_links" | ... 129 more ... | "workbooks"'.
+  Overload 2 of 2, '(relation: never): PostgrestQueryBuilder<{ PostgrestVersion: "14.18"; }, { Tables: DbTables; Views: {}; Functions: Functions; Enums: {}; CompositeTypes: {}; }, never, never, never>', gave the following error.
+    Argument of type '"referral_accounts"' is not assignable to parameter of type 'never'.
+src/lib/referral-store.ts(33,107): error TS2345: Argument of type '"parent_id"' is not assignable to parameter of type 'never'.
+src/lib/referral-store.ts(35,47): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(relation: "ad_visit_steps" | "ad_visits" | "admin_users" | "ai_usage_events" | "anonymous_test_links" | "anonymous_tests" | "answers" | "assessment_facts" | "assessments" | "booking_family_links" | ... 129 more ... | "workbooks"): PostgrestQueryBuilder<...>', gave the following error.
+    Argument of type '"referral_customers"' is not assignable to parameter of type '"ad_visit_steps" | "ad_visits" | "admin_users" | "ai_usage_events" | "anonymous_test_links" | "anonymous_tests" | "answers" | "assessment_facts" | "assessments" | "booking_family_links" | ... 129 more ... | "workbooks"'.
+  Overload 2 of 2, '(relation: never): PostgrestQueryBuilder<{ PostgrestVersion: "14.18"; }, { Tables: DbTables; Views: {}; Functions: Functions; Enums: {}; CompositeTypes: {}; }, never, never, never>', gave the following error.
+    Argument of type '"referral_customers"' is not assignable to parameter of type 'never'.
+src/lib/referral-store.ts(35,91): error TS2345: Argument of type '"account_id"' is not assignable to parameter of type 'never'.
+src/lib/referral-store.ts(35,113): error TS2339: Property 'id' does not exist on type 'SelectQueryError<"column 'id' does not exist on 'ad_visit_steps'."> | SelectQueryError<"column 'id' does not exist on 'ad_visits'."> | ... 137 more ... | SelectQueryError<...>'.
+  Property 'id' does not exist on type 'SelectQueryError<"column 'id' does not exist on 'ad_visit_steps'.">'.
+src/lib/referral-store.ts(37,43): error TS2339: Property 'customer' does not exist on type 'SelectQueryError<"column 'customer' does not exist on 'ad_visit_steps'."> | SelectQueryError<"column 'customer' does not exist on 'ad_visits'."> | ... 137 more ... | SelectQueryError<...>'.
+  Property 'customer' does not exist on type 'SelectQueryError<"column 'customer' does not exist on 'ad_visit_steps'.">'.
+src/lib/referral-store.ts(43,44): error TS2345: Argument of type '"referral_next_read"' is not assignable to parameter of type '"_admit_workbook_scan_receipt" | "_claim_workbook_scan_trigger" | "_lock_workbook_scan_book" | "_lock_workbook_scan_reminder_parent" | "_maya_family_window" | "_maya_minutes_used" | ... 326 more ... | "yield_workbook_run"'.

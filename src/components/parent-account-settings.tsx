@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ReferralCard } from "@/components/referral-card";
 import type { ReactNode } from "react";
 import { AddChild, SignOut } from "@/components/account";
 import { FamilyDelete } from "@/components/family-delete";
@@ -22,6 +23,7 @@ export function ParentAccountSettings({ card, billing, details, hasCard, provinc
       {note}
       <CardNote card={card} />
       {billing}
+      <ReferralCard />
       <h2>Settings</h2>
       <ul className="pd-links">
         {hasCard && <li><Link href="/account/plan">Manage or cancel plan</Link></li>}

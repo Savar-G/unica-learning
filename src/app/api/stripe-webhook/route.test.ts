@@ -4,9 +4,10 @@ import { memoryBilling } from "@/lib/billing-memory";
 import { readChildPlan } from "@/lib/plan-state";
 import { memoryPlanStates } from "@/lib/plan-state-memory";
 
-const f = vi.hoisted(() => ({ seams: vi.fn(), cards: vi.fn() }));
+const f = vi.hoisted(() => ({ seams: vi.fn(), cards: vi.fn(), referrals: vi.fn() }));
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/plan-state-server", () => ({ livePlanStates: f.seams }));
+vi.mock("@/lib/referral-server", () => ({ REFERRAL_EVENTS: new Set(["invoice.created","invoice.paid"]), handleReferralEvent: f.referrals }));
 vi.mock("@/lib/card-sweep-server", () => ({ liveCardChecks: f.cards }));
 import { POST } from "./route";
 
@@ -188,4 +189,18 @@ describe("the card comparison", () => {
     expect((await POST(signed(payload()))).status).toBe(500);
     expect(b.subscriptions[0].defaultCard).toBe("pm_new");
   });
+});
+
+
+it("verifies the signature before referral work and retries a referral failure while preserving plan work", async () => {
+  expect((await POST(signed(payload({ type: "invoice.paid" }), "wrong"))).status).toBe(400);
+  expect(f.referrals).not.toHaveBeenCalled();
+  f.referrals.mockRejectedValue(new Error("Referral store unavailable"));
+  expect((await POST(signed(payload({ type: "invoice.paid" })))).status).toBe(500);
+  expect(states.rows).toHaveLength(1);
+});
+it("retries a draft-invoice referral failure without requiring a plan event", async () => {
+  f.referrals.mockRejectedValue(new Error("Referral provider unavailable"));
+  expect((await POST(signed(payload({ type: "invoice.created" })))).status).toBe(500);
+  expect(f.seams).not.toHaveBeenCalled();
 });

@@ -19,9 +19,9 @@ const money = (monthly: number | null) => (monthly === null ? "the monthly price
 export function PlanText({ plan, zone, cardUpdate, reasonInNote = false }: { plan: ParentPlan; zone: FamilyZone; cardUpdate?: "here" | "link"; reasonInNote?: boolean }) {
   switch (plan.kind) {
     case "not_started": return <p>Your card is saved, and nothing has been charged. {w.arrival} To stop before then, email <Email />.</p>;
-    case "free_month": return <p>Free first month. On {planDay(plan.firstCharge, zone)}, we charge {money(plan.monthly)}, then {money(plan.monthly)} each month until you cancel.</p>;
+    case "free_month": return <p>Free first month. On {planDay(plan.firstCharge, zone)}, we charge up to {money(plan.monthly)}. Your regular price is {money(plan.monthly)} a month until you cancel. An eligible referral benefit gives 50% off one paid month.</p>;
     case "paying": return <p>{money(plan.monthly)} a month.{plan.firstCharge ? ` ${w.firstCharge(planDay(plan.firstCharge, zone) ?? "")}` : ""}{plan.nextCharge ? ` Next charge: ${planDay(plan.nextCharge, zone)}.` : ""}</p>;
-    case "paused": return <p>Paused.{plan.resumesOn ? ` We will try to resume your plan and charge ${money(plan.monthly)} on ${planDay(plan.resumesOn, zone)}.` : " No resume date is confirmed."}</p>;
+    case "paused": return <p>Paused.{plan.resumesOn ? ` We will try to resume your plan and charge up to ${money(plan.monthly)} on ${planDay(plan.resumesOn, zone)}. An eligible referral benefit gives 50% off one paid month.` : " No resume date is confirmed."}</p>;
     case "payment_failed": return <p>{reasonInNote ? "" : "Your last payment did not go through. "}{cardUpdate === "here" ? "Please update your card." : cardUpdate === "link" ? <>Please <Link href={ACCOUNT_PATH}>update your card</Link>.</> : <>To update your card, email <Email />.</>}</p>;
     case "ending": return <p>Cancelled. {plan.endsOn ? `The plan ends on ${planDay(plan.endsOn, zone)}. ` : ""}We will not charge your card{plan.free ? "" : " again"}.</p>;
     case "ended": return <p>This plan has ended. We will not charge your card.</p>;

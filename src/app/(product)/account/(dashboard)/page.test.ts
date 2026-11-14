@@ -215,6 +215,7 @@ it("gives a family the switch does not open to today's Parent home, byte for byt
     vi.useRealTimers();
   }
   await expect(out).toMatchFileSnapshot("./parent-home.golden.html");
+  expect(out).toContain('href="/account/referrals">Family referrals</a>');
   expect(out).not.toContain("pd-");
   // #560: the Overview is never read or shown for this family.
   expect(overview.reads).toBe(0);

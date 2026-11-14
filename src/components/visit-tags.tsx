@@ -7,6 +7,8 @@
 import { isParentPreviewPath } from "@/lib/parent-preview-path";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
+import { browserReferralStorage, captureReferral } from "@/lib/referral-draft";
+import { REFERRAL_PATH } from "@/lib/referral-contract";
 import { getAdTags } from "@/lib/ad-tags";
 import { markAdStep } from "@/lib/ad-visit-steps";
 import { trackHit, type SiteHitPost } from "@/lib/site-hits";
@@ -36,8 +38,11 @@ export function VisitTags() {
     let store: Storage | null = null;
     try { store = window.sessionStorage; } catch { /* storage off */ }
     if (store) keepVisit({ search: window.location.search, store, newId, send });
+    if (pathname === "/start" || pathname === REFERRAL_PATH) captureReferral(window.location.search, browserReferralStorage());
     // The ad test's first step (src/lib/ad-visit-steps.ts): sent only from a tab with an ad visit ID, once per tab.
-    if (pathname === "/start") markAdStep("start_open");
+    if (pathname === "/start") {
+      markAdStep("start_open");
+    }
     getAdTags()?.page();
   }, [pathname]);
 

@@ -10,6 +10,7 @@ import { sendPlanStartAlert } from "@/lib/card-plan-alert";
 import { memoryTransport } from "@/lib/email-delivery-memory";
 
 vi.mock("server-only", () => ({}));
+vi.mock("@/lib/referral-deletion", () => ({ preserveReferralBeforeDeletion: async () => {} }));
 
 const PARENT = "11111111-1111-4111-8111-111111111111";
 const CARD = "22222222-2222-4222-8222-222222222222";

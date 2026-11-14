@@ -27,7 +27,7 @@ it('states the late cutoff without assigning dates to the later workbook',async(
 it('reviews immediate paid Restart and never adds a free month or delay',async()=>{
  f.fetch.mockResolvedValueOnce(Response.json({ok:true,state:'preview',price:49,token:'b'.repeat(64)})).mockResolvedValueOnce(Response.json({ok:true,state:'started',price:49}));
  await act(async()=>root.render(createElement(PlanControl,{cardId:'card',name:'Leah',mode:'restart'})));await click('Restart plan');await click('Review price');
- expect(container.textContent).toContain('We charge CAD 49.00 immediately');expect(container.textContent).toContain('There is no second free month.');
+ expect(container.textContent).toContain('We charge no more than CAD 49.00 immediately');expect(container.textContent).toContain('If a referral reward applies, this charge is CAD 24.50.');expect(container.textContent).toContain('Your regular price is CAD 49.00 a month');expect(container.textContent).toContain('There is no second free month.');
  await click('Confirm restart');expect(f.refresh).toHaveBeenCalledTimes(1);expect(container.textContent).toContain('We will prepare');
 });
 it('keeps cancellation visibly unresolved for a pending command',async()=>{
