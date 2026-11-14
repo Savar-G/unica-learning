@@ -21,15 +21,15 @@ async function previewOf(id: string): Promise<{ store: ScanCropStore; parent: st
 }
 
 /**
- * The photo check (#855): when the page is ready, claim the check (test families and admins only, and only with the
- * decision key set) so this answer already says "pending", and run it after the answer is sent. It never delays or fails
+ * The photo check (#855, #856): when the page is ready, claim the check (every family `scanChecksAccess` allows for this
+ * photo, and only with the decision key set) so this answer already says "pending", and run it after the answer is sent. It never delays or fails
  * the preview: any error here leaves the check as it is.
  */
 async function startPhotoCheck(admin: SupabaseClient<Database>, parent: string, photo: string) {
   try {
     const client = photoCheckClient(process.env, { feature: "photo_check", parentId: parent, source: { kind: "scan_photo", id: photo } });
     if (!client) return;
-    const store = photoCheckStore(admin), token = randomUUID();
+    const store = photoCheckStore(admin, { photo }), token = randomUUID();
     if (!await claimPhotoCheck(store, { parent, photo }, { client, token })) return;
     after(() => runPhotoCheck(store, { parent, photo }, { client, token }).then(() => undefined, () => undefined));
   } catch { /* the check is optional: the preview stands */ }

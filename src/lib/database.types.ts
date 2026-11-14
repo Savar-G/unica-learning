@@ -9051,15 +9051,26 @@ export type Database = {
         }
         Returns: Json
       }
-      claim_photo_check: {
-        Args: {
-          p_id: string
-          p_parent: string
-          p_stale_seconds: number
-          p_token: string
-        }
-        Returns: boolean
-      }
+      claim_photo_check:
+        | {
+            Args: {
+              p_id: string
+              p_parent: string
+              p_stale_seconds: number
+              p_token: string
+            }
+            Returns: boolean
+          }
+        | {
+            Args: {
+              p_family: boolean
+              p_id: string
+              p_parent: string
+              p_stale_seconds: number
+              p_token: string
+            }
+            Returns: boolean
+          }
       claim_pin_attempt: {
         Args: {
           p_lock_seconds: number
@@ -9483,15 +9494,26 @@ export type Database = {
         }
         Returns: boolean
       }
-      finish_photo_check: {
-        Args: {
-          p_id: string
-          p_parent: string
-          p_result: Json
-          p_token: string
-        }
-        Returns: boolean
-      }
+      finish_photo_check:
+        | {
+            Args: {
+              p_id: string
+              p_parent: string
+              p_result: Json
+              p_token: string
+            }
+            Returns: boolean
+          }
+        | {
+            Args: {
+              p_family: boolean
+              p_id: string
+              p_parent: string
+              p_result: Json
+              p_token: string
+            }
+            Returns: boolean
+          }
       finish_plan_control: {
         Args: { p_id: string; p_state: string }
         Returns: undefined
