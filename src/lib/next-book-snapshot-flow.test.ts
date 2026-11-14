@@ -178,6 +178,21 @@ describe("prepareNextBook", () => {
     expect(routed).toEqual([done.runId, done.runId]);
   });
 
+  // Falsifier (review): a route failure after admit_next_book_run committed turns the admitted run into a thrown error.
+  it("answers queued when routing fails after the admission, and routes again on the next prepare", async () => {
+    const w = world(), routed: string[] = [];
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    let fail = true;
+    const deps = { ...w.deps(), route: async (runId: string) => { if (fail) throw Error("route down"); routed.push(runId); } };
+    const done = queued(await prepareNextBook(w.claim(), deps, T0 + MIN));
+    expect(w.m.state.runs).toHaveLength(1);
+    expect(error).toHaveBeenCalled();
+    fail = false;
+    expect(queued(await prepareNextBook({ kind: "snapshot", snapshotId: w.rows()[0].id }, deps, T0 + 2 * MIN)).runId).toBe(done.runId);
+    expect(routed).toEqual([done.runId]);
+    error.mockRestore();
+  });
+
   it("freezes at the 30-minute deadline with a job still blocked, and labels the wait", async () => {
     const w = world(), trigger = w.claim();
     w.m.state.jobs.set("photo-2", "waiting");
@@ -436,7 +451,7 @@ describe("D-308 new marks on the draft page", () => {
     const done = queued(await prepareNextBook(w.claim(), w.deps(), T0 + MIN));
     w.m.finishRun(done.runId, "draft-2");
     expect(await draftNewMarks(w.m.store, "draft-2")).toEqual({ kind: "new", snapshotId: w.rows()[0].id, revision: 1, days: [8, 9, 10], pages: 3, items: 3,
-      line: "New marks since this draft: Days 8-10 (3 pages)" });
+      line: "New marks since this draft: Days 8-10 (3 pages)", updated: null, unfinished: null, canUpdate: true });
     expect(await draftNewMarks(w.m.store, "draft-other")).toEqual({ kind: "none" });
   });
 
@@ -457,7 +472,6 @@ describe("D-308 new marks on the draft page", () => {
       .toEqual({ ok: true, line: "Plan updated with the new marks (plan version 2). The pages are not drawn again yet." });
     expect(w.rows().find(r => r.revision === 2)!.plan).not.toBeNull();
     expect(w.m.state.runs).toHaveLength(1);
-    expect(await draftNewMarks(w.m.store, "draft-2")).toEqual({ kind: "current", snapshotId: w.rows().find(r => r.revision === 2)!.id, revision: 2 });
     expect(await updateDraftWithNewMarks("draft-2", ADMIN, w.deps(), w.clock.now)).toEqual({ ok: false, error: "refused", line: "No new marks since this draft." });
     w.f.parentChange(0, "wrong", "2026-11-10T13:00:00.000Z");
     w.syncMarks();
@@ -465,6 +479,41 @@ describe("D-308 new marks on the draft page", () => {
     expect(await updateDraftWithNewMarks("draft-2", ADMIN, w.deps(), w.clock.now)).toEqual({ ok: false, error: "refused", line: "This draft is already approved for print." });
     expect(w.rows()).toHaveLength(2);
     expect(await updateDraftWithNewMarks("draft-other", ADMIN, w.deps(), w.clock.now)).toEqual({ ok: false, error: "not-found", line: "Not found." });
+  });
+
+  // Falsifier (review 1): after "Update with new marks", which draws nothing again, the draft reads as current and approval
+  // approves the old pages without asking.
+  it("still reports the marks the draft's pages were not drawn from after an update", async () => {
+    const w = world();
+    const done = queued(await prepareNextBook(w.claim(), w.deps(), T0 + MIN));
+    w.m.finishRun(done.runId, "draft-2");
+    w.clock.now = T0 + 3 * 24 * 60 * MIN;
+    await updateDraftWithNewMarks("draft-2", ADMIN, w.deps(), w.clock.now);
+    expect(await draftNewMarks(w.m.store, "draft-2")).toEqual({ kind: "new", snapshotId: w.rows()[0].id, revision: 1, days: [8, 9, 10], pages: 3, items: 3,
+      line: "New marks since this draft: Days 8-10 (3 pages)", updated: 2, unfinished: null, canUpdate: false });
+    const deps = { store: w.m.store, runDraft: async () => ({ draftId: "draft-2", snapshotId: w.rows()[0].id }),
+      approve: async () => ({ status: "approved" as const, workbookId: "draft-2" }), note: async () => {} };
+    expect(await approveCheckingNewMarks({ runId: done.runId, revision: 1, actor: ADMIN, despiteNewMarks: false }, deps))
+      .toEqual({ status: "ask-update", line: "New marks since this draft: Days 8-10 (3 pages)" });
+    // More marks after the update can be added again.
+    w.f.parentChange(0, "wrong", "2026-11-10T13:00:00.000Z");
+    w.syncMarks();
+    expect(await draftNewMarks(w.m.store, "draft-2")).toMatchObject({ kind: "new", updated: 2, canUpdate: true });
+  });
+
+  // Falsifier (review 2): a revision written but not planned hides the update, or reads as "Plan updated".
+  it("shows an update that was written but not planned, and finishes it on the next press", async () => {
+    const w = world();
+    const done = queued(await prepareNextBook(w.claim(), w.deps(), T0 + MIN));
+    w.m.finishRun(done.runId, "draft-2");
+    w.clock.now = T0 + 3 * 24 * 60 * MIN;
+    const broken: NextBookPlanner = { plan: async () => ({ ok: false, reason: "down" }) as never };
+    expect(await updateDraftWithNewMarks("draft-2", ADMIN, w.deps(broken), w.clock.now)).toEqual({ ok: false, error: "unfinished",
+      line: "The new marks were saved, but the plan was not updated. Press Update with new marks again." });
+    expect(await draftNewMarks(w.m.store, "draft-2")).toMatchObject({ kind: "new", updated: null, unfinished: 2, canUpdate: true });
+    expect(await updateDraftWithNewMarks("draft-2", ADMIN, w.deps(), w.clock.now))
+      .toEqual({ ok: true, line: "Plan updated with the new marks (plan version 2). The pages are not drawn again yet." });
+    expect(await draftNewMarks(w.m.store, "draft-2")).toMatchObject({ kind: "new", updated: 2, unfinished: null });
   });
 
   // Falsifier: "Approve for print" approves a draft with unused marks without asking, approves anyway with no audit note,
@@ -477,7 +526,10 @@ describe("D-308 new marks on the draft page", () => {
     let approvals = 0;
     const deps = (note: (n: ApprovalNote) => Promise<void> = async n => { notes.push(n); }) => ({
       store: w.m.store,
-      draftOf: async (runId: string) => w.m.state.runs.find(r => r.id === runId)?.draftId ?? null,
+      runDraft: async (runId: string) => {
+        const run = w.m.state.runs.find(r => r.id === runId);
+        return run?.draftId ? { draftId: run.draftId, snapshotId: run.snapshotId } : null;
+      },
       approve: async () => { approvals++; w.m.approve("draft-2"); return { status: "approved" as const, workbookId: "draft-2" }; },
       note,
     });
@@ -492,17 +544,32 @@ describe("D-308 new marks on the draft page", () => {
     expect(notes).toEqual([{ draftId: "draft-2", actor: ADMIN, detail: { revision: 3, snapshotId: w.rows()[0].id, snapshotRevision: 1, newMarkDays: [8, 9, 10], newMarkPages: 3, newMarkItems: 3 } }]);
   });
 
-  it("approves without asking when the draft used every mark, or is not a next book", async () => {
+  // Falsifier (review 3): a next-book check that cannot be read approves silently; a draft that is not a next book is asked.
+  it("holds a next-book approval when the check cannot be read, unless approved anyway with a note", async () => {
     const w = world();
     const done = queued(await prepareNextBook(w.claim(), w.deps(), T0 + MIN));
     w.m.finishRun(done.runId, "draft-2");
-    await updateDraftWithNewMarks("draft-2", ADMIN, w.deps(), w.clock.now + 60 * MIN);
     const notes: ApprovalNote[] = [];
-    const deps = (draft: string | null) => ({ store: w.m.store, draftOf: async () => draft,
-      approve: async () => ({ status: "approved" as const, workbookId: "w" }), note: async (n: ApprovalNote) => { notes.push(n); } });
-    const o = { runId: done.runId, revision: 1, actor: ADMIN, despiteNewMarks: false };
-    expect(await approveCheckingNewMarks(o, deps("draft-2"))).toEqual({ status: "approved", workbookId: "w" });
-    expect(await approveCheckingNewMarks(o, deps("draft-other"))).toEqual({ status: "approved", workbookId: "w" });
+    let approvals = 0;
+    const failing = { ...w.m.store, evidence: async () => { throw Error("database down"); }, drawnForDraft: async () => { throw Error("database down"); } };
+    const deps = (snapshotId: string | null) => ({ store: failing, runDraft: async () => ({ draftId: "draft-2", snapshotId }),
+      approve: async () => { approvals++; return { status: "approved" as const, workbookId: "w" }; }, note: async (n: ApprovalNote) => { notes.push(n); } });
+    const o = { runId: done.runId, revision: 4, actor: ADMIN };
+    expect(await approveCheckingNewMarks({ ...o, despiteNewMarks: false }, deps(w.rows()[0].id)))
+      .toEqual({ status: "check-unavailable", line: "The new marks could not be checked" });
+    expect(approvals).toBe(0);
+    expect(await approveCheckingNewMarks({ ...o, despiteNewMarks: true }, deps(w.rows()[0].id))).toEqual({ status: "approved", workbookId: "w", noted: true });
+    expect(notes).toEqual([{ draftId: "draft-2", actor: ADMIN, detail: { revision: 4, checkUnavailable: true } }]);
+    expect(await approveCheckingNewMarks({ ...o, despiteNewMarks: false }, deps(null))).toEqual({ status: "approved", workbookId: "w" });
+    expect(notes).toHaveLength(1);
+  });
+
+  it("approves without asking a draft that is not a next book", async () => {
+    const w = world();
+    const notes: ApprovalNote[] = [];
+    const deps = { store: w.m.store, runDraft: async () => ({ draftId: "draft-other", snapshotId: null }),
+      approve: async () => ({ status: "approved" as const, workbookId: "w" }), note: async (n: ApprovalNote) => { notes.push(n); } };
+    expect(await approveCheckingNewMarks({ runId: "run", revision: 1, actor: ADMIN, despiteNewMarks: false }, deps)).toEqual({ status: "approved", workbookId: "w" });
     expect(notes).toEqual([]);
   });
 });

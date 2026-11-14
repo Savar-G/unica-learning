@@ -24,8 +24,8 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/workb
     if (!server) return Response.json({ ok: false, line: "The planner is not ready yet." });
     const answer = await server.update(run.data.draft_id, { id: admin.userId, email: admin.email || null });
     if (!answer.ok && answer.error === "not-found") return new Response("Not found", { status: 404 });
-    if (!answer.ok && answer.error === "unavailable") console.error("[next book] update with new marks failed", id);
-    const status = answer.ok || answer.error === "planner-not-ready" ? 200 : answer.error === "unavailable" ? 503 : 409;
+    if (!answer.ok && (answer.error === "unavailable" || answer.error === "unfinished")) console.error("[next book] update with new marks failed", id, answer.error);
+    const status = answer.ok || answer.error === "planner-not-ready" ? 200 : answer.error === "unavailable" || answer.error === "unfinished" ? 503 : 409;
     return Response.json({ ok: answer.ok, line: answer.line }, { status });
   } catch (e) {
     console.error("[next book] update with new marks failed", id, e instanceof Error ? e.message : String(e));

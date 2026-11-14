@@ -10,6 +10,8 @@ const h = vi.hoisted(() => ({
   approvals: 0,
   /** D-308: the run's draft has marks its plan did not use. */
   newMarks: false,
+  /** D-308: the run is a next book, and its check cannot be read. */
+  checkDown: false,
 }));
 
 vi.mock("next/server", () => ({
@@ -21,23 +23,23 @@ vi.mock("@/lib/supabase-auth", () => ({
   // The approval's client (no signal), and the capture's own time-limited client (a signal).
   adminClient: (signal?: AbortSignal) => (signal ? h.captureDb : {
     approval: true,
-    // Only the D-308 check's read of the run's draft and the approval note; every other read fails, as before.
+    // Only the D-308 check's read of the run's draft; every other read fails, as before.
     from: (t: string) => {
       if (t !== "workbook_runs") throw new Error("no such table here");
       return { select: (columns: string) => {
-        if (columns !== "draft_id") throw new Error("no such read here");
-        return ({ eq: () => ({ maybeSingle: async () => ({ data: { draft_id: "draft-2" }, error: null }) }) });
+        if (columns !== "draft_id, snapshot_id") throw new Error("no such read here");
+        return ({ eq: () => ({ maybeSingle: async () => ({ data: { draft_id: "draft-2", snapshot_id: h.newMarks || h.checkDown ? "snap-1" : null }, error: null }) }) });
       } };
-    },
-    rpc: async (fn: string) => {
-      if (fn !== "note_workbook_approved_with_new_marks") throw new Error("no such function here");
-      return { data: { status: "noted" }, error: null };
     },
   }),
 }));
 // D-308: the snapshot chain that made the draft. Its frozen ledger is empty, so one marked item now is a new mark.
 vi.mock("@/lib/next-book-snapshot-store", () => ({ nextBookSnapshotStore: () => ({
   latestForDraft: async () => h.newMarks ? { id: "snap-1", revision: 1, frozen: { ledger: [], held: [] } } : null,
+  drawnForDraft: async () => {
+    if (h.checkDown) throw new Error("database down");
+    return h.newMarks ? { id: "snap-1", revision: 1, frozen: { ledger: [], held: [] } } : null;
+  },
   read: async () => ({ id: "snap-1", revision: 1, frozen: { ledger: [], held: [] } }),
   evidence: async () => [{ key: "k1", version: 1, day: 8, pageId: "p8" }],
 }) }));
@@ -60,7 +62,7 @@ const hanging = (() => {
   return { from: () => never, rpc: () => never };
 })();
 
-beforeEach(() => { h.later = []; h.captureDb = null; h.approvals = 0; h.newMarks = false; });
+beforeEach(() => { h.later = []; h.captureDb = null; h.approvals = 0; h.newMarks = false; h.checkDown = false; });
 
 it("answers ok when the capture's client is missing: the capture uses the approval's client", async () => {
   // Wrong if: a missing time-limited client fails the answer or skips the approval.
@@ -100,4 +102,19 @@ it("asks \"Update first?\" when the next-book draft has new marks, and approves 
   const anyway = await approve({ despiteNewMarks: true });
   expect(await anyway.json()).toEqual({ ok: true, workbookId: "00000000-0000-4000-8000-000000000077" });
   expect(h.approvals).toBe(1);
+});
+
+it("holds a next-book approval when the check cannot be read, and approves anyway on request", async () => {
+  // Wrong if: a check that cannot be read approves silently (review 3), or "Approve anyway" is refused.
+  h.checkDown = true;
+  const error = vi.spyOn(console, "error").mockImplementation(() => {});
+  const asked = await approve();
+  expect(asked.status).toBe(409);
+  expect(await asked.json()).toEqual({ ok: false, askUpdate: "The new marks could not be checked", checkUnavailable: true });
+  expect(h.approvals).toBe(0);
+  const anyway = await approve({ despiteNewMarks: true });
+  expect(await anyway.json()).toEqual({ ok: true, workbookId: "00000000-0000-4000-8000-000000000077" });
+  expect(h.approvals).toBe(1);
+  expect(error.mock.calls.map(c => String(c[0])).join(" ")).toContain("audit note needs migration 20261113233859_workbook_approved_with_new_marks");
+  error.mockRestore();
 });

@@ -2,7 +2,10 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import type { ScheduleStore } from "@/lib/parent-schedule";
-import { scanMarkingReader } from "@/lib/scan-marking-reader";
+import { mark } from "@/lib/scan-marking-reader";
+import type { EffectiveMark } from "@/lib/scan-marking";
+
+const MARK_PAGE = 500;
 
 const checked = <T>(r: { data: T; error: { message: string } | null }): T => {
   if (r.error) throw new Error("Schedule read failed");
@@ -83,10 +86,20 @@ export function parentScheduleStore(session: SupabaseClient<Database>, service: 
       }
       return result;
     },
-    async marks(parent, child) {
+    async marks(parent, child, book, revision) {
       scope(parent);
-      // The same validated, parent-scoped projection as page results. Only the status leaves readSchedule.
-      return scanMarkingReader(service).effective(parent, child);
+      // The rows of the effective marking projection (scan_marking_command 'effective' returns these rows whole), only for
+      // this book and print, validated by the same parser as page results. Only the status leaves readSchedule.
+      const result: EffectiveMark[] = [];
+      for (let after = ""; ;) {
+        let q = service.from("scan_marking_items").select("id,expected,observation,original_event,event_id,evidence_at,model,prompt")
+          .eq("parent_id", parent).eq("child_id", child).eq("workbook_id", book).eq("printed_revision", revision);
+        if (after) q = q.gt("id", after);
+        const rows = checked(await q.order("id").limit(MARK_PAGE)) ?? [];
+        result.push(...rows.map(r => mark(r)));
+        if (rows.length < MARK_PAGE) return result;
+        after = rows[rows.length - 1].id;
+      }
     },
   };
 }

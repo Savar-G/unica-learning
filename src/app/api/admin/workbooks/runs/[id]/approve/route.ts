@@ -14,7 +14,8 @@ import { approvalCheckDeps } from "@/lib/next-book-refresh-server";
 // repairs a capture that failed.
 // D-308: a next-book draft whose plan did not use every mark is not approved unless the body says { despiteNewMarks:
 // true } ("Approve anyway"); the answer is { ok: false, askUpdate: "New marks since this draft: ..." } (409), and the
-// page asks "Update first?". An approval anyway is noted in the workbook audit ("approved-with-new-marks").
+// page asks "Update first?". A next-book draft whose check cannot be read answers the same with checkUnavailable: true
+// (fails closed). An approval anyway is noted in the workbook audit ("approved-with-new-marks").
 export async function POST(request: Request, ctx: RouteContext<"/api/admin/workbooks/runs/[id]/approve">) {
   const admin = await adminSession();
   if (!admin) return new Response("Not found", { status: 404 });
@@ -31,6 +32,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/admin/workb
     const result = await approveCheckingNewMarks({ ...o, despiteNewMarks: body?.despiteNewMarks === true }, approvalCheckDeps(db, o));
     if (result.status === "not-found") return new Response("Not found", { status: 404 });
     if (result.status === "ask-update") return Response.json({ ok: false, askUpdate: result.line }, { status: 409 });
+    if (result.status === "check-unavailable") return Response.json({ ok: false, askUpdate: result.line, checkUnavailable: true }, { status: 409 });
     if (result.status === "refused") return Response.json({ ok: false, reasons: result.reasons }, { status: 409 });
     if (result.noted === false) console.error("[workbook ship] approved with new marks, audit note not written", id);
     // Its own client: every database call of the capture stops after 60 s.

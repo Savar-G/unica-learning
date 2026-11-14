@@ -10,9 +10,15 @@ import type { ApproveResult } from "./workbook-ship";
 export type DraftNewMarks =
   /** Not a next-book draft (no snapshot chain made it). */
   | { kind: "none" }
-  /** The chain's latest revision used every mark there is. `revision` > 1: the draft was updated with new marks. */
+  /** The revision the draft's pages were drawn from used every mark there is, and no later revision exists. */
   | { kind: "current"; snapshotId: string; revision: number }
-  | { kind: "new"; snapshotId: string; revision: number; days: number[]; pages: number; items: number; line: string }
+  /**
+   * Marks the draft's pages were not drawn from. `snapshotId`/`revision`: the drawn revision; days, pages and items: the
+   * marks since it. `updated`: a later plan version "Update with new marks" wrote (the pages are not drawn again yet).
+   * `unfinished`: a later revision written but not yet planned (press again to finish it). `canUpdate`: a press has work.
+   */
+  | { kind: "new"; snapshotId: string; revision: number; days: number[]; pages: number; items: number; line: string;
+    updated: number | null; unfinished: number | null; canUpdate: boolean }
   /** The check could not be read (a revision not frozen yet, or evidence that does not compare). */
   | { kind: "unavailable" };
 
@@ -34,20 +40,47 @@ function dayList(days: readonly number[]): string {
 export const newMarksLine = (days: readonly number[], pages: number) =>
   `New marks since this draft: ${dayList(days)} (${plural(pages, "page")})`;
 
-/** The run page's check: the marks of the current book the draft's latest snapshot revision did not use. */
+/**
+ * The run page's check: the marks of the current book the draft's pages were not drawn from. The pages come from the
+ * run's snapshot revision; "Update with new marks" writes and plans later revisions but draws nothing again, so a later
+ * revision still counts as marks not in this draft.
+ */
 export async function draftNewMarks(store: NextBookSnapshotStore, draftId: string): Promise<DraftNewMarks> {
-  const latest = await store.latestForDraft(draftId);
-  if (!latest) return { kind: "none" };
-  const fresh = await newEvidenceSince(store, latest.id);
+  const drawn = await store.drawnForDraft(draftId);
+  if (!drawn) return { kind: "none" };
+  const latest = (await store.latestForDraft(draftId)) ?? drawn;
+  const fresh = await newEvidenceSince(store, drawn.id);
   if (!fresh.ok) return { kind: "unavailable" };
-  if (fresh.items === 0) return { kind: "current", snapshotId: latest.id, revision: latest.revision };
-  return { kind: "new", snapshotId: latest.id, revision: latest.revision, days: fresh.days, pages: fresh.pages, items: fresh.items,
-    line: newMarksLine(fresh.days, fresh.pages) };
+  const later = latest.revision > drawn.revision ? latest : null;
+  if (!later && fresh.items === 0) return { kind: "current", snapshotId: drawn.id, revision: drawn.revision };
+  let canUpdate = true;
+  if (later?.plan) {
+    const since = await newEvidenceSince(store, later.id);
+    if (!since.ok) return { kind: "unavailable" };
+    canUpdate = since.items > 0;
+  }
+  return { kind: "new", snapshotId: drawn.id, revision: drawn.revision, days: fresh.days, pages: fresh.pages, items: fresh.items,
+    line: fresh.items > 0 ? newMarksLine(fresh.days, fresh.pages) : `New marks since this draft: plan version ${later!.revision}`,
+    updated: later?.plan ? later.revision : null, unfinished: later && !later.plan ? later.revision : null, canUpdate };
+}
+
+/** What the run page shows of the check (src/components/workbook-ship-actions.tsx). `ready`: the planner is wired. */
+export type NewMarksView =
+  | { state: "none" }
+  | { state: "current"; ready: boolean }
+  | { state: "unavailable"; ready: boolean }
+  | { state: "new"; line: string; updated: number | null; unfinished: number | null; canUpdate: boolean; ready: boolean };
+
+export function newMarksView(marks: DraftNewMarks, ready: boolean): NewMarksView {
+  if (marks.kind === "none") return { state: "none" };
+  if (marks.kind === "new") return { state: "new", line: marks.line, updated: marks.updated, unfinished: marks.unfinished, canUpdate: marks.canUpdate, ready };
+  return { state: marks.kind, ready };
 }
 
 export type UpdateAnswer =
   | { ok: true; line: string }
-  | { ok: false; error: "not-found" | "planner-not-ready" | "refused" | "unavailable"; line: string };
+  /** `unfinished`: the revision was written, its plan was not; a press again plans it. */
+  | { ok: false; error: "not-found" | "planner-not-ready" | "refused" | "unavailable" | "unfinished"; line: string };
 
 const PLANNER_NOT_READY = "The planner is not ready yet.";
 const TRY_AGAIN = "It could not be updated. Try again later.";
@@ -83,20 +116,22 @@ export async function updateDraftWithNewMarks(draftId: string, actor: SnapshotAc
   if (planned.status === "planned" && planned.admission === "refresh") {
     return { ok: true, line: `Plan updated with the new marks (plan version ${planned.revision}). The pages are not drawn again yet.` };
   }
-  return { ok: false, error: "unavailable", line: TRY_AGAIN };
+  return { ok: false, error: "unfinished", line: "The new marks were saved, but the plan was not updated. Press Update with new marks again." };
 }
 
 /** The audit note of an approval made although the draft had not used every mark ("Approve anyway"). */
 export interface ApprovalNote {
   draftId: string;
   actor: SnapshotActor;
-  detail: { revision: number; snapshotId: string; snapshotRevision: number; newMarkDays: number[]; newMarkPages: number; newMarkItems: number };
+  detail: { revision: number; snapshotId: string; snapshotRevision: number; newMarkDays: number[]; newMarkPages: number; newMarkItems: number }
+    /** Approved anyway while the check could not be read. */
+    | { revision: number; checkUnavailable: true };
 }
 
 export interface ApprovalCheckDeps {
   store: NextBookSnapshotStore;
-  /** The run's draft, or null when the run has none. */
-  draftOf(runId: string): Promise<string | null>;
+  /** The run's draft and its snapshot (null: not a next book), or null when the run has no draft. Throws on a failed read. */
+  runDraft(runId: string): Promise<{ draftId: string; snapshotId: string | null } | null>;
   /** The existing approval (approveDraft), with its own audit entry. */
   approve(): Promise<ApproveResult>;
   /** Writes the note beside the approval's audit entry. */
@@ -105,28 +140,38 @@ export interface ApprovalCheckDeps {
 
 export type CheckedApproval =
   | { status: "ask-update"; line: string }
+  /** A next-book draft whose check could not be read: approved only with "Approve anyway". */
+  | { status: "check-unavailable"; line: string }
   | Exclude<ApproveResult, { status: "approved" }>
   /** `noted`: only on an approval anyway; false when the note could not be written (the approval stands). */
   | { status: "approved"; workbookId: string; noted?: boolean };
 
+export const CHECK_UNAVAILABLE = "The new marks could not be checked";
+
 /**
- * "Approve for print" with the D-308 check: a next-book draft whose latest snapshot did not use every mark is not approved
- * unless the admin chose "Approve anyway" (`despiteNewMarks`); the answer asks "Update first?" instead. An approval
- * anyway is noted in the workbook audit after it commits. A check that cannot be read does not hold the approval.
+ * "Approve for print" with the D-308 check: a next-book draft whose pages were not drawn from every mark is not approved
+ * unless the admin chose "Approve anyway" (`despiteNewMarks`); the answer asks "Update first?" instead. The check fails
+ * closed for a next-book draft: when it cannot be read, the answer is check-unavailable until "Approve anyway". An
+ * approval anyway is noted in the workbook audit after it commits. A draft that is not a next book is never checked.
  */
 export async function approveCheckingNewMarks(o: { runId: string; revision: number; actor: SnapshotActor; despiteNewMarks: boolean },
   deps: ApprovalCheckDeps): Promise<CheckedApproval> {
-  let marks: DraftNewMarks = { kind: "none" }, draftId: string | null = null;
-  try {
-    draftId = await deps.draftOf(o.runId);
-    if (draftId) marks = await draftNewMarks(deps.store, draftId);
-  } catch { marks = { kind: "unavailable" }; }
-  if (marks.kind === "new" && !o.despiteNewMarks) return { status: "ask-update", line: marks.line };
+  const run = await deps.runDraft(o.runId);
+  let marks: DraftNewMarks = { kind: "none" };
+  if (run?.snapshotId) {
+    try { marks = await draftNewMarks(deps.store, run.draftId); } catch { marks = { kind: "unavailable" }; }
+    // The run has a snapshot, so a draft the chain no longer finds is not known to be current.
+    if (marks.kind === "none") marks = { kind: "unavailable" };
+  }
+  if (!o.despiteNewMarks) {
+    if (marks.kind === "new") return { status: "ask-update", line: marks.line };
+    if (marks.kind === "unavailable") return { status: "check-unavailable", line: CHECK_UNAVAILABLE };
+  }
   const result = await deps.approve();
-  if (result.status !== "approved" || marks.kind !== "new" || !draftId) return result;
+  if (result.status !== "approved" || !run || (marks.kind !== "new" && marks.kind !== "unavailable")) return result;
   try {
-    await deps.note({ draftId, actor: o.actor, detail: { revision: o.revision, snapshotId: marks.snapshotId, snapshotRevision: marks.revision,
-      newMarkDays: marks.days, newMarkPages: marks.pages, newMarkItems: marks.items } });
+    await deps.note({ draftId: run.draftId, actor: o.actor, detail: marks.kind === "unavailable" ? { revision: o.revision, checkUnavailable: true }
+      : { revision: o.revision, snapshotId: marks.snapshotId, snapshotRevision: marks.revision, newMarkDays: marks.days, newMarkPages: marks.pages, newMarkItems: marks.items } });
     return { ...result, noted: true };
   } catch {
     return { ...result, noted: false };

@@ -20,6 +20,10 @@ export function memoryScheduleStore(data: ScheduleMemory): ScheduleStore {
     async revision(parent, child, book, revision) { check("revision"); return data.revisions.find(r => r.book === book && r.revision === revision && r.source.parentId === parent && r.source.childId === child)?.source ?? null; },
     async pages(parent, child, book) { check("pages"); return data.pages.filter(p => p.parent === parent && p.child === child && p.book === book).map(p => p.page); },
     async receipts(parent, child, book, revision) { check("receipts"); return data.receipts.filter(s => s.parentId === parent && s.childId === child && s.workbookId === book && s.revision === revision); },
-    async marks(parent, child) { check("marks"); return (data.marks ?? []).filter(m => m.parent === parent && m.child === child).map(m => m.mark); },
+    async marks(parent, child, book, revision) {
+      check("marks");
+      return (data.marks ?? []).filter(m => m.parent === parent && m.child === child && m.mark.expected.identity.workbookId === book
+        && m.mark.expected.identity.printedRevision === revision).map(m => m.mark);
+    },
   };
 }

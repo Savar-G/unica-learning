@@ -27,7 +27,7 @@ import { RunRefresh } from "@/components/admin-run-refresh";
 import { RunOnServer } from "@/components/run-on-server";
 import { StopWorkbookRun } from "@/components/stop-workbook-run";
 import { AuditLog } from "@/components/admin-workbook-audit";
-import { ApproveDraft, NewMarksNotice } from "@/components/workbook-ship-actions";
+import { ApproveDraft, NextBookApproval } from "@/components/workbook-ship-actions";
 import { approvalProblems } from "@/lib/workbook-ship";
 import type { AiCallSummary } from "@/lib/workbook-ai";
 import { Fold } from "@/components/admin-fold";
@@ -417,10 +417,7 @@ function DraftPdfLink({ runId, draft, rendering, pages }: { runId: string; draft
  * again); else why it cannot be approved yet. Once approved, a link to the stored workbook, where it is printed and
  * shipped.
  */
-/** D-308, read by the run page for a next-book draft: the unused marks' line, the plan version an update wrote, the planner. */
-export interface RunNewMarks { line: string | null; updated: number | null; ready: boolean; unavailable?: boolean }
-
-function Approval({ detail, name, newMarks }: { detail: RunDetail; name: string; newMarks?: RunNewMarks }) {
+function Approval({ detail, name }: { detail: RunDetail; name: string }) {
   const { run, draft, approved } = detail;
   if (!draft) return null;
   if (approved && approved.status !== "draft") {
@@ -441,10 +438,10 @@ function Approval({ detail, name, newMarks }: { detail: RunDetail; name: string;
     return <div className="adm-note adm-wb-full" role="note">{flagLine}<b>Not ready to approve.</b> Every check must pass first:
       <ul className="adm-wb-list">{problems.map((p) => <li key={p}>{p}</li>)}</ul></div>;
   }
-  return <>{flagLine}
-    {newMarks && <NewMarksNotice runId={run.id} line={newMarks.line} updated={newMarks.updated} ready={newMarks.ready} unavailable={newMarks.unavailable} />}
-    <ApproveDraft runId={run.id} revision={draft.revision} workbookPath={adminWorkbookPath(draft.workbook.id)} child={name} pending={detail.comments.filter(c => ["pending", "failed", "stale"].includes(c.status)).length}
-      newMarks={newMarks?.line ?? null} ready={newMarks?.ready ?? true} /></>;
+  const approve = { runId: run.id, revision: draft.revision, workbookPath: adminWorkbookPath(draft.workbook.id), child: name,
+    pending: detail.comments.filter(c => ["pending", "failed", "stale"].includes(c.status)).length };
+  // D-308: a next-book draft (its run has a snapshot) reads its new marks check in the browser, once, off the refresh loop.
+  return <>{flagLine}{run.snapshotId ? <NextBookApproval {...approve} /> : <ApproveDraft {...approve} />}</>;
 }
 
 const ICON_OK = <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>;
@@ -482,7 +479,7 @@ function DraftThumb({ page, detail, href = `#page-${page.number}` }: { page: Gen
  * draft's pages as thumbnails with their check marks; then the comment reviewer and the question data; AI calls and
  * costs and the audit log closed. `only`: only the pages that need attention in the question data.
  */
-export function AdminWorkbookRun({ email, detail, now, only, worker, why, book1, newMarks }: { email: string; detail: RunDetail; now: Date; only: boolean; worker: WorkerStatus | null; why?: ReactNode; book1?: ReactNode; newMarks?: RunNewMarks }) {
+export function AdminWorkbookRun({ email, detail, now, only, worker, why, book1 }: { email: string; detail: RunDetail; now: Date; only: boolean; worker: WorkerStatus | null; why?: ReactNode; book1?: ReactNode }) {
   const { run, child, draft } = detail;
   const state = runState(run, now);
   const name = child?.first_name ?? "Child";
@@ -556,7 +553,7 @@ export function AdminWorkbookRun({ email, detail, now, only, worker, why, book1,
         </div>
         {detail.oldFormat === null && <div className="bk-act">
           <DraftPdfLink runId={run.id} draft={!!draft} rendering={draft.rendering} pages={pages.length} />
-          <Approval detail={detail} name={name} newMarks={newMarks} />
+          <Approval detail={detail} name={name} />
         </div>}
       </section>}
       {!draft && detail.oldFormat === null && state === "done" && <div className="adm-row adm-wb-pdf"><DraftPdfLink runId={run.id} draft={false} rendering={null} pages={0} /></div>}

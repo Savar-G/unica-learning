@@ -6,9 +6,8 @@
 // when it hashes to the saved plan hash (the stored contract of planNextBookFromSnapshot): a planner that changed since
 // the snapshot never shows other steps as the saved ones.
 import "server-only";
-import type { NextBookSnapshotRecord, PlanHeld } from "./next-book-snapshot";
-import { planWorkbook, SPACED_INTERVALS, type PlanInput, type ProgressPlanInput, type UnresolvedMiss, type WorkbookPlan } from "./workbook-plan";
-import { sourceHash } from "./workbook-progress-hash";
+import { replaySavedPlan, type NextBookSnapshotRecord, type PlanHeld } from "./next-book-snapshot";
+import { SPACED_INTERVALS, type ProgressPlanInput, type UnresolvedMiss } from "./workbook-plan";
 import { SKILL_TITLES } from "./workbook-skill-titles";
 
 export interface SkillPlanView {
@@ -85,14 +84,6 @@ function decisionLine(d: ProgressPlanInput["decision"]): string {
 function questionLine(m: UnresolvedMiss): string {
   return m.question.source === "workbook" ? `Book page ${m.question.page}, question ${m.question.question}` : "A test question";
 }
-function replay(input: PlanInput, hash: string): WorkbookPlan | null {
-  try {
-    const result = planWorkbook(structuredClone(input));
-    if (!result.ok) return null;
-    return sourceHash(JSON.parse(JSON.stringify({ planningInput: input, plan: result.plan }))) === hash ? result.plan : null;
-  } catch { return null; }
-}
-
 /** The admin's view of one snapshot row: the latest revision of the child's chain, or null when there is none. */
 export function snapshotPlanView(row: NextBookSnapshotRecord | null): SnapshotPlanView {
   if (!row) return { state: "none" };
@@ -100,7 +91,7 @@ export function snapshotPlanView(row: NextBookSnapshotRecord | null): SnapshotPl
   if (!row.frozen) return { state: "waiting", revision: row.revision };
   if (!row.plan) return { state: "no-plan", revision: row.revision, frozenAt: row.frozen.frozenAt };
   const input = row.plan.planInput;
-  const plan = replay(input, row.plan.planHash);
+  const plan = replaySavedPlan(input, row.plan.planHash);
   const decisions = input.previewDecisions ?? (input.progress ? [input.progress] : []);
   const order = input.level.units.flatMap(u => u.skills.map(s => s.id));
   const skillHeld = row.plan.held.filter(h => h.skill);

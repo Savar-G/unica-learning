@@ -1,5 +1,5 @@
-// D-308 (#476) on the service client. The routes and the run page check the admin session first; this wires the
-// snapshot store, the existing approval (approveDraft) and the audit note of an approval anyway.
+// D-308 (#476) on the service client. The routes check the admin session first; this wires the snapshot store, the
+// existing approval (approveDraft) and the audit note of an approval anyway.
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./database";
@@ -8,37 +8,34 @@ import { draftNewMarks, type ApprovalCheckDeps, type ApprovalNote, type DraftNew
 import { approveDraft, type ShipActor } from "./workbook-ship";
 import { workbookShipStore } from "./workbook-ship-store";
 
-/** The run page's notice: the marks this next-book draft did not use. Never throws: a failed read is "unavailable". */
+/** The run page's check: the marks this next-book draft's pages were not drawn from. Never throws: a failed read is "unavailable". */
 export async function draftNewMarksOnServer(db: SupabaseClient<Database>, draftId: string): Promise<DraftNewMarks> {
   try { return await draftNewMarks(nextBookSnapshotStore(db), draftId); }
   catch { return { kind: "unavailable" }; }
 }
 
-type UntypedRpc = (fn: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
+export const APPROVAL_NOTE_MIGRATION = "20261113233859_workbook_approved_with_new_marks";
 
 /**
- * Writes the "approved-with-new-marks" audit entry through note_workbook_approved_with_new_marks (migration
- * 20261113233859_workbook_approved_with_new_marks.sql). The function is not in database.types.ts until that migration is
- * applied and the types are generated again; then call db.rpc directly. Throws when the note was not written.
+ * The "approved-with-new-marks" audit entry. The service role may only read public.workbook_audit, so the entry needs the
+ * function note_workbook_approved_with_new_marks of migration APPROVAL_NOTE_MIGRATION, which is not applied and not in
+ * database.types.ts yet. Until then this writes nothing and says so: it logs the note and throws, so the approval
+ * stands with `noted: false`. After the migration and `npm run db:types`, call db.rpc with that function here.
  */
-async function noteApprovedWithNewMarks(db: SupabaseClient<Database>, n: ApprovalNote): Promise<void> {
-  const rpc = db.rpc.bind(db) as unknown as UntypedRpc;
-  const { data, error } = await rpc("note_workbook_approved_with_new_marks", {
-    p_draft: n.draftId, p_by: n.actor.id, p_by_email: n.actor.email, p_detail: n.detail,
-  });
-  if (error) throw new Error(`approval note: ${error.message}`);
-  if ((data as { status?: unknown } | null)?.status !== "noted") throw new Error("approval note refused");
+async function noteApprovedWithNewMarks(n: ApprovalNote): Promise<void> {
+  console.error(`[workbook ship] audit note needs migration ${APPROVAL_NOTE_MIGRATION}`, n.draftId, JSON.stringify(n.detail));
+  throw new Error(`approval note: needs migration ${APPROVAL_NOTE_MIGRATION}`);
 }
 
 export function approvalCheckDeps(db: SupabaseClient<Database>, o: { runId: string; revision: number; actor: ShipActor }): ApprovalCheckDeps {
   return {
     store: nextBookSnapshotStore(db),
-    async draftOf(runId) {
-      const run = await db.from("workbook_runs").select("draft_id").eq("id", runId).maybeSingle();
+    async runDraft(runId) {
+      const run = await db.from("workbook_runs").select("draft_id, snapshot_id").eq("id", runId).maybeSingle();
       if (run.error) throw new Error(`approval run read: ${run.error.message}`);
-      return run.data?.draft_id ?? null;
+      return run.data?.draft_id ? { draftId: run.data.draft_id, snapshotId: run.data.snapshot_id } : null;
     },
     approve: () => approveDraft(workbookShipStore(db), o),
-    note: n => noteApprovedWithNewMarks(db, n),
+    note: noteApprovedWithNewMarks,
   };
 }

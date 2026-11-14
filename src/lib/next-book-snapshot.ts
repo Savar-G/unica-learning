@@ -157,6 +157,8 @@ export interface NextBookSnapshotStore {
   read(id: string): Promise<NextBookSnapshotRecord | null>;
   /** The latest live revision of the chain whose run made this draft. */
   latestForDraft(draftId: string): Promise<NextBookSnapshotRecord | null>;
+  /** The revision whose plan the draft's pages were drawn from: the snapshot of the run that made the draft. */
+  drawnForDraft(draftId: string): Promise<NextBookSnapshotRecord | null>;
   /** The captured marking jobs of the row's receipts. A job that no longer exists (photo deleted) is not waited on. */
   jobs(id: string): Promise<("finished" | "waiting")[]>;
   /** Every marked (not pending) result of the row's source book now, on dated pages. */
@@ -383,9 +385,18 @@ async function planOnce(row: NextBookSnapshotRecord, deps: NextBookDeps): Promis
   return { ok: false, outcome: refusedOutcome(saved.reason, row.id) };
 }
 
+/**
+ * Routing after admit_next_book_run committed never undoes the admission: a failure is logged and the run stays queued.
+ * The next prepare of the chain routes it again.
+ */
+async function routeQuietly(deps: NextBookDeps, runId: string): Promise<void> {
+  try { await deps.route?.(runId); }
+  catch (e) { console.error("[next book] route failed; the next prepare routes it again", runId, e instanceof Error ? e.message : String(e)); }
+}
+
 async function advance(row: NextBookSnapshotRecord, deps: NextBookDeps, now: number, by: SnapshotActor | null): Promise<PrepareOutcome> {
   if (row.runId) {
-    await deps.route?.(row.runId);
+    await routeQuietly(deps, row.runId);
     return { status: "queued", snapshotId: row.id, runId: row.runId };
   }
   const frozen = await freeze(row, deps, now);
@@ -396,7 +407,7 @@ async function advance(row: NextBookSnapshotRecord, deps: NextBookDeps, now: num
   if (r.revision > 1) return { status: "planned", snapshotId: r.id, revision: r.revision, admission: "refresh" };
   const admitted = await deps.store.admit(r.id, by ?? r.actor, deps.run);
   if (admitted.status === "started") {
-    await deps.route?.(admitted.runId);
+    await routeQuietly(deps, admitted.runId);
     return { status: "queued", snapshotId: r.id, runId: admitted.runId };
   }
   if (admitted.status === "refused") return refusedOutcome(admitted.reason, r.id);
@@ -475,13 +486,20 @@ export async function nextBookRunBook(store: NextBookSnapshotStore, snapshotId: 
   version: (key: string) => string | null): Promise<NextBookRunBook> {
   const saved = await nextBookRunPlan(store, snapshotId, version);
   if (!saved.ok) return saved;
-  let planned: ReturnType<typeof planWorkbook>;
-  try { planned = planWorkbook(structuredClone(saved.planInput)); } catch { return { ok: false, reason: "plan-mismatch" }; }
-  if (!planned.ok) return { ok: false, reason: "plan-mismatch" };
-  let hash: string;
-  try { hash = sourceHash(plainJson({ planningInput: saved.planInput, plan: planned.plan })); } catch { return { ok: false, reason: "plan-mismatch" }; }
-  if (hash !== saved.planHash) return { ok: false, reason: "plan-mismatch" };
-  return { ...saved, plan: plainJson(planned.plan) };
+  const plan = replaySavedPlan(saved.planInput, saved.planHash);
+  return plan ? { ...saved, plan } : { ok: false, reason: "plan-mismatch" };
+}
+
+/**
+ * The saved plan input planned again with the pure planWorkbook, or null unless the input and that plan hash to the saved
+ * plan hash (as planNextBookFromSnapshot made it). Pure: the run's book and the admin's Snapshot plan view both use it.
+ */
+export function replaySavedPlan(input: PlanInput, planHash: string): WorkbookPlan | null {
+  try {
+    const planned = planWorkbook(structuredClone(input));
+    if (!planned.ok) return null;
+    return sourceHash(plainJson({ planningInput: input, plan: planned.plan })) === planHash ? plainJson(planned.plan) : null;
+  } catch { return null; }
 }
 
 export type NewEvidence = { ok: true; days: number[]; pages: number; items: number } | { ok: false; reason: "not-found" | "not-frozen" | "evidence-regressed" | "invalid-evidence" };

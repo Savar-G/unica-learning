@@ -71,21 +71,33 @@ Before "Approve for print", an admin can refresh the draft when more pages were 
 **The admin screens** (`src/lib/next-book-refresh.ts`, `next-book-refresh-server.ts`, `src/components/workbook-ship-actions.tsx`).
 On the admin run page of a next-book draft not yet approved:
 
-- `draftNewMarks` reads the chain's latest revision for the draft and `newEvidenceSince`. With new marks the page shows
-  "New marks since this draft: Days 8-9 (2 pages)." and an "Update with new marks" button (disabled with "The planner is
-  not ready yet." when no planner is wired). A read that fails shows "New marks status is unavailable."
+- `draftNewMarks` compares against the revision the draft's pages were drawn from (the snapshot of the run that made
+  the draft), not the chain's latest revision: an update draws nothing again, so marks a later revision used still count
+  as marks not in this draft. With new marks the page shows "New marks since this draft: Days 8-9 (2 pages)." and an
+  "Update with new marks" button (disabled with "The planner is not ready yet." when no planner is wired). After an
+  update it adds "Plan updated with the new marks (plan version n). The pages are not drawn again yet." and keeps the
+  button only when more marks arrived since. A revision written but not planned shows "Plan version n was saved but not
+  planned yet. Press Update with new marks again." A read that fails shows "New marks status is unavailable."
+- The run page reads the check in the browser through `GET /api/admin/workbooks/runs/<id>/new-marks` (admins only), once
+  when it opens and again after each press, only for a run with a `snapshot_id`. The page's refresh loop never runs it:
+  it reads the book's marks with the service key.
 - "Update with new marks" posts to `POST /api/admin/workbooks/runs/<id>/update-marks` (admins only, 404 for everyone
   else): `updateDraftWithNewMarks` calls `refreshNextBookSnapshot`, then `prepareNextBook({ kind: "snapshot" })` to plan
   the new revision. It starts no run. Its line: "Plan updated with the new marks (plan version n). The pages are not drawn
-  again yet.", or the refusal ("No new marks since this draft.", "This draft is already approved for print.", "Book 1
-  changed, so this draft can no longer be updated."). Pressing it again after a failed plan plans the same revision.
+  again yet.", "The new marks were saved, but the plan was not updated. Press Update with new marks again.", or the
+  refusal ("No new marks since this draft.", "This draft is already approved for print.", "Book 1 changed, so this draft
+  can no longer be updated."). Pressing it again after a failed plan plans the same revision. A successful update from
+  the "Update first?" question closes it.
 - "Approve for print" runs the same check on the server (`approveCheckingNewMarks` in the approve route). With new marks
   and no `despiteNewMarks: true` it approves nothing and answers `{ ok: false, askUpdate }` (409); the page asks "Update
-  first?" with "Update with new marks", "Approve anyway" and "Cancel". A check that cannot be read does not hold the
-  approval. "Approve anyway" approves through the usual `approve_workbook_draft` (its `workbook-approved` audit entry), then
-  writes an `approved-with-new-marks` audit entry with the snapshot revision, days, pages and items, through the
-  service-only `note_workbook_approved_with_new_marks` (migration `20261113233859_workbook_approved_with_new_marks.sql`).
-  When the note cannot be written the approval stands and the route logs it.
+  first?" with "Update with new marks", "Approve anyway" and "Cancel". The check fails closed for a next-book draft: when
+  it cannot be read the answer is `{ ok: false, askUpdate: "The new marks could not be checked", checkUnavailable: true }`
+  and the page asks "Approve anyway?". A draft whose run has no snapshot is never checked. The approval is confirmed once.
+  "Approve anyway" approves through the usual `approve_workbook_draft` (its `workbook-approved` audit entry), then notes
+  an `approved-with-new-marks` audit entry (the snapshot revision, days, pages and items, or `checkUnavailable`). The
+  service role may only read `workbook_audit`, so the note needs `note_workbook_approved_with_new_marks` (migration
+  `20261113233859_workbook_approved_with_new_marks.sql`, not applied). Until it is applied and the types generated, the
+  note writes nothing: it logs "audit note needs migration ..." and the approval stands (`noted: false`).
 - Not built: drawing again only the pages whose plan changed. Until the planner owner builds it, an update stores the new
   plan beside the draft and the printed pages stay those of the first plan.
 

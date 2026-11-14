@@ -29,8 +29,8 @@ export interface ScheduleStore {
   revision(parent: string, child: string, book: string, revision: number): Promise<ScheduleRevision | null>;
   pages(parent: string, child: string, book: string): Promise<SchedulePage[]>;
   receipts(parent: string, child: string, book: string, revision: string): Promise<ScheduleReceipt[]>;
-  /** The child's effective marks (the same projection as page results). Read-only. */
-  marks(parent: string, child: string): Promise<EffectiveMark[]>;
+  /** The child's effective marks of this book and printed revision (the same projection as page results). Read-only. */
+  marks(parent: string, child: string, book: string, revision: string): Promise<EffectiveMark[]>;
 }
 /** `missing`: printed page numbers of the day with no recorded scan. */
 export type ScheduleScanState = { kind: "known"; accepted: number; required: number; missing: number[] } | { kind: "unknown" };
@@ -95,11 +95,18 @@ export async function readSchedule(store: ScheduleStore, parent: string, request
     let receipts: ScheduleReceipt[] | null;
     try { receipts = await store.receipts(parent, child.id, book.id, book.printedRevision); } catch { receipts = null; }
     let marks: EffectiveMark[] | null;
-    try { marks = await store.marks(parent, child.id); } catch { marks = null; }
+    try { marks = await store.marks(parent, child.id, book.id, book.printedRevision); } catch { marks = null; }
+    // Grouped once by page: each required page then reads only its own marks.
+    const byPage = new Map<string, EffectiveMark[]>();
+    for (const m of marks ?? []) {
+      const id = m.expected.identity;
+      if (id.workbookId !== book.id || id.printedRevision !== book.printedRevision || m.observation.identity.pageId !== id.pageId) continue;
+      byPage.set(id.pageId, [...(byPage.get(id.pageId) ?? []), m]);
+    }
+    const pageByNumber = new Map(pages.map(p => [p.number, p]));
     const pageMark = (number: number): "marked" | "checking" | "waiting" => {
-      const page = pages.find(p => p.number === number)!;
-      const own = (marks ?? []).filter(m => m.expected.identity.workbookId === book.id && m.expected.identity.printedRevision === book.printedRevision
-        && m.expected.identity.pageId === page.id && m.observation.identity.pageId === page.id);
+      const page = pageByNumber.get(number)!;
+      const own = byPage.get(page.id) ?? [];
       const items = new Set(own.map(m => m.expected.identity.itemId));
       if (own.some(waitsForTeam)) return "checking";
       // Every printed question needs its own finished mark. A page with fewer marks than questions is not marked.

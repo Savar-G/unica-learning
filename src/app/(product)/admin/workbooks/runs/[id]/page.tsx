@@ -1,10 +1,7 @@
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { getWorkbookRun, getWorkbookWorker, requireAdmin } from "@/lib/admin-store";
-import { AdminWorkbookRun, type RunNewMarks } from "@/components/admin-workbook-runs";
-import { draftNewMarksOnServer } from "@/lib/next-book-refresh-server";
-import { nextBookWiring } from "@/lib/next-book-planner";
-import { adminClient } from "@/lib/supabase-auth";
+import { AdminWorkbookRun } from "@/components/admin-workbook-runs";
 import { savedBook1Baseline, savedWorkbookInstructions, savedWorkbookWhy } from "../../[id]/saved-why";
 import { Book1Baseline } from "../../[id]/book1-baseline";
 import { InstructionsUsed } from "../../[id]/instructions-used";
@@ -19,8 +16,7 @@ export default async function WorkbookRunPage({ params, searchParams }: PageProp
   const [{ id }, query] = await Promise.all([params, searchParams]);
   const [detail, worker, why, instructions, book1] = await Promise.all([getWorkbookRun(admin, id, { version: savedVersion(query.version) }), getWorkbookWorker(admin), savedWorkbookWhy(admin, id), savedWorkbookInstructions(admin, id), savedBook1Baseline(admin, id)]);
   if (!detail) notFound();
-  const newMarks = await runNewMarks(detail.draft?.workbook.id ?? null, !!detail.approved && detail.approved.status !== "draft");
-  return <AdminWorkbookRun newMarks={newMarks} email={admin.email} detail={detail} now={new Date()} only={query.only === "attention"} worker={worker} why={<><InstructionsUsed trace={instructions} /><WhyThisBook why={why} /></>} book1={<Book1Baseline status={book1} />} />;
+  return <AdminWorkbookRun email={admin.email} detail={detail} now={new Date()} only={query.only === "attention"} worker={worker} why={<><InstructionsUsed trace={instructions} /><WhyThisBook why={why} /></>} book1={<Book1Baseline status={book1} />} />;
 }
 
 function savedVersion(raw: string | string[] | undefined): number | undefined {
@@ -28,18 +24,3 @@ function savedVersion(raw: string | string[] | undefined): number | undefined {
   return Number.isInteger(n) && n > 0 ? n : undefined;
 }
 
-/**
- * D-308: for a next-book draft not yet approved, the marks its plan did not use ("New marks since this draft") and the
- * plan version an "Update with new marks" wrote. Undefined for any other draft. Read with the service key after
- * requireAdmin, as the snapshot store reads marking items and pages across the family.
- */
-async function runNewMarks(draftId: string | null, approved: boolean): Promise<RunNewMarks | undefined> {
-  const db = draftId && !approved ? adminClient() : null;
-  if (!db || !draftId) return undefined;
-  const marks = await draftNewMarksOnServer(db, draftId);
-  const ready = nextBookWiring() !== null;
-  if (marks.kind === "none") return undefined;
-  if (marks.kind === "unavailable") return { line: null, updated: null, ready, unavailable: true };
-  if (marks.kind === "new") return { line: marks.line, updated: null, ready };
-  return { line: null, updated: marks.revision > 1 ? marks.revision : null, ready };
-}
