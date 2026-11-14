@@ -103,3 +103,11 @@ it("counts the Book 1 records in Needs you and keeps the calm line only when the
   expect(view({ rows: [], unavailable: true, more: false })).toContain("Some Book 1 records could not be read.");
   expect(view({ ...baselines, more: true })).toContain("More Book 1 records may need saving.");
 });
+
+it("includes today's personal check-ins in Needs you and does not show a false calm state", () => {
+  const checkIns = { unavailable: false, rows: [{ cardId: "c", childId: "kid", parentId: pid(1), parentName: "Priya", childName: "Leah", email: "p@example.invalid", finishedAt: "2026-11-08T12:00:00Z", location: {} }] };
+  const html = renderToStaticMarkup(createElement(PlansView, { cards: [], waitlist: [], holds: { rows: [], unavailable: false, more: false }, baselines: none, checkIns, show: false, isTest, now, cardsMore: false, waitMore: false }));
+  expect(html).not.toContain("Nothing waits for us");
+  expect(html).toMatch(/id="pl-you">Needs you<\/h2><span class="adm-pl-count">1</);
+  expect(html).toContain("Day 2 check-ins today");
+});

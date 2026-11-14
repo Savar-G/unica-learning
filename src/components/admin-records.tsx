@@ -1,3 +1,4 @@
+import { walkthroughUrl } from "@/lib/getting-started";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { CardSetupRow, ChildRow, EmailRow, ParentDetail, ParentRow, WaitlistRow } from "@/lib/admin-store";
@@ -57,7 +58,7 @@ export function PlanStartAction({ card: c }: { card: CardSetupRow & People }) {
 
 /** The card's workbook emails: preview, send and history. Plans and delivery shows it too. */
 export function CardEmails({ card: c }: { card: CardSetupRow & People }) {
-  return c.card_saved_at && c.parent && c.child ? c.workbookEmails ? <WorkbookEmails cardId={c.id} parentName={c.parent.name} parentEmail={c.parent.email} childName={c.child.first_name} records={c.workbookEmails ?? []} observedAt={c.workbookEmailsReadAt ?? 0} /> : <span className="adm-note">Workbook email history is unavailable. Reload this page.</span> : "-";
+  return c.card_saved_at && c.parent && c.child ? c.workbookEmails ? <WorkbookEmails walkthrough={walkthroughUrl()} cardId={c.id} parentName={c.parent.name} parentEmail={c.parent.email} childName={c.child.first_name} records={c.workbookEmails ?? []} observedAt={c.workbookEmailsReadAt ?? 0} /> : <span className="adm-note">Workbook email history is unavailable. Reload this page.</span> : "-";
 }
 
 /**
