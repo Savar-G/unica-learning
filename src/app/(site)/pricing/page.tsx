@@ -30,10 +30,11 @@ export default function PricingPage() {
               <li>A free online math assessment and report before you choose a plan.</li>
               <li>A program built from your child&apos;s level and gaps.</li>
               <li>Two paper workbooks a month, mailed home.</li>
-              <li>Chat with the Teaching Assistant for children in Grade 3 and up, within daily and weekly limits.</li>
+              <li>The Unica Teaching Assistant*, within daily limits.</li>
               <li>The parent dashboard on our website for page scans, answer checks, solutions and progress reports.</li>
               <li>Rewards for completed practice and delivery across Canada.</li>
             </ul>
+            <p className="plan-foot">*The Unica Teaching Assistant is for Grade 3 and up.</p>
             <p>Each child takes their own assessment and gets their own workbooks and progress report. <Link href="/whats-included">See everything included in the program</Link>.</p>
           </Section>
           <Section title="When you pay">
