@@ -5,6 +5,8 @@
 // there. Wide screens play the whole desk, phones play the board alone; the two files have different timings.
 import { useEffect, useRef, useState } from "react";
 import { DemoVideo } from "./demo-video";
+import { PrototypeSwitcher } from "./prototype-switcher";
+import { SIDE_VARIANTS, SideVariant, WIDE_VARIANTS } from "./guidance-side-prototype";
 
 type Step = { wide: number; board: number; title: string; text: string };
 
@@ -28,6 +30,14 @@ type Kind = "wide" | "board";
 export function GuidanceDemo() {
   const wrap = useRef<HTMLDivElement>(null);
   const [time, setTime] = useState({ t: 0, dur: 42, kind: "wide" as Kind });
+  // PROTOTYPE: ?variant= picks the side panel (development only).
+  const [variant, setVariant] = useState("now");
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    const v = new URLSearchParams(window.location.search).get("variant");
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- prototype: read the URL once after hydration
+    if (v && SIDE_VARIANTS.some((x) => x.key === v)) setVariant(v);
+  }, []);
 
   useEffect(() => {
     const videos = [...(wrap.current?.querySelectorAll<HTMLVideoElement>("video") ?? [])];
@@ -60,12 +70,13 @@ export function GuidanceDemo() {
   if (!SHOW_VOICE_DEMO) return null;
 
   return (
-    <div className="gd-body" ref={wrap}>
+    <div className="gd-body" ref={wrap} data-proto-wide={WIDE_VARIANTS.has(variant) ? "" : undefined}>
       <div className="gd-media">
         <DemoVideo className="gd-wide" src="/video/guidance-demo.mp4" poster="/video/guidance-demo-poster.jpg" label={LABEL} />
         <DemoVideo className="gd-board" src="/video/guidance-demo-board.mp4" poster="/video/guidance-demo-board-poster.jpg" label={LABEL} />
       </div>
-      <ol className="gd-steps" aria-label="What happens in the demo">
+      {variant !== "now" && <SideVariant variant={variant} />}
+      {variant === "now" && <ol className="gd-steps" aria-label="What happens in the demo">
         {STEPS.map((step, i) => (
           <li key={step.title} className={i === active ? "on" : i < active ? "done" : undefined} aria-current={i === active ? "step" : undefined}>
             <button type="button" onClick={() => seek(step)}>
@@ -76,8 +87,9 @@ export function GuidanceDemo() {
             {i === active && <span className="bar" aria-hidden="true"><i style={{ transform: `scaleX(${fill})` }} /></span>}
           </li>
         ))}
-      </ol>
+      </ol>}
       <p className="gd-cap">This demo shows a planned voice call. Voice calls are not available yet; Maya is available by typed chat.</p>
+      <PrototypeSwitcher variants={SIDE_VARIANTS} current={variant} onChange={setVariant} />
     </div>
   );
 }
