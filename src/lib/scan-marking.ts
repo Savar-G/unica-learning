@@ -36,6 +36,12 @@ export interface MarkingFrame extends PageForObservation {
   ready: boolean;
   pageNumber: number;
   questions: (PageForObservation["questions"][number] & { regions: readonly PrintedRegion[] | null })[];
+  /**
+   * Questions the photo's edge cuts off (#912, `cutOff` of the ready calibration). Whatever the model says, each of their
+   * regions reads as unsure with issue cut-off, so the item waits for our team and the parent is told to send a new photo:
+   * the straightened page shows white paper where the answer was, which must never read as blank.
+   */
+  cutOff?: readonly number[];
 }
 export interface EffectiveMark {
   expected: ExpectedItem;
@@ -133,6 +139,10 @@ const normalizedWords = (text: string) => text.trim().replace(/\s+/g, " ").toLow
 export function currentSheetCheck(result: unknown): boolean {
   return object(result) && typeof result.sheetCheck === "number" && Number.isFinite(result.sheetCheck) && result.sheetCheck >= MARKING_SHEET_CHECK_VERSION;
 }
+/** A region the photo's edge cuts off: never read, whatever the model said about it. */
+function cutOffRegion(a: Alias): RegionReading {
+  return { regionId: a.regionId, text: null, value: null, certainty: "uncertain", result: null, issue: "cut-off", ...(a.kind === "method" ? { verdict: null, verdictReason: null, methodKind: null } : {}) };
+}
 function readRegion(a: Alias, readings: unknown[]): RegionReading {
   const matches = readings.filter(r => object(r) && r.item === a.item && r.region === a.region);
   const r = matches.length === 1 && object(matches[0]) ? matches[0] : null;
@@ -203,7 +213,8 @@ export function readMarkingOutput(frame: MarkingFrame, output: unknown, options:
     const group = local.filter(a => itemKey(a.expected.identity) === itemKey(e.identity));
     if (!group.length) return first;
     const twoWays = e.twoWays === true;
-    const read = group.map(a => readRegion(a, readings));
+    const cut = frame.cutOff?.includes(e.number) === true;
+    const read = group.map(a => cut ? cutOffRegion(a) : readRegion(a, readings));
     const regions = twoWays ? twoWaysRegions(group, read) : read;
     const result = twoWays ? (methodMarks ? twoWaysResult(regions) : null) : regions.some(r => r.result === "wrong") ? "wrong" : regions.every(r => r.result === "right") ? "right"
       : regions.every(r => r.result === "blank") ? "blank" : null;
