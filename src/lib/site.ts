@@ -49,5 +49,5 @@ export const HERO = {
   kicker: "For ages 5 to 14, Kindergarten to Grade 9.",
   title: "A personalized math program made to help your child",
   highlight: "excel.",
-  lead: "Unica mails a paper workbook made for your child. You scan the pages with your phone, and we mark them. When your child gets stuck, an AI Teaching Assistant helps.",
+  lead: "Unica mails a paper workbook made for your child. You scan the pages with your phone, we mark them, and an AI Teaching Assistant helps when they're stuck.",
 };
