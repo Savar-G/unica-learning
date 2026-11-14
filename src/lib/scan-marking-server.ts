@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { childPlanAccess, markingDecision, markingMode, type ChildPlanAccess, type Env } from "@/lib/scan-marking-access";
 import { changeScanMark, markingCommand, scanMarkingStore, type ParentMarkChoice } from "@/lib/scan-marking-store";
-import { markingAiClient, markingClientReady } from "@/lib/scan-marking-ai";
+import { markingAiClient, markingClientReady, markingEscalationClient } from "@/lib/scan-marking-ai";
 import { MARKING_MODEL, MARKING_PROMPT_VERSION, markingPageView, runScanMarking } from "@/lib/scan-marking";
 import { SCAN_MARKING_LAUNCH_EVIDENCE, scanMarkingLaunchReadiness } from "@/lib/scan-marking-launch";
 import { rebuildChildProfile } from "@/lib/child-profile";
@@ -61,7 +61,8 @@ export async function processScanMarking(db: SupabaseClient<Database>, parent: s
   // Recover committed intents and profile work even after image expiry or a worker crash after application.
   await store.publish(parent, child);
   const result = await runScanMarking(store, { parent, photo }, crypto.randomUUID(), markingAiClient(env, undefined, undefined, { feature: "marking", parentId: parent, childId: child, source: { kind: "scan_photo", id: photo } }), () => new Date().toISOString(),
-    { aiTimeLeftMs: options.aiTimeLeftMs, onRateLimit: options.onRateLimit });
+    { aiTimeLeftMs: options.aiTimeLeftMs, onRateLimit: options.onRateLimit,
+      escalate: markingEscalationClient(env, undefined, { feature: "marking", parentId: parent, childId: child, source: { kind: "scan_photo", id: photo } }) });
   await rebuildOrDefer(db, child, options);
   return result;
 }

@@ -2,7 +2,7 @@
 // that sets them and checks each number against its constant, so the two cannot drift.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { MARKING_MAX_DEFERRALS, MARKING_MAX_DISPATCHES, MARKING_MAX_TRANSPORT_DISPATCHES } from "@/lib/scan-marking";
 
 const sql = readFileSync(join(process.cwd(), "supabase/migrations/20261114023202_scan_marking_clean_failures.sql"), "utf8");
@@ -15,4 +15,17 @@ it("the SQL checks and rules use the run's limits", () => {
   expect(one(/d\.clean_failure='rate-limit'\)>=(\d+)/)).toBe(MARKING_MAX_DISPATCHES);
   expect(one(/or j\.dispatches>=(\d+) then return '"attempts"'/)).toBe(MARKING_MAX_TRANSPORT_DISPATCHES);
   expect(one(/elsif j\.deferrals>=(\d+) then st := 'attempts'/)).toBe(MARKING_MAX_DEFERRALS);
+});
+
+// The second look (decision 2026-11-13): the database admits the escalation model only on a call that says so, and the
+// price row starts disabled, so nothing changes until it is enabled after the evaluation gate.
+describe("the second look in the database", () => {
+  const escalation = readFileSync(join(process.cwd(), "supabase/migrations/20261114051938_scan_marking_escalation.sql"), "utf8");
+  it("admits anthropic/claude-opus-5.5 only with role escalation, adds its price row disabled, and records the items it decided", () => {
+    expect(escalation).toContain("not (price.model = 'anthropic/claude-opus-5.5' and p_data->>'role' = 'escalation')");
+    expect(escalation).toMatch(/values \('anthropic\/claude-opus-5\.5', false,/);
+    expect(escalation).toContain("model=case when j.escalation is not null and j.escalation->'items' ? m.item_id then j.escalation->>'model' else j.model end");
+    // The dispatch rules are the same text as #868's: the second look is one more dispatch of the same job.
+    expect(escalation).toContain("j.dispatches-(select count(*) from public.scan_marking_dispatches d where d.photo_id=p_photo and d.clean_failure='rate-limit')>=2");
+  });
 });

@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { expectedItems, firstObservation, itemKey, markingEvent, observationProblem, PHOTO_ISSUES, type Observation } from "@/lib/scan-observation";
-import { markingAiTimeout, MARKING_AI_TIMEOUT_MS, MARKING_MAX_DEFERRALS, MARKING_MAX_DISPATCHES, MARKING_MAX_TRANSPORT_DISPATCHES, MARKING_RETRY_WAIT_CAP_MS, MARKING_RETRY_WAIT_MS, type MarkingFailure, MARKING_MIN_AI_MS, TWO_WAYS_METHOD_MARKS, waitsForTeam, effectiveMarkingEvents, effectiveSkillMarks, markingOriginalKey, markingPageView, markingRequest, MARKING_CAP_MICROS, MARKING_MODEL, MARKING_PROMPT_VERSION, readMarkingOutput, runScanMarking, validMarkingOutput, type EffectiveMark, type MarkingClientFactory, type MarkingFrame, type MarkingJob, type MarkingRunOptions, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
+import { markingAiTimeout, MARKING_AI_TIMEOUT_MS, MARKING_MAX_DEFERRALS, MARKING_MAX_DISPATCHES, MARKING_MAX_TRANSPORT_DISPATCHES, MARKING_RETRY_WAIT_CAP_MS, MARKING_RETRY_WAIT_MS, type MarkingFailure, MARKING_MIN_AI_MS, TWO_WAYS_METHOD_MARKS, waitsForTeam, effectiveMarkingEvents, effectiveSkillMarks, markingOriginalKey, markingPageView, markingRequest, MARKING_CAP_MICROS, MARKING_MODEL, MARKING_PROMPT_VERSION, MARKING_ESCALATION_MODEL, MARKING_ESCALATION_PROMPT_VERSION, type MarkingEscalation, readMarkingOutput, runScanMarking, validMarkingOutput, type EffectiveMark, type MarkingClientFactory, type MarkingFrame, type MarkingJob, type MarkingRunOptions, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
 import type { AiJsonRequest } from "@/lib/ai-client";
+import { markingEscalationClient } from "@/lib/scan-marking-ai";
 import { checkQuestionPackage, workedSteps, type NumberValue, type Operation, type QuestionPackage } from "@/lib/question-package";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
 import { memoryChildProfiles } from "@/lib/child-profile-memory";
@@ -173,7 +174,9 @@ class Store implements MarkingStore {
     this.jobs.set(ref.photo, j); return j;
   }
   async image() { this.imageReads++; return new Uint8Array([1, 2, 3]); }
-  async admit(ref: MarkingRef, token: string, model: string) {
+  roles: { model: string; role?: string }[] = [];
+  async admit(ref: MarkingRef, token: string, model: string, role?: "escalation") {
+    this.roles.push({ model, ...(role ? { role } : {}) });
     if (!this.live(ref, token)) return "terminal" as const;
     const j = this.jobs.get(ref.photo)!;
     // The SQL rule (#868): only a clean 429 the store confirmed does not use up one of the two dispatches; five in all.
@@ -210,7 +213,8 @@ class Store implements MarkingStore {
     if ((job.deferrals ?? 0) >= MARKING_MAX_DEFERRALS) { await this.pause(ref, token, "attempts"); return "attempts" as const; }
     job.deferrals = (job.deferrals ?? 0) + 1; job.until = 0; return "pending" as const;
   }
-  async extract(ref: MarkingRef, token: string, o: Observation[], model: string) { if (!this.live(ref, token)) return false; this.jobs.get(ref.photo)!.extraction = structuredClone(o); for (const m of this.items.values()) m.model = model; return true; }
+  escalations: (MarkingEscalation | null | undefined)[] = [];
+  async extract(ref: MarkingRef, token: string, o: Observation[], model: string, escalation?: MarkingEscalation | null) { this.escalations.push(escalation); if (!this.live(ref, token)) return false; this.jobs.get(ref.photo)!.extraction = structuredClone(o); for (const m of this.items.values()) m.model = model; return true; }
   async apply(ref: MarkingRef, token: string, observations: Observation[], events: NewLearningEvent[], at: string) {
     if (!this.live(ref, token)) return false;
     for (const o of observations) {
@@ -1488,3 +1492,69 @@ describe("#912: a question the photo's edge cuts off", () => {
     expect(readMarkingOutput(tickFrame(), tickOutput("+", "66"))[0]).toMatchObject({ state: "scored", result: "right" });
   });
 });
+
+describe("the second look: unsure answers are read once more by the escalation model (decision 2026-11-13)", () => {
+  const f = () => frame("photo-esc", [0, 12, 9]);
+  const second = (text: string | null) => ({ readings: [{ item: "i2", region: "r2", text, state: text === null ? "uncertain" : text === "" ? "blank" : "written", issue: text === null ? "unreadable" : null, verdict: null, reason: null }] });
+  const withOpus = (s: Store) => { s.prices.set(MARKING_ESCALATION_MODEL, 20_000); return s; };
+  const go = (s: Store, first: MarkingClientFactory, escalate?: MarkingClientFactory) => runScanMarking(s, { parent: P, photo: "photo-esc" }, "photo-esc", first, () => new Date(s.clock).toISOString(), { escalate });
+  const item = (s: Store, n: number) => [...s.items.values()].find((m) => m.expected.number === n)!.observation;
+
+  it("sends only the unsure items, with the second-look rule, and its certain mark stands", async () => {
+    const s = withOpus(new Store(f())), asked: AiJsonRequest[] = [];
+    expect(await go(s, client(output(["0", null, "9"])), client(second("12"), asked, 3_000, MARKING_ESCALATION_MODEL))).toBe("finished");
+    expect(asked).toHaveLength(1);
+    const part = asked[0].content.find((c) => c.type === "text")!;
+    if (part.type !== "text") throw new Error("text request required");
+    expect((JSON.parse(part.text).items as { item: string }[]).map((i) => i.item)).toEqual(["i2"]);
+    expect(asked[0].system).toContain("second look");
+    expect([1, 2, 3].map((n) => item(s, n).result)).toEqual(["right", "right", "right"]);
+    expect(s.roles).toEqual([{ model: MARKING_MODEL }, { model: MARKING_ESCALATION_MODEL, role: "escalation" }]);
+    expect(s.escalations.at(-1)).toEqual({ model: MARKING_ESCALATION_MODEL, prompt: MARKING_ESCALATION_PROMPT_VERSION, items: [expectedItems(f())[1].identity.itemId] });
+    // Both dispatches settled once, each with its own cost.
+    expect(s.settles).toEqual(["d0", "d1"]);
+    expect([...s.spend.values()].map((x) => x.charged)).toEqual([null, 3_000]);
+  });
+
+  it("keeps the first read when the second look is unsure too, or blank where the first saw nothing readable", async () => {
+    const s = withOpus(new Store(f()));
+    expect(await go(s, client(output(["0", null, "9"])), client(second(null), [], 3_000, MARKING_ESCALATION_MODEL))).toBe("finished");
+    expect(item(s, 2)).toMatchObject({ state: "pending", result: null });
+    expect(s.escalations.at(-1)).toBeNull();
+    const b = withOpus(new Store(f()));
+    expect(await go(b, client(output(["0", null, "9"])), client(second(""), [], 3_000, MARKING_ESCALATION_MODEL))).toBe("finished");
+    expect(item(b, 2)).toMatchObject({ state: "scored", result: "blank" });
+  });
+
+  it("never asks when the first read is certain, and keeps the first read on any failure or refusal", async () => {
+    const calm = withOpus(new Store(f())), never: AiJsonRequest[] = [];
+    expect(await go(calm, client(output(["0", "12", "9"])), client(second("12"), never, 3_000, MARKING_ESCALATION_MODEL))).toBe("finished");
+    expect(never).toHaveLength(0);
+    expect(calm.roles).toHaveLength(1);
+    // A failed call: the first read stands, its dispatch is settled once.
+    const failed = withOpus(new Store(f()));
+    expect(await go(failed, client(output(["0", null, "9"])), client(async () => { throw new Error("provider down"); }, [], null, MARKING_ESCALATION_MODEL))).toBe("finished");
+    expect(item(failed, 2)).toMatchObject({ state: "pending", result: null });
+    expect(failed.settles).toEqual(["d0", "d1"]);
+    // No price row for the model: refused before any call.
+    const unpriced = new Store(f()), none: AiJsonRequest[] = [];
+    expect(await go(unpriced, client(output(["0", null, "9"])), client(second("12"), none, 3_000, MARKING_ESCALATION_MODEL))).toBe("finished");
+    expect(none).toHaveLength(0);
+    expect(item(unpriced, 2)).toMatchObject({ state: "pending" });
+  });
+
+  it("makes one attempt only: a client retry is refused before admission", async () => {
+    const s = withOpus(new Store(f()));
+    const retrying: MarkingClientFactory = (before) => ({ client: { model: MARKING_ESCALATION_MODEL, async json() { await before(); await before(); return second("12"); } }, costMicros: () => null });
+    expect(await go(s, client(output(["0", null, "9"])), retrying)).toBe("finished");
+    expect(s.roles.filter((r) => r.role === "escalation")).toHaveLength(1);
+    expect(item(s, 2)).toMatchObject({ state: "pending" });
+  });
+
+  it("is off unless SCAN_MARKING_ESCALATION is exactly on", () => {
+    expect(markingEscalationClient({ SCAN_MARKING_OPENROUTER_API_KEY: "k" })).toBeUndefined();
+    expect(markingEscalationClient({ SCAN_MARKING_OPENROUTER_API_KEY: "k", SCAN_MARKING_ESCALATION: "On" })).toBeUndefined();
+    expect(markingEscalationClient({ SCAN_MARKING_OPENROUTER_API_KEY: "k", SCAN_MARKING_ESCALATION: "on" })).toBeTypeOf("function");
+  });
+});
+
