@@ -25,12 +25,17 @@ export function scanHistoryStore(db: SupabaseClient<Database>, scope: HistorySco
     const pages: HistoryRecord[] = list(result.pages).map((v) => {
       const r = object(v);
       const photos: HistoryPhoto[] = list(r.photos).map((p) => { const x = object(p); return { id: str(x.id), state: str(x.state), at: str(x.at), expiresAt: str(x.expiresAt), sentAt: nullable(x.sentAt) }; });
-      const jobs: HistoryJob[] = list(r.jobs).map((j) => { const x = object(j); return { photo: str(x.photo), state: str(x.state), blocked: nullable(x.blocked), dispatches: num(x.dispatches) }; });
-      const spend: HistorySpend[] = list(r.spend).map((s) => { const x = object(s); return { id: str(x.id), model: str(x.model), at: str(x.at), reserved: num(x.reserved), charged: x.charged === null ? null : num(x.charged), outcome: str(x.outcome) }; });
+      const jobs: HistoryJob[] = list(r.jobs).map((j) => { const x = object(j);
+        // #868: an older database sends no lastDispatch; then no deferral reads as fresh.
+        const last = x.lastDispatch === undefined || x.lastDispatch === null ? null : object(x.lastDispatch);
+        return { photo: str(x.photo), state: str(x.state), blocked: nullable(x.blocked), dispatches: num(x.dispatches),
+          lastDispatch: last && { cleanFailure: nullable(last.cleanFailure), settledAt: nullable(last.settledAt) } }; });
+      const spend: HistorySpend[] = list(r.spend).map((s) => { const x = object(s); return { id: str(x.id), model: str(x.model), at: str(x.at), reserved: num(x.reserved), charged: x.charged === null ? null : num(x.charged), outcome: str(x.outcome),
+        cleanFailure: x.cleanFailure === undefined ? null : nullable(x.cleanFailure) }; });
       return { id: str(r.id), childId: str(r.childId), childName: str(r.childName), workbookId: str(r.workbookId), book: num(r.book), revision: str(r.revision), day: str(r.day), pageNumber: num(r.pageNumber), marks: list(r.marks).map(mark), photos, jobs, spend };
     });
     const b = result.budget === null ? null : object(result.budget);
     const budget: HistoryBudget | null = b && { period: str(b.period), cap: num(b.cap), reported: num(b.reported), held: num(b.held), unknown: num(b.unknown), reserved: num(b.reserved) };
-    return { pages, budget };
+    return { pages, budget, admin: "admin" in scope };
   } };
 }

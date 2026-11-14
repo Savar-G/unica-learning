@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vitest";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
-import { historyCosts, historyPage, readScanHistory, type HistoryRecord, type HistoryStore } from "./scan-history";
+import { DEFERRAL_FRESH_MS, historyCosts, historyPage, readScanHistory, type HistoryRecord, type HistoryStore } from "./scan-history";
 import { scanHistoryStore } from "./scan-history-reader";
 vi.mock("server-only", () => ({}));
 const P = "11111111-1111-4111-8111-111111111111", C = "22222222-2222-4222-8222-222222222222", W = "33333333-3333-4333-8333-333333333333";
@@ -32,6 +32,62 @@ it("keeps blank, unscored, pending, failed, never scanned and ready separate", (
   unscored.marks[0].expected.method = "unscored"; Object.assign(unscored.marks[0].observation, { state: "unscored", method: "unscored", result: null });
   unread(pending); pending.jobs[0].state = "running"; pending.photos[0].state = "saved"; pending.photos[0].expiresAt = "2027-01-01"; failed.jobs[0].state = "queued"; failed.jobs[0].blocked = "attempts"; unread(failed); empty.marks = []; empty.photos = []; empty.jobs = [];
   expect([blank, unscored, pending, failed, empty, record(6)].map((r) => historyPage(r, now).status)).toEqual(["blank", "unscored", "pending", "failed", "never-scanned", "ready"]);
+});
+it("a job waiting as pending for a later run is still being marked, never Could not mark (#868)", () => {
+  const waiting = unread(record(1, null)); waiting.jobs[0].state = "queued"; waiting.jobs[0].blocked = "pending";
+  waiting.photos[0].state = "saved"; waiting.photos[0].expiresAt = "2027-01-01";
+  expect(historyPage(waiting, now)).toMatchObject({ status: "pending", label: "Not marked yet", failedJob: false });
+});
+it("a waiting job whose photo expired can no longer be marked: Could not mark, and in the failed filter (#868)", async () => {
+  const expired = (n: number, state: string, expiresAt: string) => {
+    const r = unread(record(n, null)); r.jobs[0].state = "queued"; r.jobs[0].blocked = "pending";
+    r.photos[0].state = state; r.photos[0].expiresAt = expiresAt; return r;
+  };
+  const pages = [expired(1, "saved", "2026-11-05T00:00:00Z"), expired(2, "expired", "2026-11-05T00:00:00Z"), expired(3, "saved", "2026-11-06T00:00:00Z")];
+  for (const r of pages) expect(historyPage(r, now)).toMatchObject({ status: "failed", label: "Could not mark", failedJob: true });
+  expect((await readScanHistory(source(pages, 100), { status: "failed" }, now))!.pages.map((p) => p.pageNumber)).toEqual([1, 2, 3]);
+  // A job still running on an expired photo cannot finish either.
+  const running = expired(4, "saved", "2026-11-05T00:00:00Z"); running.jobs[0].state = "running"; running.jobs[0].blocked = null;
+  expect(historyPage(running, now).status).toBe("failed");
+  // A live retake of the same page can still mark it: Not marked yet.
+  const retake = expired(5, "expired", "2026-11-05T00:00:00Z");
+  retake.photos.push({ ...retake.photos[0], id: id(990), state: "saved", expiresAt: "2027-01-01T00:00:00Z" });
+  expect(historyPage(retake, now)).toMatchObject({ status: "pending", failedJob: false });
+});
+it("a never-sent retake cannot mark the page: the stranded job still reads Could not mark", () => {
+  const r = unread(record(6, null)); r.jobs[0].state = "queued"; r.jobs[0].blocked = "pending";
+  r.photos[0].state = "expired";
+  r.photos.push({ ...r.photos[0], id: id(991), state: "saved", expiresAt: "2027-01-01T00:00:00Z", sentAt: null });
+  expect(historyPage(r, now)).toMatchObject({ status: "failed", failedJob: true });
+  // Once sent (or claimed by a job) the retake can still mark it.
+  r.photos[1].sentAt = "2026-11-05T23:00:00Z";
+  expect(historyPage(r, now)).toMatchObject({ status: "pending", failedJob: false });
+});
+it("admins see a waiting job in the failed filter unless its own latest dispatch is a recent clean 429; parents never do", async () => {
+  const at = (ms: number) => new Date(ms).toISOString();
+  const waiting = (n: number, blocked: string, last: HistoryRecord["jobs"][number]["lastDispatch"]) => {
+    const r = unread(record(n, null)); r.jobs[0].state = "queued"; r.jobs[0].blocked = blocked; r.jobs[0].lastDispatch = last;
+    r.photos[0].state = "saved"; r.photos[0].expiresAt = "2027-01-01T00:00:00Z";
+    return r;
+  };
+  const deferred = waiting(1, "pending", { cleanFailure: "rate-limit", settledAt: at(now - 60_000) });
+  const old = waiting(2, "pending", { cleanFailure: "rate-limit", settledAt: at(now - DEFERRAL_FRESH_MS - 1) });
+  const timedOut = waiting(3, "pending", { cleanFailure: null, settledAt: null });
+  const neverCalled = waiting(4, "pending", null);
+  // A closed plan is no failure, as before #868.
+  const closed = waiting(5, "off", null);
+  // Freshness is the job's own: a fresh clean 429 on another job of the page does not cover a stuck one.
+  const mixed = waiting(6, "pending", { cleanFailure: null, settledAt: null });
+  mixed.photos.push({ ...mixed.photos[0], id: id(992) });
+  mixed.jobs.push({ ...mixed.jobs[0], photo: id(992), lastDispatch: { cleanFailure: "rate-limit", settledAt: at(now - 60_000) } });
+  const all = [deferred, old, timedOut, neverCalled, closed, mixed];
+  for (const r of all) expect(historyPage(r, now, "admin"), r.day).toMatchObject({ status: "pending", label: "Not marked yet" });
+  expect(all.map((r) => historyPage(r, now, "admin").failedJob)).toEqual([false, true, true, true, false, true]);
+  const admin: HistoryStore = { read: async (f) => ({ pages: all.filter((r) => !f.after || r.id > f.after), budget: null, admin: true }) };
+  expect((await readScanHistory(admin, { status: "failed" }, now))!.pages.map((p) => p.pageNumber)).toEqual([2, 3, 4, 6]);
+  // The parent scope has no dispatch data: a waiting job on a live sent photo is never in its "could not mark" filter.
+  expect(all.map((r) => historyPage(r, now).failedJob)).toEqual([false, false, false, false, false, false]);
+  expect((await readScanHistory(source(all, 100), { status: "failed" }, now))!.pages).toEqual([]);
 });
 it("an unsure page says our team is checking it; a page not read yet says Not marked yet; neither asks the parent (#715)", () => {
   const unsure = record(1, null), notRead = unread(record(2, null));
@@ -118,4 +174,23 @@ it.each(["review", "failed", "scanned"] as const)("keeps the printed cursor when
   expect(second.pages.map((p) => p.pageNumber)).toEqual(Array.from({ length: 25 }, (_, n) => n + 26));
   expect(second.counted).toBe(25);
   expect(second.costs.reported).toBe(50_000);
+});
+it("the RPC adapter reads each job's latest dispatch and the monitor's deferred 429s, and marks the monitor read as admin (#868)", async () => {
+  const r = unread(record(1, null)), at = new Date(now - 60_000).toISOString();
+  r.jobs[0] = { ...r.jobs[0], state: "queued", blocked: "pending", lastDispatch: { cleanFailure: "rate-limit", settledAt: at } };
+  r.photos[0] = { ...r.photos[0], state: "saved", expiresAt: "2027-01-01T00:00:00Z" };
+  r.spend = [{ ...r.spend[0], charged: 0, outcome: "deferred", cleanFailure: "rate-limit" }];
+  const raw = { ...r, marks: r.marks.map((m) => ({ expected: m.expected, observation: m.observation, original_event: m.originalEvent, event_id: m.eventId, evidence_at: m.at, model: m.model, prompt: m.prompt })) };
+  const old = structuredClone(raw) as typeof raw & { jobs: Record<string, unknown>[]; spend: Record<string, unknown>[] };
+  delete old.jobs[0].lastDispatch; delete old.spend[0].cleanFailure;
+  let answer: unknown = raw;
+  const db = createClient<Database>("https://synthetic.invalid", "fake", { global: { fetch: async (_url, init) => Response.json({ pages: JSON.parse(String(init?.body)).p_data.after ? [] : [answer], budget: null }) } });
+  const admin = (await readScanHistory(scanHistoryStore(db, { admin: P }), { status: "failed" }, now))!;
+  expect(admin.pages).toEqual([]);
+  const all = (await readScanHistory(scanHistoryStore(db, { admin: P }), {}, now))!;
+  expect(all.costs.split).toEqual([expect.objectContaining({ outcome: "deferred", reported: 0, reserved: 0 })]);
+  // An older database (no lastDispatch): admins see the waiting job in the failed filter; the parent never does.
+  answer = old;
+  expect((await readScanHistory(scanHistoryStore(db, { admin: P }), { status: "failed" }, now))!.pages).toHaveLength(1);
+  expect((await readScanHistory(scanHistoryStore(db, { parent: P }), { child: C, status: "failed" }, now))!.pages).toEqual([]);
 });

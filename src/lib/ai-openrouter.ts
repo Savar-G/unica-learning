@@ -111,8 +111,10 @@ function readOutput(content: string, strict: boolean): unknown {
   throw new Error("the output is not valid JSON");
 }
 
+/** An observer of one HTTP error answer: its status, the body text the try read, and its headers. */
+export type OnErrorAnswer = (status: number, body: string, headers: Headers) => void;
 /** One try: the parsed JSON output, or an error. Error messages hold codes and OpenRouter's words, never the output. */
-async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: AbortSignal, timeout: number, strict: boolean, onDispatch?: () => void, onUsage?: (u: OpenRouterUsage) => void): Promise<unknown> {
+async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: AbortSignal, timeout: number, strict: boolean, onDispatch?: () => void, onUsage?: (u: OpenRouterUsage) => void, onErrorAnswer?: OnErrorAnswer): Promise<unknown> {
   let res: Response;
   try {
     const options = { ...init, signal: AbortSignal.any([signal, AbortSignal.timeout(timeout)]) };
@@ -131,6 +133,8 @@ async function once(fetch: typeof globalThis.fetch, init: RequestInit, signal: A
     data = null;
   }
   if (!res.ok) {
+    // The observer reads the body this try already read, and never throws into the call.
+    try { onErrorAnswer?.(res.status, text, res.headers); } catch { /* observing never fails a call */ }
     const error = `OpenRouter answered ${res.status}: ${short(data?.error?.message ?? text)}`;
     throw retryableStatus(res.status) ? new Retryable(error) : new Error(error);
   }
@@ -163,6 +167,7 @@ export function openRouterClient({
   onRequest,
   onDispatch,
   onUsage,
+  onErrorAnswer,
   provider,
 }: {
   apiKey: string;
@@ -176,6 +181,8 @@ export function openRouterClient({
   onDispatch?: () => void;
   /** Called once for each answer that reports usage, a refused or cut-off one included (the AI usage ledger). */
   onUsage?: (usage: OpenRouterUsage) => void;
+  /** Called with each HTTP error answer (status, the body as read, headers), before the try fails or is retried. */
+  onErrorAnswer?: OnErrorAnswer;
   /** Optional feature-owned route. The default route is unchanged. */
   provider?: OpenRouterProvider;
 }): AiClient {
@@ -195,7 +202,7 @@ export function openRouterClient({
         await onRequest?.();
         if (signal.aborted) throw new Error("time is up");
         try {
-          return await once(fetch, init, signal, timeout, strict, onDispatch, onUsage);
+          return await once(fetch, init, signal, timeout, strict, onDispatch, onUsage, onErrorAnswer);
         } catch (e) {
           if (!(e instanceof Retryable) || attempt >= maxRetries || signal.aborted) throw e instanceof Retryable ? new Error(e.message) : e;
         }
