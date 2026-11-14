@@ -36,6 +36,7 @@ it.each([
   "You said to divide 80 by 8. I got 10 because one plus one is two.",
   "You said to divide 80 by 8. I got 10 because 3/4 equals 6/8.",
   "You said to divide 80 by 8. I got 10 because two groups of four is eight.",
+  "You said to divide 80 by 8. I got 10 because two equal groups of four is eight.",
 ])("accepts a new own answer after instruction-only attribution: %s", text => {
   expect(failures(text)).toEqual([]);
 });
@@ -54,6 +55,7 @@ it.each([
   "You said to divide 80 by 8. I got 10 because eight is not eight.",
   "You said to divide 80 by 8. I got 10 because 3/4 equals 1/2.",
   "You said to divide 80 by 8. I got 10 because two groups of four is nine.",
+  "You said to divide 80 by 8. I got 10 because two equal groups of four is nine.",
 ])("still detects improper acceptance: %s", text => {
   expect(failures(text)).toContainEqual(expect.objectContaining({ code: "accepted_wrong_answer" }));
 });

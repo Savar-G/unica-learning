@@ -405,7 +405,7 @@ export const packageOf = (b: Behaviour): QuestionPackage => FIXTURES[b.fixture];
  * request for help.
  */
 function ownEquationsHold(sentence: string): boolean {
-  let text = sentence.replace(/[−–]/g, "-").replace(/×/g, " times ").replace(/÷/g, " divided by ").replace(/\bgroups? of\b/g, "times");
+  let text = sentence.replace(/[−–]/g, "-").replace(/×/g, " times ").replace(/÷/g, " divided by ").replace(/\b(?:equal\s+)?groups?\s+of\b/g, "times");
   // The speech reader omits bare "one" when it could mean an object. Keep it as a value in own math, except pointers.
   const initial = sayNumbers(text);
   for (const m of [...text.matchAll(/\bone\b/g)].reverse()) {
