@@ -2,7 +2,7 @@
 // The AI owns readings only. No model identity, score, key or eligibility claim enters a result.
 import { createHash } from "node:crypto";
 import type { AiClient, AiJsonRequest } from "@/lib/ai-client";
-import { expectedItems, firstObservation, itemKey, markingEvent, MAX_READ_TEXT, MODEL_READING_ISSUES, pageCompletion, PHOTO_ISSUES, readingIssueText, type ReadingIssue, type RegionReading, type ExpectedItem, type MarkResult, type Observation, type PageForObservation } from "@/lib/scan-observation";
+import { expectedItems, firstObservation, waitsForTeam, itemKey, markingEvent, MAX_READ_TEXT, MODEL_READING_ISSUES, pageCompletion, PHOTO_ISSUES, readingIssueText, type ReadingIssue, type RegionReading, type ExpectedItem, type MarkResult, type Observation, type PageForObservation } from "@/lib/scan-observation";
 import { markingRegions, type MarkingRegion } from "@/lib/scan-marking-regions";
 import { checkFractionReading } from "@/lib/scan-marking-fractions";
 import { checkMethodReading, differentStrategies, METHOD_JUDGMENTS, type MethodJudgment } from "@/lib/scan-marking-methods";
@@ -36,6 +36,12 @@ export interface MarkingFrame extends PageForObservation {
   ready: boolean;
   pageNumber: number;
   questions: (PageForObservation["questions"][number] & { regions: readonly PrintedRegion[] | null })[];
+  /**
+   * Questions the photo's edge cuts off (#912, `cutOff` of the ready calibration). Whatever the model says, each of their
+   * regions reads as unsure with issue cut-off, so the item waits for our team and the parent is told to send a new photo:
+   * the straightened page shows white paper where the answer was, which must never read as blank.
+   */
+  cutOff?: readonly number[];
 }
 export interface EffectiveMark {
   expected: ExpectedItem;
@@ -133,6 +139,10 @@ const normalizedWords = (text: string) => text.trim().replace(/\s+/g, " ").toLow
 export function currentSheetCheck(result: unknown): boolean {
   return object(result) && typeof result.sheetCheck === "number" && Number.isFinite(result.sheetCheck) && result.sheetCheck >= MARKING_SHEET_CHECK_VERSION;
 }
+/** A region the photo's edge cuts off: never read, whatever the model said about it. */
+function cutOffRegion(a: Alias): RegionReading {
+  return { regionId: a.regionId, text: null, value: null, certainty: "uncertain", result: null, issue: "cut-off", ...(a.kind === "method" ? { verdict: null, verdictReason: null, methodKind: null } : {}) };
+}
 function readRegion(a: Alias, readings: unknown[]): RegionReading {
   const matches = readings.filter(r => object(r) && r.item === a.item && r.region === a.region);
   const r = matches.length === 1 && object(matches[0]) ? matches[0] : null;
@@ -203,7 +213,8 @@ export function readMarkingOutput(frame: MarkingFrame, output: unknown, options:
     const group = local.filter(a => itemKey(a.expected.identity) === itemKey(e.identity));
     if (!group.length) return first;
     const twoWays = e.twoWays === true;
-    const read = group.map(a => readRegion(a, readings));
+    const cut = frame.cutOff?.includes(e.number) === true;
+    const read = group.map(a => cut ? cutOffRegion(a) : readRegion(a, readings));
     const regions = twoWays ? twoWaysRegions(group, read) : read;
     const result = twoWays ? (methodMarks ? twoWaysResult(regions) : null) : regions.some(r => r.result === "wrong") ? "wrong" : regions.every(r => r.result === "right") ? "right"
       : regions.every(r => r.result === "blank") ? "blank" : null;
@@ -311,14 +322,7 @@ export function effectiveSkillMarks(marks: readonly EffectiveMark[]): SkillMark[
     return d.publish && m.originalEvent && m.eventId ? [{ standard: m.originalEvent.skill.standard, right: d.result === "right", review: ["friday-5", "mixed-set", "show-what-you-know"].includes(m.expected.teaching?.part ?? ""), at: m.originalEvent.occurredAt }] : [];
   });
 }
-/**
- * An item with no result that waits for our team (#715): an old format a person marks, or anything the AI read (or
- * tried to read) without a sure result. An item not read yet is not the team's. A stored row that apply wrote always has
- * a model, which is the rule admin_scan_team_queue uses; a reading in hand counts too.
- */
-export const waitsForTeam = (m: Pick<EffectiveMark, "observation" | "model">) =>
-  m.observation.result === null && (m.observation.state === "parent-pending"
-    || (m.observation.state === "pending" && (m.model !== null || m.observation.certainty !== "not-read")));
+export { waitsForTeam };
 /** What a parent sees for one item. It never asks the parent to judge an answer: the AI and our team mark. */
 function itemLabel(m: EffectiveMark): string {
   const o = m.observation;

@@ -58,7 +58,7 @@ import { twoWaysOnStoriesPage } from "@/lib/workbook-early-levels";
 import { BC_SKILL_MAP, curriculumOrder, worstFirst, type Grade } from "@/lib/assessment";
 import type { ChildStandard } from "@/lib/child-profile";
 import type { QuestionRef } from "@/lib/question-package";
-import type { Curriculum, CurriculumLevel, Delivery, Range } from "@/lib/workbook-curriculum";
+import type { Curriculum, CurriculumKey, CurriculumLevel, Delivery, Range } from "@/lib/workbook-curriculum";
 import { sumTemplate, templateProblem } from "@/lib/workbook-step-items";
 import type { BookSignals } from "@/lib/workbook-signals";
 import type { InstructionOutcome, InstructionsTrace } from "@/lib/workbook-instructions";
@@ -411,6 +411,12 @@ export interface PlanInstructions {
 }
 
 export interface PlanInput {
+  /**
+   * The curriculum this input was planned on (#812): `curriculumVersion(key)` when planNextBookFromSnapshot made it. A
+   * run from a saved next-book plan refuses when today's version differs (nextBookRunPlan). The planner does not read it.
+   * Absent: not recorded.
+   */
+  curriculum?: { key: CurriculumKey; version: string };
   /** Admin book instructions. Absent: the plan is unchanged. */
   instructions?: PlanInstructions;
   /** Opt-in pure preview policy. Omit this property for the unchanged production plan. */

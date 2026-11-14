@@ -7,6 +7,7 @@ import {
   calibratePhoto,
   calibrationForPhoto,
   cropBox,
+  cropInPhoto,
   cropPlan,
   sheetChecker,
   straightenedPage,
@@ -59,6 +60,11 @@ export interface ScanCalibrationResult {
   straight?: { width: number; height: number };
   crops?: ScanCrop[];
   notSupported?: number[];
+  /**
+   * Questions whose answer the photo's edge cuts off (#912), on a page placed by its QR code: no crop is made, and marking
+   * leaves them to our team as cut off (scan-marking.ts), never read from what is left. Absent when none is cut off.
+   */
+  cutOff?: number[];
   reason?: ScanRefusal;
   /**
    * The sheet check a ready result passed (SHEET_CHECK_VERSION). A ready result with an older or no version was made before
@@ -75,7 +81,7 @@ export const checkedReady = (result: { sheetCheck?: unknown } | null | undefined
   typeof result?.sheetCheck === "number" && result.sheetCheck >= SHEET_CHECK_VERSION;
 
 export type ScanPreview =
-  | { status: "ready"; straight: { part: string; width: number; height: number }; crops: { part: string; number: number; width: number; height: number }[]; notSupported: number[] }
+  | { status: "ready"; straight: { part: string; width: number; height: number }; crops: { part: string; number: number; width: number; height: number }[]; notSupported: number[]; cutOff?: number[] }
   /** `retryInMs`, only for check-timeout: how long until the job's lease is over and another call can check again. */
   | { status: "refused"; reason: ScanRefusal; retryInMs?: number }
   /** Checking is not available: a legacy book, an older revision, or a photo that is no longer active. The photo keeps its place unless it ended. */
@@ -216,6 +222,7 @@ export async function readScanPreview(store: ScanCropStore, ref: PhotoRef): Prom
   return {
     status: "ready", straight: { part: STRAIGHT_PART, ...r.straight },
     crops: r.crops.map((c) => ({ part: c.part, number: c.number, width: c.width, height: c.height })), notSupported: r.notSupported ?? [],
+    ...(r.cutOff?.length ? { cutOff: r.cutOff } : {}),
   };
 }
 
@@ -275,7 +282,7 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
   const { calibration } = result;
 
   // The code and the marks are this page's: the print between them must be too, wherever a near twin prints otherwise.
-  const ask = sheetChecker({ photo, printed, transform: calibration.transform, writing });
+  const ask = sheetChecker({ photo, printed, transform: calibration.transform, writing, sheet: calibration });
   if (Date.now() >= deadline) return timedOut();
   const sheet = await sheetVerdict(store, ask, frame.page.others, deadline);
   if (sheet === "timeout") return timedOut();
@@ -283,7 +290,10 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
 
   // The files of the attempt this one replaced go first. A file of an older attempt stays until the photo's cleanup.
   if (previous) await store.clearLease({ ...ref, token: previous });
-  const plan = cropPlan(frame.page.questions);
+  const planned = cropPlan(frame.page.questions);
+  // A question the photo's edge cuts is not cropped: a crop would show white paper where its answer was (#912).
+  const cutOff = planned.crops.filter((c) => !cropInPhoto(calibration, contract.contract, c.box)).map((c) => c.number);
+  const plan = { ...planned, crops: planned.crops.filter((c) => !cutOff.includes(c.number)) };
   const straight = straightenedPage(photo, calibration, contract.contract);
   const uploads = [
     { part: STRAIGHT_PART, raster: straight, quality: 78 },
@@ -302,6 +312,7 @@ export async function runScanCrops(store: ScanCropStore, ref: PhotoRef, token: s
   const rasters = new Map(uploads.map((u) => [u.part, u.raster]));
   return finished("ready", {
     sheetCheck: SHEET_CHECK_VERSION, calibration, parts: uploads.map((u) => u.part), straight: { width: straight.width, height: straight.height }, notSupported: plan.notSupported,
+    ...(cutOff.length ? { cutOff } : {}),
     crops: plan.crops.map((c) => {
       const part = cropPart(c.number), r = rasters.get(part)!;
       return { part, number: c.number, itemId: c.itemId, regionId: c.regionId, ...(c.regionIds ? { regionIds: c.regionIds } : {}), box: c.box, width: r.width, height: r.height };

@@ -1,0 +1,17 @@
+{
+  "round": "r926",
+  "issue": 926,
+  "status": "Draft implementation for design and copy review; not approved for shipping",
+  "base": "origin/main",
+  "component": "src/components/scan-help.tsx",
+  "contract": "contract.md",
+  "route": "Existing scan styles and native dialog; separate help component with minimal mounts",
+  "approval": "Pending owner review of design and copy, then final integrated scan-flow verification",
+  "browser": "browser.md",
+  "screenshots": [
+    "mobile.png",
+    "tablet.png",
+    "desktop.png"
+  ],
+  "review": "review.md"
+}

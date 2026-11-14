@@ -1,0 +1,17 @@
+.scan-help { margin-bottom: 16px; }
+.scan-help-trigger, .scan-help-offer button { min-height: 44px; }
+.scan-help-offer { padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); }
+.scan-help-offer p { margin: 0; }
+.scan-help-offer > div { display: flex; flex-wrap: wrap; gap: 8px 24px; }
+.scan-help-dialog { width: min(640px, calc(100% - 24px)); max-height: calc(100dvh - 32px); padding: 0; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--paper); overflow-y: auto; overscroll-behavior: contain; }
+.scan-help-dialog::backdrop { background: rgb(0 0 0 / 40%); }
+.scan-help-body { padding: 24px; }
+.scan-help-body header { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.scan-help-body header h2 { font-size: 1.5rem; margin: 0; }
+.scan-help-body header button { min-height: 44px; }
+.scan-help-body ol { padding-left: 24px; }
+.scan-help-body li { padding-left: 8px; margin-bottom: 24px; }
+.scan-help-body h3 { font-size: 1.05rem; margin: 0 0 8px; }
+.scan-help-body p { line-height: 1.6; margin: 0 0 12px; }
+.scan-help-body :focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+@media (max-width: 699px) { .scan-help-body { padding: 16px; } }
