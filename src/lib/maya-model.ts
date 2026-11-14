@@ -93,9 +93,9 @@ const TRANSCRIPT_TURNS = 12;
 export function modelInput(session: Session, repair: ModelInput["repair"] = null): ModelInput {
   const pkg = session.package;
   const { acts } = nextActs(session);
-  const lines = lineOffers(session);
-  const warm = warmGroups(session);
-  const draw = drawOffers(session);
+  const lines = lineOffers(session, acts);
+  const warm = warmGroups(session, acts);
+  const draw = drawOffers(session, acts);
   return {
     promptVersion: PROMPT_VERSION,
     wordLimit: turnWordLimit(session),

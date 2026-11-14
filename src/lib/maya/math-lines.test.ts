@@ -306,6 +306,11 @@ describe("the line set", () => {
 
   it("has a few child-friendly variants for every line, with no math in a variant's own words", () => {
     for (const [key, variants] of Object.entries(TEMPLATES)) {
+      // Savar approved fixed comparison wording for first ship on 2026-11-13.
+      if (key === "comparison.words") {
+        expect(variants).toEqual(["{words}"]);
+        continue;
+      }
       // The no-secret reply has four kind wordings (#884, D-329); each still fits one short turn.
       if (key === "about.no_secret") {
         expect(variants.length).toBeGreaterThanOrEqual(2);

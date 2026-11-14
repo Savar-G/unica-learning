@@ -97,6 +97,11 @@ describe("the phrase bank", () => {
 
   it("gives every math line 5 to 8 wordings", () => {
     for (const [key, wordings] of Object.entries(TEMPLATES)) {
+      // Savar approved fixed comparison wording for first ship on 2026-11-13.
+      if (key === "comparison.words") {
+        expect(wordings).toEqual(["{words}"]);
+        continue;
+      }
       if (key === "open.hello" || key.startsWith("question.") || key === "assess.ask" || key === "redirect.back") continue;
       // The no-secret reply: four kind wordings (#884, D-329).
       if (key === "about.no_secret") {

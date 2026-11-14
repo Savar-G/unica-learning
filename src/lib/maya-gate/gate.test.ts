@@ -1,4 +1,5 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { availableParallelism } from "node:os";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { ACTS, INTERRUPTS, MAIN_STATES, type Act, type SessionState } from "@/lib/maya";
@@ -22,9 +23,16 @@ let ms = 0;
 
 beforeAll(async () => {
   const t0 = performance.now();
+  const cpuStart = process.cpuUsage();
   for (const b of BEHAVIOURS) errors.set(b.id, (await runGateBehaviour(b, store)).error);
   for (const b of BEHAVIOURS) verdicts.set(b.id, judgeSaved(b, store));
   ms = performance.now() - t0;
+  if (process.env.CI) {
+    const cpu = process.cpuUsage(cpuStart);
+    console.info(JSON.stringify({ check: "maya-behaviour-timing", pid: process.pid, parallelism: availableParallelism(),
+      worker: process.env.VITEST_POOL_ID ?? null, behaviours: BEHAVIOURS.length,
+      wallMs: ms, cpuMs: (cpu.user + cpu.system) / 1000 }));
+  }
   const dir = process.env.MAYA_GATE_TRACES;
   if (dir) {
     mkdirSync(dir, { recursive: true });

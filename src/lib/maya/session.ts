@@ -1140,8 +1140,9 @@ function exampleRevealsAnswer(s: Session): boolean {
   const pkg = s.package!;
   const lines = packageLines(pkg);
   const offers = [...lines.exampleIntro(), ...pkg.easierExample.steps.flatMap((step) => lines.exampleStep(step.id))];
+  const options = readOptionsFor(pkg);
   return offers.some((offer) => [...offer.texts, ...(offer.board ? [offer.board] : [])]
-    .some((text) => valuesIn(text, readOptionsFor(pkg)).some((value) => equivalent(value, pkg.answer.value))));
+    .some((text) => valuesIn(text, options).some((value) => equivalent(value, pkg.answer.value))));
 }
 
 /**
@@ -1235,7 +1236,7 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
   if (!main) return { acts: [], code: "act_not_allowed", reason: "No act fits now." };
   const steps = s.package!.easierExample.steps.length;
   const noStart = s.noStart && !progress;
-  if (s.solved === null && !rightResult && exampleRevealsAnswer(s) && (noStart || reading.start === "no_start" || main === "MODEL_EXAMPLE")) {
+  if (s.solved === null && !rightResult && (noStart || reading.start === "no_start" || main === "MODEL_EXAMPLE") && exampleRevealsAnswer(s)) {
     return { acts: ["close"], code: "act_not_allowed", reason: "The easier example cannot be said safely. Close without the answer." };
   }
   let acts = MAIN_ACTS[main].filter((act) => {
@@ -1244,12 +1245,13 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
         return !s.opened;
       case "clarify":
         return !s.clarified;
-      case "example_step":
-        if (exampleRevealsAnswer(s)) return false;
+      case "example_step": {
         // The easier example starts only before the child has done a step of their question, and only for a child who
         // cannot start or asks for help (practice: "Okay, let's do 27 plus 39." got the example). The model is offered
         // it before it reads the turn (`offering`); its reading then decides.
-        return main === "ASSESS" ? !progress && (offering || s.noStart || reading.start === "no_start" || reading.help !== undefined) : s.exampleShown < steps;
+        const eligible = main === "ASSESS" ? !progress && (offering || s.noStart || reading.start === "no_start" || reading.help !== undefined) : s.exampleShown < steps;
+        return eligible && !exampleRevealsAnswer(s);
+      }
       case "try_target":
         // A child who could not start sees the whole example first. Never once the child has done a step of their
         // question (practice: "Now you try yours" after "I got 16 for 7 plus 9").
@@ -5521,8 +5523,8 @@ export function phraseOffers(session: Session, group: PhraseGroup): { pick: numb
 }
 
 /** The warm-talk purposes each act Maya may take now can use (D-196), for the text adapter beside lineOffers. */
-export function warmGroups(session: Session): Partial<Record<Act, PhraseGroup[]>> {
-  return Object.fromEntries(nextActs(session).acts.map((act) => [act, session.replies?.length ? [] : PHRASE_GROUPS.filter((g) => PHRASE_ACTS[g].includes(act) && (CALM_PHRASES[g].length > 0 || phraseOffers(session, g).length > 0))]));
+export function warmGroups(session: Session, offeredActs?: readonly Act[]): Partial<Record<Act, PhraseGroup[]>> {
+  return Object.fromEntries((offeredActs ?? nextActs(session).acts).map((act) => [act, session.replies?.length ? [] : PHRASE_GROUPS.filter((g) => PHRASE_ACTS[g].includes(act) && (CALM_PHRASES[g].length > 0 || phraseOffers(session, g).length > 0))]));
 }
 
 /** "{echo}" filled with the child's words, a capital first at the start of a sentence. */
@@ -6092,10 +6094,10 @@ function drawBoard(s: Session, p: Proposal, view: View, spoken: Spoken): Command
  * The board offers each act Maya may take now can draw (R374-6-1), for the text adapter beside lineOffers: an id and
  * what it shows. `line.<line id>` offers appear in the turn a line with a board form is said.
  */
-export function drawOffers(session: Session): Partial<Record<Act, { id: string; shows: string }[]>> {
+export function drawOffers(session: Session, offeredActs?: readonly Act[]): Partial<Record<Act, { id: string; shows: string }[]>> {
   if (session.noBoard) return {};
   const pkg = session.package;
-  const { acts } = nextActs(session);
+  const acts = offeredActs ?? nextActs(session).acts;
   if (!pkg) return Object.fromEntries(acts.map((a) => [a, []]));
   // The regroup due now, with what the child's words show before any reading (a denial, a write plan).
   const done = [...session.done];
@@ -6173,8 +6175,8 @@ const openSteps = (pkg: OperationPackage, done: readonly string[], regroup: read
  * step of the child's question not done yet, and for the final step, as the model's reading of the child's turn may
  * finish steps; the session then accepts the ones for the step the ladder is on. Empty when it is not Maya's turn.
  */
-export function lineOffers(session: Session): Partial<Record<Act, LineOffer[]>> {
-  const { acts } = nextActs(session);
+export function lineOffers(session: Session, offeredActs?: readonly Act[]): Partial<Record<Act, LineOffer[]>> {
+  const acts = offeredActs ?? nextActs(session).acts;
   const pkg = session.package;
   if (!pkg) return Object.fromEntries(acts.map((a) => [a, []]));
   // The regroup due now, with what the child's words show before any reading (a denial, a write plan).
