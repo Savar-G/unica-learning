@@ -36,6 +36,10 @@ export interface DayStrip {
   nextDay: string | null;
   /** This is the last day of the book, and it is complete. */
   allDone: boolean;
+  /** How many days back from the current day this strip is (0: the current day), after clamping to Day 1. */
+  back: number;
+  /** ‹ can move to an earlier day of the same book; it stops at the book's first day. */
+  hasPrevious: boolean;
 }
 
 const STATE_WORDS: Record<StripState, string> = {
@@ -56,8 +60,10 @@ function stateOf(tile: StackTile | undefined, photo: StackPhoto | undefined, mar
 /**
  * The day to show: the day of the latest page, in book order, of the newest book that has a photo; with no photo yet,
  * the first day of the newest book. A day whose pages are all done stays in view, marked done, with the next day named.
+ * `back` (2026-11-14, Cedric): the strip's ‹ and › step to earlier days of the same book, with the same tiles, states and
+ * marks; it never goes past Day 1 or ahead of the current day. An earlier day names no next day.
  */
-export function dayStrip(o: { photos: readonly StackPhoto[]; pages: readonly DayPage[]; tiles: readonly StackTile[]; marking: boolean }): DayStrip | null {
+export function dayStrip(o: { photos: readonly StackPhoto[]; pages: readonly DayPage[]; tiles: readonly StackTile[]; marking: boolean; back?: number }): DayStrip | null {
   if (!o.pages.length) return null;
   const order = new Map(o.pages.map((p, i) => [p.id, i]));
   const known = o.photos.filter((p) => order.has(p.pageId));
@@ -65,8 +71,12 @@ export function dayStrip(o: { photos: readonly StackPhoto[]; pages: readonly Day
   const newestBook = (known.length ? known.map((p) => ({ id: p.workbookId, book: p.book })) : books).sort((a, b) => b.book - a.book)[0].id;
   const inBook = o.pages.filter((p) => p.workbookId === newestBook);
   const latest = known.filter((p) => p.workbookId === newestBook).sort((a, b) => order.get(b.pageId)! - order.get(a.pageId)!)[0];
-  const anchor = latest ? o.pages[order.get(latest.pageId)!] : inBook[0];
-  if (!anchor) return null;
+  const current = latest ? o.pages[order.get(latest.pageId)!] : inBook[0];
+  if (!current) return null;
+  const days = [...new Set(inBook.map((p) => p.day))];
+  const currentAt = Math.max(0, days.indexOf(current.day));
+  const back = Math.min(Math.max(0, Math.floor(o.back ?? 0)), currentAt);
+  const anchor = { day: days[currentAt - back] };
   const tileOf = new Map(o.tiles.filter((t) => t.photoId).map((t) => [t.photoId!, t]));
   // The newest photo of each page speaks for it.
   const photoOf = new Map<string, StackPhoto>();
@@ -79,12 +89,12 @@ export function dayStrip(o: { photos: readonly StackPhoto[]; pages: readonly Day
   });
   const done = tiles.filter((t) => (o.marking ? t.state === "marked" : t.state !== "todo" && t.state !== "retake")).length;
   const complete = done === tiles.length;
-  const days = [...new Set(inBook.map((p) => p.day))];
-  const next = days[days.indexOf(anchor.day) + 1] ?? null;
+  const next = back ? null : days[currentAt + 1] ?? null;
   return {
     workbookId: newestBook, day: anchor.day, tiles, done, total: tiles.length,
     countText: `${done} of ${tiles.length} ${tiles.length === 1 ? "page" : "pages"} ${o.marking ? "marked" : "scanned"}`,
-    complete, nextDay: complete ? next : null, allDone: complete && !next && inBook.every((p) => {
+    back, hasPrevious: currentAt - back > 0,
+    complete, nextDay: complete ? next : null, allDone: !back && complete && !next && inBook.every((p) => {
       const photo = photoOf.get(p.id);
       const state = stateOf(photo ? tileOf.get(photo.id) : undefined, photo, o.marking);
       return o.marking ? state === "marked" : state !== "todo" && state !== "retake";

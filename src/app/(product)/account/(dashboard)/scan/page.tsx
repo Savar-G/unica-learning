@@ -72,8 +72,9 @@ export default async function ScanPage({ searchParams }: PageProps<"/account/sca
   // The page's child when a QR code opened it, else the child in view in the dashboard (the last child viewed), else the oldest.
   const inView = list.find((k) => k.id === focus?.childId) ?? pickChild(list, null, dashboard?.remembered ?? null);
   const ordered = inView ? [inView, ...list.filter((k) => k.id !== inView.id)] : list;
-  // "See all pages" opens the child's Workbooks page history only where that page shows it, by the page's own read; a
-  // child without it keeps the history inline on this screen. A failed read keeps it inline too.
+  // "See all pages" opens the child's Workbooks page history only where that page shows it, by the page's own read. A
+  // child without it (a failed read too) gets no link and no history here (2026-11-14): the strip's ‹ steps back instead.
+  // A child whose stage has no Workbooks tab (no saved card and no confirmed delivery, src/lib/child-stage.ts) has none.
   const allPages = (await Promise.all(ordered.map(async (k) =>
     workbooksHistoryShown(await workbooksPage(db, parent, admin, k.id, { dashboard: Boolean(dashboard) }).catch(() => null)) ? k.id : null))).filter((id): id is string => id !== null);
   const screen = scanScreen(userAgent({ headers: h }).device.type, query[CONTINUE_HERE] === "1");

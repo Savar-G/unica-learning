@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 const context = vi.hoisted(() => ({ auth: null as null | ((_event: string, session: { user: { id: string } } | null) => void), prepare: null as null | (() => Promise<Blob>), code: null as null | "read" | "unread", encodings: [] as number[] }));
 vi.mock("@/lib/supabase-browser", () => ({
   browserClient: () => ({ auth: { onAuthStateChange: (callback: typeof context.auth) => {
@@ -23,6 +23,9 @@ import { refusalCopy } from "@/lib/scan-stack";
 // "two-p12.jpg" shows two sheets, which the check refuses.
 type Photo = { id: string; pageId: string; workbookId: string; book: number; pageNumber: number; state: "pending" | "saved"; check: string; reason: string | null; sentAt: string | null; createdAt: string; marks?: unknown };
 const PAGES = [10, 11, 12, 13].map((n, i) => ({ id: `p${n}`, workbookId: "book", book: 1, pageNumber: n, day: "Day 4", pageOfDay: i + 1, pagesInDay: 4 }));
+// Earlier days of the same book, before Day 4, for the strip's ‹ and › (2026-11-14). Empty unless a test sets them.
+let earlierPages: typeof PAGES = [];
+const allBookPages = () => [...earlierPages, ...PAGES];
 let root: Root, host: HTMLDivElement;
 let checks: boolean, acknowledged: boolean;
 let photos: Map<string, Photo & { two: boolean }>;
@@ -63,7 +66,7 @@ const text = () => document.body.textContent ?? "";
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  marking = null; putGate = null; undoMs = 60_000; filedTo = null; markingOn = false; allPages = ["child"]; holds = []; context.encodings = []; duplicateMs = 60_000; holdFailures = 0; captureRenewMs = 270_000;
+  marking = null; putGate = null; undoMs = 60_000; filedTo = null; markingOn = false; earlierPages = []; allPages = ["child"]; holds = []; context.encodings = []; duplicateMs = 60_000; holdFailures = 0; captureRenewMs = 270_000;
   try { localStorage.setItem("unica.scan-tips.v1:parent", "seen"); localStorage.removeItem("unica.scan-undone.v1:parent"); } catch {}
   context.auth = null; context.prepare = null; context.code = null; checks = true; acknowledged = true; photos = new Map(); uploading = 0; mostAtOnce = 0; full = false; calls.length = 0;
   admitted = []; loseAdmissions = 0; saveFailures = 0; expired = new Set();
@@ -75,7 +78,7 @@ beforeEach(() => {
     if (path.startsWith("/api/account/scans?child=")) {
       if (listDown) return Response.json({ error: "unavailable" }, { status: 503 });
       if (path.includes("child=other")) return Response.json({ checks, pages: PAGES, photos: [] });
-      return Response.json({ checks, marking: markingOn, pages: PAGES, photos: [...photos.values()].map(({ two, ...p }) => { void two; return p; }) });
+      return Response.json({ checks, marking: markingOn, pages: allBookPages(), photos: [...photos.values()].map(({ two, ...p }) => { void two; return p; }) });
     }
     if (path === "/api/account/scans" && method === "POST") {
       const asked: string = JSON.parse(String(init!.body)).id;
@@ -375,7 +378,7 @@ it("asks for no check and offers no Send unless the server says this family has 
 });
 
 const seed = (id: string, pageId: string, fields: Partial<Photo> = {}) => {
-  const page = PAGES.find((p) => p.id === pageId)!;
+  const page = allBookPages().find((p) => p.id === pageId)!;
   photos.set(id, { id, pageId, workbookId: "book", book: 1, pageNumber: page.pageNumber, state: "saved", check: "ready", reason: null, sentAt: null, createdAt: `2026-11-05T09:00:0${photos.size}Z`, two: false, ...fields });
 };
 const saves = (id: string) => calls.filter((c) => c === `POST /api/account/scans/${id}`).length;
@@ -818,14 +821,63 @@ it("has no Page history on the scan screen: one See all pages link opens the chi
   expect(host.querySelector('a[href="/account/scan/results/a"]')).not.toBeNull();
 });
 
-it("keeps the page history on the scan screen for a child whose Workbooks page would not show it", async () => {
+it("shows no page history and no link for a child whose Workbooks page would not show it (2026-11-14)", async () => {
   markingOn = true; allPages = [];
   seed("a", "p10", { sentAt: new Date().toISOString(), marks: { right: 7, scored: 8, total: 8, toPractise: 1, waiting: 0, complete: true } });
   await render();
-  expect(text()).not.toContain("See all pages");
-  expect(text()).toContain("Page history");
-  expect(host.querySelector("#scan-history")).not.toBeNull();
-  expect([...host.querySelectorAll("a")].find((a) => a.textContent === "See all progress")?.getAttribute("href")).toBe("#scan-history");
+  expect(text()).not.toMatch(/See all pages|See all progress|Page history|Show:|Saved results stay/);
+  expect(host.querySelector("#scan-history")).toBeNull();
+  expect(host.querySelector("select")).toBeNull();
+  expect(calls.some((c) => c.includes("/api/account/scans/history"))).toBe(false);
+});
+
+describe("the strip's ‹ and › step through the book's days (2026-11-14)", () => {
+  const day = (n: number, numbers: number[]) => numbers.map((p, i) => ({ id: `p${p}`, workbookId: "book", book: 1, pageNumber: p, day: `Day ${n}`, pageOfDay: i + 1, pagesInDay: numbers.length }));
+  const heading = () => host.querySelector(".scan-strip h2")!.textContent;
+  const step = async (label: "Previous day" | "Next day") => { await act(async () => button(label)!.click()); await settle(); };
+  const marks = { right: 3, scored: 4, total: 4, toPractise: 1, waiting: 0, complete: true };
+  beforeEach(() => {
+    markingOn = true;
+    earlierPages = [...day(1, [1, 2]), ...day(2, [3, 4, 5]), ...day(3, [6, 7, 8, 9])];
+    seed("d1", "p1", { sentAt: "2026-11-01T09:00:00Z", marks }); seed("d1b", "p2", { sentAt: "2026-11-01T09:00:00Z", marks });
+    seed("d3", "p7", { sentAt: "2026-11-03T09:00:00Z", marks });
+    seed("now", "p11", { sentAt: new Date().toISOString(), marks });
+  });
+
+  it("opens on the current day, steps back to Day 1 and stops there, and steps forward to the current day and stops", async () => {
+    await render();
+    expect(heading()).toBe("Day 4");
+    expect((button("Next day") as HTMLButtonElement).disabled).toBe(true);
+    expect((button("Previous day") as HTMLButtonElement).disabled).toBe(false);
+    await step("Previous day");
+    expect(heading()).toBe("Day 3");
+    expect(host.querySelector(".scan-strip-count")!.textContent).toBe("1 of 4 pages marked");
+    expect(button("Page 7, marked")).toBeDefined(); expect(button("Page 6, still to scan")).toBeDefined();
+    expect(text()).not.toContain("Next: ");
+    await step("Previous day"); await step("Previous day");
+    expect(heading()).toContain("Day 1");
+    expect(host.querySelector(".scan-strip-count")!.textContent).toBe("2 of 2 pages marked");
+    expect((button("Previous day") as HTMLButtonElement).disabled).toBe(true);
+    await step("Previous day");
+    expect(heading()).toContain("Day 1");
+    await step("Next day"); expect(heading()).toBe("Day 2");
+    await step("Next day"); await step("Next day"); expect(heading()).toBe("Day 4");
+    expect((button("Next day") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("opens an earlier day's page results from its tile", async () => {
+    await render();
+    await step("Previous day");
+    await act(async () => button("Page 7, marked")!.click()); await settle();
+    expect(document.querySelector('.scan-sheet a[href="/account/scan/results/d3"]')?.textContent).toBe("View page results");
+  });
+
+  it("gives the arrows their accessible labels", async () => {
+    await render();
+    await step("Previous day"); expect(heading()).toBe("Day 3");
+    expect(button("Previous day")!.getAttribute("aria-label")).toBe("Previous day");
+    expect(button("Next day")!.getAttribute("aria-label")).toBe("Next day");
+  });
 });
 
 it("shows no See all pages link while marking is closed, as the Workbooks page has no history then", async () => {

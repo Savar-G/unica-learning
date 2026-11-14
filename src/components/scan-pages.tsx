@@ -14,7 +14,6 @@ import { scanEventTicket } from "@/lib/scan-track";
 import { nextUploads, REQUEST_TIMEOUT_MS, roomWait, UPLOAD_TIMEOUT_MS, waitsForRoom } from "@/lib/scan-upload-queue";
 import { workbooksPath } from "@/lib/parent-shell";
 import { ScanPreview } from "@/components/scan-preview";
-import { ScanHistory } from "@/components/scan-history";
 import "./scan-pages.css";
 
 // Scan pages (spec #368, round r565 picked, D-269 to D-276; the screen from round r915-scan-flow, #915): tips on the first
@@ -192,7 +191,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   timeZone?: FamilyZone;
   /**
    * Children whose Workbooks page shows their Page history (src/lib/workbooks-page-server.ts): "See all pages" links
-   * there. Any other child keeps the history on this screen, so the link never opens a page that is not found.
+   * there. Any other child gets no link and no history here (2026-11-14), so the link never opens a page that is not found.
    */
   allPages?: readonly string[];
 }) {
@@ -683,6 +682,13 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const thumbOf = (t: StackTile) => thumbs[t.photoId ?? t.uploadKey ?? ""];
   const phone = mode === "phone";
   const strip = useMemo(() => dayStrip({ photos, pages: listing?.pages ?? [], tiles, marking }), [photos, listing, tiles, marking]);
+  // The strip's ‹ and › (2026-11-14): how many days back from the current day the parent stepped. It belongs to one
+  // child's current day, so a new current day or another child starts on the current day again.
+  const stripAt = `${child}|${strip?.workbookId ?? ""}|${strip?.day ?? ""}`;
+  const [dayBack, setDayBack] = useState({ at: stripAt, n: 0 });
+  const back = dayBack.at === stripAt ? dayBack.n : 0;
+  const shownStrip = useMemo(() => (back ? dayStrip({ photos, pages: listing?.pages ?? [], tiles, marking, back }) : strip), [back, strip, photos, listing, tiles, marking]);
+  const stepDay = (by: number) => setDayBack({ at: stripAt, n: Math.max(0, back + by) });
   const today = todaysPages(photos, now(), timeZone);
 
   async function send(ids: string[] = stack.readyIds) {
@@ -1207,7 +1213,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     </button>
   </li>;
   const line = scoreLine(name, today);
-  // The child's Workbooks page shows the history: link there. Else the history stays here, as before #915.
+  // The child's Workbooks page shows the history: link there. Else nothing here (2026-11-14): the strip steps back.
   const historyThere = allPages.includes(child);
 
   return <div className={`scan-pages is-stack${phone ? "" : " is-desktop"}`}>
@@ -1231,14 +1237,18 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
         : fixAction(fix) ?? (!phone && <p className="small">Take it again with your phone. The page waits there.</p>)}
     </section>}
 
-    {strip && <section className="scan-strip" aria-label={`${strip.day} pages`}>
+    {shownStrip && <section className="scan-strip" aria-label={`${shownStrip.day} pages`}>
       <div className="scan-strip-h">
-        <h2>{strip.allDone ? "All pages of this workbook are done" : strip.complete ? `${strip.day} done` : strip.day}{strip.complete && <i className="scan-done-tick" aria-hidden="true">{ICONS.check}</i>}</h2>
-        <p className="scan-strip-count">{strip.countText}</p>
+        <div className="scan-strip-day">
+          <button type="button" className="scan-strip-step" aria-label="Previous day" disabled={!shownStrip.hasPrevious} onClick={() => stepDay(1)}><span aria-hidden="true">‹</span></button>
+          <h2 aria-live="polite">{shownStrip.allDone ? "All pages of this workbook are done" : shownStrip.complete ? `${shownStrip.day} done` : shownStrip.day}{shownStrip.complete && <i className="scan-done-tick" aria-hidden="true">{ICONS.check}</i>}</h2>
+          <button type="button" className="scan-strip-step" aria-label="Next day" disabled={shownStrip.back === 0} onClick={() => stepDay(-1)}><span aria-hidden="true">›</span></button>
+        </div>
+        <p className="scan-strip-count">{shownStrip.countText}</p>
       </div>
-      <ul className="scan-strip-tiles">{strip.tiles.map(stripTile)}</ul>
-      {strip.nextDay && <p className="small">Next: {strip.nextDay}. Scan its pages when they are finished. Any order is fine.</p>}
-      {!strip.complete && <p className="small">Any order is fine.</p>}
+      <ul className="scan-strip-tiles">{shownStrip.tiles.map(stripTile)}</ul>
+      {shownStrip.nextDay && <p className="small">Next: {shownStrip.nextDay}. Scan its pages when they are finished. Any order is fine.</p>}
+      {!shownStrip.complete && shownStrip.back === 0 && <p className="small">Any order is fine.</p>}
     </section>}
     {unkeptNote && <p className="scan-spread-note" role="status">{unkeptNote}</p>}
     {elsewhereNote}
@@ -1256,8 +1266,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
           ? <Link href={`/account/scan/results/${p.id}`}><span><b>{pageName(p)}</b><span className={p.marks?.complete && !p.marks.toPractise ? "is-good" : ""}>{pageScore(p.marks)}</span></span><span aria-hidden="true">›</span></Link>
           : <span className="scan-results-row"><b>{pageName(p)}</b><span>Sent for marking. Marking is not ready yet.</span></span>}
       </li>)}</ul>
-      {marking && <p className="small">Questions to practise come back in the next workbook. {historyThere
-        ? <Link className="scan-link" href={allPagesPath(child)}>See all progress</Link> : <a className="scan-link" href="#scan-history">See all progress</a>}</p>}
+      {marking && <p className="small">Questions to practise come back in the next workbook.{historyThere && <> <Link className="scan-link" href={allPagesPath(child)}>See all progress</Link></>}</p>}
     </section>}
 
     {stack.addingTiles.length > 0 && group("new", "New photos", stack.addingTiles, undefined, addingCount(stack))}
@@ -1267,9 +1276,9 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       {group("sent", "Sent earlier", earlier, <p className="scan-gap">{marking ? "Open a page to view its results." : "Marking is not ready yet. These pages wait here."}</p>)}
     </details>}
 
-    {marking && child && (historyThere
-      ? <p className="small scan-all"><Link className="scan-link" href={allPagesPath(child)}>See all pages</Link></p>
-      : <div id="scan-history"><ScanHistory key={`${parent}:${child}`} parent={parent} child={child} /></div>)}
+    {/* No page history on this screen (2026-11-14): the strip's ‹ steps back through earlier days. "See all pages" only
+        where the child's Workbooks page shows its history; else nothing more. */}
+    {marking && child && historyThere && <p className="small scan-all"><Link className="scan-link" href={allPagesPath(child)}>See all pages</Link></p>}
 
     {listing && !noBook && (phone || (checks && plain.length > 0)) && <div className="scan-dock">
       {room ? <p className="small scan-room" role="status">{room}</p> : checks && !auto && note && <p className="small">{note}</p>}
