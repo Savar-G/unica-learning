@@ -29,7 +29,7 @@ const LISTS: { name: string; list: readonly string[]; table: string; column: str
   { name: "SCAN_JOB_STATES", list: SCAN_JOB_STATES, table: "scan_marking_jobs", column: "state" },
   { name: "SCAN_BLOCKED_REASONS", list: SCAN_BLOCKED_REASONS, table: "scan_marking_jobs", column: "blocked_reason" },
   { name: "SCAN_CALIBRATION_STATES", list: SCAN_CALIBRATION_STATES, table: "scan_calibrations", column: "state" },
-  // #868: the one clean failure that frees a marking dispatch's hold (migration 20261114011948_scan_marking_clean_failures).
+  // #868: the one clean failure that frees a marking dispatch's hold (migration 20261114023202_scan_marking_clean_failures).
   { name: "SCAN_CLEAN_FAILURES", list: SCAN_CLEAN_FAILURES, table: "scan_marking_dispatches", column: "clean_failure" },
   // D-325: the parent goals asked after signup.
   { name: "LEARNING_GOALS", list: LEARNING_GOALS.map((g) => g.id), table: "children", column: "learning_goal" },

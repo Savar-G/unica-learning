@@ -29,7 +29,7 @@ export type ScanBlockedReason = (typeof SCAN_BLOCKED_REASONS)[number];
 
 /**
  * Why a marking dispatch stopped counting against the job's two dispatches (public.scan_marking_dispatches.clean_failure,
- * migration 20261114011948_scan_marking_clean_failures, #868; null for every other dispatch). Only a 429 whose body the
+ * migration 20261114023202_scan_marking_clean_failures, #868; null for every other dispatch). Only a 429 whose body the
  * database accepted as OpenRouter's clean error envelope: its hold is freed (charge 0). A time-out or 5xx is never one.
  */
 export const SCAN_CLEAN_FAILURES = ["rate-limit"] as const;
