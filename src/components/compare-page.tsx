@@ -3,7 +3,7 @@
 // Uses the site nav and footer, like /our-story.
 import Link from "next/link";
 import { BRAND } from "@/lib/site";
-import { COMPARE_FAQ, HELP_NOTE, ONE_BY_ONE } from "@/lib/compare";
+import { COMPARE_FAQ, ONE_BY_ONE } from "@/lib/compare";
 import { Eyebrow, Faq as FaqList, Nav as NavBar } from "@/ds";
 import { Motion } from "@/components/motion";
 import { StartLink, StartNote } from "@/components/start-link";
@@ -37,7 +37,7 @@ export function ComparePage() {
             <Rise>
               <CompareSwitch labelledBy="glanceT" />
               <CompareLegend marks={["yes", "part", "no"]} />
-              <p className="cmpp-src">{HELP_NOTE} Prices from public sources, checked October 2026, in Canadian dollars except some online platforms. They vary by tutor, centre and plan.</p>
+              <p className="cmpp-src">Prices from public sources, checked October 2026, in Canadian dollars except some online platforms. They vary by tutor, centre and plan.</p>
             </Rise>
             <div className="cmpp-next">
               <StartLink className="btn sm" src="compare-table">{START_LABEL} <span className="arr">→</span></StartLink>
