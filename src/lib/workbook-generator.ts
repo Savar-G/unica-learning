@@ -2967,6 +2967,19 @@ function minimumFor(w: PageWork, level: number): number {
 /** Places whose items capacity may plan fewer of: practice and review, never a teaching panel, Friday 5 or a test. */
 const DROP_PLACES: ReadonlySet<string> = new Set(["remember-these", "on-your-own", "finish-these", "practice-row", "unit-b-practice", "now-you", "word-problems", "challenge", "picture-stories", "show-what-you-know", "mixed-set", "math-in-the-world"]);
 
+/** A printed earlier-step question in a practice block. Remove these before the block's own practice. */
+const isReviewSlot = (s: Slot) => !!s.part.step && !!s.contract?.template
+  && (s.contract.template.skill !== s.part.step.skill || s.contract.template.step !== s.part.step.step);
+const ownStepCounts = (slots: Slot[]) => {
+  const counts = new Map<number, number>();
+  for (const s of slots) if (s.part.step && s.contract?.template && !isReviewSlot(s)) counts.set(s.layoutSlot, (counts.get(s.layoutSlot) ?? 0) + 1);
+  return counts;
+};
+const keepsOwnSteps = (slots: Slot[], before: Slot[]) => {
+  const counts = ownStepCounts(slots);
+  return [...ownStepCounts(before)].every(([block, count]) => (counts.get(block) ?? 0) >= count);
+};
+
 /** The page's last practice item that can go above its type's minimum, a template item first; never a teaching item. */
 const droppable = (w: PageWork, level = 0) => {
   // The page's practice questions count (Cedric's table), not its warm-up, explanation, Spot the error or two ways.
@@ -2982,9 +2995,12 @@ const droppable = (w: PageWork, level = 0) => {
   // Of the template items, one of the kind the page has most of, so the page keeps its forms.
   const kind = (s: Slot) => s.contract?.template ? `${s.contract.template.kind}:${s.contract.template.format}` : "";
   const most = (s: Slot) => w.slots.filter(x => x.place !== "warm-up" && kind(x) === kind(s)).length;
-  const templated = w.slots.filter(s => can(s) && !!s.contract?.template);
+  const candidates = w.slots.filter(can);
+  const reviews = candidates.filter(isReviewSlot);
+  const preferred = reviews.length ? reviews : candidates;
+  const templated = preferred.filter(s => !!s.contract?.template);
   const pick = templated.reduce<Slot | undefined>((best, s) => !best || most(s) >= most(best) ? s : best, undefined);
-  return w.slots.findLast(s => can(s) && !s.contract && !s.existing) ?? pick ?? w.slots.findLast(can);
+  return preferred.findLast(s => !s.contract && !s.existing) ?? pick ?? preferred.at(-1);
 };
 
 const unwrittenPackages = new WeakMap<Slot, QuestionPackage | null>();
@@ -3418,8 +3434,22 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
           && w.slots.some(s => plannedWorkHeight(s.contract, input.plan.level) > 0)) {
           w.page.compactPanel = true; w.page.refills = 0; continue;
         }
+        // A complete grid that overflows gives up a complete review row before shorter-task searches can
+        // replace own-step practice with earlier work. An odd tail is handled by the hole repair below.
+        if (!holes.length && !fit.ok && !fit.problems.every(p => p.kind === "fullness") && w.layout) {
+          const review = droppable(w, input.plan.level);
+          const row = review && isReviewSlot(review) ? w.slots.filter(s => s.layoutSlot === review.layoutSlot && isReviewSlot(s)).slice(-2) : [];
+          if (row.length === 2 && counted - row.length >= minimumFor(w, input.plan.level)) {
+            w.slots = w.slots.filter(s => !row.includes(s));
+            w.layout.slots[review!.layoutSlot].items -= row.length;
+            ceiling = w.slots.length; minimum = Math.min(minimum, w.slots.length);
+            added = null; pendingRefill = null; rowTrial = null;
+            continue;
+          }
+        }
         lastBudgetFit = fit; lastHoles = holes;
-        if (!holes.length && !belowFloor && w.layout && (fit.ok || fit.problems.every(p => p.kind === "fullness"))) lastComplete = { slots: w.slots.map(s => ({ ...s })), layout: structuredClone(w.layout) };
+        if (!holes.length && !belowFloor && w.layout && (fit.ok || fit.problems.every(p => p.kind === "fullness"))
+          && (!lastComplete || keepsOwnSteps(w.slots, lastComplete.slots))) lastComplete = { slots: w.slots.map(s => ({ ...s })), layout: structuredClone(w.layout) };
         if (reviewPartner && !belowFloor && (fit.ok || fit.problems.every(p => p.kind === "fullness")) && ++holeRounds > HOLE_ROUNDS && w.layout) {
           // (Two review questions of the block, a row: the page keeps its own-step questions and its floor.)
           const row = w.slots.filter(s => s.layoutSlot === holeSlot!.layoutSlot && !s.existing && s.contract?.template && s.part.step
@@ -3565,7 +3595,9 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
           }
           if (reviewPartner && !preferReview) { preferReview = true; continue; }
           if (holes.length && w.layout) {
-            const drop = holeSlot && !["friday-5", "challenge"].includes(holeSlot.place ?? "") ? holeSlot : undefined;
+            const reviewDrop = droppable(w, input.plan.level);
+            const drop = reviewDrop && isReviewSlot(reviewDrop) ? reviewDrop
+              : holeSlot && !["friday-5", "challenge"].includes(holeSlot.place ?? "") ? holeSlot : undefined;
             const countedAfter = w.slots.filter(s => s !== drop && !["spot-the-error", "solve-it-two-ways", "warm-up", "how-do-you-know"].includes(s.place ?? "")).length;
             if (drop && countedAfter >= minimumFor(w, input.plan.level)) {
               w.slots = w.slots.filter(s => s !== drop); w.layout.slots[drop.layoutSlot].items--;
@@ -3752,7 +3784,7 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         return `Page ${w.number}: the required questions exceed the template capacity: day ${w.day} ${w.page.type} (${w.slots.map(s => s.place).join(", ")}): ${fit.problems.map(p => p.reason).join(" ")}`;
       }
       // A bounded search must keep its last complete, physically fitting grid. A rejected last trial is not capacity.
-      if (lastComplete && (!lastBudgetFit?.ok || lastHoles.length)) {
+      if (lastComplete && (!lastBudgetFit?.ok || lastHoles.length || !keepsOwnSteps(w.slots, lastComplete.slots))) {
         w.slots = lastComplete.slots; w.layout = lastComplete.layout;
         w.page.fillingComplete = true; w.page.atMaximum = true; w.page.extraGap = 0;
         ownStepFirst(w);

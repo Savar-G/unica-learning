@@ -541,8 +541,9 @@ const CSS = `
 .pg.consistent .error-item>.q:first-child{flex-wrap:nowrap;align-items:baseline}.pg.consistent .error-item>.q:first-child .wk{flex:1 1 0}
 .pg.consistent .error-item .ans{flex-wrap:wrap;gap:12px}.pg.consistent .error-item .ans .fix{margin-left:12px}
 .pg.consistent .error-item .ab{height:48px}
-/* Practice 2 holds 8 practice questions and Spot the error (U4 to U9, D-226, workbook-early-levels.ts): closer rows. */
-.pg.consistent[data-page-type="practice-2"] .cols,.pg.consistent[data-page-type="practice-2"] .two{row-gap:calc(4px + var(--extra-gap,0px))}
+/* Practice 2 holds 8 practice questions and Spot the error (U4 to U9, D-226, workbook-early-levels.ts): closer rows,
+   but never under 8 px (#759: a full page 22 printed its rows 4 px apart). A page with no room for that holds a question fewer. */
+.pg.consistent[data-page-type="practice-2"] .cols,.pg.consistent[data-page-type="practice-2"] .two{row-gap:calc(8px + var(--extra-gap,0px))}
 .pg.consistent[data-page-type="practice-2"] .two .ab{height:52px;min-width:56px}
 .pg.consistent[data-page-type="practice-2"] .q.seq-item{gap:4px}
 .pg.consistent .error-item .strip{min-height:48px}
@@ -556,8 +557,8 @@ const CSS = `
 .pg.consistent[data-page-type="practice-2"]:not(:has([data-slot="solve-it-two-ways"])) .ct{gap:calc(12px + var(--extra-gap,0px))}
 /* (Its block gap and its practice block's gap grow with the rows' gap, so a section label keeps at least a row gap above
    it when the page's gaps grow to fill it: issue #745, "SPOT THE ERROR" 6 px under rows 12 px apart.) */
-.pg.consistent[data-page-type="practice-2"]:has([data-slot="solve-it-two-ways"]) .ct{gap:calc(6px + var(--extra-gap,0px))}
-.pg.consistent[data-page-type="practice-2"]:has([data-slot="solve-it-two-ways"]) [data-slot="practice-row"]{gap:calc(4px + var(--extra-gap,0px))}
+.pg.consistent[data-page-type="practice-2"]:has([data-slot="solve-it-two-ways"]) .ct{gap:calc(10px + var(--extra-gap,0px))}
+.pg.consistent[data-page-type="practice-2"]:has([data-slot="solve-it-two-ways"]) [data-slot="practice-row"]{gap:calc(8px + var(--extra-gap,0px))}
 
 .pg.consistent .mxs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:32px;row-gap:calc(12px + var(--extra-gap,0px))}
 /* Savar, 2026-11-04: a row's cards top-aligned, each number on its text's first line; a story's number on its text's
