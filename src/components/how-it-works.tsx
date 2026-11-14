@@ -67,7 +67,7 @@ const STEPS: { n: string; title: string; text: ReactNode; vis: ReactNode; label:
         <NextCover zoom={0.92} />
       </div>
     ),
-    label: "Leah's next workbook cover: borrowing across zero.",
+    label: "Leah's next workbook cover: subtracting 3-digit numbers.",
   },
 ];
 
