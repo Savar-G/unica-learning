@@ -17,7 +17,7 @@ function Cover({ name }: { name: string }) {
       <p className="hwb-cover-t">Multiplying and<br /><mark>dividing</mark></p>
       <div className="hwb-cover-box">
         <span className="hwb-mono">Made from {whose} assessment</span>
-        <p>On Sep 22, {name} knew her times tables but slowed down when dividing. So this workbook:</p>
+        <p>On Sep 22, {name} knew the times tables but slowed down when dividing. So this workbook:</p>
         <ul>
           <li>Practises dividing, one step at a time</li>
           <li>Keeps multiplying fresh every day</li>
