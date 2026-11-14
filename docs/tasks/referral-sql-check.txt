@@ -1,0 +1,1 @@
+REFERRAL_SQL_LOCAL_PASS: migration and synthetic rollback probe; stub platform fences, no hosted proof

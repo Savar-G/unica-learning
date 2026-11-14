@@ -6,6 +6,8 @@ export interface ReferralOverview {
   rewardsRemaining: number;
   pendingReferrals: number;
   appliedCode: string | null;
+  /** Remains true when deletion removes the source family's public code. */
+  benefitApplied?: boolean;
   canApply: boolean;
 }
 

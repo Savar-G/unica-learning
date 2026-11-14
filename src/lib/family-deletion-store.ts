@@ -10,7 +10,8 @@ import {
   type RetentionCandidate, type RetentionCardState, type RetentionClaim, type RetentionFamily,
 } from "@/lib/assessment";
 import { readBookingCustomers, readCustomerPayments } from "@/lib/retention-stripe";
-import { stripe } from "@/lib/stripe";
+import { stripe, stripeWithin } from "@/lib/stripe";
+import { preserveReferralBeforeDeletion } from "@/lib/referral-deletion";
 import { planNotOver } from "@/lib/card-reconcile";
 import { cancelSubscriptionNow, customerSubscriptions } from "@/lib/stripe-subscriptions";
 
@@ -272,6 +273,8 @@ function deletionStore(db: SupabaseClient<Database>, parent: string, token: stri
       if (error) throw new Error("Storage removal failed");
     },
     async removeAuth() {
+      timeRemaining(deadline, execution);
+      await preserveReferralBeforeDeletion(db, parent, execution?.payments ?? stripeWithin(AbortSignal.timeout(Math.max(1, deadline - Date.now()))));
       timeRemaining(deadline, execution);
       const { error } = await db.auth.admin.deleteUser(parent);
       if (error && error.code !== "user_not_found") throw new Error("Auth removal failed");

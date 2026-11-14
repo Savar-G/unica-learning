@@ -6,6 +6,7 @@ import { memoryMonthlyStore } from "@/lib/monthly-summary-email-memory";
 import type { MonthlyStore } from "@/lib/monthly-summary-email";
 
 vi.mock("server-only", () => ({}));
+vi.mock("@/lib/referral-server", () => ({ recoverReferralsNow: async () => ({ checked: 0, failed: 0, emails: { sent: 0, deferred: 0 } }) }));
 
 // The reminder job's part of the monthly summary email (#563): the dry path sends nothing, a real run shares the spaced
 // transport with the other emails, and a failed monthly run hides nothing else. Only the monthly email is real here.

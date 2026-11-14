@@ -1,3 +1,4 @@
+import { recoverReferralsNow } from "@/lib/referral-server";
 import { timingSafeEqual } from "node:crypto";
 import { linkOrigin } from "@/lib/account-server";
 import { sweepOpenCancelsNow } from "@/lib/plan-cancel-recovery-server";
@@ -86,6 +87,7 @@ export async function POST(request: Request) {
   let cancels: Promise<unknown> | null = null;
   let reports: Promise<unknown> | null = null;
   let book1: Promise<unknown> | null = null;
+  let referrals: Promise<unknown> | null = null;
   try {
     if (new URL(request.url).searchParams.get("dry") === "1") {
       const maya = dueWeeklyEmails(await mayaWeeklyStore(admin).load(now), now).length;
@@ -105,6 +107,7 @@ export async function POST(request: Request) {
       env: scanEnv, origin, provider, gapMs: SEND_GAP_MS, signal: scanSignal,
     }) : null;
     const transport = scan?.transport ?? pacedTransport(provider, SEND_GAP_MS);
+    referrals = recoverReferralsNow(now, origin, transport);
     // The sweep runs beside the emails and never fails the run.
     sweep = sweepAbandonedCallsNow(admin, { origin, startedAt: now, transport }).then(
       (r) => {
@@ -175,7 +178,7 @@ export async function POST(request: Request) {
         scans = { error: "run_failed" };
       }
     }
-    return Response.json({ ok: true, ...result, maya, monthly, firstPages, book1: await book1, sweep: await sweep, cards: await cards, cancels: await cancels, reports: await reports,
+    return Response.json({ ok: true, ...result, maya, monthly, firstPages, referrals: await referrals, book1: await book1, sweep: await sweep, cards: await cards, cancels: await cancels, reports: await reports,
       ...(scans ? { scans } : {}) });
   } catch (e) {
     console.error("[reminders] run failed", e instanceof Error ? e.message : e);
@@ -185,6 +188,7 @@ export async function POST(request: Request) {
     await cancels;
     await reports;
     await book1;
+    await referrals;
     return Response.json({ ok: false, error: "run_failed" }, { status: 500 });
   }
 }

@@ -1,4 +1,5 @@
 import "server-only";
+import { liveReferralStarts } from "@/lib/referral-server";
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
@@ -124,7 +125,7 @@ export async function restartFamilyPlan(parent: string, card: string, token?: st
   if (await holdPlanStart(db, parent, card) === "fenced") return { ok: false as const, error: "pending" };
   try {
     const startedAt = Date.now();
-    const result = await startPlan(client, { cardSetup: card, customer: data.stripe_customer_id, price, deliveryConfirmed: false, purpose: "restart", restartRevision: revision }, undefined, rows);
+    const result = await startPlan(client, { cardSetup: card, customer: data.stripe_customer_id, price, deliveryConfirmed: false, purpose: "restart", restartRevision: revision }, undefined, rows, liveReferralStarts(client));
     // Before anything else that can throw: the plan is running, so access reopens now, with no webhook wait.
     const access = result.ok ? await openRestartedPlan(db, client, { customer: data.stripe_customer_id, cardSetup: card, generation: result.generation, startedAt }) : null;
     return result.ok ? { ok: true as const, state: "started" as const, price: result.monthlyPrice ?? price, access: access ?? "pending" } : result;

@@ -135,7 +135,7 @@ export default async function Account({ searchParams }: PageProps<"/account">) {
       {cards?.some((c) => c.card_saved_at) && <p><Link className="btn ghost" href="/account/plan">Manage or cancel plan</Link></p>}
       {!parent.time_zone && <SaveTimeZone />}
       <AddChild province={children.at(-1)?.province ?? "BC"} />
-      <p className="small acct-out">Signed in. <Link href="/account/password">Add or change your password</Link>. <Link href="/account/pin">Set or change your PIN</Link>. <Link href="/account/maya-notice">Maya notice</Link>. <SignOut /></p>
+      <p className="small acct-out">Signed in. <Link href="/account/password">Add or change your password</Link>. <Link href="/account/pin">Set or change your PIN</Link>. <Link href="/account/maya-notice">Maya notice</Link>. <Link href="/account/referrals">Family referrals</Link>. <SignOut /></p>
     </SupportPage>
   );
 }

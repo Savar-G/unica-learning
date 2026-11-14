@@ -54,6 +54,6 @@ The implementation is not released by this document. Apply and verify the additi
 
 ## Implementation handoff
 
-REFERRAL_IMPLEMENTATION_PENDING
+REFERRAL_IMPLEMENTATION_DONE
 
 Implement this approved contract. Change the marker to REFERRAL_IMPLEMENTATION_DONE only after the code and focused checks are complete. Record remaining hosted migration, provider, browser and full-gate limits with the result.

@@ -13,9 +13,15 @@ import { AI_FEATURES } from "@/lib/ai-usage";
 import { ASSISTANCE } from "@/lib/maya/session";
 import { DELIVERY_TYPES } from "@/lib/resend-webhook";
 import { SCAN_BLOCKED_REASONS, SCAN_CALIBRATION_STATES, SCAN_JOB_STATES, SCAN_PHOTO_STATES } from "@/lib/scan-states";
+import { REFERRAL_RISKS, REFERRAL_OPERATION_STATES, REFERRAL_REWARD_KINDS, REFERRAL_EMAIL_STATES } from "@/lib/referrals";
 import { GATE_OUTCOMES } from "@/lib/workbook-run-gates";
 
 const LISTS: { name: string; list: readonly string[]; table: string; column: string }[] = [
+  { name: "REFERRAL_RISKS", list: REFERRAL_RISKS, table: "referral_rewards", column: "risk" },
+  { name: "REFERRAL_RISKS", list: REFERRAL_RISKS, table: "referral_invoice_risk", column: "risk" },
+  { name: "REFERRAL_OPERATION_STATES", list: REFERRAL_OPERATION_STATES, table: "referral_operations", column: "state" },
+  { name: "REFERRAL_REWARD_KINDS", list: REFERRAL_REWARD_KINDS, table: "referral_rewards", column: "kind" },
+  { name: "REFERRAL_EMAIL_STATES", list: REFERRAL_EMAIL_STATES, table: "referral_rewards", column: "email_state" },
   { name: "AD_STEPS", list: AD_STEPS, table: "ad_visit_steps", column: "step" },
   { name: "DELIVERY_TYPES", list: DELIVERY_TYPES, table: "email_events", column: "type" },
   { name: "FLAG_LEVELS", list: FLAG_LEVELS, table: "maya_calls", column: "flag" },
