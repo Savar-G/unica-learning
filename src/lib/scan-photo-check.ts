@@ -3,8 +3,9 @@
 // shadow and faint wait for labelled real photos (slice B) and a threshold that meets the rule below.
 // Code already refuses a wrong page, two sheets, and a page without its scan marks or QR code (src/lib/scan-calibration.ts);
 // this check does not repeat them.
-// Who: only a family in public.test_accounts or an admin (markedFamily), until the privacy disclosure names the provider
-// (slice E). For any other family it does not run and stores nothing.
+// Who (#856): every family `scanChecksAccess` allows for the photo (test families and admins; in families mode a child
+// whose plan is running). The privacy page names the provider (#854). For any other family it does not run and stores
+// nothing (src/lib/scan-photo-check-store.ts).
 // Never blocks a parent: a problem shows "Take again" and "Send anyway". An error, a time-out, a price refusal or a safety
 // block shows nothing and is stored as `unknown` (this caller's fail-closed means "do not block"). It is never a pass.
 // State in scan_photos.photo_check: null (not eligible, never started), pending, done, unknown. The claim and the finish
@@ -44,9 +45,10 @@ export const PHOTO_CHECK_QUESTIONS: Readonly<Record<PhotoProblem, DecisionQuesti
 };
 
 /**
- * The thresholds of PHOTO_CHECK_VERSION: P(yes) at or above it is a problem. null: the question is not asked. Each is the
- * lowest value from 0.50 to 0.99 that flags none of the 30 clear synthetic photos; a question ships only when it also
- * flags at least 80% of its problem photos (docs/photo-check-thresholds.md).
+ * The thresholds of PHOTO_CHECK_VERSION: P(yes) at or above it is a problem. null: the question is not asked. blurry: the
+ * lowest value from 0.50 to 0.99 that flags none of the 30 clear synthetic photos, and none of the 10 real clear phone
+ * photos either (#856: highest 0.10). glare, shadow and faint stay off: on the real photos none caught 80% of at least 5
+ * photos of its kind (docs/photo-check-thresholds.md, "Real photos").
  */
 export const PHOTO_CHECK_THRESHOLDS: Readonly<Record<PhotoProblem, number | null>> = { blurry: 0.5, glare: null, shadow: null, faint: null };
 

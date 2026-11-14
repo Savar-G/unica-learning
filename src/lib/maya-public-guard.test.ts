@@ -75,7 +75,7 @@ describe("first ship public Maya copy", () => {
     const html = renderToStaticMarkup(createElement(Home));
     expect(html).toContain("/video/guidance-demo.mp4");
     expect(html).toContain("/video/guidance-demo-board.mp4");
-    expect(html).toContain('aria-label="What happens in the demo"');
+    expect(html).toContain("What Maya does");
   });
 
   it("shows the home demo", () => {

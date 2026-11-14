@@ -9066,7 +9066,7 @@ export type Database = {
           }
         | {
             Args: {
-              p_family: boolean
+              p_access: string
               p_id: string
               p_parent: string
               p_stale_seconds: number
@@ -9509,7 +9509,7 @@ export type Database = {
           }
         | {
             Args: {
-              p_family: boolean
+              p_access: string
               p_id: string
               p_parent: string
               p_result: Json
@@ -9825,7 +9825,15 @@ export type Database = {
           object_id: string
         }[]
       }
+      photo_check_access_open: {
+        Args: { p_access: string; p_id: string; p_parent: string }
+        Returns: boolean
+      }
       photo_check_eligible: { Args: { p_parent: string }; Returns: boolean }
+      photo_check_plan_open: {
+        Args: { p_id: string; p_parent: string }
+        Returns: boolean
+      }
       ping: { Args: never; Returns: number }
       plan_control_context: {
         Args: { p_card: string; p_parent: string }

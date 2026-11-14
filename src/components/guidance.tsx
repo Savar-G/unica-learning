@@ -1,6 +1,6 @@
 // "Help when they're stuck" (D-220, from prototype round C4 on branch site/maya-section-prototype): the header on
-// its own lines (title on one line on wide screens, the lead under it), then the silent demo with the list of its
-// steps beside it (under it on phones). Naming follows D-172: "AI Teaching Assistant", the name Maya, and no
+// its own lines (title on one line on wide screens, the lead under it), then the silent demo with "What Maya does"
+// beside it (under it on phones; D-342, variant M of branch site/maya-side-prototype). Naming follows D-172: "AI Teaching Assistant", the name Maya, and no
 // "voice call" wording. The video loops muted and starts when it scrolls into view, so the copy says the captions
 // show what is said.
 import { Section } from "@/ds";
@@ -15,7 +15,7 @@ export function Guidance() {
       <Rise className="gd-head">
         <p className="eyebrow">Help when they&apos;re stuck</p>
         <h2 id="guidanceT">Meet Maya, our AI Teaching Assistant.</h2>
-        <p className="gd-lead">Children in Grade 3 and up can type to Maya for help with a workbook question.</p>
+        <p className="gd-lead">When your child is stuck on a workbook question, Maya helps them work it out, one step at a time.</p>
       </Rise>
       <Rise>
         <GuidanceDemo />
