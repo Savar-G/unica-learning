@@ -16,6 +16,7 @@ import { readSpotItem } from "./spot-item";
 import { deriveMissingNumber } from "./missing-number";
 import { deriveOneStep } from "./one-step";
 import { derivePlaceValue } from "./place-value";
+import { derivePattern } from "./pattern";
 import { TEACHING_SOURCE } from "./limits";
 
 /** The question under the worked answer: the same package with one box, the fix, and its template check. */
@@ -28,7 +29,7 @@ function underlyingQuestion(pkg: QuestionPackage): QuestionPackage | null {
 }
 
 /** The derivers of the questions a spot item may hold, each with its own agreements. */
-const UNDERLYING: readonly ((printed: QuestionPackage) => QuestionPackage | null)[] = [deriveMissingNumber, deriveOneStep, derivePlaceValue];
+const UNDERLYING: readonly ((printed: QuestionPackage) => QuestionPackage | null)[] = [deriveMissingNumber, deriveOneStep, derivePlaceValue, derivePattern];
 
 /** The teaching package of a spot-the-error question, or null to leave it held. */
 export function deriveSpotError(printed: QuestionPackage): QuestionPackage | null {

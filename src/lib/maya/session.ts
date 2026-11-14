@@ -60,6 +60,8 @@ import { asksPlace, digitTemplate, placeStepHeard } from "./place-value-turns";
 import { biggerTemplate, partsStepHeard, partsStepTotal, worthTemplate } from "./place-value-parts-turns";
 import { partsChartFits } from "./place-value-parts-lines";
 import { isPartsOperation } from "@/lib/question-package-place-parts";
+import { comparisonOf, comparisonRelation, comparisonFinal, comparisonCount, comparisonSame } from "./comparison";
+import { comparisonAnswer, comparisonWords } from "../question-package-comparison";
 import { claimActs, claimAnswers, claimCommitted, claimConfirm, claimQuestionAsked, claimRead, claimResultDone, claimReveals, claimSaid, claimStepConfirmable, claimStepHeard, claimSessionPackage, claimUnclear, sessionClaim, type ClaimTurn } from "./claim";
 import { closeParts, compareEquationSaid, currentPart, evaluateSteps, evaluateTeaching, partBoards, partCovered, partEquationSaid, partIdOf, stepsBeforeLastPart, withEvaluateExample } from "./evaluate";
 import { isSpot, spotAnswers, spotReveals, spotSessionPackage, spotStepHeard } from "./spot-error";
@@ -109,7 +111,7 @@ export const TEACHABLE_KINDS: readonly OperationKind[] = [
   // A multi-step expression in the order of operations, part by part (evaluate.ts).
   "evaluate",
   // A clock-time question (clock-lines.ts, C3c): count on to the next hour, then the minutes left.
-  "time-add",
+  "time-add", "comparison",
 ];
 
 export const MAIN_STATES = ["READY", "OPEN", "ASSESS", "MODEL_EXAMPLE", "TRY_TARGET", "GUIDE_TARGET", "CHECK", "WRITE_CLOSE", "CLOSE", "CONTENT_HOLD"] as const;
@@ -612,6 +614,13 @@ export function mayaPackageCheck(raw: unknown): PackageCheck {
  * but it's 7."), hedges, questions, copies, negation, corrections, mixed turns. Every other package: unchanged (true).
  */
 function committedTurn(s: Session, step = "result"): boolean {
+  if (comparisonOf(s.package)) {
+    if (!comparisonEligible(s)) return false;
+    if (step === "result") return comparisonWord(s)?.committed === true;
+    const st = s.package!.steps.find(x => x.id === step);
+    return !!st && (st.kind === "comparison" ? comparisonRelation(s.turn!.text, comparisonOf(s.package)!, st) !== null
+      : st.kind === "comparison-count" ? comparisonCount(s.turn!.text, st) !== null : committedNumber(s, { step, value: turnRead(s).final ?? number(-1), verdict: "wrong" }));
+  }
   const claim = sessionClaim(s.package);
   const place = isPlaceValue(s.package) || isSpot(s.package);
   const topic = !!s.package && (topicQuestion(s.package.text, s.package.operation) || !!patternOf(s.package));
@@ -801,6 +810,8 @@ const number = (value: number): AnswerValue => ({ type: "number", value });
 function stepAnswers(step: WorkedStep): AnswerValue[] {
   switch (step.kind) {
     // A clock-time question's count (clock-lines.ts): the minutes it counts, or the time it reaches.
+    case "comparison": return [step.value];
+    case "comparison-count": return [number(step.value)];
     case "count-on":
       return clockAnswers(step);
     case "add-column":
@@ -1300,7 +1311,7 @@ function teachingActs(s: Session, reading: Reading, rightResult: boolean, progre
   // Place value has no given answer (parent lane, 2026-11-07): a child still stuck gets the easier example, then an honest close.
   // The step's top help is its highest line (topHint): H2 on a last step (and a zero digit's step), else H3 (review of #738:
   // "I'm stuck." again and again on a last step met H2 forever). `misses` counts only committed answers (committedTurn).
-  if ((isPlaceValue(s.package) || isSpot(s.package)) && s.solved === null && !rightResult && ((s.turn !== null && !rightHere && s.ladder.hint >= topHint(s) && (needsMore || copiesShown(s))) ||
+  if ((isPlaceValue(s.package) || isSpot(s.package) || comparisonOf(s.package)) && s.solved === null && !rightResult && ((s.turn !== null && !rightHere && s.ladder.hint >= topHint(s) && (needsMore || copiesShown(s))) ||
       (misses >= 2 && FINAL_GIVE_STATES.includes(main)))) {
     return s.exampleShown < steps
       ? { acts: ["example_step", ...confirm], code: "act_not_allowed", reason: "The child is still stuck: show the easier example, step by step (example_step). No answer is given (D-306)." }
@@ -1630,7 +1641,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   // A claim question's word is read by code, never by the model (claim.ts).
   // A spot-the-error word before its fix is known is no answer yet (spot-error.ts).
   const claimed = yes ? heard.answers : spotAnswers(pkg, claimAnswers(claimTurn(s), heard.answers, s.solved !== null && s.lastResult === "right"), s.done);
-  const reading: Reading = sessionClaim(pkg) ? { ...heard, answers: claimed } : heard;
+  const reading: Reading = comparisonOf(pkg) ? { ...heard, answers: comparisonAnswers(s, heard.answers) } : sessionClaim(pkg) ? { ...heard, answers: claimed } : heard;
   if (p.act === "give_answer") return no("act_not_allowed", "The answer is not offered.", (gate(s, reading) ?? actsNow(s, reading, false)).acts);
   // Before the words: Maya never asks for what the child said they wrote or would not write (#605).
   if (reading.paper) s.paper = reading.paper === "written" ? "child_confirmed" : "declined";
@@ -2159,7 +2170,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   s.regroupDue = [...new Set(regroup.due.map((c) => c.at))];
   s.regroupSaid = [...new Set(s.regroup.said.map((c) => c.in))];
   // Only a turn that asks the claim itself lets a bare word answer it next (claim.ts).
-  if (sessionClaim(pkg) && claimQuestionAsked(spoken.chosen)) s.claimAsked = true;
+  if ((sessionClaim(pkg) && claimQuestionAsked(spoken.chosen)) || (comparisonOf(pkg) && spoken.chosen.some(o => o.line === "step.invite" && o.slots.step === "result"))) s.claimAsked = true;
   else delete s.claimAsked;
   if (p.act !== "confirm") {
     delete s.heardAsked;
@@ -2468,6 +2479,10 @@ function readOptionsIn(s: Session): ReadOptions {
 function notClear(s: Session, reading: Reading): boolean {
   if (!s.turn) return false;
   if (s.turn.uncertain || reading.unclear || claimUnclear(claimTurn(s))) return true;
+  if (comparisonOf(s.package)) {
+    if (comparisonConfirm(s)) return true;
+    if (comparisonEligible(s) && (comparisonWord(s)?.committed || comparisonSemantic(s, s.package!.steps.find(st => st.id === s.ladder.step)))) return false;
+  }
   const last = s.turns.map((t) => t.speaker).lastIndexOf("maya");
   if (s.turns.slice(last + 1).some((t) => t.speaker === "child" && (t.alternatives?.length ?? 0) > 0)) return true;
   // A claim's word the child committed to is their answer, whatever the numbers of their reason (claim.ts).
@@ -2521,11 +2536,59 @@ function doubtfulRight(s: Session): boolean {
   return read.final !== null && !read.sure && (showsDoubt(s.turn.text, opts) || saysGuess(s.turn.text)) && rightForQuestion(s.package, read.final);
 }
 
+/** Comparison readers never accept a model verdict, copied work, a hedge, another speaker or a future side. */
+function comparisonEligible(s: Session): boolean {
+  return !!comparisonOf(s.package) && !!s.turn && heardOneWay(s) && wholeTurn(s.turn.text) !== null && sentenceCount(s.turn.text) === 1 &&
+    !helpInWords(s.turn.text) && !hedgedTurn(s) && !saysGuess(s.turn.text) && !saysCopied(s.turn.text) &&
+    takenBack(s.turn.text, readOptionsIn(s)) === null && !copiesShown(s);
+}
+
+function comparisonWord(s: Session): { word: string; committed: boolean } | null {
+  const op = comparisonOf(s.package);
+  if (!op || !comparisonEligible(s)) return null;
+  const words = comparisonWords(op), body = wholeTurn(s.turn!.text);
+  if (!s.heardAsked && s.wordAsked && words.includes(s.wordAsked) && body && /^(?:yes|yeah|yep|yup)$/.test(body)) return { word: s.wordAsked, committed: true };
+  const read = comparisonFinal(s.turn!.text, op);
+  return read && "word" in read && (read.committed || s.claimAsked) ? read : null;
+}
+
+function comparisonConfirm(s: Session): { kind: "which" } | { kind: "said"; word: string } | null {
+  if (!comparisonOf(s.package) || !s.turn) return null;
+  const word = comparisonWord(s);
+  if (word && !word.committed) return { kind: "said", word: word.word };
+  if (comparisonFinal(s.turn.text, comparisonOf(s.package)!) && !comparisonEligible(s)) return { kind: "which" };
+  return null;
+}
+
+function comparisonSemantic(s: Session, st: WorkedStep | undefined): AnswerValue | null {
+  const op = comparisonOf(s.package);
+  if (!op || !st || !comparisonEligible(s)) return null;
+  return st.kind === "comparison" ? comparisonRelation(s.turn!.text, op, st) : st.kind === "comparison-count" ? comparisonCount(s.turn!.text, st) : null;
+}
+
+function comparisonAnswers(s: Session, given: ChildAnswer[] | undefined): ChildAnswer[] | undefined {
+  const op = comparisonOf(s.package);
+  if (!op) return given;
+  const answers = (given ?? []).filter(a => (a.problem ?? "target") !== "target" || (a.step !== "result" && a.step !== "compare" && !a.step.endsWith("-count")));
+  const st = workSteps(s.package!).find(x => !behind(s).includes(x.id));
+  const value = comparisonSemantic(s, st);
+  if (st && value && !shownStep(s, st)) answers.push({ step: st.id, value, verdict: answersStep(st, value) ? "right" : "wrong" });
+  const word = comparisonWord(s);
+  if (word?.committed && workSteps(s.package!).every(x => behind(s).includes(x.id))) {
+    const value = comparisonAnswer(op, word.word === comparisonWords(op)[0]);
+    answers.push({ step: "result", value, verdict: sameValue(value, s.package!.answer.value) ? "right" : "wrong" });
+  }
+  return answers;
+}
+
 /** What the child kept in this turn: their words as read, or the number their plain yes gives, which they then committed to. */
 function turnRead(s: Session): AnswerRead {
   const yes = yesValue(s);
   // A claim question's circled word is the final answer (claim.ts); a plain yes to "Did you say 5220?" is not.
-  return yes ? { kept: [yes], final: yes, choice: false, outside: [yes], sure: true } : claimRead(claimTurn(s), readAnswer(s.turn!.text, readOptionsIn(s)));
+  if (yes) return { kept: [yes], final: yes, choice: false, outside: [yes], sure: true };
+  const word = comparisonWord(s);
+  if (word?.committed) { const value = comparisonAnswer(comparisonOf(s.package)!, word.word === comparisonWords(comparisonOf(s.package)!)[0]); return { kept: [value], final: value, choice: false, outside: [value], sure: true }; }
+  return claimRead(claimTurn(s), readAnswer(s.turn!.text, readOptionsIn(s)));
 }
 
 /** What claim.ts reads a turn with: the package, the child's words, and an open "Did you say ...?" or "Is no the word you circle?". */
@@ -2584,7 +2647,7 @@ function ownMissRule(s: Session, step: string): boolean {
  * at the top help gets its honest close (teachingActs), with no answer.
  */
 function ownWayOut(pkg: OperationPackage | null): boolean {
-  return !!pkg && (isMissingNumber(pkg) || !!sessionClaim(pkg) || isPlaceValue(pkg) || isSpot(pkg) || topicQuestion(pkg.text, pkg.operation) || !!patternOf(pkg));
+  return !!pkg && (isMissingNumber(pkg) || !!sessionClaim(pkg) || isPlaceValue(pkg) || isSpot(pkg) || !!comparisonOf(pkg) || topicQuestion(pkg.text, pkg.operation) || !!patternOf(pkg));
 }
 
 /**
@@ -2645,7 +2708,8 @@ function checkAnswers(s: Session, given: ChildAnswer[], checked: Checked[], befo
     if (!at) return { code: "wrong_step", reason: `The ${problem} has no step "${a.step}".` };
     // A spot-the-error result in a sentence with its word ("..., so it's wrong.") is heard by its own whole-turn forms.
     const spotHeard = problem === "target" && at.kind === "claim-compare" && isSpot(pkg) && stepTurnHeard(s, at, a.value);
-    if (!spotHeard && !heard.some((v) => saidAs(v, a.value))) return { code: "answer_not_heard", reason: `The child did not say ${valueText(a.value)}, or took it back.` };
+    const comparisonHeard = problem === "target" && comparisonOf(pkg) && comparisonSame(comparisonSemantic(s, at), a.value);
+    if (!spotHeard && !comparisonHeard && !heard.some((v) => saidAs(v, a.value))) return { code: "answer_not_heard", reason: `The child did not say ${valueText(a.value)}, or took it back.` };
     // A wrong final answer the child gave outside an explanation may be judged wrong although a later number is the
     // final one ("I got 56. I did 7 plus 9 is 16, so I wrote the 6. Then 2 plus 3 is 5."): never when the final one is
     // right or the answer stands, and never as right.
@@ -2672,6 +2736,7 @@ function checkAnswers(s: Session, given: ChildAnswer[], checked: Checked[], befo
     const own = at.kind === "add-column" ? withoutNextStepQuestions(s.turn.text, at.carryOut) : s.turn.text;
     const claims = a.step === "result" ? "right" : checkColumnClaims(pkg, at, steps, active, problem === "target" ? claimText(own) : own);
     if (claims === "unclear") return { code: "answer_not_committed", reason: "The written digit or carry is unclear: ask what the child wrote before judging this step." };
+    if (problem === "target" && comparisonOf(pkg) && a.step === "result" && !workSteps(pkg).every(st => behind(s).includes(st.id) || earlier.includes(st.id))) return { code: "wrong_step", reason: "Complete the checked comparison work before its final word." };
     const stepRight = a.step !== "result" && falseResults.length === 0 && claims === "right" && ownSentences(pkg, at, a.value, own) && answersStep(at, a.value);
     const right = !falseResult && (a.step === "result" ? (problem === "target" ? rightForQuestion(pkg, a.value) : isRightAnswer(operation, answer, a.value)) : stepRight);
     // A doubtful final answer cannot establish correct work, including an equal
@@ -2943,6 +3008,8 @@ function keptAnswers(session: Session, refused: readonly unknown[]): ChildAnswer
 function stepTurnHeard(s: Session, step: WorkedStep, value: AnswerValue, earlier: readonly string[] = []): boolean {
   const pkg = s.package;
   if (!pkg || !s.turn || s.turn.uncertain) return false;
+  if (step.kind === "comparison" || step.kind === "comparison-count") return comparisonEligible(s) && !shownStep(s, step) &&
+    workSteps(pkg).find(st => !behind(s).includes(st.id) && !earlier.includes(st.id))?.id === step.id && comparisonSame(comparisonSemantic(s, step), value) && answersStep(step, value);
   // Rule A for a step of these kinds, after its own recognizer: in order, not after Maya showed it.
   const ruleA = (ordered = true) => answersStep(step, value) && ownTurn(s, step, value, { earlier, ordered }) === null;
   // A place-value digit step: its own templates (place-value-turns.ts), on the same rules: the first step not done, not after H3.
@@ -3919,7 +3986,7 @@ function currentSteps(s: Session): CreditStep[] {
   const st = s.package ? workSteps(s.package).find((x) => !behind(s).includes(x.id)) : undefined;
   if (!st || !s.package) return [];
   const part = currentPart(s.package, st.id);
-  const own = (st.kind === "operate" && !!patternOf(s.package)) || st.kind === "add-column" || st.kind === "read-digit" || st.kind === "bigger" || st.kind === "place-worth";
+  const own = (st.kind === "operate" && (!!patternOf(s.package) || !!comparisonOf(s.package))) || st.kind === "add-column" || st.kind === "read-digit" || st.kind === "bigger" || st.kind === "place-worth";
   return [...(part ? [part] : []), ...(own ? [st] : [])];
 }
 
@@ -4254,7 +4321,7 @@ function codeProposals(given: Session, refused: readonly unknown[] = [], plan?: 
     .filter((a) => !kept.some((k) => k.step === a.step && (k.problem ?? "target") === "target"));
   const found = [...kept, ...heard];
   // A claim question's word is read by code (claim.ts), right or wrong; the model's final answers are left out.
-  const answers = !yes && sessionClaim(pkg) ? spotAnswers(pkg, claimAnswers(claimTurn(session), found, session.solved !== null && session.lastResult === "right"), session.done) ?? [] : found;
+  const answers = comparisonOf(pkg) ? comparisonAnswers(session, found) ?? [] : !yes && sessionClaim(pkg) ? spotAnswers(pkg, claimAnswers(claimTurn(session), found, session.solved !== null && session.lastResult === "right"), session.done) ?? [] : found;
   const keptFields: Reading = plan ? (({ answers: _a, ...rest }) => (void _a, rest))(plan.reading ?? {}) : keptReading(session, refused, answers);
   // A reading's answers are numbers: `step` reads a claim's word again itself.
   const said = answers.filter((a) => isAnswerValue(a.value));
@@ -4848,7 +4915,7 @@ function proposeV3(base: Session, out: ModelOutput, effects: Effect[], reviews: 
   const at = r.effects.findLastIndex((e) => e.kind === "say");
   if (at === -1) return r;
   const planned = (r.effects[at] as Extract<Effect, { kind: "say" }>).text;
-  const codeWords = p.act === "safety" || base.state === "CONTENT_HOLD" || (p.act === "close" && base.state === "SAFETY") ||
+  const codeWords = !!comparisonOf(base.package) || p.act === "safety" || base.state === "CONTENT_HOLD" || (p.act === "close" && base.state === "SAFETY") ||
     p.parts.some((x) => "line" in x && (CODE_WORD_LINES.includes(x.line) || (x.line === "redirect.workbook" && base.scopeDue === "outside_work"))) || (p.act === "open" && !!base.confirmWorkbook);
   if (codeWords) return withSent(r, sent, base);
   const rules = sayRules(base, r.session, p, planned);
@@ -4931,7 +4998,7 @@ export function codePlan(s: Session, effects: Effect[] = []): { p: Proposal; r: 
     const at = r.effects.findLastIndex((e) => e.kind === "say");
     if (at === -1) return null;
     const planned = (r.effects[at] as Extract<Effect, { kind: "say" }>).text;
-    const codeWords = p.act === "safety" || s.state === "CONTENT_HOLD" || (p.act === "close" && s.state === "SAFETY") ||
+    const codeWords = !!comparisonOf(s.package) || p.act === "safety" || s.state === "CONTENT_HOLD" || (p.act === "close" && s.state === "SAFETY") ||
       p.parts.some((x) => "line" in x && (CODE_WORD_LINES.includes(x.line) || (x.line === "redirect.workbook" && s.scopeDue === "outside_work")));
     return { p, r, at, planned, rules: sayRules(s, r.session, p, planned), codeWords };
   }
@@ -5223,6 +5290,10 @@ function revealsAnswer(s: Session, p: Proposal, spoken: Spoken, forcedOpening: s
   const texts = [forcedOpening ? operationText(pkg.operation) : spoken.text, ...boardVisible(p.board ?? []).map(([, value]) => value)];
   if (sessionClaim(pkg)) return claimReveals(pkg, p.act, texts, claimSaid(claimTurn(s))) || spotReveals(pkg, p.act, texts, sessionClaim(pkg), done.includes("claim"),
     { word: claimSaid(claimTurn(s)), values: p.act === "confirm" && s.turn ? valuesIn(s.turn.text, readOptionsFor(pkg)) : [] });
+  if (comparisonOf(pkg)) {
+    if (p.parts.some(part => !("line" in part)) || (p.board ?? []).length > 0) return true;
+    return false;
+  }
   const answer = pkg.answer.value;
   // An equal form the child said (14/16 for 7/8, #407) gives nothing away when Maya says it back; the answer's own
   // written form still does.
@@ -5661,7 +5732,7 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
         : gate(s, {}) ? ((s.state === "TIME_CLOSE" || (s.turn !== null && s.exampleShown >= pkg.easierExample.steps.length)) ? l.closeStuck() : []) : [...l.closeStuck(), ...(closeExpressionContainsAnswer(pkg.operation, pkg.answer.value) ? [] : l.closeGiven())];
     case "confirm": {
       // A claim's word said unsure or with both words: which word the child circles; a bare word: said back (claim.ts).
-      const word = claimConfirm(claimTurn(s));
+      const word = comparisonConfirm(s) ?? claimConfirm(claimTurn(s));
       if (word) return word.kind === "which" ? l.which() : l.said(word.word);
       // With no safe number to say back, ask for the answer alone. No reread or inferred number.
       const heard = l.heard(...heardIn(s));

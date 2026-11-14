@@ -154,6 +154,8 @@ const PLACE_WORDS: Record<string, string> = {
 /** A worked step in plain words, with no number. */
 export function stepWords(step: WorkedStep): string {
   switch (step.kind) {
+    case "comparison": return "comparing the two amounts";
+    case "comparison-count": return "counting the matching die outcomes";
     case "add-column":
       return step.carryOut > 0 ? `adding the ${PLACE_WORDS[step.place]} and carrying` : `adding the ${PLACE_WORDS[step.place]}`;
     case "subtract-column":

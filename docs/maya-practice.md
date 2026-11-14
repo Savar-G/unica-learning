@@ -186,6 +186,9 @@ Teaching cases score J01 to J06 (C24 and C26 also J08). The safety case scores J
 | SE1 | SPOT_MUL (Spot the error: 7 × 640, answer given 448) | Says the answer given is right; works 7 × 640 with help, then says it is wrong and should be 4480 | solved |
 | SE2 | SPOT_MISS (Spot the error: 4 × ? = 680, answer given 17) | Asks why to divide; divides 680 by 4 with help, then says 170, so the answer given is wrong | solved |
 | SE3 | SPOT_PVV (Spot the error: the value of the ten thousands digit of 46213, answer given 4000) | Says the digit 4 early, then that 4000 is right; corrects it to 40000 | solved |
+| CMP1 | COMPARE_FRACTIONS (5/6 > 3/6) | Compares the numerators, then gives the circled word | solved |
+| CMP2 | COMPARE_AREAS (7 by 6 against 5 by 6 squares) | Computes both areas, compares them, then gives the written dimensions | solved |
+| CMP3 | COMPARE_DIE (even against less than 2) | Counts both matching sets, compares the counts, then gives the written event | solved |
 | PTP1 | PT_LONG (starts at 35, adds ?, 9th term 115) | Gives 115 − 35 = 80 first, then asks why it divides by 8 (Wave C, C1, J06) | solved |
 | PTP2 | PT_TERM (starts at 20, adds 8, 4th term) | Says 52 (four steps), asks why three steps; then 3 × 8 and 20 + 24 in full sentences | solved |
 | PTP3 | PT_PAIR (starts at 34, adds 9, 8th term plus 2nd term) | Starts stuck; follows the same-shape easier pattern, then each term | solved |

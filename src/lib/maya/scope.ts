@@ -74,6 +74,7 @@ function allowedMath(pkg: OperationPackage, exampleChosen: boolean) {
     for (const r of topicRelations(p.operation, p.text)) add(r.op, r.operands.map(num));
     const operands = p.operation.operands.map(v => typeof v === "number" ? num(v) : v).filter(value);
     if (op && operands.length === p.operation.operands.length) add(op, operands);
+    if (p.operation.kind === "comparison" && p.operation.context === "rectangle-areas") for (const factors of [[p.operation.operands[0], p.operation.operands[1]], [p.operation.operands[2], p.operation.operands[3]]]) add("multiply", factors.map(num));
     // Place value (B1a): the digit times its place, and code's wrong-answer work, as the child says it.
     if (p.operation.kind === "place-value") for (const [d, worth] of placeRelations(p.operation)) add("multiply", [num(d), num(worth)]);
     // B1b: a sum's two values and their multiplications.

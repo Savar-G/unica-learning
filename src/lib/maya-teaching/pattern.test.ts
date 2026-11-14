@@ -59,9 +59,14 @@ describe("closed pattern derivation", () => {
       expect(heldReason(p), `${s},${d}`).toBeNull();
       expect(p.answer.value).toEqual({ type: "number", value: d });
     }
-    // Lesson 12: an answer of 2 is the 3rd term's count of steps, which every same-form example writes ("÷ 2"), so it is held.
-    // Start 1 with step 3 has no example that is smaller and shares none of its numbers.
-    for (const [s, d] of [[31, 2], [1, 3], [4, 3]]) expect(derivePattern(printedPattern("missing3", s, d)), `${s},${d}`).toBeNull();
+    // A ninth-term example finds the same missing increment without saying the target's structural answer of 2.
+    const two = derivePattern(printedPattern("missing3", 31, 2))!;
+    expect(patternOf(two.easierExample)?.form).toBe("missing9");
+    expect(exampleGivesAway(patternOf(two)!, patternOf(two.easierExample)!)).toBe(false);
+    // The smallest question still has no smaller example with fresh numbers.
+    expect(derivePattern(printedPattern("missing3", 1, 3))).toBeNull();
+    const three = derivePattern(printedPattern("missing3", 4, 3))!;
+    expect(exampleGivesAway(patternOf(three)!, patternOf(three.easierExample)!)).toBe(false);
     expect(operationProblem({ kind: "add", operands: [10000, 2000] })).not.toBeNull();
   });
 });

@@ -329,7 +329,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     return cache.start(key, brief, h, handle);
   }
   function prepareNext() {
-    if (options.prepareExpected === false) return;
+    if (!cache || preparationStopped || options.prepareExpected === false) return;
     for (const h of expectedTurns(folded.session)) prepare({ text: h.text, reason: "expected" });
   }
   function preparedForTurn(): PreparedReply | undefined {

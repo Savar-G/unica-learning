@@ -11,7 +11,7 @@ import {
   type WorkedStep,
 } from "@/lib/question-package";
 import {
-  closeParts, dividesBySelf, easierForMaya, evaluateFrame, evaluateModelSteps, evaluateSteps, partBoards, givesAway, keepsOrder, leftToRight, partCovered, partEquationSaid, withEvaluateExample,
+  closeParts, dividesBySelf, easierForMaya, evaluateFrame, evaluateModelSteps, evaluateSteps, partBoards, givesAway, keepsOrder, leftToRight, partCovered, partEquationSaid, partMethod, withEvaluateExample,
 } from "./evaluate";
 import { allLineTexts, packageLines, workbookOpening } from "./lines";
 import { MAYA_TEACHING_LIMITS, TEACHING_SOURCE } from "@/lib/maya-teaching/limits";
@@ -157,8 +157,22 @@ describe("evaluate parts (Wave A, A2)", () => {
     expect(evaluateFrame(op(evaluatePackage("(8150 − 500) ÷ 9")))).toBeNull();
   });
 
+  it("uses checked trial multiplication only for a bounded one-digit quotient", () => {
+    const method = partMethod({ kind: "divide", operands: [8793, 977] });
+    expect(method).toMatchObject({ steps: [{ id: "try", kind: "try-factor", factor: 977, total: 8793, value: 9 }, { kind: "result", value: { type: "number", value: 9 } }] });
+    for (const operands of [[9770, 977], [8794, 977], [0, 977], [1000000, 100], [1200, 1200]]) {
+      expect(partMethod({ kind: "divide", operands: operands as [number, number] })).toHaveProperty("held");
+    }
+    expect(operationProblem({ kind: "divide", operands: [8793, 977] })).not.toBeNull();
+    const pkg = op(evaluatePackage("(8763 + 30) ÷ 977", "977 × ? = 8763 + 30"));
+    expect(evaluateSteps(pkg)?.map(s => s.id)).toContain("e2.try");
+    const offers = packageLines(pkg).help("e2.try");
+    expect(offers.find(o => o.line === "step.invite")?.key).toBe("invite.try");
+    expect(offers.find(o => o.line === "step.invite")?.texts[0]).toContain("977");
+  });
+
   it("holds what it cannot teach, and says why", () => {
-    expect(heldReason(evaluatePackage("(8763 + 30) ÷ 977", "977 × ? = 8763 + 30"))).toBe("Maya cannot teach a divide part with a 3-digit divisor in evaluate questions yet");
+    expect(heldReason(evaluatePackage("(8763 + 30) ÷ 977", "977 × ? = 8763 + 30"))).toBeNull();
     // A part above Maya's own limits (999,999) is held.
     expect(heldReason(evaluatePackage("999 × 9999 + 1"))).toMatch(/^Maya cannot teach a part with numbers code does not check yet/);
     expect(heldReason(evaluatePackage("2.5 × 4 + 1"))).toBe("Maya teaches evaluate questions only with whole numbers yet");

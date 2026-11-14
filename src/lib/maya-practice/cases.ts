@@ -10,6 +10,7 @@ import type { Reason } from "@/lib/maya";
 import { valuesIn } from "@/lib/maya";
 import { FIXTURES, type FixtureId } from "@/lib/maya-gate/fixtures";
 import type { AnswerValue, QuestionPackage } from "@/lib/question-package";
+import { COMPARISON_PRACTICE } from "./comparison-cases";
 import { PATTERN_PRACTICE } from "./pattern-cases";
 import { PLACE_VALUE_PRACTICE } from "./place-value-cases";
 import { PLACE_PARTS_PRACTICE } from "./place-value-parts-cases";
@@ -232,6 +233,7 @@ const FREE_TALK_EXPECTED = "Maya may answer the child in her own words between t
 
 export const PRACTICE_CASES: PracticeCase[] = [
   ...PATTERN_PRACTICE,
+  ...COMPARISON_PRACTICE,
   {
     id: "C38", title: "Adds unlike fractions with a checked method", fixture: "D",
     persona: { name: "Tess", age: 12, question: "3/4 + 1/8", knows: "You know that 3/4 is 6/8. You add 6/8 and 1/8 to get 7/8. You have written this answer.", behaviour: "Start with your answer 7/8 and explain that you used eighths. Explain your method if asked." },

@@ -9,6 +9,8 @@
 // a two-part expression, a story's two operations, and a missing number found by working the other side first. Synthetic
 // numbers, in the shapes of the workbook's multi-step templates. `EV_ADD_FIRST` has an addition part that is not last:
 // (47 + 38) × 3 (review of #734).
+import comparisonPrinted from "@/lib/maya-teaching/comparison-fixtures.json";
+import { deriveComparison } from "@/lib/maya-teaching/comparison";
 import { mayaPackageCheck } from "@/lib/maya";
 import { deriveMissingNumber } from "@/lib/maya-teaching/missing-number";
 import { printedMissing, type PrintedMissing } from "@/lib/maya-teaching/missing-number-fixtures";
@@ -25,7 +27,7 @@ import { PLACE_VALUE_FIXTURES, type PlaceValueFixtureId } from "./place-value-ca
 import { SPOT_FIXTURES, type SpotFixtureId } from "./spot-error-cases";
 import { PLACE_PARTS_FIXTURES, type PlacePartsFixtureId } from "./place-value-parts-cases";
 
-export type FixtureId = "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | OneStepFixtureId
+export type FixtureId = "COMPARE_FRACTIONS" | "COMPARE_AREAS" | "COMPARE_DIE" | "A" | "B" | "C" | "D" | "D_SIMPLEST" | "E" | "F" | "G" | "A_BAD_KEY" | OneStepFixtureId
   | "EV_TWO" | "EV_STORY" | "EV_MISSING" | "CLAIM_TF" | "CLAIM_GT" | "CLAIM_DEC" | "CLAIM_DIV" | "DIE" | "SHAPES" | "DIE12" | "SHAPES_LONG"
   | "SCALE" | "MONEY" | "MINUTE" | "CLOCK1" | "CLOCK2" | "CLOCK_REVIEW" | "MARBLES" | "AREA_TF" | "AREA_REVIEW" | "CLAIM_WIDE" | "EV_ADD_FIRST" | "M_DIVIDE" | "M_TRY" | "M_SUBTRACT" | PlaceValueFixtureId | PlacePartsFixtureId | SpotFixtureId | PatternFixtureId;
 
@@ -97,6 +99,9 @@ const A = fixture({
 });
 
 export const FIXTURES: Record<FixtureId, QuestionPackage> = {
+  COMPARE_FRACTIONS: deriveComparison((comparisonPrinted as unknown as QuestionPackage[]).find(p => p.id === "comparison-9-5")!)!,
+  COMPARE_AREAS: deriveComparison((comparisonPrinted as unknown as QuestionPackage[]).find(p => p.id === "comparison-9-2")!)!,
+  COMPARE_DIE: deriveComparison((comparisonPrinted as unknown as QuestionPackage[]).find(p => p.id === "comparison-21-6")!)!,
   A,
   B: fixture({
     id: "gate-B-52-28",

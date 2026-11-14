@@ -105,20 +105,22 @@ export function patternHelp(pkg: OperationPackage, id: string, offer: Offer): Li
   if (index < 0) return [];
   const s = parts[index];
   const part = `${s.left} ${s.op} ${s.right}`;
-  const vars = { reason: reason(p, index), part, value: s.value, why: why(p, index, part) };
+  const countIsAnswer = p.missing && p.count === p.step;
+  const vars = { reason: countIsAnswer ? (index === 0 ? "Subtract the start." : "") : reason(p, index), part, value: s.value, why: why(p, index, part) };
   const slots = { step: id };
   const invite = offer("step.invite", "pattern.ask", vars, { slots, level: 0, board: part });
   const whyLine = offer("step.why", "pattern.why", vars, { slots, level: 1, board: part });
+  const whyLines = countIsAnswer ? [] : [whyLine];
   if (id === "result") return [invite, ...(s.op === "÷" ? [
     offer("step.point", "pattern.fact", { ...vars, fact: `${s.right} × ? = ${s.left}.` }, { slots, level: 1, board: `${s.right} × ? = ${s.left}` }),
     offer("step.operation", "pattern.count", { by: s.right, total: s.left }, { slots, level: 2, board: part }),
   ] : [
     offer("step.point", "pattern.point", vars, { slots, level: 1, board: part }),
     offer("step.operation", "pattern.columns", vars, { slots, level: 2, board: part }),
-  ]), whyLine];
+  ]), ...whyLines];
   return [invite,
     offer("step.point", "pattern.point", vars, { slots, level: 1, board: part }),
-    whyLine,
+    ...whyLines,
     offer("step.operation", "pattern.ask", vars, { slots, level: 2, board: part }),
     offer("step.show", "pattern.show", vars, { slots, level: 3, board: `${part} = ${s.value}` }),
   ];

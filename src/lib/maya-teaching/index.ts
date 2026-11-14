@@ -10,6 +10,7 @@ import { printedWorkbookQuestion } from "@/lib/workbook-maya-operation";
 import { TEACHING_SOURCE } from "./limits";
 import { deriveOneStep } from "./one-step";
 import { deriveMultiStep } from "./multi-step";
+import { deriveComparison } from "./comparison";
 import { derivePattern } from "./pattern";
 import { derivePlaceValue } from "./place-value";
 import { deriveSpotError } from "./spot-error";
@@ -28,6 +29,7 @@ export type Deriver = (printed: QuestionPackage) => QuestionPackage | null;
 
 /** Each builder adds one line. The first deriver whose package passes every check below wins. */
 const DERIVERS: readonly Deriver[] = [
+  deriveComparison, // Closed two-sided fraction, area and likelihood comparisons
   derivePattern, // C1: exact increasing-rule templates and printed forms
   deriveMissingNumber, // A3: "a × ? = c", "? × a = c", "a − ? = c" (first: only its exact printed forms match)
   deriveOneStep, // A1: one add, subtract or multiply

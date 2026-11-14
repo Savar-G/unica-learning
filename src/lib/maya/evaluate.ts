@@ -11,14 +11,14 @@
 // is never walked through the columns.
 //
 // Held (fail closed): an expression with unknowns, decimals, negative numbers or fractions; a part whose one-step
-// operation code does not check by default (a number above 9999, or a divisor of 3 digits: `partMethod` is the seam for
-// the try-factor path); a missing-number text code cannot match exactly; and a question with no easier example of the
+// operation code does not check within Maya's bounds, except an exact one-digit quotient with a 3-digit divisor; a missing-number text code cannot match exactly; and a question with no easier example of the
 // same shape. The easier example Maya works first must be the same shape as the question: when the stored one is not
 // (the generator stores "1 + 1"), code makes one with the same signs and brackets and smaller numbers, and checks it.
 // When no example of the shape is smaller by the package check, an example that is easier by Maya's own rule
 // (easierForMaya: no more digits, a smaller sum) may be used.
 // Pure TypeScript: no clock, network or randomness.
 import { patternOf } from "./pattern";
+import { trialStep } from "./trial-factor";
 import { patternSteps } from "./pattern-lines";
 import {
   checkQuestionPackage,
@@ -80,7 +80,7 @@ export interface EvaluateTeaching {
 /**
  * Maya's limits for a part's own one-step operation (Wave A, #724): whole numbers to 999,999, the six columns her
  * board and place names cover. Passed explicitly; the generator and every default check keep today's limits. The
- * divisor stays at today's 99: a 3-digit divisor is A3's try-factor path (partMethod holds it).
+ * divisor stays at today's 99: a 3-digit divisor uses A3's bounded try-factor path in partMethod.
  */
 const PART_LIMITS: OperationLimits = Object.freeze({ wholeResult: MAYA_TEACHING_LIMITS.wholeResult });
 
@@ -96,10 +96,20 @@ const nonZero = (n: number) => [...String(n)].filter((d) => d !== "0").length;
 
 /**
  * The method code works a part with: the one-step operation's worked steps, or why it cannot. The seam for the
- * try-factor path (Wave A, A3): a divide part whose divisor has 3 digits is held here today ("(8763 + 30) ÷ 977");
- * A3's checked trial multiplication fills it by returning its steps for that part.
+ * try-factor path (Wave A, A3): a divide part with a 3-digit divisor and an exact one-digit quotient uses checked
+ * trial multiplication. All other parts retain their checked column method or stay held.
  */
 export function partMethod(operation: Operation, limits: OperationLimits = PART_LIMITS): { steps: WorkedStep[] } | { held: string } {
+  // Three-digit divisors use trial multiplication only for an exact one-digit factor.
+  // The generator's default division limits and long-division method stay unchanged.
+  if (operation.kind === "divide" && operation.operands[1] >= 100) {
+    const [total, factor] = operation.operands;
+    const trial = factor <= 999 && total <= (limits.wholeResult ?? 9999) ? trialStep(factor, total) : null;
+    if (trial && trial.tries.every(t => Number.isSafeInteger(t.product) && t.product <= (limits.wholeResult ?? 9999))) {
+      return { steps: [trial, { id: "result", kind: "result", value: { type: "number", value: trial.value } }] };
+    }
+    return { held: "a divide part with a 3-digit divisor" };
+  }
   const problem = operationProblem(operation, limits);
   if (problem !== null) {
     if (operation.kind === "divide" && operation.operands[1] >= 100) return { held: "a divide part with a 3-digit divisor" };

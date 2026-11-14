@@ -33,6 +33,7 @@ import { placeValueLines, type PlaceValueTemplateKey } from "./place-value-lines
 import { placeOpeningText } from "@/lib/question-package-place-value";
 import { frameInvite, frameLead, framedLines, frameWhy, MISSING_TEMPLATES, type FrameState, type FramedLines } from "./missing-number";
 import { showTrial, trialEquation, trialFeedback, trialHelp, trialRight, TRIAL_RESULT_KEY, TRIAL_TEMPLATES, type TrialLine } from "./trial-factor";
+import { COMPARISON_TEMPLATES, comparisonLines } from "./comparison-lines";
 import { SPOT_TEMPLATES, spotLines, spotView } from "./spot-error";
 
 /** A value as Maya says it: a clock time as the book prints it ("7:03", clock-lines.ts), any other as code writes it. */
@@ -168,6 +169,7 @@ export interface LineOffer {
  * review copy shows each wording once.
  */
 export const TEMPLATES = {
+  ...COMPARISON_TEMPLATES,
   "about.ai": ["I'm not a real person. I'm an AI helper."],
   // Kind, and points to a grown-up the child trusts. Wordings 1 to 3 are from #624 (#884, D-329, Savar 2026-11-12).
   "about.no_secret": [
@@ -1012,7 +1014,7 @@ export function packageLines(pkg: OperationPackage): PackageLines {
   const shared = sharedLines(pkg);
   const lines = pkg.operation.kind === "place-value" ? placeValueLines(pkg as Parameters<typeof placeValueLines>[0], shared) : shared;
   // A spot-the-error question (spot-error.ts): its own lines over the question's path.
-  return spotLines(pkg, lines, shared, offer);
+  return spotLines(pkg, comparisonLines(pkg, lines, offer), shared, offer);
 }
 export type PackageLines = ReturnType<typeof sharedLines>;
 

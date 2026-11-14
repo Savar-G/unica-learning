@@ -1,0 +1,1075 @@
+[
+  {
+    "id": "comparison-9-2",
+    "ref": {
+      "page": 9,
+      "source": "workbook",
+      "question": 2,
+      "workbookId": "comparison-test"
+    },
+    "item": {
+      "error": null,
+      "checks": [
+        {
+          "kind": "template",
+          "region": "answer",
+          "source": {
+            "check": "a * b != c * d",
+            "slots": [
+              {
+                "name": "a0",
+                "value": {
+                  "int": "5"
+                },
+                "domain": {
+                  "max": 8,
+                  "min": 2
+                }
+              },
+              {
+                "name": "b0",
+                "value": {
+                  "int": "4"
+                },
+                "domain": {
+                  "max": 8,
+                  "min": 2
+                }
+              },
+              {
+                "name": "c0",
+                "value": {
+                  "int": "3"
+                },
+                "domain": {
+                  "max": 8,
+                  "min": 2
+                }
+              },
+              {
+                "name": "d0",
+                "value": {
+                  "int": "4"
+                },
+                "domain": {
+                  "max": 8,
+                  "min": 2
+                }
+              }
+            ],
+            "answer": "str(a) + ' by ' + str(b) if a * b > c * d else (str(c) + ' by ' + str(d) if c * d > a * b else 'the same')",
+            "values": null,
+            "derived": [
+              [
+                "a",
+                "2 + a0 % 7"
+              ],
+              [
+                "b",
+                "2 + b0 % min(7, 50 // a - 1)"
+              ],
+              [
+                "c",
+                "2 + c0 % 7"
+              ],
+              [
+                "d",
+                "2 + d0 % min(7, 50 // c - 1)"
+              ]
+            ]
+          }
+        }
+      ],
+      "format": "write-words",
+      "regions": [
+        {
+          "id": "answer",
+          "kind": "box",
+          "label": null,
+          "answer": {
+            "type": "text",
+            "value": "7 by 6"
+          }
+        }
+      ],
+      "scorable": true,
+      "parentChecked": false
+    },
+    "text": "Which is bigger: 7 by 6 squares, or 5 by 6 squares?",
+    "level": 16,
+    "skill": {
+      "skills": [
+        "3.9-area-square-units"
+      ],
+      "standard": "3.9"
+    },
+    "steps": [],
+    "answer": null,
+    "operation": null,
+    "difficulty": 1,
+    "templateId": "3.9-area-square-units#4.1:compare",
+    "textSource": "code",
+    "wrongAnswers": [],
+    "easierExample": null
+  },
+  {
+    "id": "comparison-9-5",
+    "ref": {
+      "page": 9,
+      "source": "workbook",
+      "question": 5,
+      "workbookId": "comparison-test"
+    },
+    "item": {
+      "error": null,
+      "checks": [
+        {
+          "kind": "template-choice",
+          "region": "answer",
+          "source": {
+            "check": "a != b",
+            "slots": [
+              {
+                "name": "d",
+                "value": {
+                  "int": "6"
+                },
+                "domain": {
+                  "max": 12,
+                  "min": 4
+                }
+              },
+              {
+                "name": "u1",
+                "value": {
+                  "int": "4"
+                },
+                "domain": {
+                  "max": 9,
+                  "min": 0
+                }
+              },
+              {
+                "name": "u2",
+                "value": {
+                  "int": "2"
+                },
+                "domain": {
+                  "max": 9,
+                  "min": 0
+                }
+              }
+            ],
+            "answer": "'true' if a > b else 'false'",
+            "values": null,
+            "derived": [
+              [
+                "a",
+                "1 + u1 % (d - 1)"
+              ],
+              [
+                "b",
+                "1 + u2 % (d - 1)"
+              ]
+            ]
+          }
+        }
+      ],
+      "format": "circle",
+      "regions": [
+        {
+          "id": "answer",
+          "kind": "choice",
+          "mark": "circle",
+          "label": null,
+          "answer": "true",
+          "choices": [
+            "true",
+            "false"
+          ]
+        }
+      ],
+      "scorable": true,
+      "parentChecked": false
+    },
+    "text": "True or false: 5/6 > 3/6.",
+    "level": 16,
+    "skill": {
+      "skills": [
+        "4.3-same-denominator"
+      ],
+      "standard": "4.3"
+    },
+    "steps": [],
+    "answer": null,
+    "operation": null,
+    "difficulty": 2,
+    "templateId": "4.3-same-denominator#3.4:true-false",
+    "textSource": "code",
+    "wrongAnswers": [],
+    "easierExample": null
+  },
+  {
+    "id": "comparison-9-7",
+    "ref": {
+      "page": 9,
+      "source": "workbook",
+      "question": 7,
+      "workbookId": "comparison-test"
+    },
+    "item": {
+      "error": null,
+      "checks": [
+        {
+          "kind": "template-choice",
+          "region": "answer",
+          "source": {
+            "check": "a != b",
+            "slots": [
+              {
+                "name": "d",
+                "value": {
+                  "int": "6"
+                },
+                "domain": {
+                  "max": 12,
+                  "min": 4
+                }
+              },
+              {
+                "name": "u1",
+                "value": {
+                  "int": "4"
+                },
+                "domain": {
+                  "max": 9,
+                  "min": 0
+                }
+              },
+              {
+                "name": "u2",
+                "value": {
+                  "int": "1"
+                },
+                "domain": {
+                  "max": 9,
+                  "min": 0
+                }
+              }
+            ],
+            "answer": "'true' if a > b else 'false'",
+            "values": null,
+            "derived": [
+              [
+                "a",
+                "1 + u1 % (d - 1)"
+              ],
+              [
+                "b",
+                "1 + u2 % (d - 1)"
+              ]
+            ]
+          }
+        }
+      ],
+      "format": "circle",
+      "regions": [
+        {
+          "id": "answer",
+          "kind": "choice",
+          "mark": "circle",
+          "label": null,
+          "answer": "true",
+          "choices": [
+            "true",
+            "false"
+          ]
+        }
+      ],
+      "scorable": true,
+      "parentChecked": false
+    },
+    "text": "True or false: 5/6 > 2/6.",
+    "level": 16,
+    "skill": {
+      "skills": [
+        "4.3-same-denominator"
+      ],
+      "standard": "4.3"
+    },
+    "steps": [],
+    "answer": null,
+    "operation": null,
+    "difficulty": 2,
+    "templateId": "4.3-same-denominator#3.4:true-false",
+    "textSource": "code",
+    "wrongAnswers": [],
+    "easierExample": null
+  },
+  {
+    "id": "comparison-17-6",
+    "ref": {
+      "page": 17,
+      "source": "workbook",
+      "question": 6,
+      "workbookId": "comparison-test"
+    },
+    "item": {
+      "error": null,
+      "checks": [
+        {
+          "kind": "template-choice",
+          "region": "answer",
+          "source": {
+            "check": "a != b",
+            "slots": [
+              {
+                "name": "d",
+                "value": {
+                  "int": "10"
+                },
+                "domain": {
+                  "max": 12,
+                  "min": 4
+                }
+              },
+              {
+                "name": "u1",
+                "value": {
+                  "int": "8"
+                },
+                "domain": {
+                  "max": 9,
+                  "min": 0
+                }
+              },
+              {
+                "name": "u2",
+                "value": {
+                  "int": "3"
+                },
+                "domain": {
+                  "max": 9,
+                  "min": 0
+                }
+              }
+            ],
+            "answer": "'true' if a > b else 'false'",
+            "values": null,
+            "derived": [
+              [
+                "a",
+                "1 + u1 % (d - 1)"
+              ],
+              [
+                "b",
+                "1 + u2 % (d - 1)"
+              ]
+            ]
+          }
+        }
+      ],
+      "format": "circle",
+      "regions": [
+        {
+          "id": "answer",
+          "kind": "choice",
+          "mark": "circle",
+          "label": null,
+          "answer": "true",
+          "choices": [
+            "true",
+            "false"
+          ]
+        }
+      ],
+      "scorable": true,
+      "parentChecked": false
+    },
+    "text": "True or false: 9/10 > 4/10.",
+    "level": 16,
+    "skill": {
+      "skills": [
+        "4.3-same-denominator"
+      ],
+      "standard": "4.3"
+    },
+    "steps": [],
+    "answer": null,
+    "operation": null,
+    "difficulty": 2,
+    "templateId": "4.3-same-denominator#3.4:true-false",
+    "textSource": "code",
+    "wrongAnswers": [],
+    "easierExample": null
+  },
+  {
+    "id": "comparison-17-7",
+    "ref": {
+      "page": 17,
+      "source": "workbook",
+      "question": 7,
+      "workbookId": "comparison-test"
+    },
+    "item": {
+      "error": null,
+      "checks": [
+        {
+          "kind": "template-choice",
+          "region": "answer",
+          "source": {
+            "check": "a != b",
+            "slots": [
+              {
+                "name": "d",
+                "value": {
+                  "int": "5"
+                },
+                "domain": {
+                  "max": 12,
+                  "min": 4
+                }
+              },
+              {
+                "name": "u1",
+                "value": {
+                  "int": "9"
+                },
+                "domain": {
+                  "max": 9,
+                  "min": 0
+                }
+              },
+              {
+                "name": "u2",
+                "value": {
+                  "int": "8"
+                },
+                "domain": {
+                  "max": 9,
+                  "min": 0
+                }
+              }
+            ],
+            "answer": "'true' if a > b else 'false'",
+            "values": null,
+            "derived": [
+              [
+                "a",
+                "1 + u1 % (d - 1)"
+              ],
+              [
+                "b",
+                "1 + u2 % (d - 1)"
+              ]
+            ]
+          }
+        }
+      ],
+      "format": "circle",
+      "regions": [
+        {
+          "id": "answer",
+          "kind": "choice",
+          "mark": "circle",
+          "label": null,
+          "answer": "true",
+          "choices": [
+            "true",
+            "false"
+          ]
+        }
+      ],
+      "scorable": true,
+      "parentChecked": false
+    },
+    "text": "True or false: 2/5 > 1/5.",
+    "level": 16,
+    "skill": {
+      "skills": [
+        "4.3-same-denominator"
+      ],
+      "standard": "4.3"
+    },
+    "steps": [],
+    "answer": null,
+    "operation": null,
+    "difficulty": 2,
+    "templateId": "4.3-same-denominator#3.4:true-false",
+    "textSource": "code",
+    "wrongAnswers": [],
+    "easierExample": null
+  },
+  {
+    "id": "comparison-21-6",
+    "ref": {
+      "page": 21,
+      "source": "workbook",
+      "question": 6,
+      "workbookId": "comparison-test"
+    },
+    "item": {
+      "error": null,
+      "checks": [
+        {
+          "kind": "template",
+          "region": "answer",
+          "source": {
+            "check": null,
+            "slots": [
+              {
+                "name": "u1",
+                "value": {
+                  "int": "8"
+                },
+                "domain": {
+                  "max": 9,
+                  "min": 0
+                }
+              }
+            ],
+            "answer": "'even' if 3 > c - 1 else 'less than ' + str(c)",
+            "values": null,
+            "derived": [
+              [
+                "c",
+                "[2, 3, 5, 6][u1 % 4]"
+              ]
+            ]
+          }
+        }
+      ],
+      "format": "write-words",
+      "regions": [
+        {
+          "id": "answer",
+          "kind": "box",
+          "label": null,
+          "answer": {
+            "type": "text",
+            "value": "even"
+          }
+        }
+      ],
+      "scorable": true,
+      "parentChecked": false
+    },
+    "text": "Which is more likely when you roll a die: an even number or a number less than 2?",
+    "level": 16,
+    "skill": {
+      "skills": [
+        "4.17-predict-outcome"
+      ],
+      "standard": "4.17"
+    },
+    "steps": [],
+    "answer": null,
+    "operation": null,
+    "difficulty": 2,
+    "templateId": "4.17-predict-outcome#3.4:compare",
+    "textSource": "code",
+    "wrongAnswers": [],
+    "easierExample": null
+  },
+  {
+    "id": "comparison-22-7",
+    "ref": {
+      "page": 22,
+      "source": "workbook",
+      "question": 7,
+      "workbookId": "comparison-test"
+    },
+    "item": {
+      "error": null,
+      "checks": [
+        {
+          "kind": "template-choice",
+          "region": "answer",
+          "source": {
+            "check": "a != b",
+            "slots": [
+              {
+                "name": "d",
+                "value": {
+                  "int": "6"
+                },
+                "domain": {
+                  "max": 12,
+                  "min": 4
+                }
+              },
+              {
+                "name": "u1",
+                "value": {
+                  "int": "9"
+                },
+                "domain": {
+                  "max": 9,
+                  "min": 0
+                }
+              },
+              {
+                "name": "u2",
+                "value": {
+                  "int": "5"
+                },
+                "domain": {
+                  "max": 9,
+                  "min": 0
+                }
+              }
+            ],
+            "answer": "'true' if a > b else 'false'",
+            "values": null,
+            "derived": [
+              [
+                "a",
+                "1 + u1 % (d - 1)"
+              ],
+              [
+                "b",
+                "1 + u2 % (d - 1)"
+              ]
+            ]
+          }
+        }
+      ],
+      "format": "circle",
+      "regions": [
+        {
+          "id": "answer",
+          "kind": "choice",
+          "mark": "circle",
+          "label": null,
+          "answer": "true",
+          "choices": [
+            "true",
+            "false"
+          ]
+        }
+      ],
+      "scorable": true,
+      "parentChecked": false
+    },
+    "text": "True or false: 5/6 > 1/6.",
+    "level": 16,
+    "skill": {
+      "skills": [
+        "4.3-same-denominator"
+      ],
+      "standard": "4.3"
+    },
+    "steps": [],
+    "answer": null,
+    "operation": null,
+    "difficulty": 2,
+    "templateId": "4.3-same-denominator#3.4:true-false",
+    "textSource": "code",
+    "wrongAnswers": [],
+    "easierExample": null
+  },
+  {
+    "id": "comparison-22-8",
+    "ref": {
+      "page": 22,
+      "source": "workbook",
+      "question": 8,
+      "workbookId": "comparison-test"
+    },
+    "item": {
+      "error": null,
+      "checks": [
+        {
+          "kind": "template-choice",
+          "region": "answer",
+          "source": {
+            "check": "a != b",
+            "slots": [
+              {
+                "name": "d",
+                "value": {
+                  "int": "9"
+                },
+                "domain": {
+                  "max": 12,
+                  "min": 4
+                }
+              },
+              {
+                "name": "u1",
+                "value": {
+                  "int": "6"
+                },
+                "domain": {
+                  "max": 9,
+                  "min": 0
+                }
+              },
+              {
+                "name": "u2",
+                "value": {
+                  "int": "4"
+                },
+                "domain": {
+                  "max": 9,
+                  "min": 0
+                }
+              }
+            ],
+            "answer": "'true' if a > b else 'false'",
+            "values": null,
+            "derived": [
+              [
+                "a",
+                "1 + u1 % (d - 1)"
+              ],
+              [
+                "b",
+                "1 + u2 % (d - 1)"
+              ]
+            ]
+          }
+        }
+      ],
+      "format": "circle",
+      "regions": [
+        {
+          "id": "answer",
+          "kind": "choice",
+          "mark": "circle",
+          "label": null,
+          "answer": "true",
+          "choices": [
+            "true",
+            "false"
+          ]
+        }
+      ],
+      "scorable": true,
+      "parentChecked": false
+    },
+    "text": "True or false: 7/9 > 5/9.",
+    "level": 16,
+    "skill": {
+      "skills": [
+        "4.3-same-denominator"
+      ],
+      "standard": "4.3"
+    },
+    "steps": [],
+    "answer": null,
+    "operation": null,
+    "difficulty": 2,
+    "templateId": "4.3-same-denominator#3.4:true-false",
+    "textSource": "code",
+    "wrongAnswers": [],
+    "easierExample": null
+  },
+  {
+    "id": "comparison-24-5",
+    "ref": {
+      "page": 24,
+      "source": "workbook",
+      "question": 5,
+      "workbookId": "comparison-test"
+    },
+    "item": {
+      "error": null,
+      "checks": [
+        {
+          "kind": "template-choice",
+          "region": "answer",
+          "source": {
+            "check": "a != b",
+            "slots": [
+              {
+                "name": "d",
+                "value": {
+                  "int": "10"
+                },
+                "domain": {
+                  "max": 12,
+                  "min": 4
+                }
+              },
+              {
+                "name": "u1",
+                "value": {
+                  "int": "5"
+                },
+                "domain": {
+                  "max": 9,
+                  "min": 0
+                }
+              },
+              {
+                "name": "u2",
+                "value": {
+                  "int": "4"
+                },
+                "domain": {
+                  "max": 9,
+                  "min": 0
+                }
+              }
+            ],
+            "answer": "'true' if a > b else 'false'",
+            "values": null,
+            "derived": [
+              [
+                "a",
+                "1 + u1 % (d - 1)"
+              ],
+              [
+                "b",
+                "1 + u2 % (d - 1)"
+              ]
+            ]
+          }
+        }
+      ],
+      "format": "circle",
+      "regions": [
+        {
+          "id": "answer",
+          "kind": "choice",
+          "mark": "circle",
+          "label": null,
+          "answer": "true",
+          "choices": [
+            "true",
+            "false"
+          ]
+        }
+      ],
+      "scorable": true,
+      "parentChecked": false
+    },
+    "text": "True or false: 6/10 > 5/10.",
+    "level": 16,
+    "skill": {
+      "skills": [
+        "4.3-same-denominator"
+      ],
+      "standard": "4.3"
+    },
+    "steps": [],
+    "answer": null,
+    "operation": null,
+    "difficulty": 2,
+    "templateId": "4.3-same-denominator#3.4:true-false",
+    "textSource": "code",
+    "wrongAnswers": [],
+    "easierExample": null
+  },
+  {
+    "id": "comparison-24-6",
+    "ref": {
+      "page": 24,
+      "source": "workbook",
+      "question": 6,
+      "workbookId": "comparison-test"
+    },
+    "item": {
+      "error": null,
+      "checks": [
+        {
+          "kind": "template-choice",
+          "region": "answer",
+          "source": {
+            "check": "a != b",
+            "slots": [
+              {
+                "name": "d",
+                "value": {
+                  "int": "5"
+                },
+                "domain": {
+                  "max": 12,
+                  "min": 4
+                }
+              },
+              {
+                "name": "u1",
+                "value": {
+                  "int": "3"
+                },
+                "domain": {
+                  "max": 9,
+                  "min": 0
+                }
+              },
+              {
+                "name": "u2",
+                "value": {
+                  "int": "0"
+                },
+                "domain": {
+                  "max": 9,
+                  "min": 0
+                }
+              }
+            ],
+            "answer": "'true' if a > b else 'false'",
+            "values": null,
+            "derived": [
+              [
+                "a",
+                "1 + u1 % (d - 1)"
+              ],
+              [
+                "b",
+                "1 + u2 % (d - 1)"
+              ]
+            ]
+          }
+        }
+      ],
+      "format": "circle",
+      "regions": [
+        {
+          "id": "answer",
+          "kind": "choice",
+          "mark": "circle",
+          "label": null,
+          "answer": "true",
+          "choices": [
+            "true",
+            "false"
+          ]
+        }
+      ],
+      "scorable": true,
+      "parentChecked": false
+    },
+    "text": "True or false: 4/5 > 1/5.",
+    "level": 16,
+    "skill": {
+      "skills": [
+        "4.3-same-denominator"
+      ],
+      "standard": "4.3"
+    },
+    "steps": [],
+    "answer": null,
+    "operation": null,
+    "difficulty": 2,
+    "templateId": "4.3-same-denominator#3.4:true-false",
+    "textSource": "code",
+    "wrongAnswers": [],
+    "easierExample": null
+  },
+  {
+    "id": "comparison-25-4",
+    "ref": {
+      "page": 25,
+      "source": "workbook",
+      "question": 4,
+      "workbookId": "comparison-test"
+    },
+    "item": {
+      "error": null,
+      "checks": [
+        {
+          "kind": "template",
+          "region": "answer",
+          "source": {
+            "check": "a * b != c * d",
+            "slots": [
+              {
+                "name": "a0",
+                "value": {
+                  "int": "8"
+                },
+                "domain": {
+                  "max": 8,
+                  "min": 2
+                }
+              },
+              {
+                "name": "b0",
+                "value": {
+                  "int": "4"
+                },
+                "domain": {
+                  "max": 8,
+                  "min": 2
+                }
+              },
+              {
+                "name": "c0",
+                "value": {
+                  "int": "6"
+                },
+                "domain": {
+                  "max": 8,
+                  "min": 2
+                }
+              },
+              {
+                "name": "d0",
+                "value": {
+                  "int": "5"
+                },
+                "domain": {
+                  "max": 8,
+                  "min": 2
+                }
+              }
+            ],
+            "answer": "str(a) + ' by ' + str(b) if a * b > c * d else (str(c) + ' by ' + str(d) if c * d > a * b else 'the same')",
+            "values": null,
+            "derived": [
+              [
+                "a",
+                "2 + a0 % 7"
+              ],
+              [
+                "b",
+                "2 + b0 % min(7, 50 // a - 1)"
+              ],
+              [
+                "c",
+                "2 + c0 % 7"
+              ],
+              [
+                "d",
+                "2 + d0 % min(7, 50 // c - 1)"
+              ]
+            ]
+          }
+        }
+      ],
+      "format": "write-words",
+      "regions": [
+        {
+          "id": "answer",
+          "kind": "box",
+          "label": null,
+          "answer": {
+            "type": "text",
+            "value": "3 by 6"
+          }
+        }
+      ],
+      "scorable": true,
+      "parentChecked": false
+    },
+    "text": "Which is bigger: 3 by 6 squares, or 8 by 2 squares?",
+    "level": 16,
+    "skill": {
+      "skills": [
+        "3.9-area-square-units"
+      ],
+      "standard": "3.9"
+    },
+    "steps": [],
+    "answer": null,
+    "operation": null,
+    "difficulty": 1,
+    "templateId": "3.9-area-square-units#4.1:compare",
+    "textSource": "code",
+    "wrongAnswers": [],
+    "easierExample": null
+  }
+]

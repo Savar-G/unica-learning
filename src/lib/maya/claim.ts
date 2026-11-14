@@ -68,7 +68,7 @@ const isClaimItem = (pkg: OperationPackage) => pkg.item?.format === "circle" && 
  */
 export function claimSessionPackage(pkg: OperationPackage): { pkg: OperationPackage } | { held: string } | null {
   // A package that is already a session claim (a place-value compare, B1b) is taught as it is.
-  if (!isClaimItem(pkg) || sessionClaim(pkg)) return null;
+  if (pkg.operation.kind === "comparison" || !isClaimItem(pkg) || sessionClaim(pkg)) return null;
   const held = { held: "Maya cannot teach this circle question yet" };
   // A4's own closed forms first, then an "other-topic" claim (scale, minute hand, money: topic-claim.ts, C3b).
   const claim = readClaim(pkg, pkg.operation) ?? topicClaim(pkg);

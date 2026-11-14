@@ -657,7 +657,7 @@ function operationNumbers(op: Operation | null | undefined): Read[] {
     case "fraction-equivalent": return asFraction([...operands, num(op.denominator)]);
     case "evaluate": return [...operands, ...Object.values(op.values ?? {}).map(num)];
     // Made only by Maya's session adapter, never printed: its number is the one the question prints.
-    case "place-value": return operands;
+    case "place-value": case "comparison": return operands;
     default: return unreachable(op);
   }
 }
@@ -774,7 +774,7 @@ function kindOperation(op: Operation | null | undefined): SignOperation[] {
     case "evaluate": case "solve":
       return textOperations(op.operands[0]);
     // Made only by Maya's session adapter, never printed; it has no sign.
-    case "place-value":
+    case "place-value": case "comparison":
       return [];
     default: return unreachable(op);
   }

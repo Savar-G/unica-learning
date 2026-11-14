@@ -30,7 +30,7 @@ export const TAUGHT_STEP_KINDS: readonly WorkedStep["kind"][] = [
   // A claim's compare step (claim.ts), only in the session package of a checked claim question.
   "claim-compare",
   // A clock-time question's counts on a clock (clock-lines.ts, C3c).
-  "count-on",
+  "count-on", "comparison", "comparison-count",
 ];
 
 /** The step kinds of a package (and of its easier example) Maya has no lines for. */

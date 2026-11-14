@@ -83,7 +83,7 @@ const OPERATION_KINDS = [
   "convert", "quantity-add", "quantity-subtract", "quantity-multiply", "money-round", "elapsed-time", "time-add",
   "clock-convert", "evaluate", "solve",
 ] as const satisfies readonly OperationKind[];
-type MayaOnlyKind = "place-value";
+type MayaOnlyKind = "place-value" | "comparison";
 const ALL_KINDS: Exclude<OperationKind, (typeof OPERATION_KINDS)[number] | MayaOnlyKind> extends never ? true : false = true;
 void ALL_KINDS;
 

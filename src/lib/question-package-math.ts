@@ -40,6 +40,7 @@ import {
 } from "@/lib/question-package-columns";
 import { ALGEBRA_KINDS, algebraStepText, evaluateWithin } from "@/lib/question-package-algebra";
 import { MEASURE_KINDS, amountText, measureStepText } from "@/lib/question-package-measures";
+import { COMPARISON_RULES } from "./question-package-comparison";
 import { PLACE_VALUE_RULES, readDigitText } from "@/lib/question-package-place-value";
 import { partsStepText, withPlaceParts } from "@/lib/question-package-place-parts";
 import { missingStepText } from "@/lib/maya/missing-number-text";
@@ -448,6 +449,7 @@ const KINDS: { [K in OperationKind]: KindRules<Of<K>> } = {
   ...MEASURE_KINDS,
   ...ALGEBRA_KINDS,
   "place-value": withPlaceParts(PLACE_VALUE_RULES),
+  comparison: COMPARISON_RULES,
 };
 
 function decimalResult(op: { operands: [number, number] }, how: "add" | "subtract" | "multiply"): AnswerValue {
@@ -465,7 +467,7 @@ function decimalResult(op: { operands: [number, number] }, how: "add" | "subtrac
  * or a generator output that claims one stays "beyond code", as before they existed. Only a caller that passes Maya's
  * limits explicitly (`OperationLimits.placeValue`) has them checked.
  */
-const MAYA_ONLY_KINDS: readonly string[] = ["place-value"];
+const MAYA_ONLY_KINDS: readonly string[] = ["place-value", "comparison"];
 
 /** The operation kinds every default check computes (never the Maya-only kinds). */
 export const isOperationKind = (kind: unknown): kind is OperationKind => typeof kind === "string" && Object.hasOwn(KINDS, kind) && !MAYA_ONLY_KINDS.includes(kind);
@@ -488,6 +490,8 @@ export interface OperationLimits {
   readonly divisor?: number;
   /** Check the place-value kind (B1a), which no default check knows. */
   readonly placeValue?: boolean;
+  /** Closed two-sided comparisons made by Maya's printed-question adapter only. */
+  readonly comparison?: boolean;
   /**
    * Accept a spot-the-error item whose "Is it right?" its template checks (template-shown, #489) and that shows no stored
    * error, holding an operation (Maya's spot-the-error path, C2). No default check passes it.
@@ -507,7 +511,7 @@ const WIDER: Partial<Record<OperationKind, (a: number, b: number, limits: Operat
 export function operationCheck(operation: unknown, limits?: OperationLimits): OperationProblem | null {
   if (typeof operation !== "object" || operation === null || Array.isArray(operation)) return fail("the operation is missing");
   const op = operation as Fields;
-  const mayaOnly = op.kind === "place-value" && limits?.placeValue === true;
+  const mayaOnly = (op.kind === "place-value" && limits?.placeValue === true) || (op.kind === "comparison" && limits?.comparison === true);
   if (!isOperationKind(op.kind) && !mayaOnly) return typeof op.kind === "string" ? beyond(`code cannot check the operation ${op.kind}`) : fail("the operation has no kind");
   const kind = op.kind as OperationKind;
   const problem = KINDS[kind].problem(op);
@@ -564,6 +568,8 @@ const capital = (s: string) => s[0].toUpperCase() + s.slice(1);
 /** A worked step in words, for a board or a voice: "Add the ones: 8 + 7 = 15. Write 5 and carry 1 ten." */
 export function stepText(step: WorkedStep, operation: Operation): string {
   switch (step.kind) {
+    case "comparison": return `${step.left} ${step.left > step.right ? ">" : "<"} ${step.right}.`;
+    case "comparison-count": return `${step.outcomes.join(", ")}: ${step.value} outcomes.`;
     case "add-column": {
       const { place, digits, carryIn, total, write, carryOut } = step;
       const terms = [...digits, ...(carryIn > 0 ? [carryIn] : [])];

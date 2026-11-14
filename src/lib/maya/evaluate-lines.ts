@@ -68,7 +68,7 @@ export function partHelp(pkg: OperationPackage, step: WorkedStep, stepLines: (pk
   if (at.inner === null) return [];
   const { part } = at;
   const own = stepLines(partPackage(pkg, part), at.inner).map((o) => reslot(o, step.id));
-  if (!at.first) return own;
+  if (!at.first || at.inner.kind === "try-factor") return own;
   const slots = { step: step.id };
   const frame = part.last ? evaluateFrame(pkg) : null;
   const verb = { "+": "add", "−": "subtract", "×": "multiply", "÷": "divide" }[part.step.op];

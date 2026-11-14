@@ -18,6 +18,7 @@
 // version 1 package) is one answer box that holds its operation's answer. An item with no operation (tens and ones,
 // a drawing) has no answer, steps or easier example of its own. Items code does not mark are "not-checked".
 // Pure TypeScript: no Next.js, React, network, database or clock.
+import type { ComparisonOperation, ComparisonStep } from "./question-package-comparison";
 import { BC_SKILL_MAP } from "@/lib/assessment";
 import { decimalRational } from "@/lib/question-package-columns";
 import { defaultItem, itemProblem, type ItemContext, type ItemProblem } from "@/lib/question-package-items";
@@ -162,7 +163,8 @@ export type Operation =
   | { kind: "place-value"; operands: [number]; ask: "digit" | "value"; place: Place }
   /** B1b (question-package-place-parts.ts): two digits compared, two digits' values added, or wholes and tenths as a decimal. */
   | { kind: "place-value"; operands: [number]; ask: "compare" | "sum"; place: Place; second: Place }
-  | { kind: "place-value"; operands: [number, number]; ask: "build"; place: "tenths" };
+  | { kind: "place-value"; operands: [number, number]; ask: "build"; place: "tenths" }
+  | ComparisonOperation;
 
 /** One operation shape for each kind, so a kind picks its shape. */
 type KindsOf<K extends string, O> = K extends string ? { kind: K; operands: O } : never;
@@ -365,6 +367,7 @@ export type WorkedStep =
       shown: number;
       holds: boolean;
     }
+  | ComparisonStep
   | { id: "result"; kind: "result"; value: AnswerValue };
 
 /**
@@ -890,7 +893,8 @@ function size(operation: Operation, limits?: OperationLimits): Size {
   const numbers = operation.kind === "missing-addend" ? [operation.operands[1] - operation.operands[0], operation.operands[1]].sort((x, y) => x - y)
     : WHOLE_KINDS.includes(operation.kind) ? [...(operation.operands as number[])].sort((x, y) => x - y)
       // A place-value build, only under Maya's explicit check (lesson 8; no default check knows the kind): fewer wholes is easier.
-      : limits?.placeValue === true && operation.kind === "place-value" && operation.ask === "build" ? [operation.operands[0]] : null;
+      : limits?.placeValue === true && operation.kind === "place-value" && operation.ask === "build" ? [operation.operands[0]]
+        : limits?.comparison === true && operation.kind === "comparison" && operation.context === "rectangle-areas" ? operation.operands.flat().sort((a, b) => a - b) : null;
   const expression = operation.kind === "evaluate" || operation.kind === "solve" ? operation.operands[0] : null;
   const literals = expression ? operationText(operation).match(/\d+(?:\.\d+)?/g)?.map(Number).sort((a, b) => a - b) ?? null : null;
   return { digits: (operationText(operation).match(/\d/g) ?? []).length, steps: steps.length, carries: steps.filter(carries).length,

@@ -240,6 +240,15 @@ describe("an invalid simulation never counts as a pass", () => {
         expect(c.validity.stages.filter(s => s.opens === "start").flatMap(s => s.values ?? [])).toContainEqual(right);
         continue;
       }
+      // A two-sided comparison ends in a closed word, not a numeric answer stage.
+      if (pkg.operation?.kind === "comparison") {
+        expect(c.id).toMatch(/^CMP[123]$/);
+        expect(["choice", "text"]).toContain(right.type);
+        expect(pkg.operation.operands).not.toContainEqual(right);
+        expect(pkg.steps.at(-2)).toMatchObject({ id: "compare", kind: "comparison", value: right });
+        expect(c.expected).toContain("Do not supply the relation or winning word");
+        continue;
+      }
       // A compare's answer is its circled word, which code reads (B1b, PV4).
       if (pkg.operation?.kind === "place-value" && pkg.operation.ask === "compare") continue;
       // A clock time (C3c): its validity stage holds it as a typed value, after help.

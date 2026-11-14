@@ -869,12 +869,101 @@ the model's repair and on code's fallback.
 
 ## Pattern length repair, 2026-11-13
 
-Pending Savar approval. The prior approved missing-pattern explanation could fill to 28 spoken words with its opener. The shorter explanation preserves the two term positions, the equal jump count and the division to find one jump. `{nth}`, `{count}` and `{part}` come from the checked pattern. An independent copy review is required before merge.
+Approved by Savar, 2026-11-13. Independent copy review passed at `1931e996` against `NEVER_SAY`, the no-answer rule, `DESIGN.md` and the existing line list. The prior approved missing-pattern explanation could fill to 28 spoken words with its opener. The shorter explanation preserves the two term positions, the equal jump count and the division to find one jump. `{nth}`, `{count}` and `{part}` come from the checked pattern. The final integrated head still needs its review and practice gates.
 
 | Wording | Approval |
 |---|---|
-| The 1st and {nth} terms are {count} equal jumps apart. Find one jump: {part}. | pending Savar |
-| Here's why. The 1st and {nth} terms are {count} equal jumps apart. Find one jump: {part}. | pending Savar |
-| Let's see. The 1st and {nth} terms are {count} equal jumps apart. Find one jump: {part}. | pending Savar |
-| Look closely. The 1st and {nth} terms are {count} equal jumps apart. Find one jump: {part}. | pending Savar |
-| Here's how. The 1st and {nth} terms are {count} equal jumps apart. Find one jump: {part}. | pending Savar |
+| The 1st and {nth} terms are {count} equal jumps apart. Find one jump: {part}. | approved by Savar, 2026-11-13, with independent review |
+| Here's why. The 1st and {nth} terms are {count} equal jumps apart. Find one jump: {part}. | approved by Savar, 2026-11-13, with independent review |
+| Let's see. The 1st and {nth} terms are {count} equal jumps apart. Find one jump: {part}. | approved by Savar, 2026-11-13, with independent review |
+| Look closely. The 1st and {nth} terms are {count} equal jumps apart. Find one jump: {part}. | approved by Savar, 2026-11-13, with independent review |
+| Here's how. The 1st and {nth} terms are {count} equal jumps apart. Find one jump: {part}. | approved by Savar, 2026-11-13, with independent review |
+
+
+## Remaining Book 1 comparisons, 2026-11-13
+
+Status: pending independent copy review and Savar approval. These 79 distinct lines are the full new rendered comparison line list for the 11 stored Book 1 comparisons. The existing five pattern-why replacements are approved above. No practice, merge, production or family release approval follows from this list.
+
+The common controller owns order and credit. The child must supply both side values, the numerical relation and the final word. Target help never states the relation or winning word. The code uses these checked sentences for comparison math in both conversational and older adapters. It keeps the existing model and reviewer for other question kinds.
+
+1. Which is bigger: 7 by 6 or 5 by 6?
+2. Tell me how you will compare them.
+3. Try a new example. Which is bigger: 1 by 1 or 1 by 2?
+4. 1 row of 1 square makes 1 square.
+5. 1 row of 2 squares makes 2 squares.
+6. 1 is less than 2.
+7. For this example, the answer is 1 by 2.
+8. Now compare the amounts in your question.
+9. Find the first area: 7 × 6. What is it?
+10. Count 7 rows of 6 squares. What is the area?
+11. That area is 42 squares.
+12. That step is right.
+13. Check that comparison step again.
+14. Find the second area: 5 × 6. What is it?
+15. Count 5 rows of 6 squares. What is the area?
+16. That area is 30 squares.
+17. Compare 42 and 30. Which is greater?
+18. Which answer will you write: 7 by 6 or 5 by 6?
+19. That answer is right.
+20. Write your answer on the page.
+21. Which answer do you mean: 7 by 6 or 5 by 6?
+22. You said 7 by 6. Is that your answer?
+23. You said 5 by 6. Is that your answer?
+24. This comparison needs more practice. Ask a grown-up to work on it with you.
+25. 5/6 > 3/6.
+26. Try a new example. All pieces have the same size. True or false: 1 piece > 2 pieces.
+27. For this example, the answer is false.
+28. The fractions have the same denominator. Compare the numerators: 5 and 3. Which is greater?
+29. Which answer will you write: true or false?
+30. Which answer do you mean: true or false?
+31. You said true. Is that your answer?
+32. You said false. Is that your answer?
+33. 5/6 > 2/6.
+34. Try a new example. All pieces have the same size. True or false: 1 piece > 3 pieces.
+35. 1 is less than 3.
+36. The fractions have the same denominator. Compare the numerators: 5 and 2. Which is greater?
+37. 9/10 > 4/10.
+38. The fractions have the same denominator. Compare the numerators: 9 and 4. Which is greater?
+39. 2/5 > 1/5.
+40. Try a new example. All pieces have the same size. True or false: 3 pieces > 4 pieces.
+41. 3 is less than 4.
+42. The fractions have the same denominator. Compare the numerators: 2 and 1. Which is greater?
+43. Which is more likely on a die numbered 1 to 6: even or less than 2?
+44. Try a new example. A bag has 7 red counters and 8 blue counters. Which colour is more likely on one random draw?
+45. 7 is less than 8.
+46. For this example, the answer is blue.
+47. Which numbers on the die are even? How many are there?
+48. Which numbers on the die are less than 2? How many are there?
+49. Compare 3 and 1. Which is greater?
+50. Which answer will you write: even or less than 2?
+51. Which answer do you mean: even or less than 2?
+52. You said even. Is that your answer?
+53. You said less than 2. Is that your answer?
+54. 5/6 > 1/6.
+55. Try a new example. All pieces have the same size. True or false: 2 pieces > 3 pieces.
+56. 2 is less than 3.
+57. The fractions have the same denominator. Compare the numerators: 5 and 1. Which is greater?
+58. 7/9 > 5/9.
+59. The fractions have the same denominator. Compare the numerators: 7 and 5. Which is greater?
+60. 6/10 > 5/10.
+61. The fractions have the same denominator. Compare the numerators: 6 and 5. Which is greater?
+62. 4/5 > 1/5.
+63. The fractions have the same denominator. Compare the numerators: 4 and 1. Which is greater?
+64. Which is bigger: 3 by 6 or 8 by 2?
+65. Try a new example. Which is bigger: 1 by 1 or 1 by 4?
+66. 1 row of 4 squares makes 4 squares.
+67. 1 is less than 4.
+68. For this example, the answer is 1 by 4.
+69. Find the first area: 3 × 6. What is it?
+70. Count 3 rows of 6 squares. What is the area?
+71. That area is 18 squares.
+72. Find the second area: 8 × 2. What is it?
+73. Count 8 rows of 2 squares. What is the area?
+74. That area is 16 squares.
+75. Compare 18 and 16. Which is greater?
+76. Which answer will you write: 3 by 6 or 8 by 2?
+77. Which answer do you mean: 3 by 6 or 8 by 2?
+78. You said 3 by 6. Is that your answer?
+79. You said 8 by 2. Is that your answer?
+
+For the missing-rule target whose answer equals the term gap count, omit the count-bearing lead and its why offer. The remaining first-part lead is the existing sentence "Subtract the start.". The existing subtraction prompts remain. This repair keeps the answer guard.

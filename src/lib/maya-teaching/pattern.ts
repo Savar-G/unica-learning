@@ -32,9 +32,11 @@ export function derivePattern(printed: QuestionPackage): QuestionPackage | null 
   const answer = operationResult(p.operation);
   if (!values || values.s !== p.start || values.d !== p.step || (p.missing && values.t !== p.start + p.count * p.step) ||
       !("answer" in key) || !sameValue(templateAnswerValue(key.answer), answer) || box?.kind !== "box" || !box.answer || !sameValue(box.answer, answer)) return null;
-  // The easier pattern: the same printed form with a start and a step of 5 or less, never one that gives the question away.
-  for (const start of [1, 2, 3, 4, 5]) for (const step of [2, 3, 4, 5, 1]) {
-    const small = readPattern(patternText(p.form, start, step))!;
+  // Keep the first safe same-form example. Missing increments can also use the supported ninth-term form: the
+  // same method with eight intervals avoids exposing a target answer of two or three through an example's count.
+  const forms: PatternForm[] = p.form === "missing3" ? [p.form, "missing9"] : [p.form];
+  for (const form of forms) for (const start of [1, 2, 3, 4, 5]) for (const step of [2, 3, 4, 5, 1]) {
+    const small = readPattern(patternText(form, start, step))!;
     if (exampleGivesAway(p, small)) continue;
     const easierExample = { text: small.text, operation: small.operation, answer: operationResult(small.operation), steps: workedSteps(small.operation) };
     const made: QuestionPackage = { ...printed, operationSource: TEACHING_SOURCE, operation: p.operation,
