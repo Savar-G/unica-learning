@@ -259,8 +259,9 @@ it("steps through the pages that need another photo while a page that passed is 
   expect(text()).toContain("2 pages need another photo");
   expect(text()).toContain("Your photo");
   expect(text()).toContain("Like this");
-  const first = text().includes("Code not read") ? "Code not read" : "More than one page";
-  const second = first === "Code not read" ? "More than one page" : "Code not read";
+  const unread = "We couldn't tell which page this is.";
+  const first = text().includes(unread) ? unread : "More than one page";
+  const second = first === unread ? "More than one page" : unread;
   expect(text()).not.toContain(second);
   await act(async () => button("Next (1 of 2)")!.click());
   expect(text()).toContain(second);
@@ -568,13 +569,16 @@ it("keeps photos the server has no room for in their place, says so, and sends t
   await choose("library", "p10.jpg");
   full = true;
   await choose("library", "p11.jpg", "p12.jpg", "p13.jpg");
-  expect(text()).toContain("Waiting for room");
+  // The tile says only Loading…; the dock says there is no room yet.
+  expect(text()).toContain("There is no room for more photos yet");
+  expect(text()).not.toContain("Waiting for room");
+  expect(button("New photo: Loading…")).toBeDefined();
   expect(text()).not.toContain("Not sent");
   expect(photos.size).toBe(1);
   full = false;
   // The first page went for marking on its own; the waiting photos ask again and go.
   await settle(); await settle();
-  expect(text()).not.toContain("Waiting for room");
+  expect(text()).not.toContain("There is no room for more photos yet");
   expect([...photos.values()].map((p) => p.pageId).sort()).toEqual(["p10", "p11", "p12", "p13"]);
 });
 
@@ -582,41 +586,29 @@ it("without checks, a photo waiting for room says it goes on its own", async () 
   shortWaits(); checks = false; full = true;
   await render();
   await choose("library", "p10.jpg");
-  expect(text()).toContain("Waiting for room");
+  expect(text()).not.toContain("Waiting for room");
   expect(text()).toContain("There is no room for more photos yet. The waiting photo keeps its place and goes when there is room.");
   expect(text()).not.toContain("Not sent");
   full = false; await settle(); await settle();
   expect(photos.size).toBe(1);
 });
 
-it("shows the phone's early hint on a photo still sending whose code it could not read, and the server still decides (#915)", async () => {
+it("a new photo in progress says only Loading…, never a code warning, and the server's refusal names the code (2026-11-14)", async () => {
   context.code = "unread";
   let open!: () => void;
   putGate = new Promise<void>((resolve) => { open = resolve; });
   await render();
   await choose("camera", "junk.jpg");
-  // The upload was not held back: it is on its way while the hint shows.
   expect(calls.some((c) => c.startsWith("PUT /api/account/scans/"))).toBe(true);
-  expect(text()).toContain("Code may not read");
-  await act(async () => button("New photo: Code may not read")!.click()); await settle();
-  expect(text()).toContain("We cannot read the small code in the bottom-left corner.");
-  expect(text()).toContain("This photo is still sending");
-  await act(async () => button("Close")!.click()); await settle();
+  expect(button("New photo: Loading…")).toBeDefined();
+  expect(text()).not.toContain("Code may not read");
+  expect([...document.querySelectorAll(".scan-tile-s")].map((e) => e.textContent)).toEqual(["Loading…"]);
   await act(async () => { open(); }); await settle();
-  // The server read no code either: the photo is refused with the same words.
-  expect(text()).toContain("Code not read");
-  expect(text()).not.toContain("Code may not read");
-});
-
-it("shows no hint when the phone reads the code (#915)", async () => {
-  context.code = "read";
-  let open!: () => void;
-  putGate = new Promise<void>((resolve) => { open = resolve; });
-  await render();
-  await choose("camera", "p11.jpg");
-  expect(text()).not.toContain("Code may not read");
-  await act(async () => { open(); }); await settle();
-  expect(text()).not.toContain("Code may not read");
+  // The server read no code: the photo is refused with the plain refusal copy.
+  expect(text()).not.toContain("Code not read");
+  await act(async () => button("Open your photo of Unknown page")!.click()); await settle();
+  expect(text()).toContain("We couldn't tell which page this is. Take the photo again with the whole page in view, including the small code in the bottom-left corner.");
+  expect(text()).not.toMatch(/Code (may )?not read/);
 });
 
 it("says where a page went when its code filed it with a sibling's book (#915)", async () => {

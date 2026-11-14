@@ -33,7 +33,7 @@ describe("buildStack", () => {
   it("puts refused pages first with their short reason, and a refused upload as an unknown page", () => {
     const uploads: StackUpload[] = [{ key: "u1", status: "refused", reason: "qr" }];
     const stack = buildStack({ photos: [photo("a", 10), photo("b", 12, { check: "refused", reason: "ambiguous-page" })], uploads, pages, checks: true });
-    expect(stack.refused.map((t) => [t.label, t.reason])).toEqual([["Page 12 · Day 4", "More than one page"], ["Unknown page", "Code not read"]]);
+    expect(stack.refused.map((t) => [t.label, t.reason])).toEqual([["Page 12 · Day 4", "More than one page"], ["Unknown page", null]]);
     expect(stack.days[0].tiles.map((t) => t.label)).toEqual(["Page 10"]);
     // A refused page still has a photo: it is not a gap.
     expect(stack.days[0].missing).toEqual([11, 13]);
@@ -134,10 +134,11 @@ describe("words", () => {
   it("gives every refusal a short reason, a title and what to do, and fold-the-book-back for two sheets", () => {
     for (const reason of ["marks-missing", "marks-inconsistent", "page-mismatch", "orientation-unclear", "ambiguous-page", "qr-mismatch", "printed-page-changed", "failed", "qr", "page", "duplicate", "image", "size", "frequency", "quota", "unavailable"] as const) {
       const copy = refusalCopy(reason);
-      expect(copy.short.length).toBeGreaterThan(0);
+      // An unread code has no short reason: its tile says only "Unknown page" (2026-11-14).
+      if (reason === "qr" || reason === "qr-mismatch") expect(copy.short).toBeNull(); else expect(copy.short?.length).toBeGreaterThan(0);
       expect(copy.title).toMatch(/\.$/);
       expect(copy.action).toMatch(/\.$/);
-      expect(`${copy.short} ${copy.title} ${copy.action}`).not.toMatch(/\b(she|her|AI|OpenRouter)\b/);
+      expect(`${copy.short ?? ""} ${copy.title} ${copy.action}`).not.toMatch(/\b(she|her|AI|OpenRouter)\b/);
     }
     expect(refusalCopy("ambiguous-page").action).toContain("only one page shows");
     expect(refusalCopy("marks-missing").short).toBe("Hold closer");
@@ -145,14 +146,12 @@ describe("words", () => {
 });
 
 it("tells the parent what went wrong and the one thing to do, for each photo refusal (#915)", () => {
-  // The code is named by where it is, with what to change: steady, in view, no glare or shadow.
+  // The code is named by where it is, with the one thing to do (2026-11-14).
   for (const reason of ["qr", "qr-mismatch"] as const) {
-    const { title, action } = refusalCopy(reason);
-    expect(title).toBe("We cannot read the small code in the bottom-left corner.");
-    expect(action).toContain("Hold the phone steady");
-    expect(action).toMatch(/no glare.*shadow/);
+    const { short, title, action } = refusalCopy(reason);
+    expect(`${title} ${action}`).toBe("We couldn't tell which page this is. Take the photo again with the whole page in view, including the small code in the bottom-left corner.");
+    expect(short).toBeNull();
   }
-  expect(refusalCopy("qr").short).toBe("Code not read");
   // The code was read but the page could not be lined up: the check cannot tell a cut-off edge from glare or a page too
   // small in the photo, so it says what fixes both, and never "cut off".
   // A hidden corner whose answers do not show this page's own frame: something lies on the page, so it says so (#977 review).
@@ -185,7 +184,8 @@ describe("photos waiting to send (#915)", () => {
 
   it("shows queued and held photos as waiting, and counts them beside the ones sending", () => {
     const stack = stackOf([{ key: "a", status: "uploading" }, { key: "b", status: "uploading", held: true }, { key: "c", status: "waiting" }]);
-    expect(stack.addingTiles.map((t) => [t.status, t.reason])).toEqual([["adding", null], ["waiting", "Waiting for room"], ["waiting", null]]);
+    // A new photo in progress names no reason (2026-11-14): a held one carries only the room hint for its sheet.
+    expect(stack.addingTiles.map((t) => [t.status, t.reason, t.hint ?? null])).toEqual([["adding", null, null], ["waiting", null, "room"], ["waiting", null, null]]);
     expect([stack.adding, stack.waiting, stack.held]).toEqual([3, 2, 1]);
     expect(addingCount(stack)).toBe("Sending 1 photo, 2 waiting");
     expect(addingCount(stackOf([{ key: "a", status: "uploading" }, { key: "b", status: "uploading" }]))).toBe("Sending 2 photos");

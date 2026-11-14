@@ -38,9 +38,11 @@ it.each(["pending", "parent-pending"] as const)("a %s sibling withholds all expl
   await render({ ...base, completion: { ...base.completion, total: 2, finished: 2 }, items: [item, { ...sibling, state: "parent-checked", result: "right" }] });
   await press(); expect(fetch).toHaveBeenCalledTimes(1); expect(host.textContent).toContain("Stored correct answer: 42");
 });
-it("the control hides as soon as a parent changes the wrong mark to right", async () => {
-  vi.stubGlobal("fetch", async () => Response.json({ status: "saved", result: { ...base, items: [{ ...item, version: 3, result: "right", label: "Right" }] } }));
-  await render(); await press("Change this mark"); await press("Right"); expect(host.textContent).not.toContain("Explain this problem");
+it("the control hides as soon as our team changes the wrong mark to right", async () => {
+  vi.stubGlobal("fetch", vi.fn());
+  await render(); expect(host.textContent).toContain("Explain this problem");
+  await render({ ...base, items: [{ ...item, version: 3, state: "parent-checked", actor: "admin" as never, result: "right", label: "Right" }] });
+  expect(host.textContent).not.toContain("Explain this problem");
 });
 it.each(["retry", "cap", "unavailable", "busy", "refused"])("%s announces its state without invented steps or an automatic retry", async status => {
   const fetch = vi.fn(async () => Response.json({ status })); vi.stubGlobal("fetch", fetch); await render(); await press();
@@ -54,12 +56,12 @@ it.each(["child", "version", "reading", "auth"])("a delayed reply cannot appear 
   else await render({ ...base, items: [{ ...item, ...(change === "version" ? { version: 3 } : { readAnswerText: "40" }) }] });
   await act(async () => resume(Response.json(ready))); expect(host.textContent).not.toContain("Stored correct answer");
 });
-it("a replacement child starts with its own lower mark version after a saved correction", async () => {
-  const fetch = vi.fn(async () => Response.json({ status: "saved", result: { ...base, items: [{ ...item, version: 8, readAnswerText: "old child reading" }] } })); vi.stubGlobal("fetch", fetch);
-  await render(); await press("Change this mark"); await press("Wrong");
+it("a replacement child starts with its own lower mark version", async () => {
+  const fetch = vi.fn(async () => Response.json(ready)); vi.stubGlobal("fetch", fetch);
+  await render({ ...base, items: [{ ...item, version: 8, readAnswerText: "old child reading" }] });
   await render({ ...base, items: [{ ...item, version: 1, readAnswerText: "new child reading" }] }, "parent", "sibling-photo");
-  fetch.mockImplementation(async () => Response.json(ready)); await press();
-  const [url, init] = fetch.mock.calls[1] as unknown as [string, RequestInit]; expect(url).toContain("sibling-photo/explanation"); expect(JSON.parse(String(init.body)).version).toBe(1);
+  await press();
+  const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit]; expect(url).toContain("sibling-photo/explanation"); expect(JSON.parse(String(init.body)).version).toBe(1);
   expect(host.textContent).not.toContain("old child reading");
 });
 

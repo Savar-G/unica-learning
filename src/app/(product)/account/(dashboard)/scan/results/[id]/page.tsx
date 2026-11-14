@@ -24,6 +24,8 @@ export default async function ScanResultsPage({ params, searchParams }: { params
     <Link href="/account/scan">Back to Scan pages</Link>
     {result.completion.status === "complete" && <ScanPostChoice parent={session.parent} photo={id} />}
     <div id="page-results"><ScanMarkingResults photo={id} parent={session.parent} result={result} showHeading={false} zone={zone} /></div>
+    {/* No parent changes a mark (2026-11-14); a new photo of the page is the parent's way to have it read again. */}
+    <p><Link className="scan-link" href="/account/scan">Take another photo</Link></p>
     <details><summary>Mark changes</summary>
       {!changes.length ? <p>No more changes.</p> : <ol>{changes.map((c) => <li key={c.id}>Question {c.previous.expected.number}: {c.previous.observation.result ?? "Not marked"} to {c.current.result} ({c.actor === "admin" ? "Our team" : "Parent"}, {familyMoment(c.at, zone)}). We read: {c.previous.observation.readAnswerText ?? "Not read"}.</li>)}</ol>}
       {changes.length > 0 && <Link className="scan-link" href={`/account/scan/results/${id}?historyAfter=${changes[changes.length - 1].id}`}>More changes</Link>}
