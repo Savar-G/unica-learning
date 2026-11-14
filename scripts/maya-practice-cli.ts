@@ -374,10 +374,8 @@ async function main() {
           judge: o.models.judge ?? (process.env.MAYA_JUDGE_MODEL?.trim() || DEFAULT_JUDGE_MODEL),
           reviewer: o.models.reviewer ?? (process.env.MAYA_REVIEW_MODEL?.trim() || REVIEW_DEFAULT_MODEL),
         };
-  // With free talk off there is no review to pay for.
-  const { reviewer: _reviewerModel, ...core } = models;
-  void _reviewerModel;
-  const paid: ByRole<string> = o.freeTalk ? models : core;
+  // Conversational sentences need review even when open-ended free talk is off, as on the family chat path.
+  const paid: ByRole<string> = models;
 
   let maya: MayaModel;
   let simulator: ChildSimulator;
@@ -391,7 +389,7 @@ async function main() {
   if (o.reviewCheck && o.fake) throw new Error("--review-check needs a real review model: drop --fake.");
   if (o.fake) {
     maya = ruleConversationalModel();
-    reviewer = o.freeTalk ? fakeTalkReviewer() : null;
+    reviewer = fakeTalkReviewer();
     const scripts = new Map(cases.map((c) => [c.persona.name, c.fakeScript]));
     simulator = { id: "fake-child", promptVersion: SIMULATOR_PROMPT_VERSION, next: (input, s) => scriptedSimulator(scripts.get(input.persona.name) ?? []).next(input, s) };
     validity = fakeValidityJudge();
@@ -421,7 +419,7 @@ async function main() {
     simulator = aiChildSimulator(client("simulator"), { timeoutMs: SUBSCRIPTION_MAYA_MS });
     validity = aiValidityJudge(client("validity"), { timeoutMs: SUBSCRIPTION_MAYA_MS });
     judge = aiJudge(client("judge"), { timeoutMs: 3 * SUBSCRIPTION_MAYA_MS });
-    reviewer = o.freeTalk || o.reviewCheck ? aiTalkReviewer(client("reviewer")) : null;
+    reviewer = aiTalkReviewer(client("reviewer"));
   } else {
     const anthropic = o.provider === "anthropic";
     const price = anthropic ? anthropicPrices(models) : await prices(models);
@@ -458,7 +456,7 @@ async function main() {
     simulator = aiChildSimulator(client("simulator"));
     validity = aiValidityJudge(client("validity"));
     judge = aiJudge(client("judge"));
-    reviewer = o.freeTalk || o.reviewCheck ? aiTalkReviewer(client("reviewer")) : null;
+    reviewer = aiTalkReviewer(client("reviewer"));
   }
 
   if (o.reviewCheck) {

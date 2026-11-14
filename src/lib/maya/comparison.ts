@@ -1,6 +1,6 @@
 // Closed readers for checked two-sided comparisons. The session supplies the common commitment and order checks.
 import { sameValue, type AnswerValue, type OperationPackage, type WorkedStep } from "../question-package";
-import { comparisonAnswer, comparisonProblem, comparisonWords, type ComparisonOperation } from "../question-package-comparison";
+import { comparisonAnswer, comparisonProblem, comparisonSides, comparisonWords, type ComparisonOperation } from "../question-package-comparison";
 import { readClaimWord, type WordRead } from "./claim";
 import { wholeTurn, wholeValue } from "./numbers";
 
@@ -22,11 +22,20 @@ export function comparisonRelation(text: string, op: ComparisonOperation, step: 
   return comparisonAnswer(op, a === step.left ? greater : !greater);
 }
 
-const COMMIT = /^(?:it is|it's|the answer is|my answer is|i choose|i chose|i pick|i picked|i write|i will write) /;
+const COMMIT = /^(?:it is|it's|the answer is|my answer is|i choose|i chose|i pick|i picked|i write|i will write|i'll write) /;
 export function comparisonFinal(text: string, op: ComparisonOperation): WordRead {
-  if (op.context === "same-denominator" || op.context === "equal-pieces") return readClaimWord(text, ["true", "false"], null);
   const whole = wholeTurn(text);
   if (whole === null) return null;
+  const after = /^(.*?)(?:,)?\s+(?:because|since)\s+(.+)$/.exec(whole);
+  const before = /^(?:because|since)\s+(.+?),\s*(.+)$/.exec(whole);
+  if (after || before) {
+    const answer = after ? after[1] : before![2], reason = after ? after[2] : before![1];
+    const [left, right] = comparisonSides(op), value = comparisonAnswer(op);
+    const relation = comparisonRelation(reason, op, { id: "compare", kind: "comparison", left, right, value });
+    if (!relation || !sameValue(relation, value)) return null;
+    return comparisonFinal(answer, op);
+  }
+  if (op.context === "same-denominator" || op.context === "equal-pieces") return readClaimWord(whole, ["true", "false"], null);
   const prefix = COMMIT.exec(whole), body = prefix ? whole.slice(prefix[0].length) : whole;
   const choices = comparisonWords(op);
   if (op.context === "rectangle-areas") {

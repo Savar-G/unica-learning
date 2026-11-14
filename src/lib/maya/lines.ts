@@ -981,7 +981,8 @@ export function spokenQuestion(text: string): string {
  * same line; the voice worker speaks it itself (start with openingSpoken).
  */
 export function openingLine(pkg: OperationPackage, workbook?: { page: number; number: number }): string {
-  const expr = spokenQuestion(pkg.operation.kind === "place-value" ? placeOpeningText(pkg.operation) : questionExpr(pkg));
+  // The derived expression gives the pattern's method. Use the same checked label as the workbook opening.
+  const expr = patternOf(pkg) ? "the pattern" : spokenQuestion(pkg.operation.kind === "place-value" ? placeOpeningText(pkg.operation) : questionExpr(pkg));
   const template = workbook ? OPENING_LINES.workbook : OPENING_LINES.plain;
   return template.replace("{page}", String(workbook?.page ?? "")).replace("{number}", String(workbook?.number ?? "")).replace("{question}", expr);
 }

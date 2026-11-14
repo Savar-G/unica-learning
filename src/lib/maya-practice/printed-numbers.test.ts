@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { valuesIn } from "@/lib/maya";
 import { PRACTICE_CASES } from "./cases";
 import { practicePackage } from "./packages";
+import { ruleMayaModel } from "@/lib/maya-model-fake";
+import { fakeJudge, fakeValidityJudge, judgeRun, memoryPracticeStore, runPractice, scriptedSimulator, traceFile } from ".";
 
 // The validity check always allows a question's operands. When the operands are expressions (an evaluate package:
 // patterns, scales), it does not allow the numbers printed in the question. The child sees them on the page, so such
@@ -9,6 +11,16 @@ import { practicePackage } from "./packages";
 const exprCases = PRACTICE_CASES.filter((c) => {
   const ops = practicePackage(c).operation?.operands ?? [];
   return ops.length > 0 && !ops.every((o) => typeof o === "number" || typeof o === "object");
+});
+
+it("the repeated-addition persona can say the intermediate 8 plus 8 is 16 after help", async () => {
+  const c = PRACTICE_CASES.find(c => c.id === "PTP2")!, store = memoryPracticeStore();
+  await runPractice(c, 1, 1, { maya: ruleMayaModel(), simulator: scriptedSimulator([
+    "I got 52.", "Why do I use three steps?", "8 plus 8 is 16.", "3 times 8 is 24.", "20 plus 24 is 44.", "Okay.", "I wrote it.",
+  ]), validity: fakeValidityJudge(), judge: fakeJudge(), store, freeTalk: false });
+  const trace = JSON.parse(store.load(traceFile("PTP2-r1"))!);
+  expect(trace.turns).toContainEqual(expect.objectContaining({ kind: "child", text: "8 plus 8 is 16." }));
+  expect(judgeRun(c, "PTP2-r1", store, { stage: "code" }).invalid).not.toContainEqual(expect.objectContaining({ code: "number_not_allowed" }));
 });
 
 describe("cases with expression operands allow the numbers printed on the page", () => {

@@ -4,6 +4,8 @@ Practice children played by a real model call Maya through her text adapter (`sr
 
 **Run it before any change to Maya's controller (`src/lib/maya/`), her prompt (`src/lib/maya-model.ts`) or her model configuration (`AI_MODEL`) merges.** The scripted gate (`docs/maya-gate.md`) runs in `npm test` on every change. This suite costs money, so it runs on demand.
 
+The conversational model uses a sentence reviewer in both chat and voice, including chat with free talk off. This matches the family call path. A sentence outside the closed math vocabulary still needs that review. The command also includes the reviewer in its paid cost estimate when free talk is off. The flag controls open-ended free talk; it does not remove the conversational review.
+
 ```sh
 npm run maya:practice -- --estimate                                  # the cost estimate, then stop
 OPENROUTER_API_KEY_FILE=~/keys/openrouter npm run maya:practice      # the full suite (cap: twice the estimate)
@@ -32,7 +34,7 @@ npm run maya:practice -- --report traces/maya-practice/<run>          # count a 
 | `--subscription` | Every model through `claude -p` on the Claude subscription (`src/lib/ai-claude-cli-practice.ts`), at no cost: the same Claude models as `--anthropic`. Each call replaces Claude Code's system prompt with the role's exact system prompt (`--system-prompt`), asks for its schema (`--json-schema`), has no tools (`--tools ""`, `--safe-mode`), and runs in an empty folder with `ANTHROPIC_API_KEY` removed. `MAYA_CLAUDE_CONFIG_DIR` sets `CLAUDE_CONFIG_DIR` (another Claude Code login); `MAYA_CLAUDE_TIMEOUT_S` sets each call's process time limit (default 300). The cost is reported as USD 0, and `--max-usd` does nothing. `--provider subscription` is the same. See "Subscription runs" below. |
 | `--provider <p>` | `openrouter` (the default), `anthropic` (the same as `--anthropic`) or `subscription` (the same as `--subscription`). |
 | `--review-check` | Only the free-talk review: every `NEVER_SAY` example (each must fail) and every `OK_TALK` line (each must pass), with the code guards' result beside it. Saves `review-check.md` and `.json`. About 70 short calls; the cap is USD 2 unless `--max-usd` says otherwise. It includes the `plain_language` rule (D-202, review prompt `maya-talk-review-5`), which has had no paid run yet: run it before free talk relies on that rule. |
-| `--no-free-talk` | Maya with free talk off (every word from code), for a comparison run. |
+| `--no-free-talk` | Turn off open-ended free talk. Conversational sentences still pass the separate sentence review. |
 | `--review-model` | The free-talk review's model. Default `MAYA_REVIEW_MODEL`, else `anthropic/claude-haiku-5.5`. |
 | `--maya-model`, `--sim-model`, `--validity-model`, `--judge-model` | The models. Defaults: `AI_MODEL` (else `anthropic/claude-sonnet-5.5`), `MAYA_SIM_MODEL` (else `anthropic/claude-haiku-5.5`), `MAYA_VALIDITY_MODEL` (else `openai/gpt-5.4-mini`), `MAYA_JUDGE_MODEL` (else `openai/gpt-5.4`). Both judges are from another model family than the child and Maya (research, section 8), so the validity judge does not share the child's blind spots. |
 

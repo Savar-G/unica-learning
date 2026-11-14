@@ -33,6 +33,7 @@ export const PATTERN_PRACTICE: PracticeCase[] = cards.map((card, i) => {
     persona: { name: "Leo", age: i === 2 ? 8 : 10, question: p.text, knows: card.knows, behaviour: card.behaviour },
     expected: card.expected, dimensions: ["J01", "J02", "J03", "J04", "J05", "J06"], reasons: ["solved"],
     validity: { stages: [{ name: "known work", opens: "start", numbers: [...printed, ...(i === 1 ? [52] : i === 0 ? [80] : i === 3 ? [72] : [])] },
-      { name: "after help", opens: "help", numbers }], mustSay: [{ pattern: i === 2 ? /stuck/i : /\d/, within: 1, what: "gives the required first turn" }] },
+      // PTP2's repeated-addition method includes 8 + 8 = 16 before 16 + 8 = 24.
+      { name: "after help", opens: "help", numbers: [...numbers, ...(i === 1 ? [16] : [])] }], mustSay: [{ pattern: i === 2 ? /stuck/i : /\d/, within: 1, what: "gives the required first turn" }] },
     fakeScript: card.fakeScript };
 });

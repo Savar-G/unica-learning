@@ -14,6 +14,7 @@ import {
   heldSentences,
   isEqualForm,
   readAnswer,
+  readNumbers,
   readOptionsFor,
   rightForQuestion,
   teachSteps,
@@ -403,9 +404,16 @@ export const packageOf = (b: Behaviour): QuestionPackage => FIXTURES[b.fixture];
  * explanation, and holds no hedge ("think", "maybe", "guess", "probably", "or", "not sure"), no other person and no
  * request for help.
  */
-function gateOwnAnswer(text: string, value: AnswerValue, opts: ReturnType<typeof readOptionsFor>): boolean {
-  const t = text.toLowerCase().replace(/[’‘]/g, "'");
+function gateOwnAnswer(text: string, value: AnswerValue, opts: ReturnType<typeof readOptionsFor>, confirmed = false): boolean {
+  let t = text.toLowerCase().replace(/[’‘]/g, "'");
   if (/\b(?:think|maybe|guess|guessed|probably|perhaps|or|not sure|unsure|would say|mom|dad|teacher|brother|sister|friend|she|he|they|says|help|show me|tell me)\b/.test(t)) return false;
+  if (confirmed) t = t.replace(/^yes[,\s]+i said\s+/, "");
+  // An instruction quoted in a separate sentence is not a copied answer when it contains no form of that answer.
+  t = t.split(/(?<=[.!?])\s+/).filter(sentence => {
+    if (!/^you (?:said|told me|showed me)\b/.test(sentence)) return true;
+    const heard = readNumbers(sentence, opts);
+    return heard.unreadable || heard.values.some(v => sameValue(v, value) || equivalent(v, value));
+  }).join(" ");
   // Another's number, a copy, a near amount, or Maya's own words said back (re-review P3): its own forms, no controller code.
   if (/\b(?:said|told|copied|copy|peeked|about|around|roughly|likely|according to|you showed)\b|\b[a-z]+\s*:\s*\d/.test(t)) return false;
   return t.split(/(?<=[.!?])\s+/).some((x) => !x.trim().endsWith("?") && valuesIn(x.split(/\b(?:because|since|cause|cuz|coz)\b/)[0], opts).some((v) => sameValue(v, value) || equivalent(v, value)));
@@ -872,9 +880,9 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
       // The commit rule (rule A, 2026-11-12): the right answer said as the child's own, with no hedge, no other person and
       // no question about it, even with the child's working beside it ("I got 66. I put the 6 and the 6 together."). The
       // judge's own reading, apart from the controller's.
-      const own = yes === null && word === null && !read.sure && !read.choice ? read.kept.find((v) => rightForQuestion(op, v) && gateOwnAnswer(lastChild, v, opts)) ?? null : null;
+      const own = yes === null && word === null && !read.choice ? read.kept.find((v) => rightForQuestion(op, v) && gateOwnAnswer(lastChild, v, opts, askedHeard !== null && sameValue(askedHeard, v))) ?? null : null;
       const final = yes ?? word ?? own ?? read.final;
-      if (!final || (yes === null && word === null && own === null && !read.sure) || !rightForQuestion(op, final) || (comparison && (!childCertain || !workIds.every(id => doneSteps.has(id))))) fail("accepted_wrong_answer", `Maya turn ${i} accepted an answer after "${lastChild}"`);
+      if (!final || (yes === null && word === null && own === null) || !rightForQuestion(op, final) || (comparison && (!childCertain || !workIds.every(id => doneSteps.has(id))))) fail("accepted_wrong_answer", `Maya turn ${i} accepted an answer after "${lastChild}"`);
     }
     // Wrong final answers once every work step is done (D-199), read from the accepted readings: a step counts done when
     // the judge finds the reading's value right for it, and a final answer counts wrong by isRightAnswer.
