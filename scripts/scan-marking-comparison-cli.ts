@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import sharp from "sharp";
 import type { WorkbookInput } from "../src/lib/workbook-content";
-import { COMPARISON_DEFERRAL_POLICY, COMPARISON_SETTINGS, SYNTHETIC_IDS, assessComparisonEndpoint, assertComparisonResultIdentity, assertComparisonResume, cheapestPassing, comparisonReports, deferredAttempt, hashBytes, hashValue, recoverComparisonResults, selectComparisonModels, assertSelectedComparisonResults, syntheticPrintRevision, validateComparisonManifest, type AttemptRecord, type ComparisonManifest, type ComparisonPhoto, type ComparisonPreflight, type ComparisonResult, type Endpoint, type EndpointEvidence, type EndpointSnapshot } from "../src/lib/scan-marking-comparison";
+import { COMPARISON_DEFERRAL_POLICY, COMPARISON_SETTINGS, SYNTHETIC_IDS, assessComparisonEndpoint, assertComparisonResultIdentity, assertComparisonResume, cheapestPassing, comparisonReports, deferredAttempt, hashBytes, hashValue, recoverComparisonResults, selectComparisonModels, assertSelectedComparisonResults, syntheticPrintRevision, validateComparisonManifest, comparisonManifestFromBytes, type AttemptRecord, type ComparisonManifest, type ComparisonPhoto, type ComparisonPreflight, type ComparisonResult, type Endpoint, type EndpointEvidence, type EndpointSnapshot } from "../src/lib/scan-marking-comparison";
 import { runComparisonMatrix, runComparisonPhoto, type EvaluationBudget, type EvaluationJournal } from "../src/lib/scan-marking-comparison-run";
 
 const json = async <T>(path: string): Promise<T> => JSON.parse(await readFile(path, "utf8")) as T;
@@ -32,7 +32,7 @@ export function fileJournal(folder: string): EvaluationJournal {
   };
 }
 export async function loadComparisonAssets(manifestPath: string) {
-  const manifest = await json<ComparisonManifest>(manifestPath);
+  const manifest = comparisonManifestFromBytes(await readFile(manifestPath));
   validateComparisonManifest(manifest);
   const images = new Map<string, Uint8Array>(), root = dirname(resolve(manifestPath));
   for (const photo of manifest.photos) {
@@ -160,10 +160,11 @@ export async function main() {
   if (!values.manifest || !values.snapshots || !values.out || [values.estimate, values.run, values.report, values.preflight].filter(Boolean).length !== 1) throw new Error("Use --manifest FILE --snapshots DIR --out DIR and exactly one of --estimate, --preflight, --run, --report. --run also requires --max-usd <=15.");
   const maxAttempts = Number(values["max-attempts"]);
   if (maxAttempts !== 1 && maxAttempts !== 2) throw new Error("--max-attempts must be 1 or 2");
-  const selected = selectComparisonModels(values.models === undefined ? null : values.models.split(","));
+  const selection = values.models === undefined ? null : values.models.split(",");
+  const selected = selectComparisonModels(selection);
   const selectedIds = selected.map(m => m.model);
   const { manifest, images } = await loadComparisonAssets(values.manifest);
-  const approved = await comparisonSnapshots(values.snapshots, selectedIds), evidence = readyEvidence(approved);
+  const approved = await comparisonSnapshots(values.snapshots, selection ?? selectedIds), evidence = readyEvidence(approved);
   const plan = { manifestHash: hashValue(manifest), models: selected, settings: COMPARISON_SETTINGS, deferralPolicy: COMPARISON_DEFERRAL_POLICY, maxAttempts, approved };
   const run = hashValue(plan), out = resolve(values.out, run);
   if (values.estimate) {
@@ -178,7 +179,7 @@ export async function main() {
   const resultPath = (model: string, photo: string) => resolve(resultsDir, `${hashValue({ model, photo })}.json`);
   const readResults = async () => {
     const results = await Promise.all((await readdir(resultsDir)).filter(p => p.endsWith(".json")).sort().map(p => json<ComparisonResult>(resolve(resultsDir, p))));
-    assertSelectedComparisonResults(results, selectedIds);
+    assertSelectedComparisonResults(results, selection ?? selectedIds);
     return results;
   };
   const readRecords = async () => Promise.all((await readdir(journalDir)).filter(p => p.endsWith(".json")).map(async p => {
@@ -196,17 +197,17 @@ export async function main() {
   } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   const writeReport = async () => {
     const results = await readResults();
-    assertComparisonResultIdentity(manifest, results, history, run);
-    const reports = comparisonReports(manifest, states, results, history, blocks).filter(r => selectedIds.includes(r.model));
+    assertComparisonResultIdentity(manifest, results, history, run, selected);
+    const reports = comparisonReports(manifest, states, results, history, blocks, selected);
     await durableJson(resolve(out, "report.json"), { run, syntheticOnly: true, realHandwritingProven: false, settings: COMPARISON_SETTINGS, deferralPolicy: COMPARISON_DEFERRAL_POLICY, measuredMicros: reports.reduce((sum, r) => sum + (r.measuredMicros ?? 0), 0), heldMicros: reports.reduce((sum, r) => sum + r.heldMicros, 0), reports, blockedOrIncomplete: reports.filter(r => r.status !== "tested"), cheapestMeasuredPassing: cheapestPassing(reports), selectionScope: "fully-tested-passing-available-pairs-with-fully-measured-cost-only", productionSwitch: "blocked-until-explicit-host-policy-choice", evidence: history });
   };
   if (values.report) { await writeReport(); console.log(resolve(out, "report.json")); return; }
   // Check unresolved local liability before any configuration or paid dispatch.
   const records = await readRecords();
-  const priorResults = recoverComparisonResults(records, await readResults(), manifest, history, run);
-  assertSelectedComparisonResults(priorResults, selectedIds);
+  const priorResults = recoverComparisonResults(records, await readResults(), manifest, history, run, selected);
+  assertSelectedComparisonResults(priorResults, selection ?? selectedIds);
   for (const result of priorResults) await durableJson(resultPath(result.model, result.photo), result);
-  states = await refreshEvidence(out, approved, fetch, selectedIds);
+  states = await refreshEvidence(out, approved, fetch, selection ?? selectedIds);
   for (const e of readyEvidence(states)) if (!history.some(prior => hashValue(prior) === hashValue(e))) history.push(e);
   await durableJson(historyPath, history);
   const save = async (currentBlocks: ReadonlyMap<string, string>, projection: unknown) => {
@@ -230,7 +231,7 @@ export async function main() {
   // A saved model block is persistent for this run. It never authorizes retry of an omitted or refused attempt.
   states = states.map(s => blocks.has(s.model) ? { model: s.model, status: "blocked", reason: blocks.get(s.model)! } : s);
   try {
-    await runComparisonMatrix({ run, manifest, preflight: states, history, results: priorResults, records, maxRunMicros: Math.floor(maxUsd * 1e6), maxAttempts, save, wait: ms => new Promise(resolve => setTimeout(resolve, ms)),
+    await runComparisonMatrix({ run, manifest, preflight: states, history, results: priorResults, records, models: selected, maxRunMicros: Math.floor(maxUsd * 1e6), maxAttempts, save, wait: ms => new Promise(resolve => setTimeout(resolve, ms)),
       dispatch: async (model, photo, current, maximumMicros, batch, prior) => {
         const result = await runComparisonPhoto({ run, photo, image: images.get(photo.id)!, model, evidence: current, maximumMicros, maxRunMicros: Math.floor(maxUsd * 1e6), budget, journal, env: process.env, maxAttempts, batch, prior });
         await durableJson(resultPath(model.model, photo.id), result, !prior);
