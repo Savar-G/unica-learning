@@ -171,17 +171,12 @@
       ".design/evidence/referrals/live-stripe-config.json"
     ],
     "open_decisions": [],
-    "blockers": [
-      {
-        "id": "REF-LIVE-STRIPE",
-        "reason": "The live endpoint is missing 12 required referral events; deployed key mapping and Invoice Payments access remain unverified",
-        "needs": "Preserve the seven live events and add the 12 missing events before production merge. Confirm the deployed key and Invoice Payments access. See live-stripe-config.json."
-      }
-    ],
+    "blockers": [],
     "latest_review": ".design/reviews/referrals-settlement-recheck-1.md",
-    "verification": "Both hosted migrations and expanded rollback probe passed. Official types/checks generated. Thirteen Stripe test-mode checks and parent/admin Aside checks passed. All four actual-SQL settlement controls and 57 focused tests passed. Final full gate passed: 697 files, 21113 tests, one skipped, ESLint and build. All reported findings have fixes and binding controls. The last one-line fix was not independently reviewed again. Read-only live Stripe inspection found 12 missing webhook events. The named site key has the required resource writes, but deployed-key mapping and Invoice Payments access remain unverified.",
+    "verification": "Both hosted migrations and expanded rollback probe passed. Official types/checks generated. Thirteen Stripe test-mode checks and parent/admin Aside checks passed. All four actual-SQL settlement controls and 57 focused tests passed. Final full gate passed: 700 files, 21167 tests, one skipped, ESLint and build. All reported findings have fixes and binding controls. The last one-line fix was not independently reviewed again. Live Stripe now has all 19 events. Configured site-key scopes cover Invoice Payments via invoice_read. Exact sensitive deployed-key binding remains a proof limit.",
     "review_resolution": "The independent recheck resolved the three previous findings. Its new P2 paid-withdrawal race was repaired with the exact change independently tested by the reviewer. Permanent SDK and actual-SQL controls failed before repair and passed after it. The final one-line repair was not independently reviewed again.",
     "pull_request": "https://github.com/Savar-G/unica-learning/pull/946",
-    "integration": "Merged remote main db1c53cb64b67ffc790ff6496db72fdae340d15c after GitHub reported conflicts. Kept privacy and terms dates at 13 November 2026. Local main remains at 5b09bcf91ea3328106e61d2d9c0aab6a147662d3."
+    "integration": "Merged remote main a9ff3b15a4f80ead1b087dd0cb14def1690af3d5 after new conflicts. Retained pricing date and scan/referral state registrations. Kept hero D-340 and assigned referral D-341. Local main remains 5b09bcf91ea3328106e61d2d9c0aab6a147662d3.",
+    "live_configuration": "Savar authorized the update. Aside saved and freshly verified 19 live webhook events, retaining the original seven. Existing site-key permissions cover the required resources and Invoice Payments. No key or signing secret was rotated. The sensitive deployed key binding was not directly read."
   }
 }

@@ -25,7 +25,7 @@
 {"first":1701,"seeds":100,"counts":{"R424-25":1,"save_resume":955,"provider_failure":106,"safety_content_partial":13,"R424-19":20,"round7_save_resume":100,"partial_tick":50,"repair_partial_terminal":26,"R424-20":20,"R424-21":20,"R424-13":13,"R424-16-causal":20,"R424-14":12,"R424-18":20,"R424-15":12,"R424-17":12,"escalation":12}}
 {"first":1801,"seeds":100,"counts":{"R424-25":1,"save_resume":945,"R424-14":13,"R424-19":20,"round7_save_resume":100,"partial_tick":50,"provider_failure":93,"R424-15":13,"R424-20":20,"R424-17":13,"R424-21":20,"escalation":13,"R424-16-causal":20,"safety_content_partial":12,"R424-18":20,"repair_partial_terminal":24,"R424-13":12}}
 {"first":1901,"seeds":100,"counts":{"R424-25":1,"save_resume":951,"provider_failure":108,"safety_content_partial":13,"R424-19":20,"round7_save_resume":100,"partial_tick":49,"repair_partial_terminal":26,"R424-20":20,"R424-21":20,"R424-13":13,"R424-16-causal":20,"R424-14":12,"R424-18":20,"R424-15":12,"R424-17":12,"escalation":12}}
-{"finding":"R424-22","partials":1000,"durationMs":590000,"resumeMs":4.420583000000079,"bytes":172014,"logCount":21}
+{"finding":"R424-22","partials":1000,"durationMs":590000,"resumeMs":3.8929170000000113,"bytes":172014,"logCount":21}
 DOMException [NotSupportedError]: Failed to load iframe page "https://cal.com/unicalearning/15min". Iframe page loading is disabled.
     at #loadPage (file:///Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/site-referral-program-f5ba58916067d1ed/node_modules/happy-dom/lib/nodes/html-iframe-element/HTMLIFrameElement.js:334:27)
     at [connectedToDocument] (file:///Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/site-referral-program-f5ba58916067d1ed/node_modules/happy-dom/lib/nodes/html-iframe-element/HTMLIFrameElement.js:230:23)
@@ -38,10 +38,10 @@ DOMException [NotSupportedError]: Failed to load iframe page "https://cal.com/un
     at runWithFiberInDEV (/Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/site-referral-program-f5ba58916067d1ed/node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
     at commitReconciliationEffects (/Volumes/Lexar/Dev.noindex/t3-worktrees/pagewise-landing-page/site-referral-program-f5ba58916067d1ed/node_modules/react-dom/cjs/react-dom-client.development.js:15139:11)
 
- Test Files  697 passed (697)
-      Tests  21113 passed | 1 skipped (21114)
-   Start at  18:36:00
-   Duration  370.92s (transform 32.76s, setup 0ms, import 178.29s, tests 2195.27s, environment 4.81s)
+ Test Files  700 passed (700)
+      Tests  21167 passed | 1 skipped (21168)
+   Start at  21:21:07
+   Duration  221.39s (transform 36.45s, setup 0ms, import 207.26s, tests 2156.63s, environment 5.88s)
 
 
 > unica-learning-landing-page@0.1.0 build
@@ -49,18 +49,18 @@ DOMException [NotSupportedError]: Failed to load iframe page "https://cal.com/un
 
 ▲ Next.js 16.3.8 (Turbopack)
 - Environments: .env.local
-✓ Running next.config.ts took 99ms
+✓ Running next.config.ts took 107ms
 
   Creating an optimized production build ...
-✓ Compiled successfully in 6.8s
+✓ Compiled successfully in 6.2s
   Running TypeScript ...
-  Finished TypeScript in 27.1s ...
+  Finished TypeScript in 22.0s ...
   Collecting page data using 11 workers ...
   Generating static pages using 11 workers (0/150) ...
   Generating static pages using 11 workers (37/150)
   Generating static pages using 11 workers (74/150)
   Generating static pages using 11 workers (112/150)
-✓ Generating static pages using 11 workers (150/150) in 419ms
+✓ Generating static pages using 11 workers (150/150) in 423ms
   Finalizing page optimization ...
 
 Route (app)                                           Revalidate  Expire

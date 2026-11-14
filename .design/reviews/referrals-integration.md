@@ -8,4 +8,12 @@ The referral core, provider adapter, store, existing Stripe start, parent card, 
 
 Database types and checks were regenerated from the hosted schema after the merge. Official output also includes the currently hosted scan `clean_failure`, `deferrals` and attempt-limit definitions. No scan migration was added by the referral work. The generated files were not edited by hand.
 
-Three focused files passed, 237 tests. They cover the rendered legal dates, registered state constraints and admin parent previews. The integrated full gate passed: 697 files, 21,113 tests, one skipped, ESLint and build. The complete log is `.design/evidence/referrals/final-gate.log`. The live Stripe event additions and deployed-key checks remain release prerequisites.
+Three focused files passed, 237 tests. They cover the rendered legal dates, registered state constraints and admin parent previews. The integrated full gate passed: 697 files, 21,113 tests, one skipped, ESLint and build. The complete log is `.design/evidence/referrals/final-gate.log`. At that handoff, live event additions and deployed-key checks were pending. The authorized configuration round below records the later work.
+
+## Live configuration round
+
+Savar then authorized live Stripe configuration through Aside. All 12 missing events were added to the existing endpoint. A fresh page load verified all 19 events, with the original seven retained. Stripe's current permission reference assigns Invoice Payments reads to `invoice_read`, which the configured site's Invoices Write permission covers. No key change was required. The sensitive deployed-key value was not revealed.
+
+During this round, GitHub reported new conflicts with remote main a9ff3b15a4f80ead1b087dd0cb14def1690af3d5. The branch merged that remote main. The resolution keeps the pricing update date, keeps both scan and referral state registrations, and preserves the new hero decision as D-340. The referral decision moves to D-341 to keep its identifier unique. The referral core, Stripe adapter and parent input source are unchanged from the last validated candidate.
+
+Official database types and checks were regenerated. The state-registration check passed 24 tests. The fresh full gate passed for this integration: 700 files, 21,167 tests, one skipped, ESLint and build. The complete log is `.design/evidence/referrals/final-gate.log`. Application production merge and deployment remain with Savar.

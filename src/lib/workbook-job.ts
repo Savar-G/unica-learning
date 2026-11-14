@@ -67,6 +67,7 @@ import { skillUnits } from "@/lib/workbook-teaching-frame";
 import type { WorkbookPlan, PlanInput } from "@/lib/workbook-plan";
 import type { SolveLog, Solver, SolveVerdict } from "@/lib/workbook-solve-check";
 import { openQuestionGateRun, type QuestionGateChecker, type StoredQuestionGate } from "@/lib/workbook-run-gates";
+import { checkRenderedPages, pageGateMark, type PageGateChecker, type PageGateMark, type StoredPageGate } from "@/lib/workbook-page-gates";
 import { IMAGE_SCALE, PRINT_PAGE, proofPages, renderedPages, renderWorkbook, type DraftPage, type PrintEngine, type RenderProblem, type WorkbookTemplate } from "@/lib/workbook-render";
 
 /** Attempts of one run in all: the first and one retry. */
@@ -141,7 +142,7 @@ export type RunRunner = "server" | "mac";
 export interface DraftRendering {
   pdfPath: string | null;
   pdfSha256?: string | null;
-  pages: (RenderedPage & { proof?: boolean; contractProblem?: string | null })[];
+  pages: (RenderedPage & { proof?: boolean; contractProblem?: string | null; layoutGate?: PageGateMark })[];
 }
 
 export type StartResult =
@@ -210,9 +211,9 @@ export interface WorkbookRunStore {
   /** The verdicts of the run's solve checks that have a call key, by that key (R379-8-1). */
   solves(runId: string): Promise<Map<string, SolveVerdict>>;
   /** Stores quality-gate results (the first row at a call key stays). False when the lease is lost. */
-  saveGates(runId: string, lease: string, gates: StoredQuestionGate[]): Promise<boolean>;
-  /** Every stored quality-gate result of the run. */
-  gates(runId: string): Promise<StoredQuestionGate[]>;
+  saveGates(runId: string, lease: string, gates: (StoredQuestionGate | StoredPageGate)[]): Promise<boolean>;
+  /** Every stored quality-gate result of the run: the questions' and, at "page:<page>", the rendered pages' (#859). */
+  gates(runId: string): Promise<(StoredQuestionGate | StoredPageGate)[]>;
   /** The run's plan, as its first job call stored it (R379-8-2); null before. */
   frame(runId: string): Promise<RunFrame | null>;
   /** Whether any page, counted attempt, call or solve check exists, including old solve checks without a call key. */
@@ -391,6 +392,8 @@ export interface WorkbookJobDeps {
   solver: Solver | null;
   /** The quality gates (spec #850). Null or absent: this run asks none. */
   gates?: QuestionGateChecker | null;
+  /** The page layout gate on the rendered pages (#859). Null or absent: this run asks none. */
+  pageGates?: PageGateChecker | null;
   /** The cost of one solve check in US dollars, when the reader's provider said it; none: not known. */
   solveCost?(log: SolveLog): number | null;
   /** The page templates: the real ones (#310) in live use. */
@@ -484,7 +487,8 @@ const changed = (what: string, was: string | null, is: string | null) =>
 /** The curriculum key of a signup curriculum: only BC has a map. */
 const CURRICULUM_KEYS: Record<string, string> = { BC: "bc" };
 
-const draftPage = (p: GeneratedPage): DraftPage => ({
+/** A generated page as the renderer prints it (also the page layout gate set, #859). */
+export const draftPage = (p: GeneratedPage): DraftPage => ({
   number: p.number,
   dayLabel: p.dayLabel,
   type: p.type,
@@ -550,13 +554,17 @@ async function renderDraft(draft: GeneratedWorkbook, parentId: string, deps: Wor
         continue;
       }
       for (const file of result.files) await put(file);
-      return { rendering: { pdfPath: result.workbook.pdfPath!, pdfSha256: result.workbook.pdfSha256 ?? null, pages: [...renderedPages(result), ...proofs].sort((a, b) => a.number - b.number) }, problems, paths: stored };
+      const rendered: DraftRendering["pages"] = renderedPages(result);
+      // (The rendered page images, for the page layout gate, #859; a proof image is a page that failed already.)
+      const images = new Map(result.files.map((f) => [f.path, f.bytes]));
+      const pngs = rendered.flatMap((p) => { const png = images.get(p.image.path); return png ? [{ number: p.number, png }] : []; });
+      return { rendering: { pdfPath: result.workbook.pdfPath!, pdfSha256: result.workbook.pdfSha256 ?? null, pages: [...rendered, ...proofs].sort((a, b) => a.number - b.number) }, problems, paths: stored, pngs };
     }
   } catch (e) {
     await deps.files.remove(stored).catch(() => undefined);
     throw e;
   }
-  return { rendering: proofs.length ? { pdfPath: null, pages: proofs.sort((a, b) => a.number - b.number) } : null, problems, paths: stored };
+  return { rendering: proofs.length ? { pdfPath: null, pages: proofs.sort((a, b) => a.number - b.number) } : null, problems, paths: stored, pngs: [] };
 }
 
 /**
@@ -656,6 +664,20 @@ export async function runWorkbookJob(runId: string, deps: WorkbookJobDeps, o: { 
         await progress({ step: "render" });
         await check();
         const rendered = await renderDraft(draft, claimed.parentId, stoppable);
+        if (deps.pageGates && rendered.rendering && rendered.pngs.length) {
+          // #859: each rendered page once; a stored page is not asked again. A flag marks the page; nothing is rewritten.
+          const stored = (await runs.gates(runId)).filter((r): r is StoredPageGate => r.callKey.startsWith("page:"));
+          const { rows, unavailable } = await checkRenderedPages(deps.pageGates, stored, rendered.pngs, async (row) => {
+            if (lost || !(await runs.saveGates(runId, lease, [row]))) { loseLease(); throw new Stopped("the run was taken up by another call"); }
+          }, stop.signal);
+          for (const page of rendered.rendering.pages) {
+            const row = rows.get(page.number);
+            if (page.proof) continue;
+            // A page the pass skipped after the model stopped answering is shown as not checked, never as passed.
+            const mark = row ? pageGateMark(row) : unavailable ? { outcome: "unknown" as const, flags: [], reason: "The page layout gate stopped answering before this page, so it was not checked and is flagged for review." } : null;
+            if (mark) page.layoutGate = mark;
+          }
+        }
         await progress({ step: "save" });
         const finished = await runs.finish(runId, lease, { draftId: draft.id, rendering: rendered.rendering, problems: rendered.problems });
         if (!finished) {
@@ -967,7 +989,7 @@ async function write(
     concurrency: deps.concurrency ?? PAGE_CONCURRENCY, stop: () => isLost() || outOfTime(), timeLimitMs: deps.timeLimitMs,
     progress: (done, total) => { void progress({ step: "write", done, total }); },
     solver: guardedSolver, now: deps.now,
-    ...(deps.gates ? { questionGates: openQuestionGateRun(deps.gates, await deps.runs.gates(run.id), async (row) => {
+    ...(deps.gates ? { questionGates: openQuestionGateRun(deps.gates, (await deps.runs.gates(run.id)).filter((r): r is StoredQuestionGate => !r.callKey.startsWith("page:")), async (row) => {
       if (isLost() || !(await deps.runs.saveGates(run.id, lease, [row]))) lose();
     }) } : {}),
   });

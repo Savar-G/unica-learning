@@ -1,0 +1,626 @@
+{
+  "version": 1,
+  "model": "typesafe/jev-1.14",
+  "drafts": [
+    "/tmp/ui-review/759-main-full/U4-draft.json",
+    "/tmp/ui-review/759-main-full/U16-draft.json"
+  ],
+  "cases": [
+    {
+      "id": "U4-p3",
+      "source": "U4-p3",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U4-p3.png",
+      "variant": null
+    },
+    {
+      "id": "U4-p4",
+      "source": "U4-p4",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U4-p4.png",
+      "variant": null
+    },
+    {
+      "id": "U4-p5",
+      "source": "U4-p5",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U4-p5.png",
+      "variant": null
+    },
+    {
+      "id": "U4-p6",
+      "source": "U4-p6",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U4-p6.png",
+      "variant": null
+    },
+    {
+      "id": "U4-p7",
+      "source": "U4-p7",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U4-p7.png",
+      "variant": null
+    },
+    {
+      "id": "U4-p8",
+      "source": "U4-p8",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U4-p8.png",
+      "variant": null
+    },
+    {
+      "id": "U4-p9",
+      "source": "U4-p9",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U4-p9.png",
+      "variant": null
+    },
+    {
+      "id": "U4-p10",
+      "source": "U4-p10",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U4-p10.png",
+      "variant": null
+    },
+    {
+      "id": "U4-p11",
+      "source": "U4-p11",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U4-p11.png",
+      "variant": null
+    },
+    {
+      "id": "U4-p12",
+      "source": "U4-p12",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U4-p12.png",
+      "variant": null
+    },
+    {
+      "id": "U4-p13",
+      "source": "U4-p13",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U4-p13.png",
+      "variant": null
+    },
+    {
+      "id": "U4-p14",
+      "source": "U4-p14",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U4-p14.png",
+      "variant": null
+    },
+    {
+      "id": "U4-p15",
+      "source": "U4-p15",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U4-p15.png",
+      "variant": null
+    },
+    {
+      "id": "U4-p16",
+      "source": "U4-p16",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U4-p16.png",
+      "variant": null
+    },
+    {
+      "id": "U4-p17",
+      "source": "U4-p17",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U4-p17.png",
+      "variant": null
+    },
+    {
+      "id": "U4-p18",
+      "source": "U4-p18",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U4-p18.png",
+      "variant": null
+    },
+    {
+      "id": "U4-p19",
+      "source": "U4-p19",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U4-p19.png",
+      "variant": null
+    },
+    {
+      "id": "U4-p20",
+      "source": "U4-p20",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U4-p20.png",
+      "variant": null
+    },
+    {
+      "id": "U4-p21",
+      "source": "U4-p21",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U4-p21.png",
+      "variant": null
+    },
+    {
+      "id": "U4-p22",
+      "source": "U4-p22",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U4-p22.png",
+      "variant": null
+    },
+    {
+      "id": "U4-p23",
+      "source": "U4-p23",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U4-p23.png",
+      "variant": null
+    },
+    {
+      "id": "U4-p24",
+      "source": "U4-p24",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U4-p24.png",
+      "variant": null
+    },
+    {
+      "id": "U4-p25",
+      "source": "U4-p25",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U4-p25.png",
+      "variant": null
+    },
+    {
+      "id": "U4-p26",
+      "source": "U4-p26",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U4-p26.png",
+      "variant": null
+    },
+    {
+      "id": "U4-p27",
+      "source": "U4-p27",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U4-p27.png",
+      "variant": null
+    },
+    {
+      "id": "U4-p28",
+      "source": "U4-p28",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U4-p28.png",
+      "variant": null
+    },
+    {
+      "id": "U16-p3",
+      "source": "U16-p3",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U16-p3.png",
+      "variant": null
+    },
+    {
+      "id": "U16-p4",
+      "source": "U16-p4",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U16-p4.png",
+      "variant": null
+    },
+    {
+      "id": "U16-p5",
+      "source": "U16-p5",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U16-p5.png",
+      "variant": null
+    },
+    {
+      "id": "U16-p6",
+      "source": "U16-p6",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U16-p6.png",
+      "variant": null
+    },
+    {
+      "id": "U16-p7",
+      "source": "U16-p7",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U16-p7.png",
+      "variant": null
+    },
+    {
+      "id": "U16-p8",
+      "source": "U16-p8",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U16-p8.png",
+      "variant": null
+    },
+    {
+      "id": "U16-p9",
+      "source": "U16-p9",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U16-p9.png",
+      "variant": null
+    },
+    {
+      "id": "U16-p10",
+      "source": "U16-p10",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U16-p10.png",
+      "variant": null
+    },
+    {
+      "id": "U16-p11",
+      "source": "U16-p11",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U16-p11.png",
+      "variant": null
+    },
+    {
+      "id": "U16-p12",
+      "source": "U16-p12",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U16-p12.png",
+      "variant": null
+    },
+    {
+      "id": "U16-p13",
+      "source": "U16-p13",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U16-p13.png",
+      "variant": null
+    },
+    {
+      "id": "U16-p14",
+      "source": "U16-p14",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U16-p14.png",
+      "variant": null
+    },
+    {
+      "id": "U16-p15",
+      "source": "U16-p15",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U16-p15.png",
+      "variant": null
+    },
+    {
+      "id": "U16-p16",
+      "source": "U16-p16",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U16-p16.png",
+      "variant": null
+    },
+    {
+      "id": "U16-p17",
+      "source": "U16-p17",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U16-p17.png",
+      "variant": null
+    },
+    {
+      "id": "U16-p18",
+      "source": "U16-p18",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U16-p18.png",
+      "variant": null
+    },
+    {
+      "id": "U16-p19",
+      "source": "U16-p19",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U16-p19.png",
+      "variant": null
+    },
+    {
+      "id": "U16-p20",
+      "source": "U16-p20",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U16-p20.png",
+      "variant": null
+    },
+    {
+      "id": "U16-p21",
+      "source": "U16-p21",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U16-p21.png",
+      "variant": null
+    },
+    {
+      "id": "U16-p22",
+      "source": "U16-p22",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U16-p22.png",
+      "variant": null
+    },
+    {
+      "id": "U16-p23",
+      "source": "U16-p23",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U16-p23.png",
+      "variant": null
+    },
+    {
+      "id": "U16-p24",
+      "source": "U16-p24",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U16-p24.png",
+      "variant": null
+    },
+    {
+      "id": "U16-p25",
+      "source": "U16-p25",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U16-p25.png",
+      "variant": null
+    },
+    {
+      "id": "U16-p26",
+      "source": "U16-p26",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U16-p26.png",
+      "variant": null
+    },
+    {
+      "id": "U16-p27",
+      "source": "U16-p27",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U16-p27.png",
+      "variant": null
+    },
+    {
+      "id": "U16-p28",
+      "source": "U16-p28",
+      "gate": null,
+      "image": ".design/workbooks/page-gate-set/U16-p28.png",
+      "variant": null
+    },
+    {
+      "id": "U4-p3-text_cut_off-1",
+      "source": "U4-p3",
+      "gate": "text_cut_off",
+      "image": ".design/workbooks/page-gate-set/U4-p3-text_cut_off-1.png",
+      "variant": 0
+    },
+    {
+      "id": "U4-p7-text_cut_off-2",
+      "source": "U4-p7",
+      "gate": "text_cut_off",
+      "image": ".design/workbooks/page-gate-set/U4-p7-text_cut_off-2.png",
+      "variant": 1
+    },
+    {
+      "id": "U4-p11-text_cut_off-3",
+      "source": "U4-p11",
+      "gate": "text_cut_off",
+      "image": ".design/workbooks/page-gate-set/U4-p11-text_cut_off-3.png",
+      "variant": 0
+    },
+    {
+      "id": "U4-p15-text_cut_off-4",
+      "source": "U4-p15",
+      "gate": "text_cut_off",
+      "image": ".design/workbooks/page-gate-set/U4-p15-text_cut_off-4.png",
+      "variant": 1
+    },
+    {
+      "id": "U4-p19-text_cut_off-5",
+      "source": "U4-p19",
+      "gate": "text_cut_off",
+      "image": ".design/workbooks/page-gate-set/U4-p19-text_cut_off-5.png",
+      "variant": 0
+    },
+    {
+      "id": "U4-p23-text_cut_off-6",
+      "source": "U4-p23",
+      "gate": "text_cut_off",
+      "image": ".design/workbooks/page-gate-set/U4-p23-text_cut_off-6.png",
+      "variant": 1
+    },
+    {
+      "id": "U4-p27-text_cut_off-7",
+      "source": "U4-p27",
+      "gate": "text_cut_off",
+      "image": ".design/workbooks/page-gate-set/U4-p27-text_cut_off-7.png",
+      "variant": 0
+    },
+    {
+      "id": "U16-p5-text_cut_off-8",
+      "source": "U16-p5",
+      "gate": "text_cut_off",
+      "image": ".design/workbooks/page-gate-set/U16-p5-text_cut_off-8.png",
+      "variant": 1
+    },
+    {
+      "id": "U16-p9-text_cut_off-9",
+      "source": "U16-p9",
+      "gate": "text_cut_off",
+      "image": ".design/workbooks/page-gate-set/U16-p9-text_cut_off-9.png",
+      "variant": 0
+    },
+    {
+      "id": "U16-p13-text_cut_off-10",
+      "source": "U16-p13",
+      "gate": "text_cut_off",
+      "image": ".design/workbooks/page-gate-set/U16-p13-text_cut_off-10.png",
+      "variant": 1
+    },
+    {
+      "id": "U16-p17-text_cut_off-11",
+      "source": "U16-p17",
+      "gate": "text_cut_off",
+      "image": ".design/workbooks/page-gate-set/U16-p17-text_cut_off-11.png",
+      "variant": 0
+    },
+    {
+      "id": "U16-p21-text_cut_off-12",
+      "source": "U16-p21",
+      "gate": "text_cut_off",
+      "image": ".design/workbooks/page-gate-set/U16-p21-text_cut_off-12.png",
+      "variant": 1
+    },
+    {
+      "id": "U4-p8-overlap-1",
+      "source": "U4-p8",
+      "gate": "overlap",
+      "image": ".design/workbooks/page-gate-set/U4-p8-overlap-1.png",
+      "variant": 0
+    },
+    {
+      "id": "U4-p12-overlap-2",
+      "source": "U4-p12",
+      "gate": "overlap",
+      "image": ".design/workbooks/page-gate-set/U4-p12-overlap-2.png",
+      "variant": 1
+    },
+    {
+      "id": "U4-p16-overlap-3",
+      "source": "U4-p16",
+      "gate": "overlap",
+      "image": ".design/workbooks/page-gate-set/U4-p16-overlap-3.png",
+      "variant": 0
+    },
+    {
+      "id": "U4-p20-overlap-4",
+      "source": "U4-p20",
+      "gate": "overlap",
+      "image": ".design/workbooks/page-gate-set/U4-p20-overlap-4.png",
+      "variant": 1
+    },
+    {
+      "id": "U4-p24-overlap-5",
+      "source": "U4-p24",
+      "gate": "overlap",
+      "image": ".design/workbooks/page-gate-set/U4-p24-overlap-5.png",
+      "variant": 0
+    },
+    {
+      "id": "U4-p28-overlap-6",
+      "source": "U4-p28",
+      "gate": "overlap",
+      "image": ".design/workbooks/page-gate-set/U4-p28-overlap-6.png",
+      "variant": 1
+    },
+    {
+      "id": "U16-p6-overlap-7",
+      "source": "U16-p6",
+      "gate": "overlap",
+      "image": ".design/workbooks/page-gate-set/U16-p6-overlap-7.png",
+      "variant": 0
+    },
+    {
+      "id": "U16-p10-overlap-8",
+      "source": "U16-p10",
+      "gate": "overlap",
+      "image": ".design/workbooks/page-gate-set/U16-p10-overlap-8.png",
+      "variant": 1
+    },
+    {
+      "id": "U16-p14-overlap-9",
+      "source": "U16-p14",
+      "gate": "overlap",
+      "image": ".design/workbooks/page-gate-set/U16-p14-overlap-9.png",
+      "variant": 0
+    },
+    {
+      "id": "U16-p18-overlap-10",
+      "source": "U16-p18",
+      "gate": "overlap",
+      "image": ".design/workbooks/page-gate-set/U16-p18-overlap-10.png",
+      "variant": 1
+    },
+    {
+      "id": "U16-p22-overlap-11",
+      "source": "U16-p22",
+      "gate": "overlap",
+      "image": ".design/workbooks/page-gate-set/U16-p22-overlap-11.png",
+      "variant": 0
+    },
+    {
+      "id": "U16-p26-overlap-12",
+      "source": "U16-p26",
+      "gate": "overlap",
+      "image": ".design/workbooks/page-gate-set/U16-p26-overlap-12.png",
+      "variant": 1
+    },
+    {
+      "id": "U4-p13-box_too_small-1",
+      "source": "U4-p13",
+      "gate": "box_too_small",
+      "image": ".design/workbooks/page-gate-set/U4-p13-box_too_small-1.png",
+      "variant": 0
+    },
+    {
+      "id": "U4-p17-box_too_small-2",
+      "source": "U4-p17",
+      "gate": "box_too_small",
+      "image": ".design/workbooks/page-gate-set/U4-p17-box_too_small-2.png",
+      "variant": 1
+    },
+    {
+      "id": "U4-p21-box_too_small-3",
+      "source": "U4-p21",
+      "gate": "box_too_small",
+      "image": ".design/workbooks/page-gate-set/U4-p21-box_too_small-3.png",
+      "variant": 0
+    },
+    {
+      "id": "U4-p25-box_too_small-4",
+      "source": "U4-p25",
+      "gate": "box_too_small",
+      "image": ".design/workbooks/page-gate-set/U4-p25-box_too_small-4.png",
+      "variant": 1
+    },
+    {
+      "id": "U16-p3-box_too_small-5",
+      "source": "U16-p3",
+      "gate": "box_too_small",
+      "image": ".design/workbooks/page-gate-set/U16-p3-box_too_small-5.png",
+      "variant": 0
+    },
+    {
+      "id": "U16-p7-box_too_small-6",
+      "source": "U16-p7",
+      "gate": "box_too_small",
+      "image": ".design/workbooks/page-gate-set/U16-p7-box_too_small-6.png",
+      "variant": 1
+    },
+    {
+      "id": "U16-p11-box_too_small-7",
+      "source": "U16-p11",
+      "gate": "box_too_small",
+      "image": ".design/workbooks/page-gate-set/U16-p11-box_too_small-7.png",
+      "variant": 0
+    },
+    {
+      "id": "U16-p15-box_too_small-8",
+      "source": "U16-p15",
+      "gate": "box_too_small",
+      "image": ".design/workbooks/page-gate-set/U16-p15-box_too_small-8.png",
+      "variant": 1
+    },
+    {
+      "id": "U16-p19-box_too_small-9",
+      "source": "U16-p19",
+      "gate": "box_too_small",
+      "image": ".design/workbooks/page-gate-set/U16-p19-box_too_small-9.png",
+      "variant": 0
+    },
+    {
+      "id": "U16-p23-box_too_small-10",
+      "source": "U16-p23",
+      "gate": "box_too_small",
+      "image": ".design/workbooks/page-gate-set/U16-p23-box_too_small-10.png",
+      "variant": 1
+    },
+    {
+      "id": "U16-p27-box_too_small-11",
+      "source": "U16-p27",
+      "gate": "box_too_small",
+      "image": ".design/workbooks/page-gate-set/U16-p27-box_too_small-11.png",
+      "variant": 0
+    },
+    {
+      "id": "U4-p5-box_too_small-12",
+      "source": "U4-p5",
+      "gate": "box_too_small",
+      "image": ".design/workbooks/page-gate-set/U4-p5-box_too_small-12.png",
+      "variant": 1
+    }
+  ]
+}
