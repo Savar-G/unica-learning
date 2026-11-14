@@ -856,7 +856,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
   }
 
   /** A call's text session. Admin test calls have free talk on (D-197), with the model's review; chat has it off. A resumed call keeps its flag. */
-  function textSession(record: Pick<CallRecord, "id" | "parentId" | "childId"> & { kind: CallKind }, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number, grade?: number, confirmWorkbook?: boolean, onGuidance?: (output: TextOutput) => void, sayHooks?: Pick<TextSessionOptions, "onSayPart" | "onSayCancel" | "onSayEnd">, spend?: SpendCall, preparing?: Pick<TextSessionOptions, "spend" | "prepareModel">): TextSession {
+  function textSession(record: Pick<CallRecord, "id" | "parentId" | "childId"> & { kind: CallKind }, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number, grade?: number, confirmWorkbook?: boolean, onGuidance?: (output: TextOutput) => void, sayHooks?: Pick<TextSessionOptions, "onSayPart" | "onSayCancel" | "onSayEnd" | "modelRepair">, spend?: SpendCall, preparing?: Pick<TextSessionOptions, "spend" | "prepareModel">): TextSession {
     return createTextSession({
       onGuidance, ...sayHooks, ...preparing,
       callId: record.id, channel: record.kind === "chat" ? "chat" : undefined, package: pkg, model, clock: seams.clock, random: seed, history, childName, runner: "text", resume: saved, limitMs, grade, confirmWorkbook,
@@ -1150,6 +1150,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         onSayPart: (sentence, index) => listener?.part?.(sentence, index),
         onSayCancel: (fromIndex) => listener?.cancel?.(fromIndex),
         onSayEnd: () => listener?.end?.(),
+        // A voice call has no time for a second model request: a refused first proposal goes straight to code's line.
+        modelRepair: false,
       }, voiceSpend, budget ? { spend: budget.seam, prepareModel: (handle) => seams.model(record.model, voiceSpend, { prepared: { budget, handle } }) } : undefined);
       told = session.trace().turns.length;
       const last = restored.turns.at(-1);

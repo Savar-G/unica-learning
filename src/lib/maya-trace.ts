@@ -30,12 +30,12 @@ export interface TraceRefusal {
  * terminal events. Version 7 adds scope refusal reasons and times. Version 8 (#527) adds controller held output: on a
  * question Maya cannot teach, code's exact held lines at the start, with no model; in version 8 that is the text before
  * D-327 (`PRE_D314_HELD`). Version 9 (D-327) holds the held lines that say plainly Maya cannot teach the question yet
- * (hello, can't teach, another question); a version 9 trace with the old text is refused. Version 10 records the configured call limits. `checkTrace` reads all ten
- * versions.
+ * (hello, can't teach, another question); a version 9 trace with the old text is refused. Version 10 records the configured call limits. Version 11 adds the optional `diagnosticHandleId` (one short token, no
+ * words) to a preparation record. `checkTrace` reads all eleven versions.
  */
-export const TRACE_VERSION = 10;
+export const TRACE_VERSION = 11;
 /** The trace versions `checkTrace` reads. */
-export const TRACE_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+export const TRACE_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] as const;
 /**
  * The held turn as version 8 traces stored it, before D-327 (line sets 11 to 13). Frozen here: stored admin test
  * calls from preview deployments may hold it, and they stay readable.
@@ -497,10 +497,11 @@ function check(raw: unknown): MayaTrace {
     for (const raw of r.preparations as unknown[]) {
       need(isObject(raw), "preparations", "a preparation decision");
       const p = raw as Record<string, unknown>;
-      need(Object.keys(p).every((key) => ["kind", "leadMs", "status", "reason", "usd", "estimated"].includes(key)), "preparations", "metadata only");
+      need(Object.keys(p).every((key) => ["kind", "leadMs", "status", "reason", "usd", "estimated", "diagnosticHandleId"].includes(key)), "preparations", "metadata only");
       need(oneOf(["interim", "expected"], p.kind) && isNum(p.leadMs) && (p.leadMs as number) >= 0 && oneOf(["used", "discarded"], p.status), "preparations", "a known kind, status and nonnegative lead time");
       need(p.status === "used" ? p.reason === undefined : oneOf(["key", "text", "not_plain", "stale", "ended"], p.reason), "preparations", "a discard reason only for a discarded reply");
       need(p.usd === undefined || isNum(p.usd) && (p.usd as number) >= 0, "preparations", "a nonnegative cost");
+      need(p.diagnosticHandleId === undefined || (r.version as number) >= 11 && typeof p.diagnosticHandleId === "string" && /^\S{1,128}$/.test(p.diagnosticHandleId), "preparations", "a diagnostic handle id only from version 11, one short token");
       need(p.estimated === undefined || p.estimated === true && p.usd !== undefined, "preparations", "an estimate only with a cost");
     }
   }

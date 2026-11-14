@@ -5113,6 +5113,25 @@ export function streamSentence(sentence: string, plan: NonNullable<ReturnType<ty
   return reviewAll || !mathOnly(sentence, plan.extra) || (plan.rules.stance === "wrong" && PRAISE_WORDS.test(sentence)) ? "review" : "send";
 }
 
+/**
+ * The number the child's turn obliges a "confirm" to ask about, in the words the say check will require (`mustAsk`), or
+ * null when a confirm owes none now. It is the plan code makes for the model's own act "confirm" (as proposeV3 does),
+ * so the brief names what the check will ask for: live practice at 980571e0 refused a confirm that never named the
+ * child's 5, then its repair too, because the brief said nothing of it.
+ */
+export function confirmAsk(s: Session): SayValue | null {
+  if (!s.package || !s.turn || s.expect !== "maya" || s.outcome) return null;
+  const out: ModelOutput = { kind: "math", say: "", act: "confirm", reading: { unclear: true } };
+  for (const p of codeProposals(s, [], out)) {
+    const r = propose(s, p, [], [], false);
+    if (r.refusal) continue;
+    const at = r.effects.findLastIndex((e) => e.kind === "say");
+    if (at === -1) return null;
+    return sayRules(s, r.session, p, (r.effects[at] as Extract<Effect, { kind: "say" }>).text).mustAsk ?? null;
+  }
+  return null;
+}
+
 /** What code itself heard in the child's turn (D-341): the answers its own strict read credits, before any model call. */
 export function codeVerdicts(s: Session): string[] {
   if (!s.package || !s.turn) return [];
@@ -5216,7 +5235,9 @@ export function fitsExpected(s: Session, hypothesis: string): boolean {
   const pkg = s.package;
   if (!pkg || !s.turn) return false;
   const text = s.turn.text;
-  const allowed = [...valuesOf(hypothesis), ...printedValues(pkg)];
+  // The current step's own operands too (980571e0 audit): "12 minus 8 is 4." says the expected 4 with the step Maya asked.
+  const current = workSteps(pkg).find((st) => st.id === s.ladder.step);
+  const allowed = [...valuesOf(hypothesis), ...printedValues(pkg), ...(current ? stepOperands(current).map(numberValue) : [])];
   if (valuesOf(text).some((v) => !valueIn(v, allowed))) return false;
   if (!valuesOf(hypothesis).every((v) => valueIn(v, valuesOf(text)))) return false;
   for (const words of [STOP_WORDS, ASK_WORDS]) if (words.test(text) && !words.test(hypothesis)) return false;
