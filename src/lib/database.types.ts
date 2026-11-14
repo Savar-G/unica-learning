@@ -4094,6 +4094,7 @@ export type Database = {
         Row: {
           attempt: number
           child_id: string
+          clean_failure: string | null
           id: string
           parent_id: string
           photo_id: string
@@ -4101,6 +4102,7 @@ export type Database = {
         Insert: {
           attempt: number
           child_id: string
+          clean_failure?: string | null
           id: string
           parent_id: string
           photo_id: string
@@ -4108,6 +4110,7 @@ export type Database = {
         Update: {
           attempt?: number
           child_id?: string
+          clean_failure?: string | null
           id?: string
           parent_id?: string
           photo_id?: string
@@ -4470,6 +4473,7 @@ export type Database = {
           blocked_reason: string | null
           child_id: string
           created_at: string
+          deferrals: number
           dispatches: number
           extraction: Json | null
           frame_hash: string
@@ -4489,6 +4493,7 @@ export type Database = {
           blocked_reason?: string | null
           child_id: string
           created_at?: string
+          deferrals?: number
           dispatches?: number
           extraction?: Json | null
           frame_hash: string
@@ -4508,6 +4513,7 @@ export type Database = {
           blocked_reason?: string | null
           child_id?: string
           created_at?: string
+          deferrals?: number
           dispatches?: number
           extraction?: Json | null
           frame_hash?: string

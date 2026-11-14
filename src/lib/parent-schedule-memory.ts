@@ -1,3 +1,4 @@
+import type { EffectiveMark } from "@/lib/scan-marking";
 import type { ScheduleApproval, ScheduleBook, ScheduleChild, SchedulePage, ScheduleRevision, ScheduleReceipt, ScheduleStore } from "@/lib/parent-schedule";
 
 export interface ScheduleMemory {
@@ -7,7 +8,8 @@ export interface ScheduleMemory {
   revisions: { book: string; revision: number; source: ScheduleRevision }[];
   pages: { book: string; parent: string; child: string; page: SchedulePage }[];
   receipts: ScheduleReceipt[];
-  fail?: "children" | "books" | "approvals" | "revision" | "pages" | "receipts";
+  marks?: { parent: string; child: string; mark: EffectiveMark }[];
+  fail?: "children" | "books" | "approvals" | "revision" | "pages" | "receipts" | "marks";
 }
 export function memoryScheduleStore(data: ScheduleMemory): ScheduleStore {
   const check = (name: ScheduleMemory["fail"]) => { if (data.fail === name) throw new Error("Read failed"); };
@@ -18,5 +20,10 @@ export function memoryScheduleStore(data: ScheduleMemory): ScheduleStore {
     async revision(parent, child, book, revision) { check("revision"); return data.revisions.find(r => r.book === book && r.revision === revision && r.source.parentId === parent && r.source.childId === child)?.source ?? null; },
     async pages(parent, child, book) { check("pages"); return data.pages.filter(p => p.parent === parent && p.child === child && p.book === book).map(p => p.page); },
     async receipts(parent, child, book, revision) { check("receipts"); return data.receipts.filter(s => s.parentId === parent && s.childId === child && s.workbookId === book && s.revision === revision); },
+    async marks(parent, child, book, revision) {
+      check("marks");
+      return (data.marks ?? []).filter(m => m.parent === parent && m.child === child && m.mark.expected.identity.workbookId === book
+        && m.mark.expected.identity.printedRevision === revision).map(m => m.mark);
+    },
   };
 }

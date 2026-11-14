@@ -52,7 +52,7 @@ it.each(["desktop", "phone"].flatMap(size => ["first", "second"].map(child => ({
     expect(rows).toHaveLength(10);
     for (const row of rows) {
       expect([...row.querySelectorAll("td")].map(cell => cell.getAttribute("data-label")))
-        .toEqual(["Topic", "Pages", "Required time", "Scanned pages"]);
+        .toEqual(["Topic", "Pages", "Required time", "Scanned", "Marks"]);
     }
   },
 );
@@ -64,11 +64,11 @@ it("shows the real Schedule table on both sizes with each child's rows and hones
     expect(output.querySelector("h1")?.textContent).toBe("Kai's schedule");
     expect(output.querySelectorAll(".ps-table tbody tr")).toHaveLength(10);
     expect(output.querySelector(".ps-table")?.textContent).toContain("Multiplication");
-    expect(output.querySelector(".ps-table")?.textContent).toContain("3 of 8 recorded");
+    expect(output.querySelector(".ps-table")?.textContent).toContain("3 of 8 scanned");
   }
   expect(rendered("schedule", "unknown")).toContain("Scan status unavailable");
   expect(rendered("schedule", "waiting")).toContain("No printed workbook yet");
-  expect(rendered("schedule", "expired")).toContain("8 of 8 recorded");
+  expect(rendered("schedule", "expired")).toContain("8 of 8 scanned");
   expect(rendered("schedule", "unavailable")).not.toContain("ps-table");
 });
 

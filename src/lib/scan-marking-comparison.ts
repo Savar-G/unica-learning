@@ -15,12 +15,21 @@ export const COMPARISON_MODELS = Object.freeze(models.map(m => Object.freeze({ .
 /** Evaluation additions require explicit selection. The historical default remains unchanged. */
 export const COMPARISON_ALLOWED_MODELS = Object.freeze([...COMPARISON_MODELS, ...evaluationModels.map(m => Object.freeze({ ...m }))]);
 export type ComparisonModel = (typeof COMPARISON_MODELS)[number];
-/** Select only already-pinned pairs, in canonical order. Selection is part of the immutable run plan. */
+/** The pair a model id names: its first pinned pair, which is the historical one when the model has several. */
+const pairFor = (id: string, models: readonly ComparisonModel[]) => models.find(m => m.model === id);
+/**
+ * Select only already-pinned pairs, in canonical order. Selection is part of the immutable run plan. A plain model id
+ * names its first pair; `model@endpoint` names one exact pair (Sonnet on `anthropic` or `azure/global`, the production
+ * route of #900). A run holds at most one pair per model, because results and reports are keyed by the model id.
+ */
 export function selectComparisonModels(ids: readonly string[] | null): readonly ComparisonModel[] {
   if (ids === null) return COMPARISON_MODELS;
-  const selectable = COMPARISON_ALLOWED_MODELS;
-  if (!ids.length || new Set(ids).size !== ids.length || ids.some(id => !selectable.some(m => m.model === id))) throw new Error("invalid-comparison-model-selection");
-  return selectable.filter(m => ids.includes(m.model));
+  const picked = ids.map(id => {
+    const at = id.indexOf("@");
+    return at < 0 ? pairFor(id, COMPARISON_ALLOWED_MODELS) : COMPARISON_ALLOWED_MODELS.find(m => m.model === id.slice(0, at) && m.endpoint === id.slice(at + 1));
+  });
+  if (!ids.length || picked.some(m => !m) || new Set(picked.map(m => m!.model)).size !== picked.length) throw new Error("invalid-comparison-model-selection");
+  return COMPARISON_ALLOWED_MODELS.filter(m => picked.includes(m));
 }
 export const SYNTHETIC_IDS = Object.freeze({ parent: "00000000-0000-4000-8000-000000000543", child: "00000000-0000-4000-8000-000000000542", workbook: "5ca70000-0000-4000-8000-000000000542" });
 export const COMPARISON_FORMATS = ["whole", "fraction", "decimal", "tick-and-number", "circle", "show-work", "spot-the-error", "write-words", "two-ways"] as const;
@@ -135,6 +144,11 @@ export function upgradeFixed40Manifest(saved: ComparisonManifest): ComparisonMan
   }
   return manifest;
 }
+/** A saved manifest file. Only the exact fixed-40 v7 bytes are upgraded for the current prompt; any other file is read as it is. */
+export function comparisonManifestFromBytes(bytes: Uint8Array): ComparisonManifest {
+  const saved = JSON.parse(new TextDecoder().decode(bytes)) as ComparisonManifest;
+  return hashBytes(bytes) === FIXED40_V7_MANIFEST_SHA256 ? upgradeFixed40Manifest(saved) : saved;
+}
 /** Images and source artifacts are hashed by the file adapter, before any network or credential access. */
 export function validateComparisonManifest(manifest: ComparisonManifest): void {
   if (manifest.version !== 1 || manifest.synthetic !== true || manifest.identity?.name !== "Robin" || manifest.identity.madeUp !== true || manifest.identity.containsRealData !== false || manifest.identity.profileSource !== "sampleChild/samplePlanInput" || manifest.source?.synthetic !== true) fail("synthetic-provenance-required");
@@ -227,15 +241,15 @@ export interface ComparisonResult {
 }
 export interface AttemptRecord { state: string; attempt?: { id: string; usage: { costMicros: number | null } }; result?: ComparisonResult; run?: string; key?: string; response?: CapturedResponse }
 /** Recover only terminal snapshots from this run. Partial transport/accounting writes remain a stop. */
-export function recoverComparisonResults(records: readonly AttemptRecord[], results: readonly ComparisonResult[], manifest: ComparisonManifest, history: readonly EndpointEvidence[], run: string): ComparisonResult[] {
+export function recoverComparisonResults(records: readonly AttemptRecord[], results: readonly ComparisonResult[], manifest: ComparisonManifest, history: readonly EndpointEvidence[], run: string, models: readonly ComparisonModel[] = COMPARISON_ALLOWED_MODELS): ComparisonResult[] {
   const recovered = [...results];
   if (new Set(records.map(r => r.key)).size !== records.length) fail("duplicate-journal-key");
-  assertComparisonResultIdentity(manifest, recovered, history, run);
+  assertComparisonResultIdentity(manifest, recovered, history, run, models);
   for (const record of records) {
     if (record.run !== run || !record.key || !hash(record.key)) fail("journal-run-identity-mismatch");
     if (!record.result) continue;
     const next = record.result;
-    assertComparisonResultIdentity(manifest, [next], history, run);
+    assertComparisonResultIdentity(manifest, [next], history, run, models);
     if (!next.attempts.some(a => a.id === record.attempt?.id)) fail("journal-result-attempt-mismatch");
     const old = recovered.find(r => r.model === next.model && r.photo === next.photo);
     if (!old) recovered.push(next);
@@ -272,11 +286,12 @@ export function assertComparisonResume(records: readonly AttemptRecord[], result
     if (record.state !== "settled" || !record.attempt || natural(record.attempt.usage.costMicros) === null || !saved.has(record.attempt.id)) fail("unresolved-attempt-stopped-resume");
   }
 }
-export function assertComparisonResultIdentity(manifest: ComparisonManifest, results: readonly ComparisonResult[], history: readonly EndpointEvidence[], run: string): void {
+/** `models`: the run's selected pairs. Without it a model id names its first pinned pair. */
+export function assertComparisonResultIdentity(manifest: ComparisonManifest, results: readonly ComparisonResult[], history: readonly EndpointEvidence[], run: string, models: readonly ComparisonModel[] = COMPARISON_ALLOWED_MODELS): void {
   if (!hash(run)) fail("invalid-comparison-run");
   const seen = new Set<string>();
   for (const result of results) {
-    const photo = manifest.photos.find(p => p.id === result.photo), model = COMPARISON_ALLOWED_MODELS.find(m => m.model === result.model);
+    const photo = manifest.photos.find(p => p.id === result.photo), model = pairFor(result.model, models);
     const evidence = history.find(e => e.model === result.model && hashValue(e) === result.evidenceHash);
     const key = `${result.model}:${result.photo}`;
     if (result.run !== run || !photo || !model || !evidence || seen.has(key) || result.photoHash !== photo.image.sha256 || result.requestHash !== hashValue(markingRequest(photo.frame, new Uint8Array())) || evidence.endpoint.tag !== model.endpoint || evidence.endpoint.provider_name !== model.providerName
@@ -378,9 +393,11 @@ export function cheapestPassing<T extends { model: string; complete: boolean; pa
   if (reports.some(r => !COMPARISON_ALLOWED_MODELS.some(m => m.model === r.model) || reports.filter(other => other.model === r.model).length !== 1)) return null;
   return [...reports].filter(r => r.complete && r.passed && r.costPerPageUsd !== null).sort((a, b) => a.costPerPageUsd! - b.costPerPageUsd! || a.model.localeCompare(b.model))[0] ?? null;
 }
-export function comparisonReports(manifest: ComparisonManifest, states: readonly ComparisonPreflight[], results: readonly ComparisonResult[], history: readonly EndpointEvidence[], blocks: ReadonlyMap<string, string>) {
-  return COMPARISON_ALLOWED_MODELS.filter(model => COMPARISON_MODELS.some(m => m.model === model.model)
-    || states.some(s => s.model === model.model) || results.some(r => r.model === model.model) || blocks.has(model.model)).map(model => {
+/** `models`: the run's selected pairs. Without it, the historical default plus every model the run touched, by first pair. */
+export function comparisonReports(manifest: ComparisonManifest, states: readonly ComparisonPreflight[], results: readonly ComparisonResult[], history: readonly EndpointEvidence[], blocks: ReadonlyMap<string, string>, models?: readonly ComparisonModel[]) {
+  const pairs = models ?? COMPARISON_ALLOWED_MODELS.filter(model => pairFor(model.model, COMPARISON_ALLOWED_MODELS) === model && (COMPARISON_MODELS.some(m => m.model === model.model)
+    || states.some(s => s.model === model.model) || results.some(r => r.model === model.model) || blocks.has(model.model)));
+  return pairs.map(model => {
     const state = states.find(s => s.model === model.model), reason = blocks.get(model.model) ?? (state?.status === "blocked" ? state.reason : null);
     const testedPhotos = results.filter(r => r.model === model.model && r.status !== "deferred" && r.attempts.some(a => !deferredAttempt(a))).length;
     if (reason || state?.status !== "ready") {

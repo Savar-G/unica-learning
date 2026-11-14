@@ -260,7 +260,8 @@ Rules:
 - No school grade (CONTEXT section 2: never show a grade on any page), no percent and no comparison with other children.
 - Never a count of wrong answers, and nothing the facts do not show.
 - The topics come from the plan's taught skills (`coverSkills`).
-- Book 2 and later keep "Made from <Name>'s last workbook" and today's sentence until marking exists.
+- Book 2 and later keep "Made from <Name>'s last workbook" and today's sentence, also when the last workbook has marks
+  (Savar, 2026-11-05 on #476; `coverPage` in `src/lib/workbook-template.ts`).
 - **First customer:** "<Name> did very well on every part of the assessment, so this book moves ahead to numbers to a million, multiplying by tens and pattern rules. Warm-ups add the 3s and 4s times tables." The topic words come from the curriculum's short titles.
 
 ## 5. Safety

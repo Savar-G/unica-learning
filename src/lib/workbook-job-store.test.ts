@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
-import { runAiCallLog, workbookJobSource, type RunAiCall } from "@/lib/workbook-job-store";
+import { runAiCallLog, runFromRow, workbookJobSource, type RunAiCall } from "@/lib/workbook-job-store";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { fallbackAiClient, type AiCallRecord } from "@/lib/ai-fallback";
@@ -46,6 +46,23 @@ it("reads only the selected assessment's code recommendation, duration and devic
     { table: "assessments", columns: "device", filter: ["id", "test-id"] },
     { table: "reports", columns: "minutes, recommendation:model->>howWeHelp", filter: ["assessment_id", "test-id"] },
   ]);
+});
+
+it("reads a next-book run's saved plan from its snapshot row, and maps the run's snapshot id (#476)", async () => {
+  const reads: string[] = [];
+  const client = { from(table: string) {
+    const chain = { select: () => chain, eq: (column: string, value: string) => { reads.push(`${table}.${column}=${value}`); return chain; },
+      async maybeSingle() { return { data: null, error: null }; } };
+    return chain;
+  } } as unknown as SupabaseClient<Database>;
+  const source = workbookJobSource(client, async () => ({ ok: true, profile: null }));
+  expect(await source.nextBookPlan!("snap-1")).toEqual({ ok: false, reason: "not-found" });
+  expect(reads).toEqual(["next_book_snapshots.id=snap-1"]);
+  const row = { id: "r", created_at: "t", parent_id: "p", child_id: "c", number: 2, status: "queued", step: null, attempts: 0, max_attempts: 2,
+    done_pages: null, total_pages: null, heartbeat_at: null, started_at: null, finished_at: null, error: null, errors: [], draft_id: null,
+    draft_key: "k", resumes: 0, started_by: null, started_by_email: null, runner: "mac", stopped_by_email: null } as const;
+  expect(runFromRow({ ...row, errors: [], snapshot_id: "snap-1" }).snapshotId).toBe("snap-1");
+  expect(runFromRow({ ...row, errors: [] }).snapshotId).toBeNull();
 });
 
 describe("runAiCallLog", () => {

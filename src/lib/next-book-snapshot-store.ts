@@ -71,6 +71,12 @@ export function nextBookSnapshotStore(db: SupabaseClient<Database>): NextBookSna
     if (error) throw new Error(`next book snapshot read: ${error.message}`);
     return data ? snapshotRecord(data) : null;
   }
+  /** The snapshot of the run that made the draft: the revision its pages were drawn from. */
+  async function drawn(draftId: string) {
+    const run = await db.from("workbook_runs").select("snapshot_id").eq("draft_id", draftId).not("snapshot_id", "is", null).maybeSingle();
+    if (run.error) throw new Error(`next book snapshot draft read: ${run.error.message}`);
+    return run.data?.snapshot_id ? await read(run.data.snapshot_id) : null;
+  }
   return {
     async claim(source) {
       const by = "triggerId" in source ? null : source.actor;
@@ -107,10 +113,9 @@ export function nextBookSnapshotStore(db: SupabaseClient<Database>): NextBookSna
       return shape();
     },
     read,
+    drawnForDraft: drawn,
     async latestForDraft(draftId) {
-      const run = await db.from("workbook_runs").select("snapshot_id").eq("draft_id", draftId).not("snapshot_id", "is", null).maybeSingle();
-      if (run.error) throw new Error(`next book snapshot draft read: ${run.error.message}`);
-      const first = run.data?.snapshot_id ? await read(run.data.snapshot_id) : null;
+      const first = await drawn(draftId);
       if (!first) return null;
       const latest = await db.from("next_book_snapshots").select("*").eq("workbook_id", first.workbookId).is("held_reason", null)
         .order("revision", { ascending: false }).limit(1).maybeSingle();

@@ -21,18 +21,26 @@ it("accepts complete synthetic evidence at the exact D-267 limits, without grant
   expect(scanMarkingLaunchReadiness(current, approved(), now)).toEqual({ ready: true, blockers: [] });
 });
 
-it("records the accepted synthetic Sonnet result while physical and family release stay held", () => {
+it("records the v9 synthetic Sonnet pass while physical and family release stay held", () => {
   const saved = SCAN_MARKING_LAUNCH_EVIDENCE;
-  const result = scanMarkingLaunchReadiness(saved.candidate, saved, "2026-11-07T08:00:00.000Z");
+  const result = scanMarkingLaunchReadiness(saved.candidate, saved, "2026-11-14T08:00:00.000Z");
   expect(result.ready).toBe(false);
   expect(result.blockers).toEqual([
-    "sample-approval", "screen-approval", "provider-policy", "physical-iphone", "physical-android", "privacy-text", "release-flags",
+    "sample-approval", "screen-approval", "dedicated-key-limit", "physical-iphone", "physical-android", "privacy-text", "release-flags", "spending-limits",
   ]);
-  expect(saved.candidate).toMatchObject({ model: "anthropic/claude-sonnet-5.5", prompt: "whole-page-scalar-readings-v7" });
-  expect(saved.evaluation).toMatchObject({ definite: 218, wrongDefinite: 0, wrongAsRight: 0, clear: 219, clearUnsure: 1 });
-  expect(saved.items["evaluation-pass"].proof).toContain("offline replay");
-  expect(SCAN_MARKING_LAUNCH_EVIDENCE.items["provider-policy"].status).toBe("deferred");
-  expect(SCAN_MARKING_LAUNCH_EVIDENCE.items["provider-policy"].proof).toContain("deferred by Savar");
+  expect(saved.candidate).toMatchObject({ model: "anthropic/claude-sonnet-5.5", prompt: "whole-page-scalar-readings-v9" });
+  expect(saved.evaluation).toMatchObject({ definite: 222, wrongDefinite: 0, wrongAsRight: 0, clear: 222, clearUnsure: 0 });
+  expect(saved.items["evaluation-pass"].proof).toContain("New inference, prompt v9");
+  expect(SCAN_MARKING_LAUNCH_EVIDENCE.items["provider-policy"].status).toBe("approved");
+  expect(SCAN_MARKING_LAUNCH_EVIDENCE.items["dedicated-key-limit"].status).toBe("pending");
+});
+
+it("accepts the provider rule from Savar or from Cedric under Savar's delegation, and nobody else", () => {
+  for (const [owner, blocked] of [["Savar", false], ["Cedric (Savar delegated marking, 2026-11-13)", false], ["Cedric", true], ["Someone", true]] as const) {
+    const e = approved();
+    const items = { ...e.items, "provider-policy": { ...e.items["provider-policy"], owner } };
+    expect(scanMarkingLaunchReadiness(current, { ...e, items }, "2026-11-08T00:00:00.000Z").blockers.includes("provider-policy")).toBe(blocked);
+  }
 });
 
 it.each(MARKING_LAUNCH_ITEMS)("rejects missing, incomplete, deferred and stale %s evidence", (id) => {

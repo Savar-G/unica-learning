@@ -22,6 +22,7 @@
     ".design/evidence/referrals/final-gate.log",
     ".design/reviews/referrals-settlement-recheck-1.md",
     ".design/reviews/referrals-final-repair.md",
-    ".design/evidence/referrals/live-stripe-config.json"
+    ".design/evidence/referrals/live-stripe-config.json",
+    ".design/reviews/referrals-integration.md"
   ]
 }

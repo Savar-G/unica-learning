@@ -12,6 +12,8 @@ const ACTION: Record<string, string> = {
   "workbook-approved": "Approved for print", "workbook-printed": "Marked printed", "workbook-shipped": "Marked shipped",
   "workbook-delivered": "Confirmed workbook delivered",
   "workbook-delivery-corrected": "Corrected delivery time",
+  "snapshot-retaken": "Updated the plan with new marks",
+  "approved-with-new-marks": "Approved for print without the new marks",
 };
 
 /** An audit entry's details in plain words; the raw keys and values stay in the tooltip. */
@@ -38,6 +40,8 @@ function auditDetail(detail: Record<string, unknown>): string {
     else if (k === "renderProblems" && typeof v === "number" && v > 0) lines.push(`${v} ${v === 1 ? "problem" : "problems"} drawing the pages`);
     else if (k === "revision" && typeof v === "number") lines.push(`Version ${v}`);
     else if (k === "firstShipped" && v === true) lines.push("First shipped workbook");
+    else if (k === "newMarkDays" && Array.isArray(v)) lines.push(`New marks on ${v.length === 1 ? "day" : "days"} ${v.join(", ")}`);
+    else if (k === "newMarkPages" && typeof v === "number") lines.push(`${v} ${v === 1 ? "page" : "pages"} with new marks`);
   }
   return lines.join(" · ");
 }

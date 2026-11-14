@@ -169,6 +169,7 @@ export function ScanPreview({ photo, child, onRetake, onSendAnyway, onProblem }:
           </li>)}</ol>
           : <p className="acct-alert">This page has no answers we can show yet.</p>}
         {preview.crops.length > 0 && preview.notSupported.length > 0 && <p className="small">We cannot show the {preview.notSupported.length === 1 ? "answer to question" : "answers to questions"} {listed(preview.notSupported)} yet.</p>}
+        {preview.cutOff && preview.cutOff.length > 0 && <p className="small">{preview.cutOff.length === 1 ? "Question" : "Questions"} {listed(preview.cutOff)} {preview.cutOff.length === 1 ? "is" : "are"} cut off at the edge of your photo. Our team will check {preview.cutOff.length === 1 ? "it" : "them"}, or you can send a new photo that shows the whole page.</p>}
       </div>
     </div>
   </section>;
