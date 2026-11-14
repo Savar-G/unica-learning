@@ -623,3 +623,15 @@ it("offers Send by hand when the automatic send fails, so a page is never stuck 
   await act(async () => button("Send this page for marking")!.click()); await settle();
   expect([...photos.values()].filter((p) => p.sentAt).map((p) => p.pageId)).toEqual(["p10"]);
 });
+
+it("tells a family with two children that any page goes to the right child, and says nothing for one child", async () => {
+  try { localStorage.removeItem("unica.scan-tips.v1:parent"); } catch {}
+  await render();
+  expect(text()).toContain("Open the book flat");
+  expect(text()).not.toContain("Scanning for");
+  await act(async () => root.unmount()); root = createRoot(host);
+  kids = [{ id: "child", first_name: "Leah" }, { id: "omar", first_name: "Omar" }];
+  await render();
+  expect(text()).toContain("Scanning for Leah and Omar?");
+  expect(text()).toContain("Each one goes to the right child.");
+});

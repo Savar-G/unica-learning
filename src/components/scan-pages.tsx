@@ -732,11 +732,16 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       : <button type="button" className="btn" onClick={() => acknowledge(sheet.then)}>Got it</button>}
   </Sheet>;
 
+  const names = childrenList.map((c) => c.first_name);
+  const siblings = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : null;
   const tipList = <ul className="scan-tips">
     <li>{ICONS.fold}<span><b>Open the book flat</b></span></li>
     <li>{ICONS.light}<span><b>Good light, no flash</b>Keep your hand&apos;s shadow off the page.</span></li>
     <li>{ICONS.corners}<span><b>Fill the photo with the page</b>Hold the phone close, with the corners and the small code in view.</span></li>
     <li>{ICONS.camera}<span><b>Snap all your pages, then tap Done</b>Already took photos? Pick them from the photo button in the camera.</span></li>
+    {/* The code on each page files it with its own child (#915), so siblings' pages go in one scan with no switch. The list
+        holds only children whose plan opens scanning, so every child named here can take their pages. */}
+    {siblings && <li>{ICONS.check}<span><b>Scanning for {siblings}?</b>Snap any page. Each one goes to the right child.</span></li>}
   </ul>;
   const tipsSheet = sheet?.kind === "add" && <Sheet label="How to scan" onClose={() => setSheet(null)}>
     <h2>How to scan</h2>
