@@ -624,23 +624,73 @@ function shapedCells(a: Float32Array, width: number, cells: readonly { x: number
  * Toner shine (coil-bound book, 2026-11-14): laser toner is glossy, so where a sheet bows toward its binding under a lamp
  * the print can come out lighter than the paper around it, as hollow or silver letters, while the paper stays matte. Its
  * grey then no longer follows the print, though every stroke is still there in its place. So a cell that does not follow
- * is read once more with the photo folded around its paper level (the median grey near the cell): print darker or lighter
- * than the paper both count as print. Where the photo is darker than its paper, as all print in a photo without shine is,
- * the fold changes nothing, and the thresholds are the same: blank paper still shows nothing, and another sheet's print
- * counts only where it lines up with this page's, as before.
+ * is read once more with the photo folded around its paper level, the median grey near it (`shineFold`): print lighter
+ * than the paper counts as print too. A fold changes the photo wherever it is lighter than that median, which is half its
+ * paper, so a cell is read again only where it shows shine: pixels on it lighter than the paper by more than its noise
+ * (SHINE_NOISE, SHINE_LIFT_MIN, SHINE_MIN), at least half of them, out to SHINE_REACH, on or beside this page's print
+ * (SHINE_ON_PRINT), as shine on toner is. Plain paper, its noise, a shadow's lit side or a sheet's edge over blank paper
+ * light the paper as much as the print, and are not read again. A comparison of two prints (the near twins) has no shine
+ * and is never folded. The thresholds are the same: blank paper still shows nothing, and another sheet's print counts
+ * only where it lines up with this page's, as before.
  */
 const SHINE_REACH = 8;
+/** The fewest grey levels above the paper a pixel must be to count as shine, whatever the noise. */
+const SHINE_LIFT_MIN = 3;
+/** How many of the paper's noise deviations (from its quartiles) above the paper a pixel must be to count as shine. */
+const SHINE_NOISE = 3;
+/** The fewest shining pixels on a cell or tile (out to FIT_SHIFT) for it to be read again. */
+const SHINE_MIN = 3;
+/**
+ * The share of the shining pixels around a cell or tile that must be on this page's print or within FIT_SHIFT of it. Over
+ * the coil-bound book's real photos (2026-11-14) shine on the print reached 0.4 to 1, and in simulations a shadow's edges
+ * over blank paper or another page passed a ring tile about as often as with no fold at all (98 of 1434 tiles; 91 with no
+ * fold; 163 with every tile folded).
+ */
+const SHINE_ON_PRINT = 0.5;
 
-/** The median grey of the photo's grid around a cell, out to SHINE_REACH: its paper level. */
-function paperLevel(c: { x: number; y: number }, b: Float32Array, width: number, height: number): number {
-  const values: number[] = [];
-  for (let y = Math.max(0, c.y - SHINE_REACH); y < Math.min(height, c.y + FIT_CELL + SHINE_REACH); y++)
-    for (let x = Math.max(0, c.x - SHINE_REACH); x < Math.min(width, c.x + FIT_CELL + SHINE_REACH); x++) values.push(b[y * width + x]);
-  values.sort((p, q) => p - q);
-  return values[values.length >> 1];
+const shineHistogram = new Uint32Array(256);
+
+/**
+ * The paper level to fold a cell or tile (`at`, in grid pixels) around: the median grey of the photo's grid out to
+ * SHINE_REACH. Null when it does not shine (see SHINE_REACH). `ink`: the printed page's ink in the grid.
+ */
+function shineFold(b: Float32Array, ink: Uint8Array, width: number, height: number, at: { x0: number; y0: number; x1: number; y1: number }): number | null {
+  const x0 = Math.max(0, at.x0 - SHINE_REACH), y0 = Math.max(0, at.y0 - SHINE_REACH);
+  const x1 = Math.min(width, at.x1 + SHINE_REACH), y1 = Math.min(height, at.y1 + SHINE_REACH);
+  const n = (x1 - x0) * (y1 - y0);
+  if (n <= 0) return null;
+  shineHistogram.fill(0);
+  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) shineHistogram[Math.max(0, Math.min(255, Math.floor(b[y * width + x])))]++;
+  // The grey at a share of the area, from its histogram, to a grey level.
+  const level = (q: number) => {
+    const k = Math.floor((n - 1) * q);
+    let seen = 0;
+    for (let v = 0; v < 256; v++) { seen += shineHistogram[v]; if (seen > k) return v + 0.5; }
+    return 255.5;
+  };
+  const paper = level(0.5);
+  // The paper's noise from its quieter side: print darkens one side and shine lightens the other.
+  const sigma = Math.min(paper - level(0.25), level(0.75) - paper) / 0.6745;
+  const top = paper + Math.max(SHINE_LIFT_MIN, SHINE_NOISE * sigma);
+  const nearPrint = (x: number, y: number) => {
+    for (let j = Math.max(0, y - FIT_SHIFT); j <= Math.min(height - 1, y + FIT_SHIFT); j++)
+      for (let i = Math.max(0, x - FIT_SHIFT); i <= Math.min(width - 1, x + FIT_SHIFT); i++) if (ink[j * width + i]) return true;
+    return false;
+  };
+  let on = 0, lit = 0, onPrint = 0;
+  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+    if (b[y * width + x] <= top) continue;
+    lit++;
+    if (x >= at.x0 - FIT_SHIFT && x < at.x1 + FIT_SHIFT && y >= at.y0 - FIT_SHIFT && y < at.y1 + FIT_SHIFT) on++;
+    if (nearPrint(x, y)) onPrint++;
+  }
+  return on >= SHINE_MIN && onPrint >= lit * SHINE_ON_PRINT ? paper : null;
 }
 
-/** The best correlation of a cell with the photo's grid within FIT_SHIFT grid pixels of its place; with `paper`, folded around it (SHINE_REACH). */
+/** The photo's grey; with `paper`, folded around it: lighter grey mirrored below it (`shineFold`). */
+const folded = (v: number, paper?: number) => (paper === undefined || v <= paper ? v : 2 * paper - v);
+
+/** The best correlation of a cell with the photo's grid within FIT_SHIFT grid pixels of its place; with `paper`, folded around it (`shineFold`). */
 function cellMatch(c: ShapedCell, a: Float32Array, b: Float32Array, width: number, height: number, paper?: number): number {
   const n = FIT_CELL * FIT_CELL;
   let best = -1;
@@ -648,8 +698,7 @@ function cellMatch(c: ShapedCell, a: Float32Array, b: Float32Array, width: numbe
     if (c.y + dy < 0 || c.x + dx < 0 || c.y + dy + FIT_CELL > height || c.x + dx + FIT_CELL > width) continue;
     let sumB = 0, sumBB = 0, sumAB = 0;
     for (let j = 0; j < FIT_CELL; j++) for (let i = 0; i < FIT_CELL; i++) {
-      const v = b[(c.y + dy + j) * width + c.x + dx + i];
-      const p = a[(c.y + j) * width + c.x + i], q = paper === undefined ? v : paper - Math.abs(v - paper);
+      const p = a[(c.y + j) * width + c.x + i], q = folded(b[(c.y + dy + j) * width + c.x + dx + i], paper);
       sumB += q; sumBB += q * q; sumAB += p * q;
     }
     const spreadB = n * sumBB - sumB * sumB;
@@ -659,9 +708,14 @@ function cellMatch(c: ShapedCell, a: Float32Array, b: Float32Array, width: numbe
   return best;
 }
 
-/** Whether a cell shows this page's print in the photo: its grey follows the print, or does once folded (toner shine). */
-function cellShows(c: ShapedCell, a: Float32Array, b: Float32Array, width: number, height: number): boolean {
-  return cellMatch(c, a, b, width, height) >= CELL_MATCH || cellMatch(c, a, b, width, height, paperLevel(c, b, width, height)) >= CELL_MATCH;
+/**
+ * Whether a cell shows this page's print in the photo: its grey follows the print, or, where the cell shines, does once
+ * folded. `ink` null: no fold, for a comparison of two prints, which never shine.
+ */
+function cellShows(c: ShapedCell, a: Float32Array, b: Float32Array, ink: Uint8Array | null, width: number, height: number): boolean {
+  if (cellMatch(c, a, b, width, height) >= CELL_MATCH) return true;
+  const paper = ink ? shineFold(b, ink, width, height, { x0: c.x, y0: c.y, x1: c.x + FIT_CELL, y1: c.y + FIT_CELL }) : null;
+  return paper !== null && cellMatch(c, a, b, width, height, paper) >= CELL_MATCH;
 }
 
 /** How far inside the photo's edge, in photo pixels, a cell must be to be compared: its reach and its blur stay in the photo. */
@@ -692,10 +746,12 @@ function pageFit(printed: PrintedInk, photoSums: Uint32Array, photo: { width: nu
   const { a, b } = fitGrids(printed, photoSums, photo, t);
   const shaped = shapedCells(a, width, cells);
   if (shaped.length === 0) return 0;
+  // Toner shine is a photo's (cellShows): a comparison of two prints, as with a near twin, has none.
+  const shine = atLeast === MIN_PAGE_FIT ? printed.ink : null;
   const count = (inView: readonly ShapedCell[], grid: Float32Array) => {
     const allowed = Math.floor(inView.length * (1 - atLeast));
     let missed = 0;
-    for (const c of inView) if (!cellShows(c, a, grid, width, height) && ++missed > allowed) break;
+    for (const c of inView) if (!cellShows(c, a, grid, shine, width, height) && ++missed > allowed) break;
     return { missed, allowed, fit: 1 - missed / inView.length };
   };
   const flatView = visibleCells(shaped, photo, t);
@@ -1505,7 +1561,7 @@ const NEAR_CELLS_MIN = 2;
 
 /**
  * The best correlation of the printed grid with the photo's over the given pixels, within FIT_SHIFT; null when the print
- * there is one even shade. With `paper`, the photo is folded around that grey first (toner shine, SHINE_REACH).
+ * there is one even shade. With `paper`, the photo is folded around it first (toner shine, `shineFold`).
  */
 function ringMatch(xs: readonly number[], ys: readonly number[], a: Float32Array, b: Float32Array, width: number, height: number, paper?: number): number | null {
   const n = xs.length;
@@ -1520,7 +1576,7 @@ function ringMatch(xs: readonly number[], ys: readonly number[], a: Float32Array
     for (let k = 0; k < n; k++) {
       const x = xs[k] + dx, y = ys[k] + dy;
       if (x < 0 || y < 0 || x >= width || y >= height) continue;
-      const v = b[y * width + x], p = a[ys[k] * width + xs[k]], q = paper === undefined ? v : paper - Math.abs(v - paper);
+      const p = a[ys[k] * width + xs[k]], q = folded(b[y * width + x], paper);
       m++; sA += p; sAA += p * p; sB += q; sBB += q * q; sAB += p * q;
     }
     const spA = m * sAA - sA * sA, spB = m * sBB - sB * sB;
@@ -1562,16 +1618,17 @@ function answersNearHiddenShown(o: { ink: PrintedInk; photoSums: Uint32Array; ph
       const r = ringMatch(xs, ys, a, b, width, height);
       if (r === null) continue;
       tiles++;
-      // A frame in toner shine: read again folded around the tile's paper grey (the median of what the photo shows there).
-      const paper = () => xs.map((x, k) => b[ys[k] * width + x]).sort((p, q) => p - q)[xs.length >> 1];
-      if (r >= CELL_MATCH || (ringMatch(xs, ys, a, b, width, height, paper()) ?? -1) >= CELL_MATCH) matched++;
+      if (r >= CELL_MATCH) { matched++; continue; }
+      // A frame in toner shine: read again with the shine folded, when the tile shines (`shineFold`).
+      const paper = shineFold(b, ink.ink, width, height, { x0: tx, y0: ty, x1: Math.min(x1, tx + RING_TILE), y1: Math.min(y1, ty + RING_TILE) });
+      if (paper !== null && (ringMatch(xs, ys, a, b, width, height, paper) ?? -1) >= CELL_MATCH) matched++;
     }
     if (tiles >= RING_TILES_MIN) { if (matched < tiles * RING_TILES_MATCH) return false; continue; }
     // No outline and no print in the ring: the print cells next to the box must hold this page's print.
     const reach = FIT_CELL * 2;
     const near = visibleCells(nearShaped.filter((c) => c.x + FIT_CELL > x0 - reach && c.x < x1 + reach && c.y + FIT_CELL > y0 - reach && c.y < y1 + reach), photo, t, shape);
     if (near.length < NEAR_CELLS_MIN) return false;
-    if (near.filter((c) => cellShows(c, a, b, width, height)).length < near.length * NEAR_CELLS_MATCH) return false;
+    if (near.filter((c) => cellShows(c, a, b, ink.ink, width, height)).length < near.length * NEAR_CELLS_MATCH) return false;
   }
   return true;
 }
