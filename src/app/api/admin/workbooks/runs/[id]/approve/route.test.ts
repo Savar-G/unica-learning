@@ -12,6 +12,8 @@ const h = vi.hoisted(() => ({
   newMarks: false,
   /** D-308: the run is a next book, and its check cannot be read. */
   checkDown: false,
+  /** D-308: the audit notes of approvals anyway, as the service function received them. */
+  notes: [] as { name: string; args: Record<string, unknown> }[],
 }));
 
 vi.mock("next/server", () => ({
@@ -23,6 +25,7 @@ vi.mock("@/lib/supabase-auth", () => ({
   // The approval's client (no signal), and the capture's own time-limited client (a signal).
   adminClient: (signal?: AbortSignal) => (signal ? h.captureDb : {
     approval: true,
+    rpc: async (name: string, args: Record<string, unknown>) => { h.notes.push({ name, args }); return { data: { status: "noted" }, error: null }; },
     // Only the D-308 check's read of the run's draft; every other read fails, as before.
     from: (t: string) => {
       if (t !== "workbook_runs") throw new Error("no such table here");
@@ -62,7 +65,7 @@ const hanging = (() => {
   return { from: () => never, rpc: () => never };
 })();
 
-beforeEach(() => { h.later = []; h.captureDb = null; h.approvals = 0; h.newMarks = false; h.checkDown = false; });
+beforeEach(() => { h.later = []; h.captureDb = null; h.approvals = 0; h.newMarks = false; h.checkDown = false; h.notes = []; });
 
 it("answers ok when the capture's client is missing: the capture uses the approval's client", async () => {
   // Wrong if: a missing time-limited client fails the answer or skips the approval.
@@ -115,6 +118,8 @@ it("holds a next-book approval when the check cannot be read, and approves anywa
   const anyway = await approve({ despiteNewMarks: true });
   expect(await anyway.json()).toEqual({ ok: true, workbookId: "00000000-0000-4000-8000-000000000077" });
   expect(h.approvals).toBe(1);
-  expect(error.mock.calls.map(c => String(c[0])).join(" ")).toContain("audit note needs migration 20261113233859_workbook_approved_with_new_marks");
+  // The approval anyway is noted through the service function, with the reason the check could not be read.
+  expect(h.notes.map((n) => n.name)).toEqual(["note_workbook_approved_with_new_marks"]);
+  expect(h.notes[0].args).toMatchObject({ p_draft: "draft-2", p_detail: { revision: 2, checkUnavailable: true } });
   error.mockRestore();
 });

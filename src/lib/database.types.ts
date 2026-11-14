@@ -9339,6 +9339,15 @@ export type Database = {
         Args: { p_child: string }
         Returns: undefined
       }
+      note_workbook_approved_with_new_marks: {
+        Args: {
+          p_by: string
+          p_by_email: string
+          p_detail: Json
+          p_draft: string
+        }
+        Returns: Json
+      }
       note_workbook_book1_baseline_try: {
         Args: { p_draft: string; p_revision: number }
         Returns: Json

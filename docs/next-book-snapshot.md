@@ -95,9 +95,9 @@ On the admin run page of a next-book draft not yet approved:
   and the page asks "Approve anyway?". A draft whose run has no snapshot is never checked. The approval is confirmed once.
   "Approve anyway" approves through the usual `approve_workbook_draft` (its `workbook-approved` audit entry), then notes
   an `approved-with-new-marks` audit entry (the snapshot revision, days, pages and items, or `checkUnavailable`). The
-  service role may only read `workbook_audit`, so the note needs `note_workbook_approved_with_new_marks` (migration
-  `20261113233859_workbook_approved_with_new_marks.sql`, not applied). Until it is applied and the types generated, the
-  note writes nothing: it logs "audit note needs migration ..." and the approval stands (`noted: false`).
+  service role may only read `workbook_audit`, so the note is written by `note_workbook_approved_with_new_marks`
+  (migration `20261114011147_workbook_approved_with_new_marks.sql`, applied 2026-11-14), which accepts it only for a
+  draft that already has its approval entry. If the note fails, the approval stands (`noted: false`) and the route logs it.
 - Not built: drawing again only the pages whose plan changed. Until the planner owner builds it, an update stores the new
   plan beside the draft and the printed pages stay those of the first plan.
 
