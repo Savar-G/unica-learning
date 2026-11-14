@@ -4,12 +4,14 @@ import { createRequire, Module } from 'node:module';
 import { referralSqlFixture } from './referral-sql-fixture.mjs';
 const require = createRequire(import.meta.url);
 const { build } = require('esbuild');
-const bundle = await build({ entryPoints: ['src/lib/referrals.ts'], bundle: true, platform: 'node', format: 'cjs', write: false });
-const filename = process.cwd() + '/referral-sql-control.cjs';
-const entry = new Module(filename);
-entry.paths = Module._nodeModulePaths(process.cwd());
-entry._compile(bundle.outputFiles[0].text, filename);
-const { applyReferral, referralStarts, recordReferralInvoice, reconcileReferralInvoice } = entry.exports;
+async function load(source) {
+ const bundle = await build({ entryPoints: [source], bundle: true, platform: 'node', format: 'cjs', packages: 'external', write: false, plugins: [{name:'server-only-test',setup(b){b.onResolve({filter:/^server-only$/},()=>({path:'server-only',namespace:'stub'}));b.onLoad({filter:/.*/,namespace:'stub'},()=>({contents:'export {};'}));}}] });
+ const filename = process.cwd() + '/referral-sql-control.cjs';
+ const entry = new Module(filename);entry.paths = Module._nodeModulePaths(process.cwd());entry._compile(bundle.outputFiles[0].text, filename);return entry.exports;
+}
+const { applyReferral, referralStarts, recordReferralInvoice, reconcileReferralInvoice } = await load('src/lib/referrals.ts');
+const { stripeReferrals, REFERRAL_COUPON_ID } = await load('src/lib/referral-stripe.ts');
+const Stripe = require('stripe');
 const p='00000000-0000-4000-8000-000000000001',q='00000000-0000-4000-8000-000000000002',r='00000000-0000-4000-8000-000000000003';
 const c='00000000-0000-4000-8000-000000000011',d='00000000-0000-4000-8000-000000000012',e='00000000-0000-4000-8000-000000000013';
 async function fixture() {
@@ -71,4 +73,34 @@ await run('email queue filters deleted and deleting owners before its limit',asy
  for(let n=0;n<2;n++){
   const due=await f.command({action:'due',operation:'email',limit:20});assert.equal(due.due.emails.length,1);assert.equal(due.due.emails[0].parent,p);
  }
+});
+await run('payment during revocation remains used in the ledger and admin preview',async f=>{
+ await f.redeem(q,p);
+ const qualifying=f.add('qualifying','cus-q',{status:'paid',paidCents:7999,paidAt:Date.now()+1000,actualPayment:true});await recordReferralInvoice(qualifying,f.services);
+ const state={status:'draft',paid:0,discounts:[],completePayment:false};
+ const raw=()=>({id:'paid-race',customer:'cus-p',parent:{subscription_details:{subscription:'sub-cus-p'}},livemode:false,status:state.status,subtotal:7999,amount_paid:state.paid,status_transitions:{paid_at:state.paid?1800000000:null},billing_reason:'subscription_cycle',discounts:state.discounts,auto_advance:true,metadata:{}});
+ const sdk=new Stripe('sk_test_synthetic',{maxNetworkRetries:0,httpClient:Stripe.createFetchHttpClient(async(input,init)=>{
+  const url=new URL(String(input)),path=url.pathname,method=init?.method??'GET',body=new URLSearchParams(String(init?.body??''));
+  if(path==='/v1/invoices/paid-race'){
+   if(method==='POST')state.discounts=[{id:'di-race',source:{type:'coupon',coupon:REFERRAL_COUPON_ID}}];
+   else if(state.completePayment){state.status='paid';state.paid=3999;}
+   return Response.json(raw());
+  }
+  if(path==='/v1/subscriptions/sub-cus-p')return Response.json({id:'sub-cus-p',livemode:false,customer:'cus-p',metadata:{},status:'active'});
+  if(path==='/v1/customers/cus-p')return Response.json({id:'cus-p',livemode:false,discount:null});
+  if(path==='/v1/invoices/paid-race/lines')return Response.json({data:[{id:'line',pricing:{price_details:{price:'price'}},parent:{subscription_item_details:{proration:false}},discounts:[]}],has_more:false});
+  if(path==='/v1/prices/price')return Response.json({id:'price',livemode:false,product:'unica_math',recurring:{interval:'month',interval_count:1}});
+  if(path==='/v1/invoice_payments')return Response.json({data:state.paid?[{id:'ip-race',status:'paid',amount_paid:3999,payment:{type:'charge',charge:'ch-race'}}]:[],has_more:false});
+  if(path==='/v1/charges/ch-race')return Response.json({id:'ch-race',livemode:false,customer:'cus-p',paid:true,status:'succeeded',captured:true,amount_captured:3999,amount_refunded:0});
+  if(path==='/v1/disputes')return Response.json({data:[],has_more:false});
+  throw Error('Unexpected SDK request '+path);
+ })});
+ const actual=stripeReferrals(sdk,false),base=f.services.provider;
+ f.services.provider={...base,async coupon(){return{id:REFERRAL_COUPON_ID,product:'unica_math'};},async invoice(id){return id==='paid-race'?actual.invoice(id):base.invoice(id);},async invoices(customer){return customer==='cus-p'?[await actual.invoice('paid-race')]:base.invoices(customer);},apply:actual.apply,async withdraw(invoice,reservation){state.completePayment=true;return actual.withdraw(invoice,reservation);}};
+ await reconcileReferralInvoice('paid-race',f.services);qualifying.risk='revoke';await reconcileReferralInvoice('paid-race',f.services);
+ assert.equal((await f.operations())[0].state,'applied');
+ await reconcileReferralInvoice('paid-race',f.services);
+ const [used]=await f.rows('select o.state,e.used_at from referral_operations o join referral_entitlements e on e.id=o.entitlement_id');assert.equal(used.state,'used');assert(used.used_at);
+ await f.db.query('insert into admin_users(user_id,email,name) values($1,$2,$3)',[r,'r@referral.invalid','Synthetic Admin']);
+ const preview=await f.command({action:'preview',parent:q,actor:r,code:await f.code(r),reason:'Used benefit control'});assert.equal(preview.preview.used,1);
 });

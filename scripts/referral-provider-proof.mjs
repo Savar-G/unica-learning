@@ -56,6 +56,7 @@ try {
   await stripe.invoices.pay(renewal.id);
   const paid = await provider.invoice(renewal.id);
   check("actual_nonzero_payment_confirmed", paid.actualPayment && paid.paidCents === 3999 && paid.risk === "clear");
+  check("paid_discount_stays_committed_during_withdrawal", (await provider.withdraw(paid, { ...reservation, policy: "revoke", allowed: false })) === "committed");
   const payments = await stripe.invoicePayments.list({ invoice: renewal.id, limit: 100 });
   const intent = payments.data.find(p => p.payment.type === "payment_intent")?.payment.payment_intent;
   const intentId = typeof intent === "string" ? intent : intent?.id;

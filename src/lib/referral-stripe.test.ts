@@ -81,6 +81,12 @@ describe("Stripe referral adapter uses current provider objects",()=>{
   expect((await f.provider.invoice("in_1")).couponIds).toEqual([REFERRAL_COUPON_ID]);
   expect(f.writes.some(w=>w.path.endsWith("/void"))).toBe(false);
  });
+ it("keeps a discount committed when payment completes before withdrawal reads it",async()=>{
+  const f=fixture();await f.provider.apply(await f.provider.invoice("in_1"),reservation);
+  const beforePayment=await f.provider.invoice("in_1");f.state.status="paid";f.state.paid=2999;
+  expect(await f.provider.withdraw!(beforePayment,{...reservation,policy:"revoke",allowed:false})).toBe("committed");
+  expect(f.writes).toHaveLength(1);expect(f.state.status).toBe("paid");
+ });
  it("requires complete pagination and rejects a missing continuation flag",async()=>{
   const seen:(string|undefined)[]=[];expect(await referralPages(async after=>{seen.push(after);return after?{data:[{id:"two"}],has_more:false}:{data:[{id:"one"}],has_more:true};})).toHaveLength(2);expect(seen).toEqual([undefined,"one"]);
   await expect(referralPages(async()=>({data:[{id:"one"}],has_more:true}))).rejects.toThrow("cursor repeated");

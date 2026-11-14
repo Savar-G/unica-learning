@@ -10,7 +10,7 @@
     "Keep the free month"
   ],
   "options": [],
-  "status": "review",
+  "status": "handoff",
   "evidence": [
     ".design/evidence/referrals/stripe-test-mode.json",
     ".design/evidence/referrals/pricing-desktop.png",
@@ -18,6 +18,10 @@
     ".design/evidence/referrals/parent-referral-desktop.png",
     ".design/evidence/referrals/parent-referral-phone.png",
     ".design/evidence/referrals/admin-referral-preview.png",
-    ".design/evidence/referrals/hosted-rls.json"
+    ".design/evidence/referrals/hosted-rls.json",
+    ".design/evidence/referrals/final-gate.log",
+    ".design/reviews/referrals-settlement-recheck-1.md",
+    ".design/reviews/referrals-final-repair.md",
+    ".design/evidence/referrals/live-stripe-config.json"
   ]
 }

@@ -1,0 +1,55 @@
+{
+  "observedAt": "2026-11-14 UTC",
+  "method": "Aside read-only live Stripe dashboard",
+  "endpoint": "https://unicalearning.com/api/stripe-webhook",
+  "active": true,
+  "apiVersion": "2026-09-30.endive",
+  "existingEvents": [
+    "customer.subscription.created",
+    "customer.subscription.deleted",
+    "customer.subscription.paused",
+    "customer.subscription.resumed",
+    "customer.subscription.updated",
+    "invoice.paid",
+    "invoice.payment_failed"
+  ],
+  "missingRequiredEvents": [
+    "charge.dispute.closed",
+    "charge.dispute.created",
+    "charge.dispute.funds_reinstated",
+    "charge.dispute.funds_withdrawn",
+    "charge.dispute.updated",
+    "charge.refunded",
+    "invoice.created",
+    "invoice.finalized",
+    "invoice.marked_uncollectible",
+    "invoice.payment_succeeded",
+    "invoice.updated",
+    "invoice.voided"
+  ],
+  "additionsRequired": 12,
+  "expectedTotalAfterAdditions": 19,
+  "writesPerformed": false,
+  "keyNameObserved": "pagewise-site",
+  "keyPermissionsVerified": true,
+  "deployedKeyMappingVerified": false,
+  "limits": [
+    "The pagewise-site permission summary was read without changing any field",
+    "The dashboard did not list Invoice Payments as a separate permission",
+    "Vercel redacted the deployed production key, so its mapping to pagewise-site is unverified",
+    "No secret was revealed and no production setting was changed",
+    "No combined hosted billing journey was performed"
+  ],
+  "keyPermissions": {
+    "Customers": "Write",
+    "Subscriptions": "Write",
+    "Coupons": "Write",
+    "Invoices": "Write",
+    "Prices": "Write",
+    "Products": "Write",
+    "Payment Intents": "Write",
+    "Charges and Refunds": "Write",
+    "Payment Disputes": "Write"
+  },
+  "invoicePaymentsSeparatePermissionObserved": false
+}

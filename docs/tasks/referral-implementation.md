@@ -1,5 +1,7 @@
 # Referral implementation handoff
 
+This is the historical delegate handoff at eeafa9d24fdc6811d90b99aafca078e87cbbfca5. Its pending items and check logs describe that pin. The controller's current hosted results, provider evidence and release limits are in [referral-implementation.md](../referral-implementation.md). Review repairs are in `.design/reviews/referrals-repair-round-1.md`, `referrals-repair-round-2.md`, `referrals-repair-round-3.md` and `referrals-final-repair.md`.
+
 Status: local implementation and focused checks complete. REFERRAL_IMPLEMENTATION_DONE is set. Release remains pending.
 
 Machine: Savars-MacBook-Pro-5.

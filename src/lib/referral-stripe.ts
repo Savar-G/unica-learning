@@ -133,7 +133,7 @@ export function stripeReferrals(s: Stripe, live: boolean): ReferralProvider {
       if (idOf(raw.customer) !== reservation.customer) throw new Error("Referral withdrawal owner mismatch");
       const retained = raw.discounts.filter(d => typeof d === "string" || d.deleted || idOf(d.source.coupon) !== reservation.coupon);
       if (retained.length === raw.discounts.length) return;
-      if (raw.status === "paid") return;
+      if (raw.status === "paid") return "committed";
       if (raw.status === "open" || raw.status === "uncollectible") {
         // Finalization commits the discount to this period. Revocation cannot cancel the whole monthly debt.
         if (reservation.policy === "revoke") {

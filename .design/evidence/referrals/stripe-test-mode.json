@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-14T01:57:08.804Z",
+  "at": "2026-11-14T02:14:15.717Z",
   "provider": "Stripe test mode",
   "results": [
     {
@@ -30,6 +30,10 @@
     },
     {
       "name": "actual_nonzero_payment_confirmed",
+      "pass": true
+    },
+    {
+      "name": "paid_discount_stays_committed_during_withdrawal",
       "pass": true
     },
     {

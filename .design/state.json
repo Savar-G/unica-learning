@@ -150,7 +150,7 @@
     "job_kind": "new",
     "surface": "product",
     "constraint_mode": "existing-system",
-    "phase": "review",
+    "phase": "handoff",
     "contract": ".design/experiments/r683/contract.md",
     "manifest": ".design/experiments/r683/manifest.json",
     "gates": {
@@ -161,22 +161,25 @@
     "latest_evidence": [
       ".design/evidence/referrals/stripe-test-mode.json",
       ".design/evidence/referrals/pricing-desktop.png",
-      ".design/evidence/referrals/pricing-phone.png"
+      ".design/evidence/referrals/pricing-phone.png",
+      ".design/evidence/referrals/parent-referral-desktop.png",
+      ".design/evidence/referrals/parent-referral-phone.png",
+      ".design/evidence/referrals/admin-referral-preview.png",
+      ".design/evidence/referrals/hosted-rls.json",
+      ".design/evidence/referrals/final-gate.log",
+      ".design/reviews/referrals-final-repair.md",
+      ".design/evidence/referrals/live-stripe-config.json"
     ],
     "open_decisions": [],
     "blockers": [
       {
-        "id": "REF-MIGRATION",
-        "reason": "Hosted migration and generated types pending",
-        "needs": "Complete SQL review, apply and probe migration, regenerate types/checks"
-      },
-      {
-        "id": "REF-REVIEW",
-        "reason": "Independent settlement pending",
-        "needs": "Settle the initial reports and recheck repairs"
+        "id": "REF-LIVE-STRIPE",
+        "reason": "The live endpoint is missing 12 required referral events; deployed key mapping and Invoice Payments access remain unverified",
+        "needs": "Preserve the seven live events and add the 12 missing events before production merge. Confirm the deployed key and Invoice Payments access. See live-stripe-config.json."
       }
     ],
-    "latest_review": ".design/reviews/referrals-repair-round-1.md",
-    "verification": "Both hosted migrations and expanded rollback probe passed. Generated types/checks completed. Twelve Stripe test-mode checks and parent/admin Aside checks passed. Full gate passed: 692 files, 21029 tests, one skipped, ESLint and build. Settlement repairs await independent recheck. Live Stripe configuration remains unverified."
+    "latest_review": ".design/reviews/referrals-settlement-recheck-1.md",
+    "verification": "Both hosted migrations and expanded rollback probe passed. Official types/checks generated. Thirteen Stripe test-mode checks and parent/admin Aside checks passed. All four actual-SQL settlement controls and 57 focused tests passed. Final full gate passed: 692 files, 21030 tests, one skipped, ESLint and build. All reported findings have fixes and binding controls. The last one-line fix was not independently reviewed again. Read-only live Stripe inspection found 12 missing webhook events. The named site key has the required resource writes, but deployed-key mapping and Invoice Payments access remain unverified.",
+    "review_resolution": "The independent recheck resolved the three previous findings. Its new P2 paid-withdrawal race was repaired with the exact change independently tested by the reviewer. Permanent SDK and actual-SQL controls failed before repair and passed after it. The final one-line repair was not independently reviewed again."
   }
 }
