@@ -44,7 +44,6 @@ export function GuidanceDemo() {
           ))}
         </ul>
       </div>
-      <p className="gd-cap">This demo shows a planned voice call. Voice calls are not available yet; Maya is available by typed chat.</p>
     </div>
   );
 }

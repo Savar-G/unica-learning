@@ -48,7 +48,7 @@ export interface DeckChild {
   answers: DeckAnswer[];
   levelNote: string;
   book: DeckBook | null;
-  /** School grade 3 and up can type to Maya, the AI Teaching Assistant. */
+  /** School grade 3 and up can call Maya, the AI Teaching Assistant. */
   chat: boolean;
   /** Signed images of real pages from a prepared workbook, or empty. */
   pages: string[];
