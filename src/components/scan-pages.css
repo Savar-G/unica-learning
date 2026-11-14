@@ -162,3 +162,100 @@
 .scan-guide li.is-retake { color: var(--ink); font-weight: 500; }
 .scan-guide-all summary { cursor: pointer; font-size: 15px; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; min-height: 44px; padding: 10px 0; box-sizing: border-box; }
 .scan-guide-all ul { margin-top: 4px; }
+
+/* The new scan screen (#915, round r915-scan-flow). Text is --ink or --ink-2 on white or --card (4.5:1 or more); every
+   state has a glyph and a word, never a colour alone; every control is at least 44 px. */
+.scan-pages .scan-start-h { font-size: 21px; font-weight: 500; letter-spacing: -.01em; }
+.scan-pages .scan-tips li span b { display: block; font-weight: 600; }
+.scan-pages .scan-tips li span { color: var(--ink-2); }
+.scan-pages .scan-tips li span b { color: var(--ink); }
+.scan-dock-row.is-choice .scan-link { justify-content: center; }
+.scan-dock-row .btn svg { width: 22px; height: 22px; margin-right: 8px; }
+
+/* The day strip */
+.scan-strip { display: grid; gap: 10px; }
+.scan-strip p { margin: 0; }
+.scan-strip-h { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+.scan-strip-h h2 { display: inline-flex; align-items: center; gap: 8px; font-size: 19px; font-weight: 500; letter-spacing: -.01em; }
+.scan-strip-count { font-size: 15px; color: var(--ink-2); }
+.scan-done-tick { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--scan-leaf-ink); color: #fff; }
+.scan-done-tick svg { width: 13px; height: 13px; }
+.scan-pages .scan-strip-tiles { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 10px 8px; }
+.scan-strip-tile { margin: 0; }
+.scan-strip-tile button { display: grid; justify-items: center; gap: 3px; width: 100%; min-height: 44px; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+.scan-strip-tile button:disabled { cursor: default; }
+.scan-strip-tile button:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; border-radius: 6px; }
+.scan-strip-page { position: relative; display: grid; place-items: center; width: 100%; max-width: 64px; aspect-ratio: 3 / 4; background: #fff; border: 1.5px solid var(--ink-2); border-radius: 5px; }
+.scan-strip-tile.is-todo .scan-strip-page { border-style: dashed; background: transparent; }
+.scan-strip-tile.is-marked .scan-strip-page { border-color: var(--scan-leaf-ink); }
+.scan-strip-tile.is-retake .scan-strip-page { border: 2px solid var(--scan-accent-ink); }
+.scan-strip-glyph { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; font: 700 15px/1 var(--sans, inherit); color: var(--ink); background: var(--card); }
+.scan-strip-glyph:empty { display: none; }
+.scan-strip-glyph svg { width: 15px; height: 15px; }
+.scan-strip-tile.is-marked .scan-strip-glyph { background: var(--scan-leaf-ink); color: #fff; }
+.scan-strip-tile.is-retake .scan-strip-glyph { background: var(--scan-accent-ink); color: #fff; }
+.scan-strip-n { font: 500 13px/1.1 var(--mono); color: var(--ink); }
+.scan-strip-w { font-size: 12px; line-height: 1.1; color: var(--ink-2); }
+.scan-strip-tile.is-retake .scan-strip-w { color: var(--scan-accent-ink); font-weight: 600; }
+
+/* Notes, the Undo bar, offline */
+.scan-still, .scan-offline { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--card); color: var(--ink); font-size: 15px; }
+.scan-offline { background: var(--accent-soft); }
+.scan-undo { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 6px 4px 14px; border-radius: 12px; background: var(--ink); color: #fff; }
+.scan-undo span { display: inline-flex; align-items: center; gap: 10px; font-weight: 500; }
+.scan-undo i { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--scan-leaf); color: #fff; }
+.scan-undo i svg { width: 14px; height: 14px; }
+.scan-undo .scan-link { padding: 0 12px; color: #fff; font-weight: 600; }
+.scan-undo .scan-link:focus-visible { outline-color: #fff; }
+@media (max-width: 699px) { .scan-pages > .scan-undo { position: sticky; z-index: 31; bottom: 170px; } }
+
+/* One retake at a time: your photo beside a good one */
+.scan-need-h { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; }
+.scan-need p { margin: 0; }
+.scan-need-title { font-size: 16px; }
+.scan-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 150px)); gap: 12px; }
+.scan-pair figure { margin: 0; display: grid; gap: 6px; }
+.scan-pair figcaption { font-size: 14px; font-weight: 600; color: var(--ink); }
+.scan-pair-ph { display: block; width: 100%; aspect-ratio: 3 / 4; padding: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 6px; background: #b9ad99; cursor: pointer; }
+span.scan-pair-ph { cursor: default; }
+.scan-pair-ph img, .scan-pair-ph svg { display: block; width: 100%; height: 100%; object-fit: cover; }
+.scan-pair-ph:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+
+/* Today's pages and their marks */
+.scan-today { display: grid; gap: 10px; }
+.scan-today p { margin: 0; }
+.scan-score-line { font-size: 17px; font-weight: 500; }
+.scan-pages .scan-results { list-style: none; margin: 0; padding: 0; display: grid; border-top: 1px solid var(--line); }
+.scan-results li { margin: 0; border-bottom: 1px solid var(--line); }
+.scan-results a, .scan-results-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 56px; padding: 8px 2px; color: inherit; text-decoration: none; }
+.scan-results a > span:first-child, .scan-results-row { display: grid; gap: 2px; }
+.scan-results b { font-weight: 500; }
+.scan-results span span, .scan-results-row span { font-size: 14px; color: var(--ink-2); }
+.scan-results .is-good { color: var(--scan-leaf-ink); font-weight: 600; }
+.scan-results a > span:last-child { font-size: 22px; color: var(--ink-2); }
+.scan-results a:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+/* The capture screen */
+.scan-pages.is-capture { gap: 0; }
+.scan-cam { display: grid; gap: 14px; min-height: 78dvh; align-content: start; padding: 14px 16px max(18px, env(safe-area-inset-bottom)); border-radius: 16px; background: #1f1f23; color: #fff; }
+.scan-cam p { margin: 0; }
+.scan-cam-top { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+.scan-cam-x { width: 44px; height: 44px; border: 0; border-radius: 50%; background: rgba(255, 255, 255, .12); color: #fff; font-size: 18px; cursor: pointer; }
+.scan-cam-say { font-size: 18px; line-height: 1.35; }
+.scan-cam .scan-spread-note, .scan-cam .scan-offline { background: rgba(255, 255, 255, .12); color: #fff; }
+.scan-cam-tip { color: #d4d4d8; }
+.scan-pages .scan-shots { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 10px; min-height: 64px; }
+.scan-shots li { position: relative; width: 48px; aspect-ratio: 3 / 4; margin: 0; border-radius: 4px; overflow: visible; background: #55555c; }
+.scan-shots img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 4px; }
+.scan-shot-flag { position: absolute; top: -7px; right: -7px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: #fff; color: #111; box-shadow: 0 0 0 2px #1f1f23; font: 700 13px/1 var(--sans, inherit); }
+.scan-shot-flag svg { width: 12px; height: 12px; }
+.scan-shots li.is-ready .scan-shot-flag, .scan-shots li.is-sent .scan-shot-flag, .scan-shots li.is-saved .scan-shot-flag, .scan-shots li.is-elsewhere .scan-shot-flag { background: var(--scan-leaf); color: #fff; }
+.scan-shots li.is-refused .scan-shot-flag { background: var(--accent); color: #111; }
+.scan-cam-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; margin-top: auto; padding-top: 10px; }
+.scan-cam-side { justify-self: start; min-width: 72px; min-height: 48px; padding: 0 14px; border: 1px solid rgba(255, 255, 255, .5); border-radius: 999px; background: none; color: #fff; font: 600 15px var(--sans, inherit); cursor: pointer; }
+.scan-cam-side.is-done { justify-self: end; background: #fff; color: #111; border-color: #fff; }
+.scan-shutter { width: 76px; height: 76px; padding: 6px; border: 4px solid #fff; border-radius: 50%; background: none; cursor: pointer; }
+.scan-shutter span { display: block; width: 100%; height: 100%; border-radius: 50%; background: #fff; }
+.scan-cam button:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+.scan-earlier summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-size: 15px; text-decoration: underline; text-underline-offset: 3px; }
+.scan-earlier[open] summary { margin-bottom: 8px; }

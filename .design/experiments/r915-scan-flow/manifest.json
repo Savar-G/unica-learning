@@ -1,0 +1,16 @@
+{
+  "round": "r915-scan-flow",
+  "issue": 915,
+  "status": "Picked by Cedric on 2026-11-14: build the new scan screen from this prototype",
+  "base": "origin/main",
+  "prototype": "index.html",
+  "published": "https://claude.ai/artifact/JUDdDZFX5LcNbdkkovtBKh",
+  "component": "src/components/scan-pages.tsx",
+  "steps": ["First visit: four tips once, then Scan pages", "Every visit: the day as a strip of page tiles, a count, one Scan pages button, How to scan", "Keep-shooting capture with a row of shots, photo library and Done", "Auto-send with Undo, marks per page, the day's score, one retake line"],
+  "decisions": [
+    "Two pages per photo is not advertised until spreads are proven on real photos",
+    "Extra page handling stays as it is (to be discussed)",
+    "Marks stay in step 4",
+    "Undo holds a page on the phone about 10 seconds before it is sent, so an undone page never reaches marking"
+  ]
+}

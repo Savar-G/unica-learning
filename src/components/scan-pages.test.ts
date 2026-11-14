@@ -16,7 +16,7 @@ import { ScanPages } from "./scan-pages";
 
 // A fake server: Day 4 has pages p10 to p13. A photo named "p11.jpg" shows page p11; "junk.jpg" has no page code;
 // "two-p12.jpg" shows two sheets, which the check refuses.
-type Photo = { id: string; pageId: string; workbookId: string; book: number; pageNumber: number; state: "pending" | "saved"; check: string; reason: string | null; sentAt: string | null; createdAt: string };
+type Photo = { id: string; pageId: string; workbookId: string; book: number; pageNumber: number; state: "pending" | "saved"; check: string; reason: string | null; sentAt: string | null; createdAt: string; marks?: unknown };
 const PAGES = [10, 11, 12, 13].map((n, i) => ({ id: `p${n}`, workbookId: "book", book: 1, pageNumber: n, day: "Day 4", pageOfDay: i + 1, pagesInDay: 4 }));
 let root: Root, host: HTMLDivElement;
 let checks: boolean, acknowledged: boolean;
@@ -33,11 +33,15 @@ const calls: string[] = [];
 let marking: number | null;
 // While set, every upload waits for it: a photo stays sending.
 let putGate: Promise<void> | null;
+// How long the Undo holds a page that passed (#915): long by default, so a test sends only when it says so.
+let undoMs: number;
+// A sibling whose book the next upload's code belongs to (#915), and whether marking is open in the list.
+let filedTo: { child_id: string; child: string } | null, markingOn: boolean;
 
 const buttons = () => [...document.querySelectorAll("button")];
 const button = (text: string) => buttons().find((b) => b.textContent === text || b.getAttribute("aria-label") === text);
 const settle = async () => { for (let i = 0; i < 30; i++) await act(async () => { await new Promise((r) => setTimeout(r, 0)); }); };
-const render = async () => { await act(async () => root.render(createElement(ScanPages, { childrenList: kids, parent: "parent", noticeAcknowledged: acknowledged }))); await settle(); };
+const render = async () => { await act(async () => root.render(createElement(ScanPages, { childrenList: kids, parent: "parent", noticeAcknowledged: acknowledged, undoMs }))); await settle(); };
 const choose = async (input: "camera" | "library", ...names: string[]) => {
   const el = host.querySelector<HTMLInputElement>(input === "camera" ? "input[capture]" : "input[multiple]")!;
   Object.defineProperty(el, "files", { configurable: true, value: names.map((n) => new File(["x"], n, { type: "image/jpeg" })) });
@@ -48,7 +52,8 @@ const text = () => document.body.textContent ?? "";
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  marking = null; putGate = null;
+  marking = null; putGate = null; undoMs = 60_000; filedTo = null; markingOn = false;
+  try { localStorage.setItem("unica.scan-tips.v1:parent", "seen"); } catch {}
   context.auth = null; context.prepare = null; context.code = null; checks = true; acknowledged = true; photos = new Map(); uploading = 0; mostAtOnce = 0; full = false; calls.length = 0;
   admitted = []; loseAdmissions = 0; saveFailures = 0; expired = new Set();
   losePuts = 0; loseStatus = false; listDown = false; kids = [{ id: "child", first_name: "Leah" }]; released = [];
@@ -59,7 +64,7 @@ beforeEach(() => {
     if (path.startsWith("/api/account/scans?child=")) {
       if (listDown) return Response.json({ error: "unavailable" }, { status: 503 });
       if (path.endsWith("=other")) return Response.json({ checks, pages: PAGES, photos: [] });
-      return Response.json({ checks, pages: PAGES, photos: [...photos.values()].map(({ two, ...p }) => { void two; return p; }) });
+      return Response.json({ checks, marking: markingOn, pages: PAGES, photos: [...photos.values()].map(({ two, ...p }) => { void two; return p; }) });
     }
     if (path === "/api/account/scans" && method === "POST") {
       const asked: string = JSON.parse(String(init!.body)).id;
@@ -97,6 +102,7 @@ beforeEach(() => {
       if ([...photos.values()].some((p) => p.pageId === page.id)) return Response.json({ error: "duplicate" }, { status: 422 });
       photos.set(id, { id, pageId: page.id, workbookId: "book", book: 1, pageNumber: page.pageNumber, state: "pending", check: checks ? "checking" : "none", reason: null, sentAt: null, createdAt: `2026-11-05T10:00:0${photos.size}Z`, two: name.startsWith("two") });
       if (losePuts > 0) { losePuts--; throw new TypeError("the answer was lost"); }
+      if (filedTo) { photos.delete(id); return Response.json({ photo: { id, state: "pending", ...filedTo, page: page.pageNumber } }); }
       return Response.json({ photo: { id, state: "pending" } });
     }
     if (method === "GET" && id && loseStatus) throw new TypeError("the answer was lost");
@@ -128,30 +134,44 @@ it("keeps both saved photos when the older concurrent list reply arrives last", 
   await render();
   await choose("library", "p10.jpg", "p11.jpg");
   expect(captured).toBe(true);
-  expect(text()).toContain("2 photos saved.");
+  expect(text()).toContain("2 of 4 pages scanned");
   await act(async () => releaseOld()); await settle();
   expect(photos.size).toBe(2);
-  expect(text()).toContain("2 photos saved.");
-  expect(text()).not.toContain("1 photo saved.");
+  expect(text()).toContain("2 of 4 pages scanned");
+  expect(text()).not.toContain("1 of 4 pages scanned");
 });
 
-it("starts with the tips, Take photos and Choose from your photos, and shows the photo notice once before the first photo", async () => {
-  acknowledged = false;
+it("shows the four tips on the first visit only, then Scan pages opens the camera after the photo notice (#915)", async () => {
+  acknowledged = false; localStorage.clear();
   await render();
-  expect(text()).toContain("Lay the book flat. Take one page, or two pages side by side with both fully in the photo.");
+  expect(text()).toContain("Fill the photo with the page");
+  expect(text()).toContain("Snap all your pages, then tap Done");
+  expect(text()).not.toMatch(/two pages/i);
   expect(button("Choose from your photos")).toBeDefined();
   const camera = host.querySelector<HTMLInputElement>("input[capture]")!;
   const opened = vi.spyOn(camera, "click").mockImplementation(() => {});
-  await act(async () => button("Take photos")!.click());
+  await act(async () => button("Scan pages")!.click());
   expect(opened).not.toHaveBeenCalled();
   expect(text()).toContain("Before you take a photo");
   await act(async () => button("Got it")!.click()); await settle();
   expect(opened).toHaveBeenCalledOnce();
   expect(acknowledged).toBe(true);
+  // The capture screen: the shutter, the photos button and Done.
+  expect(text()).toContain("Take a photo of the first page.");
+  expect(button("Take a photo")).toBeDefined();
+  await choose("camera", "p10.jpg");
+  expect(text()).toContain("Keep going: snap the next page, or tap Done.");
+  expect(host.querySelector('[aria-label="Page 10, ready"]')).not.toBeNull();
+  await act(async () => button("Done")!.click()); await settle();
+  // Every later visit opens on the day strip.
+  await act(async () => root.unmount()); root = createRoot(host); await render();
+  expect(text()).not.toContain("Fill the photo with the page");
+  expect(text()).toContain("Day 4");
 });
 
-it("opens the phone's photos for several at once from the start screen", async () => {
+it("opens the phone's photos for several at once from the capture screen", async () => {
   await render();
+  await act(async () => button("Scan pages")!.click());
   const library = host.querySelector<HTMLInputElement>("input[multiple]")!;
   expect(library.accept).toContain("image/jpeg");
   const opened = vi.spyOn(library, "click").mockImplementation(() => {});
@@ -168,9 +188,12 @@ it("takes several chosen photos two at a time, saves each with no confirm, and g
   expect([...photos.values()].every((p) => p.state === "saved")).toBe(true);
   expect(button("Save this page")).toBeUndefined();
   expect(text()).toContain("Day 4");
-  expect(text()).toContain("No photo yet: page 11");
-  expect(text()).toContain("3 photos. 3 pages are ready to send.");
-  expect(button("Send 3 pages for marking")).toBeDefined();
+  expect(button("Page 11, still to scan")).toBeDefined();
+  expect(button("Page 10, sending for marking")).toBeDefined();
+  // Auto-send (#915): the pages that passed are held here with Undo; nothing is sent yet.
+  expect(text()).toContain("3 pages sent for marking");
+  expect(button("Undo")).toBeDefined();
+  expect(calls).not.toContain("POST /api/account/scans/send");
   expect(logged.mock.calls.filter(([m]) => String(m).includes('unique "key"'))).toEqual([]);
 });
 
@@ -180,14 +203,14 @@ it("does not ask for another photo of a page that already has one, and focus nev
   await choose("library", "copy-p10.jpg");
   expect(text()).toContain("Already has a photo");
   expect(button("Take the photo again")).toBeUndefined();
-  await act(async () => button("Page 10: Ready")!.click()); await settle();
+  await act(async () => button("Page 10, sending for marking")!.click()); await settle();
   expect(document.activeElement?.textContent).toBe("Close");
 });
 
 it("closes an open photo with the corner Close button", async () => {
   await render();
   await choose("library", "p10.jpg", "p11.jpg");
-  await act(async () => button("Page 10: Ready")!.click()); await settle();
+  await act(async () => button("Page 10, sending for marking")!.click()); await settle();
   const x = document.querySelector<HTMLButtonElement>(".scan-sheet-x");
   expect(x?.getAttribute("aria-label")).toBe("Close");
   expect(document.querySelector(".scan-sheet")).not.toBeNull();
@@ -195,22 +218,39 @@ it("closes an open photo with the corner Close button", async () => {
   expect(document.querySelector(".scan-sheet")).toBeNull();
 });
 
-it("keeps a refused photo first with its reason while the other pages go on, and Send counts only ready pages", async () => {
+it("steps through the pages that need another photo while a page that passed is sent on its own after Undo's wait", async () => {
+  undoMs = 1;
   await render();
   await choose("library", "junk.jpg", "p10.jpg", "two-p11.jpg");
   expect(text()).toContain("2 pages need another photo");
-  expect(text()).toContain("Code not read");
-  expect(text()).toContain("More than one page");
-  expect(text()).toContain("Unknown page");
-  expect(button("Send this page for marking")).toBeDefined();
-  await act(async () => button("Send this page for marking")!.click()); await settle();
-  const sent = calls.find((c) => c === "POST /api/account/scans/send");
-  expect(sent).toBeDefined();
+  expect(text()).toContain("Your photo");
+  expect(text()).toContain("Like this");
+  const first = text().includes("Code not read") ? "Code not read" : "More than one page";
+  const second = first === "Code not read" ? "More than one page" : "Code not read";
+  expect(text()).not.toContain(second);
+  await act(async () => button("Next (1 of 2)")!.click());
+  expect(text()).toContain(second);
+  await settle();
+  expect(calls).toContain("POST /api/account/scans/send");
   expect([...photos.values()].filter((p) => p.sentAt).map((p) => p.pageId)).toEqual(["p10"]);
   expect(text()).toContain("1 page sent for marking. Marking is not ready yet. The pages wait here.");
-  expect(text()).toContain("Sent for marking");
-  // The refused pages stay in the stack.
+  // The refused pages stay.
   expect(text()).toContain("2 pages need another photo");
+});
+
+it("Undo keeps the pages here, unsent, and each can still be sent from its page", async () => {
+  undoMs = 200;
+  await render();
+  await choose("library", "p10.jpg", "p11.jpg");
+  expect(text()).toContain("2 pages sent for marking");
+  await act(async () => button("Undo")!.click());
+  await act(async () => { await new Promise((r) => setTimeout(r, 300)); }); await settle();
+  expect(calls).not.toContain("POST /api/account/scans/send");
+  expect(text()).toContain("Not sent. The pages wait here.");
+  expect(button("Send 2 pages for marking")).toBeDefined();
+  await act(async () => button("Page 10, sending for marking")!.click()); await settle();
+  await act(async () => button("Send for marking")!.click()); await settle();
+  expect([...photos.values()].filter((p) => p.sentAt).map((p) => p.pageId)).toEqual(["p10"]);
 });
 
 it.each([
@@ -221,6 +261,7 @@ it.each([
   marking = started;
   await render();
   await choose("library", "p10.jpg", "p11.jpg", "p12.jpg");
+  await act(async () => button("Undo")!.click());
   await act(async () => button("Send 3 pages for marking")!.click()); await settle();
   expect(text()).toContain(words);
 });
@@ -229,10 +270,10 @@ it.each([
   [1, "1 page sent for marking. Marks show here when they are ready."],
   [0, "1 page sent for marking. Marking is not ready yet. The pages wait here."],
 ])("the Send result for one page (%s started)", async (started, words) => {
-  marking = started;
+  marking = started; undoMs = 1;
   await render();
   await choose("library", "p10.jpg");
-  await act(async () => button("Send this page for marking")!.click()); await settle();
+  await settle();
   expect(text()).toContain(words);
 });
 
@@ -240,6 +281,7 @@ it.each([0, 1, 2, 3])("no Send result says \"started\" or \"later\" (%s of 3 sta
   marking = started;
   await render();
   await choose("library", "p10.jpg", "p11.jpg", "p12.jpg");
+  await act(async () => button("Undo")!.click());
   await act(async () => button("Send 3 pages for marking")!.click()); await settle();
   // The whole page after Send, so the message cannot hide a promise anywhere on it.
   expect(text()).toContain("3 pages sent for marking.");
@@ -252,14 +294,14 @@ it("retakes a refused page: the camera opens in the tap, and the old photo goes 
   const old = [...photos.keys()][0];
   const camera = host.querySelector<HTMLInputElement>("input[capture]")!;
   const opened = vi.spyOn(camera, "click").mockImplementation(() => {});
-  await act(async () => button("Take the photo again")!.click());
+  await act(async () => button("Retake page 11")!.click());
   expect(opened).toHaveBeenCalledOnce();
   expect(photos.has(old)).toBe(true);
   await choose("camera", "p11.jpg");
   expect(calls.indexOf(`DELETE /api/account/scans/${old}`)).toBeGreaterThan(-1);
   expect(photos.has(old)).toBe(false);
   expect([...photos.values()].map((p) => [p.pageId, p.check])).toEqual([["p11", "ready"]]);
-  expect(text()).toContain("We can read this page.");
+  expect(button("Page 11, sending for marking")).toBeDefined();
 });
 
 it("asks for no check and offers no Send unless the server says this family has checks", async () => {
@@ -267,7 +309,9 @@ it("asks for no check and offers no Send unless the server says this family has 
   await render();
   await choose("library", "p10.jpg", "p11.jpg");
   expect(calls.filter((c) => c.includes("/preview"))).toEqual([]);
-  expect(text()).toContain("2 photos saved.");
+  expect(text()).toContain("2 of 4 pages scanned");
+  expect(button("Page 10, saved")).toBeDefined();
+  expect(text()).not.toContain("sent for marking");
   expect(buttons().some((b) => /for marking/.test(b.textContent ?? ""))).toBe(false);
 });
 
@@ -283,7 +327,6 @@ it("reuses the reservation when Try again follows a lost admission answer, so no
   await choose("library", "p10.jpg", "p11.jpg");
   expect(admitted).toHaveLength(2);
   for (let tile = 0; tile < 2; tile++) {
-    await act(async () => button("Unknown page: Not sent")!.click());
     await act(async () => button("Try again")!.click());
     await settle();
   }
@@ -291,7 +334,7 @@ it("reuses the reservation when Try again follows a lost admission answer, so no
   expect(admitted).toHaveLength(4);
   expect(new Set(admitted).size).toBe(2);
   expect([...photos.keys()].sort()).toEqual([...new Set(admitted)].sort());
-  expect(text()).toContain("2 photos. 2 pages are ready to send.");
+  expect(text()).toContain("2 of 4 pages scanned");
 });
 
 it("takes a new reservation when the kept one has ended, so the photo is not stuck on Try again", async () => {
@@ -300,7 +343,6 @@ it("takes a new reservation when the kept one has ended, so the photo is not stu
   await choose("library", "p10.jpg");
   const lost = admitted[0];
   expired.add(lost);
-  await act(async () => button("Unknown page: Not sent")!.click());
   await act(async () => button("Try again")!.click());
   await settle();
   expect(admitted.slice(0, 2)).toEqual([lost, lost]);
@@ -314,7 +356,7 @@ it("gives the slot back when a photo with a lost admission answer is deleted", a
   loseAdmissions = 1;
   await render();
   await choose("library", "p10.jpg");
-  await act(async () => button("Unknown page: Not sent")!.click());
+  await act(async () => button("Open your photo of Unknown page")!.click());
   await act(async () => button("Delete this photo")!.click());
   await settle();
   expect(calls).toContain(`DELETE /api/account/scans/${admitted[0]}`);
@@ -330,7 +372,7 @@ it("asks to save again when a save fails after the upload, so the page reaches i
   expect(saves(id)).toBe(2);
   expect(photos.get(id)?.state).toBe("saved");
   expect(photos.get(id)?.check).toBe("ready");
-  expect(button("Send this page for marking")).toBeDefined();
+  expect(button("Page 10, sending for marking")).toBeDefined();
 });
 
 it("retries a failed save of a photo left pending on the next refresh, and not in a tight loop", async () => {
@@ -354,9 +396,7 @@ it("shows and deletes a sent photo when the only open page is one ready photo", 
   seed("sent", "p10", { sentAt: "2026-11-05T08:00:00Z" });
   seed("ready", "p11");
   await render();
-  // The one ready page still shows large.
-  expect(text()).toContain("We can read this page.");
-  expect(button("Send this page for marking")).toBeDefined();
+  expect(button("Page 11, sending for marking")).toBeDefined();
   const tile = button("Page 10 · Day 4: Sent for marking");
   expect(tile).toBeDefined();
   await act(async () => tile!.click());
@@ -396,7 +436,7 @@ it("shows a photo the list found once, with no refused entry left beside it", as
   await choose("library", "p10.jpg");
   expect(photos.size).toBe(1);
   expect(text()).not.toContain("Not sent");
-  expect(text()).toContain("1 photo. 1 page is ready to send.");
+  expect(text()).toContain("1 of 4 pages scanned");
 });
 
 it("asks the server to release when the list is down too, and the server keeps the photo", async () => {
@@ -446,17 +486,22 @@ it("a held old-account upload response cannot save, refill the stack or start a 
   expect(host.textContent).toContain("Your account changed"); expect(host.querySelectorAll("img")).toHaveLength(0);
 });
 
-it("keeps help available as photos are added and rejected without repeating the first-visit offer", async () => {
-  localStorage.clear();
+it("brings the tips back from How to scan, and says pages can go in any order", async () => {
   await render();
-  await act(async () => { button("Not now")!.click(); });
   await choose("library", "p10.jpg");
-  expect(text()).not.toContain("New to scanning?"); expect(button("How scanning works")).toBeTruthy();
-  await choose("library", "two-p11.jpg");
-  expect(text()).toContain("needs another photo");
-  await act(async () => { button("How scanning works")!.click(); });
-  expect(host.querySelector(".scan-help-dialog")?.hasAttribute("open")).toBe(true);
-  expect(text()).toContain("replace it");
+  expect(text()).not.toContain("Fill the photo with the page");
+  await act(async () => button("How to scan")!.click());
+  expect(text()).toContain("Fill the photo with the page");
+  expect(text()).toContain("Pages can be scanned in any order.");
+});
+
+it("shows Checking, never Got it, while a page is checked (#915)", async () => {
+  let open!: () => void;
+  putGate = new Promise<void>((resolve) => { open = resolve; });
+  await render();
+  await choose("library", "p10.jpg");
+  await act(async () => { open(); }); await settle();
+  expect(text()).not.toContain("Got it");
 });
 
 it("keeps photos the server has no room for in their place, says so, and sends them when there is room", async () => {
@@ -466,12 +511,11 @@ it("keeps photos the server has no room for in their place, says so, and sends t
   full = true;
   await choose("library", "p11.jpg", "p12.jpg", "p13.jpg");
   expect(text()).toContain("Waiting for room");
-  expect(text()).toContain("Send these pages for marking first, then add more.");
   expect(text()).not.toContain("Not sent");
   expect(photos.size).toBe(1);
   full = false;
-  await act(async () => button("Send this page for marking")!.click()); await settle();
-  await settle();
+  // The first page went for marking on its own; the waiting photos ask again and go.
+  await settle(); await settle();
   expect(text()).not.toContain("Waiting for room");
   expect([...photos.values()].map((p) => p.pageId).sort()).toEqual(["p10", "p11", "p12", "p13"]);
 });
@@ -506,7 +550,7 @@ it("shows the phone's early hint on a photo still sending whose code it could no
   expect(text()).not.toContain("Code may not read");
 });
 
-it("shows no hint when the phone reads the code, and a saved photo says Got it while it is checked (#915)", async () => {
+it("shows no hint when the phone reads the code (#915)", async () => {
   context.code = "read";
   let open!: () => void;
   putGate = new Promise<void>((resolve) => { open = resolve; });
@@ -515,4 +559,28 @@ it("shows no hint when the phone reads the code, and a saved photo says Got it w
   expect(text()).not.toContain("Code may not read");
   await act(async () => { open(); }); await settle();
   expect(text()).not.toContain("Code may not read");
+});
+
+it("says where a page went when its code filed it with a sibling's book (#915)", async () => {
+  filedTo = { child_id: "sibling", child: "Aisha" };
+  await render();
+  await choose("library", "p12.jpg");
+  expect(text()).toContain("Page 12 went to Aisha's pages.");
+  expect(text()).not.toMatch(/another photo|not this child/i);
+});
+
+it("ends on today's marks: a score per page linking to its results, and the day's score (#915)", async () => {
+  markingOn = true;
+  const today = new Date().toISOString();
+  seed("a", "p10", { sentAt: today, marks: { right: 7, scored: 8, total: 8, toPractise: 1, waiting: 0, complete: true } });
+  seed("b", "p11", { sentAt: today, marks: { right: 10, scored: 11, total: 11, toPractise: 1, waiting: 0, complete: true } });
+  seed("c", "p12", { sentAt: today, marks: null });
+  await render();
+  expect(text()).toContain("Leah got 17 of 19 right on today's pages · 1 page still marking");
+  expect(text()).toContain("7 of 8 · 1 to practise");
+  expect(text()).toContain("Marking…");
+  expect(host.querySelector('a[href="/account/scan/results/a"]')).not.toBeNull();
+  expect(button("Page 10, marked")).toBeDefined();
+  expect(button("Page 12, marking")).toBeDefined();
+  expect(text()).toContain("2 of 4 pages marked");
 });
