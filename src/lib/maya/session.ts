@@ -3219,6 +3219,12 @@ const NUMBER_WORD = "zero|one|two|three|four|five|six|seven|eight|nine|ten|eleve
 const NUMBER_RUN = new RegExp(`\\b(?:${NUMBER_WORD})(?:[\\s-]+(?:${NUMBER_WORD}))*\\b`, "g");
 const MATH_NUMBER_RUN = new RegExp(`\\b(?:${NUMBER_WORD})(?:[\\s-]+(?:${NUMBER_WORD}|and))*\\b`, "g");
 const MATH_LITERALS: Readonly<Record<string, string>> = { one: "1", ten: "10", hundred: "100", thousand: "1000", million: "1000000" };
+/** A pause in speech is no sentence end and no break in a sum. */
+const MATH_PAUSE = /\s*(?:\.{2,}|\u2026)\s*/g;
+/** Only hundred, thousand or million can join a compound number with "and". */
+const compoundRun = (run: string) => (/\b(?!(?:hundred|thousand|million)\b)[a-z]+\s+and\b/.test(run) ? null : plainNumber(run.replace(/\band\b/g, " ")));
+/** Join complete compounds before digitWords can split them; keep other words unchanged. */
+const joinCompounds = (words: string) => words.replace(MATH_NUMBER_RUN, run => (/\band\b/.test(run) ? String(compoundRun(run) ?? run) : run));
 /** A place name the commit rule reads ("in the tens", "the ones are 6"). */
 const OWN_PLACES = "ten thousands|hundred thousands|ones|tens|hundreds|thousands|tenths|hundredths|thousandths";
 
@@ -3521,8 +3527,9 @@ function ownTurn(s: Session, target: WorkedStep | null, value: AnswerValue, opti
   if (target && value.type === "number" && !ownOccurrence(pkg, target, value.value, digitWords((formToo ? statements : sentences).join(" ").replace(/\?/g, ".")))) return "not_said";
   // For the final answer, no sum after it that makes another number ("I got 66. 20 plus 30 plus 6 is 56.").
   if (!target && value.type === "number" && !opts.fractions) {
-    const first = text.search(new RegExp(`(?<![\\d.])${value.value}(?!\\d|\\.\\d)`));
-    for (const m of text.matchAll(EQUATION)) if ((m.index ?? 0) > first && !isKnown(number(Number(m[3])))) return "other_number";
+    const sumText = (/\bpoint\b/.test(kept) ? kept : digitWords(joinCompounds(kept))).replace(MATH_PAUSE, " ");
+    const first = sumText.search(new RegExp(`(?<![\\d.])${value.value}(?!\\d|\\.\\d)`));
+    for (const m of sumText.matchAll(EQUATION)) if ((m.index ?? 0) > first && !isKnown(number(Number(m[3])))) return "other_number";
   }
   // For the final answer, no other answer beside it: a number said as an answer ("It's 56", "my answer is 27") is the
   // value or a step's own value ("That's 6, so I get 66").
@@ -3550,8 +3557,8 @@ function ownTurn(s: Session, target: WorkedStep | null, value: AnswerValue, opti
   // Each sum: true (falseEquationResults), and a sum that makes a column's total adds that column's own operands.
   // Every sum is true: in a fraction call by falseEquationResults, else worked out here ("2 and 3 make 6" is false).
   // Literal math reads bare number words as values; complete compound runs keep their original meaning.
-  const groupMath = (words: string) => words.replace(/(\d),(?=\d{3}\b)/g, "$1").replace(MATH_NUMBER_RUN, run => {
-    const whole = plainNumber(run.replace(/\band\b/g, " "));
+  const groupMath = (words: string) => words.replace(MATH_PAUSE, " ").replace(/(\d),(?=\d{3}\b)/g, "$1").replace(MATH_NUMBER_RUN, run => {
+    const whole = compoundRun(run);
     return whole !== null ? String(whole) : run.replace(NUMBER_RUN, part => String(plainNumber(part) ?? MATH_LITERALS[part] ?? part));
   }).replace(/\b(?:equal\s+)?groups?\s+of\b/g, " times ");
   const math = groupMath(kept);
