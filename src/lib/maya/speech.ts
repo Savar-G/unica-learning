@@ -4,6 +4,7 @@
 // approval). Both sides are normalised the same way, never matched loosely: case, spaces and punctuation; a number in
 // digits or in words ("27", "twenty-seven"); the math signs as their spoken words; and contractions ("let's", "let us").
 // Pure TypeScript; it never throws.
+import { reuseInUse, reuseRead } from "./read-reuse";
 
 const ONES = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve",
   "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
@@ -79,6 +80,11 @@ export function saidAsApproved(said: string, approved: string): boolean {
 
 /** The word count used for every teaching turn, after speech normalisation. */
 export function speechWords(text: string): number {
+  const reuse = reuseInUse();
+  return reuse && typeof text === "string" ? reuseRead(reuse.words, text, () => speechWordsNow(text), (n) => n) : speechWordsNow(text);
+}
+
+function speechWordsNow(text: string): number {
   // A mixed number says "and" between its whole and fraction parts. A fraction's numerator and denominator
   // each use their own number words ("three eighths"). No spoken conjunction is removed.
   const explicit = text

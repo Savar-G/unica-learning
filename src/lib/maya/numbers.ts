@@ -6,6 +6,7 @@
 // Pure TypeScript.
 import type { AnswerValue } from "@/lib/question-package";
 import { writtenTimes } from "./clock-times";
+import { reuseInUse, reuseRead } from "./read-reuse";
 
 // Maps, not objects: a word such as "constructor" must never reach an inherited property.
 const WORD_VALUES = new Map<string, number>([
@@ -111,6 +112,12 @@ export interface NumbersRead {
 const TO_THE_PLACE = /^(?:ones?|tens?|hundreds?|thousands?|tenths?|hundredths?|thousandths?|top|bottom|left|right|next|column|columns|side|front|end|row|board|paper|page)$/;
 
 export function readNumbers(text: string, options?: ReadOptions): NumbersRead {
+  const reuse = reuseInUse();
+  const key = reuse ? readKey(text, options) : null;
+  return reuse && key !== null ? reuseRead(reuse.numbers, key, () => readNumbersNow(text, options), copyNumbers) : readNumbersNow(text, options);
+}
+
+function readNumbersNow(text: string, options?: ReadOptions): NumbersRead {
   text = prepared(text, options);
   if (text.includes(UNREAD_MARK)) return { values: [], unreadable: true, lastInOperation: false, notAnswer: [], operand: [] };
   // A hyphen between words joins a number ("sixty-six"); elsewhere it is a minus sign.
@@ -376,6 +383,58 @@ const prepared = (text: string, options?: ReadOptions) => {
  * C38-r1). "that one third" goes on to a fraction and stays as it is.
  */
 const POINTING_ONE = /\b(that|this)\s+one\b(?=\s*(?:[.,;:!?\n]|$))/gi;
+
+// ---------- Reads kept for one text session (read-reuse.ts) ----------
+
+/** readAnswer, and whether its final answer would be sure apart from the one-sentence rule (readAnswerParts). */
+type AnswerParts = { read: AnswerRead; sureApart: boolean };
+const FLAG_OPTIONS = ["fractions", "operands", "times"] as const;
+const LIST_OPTIONS = ["known", "carries", "saidBefore"] as const;
+const OPTION_NAMES = new Set<string>([...FLAG_OPTIONS, ...LIST_OPTIONS]);
+/**
+ * The exact key of a read: the text, U+0000, then every read option in a fixed order (a flag as t, f or unset; a list as
+ * each number, -0 kept apart from 0). The options part never holds U+0000, so the text is all before the last one.
+ * Null, so the read is made again and nothing is kept, for any other shape: a text that is no string, options that are
+ * not a plain object of data properties, an option code does not know, a flag that is not a boolean, a list that is not
+ * an array of numbers.
+ */
+function readKey(text: unknown, options: unknown): string | null {
+  if (typeof text !== "string") return null;
+  if (options === undefined) return `${text}\u0000`;
+  if (options === null || typeof options !== "object" || Object.getPrototypeOf(options) !== Object.prototype) return null;
+  for (const name of Reflect.ownKeys(options)) {
+    if (typeof name !== "string" || !OPTION_NAMES.has(name) || !("value" in Object.getOwnPropertyDescriptor(options, name)!)) return null;
+  }
+  const o = options as Record<string, unknown>;
+  let key = `${text}\u0000`;
+  for (const name of FLAG_OPTIONS) {
+    const v = o[name];
+    if (v === undefined) key += "\u0001u";
+    else if (typeof v === "boolean") key += v ? "\u0001t" : "\u0001f";
+    else return null;
+  }
+  for (const name of LIST_OPTIONS) {
+    const v = o[name];
+    if (v === undefined) { key += "\u0002u"; continue; }
+    if (!Array.isArray(v)) return null;
+    key += "\u0002l";
+    for (let i = 0; i < v.length; i++) {
+      if (!(i in v) || typeof v[i] !== "number") return null;
+      key += `${Object.is(v[i], -0) ? "-0" : String(v[i])},`;
+    }
+  }
+  return key;
+}
+/** A copy of one value, so a caller never holds a value another caller holds. */
+const copyValue = (v: AnswerValue): AnswerValue => (v.type === "compound" ? { ...v, parts: v.parts.map((p) => ({ ...p })) } : { ...v });
+const copyNumbers = (r: NumbersRead): NumbersRead =>
+  ({ values: r.values.map(copyValue), unreadable: r.unreadable, lastInOperation: r.lastInOperation, notAnswer: [...r.notAnswer], operand: [...r.operand] });
+/** A copy of an answer read. `kept` and `outside` stay one list when they were one list (an unreadable turn). */
+function copyAnswerParts(p: AnswerParts): AnswerParts {
+  const kept = p.read.kept.map(copyValue);
+  const outside = p.read.outside === p.read.kept ? kept : p.read.outside.map(copyValue);
+  return { read: { kept, final: p.read.final === null ? null : copyValue(p.read.final), choice: p.read.choice, sure: p.read.sure, outside }, sureApart: p.sureApart };
+}
 
 /** The denominator words code reads, one word each, singular and plural: "half" and "halves" are 2. */
 const DENOMINATORS = new Map<string, { value: number; plural: boolean }>();
@@ -1024,7 +1083,13 @@ export function readAnswer(said: string, options?: ReadOptions): AnswerRead {
  * that restates the accepted answer with its working ("Actually 66. 7 plus 9 is 16.") keeps that answer standing, and
  * never commits a new one (takenBack).
  */
-function readAnswerParts(said: string, options?: ReadOptions): { read: AnswerRead; sureApart: boolean } {
+function readAnswerParts(said: string, options?: ReadOptions): AnswerParts {
+  const reuse = reuseInUse();
+  const key = reuse ? readKey(said, options) : null;
+  return reuse && key !== null ? reuseRead(reuse.answers, key, () => readAnswerPartsNow(said, options), copyAnswerParts) : readAnswerPartsNow(said, options);
+}
+
+function readAnswerPartsNow(said: string, options?: ReadOptions): AnswerParts {
   const text = prepared(withoutSource(said), options);
   const committed = committedText(text);
   if (offersChoice(committed)) return { read: { kept: [], final: null, choice: true, sure: false, outside: [] }, sureApart: false };

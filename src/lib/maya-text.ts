@@ -51,6 +51,7 @@ import {
 import { modelInput, turnBrief, type MayaModel, type ModelInput } from "@/lib/maya-model";
 import { preparedReplies, preparedKey, normalizeTurn, MAX_PREPARES_PER_TURN, type PrepareHypothesis, type PreparedReply, type PrepareRecord } from "@/lib/maya-prepared";
 import type { SpendHandle, SpendSeam } from "@/lib/maya-spend-seam";
+import { readReuse, withReadReuse } from "@/lib/maya/read-reuse";
 import { sentencesOf } from "@/lib/maya/say-check";
 
 /**
@@ -287,8 +288,11 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   let checkpoint = resume?.checkpoint ? structuredClone(resume.checkpoint) : undefined;
   let nextRequestId = resume?.nextRequestId ?? Math.max(0, ...log.flatMap((e) => e.kind === "request" ? [e.requestId + 1] : []));
   let logBytes = new TextEncoder().encode(JSON.stringify(log)).byteLength;
+  // This call's own reads (read-reuse.ts): kept for this text session only, used only inside its synchronous steps.
+  const reads = readReuse();
+  const read = <T>(run: () => T): T => withReadReuse(reads, run);
   let folded: TextFold = checkpoint ? restoreTextCheckpoint(checkpoint) : initialTextState(initial);
-  for (const e of log) folded = foldTextEvent(folded, e);
+  for (const e of log) folded = read(() => foldTextEvent(folded, e));
   let needsRecovery = folded.request !== null;
   let active: AbortController | null = null;
   let generation = 0;
@@ -369,7 +373,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   };
   function append(e: TextLogEvent) {
     log.push(structuredClone(e));
-    folded = foldTextEvent(folded, log.at(-1)!);
+    folded = read(() => foldTextEvent(folded, log.at(-1)!));
     logBytes += new TextEncoder().encode(JSON.stringify(e)).byteLength + 1;
     if (log.length >= 64 || logBytes >= 65536) {
       checkpoint = saveTextCheckpoint(folded);
@@ -396,7 +400,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       proposal: folded.attempts.at(-1)!.proposal,
       refusal: folded.attempts.at(-1)!.refusal!,
     } : null;
-    const input = model.output === 3 ? turnBrief(folded.session, repair ? { said: repair.proposal, refusal: repair.refusal } : null) as unknown as ModelInput : modelInput(folded.session, repair);
+    const input = read(() => model.output === 3 ? turnBrief(folded.session, repair ? { said: repair.proposal, refusal: repair.refusal } : null) as unknown as ModelInput : modelInput(folded.session, repair));
     const at = Math.max(clock(), now());
     append({ kind: "request", at, requestId, source });
     if (folded.session.outcome || folded.request?.id !== requestId) return;
@@ -411,7 +415,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     // Round 4: code's plan for the turn is settled before the call; the "kind" the model writes first decides how its
     // sentences go out: math or help stream (math-only sentences at once, others after their own review, started the
     // moment the sentence is complete); any other kind reviews every sentence first; safety streams nothing.
-    const plan = model.output === 3 && options.onSayPart && !folded.sent?.length && folded.pending.length === 0 ? streamPlan(folded.session) : null;
+    const plan = model.output === 3 && options.onSayPart && !folded.sent?.length && folded.pending.length === 0 ? read(() => streamPlan(folded.session)) : null;
     const session = folded.session;
     let streamDone = false;
     let words = 0;
@@ -435,7 +439,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       const parts = sentencesOf(said.text);
       const complete = said.complete ? parts : parts.slice(0, -1);
       for (const sentence of complete.slice(seen)) {
-        const how = streamSentence(sentence, plan, seen, words, reviewAll, complete.slice(0, seen));
+        const how = read(() => streamSentence(sentence, plan, seen, words, reviewAll, complete.slice(0, seen)));
         if (how === "stop" || (how === "review" && !options.reviewer)) { streamDone = true; return; }
         seen++;
         words += sentence.split(/\s+/).filter(Boolean).length;
@@ -485,11 +489,11 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     if (!candidate) return;
     const requestId = candidate.requestId;
     // Priority readings are already folded before any external free-talk review.
-    const first = step(folded.session, { type: "proposal", at: now(), proposal: candidate.proposal, ...(folded.sent?.length ? { sent: [...folded.sent] } : {}) });
+    const first = read(() => step(folded.session, { type: "proposal", at: now(), proposal: candidate.proposal, ...(folded.sent?.length ? { sent: [...folded.sent] } : {}) }));
     const texts = [...new Set(first.refusal ? [] : first.effects.flatMap((e) => e.kind === "say" ? e.talk ?? [] : []).filter((t) => t.code === null && t.review === "not_run").map((t) => t.proposed))];
     const t0 = now();
     const before = folded.session;
-    const stance = before.conversational ? codeStance(before) : "none";
+    const stance = before.conversational ? read(() => codeStance(before)) : "none";
     // A sentence the stream already sent to its review is not reviewed twice (round 4).
     const reviews = options.reviewer ? Promise.all(texts.map(async (text) => ({ text, result: await (streamReviews.get(text) ?? runReview(options.reviewer!, reviewInput(before, text, stance), options.reviewTimeLimitMs ?? (before.conversational ? CONVERSATION_REVIEW_TIME_LIMIT_MS : REVIEW_TIME_LIMIT_MS), (error) => options.onError?.(error, { turn: folded.turns.length, source: "review" }))) }))) : Promise.resolve([]);
     const reviewed = reviews.then((results) => {
@@ -506,7 +510,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   }
   /** The close after the guidance, in code's words. Every fallback here is a close, which ends the call when accepted. */
   function closeByCode() {
-    for (const proposal of fallbacks(folded.session)) {
+    for (const proposal of read(() => fallbacks(folded.session))) {
       append({ kind: "fallback", at: now(), proposal });
       if (folded.session.outcome) return;
     }
@@ -519,7 +523,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       turnEndsAt = Date.now() + (options.turnBudgetMs ?? TURN_BUDGET_MS);
       const urgent = folded.session.safety.flagged || folded.session.contentProblem !== null;
       if (folded.childState === "child_speaking" && !urgent) break;
-      if (nextActs(folded.session).expect !== "maya") break;
+      if (read(() => nextActs(folded.session)).expect !== "maya") break;
       const { state, safety } = folded.session;
       if (options.channel === "chat" && state === "SAFETY" && safety.guided && !folded.candidate && !folded.attempts.length) {
         closeByCode();
@@ -542,7 +546,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       if (controller.signal.aborted) break;
       if (folded.attempts.length && !folded.session.outcome) {
         const refused = folded.attempts.filter((a) => a.refusal !== null).map((a) => a.proposal);
-        for (const proposal of fallbacks(folded.session, refused)) {
+        for (const proposal of read(() => fallbacks(folded.session, refused))) {
           append({ kind: "fallback", at: now(), proposal });
           if (!folded.attempts.length) break;
         }
