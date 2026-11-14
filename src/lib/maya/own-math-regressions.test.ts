@@ -51,3 +51,11 @@ it.each([
   expect(await solved(correct, true)).toBe("child");
   expect(await solved(wrong, true)).toBeNull();
 });
+
+it.each([
+  ["one hundred and two is one hundred and three", false],
+  ["one hundred and fifteen is eighty", false],
+  ["one hundred and fifteen is one hundred and fifteen", true],
+] as const)("checks compound scalar claims beside a whole-number final: %s", async (work, accepted) => {
+  expect(await solved(work, false)).toBe(accepted ? "child" : null);
+});

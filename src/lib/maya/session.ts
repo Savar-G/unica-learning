@@ -3526,8 +3526,10 @@ function ownTurn(s: Session, target: WorkedStep | null, value: AnswerValue, opti
   }
   if (target && value.type === "number" && !ownOccurrence(pkg, target, value.value, digitWords((formToo ? statements : sentences).join(" ").replace(/\?/g, ".")))) return "not_said";
   // For the final answer, no sum after it that makes another number ("I got 66. 20 plus 30 plus 6 is 56.").
+  // Use the same complete compound numbers in the sum and scalar-pair rules.
+  const joined = opts.fractions ? text : (/\bpoint\b/.test(kept) ? kept : digitWords(joinCompounds(kept))).replace(MATH_PAUSE, " ");
   if (!target && value.type === "number" && !opts.fractions) {
-    const sumText = (/\bpoint\b/.test(kept) ? kept : digitWords(joinCompounds(kept))).replace(MATH_PAUSE, " ");
+    const sumText = joined;
     const first = sumText.search(new RegExp(`(?<![\\d.])${value.value}(?!\\d|\\.\\d)`));
     for (const m of sumText.matchAll(EQUATION)) if ((m.index ?? 0) > first && !isKnown(number(Number(m[3])))) return "other_number";
   }
@@ -3565,8 +3567,8 @@ function ownTurn(s: Session, target: WorkedStep | null, value: AnswerValue, opti
   if (opts.fractions ? falseEquationResults(math, opts).length > 0 : [...math.matchAll(EQUATION)].some((m) => !trueEquation(m))) return "false_sum";
   // One number said to be another ("16 is 66.", "9 is 16."); a listed sum ("2, 3, 1 is 6") is a sum.
   // Read overlapping pairs too: an operand suffix ("1 is 6") must not hide a later false equality ("6 equals 5").
-  for (const m of text.matchAll(/(?=\b(\d+)\s+(?:is|equals|makes?|=)\s+(\d+)(?!\d|[./]\d))/g)) {
-    const before = text.slice(0, m.index ?? 0);
+  for (const m of joined.matchAll(/(?=\b(\d+)\s+(?:is|equals|makes?|=)\s+(\d+)(?!\d|[./]\d))/g)) {
+    const before = joined.slice(0, m.index ?? 0);
     if (/(?:\+|plus|and|add|added to|to|of|minus|-|−|take away|times|x|×|divided by|÷)\s*(?:the\s+)?$/.test(before)) continue;
     // "those two make 16": a count of the numbers, not a number said to be another.
     if (/\b(?:those|these|the|all|both|my|our)\s*$/.test(before)) continue;
