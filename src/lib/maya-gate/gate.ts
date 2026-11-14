@@ -434,15 +434,57 @@ function ownEquationsHold(sentence: string): boolean {
   return true;
 }
 
+/**
+ * The child's final answer, read from their stated words, apart from instructions they repeat and operands of their working.
+ * A stated final is a clause that begins "I got", "I get", "my answer is", "it's" or a bare number, in any sentence and in
+ * any order ("You said to add, so I got 66.", "My answer is 11. The hexagon has 6 lines."). Another stated final that is not
+ * the same value, or a claim that offers a choice, leaves no final. A value the child says only as an operand of an equation
+ * that makes another stated final ("I got 24. 20 plus 24 is 44.") is working, not a final. With no stated final, the shared
+ * reader reads the turn as it always did.
+ */
+/** "It's the 3" names the digit as the child's own result after a claim word; the shared reader treats "the 3" as a pointer. */
+const claimedDigit = (x: string) => x.replace(/\b((?:i\s+(?:got|get)|(?:my|the)\s+answer\s+(?:is|was)|it(?:'s|\s+is)|that(?:'s|\s+is))\s+)the\s+(?=\d)/g, "$1");
+
+function gateFinalRead(text: string, opts: ReturnType<typeof readOptionsFor>): ReturnType<typeof readAnswer> {
+  const base = readAnswer(text, opts);
+  const sentences = text.toLowerCase().replace(/[’‘]/g, "'").split(/(?<=[.!?])\s+/).filter(x => !/\?\s*$/.test(x));
+  const marker = /(?<![\w'])(?:i\s+(?:got|get)|(?:my|the)\s+answer\s+(?:is|was)|it(?:'s|\s+is)|that(?:'s|\s+is))\s/g;
+  const claims: string[] = [];
+  for (const sentence of sentences) {
+    if (/^(?:(?:yes|yeah|okay|ok|well|oh|so)[,\s]+)*\d/.test(sentence)) { claims.push(sentence); continue; }
+    const at = [...sentence.matchAll(marker)].map(m => m.index!);
+    at.forEach((start, i) => claims.push(sentence.slice(start, at[i + 1] ?? sentence.length)));
+  }
+  if (claims.length === 0) return base;
+  const reads = claims.map(claim => readAnswer(claimedDigit(claim), opts));
+  if (reads.some(r => r.choice)) return { ...base, final: null, choice: true };
+  // A value explicitly labelled as the answer cannot become incidental working in a later equation.
+  const labelled = new Set(reads.flatMap((r, i) => /^(?:my|the)\s+answer\s+(?:is|was)\b/.test(claims[i]) && r.final !== null ? [r.final] : []));
+  let values = reads.flatMap(r => (r.final === null ? [] : [r.final]));
+  const equations = sentences.flatMap(equationsOf);
+  const operand = (v: AnswerValue, w: AnswerValue) => v.type === "number" && w.type === "number" && equations.some(e =>
+    e.operands.some(o => sameSayValue(o, numberValue(v.value))) && sameSayValue(e.result, numberValue(w.value)));
+  values = values.filter(v => labelled.has(v) || !values.some(w => !sameValue(v, w) && !equivalent(v, w) && operand(v, w)));
+  if (values.length === 0) return base;
+  if (values.some(v => !sameValue(v, values[0]) && !equivalent(v, values[0]))) return { ...base, final: null, choice: true };
+  return { ...base, final: values[0] };
+}
+
 function gateOwnAnswer(text: string, value: AnswerValue, opts: ReturnType<typeof readOptionsFor>, confirmed = false): boolean {
   let t = text.toLowerCase().replace(/[’‘]/g, "'");
   if (/\b(?:think|maybe|guess|guessed|probably|perhaps|or|not sure|unsure|would say|mom|dad|teacher|brother|sister|friend|she|he|they|says|help|show me|tell me)\b/.test(t)) return false;
   if (confirmed) t = t.replace(/^yes[,\s]+i said\s+/, "");
+  t = claimedDigit(t);
   // An instruction quoted in a separate sentence is not a copied answer when it contains no form of that answer.
-  t = t.split(/(?<=[.!?])\s+/).filter(sentence => {
-    if (!/^you (?:said|told me|showed me)\b/.test(sentence)) return true;
-    const heard = readNumbers(sentence, opts);
-    return heard.unreadable || heard.values.some(v => sameValue(v, value) || equivalent(v, value));
+  // An instruction repeated before the child's own conclusion ("You said to add, so I got 66.") is dropped up to the comma
+  // only when it holds no form of the answer and no false equation, and no quote makes the rest a copy of Maya's words.
+  const heldAnswer = (x: string) => { const heard = readNumbers(x, opts); return heard.unreadable || heard.values.some(v => sameValue(v, value) || equivalent(v, value)); };
+  t = t.split(/(?<=[.!?])\s+/).map(sentence => {
+    const lead = /^(?:(?:oh|okay|ok|well|yes)[,\s]+)*you (?:said|told me|showed me)\b(.*?),\s+((?:so|and then|then)\s.*)$/.exec(sentence);
+    return lead && !/["“”]|(?:^|[^a-z])'|'(?=[^a-z]|$)/i.test(sentence) && !heldAnswer(lead[0].slice(0, lead[0].length - lead[2].length)) && ownEquationsHold(lead[1]) ? lead[2] : sentence;
+  }).filter(sentence => {
+    if (!/^(?:(?:oh|okay|ok|well|yes)[,\s]+)*you (?:said|told me|showed me)\b/.test(sentence) && !/\blike you (?:said|told me|showed me)\b/.test(sentence)) return true;
+    return heldAnswer(sentence);
   }).join(" ");
   // Another's number, a copy, a near amount, or Maya's own words said back (re-review P3): its own forms, no controller code.
   if (/\b(?:said|told|copied|copy|peeked|about|around|roughly|likely|according to|you showed)\b|\b[a-z]+\s*:\s*\d/.test(t)) return false;
@@ -784,10 +826,10 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
     const free = new Set<string>();
     for (const x of last?.talk ?? []) {
       if (x.shown !== x.proposed) continue;
-      const both = t.freeTalk && x.code === null && x.review === "pass";
+      const both = (conversational || t.freeTalk) && x.code === null && x.review === "pass";
       // A refused piece whose bank phrase happens to equal the proposed words is a bank phrase, not free talk.
       if (!both && sentences(x.shown).every(fromBank)) continue;
-      if (!both || claim) fail("free_talk_unchecked", `Maya turn ${i} said "${x.shown}" (code ${x.code ?? "passed"}, review ${x.review}, free talk ${t.freeTalk ? "on" : "off"}, math claim ${claim})`);
+      if (!both || (!conversational && claim)) fail("free_talk_unchecked", `Maya turn ${i} said "${x.shown}" (code ${x.code ?? "passed"}, review ${x.review}, free talk ${t.freeTalk ? "on" : "off"}, math claim ${claim})`);
       else sentences(x.shown).forEach((s) => free.add(s));
     }
     const said = m.output.say.flatMap(sentences);
@@ -903,7 +945,7 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
     if (act === "accept_answer" && op) {
       // The child's final answer: the last number kept outside their explanation (D-199), right for the question as it is
       // worded (#407: an equal fraction when the question does not ask for the simplest form).
-      const read = readAnswer(lastChild, opts);
+      const read = gateFinalRead(lastChild, opts);
       const yes = askedHeard !== null && GATE_YES.test(lastChild) ? askedHeard : null;
       // A claim's committed word, by the claim reader's allow-list: a bare word is never one, a plain yes to "Did you say
       // ...?" never, and a plain yes to "Is no the word you circle?" commits that word.

@@ -34,6 +34,7 @@ export const PATTERN_PRACTICE: PracticeCase[] = cards.map((card, i) => {
     expected: card.expected, dimensions: ["J01", "J02", "J03", "J04", "J05", "J06"], reasons: ["solved"],
     validity: { stages: [{ name: "known work", opens: "start", numbers: [...printed, ...(i === 1 ? [52] : i === 0 ? [80] : i === 3 ? [72] : [])] },
       // PTP2's repeated-addition method includes 8 + 8 = 16 before 16 + 8 = 24.
-      { name: "after help", opens: "help", numbers: [...numbers, ...(i === 1 ? [16] : [])] }], mustSay: [{ pattern: i === 2 ? /stuck/i : /\d/, within: 1, what: "gives the required first turn" }] },
+      { name: "after help", opens: "help", numbers: [...numbers, ...(i === 1 ? [16] : [])] },
+      ...(i === 3 && answer !== null ? [{ name: "remaining addition after the product", opens: { childTurn: 2 }, numbers: [answer] }] : [])], mustSay: [{ pattern: i === 2 ? /stuck/i : /\d/, within: 1, what: "gives the required first turn" }] },
     fakeScript: card.fakeScript };
 });
