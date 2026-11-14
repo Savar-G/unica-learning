@@ -27,24 +27,34 @@ describe("who the photo check's store admits (#856)", () => {
   }
   const result = { state: "unknown", version: 1, model: "m", error: "timeout", ms: 1, at: "t" } as const;
 
-  it("leaves a test family or an admin to the database's own check, and admits a family on a running plan by the decision", async () => {
+  it("passes the decision to the database as it is: test, families or closed (#953 review)", async () => {
     const test = await store({ open: true, reason: "test_family" });
     expect(await test.s.eligible("pa")).toBe(true);
     await test.s.claim({ parent: "pa", photo: "ph", token: "t" });
     await test.s.finish({ parent: "pa", photo: "ph", token: "t", result });
-    expect(test.calls.map((c) => [c.fn, c.args.p_family])).toEqual([["claim_photo_check", false], ["finish_photo_check", false]]);
+    expect(test.calls.map((c) => [c.fn, c.args.p_access])).toEqual([["claim_photo_check", "test"], ["finish_photo_check", "test"]]);
     const plan = await store({ open: true, reason: "open" });
     await plan.s.claim({ parent: "pa", photo: "ph", token: "t" });
-    expect(plan.calls[0].args.p_family).toBe(true);
+    await plan.s.finish({ parent: "pa", photo: "ph", token: "t", result });
+    expect(plan.calls.map((c) => c.args.p_access)).toEqual(["families", "families"]);
+    const ending = await store({ open: true, reason: "ending_until_end" });
+    await ending.s.claim({ parent: "pa", photo: "ph", token: "t" });
+    expect(ending.calls[0].args.p_access).toBe("families");
   });
 
   it("admits no one when the decision is closed or cannot be read, and refuses another photo", async () => {
     const closed = await store({ open: false, reason: "not_test_family" });
     expect(await closed.s.eligible("pa")).toBe(false);
     await closed.s.claim({ parent: "pa", photo: "ph", token: "t" });
-    expect(closed.calls[0].args.p_family).toBe(false);
+    // An explicit denial stays a denial: never "test", which the database would admit for a test family.
+    expect(closed.calls[0].args.p_access).toBe("closed");
+    const off = await store({ open: false, reason: "off" });
+    await off.s.finish({ parent: "pa", photo: "ph", token: "t", result });
+    expect(off.calls[0].args.p_access).toBe("closed");
     const failed = await store(new Error("read"));
     expect(await failed.s.eligible("pa")).toBe(false);
+    await failed.s.claim({ parent: "pa", photo: "ph", token: "t" });
+    expect(failed.calls[0].args.p_access).toBe("closed");
     await expect(failed.s.claim({ parent: "pa", photo: "other", token: "t" })).rejects.toThrow(/another photo/);
   });
 });
