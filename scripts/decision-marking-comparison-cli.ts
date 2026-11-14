@@ -3,6 +3,7 @@
 // Reads the set folder and never writes into it. Writes under .workbook-sample/decision-comparison/ (gitignored).
 // The key comes only from DECISIONS_OPENROUTER_API_KEY in the process environment; this script never prints it.
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -15,6 +16,7 @@ import {
   comparisonItems,
   comparisonWinner,
   physicalComparisonSet,
+  checkPhysicalImages,
   physicalShortfall,
   winnerMarkdown,
   costCap,
@@ -85,7 +87,9 @@ async function main() {
   let physical: PhysicalSet | null = null;
   let manifest: SetManifest;
   if (v.physical) {
-    physical = physicalComparisonSet(JSON.parse(await readFile(resolve(set, "set.json"), "utf8")) as PhysicalSetFile);
+    const file = JSON.parse(await readFile(resolve(set, "set.json"), "utf8")) as PhysicalSetFile;
+    physical = physicalComparisonSet(file, { allowFake: fake });
+    checkPhysicalImages(file, (path) => createHash("sha256").update(readFileSync(resolve(set, path))).digest("hex"));
     manifest = physical.manifest;
   } else manifest = JSON.parse(await readFile(resolve(set, "manifest.json"), "utf8")) as SetManifest;
   const { items, leftOut } = comparisonItems(manifest);
@@ -171,7 +175,7 @@ async function main() {
   }
 
   if (cap.stopped) console.log("The run stopped at the cost cap: a cost was above its bound, so the pinned prices are out of date.");
-  const report = comparisonReport({ items, leftOut, photos: manifest.photos.length, fake, results, cap, ...(physical ? { physical: { refused: physical.refused, devices: physical.devices, bothPhones: physical.bothPhones } } : {}) });
+  const report = comparisonReport({ items, leftOut, photos: manifest.photos.length, fake, results, cap, ...(physical ? { physical: { refused: physical.refused, devices: physical.devices, bothPhones: physical.bothPhones, proofClass: physical.proofClass } } : {}) });
   await writeFile(resolve(out, "report.json"), JSON.stringify(report, null, 2) + "\n");
   let md = reportMarkdown(report);
   if (v["synthetic-report"]) {

@@ -10,6 +10,8 @@
 // least 40 wrong and 20 blank items, and `comparisonWinner` names the model and threshold that pass on both sets.
 // Local tool only: made-up child, no real child data, no database. The CLI is scripts/decision-marking-comparison-cli.ts.
 import { cropPlan } from "@/lib/scan-calibration";
+import { SYNTHETIC_IDS } from "@/lib/scan-marking-comparison";
+import { FROZEN_KIT } from "@/lib/scan-marking-physical";
 import { markingRegions, type MarkingRegion } from "@/lib/scan-marking-regions";
 import { packageItem, valueText, type QuestionPackage } from "@/lib/question-package";
 import type { Box, PrintedRegion } from "@/lib/workbook-print-contract";
@@ -137,8 +139,10 @@ export const PHYSICAL_MIN_ITEMS = { wrong: 40, blank: 20 } as const;
 /** The parts of scan-marking-physical's set.json (version robin-physical-v2) this comparison reads. */
 export interface PhysicalSetFile {
   version: string;
+  proofClass?: string;
+  kit?: Readonly<Record<string, string>>;
   devices?: readonly string[];
-  photos: readonly { mapping: { file: string; device: string }; status: string; reason: string | null; photo: SetPhoto }[];
+  photos: readonly { mapping: { file: string; device: string }; status: string; reason: string | null; photo: SetPhoto & { image: SetPhoto["image"] & { sha256?: string } } }[];
 }
 export interface PhysicalSet {
   manifest: SetManifest;
@@ -147,18 +151,36 @@ export interface PhysicalSet {
   devices: string[];
   /** The spec's set is both phones; an iPhone-only set is recorded as such and never stands in for it. */
   bothPhones: boolean;
+  /** The source set's proof class, kept in the report: `physical-input` real photos, or a `local-fake` control. */
+  proofClass: "physical-input" | "local-fake";
 }
 
 /** The real Robin set from scan-marking-physical's set.json: the photos the page check accepted, each named by its file. */
-export function physicalComparisonSet(file: PhysicalSetFile): PhysicalSet {
+export function physicalComparisonSet(file: PhysicalSetFile, o: { allowFake?: boolean } = {}): PhysicalSet {
   if (file?.version !== "robin-physical-v2" || !Array.isArray(file.photos)) throw new Error("physical-set-required");
+  // #853 review: only the real photos of the frozen, made-up Robin booklet. A local fake set is a control, read only by a
+  // fake run; any other proof class, kit or child is refused, all before a key is read.
+  const proofClass = file.proofClass;
+  if (proofClass !== "physical-input" && !(proofClass === "local-fake" && o.allowFake)) throw new Error("physical-set-proof-class");
+  const kit = file.kit ?? {};
+  if (Object.keys(kit).length !== Object.keys(FROZEN_KIT).length || Object.entries(FROZEN_KIT).some(([k, v]) => kit[k] !== v)) throw new Error("physical-set-not-the-robin-kit");
   const ready = file.photos.filter((p) => p.status === "ready");
-  const devices = [...new Set(file.devices?.length ? file.devices : file.photos.map((p) => p.mapping.device))].sort();
+  for (const p of ready) {
+    // The kit's items: the made-up Robin workbook's, and its three made-up scalar items (fraction, decimal, word).
+    if (!p.photo.truth.length || p.photo.truth.some((t: { itemId: string }) => !t.itemId.startsWith(`${SYNTHETIC_IDS.workbook}:`) && !/^synthetic-scalar-[1-3]$/.test(t.itemId))) throw new Error("physical-set-not-robin");
+    if (!/^[0-9a-f]{64}$/.test(p.photo.image.sha256 ?? "")) throw new Error("physical-set-image-hash-required");
+  }
+  const devices = [...new Set(file.devices?.length ? file.devices : ready.map((p) => p.mapping.device))].sort();
   return {
     manifest: { synthetic: false, identity: { containsRealData: false }, photos: ready.map((p) => ({ ...p.photo, id: p.mapping.file })) },
     refused: file.photos.filter((p) => p.status !== "ready").map((p) => ({ file: p.mapping.file, reason: p.reason })),
-    devices, bothPhones: devices.includes("iphone") && devices.includes("android"),
+    devices, bothPhones: devices.includes("iphone") && devices.includes("android"), proofClass,
   };
+}
+
+/** Each asked photo's image file must have the hash its set recorded: checked before a key is read. */
+export function checkPhysicalImages(file: PhysicalSetFile, sha256Of: (path: string) => string): void {
+  for (const p of file.photos.filter((x) => x.status === "ready")) if (sha256Of(p.photo.image.path) !== p.photo.image.sha256) throw new Error(`physical-set-image-changed: ${p.mapping.file}`);
 }
 
 /** The real set's shortfall against PHYSICAL_MIN_ITEMS, as a refusal reason; null when it has enough. */
@@ -414,7 +436,7 @@ export interface ComparisonReport {
   version: number;
   synthetic: boolean;
   /** The real set's facts (#853); null for the synthetic set. */
-  physical: { devices: string[]; bothPhones: boolean; refused: { file: string; reason: string | null }[] } | null;
+  physical: { devices: string[]; bothPhones: boolean; proofClass: "physical-input" | "local-fake"; refused: { file: string; reason: string | null }[] } | null;
   fake: boolean;
   photos: number;
   items: { right: number; wrong: number; blank: number; uncertain: number };
@@ -428,7 +450,7 @@ export interface ComparisonReport {
 export function comparisonReport(o: { items: readonly ComparisonItem[]; leftOut: readonly LeftOut[]; photos: number; fake: boolean; results: Readonly<Record<string, readonly AskResult[]>>; cap?: CostCap; physical?: Omit<PhysicalSet, "manifest"> }): ComparisonReport {
   const count = (result: string) => o.items.filter((i) => i.result === result).length;
   return {
-    version: COMPARISON_VERSION, synthetic: !o.physical, physical: o.physical ? { devices: o.physical.devices, bothPhones: o.physical.bothPhones, refused: o.physical.refused } : null,
+    version: COMPARISON_VERSION, synthetic: !o.physical, physical: o.physical ? { devices: o.physical.devices, bothPhones: o.physical.bothPhones, proofClass: o.physical.proofClass, refused: o.physical.refused } : null,
     fake: o.fake, photos: o.photos,
     items: { right: count("right"), wrong: count("wrong"), blank: count("blank"), uncertain: count("uncertain") },
     requestsPerModel: o.items.reduce((n, i) => n + i.regions.length, 0),

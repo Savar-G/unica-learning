@@ -1,3 +1,4 @@
+import { FROZEN_KIT } from "@/lib/scan-marking-physical";
 import { describe, expect, it } from "vitest";
 import fixtures from "./scan-marking-comparison.test-fixtures.json";
 import type { QuestionPackage } from "@/lib/question-package";
@@ -13,7 +14,7 @@ import {
   comparisonItems,
   comparisonReport,
   comparisonWinner,
-  physicalComparisonSet,
+  physicalComparisonSet, checkPhysicalImages,
   physicalShortfall,
   winnerMarkdown,
   costCap,
@@ -340,10 +341,10 @@ describe("the cost cap (#851 review, finding 3 and re-check A and B)", () => {
 describe("the real-photo set (#853)", () => {
   const entry = (file: string, device: string, status: string, results: [TruthResult, TruthResult, TruthResult]) => ({
     mapping: { file, device }, status, reason: status === "ready" ? null : "qr",
-    photo: { ...photo(`synthetic-physical-${file}`, results), truth: [...photo("x", results).truth.slice(0, 3), { itemId: page[3].package.id, format: "two-ways", result: "right" as TruthResult }] },
+    photo: { ...photo(`synthetic-physical-${file}`, results), image: { ...photo(`synthetic-physical-${file}`, results).image, sha256: "a".repeat(64) }, truth: [...photo("x", results).truth.slice(0, 3), { itemId: page[3].package.id, format: "two-ways", result: "right" as TruthResult }] },
   });
   const file = (devices = ["iphone"]): PhysicalSetFile => ({
-    version: "robin-physical-v2", devices,
+    version: "robin-physical-v2", proofClass: "physical-input", kit: { ...FROZEN_KIT }, devices,
     photos: [entry("iphone-page-3.jpg", "iphone", "ready", ["right", "wrong", "blank"]), entry("iphone-page-3-blurry.jpg", "iphone", "refused", ["right", "right", "right"])],
   });
 
@@ -355,6 +356,22 @@ describe("the real-photo set (#853)", () => {
     expect(set).toMatchObject({ devices: ["iphone"], bothPhones: false });
     expect(physicalComparisonSet(file(["iphone", "android"])).bothPhones).toBe(true);
     expect(() => physicalComparisonSet({ ...file(), version: "robin-physical-v1" })).toThrow(/physical-set-required/);
+  });
+
+  it("refuses anything but the real photos of the Robin kit before a key is read (#853 review)", () => {
+    // A local fake control only with a fake run; the proof class is kept for the report.
+    expect(() => physicalComparisonSet({ ...file(), proofClass: "local-fake" })).toThrow(/physical-set-proof-class/);
+    expect(physicalComparisonSet({ ...file(), proofClass: "local-fake" }, { allowFake: true }).proofClass).toBe("local-fake");
+    expect(physicalComparisonSet(file()).proofClass).toBe("physical-input");
+    expect(() => physicalComparisonSet({ ...file(), proofClass: undefined })).toThrow(/physical-set-proof-class/);
+    expect(() => physicalComparisonSet({ ...file(), kit: { ...FROZEN_KIT, "rendered-workbook.json": "0".repeat(64) } })).toThrow(/not-the-robin-kit/);
+    const other = file(); const first = other.photos[0];
+    const child = { ...other, photos: [{ ...first, photo: { ...first.photo, truth: first.photo.truth.map((t) => ({ ...t, itemId: t.itemId.replace(/^[^:]+/, "11111111-1111-4111-8111-111111111111") })) } }] };
+    expect(() => physicalComparisonSet(child)).toThrow(/physical-set-not-robin/);
+    const unhashed = { ...other, photos: [{ ...first, photo: { ...first.photo, image: { ...first.photo.image, sha256: undefined } } }] };
+    expect(() => physicalComparisonSet(unhashed)).toThrow(/image-hash-required/);
+    expect(() => checkPhysicalImages(file(), () => "b".repeat(64))).toThrow(/image-changed/);
+    expect(() => checkPhysicalImages(file(), () => "a".repeat(64))).not.toThrow();
   });
 
   it("leaves a labelled two-ways item out (our team marks it) instead of asking its method regions", () => {
