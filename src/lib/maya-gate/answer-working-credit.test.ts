@@ -36,6 +36,8 @@ it.each([
   [10, "I got 10. I multiplied 3 by 4 to get 12."],
   [10, "I got 10. I divided 36 by 3 to get 12."],
   [10, "I got 10. I added 7.5 and 9.5 to get 17."],
+  [10, "I got 10. I added 1,000 and 2,000 to get 3,000."],
+  [10, "I got 10. I subtracted 1,000 from 3,000 to get 2,000."],
 ] as const)("keeps the child's computed final %i beside instruction or working: %s", (value, text) => {
   expect(failures(value, text)).toEqual([]);
 });
@@ -59,6 +61,8 @@ it.each([
   "I got 10. I multiplied 3 by 4 to get 11.",
   "I got 10. I divided 36 by 0 to get 12.",
   "I got 10. I added 7.5 and 9.5 to get 17.5.",
+  "I got 10. I added 1,000 and 2,000 to get 3,001.",
+  "I got 10. I subtracted 1,000 from 3,000 to get 2,001.",
 ])("still rejects improper acceptance: %s", text => {
   expect(failures(10, text)).toContainEqual(expect.objectContaining({ code: "accepted_wrong_answer" }));
 });
