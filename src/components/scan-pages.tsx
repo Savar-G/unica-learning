@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import Link from "next/link";
 import Image from "next/image";
 import { browserClient } from "@/lib/supabase-browser";
-import { prepareScanPhoto } from "@/lib/scan-photo-browser";
-import { addingCount, buildStack, refusalCopy, roomNote, sendLabel, stackSummary, waitingNote, type DayPage, type StackPhoto, type StackTile, type StackUpload, type UploadRefusal } from "@/lib/scan-stack";
+import { phoneCodeCheck, prepareScanPhoto } from "@/lib/scan-photo-browser";
+import { addingCount, buildStack, refusalCopy, roomNote, sendLabel, spreadNote, stackSummary, waitingNote, type DayPage, type StackPhoto, type StackTile, type StackUpload, type UploadRefusal } from "@/lib/scan-stack";
 import { SCANNING_COOKIE, SCANNING_SECONDS } from "@/lib/scan-tab";
 import { scanEventTicket } from "@/lib/scan-track";
 import { ScanHelp } from "@/components/scan-help";
@@ -28,7 +28,7 @@ const GUIDE_WORDS = { done: "done", retake: "needs another photo", todo: "not sc
 
 export type ScanListing = { marking?: boolean; checks: boolean; photos: StackPhoto[]; pages: DayPage[] };
 
-const UPLOAD_REFUSALS: readonly string[] = ["qr", "page", "duplicate", "image", "size", "frequency", "quota"];
+const UPLOAD_REFUSALS: readonly string[] = ["qr", "page", "duplicate", "flat", "image", "size", "frequency", "quota"];
 const uploadRefusal = (code: string): UploadRefusal => (UPLOAD_REFUSALS.includes(code) ? code as UploadRefusal : "unavailable");
 /** What the server says of a photo id that can no longer take an upload: the lease ended or the photo went. A new id is needed. */
 const ENDED: readonly string[] = ["expired", "rejected", "deleted", "refused"];
@@ -62,7 +62,7 @@ const ICONS = {
 };
 
 const STATUS_WORDS: Record<StackTile["status"], string> = {
-  adding: "Sending", waiting: "Waiting to send", checking: "Checking", ready: "Ready", saved: "Saved", refused: "Needs another photo", unavailable: "Cannot be checked", sent: "Sent for marking",
+  adding: "Sending", waiting: "Waiting to send", checking: "Got it · checking", ready: "Ready", saved: "Saved", refused: "Needs another photo", unavailable: "Cannot be checked", sent: "Sent for marking",
 };
 
 /** A bottom sheet on a phone, a centred dialog on a wider screen. A Close button, Esc and the backdrop close it. */
@@ -121,6 +121,8 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const [uploads, setUploads] = useState<Local[]>([]);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const [unavailable, setUnavailable] = useState<Set<string>>(() => new Set());
+  // Second pages of two-page photos the server could not keep (#965): named once, until the parent photographs them.
+  const [unkept, setUnkept] = useState<number[]>([]);
   const [sheet, setSheet] = useState<{ kind: "add" } | { kind: "notice"; then: "camera" | "library" | null } | { kind: "tile"; key: string } | null>(null);
   const [acknowledged, setAcknowledged] = useState(noticeAcknowledged);
   const [message, setMessage] = useState<{ text: string; failed: boolean } | null>(null);
@@ -150,6 +152,8 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const fetching = useRef(new Set<string>());
   const urls = useRef(new Map<string, string>());
   const replacing = useRef<string | null>(null);
+  /** The phone's early code looks (#915), one photo at a time so several new photos never decode at once. */
+  const codeLooks = useRef<Promise<void>>(Promise.resolve());
   const name = childrenList.find((c) => c.id === child)?.first_name ?? "your child";
 
   const putUploads = useCallback((next: Local[]) => { uploadsRef.current = next; setUploads(next); }, []);
@@ -302,6 +306,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     let body: Blob;
     try { body = await prepareScanPhoto(u.file); } catch (error) { return codeOf(error) === "size" ? "size" : "image"; }
     if (version !== epoch.current || !sessionCurrent.current) return "unavailable";
+    lookForCode(u.key, body, version);
     // The same id again after a lost answer: the server answers with that photo's state and takes no second slot.
     let id = u.reservation ?? crypto.randomUUID();
     for (let fresh = false; ; fresh = true) {
@@ -317,6 +322,18 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     // A failed save is asked again when the list next shows this photo as pending.
     await api(`/api/account/scans/${id}`, { method: "POST" }).catch(() => { if (version === epoch.current) savedAsked.current.delete(id); });
     return { id, thumb: body };
+  }
+
+  /**
+   * The phone's early look at the page code while the photo sends (#915). It never holds the upload back: an unread code
+   * only adds a hint to the tile, and the server reads the code again and alone decides.
+   */
+  function lookForCode(key: string, body: Blob, version: number) {
+    const sending = () => version === epoch.current && uploadsRef.current.some((x) => x.key === key && x.status !== "refused");
+    codeLooks.current = codeLooks.current.then(async () => {
+      if (!sending()) return;
+      if (await phoneCodeCheck(body) === "unread" && sending()) patchUpload(key, { codeUnread: true });
+    }).catch(() => {});
   }
 
   /**
@@ -350,6 +367,8 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       try {
         const data = admission.state === "reserved" ? await api(`/api/account/scans/${id}`, { method: "PUT", body }, UPLOAD_TIMEOUT_MS) : await api(`/api/account/scans/${id}`);
         const state = data.photo?.state;
+        const second = data.spread as { state?: string; page?: number } | undefined;
+        if (second?.page && version === epoch.current && !["saved", "duplicate"].includes(second.state ?? "")) setUnkept((pages) => pages.includes(second.page!) ? pages : [...pages, second.page!].sort((a, b) => a - b));
         if (state === "pending" || state === "saved") return "sent";
         throw new Error(state === "processing" ? "uncertain" : ENDED.includes(state) ? state : "image");
       } catch (error) {
@@ -452,6 +471,8 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const photos = useMemo(() => (listing?.photos ?? []).map((p) => (unavailable.has(p.id) && p.check === "checking" ? { ...p, check: "unavailable" as const } : p)), [listing, unavailable]);
   const checks = Boolean(listing?.checks);
   const stack = useMemo(() => buildStack({ photos, uploads, pages: listing?.pages ?? [], checks }), [photos, uploads, listing, checks]);
+  // A page named as not kept stops being named once a photo of it is in the stack.
+  const unkeptNote = spreadNote(unkept.filter((n) => !photos.some((p) => listing?.pages.find((d) => d.id === p.pageId)?.pageNumber === n)));
   const tiles = [...stack.refused, ...stack.addingTiles, ...stack.days.flatMap((d) => d.tiles), ...stack.sent];
   const openTile = sheet?.kind === "tile" ? tiles.find((t) => t.key === sheet.key) ?? null : null;
   const thumbOf = (t: StackTile) => thumbs[t.photoId ?? t.uploadKey ?? ""];
@@ -512,9 +533,12 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       <h2>{refusalCopy(openTile.refusal).title}</h2>
       <p>{refusalCopy(openTile.refusal).action}</p>
       {openTile.uploadKey && openTile.refusal === "unavailable"
-        ? <button type="button" className="btn" onClick={() => { patchUpload(openTile.uploadKey!, { status: "waiting", reason: undefined }); setSheet(null); pump(); }}>Try again</button>
+        ? <button type="button" className="btn" onClick={() => { patchUpload(openTile.uploadKey!, { status: "waiting", reason: undefined, codeUnread: undefined }); setSheet(null); pump(); }}>Try again</button>
         : phone && <button type="button" className="btn" onClick={() => open(openTile.uploadKey ? "library" : "camera", retakeKey(openTile))}>{openTile.uploadKey ? "Choose another photo" : "Take another photo"}</button>}
       {!phone && <p className="small">Take it again with your phone. The page waits there.</p>}
+    </> : openTile.hint === "code" && openTile.status !== "waiting" ? <>
+      <h2>{refusalCopy("qr").title}</h2>
+      <p>This photo is still sending, and we will read the code again. If we still cannot read it, we will ask you for another photo.</p>
     </> : openTile.status === "waiting" ? <>
       <h2>{openTile.reason ? "There is no room for this photo yet." : "This photo is waiting its turn."}</h2>
       <p>{roomNote(stack) ?? "It keeps its place and goes on its own."}</p>
@@ -610,6 +634,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     {help}
     {childPicker}
     {listing && stackSummary(stack, checks) && <p className="lead scan-summary">{stackSummary(stack, checks)}</p>}
+    {unkeptNote && <p className="scan-spread-note" role="status">{unkeptNote}</p>}
     {focusLine}
     {status}
     {stack.guide && <section className="scan-guide" aria-label={`${stack.guide.day} pages`}>

@@ -38,3 +38,7 @@ The generator owns the follow-up Schedule binding adopted from the dashboard lan
 ## Proof boundaries
 
 The receipt/clock and reminder-episode migrations have prior local concurrent PostgreSQL proof and independent approval. The reminder schema is hosted as20261107073840; RLS, ACL, empty search paths, preserved email constraints and official types were checked. Positive hosted lifecycle, application-role reads, reminder delivery/unsubscribe and the final combined gate remain separate checks. No customerR2, comment closure, print approval or Mark printed is permitted without the roadmap relay.
+
+## A family the run cannot email (#962)
+
+When a due family has no usable email address, the reminders run does not claim or use its episode. It notes the family in `public.workbook_scan_reminder_unreachable` (service function `note_workbook_scan_reminder_unreachable`) with an md5 of the address it had, and the reminder due list (`_workbook_scan_inactivity_recovery`, kind `reminder-due`) leaves that family out until its address changes (compared trimmed and lower-cased). One family with a bad address therefore can't fill the bounded selection (5 books a run) and hold up later families. A family being deleted is never noted. The note holds no address, only its hash, and goes with the parent.

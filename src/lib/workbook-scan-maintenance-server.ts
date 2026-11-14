@@ -100,6 +100,10 @@ export function createWorkbookScanMaintenanceServer(db: SupabaseClient<Database>
           const { data, error } = await db.from("parents").select("id,email").eq("id", parent).is("deletion_requested_at", null).maybeSingle();
           if (error) throw new Error("scan_maintenance_recipient_read");
           if (!data || data.id !== parent || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {
+            // #962: note the family against the address it has, so the due list leaves it out until the address
+            // changes and it cannot hold up later families. Nothing is claimed; its episode stays as it was. A failed
+            // note only means it is picked again next run.
+            if (data) await db.rpc("note_workbook_scan_reminder_unreachable", { p_parent: parent }).then(() => undefined, () => undefined);
             return { status: "not_sent" as const, reason: "recipient-unavailable", released: false };
           }
           const { token, hash: unsubscribeHash } = newToken();

@@ -78,6 +78,30 @@ describe("scan photo normalization", () => {
     photographed(sheet("spreadLeftPage0001"), { width: 2000, height: 1700 }, place(600), { onto: stacked });
     expect((await normalizeScanPhoto(await rasterSharp(stacked).jpeg({ quality: 90 }).toBuffer())).spread).toBeNull();
   });
+  it("takes a sliver of the next page as a photo of one page, and refuses pages turned at the spine (#965 review)", async () => {
+    const sheet = (name: string) => {
+      const page = blankPage(1275, 1650);
+      drawPrintedContent(page);
+      const symbol = 73, size = QRCode.create(`https://unicalearning.com/tutor/p/${name}`, { errorCorrectionLevel: "M" }).modules.size, box = (symbol * (size + 8)) / size;
+      drawQr(page, { x: 145 - box / 2, y: 1505 - box / 2, width: box, height: box }, `https://unicalearning.com/tutor/p/${name}`);
+      return page;
+    };
+    const place = (x: number) => [{ x, y: 80 }, { x: x + 1180, y: 80 }, { x: x + 1180, y: 80 + 1527 }, { x, y: 80 + 1527 }];
+    // The left page whole and a quarter of the right page, its code in view: one photo, of the left page.
+    const sliver = photographed(sheet("spreadLeftPage0001"), { width: 1610, height: 1700 }, place(90), { background: 200 });
+    photographed(sheet("spreadRightPage002"), { width: 1610, height: 1700 }, place(1310), { onto: sliver });
+    const one = await normalizeScanPhoto(await rasterSharp(sliver).jpeg({ quality: 90 }).toBuffer());
+    expect(one.spread).toBeNull();
+    expect(one.token).toBe("spreadLeftPage0001");
+    // The right page turned 8 degrees about its foot at the spine: its top reaches over the cut, so the photo is refused.
+    const turn = (corners: { x: number; y: number }[], about: { x: number; y: number }, degrees: number) => {
+      const a = (degrees * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
+      return corners.map((p) => ({ x: about.x + (p.x - about.x) * c - (p.y - about.y) * s, y: about.y + (p.x - about.x) * s + (p.y - about.y) * c }));
+    };
+    const turned = photographed(sheet("spreadLeftPage0001"), { width: 2600, height: 1700 }, place(90), { background: 200 });
+    photographed(sheet("spreadRightPage002"), { width: 2600, height: 1700 }, turn(place(1310), { x: 1310, y: 1607 }, -8), { onto: turned });
+    await expect(normalizeScanPhoto(await rasterSharp(turned).jpeg({ quality: 90 }).toBuffer())).rejects.toThrow("flat");
+  });
   it("bounds streamed bytes without trusting content length", async () => {
     const request = () => new Request("https://test.invalid", { method: "PUT", body: new Uint8Array(20), headers: { "Content-Length": "1" } });
     await expect(readScanBody(request(), 19)).rejects.toThrow("size");

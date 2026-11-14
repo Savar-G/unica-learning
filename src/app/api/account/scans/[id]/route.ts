@@ -70,22 +70,32 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/accou
     });
     const photo = await scanView(admin, parent, id);
     // The other page of a spread: only when this photo took the first page (a first page already scanned leaves nothing).
-    const other = mine === 0 && pages.length === 2 && photo ? await spreadPhoto(admin, parent, photo.child_id, pages[1], received) : null;
+    let other = mine === 0 && pages.length === 2 && photo ? await spreadPhoto(admin, parent, photo.child_id, pages[1], received) : null;
+    // A second page not saved (other than one that already has a photo): name it, so the parent can photograph it alone.
+    if (other && !["saved", "duplicate"].includes(other.state)) {
+      const named = await admin.from("workbook_pages").select("page_number").eq("parent_id", parent).eq("qr_token", pages[1].token).maybeSingle();
+      if (!named.error && named.data) other = { ...other, page: named.data.page_number };
+    }
     return scanJson(other ? { photo, spread: other } : { photo });
   } catch (error) {
     await admin.rpc("change_scan_photo", { p_parent: parent, p_id: id, p_action: "reject" });
     await cleanupScanPhoto(admin, parent, id);
-    const code = error instanceof Error && ["qr", "size", "page", "duplicate"].includes(error.message) ? error.message : "image";
+    const code = error instanceof Error && ["qr", "size", "page", "duplicate", "flat"].includes(error.message) ? error.message : "image";
     return scanJson({ error: code }, 422);
   }
 }
 
+/** How often, and how far apart, the second page of a spread asks again for an upload slot the phone's own uploads fill. */
+const SPREAD_ADMIT_TRIES = 4, SPREAD_ADMIT_WAIT_MS = 1000;
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 /**
  * The second page of a spread (#915), as its own photo: admitted, bound by its own code, stored and saved like any upload,
- * then checked. Any refusal leaves the first page as it is and is answered as the second page's state: a page that already
- * has a photo is left alone; another refusal leaves that page still to scan, which the stack shows. Never thrown.
+ * then checked. Any refusal leaves the first page as it is and is answered as the second page's state, with its page
+ * number when known, so the parent is told which page needs its own photo; a page that already has a photo is left
+ * alone. Never thrown.
  */
-async function spreadPhoto(admin: SupabaseClient<Database>, parent: string, child: string, page: SpreadPage, received: number): Promise<{ id: string; state: string }> {
+async function spreadPhoto(admin: SupabaseClient<Database>, parent: string, child: string, page: SpreadPage, received: number): Promise<{ id: string; state: string; page?: number }> {
   const id = randomUUID();
   const fail = async (state: string) => {
     await admin.rpc("change_scan_photo", { p_parent: parent, p_id: id, p_action: "reject" });
@@ -93,18 +103,29 @@ async function spreadPhoto(admin: SupabaseClient<Database>, parent: string, chil
     return { id, state };
   };
   try {
-    const admitted = await admin.rpc("admit_scan_photo", { p_parent: parent, p_child: child, p_id: id, p_bytes: page.bytes.length });
+    // The phone sends two photos at a time, and both count against the family's upload slots while they run: this page
+    // asks again a few times, a second apart, instead of being dropped as busy (#965 review). Other refusals stand.
+    let admitted = await admin.rpc("admit_scan_photo", { p_parent: parent, p_child: child, p_id: id, p_bytes: page.bytes.length });
+    for (let tries = 1; !admitted.error && admitted.data === "busy" && tries < SPREAD_ADMIT_TRIES && Date.now() - received < UPLOAD_CHECK_BUDGET_MS; tries++) {
+      await pause(SPREAD_ADMIT_WAIT_MS);
+      admitted = await admin.rpc("admit_scan_photo", { p_parent: parent, p_child: child, p_id: id, p_bytes: page.bytes.length });
+    }
     if (admitted.error || admitted.data !== "reserved") return { id, state: admitted.error ? "unavailable" : admitted.data };
     const started = await admin.rpc("start_scan_photo", { p_parent: parent, p_id: id });
     if (started.error || started.data !== "started") return fail(started.error ? "unavailable" : started.data);
     const identified = await admin.rpc("identify_scan_photo", { p_parent: parent, p_id: id, p_token: page.token, p_width: page.width, p_height: page.height });
     if (identified.error || identified.data !== "identified") return fail(identified.error ? "unavailable" : identified.data);
     const uploaded = await admin.storage.from(SCAN_BUCKET).upload(scanPath(parent, id), page.bytes, { contentType: "image/jpeg", upsert: false, cacheControl: "0" });
-    // A lost Storage answer is uncertain: the reservation stays and expires like any other upload's.
-    if (uploaded.error) return { id, state: "uncertain" };
-    const finished = await admin.rpc("finish_scan_photo", { p_parent: parent, p_id: id, p_bytes: page.bytes.length });
-    if (finished.error) return { id, state: "uncertain" };
-    if (finished.data !== "pending") return fail(finished.data);
+    // A lost answer, from Storage or from the finish: the photo may be stored all the same. Nobody's page asks about this
+    // photo later, so it is reconciled here, as the first photo's GET does (recover_scan_photo); still unknown, it expires.
+    const finished = uploaded.error ? null : await admin.rpc("finish_scan_photo", { p_parent: parent, p_id: id, p_bytes: page.bytes.length });
+    let state = finished && !finished.error ? finished.data : null;
+    if (state === null) {
+      const recovered = await admin.rpc("recover_scan_photo", { p_parent: parent, p_id: id });
+      state = recovered.error ? null : recovered.data;
+      if (state === null || state === "waiting") return { id, state: "uncertain" };
+    }
+    if (state !== "pending") return fail(state);
     // Nobody else saves this photo, so it is saved here, as the page saves the photo it uploaded.
     const saved = await admin.rpc("change_scan_photo", { p_parent: parent, p_id: id, p_action: "save" });
     if (saved.error || saved.data !== "saved") return { id, state: "pending" };

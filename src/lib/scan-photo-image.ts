@@ -16,8 +16,8 @@ export async function normalizeScanPhoto(input: Uint8Array, limits = { inputByte
   if (normalized.data.length > limits.outputBytes) throw new Error("size");
   const first = await pageCode(normalized.data, normalized.info);
   if (!first) throw new Error("qr");
-  const spread = await spreadPages(normalized.data, normalized.info, first, limits.outputBytes);
-  return { bytes: normalized.data, token: first.token, width: normalized.info.width, height: normalized.info.height, spread };
+  const { spread, token } = await spreadPages(normalized.data, normalized.info, first, limits.outputBytes);
+  return { bytes: normalized.data, token, width: normalized.info.width, height: normalized.info.height, spread };
 }
 
 /** One page of a two-page photo: its own half of the photo, the other page painted white, with its own code. */
@@ -32,6 +32,23 @@ interface PageCode { token: string; center: Point; side: number; dir: Point }
  * wide, its centre 0.114 from the page's left edge (measured on the rendered Robin pages); the corner marks start 0.027 in.
  */
 const CODE_SIDE = 0.0572, CODE_CENTER_X = 0.114;
+/**
+ * The rest of the printed page, in the same page-width units from its top-left corner (measured on straightened Robin
+ * pages, 2026-11-14): the code's centre is 1.18 down; the page is 11/8.5 tall; the corner marks sit 0.027 in; the
+ * printed content (questions and their boxes) lies between 0.075 and 0.925 across and 0.06 and 1.24 down.
+ */
+const CODE_CENTER_Y = 1.18, PAGE_HEIGHT = 11 / 8.5, MARK_INSET = 0.027, CONTENT_X = [0.075, 0.925] as const, CONTENT_Y = [0.06, 1.24] as const;
+/**
+ * For a two-page photo, how far outside the photo, in page widths, a page's corner mark placed by its code may fall
+ * (#965 review: a quarter of the next page in view is not a page in view; a sliver puts its far marks about 0.75 out).
+ * The placement from the code is off by a few hundredths at the far corners: a real spread (IMG_2187, 2026-11-14) put
+ * one mark 5 px inside the edge. A mark truly cut off is then refused by the page check like any other. And how far the
+ * cut between the pages must stay from either page's printed content (a page curled or turned at the spine reaches over
+ * the line, and its answers there would be cut).
+ */
+const SPREAD_MARK_OVERHANG = 0.03, SPREAD_CUT_CLEARANCE = 0.01;
+/** The largest crop, in pixels a side after zooming, that the second page's code is looked for in (memory and time). */
+const SECOND_CODE_MAX_SIDE = 2400;
 /**
  * A two-page photo (#915): an open book flat, two pages side by side. The other page's code sits one page width (plus
  * the gutter) along the first code's own rightward direction, at the same height on its page. Real spreads measured
@@ -97,6 +114,8 @@ async function codeAround(jpeg: Buffer, photo: { width: number; height: number }
   // The code must lie well inside the photo: a predicted place at the edge is not a page in view.
   if (width < size * 0.6 || height < size * 0.6) return null;
   for (const zoom of [1, 2, 3]) {
+    // A zoom is only for a small code; a crop that would pass the cap is not read again larger.
+    if (zoom > 1 && Math.max(width, height) * zoom > SECOND_CODE_MAX_SIDE) break;
     const { data, info } = await sharp(jpeg).extract({ left, top, width, height })
       .resize({ width: width * zoom, height: height * zoom, fit: "fill", kernel: "lanczos3" }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
     const found = readQr(data, info.width, info.height);
@@ -113,7 +132,7 @@ async function codeAround(jpeg: Buffer, photo: { width: number; height: number }
  * the other side is painted white, so its own code and corner marks are the only ones its photo shows. A page photo is
  * still bound to its page by its own code and checked against its own print like any other photo; this never decides a page.
  */
-async function spreadPages(jpeg: Buffer, photo: { width: number; height: number }, first: PageCode, outputBytes: number): Promise<SpreadPage[] | null> {
+async function spreadPages(jpeg: Buffer, photo: { width: number; height: number }, first: PageCode, outputBytes: number): Promise<{ spread: SpreadPage[] | null; token: string }> {
   const width = first.side / CODE_SIDE;
   let other: PageCode | null = null;
   for (const sign of [1, -1]) {
@@ -121,7 +140,12 @@ async function spreadPages(jpeg: Buffer, photo: { width: number; height: number 
     const found = await codeAround(jpeg, photo, at, width * 0.8);
     if (found && found.token !== first.token && spreadPair(first, found, width)) { other = found; break; }
   }
-  if (!other) return null;
+  if (!other) return { spread: null, token: first.token };
+  // Both pages must be in the photo, every corner mark (#965 review). Otherwise it is a photo of one page, the one more
+  // of whose corners are in view (the first code read on a tie): a sliver of the next page never becomes a page photo.
+  const inView = (c: PageCode) => marksInView(c, photo);
+  const [firstIn, otherIn] = [inView(first), inView(other)];
+  if (firstIn < 4 || otherIn < 4) return { spread: null, token: otherIn > firstIn ? other.token : first.token };
   // Left and right in the pages' own direction (the photo may be turned).
   const along = (c: PageCode) => c.center.x * first.dir.x + c.center.y * first.dir.y;
   const [left, right] = along(first) < along(other) ? [first, other] : [other, first];
@@ -130,13 +154,33 @@ async function spreadPages(jpeg: Buffer, photo: { width: number; height: number 
   const edge = (c: PageCode, t: number) => ({ x: c.center.x + t * pageWidth * first.dir.x, y: c.center.y + t * pageWidth * first.dir.y });
   const a = edge(left, 1 - CODE_CENTER_X), b = edge(right, -CODE_CENTER_X);
   const split = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  // The cut must pass between the two pages' printed content, top to bottom, each page placed by its own code: a page
+  // curled or turned at the spine reaches over the line, and its answers there would be cut. Such a photo is refused.
+  const across = (p: Point) => ((p.x - split.x) * first.dir.x + (p.y - split.y) * first.dir.y) / pageWidth;
+  const leftEdge = CONTENT_Y.map((y) => across(pagePoint(left, { x: CONTENT_X[1], y })));
+  const rightEdge = CONTENT_Y.map((y) => across(pagePoint(right, { x: CONTENT_X[0], y })));
+  if (Math.max(...leftEdge) > -SPREAD_CUT_CLEARANCE || Math.min(...rightEdge) < SPREAD_CUT_CLEARANCE) throw new Error("flat");
   const pages: SpreadPage[] = [];
   for (const [code, keep] of [[left, -1], [right, 1]] as const) {
     const page = await halfOf(jpeg, photo, split, first.dir, keep);
-    if (!page || page.data.length > outputBytes) return null;
+    if (!page || page.data.length > outputBytes) return { spread: null, token: first.token };
     pages.push({ bytes: page.data, token: code.token, width: page.info.width, height: page.info.height });
   }
-  return pages;
+  return { spread: pages, token: first.token };
+}
+
+/** Where a point of a page (page widths from its top-left corner) is in the photo, placed by that page's own code. */
+function pagePoint(c: PageCode, p: Point): Point {
+  const w = c.side / CODE_SIDE, down = { x: -c.dir.y, y: c.dir.x };
+  const dx = (p.x - CODE_CENTER_X) * w, dy = (p.y - CODE_CENTER_Y) * w;
+  return { x: c.center.x + dx * c.dir.x + dy * down.x, y: c.center.y + dx * c.dir.y + dy * down.y };
+}
+
+/** How many of a page's four corner marks, placed by its code, are in the photo (at most SPREAD_MARK_OVERHANG out). */
+function marksInView(c: PageCode, photo: { width: number; height: number }): number {
+  const m = -SPREAD_MARK_OVERHANG * (c.side / CODE_SIDE), lo = MARK_INSET, hiX = 1 - MARK_INSET, hiY = PAGE_HEIGHT - MARK_INSET;
+  return [{ x: lo, y: lo }, { x: hiX, y: lo }, { x: hiX, y: hiY }, { x: lo, y: hiY }].map((p) => pagePoint(c, p))
+    .filter((q) => q.x >= m && q.y >= m && q.x <= photo.width - m && q.y <= photo.height - m).length;
 }
 
 /** Two codes are the two pages of one spread: same size and direction, one page width apart along it, at one height. */
