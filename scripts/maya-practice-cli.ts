@@ -88,6 +88,8 @@ const ANTHROPIC_MIN_TOKENS = 6_000;
  */
 const SUBSCRIPTION_MAYA_MS = 120_000;
 const SUBSCRIPTION_REVIEW_MS = 60_000;
+// One model and review, then at most one repaired model and review, on the CLI transport.
+const SUBSCRIPTION_TURN_MS = 2 * (SUBSCRIPTION_MAYA_MS + SUBSCRIPTION_REVIEW_MS);
 
 type Provider = "openrouter" | "anthropic" | "subscription";
 
@@ -484,6 +486,7 @@ async function main() {
       commit: git("rev-parse HEAD"), changes: git("status --porcelain") ? "uncommitted changes" : "clean", date: new Date().toISOString(),
       ...(generated ? { generatedArtifact: fileHash(store.load("generated-packages.json")!) } : {}),
       mode: o.fake ? "fake" : o.provider, freeTalk: o.freeTalk ? "on" : "off",
+      ...(o.provider === "subscription" && !o.fake ? { turnBudgetMs: String(SUBSCRIPTION_TURN_MS), reviewTimeLimitMs: String(SUBSCRIPTION_REVIEW_MS) } : {}),
     },
   }, { runs: o.runs, maxUsd: spending.maxUsd, ...execution });
   console.log(`-- channel: ${execution.channel}; free talk: ${execution.freeTalk ? "on" : "off"}; generated packages: ${generated ? "U4,U16 Day 1 (synthetic)" : "none"}`);
@@ -491,7 +494,7 @@ async function main() {
   let done = 0;
   await runSuite(cases, plan, {
     maya, simulator, validity, judge, store, concurrency, freeTalk: o.freeTalk, reviewer,
-    ...(o.provider === "subscription" && !o.fake ? { reviewTimeLimitMs: SUBSCRIPTION_REVIEW_MS } : {}),
+    ...(o.provider === "subscription" && !o.fake ? { reviewTimeLimitMs: SUBSCRIPTION_REVIEW_MS, turnBudgetMs: SUBSCRIPTION_TURN_MS } : {}),
     capped: stopped,
     onRun: (id) => console.log(`   ${++done}/${plan.runs.length} ${id}${o.fake || o.provider === "subscription" ? "" : ` (spent ${usd(spending.spent)})`}`),
     // Raw errors on stderr for local debugging; the saved files keep only codes.

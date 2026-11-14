@@ -27,7 +27,7 @@ export const PAGE_BUCKETS: { bucket: PageBucket; text: string }[] = [
   { bucket: "marked", text: "Marked" }, { bucket: "checking", text: "Our team is checking" }, { bucket: "waiting", text: "Not marked yet" },
   { bucket: "failed", text: "Could not mark" }, { bucket: "none", text: "No photo yet" },
 ];
-const BUCKET: Record<HistoryStatus, PageBucket> = { ready: "marked", blank: "marked", unscored: "marked", review: "checking", pending: "waiting", failed: "failed", "never-scanned": "none" };
+const BUCKET: Record<HistoryStatus, PageBucket> = { ready: "marked", blank: "marked", unscored: "marked", review: "checking", pending: "waiting", unfinished: "waiting", failed: "failed", "never-scanned": "none" };
 
 type PageRow = { childId: string; childName: string; workbookId: string; book: number; status: HistoryStatus };
 

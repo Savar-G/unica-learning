@@ -152,6 +152,8 @@ export interface PracticeDeps {
   reviewer?: TalkReviewer | null;
   /** The time limit of one free-talk review (default the live REVIEW_TIME_LIMIT_MS); `claude -p` needs longer. */
   reviewTimeLimitMs?: number;
+  /** A practice transport budget. Omit it to keep the live text-session budget. */
+  turnBudgetMs?: number;
   simulator: ChildSimulator;
   /** The validity judge: a run it does not clear is invalid, and the main judge never sees it. */
   validity: ValidityJudge;
@@ -181,6 +183,7 @@ export async function runPractice(c: PracticeCase, n: number, seed: number, deps
   const text = createTextSession({
     callId: `practice-${id}`, package: pkg, model: deps.maya, clock: () => now, random: seed, childName: c.persona.name,
     channel: execution.channel === "chat" ? "chat" : undefined, freeTalk: execution.freeTalk, reviewer: deps.reviewer ?? null, ...(deps.reviewTimeLimitMs ? { reviewTimeLimitMs: deps.reviewTimeLimitMs } : {}),
+    ...(deps.turnBudgetMs === undefined ? {} : { turnBudgetMs: deps.turnBudgetMs }),
     onError: (e, where) => deps.onError?.(e, `${id} maya ${typeof where === "string" ? where : `turn ${where.turn} ${where.source}`}`),
   });
   const log: SimulatorLog = { kind: "maya-practice-child", version: PRACTICE_VERSION, run: id, caseId: c.id, simulator: { model: deps.simulator.id, promptVersion: deps.simulator.promptVersion }, execution, turns: [], cut: null };

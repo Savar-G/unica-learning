@@ -2551,7 +2551,9 @@ function doubtfulRight(s: Session): boolean {
 
 /** Comparison readers never accept a model verdict, copied work, a hedge, another speaker or a future side. */
 function comparisonEligible(s: Session): boolean {
-  return !!comparisonOf(s.package) && !!s.turn && heardOneWay(s) && wholeTurn(s.turn.text) !== null && sentenceCount(s.turn.text) === 1 &&
+  const op = comparisonOf(s.package);
+  return !!op && !!s.turn && heardOneWay(s) && wholeTurn(s.turn.text) !== null &&
+    (sentenceCount(s.turn.text) === 1 || comparisonFinal(s.turn.text, op) !== null) &&
     !helpInWords(s.turn.text) && !hedgedTurn(s) && !saysGuess(s.turn.text) && !saysCopied(s.turn.text) &&
     takenBack(s.turn.text, readOptionsIn(s)) === null && !copiesShown(s);
 }

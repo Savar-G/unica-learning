@@ -28,12 +28,19 @@ export function comparisonFinal(text: string, op: ComparisonOperation): WordRead
   if (whole === null) return null;
   const after = /^(.*?)(?:,)?\s+(?:because|since)\s+(.+)$/.exec(whole);
   const before = /^(?:because|since)\s+(.+?),\s*(.+)$/.exec(whole);
-  if (after || before) {
-    const answer = after ? after[1] : before![2], reason = after ? after[2] : before![1];
+  const sentences = /^(.+?)[.!]\s+(.+)$/.exec(whole);
+  const parts = after ? [[after[1], after[2]]] : before ? [[before[2], before[1]]] :
+    sentences ? [[sentences[1], sentences[2]], [sentences[2], sentences[1]]] : [];
+  if (parts.length) {
     const [left, right] = comparisonSides(op), value = comparisonAnswer(op);
-    const relation = comparisonRelation(reason, op, { id: "compare", kind: "comparison", left, right, value });
-    if (!relation || !sameValue(relation, value)) return null;
-    return comparisonFinal(answer, op);
+    for (const [answer, reason] of parts) {
+      const relation = comparisonRelation(reason, op, { id: "compare", kind: "comparison", left, right, value });
+      if (!relation || !sameValue(relation, value)) continue;
+      const read = comparisonFinal(answer, op);
+      // A checked reason makes this a complete asserted choice; an isolated word still uses its original reading.
+      if (read) return "word" in read ? { ...read, committed: true } : read;
+    }
+    return null;
   }
   if (op.context === "same-denominator" || op.context === "equal-pieces") return readClaimWord(whole, ["true", "false"], null);
   const prefix = COMMIT.exec(whole), body = prefix ? whole.slice(prefix[0].length) : whole;

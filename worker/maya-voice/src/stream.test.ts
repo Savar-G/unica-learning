@@ -25,7 +25,7 @@ import { VoiceCallRun, voiceSession, type PreparingCall, type Timers } from "./a
 import { earlyRest } from "./early-speech";
 import { FakeTTS } from "./fake-providers";
 import { makeProviders } from "./providers";
-import { takeMarks } from "./marks";
+import { CallTelemetry, setTelemetry, telemetry, type Emitted } from "./telemetry";
 import { TURN_PARTS, type VoiceTurnSample } from "./turn-timing";
 
 // Maya's first sentences said before her turn is done (D-341, the streaming contract of src/lib/maya-text.ts), through
@@ -58,6 +58,7 @@ class SilentMicrophone extends voice.AudioInput {
 /** The child's speaker. It holds a playback while `held`, as a real phrase takes time to play. */
 class Speaker extends voice.AudioOutput {
   held = false;
+  suppressStart = false;
   cut = 0;
   private captured = 0;
   private waiting = false;
@@ -69,7 +70,7 @@ class Speaker extends voice.AudioOutput {
     this.captured += frame.samplesPerChannel / frame.sampleRate;
     if (this.capturedPlayoutSegments > before && this.capturedPlayoutSegments > this.pendingStarts) {
       this.pendingStarts = this.capturedPlayoutSegments;
-      this.onPlaybackStarted(Date.now());
+      if (!this.suppressStart) this.onPlaybackStarted(Date.now());
     }
   }
   private finish(interrupted: boolean) {
@@ -657,7 +658,6 @@ describe("the wait of a turn the speech-to-text held (2026-11-13)", () => {
     const speech = new ProbeSTT();
     const v = fakeVad();
     const c = await voiceCall({ model: ruleConversationalModel(), speech, heardVad: v.vad });
-    takeMarks();
     for (let i = 0; i < 20; i++) c.microphone.push(3000);
     await pause();
     const loudAt = Date.now();
@@ -669,7 +669,7 @@ describe("the wait of a turn the speech-to-text held (2026-11-13)", () => {
     speech.send(stt.SpeechEventType.FINAL_TRANSCRIPT, "24.");
     speech.send(stt.SpeechEventType.END_OF_SPEECH);
     await waitFor(() => c.samples.length === 1, "the sample");
-    const clock = takeMarks()!;
+    const clock = telemetry().turnClock(c.samples[0].turnId)!;
     // Milliseconds after the earliest mark: the last loud frame.
     expect(clock).toMatchObject({ t0: loudAt, levelEnd: 0, detectorEnd: 150, detectorHeard: 400, sttFinal: 1400 });
   });
@@ -1008,4 +1008,154 @@ describe("turns that ask no model (D-341, round 3)", () => {
     await c.call.settled();
     expect(c.said().slice(quiet).join(" ")).toBe(spokenMath(c.call.session.turns.filter((t) => t.speaker === "maya").at(-1)!.text));
   });
+});
+
+describe("turn-bound telemetry through a live call (latency audit 2026-11-14)", () => {
+  function watch() {
+    const events: Emitted[] = [];
+    setTelemetry(new CallTelemetry({ callId: "test-call", sink: (e) => events.push(e) }));
+    return events;
+  }
+
+  it("keeps the acknowledgement and the answer as two speeches, each with its own marks", async () => {
+    const events = watch();
+    const m = steppedModel(guideTurn(`${FIRST} ${SECOND}`));
+    const c = await voiceCall({ model: m.model, ackLimitMs: 500 });
+    const before = c.said().length;
+    c.say("I got 56.");
+    await waitFor(() => m.running, "the model call");
+    c.speaker.held = true;
+    await c.clock.advance(500);
+    await waitFor(() => c.said().slice(before).some((t) => ACKS.has(t)), "the phrase");
+    m.stream(1);
+    await pause();
+    c.speaker.release();
+    await waitFor(() => c.said().slice(before).includes(FIRST), "the first sentence after the phrase");
+    m.finish();
+    await waitFor(() => c.samples.length === 1, "the sample");
+    const turnId = c.samples[0].turnId!;
+    const speeches = events.filter((e): e is Extract<Emitted, { ev: "utterance" }> => e.ev === "utterance" && e.turnId === turnId);
+    expect(speeches.map((u) => u.kind)).toEqual(["ack", "answer"]);
+    expect(new Set(speeches.map((u) => u.utteranceId)).size).toBe(2);
+    const clock = telemetry().turnClock(turnId) as { ackTtsRequest: number; ttsRequest: number; utterances: { kind: string; ttsRequest: number; ttsFirstFrame?: number; playbackStarted?: number }[] };
+    expect(clock.ackTtsRequest).toBeLessThanOrEqual(clock.ttsRequest);
+    expect(clock.utterances.map((u) => u.kind)).toEqual(["ack", "answer"]);
+    // The answer's first words were accepted as a streamed sentence of this turn, before the turn ended.
+    const sentence = events.find((e) => e.ev === "sentence" && e.turnId === turnId);
+    expect(sentence).toMatchObject({ sentenceId: `${turnId}.s1`, via: "stream" });
+    // The spend gate's interval was measured at its seam for this turn.
+    expect(events.find((e) => e.ev === "admission" && e.turnId === turnId)).toMatchObject({ outcome: "admitted" });
+    // The log of this turn holds no words.
+    const log = JSON.stringify(events);
+    for (const words of [FIRST, SECOND, "I got 56"]) expect(log).not.toContain(words);
+  });
+
+  it("gives a turn after another its own final: the earlier turn's clock never holds the later final", async () => {
+    const events = watch();
+    const c = await voiceCall({ model: ruleConversationalModel() });
+    c.say("I got 56.");
+    await waitFor(() => c.samples.length === 1, "the first sample");
+    c.clock.move(5000);
+    c.say("I got 66.");
+    await waitFor(() => c.samples.length === 2, "the second sample");
+    const finals = events.filter((e): e is Extract<Emitted, { ev: "final" }> => e.ev === "final");
+    expect(finals).toHaveLength(2);
+    const [first, second] = c.samples.map((s) => telemetry().turnClock(s.turnId) as { finals: { id: string; sttFinal: number }[]; sttFinal: number });
+    expect(first.finals.map((f) => f.id)).toEqual([finals[0].finalId]);
+    expect(second.finals.map((f) => f.id)).toEqual([finals[1].finalId]);
+    expect(JSON.stringify(first)).not.toContain(finals[1].finalId);
+    // Each clock is on its own final's time: the later final is 5 s after the earlier one, never the same clock.
+    expect(finals[1].at - finals[0].at).toBeGreaterThanOrEqual(5000);
+    expect(c.samples[0].turnId).not.toBe(c.samples[1].turnId);
+  });
+
+  it("joins the two finals of a paused answer under one turn, each kept with its own time", async () => {
+    const events = watch();
+    const c = await voiceCall({ model: ruleConversationalModel(), numberContinueMs: 1000 });
+    c.say("I got fifty");
+    await pause();
+    c.clock.move(300);
+    c.say("six.");
+    // The second final reaches the worker while the first is still waited on; only then does the wait's time run out.
+    await waitFor(() => events.filter((e) => e.ev === "final").length === 2, "the second final");
+    await c.clock.advance(1000);
+    await waitFor(() => c.samples.length === 1, "the paused answer's sample");
+    const finals = events.filter((e): e is Extract<Emitted, { ev: "final" }> => e.ev === "final");
+    expect(finals).toHaveLength(2);
+    const turns = events.filter((e): e is Extract<Emitted, { ev: "turn" }> => e.ev === "turn");
+    expect(turns.at(-1)!.finalIds).toEqual(finals.map((f) => f.finalId));
+    const clock = telemetry().turnClock(c.samples[0].turnId) as { finals: { id: string; sttFinal: number }[] };
+    expect(clock.finals.map((f) => f.id)).toEqual(finals.map((f) => f.finalId));
+    expect(clock.finals[1].sttFinal - clock.finals[0].sttFinal).toBe(finals[1].at - finals[0].at);
+  });
+});
+
+describe("Spec synthesis records through the real LiveKit pipeline", () => {
+ it("each physical sentence synthesis retains separate request marks", async () => {
+  const events: Emitted[]=[];
+  setTelemetry(new CallTelemetry({callId:"local-sentence-call",sink:e=>events.push(e)}));
+  const m=steppedModel(guideTurn(`${FIRST} ${SECOND}`));
+  const c=await voiceCall({model:m.model});
+  c.say("I got 56.");
+  await waitFor(()=>m.running,"model");
+  m.stream(1);
+  await waitFor(()=>c.said().includes(FIRST),"first sentence");
+  m.finish();
+  await waitFor(()=>c.said().includes(SECOND) && c.session.agentState==="listening","second sentence");
+  const turnId=c.samples[0].turnId!;
+  const clock=telemetry().turnClock(turnId) as { utterances: { ttsRequests: number; sentenceId: string; sentenceIndex: number }[] };
+  const ids=events.filter((e):e is Extract<Emitted,{ev:"utterance"}>=>e.ev==="utterance"&&e.turnId===turnId).map(e=>e.utteranceId);
+  const requests=events.filter(e=>e.ev==="mark"&&e.scope==="utterance"&&e.name==="ttsRequest"&&ids.includes(e.id));
+  expect(clock.utterances.reduce((n,u)=>n+u.ttsRequests,0)).toBe(2);
+  expect(requests).toHaveLength(2);
+  expect(new Set(clock.utterances.map(u => u.sentenceId)).size).toBe(2);
+ });
+});
+
+describe("publication after interrupted synthesis",()=>{
+ it.each([false,true])("publication stays with the next audible turn, abandoned=%s",async(abandoned)=>{
+  const events:Emitted[]=[];
+  setTelemetry(new CallTelemetry({callId:"local-publication-call",sink:e=>events.push(e)}));
+  const m=steppedModel(guideTurn(`${FIRST} ${SECOND}`));
+  const c=await voiceCall({model:m.model});
+  c.speaker.suppressStart=abandoned;
+  c.speaker.held=abandoned;
+  c.say("I got 56.");
+  await waitFor(()=>m.running,"first model");
+  m.stream(1);
+  await waitFor(()=>events.some(e=>e.ev==="utterance"&&e.kind==="answer"&&e.turnId!==null),"first answer synthesis");
+  const prior=events.find((e):e is Extract<Emitted,{ev:"utterance"}>=>e.ev==="utterance"&&e.kind==="answer"&&e.turnId!==null)!;
+  await waitFor(()=>events.some(e=>e.ev==="mark"&&e.id===prior.utteranceId&&e.name==="ttsFirstFrame"),"first generated frame");
+  if(abandoned) {c.session.interrupt(); await pause();}
+  m.finish();
+  await waitFor(()=>c.session.agentState==="listening","first turn completion");
+  c.speaker.held=false;c.speaker.suppressStart=false;
+  c.clock.move(1000);
+  c.say("I got 56.");
+  await waitFor(()=>m.running,"next model");
+  m.stream(1);
+  await waitFor(()=>events.filter(e=>e.ev==="utterance"&&e.kind==="answer"&&e.turnId!==null&&e.turnId!==prior.turnId).length>0,"next turn synthesis");
+  m.finish();
+  await waitFor(()=>c.session.agentState==="listening","next turn end");
+  await pause();
+  const next=events.find((e):e is Extract<Emitted,{ev:"utterance"}>=>e.ev==="utterance"&&e.kind==="answer"&&e.turnId!==null&&e.turnId!==prior.turnId)!;
+  const published=(id:string)=>events.filter(e=>e.ev==="mark"&&e.name==="published"&&e.id===id).length;
+  expect(published(prior.utteranceId)).toBe(abandoned?0:1);
+  expect(published(next.utteranceId)).toBe(1);
+ });
+});
+
+describe("nonstreamed turn ownership",()=>{
+ it("the ordinary completed answer keeps its turn ID",async()=>{
+  const events:Emitted[]=[];
+  setTelemetry(new CallTelemetry({callId:"local-fast-call",sink:e=>events.push(e)}));
+  const c=await voiceCall({model:ruleConversationalModel()});
+  const before=events.length;
+  c.say("I got 66.");
+  await waitFor(()=>c.samples.length===1 && c.session.agentState==="listening","complete turn");
+  const turnId=c.samples[0].turnId!;
+  const speeches=events.slice(before).filter(e=>e.ev==="utterance");
+  expect(speeches.length).toBeGreaterThan(0);
+  expect(speeches).toMatchObject([{turnId,kind:"answer"}]);
+ });
 });

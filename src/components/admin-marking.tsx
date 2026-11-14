@@ -72,7 +72,7 @@ export function PageBars({ books, href }: { books: ReturnType<typeof pagesByBook
   </section>;
 }
 
-const STATE_TONE: Record<HistoryStatus, Tone> = { ready: "ok", blank: "muted", unscored: "muted", review: "warn", pending: "info", failed: "bad", "never-scanned": "muted" };
+const STATE_TONE: Record<HistoryStatus, Tone> = { ready: "ok", blank: "muted", unscored: "muted", review: "warn", pending: "info", unfinished: "muted", failed: "bad", "never-scanned": "muted" };
 export const StateChip = ({ status, label }: { status: HistoryStatus; label: string }) => <Chip tone={STATE_TONE[status]}>{label}</Chip>;
 
 /** A mark's result in words, with its tone. */

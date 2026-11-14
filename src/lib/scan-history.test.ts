@@ -205,3 +205,14 @@ it("the RPC adapter reads each job's latest dispatch and the monitor's deferred 
   expect((await readScanHistory(scanHistoryStore(db, { admin: P }), { status: "failed" }, now))!.pages).toHaveLength(1);
   expect((await readScanHistory(scanHistoryStore(db, { parent: P }), { child: C, status: "failed" }, now))!.pages).toEqual([]);
 });
+it("a page whose every answer read blank looks unfinished until a later photo of it is sent (scan edge sweep, 2026-11-14)", () => {
+  const r = unread(record(7, null)); r.jobs[0].state = "finished"; r.jobs[0].blocked = "unfinished";
+  r.photos[0].state = "saved"; r.photos[0].expiresAt = "2027-01-01";
+  expect(historyPage(r, now)).toMatchObject({ status: "unfinished", label: "Looks unfinished: scan it when it's done", failedJob: false });
+  expect(historyPage(r, now, "admin").failedJob).toBe(false);
+  // A new photo of the page, sent: its job has not started yet, then it runs.
+  r.photos.push({ ...r.photos[0], id: id(992), sentAt: "2026-11-05T23:00:00Z" });
+  expect(historyPage(r, now).status).toBe("pending");
+  r.jobs.push({ photo: id(992), state: "running", dispatches: 1, blocked: null });
+  expect(historyPage(r, now).status).toBe("pending");
+});

@@ -53,6 +53,7 @@ it("words a page's score and the day's score", () => {
   expect(pageScore({ ...full, right: 8, toPractise: 0 })).toBe("8 of 8");
   expect(pageScore({ ...full, complete: false, scored: 5, right: 4, waiting: 3 })).toBe("4 of 5 so far · 3 being checked");
   expect(pageScore(null)).toBe("Marking…");
+  expect(pageScore({ ...full, complete: false, scored: 0, right: 0, toPractise: 0, waiting: 8, unfinished: true })).toBe("Looks unfinished: scan it when it's done");
   const now = Date.parse("2026-11-14T12:00:00Z");
   const today = todaysPages([photo("p3", { sentAt: "2026-11-14T11:00:00Z", marks: full }), photo("p4", { sentAt: "2026-11-14T11:00:00Z", marks: { ...full, right: 10, scored: 11, total: 11, complete: true } }), photo("p5", { sentAt: "2026-11-01T11:00:00Z", marks: full })], now);
   expect(today.pages).toHaveLength(2);

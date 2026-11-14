@@ -405,7 +405,7 @@ export const DATABASE_CHECKS: readonly { table: string; name: string; definition
   {"table":"scan_marking_items","name":"scan_marking_items_observation_check1","definition":"CHECK (((observation ->> 'state'::text) = ANY (ARRAY['pending'::text, 'scored'::text, 'parent-pending'::text, 'parent-checked'::text, 'unscored'::text])))"},
   {"table":"scan_marking_items","name":"scan_marking_items_observation_check2","definition":"CHECK ((((observation ->> 'result'::text) IS NULL) OR ((observation ->> 'result'::text) = ANY (ARRAY['right'::text, 'wrong'::text, 'blank'::text]))))"},
   {"table":"scan_marking_items","name":"scan_marking_items_result_version_check","definition":"CHECK ((result_version >= 1))"},
-  {"table":"scan_marking_jobs","name":"scan_marking_jobs_blocked_reason_check","definition":"CHECK ((blocked_reason = ANY (ARRAY['off'::text, 'budget'::text, 'price-unverified'::text, 'attempts'::text, 'pending'::text])))"},
+  {"table":"scan_marking_jobs","name":"scan_marking_jobs_blocked_reason_check","definition":"CHECK ((blocked_reason = ANY (ARRAY['off'::text, 'budget'::text, 'price-unverified'::text, 'attempts'::text, 'pending'::text, 'unfinished'::text])))"},
   {"table":"scan_marking_jobs","name":"scan_marking_jobs_deferrals_check","definition":"CHECK (((deferrals >= 0) AND (deferrals <= 3)))"},
   {"table":"scan_marking_jobs","name":"scan_marking_jobs_dispatches_check","definition":"CHECK (((dispatches >= 0) AND (dispatches <= 8)))"},
   {"table":"scan_marking_jobs","name":"scan_marking_jobs_state_check","definition":"CHECK ((state = ANY (ARRAY['queued'::text, 'running'::text, 'extracted'::text, 'finished'::text])))"},
