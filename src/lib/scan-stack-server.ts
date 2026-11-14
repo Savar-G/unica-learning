@@ -47,10 +47,14 @@ export async function readScanStack(db: SupabaseClient<Database>, parent: string
   const live = rows.data.filter((p) => p.page_id && p.workbook_id && scanPhotoIsActive(p, now));
   // The day strip (#915) shows the child's newest shipped book even before its first photo, so the pages of that book are
   // read beside the books the photos are in. No shipped book and no photo: nothing to show.
-  const newest = await db.from("workbooks").select("id").eq("parent_id", parent).eq("child_id", child).eq("status", "shipped")
-    .order("number", { ascending: false }).limit(1);
-  if (newest.error) throw new Error("scan_stack_read");
-  const books = [...new Set([...live.map((p) => p.workbook_id!), ...newest.data.map((w) => w.id)])];
+  // A failed read of the newest book only leaves the strip empty until the first photo; it never stops the stack.
+  let newestIds: string[] = [];
+  try {
+    const newest = await db.from("workbooks").select("id").eq("parent_id", parent).eq("child_id", child).eq("status", "shipped")
+      .order("number", { ascending: false }).limit(1);
+    if (!newest.error && newest.data) newestIds = newest.data.map((w) => w.id);
+  } catch { /* the strip waits for the first photo */ }
+  const books = [...new Set([...live.map((p) => p.workbook_id!), ...newestIds])];
   if (!books.length) return { photos: [], pages: [] };
   const [workbooks, printed, calibrations] = await Promise.all([
     db.from("workbooks").select("id,number").eq("parent_id", parent).in("id", books),
