@@ -216,7 +216,8 @@ export async function runComparisonPhoto(options: {
   } catch { status = "failed"; failure ??= "reservation-or-settlement-failed"; }
   if (attempts.some(a => a.usage.provider !== model.providerName || a.usage.model !== model.model || !a.usage.generationId)) failure ??= "served-provider-model-or-generation-mismatch";
   if (attempts.some(a => a.usage.costMicros === null || a.usage.inputTokens === null || a.usage.outputTokens === null || a.usage.reasoningTokens === null)) failure ??= "unknown-usage";
-  if (status !== "finished" || !schemaValid || !attempts.length) failure ??= status;
+  // An all-blank page ends `unfinished` (no marks), but its reading was extracted: the evaluation scores readings.
+  if ((status !== "finished" && status !== "unfinished") || !schemaValid || !attempts.length) failure ??= status;
   const isDeferred = !journalFailed && !budgetFailed && attempts.length > 0 && deferredAttempt(attempts.at(-1)!);
   if (journalFailed) failure = "journal-failure";
   else if (budgetFailed) failure = "reservation-or-settlement-failed";

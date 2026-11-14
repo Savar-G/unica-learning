@@ -1221,16 +1221,17 @@ it("after one timeout, sends the photo again encoded smaller (#5)", async () => 
   expect([...photos.values()].map((p) => p.pageId)).toEqual(["p10"]);
 });
 
+// The 10-minute limit no longer refuses: the photo waits for room like `busy` (scan-upload-queue.ts, roomWait).
 it("keeps the photo with Try again when a limit refused it, as the refusal is not about the photo (#5)", async () => {
   const server = global.fetch;
   let limited = true;
   vi.stubGlobal("fetch", async (path: string, init?: RequestInit) => {
-    if (path === "/api/account/scans" && init?.method === "POST" && limited) { calls.push("POST /api/account/scans"); return Response.json({ error: "frequency" }, { status: 429 }); }
+    if (path === "/api/account/scans" && init?.method === "POST" && limited) { calls.push("POST /api/account/scans"); return Response.json({ error: "quota" }, { status: 429 }); }
     return server(path, init);
   });
   await render();
   await choose("library", "p10.jpg");
-  expect(text()).toContain(refusalCopy("frequency").short);
+  expect(text()).toContain(refusalCopy("quota").short);
   limited = false;
   await act(async () => button("Try again")!.click()); await settle();
   expect([...photos.values()].map((p) => p.pageId)).toEqual(["p10"]);

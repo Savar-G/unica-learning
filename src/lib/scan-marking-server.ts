@@ -103,7 +103,7 @@ export async function readScanMarking(db: SupabaseClient<Database>, parent: stri
   if (evidence.error) throw new Error("marking_evidence_state");
   const activeEvidence = new Set((evidence.data ?? []).filter((p) => p.state === "saved" && Date.parse(p.expires_at) > Date.now()).map((p) => p.id));
   const items = view.items.map((i) => ({ ...i, photoAvailable: i.evidencePhoto !== null && activeEvidence.has(i.evidencePhoto) }));
-  return { ...view, items, budgetHeld: held === "budget", photoAvailable: p.state === "saved" && Date.parse(p.expires_at) > Date.now(), marks, detail };
+  return { ...view, items, budgetHeld: held === "budget", unfinished: held === "unfinished", photoAvailable: p.state === "saved" && Date.parse(p.expires_at) > Date.now(), marks, detail };
 }
 /**
  * One recovery run (#726): the cron route `/api/scan-marking` (the pg_cron job `scan-marking-recovery` every 15 minutes,

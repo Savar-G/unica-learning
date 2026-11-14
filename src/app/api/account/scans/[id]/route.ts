@@ -46,7 +46,7 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/accou
     // A photo of an open book (#915) has two pages: this photo takes the first one its own code binds, and the other
     // becomes a photo of its own below. A single page is one page, exactly as before.
     const pages: SpreadPage[] = normalized.spread ?? [{ bytes: normalized.bytes, token: normalized.token, width: normalized.width, height: normalized.height }];
-    let mine = -1, refusal: string | null = null, refusedToken: string | null = null;
+    let mine = -1, refusal: string | null = null, refusedToken: string | null = null, replaces: string | null = null;
     for (const [i, page] of pages.entries()) {
       const identify = () => admin.rpc("identify_scan_photo", { p_parent: parent, p_id: id, p_token: page.token, p_width: page.width, p_height: page.height });
       let identified = await identify();
@@ -55,6 +55,8 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/accou
       if (!identified.error && identified.data === "duplicate" && await replaceRefusedPhoto(admin, parent, page.token, session.childOpen, isUuid(replace) ? replace : null)) identified = await identify();
       if (identified.error) throw new Error("unavailable");
       if (identified.data === "identified") { mine = i; break; }
+      // A page that looked unfinished: this photo replaces its photo once stored (below).
+      if (identified.data === "duplicate" && (replaces = await unfinishedHeld(admin, parent, page.token, session.childOpen))) { mine = i; break; }
       if (refusal === null) { refusal = identified.data; refusedToken = page.token; }
       // Only a page that already has a photo, or is not this child's, lets the other page of a spread take this photo.
       if (!["duplicate", "page"].includes(identified.data)) break;
@@ -63,14 +65,21 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/accou
     if (mine < 0) throw new Error(refusal ?? "image");
     // A code may file the photo with a sibling's book (#915): that child's own plan must open scanning too, or the page
     // is refused as not this family's, before anything is stored.
-    if (!await filedChildOpen(admin, parent, id, session.childOpen)) throw new Error("page");
+    // (A replacement is not filed yet: its page's photo belongs to a child unfinishedHeld found open.)
+    if (!replaces && !await filedChildOpen(admin, parent, id, session.childOpen)) throw new Error("page");
     const page = pages[mine];
     const uploaded = await admin.storage.from(SCAN_BUCKET).upload(scanPath(parent, id), page.bytes, { contentType: "image/jpeg", upsert: false, cacheControl: "0" });
     // A lost Storage response is uncertain. Keep the reservation and reconcile on GET/retry/expiry.
     if (uploaded.error) return scanJson({ error: "uncertain" }, 503);
-    const finished = await admin.rpc("finish_scan_photo", { p_parent: parent, p_id: id, p_bytes: page.bytes.length });
+    // The unfinished page's photo goes only now, in the same transaction that binds and stores this one.
+    const finished = replaces
+      ? await admin.rpc("replace_unfinished_scan_photo", { p_parent: parent, p_id: id, p_token: page.token, p_width: page.width, p_height: page.height, p_bytes: page.bytes.length })
+      : await admin.rpc("finish_scan_photo", { p_parent: parent, p_id: id, p_bytes: page.bytes.length });
+    // A lost answer (of the swap too) is reconciled by the GET: a swap that ran left this photo pending; one that did not
+    // leaves the old photo, and this one (never bound to the page) is refused.
     if (finished.error) return scanJson({ error: "uncertain" }, 503);
     if (finished.data !== "pending") throw new Error(finished.data);
+    if (replaces) await cleanupScanPhoto(admin, parent, replaces);
     // Speed (#915): the page check starts here, as soon as the photo is stored, instead of waiting for the page to save
     // the photo, list the stack again and ask. The job is the same one the preview route runs, under the same lease: a
     // later ask gets its result, a busy family slot leaves it to that ask, and any error leaves the photo as it was.
@@ -135,6 +144,22 @@ async function replaceRefusedPhoto(admin: SupabaseClient<Database>, parent: stri
 }
 
 /**
+ * The page's sent photo whose marking found every answer blank (its job ended `unfinished`, nothing marked; scan edge
+ * sweep, 2026-11-14), when its child has scanning open: a new photo of the page replaces it, but only once the new photo
+ * is stored (`replace_unfinished_scan_photo`), so a refused or lost upload leaves it in place. Null otherwise.
+ */
+async function unfinishedHeld(admin: SupabaseClient<Database>, parent: string, token: string, childOpen: (child: string) => Promise<boolean>): Promise<string | null> {
+  try {
+    const page = await admin.from("workbook_pages").select("id").eq("parent_id", parent).eq("qr_token", token).maybeSingle();
+    if (page.error || !page.data) return null;
+    const held = await admin.from("scan_photos").select("id,child_id,printed_revision,sent_at").eq("parent_id", parent).eq("page_id", page.data.id).eq("state", "saved").maybeSingle();
+    if (held.error || !held.data?.sent_at || !await childOpen(held.data.child_id)) return null;
+    const job = await admin.from("scan_marking_jobs").select("state,blocked_reason").eq("parent_id", parent).eq("photo_id", held.data.id).maybeSingle();
+    return !job.error && job.data?.state === "finished" && job.data.blocked_reason === "unfinished" ? held.data.id : null;
+  } catch { return null; }
+}
+
+/**
  * The page a duplicate is of (#4): its printed number, and `replaceable`, the id of the page's photo when that photo is
  * ready and not sent, so the parent may use the new photo instead. Null on a failed read: a plain duplicate.
  */
@@ -172,10 +197,10 @@ async function spreadPhoto(admin: SupabaseClient<Database>, parent: string, chil
   try {
     // The phone sends two photos at a time, and both count against the family's upload slots while they run: this page
     // asks again a few times, a second apart, instead of being dropped as busy (#965 review). Other refusals stand.
-    let admitted = await admin.rpc("admit_scan_photo", { p_parent: parent, p_child: child, p_id: id, p_bytes: page.bytes.length });
+    let admitted = await admin.rpc("admit_scan_photo_v2", { p_parent: parent, p_child: child, p_id: id, p_bytes: page.bytes.length });
     for (let tries = 1; !admitted.error && admitted.data === "busy" && tries < SPREAD_ADMIT_TRIES && Date.now() - received < UPLOAD_CHECK_BUDGET_MS; tries++) {
       await pause(SPREAD_ADMIT_WAIT_MS);
-      admitted = await admin.rpc("admit_scan_photo", { p_parent: parent, p_child: child, p_id: id, p_bytes: page.bytes.length });
+      admitted = await admin.rpc("admit_scan_photo_v2", { p_parent: parent, p_child: child, p_id: id, p_bytes: page.bytes.length });
     }
     if (admitted.error || admitted.data !== "reserved") return { id, state: admitted.error ? "unavailable" : admitted.data };
     const started = await admin.rpc("start_scan_photo", { p_parent: parent, p_id: id });
