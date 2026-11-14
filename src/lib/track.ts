@@ -28,7 +28,7 @@
 // analytics.
 // Help flags (#71): test_help (status yes, a-little or no: the answer to "Did anyone help?", sent once the test is stored).
 // Rushing (#189): test_pace (status shown: "Take your time" showed after three very fast answers in a row). No time or score.
-// Results call: book_call (src report: the parent opened the Calendly booking page from the report). No child data.
+// Results call: book_call (src report: the parent opened the Cal.com booking page from the report). No child data.
 // Report wait: test_report_wait (status opened: the end screen opened the built report; slow: it was not built within 3
 // minutes and the screen points to the email). No time or score.
 // Check your answers (#253): test_check (status stage1, stage2 or stage3: "Done checking" locked that part). test_error has

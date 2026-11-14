@@ -4372,6 +4372,36 @@ export type Database = {
           },
         ]
       }
+      scan_team_email_days: {
+        Row: {
+          claimed_at: string
+          day: string
+          email_id: string | null
+          error: string | null
+          state: string
+          updated_at: string
+          waiting: number
+        }
+        Insert: {
+          claimed_at?: string
+          day: string
+          email_id?: string | null
+          error?: string | null
+          state?: string
+          updated_at?: string
+          waiting: number
+        }
+        Update: {
+          claimed_at?: string
+          day?: string
+          email_id?: string | null
+          error?: string | null
+          state?: string
+          updated_at?: string
+          waiting?: number
+        }
+        Relationships: []
+      }
       sign_in_links: {
         Row: {
           child_id: string
@@ -4503,6 +4533,54 @@ export type Database = {
           source?: Json
           status?: string
           subject?: string
+        }
+        Relationships: []
+      }
+      site_hits: {
+        Row: {
+          browser: string | null
+          country: string | null
+          device: string | null
+          hit_at: string
+          id: number
+          is_landing: boolean
+          path: string
+          referrer_host: string | null
+          region: string | null
+          utm_campaign: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          visit_id: string
+        }
+        Insert: {
+          browser?: string | null
+          country?: string | null
+          device?: string | null
+          hit_at?: string
+          id?: never
+          is_landing?: boolean
+          path: string
+          referrer_host?: string | null
+          region?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          visit_id: string
+        }
+        Update: {
+          browser?: string | null
+          country?: string | null
+          device?: string | null
+          hit_at?: string
+          id?: never
+          is_landing?: boolean
+          path?: string
+          referrer_host?: string | null
+          region?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          visit_id?: string
         }
         Relationships: []
       }
@@ -8021,6 +8099,10 @@ export type Database = {
         Args: { p_parent: string; p_test: boolean }
         Returns: undefined
       }
+      admin_site_traffic: {
+        Args: { p_days?: number; p_with_tests?: boolean }
+        Returns: Json
+      }
       admin_team_ids: { Args: never; Returns: string[] }
       admin_team_names: {
         Args: never
@@ -9261,6 +9343,8 @@ export type Database = {
         Args: { p_draft: string; p_revision: number }
         Returns: Json
       }
+      pacific_day: { Args: { ts: string }; Returns: string }
+      pacific_day_start: { Args: { d: string }; Returns: string }
       parent_explanation_command: {
         Args: {
           p_action: string
@@ -9946,6 +10030,7 @@ export type Database = {
         Args: { p_session: string; p_user: string }
         Returns: boolean
       }
+      scan_team_waiting_count: { Args: never; Returns: number }
       seed_family_plan_history: {
         Args: { p_parent: string }
         Returns: undefined
