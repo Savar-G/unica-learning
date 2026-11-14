@@ -31,6 +31,27 @@ export function drawPrintedContent(r: Raster) {
   for (let i = 0; i < 12; i++) fillBox(r, w * 0.07 + i * w * 0.031, h * 0.957, w * 0.02, h * 0.0073);
 }
 
+/**
+ * Printed content as real text sets it: lines of words of uneven length, so no part of the page repeats another a word
+ * or a line away. `seed` picks the words. Heading blocks, then the lines, then a code block low on the right.
+ */
+export function drawTextContent(r: Raster, seed = 7) {
+  const w = r.width, h = r.height;
+  let s = seed;
+  const next = () => { s = (s * 1103515245 + 12345) % 2147483648; return s / 2147483648; };
+  fillBox(r, w * 0.07, h * 0.055, w * 0.49, h * 0.036);
+  fillBox(r, w * 0.07, h * 0.11, w * 0.28, h * 0.012);
+  for (let line = 0; line < 14; line++) {
+    for (let x = w * 0.07 + next() * w * 0.03; x < w * 0.86;) {
+      const word = w * (0.02 + next() * 0.07);
+      fillBox(r, x, h * 0.145 + line * h * 0.02 + next() * 2, Math.min(word, w * 0.88 - x), h * (0.005 + next() * 0.004));
+      x += word + w * (0.012 + next() * 0.015);
+    }
+  }
+  fillBox(r, w * 0.815, h * 0.885, w * 0.118, w * 0.118, 40);
+  for (let i = 0; i < 12; i++) fillBox(r, w * 0.07 + i * w * 0.031, h * 0.957, w * 0.02 + next() * w * 0.01, h * 0.0073);
+}
+
 export function drawBoxOutline(r: Raster, b: Box) {
   fillBox(r, b.x, b.y, b.width, 2, 150); fillBox(r, b.x, b.y + b.height - 2, b.width, 2, 150);
   fillBox(r, b.x, b.y, 2, b.height, 150); fillBox(r, b.x + b.width - 2, b.y, 2, b.height, 150);
@@ -124,4 +145,48 @@ export function uprightCorners(size: { width: number; height: number }, page: { 
 export function rotatedCorners(corners: Point[], degrees: number, about: Point): Point[] {
   const a = (degrees * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
   return corners.map((p) => ({ x: about.x + (p.x - about.x) * c - (p.y - about.y) * s, y: about.y + (p.x - about.x) * s + (p.y - about.y) * c }));
+}
+
+/**
+ * A sheet held up in the hand (#912): near one edge the paper curls toward the camera, so the print there moves inward
+ * and down by up to `amount` photo pixels, most at the middle of that edge and fading over `reach` of the photo's width.
+ * The corners stay where they are. `edge`: which side the hand holds.
+ */
+export function curled(r: Raster, amount: number, o: { edge?: "left" | "right"; reach?: number } = {}): Raster {
+  const out = new Uint8Array(r.width * r.height * r.channels);
+  const reach = (o.reach ?? 0.25) * r.width, right = o.edge === "right";
+  for (let y = 0; y < r.height; y++) for (let x = 0; x < r.width; x++) {
+    const from = right ? r.width - 1 - x : x, fade = Math.exp(-from / reach), along = Math.sin((Math.PI * y) / r.height);
+    // A curl rolls the paper: the print moves toward the held edge and a little along it, more as the paper bends away.
+    const sx = x + (right ? 1 : -1) * amount * fade * along, sy = y - 0.4 * amount * fade * Math.sin((2 * Math.PI * y) / r.height);
+    const x0 = Math.max(0, Math.min(r.width - 2, Math.floor(sx))), y0 = Math.max(0, Math.min(r.height - 2, Math.floor(sy)));
+    const fx = Math.max(0, Math.min(1, sx - x0)), fy = Math.max(0, Math.min(1, sy - y0));
+    for (let c = 0; c < r.channels; c++) {
+      const at = (yy: number, xx: number) => r.data[(yy * r.width + xx) * r.channels + c];
+      out[(y * r.width + x) * r.channels + c] = Math.round((at(y0, x0) * (1 - fx) + at(y0, x0 + 1) * fx) * (1 - fy) + (at(y0 + 1, x0) * (1 - fx) + at(y0 + 1, x0 + 1) * fx) * fy);
+    }
+  }
+  return { ...r, data: out };
+}
+
+/**
+ * A phone's or an arm's shadow: every pixel to the right of the line from `from` to `to` (walking from one to the other)
+ * is `darkness` darker (0.5 keeps half its light), with an edge that softens over `soft` pixels.
+ */
+export function shadowed(r: Raster, from: Point, to: Point, darkness: number, soft = 6): Raster {
+  const out = new Uint8Array(r.data);
+  const len = Math.hypot(to.x - from.x, to.y - from.y) || 1, nx = -(to.y - from.y) / len, ny = (to.x - from.x) / len;
+  for (let y = 0; y < r.height; y++) for (let x = 0; x < r.width; x++) {
+    const k = Math.max(0, Math.min(1, 0.5 + ((x - from.x) * nx + (y - from.y) * ny) / soft));
+    if (k === 0) continue;
+    for (let c = 0; c < r.channels; c++) { const at = (y * r.width + x) * r.channels + c; out[at] = Math.round(out[at] * (1 - darkness * k)); }
+  }
+  return { ...r, data: out };
+}
+
+/** The part of a raster inside a box: a photo whose frame cuts the page. */
+export function cutOut(r: Raster, b: Box): Raster {
+  const out = new Uint8Array(b.width * b.height * r.channels);
+  for (let y = 0; y < b.height; y++) out.set(r.data.subarray(((b.y + y) * r.width + b.x) * r.channels, ((b.y + y) * r.width + b.x + b.width) * r.channels), y * b.width * r.channels);
+  return { width: b.width, height: b.height, channels: r.channels, data: out };
 }

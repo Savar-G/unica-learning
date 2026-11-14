@@ -129,7 +129,7 @@ node scripts/scan-marking-physical.mjs --run --max-usd 15 \
 
 The required names are `SCAN_MARKING_OPENROUTER_API_KEY` and `SUPABASE_SERVICE_ROLE_KEY`. The tool does not retrieve credentials. It does not use `OPENROUTER_API_KEY`. There is no alternate key or provider fallback.
 
-The fixed test pairs are Sonnet 5.5 on `google-vertex/global` and Terra 6.1 on `azure`, with fallbacks off. Prompt v8 and the reader are the same for both. Reasoning stays low. The output limit stays 4096. The tool does not select the final or cheapest model.
+The fixed test pairs are Sonnet 5.5 on `google-vertex/global` and Terra 6.1 on `azure`, with fallbacks off. The current prompt (v9 since #921; the report still labels its row `v8`) and the reader are the same for both. Reasoning stays low. The output limit stays 4096. The tool does not select the final or cheapest model.
 
 Both models go through one serial queue, one request at a time. Each photo goes to both models before the next photo.
 
