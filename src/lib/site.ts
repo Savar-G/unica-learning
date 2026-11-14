@@ -51,5 +51,5 @@ export const HERO = {
   child: "your child",
   join: "to",
   highlight: "excel.",
-  lead: "Unica mails a paper workbook made for your child. You scan the pages with your phone, we mark them, and an AI Teaching Assistant helps when they're stuck.",
+  lead: "Unica mails you paper workbooks. You scan the pages with your phone, we mark them, and an AI Teaching Assistant helps when they're stuck.",
 };
