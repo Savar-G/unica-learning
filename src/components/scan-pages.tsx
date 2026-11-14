@@ -36,6 +36,8 @@ const UPLOAD_REFUSALS: readonly string[] = ["qr", "page", "duplicate", "flat", "
 const uploadRefusal = (code: string): UploadRefusal => (UPLOAD_REFUSALS.includes(code) ? code as UploadRefusal : "unavailable");
 /** What the server says of a photo id that can no longer take an upload: the lease ended or the photo went. A new id is needed. */
 const ENDED: readonly string[] = ["expired", "rejected", "deleted", "refused"];
+/** Why a photo could not be sent at all: the capture tray says so on its thumbnail at once. Other refusals wait for Done. */
+const SENDING_PROBLEMS: readonly string[] = ["unavailable", "size", "image", "frequency", "quota"];
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 /** How long a photo waits before its check is asked again; a busy check (still running, #915) is asked again sooner. */
 const CHECK_ASK_MS = 6000, BUSY_ASK_MS = 1500, QUICK_BUSY_ASKS = 8;
@@ -214,8 +216,8 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   // The capture screen (#915): open while the parent keeps taking photos; the shots are this session's local photos.
   const [capturing, setCapturing] = useState(false);
   const [shots, setShots] = useState<string[]>([]);
-  // The photo shown large on the capture screen; null: the latest.
-  const [shotAt, setShotAt] = useState<string | null>(null);
+  // The capture tray's live line: "Photo 3 added", or why a photo could not be sent.
+  const [announce, setAnnounce] = useState("");
   const [landed, setLanded] = useState<Record<string, string>>({});
   // A pick from the capture screen that ends with no photo (#915): with no shot yet, the capture screen closes.
   const capturingRef = useRef(false);
@@ -273,7 +275,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     running.current.clear(); wakeAll(); checking.current = false; replacing.current = null;
     setThumbs({}); setUnavailable(new Set()); putUploads([]); setListing(null); setSheet(null); setSending(false); setMessage(null); setLoadFailed(false);
     // A page held for Undo is not sent: it stays ready, and is held again on the next visit.
-    held.current.clear(); filedOf.current.clear(); setBatch([]); setProblems({}); setTried(new Set()); setShots([]); setLanded({}); setElsewhere([]); setCapturing(false); setRetakeAt(0);
+    held.current.clear(); filedOf.current.clear(); setBatch([]); setProblems({}); setTried(new Set()); setShots([]); setAnnounce(""); setLanded({}); setElsewhere([]); setCapturing(false); setRetakeAt(0);
   }, [putUploads, wakeAll]);
 
   const load = useCallback(async () => {
@@ -494,6 +496,9 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       const result = await uploadOne(next, version);
       if (version !== epoch.current || !sessionCurrent.current) return;
       emit("scan_upload_outcome", typeof result === "string" ? result === "unavailable" ? "failed" : "refused" : "saved");
+      // The capture tray says only that a photo went up, or why it could not; a page's verdict waits for Done.
+      const n = shotsRef.current.indexOf(next.key) + 1;
+      if (n > 0 && capturingRef.current) setAnnounce(typeof result === "string" && SENDING_PROBLEMS.includes(result) ? `Photo ${n}: ${refusalCopy(result).title}` : `Photo ${n} added`);
       if (typeof result === "string") patchUpload(next.key, { status: "refused", reason: result, held: false });
       else {
         keepUrl(result.id, URL.createObjectURL(result.thumb));
@@ -546,7 +551,6 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     if (phone && pickFromCapture.current && !capturingRef.current) { pushEntry(); capturingRef.current = true; setCapturing(true); }
     // A retake takes the place of the photo it replaces on the capture screen.
     setShots((s) => [...s.filter((k) => !replaces || (k !== replaces && landed[k] !== replaces)), ...added.map((u) => u.key)]);
-    setShotAt(null);
     if (!tipsSeen) { tipsFlag.write(); setTipsDone(true); }
     noteScanning();
     setMessage(null); setSheet(null);
@@ -731,7 +735,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   /** "Scan pages": the capture screen, and the camera in the same tap. `from`: the control that opened it, for focus on close. */
   function scan(which: "camera" | "library" = "camera", from = "dock") {
     opener.current = from;
-    setShots([]); setShotAt(null); setCapturing(true);
+    setShots([]); setAnnounce(""); setCapturing(true);
     if (phone) { capturingRef.current = true; pushEntry(); }
     open(which);
   }
@@ -860,7 +864,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const tipsSheet = sheet?.kind === "add" && <Sheet label="How to scan" onClose={() => setSheet(null)}>
     <h2>How to scan</h2>
     {tipList}
-    <p>{checks ? "Each photo is checked as it arrives. Pages that pass are sent for marking on their own, with a few seconds to undo." : `We keep the photos to mark ${name}'s work later.`} Pages can be scanned in any order.</p>
+    <p>{checks ? "Each photo is checked as it arrives. After you tap Done, any page that needs another photo shows at the top, and pages that pass are sent for marking on their own, with a few seconds to undo." : `We keep the photos to mark ${name}'s work later.`} Pages can be scanned in any order.</p>
     <p className="small">Photos are private and kept for 90 days. <button type="button" className="scan-link" onClick={() => setSheet({ kind: "notice", then: null })}>More about photos</button></p>
     <button type="button" className="btn" data-first-focus onClick={() => setSheet(null)}>Close</button>
   </Sheet>;
@@ -895,57 +899,25 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
       <button type="button" className="btn ghost" onClick={() => void load().catch(() => setLoadFailed(true))}>Try again</button></div>;
   }
 
-  // Step 3: the capture screen. The phone's own camera opens for each photo (one tap each, as browsers ask); between
-  // photos the parent sees each shot get its tick, then takes the next page, picks photos, or taps Done.
+  // Step 3: the capture screen, a calm tray (meeting of 2026-11-14, Cedric and Savar). The phone's own camera opens for each
+  // photo (one tap each, as browsers ask). Between photos the tray shows only the photos taken, each sending or sent: no
+  // page verdict and no retake while the parent takes pages. Each page is checked on the server as it arrives, so after
+  // Done home shows the pages that need another photo at the top, mostly with no wait. A photo that could not be sent
+  // (offline, too large, cannot open, a limit) says so on its thumbnail at once, as that cannot wait for Done.
   if (captureShown) {
-    type Shot = { key: string; status: StackTile["status"] | "elsewhere"; thumb?: string; label: string; tile?: StackTile; page?: number | null };
-    const shotOf = (key: string): Omit<Shot, "key"> => {
-      const local = stack.refused.find((t) => t.uploadKey === key) ?? stack.addingTiles.find((t) => t.uploadKey === key);
-      if (local) return { status: local.status, thumb: thumbs[key], tile: local, label: local.status === "refused" ? `${local.label}, ${local.reason}` : `New photo, ${(local.reason ?? STATUS_WORDS[local.status]).toLowerCase()}` };
+    type Shot = { key: string; n: number; state: "busy" | "added" | "stuck"; thumb?: string; note?: string; tile?: StackTile };
+    const shotOf = (key: string, n: number): Shot => {
+      const failed = stack.refused.find((t) => t.uploadKey === key);
+      if (failed) return SENDING_PROBLEMS.includes(failed.refusal ?? "") ? { key, n, state: "stuck", thumb: thumbs[key], note: failed.reason ?? undefined, tile: failed } : { key, n, state: "added", thumb: thumbs[key] };
+      const sending = stack.addingTiles.find((t) => t.uploadKey === key);
+      if (sending) return sending.hint === "offline" ? { key, n, state: "stuck", thumb: thumbs[key], note: sending.reason ?? undefined, tile: sending } : { key, n, state: "busy", thumb: thumbs[key] };
       const id = landed[key];
-      const tile = id ? tiles.find((t) => t.photoId === id) : undefined;
-      if (tile) return { status: tile.status, thumb: thumbs[id], tile, label: `${tile.label}, ${(tile.reason ?? STATUS_WORDS[tile.status]).toLowerCase()}` };
-      const filed = id ? filedOf.current.get(id) : undefined;
-      if (filed?.child_id && filed.child_id !== child) return { status: "elsewhere", thumb: thumbs[id], page: filed.page ?? null, label: `Page ${filed.page ?? ""}, went to ${filed.child}'s pages` };
-      return { status: "checking", thumb: id ? thumbs[id] : undefined, label: "New photo, checking" };
+      return { key, n, state: "added", thumb: (id && thumbs[id]) || thumbs[key] };
     };
-    const list: Shot[] = shots.map((k) => ({ key: k, ...shotOf(k) }));
-    const shown = list.find((s) => s.key === shotAt) ?? list[list.length - 1];
+    const list = shots.map((k, i) => shotOf(k, i + 1));
     // The day's pages that have a photo, out of the day's pages: "Day 4 · 3 of 8".
     const head = strip ? `${strip.day} · ${strip.tiles.filter((t) => t.state !== "todo").length} of ${strip.tiles.length}` : list.length === 1 ? "1 photo" : `${list.length} photos`;
-    const faceOf = (s: Shot) => {
-      const problem = s.tile?.photoId ? problems[s.tile.photoId] : undefined;
-      if (s.status === "refused" || problem) return "bad" as const;
-      if (s.status === "unavailable") return "bad" as const;
-      return s.status === "ready" || s.status === "sent" || s.status === "saved" || s.status === "elsewhere" ? "ok" as const : "chk" as const;
-    };
-    const flagOf = (s: Shot) => { const f = faceOf(s); return f === "ok" ? ICONS.check : f === "bad" ? "!" : s.status === "waiting" ? ICONS.clock : <span className="scan-spin" />; };
-    const pageOf = (s: Shot) => /^Page \d+/.exec(s.tile?.label ?? "")?.[0] ?? (s.page ? `Page ${s.page}` : null);
-    const card = (s: Shot) => {
-      const face = faceOf(s), page = pageOf(s), t = s.tile;
-      const problem = t?.photoId ? problems[t.photoId] : undefined;
-      let title: string, line: string, action: ReactNode = null;
-      if (s.status === "elsewhere") { title = s.label.replace(", went", " went"); line = "Take the next page, or tap Done."; }
-      else if (face === "ok") { title = `${page ?? "This page"} looks good`; line = checks ? "We'll mark it when you tap Done." : "Saved. Tap Done when you have them all."; }
-      else if (face === "bad" && t) {
-        title = `${page ?? "This page"}: retake this one`;
-        line = problem ? PHOTO_PROBLEM_TEXT[problem] : t.refusal ? refusalCopy(t.refusal).action : t.reason ?? "";
-        action = fixAction(t, { className: "scan-tray-retake", retake: page ? `Retake ${page.toLowerCase()}` : "Retake this page" });
-      } else { title = page ? `Checking ${page.toLowerCase()}…` : "Checking your photo…"; line = "Takes a few seconds. You can take the next page now."; }
-      return { face, thumb: s.thumb, label: s.label, flag: flagOf(s), title, line, action };
-    };
-    // One card, the same elements with or without a photo, so its live line stays mounted and the first verdict is heard.
-    const c = shown ? card(shown) : null;
-    // A photo that is not the one shown can still fail its check later: say so in a polite line of its own.
-    const laterBad = list.filter((s) => s !== shown && faceOf(s) === "bad").map((s) => `${pageOf(s) ?? "A photo"} needs another photo.`).join(" ");
-    const tray = <div className={`scan-tray-card${c ? ` is-${c.face}` : ""}`}>
-      {c ? <div className="scan-tray-ph" role="img" aria-label={c.label}>
-        {c.thumb ? <Image unoptimized width={600} height={800} src={c.thumb} alt="" /> : <span className="scan-ph-empty" />}
-        <span className="scan-tray-flag" aria-hidden="true">{c.flag}</span>
-      </div> : null}
-      <p className="scan-tray-msg" aria-live="polite"><b>{c ? c.title : "Take a photo of the first page."}</b><span>{c ? c.line : "Fill the photo with the page, with all four corners in view."}</span></p>
-      {c?.action ?? null}
-    </div>;
+    const shotLabel = (s: Shot) => `Photo ${s.n}, ${s.state === "busy" ? "sending" : s.state === "added" ? "added" : (s.note ?? "not sent").toLowerCase()}`;
     return <div className="scan-pages is-capture">
       {inputs}
       <div className="scan-cam scan-tray" role="region" aria-label="Scan pages">
@@ -956,15 +928,19 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
         </div>
         {offline}
         {elsewhereNote}
-        {undoBar}
-        {tray}
-        <p className="sr-only" aria-live="polite">{laterBad}</p>
-        {list.length > 1 && <ol className="scan-shots" aria-label="Photos taken">
-          {list.map((s) => <li key={s.key} className={`is-${faceOf(s)}${s === shown ? " is-current" : ""}`}>
-            <button type="button" aria-label={s.label} aria-pressed={s === shown} onClick={() => setShotAt(s.key)}>
-              {s.thumb ? <Image unoptimized width={80} height={106} src={s.thumb} alt="" /> : <span className="scan-ph-empty" />}
-              <span className="scan-shot-flag" aria-hidden="true">{flagOf(s)}</span>
-            </button>
+        <div className="scan-tray-msg">
+          <b>{list.length ? (list.length === 1 ? "1 photo taken" : `${list.length} photos taken`) : "Take a photo of the first page."}</b>
+          <span>{list.length ? "Take the next page, or tap Done when you've finished." : "Fill the photo with the page, with all four corners in view."}</span>
+        </div>
+        <p className="sr-only" aria-live="polite">{announce}</p>
+        {list.length > 0 && <ol className="scan-shots" aria-label="Photos taken">
+          {list.map((s) => <li key={s.key} className={`is-${s.state}`}>
+            <span className="scan-shot-ph" role="img" aria-label={shotLabel(s)}>
+              {s.thumb ? <Image unoptimized width={240} height={320} src={s.thumb} alt="" /> : <span className="scan-ph-empty" />}
+              {s.state !== "stuck" && <span className="scan-shot-flag" aria-hidden="true">{s.state === "added" ? ICONS.check : <span className="scan-spin" />}</span>}
+            </span>
+            {s.state === "stuck" && <span className="scan-shot-note">{s.note}</span>}
+            {s.state === "stuck" && s.tile?.refusal && fixAction(s.tile, { className: "scan-link scan-shot-fix" })}
           </li>)}
         </ol>}
         <div className="scan-cam-foot">

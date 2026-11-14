@@ -174,8 +174,8 @@ it("shows the four tips on the first visit only, then Scan pages opens the camer
   expect(text()).toContain("Take a photo of the first page.");
   expect(button("Take a photo")).toBeDefined();
   await choose("camera", "p10.jpg");
-  expect(text()).toContain("Page 10 looks good");
-  expect(host.querySelector('[aria-label="Page 10, ready"]')).not.toBeNull();
+  expect(text()).toContain("1 photo taken");
+  expect(host.querySelector('[aria-label="Photo 1, added"]')).not.toBeNull();
   await act(async () => button("Done")!.click()); await settle();
   // Every later visit opens on the day strip.
   await act(async () => root.unmount()); root = createRoot(host); await render();
@@ -732,7 +732,7 @@ it("a plain scan of a page that needs another photo replaces its photo, not refu
   vi.spyOn(host.querySelector<HTMLInputElement>("input[capture]")!, "click").mockImplementation(() => {});
   await act(async () => button("Scan pages")!.click());
   await choose("camera", "p11.jpg");
-  expect(host.querySelector('[aria-label="Page 11, ready"]')).not.toBeNull();
+  expect(host.querySelector('[aria-label="Photo 1, added"]')).not.toBeNull();
   await act(async () => button("Done")!.click()); await settle();
   expect(photos.has("bad")).toBe(false);
   expect(text()).not.toContain("Already has a photo");
@@ -867,45 +867,114 @@ it("keeps the capture screen when a photo arrives after the focus return, and wh
   await act(async () => { window.dispatchEvent(new Event("blur")); window.dispatchEvent(new Event("focus")); });
   await choose("camera", "p10.jpg");
   await act(async () => { await new Promise((r) => setTimeout(r, PICK_RETURN_MS + 100)); }); await settle();
-  expect(text()).toContain("Page 10 looks good");
+  expect(text()).toContain("1 photo taken");
   await act(async () => button("Take next page")!.click());
   await act(async () => { camera.dispatchEvent(new Event("cancel")); }); await settle();
-  expect(text()).toContain("Page 10 looks good");
+  expect(text()).toContain("1 photo taken");
   expect(document.documentElement.classList.contains(CAPTURE_CLASS)).toBe(true);
 });
 
-it("shows the latest photo large with its verdict, a film strip of the others, and retakes the page it shows (#915, Light tray)", async () => {
+it("shows the photos taken as a calm tray: a count, a thumbnail each, sending then added, and no large card (#915, 2026-11-14)", async () => {
+  let open!: () => void;
   await render();
-  const camera = host.querySelector<HTMLInputElement>("input[capture]")!;
-  const opened = vi.spyOn(camera, "click").mockImplementation(() => {});
+  vi.spyOn(host.querySelector<HTMLInputElement>("input[capture]")!, "click").mockImplementation(() => {});
   await act(async () => button("Scan pages")!.click());
+  expect(text()).toContain("Take a photo of the first page.");
   await choose("camera", "p10.jpg");
   expect(text()).toContain("Day 4 · 1 of 4");
-  expect(text()).toContain("We'll mark it when you tap Done.");
-  // One photo: no film strip yet.
-  expect(host.querySelector(".scan-shots")).toBeNull();
+  expect(text()).toContain("1 photo taken");
+  expect(text()).toContain("Take the next page, or tap Done when you've finished.");
+  putGate = new Promise<void>((resolve) => { open = resolve; });
   await choose("camera", "p11.jpg");
-  await choose("camera", "two-p12.jpg");
-  expect(text()).toContain("Day 4 · 3 of 4");
-  expect(text()).toContain("Page 12: retake this one");
-  expect(text()).toContain(refusalCopy("ambiguous-page").action);
-  expect(host.querySelectorAll(".scan-shots button")).toHaveLength(3);
-  expect(host.querySelector(".scan-shots li.is-current button")?.getAttribute("aria-label")).toMatch(/^Page 12/);
-  // Tapping an earlier photo shows it in the card.
-  await act(async () => button("Page 10, ready")!.click());
-  expect(text()).toContain("Page 10 looks good");
-  expect(text()).not.toContain("Page 12: retake this one");
-  await act(async () => [...host.querySelectorAll<HTMLButtonElement>(".scan-shots button")][2].click());
-  opened.mockClear();
-  await act(async () => button("Retake page 12")!.click());
-  expect(opened).toHaveBeenCalledOnce();
+  // Still sending: a spinner, never a tick.
+  expect(host.querySelector('[aria-label="Photo 2, sending"] .scan-spin')).not.toBeNull();
+  await act(async () => { open(); }); await settle();
+  putGate = null;
   await choose("camera", "p12.jpg");
-  // The new photo takes the old one's place.
-  expect(host.querySelectorAll(".scan-shots button")).toHaveLength(3);
-  expect(text()).toContain("Page 12 looks good");
+  expect(text()).toContain("3 photos taken");
+  expect(text()).toContain("Day 4 · 3 of 4");
+  const shots = [...host.querySelectorAll(".scan-shots li")];
+  expect(shots.map((li) => li.querySelector("[role=img]")?.getAttribute("aria-label"))).toEqual(["Photo 1, added", "Photo 2, added", "Photo 3, added"]);
+  expect(shots.every((li) => li.querySelector("button") === null)).toBe(true);
+  expect(host.querySelector(".scan-tray-card, .scan-tray-ph")).toBeNull();
   // Each control's accessible name holds its visible label (WCAG 2.5.3).
   expect(button("Take next page")?.textContent).toContain("Take next page");
   expect(button("Choose from Photos")?.hasAttribute("aria-label")).toBe(false);
+});
+
+it("shows no verdict while capturing, even when a check has already refused a photo (#915, 2026-11-14)", async () => {
+  await render();
+  vi.spyOn(host.querySelector<HTMLInputElement>("input[capture]")!, "click").mockImplementation(() => {});
+  await act(async () => button("Scan pages")!.click());
+  await choose("camera", "two-p12.jpg");
+  await choose("camera", "junk.jpg");
+  await choose("camera", "p10.jpg");
+  await settle();
+  // The server has already refused page 12, and the code of the second photo was not read.
+  expect([...photos.values()].find((p) => p.pageId === "p12")?.check).toBe("refused");
+  const tray = host.querySelector(".scan-tray")!.textContent ?? "";
+  expect(tray).toContain("3 photos taken");
+  expect(tray).not.toMatch(/retake|another photo|looks good|code not read|more than one page/i);
+  expect(tray).not.toContain(refusalCopy("ambiguous-page").action);
+  expect(tray).not.toContain("!");
+  expect(buttons().some((b) => /retake|another photo/i.test(b.textContent ?? ""))).toBe(false);
+  expect([...host.querySelectorAll(".scan-shots [role=img]")].map((e) => e.getAttribute("aria-label"))).toEqual(["Photo 1, added", "Photo 2, added", "Photo 3, added"]);
+  expect(host.querySelector(".sr-only[aria-live]")?.textContent).toBe("Photo 3 added");
+});
+
+it("after Done, puts the refused page in the retake card at the top and starts the Undo for the page that passed (#915, 2026-11-14)", async () => {
+  await render();
+  vi.spyOn(host.querySelector<HTMLInputElement>("input[capture]")!, "click").mockImplementation(() => {});
+  await act(async () => button("Scan pages")!.click());
+  await choose("camera", "p10.jpg");
+  await choose("camera", "two-p12.jpg");
+  await settle();
+  expect(host.querySelector(".scan-need")).toBeNull();
+  await act(async () => button("Done")!.click()); await settle();
+  const need = host.querySelector(".scan-need")!, strip = host.querySelector(".scan-strip")!;
+  expect(need.textContent).toContain("1 page needs another photo");
+  expect(need.textContent).toContain("Page 12");
+  expect(need.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(host.querySelector(".scan-dock button")?.textContent).toBe("Retake page 12");
+  expect(text()).toContain("1 page sends for marking in a moment");
+  expect(button("Undo")).toBeDefined();
+});
+
+it("a check that ends after Done moves its page into the retake card, with no reload (#915, 2026-11-14)", async () => {
+  const server = global.fetch;
+  let finish!: () => void;
+  const gate = new Promise<void>((resolve) => { finish = resolve; });
+  vi.stubGlobal("fetch", async (path: string, init?: RequestInit) => {
+    if (path.endsWith("/preview") && init?.method === "POST" && [...photos.values()].find((p) => path.includes(p.id))?.two) await gate;
+    return server(path, init);
+  });
+  await render();
+  vi.spyOn(host.querySelector<HTMLInputElement>("input[capture]")!, "click").mockImplementation(() => {});
+  await act(async () => button("Scan pages")!.click());
+  await choose("camera", "p10.jpg");
+  await choose("camera", "two-p12.jpg");
+  await act(async () => button("Done")!.click()); await settle();
+  expect(button("Page 12, checking")).toBeDefined();
+  expect(host.querySelector(".scan-need")).toBeNull();
+  await act(async () => { finish(); }); await settle();
+  expect(host.querySelector(".scan-need")?.textContent).toContain("Page 12");
+  expect(button("Page 12, needs another photo")).toBeDefined();
+  expect(host.querySelector(".scan-dock button")?.textContent).toBe("Retake page 12");
+});
+
+it("files photos taken in any order on their own pages (#915, 2026-11-14)", async () => {
+  await render();
+  vi.spyOn(host.querySelector<HTMLInputElement>("input[capture]")!, "click").mockImplementation(() => {});
+  await act(async () => button("Scan pages")!.click());
+  await choose("camera", "p13.jpg");
+  await choose("camera", "p10.jpg");
+  await choose("camera", "p12.jpg");
+  await act(async () => button("Done")!.click()); await settle();
+  expect(button("Page 10, ready, not sent yet")).toBeDefined();
+  expect(button("Page 11, still to scan")).toBeDefined();
+  expect(button("Page 12, ready, not sent yet")).toBeDefined();
+  expect(button("Page 13, ready, not sent yet")).toBeDefined();
+  expect(Object.fromEntries([...photos.values()].map((p) => [p.pageId, p.pageNumber]))).toEqual({ p10: 10, p12: 12, p13: 13 });
 });
 
 const openCapture = async () => {
@@ -921,7 +990,7 @@ it("a slow first photo never closes capture where the input has a cancel event: 
   await pickerAway(PICK_RETURN_MS + 300);
   expect(text()).toContain("Take a photo of the first page.");
   await choose("camera", "p10.jpg");
-  expect(text()).toContain("Page 10 looks good");
+  expect(text()).toContain("1 photo taken");
   expect(document.documentElement.classList.contains(CAPTURE_CLASS)).toBe(true);
 });
 
@@ -934,7 +1003,7 @@ it("a first photo that arrives after 1.2 s opens the capture screen again, with 
   expect(onHome()).toBe(true);
   await choose("camera", "p10.jpg");
   await act(async () => { await new Promise((r) => setTimeout(r, 50)); }); await settle();
-  expect(text()).toContain("Page 10 looks good");
+  expect(text()).toContain("1 photo taken");
   expect(document.documentElement.classList.contains(CAPTURE_CLASS)).toBe(true);
   // Auto-send waits for Done.
   expect(calls.some((c) => c === "POST /api/account/scans/send")).toBe(false);
@@ -971,27 +1040,34 @@ it("moves focus to the capture screen's close button, and back to Scan pages whe
   expect(document.activeElement?.textContent).toContain("Scan pages");
 });
 
-it("keeps one live line across the first photo, and says when an earlier photo later fails its check (#915)", async () => {
+it("keeps one live line across the first photo, and says each photo is added (#915)", async () => {
   await render();
   await openCapture();
-  const live = host.querySelector(".scan-tray-msg")!;
+  const live = host.querySelector(".scan-tray .sr-only[aria-live]")!;
   expect(live.getAttribute("aria-live")).toBe("polite");
   await choose("camera", "two-p12.jpg");
   expect(live.isConnected).toBe(true);
-  expect(live.textContent).toContain("Page 12: retake this one");
+  expect(live.textContent).toBe("Photo 1 added");
   await choose("camera", "p11.jpg");
-  expect(host.querySelector(".scan-tray-msg")).toBe(live);
-  expect(host.querySelector(".sr-only[aria-live]")?.textContent).toBe("Page 12 needs another photo.");
+  expect(host.querySelector(".scan-tray .sr-only[aria-live]")).toBe(live);
+  expect(live.textContent).toBe("Photo 2 added");
 });
 
-it("offers Choose another photo on the capture card for a photo refused before it reached us (#915)", async () => {
+it("says on its thumbnail at once when a photo cannot be sent, and offers Choose another photo (#915)", async () => {
   await render();
   await openCapture();
   const library = host.querySelector<HTMLInputElement>("input[multiple]")!;
   const opened = vi.mocked(library.click);
-  await choose("camera", "junk.jpg");
-  expect(button("Retake this page")).toBeUndefined();
+  context.prepare = async () => { throw new Error("size"); };
+  await choose("camera", "p10.jpg");
+  const shot = host.querySelector(".scan-shots li")!;
+  expect(shot.querySelector("[role=img]")?.getAttribute("aria-label")).toBe("Photo 1, too large");
+  expect(shot.textContent).toContain("Too large");
+  expect(host.querySelector(".sr-only[aria-live]")?.textContent).toBe(`Photo 1: ${refusalCopy("size").title}`);
   opened.mockClear();
   await act(async () => button("Choose another photo")!.click());
   expect(opened).toHaveBeenCalledOnce();
+  context.prepare = null;
+  await choose("library", "p10.jpg");
+  expect([...host.querySelectorAll(".scan-shots [role=img]")].map((e) => e.getAttribute("aria-label"))).toEqual(["Photo 1, added"]);
 });
