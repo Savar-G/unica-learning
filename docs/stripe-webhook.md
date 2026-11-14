@@ -1,19 +1,21 @@
-# Stripe webhook: plan state
+# Stripe webhook: plan state and family referrals
 
 The route `POST /api/stripe-webhook` keeps one row per child in `public.child_plan_states`, so a page load does not call Stripe per child (#548, spec #544). The plan gate (`src/lib/plan-access.ts`) reads the row. It also brings a child's Stripe side to their newest card (#554, below).
 
-Until the steps below are done, the route answers 503 and no event is stored.
+The live destination is active with 19 events. On 14 November 2026 UTC, Savar explicitly authorized the referral additions through Aside. The update kept the seven plan events and added the 12 missing referral events. A fresh page load confirmed the full set. See [the live configuration record](../.design/evidence/referrals/live-stripe-config.json).
 
-## Steps for Savar
+The route answers 503 if its required secrets are absent. Editing an existing destination's event list does not require a new destination or a new signing secret.
 
-Do these in live mode. Agents do not do them.
+## Initial setup
+
+These live steps require Savar's authorization. The existing destination is already configured. Keep it when adding or removing an approved event.
 
 1. Open the Stripe Dashboard, Developers, Webhooks tab in Workbench: <https://dashboard.stripe.com/webhooks>.
 2. Select "Add destination".
 3. Under events from, select "Your account".
 4. Under payload style, select **Snapshot**. Do not select Thin: the route reads the customer from the event's object, and a thin event has no object.
 5. Keep the default API version. The route reads only the event's id, type, time and customer.
-6. Select exactly these 7 events:
+6. Keep these seven plan events and all referral events in [the referral configuration](referral-implementation.md#webhook-configuration). Two events overlap. The current combined set has 19 events:
    - `customer.subscription.created`
    - `customer.subscription.updated`
    - `customer.subscription.deleted`

@@ -13,7 +13,7 @@ const PAGE = {
 export const metadata = pageMetadata(PAGE);
 
 export default function Terms() {
-  return <SupportPage label="Updated 9 November 2026" title="Terms">
+  return <SupportPage label="Updated 13 November 2026" title="Terms">
     <JsonLd data={pageJsonLd(PAGE)} />
     <p className="lead">These terms apply to the free math assessment and the learning program offered by {BUSINESS_NAME}. A parent or guardian must create the account and choose the plan.</p>
     <h2>The offer</h2>
@@ -35,6 +35,12 @@ export default function Terms() {
     <h2>Adding your card and payments</h2>
     <p>After the report, a family on the British Columbia curriculum can choose the plan and add a card on a secure payment page. We charge nothing when you add it. If you cannot add your card, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a> for help.</p>
     <p>Your first month is free. It starts when your first workbook arrives at your home. On day 30 we charge CAD {cad(PLANS.one.price)}, then CAD {cad(PLANS.one.price)} each month until you cancel. We email you a reminder 7 days before the first charge, with a link to manage or cancel your plan. If you cancel before day 30, you pay nothing.</p>
+    <h2 id="referrals">Family referrals</h2>
+    <p>Every family can share its permanent generated referral code or link, including a family on a free or cancelled plan. A family that has never paid can confirm one other family&apos;s code on Unica before its first payment. A family cannot refer itself. A shared mailing address alone does not establish self-referral.</p>
+    <p>The referred family keeps its shared 30-day free month. It receives 50% off one paid monthly renewal for each child enrolled when the benefit starts. The discount uses each child&apos;s existing price, including the sibling price and a lower historical offer. A child with only an assessment is not enrolled. Later children join later rewards.</p>
+    <p>The referred family&apos;s first successful nonzero subscription payment earns one reward for the referring family. Saving a card, starting a trial, a zero invoice, a failed payment or an attempted payment earns no reward. Each reward gives 50% off one paid monthly renewal for each child enrolled when that reward starts. Different renewal dates are supported. Each child receives at most one referral discount per renewal. Separate referrals fund separate renewals.</p>
+    <p>Codes and rewards have no expiry or maximum. Each child&apos;s unused benefit waits through a pause, cancellation or Restart. An active sibling can continue to use later rewards while another child is paused. A deleted child receives no further discount. Deleting a child does not remove another child&apos;s benefits or the family&apos;s payment history. Deleting a family does not remove another family&apos;s earned reward.</p>
+    <p>A full refund or lost dispute on the qualifying payment removes only unused benefits from that referral. We do not recover discounts already used or change paid invoices. An open dispute holds unused benefits until its outcome is known. A partial refund preserves the reward. Contact us for an attribution correction. We record the reason and preserve paid invoices and benefits already used. A correction does not give a second new-customer benefit or a second reward for the same referral.</p>
     <h2>Cancellation, pauses, and refunds</h2>
     <p>You can cancel at any time or pause without a penalty. To cancel, sign in and use the Cancel plan button on your account plan page, use the link in your reminder email, or email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a>. A cancellation takes effect at the end of the month you are in, so if you cancel during your free first month, you pay nothing. To pause, email <a href={SUPPORT_HREF}>{SUPPORT_EMAIL}</a> using the email address of your account or booking. We will confirm the change and when it takes effect.</p>
     <h2>Questions or help</h2>

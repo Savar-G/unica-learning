@@ -105,7 +105,7 @@ describe("workbook emails", () => {
 describe("the free month confirmation", () => {
   const email = planStartEmail({ parentName: "Priya", childName: "Asha & Co", grade: 3, price: 79.99, firstCharge: "December 5, 2026", marking: true, explain: true });
   it("gives the terms the card networks require: the price, how often, the first charge and how to cancel", () => {
-    expect(email.text).toContain("On December 5, 2026, we charge CAD 79.99 to your saved card. We then charge CAD 79.99 each month until you cancel.");
+    expect(email.text).toContain("On December 5, 2026, we charge up to CAD 79.99 to your saved card. Your regular price is CAD 79.99 a month until you cancel. An eligible referral benefit gives 50% off one paid month.");
     expect(email.text).toContain("We will email you a reminder 7 days before the first charge.");
     expect(email.text).toContain('open https://unicalearning.com/account/plan, then press "Cancel plan". If you cancel before December 5, 2026, you pay nothing.');
     expect(email.text).toContain("contact@unicalearning.com");
@@ -155,7 +155,7 @@ Why 5 days? Two days off each week give Alex time to rest, or to look back at th
 
 If anything is broken, if anything does not work, or if you have feedback, email contact@unicalearning.com or use https://unicalearning.com/account/feedback.
 
-Your plan: On December 15, 2026, we charge CAD 79.99 to your saved card. We then charge CAD 79.99 each month until you cancel. Delivery is included. We will email you a reminder 7 days before the first charge.
+Your plan: On December 15, 2026, we charge up to CAD 79.99 to your saved card. Your regular price is CAD 79.99 a month until you cancel. An eligible referral benefit gives 50% off one paid month. Delivery is included. We will email you a reminder 7 days before the first charge.
 
 To cancel, sign in and open https://unicalearning.com/account/plan, then press "Cancel plan". If you cancel before December 15, 2026, you pay nothing.`;
     expect(message.subject).toBe("Welcome to Unica Learning: how Alex's free month works");
@@ -210,17 +210,16 @@ To cancel, sign in and open https://unicalearning.com/account/plan, then press "
 });
 
 describe("the plan start email's reminder words (PR #803 review)", () => {
-  // Every reminder case renders byte for byte as main renders it without the shared reminder rule. The digest was first taken at
-  // b4d9feb3, then again after the merge of main at b8e938ef, which added #806's approved five-day guidance; all 72 renders were
-  // compared with main's own workbook-email.ts and matched exactly.
   const cases = [undefined, true].flatMap((sharedWindow) => [undefined, true, false].flatMap((free) => [undefined, true, false].map((reminder) => ({ sharedWindow, free, reminder }))));
-  it("keeps the plan disclosures and reminder rule for every window, free and reminder case", async () => {
+  it("keeps the reminder condition and referral price terms for every window and free case", () => {
     const rendered = cases.map((c) => planStartEmail({ parentName: "Sam", childName: "Alex", grade: 3, price: 59.99, firstCharge: "December 15, 2026", marking: true, explain: true, ...c }));
-    for (const m of rendered) {
-      expect(m.text).toContain('Your plan: On December 15, 2026, we charge CAD 59.99 to your saved card. We then charge CAD 59.99 each month until you cancel. Delivery is included.');
+    rendered.forEach(m => {
+      expect(m.text).toContain("we charge up to CAD 59.99 to your saved card");
+      expect(m.text).toContain("Your regular price is CAD 59.99 a month until you cancel");
+      expect(m.text).toContain("An eligible referral benefit gives 50% off one paid month");
       expect(m.text).toContain('To cancel, sign in and open https://unicalearning.com/account/plan, then press "Cancel plan".');
-      expect(m.text).toContain('Good habits:');
-    }
+      expect(m.text).toContain("Good habits:");
+    });
     rendered.forEach((m, i) => expect(m.text.includes(" We will email you a reminder 7 days before the first charge.")).toBe(cases[i].reminder !== false));
   });
 });
@@ -244,7 +243,7 @@ describe("onboarding instructions (#970)", () => {
     }
     for (const kind of ["welcome", "ready"] as const) expect(workbookEmail({ ...parent, kind, delivery: null }).text).not.toContain("walkthrough");
   });
-  it("includes the next-book explanation, every shared habit, and a clickable help call without changing disclosures", async () => {
+  it("includes the next-book explanation, shared habits, help call and referral disclosures", async () => {
     const { GETTING_STARTED_HABITS } = await import("@/lib/getting-started");
     const { BOOKING_URL, safeBookingUrl } = await import("@/lib/contact");
     const email = planStartEmail(input);
@@ -253,8 +252,8 @@ describe("onboarding instructions (#970)", () => {
     expect(email.text).toContain("We build it from the pages you scan");
     expect(email.text).toContain("Reply to this email, or book a free 15-minute call");
     expect(email.html).toContain(`href="${safeBookingUrl(BOOKING_URL)}"`);
-    expect(email.text).toContain("Your plan: On December 15, 2026, we charge CAD 59.99 to your saved card. We then charge CAD 59.99 each month until you cancel. Delivery is included.");
+    expect(email.text).toContain("Your plan: On December 15, 2026, we charge up to CAD 59.99 to your saved card. Your regular price is CAD 59.99 a month until you cancel. An eligible referral benefit gives 50% off one paid month. Delivery is included.");
     expect(email.text).toContain('To cancel, sign in and open https://unicalearning.com/account/plan, then press "Cancel plan". If you cancel before December 15, 2026, you pay nothing.');
-    expect(email.text).not.toMatch(/—|referral/i);
+    expect(email.text).not.toContain("\u2014");
   });
 });

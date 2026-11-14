@@ -117,7 +117,7 @@ it("renders the actual confirmation, late mailing, paid restart, decline and sca
   const text = (view: string, scenario: string) => dom(rendered(view, scenario)).body.textContent;
   expect(text("plan", "pause_review")).toContain("6 weeks remain in 2026");
   expect(text("plan", "pause_late")).toContain("applies from workbook 5");
-  expect(text("plan", "restart_review")).toContain("We charge CAD 79.99 immediately");
+  expect(text("plan", "restart_review")).toContain("We charge no more than CAD 79.99 immediately");
   expect(text("plan", "cancel_review")).toContain("Yes, cancel plan");
   expect(text("plan", "cancel_pending")).toContain("We could not confirm cancellation");
   expect(text("plan", "pause_saved")).toContain("The pause is saved");

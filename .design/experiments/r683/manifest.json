@@ -1,0 +1,28 @@
+{
+  "round": 683,
+  "decision": "Extend existing Account and checkout patterns with the approved family referral program",
+  "route": "direct",
+  "contract": ".design/experiments/r683/contract.md",
+  "invariants": [
+    "Existing design tokens and components",
+    "No new landing-page section",
+    "One 50% discount per paid renewal",
+    "Keep the free month"
+  ],
+  "options": [],
+  "status": "handoff",
+  "evidence": [
+    ".design/evidence/referrals/stripe-test-mode.json",
+    ".design/evidence/referrals/pricing-desktop.png",
+    ".design/evidence/referrals/pricing-phone.png",
+    ".design/evidence/referrals/parent-referral-desktop.png",
+    ".design/evidence/referrals/parent-referral-phone.png",
+    ".design/evidence/referrals/admin-referral-preview.png",
+    ".design/evidence/referrals/hosted-rls.json",
+    ".design/evidence/referrals/final-gate.log",
+    ".design/reviews/referrals-settlement-recheck-1.md",
+    ".design/reviews/referrals-final-repair.md",
+    ".design/evidence/referrals/live-stripe-config.json",
+    ".design/reviews/referrals-integration.md"
+  ]
+}

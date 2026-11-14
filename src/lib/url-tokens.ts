@@ -25,6 +25,7 @@ export function redactUrlTokens(url: string): string {
     const parsed = new URL(url);
     if (scanRoute(url) || adminRoute(url)) return parsed.origin + redactPathTokens(decodedRoute(url).replace(parsed.origin, ""));
     let changed = false;
+    if (parsed.searchParams.has("referral")) { parsed.searchParams.delete("referral"); changed = true; }
     const path = redactPathTokens(parsed.pathname);
     if (path !== parsed.pathname) { parsed.pathname = path; changed = true; }
     // A query value can hold a QR page too, for example the sign-in page's `next=/tutor/p/<token>` (review R349-4).

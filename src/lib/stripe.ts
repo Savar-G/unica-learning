@@ -1,4 +1,5 @@
 import "server-only";
+import type { StartReferral } from "@/lib/referrals";
 import { familyPlanWords as w } from "@/lib/family-plan-words";
 import { randomUUID } from "node:crypto";
 import Stripe from "stripe";
@@ -227,7 +228,7 @@ async function planCard(s: Stripe, customer: string): Promise<string | undefined
  * finds. A card update during the start is corrected right after it and, for a late creation, by the webhook or the sweep. When that
  * last step fails the plan has still started, so the answer says so.
  */
-export async function startPlan(s: Stripe, p: { cardSetup: string; customer: string; price: number; deliveryConfirmed: boolean; purpose?: "initial" | "restart"; restartRevision?: string }, now = new Date(), rows: CardRows | null = liveCardRows()): Promise<StartPlanOutcome> {
+export async function startPlan(s: Stripe, p: { cardSetup: string; customer: string; price: number; deliveryConfirmed: boolean; purpose?: "initial" | "restart"; restartRevision?: string }, now = new Date(), rows: CardRows | null = liveCardRows(), referrals?: StartReferral): Promise<StartPlanOutcome> {
   const purpose = p.purpose ?? "initial";
   if (purpose === "initial" && p.deliveryConfirmed !== true) return { ok: false, error: "not_delivered" };
   if (!rows) throw new Error("No card rows");
@@ -288,17 +289,23 @@ export async function startPlan(s: Stripe, p: { cardSetup: string; customer: str
   // Do not convert an expired, possibly dispatched trial request into an immediate charge under the same key.
   if (trialEnd !== null && (!Number.isFinite(trialEnd) || trialEnd * 1000 <= Date.now())) return { ok: false, error: "unconfirmed" };
   const item = await monthlyPrice(s, monthlyCents);
+  // Freeze the referral choice under the durable plan-start key before an immediate charge.
+  const referral = trialEnd === null && referrals ? await referrals.reserve({ card: p.cardSetup, customer: p.customer, key: held.key, cents: monthlyCents }) : null;
+  if (referral && (referral.customer !== p.customer || referral.cents !== monthlyCents || referral.startKey !== held.key || referral.product !== PLAN_PRODUCT.id)) throw new Error("Referral start parameters mismatch");
+  if (referral && !referral.allowed) return { ok: false, error: "unconfirmed" };
   let created: Stripe.Subscription;
   try {
     created = await s.subscriptions.create({
       customer: p.customer,
       items: [item],
+      ...(referral ? { discounts: [{ coupon: referral.coupon }] } : {}),
       ...(trialEnd !== null ? { trial_end: trialEnd } : { payment_behavior: "error_if_incomplete" as const, billing_mode: { type: "flexible" as const } }),
       default_payment_method: held.card,
       metadata: { card_setup: p.cardSetup, start_key: held.key, price: cad(monthlyCents / 100), ...(trialEnd !== null ? { trial_start_reason: "workbook_delivered", delivery_confirmed: "true" } : { start_reason: purpose === "restart" ? "paid_restart" : "family_window_ended" }) },
     }, { ...CARD_WRITE, idempotencyKey: held.key });
   } catch (e) {
     if (refusedByStripe(e)) {
+      if (referral && referrals) await referrals.refused(referral);
       // Nothing started, and Stripe answers this key the same way for 24 hours, so the next press opens a new generation.
       await closeRecord(rows, p.cardSetup, held.generation, { state: "refused" });
       // Preserve the initial start's general failure for permission and request errors. They do not prove a card refusal.

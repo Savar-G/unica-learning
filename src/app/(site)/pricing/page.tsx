@@ -25,6 +25,7 @@ export default function PricingPage() {
             ["First child", `CAD ${cad(PLANS.one.price)}`],
             ["Each additional child", `CAD ${cad(ADDITIONAL_CHILD_PRICE)}`],
           ]} />
+          <p>Share Unica with another family. They get 50% off their first paid month. After their first successful payment, your family gets 50% off one paid month too. The discount covers each enrolled child, including the sibling price. Your free month stays. Separate referrals give separate discounted months. <Link href="/terms#referrals">Read the referral rules</Link>.</p>
           <Section title="What is included">
             <ul>
               <li>A free online math assessment and report before you choose a plan.</li>

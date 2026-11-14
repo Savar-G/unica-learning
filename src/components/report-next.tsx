@@ -2,6 +2,7 @@
 
 // The report's next step (#66): a BC parent chooses a plan and goes to the payment page to save a card; a parent in
 // any other province joins the waitlist with one click. The report email links here (links only), with the step.
+import { ReferralCard, type ReferralEntryHandle } from "@/components/referral-card";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { Province } from "@/lib/assessment";
@@ -59,6 +60,7 @@ export function ReportNextActions({ reportId, step, childName, province, src, as
   // Said to screen readers after a click; the state on arrival is already in the heading.
   const [announce, setAnnounce] = useState("");
   const sending = useRef(false);
+  const referral = useRef<ReferralEntryHandle>(null);
   const cancelled = useRef(start.cancelled);
   const router = useRouter();
 
@@ -124,6 +126,7 @@ export function ReportNextActions({ reportId, step, childName, province, src, as
     if (sending.current || card === "checking" || card === "unknown") return;
     sending.current = true;
     setBusy(option.plan);
+    if (referral.current && !await referral.current.confirm()) { sending.current = false; setBusy(null); return; }
     const { status, result } = await post<CardResult>(CARD_ROUTE, { report: reportId, plan: option.plan, src });
     if (status === 401) return signInAgain();
     const state = result?.ok ? result.state : "error";
@@ -153,8 +156,8 @@ export function ReportNextActions({ reportId, step, childName, province, src, as
     sending.current = false;
   };
 
-  return <ReportNextView reportId={reportId} step={step} childName={childName} province={province} src={src} asked={asked} start={start} words={words} pinned={pinned}
-    card={card} wait={wait} busy={busy} announce={announce} savedPlan={savedPlan} choose={choose} join={join} checkAgain={checkAgain} />;
+  return <><div>{step.kind === "card" && <ReferralCard entryOnly ref={referral} />}</div><ReportNextView reportId={reportId} step={step} childName={childName} province={province} src={src} asked={asked} start={start} words={words} pinned={pinned}
+    card={card} wait={wait} busy={busy} announce={announce} savedPlan={savedPlan} choose={choose} join={join} checkAgain={checkAgain} /></>;
 }
 
 export function ReportNextView({ step, childName, province, asked, start, words, pinned = false, card, wait, busy, announce, choose, join, checkAgain }: ReportNextActionsProps & {

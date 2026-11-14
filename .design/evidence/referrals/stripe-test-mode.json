@@ -1,0 +1,66 @@
+{
+  "at": "2026-11-14T02:14:15.717Z",
+  "provider": "Stripe test mode",
+  "results": [
+    {
+      "name": "validated_50_percent_once_coupon",
+      "pass": true
+    },
+    {
+      "name": "trial_stays_free_without_consuming_coupon",
+      "pass": true
+    },
+    {
+      "name": "initial_invoice_retains_its_creation_key",
+      "pass": true
+    },
+    {
+      "name": "renewal_ignores_the_retained_subscription_creation_key",
+      "pass": true
+    },
+    {
+      "name": "first_child_half_price_once",
+      "pass": true,
+      "dueCents": 3999,
+      "discountCents": 4000
+    },
+    {
+      "name": "revocation_keeps_the_finalized_monthly_receivable",
+      "pass": true
+    },
+    {
+      "name": "actual_nonzero_payment_confirmed",
+      "pass": true
+    },
+    {
+      "name": "paid_discount_stays_committed_during_withdrawal",
+      "pass": true
+    },
+    {
+      "name": "partial_refund_keeps_reward",
+      "pass": true
+    },
+    {
+      "name": "full_refund_revokes_unused_reward",
+      "pass": true
+    },
+    {
+      "name": "immediate_sibling_payment_uses_existing_sibling_price",
+      "pass": true,
+      "dueCents": 2999
+    },
+    {
+      "name": "credit_funded_initial_invoice_is_not_a_qualifying_payment",
+      "pass": true
+    },
+    {
+      "name": "following_month_returns_to_full_price",
+      "pass": true
+    }
+  ],
+  "limits": [
+    "Adapter-only provider proof",
+    "No real customer, real charge or email",
+    "SQL, browser and dispute evidence remain separate"
+  ]
+}
