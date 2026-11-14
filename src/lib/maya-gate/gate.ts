@@ -35,7 +35,7 @@ import {
 } from "@/lib/maya";
 import { gateWordCount } from "./word-count";
 import { openingLine, packageLines, TEMPLATES } from "@/lib/maya/lines";
-import { equationHolds, equationsOf, numberValue, sameSayValue, valuesOf } from "@/lib/maya/say-check";
+import { equationHolds, equationsOf, numberValue, sameSayValue, sentencesOf, valuesOf } from "@/lib/maya/say-check";
 import { patternRows } from "@/lib/maya/pattern";
 import { partEquationSaid, withEvaluateExample } from "@/lib/maya/evaluate";
 import { comparisonOf, comparisonFinal, comparisonRelation, comparisonCount } from "@/lib/maya/comparison";
@@ -584,6 +584,45 @@ function comparisonFinalForGate(pkg: OperationPackage, text: string, askedWord: 
   return read && "word" in read && read.committed ? comparisonAnswer(op, read.word === words[0]) : null;
 }
 
+const labelSentence = (text: string) => text.replace(/[’]/g, "'").replace(/\s+/g, " ").trim().toLowerCase().replace(/[.!?]+$/, "");
+const DIGIT_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
+/** Closed one-digit labels also match their spoken form, such as seven by six. */
+function labelPattern(label: string): RegExp {
+  const tokens = label.split(/\s+/).map(token => /^\d$/.test(token) ? `(?:${token}|${DIGIT_WORDS[Number(token)]})` : token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return new RegExp(`\\b${tokens.join("\\s+")}\\b`, "i");
+}
+
+/** Comparison output has closed wording. A label is not safe merely because it holds no numeral. */
+function comparisonEarlyLabel(pkg: OperationPackage, act: Act, speech: string, board: readonly string[], child: string): boolean {
+  const op = comparisonOf(pkg);
+  if (!op) return false;
+  const labels = comparisonWords(op).map(labelPattern);
+  const lines = packageLines(pkg);
+  const known = new Set(allLineTexts(pkg).flatMap(sentencesOf).map(labelSentence));
+  const promptTexts = [...lines.question(), ...lines.assess(), ...lines.tryTarget(), ...[...lines.stepIds, "result"].flatMap(id => lines.help(id))]
+    .flatMap(offer => offer.texts);
+  promptTexts.push(pkg.text, openingLine(pkg));
+  if (pkg.ref.source === "workbook") promptTexts.push(openingLine(pkg, { page: pkg.ref.page, number: pkg.ref.question }));
+  const prompts = new Set(promptTexts.flatMap(sentencesOf).map(labelSentence));
+  for (const text of promptTexts) known.add(labelSentence(text));
+  const examples = new Set([...lines.exampleIntro(), ...pkg.easierExample.steps.flatMap(st => lines.exampleStep(st.id))]
+    .flatMap(o => o.texts.flatMap(sentencesOf)).map(labelSentence));
+  const read = comparisonFinal(child, op);
+  const confirmed = read && "word" in read ? new Set(lines.said(read.word).flatMap(o => o.texts.flatMap(sentencesOf)).map(labelSentence)) : new Set<string>();
+  const safeQuestion = (text: string) => labels.every(pattern => pattern.test(text)) && known.has(labelSentence(text));
+  for (const sentence of sentencesOf(speech)) {
+    if (!labels.some(pattern => pattern.test(sentence))) continue;
+    if (safeQuestion(sentence)) continue;
+    // Counting an event may name that event, such as asking which die numbers are even.
+    if (/\?\s*$/.test(sentence) && prompts.has(labelSentence(sentence))) continue;
+    if (act === "example_step" && examples.has(labelSentence(sentence))) continue;
+    if (act === "confirm" && confirmed.has(labelSentence(sentence))) continue;
+    return true;
+  }
+  // A board may show the checked question with both labels. It cannot show one answer label before release.
+  return board.some(text => labels.some(pattern => pattern.test(text)) && !safeQuestion(text));
+}
+
 /** Judges one behaviour from its saved trace (and a call run's saved call). Every failure found is listed; none means the run passed. */
 export function judge(b: Behaviour, saved: string | undefined, savedCall?: string, checkedPackage?: QuestionPackage): Verdict {
   const empty = (failures: Finding[], trace: MayaTrace | null = null): Verdict => ({ id: b.id, failures, counts: null, states: [], acts: [], trace });
@@ -884,7 +923,11 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
     // claim's question ("Circle yes or no.") gives nothing away, and the easier example circles its own word.
     const comparisonSaid = comparison ? comparisonFinal(lastChild, comparison) : null;
     const saidWord = comparisonSaid && "word" in comparisonSaid ? comparisonSaid.word : answer?.type === "choice" && op ? claimSaid({ pkg: op, text: lastChild, heardAsked: false, wordAsked: null }) : null;
-    if (!released && answer && "value" in answer && (answer.type === "choice" || comparison) && act !== "example_step" && !(act === "confirm" && saidWord === answer.value)) {
+    if (!released && comparison && op) {
+      const drawn = t.board.filter(batch => turn.output!.board.includes(batch.transactionId)).flatMap(batch => boardTexts(batch.commands));
+      if (comparisonEarlyLabel(op, act, turn.output.say.join(" "), drawn, lastChild)) fail("answer_too_early", `Maya turn ${i} stated or drew a comparison answer label before release`);
+    }
+    if (!released && !comparison && answer?.type === "choice" && act !== "example_step" && !(act === "confirm" && saidWord === answer.value)) {
       const said = new RegExp(`\\b(?:circle|answer is|it'?s|it is|so it'?s)\\s+${answer.value}\\b(?!\\s+or\\b)`, "i");
       if (said.test(turn.output.say.join(" "))) fail("answer_too_early", `Maya turn ${i} said the claim's word before it was released`);
     }

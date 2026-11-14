@@ -358,3 +358,8 @@ The two branches each used D-338 and D-339 before integration. The rows below re
 ### 2026-11-13: shorter pattern explanation approved
 
 Savar approved all five wordings of the pattern length repair in `docs/maya-wave-lines.md`: "The 1st and {nth} terms are {count} equal jumps apart. Find one jump: {part}." Alone, or after "Here's why.", "Let's see.", "Look closely." or "Here's how." The independent copy review at `1931e996` passed every wording against `NEVER_SAY`, the no-answer rule, `DESIGN.md` and the existing line list. The approval changes no practice, CI or release gate.
+
+
+### 2026-11-13: remaining comparison wording approved
+
+Savar approved the 75 new rendered comparison lines in `docs/maya-wave-lines.md`, using fixed checked wording for the 11 new comparison questions. The independent review on `30ec229c` passed all 75 lines and 111 public checks. The eight fraction questions reuse approved circle prompts and paper actions. The five shortened pattern-why wordings remain approved. This copy approval changes no practice, CI, production or family-release gate.

@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { COMPARISON_PRACTICE } from "../maya-practice/comparison-cases";
 import { createTextSession } from "../maya-text";
-import type { MayaTrace } from "../maya-trace";
+import { checkTrace, type MayaTrace } from "../maya-trace";
 import { FIXTURES } from "./fixtures";
 import { comparisonWords, type ComparisonOperation } from "../question-package-comparison";
 import { judge, type Behaviour } from "./gate";
@@ -71,5 +71,24 @@ describe("the practice gate checks comparison words and their prior work", () =>
       for (const part of p?.parts ?? []) if (part.line === "confirm.word") part.line = "question.problem";
     }
     expect(judge(behaviour(c.fixture), JSON.stringify(forged)).failures).toContainEqual(expect.objectContaining({ code: "accepted_wrong_answer" }));
+  });
+  it.each(COMPARISON_PRACTICE)("rejects every early spoken or drawn winner for $id", c => {
+    const key = FIXTURES[c.fixture].answer!.value;
+    if (key.type !== "choice" && key.type !== "text") throw new Error("missing word key");
+    for (const say of [`The answer is ${key.value}.`, `Write ${key.value}.`, `${key.value} is the answer.`]) {
+      const forged = structuredClone(traces.get(c.id)!);
+      const turn = forged.turns[3];
+      if (turn.kind !== "maya" || !turn.output) throw new Error("missing early turn");
+      turn.output.say = [say];
+      expect(checkTrace(forged).ok).toBe(true);
+      expect(judge(behaviour(c.fixture), JSON.stringify(forged)).failures, say).toContainEqual(expect.objectContaining({ code: "answer_too_early" }));
+    }
+    const board = structuredClone(traces.get(c.id)!);
+    const turn = board.turns[3];
+    if (turn.kind !== "maya" || !turn.output) throw new Error("missing early turn");
+    turn.output.board = ["early-winner"];
+    board.board.push({ at: turn.at, turn: 3, transactionId: "early-winner", commands: [{ op: "write", id: "winner", text: key.value, place: { region: "main" } }] });
+    expect(checkTrace(board).ok).toBe(true);
+    expect(judge(behaviour(c.fixture), JSON.stringify(board)).failures).toContainEqual(expect.objectContaining({ code: "answer_too_early" }));
   });
 });

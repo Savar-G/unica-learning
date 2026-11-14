@@ -882,7 +882,7 @@ Approved by Savar, 2026-11-13. Independent copy review passed at `1931e996` agai
 
 ## Remaining Book 1 comparisons, 2026-11-13
 
-Status: pending independent copy review and Savar approval. These 75 distinct lines are the full new rendered comparison line list for the 11 stored Book 1 comparisons. The existing five pattern-why replacements are approved above. No practice, merge, production or family release approval follows from this list.
+Status: approved by Savar, 2026-11-13, after independent copy review PASS on `30ec229c` (111 public checks and all 75 lines). These 75 distinct lines are the full new rendered comparison line list for the 11 stored Book 1 comparisons. The existing five pattern-why replacements are approved above. No practice, merge, production or family release approval follows from this list.
 
 The common controller owns order and credit. The child must supply both side values, the numerical relation and the final word. Target help never states the relation or winning word. The code uses these checked sentences for comparison math in both conversational and older adapters. It keeps the existing model and reviewer for other question kinds.
 
