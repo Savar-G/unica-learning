@@ -162,7 +162,7 @@ const SUMS: [number, number, number, boolean][] = [
 function SumsPage({ marks }: { marks: boolean }) {
   return (
     <div className="us-page">
-      <div className="us-page-h">Subtracting with borrowing</div>
+      <div className="us-page-h">Subtracting 2-digit numbers</div>
       <div className="us-grid">
         {SUMS.map(([a, b, c, ok], i) => (
           <div className="us-q" key={i}>
