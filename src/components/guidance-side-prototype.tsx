@@ -24,7 +24,7 @@ export const WIDE_VARIANTS = new Set(["B", "G"]);
 // The three points Cedric chose (variant A); F, G and H show them in other designs.
 const POINTS = [
   { t: "Already has the question", d: "Your child picks it from their page, and Maya sees exactly what they see.", c: "#FFD23F" },
-  { t: "Talks it through, never tells", d: "Maya asks small questions and draws on a shared board. Your child does the thinking.", c: "#3366F0" },
+  { t: "Hints first, so they do the thinking", d: "Maya asks small questions and draws on a shared board, one step at a time.", c: "#3366F0" },
   { t: "Sends them back to the page", d: "The fix happens in the workbook, in pencil.", c: "#16A06A" },
 ];
 
