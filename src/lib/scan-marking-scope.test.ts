@@ -7,7 +7,7 @@ import { expect, it } from "vitest";
 // Each caller must pass the scope it serves.
 const callers: [file: string, rule: "markingAccess" | "scanChecksAccess", scope: RegExp, calls: number][] = [
   ["src/app/(product)/account/(dashboard)/scan/results/[id]/page.tsx", "markingAccess", /\{ photo: id \}/, 1],
-  ["src/app/(product)/account/(dashboard)/workbooks/[child]/page.tsx", "markingAccess", /\{ child: view\.child\.id \}/, 1],
+  ["src/lib/workbooks-page-server.ts", "markingAccess", /\{ child: view\.child\.id \}/, 1],
   ["src/app/api/account/scans/[id]/marking/route.ts", "markingAccess", /\{ photo: id \}/, 1],
   // (2: the closed-plan answer before scanSession, #710, and the admission check.)
   ["src/app/api/account/scans/[id]/explanation/route.ts", "markingAccess", /\{ photo: id \}/, 2],
