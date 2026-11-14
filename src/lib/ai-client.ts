@@ -48,20 +48,31 @@ export interface AiClient {
 }
 
 /**
+ * The route of every request made through this client unless a feature sets its own (#900, D-337): never a Google endpoint.
+ * These features read a child's work, report facts or profile, and Google Cloud's Service Specific Terms (section 20(d),
+ * read 2026-11-12) do not allow its generative AI services in an online service likely to be used by people under 18.
+ * It names no allowed company, so any model still finds its other endpoints; a Google model (Gemini) finds none and fails
+ * closed. `require_parameters` keeps the strict JSON schema. Maya sets a narrower route (src/lib/maya-ai-route.ts).
+ * Zero data retention is not set: for Claude, OpenRouter lists ZDR only on Google Vertex and Amazon Bedrock, and Bedrock
+ * has no structured output (2026-11-12).
+ */
+export const NO_GOOGLE_PROVIDER: OpenRouterProvider = { ignore: ["google-vertex", "google-ai-studio"], require_parameters: true };
+
+/**
  * The client, or null when the AI is off (no OPENROUTER_API_KEY). The model comes from AI_MODEL, or `model` when a
  * feature uses its own (Maya's free-talk review, MAYA_REVIEW_MODEL). `hooks`: the fetch to send with and a step before
  * each attempt (Maya's spending ledger reserves and settles each attempt through them, src/lib/maya-spend-ai.ts).
  * `hooks.usage`: what the call is for. Each answer's usage goes to the AI usage ledger with this tag (src/lib/ai-usage.ts,
  * D-330); a call with no tag is stored as feature "other". Recording never fails or slows the call. `hooks.provider`: the
- * OpenRouter route; none keeps the default route (Maya sets her zero-data-retention route, src/lib/maya-ai-route.ts).
+ * OpenRouter route; none gives NO_GOOGLE_PROVIDER (Maya sets a narrower route, src/lib/maya-ai-route.ts).
  */
 export function aiClient(env: Readonly<Record<string, string | undefined>> = process.env, model?: string, hooks?: { fetch?: typeof globalThis.fetch; onRequest?: () => Promise<void>; usage?: AiUsageTag; provider?: OpenRouterProvider }): AiClient | null {
   const apiKey = env.OPENROUTER_API_KEY?.trim();
   if (!apiKey) return null;
   const chosen = model?.trim() || env.AI_MODEL?.trim() || AI_DEFAULT_MODEL;
-  const { usage: tag, ...rest } = hooks ?? {};
+  const { usage: tag, provider, ...rest } = hooks ?? {};
   return openRouterClient({
-    apiKey, model: chosen, ...rest,
+    apiKey, model: chosen, ...rest, provider: provider ?? NO_GOOGLE_PROVIDER,
     onUsage: (u) => recordAiUsage(tag, { provider: "openrouter", model: chosen, inputTokens: u.inputTokens, outputTokens: u.outputTokens, costUsd: u.costUsd, generationId: u.id }),
   });
 }
