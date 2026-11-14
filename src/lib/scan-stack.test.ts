@@ -33,7 +33,7 @@ describe("buildStack", () => {
   it("puts refused pages first with their short reason, and a refused upload as an unknown page", () => {
     const uploads: StackUpload[] = [{ key: "u1", status: "refused", reason: "qr" }];
     const stack = buildStack({ photos: [photo("a", 10), photo("b", 12, { check: "refused", reason: "ambiguous-page" })], uploads, pages, checks: true });
-    expect(stack.refused.map((t) => [t.label, t.reason])).toEqual([["Page 12 · Day 4", "Two pages"], ["Unknown page", "Code not read"]]);
+    expect(stack.refused.map((t) => [t.label, t.reason])).toEqual([["Page 12 · Day 4", "More than one page"], ["Unknown page", "Code not read"]]);
     expect(stack.days[0].tiles.map((t) => t.label)).toEqual(["Page 10"]);
     // A refused page still has a photo: it is not a gap.
     expect(stack.days[0].missing).toEqual([11, 13]);
@@ -139,7 +139,7 @@ describe("words", () => {
       expect(copy.action).toMatch(/\.$/);
       expect(`${copy.short} ${copy.title} ${copy.action}`).not.toMatch(/\b(she|her|AI|OpenRouter)\b/);
     }
-    expect(refusalCopy("ambiguous-page").action).toContain("one page at a time");
+    expect(refusalCopy("ambiguous-page").action).toContain("only one page shows");
     expect(refusalCopy("marks-missing").short).toBe("Cut off");
     expect(refusalCopy("page-mismatch").short).toBe("Wrong page");
   });
@@ -156,7 +156,7 @@ it("tells the parent what went wrong and the one thing to do, for each photo ref
   expect(refusalCopy("qr").short).toBe("Code not read");
   expect(refusalCopy("marks-missing").action).toContain("all four corner marks");
   expect(refusalCopy("marks-inconsistent").action).toContain("Lay the page flat on a table");
-  expect(refusalCopy("faint").action).toContain("Turn off the flash");
+  expect(refusalCopy("faint").action).toContain("without the flash");
   // Every refusal ends with what to do, in one sentence the parent can act on.
   for (const reason of ["qr", "qr-mismatch", "marks-missing", "marks-inconsistent", "page-mismatch", "ambiguous-page", "faint", "failed"] as const)
     expect(refusalCopy(reason).action).toMatch(/\.$/);
@@ -192,8 +192,8 @@ describe("photos waiting to send (#915)", () => {
 it("names the sheet check's refusals in their own words (#456)", () => {
   // Disproved if a page refused for another page or for glare shows the "cannot line up" words of a failed check.
   expect(refusalCopy("another-page").title).toBe("Part of this photo looks like a different page.");
-  expect(refusalCopy("faint").title).toBe("Part of the page is too bright or faint to read.");
-  expect(refusalCopy("faint").action).toBe("Turn off the flash and keep lamp light from shining on the page. Then take another photo.");
+  expect(refusalCopy("faint").title).toBe("Part of the page is too bright, faint or covered to read.");
+  expect(refusalCopy("faint").action).toBe("Use even light without the flash, and keep fingers and objects off the page. Then take another photo.");
   expect(refusalCopy("check-timeout").action).toBe("Try again in a minute.");
 });
 
