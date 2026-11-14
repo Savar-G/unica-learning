@@ -94,12 +94,29 @@ describe("R443-2: limits permit the whole example and question", () => {
       script.next([], undefined);
       check(await s.child("Let me try."));
       expect(s.session.retried).toBe(true);
+      if (pkg.operation?.kind === "comparison") {
+        // The example does not complete the child's two-sided comparison. The child must do its work in order.
+        script.next([], undefined);
+        check(await s.child(`The answer is ${valueText(pkg.answer!.value)}.`));
+        expect(s.session.solved).toBeNull();
+        expect(s.session.done).toEqual([]);
+        for (const st of pkg.steps) {
+          const input = st.kind === "operate" ? `${st.left} times ${st.right} is ${st.value}.`
+            : st.kind === "comparison-count" ? String(st.value)
+            : st.kind === "comparison" ? `${st.left} is ${st.left > st.right ? "greater" : "less"} than ${st.right}.` : null;
+          if (input === null) continue;
+          script.next([], undefined);
+          check(await s.child(input));
+        }
+        expect(s.session.done).toEqual(pkg.steps.filter(st => st.kind !== "result").map(st => st.id));
+        expect(s.session.solved).toBeNull();
+      }
       // A claim's word is read by code, in a committed form ("It's true."), never from the model's reading.
       const word = pkg.answer!.value.type === "choice" ? pkg.answer!.value.value : null;
       // A spot-the-error word needs its fix in the same turn (spot-error.ts): "The answer is 4480, so it's no."
       const fix = spotFix(pkg as OperationPackage);
-      script.next([], fix !== null ? { answers: [[fix, "claim", "right"]] } : word ? undefined : { answers: [[pkg.answer!.value, "result", "right"]] });
-      check(await s.child(fix !== null ? `The answer is ${fix}, so it's ${word}.` : word ? `It's ${word}.` : valueText(pkg.answer!.value)));
+      script.next([], pkg.operation?.kind === "comparison" ? undefined : fix !== null ? { answers: [[fix, "claim", "right"]] } : word ? undefined : { answers: [[pkg.answer!.value, "result", "right"]] });
+      check(await s.child(pkg.operation?.kind === "comparison" ? `The answer is ${valueText(pkg.answer!.value)}.` : fix !== null ? `The answer is ${fix}, so it's ${word}.` : word ? `It's ${word}.` : valueText(pkg.answer!.value)));
       script.next([{ act: "ask_write", understanding: "uncertain" }], undefined);
       check(await s.child("Okay."));
       script.next([], { paper: "written" });
