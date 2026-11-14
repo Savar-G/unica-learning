@@ -42,7 +42,7 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/accou
     // A photo of an open book (#915) has two pages: this photo takes the first one its own code binds, and the other
     // becomes a photo of its own below. A single page is one page, exactly as before.
     const pages: SpreadPage[] = normalized.spread ?? [{ bytes: normalized.bytes, token: normalized.token, width: normalized.width, height: normalized.height }];
-    let mine = -1, refusal: string | null = null;
+    let mine = -1, refusal: string | null = null, replaces: string | null = null;
     for (const [i, page] of pages.entries()) {
       const identify = () => admin.rpc("identify_scan_photo", { p_parent: parent, p_id: id, p_token: page.token, p_width: page.width, p_height: page.height });
       let identified = await identify();
@@ -50,6 +50,8 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/accou
       if (!identified.error && identified.data === "duplicate" && await replaceRefusedPhoto(admin, parent, page.token, session.childOpen)) identified = await identify();
       if (identified.error) throw new Error("unavailable");
       if (identified.data === "identified") { mine = i; break; }
+      // A page that looked unfinished: this photo replaces its photo once stored (below).
+      if (identified.data === "duplicate" && (replaces = await unfinishedHeld(admin, parent, page.token, session.childOpen))) { mine = i; break; }
       refusal ??= identified.data;
       // Only a page that already has a photo, or is not this child's, lets the other page of a spread take this photo.
       if (!["duplicate", "page"].includes(identified.data)) break;
@@ -57,14 +59,21 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/accou
     if (mine < 0) throw new Error(refusal ?? "image");
     // A code may file the photo with a sibling's book (#915): that child's own plan must open scanning too, or the page
     // is refused as not this family's, before anything is stored.
-    if (!await filedChildOpen(admin, parent, id, session.childOpen)) throw new Error("page");
+    // (A replacement is not filed yet: its page's photo belongs to a child unfinishedHeld found open.)
+    if (!replaces && !await filedChildOpen(admin, parent, id, session.childOpen)) throw new Error("page");
     const page = pages[mine];
     const uploaded = await admin.storage.from(SCAN_BUCKET).upload(scanPath(parent, id), page.bytes, { contentType: "image/jpeg", upsert: false, cacheControl: "0" });
     // A lost Storage response is uncertain. Keep the reservation and reconcile on GET/retry/expiry.
     if (uploaded.error) return scanJson({ error: "uncertain" }, 503);
-    const finished = await admin.rpc("finish_scan_photo", { p_parent: parent, p_id: id, p_bytes: page.bytes.length });
+    // The unfinished page's photo goes only now, in the same transaction that binds and stores this one.
+    const finished = replaces
+      ? await admin.rpc("replace_unfinished_scan_photo", { p_parent: parent, p_id: id, p_token: page.token, p_width: page.width, p_height: page.height, p_bytes: page.bytes.length })
+      : await admin.rpc("finish_scan_photo", { p_parent: parent, p_id: id, p_bytes: page.bytes.length });
+    // A lost answer (of the swap too) is reconciled by the GET: a swap that ran left this photo pending; one that did not
+    // leaves the old photo, and this one (never bound to the page) is refused.
     if (finished.error) return scanJson({ error: "uncertain" }, 503);
     if (finished.data !== "pending") throw new Error(finished.data);
+    if (replaces) await cleanupScanPhoto(admin, parent, replaces);
     // Speed (#915): the page check starts here, as soon as the photo is stored, instead of waiting for the page to save
     // the photo, list the stack again and ask. The job is the same one the preview route runs, under the same lease: a
     // later ask gets its result, a busy family slot leaves it to that ask, and any error leaves the photo as it was.
@@ -101,8 +110,6 @@ const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  * has a photo" and left the parent with no way forward. Only a photo whose stored check refused it, as the stack shows it
  * (`stackCheck` in src/lib/scan-stack-server.ts: a finished check of the photo's own printing that is not ready), and that
  * was never sent. A ready photo, a photo still being checked and a sent photo stay: a new photo of those is a duplicate.
- * One sent photo goes too (scan edge sweep, 2026-11-14): one whose marking found every answer blank (its job ended
- * `unfinished`, nothing marked), so the parent can scan the page once it is done.
  * True when it went, so the caller identifies the new photo again. Any failed read keeps the old photo.
  */
 async function replaceRefusedPhoto(admin: SupabaseClient<Database>, parent: string, token: string, childOpen: (child: string) => Promise<boolean>): Promise<boolean> {
@@ -110,23 +117,34 @@ async function replaceRefusedPhoto(admin: SupabaseClient<Database>, parent: stri
     const page = await admin.from("workbook_pages").select("id").eq("parent_id", parent).eq("qr_token", token).maybeSingle();
     if (page.error || !page.data) return false;
     const held = await admin.from("scan_photos").select("id,child_id,printed_revision,sent_at").eq("parent_id", parent).eq("page_id", page.data.id).eq("state", "saved").maybeSingle();
-    if (held.error || !held.data) return false;
+    if (held.error || !held.data || held.data.sent_at) return false;
     // The new photo files with the same child: a child whose plan does not open scanning keeps the old photo, as the new
     // one would be refused (#977 review). Asked before anything is deleted.
     if (!await childOpen(held.data.child_id)) return false;
-    if (held.data.sent_at) {
-      const job = await admin.from("scan_marking_jobs").select("state,blocked_reason").eq("parent_id", parent).eq("photo_id", held.data.id).maybeSingle();
-      if (job.error || job.data?.state !== "finished" || job.data.blocked_reason !== "unfinished") return false;
-    } else {
-      const check = await admin.from("scan_calibrations").select("state,printed_revision").eq("parent_id", parent).eq("photo_id", held.data.id).maybeSingle();
-      const c = check.data;
-      if (check.error || !c || c.state === "running" || c.state === "ready" || c.printed_revision !== held.data.printed_revision) return false;
-    }
+    const check = await admin.from("scan_calibrations").select("state,printed_revision").eq("parent_id", parent).eq("photo_id", held.data.id).maybeSingle();
+    const c = check.data;
+    if (check.error || !c || c.state === "running" || c.state === "ready" || c.printed_revision !== held.data.printed_revision) return false;
     const gone = await admin.rpc("change_scan_photo", { p_parent: parent, p_id: held.data.id, p_action: "delete" });
     if (gone.error || gone.data !== "deleted") return false;
     await cleanupScanPhoto(admin, parent, held.data.id);
     return true;
   } catch { return false; }
+}
+
+/**
+ * The page's sent photo whose marking found every answer blank (its job ended `unfinished`, nothing marked; scan edge
+ * sweep, 2026-11-14), when its child has scanning open: a new photo of the page replaces it, but only once the new photo
+ * is stored (`replace_unfinished_scan_photo`), so a refused or lost upload leaves it in place. Null otherwise.
+ */
+async function unfinishedHeld(admin: SupabaseClient<Database>, parent: string, token: string, childOpen: (child: string) => Promise<boolean>): Promise<string | null> {
+  try {
+    const page = await admin.from("workbook_pages").select("id").eq("parent_id", parent).eq("qr_token", token).maybeSingle();
+    if (page.error || !page.data) return null;
+    const held = await admin.from("scan_photos").select("id,child_id,printed_revision,sent_at").eq("parent_id", parent).eq("page_id", page.data.id).eq("state", "saved").maybeSingle();
+    if (held.error || !held.data?.sent_at || !await childOpen(held.data.child_id)) return null;
+    const job = await admin.from("scan_marking_jobs").select("state,blocked_reason").eq("parent_id", parent).eq("photo_id", held.data.id).maybeSingle();
+    return !job.error && job.data?.state === "finished" && job.data.blocked_reason === "unfinished" ? held.data.id : null;
+  } catch { return null; }
 }
 
 /** Whether the child a photo is filed with now has scanning open (#915 sibling filing). A failed read is closed. */

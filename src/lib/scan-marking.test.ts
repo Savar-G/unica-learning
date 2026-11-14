@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { expectedItems, firstObservation, itemKey, markingEvent, observationProblem, PHOTO_ISSUES, type Observation } from "@/lib/scan-observation";
-import { markingAiTimeout, MARKING_AI_TIMEOUT_MS, MARKING_MAX_DEFERRALS, MARKING_MAX_DISPATCHES, MARKING_MAX_TRANSPORT_DISPATCHES, MARKING_RETRY_WAIT_CAP_MS, MARKING_RETRY_WAIT_MS, type MarkingFailure, MARKING_MIN_AI_MS, TWO_WAYS_METHOD_MARKS, waitsForTeam, effectiveMarkingEvents, effectiveSkillMarks, markingOriginalKey, markingPageView, markingRequest, MARKING_CAP_MICROS, MARKING_ESCALATION_CAP_MICROS, MARKING_MODEL, MARKING_PROMPT_VERSION, MARKING_ESCALATION_MODEL, MARKING_ESCALATION_PROMPT_VERSION, type MarkingEscalation, readMarkingOutput, runScanMarking, validMarkingOutput, aiBlank, replacesAiBlank, unfinishedPage, type EffectiveMark, type MarkingClientFactory, type MarkingFrame, type MarkingJob, type MarkingRunOptions, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
+import { markingAiTimeout, MARKING_AI_TIMEOUT_MS, MARKING_MAX_DEFERRALS, MARKING_MAX_DISPATCHES, MARKING_MAX_TRANSPORT_DISPATCHES, MARKING_RETRY_WAIT_CAP_MS, MARKING_RETRY_WAIT_MS, type MarkingFailure, MARKING_MIN_AI_MS, TWO_WAYS_METHOD_MARKS, waitsForTeam, effectiveMarkingEvents, effectiveSkillMarks, markingOriginalKey, markingPageView, markingRequest, MARKING_CAP_MICROS, MARKING_ESCALATION_CAP_MICROS, MARKING_MODEL, MARKING_PROMPT_VERSION, MARKING_ESCALATION_MODEL, MARKING_ESCALATION_PROMPT_VERSION, type MarkingEscalation, readMarkingOutput, runScanMarking, validMarkingOutput, unfinishedPage, type EffectiveMark, type MarkingClientFactory, type MarkingFrame, type MarkingJob, type MarkingRunOptions, type MarkingRef, type MarkingStore } from "@/lib/scan-marking";
 import type { AiJsonRequest } from "@/lib/ai-client";
 import { markingEscalationClient } from "@/lib/scan-marking-ai";
 import { checkQuestionPackage, workedSteps, type NumberValue, type Operation, type QuestionPackage } from "@/lib/question-package";
@@ -167,7 +167,7 @@ class Store implements MarkingStore {
     for (const e of expectedItems(f)) if (!this.items.has(itemKey(e.identity))) this.items.set(itemKey(e.identity), { expected: e, observation: firstObservation(e, ref.photo), originalEvent: null, eventId: null, at: new Date(this.clock).toISOString(), model: null, prompt: null });
     for (const e of expectedItems(f)) {
       const key = itemKey(e.identity), item = this.items.get(key)!;
-      if (item.observation.state === "pending" || aiBlank(item.observation)) this.owners.set(key, ref.photo);
+      if (item.observation.state === "pending") this.owners.set(key, ref.photo);
     }
     const old = this.jobs.get(ref.photo);
     const j = { token, items: structuredClone([...this.items.values()]), extraction: old?.extraction ?? null, until: this.clock + 180_000, dispatches: old?.dispatches ?? 0, deferrals: old?.deferrals ?? 0, done: false };
@@ -221,7 +221,7 @@ class Store implements MarkingStore {
     if (!this.live(ref, token)) return false;
     for (const o of observations) {
       const key = itemKey(o.identity), m = this.items.get(key)!, version = this.jobs.get(ref.photo)!.items.find((i) => itemKey(i.expected.identity) === key)?.observation.resultVersion;
-      if (!(m.observation.state === "pending" || (aiBlank(m.observation) && replacesAiBlank(o))) || m.observation.resultVersion !== version) continue;
+      if (m.observation.state !== "pending" || m.observation.resultVersion !== version) continue;
       m.observation = { ...structuredClone(o), resultVersion: version + 1 }; m.at = at;
       m.originalEvent ??= events.find((e) => e.key === markingOriginalKey(m.expected)) ?? null;
     } return true;
@@ -1614,9 +1614,9 @@ describe("the second look: unsure answers are read once more by the escalation m
 });
 
 
-describe("unfinished pages and AI blanks (scan edge sweep, 2026-11-14)", () => {
+describe("unfinished pages (scan edge sweep, 2026-11-14)", () => {
   // frame(): question 1 is 0, question 2 is 12, question 3 is 9. photo-b is a later photo of the same printing.
-  const page = () => { const s = new Store(frame("photo-a"), frame("photo-b")); return s; };
+  const page = () => new Store(frame("photo-a"), frame("photo-b"));
 
   it("a page whose every answer reads blank is unfinished: no marks, no events, and a new photo of it marks it", async () => {
     const s = page();
@@ -1634,74 +1634,22 @@ describe("unfinished pages and AI blanks (scan edge sweep, 2026-11-14)", () => {
     expect(after.map((m) => m.observation.result)).toEqual(["right", "right", "blank"]);
     expect(after.every((m) => m.observation.evidence?.photoRevision === "photo-b")).toBe(true);
     await s.publish();
-    expect(s.events.map((e) => e.result)).toHaveLength(3);
+    expect(s.events).toHaveLength(3);
   });
 
-  it("an answer read beside the blanks makes the page marked, blanks included", async () => {
+  it("an answer read beside the blanks makes the page marked, and its blanks are final", async () => {
     const s = page();
     expect(await run(s, "photo-a", client(output(["0", "", ""])))).toBe("finished");
     expect((await s.effective(P, C)).map((m) => m.observation.result)).toEqual(["right", "blank", "blank"]);
-  });
-
-  it("a later sent photo of the same printing reads an AI blank again; a Right stays and is not read again", async () => {
-    const s = page();
-    await run(s, "photo-a", client(output(["0", "", ""])));
-    await s.publish();
-    const blankEvent = (await s.effective(P, C))[1].originalEvent;
+    // A later photo never reads a final mark again, a blank included: a later answer is a second try.
     const requests: AiJsonRequest[] = [];
-    // The later photo asks only for the two blanks.
-    expect(await run(s, "photo-b", client({ readings: [{ item: "i2", region: "r2", text: "13", state: "written" }, { item: "i3", region: "r3", text: "9", state: "written" }] }, requests))).toBe("finished");
-    expect(JSON.parse((requests[0].content[0] as { text: string }).text).items.map((i: { item: string }) => i.item)).toEqual(["i2", "i3"]);
-    const marks = await s.effective(P, C);
-    expect(marks.map((m) => m.observation.result)).toEqual(["right", "wrong", "right"]);
-    expect(marks[0].observation.evidence?.photoRevision).toBe("photo-a");
-    expect(marks[1].observation.resultVersion).toBe(3);
-    // The original event stays append-only; the effective set follows the later reading.
-    expect(marks[1].originalEvent).toEqual(blankEvent);
-    await s.publish();
-    expect(effectiveMarkingEvents(s.events, await s.effective(P, C)).filter((e) => e.source === "marking").map((e) => e.result)).toEqual(["right", "wrong", "right"]);
-  });
-
-  it("a blurry, cut-off or blank-again reading keeps the AI blank; an unsure reading of writing goes to our team", async () => {
-    const s = page();
-    await run(s, "photo-a", client(output(["0", "", ""])));
-    const later = { readings: [
-      { item: "i2", region: "r2", text: null, state: "uncertain", issue: "blurry" },
-      { item: "i3", region: "r3", text: "", state: "blank" },
-    ] };
-    expect(await run(s, "photo-b", client(later))).toBe("finished");
-    expect((await s.effective(P, C)).map((m) => [m.observation.result, m.observation.evidence?.photoRevision])).toEqual([["right", "photo-a"], ["blank", "photo-a"], ["blank", "photo-a"]]);
-    s.frames.set("photo-c", frame("photo-c"));
-    expect(await run(s, "photo-c", client({ readings: [{ item: "i2", region: "r2", text: "1?", state: "written" }, { item: "i3", region: "r3", text: "", state: "blank" }] }))).toBe("finished");
-    const marks = await s.effective(P, C);
-    expect(marks[1].observation).toMatchObject({ state: "pending", result: null });
-    expect(waitsForTeam(marks[1])).toBe(true);
-  });
-
-  it("never reads again a blank a parent or our team set", async () => {
-    const s = page();
-    await run(s, "photo-a", client(output(["0", "", "9"])));
-    const [, second] = [...s.items.values()];
-    second.observation = { ...second.observation, state: "parent-checked", method: "parent", actor: "parent", result: "blank", resultVersion: second.observation.resultVersion + 1 };
-    const requests: AiJsonRequest[] = [];
-    expect(await run(s, "photo-b", client({ readings: [] }, requests))).toBe("finished");
+    expect(await run(s, "photo-b", client(output(["0", "12", "9"]), requests))).toBe("finished");
     expect(requests).toHaveLength(0);
-    expect((await s.effective(P, C))[1].observation).toMatchObject({ actor: "parent", result: "blank" });
-    expect(aiBlank(second.observation)).toBe(false);
+    expect((await s.effective(P, C)).map((m) => [m.observation.result, m.observation.evidence?.photoRevision])).toEqual([["right", "photo-a"], ["blank", "photo-a"], ["blank", "photo-a"]]);
   });
 
-  it("the rules in one place", () => {
+  it("the page rule", () => {
     const e = expectedItems(frame());
-    const blank: Observation = { ...firstObservation(e[0], "photo-a"), state: "scored", result: "blank", certainty: "certain" };
-    expect(aiBlank(blank)).toBe(true);
-    expect(aiBlank({ ...blank, actor: "admin" })).toBe(false);
-    expect(replacesAiBlank({ ...blank, result: "right" })).toBe(true);
-    expect(replacesAiBlank(blank)).toBe(false);
-    const region = (text: string | null) => [{ regionId: "r", text, value: null, certainty: "uncertain" as const, result: null, issue: "unreadable" as const }];
-    expect(replacesAiBlank({ ...blank, state: "pending", result: null, certainty: "uncertain", issue: "answer-form", regions: region("1?") })).toBe(true);
-    for (const issue of ["blurry", "cut-off", "unreadable", "missing", "read-failed"] as const) expect(replacesAiBlank({ ...blank, state: "pending", result: null, certainty: "uncertain", issue, regions: region(null) })).toBe(false);
-    expect(replacesAiBlank({ ...blank, state: "pending", result: null, certainty: "uncertain", issue: "unreadable", regions: region(" ") })).toBe(false);
-    expect(replacesAiBlank(firstObservation(e[0], "photo-b"))).toBe(false);
     const marks = e.map((x) => ({ expected: x, observation: firstObservation(x, "photo-a"), originalEvent: null, eventId: null, at: "", model: null, prompt: null }));
     const all = e.map((x) => ({ ...firstObservation(x, "photo-a"), state: "scored" as const, result: "blank" as const }));
     expect(unfinishedPage(marks, all)).toBe(true);

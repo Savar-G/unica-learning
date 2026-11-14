@@ -1,7 +1,7 @@
--- Hosted rollback probe for 20261114193803_scan_edge_limits_and_blank_pages (scan edge sweep, 2026-11-14).
--- Always ends in an exception, so nothing it does is kept. Expected message: the claim's item_versions hold only the
--- page's AI blanks; after apply the blank read as Right is Right at version +1, the blank read with no written text is
--- still blank at its version, other items are unchanged; pause 'unfinished' gives job finished/unfinished, owned_after=0.
+-- Hosted rollback probe for 20261114193803_scan_edge_limits_and_blank_pages and 20261114200240_scan_marking_no_blank_reread
+-- (scan edge sweep, 2026-11-14). Always ends in an exception, so nothing it does is kept. Expected message since
+-- 20261114200240: claimedVersions={} (an AI blank is never claimed again), after equals before (no item changes, even
+-- when a later reading says Right); pause 'unfinished' gives job finished/unfinished, owned_after=0.
 do $$
 declare ph uuid; p uuid; s public.scan_photos; j public.scan_marking_jobs; t uuid := gen_random_uuid();
   items jsonb; claimed jsonb; obs jsonb; evs jsonb; r1 jsonb; r2 jsonb; before jsonb; after jsonb; blanks uuid[]; applied jsonb; paused jsonb; jobafter text;

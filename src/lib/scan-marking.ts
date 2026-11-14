@@ -59,19 +59,10 @@ export const MARKING_SHEET_CHECK_VERSION = 1;
 /** Bounded canonical key. Item IDs can be 200 characters; photos never change this key. */
 export const markingOriginalKey = (item: ExpectedItem) => `marking:${createHash("sha256").update(itemKey(item.identity), "utf8").digest("hex")}`;
 /**
- * A blank the AI gave (scan edge sweep, 2026-11-14): a page photographed before the child finished it. A later sent
- * photo of the same printing reads it again. A blank a parent or our team set is never read again.
+ * The items a run reads: code items not read yet. A final mark, a blank included, is never read again: a later answer
+ * belongs to the second-try ledger, not the first try (workbook-correction-journal).
  */
-export const aiBlank = (o: Observation) => o.state === "scored" && o.result === "blank" && o.actor === "system";
-/**
- * Whether a later reading replaces an AI blank: only one that saw writing in the answer area, a Right or Wrong, or an
- * unsure reading with written text (our team checks it). A blank again, or a reading that saw no writing (blurry, cut
- * off, dark, missing, not read), keeps the blank. The same rule is in the SQL `apply`.
- */
-export const replacesAiBlank = (next: Observation) => (next.state === "scored" && (next.result === "right" || next.result === "wrong"))
-  || (next.state === "pending" && next.regions.some((r) => (r.text ?? "").trim() !== ""));
-/** The items a run reads: code items not read yet, and AI blanks a later photo may replace. */
-const toRead = (m: EffectiveMark) => m.expected.method === "code" && (m.observation.state === "pending" || aiBlank(m.observation));
+const toRead = (m: EffectiveMark) => m.expected.method === "code" && m.observation.state === "pending";
 /**
  * Every code answer on the page reads blank after this run (the items it read, and the rest as they stand), and the
  * run read at least one: the page looks unfinished, so nothing is marked (scan edge sweep, 2026-11-14).
@@ -146,10 +137,7 @@ export interface MarkingStore {
   defer(ref: MarkingRef, token: string): Promise<"pending" | "attempts" | "terminal">;
   /** `escalation`: the second look's record, when it decided any item (its model, prompt and the item ids it decided). */
   extract(ref: MarkingRef, token: string, observations: Observation[], model: string, escalation?: MarkingEscalation | null): Promise<boolean>;
-  /**
-   * Apply only still-owned versions of pending items, and of AI blanks a later reading replaces (`replacesAiBlank`).
-   * Save event intent in the same transaction.
-   */
+  /** Apply only still-owned pending versions. Save event intent in the same transaction. */
   apply(ref: MarkingRef, token: string, observations: Observation[], events: NewLearningEvent[], at: string): Promise<boolean>;
   finish(ref: MarkingRef, token: string): Promise<boolean>;
   pause(ref: MarkingRef, token: string, status: MarkingStatus): Promise<void>;

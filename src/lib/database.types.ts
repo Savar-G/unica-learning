@@ -4722,6 +4722,7 @@ export type Database = {
           printed_revision: string | null
           reserved_bytes: number
           send_after: string | null
+          send_undone_at: string | null
           sent_at: string | null
           state: string
           stored_bytes: number
@@ -4742,6 +4743,7 @@ export type Database = {
           printed_revision?: string | null
           reserved_bytes: number
           send_after?: string | null
+          send_undone_at?: string | null
           sent_at?: string | null
           state?: string
           stored_bytes?: number
@@ -4762,6 +4764,7 @@ export type Database = {
           printed_revision?: string | null
           reserved_bytes?: number
           send_after?: string | null
+          send_undone_at?: string | null
           sent_at?: string | null
           state?: string
           stored_bytes?: number
@@ -9382,6 +9385,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      defer_scan_sends: {
+        Args: { p_ids: string[]; p_parent: string; p_seconds: number }
+        Returns: number
+      }
       due_plan_cancel_alerts: {
         Args: { p_before: string; p_limit?: number }
         Returns: {
@@ -10117,6 +10124,10 @@ export type Database = {
         Args: { p_card: string; p_generation: number; p_token: string }
         Returns: boolean
       }
+      release_scan_holds: {
+        Args: { p_ids: string[]; p_parent: string }
+        Returns: string[]
+      }
       release_scan_photo: {
         Args: { p_id: string; p_parent: string }
         Returns: string
@@ -10163,6 +10174,21 @@ export type Database = {
           p_token: string
         }
         Returns: Json
+      }
+      replace_ready_scan_photo: {
+        Args: { p_old: string; p_page: string; p_parent: string }
+        Returns: string
+      }
+      replace_unfinished_scan_photo: {
+        Args: {
+          p_bytes: number
+          p_height: number
+          p_id: string
+          p_parent: string
+          p_token: string
+          p_width: number
+        }
+        Returns: string
       }
       report_retries_due: {
         Args: { p_email_age_s: number; p_limit: number; p_min_age_s: number }
@@ -10556,6 +10582,10 @@ export type Database = {
       seed_family_plan_history: {
         Args: { p_parent: string }
         Returns: undefined
+      }
+      send_due_scan_photos: {
+        Args: { p_child: string; p_ids: string[]; p_parent: string }
+        Returns: string[]
       }
       send_scan_photos: {
         Args: { p_child: string; p_ids: string[]; p_parent: string }
