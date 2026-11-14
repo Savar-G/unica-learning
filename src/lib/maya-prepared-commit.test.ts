@@ -148,7 +148,7 @@ describe("C2 interim commit: harmless phrasing binds, meaning never does", () =>
     expect(settledHow).toEqual([{ used: true }]);
   });
   it("still validates a committed interim reply: a leak is refused and repaired", async () => {
-    const leak = conversationalFake({ answer: (brief, call) => brief.childTurn === "12 minus 8 is 4" ? reply("The answer is 24.", "guide", { step: "tens", reading: { answers: [{ value: { type: "number", value: 4 }, step: "ones", problem: "target", verdict: "right" }] } }) : answer(brief) });
+    const leak = conversationalFake({ answer: (brief) => brief.childTurn === "12 minus 8 is 4" ? reply("The answer is 24.", "guide", { step: "tens", reading: { answers: [{ value: { type: "number", value: 4 }, step: "ones", problem: "target", verdict: "right" }] } }) : answer(brief) });
     const { session } = await captured({ model: leak });
     session.prepare({ text: "12 minus 8 is 4", reason: "interim" });
     const out = await session.child("So 12 minus 8 is 4.");

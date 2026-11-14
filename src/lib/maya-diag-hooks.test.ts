@@ -116,6 +116,17 @@ describe("onPreparation", () => {
 
 describe("withModelAttempt", () => {
   const leakFirst = () => conversationalFake({ answer: (_b, n) => n === 0 ? leak() : good() });
+  it("owns the result before synchronous model reentry and sends one request", async () => {
+    let again: (() => unknown) | undefined;
+    let reenter = false;
+    const model = conversationalFake({ answer: () => { if (reenter) { reenter = false; again!(); } return good(); } });
+    const { session } = setup({ model, modelRepair: false, withModelAttempt: <T,>(_source: "model" | "repair", run: () => T) => { again = run; return run(); } });
+    await session.start();
+    model.briefs.length = 0;
+    reenter = true;
+    await session.child("6");
+    expect(model.briefs).toHaveLength(1);
+  });
   it("labels the ordinary request model and the repair, one invocation each, and wraps no prepared use", async () => {
     const log: string[] = []; const model = leakFirst();
     const { session } = setup({ model, withModelAttempt: (<T,>(source: "model" | "repair", run: () => T) => { log.push(source); return run(); }) });
@@ -144,7 +155,7 @@ describe("withModelAttempt", () => {
   it("a synchronous throw from the model itself starts no second call", async () => {
     let calls = 0;
     const model: MayaModel = { id: "boom", promptVersion: "x", output: 3, propose: (() => { calls++; throw new Error("model"); }) as never };
-    const { session } = setup({ model, withModelAttempt: (<T,>(_s: string, run: () => T) => { try { return run(); } finally { run; } }) });
+    const { session } = setup({ model, withModelAttempt: (<T,>(_s: string, run: () => T) => run()) });
     await session.start(); calls = 0;
     await session.child("6").catch(() => undefined);
     const afterFirst = calls;

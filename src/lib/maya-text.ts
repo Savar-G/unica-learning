@@ -429,11 +429,14 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   }
   /** One ordinary model request, labelled for the diagnostic envelope. The request is sent once, by the first call of `run`. */
   function attempt(source: "model" | "repair", send: () => Promise<unknown>): Promise<unknown> {
-    let state: { ok: true; value: Promise<unknown> } | { ok: false; error: unknown } | null = null;
+    const result = Promise.withResolvers<unknown>();
+    let started = false;
     const run = (): Promise<unknown> => {
-      if (!state) { try { state = { ok: true, value: send() }; } catch (error) { state = { ok: false, error }; } }
-      if (!state.ok) throw state.error;
-      return state.value;
+      if (!started) {
+        started = true;
+        try { result.resolve(send()); } catch (error) { result.reject(error); }
+      }
+      return result.promise;
     };
     if (options.withModelAttempt) {
       try {
