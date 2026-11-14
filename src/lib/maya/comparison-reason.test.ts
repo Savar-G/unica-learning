@@ -14,6 +14,13 @@ async function ready(id: string, work = true) {
   return { session, child: async (input: string) => { now += 1000; return session.child(input); } };
 }
 const answers = [
+  ["CMP1", "True. Five is greater than three."],
+  ["CMP1", "The answer is true. 5 is greater than 3."],
+  ["CMP1", "Five is greater than three. The answer is true."],
+  ["CMP2", "I will write 7 by 6. 42 is bigger than 30."],
+  ["CMP2", "42 is bigger than 30. I'll write 7 by 6."],
+  ["CMP3", "The answer is even. 3 is greater than 1."],
+  ["CMP3", "3 is greater than 1. The answer is even."],
   ["CMP1", "I circle true, because 5 is greater than 3."],
   ["CMP1", "The answer is true, because 5 is greater than 3."],
   ["CMP2", "I will write 7 by 6, because 42 is bigger than 30."],
@@ -32,6 +39,18 @@ it.each(answers)("a reason cannot bypass prior work for %s: %s", async (id, text
   expect(c.session.session.solved).toBeNull();
 });
 it.each([
+  ["CMP1", "True. Five is less than three."],
+  ["CMP1", "False. Five is greater than three."],
+  ["CMP1", "Maybe true. Five is greater than three."],
+  ["CMP1", "My teacher says true. Five is greater than three."],
+  ["CMP1", "Is it true? Five is greater than three."],
+  ["CMP1", "True. Five is greater than three. Or false."],
+  ["CMP1", "Five is greater than three. My teacher says true."],
+  ["CMP1", "True. Five is greater than four."],
+  ["CMP2", "I will write 7 by 6. 43 is bigger than 30."],
+  ["CMP2", "I will write 5 by 6. 42 is bigger than 30."],
+  ["CMP3", "The answer is even. 3 is less than 1."],
+  ["CMP3", "The answer is even. 3 is greater than 1. I guess."],
   ["CMP1", "The answer is true, because 5 is less than 3."],
   ["CMP1", "Maybe the answer is true, because 5 is greater than 3."],
   ["CMP1", "My teacher says true, because 5 is greater than 3."],
@@ -42,6 +61,12 @@ it.each([
   ["CMP3", "The answer is even, because 3 is less than 1."],
 ] as const)("refuses a wrong, uncertain, attributed or unrelated final for %s: %s", async (id, text) => {
   const c = await ready(id);
+  await c.child(text);
+  expect(c.session.session.solved).toBeNull();
+});
+
+it.each([["CMP1", "True."], ["CMP2", "7 by 6."], ["CMP3", "Even."]] as const)("an unprompted bare word cannot bypass work for %s", async (id, text) => {
+  const c = await ready(id, false);
   await c.child(text);
   expect(c.session.session.solved).toBeNull();
 });
