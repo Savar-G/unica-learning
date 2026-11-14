@@ -578,6 +578,75 @@ describe("a sheet held up, cut by the photo's edge, or in shadow (#912)", () => 
     expect(calibrate(photo)).toEqual({ status: "refused", reason: "page-mismatch" });
   }, 60_000);
 
+  /**
+   * A coil-bound book's left-hand page (2026-11-14): the coil lies over the two marks on its binding side, the right, so
+   * the only marks in view sit on the same side as its QR code, bottom left. Under a lamp the sheet's bow toward the coil
+   * makes its toner shine: the print on the right half comes out lighter than the matte paper, each stroke a pale stroke
+   * inside a dark rim, as the real photos show. The paper is photo grey (205) so the shine can be lighter than it.
+   */
+  const QR_LEFT: Box = { x: 90, y: 1440, width: 170, height: 170 };
+  const PAPER = 205, SHINE = 252, BEND = 640;
+  const coilPage = (o: { shine: boolean; cover?: boolean }) => {
+    const r = page();
+    for (const m of SCAN_MARKS) if (m === "tl" || m === "bl") mark(r, m);
+    drawTextContent(r);
+    fill(r, QR_LEFT.x - 10, QR_LEFT.y - 10, QR_LEFT.width + 20, QR_LEFT.height + 20, 248);
+    drawQr(r, QR_LEFT, LINK);
+    for (const a of ANSWERS) drawBoxOutline(r, a.box);
+    const ink = (x: number, y: number) => r.data[y * W + x] < 128;
+    const out = new Uint8Array(r.data);
+    for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+      const at = y * W + x;
+      if (r.data[at] >= 240) { out[at] = PAPER; continue; }
+      if (!ink(x, y)) continue;
+      // The rim of each stroke stays dark; inside it the toner shines.
+      const inner = ink(x - 1, y) && ink(x + 1, y) && ink(x, y - 1) && ink(x, y + 1);
+      if (o.shine && x > BEND && inner) out[at] = SHINE;
+    }
+    const sheet: Raster = { ...r, data: out };
+    if (o.cover) {
+      // Another sheet over the right half, with its own print and its own answers in this page's boxes.
+      fill(sheet, BEND, 0, W - BEND, H, PAPER);
+      for (let i = 0; i < 30; i++) {
+        const x = BEND + 40 + (i * 53) % 520, y = 120 + (i * 97) % 1350;
+        fill(sheet, x, y, 70, 14);
+        // With shine, the other sheet's toner shines too.
+        if (o.shine) fill(sheet, x + 2, y + 2, 66, 10, SHINE);
+      }
+      for (const a of ANSWERS) if (a.box.x + a.box.width / 2 > BEND) drawDigit(sheet, a.box, (a.digit + 5) % 10);
+    }
+    // The coil: dark loops down the right edge, over where the right-hand marks printed.
+    for (let y = 10; y < H - 10; y += 22) fill(sheet, W - 60, y, 60, 9, 20);
+    for (const a of ANSWERS) if (!o.cover || a.box.x + a.box.width / 2 <= BEND) drawDigit(sheet, a.box, a.digit);
+    return sheet;
+  };
+  let coilPrinted: Raster;
+  beforeAll(() => {
+    coilPrinted = page();
+    for (const m of SCAN_MARKS) mark(coilPrinted, m);
+    drawTextContent(coilPrinted);
+    fill(coilPrinted, QR_LEFT.x - 10, QR_LEFT.y - 10, QR_LEFT.width + 20, QR_LEFT.height + 20, 248);
+    drawQr(coilPrinted, QR_LEFT, LINK);
+    for (const a of ANSWERS) drawBoxOutline(coilPrinted, a.box);
+  });
+  const calibrateCoil = (photo: Raster) => calibratePhoto({ photo, printed: coilPrinted, contract: available, pageLink: LINK, writing: ANSWERS.map((a) => a.box) });
+
+  it("a coil-bound page with its right-hand marks under the coil and its toner shining is placed by its code, every crop its own answer", async () => {
+    // Disproved if the page is refused (before the fix: "marks-missing", the shining print failing the page fit), or a crop
+    // reads another box's answer.
+    const photo = await stored(photographed(coilPage({ shine: true }), SIZE, square(SIZE, 60)));
+    const result = calibrateCoil(photo);
+    if (result.status !== "calibrated") throw new Error(`refused: ${JSON.stringify(result)}`);
+    expect(result.calibration).toMatchObject({ placedBy: "qr", missingMarks: [], hiddenMarks: ["tr", "br"] });
+    expect(answersRead(photo, result.calibration)).toEqual(wanted);
+  }, 60_000);
+
+  it.each([false, true])("refuses the coil-bound page when another sheet with other answers covers its right half (its toner shining: %s)", async (shine) => {
+    // Disproved if the code and the left half place the page while the boxes on the right show the other sheet's digits.
+    const photo = await stored(photographed(coilPage({ shine, cover: true }), SIZE, square(SIZE, 60)));
+    expect(calibrateCoil(photo).status).toBe("refused");
+  }, 60_000);
+
   it("a page held up in shadow with a corner cut off still calibrates, and every crop holds its own answer", async () => {
     const big = { width: 1500, height: 2000 };
     const sheet = cutOut(photographed(textWritten, big, rotated(square(big, 160), 4, { x: 750, y: 1000 }), { shade: 0.2 }), { x: 0, y: 175, width: 1500, height: 1825 });
