@@ -86,14 +86,15 @@ export function Mark({ className = "" }: { className?: string }) {
 export type Change = { tag: "more" | "new" | "less" | "rev"; label: string; text: string; from: number[] };
 export const TAG_LABEL: Record<Change["tag"], string> = { more: "More", new: "New", less: "Less", rev: "Review" };
 
-/** The next workbook's cover, in the Figma cover style. With `changes`, the box lists each change and its sources. */
+/** The next workbook's cover, in the Figma cover style. D-340: the title says "Subtracting 3-digit numbers", not "borrowing",
+ *  which a parent did not know. With `changes`, the box lists each change and its sources. */
 export function NextCover({ changes, zoom = 1, style }: { changes?: Change[]; zoom?: number; style?: CSSProperties }) {
   return (
     <div className="wi-cv" style={{ zoom, ...style }}>
       <div className="wi-cv-top"><span className="wi-cv-wm">Unica Learning<i /></span><span className="wi-cv-n">Workbook 04</span></div>
       <Mark className="wi-cv-mk" />
       <div className="wi-cv-for">Made for Leah · Grade 3 · Adding and subtracting to 1000</div>
-      <div className="wi-cv-t">Borrowing across<br /><mark>zero</mark></div>
+      <div className="wi-cv-t">Subtracting<br /><mark>3-digit numbers</mark></div>
       <div className="wi-cv-box">
         <b>Made from Leah&apos;s Workbook 03</b>
         {changes ? (
@@ -103,7 +104,7 @@ export function NextCover({ changes, zoom = 1, style }: { changes?: Change[]; zo
             ))}
           </ul>
         ) : (
-          <ul><li>More practice: borrowing across a zero</li><li>Less practice: carrying, now strong</li><li>A step ahead: 3-digit word problems</li></ul>
+          <ul><li>More practice: subtracting from numbers like 300</li><li>Less practice: adding, now strong</li><li>A step ahead: 3-digit word problems</li></ul>
         )}
       </div>
     </div>

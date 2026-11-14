@@ -46,10 +46,10 @@ const STEPS: { n: string; title: string; text: ReactNode; vis: ReactNode; label:
   },
   {
     n: "04",
-    title: "Stuck? The Teaching Assistant helps",
-    text: "Children in Grade 3 and up can type to the Teaching Assistant about a workbook question. Maya gives hints and can show an easier example on a shared board.",
+    title: "Stuck? Maya helps",
+    text: "Your child asks Maya, our AI Teaching Assistant, for help on a shared board. She starts with hints, so your child does the thinking.",
     vis: <TeachingDemo />,
-    label: "Illustration of a shared board: the Teaching Assistant works through 300 minus 128, then Leah writes the last digit.",
+    label: "Illustration of a shared board: Maya, the AI Teaching Assistant, works through 300 minus 128, then Leah writes the last digit.",
   },
   {
     n: "05",
@@ -67,7 +67,7 @@ const STEPS: { n: string; title: string; text: ReactNode; vis: ReactNode; label:
         <NextCover zoom={0.92} />
       </div>
     ),
-    label: "Leah's next workbook cover: borrowing across zero.",
+    label: "Leah's next workbook cover: subtracting 3-digit numbers.",
   },
 ];
 
