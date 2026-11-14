@@ -48,8 +48,6 @@ export interface StackUpload {
   reason?: UploadRefusal;
   /** The server had no room for it for a while (#915): it keeps its place and asks again. */
   held?: boolean;
-  /** The phone's early look found no page code (#915): a hint only, the server still reads it and decides. */
-  codeUnread?: boolean;
   /** A duplicate's page, as the server names it (#4): "Page 27 is already scanned". */
   page?: number;
   /** A duplicate of a page whose photo is ready and not sent (#4): that photo's id, which this new photo may replace. */
@@ -120,10 +118,10 @@ export interface StackTile {
   reason: string | null;
   refusal: StackReason | null;
   /**
-   * `code`: a photo still sending whose code the phone could not read (#915): the server may ask for another photo.
+   * `room`: a photo the server had no room for yet (#915): the tile still says only "Loading…", its sheet says why.
    * `offline`: a photo that did not reach us only because the phone is offline: it waits and sends when the phone is back.
    */
-  hint?: "code" | "offline";
+  hint?: "room" | "offline";
   /** A duplicate (#4): the page's ready photo, not sent, that this new photo may replace. */
   replaceable?: string;
 }
@@ -184,20 +182,27 @@ export function dayPages(pages: readonly { id: string; workbookId: string; book:
  */
 const LINE_UP = { short: "Hold closer", title: "We could not line up this photo with the page.", action: "Hold the phone closer so the page fills the photo, and tilt it away from the light." };
 
-const REFUSALS: Record<StackReason, { short: string; title: string; action: string }> = {
+/**
+ * No page code read (2026-11-14, Cedric): the tile and its card say only "Unknown page", with no short reason, and the
+ * one instruction names the whole page and the code's corner.
+ */
+const UNKNOWN_PAGE = { short: null, title: "We couldn't tell which page this is.", action: "Take the photo again with the whole page in view, including the small code in the bottom-left corner." };
+const unknownPage = (reason: StackReason) => reason === "qr" || reason === "qr-mismatch";
+
+const REFUSALS: Record<StackReason, { short: string | null; title: string; action: string }> = {
   "marks-missing": LINE_UP,
   "marks-inconsistent": LINE_UP,
   "page-mismatch": LINE_UP,
   "orientation-unclear": { short: "Turned", title: "We cannot tell which way up this page is.", action: "Hold the page upright. Then take another photo." },
   "ambiguous-page": { short: "More than one page", title: "We cannot tell which page this photo is of.", action: "Fold the book back or take the page out, so only one page shows and fills the photo." },
   "corner-covered": { short: "Corner covered", title: "Something covers a corner of the page.", action: "Move your hand and anything on the page out of the way, so the whole page shows. Then take another photo." },
-  "qr-mismatch": { short: "Code not read", title: "We cannot read the small code in the bottom-left corner.", action: "Hold the phone steady and keep that corner in view, with no glare or shadow on the code. Then take another photo." },
+  "qr-mismatch": UNKNOWN_PAGE,
   "another-page": { short: "Another page", title: "Part of this photo looks like a different page.", action: "Take a photo of this page on its own, flat, with nothing on top of it." },
   faint: { short: "Hard to read", title: "Part of the page is too bright, faint or covered to read.", action: "Use even light without the flash, and keep fingers and objects off the page. Then take another photo." },
   "check-timeout": { short: "Not checked yet", title: "We couldn't check this page right now.", action: "Try again in a minute." },
   "printed-page-changed": { short: "Cannot check", title: "We cannot line up this photo with the printed page.", action: "Take another photo of the whole page, flat and in good light." },
   failed: { short: "Cannot check", title: "We cannot line up this photo with the printed page.", action: "Take another photo of the whole page, flat and in good light." },
-  qr: { short: "Code not read", title: "We cannot read the small code in the bottom-left corner.", action: "Hold the phone steady and keep that corner in view, with no glare, shadow or finger on the code. Then take another photo." },
+  qr: UNKNOWN_PAGE,
   page: { short: "Cannot add", title: "We cannot add this page to your scans.", action: "Take a photo of a page from a workbook you scan here." },
   flat: { short: "Pages not flat", title: "The pages are not flat in this photo.", action: "Lay the book flat so both pages are flat, or take one page at a time. Then take another photo." },
   duplicate: { short: "Already scanned", title: "This page is already scanned.", action: "We kept its first photo." },
@@ -264,7 +269,8 @@ export function buildStack(o: { photos: readonly StackPhoto[]; uploads: readonly
     if (!o.checks || photo.check === "none") return { ...base, status: "saved" };
     if (photo.check === "refused") {
       const reason = photo.reason ?? "failed";
-      return { ...base, label: fullLabel(photo), status: "refused", reason: refusalCopy(reason).short, refusal: reason };
+      const label = unknownPage(reason) ? "Unknown page" : fullLabel(photo);
+      return { ...base, label, title: unknownPage(reason) ? label : base.title, status: "refused", reason: refusalCopy(reason).short, refusal: reason };
     }
     if (photo.check === "unavailable") return { ...base, status: "unavailable", reason: "Cannot be checked" };
     return { ...base, status: photo.check === "ready" ? "ready" : "checking" };
@@ -287,7 +293,8 @@ export function buildStack(o: { photos: readonly StackPhoto[]; uploads: readonly
     .map((u): StackTile => waitsForConnection(u)
       ? { key: u.key, photoId: null, uploadKey: u.key, label: "New photo", title: "New photo", status: "waiting", reason: "Waiting for connection", refusal: null, hint: "offline" }
       : { key: u.key, photoId: null, uploadKey: u.key, label: "New photo", title: "New photo", status: u.status === "uploading" && !u.held ? "adding" : "waiting",
-        reason: u.held ? "Waiting for room" : u.codeUnread ? "Code may not read" : null, refusal: null, ...(u.codeUnread ? { hint: "code" as const } : {}) });
+        // A new photo in progress names no reason (2026-11-14): the server reads the page code and alone decides.
+        reason: null, refusal: null, ...(u.held ? { hint: "room" as const } : {}) });
 
   // Refused photos, oldest first, then refused uploads, whose page is not known.
   const refused = [

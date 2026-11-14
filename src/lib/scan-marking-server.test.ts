@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import type { Database } from "@/lib/database";
 import { expectedItems, firstObservation } from "@/lib/scan-observation";
-import { changeScanMarking, markingAccess, processScanMarking, readScanMarking, recoverScanMarking, scanMarkingServerReadiness } from "./scan-marking-server";
+import { markingAccess, processScanMarking, readScanMarking, recoverScanMarking, scanMarkingServerReadiness } from "./scan-marking-server";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase-auth", () => ({ adminClient: () => null }));
@@ -208,24 +208,6 @@ it("reads expired-photo history while marking is off, without image access or fa
   expect(result?.items).toHaveLength(1); expect(result?.photoAvailable).toBe(false);
   expect(result?.items[0].photoAvailable).toBe(false); expect(result?.marks[0].observation.result).toBe("wrong");
   expect(result?.items[0].canChange).toBe(true);
-  expect(state.queries.some((q) => /test_accounts|admin_users|storage/.test(q.pathname))).toBe(false);
-});
-
-it("refuses a parent's change of an answer with no mark yet: the AI and our team mark it (#715)", async () => {
-  state.photo = true; state.mark = { ...firstObservation(expected, "expired-photo"), resultVersion: 2 } as typeof state.mark;
-  expect(await changeScanMarking(db, parent, "expired-photo", { itemId: expected.identity.itemId, version: 2, result: "right" })).toEqual({ status: "refused" });
-  expect(state.commands).toEqual([]); expect(state.mark.result).toBeNull(); expect(profile.calls).toBe(0);
-  // An older version the parent saw goes to the store, which answers conflict with the current mark.
-  state.mark = { ...original, resultVersion: 3 };
-  await changeScanMarking(db, parent, "expired-photo", { itemId: expected.identity.itemId, version: 2, result: "right" });
-  expect(state.commands).toEqual(["change", "outbox"]);
-});
-
-it.each([false, true])("keeps an expired-photo parent change and its recovery handoff while off (profile interrupted: %s)", async (failed) => {
-  state.photo = true; profile.failed = failed;
-  expect(await changeScanMarking(db, parent, "expired-photo", { itemId: expected.identity.itemId, version: 2, result: "right" })).toEqual({ status: "saved", recoveryPending: failed });
-  expect(state.mark.result).toBe("right"); expect(state.mark.resultVersion).toBe(3);
-  expect(state.commands).toEqual(["change", "outbox"]); expect(profile.calls).toBe(1);
   expect(state.queries.some((q) => /test_accounts|admin_users|storage/.test(q.pathname))).toBe(false);
 });
 

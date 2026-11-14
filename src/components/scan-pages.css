@@ -190,6 +190,12 @@
 .scan-strip-h { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
 .scan-strip-h h2 { display: inline-flex; align-items: center; gap: 8px; font-size: 19px; font-weight: 500; letter-spacing: -.01em; }
 .scan-strip-count { font-size: 15px; color: var(--ink-2); }
+/* The strip's ‹ and › (2026-11-14): small, quiet, a 44px target, beside the day's name. */
+.scan-strip-day { display: inline-flex; align-items: center; gap: 2px; margin-left: -12px; }
+.scan-strip-step { width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--ink-2); font: inherit; font-size: 24px; line-height: 1; cursor: pointer; }
+.scan-strip-step:hover:not(:disabled) { background: var(--line-soft); color: var(--ink); }
+.scan-strip-step:focus-visible { outline: 2px solid currentColor; outline-offset: -4px; }
+.scan-strip-step:disabled { opacity: .3; cursor: default; }
 .scan-done-tick { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--scan-leaf-ink); color: #fff; }
 .scan-done-tick svg { width: 13px; height: 13px; }
 .scan-pages .scan-strip-tiles { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 10px 8px; }
@@ -279,8 +285,6 @@ span.scan-pair-ph { cursor: default; }
 .scan-tray-go { min-height: 56px; display: flex; align-items: center; justify-content: center; gap: 10px; border: 0; border-radius: 14px; background: var(--ink); color: #fff; font: 600 16.5px var(--sans, inherit); cursor: pointer; }
 .scan-cam-foot .scan-link { justify-self: center; font-size: 15px; }
 .scan-cam button:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
-.scan-earlier summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-size: 15px; text-decoration: underline; text-underline-offset: 3px; }
-.scan-earlier[open] summary { margin-bottom: 8px; }
 
 /* "See all pages": the one way from home to every saved page result (the Page history on the Workbooks page). */
 .scan-all { margin: 0; }

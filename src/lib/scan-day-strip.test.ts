@@ -74,3 +74,19 @@ it("tells a screen reader a page held here is not sent yet, apart from a sent pa
   const s = strip([photo("p3", { sentAt: "2026-11-14T10:01:00Z" }), photo("p4")], false)!;
   expect(s.tiles.slice(0, 2).map((t) => [t.state, t.label])).toEqual([["sent", "Page 3, sent for marking"], ["ready", "Page 4, ready, not sent yet"]]);
 });
+
+it("steps back to an earlier day of the same book with its own states and marks, never before Day 1 (2026-11-14)", () => {
+  const sent = { sentAt: "2026-11-14T10:01:00Z", marks: full };
+  const photos = [photo("p3", sent), photo("p4", sent), photo("p5", sent), photo("p6", { createdAt: "2026-11-14T11:00:00Z" })];
+  const stack = buildStack({ photos, uploads: [], pages, checks: true });
+  const at = (back: number) => dayStrip({ photos, pages, tiles: [...stack.refused, ...stack.days.flatMap((d) => d.tiles), ...stack.sent], marking: true, back })!;
+  expect([at(0).day, at(0).back, at(0).hasPrevious]).toEqual(["Day 2", 0, true]);
+  const earlier = at(1);
+  expect([earlier.day, earlier.back, earlier.hasPrevious, earlier.countText, earlier.complete]).toEqual(["Day 1", 1, false, "3 of 3 pages marked", true]);
+  expect(earlier.tiles.map((t) => t.state)).toEqual(["marked", "marked", "marked"]);
+  // An earlier day names no next day and never says the whole book is done.
+  expect([earlier.nextDay, earlier.allDone]).toEqual([null, false]);
+  // Past Day 1 it stays on Day 1; a negative step stays on the current day.
+  expect([at(5).day, at(5).back]).toEqual(["Day 1", 1]);
+  expect([at(-2).day, at(-2).back]).toEqual(["Day 2", 0]);
+});

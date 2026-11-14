@@ -108,24 +108,6 @@ export function scanMarkingStore(db: SupabaseClient<Database>): MarkingStore {
   };
 }
 
-export interface ParentMarkChoice { itemId: string; version: number; result: "right" | "wrong" | "blank" }
-export function parentMarkChoice(value: unknown): ParentMarkChoice | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const v = value as Record<string, unknown>;
-  if (Object.keys(v).some((key) => !["itemId", "version", "result"].includes(key))
-    || typeof v.itemId !== "string" || !v.itemId.length || v.itemId.length > 200
-    || typeof v.version !== "number" || !Number.isSafeInteger(v.version) || v.version < 1 || v.version > 999_999_999
-    || (v.result !== "right" && v.result !== "wrong" && v.result !== "blank")) return null;
-  return { itemId: v.itemId, version: v.version, result: v.result };
-}
-/** Public store action. It cannot read an image or dispatch a model request. */
-export async function changeScanMark(command: MarkingCommand, parent: string, photo: string, choice: ParentMarkChoice): Promise<{ status: "refused" } | { status: "saved" | "conflict"; mark: EffectiveMark }> {
-  const raw = await command("change", parent, photo, null, toJson(choice));
-  if (raw === "refused") return { status: "refused" as const };
-  const r = record(raw);
-  if (r.status !== "saved" && r.status !== "conflict") throw new Error("mark_change_shape");
-  return { status: r.status, mark: mark(r.mark) };
-}
 export interface ScanMarkChange {
   id: number; itemId: string; actor: string; at: string; from: number; to: number;
   previous: EffectiveMark; current: Observation;

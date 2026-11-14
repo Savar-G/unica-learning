@@ -2,7 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { childPlanAccess, markingDecision, markingMode, type ChildPlanAccess, type Env } from "@/lib/scan-marking-access";
-import { changeScanMark, markingCommand, scanMarkingStore, type ParentMarkChoice } from "@/lib/scan-marking-store";
+import { markingCommand, scanMarkingStore } from "@/lib/scan-marking-store";
 import { markingAiClient, markingClientReady, markingEscalationClient } from "@/lib/scan-marking-ai";
 import { MARKING_MODEL, MARKING_PROMPT_VERSION, markingPageView, runScanMarking } from "@/lib/scan-marking";
 import { SCAN_MARKING_LAUNCH_EVIDENCE, scanMarkingLaunchReadiness } from "@/lib/scan-marking-launch";
@@ -217,7 +217,7 @@ export async function recoverScanMarking(db: SupabaseClient<Database>, env: Env 
 }
 
 /**
- * After a person's mark (a parent's correction or our team's mark): publish the effective event and rebuild the child's
+ * After our team's mark (no parent changes a mark since 2026-11-14): publish the effective event and rebuild the child's
  * profile from the same canonical set. True when that work is still pending; the recovery cursor retries it.
  */
 export async function publishMarkChange(db: SupabaseClient<Database>, parent: string, child: string): Promise<boolean> {
@@ -229,35 +229,4 @@ export async function publishMarkChange(db: SupabaseClient<Database>, parent: st
     // The transaction advanced the durable revision. The existing recovery cursor retries after image expiry.
     return true;
   }
-}
-/**
- * A parent corrects a finished mark (#715): an answer with no mark yet is the AI's and our team's, so its change is
- * refused. A version's mark never changes, so checking the version the parent sent is race free; a newer version
- * answers conflict from the store as before.
- */
-export async function changeScanMarking(db: SupabaseClient<Database>, parent: string, photo: string, choice: ParentMarkChoice) {
-  if (await unmarkedVersion(db, parent, photo, choice)) return { status: "refused" as const };
-  const changed = await changeScanMark(markingCommand(db), parent, photo, choice);
-  if (changed.status === "refused") return changed;
-  if (changed.status === "saved") {
-    let child: string;
-    try { child = await childForPhoto(db, parent, photo); } catch { return { status: "saved" as const, recoveryPending: true }; }
-    if (await publishMarkChange(db, parent, child)) return { status: "saved" as const, recoveryPending: true };
-  }
-  return { status: changed.status, recoveryPending: false };
-}
-async function unmarkedVersion(db: SupabaseClient<Database>, parent: string, photo: string, choice: ParentMarkChoice) {
-  const p = await db.from("scan_photos").select("child_id,workbook_id,page_id,printed_revision").eq("id", photo).eq("parent_id", parent).maybeSingle();
-  if (p.error) throw new Error("mark_change_read");
-  if (!p.data || !p.data.workbook_id || !p.data.page_id || !p.data.printed_revision) return false;
-  const m = await db.from("scan_marking_items").select("result_version,observation").eq("parent_id", parent).eq("child_id", p.data.child_id)
-    .eq("workbook_id", p.data.workbook_id).eq("page_id", p.data.page_id).eq("printed_revision", p.data.printed_revision).eq("item_id", choice.itemId).maybeSingle();
-  if (m.error) throw new Error("mark_change_read");
-  const o = m.data?.observation;
-  return !!m.data && m.data.result_version === choice.version && !!o && typeof o === "object" && !Array.isArray(o) && (o.result === null || o.result === undefined);
-}
-async function childForPhoto(db: SupabaseClient<Database>, parent: string, photo: string) {
-  const r = await db.from("scan_photos").select("child_id").eq("id", photo).eq("parent_id", parent).single();
-  if (r.error || !r.data) throw new Error("mark_change_owner");
-  return r.data.child_id;
 }

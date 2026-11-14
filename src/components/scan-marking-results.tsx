@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import type { markingPageView } from "@/lib/scan-marking";
 import { familyMoment, PACIFIC_ZONE, type FamilyZone } from "@/lib/family-time";
 import "./scan-pages.css";
-import { ScanMarkChange } from "./scan-mark-change";
+import { ScanProblemExplanation } from "./scan-problem-explanation";
 
 /** Page results and parent review share the canonical effective projection. */
 /**
@@ -30,7 +30,10 @@ export function ScanMarkingResults({ result, showHeading = true, photo, parent, 
           {item.readAnswerText !== null && <p>We read: {item.readAnswerText === "" ? "Empty answer" : item.readAnswerText}</p>}
           {item.result !== null && <p className="small">{item.actor === "parent" ? "Parent" : item.actor === "admin" ? "Our team" : "Automatic check"}{Number.isFinite(Date.parse(item.at)) && <> · {familyMoment(item.at, zone)}</>}</p>}
           {result.solutionsAvailable && itemExplanation?.(item)}
-          {photo && item.canChange && <ScanMarkChange key={`${parent}:${photo}:${item.itemId}`} photo={photo} item={item} parent={parent} complete={result.completion.status === "complete"} />}
+          {/* No parent changes a mark (2026-11-14): only our team does, through admin_set_scan_mark. A Wrong mark the AI
+              read, on a complete page, offers its explanation. */}
+          {photo && item.canChange && result.completion.status === "complete" && item.result === "wrong" && (item.state === "scored" || item.state === "parent-checked") && item.readAnswerText?.trim()
+            && <ScanProblemExplanation key={`${parent}:${photo}:${item.itemId}:${item.version}:${item.readAnswerText}`} parent={parent} photo={photo} itemId={item.itemId} version={item.version} number={item.number} />}
         </li>)}</ol>
       </>}
   </section>;
