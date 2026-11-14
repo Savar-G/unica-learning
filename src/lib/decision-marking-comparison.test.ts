@@ -9,8 +9,13 @@ import { markingRegions } from "@/lib/scan-marking-regions";
 import {
   THRESHOLDS,
   askAll,
+  PHYSICAL_MIN_ITEMS,
   comparisonItems,
   comparisonReport,
+  comparisonWinner,
+  physicalComparisonSet,
+  physicalShortfall,
+  winnerMarkdown,
   costCap,
   cropRect,
   imageSize,
@@ -18,6 +23,9 @@ import {
   regionQuestion,
   reportMarkdown,
   type AskResult,
+  type ComparisonReport,
+  type ModelReport,
+  type PhysicalSetFile,
   type SetManifest,
   type SetPhoto,
   type TruthResult,
@@ -87,9 +95,9 @@ describe("the comparison rows (#851)", () => {
     expect(leftOut).toEqual(["synthetic-right", "synthetic-wrong", "synthetic-blank"].map((p) => ({ photo: p, itemId: page[3].package.id, format: "two-ways" })));
   });
 
-  it("refuses a set that is not synthetic", () => {
+  it("refuses a set that holds real child data", () => {
     const m = { ...manifest(), identity: { containsRealData: true } } as unknown as SetManifest;
-    expect(() => comparisonItems(m)).toThrow(/synthetic-set-required/);
+    expect(() => comparisonItems(m)).toThrow(/made-up-child-set-required/);
   });
 
   it("crops each box with a margin inside the page, at a size inside Jev's limits (each side 280 to 1,568 px)", () => {
@@ -174,7 +182,7 @@ describe("the comparison report (#851)", () => {
     const md = reportMarkdown(report);
     expect(md).toContain("fake HTTP");
     expect(md).toContain("| typesafe/jev-1.14 | 0.50 | 100.0% | yes |");
-    expect(md).toContain("## Parent rows left out");
+    expect(md).toContain("## Rows left out (parent or team-marked two ways)");
     expect(report.cap).toMatchObject({ maxUsd: 1, stopped: false });
     expect(report.cap!.spentUsd).toBeCloseTo(24 * 0.00004, 10);
     expect(md).toContain("Cost cap: USD 1; spent USD 0.000960 (known costs");
@@ -326,5 +334,89 @@ describe("the cost cap (#851 review, finding 3 and re-check A and B)", () => {
     const out = await askAll({ items: items.slice(0, 2), client, image, cap, concurrency: 1 });
     expect(out.map((r) => [r.error, r.usd, r.costKnown])).toEqual([["unavailable", 0.004, true], ["unavailable", 0.004, true]]);
     expect(cap.spentUsd).toBe(0.008);
+  });
+});
+
+describe("the real-photo set (#853)", () => {
+  const entry = (file: string, device: string, status: string, results: [TruthResult, TruthResult, TruthResult]) => ({
+    mapping: { file, device }, status, reason: status === "ready" ? null : "qr",
+    photo: { ...photo(`synthetic-physical-${file}`, results), truth: [...photo("x", results).truth.slice(0, 3), { itemId: page[3].package.id, format: "two-ways", result: "right" as TruthResult }] },
+  });
+  const file = (devices = ["iphone"]): PhysicalSetFile => ({
+    version: "robin-physical-v2", devices,
+    photos: [entry("iphone-page-3.jpg", "iphone", "ready", ["right", "wrong", "blank"]), entry("iphone-page-3-blurry.jpg", "iphone", "refused", ["right", "right", "right"])],
+  });
+
+  it("asks only the photos the page check accepted, names them by file, and records the phones", () => {
+    const set = physicalComparisonSet(file());
+    expect(set.manifest.synthetic).toBe(false);
+    expect(set.manifest.photos.map((p) => p.id)).toEqual(["iphone-page-3.jpg"]);
+    expect(set.refused).toEqual([{ file: "iphone-page-3-blurry.jpg", reason: "qr" }]);
+    expect(set).toMatchObject({ devices: ["iphone"], bothPhones: false });
+    expect(physicalComparisonSet(file(["iphone", "android"])).bothPhones).toBe(true);
+    expect(() => physicalComparisonSet({ ...file(), version: "robin-physical-v1" })).toThrow(/physical-set-required/);
+  });
+
+  it("leaves a labelled two-ways item out (our team marks it) instead of asking its method regions", () => {
+    const { items, leftOut } = comparisonItems(physicalComparisonSet(file()).manifest);
+    expect(items.map((i) => i.result)).toEqual(["right", "wrong", "blank"]);
+    expect(leftOut).toEqual([{ photo: "iphone-page-3.jpg", itemId: page[3].package.id, format: "two-ways" }]);
+  });
+
+  it("refuses a set with fewer than 40 wrong or 20 blank items", () => {
+    const items = (wrong: number, blank: number) => [...Array(wrong).fill("wrong"), ...Array(blank).fill("blank")].map((result, n) => ({ photo: "p", clear: true, itemId: `i${n}`, number: n, format: "whole", result, regions: [] }));
+    expect(PHYSICAL_MIN_ITEMS).toEqual({ wrong: 40, blank: 20 });
+    expect(physicalShortfall(items(40, 20))).toBeNull();
+    expect(physicalShortfall(items(33, 17))).toBe("physical-set-too-few-items: 33 wrong (needs 40), 17 blank (needs 20)");
+    expect(physicalShortfall(items(40, 19))).toMatch(/19 blank/);
+  });
+
+  it("says in the report which phones and which photos were refused", () => {
+    const set = physicalComparisonSet(file());
+    const { items, leftOut } = comparisonItems(set.manifest);
+    const md = reportMarkdown(comparisonReport({ items, leftOut, photos: 1, fake: false, results: {}, physical: set }));
+    expect(md).toContain("Real phone photos of the made-up Robin booklet (iphone)");
+    expect(md).toContain("iphone-page-3-blurry.jpg: qr");
+    expect(md).toContain("One phone only: Android not tested.");
+    expect(md).not.toContain("Synthetic ink");
+  });
+});
+
+describe("the winner (#853)", () => {
+  // A model whose false Right is 0 from `zeroFrom` up, and whose confirm rate falls from `confirm` by 0.01 a step.
+  const model = (name: string, zeroFrom: number, confirm: number, incomplete: string | null = null) => ({
+    model: name, incomplete,
+    thresholds: THRESHOLDS.map((threshold) => ({ threshold, confirmed: 0, confirmRate: Math.round((confirm - (threshold - 0.5)) * 100) / 100, falseRight: threshold >= zeroFrom ? 0 : 1, falseRightBy: { wrong: 0, blank: 0, uncertain: 0 } })),
+  }) as unknown as ModelReport;
+  const report = (physical: boolean, models: ModelReport[], o: { fake?: boolean; bothPhones?: boolean } = {}) =>
+    ({ synthetic: !physical, physical: physical ? { devices: ["iphone"], bothPhones: o.bothPhones ?? true, refused: [] } : null, fake: !!o.fake, models }) as unknown as ComparisonReport;
+
+  it("takes the lowest threshold that passes on both sets, and the higher real-photo confirm rate between models", () => {
+    const syn = report(false, [model(JEV, 0.6, 0.99), model(GEMINI, 0.55, 0.99)]);
+    // Gemini's real photos reach 0 false Right at 0.62, where it confirms only 73%: below the bar.
+    const real = report(true, [model(JEV, 0.65, 0.99), model(GEMINI, 0.62, 0.85)]);
+    const w = comparisonWinner(syn, real);
+    expect(w.winner).toEqual({ model: JEV, threshold: 0.65, syntheticConfirmRate: 0.84, physicalConfirmRate: 0.84 });
+    expect(w.candidates).toHaveLength(1);
+    expect(w.notes).toEqual([`${GEMINI}: no threshold passes the bar on both sets.`]);
+  });
+
+  it("prefers the higher confirm rate on the real photos when both pass", () => {
+    const w = comparisonWinner(report(false, [model(JEV, 0.5, 0.99), model(GEMINI, 0.5, 0.99)]), report(true, [model(JEV, 0.6, 0.95), model(GEMINI, 0.55, 0.99)]));
+    expect(w.winner?.model).toBe(GEMINI);
+    expect(w.candidates.map((c) => c.model).sort()).toEqual([GEMINI, JEV].sort());
+    expect(winnerMarkdown(w)).toContain(`Winner: ${GEMINI} at threshold 0.55`);
+  });
+
+  it("names no winner for a fake run, an incomplete model, or no passing threshold, and flags a one-phone set", () => {
+    expect(comparisonWinner(report(false, [model(JEV, 0.5, 0.99)]), report(true, [model(JEV, 0.5, 0.99)], { fake: true })).winner).toBeNull();
+    const inc = comparisonWinner(report(false, [model(JEV, 0.5, 0.99)]), report(true, [model(JEV, 0.5, 0.99, "incomplete: 2 non-right requests failed")]));
+    expect(inc.winner).toBeNull();
+    expect(inc.notes.join(" ")).toMatch(/real incomplete: 2/);
+    const none = comparisonWinner(report(false, [model(JEV, 0.9, 0.5)]), report(true, [model(JEV, 0.9, 0.5)], { bothPhones: false }));
+    expect(none.winner).toBeNull();
+    expect(winnerMarkdown(none)).toContain("No model passes the bar on both sets.");
+    expect(none.notes[0]).toMatch(/one phone only/);
+    expect(() => comparisonWinner(report(true, []), report(true, []))).toThrow(/winner-needs/);
   });
 });
