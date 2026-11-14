@@ -8,6 +8,8 @@ import { normalizeScanPhoto, readScanBody } from "@/lib/scan-photo-image";
 import { scanSession, scanJson, scanView, scanPath, SCAN_BUCKET, cleanupScanPhoto } from "@/lib/scan-photo-server";
 
 export const maxDuration = 60;
+/** The most a request may have used before it starts the page check itself (#915 review: the check needs about 40 s). */
+const UPLOAD_CHECK_BUDGET_MS = 15_000;
 
 export async function GET(_request: Request, { params }: RouteContext<"/api/account/scans/[id]">) {
   const session = await scanSession();
@@ -19,6 +21,7 @@ export async function GET(_request: Request, { params }: RouteContext<"/api/acco
 }
 
 export async function PUT(request: Request, { params }: RouteContext<"/api/account/scans/[id]">) {
+  const received = Date.now();
   const session = await scanSession();
   if (request.headers.get("origin") !== new URL(request.url).origin) return scanJson({ error: "refused" }, 403);
   const { id } = await params;
@@ -45,7 +48,9 @@ export async function PUT(request: Request, { params }: RouteContext<"/api/accou
     // Speed (#915): the page check starts here, as soon as the photo is stored, instead of waiting for the page to save
     // the photo, list the stack again and ask. The job is the same one the preview route runs, under the same lease: a
     // later ask gets its result, a busy family slot leaves it to that ask, and any error leaves the photo as it was.
-    after(async () => {
+    // Only when most of this request's time is left: the job shares the upload's time limit (maxDuration), and a job
+    // cut off mid-run would hold the family's check slot until its lease ends. Otherwise the page's ask runs it.
+    if (Date.now() - received < UPLOAD_CHECK_BUDGET_MS) after(async () => {
       try { if (await scanChecksAccess(admin, parent, process.env, { photo: id })) await runScanCrops(scanCropStore(admin), { parent, photo: id }, randomUUID()); }
       catch { /* the page asks again */ }
     });

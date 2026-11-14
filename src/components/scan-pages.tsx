@@ -34,7 +34,7 @@ const uploadRefusal = (code: string): UploadRefusal => (UPLOAD_REFUSALS.includes
 const ENDED: readonly string[] = ["expired", "rejected", "deleted", "refused"];
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 /** How long a photo waits before its check is asked again; a busy check (still running, #915) is asked again sooner. */
-const CHECK_ASK_MS = 6000, BUSY_ASK_MS = 1500, MAX_BUSY_ASKS = 40;
+const CHECK_ASK_MS = 6000, BUSY_ASK_MS = 1500, QUICK_BUSY_ASKS = 8;
 /** The stack is read this often while a page is being checked, so a finished check shows within about 2 s (#915). */
 const CHECKING_POLL_MS = 2000;
 
@@ -144,6 +144,8 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const pumpRef = useRef<() => void>(() => {});
   const checking = useRef(false);
   const asked = useRef(new Map<string, number>());
+  // Quick asks per photo while its upload-time check runs (#915); after them, the usual wait between asks.
+  const busyAsked = useRef(new Map<string, number>());
   const savedAsked = useRef(new Set<string>());
   const fetching = useRef(new Set<string>());
   const urls = useRef(new Map<string, string>());
@@ -259,7 +261,6 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     if (checking.current || !listing?.checks) return;
     checking.current = true;
     const version = epoch.current;
-    let busyAsks = 0;
     try {
       for (;;) {
         const now = Date.now();
@@ -273,7 +274,12 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
         if (status === "unavailable") setUnavailable((s) => new Set(s).add(next.id));
         if (status === "ready" || status === "refused") { await load().catch(() => {}); return; }
         // Busy: the check started at upload (#915) is still running. Ask again soon, not after the usual wait.
-        if (status === "busy" && ++busyAsks <= MAX_BUSY_ASKS) { await wait(BUSY_ASK_MS); asked.current.set(next.id, 0); continue; }
+        if (status === "busy") {
+          const n = (busyAsked.current.get(next.id) ?? 0) + 1;
+          busyAsked.current.set(next.id, n);
+          if (n <= QUICK_BUSY_ASKS && document.visibilityState === "visible") { await wait(BUSY_ASK_MS); asked.current.set(next.id, 0); continue; }
+          return;
+        }
         if (status !== "unavailable") return;
       }
     } finally { if (version === epoch.current) checking.current = false; }
