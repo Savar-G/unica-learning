@@ -416,6 +416,7 @@ function gateOwnAnswer(text: string, value: AnswerValue, opts: ReturnType<typeof
   }).join(" ");
   // Another's number, a copy, a near amount, or Maya's own words said back (re-review P3): its own forms, no controller code.
   if (/\b(?:said|told|copied|copy|peeked|about|around|roughly|likely|according to|you showed)\b|\b[a-z]+\s*:\s*\d/.test(t)) return false;
+  if (t.split(/(?<=[.!?])\s+/).some(x => !/\?\s*$/.test(x) && equationsOf(x).some(e => equationHolds(e) === !!e.negated))) return false;
   return t.split(/(?<=[.!?])\s+/).some((x) => !x.trim().endsWith("?") && valuesIn(x.split(/\b(?:because|since|cause|cuz|coz)\b/)[0], opts).some((v) => sameValue(v, value) || equivalent(v, value)));
 }
 
@@ -880,7 +881,9 @@ export function judge(b: Behaviour, saved: string | undefined, savedCall?: strin
       // The commit rule (rule A, 2026-11-12): the right answer said as the child's own, with no hedge, no other person and
       // no question about it, even with the child's working beside it ("I got 66. I put the 6 and the 6 together."). The
       // judge's own reading, apart from the controller's.
-      const own = yes === null && word === null && !read.choice ? read.kept.find((v) => rightForQuestion(op, v) && gateOwnAnswer(lastChild, v, opts, askedHeard !== null && sameValue(askedHeard, v))) ?? null : null;
+      const selected = read.final;
+      const own = yes === null && word === null && !read.choice && selected !== null && rightForQuestion(op, selected) &&
+        gateOwnAnswer(lastChild, selected, opts, askedHeard !== null && sameValue(askedHeard, selected)) ? selected : null;
       const final = yes ?? word ?? own ?? read.final;
       if (!final || (yes === null && word === null && own === null) || !rightForQuestion(op, final) || (comparison && (!childCertain || !workIds.every(id => doneSteps.has(id))))) fail("accepted_wrong_answer", `Maya turn ${i} accepted an answer after "${lastChild}"`);
     }

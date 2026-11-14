@@ -39,6 +39,10 @@ it.each([
 it.each([
   "You said 10.", "You said 10. I got 10.", "10, like you said.",
   "My teacher said 10. I got 10.", "I think I got 10.", "I got 11.", "Is 10 right?",
+  "You said to divide 80 by 8. I got 10 because 80 divided by 8 is 11.",
+  "You said to divide 80 by 8. I got 10. 80 divided by 8 is 11.",
+  "You said to divide 80 by 8. I got 10 because 8 plus 8 is 17.",
+  "You said to divide 80 by 8. I got 10. My answer is 11.",
 ])("still detects improper acceptance: %s", text => {
   expect(failures(text)).toContainEqual(expect.objectContaining({ code: "accepted_wrong_answer" }));
 });
