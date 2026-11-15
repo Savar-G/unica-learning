@@ -1,3 +1,4 @@
+import { fakeMathReviewer } from "@/lib/maya-math-review";
 import { describe, expect, it } from "vitest";
 import { conversationalFake, reply } from "@/lib/maya-model-fake";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
@@ -44,7 +45,7 @@ async function tutorSuite(cases: PracticeCase[], options: { maya?: MayaModel; te
     validity: { model: validity.id, promptVersion: validity.promptVersion }, judge: { model: judge.id, promptVersion: judge.promptVersion },
     teaching: { model: teachingJudge.id, promptVersion: teachingJudge.promptVersion }, meta: { commit: "test" },
   }, { runs, tutor: true });
-  await runSuite(cases, plan, { maya, simulator, validity, judge, teachingJudge, reviewer: fakeTalkReviewer(), store });
+  await runSuite(cases, plan, { maya, simulator, validity, judge, teachingJudge, reviewer: fakeTalkReviewer(), mathReviewer: fakeMathReviewer(), store });
   return { store, plan, teachingJudge, report: () => buildReport(cases, store, runs, { tutor: true }) };
 }
 const verdict = (report: ReturnType<typeof buildReport>, id: string): TeachingVerdict => report.runs.find((r) => r.id === id)!.teaching!;

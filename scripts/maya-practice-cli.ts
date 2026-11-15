@@ -44,6 +44,7 @@
 // Before a paid OpenRouter run, the credit check (src/lib/maya-practice/credits.ts) reads what is left on the account and
 // refuses the run when it is below the estimate plus the need of the runs in flight, or when it cannot be read. It uses the
 // run's own key (an ordinary key reads the credits route).
+import { aiMathReviewer, fakeMathReviewer, type MathReviewer } from "@/lib/maya-math-review";
 import { execFileSync, execSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -396,6 +397,8 @@ async function main() {
   let judge: AiJudge;
   let teachingJudge: TeachingJudge | undefined;
   let reviewer: TalkReviewer | null = null;
+  // The tutor core's math-truth review (#1044), on the review model.
+  let mathReviewer: MathReviewer | null = null;
   let spending = new Spending(null);
   // Set when a `claude -p` call met the subscription's usage limit: the suite stops as at the spending cap.
   let usageLimit: string | null = null;
@@ -404,6 +407,7 @@ async function main() {
   if (o.fake) {
     maya = o.tutor ? fakeTutorModel() : ruleConversationalModel();
     reviewer = fakeTalkReviewer();
+    mathReviewer = fakeMathReviewer();
     const scripts = new Map(cases.map((c) => [c.persona.name, c.fakeScript]));
     simulator = { id: "fake-child", promptVersion: SIMULATOR_PROMPT_VERSION, next: (input, s) => scriptedSimulator(scripts.get(input.persona.name) ?? []).next(input, s) };
     validity = fakeValidityJudge();
@@ -436,6 +440,7 @@ async function main() {
     judge = aiJudge(client("judge"), { timeoutMs: 3 * SUBSCRIPTION_MAYA_MS });
     if (o.tutor) teachingJudge = aiTeachingJudge(client("judge"), { timeoutMs: 3 * SUBSCRIPTION_MAYA_MS });
     reviewer = aiTalkReviewer(client("reviewer"));
+    mathReviewer = aiMathReviewer(client("reviewer"));
   } else {
     const anthropic = o.provider === "anthropic";
     const price = anthropic ? anthropicPrices(models) : await prices(models);
@@ -474,6 +479,7 @@ async function main() {
     judge = aiJudge(client("judge"));
     if (o.tutor) teachingJudge = aiTeachingJudge(client("judge"));
     reviewer = aiTalkReviewer(client("reviewer"));
+    mathReviewer = aiMathReviewer(client("reviewer"));
   }
 
   if (o.reviewCheck) {
@@ -511,7 +517,7 @@ async function main() {
   console.log(`-- ${plan.runs.length} runs into ${dir}`);
   let done = 0;
   await runSuite(cases, plan, {
-    maya, simulator, validity, judge, ...(teachingJudge ? { teachingJudge } : {}), store, concurrency, freeTalk: o.freeTalk, reviewer,
+    maya, simulator, validity, judge, ...(teachingJudge ? { teachingJudge } : {}), store, concurrency, freeTalk: o.freeTalk, reviewer, mathReviewer,
     ...(o.provider === "subscription" && !o.fake ? { reviewTimeLimitMs: SUBSCRIPTION_REVIEW_MS, turnBudgetMs: SUBSCRIPTION_TURN_MS } : {}),
     capped: stopped,
     onRun: (id) => console.log(`   ${++done}/${plan.runs.length} ${id}${o.fake || o.provider === "subscription" ? "" : ` (spent ${usd(spending.spent)})`}`),
