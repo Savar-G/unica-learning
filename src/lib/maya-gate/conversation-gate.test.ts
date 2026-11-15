@@ -110,7 +110,8 @@ describe("conversational gate (version 3), round 4", () => {
     const { session, parts } = v3(() => reply("Let's look at the ones. What can you do in the ones?", "accept_answer"), { stream: true });
     await session.start();
     parts.length = 0;
-    await session.child("Can we start?");
+    // Final check 4: only a turn plainly about the math streams (here code's own help read).
+    await session.child("Can we start? Help me.");
     const t = session.trace().turns.filter((x) => x.kind === "maya").at(-1);
     expect(parts[0]).toBe("Let's look at the ones.");
     expect(t?.kind === "maya" && t.attempts.every((a) => a.refusal === null)).toBe(true);

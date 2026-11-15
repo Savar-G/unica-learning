@@ -340,17 +340,24 @@ function sideToken(text: string, operands: SayToken[], ops: Op[]): SayToken {
 }
 
 /** The exact value of an equation's left side, with × and ÷ before + and -; null when it divides by zero. */
+/** Final check 4 (2026-11-15): a rational code holds exactly, both parts safe integers. */
+const safeQ = (q: readonly [number, number] | null | undefined): boolean => !!q && Number.isSafeInteger(q[0]) && Number.isSafeInteger(q[1]);
+
 function evaluate(e: SayEquation): [number, number] | null {
   const vals = e.operands.map((o) => o.q!);
+  // Final check 4: an operand code cannot hold exactly is never computed (Number() rounds "9999999999999999").
+  if (!vals.every(safeQ)) return null;
   const ops = [...e.ops];
-  const mul = (a: [number, number], b: [number, number]) => rational(a[0] * b[0], a[1] * b[1]);
-  const div = (a: [number, number], b: [number, number]) => (b[0] === 0 ? null : rational(a[0] * b[1], a[1] * b[0]));
+  // A raw product past the safe integers is rounded before it is reduced: NaN marks it, and safeQ refuses it.
+  const exact = (n: number, d: number): [number, number] => (Number.isSafeInteger(n) && Number.isSafeInteger(d) ? rational(n, d) : [NaN, 1]);
+  const mul = (a: [number, number], b: [number, number]) => exact(a[0] * b[0], a[1] * b[1]);
+  const div = (a: [number, number], b: [number, number]) => (b[0] === 0 ? null : exact(a[0] * b[1], a[1] * b[0]));
   const terms: [number, number][] = [vals[0]];
   const signs: Op[] = [];
   for (let k = 0; k < ops.length; k++) {
     if (ops[k] === "*" || ops[k] === "/") {
       const r = ops[k] === "*" ? mul(terms[terms.length - 1], vals[k + 1]) : div(terms[terms.length - 1], vals[k + 1]);
-      if (!r) return null;
+      if (!r || !safeQ(r)) return null;
       terms[terms.length - 1] = r;
     } else {
       signs.push(ops[k]);
@@ -360,7 +367,8 @@ function evaluate(e: SayEquation): [number, number] | null {
   let acc = terms[0];
   for (let k = 0; k < signs.length; k++) {
     const b = terms[k + 1];
-    acc = rational(signs[k] === "+" ? acc[0] * b[1] + b[0] * acc[1] : acc[0] * b[1] - b[0] * acc[1], acc[1] * b[1]);
+    acc = exact(signs[k] === "+" ? acc[0] * b[1] + b[0] * acc[1] : acc[0] * b[1] - b[0] * acc[1], acc[1] * b[1]);
+    if (!safeQ(acc)) return null;
   }
   return acc;
 }
@@ -368,7 +376,7 @@ function evaluate(e: SayEquation): [number, number] | null {
 /** Whether an equation is true (its left side equals its result). */
 export function equationHolds(e: SayEquation): boolean | null {
   const v = evaluate(e);
-  if (!v || !e.result.q) return null;
+  if (!v || !e.result.q || !safeQ(e.result.q)) return null;
   return v[0] === e.result.q[0] && v[1] === e.result.q[1];
 }
 

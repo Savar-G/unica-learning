@@ -559,7 +559,7 @@ describe("when the thinking phrase comes (D-341)", () => {
   // Round 4: before the model call, code knows a turn will not stream only when `streamPlan` is null (a fixed reply due,
   // code's own words, a state that is not teaching). Every turn a child can start with a word now has a plan: a hard
   // feeling gets one, and the model's "kind" then holds its sentences for the review. So this rule is tested with the
-  // call's own answer played by the test (`begun` with no stream), and a held hard feeling waits for the limit.
+  // call's own answer played by the test (`begun` with no stream). Since final check 4 a hard feeling has no plan either.
   it("comes at once for a turn the call says will not stream", async () => {
     const c = await voiceCall({ model: ruleConversationalModel(), ackLimitMs: ACK_LIMIT_MS });
     let finish = () => {};
@@ -579,17 +579,16 @@ describe("when the thinking phrase comes (D-341)", () => {
     expect(c.samples[0].ack).not.toBeNull();
   });
 
-  it("waits for the limit on a turn that has a plan but holds its sentences for the review (a hard feeling)", async () => {
+  // Final check 4 (2026-11-15): a turn that is not plainly about the math (no number, no operation word, no help read of
+  // code's) never streams before the model's reading is known, so code knows before the call: the phrase comes at once.
+  it("comes at once on a hard feeling: a turn that is not plainly math does not stream", async () => {
     const m = steppedModel((brief) => brief.childTurn === FEELING ? { ...reply("I'm sorry you feel bad. We can go slowly.", "guide", { step: brief.help.step, level: 0 }), kind: "feeling" } : null);
     const c = await voiceCall({ model: m.model, ackLimitMs: ACK_LIMIT_MS });
     const before = c.said().length;
     c.say(FEELING);
     await waitFor(() => m.running, "the model call");
-    await c.clock.advance(ACK_LIMIT_MS - 1);
-    await pause();
-    expect(c.said().slice(before).filter((t) => ACKS.has(t))).toEqual([]);
     await c.clock.advance(1);
-    await waitFor(() => c.said().slice(before).some((t) => ACKS.has(t)), "the phrase at the limit");
+    await waitFor(() => c.said().slice(before).some((t) => ACKS.has(t)), "the phrase at once");
     m.finish();
     await waitFor(() => c.samples.length === 1, "the sample");
   });
