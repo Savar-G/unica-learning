@@ -10,6 +10,7 @@
 import type { OperationPackage, Place, WorkedStep } from "@/lib/question-package";
 import { digitAt, placeIndex, WHOLE_PLACES, withCommas } from "@/lib/question-package-place-value";
 import { expressionKey, noteFromEquation, type TutorCommand, type TutorDrawing, type TutorKind, type TutorStepFact } from "../tutor-kind";
+import { sentencesIn } from "./asks";
 
 type PlaceOp = Extract<OperationPackage["operation"], { kind: "place-value" }>;
 type Ask = "digit" | "value" | "compare" | "sum";
@@ -67,7 +68,30 @@ function fits(pkg: OperationPackage): boolean {
   const want: string[] = f.ask === "digit" ? [] : f.ask === "value" ? ["digit"] : f.ask === "sum" ? ["worth-1", "worth-2"]
     : ["digit-1", "digit-2", ...(f.parts[0].digit !== f.parts[1].digit ? ["bigger"] : [])];
   if (work.length !== want.length || work.some((s, i) => s.id !== want[i])) return false;
-  return work.every((s) => stepAgrees(s, f)) && printedAgrees(pkg.text, f) && printedAsk(pkg.text) === f.ask;
+  return work.every((s) => stepAgrees(s, f)) && printedAgrees(pkg.text, f) && printedAsk(pkg.text) === f.ask && printedForm(pkg.text, f);
+}
+
+/**
+ * Pre-launch check 2: the printed question is one of the closed forms of its ask, with the stored number and places,
+ * and at most one plain sentence before it ("Zara saw the number 48942 on a sign at school."). "What is double the value
+ * of the digit in the ten thousands place of 48942?" asks for 80000, not the stored 40000: it keeps the controller.
+ */
+function printedForm(text: string, f: Facts): boolean {
+  const s = sentencesIn(text).map((x) => x.toLowerCase());
+  if (s.length === 0 || s.length > 2) return false;
+  const n = String(f.n);
+  const [p, q] = f.parts.map((x) => x.place);
+  const of = String.raw`(?: of ${n}| in ${n})?`;
+  const lead = String.raw`(?:in ${n}, )?`;
+  const forms: Record<Ask, string[]> = {
+    digit: [String.raw`${lead}which digit is in the ${p} place${of}\?`],
+    value: [String.raw`${lead}what is the value of the digit in the ${p} place${of}\?`, String.raw`${lead}what is the value of the ${p} digit${of}\?`, String.raw`${n}: value of the ${p} digit\?`],
+    sum: [String.raw`${lead}what is the value of the ${p} digit${of} plus the value of (?:the|its) ${q} digit\?`],
+    compare: [String.raw`true or false: in ${n}, the digit in the ${p} place is (?:bigger|greater) than the digit in the ${q} place\.`],
+  };
+  if (!forms[f.ask].some((x) => new RegExp(`^${x}$`).test(s.at(-1)!))) return false;
+  // One sentence before the question may only say where the number was seen.
+  return s.length === 1 || new RegExp(String.raw`^[a-z']+ saw the number ${n}(?: on a sign)?(?: at [a-z' ]+)?\.$`).test(s[0]);
 }
 
 /**

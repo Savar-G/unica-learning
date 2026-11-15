@@ -89,11 +89,21 @@ function quantityParts(text: string): { n: number; place: number }[] | null {
   return parts.length ? parts : null;
 }
 
-function itemsOf(sentence: string): Item[] {
+/**
+ * `cuts`: when given, gets the index of each item that starts a new clause after a comma (pre-launch check 2: a word
+ * after a read claim in the same clause can change it). The items are the same with or without it.
+ */
+function itemsOf(sentence: string, cuts?: Set<number>): Item[] {
   // A comma never joins a number to a place word after it: "15, one less than 16" is 15 and one, not 15 ones.
-  const text = sentence.replace(/[−–]/g, "-").replace(/(\d),(?=\d{3}\b)/g, "$1").replace(/,(?=\s*(?:ones?|tens?|hundreds?|thousands?)\b)/gi, " ¦ ").replace(/,/g, " ");
+  const said = sentence.replace(/[−–]/g, "-").replace(/(\d),(?=\d{3}\b)/g, "$1").replace(/,(?=\s*(?:ones?|tens?|hundreds?|thousands?)\b)/gi, " ¦ ");
+  const commas = [...said.matchAll(/,/g)].map((m) => m.index!);
+  const text = said.replace(/,/g, " ");
   const items: Item[] = [];
+  let end = 0;
   for (const m of text.matchAll(TOKEN)) {
+    // A comma between two items starts a clause at the next one; a comma inside one item (a place quantity) does not.
+    while (cuts && commas.length && commas[0] < m.index!) if (commas.shift()! >= end) cuts.add(items.length);
+    end = m.index! + m[0].length;
     if (m[1]) {
       const v = fractionOf(m[1]);
       items.push(v === null ? { kind: "other", word: m[1].toLowerCase() } : { kind: "term", value: v, unit: false, fraction: true });
@@ -276,7 +286,10 @@ const RELATION_WORDS = new Set(["greater", "less", "more", "fewer", "bigger", "s
  * and found true, as the word said ("8", "is", "greater"). A sentence passes on code alone only when nothing is unread;
  * any other sentence with no problem goes to the math-truth review (src/lib/maya-math-review.ts).
  */
-export function readClaims(sentence: string, op?: "add" | "subtract", trades: readonly number[] = []): { problems: string[]; unread: string[] } {
+/** One column sum of the question's own work: the numbers added in that column and the place's value (pre-launch check 2). */
+export interface ColumnSum { terms: readonly number[]; place: number }
+
+export function readClaims(sentence: string, op?: "add" | "subtract", trades: readonly number[] = [], columns: readonly ColumnSum[] = []): { problems: string[]; unread: string[] } {
   const problems: string[] = [];
   // A division with a remainder ("15 ÷ 6 = 2 R 3", "thirteen divided by two is six remainder one") is read whole, then
   // left out.
@@ -288,11 +301,14 @@ export function readClaims(sentence: string, op?: "add" | "subtract", trades: re
   });
   // "4 ones, which is 40", "1 ten, that's 10 ones": the words name the quantity before them (pre-launch review B).
   sentence = sentence.replace(/,\s*(?:and\s+)?(?:which|that)\s+(?:is|are)\b/gi, " is").replace(/,\s*(?:and\s+)?that['’]s\b/gi, " is");
-  const items = itemsOf(sentence);
+  const cuts = new Set<number>();
+  const items = itemsOf(sentence, cuts);
   const { full, read } = sideReader(items);
   /** The items inside a claim code read and found true. */
   const used = new Set<number>();
-  const mark = (from: number, to: number) => { for (let k = from; k < to; k++) used.add(k); };
+  /** Where each claim code read and found true ends: the words after it in its clause are read too (pre-launch check 2). */
+  const ends: number[] = [];
+  const mark = (from: number, to: number) => { for (let k = from; k < to; k++) used.add(k); ends.push(to); };
   let i = 0;
   let eqSeen = 0;
   let eqRead = 0;
@@ -303,6 +319,13 @@ export function readClaims(sentence: string, op?: "add" | "subtract", trades: re
   // a difference: "3 groups of 4 is 12 tens" is false, review of #1009).
   const inPlace = (a: Side, b: Side): boolean =>
     (a.sums && !a.units && b.place !== null && a.value * b.place === b.value) || (b.sums && !b.units && a.place !== null && b.value * a.place === a.value);
+  // Pre-launch check 2: such a sum is read whole only when it is one of the question's own column sums, in that column's
+  // place ("1 + 2 + 3 = 6 tens" in 27 + 39). Any other ("1 plus 2 plus 3 is 6 hundreds" in 52 − 28) is not refused, but
+  // goes to the math review.
+  const termsOf = (x: Side) => items.slice(x.at, x.next).flatMap((t) => (t.kind === "term" ? [t.value] : [])).sort((p, q) => p - q).join();
+  const ownColumn = (sum: Side, place: number) => columns.some((c) => c.place === place && [...c.terms].sort((p, q) => p - q).join() === termsOf(sum));
+  const boundInPlace = (a: Side, b: Side): boolean =>
+    (a.sums && !a.units && b.place !== null && a.value * b.place === b.value && ownColumn(a, b.place)) || (b.sums && !b.units && a.place !== null && b.value * a.place === a.value && ownColumn(b, a.place));
   const trade = (a: Side, b: Side): boolean => {
     // Two digits with no place ("the 2 becomes 12", "the 5 becomes 4"): in a subtraction the ones gain 10 or the tens
     // give 1; in an addition the ones give 10 or the tens gain 1 ("16 becomes 6", pre-launch review B).
@@ -398,18 +421,21 @@ export function readClaims(sentence: string, op?: "add" | "subtract", trades: re
     if (OBJECT_WORDS.has(word) && wordAt(items, at + 1) === "of" && chain.some((c) => c.units)) problems.push(`it counts ${word} with a size code cannot read`);
     const sides = chain.map(valued);
     const before = problems.length;
+    let unbound = false;
     for (let k = 0; k < rels.length; k++) {
       const [a, b] = [sides[k], sides[k + 1]];
       if (rels[k].eq) eqRead++;
       // A "value of the 4" side code cannot tie to one digit: the kind's own check reads it.
       if (!a || !b) continue;
       const same = near(a.value, b.value);
-      const equal = same || inPlace(a, b) || (rels[k].now && trade(a, b));
+      const traded = rels[k].now && trade(a, b);
+      if (!same && !traded && inPlace(a, b) && !boundInPlace(a, b)) unbound = true;
+      const equal = same || inPlace(a, b) || traded;
       if (!rels[k].negated && !equal) problems.push(`it says ${a.value} and ${b.value} are the same`);
       if (rels[k].negated && same) problems.push(`it says ${a.value} and ${b.value} are not the same`);
     }
     // Read whole and true: every side code could value, and no problem found.
-    if (problems.length === before && sides.every((x) => x !== null)) mark(chain[0].at, at);
+    if (problems.length === before && sides.every((x) => x !== null) && !unbound) mark(chain[0].at, at);
     i = at;
   }
   if (eqRead < eqSeen) problems.push("it has an \"=\" code cannot read");
@@ -427,6 +453,19 @@ export function readClaims(sentence: string, op?: "add" | "subtract", trades: re
       const it = items[n];
       const w = it?.kind === "other" ? it.word ?? "" : "";
       if (w && !used.has(n) && !LINK_WORDS.has(w)) unread.push(w);
+    }
+  }
+  // Pre-launch check 2: every word after a read claim, to the end of its clause, is a plain link word or part of a claim
+  // code read ("12 minus 8 is 4 with a negative sign", "12 minus 8 is 4 in the hundreds place" are not read whole).
+  for (const e of new Set(ends)) {
+    for (let k = e; k < items.length && !cuts.has(k); k++) {
+      const it = items[k];
+      if (used.has(k)) continue;
+      // A number, a relation or an operator code did not read is unread already.
+      if (it.kind !== "other") break;
+      const w = it.word ?? "";
+      if (/^[:;.!?]$/.test(w)) break;
+      if (w && !LINK_WORDS.has(w)) { unread.push(w); break; }
     }
   }
   let termSeen = false;
