@@ -33,10 +33,34 @@ const MAX_OPERAND = 999_999;
 /** The numbers printed in a question's text, commas taken out ("10,000" is 10000). */
 const printedNumbers = (text: string) => [...text.replace(/(\d),(?=\d{3}\b)/g, "$1").matchAll(/\d+(?:\.\d+)?/g)].map((m) => Number(m[0]));
 
+/** Words of a story that add: something gained, joined or counted together. */
+const ADD_WORDS = /\b(?:gets?|got|buys?|bought|collects?|collected|finds?|found|earns?|earned|receives?|received|joins?|joined|adds?|added|gains?|gained|wins?|won|comes?|came|arrives?|arrived|grows?|grew|more|plus|in all|altogether|total|together|both|combined|sum)\b/i;
+/** Words of a story that take away or compare: something given, used or lost, what is left, or how many more. */
+const SUBTRACT_WORDS = /\b(?:gives?|gave|given|away|sells?|sold|spends?|spent|uses?|used|eats?|ate|eaten|loses?|lost|removes?|removed|breaks?|broke|broken|takes?|took|taken|left|leftover|remains?|remaining|fewer|less|minus|difference|how (?:many|much) (?:more|fewer|less|longer|shorter|taller|older|younger|heavier|lighter|further|farther)|more than|fewer than|less than)\b/i;
+
+/**
+ * Pre-launch review B, F12: a question's words must give its stored operation, or the kind does not fit (a story of 52
+ * counters and 28 more, stored as 52 − 28, would teach 24). A printed sign between the two numbers must be the
+ * operation's; a story must say the operation (add: something gained or counted together; subtract: something taken
+ * away, what is left, or "how many more"), must not say the other one, and must print no third number.
+ */
+function wordsAgree(text: string, kind: "add" | "subtract", a: number, b: number): boolean {
+  const t = text.replace(/(\d),(?=\d{3}\b)/g, "$1");
+  const signs = [...t.matchAll(/\d\s*([+\-−–×x÷*/=])\s*[\d?]/g)].map((m) => m[1]).filter((x) => x !== "=");
+  if (signs.length > 0) return signs.length === 1 && (kind === "add" ? signs[0] === "+" : /[-−–]/.test(signs[0]));
+  const words = t.replace(/\d+/g, " ");
+  if (!/[a-z]{3,}/i.test(words)) return false;
+  if (!printedNumbers(t).every((n) => n === a || n === b)) return false;
+  // "How many more points does Mia score?" compares: a subtraction. Its "more" is not a gain.
+  const gains = ADD_WORDS.test(words.replace(/\bhow (?:many|much) more\b|\bmore than\b/gi, " "));
+  const takes = SUBTRACT_WORDS.test(words);
+  return kind === "add" ? gains && !takes : takes && !gains;
+}
+
 /**
  * A whole-number addition or subtraction whose work is only its columns, to the hundred thousands, with both numbers printed
- * in its text: the kind reads all of it. A question that hides its numbers (a geometry count worked as 4 + 0) keeps the
- * controller.
+ * in its text and words that agree with its operation: the kind reads all of it. A question that hides its numbers (a
+ * geometry count worked as 4 + 0) keeps the controller.
  */
 function fits(pkg: OperationPackage): boolean {
   const op = pkg.operation;
@@ -48,7 +72,7 @@ function fits(pkg: OperationPackage): boolean {
   const kind = op.kind === "add" ? "add-column" : "subtract-column";
   if (work.length === 0 || !work.every((s) => s.kind === kind && placeIndex(s.place) !== -1)) return false;
   const printed = printedNumbers(pkg.text);
-  return printed.includes(a) && printed.includes(b);
+  return printed.includes(a) && printed.includes(b) && wordsAgree(pkg.text, op.kind, a, b);
 }
 
 /** One column step as the tutor sees it: the numbers worked, its result, and the trade it needs. */

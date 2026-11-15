@@ -67,7 +67,23 @@ function fits(pkg: OperationPackage): boolean {
   const want: string[] = f.ask === "digit" ? [] : f.ask === "value" ? ["digit"] : f.ask === "sum" ? ["worth-1", "worth-2"]
     : ["digit-1", "digit-2", ...(f.parts[0].digit !== f.parts[1].digit ? ["bigger"] : [])];
   if (work.length !== want.length || work.some((s, i) => s.id !== want[i])) return false;
-  return work.every((s) => stepAgrees(s, f));
+  return work.every((s) => stepAgrees(s, f)) && printedAgrees(pkg.text, f);
+}
+
+/** The place names a question prints, longest first so "ten thousands" is one place. */
+const PRINTED_PLACES = /\b(hundred thousands|ten thousands|thousands|hundreds|tens|ones)\b/gi;
+
+/**
+ * Pre-launch review B, F15: the printed text must be about the stored number and places. "In 58942, what is the value
+ * of the digit in the ten thousands place?" stored as 48942 would teach 40,000. The text prints one number, the stored
+ * one (with or without commas), and the stored places in their order; anything else keeps the controller.
+ */
+function printedAgrees(text: string, f: Facts): boolean {
+  const t = text.replace(/(\d),(?=\d{3}\b)/g, "$1");
+  const numbers = [...t.matchAll(/\d+(?:\.\d+)?/g)].map((m) => m[0]);
+  if (numbers.length !== 1 || numbers[0] !== String(f.n)) return false;
+  const places = [...t.matchAll(PRINTED_PLACES)].map((m) => m[1].toLowerCase());
+  return places.length === f.parts.length && places.every((p, i) => p === f.parts[i].place);
 }
 
 function stepAgrees(s: WorkedStep, f: Facts): boolean {
@@ -546,21 +562,25 @@ const READERS: readonly Reader[] = [
   { re: new RegExp(String.raw`\b(\d+) (?:is|is in|belongs to|goes in) the ${P}${PL}`, "g"), check: (m) => { const [v, k] = [Number(m[1]), Number(m[2])]; return v < 10 || (v % 10 ** k === 0 && v / 10 ** k >= 1 && v / 10 ** k <= 9) ? null : `${withCommas(v)} is not a digit's value in the ${placeName(k)} place`; } },
   // "the thousands digit is bigger than the hundreds digit", "the 6 is bigger than the 4", "6 is bigger than 4", "6 > 4"
   {
-    re: new RegExp(String.raw`\b(the value of )?the ${PDIGIT} ${NOT} ${BIG} than (?:the value of )?the ${PDIGIT}`, "g"),
+    re: new RegExp(String.raw`\b(the value of )?the ${PDIGIT} ${NOT} ${BIG} than (the value of )?the ${PDIGIT}`, "g"),
     check: (m, n) => {
-      const [ka, kb] = [Number(m[2] ?? m[3]), Number(m[6] ?? m[7])];
+      const [ka, kb] = [Number(m[2] ?? m[3]), Number(m[7] ?? m[8])];
       if (!inNumber(n, ka) || !inNumber(n, kb)) return `${withCommas(n)} has no ${placeName(inNumber(n, ka) ? kb : ka)} place`;
-      // "the value of the thousands digit": the digits times their places (both sides are read as values).
-      const of = (k: number) => digitAt(n, k) * (m[1] ? 10 ** k : 1);
-      return compare(of(ka), m[5], of(kb), m[4] !== "is");
+      // "the value of the thousands digit": the digit times its place. Each side is read on its own: "the thousands
+      // digit is greater than the value of the ten thousands digit" compares 8 with 40,000 (pre-launch review B, F08).
+      const of = (k: number, value: string | undefined) => digitAt(n, k) * (value ? 10 ** k : 1);
+      return compare(of(ka, m[1]), m[5], of(kb, m[6]), m[4] !== "is");
     },
   },
   {
-    re: new RegExp(String.raw`\bthe ${PDIGIT} ${NOT} (?:the same as|equal to) the ${PDIGIT}`, "g"),
+    re: new RegExp(String.raw`\b(the value of )?the ${PDIGIT} ${NOT} (?:the same as|equal to) (the value of )?the ${PDIGIT}`, "g"),
     check: (m, n) => {
-      const [ka, kb] = [Number(m[1] ?? m[2]), Number(m[4] ?? m[5])];
+      const [ka, kb] = [Number(m[2] ?? m[3]), Number(m[6] ?? m[7])];
       if (!inNumber(n, ka) || !inNumber(n, kb)) return `${withCommas(n)} has no ${placeName(inNumber(n, ka) ? kb : ka)} place`;
-      return (digitAt(n, ka) === digitAt(n, kb)) === (m[3] === "is") ? null : `the ${placeName(ka)} digit is ${digitAt(n, ka)} and the ${placeName(kb)} digit is ${digitAt(n, kb)}`;
+      // Each side is a digit, or its value when it says "the value of" (F08).
+      const of = (k: number, value: string | undefined) => digitAt(n, k) * (value ? 10 ** k : 1);
+      const [a, b] = [of(ka, m[1]), of(kb, m[5])];
+      return (a === b) === (m[4] === "is") ? null : `the ${m[1] ? "value of the " : ""}${placeName(ka)} digit is ${withCommas(a)} and the ${m[5] ? "value of the " : ""}${placeName(kb)} digit is ${withCommas(b)}`;
     },
   },
   { re: new RegExp(String.raw`\b${D} ${NOT} ${BIG} than (?:the )?${D}\b(?! @)`, "g"), check: (m) => compare(Number(m[1]), m[3], Number(m[4]), m[2] !== "is") },
