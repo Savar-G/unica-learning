@@ -8,6 +8,7 @@
 // ten"), "which is" / "that's" after a quantity and the value of a digit in a named number are read too. A comparison or
 // a bracket that is said but cannot be read whole is refused (fail closed), never skipped as a count.
 
+import { OPERATOR_PATTERN, RELATION_PATTERN, operatorOf, relationOf } from "./math-words";
 import { standardNumber, unreadNumberRuns } from "./say-check";
 
 const SMALL = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
@@ -32,8 +33,9 @@ const NUM = String.raw`(?:\d+(?:\.\d+)?(?!\.?\d)|${W99})`;
 const FRACTION = String.raw`(?:\d+|${W99}|an?)[\s-]+${DENOMINATOR}`;
 /** A place quantity: "4 tens and 12 ones", "a ten", "one hundred". */
 const QUANTITY = String.raw`(?:(?:${NUM}|an?)\s+${UNIT})(?:\s+(?:and\s+)?(?:${NUM}|an?)\s+${UNIT})*`;
-const OP = String.raw`(?:plus|\+|minus|take away|-|times|multiplied by|groups? of|×|\*|x|divided by|÷|/)`;
-const REL = String.raw`(?:is not equal to|isn't equal to|is not|isn't|are not|aren't|is the same as|is equal to|equals|is now|are now|is still|becomes|become|became|turns into|turn into|turned into|=|is|are|makes|make|gives)`;
+// #1086: the operator and relation words come from the one table the review key reads too (math-words.ts).
+const OP = OPERATOR_PATTERN;
+const REL = RELATION_PATTERN;
 const TOKEN = new RegExp(String.raw`(${FRACTION})|(${COMPOUND})|(${QUANTITY})|(${NUM})(?!\s+${UNIT})|(${OP})(?=\s|\d|\(|$)|(${REL})(?=\s|\d|\(|$)|([()])|([a-z']+|[^\sa-z0-9])`, "gi");
 
 /** A number said in digits (with a decimal part) or in words, compound words too ("one hundred and two"). */
@@ -179,10 +181,11 @@ function itemsOf(sentence: string, cuts?: Set<number>): Item[] {
       if (w === "x" && items.at(-1)?.kind !== "term" && items.at(-1)?.kind !== "close") { items.push({ kind: "other", word: "x" }); continue; }
       // "6 groups of 440" is 6 × 440 (F2 builder, 2026-11-15); "in groups of 4" names a thing.
       if (/^groups? of$/.test(w) && items.at(-1)?.kind !== "term") { items.push({ kind: "other", word: "groups" }); continue; }
-      items.push({ kind: "op", op: /^(?:plus|\+)$/.test(w) ? "+" : /^(?:times|multiplied by|groups? of|×|\*|x)$/.test(w) ? "*" : /^(?:divided by|÷|\/)$/.test(w) ? "/" : "-" });
+      items.push({ kind: "op", op: operatorOf(w) ?? "-" });
     } else if (m[6]) {
       const r = m[6].toLowerCase();
-      items.push({ kind: "rel", negated: /not|n't/.test(r), eq: r === "=", now: /\bnow\b|becom|became|turn/.test(r) });
+      const said = relationOf(r) ?? { negated: /not|n't/.test(r), now: /\bnow\b|becom|became|turn/.test(r) };
+      items.push({ kind: "rel", negated: said.negated, eq: r === "=", now: said.now });
     } else if (m[7]) {
       items.push({ kind: m[7] === "(" ? "open" : "close" });
     } else {

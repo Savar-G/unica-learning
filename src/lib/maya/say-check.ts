@@ -13,6 +13,7 @@
 // (e) Calm, no hype: a small list of hype words.
 // Each failure has a typed reason, which goes back to the model in the repair prompt.
 import { feelingClaim, plainLanguageProblem } from "./phrases";
+import { OPERATOR_PATTERN, RELATION_PATTERN, operatorOf, relationOf } from "./math-words";
 
 /** Why a reply was refused. */
 export const SAY_REASONS = [
@@ -293,12 +294,12 @@ export function sentenceKey(raw: string): string {
   spans.sort((a, b) => a.at - b.at);
   const parts: string[] = [];
   const words = (piece: string) => {
-    for (const m of piece.matchAll(/[a-z]+(?:'[a-z]+)*|[+\-×*÷/=<>x%]/g)) {
+    for (const m of piece.matchAll(KEY_TOKEN)) {
+      // #1086: an operator or relation phrase of the reader's own table (math-words.ts) is one sign.
+      if (m[1] !== undefined) { const op = operatorOf(m[1]); parts.push(op === "*" ? "×" : op === "/" ? "÷" : op!); continue; }
+      if (m[2] !== undefined) { const rel = relationOf(m[2])!; parts.push(rel.negated ? "≠" : rel.now ? "→" : "="); continue; }
       const w = m[0].replace(/'/g, "");
-      const sign = KEY_SIGNS[w];
-      if (sign === "") continue;
-      if (sign !== undefined) parts.push(sign);
-      else if (Object.hasOwn(DENOMINATORS, w) || SCALES.has(w)) parts.push(UNREAD);
+      if (Object.hasOwn(DENOMINATORS, w) || SCALES.has(w)) parts.push(UNREAD);
       else parts.push(w);
     }
   };
@@ -309,16 +310,24 @@ export function sentenceKey(raw: string): string {
     at = x.end;
   }
   words(text.slice(at));
+  // #1086: the number reader reads "6 / 2" as one fraction (3); the same division in words ("6 divided by 2", "6 ÷ 2")
+  // is that fraction too, so every form of it has one key.
+  for (let k = 1; k + 1 < parts.length; k++) {
+    if (parts[k] !== "÷" || !/^-?\d+$/.test(parts[k - 1]) || !/^-?\d+$/.test(parts[k + 1]) || Number(parts[k + 1]) === 0) continue;
+    const [n, d] = rational(Number(parts[k - 1]), Number(parts[k + 1]));
+    parts.splice(k - 1, 3, d === 1 ? String(n) : `${n}/${d}`);
+    k--;
+  }
   return parts.join(" ");
 }
 
 /** The one token of the key for every number word or run the reader cannot value. */
 const UNREAD = "?";
-/** The key's one sign for each operator and relation word or symbol ("" drops a word that only joins one: "by"). */
-const KEY_SIGNS: Record<string, string> = {
-  plus: "+", "+": "+", minus: "-", "-": "-", times: "×", multiplied: "×", "×": "×", "*": "×", x: "×", divided: "÷", "÷": "÷", "/": "÷", by: "",
-  is: "=", are: "=", equals: "=", equal: "=", "=": "=", makes: "=", make: "=", gives: "=", "<": "<", ">": ">",
-};
+/**
+ * #1086: the key's tokens: an operator phrase of the reader's table (group 1), a relation phrase of it (group 2), the
+ * longest phrase first and only as whole words, then any other word or mark.
+ */
+const KEY_TOKEN = new RegExp(String.raw`(?<![a-z'])(${OPERATOR_PATTERN})(?![a-z'])|(?<![a-z'])(${RELATION_PATTERN})(?![a-z'])|[a-z]+(?:'[a-z]+)*|[<>%]`, "gi");
 
 /** The numbers in a text: digits, decimals, fractions, clock times and number words, in order. */
 export function sayNumbers(raw: string): SayToken[] {
