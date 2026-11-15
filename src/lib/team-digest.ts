@@ -25,8 +25,9 @@ export interface TeamDigestRows {
   finishedTests: { id: string; parentId: string; at: At }[];
   /** Parent feedback (public.feedback): never its text. */
   feedback: { parentId: string; status: string; at: At }[];
-  /** Resend delivery problems (public.email_events: bounced, complained, failed, suppressed). No family link. */
-  emailProblems: { type: string; at: At }[];
+  /** Resend delivery problems (public.email_events: bounced, complained, failed, suppressed), with the family of the email
+   * when its copy names one (public.email_copies.parent_id); null when no copy is known. */
+  emailProblems: { type: string; parentId: string | null; at: At }[];
   /** Maya's safety alerts (public.maya_call_alerts). */
   safetyAlerts: { callId: string; parentId: string; level: string; at: At }[];
   /** Current plan rows in payment_failed, ending or paying (public.child_plan_states), with the Stripe event time. */
@@ -35,14 +36,16 @@ export interface TeamDigestRows {
   planStarts: { parentId: string; state: string; startedAt: At; finishedAt: At | null }[];
   /** Workbook runs that failed or were stopped (public.workbook_runs), at their end time (or creation when none). */
   workbookRuns: { id: string; childId: string; parentId: string; status: string; at: At }[];
-  /** Book 1 starting records waiting for recovery (public.workbook_book1_baseline_pending). */
+  /** Book 1 starting records waiting for recovery (public.workbook_book1_baseline_pending): only a draft's newest approved
+   * revision with no baseline, the rule of admin_book1_baseline_items (`openBook1Records`). */
   book1Pending: { draftId: string; childId: string; parentId: string; reason: string; at: At }[];
-  /** Tagged ad visits (public.ad_visits). */
-  adVisits: { visitId: string; campaign: string | null; source: string | null; at: At }[];
+  /** Tagged ad visits (public.ad_visits). The campaign is public text from the address: the email prints it only through
+   * `campaignLabel`. */
+  adVisits: { visitId: string; campaign: string | null; at: At }[];
   /** Signup steps of those visits (public.ad_visit_steps). */
   adSteps: { visitId: string; step: string; at: At }[];
   /** AI calls with their cost (public.ai_usage_events), test families included: the provider bills them too. */
-  aiUsage: { feature: string; costUsd: number | null; calls: number; at: At }[];
+  aiUsage: { feature: string; provider: string; costUsd: number | null; calls: number; at: At }[];
   /** Real families' answers waiting for a team mark now (scan_team_waiting_count). */
   scanWaiting: number;
   /** Reads that stopped at their row limit: their counts are at least what is shown. */
@@ -90,13 +93,18 @@ export interface DigestSection { title: string; lines: DigestLine[] }
 export interface WeekTotals {
   signups: number;
   finishedTests: number;
+  /** New families of the period that finished a test in it. */
+  newFamiliesTested: number;
   feedback: number;
   emailProblems: number;
   safetyAlerts: number;
   failedRuns: number;
   adVisits: number;
   adCodesSent: number;
+  /** The sum of the reported costs only. */
   aiCostUsd: number;
+  /** API calls with no cost reported (subscription calls are left out: they have no per-call charge). */
+  aiUnpricedCalls: number;
 }
 
 export interface TeamDigest {
@@ -112,6 +120,19 @@ export interface TeamDigest {
 const OPEN_START_HOURS = 24;
 const HOUR = 3_600_000;
 const NO_CAMPAIGN = "(no campaign)";
+const OTHER_CAMPAIGN = "(other tagged visits)";
+/** A campaign the email may print: our own tag style, lowercase letters, digits, hyphens and underscores, at most 40. */
+const SAFE_CAMPAIGN = /^[a-z0-9][a-z0-9_-]{0,39}$/;
+
+/**
+ * The campaign as the email shows it. utm_campaign is public text anyone can put in an address, so a value that is not in
+ * our tag style (a name, an email address, a sentence) is never printed: it counts under "(other tagged visits)".
+ */
+export function campaignLabel(raw: string | null): string {
+  const name = raw?.trim();
+  if (!name) return NO_CAMPAIGN;
+  return SAFE_CAMPAIGN.test(name) ? name : OTHER_CAMPAIGN;
+}
 
 const ms = (at: At) => Date.parse(at);
 const inRange = (at: At | null, from: number, to: number) => at !== null && ms(at) >= from && ms(at) < to;
@@ -119,9 +140,11 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 const usd = (n: number) => `USD ${n.toFixed(2)}`;
 const short = (id: string) => id.slice(0, 8);
 
-function realOnly<T extends { parentId: string }>(rows: T[], test: Set<string>): T[] {
-  return rows.filter((r) => !test.has(r.parentId));
+function realOnly<T extends { parentId: string | null }>(rows: T[], test: Set<string>): T[] {
+  return rows.filter((r) => r.parentId === null || !test.has(r.parentId));
 }
+
+const isSubscription = (r: { provider: string }) => r.provider === "subscription";
 
 const PROBLEM_TYPES = new Set(["bounced", "complained", "failed", "suppressed"]);
 const PROBLEM_WORDS: Record<string, string> = { bounced: "bounced", complained: "marked as spam", failed: "failed", suppressed: "suppressed" };
@@ -133,24 +156,31 @@ function totals(rows: TeamDigestRows, test: Set<string>, from: number, to: numbe
   const within = <T extends { at: At }>(list: T[]) => list.filter((r) => inRange(r.at, from, to));
   const visits = within(rows.adVisits);
   const visitIds = new Set(rows.adVisits.map((v) => v.visitId));
+  const signups = within(realOnly(rows.signups, test));
+  const tests = within(realOnly(rows.finishedTests, test));
+  const tested = new Set(tests.map((t) => t.parentId));
+  const ai = within(rows.aiUsage);
   return {
-    signups: within(realOnly(rows.signups, test)).length,
-    finishedTests: within(realOnly(rows.finishedTests, test)).length,
+    signups: signups.length,
+    finishedTests: tests.length,
+    newFamiliesTested: new Set(signups.filter((s) => tested.has(s.parentId)).map((s) => s.parentId)).size,
     feedback: within(realOnly(rows.feedback, test)).length,
-    emailProblems: within(rows.emailProblems).filter((e) => PROBLEM_TYPES.has(e.type)).length,
+    emailProblems: within(realOnly(rows.emailProblems, test)).filter((e) => PROBLEM_TYPES.has(e.type)).length,
     safetyAlerts: within(rows.safetyAlerts).length,
     failedRuns: within(realOnly(rows.workbookRuns, test)).length,
     adVisits: visits.length,
     adCodesSent: within(rows.adSteps).filter((s) => s.step === "code_sent" && visitIds.has(s.visitId)).length,
-    aiCostUsd: within(rows.aiUsage).reduce((sum, r) => sum + (r.costUsd ?? 0), 0),
+    aiCostUsd: ai.reduce((sum, r) => sum + (r.costUsd ?? 0), 0),
+    aiUnpricedCalls: ai.filter((r) => r.costUsd === null && !isSubscription(r)).reduce((sum, r) => sum + r.calls, 0),
   };
 }
 
 /** The fixed rules of "Things to look at". Each rule names a number and a page; none guesses a cause. */
 export function lookAt(current: WeekTotals, previous: WeekTotals, now: { paymentFailed: number; openStarts: number; scanWaiting: number; newFeedback: number; quietCampaigns: string[] }): DigestLine[] {
   const out: DigestLine[] = [];
-  if (current.signups > 0 && current.finishedTests === 0) out.push({ text: `${plural(current.signups, "family", "families")} signed up this week and no test was finished.`, path: `${ADMIN_PATH}/dashboard` });
-  else if (current.signups >= 4 && current.finishedTests * 2 < current.signups) out.push({ text: `Only ${current.finishedTests} of ${current.signups} new families finished a test this week.`, path: `${ADMIN_PATH}/dashboard` });
+  // Both rules count only the week's new families: a test an older family finished is not one of theirs.
+  if (current.signups > 0 && current.newFamiliesTested === 0) out.push({ text: `${plural(current.signups, "family", "families")} signed up this week and none finished a test.`, path: `${ADMIN_PATH}/dashboard` });
+  else if (current.signups >= 4 && current.newFamiliesTested * 2 < current.signups) out.push({ text: `Only ${current.newFamiliesTested} of ${current.signups} new families finished a test this week.`, path: `${ADMIN_PATH}/dashboard` });
   if (previous.signups >= 4 && current.signups * 2 <= previous.signups) out.push({ text: `Signups fell from ${previous.signups} to ${current.signups}.`, path: `${ADMIN_PATH}/traffic` });
   if (current.emailProblems >= 3 || (current.emailProblems > 0 && current.emailProblems >= previous.emailProblems * 2 && previous.emailProblems > 0)) {
     out.push({ text: `${plural(current.emailProblems, "email")} had a delivery problem this week (last week ${previous.emailProblems}).`, path: `${ADMIN_PATH}/emails` });
@@ -222,37 +252,49 @@ export function buildTeamDigest(rows: TeamDigestRows, period: DigestPeriod): Tea
   }
 
   // Email delivery
-  const problems = day(rows.emailProblems).filter((e) => PROBLEM_TYPES.has(e.type));
+  const problems = day(realOnly(rows.emailProblems, test)).filter((e) => PROBLEM_TYPES.has(e.type));
   const byType = new Map<string, number>();
   for (const e of problems) byType.set(e.type, (byType.get(e.type) ?? 0) + 1);
   add("Email delivery problems", [...byType].sort(([a], [b]) => a.localeCompare(b)).map(([type, n]) => ({ text: `${plural(n, "email")} ${PROBLEM_WORDS[type]}`, path: `${ADMIN_PATH}/emails` })));
 
   // Ads by campaign
   const visits = day(rows.adVisits);
-  const campaignOf = new Map(rows.adVisits.map((v) => [v.visitId, v.campaign?.trim() || NO_CAMPAIGN]));
+  const campaignOf = new Map(rows.adVisits.map((v) => [v.visitId, campaignLabel(v.campaign)]));
   const steps = day(rows.adSteps).filter((s) => campaignOf.has(s.visitId));
   const campaigns = new Map<string, { visits: number; steps: Map<string, number> }>();
   const campaign = (name: string) => campaigns.get(name) ?? campaigns.set(name, { visits: 0, steps: new Map() }).get(name)!;
-  for (const v of visits) campaign(v.campaign?.trim() || NO_CAMPAIGN).visits++;
+  for (const v of visits) campaign(campaignLabel(v.campaign)).visits++;
   for (const s of steps) { const c = campaign(campaignOf.get(s.visitId)!); c.steps.set(s.step, (c.steps.get(s.step) ?? 0) + 1); }
   add("Ad visits by campaign", [...campaigns].sort(([a, x], [b, y]) => y.visits - x.visits || a.localeCompare(b)).map(([name, c]) => ({
     text: `${name}: ${plural(c.visits, "visit")}${STEP_ORDER.filter((s) => c.steps.get(s)).map((s) => `, ${c.steps.get(s)} ${STEP_WORDS[s]}`).join("")}`,
     path: `${ADMIN_PATH}/traffic`,
   })));
 
-  // AI cost
+  // AI cost: the sum of the reported costs only. A call with no cost is counted apart, never as zero dollars.
   const ai = day(rows.aiUsage);
   if (ai.length) {
-    const byFeature = new Map<string, { cost: number; calls: number }>();
+    const priced = ai.filter((r) => r.costUsd !== null);
+    const subscription = ai.filter((r) => r.costUsd === null && isSubscription(r));
+    const unpriced = ai.filter((r) => r.costUsd === null && !isSubscription(r));
+    const calls = (list: typeof ai) => list.reduce((sum, r) => sum + r.calls, 0);
+    const byFeature = new Map<string, { cost: number; priced: number; unpriced: number; subscription: number }>();
     for (const r of ai) {
-      const f = byFeature.get(r.feature) ?? { cost: 0, calls: 0 };
-      byFeature.set(r.feature, { cost: f.cost + (r.costUsd ?? 0), calls: f.calls + r.calls });
+      const f = byFeature.get(r.feature) ?? { cost: 0, priced: 0, unpriced: 0, subscription: 0 };
+      if (r.costUsd !== null) { f.cost += r.costUsd; f.priced += r.calls; }
+      else if (isSubscription(r)) f.subscription += r.calls;
+      else f.unpriced += r.calls;
+      byFeature.set(r.feature, f);
     }
-    const total = ai.reduce((sum, r) => sum + (r.costUsd ?? 0), 0);
-    const calls = ai.reduce((sum, r) => sum + r.calls, 0);
+    const featureText = (v: { cost: number; priced: number; unpriced: number; subscription: number }) => [
+      ...(v.priced ? [`${usd(v.cost)} for ${plural(v.priced, "call")}`] : []),
+      ...(v.unpriced ? [`${plural(v.unpriced, "call")} with no cost reported`] : []),
+      ...(v.subscription ? [`${plural(v.subscription, "subscription call")}`] : []),
+    ].join(", ");
     add("AI cost", [
-      { text: `${usd(total)} for ${plural(calls, "call")}`, path: `${ADMIN_PATH}/ai` },
-      ...[...byFeature].sort(([a, x], [b, y]) => y.cost - x.cost || a.localeCompare(b)).slice(0, 5).map(([f, v]) => ({ text: `${f}: ${usd(v.cost)}, ${plural(v.calls, "call")}` })),
+      ...(priced.length ? [{ text: `${usd(priced.reduce((sum, r) => sum + r.costUsd!, 0))} for ${plural(calls(priced), "call")} with a reported cost`, path: `${ADMIN_PATH}/ai` }] : []),
+      ...(unpriced.length ? [{ text: `${plural(calls(unpriced), "call")} with no cost reported: the total leaves them out`, path: `${ADMIN_PATH}/ai` }] : []),
+      ...(subscription.length ? [{ text: `${plural(calls(subscription), "subscription call")}, no per-call charge`, path: `${ADMIN_PATH}/ai` }] : []),
+      ...[...byFeature].sort(([a, x], [b, y]) => y.cost - x.cost || a.localeCompare(b)).slice(0, 5).map(([f, v]) => ({ text: `${f}: ${featureText(v)}` })),
     ]);
   }
 
@@ -264,7 +306,7 @@ export function buildTeamDigest(rows: TeamDigestRows, period: DigestPeriod): Tea
     const codes = new Set(rows.adSteps.filter((s) => s.step === "code_sent" && inRange(s.at, period.week!.from, period.week!.to)).map((s) => s.visitId));
     const perCampaign = new Map<string, { visits: number; codes: number }>();
     for (const v of weekVisits) {
-      const name = v.campaign?.trim() || NO_CAMPAIGN;
+      const name = campaignLabel(v.campaign);
       const c = perCampaign.get(name) ?? { visits: 0, codes: 0 };
       perCampaign.set(name, { visits: c.visits + 1, codes: c.codes + (codes.has(v.visitId) ? 1 : 0) });
     }
@@ -278,9 +320,10 @@ export function buildTeamDigest(rows: TeamDigestRows, period: DigestPeriod): Tea
 }
 
 const WEEK_ROWS: [keyof WeekTotals, string][] = [
-  ["signups", "New parent signups"], ["finishedTests", "Finished tests"], ["feedback", "Feedback messages"],
+  ["signups", "New parent signups"], ["finishedTests", "Finished tests"], ["newFamiliesTested", "New families that finished a test"], ["feedback", "Feedback messages"],
   ["emailProblems", "Email delivery problems"], ["safetyAlerts", "Maya safety alerts"], ["failedRuns", "Workbook runs failed or stopped"],
-  ["adVisits", "Ad visits"], ["adCodesSent", "Ad visits that got an email code"], ["aiCostUsd", "AI cost"],
+  ["adVisits", "Ad visits"], ["adCodesSent", "Ad visits that got an email code"], ["aiCostUsd", "AI cost (reported costs only)"],
+  ["aiUnpricedCalls", "AI calls with no cost reported"],
 ];
 const weekValue = (key: keyof WeekTotals, v: number) => (key === "aiCostUsd" ? usd(v) : String(v));
 

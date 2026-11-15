@@ -43,8 +43,8 @@ import { createWorkbookScanMaintenanceServer, scanMaintenanceRelease } from "@/l
 // Also beside the emails, it captures the Book 1 baseline of up to 3 approved Book 1 revisions that have none and are not
 // pending recovery (#870, src/lib/workbook-book1-capture.ts); none starts 30 seconds after the run began, and its
 // database calls stop 45 seconds after it.
-// Also beside the emails, the team's daily digest (docs/team-digest.md), only with TEAM_DIGEST_EMAIL_ENABLED "on": once per Pacific
-// day from 7 a.m., claimed in public.team_digest_days, so the run every 15 minutes is its retry.
+// Last, after every parent email of the run, the team's daily digest (docs/team-digest.md), only with TEAM_DIGEST_EMAIL_ENABLED
+// "on": once per Pacific day from 7 a.m., claimed in public.team_digest_days, so the run every 15 minutes is its retry.
 // ?dry=1 counts what is due and sends and ends nothing.
 // The answer holds counts only, never a parent's details.
 
@@ -127,16 +127,6 @@ export async function POST(request: Request) {
       console.error("[scan team email] run failed", e instanceof Error ? e.message : e);
       return { status: "failed" as const };
     }) : Promise.resolve({ status: "failed" });
-    const digestDb = process.env.TEAM_DIGEST_EMAIL_ENABLED === "on" ? adminClient(AbortSignal.timeout(Math.max(1, now + 55_000 - Date.now())), { retry: false }) : null;
-    teamDigest = digestDb ? runTeamDigest(teamDigestStore(digestDb), now, {
-      enabled: process.env.TEAM_DIGEST_EMAIL_ENABLED, to: process.env.SIGNUP_NOTIFY_EMAIL, origin, transport, time: { now: () => Date.now(), endAt: now + 55_000 },
-    }).then((r) => {
-      if (!["off", "too_early", "already_sent"].includes(r.status)) console.info("[team digest] run", JSON.stringify(r));
-      return r;
-    }, (e) => {
-      console.error("[team digest] run failed", e instanceof Error ? e.message : e);
-      return { status: "failed" as const };
-    }) : Promise.resolve({ status: "off" as const });
     // The sweep runs beside the emails and never fails the run.
     sweep = sweepAbandonedCallsNow(admin, { origin, startedAt: now, transport }).then(
       (r) => {
@@ -207,6 +197,20 @@ export async function POST(request: Request) {
         scans = { error: "run_failed" };
       }
     }
+    // The team digest goes last, after every parent email of this run has left the shared paced transport, so a slow
+    // digest send can never sit in front of parent mail. It never fails the run; a run with too little time left gives
+    // out_of_time, and the next run (15 minutes later) sends it.
+    await Promise.allSettled([referrals, sweep, cards, cancels, reports]);
+    const digestDb = process.env.TEAM_DIGEST_EMAIL_ENABLED === "on" ? adminClient(AbortSignal.timeout(Math.max(1, now + 55_000 - Date.now())), { retry: false }) : null;
+    teamDigest = digestDb ? runTeamDigest(teamDigestStore(digestDb), now, {
+      enabled: process.env.TEAM_DIGEST_EMAIL_ENABLED, to: process.env.SIGNUP_NOTIFY_EMAIL, origin, transport, time: { now: () => Date.now(), endAt: now + 55_000 },
+    }).then((r) => {
+      if (!["off", "too_early", "already_sent"].includes(r.status)) console.info("[team digest] run", JSON.stringify(r));
+      return r;
+    }, (e) => {
+      console.error("[team digest] run failed", e instanceof Error ? e.message : e);
+      return { status: "failed" as const };
+    }) : Promise.resolve({ status: "off" as const });
     return Response.json({ ok: true, ...result, maya, scanTeam: await scanTeam, teamDigest: await teamDigest, monthly, firstPages, referrals: await referrals, book1: await book1, sweep: await sweep, cards: await cards, cancels: await cancels, reports: await reports,
       ...(scans ? { scans } : {}) });
   } catch (e) {

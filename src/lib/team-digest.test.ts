@@ -1,8 +1,13 @@
+import { createClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
+import { adVisitRow } from "@/lib/ad-visits";
+import { usageRow } from "@/lib/ai-usage";
+import type { Database } from "@/lib/database";
 import { memoryTransport } from "@/lib/email-delivery-memory";
-import { buildTeamDigest, digestDay, digestPeriod, readFrom, teamDigestEmail, type TeamDigestRows } from "@/lib/team-digest";
+import { buildTeamDigest, campaignLabel, digestDay, digestPeriod, readFrom, teamDigestEmail, type TeamDigestRows } from "@/lib/team-digest";
 import { emptyDigestRows, memoryTeamDigestStore } from "@/lib/team-digest-memory";
 import { runTeamDigest } from "@/lib/team-digest-send";
+import { teamDigestStore } from "@/lib/team-digest-store";
 
 vi.mock("server-only", () => ({}));
 
@@ -72,16 +77,16 @@ describe("the digest builder", () => {
     const at = iso(pt(12, 1));
     const d = buildTeamDigest(rows({
       safetyAlerts: [{ callId: "cccccccc-0000-4000-8000-00000000000c", parentId: TEST, level: "safety_immediate", at }],
-      emailProblems: [{ type: "bounced", at }, { type: "bounced", at }, { type: "complained", at }],
+      emailProblems: [{ type: "bounced", parentId: REAL, at }, { type: "bounced", parentId: null, at }, { type: "complained", parentId: REAL, at }],
       feedback: [{ parentId: REAL, status: "new", at }, { parentId: REAL, status: "new", at }],
       scanWaiting: 3,
       workbookRuns: [{ id: "rrrrrrrr-0000-4000-8000-000000000001", childId: CHILD, parentId: REAL, status: "stale", at }],
       book1Pending: [{ draftId: "dddddddd-0000-4000-8000-000000000001", childId: CHILD, parentId: REAL, reason: "no-planning-capture", at }],
       planStates: [{ childId: CHILD, parentId: REAL, kind: "payment_failed", eventAt: iso(pt(1, 1)) }],
       planStarts: [{ parentId: REAL, state: "open", startedAt: iso(pt(10, 1)), finishedAt: null }, { parentId: REAL, state: "open", startedAt: iso(pt(12, 5)), finishedAt: null }],
-      adVisits: [{ visitId: "v1", campaign: "bc-launch", source: "meta", at }, { visitId: "v2", campaign: "bc-launch", source: "meta", at }, { visitId: "v3", campaign: null, source: null, at }],
+      adVisits: [{ visitId: "v1", campaign: "bc-launch", at }, { visitId: "v2", campaign: "bc-launch", at }, { visitId: "v3", campaign: null, at }],
       adSteps: [{ visitId: "v1", step: "start_open", at }, { visitId: "v1", step: "code_sent", at }],
-      aiUsage: [{ feature: "maya", costUsd: 0.5, calls: 2, at }, { feature: "workbook", costUsd: null, calls: 1, at }],
+      aiUsage: [{ feature: "maya", provider: "openrouter", costUsd: 0.5, calls: 2, at }, { feature: "workbook", provider: "subscription", costUsd: null, calls: 1, at }],
     }), digestPeriod(THURSDAY));
     const section = (title: string) => d.sections.find((s) => s.title === title)!.lines;
     expect(section("Maya safety alerts")).toEqual([{ text: "immediate safety (test family), call cccccccc", path: "/admin/maya/cccccccc-0000-4000-8000-00000000000c" }]);
@@ -95,7 +100,9 @@ describe("the digest builder", () => {
     ]);
     expect(section("Waiting for the team").map((l) => l.path)).toEqual(["/admin/scans", "/admin/workbooks/runs/rrrrrrrr-0000-4000-8000-000000000001", "/admin/next-steps"]);
     expect(section("Ad visits by campaign").map((l) => l.text)).toEqual(["bc-launch: 2 visits, 1 opened /start, 1 got an email code", "(no campaign): 1 visit"]);
-    expect(section("AI cost")[0]).toEqual({ text: "USD 0.50 for 3 calls", path: "/admin/ai" });
+    expect(section("AI cost").map((l) => l.text)).toEqual([
+      "USD 0.50 for 2 calls with a reported cost", "1 subscription call, no per-call charge", "maya: USD 0.50 for 2 calls", "workbook: 1 subscription call",
+    ]);
     expect(d.quiet).toBe(false);
   });
 
@@ -105,15 +112,15 @@ describe("the digest builder", () => {
     const many = (n: number, at: string, parentId = REAL) => Array.from({ length: n }, () => ({ parentId, at }));
     const d = buildTeamDigest(rows({
       signups: [...many(2, thisWeek), ...many(6, lastWeek), ...many(9, thisWeek, TEST)],
-      emailProblems: [{ type: "failed", at: thisWeek }, { type: "failed", at: thisWeek }, { type: "bounced", at: thisWeek }],
-      aiUsage: [{ feature: "maya", costUsd: 9, calls: 10, at: thisWeek }, { feature: "maya", costUsd: 2, calls: 3, at: lastWeek }],
-      adVisits: Array.from({ length: 20 }, (_, i) => ({ visitId: `w${i}`, campaign: "quiet-ad", source: "google", at: thisWeek })),
+      emailProblems: [{ type: "failed", parentId: REAL, at: thisWeek }, { type: "failed", parentId: REAL, at: thisWeek }, { type: "bounced", parentId: null, at: thisWeek }],
+      aiUsage: [{ feature: "maya", provider: "openrouter", costUsd: 9, calls: 10, at: thisWeek }, { feature: "maya", provider: "openrouter", costUsd: 2, calls: 3, at: lastWeek }],
+      adVisits: Array.from({ length: 20 }, (_, i) => ({ visitId: `w${i}`, campaign: "quiet-ad", at: thisWeek })),
     }), digestPeriod(FRIDAY));
     expect(d.weekly).toBe(true);
     expect(d.week!.current).toMatchObject({ signups: 2, finishedTests: 0, emailProblems: 3, adVisits: 20, adCodesSent: 0, aiCostUsd: 9 });
     expect(d.week!.previous).toMatchObject({ signups: 6, aiCostUsd: 2 });
     expect(d.week!.lookAt.map((l) => l.text)).toEqual([
-      "2 families signed up this week and no test was finished.",
+      "2 families signed up this week and none finished a test.",
       "Signups fell from 6 to 2.",
       "3 emails had a delivery problem this week (last week 0).",
       "AI cost rose to USD 9.00 from USD 2.00.",
@@ -123,7 +130,7 @@ describe("the digest builder", () => {
     expect(email.subject).toContain("with this week");
     expect(email.text).toContain("THIS WEEK");
     expect(email.text).toContain("- New parent signups: 2 (6)");
-    expect(email.text).toContain(`THINGS TO LOOK AT\n- 2 families signed up this week and no test was finished: ${ORIGIN}/admin/dashboard`);
+    expect(email.text).toContain(`THINGS TO LOOK AT\n- 2 families signed up this week and none finished a test: ${ORIGIN}/admin/dashboard`);
     expect(email.html).toContain("<h3 style=\"margin:24px 0 6px;font-size:15px\">This week</h3>");
   });
 
@@ -138,12 +145,12 @@ describe("the digest builder", () => {
     }
   });
 
-  it("escapes campaign names in the HTML and says when a read hit its row limit", () => {
+  it("never prints a campaign outside our tag style, and says when a read hit its row limit", () => {
     const at = iso(pt(12, 2));
-    const d = buildTeamDigest(rows({ adVisits: [{ visitId: "x", campaign: "<b>x</b>", source: null, at }], capped: ["AI usage"] }), digestPeriod(THURSDAY));
+    const d = buildTeamDigest(rows({ adVisits: [{ visitId: "x", campaign: "<b>x</b>", at }], capped: ["AI usage"] }), digestPeriod(THURSDAY));
     const email = teamDigestEmail(d, ORIGIN);
-    expect(email.html).toContain("&lt;b&gt;x&lt;/b&gt;");
-    expect(email.html).not.toContain("<b>x</b>");
+    expect(email.text).toContain("(other tagged visits): 1 visit");
+    expect(email.html + email.text).not.toMatch(/<b>x|&lt;b&gt;/);
     expect(email.text).toContain("The AI usage read stopped at its row limit");
   });
 });
@@ -194,5 +201,99 @@ describe("the digest run", () => {
     expect(await lost.run(pt(12, 8))).toEqual({ status: "unknown", weekly: false });
     expect(await lost.run(pt(12, 8, 15))).toEqual({ status: "already_sent" });
     expect(lost.mail.delivered).toHaveLength(1);
+  });
+});
+
+// The database reader on a fixture that answers each table with its rows (filters are not applied: the reader's own rules are
+// what these tests prove).
+function fixtureReader(tables: Record<string, unknown[]>) {
+  const db = createClient<Database>("https://fixture.invalid", "synthetic-key", {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: async (input) => {
+      const table = new URL(String(input)).pathname.split("/").pop()!;
+      if (table === "scan_team_waiting_count") return Response.json(0);
+      return Response.json(tables[table] ?? []);
+    } },
+  });
+  const period = digestPeriod(FRIDAY);
+  return { period, read: () => teamDigestStore(db).read(readFrom(period), period.to) };
+}
+
+describe("the review findings of PR #999", () => {
+  const at = iso(pt(12, 9));
+
+  it("never prints public campaign text that is not in our tag style, in either body", async () => {
+    // Wrong if: a name, an email address or a message typed into utm_campaign reaches the email.
+    const privateText = "Emma parent@example.com cannot log in";
+    const accepted = adVisitRow({ visitId: REAL, utm_source: "meta", utm_campaign: privateText });
+    expect(accepted?.utm_campaign).toBe(privateText);
+    const fixture = fixtureReader({ ad_visits: [{ id: 1, ...accepted, visited_at: at }] });
+    const email = teamDigestEmail(buildTeamDigest(await fixture.read(), fixture.period), ORIGIN);
+    expect(email.text + email.html).not.toMatch(/Emma|example\.com|cannot log in|parent@/);
+    expect(email.text).toContain("(other tagged visits): 1 visit");
+    for (const ok of ["bc-launch-test", "bc_fee_research_20261101", "door-to-door"]) expect(campaignLabel(ok)).toBe(ok);
+    for (const bad of ["Emma", "a@b.co", "two words", "x".repeat(41), "<b>"]) expect(campaignLabel(bad)).toBe("(other tagged visits)");
+    expect(campaignLabel("  ")).toBe("(no campaign)");
+  });
+
+  it("leaves out an email problem whose copy belongs to a test family, and keeps one with no known family", async () => {
+    const fixture = fixtureReader({
+      test_accounts: [{ parent_id: TEST }],
+      email_copies: [{ id: "copy1", parent_id: TEST, email_id: "email1" }, { id: "copy2", parent_id: REAL, email_id: "email2" }],
+      email_events: [
+        { id: "e1", email_id: "email1", type: "bounced", occurred_at: at },
+        { id: "e2", email_id: "email2", type: "failed", occurred_at: at },
+        { id: "e3", email_id: "email3", type: "bounced", occurred_at: at },
+      ],
+    });
+    const d = buildTeamDigest(await fixture.read(), fixture.period);
+    expect(d.sections.find((s) => s.title === "Email delivery problems")!.lines.map((l) => l.text)).toEqual(["1 email bounced", "1 email failed"]);
+    expect(d.week!.current.emailProblems).toBe(2);
+  });
+
+  it("shows a Book 1 record only for the draft's newest approved revision with no baseline", async () => {
+    const draft = "55555555-dddd-4ddd-8ddd-000000000005";
+    const other = "66666666-dddd-4ddd-8ddd-000000000006";
+    const pending = (draftId: string, revision: number) => ({ draft_id: draftId, revision, child_id: CHILD, parent_id: REAL, reason: "planning-capture-missing", created_at: at });
+    const approved = (id: number, workbookId: string, revision: number) => ({ id, workbook_id: workbookId, action: "workbook-approved", detail: { revision }, at });
+    // draft: revision 1 pending, then revision 2 approved and its baseline saved. other: revision 3 is still the newest.
+    const fixture = fixtureReader({
+      workbook_book1_baseline_pending: [pending(draft, 1), pending(other, 3)],
+      workbook_audit: [approved(1, draft, 1), approved(2, draft, 2), approved(3, other, 3)],
+      workbook_book1_baselines: [{ id: "b1", draft_id: draft, draft_revision: 2 }],
+    });
+    const rows = await fixture.read();
+    expect(rows.book1Pending.map((b) => b.draftId)).toEqual([other]);
+    const saved = fixtureReader({
+      workbook_book1_baseline_pending: [pending(other, 3)],
+      workbook_audit: [approved(3, other, 3)],
+      workbook_book1_baselines: [{ id: "b2", draft_id: other, draft_revision: 3 }],
+    });
+    expect((await saved.read()).book1Pending).toEqual([]);
+  });
+
+  it("never shows an unknown API cost as zero dollars, and labels subscription calls", async () => {
+    const api = usageRow({ feature: "maya" }, { provider: "openrouter", model: "test-model", costUsd: null, calls: 15 });
+    const sub = usageRow({ feature: "workbook" }, { provider: "subscription", model: "claude", costUsd: null, calls: 4 });
+    const paid = usageRow({ feature: "report" }, { provider: "openrouter", model: "test-model", costUsd: 0.25, calls: 1 });
+    const fixture = fixtureReader({ ai_usage_events: [{ id: 1, ...api, created_at: at }, { id: 2, ...sub, created_at: at }, { id: 3, ...paid, created_at: at }] });
+    const d = buildTeamDigest(await fixture.read(), fixture.period);
+    const email = teamDigestEmail(d, ORIGIN);
+    expect(email.text).toContain("USD 0.25 for 1 call with a reported cost");
+    expect(email.text).toContain("15 calls with no cost reported: the total leaves them out");
+    expect(email.text).toContain("4 subscription calls, no per-call charge");
+    expect(email.text).not.toMatch(/USD 0\.00 for/);
+    expect(d.week!.current).toMatchObject({ aiCostUsd: 0.25, aiUnpricedCalls: 15 });
+    expect(email.text).toContain("- AI calls with no cost reported: 15 (0)");
+  });
+
+  it("counts only the week's new families in the finished-test rules", () => {
+    const thisWeek = iso(pt(10, 12));
+    const signups = Array.from({ length: 4 }, (_, i) => ({ parentId: `new-${i}`, at: thisWeek }));
+    const older = buildTeamDigest(rows({ signups, finishedTests: [{ parentId: REAL, id: "old-family-test", at: thisWeek }] }), digestPeriod(FRIDAY));
+    expect(older.week!.current).toMatchObject({ finishedTests: 1, newFamiliesTested: 0 });
+    expect(older.week!.lookAt[0].text).toBe("4 families signed up this week and none finished a test.");
+    const one = buildTeamDigest(rows({ signups, finishedTests: [{ parentId: "new-0", id: "t1", at: thisWeek }, { parentId: "new-0", id: "t2", at: thisWeek }] }), digestPeriod(FRIDAY));
+    expect(one.week!.lookAt[0].text).toBe("Only 1 of 4 new families finished a test this week.");
   });
 });
