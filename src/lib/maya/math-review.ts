@@ -9,7 +9,7 @@
 // in src/lib/maya-math-review.ts (the AI client seam).
 
 /** The version of the review's instructions and input. Raise it when either changes; every trace records it. */
-export const MATH_REVIEW_PROMPT_VERSION = "maya-math-review-7";
+export const MATH_REVIEW_PROMPT_VERSION = "maya-math-review-8";
 
 /** What the review reads for one sentence: the sentence, the message before it, and code's facts of the question. */
 export interface MathReviewInput {
@@ -65,6 +65,12 @@ export interface MathReviewInput {
    * agrees with a fact the child stated, not with an answer. Only "true" lets the sentence be said.
    */
   agreement?: true;
+  /**
+   * Version 8 (final check 12, 2026-11-15): Maya's sentences the review refused earlier in this child turn (false, unsure
+   * after its retry, an error or a time-out), with the reason. A repair that states the same math in other words, digits
+   * or symbols is "false". Absent when there is none.
+   */
+  refused?: { sentence: string; reason: string }[];
 }
 
 /** The review's answer as code reads it. Only "true" lets the sentence be said. */
@@ -105,6 +111,8 @@ A sentence that is true at one moment of this question's work or of the easier e
 "childAnswer" holds code's verdict on the answer the child committed to this turn: "value" is the child's answer (null for a word answer or an equation), "verdict" is "right", "wrong" or "unknown", and "right" is the right answer. Code's verdict is true. You own every correctness judgment: when "verdict" is "wrong", a sentence that says or implies that the child's answer or work is right, correct, done, solved or good ("Perfect!", "You solved it!", "Your answer checks out.", "You nailed it!", "Yes!", "That's it.") is "false". When "verdict" is "right", a sentence that says or implies that the child's answer or work is wrong ("Not quite.", "Try again.", "Check your answer.") is "false". When "verdict" is "unknown", code cannot tell whether the child's answer is right (it may be another person's number, or not the child's final answer): a sentence that says or implies that the child's answer or work is right or that it is wrong is "false". Praise of effort or trying that does not judge the answer ("Thanks for trying.", "Good effort.", "Let's look at it together.") is "true" with any verdict. When "childAnswer" is null, the child committed no answer this turn: read a judgment against "childFacts", "lastTurns" and "transcript", and answer "unsure" when they do not settle it.
 
 "agreement" is true only when code found no answer in the child's turn and the sentence attaches its judgment word to a clause ("You're right, 3 ones is too small to take 4 away.", "You're right that 2 is too small to take 8 away."). Then the judgment word agrees with what the child said in "lastTurns.child" ("I can't do 2 minus 8"), not with an answer, and the "unknown" rule above does not apply to it. The child does not have to say the fact in the same words: a child who says they do not get, cannot do, or are stuck on "a minus b" is agreed with by a true clause that says why it is hard (for example "a ones is too small to take b away"). Answer "true" only when every math statement in the attached clause is true for this question at a moment of the work (or of the easier example) and the clause is about the same numbers or step the child named. Answer "false" when any part of the clause is false, when the clause is about numbers or a step the child did not name, or when it praises an answer or a result.
+
+"refused", when present, holds Maya's sentences that this review refused earlier in this child turn, each with the reason. Maya may try again in other words. If this sentence states the same math as a refused sentence (the same claim with other words, digits or symbols, or with "a half" for "1/2", "minus" for "-" or "is" for "="), answer "false". A sentence that fixes the math of a refused one is judged on its own.
 
 Answer "true" when every number, every relation (is, equals, makes, becomes, more, less, greater, than, the same as), every remainder, fraction, place value and digit in the sentence is true for this question, and every claim about the child's answer or work agrees with code's verdict. A sentence that makes no math claim and no judgment of the child's answer (a question to the child, an instruction that fits the facts, a sentence with no numbers) is "true".
 

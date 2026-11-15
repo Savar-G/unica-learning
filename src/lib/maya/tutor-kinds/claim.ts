@@ -14,7 +14,7 @@ import { comparisonAnswer, comparisonProblem, comparisonSides, comparisonWords, 
 import { sessionClaim, type SessionClaim } from "../claim";
 import { missingStepText } from "../missing-number-text";
 import { equationHolds, equationsOf, sentencesOf } from "../say-check";
-import { falseClaims } from "../tutor-math";
+import { exactValue, falseClaims, type ArithOp } from "../tutor-math";
 import { expressionKey, noteFromEquation, type TutorCommand, type TutorKind, type TutorStepFact } from "../tutor-kind";
 import { clauseAt, statements } from "./clauses";
 import { plainText } from "./asks";
@@ -177,17 +177,9 @@ function exprValue(raw: string): number | null {
   const terms = parts.filter((_, i) => i % 2 === 0).map(termValue);
   const ops = parts.filter((_, i) => i % 2 === 1).map((o) => o.toLowerCase());
   if (terms.some((x) => x === null)) return null;
-  let total = 0;
-  let term = terms[0]!;
-  let sign = 1;
-  for (let k = 0; k < ops.length; k++) {
-    const o = ops[k];
-    const next = terms[k + 1]!;
-    if (["×", "x", "*", "times"].includes(o)) term *= next;
-    else if (["÷", "divided by"].includes(o)) { if (next === 0) return null; term /= next; }
-    else { total += sign * term; sign = ["+", "plus"].includes(o) ? 1 : -1; term = next; }
-  }
-  return total + sign * term;
+  // Final check 12: the one shared evaluator (every intermediate a safe whole number, every division exact); a value it
+  // cannot hold is unread.
+  return exactValue(terms as number[], ops.map((o): ArithOp => (["×", "x", "*", "times"].includes(o) ? "*" : ["÷", "divided by"].includes(o) ? "/" : ["+", "plus"].includes(o) ? "+" : "-")));
 }
 
 const close = (a: number, b: number) => Math.abs(a - b) < 1e-9;

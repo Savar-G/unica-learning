@@ -60,7 +60,7 @@ import { tutorBrief } from "@/lib/maya/tutor-prompt";
 import { preparedReplies, preparedKey, preparedKeys, sameTurn, MAX_PREPARES_PER_TURN, type PrepareHypothesis, type PreparedReply, type PrepareRecord } from "@/lib/maya-prepared";
 import type { SpendHandle, SpendSeam } from "@/lib/maya-spend-seam";
 import { readReuse, withReadReuse } from "@/lib/maya/read-reuse";
-import { sentencesOf } from "@/lib/maya/say-check";
+import { sentenceKey, sentencesOf } from "@/lib/maya/say-check";
 
 /** The end of a JSON string that starts at `i` (its opening quote), or -1 before its closing quote has come. */
 function stringEnd(text: string, i: number): number {
@@ -317,6 +317,7 @@ export function streamedPriority(raw: string): { repeated: boolean; priority: Re
 import { reviewInput, runReview, CONVERSATION_REVIEW_TIME_LIMIT_MS, REVIEW_TIME_LIMIT_MS, type TalkReviewer } from "@/lib/maya-talk-review";
 import { runMathReview, type MathReviewer } from "@/lib/maya-math-review";
 import { BOARD_FATES, mathReviewInput, type BoardFate, type MathReview, type MathReviewInput, type MathReviewResult, type TalkReviewInput, type TalkReviewResult } from "@/lib/maya";
+import { emittedHelpKind, type Assistance } from "@/lib/maya/session";
 import { readFromFence } from "@/lib/ai-fenced";
 import { ACK_PHRASES } from "@/lib/maya-voice-ack";
 import { boardFateCounts, classifyError, packageHash, redactText, redactTrace, traceCounts, TRACE_KIND, TRACE_VERSION, type MayaTrace, type TraceBoardBatch, type TraceTurn, type TraceObligation } from "@/lib/maya-trace";
@@ -564,6 +565,9 @@ export interface TextSession {
   finish(end?: FinishOptions | string, failed?: boolean): Promise<MayaTrace>;
   /** The controller fold now (a copy of plain data). */
   readonly session: Session;
+  /** Final check 12: the help kinds of every sentence this text session emitted (the help ledger). */
+  helpLedger(): Assistance[];
+
   readonly ended: boolean;
   /** The trace so far, with the child's name as {name} and secrets removed: complete once the call has ended. */
   trace(): MayaTrace;
@@ -589,6 +593,20 @@ export function readFateReports(raw: unknown): BoardFateReport[] | null {
 }
 
 const iso = (ms: number | null) => (ms === null ? null : new Date(ms).toISOString());
+
+/**
+ * Final check 12 (2026-11-15): a saved call with the help ledger of the live session added to its log, so a restore for
+ * the end (a hang-up, the deadline, the cap) folds that help in before anything else can end it. Only rises: a kind the
+ * saved session already holds adds nothing. A saved call with no log (version 1) is returned as it is.
+ */
+export function withHelpLedger(saved: SavedTextSession, kinds: readonly Assistance[]): SavedTextSession {
+  if (saved.v !== 6 || !saved.log) return saved;
+  const held = saved.session?.assistance ?? [];
+  const add = kinds.filter((k, i) => !held.includes(k) && kinds.indexOf(k) === i);
+  if (add.length === 0) return saved;
+  const at = Math.max(saved.log.at(-1)?.at ?? 0, saved.session?.now ?? 0);
+  return { ...saved, log: [...saved.log, ...add.map((assistance) => ({ kind: "help" as const, at, assistance }))] };
+}
 
 // The reducer owns all persistent state. The driver owns only promises and abort signals.
 import { foldTextEvent, initialTextState, matchesApproval, textOutput, saveTextCheckpoint, restoreTextCheckpoint, type TextCheckpoint, type TextLogEvent, type TextLogInitial, type TextFold } from "@/lib/maya-text-log";
@@ -697,6 +715,18 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   /** Sentences streamed for the output being built (D-341), in the order they were sent. */
   const streamedThisOutput: string[] = [];
   /**
+   * Final check 12 (2026-11-15), the help ledger: the help each emitted sentence gives is written to the log the moment
+   * it goes out, with the turn it answers, so a cancellation, a deadline, a hang-up, a replacement turn and every saved
+   * end read it. It only rises.
+   */
+  const ledger: Assistance[] = [];
+  const ledgerHelp = (sent: readonly string[]) => {
+    const kind = read(() => emittedHelpKind(folded.session, sent));
+    if (!kind) return;
+    if (!ledger.includes(kind)) ledger.push(kind);
+    if (!folded.session.assistance.includes(kind)) append({ kind: "help", at: now(), assistance: kind });
+  };
+  /**
    * Reviews the stream started for its sentences (round 4), by the review's whole input (the line, the child's turn, the
    * turns and the stance): the whole-reply review of the same request uses each once, and never one of another input.
    */
@@ -710,15 +740,28 @@ export function createTextSession(options: TextSessionOptions): TextSession {
    * malformed, an error, a time-out) is final for its sentence for the rest of the child turn: no second call of any
    * kind, also when the repair says the sentence again, so the repaired message is refused and code's line follows.
    * Keyed by the child turn and the sentence. A "true" is never kept: the next input is reviewed again.
+   * Final check 10 (2026-11-15): the sentence key ignores only the surface (sentenceKey: case, punctuation, spaces,
+   * number words against digits), so a repair that changes only "." to "!" keeps the terminal result.
    */
   const finalMath = new Map<string, Promise<MathReviewResult>>();
-  const reviewMath = (input: MathReviewInput, turn: number, ms: number, onError?: (e: unknown) => void): Promise<MathReviewResult> => {
-    const key = `${turn}|${input.sentence}`;
+  /**
+   * Final check 12 (2026-11-15): the sentences refused by a terminal review in each child turn, with the reason: the
+   * review of every later sentence of that turn reads them (MathReviewInput.refused, version 8), so a repair that says
+   * the same math in another surface form is refused too.
+   */
+  const refusedMath = new Map<number, { sentence: string; reason: string }[]>();
+  const reviewMath = (given: MathReviewInput, turn: number, ms: number, onError?: (e: unknown) => void): Promise<MathReviewResult> => {
+    const key = `${turn}|${sentenceKey(given.sentence)}`;
     const held = finalMath.get(key);
     if (held) return held;
+    const earlier = (refusedMath.get(turn) ?? []).filter((x) => x.sentence !== given.sentence);
+    const input = earlier.length ? { ...given, refused: earlier } : given;
     const started = runMathReview(options.mathReviewer!, input, ms, onError);
     return started.then((r) => {
-      if (r.verdict !== "true" && !finalMath.has(key)) finalMath.set(key, Promise.resolve(r));
+      if (r.verdict !== "true" && !finalMath.has(key)) {
+        finalMath.set(key, Promise.resolve(r));
+        refusedMath.set(turn, [...(refusedMath.get(turn) ?? []), { sentence: given.sentence, reason: r.reason }]);
+      }
       return r;
     });
   };
@@ -820,6 +863,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         firstSayMs ??= now() - at;
         options.onSayPart!(fillName(next.sentence, session), sent.length, []);
         sent.push(next.sentence);
+        ledgerHelp(sent);
       }
     };
     // D-345: a tutor message streams too. A plain teaching sentence goes out once every check passes on the words so
@@ -835,6 +879,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         firstSayMs ??= now() - at;
         options.onSayPart!(fillName(next.sentence, session), sent.length, []);
         sent.push(next.sentence);
+        ledgerHelp(sent);
       }
     };
     const onTutorText = tutor ? (soFar: string) => {
@@ -1228,6 +1273,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     technical: (detail) => receive({ type: "technical", at: now(), detail: redactText(detail) }, false),
     safety: (severity) => receive({ type: "safety", at: now(), severity }),
     get session() { return structuredClone(folded.session); },
+    helpLedger: () => [...ledger],
     get ended() { return folded.session.outcome !== null; },
     finish: async (end = {}, oldFailed) => {
       const { reason = "technical_issue", detail = "the session was closed before the call ended", failed = false }: FinishOptions = typeof end === "string" ? { detail: end, failed: oldFailed ?? false } : end;
