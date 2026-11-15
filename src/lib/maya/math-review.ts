@@ -9,7 +9,7 @@
 // in src/lib/maya-math-review.ts (the AI client seam).
 
 /** The version of the review's instructions and input. Raise it when either changes; every trace records it. */
-export const MATH_REVIEW_PROMPT_VERSION = "maya-math-review-4";
+export const MATH_REVIEW_PROMPT_VERSION = "maya-math-review-5";
 
 /** What the review reads for one sentence: the sentence, the message before it, and code's facts of the question. */
 export interface MathReviewInput {
@@ -55,8 +55,10 @@ export interface MathReviewInput {
    * Version 4 (final check 5, 2026-11-15): code's verdict on the answer the child committed to this turn: the child's
    * value (null for a word answer or an equation), "right" or "wrong", and the right answer. Null when the child
    * committed no answer. The review owns correctness judgments: a sentence that says or implies the opposite is false.
+   * Version 5 (final check 6): "unknown" when the child said an answer or a number but code cannot tell whose it is or
+   * whether it is right; a sentence that calls the child's answer right or wrong is then false.
    */
-  childAnswer: { value: number | string | null; verdict: "right" | "wrong"; right: number | string | null } | null;
+  childAnswer: { value: number | string | null; verdict: "right" | "wrong" | "unknown"; right: number | string | null } | null;
 }
 
 /** The review's answer as code reads it. Only "true" lets the sentence be said. */
@@ -94,7 +96,7 @@ The call so far is in "transcript" and Maya's sentences before this one are in "
 
 A sentence that is true at one moment of this question's work or of the easier example ("We have 4 tens" after the trade; "Write 3 in the tens place" in 42 minus 7) is true, unless "before", "lastTurns" or "transcript" shows a different moment. Do not answer "false" or "unsure" only because the earlier turns are not shown. A number or relation that fits no moment of either is still false. A word quantity that can be read two ways ("one hundred and three tens" is 130 or 1,030) is "unsure".
 
-"childAnswer" holds code's verdict on the answer the child committed to this turn: "value" is the child's answer (null for a word answer or an equation), "verdict" is "right" or "wrong", and "right" is the right answer. Code's verdict is true. You own every correctness judgment: when "verdict" is "wrong", a sentence that says or implies that the child's answer or work is right, correct, done, solved or good ("Perfect!", "You solved it!", "Your answer checks out.", "You nailed it!", "Yes!", "That's it.") is "false". When "verdict" is "right", a sentence that says or implies that the child's answer or work is wrong ("Not quite.", "Try again.", "Check your answer.") is "false". Praise of effort or trying that does not judge the answer ("Thanks for trying.", "Good effort.", "Let's look at it together.") is "true" with either verdict. When "childAnswer" is null, the child committed no answer this turn: read a judgment against "childFacts", "lastTurns" and "transcript", and answer "unsure" when they do not settle it.
+"childAnswer" holds code's verdict on the answer the child committed to this turn: "value" is the child's answer (null for a word answer or an equation), "verdict" is "right", "wrong" or "unknown", and "right" is the right answer. Code's verdict is true. You own every correctness judgment: when "verdict" is "wrong", a sentence that says or implies that the child's answer or work is right, correct, done, solved or good ("Perfect!", "You solved it!", "Your answer checks out.", "You nailed it!", "Yes!", "That's it.") is "false". When "verdict" is "right", a sentence that says or implies that the child's answer or work is wrong ("Not quite.", "Try again.", "Check your answer.") is "false". When "verdict" is "unknown", code cannot tell whether the child's answer is right (it may be another person's number, or not the child's final answer): a sentence that says or implies that the child's answer or work is right or that it is wrong is "false". Praise of effort or trying that does not judge the answer ("Thanks for trying.", "Good effort.", "Let's look at it together.") is "true" with any verdict. When "childAnswer" is null, the child committed no answer this turn: read a judgment against "childFacts", "lastTurns" and "transcript", and answer "unsure" when they do not settle it.
 
 Answer "true" when every number, every relation (is, equals, makes, becomes, more, less, greater, than, the same as), every remainder, fraction, place value and digit in the sentence is true for this question, and every claim about the child's answer or work agrees with code's verdict. A sentence that makes no math claim and no judgment of the child's answer (a question to the child, an instruction that fits the facts, a sentence with no numbers) is "true".
 

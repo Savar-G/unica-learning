@@ -94,7 +94,7 @@ describe("code's facts per step in the review's input", () => {
     if (input) {
       expect(states.length).toBe(input.steps.length);
       expect(input.stepStates).toEqual(states);
-      expect(input.promptVersion).toBe("maya-math-review-4");
+      expect(input.promptVersion).toBe("maya-math-review-5");
     }
     check(states, input!);
   });
@@ -206,7 +206,7 @@ describe("the retry in a call", () => {
     expect(retry.requests.map((r) => r.sentence)).toEqual([LINE]);
     const trace = await session.finish({ reason: "child_stopped" });
     expect(checkTrace(trace)).toMatchObject({ ok: true });
-    expect(trace.mathReviewer).toEqual({ id: "fake-math-review", promptVersion: "maya-math-review-4", retryId: "fake-math-retry" });
+    expect(trace.mathReviewer).toEqual({ id: "fake-math-review", promptVersion: "maya-math-review-5", retryId: "fake-math-retry" });
     expect(trace.counts).toMatchObject({ mathReviews: 1, mathRetries: 1, mathRefusals: 0 });
     const math = trace.turns.flatMap((t) => (t.kind === "maya" ? t.attempts.flatMap((a) => a.math ?? []) : []));
     expect(math).toEqual([{ sentence: LINE, verdict: "true", reason: "all true", retried: true }]);
