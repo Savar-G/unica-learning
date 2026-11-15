@@ -119,17 +119,24 @@ function rulePropose(input: ModelInput): unknown {
 
 // ---------- Version 3 (D-341) ----------
 
-/** A version 3 reply with every reading field at its default, for tests and scripted fakes. */
-export function reply(say: string, act: Act, extra: { step?: string; level?: number; reading?: Record<string, unknown>; draw?: { offer: string; place: string }[] } = {}) {
-  // Final check 5: the reading comes before "say", in the tutor's output order; the controller's stream reads either order.
+/**
+ * A version 3 reply with every reading field at its default, for tests and scripted fakes, in the tutor's output order
+ * (2026-11-15): the "gate" first, then "kind", "say", "act", the reading and the drawings. The gate follows the reading
+ * unless `extra.gate` sets it; `gate: null` leaves it out (a model that skips it).
+ */
+export function reply(say: string, act: Act, extra: { step?: string; level?: number; reading?: Record<string, unknown>; draw?: { offer: string; place: string }[]; gate?: string | null } = {}) {
+  const reading = {
+    answers: [], help: "none", unclear: false, stop: false, safety: "none", writing: false, offTopic: false, mathClaim: false, mathRequests: [],
+    outsideScope: "none", scopeSkill: "", unsafeRequest: false, noBoard: false, shorter: false, aboutMaya: "none", start: "none", paper: "none",
+    correctsHearing: false, ...(extra.reading ?? {}),
+  } as Record<string, unknown>;
+  const gate = extra.gate !== undefined ? extra.gate
+    : reading.aboutMaya !== "none" ? "identity" : reading.safety !== "none" || reading.unsafeRequest === true ? "safety" : reading.stop === true ? "stop" : "none";
   return {
+    ...(gate === null ? {} : { gate }),
     kind: "math",
-    reading: {
-      answers: [], help: "none", unclear: false, stop: false, safety: "none", writing: false, offTopic: false, mathClaim: false, mathRequests: [],
-      outsideScope: "none", scopeSkill: "", unsafeRequest: false, noBoard: false, shorter: false, aboutMaya: "none", start: "none", paper: "none",
-      correctsHearing: false, ...(extra.reading ?? {}),
-    },
     say, act, step: extra.step ?? "", level: extra.level ?? 0,
+    reading,
     draw: extra.draw ?? [],
   };
 }

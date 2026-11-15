@@ -66,7 +66,7 @@ import { comparisonAnswer, comparisonWords } from "../question-package-compariso
 import { claimActs, claimAnswers, claimCommitted, claimConfirm, claimQuestionAsked, claimRead, claimResultDone, claimReveals, claimSaid, claimStepConfirmable, claimStepHeard, claimSessionPackage, claimUnclear, sessionClaim, type ClaimTurn } from "./claim";
 import { closeParts, compareEquationSaid, currentPart, evaluateSteps, evaluateTeaching, partBoards, partCovered, partEquationSaid, partIdOf, stepsBeforeLastPart, withEvaluateExample } from "./evaluate";
 import { isSpot, spotAnswers, spotReveals, spotSessionPackage, spotStepHeard } from "./spot-error";
-import { ACTS, PART_LIMITS, PROPOSAL_VERSION, isModelOutput, readModelOutput, withoutDefaults, withoutNulls, type Act, type ChildAnswer, type HintLevel, type ModelOutput, type Proposal, type Reading, type Severity } from "./proposal";
+import { ACTS, PART_LIMITS, PROPOSAL_VERSION, TUTOR_GATES, isModelOutput, readModelOutput, withoutDefaults, withoutNulls, type Act, type ChildAnswer, type HintLevel, type ModelOutput, type Proposal, type Reading, type Severity } from "./proposal";
 import { checkSay, checkSentence, columnSentenceTruth, equationHolds, heardColumnOf, revealsOpenStep, endsWithAsk, INSTRUCTION, MATH_WORD, PRAISE_WORDS, trimSay, equationKeysOf, equationsOf, sentencesOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, type SayReason, type SayRules, type SayValue } from "./say-check";
 import type { TalkReviewResult } from "./talk-review";
 import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
@@ -976,13 +976,16 @@ function proposalProblem(p: unknown): string | null {
 /** The priority fields of a proposal's reading, each checked alone: a malformed field elsewhere does not drop them. */
 function priorityOf(raw: unknown): Pick<Reading, "safety" | "stop" | "unclear" | "start" | "noBoard" | "shorter" | "aboutMaya"> {
   const r = isObject(raw) && isObject(raw.reading) ? raw.reading : {};
+  // The tutor's gate (2026-11-15) is a priority reading too, fail closed: a flag the full reading does not repeat still
+  // counts, so code's own line goes first. A "safety" gate on a harmful request (unsafeRequest) is the decline's.
+  const gate = isObject(raw) ? raw.gate : undefined;
   return {
     // Pre-launch review: a proposal of kind "safety" is a safety signal even when its severity is missing ("none").
-    safety: SEVERITIES.includes(r.safety as Severity) ? (r.safety as Severity) : isObject(raw) && raw.kind === "safety" ? "concern" : undefined,
-    stop: r.stop === true,
+    safety: SEVERITIES.includes(r.safety as Severity) ? (r.safety as Severity) : isObject(raw) && (raw.kind === "safety" || (gate === "safety" && r.unsafeRequest !== true)) ? "concern" : undefined,
+    stop: r.stop === true || gate === "stop",
     noBoard: r.noBoard === true,
     shorter: r.shorter === true,
-    aboutMaya: r.aboutMaya === "secret_friend" || r.aboutMaya === "identity" ? r.aboutMaya : undefined,
+    aboutMaya: r.aboutMaya === "secret_friend" || r.aboutMaya === "identity" ? r.aboutMaya : gate === "identity" ? "identity" : undefined,
     unclear: r.unclear === true,
     start: r.start === "no_start" ? "no_start" : undefined,
   };
@@ -4636,9 +4639,10 @@ function plainReading(raw: unknown): unknown {
 /** The shape check of a version 3 output: `say`, a known act, and the version 2 checks of its other fields. */
 function outputProblem(raw: unknown): string | null {
   if (!isObject(raw) || typeof raw.say !== "string") return "the output is an object with `say`";
-  const { say: _say, kind: _kind, ...rest } = raw;
+  const { say: _say, kind: _kind, gate, ...rest } = raw;
   void _say;
   void _kind;
+  if (gate !== undefined && !(TUTOR_GATES as readonly unknown[]).includes(gate)) return `the gate is one of ${TUTOR_GATES.join(", ")}`;
   return proposalProblem({ ...rest, version: PROPOSAL_VERSION, parts: [] });
 }
 
@@ -5222,6 +5226,22 @@ export function tutorStreamReading(s: Session, raw: Record<string, unknown>): bo
   const reading = withoutDefaults(withoutNulls(raw)) as Reading;
   if (reading.aboutMaya || reading.safety || reading.stop || reading.unsafeRequest || reading.offTopic || reading.outsideScope) return false;
   return tutorTeachingNow(s, reading);
+}
+
+/**
+ * The tutor's gate against its full reading (2026-11-15): whether the gate the model wrote first disagrees with the
+ * reading it wrote after "say": "none" beside a question about Maya, a safety severity, a harmful request or a stop, or a
+ * flag the reading does not hold. Recorded in the trace (`gateDisagrees`); code applies the gate and the full reading
+ * both (priorityOf), so a disagreement never lets less through. False when the output has no gate.
+ */
+export function gateDisagrees(raw: unknown): boolean {
+  if (!isObject(raw) || raw.gate === undefined) return false;
+  const r = isObject(raw.reading) ? raw.reading : {};
+  const implied = new Set<string>();
+  if (r.aboutMaya === "identity" || r.aboutMaya === "secret_friend") implied.add("identity");
+  if (SEVERITIES.includes(r.safety as Severity) || r.unsafeRequest === true || raw.kind === "safety") implied.add("safety");
+  if (r.stop === true || raw.kind === "stop") implied.add("stop");
+  return raw.gate === "none" ? implied.size > 0 : !implied.has(String(raw.gate));
 }
 
 /** D-345: what the tutor's stream needs before the model writes: code's own stance and the question's words. Null: no stream. */

@@ -8,6 +8,7 @@ export {
   tutorTeachingNow,
   tutorStream,
   tutorStreamReading,
+  gateDisagrees,
   mathReviewInput,
   helpBrief,
   fillerTurn,
