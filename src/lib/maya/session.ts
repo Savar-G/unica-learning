@@ -72,6 +72,7 @@ import type { TalkReviewResult } from "./talk-review";
 import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
 import { bindingReview, checkTutorSay, childFacts, childSaysFalse, columnSums, exactTexts, isTutorQuestion, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, TUTOR_REVIEW_IGNORED } from "./tutor";
 import { MATH_REVIEW_PROMPT_VERSION, mathReviewsOf, type MathReview, type MathReviewInput } from "./math-review";
+import { reviewStart, reviewSteps } from "./math-review-steps";
 import { hideName as redactChildName } from "../child-name-redaction";
 
 /** Closing starts 9 minutes into the call; the call ends at 10 minutes. */
@@ -5075,6 +5076,9 @@ export function mathReviewInput(s: Session, sentence: string, before: readonly s
     // The step facts and their word results hide the name too: a story's person can be the child's name (pre-launch
     // check 2: "so Mia is not right").
     steps: pkg ? stepFacts(pkg).map((st) => ({ work: hide(st.work), result: typeof st.result === "string" ? hide(st.result) : st.result })) : [],
+    // Version 3: code's facts per step and the state after each one, and the numbers in places before any work.
+    stepStates: pkg ? stepStatesOf(pkg, hide) : [],
+    start: pkg ? reviewStart(pkg) : null,
     workValues: pkg ? tutorKind(pkg).workValues(pkg) : [],
     answer: typeof answer === "number" ? answer : typeof answer === "string" ? hide(answer) : null,
     childTurn: s.turn ? hide(s.turn.text) : null,
@@ -5085,6 +5089,12 @@ export function mathReviewInput(s: Session, sentence: string, before: readonly s
   };
 }
 
+/** Code's facts per step for the math-truth review (version 3), with any word a story's person shares with the name hidden. */
+function stepStatesOf(pkg: OperationPackage, hide: (text: string) => string): MathReviewInput["stepStates"] {
+  const text = (v: number | string) => (typeof v === "string" ? hide(v) : v);
+  return reviewSteps(pkg).map((st) => ({ step: st.step, ...(st.place ? { place: hide(st.place) } : {}), operation: hide(st.operation), operands: st.operands.map(text), value: text(st.value), after: hide(st.after) }));
+}
+
 /** Code's facts of the question's easier example for the math-truth review (version 2), or null. */
 function easierFacts(pkg: OperationPackage, hide: (text: string) => string): MathReviewInput["easierExample"] {
   const e = pkg.easierExample;
@@ -5092,7 +5102,7 @@ function easierFacts(pkg: OperationPackage, hide: (text: string) => string): Mat
   try {
     const twin = { ...pkg, text: e.text, operation: e.operation, answer: { ...pkg.answer, value: e.answer }, steps: e.steps } as OperationPackage;
     const value = (e.answer as { value?: unknown }).value;
-    return { question: hide(e.text), steps: stepFacts(twin).map((st) => ({ work: hide(st.work), result: typeof st.result === "string" ? hide(st.result) : st.result })), answer: typeof value === "number" ? value : typeof value === "string" ? hide(value) : null };
+    return { question: hide(e.text), steps: stepFacts(twin).map((st) => ({ work: hide(st.work), result: typeof st.result === "string" ? hide(st.result) : st.result })), stepStates: stepStatesOf(twin, hide), answer: typeof value === "number" ? value : typeof value === "string" ? hide(value) : null };
   } catch {
     return null;
   }

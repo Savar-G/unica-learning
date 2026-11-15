@@ -261,7 +261,7 @@ function flushDeferred(s: TextFold) {
 function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt, reviews?: TalkReview[], mathReviews?: MathReview[]) {
   const before = s.session.state;
   // Two-layer true math: every math-truth review of this attempt is kept in the trace, whatever the step decides.
-  if (mathReviews?.length) attempt.math = mathReviews.map((r) => ({ sentence: r.text, verdict: r.result.verdict, reason: r.result.reason }));
+  if (mathReviews?.length) attempt.math = mathReviews.map((r) => ({ sentence: r.text, verdict: r.result.verdict, reason: r.result.reason, ...(r.result.retried ? { retried: true as const } : {}) }));
   const event: SessionEvent = { type: "proposal", at: Math.max(at, s.session.now ?? 0), proposal: value, talkReviews: reviews, ...(mathReviews ? { mathReviews } : {}), ...(attempt.source === "fallback" ? { fallback: true } : {}), ...(s.sent?.length ? { sent: [...s.sent] } : {}) };
   let r = step(s.session, event);
   let controlEvent = event;

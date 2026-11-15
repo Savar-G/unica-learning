@@ -836,7 +836,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       model: { id: model.id, promptVersion: model.promptVersion }, versions: { proposal: PROPOSAL_VERSION, lines: LINES_VERSION, session: session.version },
       question: { id: typeof raw.id === "string" ? raw.id : null, ref: raw.ref ?? null, text: typeof raw.text === "string" ? raw.text : null, hash: packageHash(options.package) },
       freeTalk: session.freeTalk, reviewer: options.reviewer ? { id: options.reviewer.id, promptVersion: options.reviewer.promptVersion } : null,
-      ...(session.tutor ? { mathReviewer: options.mathReviewer ? { id: options.mathReviewer.id, promptVersion: options.mathReviewer.promptVersion } : null } : {}),
+      ...(session.tutor ? { mathReviewer: options.mathReviewer ? { id: options.mathReviewer.id, promptVersion: options.mathReviewer.promptVersion, ...(options.mathReviewer.retry ? { retryId: options.mathReviewer.retry.id } : {}) } : null } : {}),
       scopeRefusals: structuredClone(session.scopeRefusals ?? []),
       ...(preparations.length ? { preparations: preparationRecords() } : {}),
       obligations: structuredClone(obligations), turns: structuredClone(turns), board: structuredClone(board), outcome, counts: traceCounts(turns),

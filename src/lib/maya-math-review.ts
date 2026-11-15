@@ -3,18 +3,27 @@
 // src/lib/maya/math-review.ts). The text adapter (src/lib/maya-text.ts) asks it for each tutor sentence that code's claim
 // reader did not read whole (tutor.ts unreadMath), beside the safety review, before the sentence is said, with the
 // review's time limit. Only "true" lets the sentence be said. A failed call, a time-out or an answer outside the schema
-// counts as "unsure".
+// counts as "unsure". An "unsure" answer of the first review is asked once of the retry model (version 3, 2026-11-15),
+// inside the same time limit: only the retry's "true" passes; its "false", "unsure", an error or a time-out is final.
 //
 // The live reviewer goes through the AI client (OpenRouter, MAYA_MATH_REVIEW_MODEL, default Claude Haiku 5.5, with the
-// same key as Maya). Its attempts are counted in Maya's spend as review attempts (docs/maya-spend.md). Tests use the fake.
+// same key as Maya); the retry is MAYA_MATH_REVIEW_RETRY_MODEL (default Claude Sonnet 5.5). Both count their attempts in
+// Maya's spend as review attempts (docs/maya-spend.md). Tests use the fake.
 import { withTimeLimit, type AiClient } from "@/lib/ai-client";
 import { MATH_REVIEW_PROMPT_VERSION, MATH_REVIEW_SCHEMA, MATH_REVIEW_SYSTEM, readMathReview, type MathReviewInput, type MathReviewResult } from "@/lib/maya/math-review";
 import { classifyError } from "@/lib/maya-trace";
 
 /** The review model when MAYA_MATH_REVIEW_MODEL is not set: an OpenRouter model id with structured output. */
 export const MATH_REVIEW_DEFAULT_MODEL = "anthropic/claude-haiku-5.5";
-/** The request: little thinking, a short answer (a held sentence waits for it). */
-export const MATH_REVIEW_REQUEST = { effort: "low" as const, maxTokens: 1_500 };
+/** The retry model when MAYA_MATH_REVIEW_RETRY_MODEL is not set (version 3): it reads a sentence the first review was unsure of. */
+export const MATH_REVIEW_RETRY_DEFAULT_MODEL = "anthropic/claude-sonnet-5.5";
+/**
+ * The request: some thinking, a short answer (a held sentence waits for it). Version 3: "medium" (measured 2026-11-15
+ * on #1056's 124 false sentences: "low" judged 1 or 2 true in 3 of 5 runs, "medium" none in 2; median 1.3 s, not 0.8 s).
+ */
+export const MATH_REVIEW_REQUEST = { effort: "medium" as const, maxTokens: 1_500 };
+/** The retry's request: it must answer inside what is left of the same time limit. */
+export const MATH_REVIEW_RETRY_REQUEST = { effort: "low" as const, maxTokens: 1_500 };
 
 export interface MathReviewer {
   /** The model id, for the trace ("fake-math-review" for the fake). */
@@ -22,13 +31,21 @@ export interface MathReviewer {
   readonly promptVersion: string;
   /** The review of one sentence. May throw: the adapter counts a throw, and a time-out, as "unsure". */
   review(input: MathReviewInput, signal: AbortSignal): Promise<MathReviewResult>;
+  /** The reviewer asked once when this one answers "unsure" (version 3), or none. */
+  readonly retry?: MathReviewer;
 }
 
-/** The review through the AI client: one structured-output request per sentence. */
-export function aiMathReviewer(client: AiClient, request: { effort: "minimal" | "low" | "medium"; maxTokens: number } = MATH_REVIEW_REQUEST): MathReviewer {
+type ReviewRequest = { effort: "minimal" | "low" | "medium"; maxTokens: number };
+
+/**
+ * The review through the AI client: one structured-output request per sentence. `retry`: the client (and request) of
+ * the model asked once when this review answers "unsure".
+ */
+export function aiMathReviewer(client: AiClient, request: ReviewRequest = MATH_REVIEW_REQUEST, retry?: { client: AiClient; request?: ReviewRequest }): MathReviewer {
   return {
     id: client.model,
     promptVersion: MATH_REVIEW_PROMPT_VERSION,
+    ...(retry ? { retry: aiMathReviewer(retry.client, retry.request ?? MATH_REVIEW_RETRY_REQUEST) } : {}),
     review: async (input, signal) =>
       readMathReview(await client.json(
         { name: "maya_math_review", system: MATH_REVIEW_SYSTEM, content: [{ type: "text", text: JSON.stringify(input) }], schema: MATH_REVIEW_SCHEMA as unknown as Record<string, unknown>, effort: request.effort, maxTokens: request.maxTokens },
@@ -40,27 +57,46 @@ export function aiMathReviewer(client: AiClient, request: { effort: "minimal" | 
 /**
  * Runs one review with the time limit, and never throws: a throw or a time-out is "unsure". An answer that is not JSON
  * (bad_json) is asked again once, at once, inside the same time limit: only a second failure is "unsure". A time-out is
- * never asked again (it used the time), and no other error is either. The error's own text is never kept (a provider's
- * message can hold a key): only fixed wording, with the trace's fixed error code for a failed call.
+ * never asked again (it used the time), and no other error is either. An "unsure" answer of the first review goes once
+ * to `reviewer.retry`, inside the same time limit; the retry's answer is final and marked `retried` (its error or
+ * time-out is "unsure"). The error's own text is never kept (a provider's message can hold a key): only fixed wording,
+ * with the trace's fixed error code for a failed call.
  */
 export async function runMathReview(reviewer: MathReviewer, input: MathReviewInput, ms: number, onError?: (e: unknown) => void): Promise<MathReviewResult> {
-  const once = (signal: AbortSignal) => reviewer.review(input, signal).catch((e: unknown) => {
+  const once = (r: MathReviewer, signal: AbortSignal) => r.review(input, signal).catch((e: unknown) => {
     throw signal.aborted ? new Error("time is up") : e;
   });
+  let retrying = false;
+  const failed = (e: unknown): MathReviewResult => {
+    const text = e instanceof Error ? e.message : "";
+    const what = retrying ? "the second math review" : "the math review";
+    return { verdict: "unsure", reason: text === "time is up" ? `${what} did not answer in time` : `${what} call failed (${classifyError(e, "model").code})`, ...(retrying ? { retried: true as const } : {}) };
+  };
   try {
     return await withTimeLimit(ms, async (signal) => {
+      let first: MathReviewResult;
       try {
-        return await once(signal);
+        first = await once(reviewer, signal);
       } catch (e) {
         if (signal.aborted || classifyError(e, "model").code !== "bad_json") throw e;
         onError?.(e);
-        return await once(signal);
+        first = await once(reviewer, signal);
+      }
+      if (first.verdict !== "unsure" || !reviewer.retry || signal.aborted) return first;
+      retrying = true;
+      try {
+        const second = await once(reviewer.retry, signal);
+        // Only the retry's own answer counts; a "retried" mark it carries is its own.
+        return { verdict: second.verdict, reason: second.reason, retried: true as const };
+      } catch (e) {
+        if (signal.aborted) throw new Error("time is up");
+        onError?.(e);
+        return failed(e);
       }
     });
   } catch (e) {
     onError?.(e);
-    const text = e instanceof Error ? e.message : "";
-    return { verdict: "unsure", reason: text === "time is up" ? "the math review did not answer in time" : `the math review call failed (${classifyError(e, "model").code})` };
+    return failed(e);
   }
 }
 
