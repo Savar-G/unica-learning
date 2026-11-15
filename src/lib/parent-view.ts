@@ -8,6 +8,7 @@ import { childStage, type StageView, type TabSwitches, type TestFact } from "@/l
 import { addDays, addMonths, familyZone, formatCalendarDate, localDateTime, localDay, localMonth, type FamilyZone } from "@/lib/family-time";
 import type { LearningRow } from "@/lib/learning-style";
 import { firstDeliveryMonth, offeredSummaryMonth } from "@/lib/monthly-summary-offer";
+import { needsHelpStandards, type HelpMark } from "@/lib/needs-help";
 import { nextBook, type NextBook } from "@/lib/next-book";
 import type { ParentPlan } from "@/lib/parent-plan";
 import type { CurriculumId } from "@/lib/signup";
@@ -82,6 +83,11 @@ export interface OverviewProgress {
    * result was saved), not by its last change as the profile rebuild dates it.
    */
   skillMarks: SkillMark[];
+  /**
+   * The same marks with a `blank` flag, for the Needs help rule only (`src/lib/needs-help.ts`): a blank answer is an
+   * unfinished page, not a wrong one. The skill state rule reads `skillMarks`, where a blank is not right.
+   */
+  helpMarks: HelpMark[];
 }
 
 export interface ParentViewReader {
@@ -333,7 +339,10 @@ export interface SkillItemView {
   masteredOn: string | null;
 }
 
-/** The three lists since the child started, from the skill state rule: Mastered, Learning (working on), Needs help (needs review). */
+/**
+ * The three lists since the child started, from the skill state rule and the dashboard's Needs help rule (`src/lib/needs-help.ts`):
+ * Mastered; Learning (working on, not struggling now); Needs help (needs review, or struggling now with a Learning skill).
+ */
 export interface HomeSkillsView {
   mastered: SkillItemView[];
   learning: SkillItemView[];
@@ -522,7 +531,7 @@ export async function readOverview(reader: ParentViewReader, childId: string, no
     const book = workbooks.filter((w) => w.childId === child.id).sort((a, b) => b.number - a.number)[0];
     const read = progress ? await readSkillStates(reader, child, book, progress.skillMarks) : null;
     // A failed history read leaves the dates out and keeps the counts from the rule.
-    if (read) skills = homeSkills(read.states, read.historyFailed ? [] : read.history, now, zone);
+    if (read) skills = homeSkills(read.states, progress!.helpMarks, read.historyFailed ? [] : read.history, now, zone);
   }
 
   const summaryMonth = offeredSummaryMonth(await readFirstDeliveryMonth(reader, child.id, zone), now, zone);
@@ -530,8 +539,10 @@ export async function readOverview(reader: ParentViewReader, childId: string, no
 }
 
 /** The three lists: every BC standard by its state now. Mastered newest first, the others in the skill map's order. */
-function homeSkills(states: readonly StandardSkillState[], history: readonly StateChange[], now: number, zone: FamilyZone): HomeSkillsView {
+function homeSkills(states: readonly StandardSkillState[], marks: readonly HelpMark[], history: readonly StateChange[], now: number, zone: FamilyZone): HomeSkillsView {
   const today = localDay(now, zone);
+  // Needs help is the rule's needs_review plus a Learning skill the child is struggling with now; Learning is what is left.
+  const help = needsHelpStandards(states, marks, now, zone);
   // The child's first batch of rows is the starting state, recorded when the table began or at the first rebuild, so a skill
   // in it has no date (firstBatchAt).
   const first = firstBatchAt(history);
@@ -541,7 +552,7 @@ function homeSkills(states: readonly StandardSkillState[], history: readonly Sta
     const at = Date.parse(row.changedAt);
     if (Number.isFinite(at) && at >= (lastRow.get(row.standard)?.at ?? -Infinity)) lastRow.set(row.standard, { ...row, at });
   }
-  const items = (state: SkillState): (SkillItemView & { at: number })[] => states.filter((s) => s.state === state).map((s) => {
+  const items = (state: SkillState, keep: (standard: string) => boolean = () => true): (SkillItemView & { at: number })[] => states.filter((s) => s.state === state && keep(s.standard)).map((s) => {
     const row = state === "mastered" ? lastRow.get(s.standard) : undefined;
     const recorded = row?.state === "mastered" && row.at !== first ? row : undefined;
     return { code: s.standard, name: standardText.get(s.standard) ?? s.standard, masteredOn: recorded ? dayWords(localDay(recorded.at, zone), today) : null, at: recorded?.at ?? 0 };
@@ -549,8 +560,9 @@ function homeSkills(states: readonly StandardSkillState[], history: readonly Sta
   const plain = ({ code, name, masteredOn }: SkillItemView): SkillItemView => ({ code, name, masteredOn });
   return {
     mastered: items("mastered").sort((a, b) => b.at - a.at).map(plain),
-    learning: items("working_on").map(plain),
-    needsHelp: items("needs_review").map(plain),
+    learning: items("working_on", (standard) => !help.has(standard)).map(plain),
+    // The skill map's order: the rule's needs_review and the struggling Learning skills in one list, as `states` orders them.
+    needsHelp: states.filter((s) => help.has(s.standard)).map((s) => plain({ code: s.standard, name: standardText.get(s.standard) ?? s.standard, masteredOn: null })),
   };
 }
 
@@ -648,7 +660,12 @@ export async function readProgress(reader: ParentViewReader, childId: string, no
   if (!read) throw new Error("progress: skill inputs unavailable");
   if (read.historyFailed) return { child, progress: null, unavailable: true };
   const startDay = first ? localDay(first.completedAt!, zone) : null;
-  const summary = progressSummary({ now, zone, current: new Map(read.states.map((s) => [s.standard, s.state])), history: read.history, startDay });
+  // The one Needs help set: the summary's tile and the topic words read the same standards as Home.
+  const help = needsHelpStandards(read.states, marking.helpMarks, now, zone);
+  const summary = progressSummary({
+    now, zone, current: new Map(read.states.map((s) => [s.standard, s.state])), history: read.history, startDay,
+    needsHelp: help,
+  });
   const days = await readBookDays(reader, child, now, zone, { workbooks, deliveries, corrections, scans });
   const areas = skillMapView({
     firstName: child.firstName, schoolGrade: child.schoolGrade, workingLevel: level?.working ?? null, tests: read.tests,
@@ -664,7 +681,7 @@ export async function readProgress(reader: ParentViewReader, childId: string, no
       workbookNumber: days?.number ?? null,
       startedOn: startDay ? formatCalendarDate(startDay, { month: "short", day: "numeric" }) : null,
       monthName: formatCalendarDate(`${localMonth(now, zone)}-01`, { month: "long" }),
-      topics: topicBars(areas),
+      topics: topicBars(areas, help),
     },
   };
 }

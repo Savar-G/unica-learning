@@ -28,6 +28,14 @@ describe("a family with one week of data", () => {
     expect(summary.mastered).toBe(2);
     expect(summary.needsHelp).toBe(1);
   });
+  it("counts the standards the dashboard rule says need help (#1025), not only the rule's needs_review", () => {
+    const withHelp = run({ current: current({ "2.4": "mastered", "3.1": "needs_review", "3.2": "working_on" }), needsHelp: new Set(["3.1", "3.2"]) });
+    expect(withHelp.needsHelp).toBe(2);
+    // The same states with no rule's set: needs_review alone.
+    expect(run({ current: current({ "2.4": "mastered", "3.1": "needs_review", "3.2": "working_on" }) }).needsHelp).toBe(1);
+    // A set never changes what is mastered.
+    expect(withHelp.mastered).toBe(1);
+  });
   it("gives the week a start point, so the line is never a lone dot", () => {
     expect(values(summary.week.points)).toEqual(["Nov 2=0", "Nov 9=2"]);
   });
