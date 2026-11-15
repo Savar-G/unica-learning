@@ -72,6 +72,16 @@ The model asks by id; code builds every command from the checked steps (`tutorDr
 
 ## Scope
 
-Phase 1: 2-digit whole-number addition and subtraction (`isTutorQuestion`), on admin test calls only (`tutor: record.kind === "admin_test"` in `src/lib/maya-call.ts`), in chat and voice. Family calls keep the controller. The family switches stay off.
+Phase 1: 2-digit whole-number addition and subtraction (`isTutorQuestion`), on admin test calls (`textSession` in `src/lib/maya-call.ts`), in chat and voice. Family calls keep the controller while `MAYA_TUTOR_FAMILIES` is off (below). The family switches stay off.
 
-Phase 2 moves every Book 1 question type to the tutor core, and deletes the controller's teaching code as each type moves. Phase 3 rebuilds the practice judge (T01 to T10 plus the trace metrics) and continues the latency work on the single call.
+## Family calls (`MAYA_TUTOR_FAMILIES`)
+
+The server switch `MAYA_TUTOR_FAMILIES` lets the tutor core teach family calls: the desk chat (kind `chat`, channel `chat`) and the child's voice call from the family desk (kind `family`). Only the exact value `on` turns it on. `callSeams` (`src/lib/maya-call-seams.ts`) reads it for the site and the voice worker and passes `tutorFamilies` to the call module; `src/lib/maya-call.ts` never reads the environment. The switch is off by default. Do not set it until Savar approves.
+
+- The rule: `tutor = seams.tutor !== false && (kind === "admin_test" || (tutorFamilies && (kind === "chat" || kind === "family")))`. The core still decides per question: a question no tutor kind fits keeps the controller.
+- The safety review of each sentence that is not plain teaching runs on family calls too: the call module gives every kind the reviewer. Free talk stays off for chat and family; the tutor's review does not depend on it. Without a reviewer (no `OPENROUTER_API_KEY`) a tutor sentence that needs a review is refused; after the one repair, code's honest line is said.
+- The chat channel: chat does not stream, and the tutor's board drawings (`put`, `regroup`, `write`) are ordinary board batches that "Our board" takes. The chat's code-owned safety close is unchanged.
+- A call keeps what it started with: a resumed call reads its saved session, whatever the switch is now.
+- Tests: `src/lib/maya-call-tutor-families.test.ts` and `src/lib/maya-call-seams.test.ts`.
+
+Phase 2 moves every Book 1 question type to the tutor core, and deletes the controller's teaching code as each type moves. Phase 3 rebuilt the practice judge (T01 to T10 plus the trace metrics, `npm run maya:practice -- --tutor`, `docs/maya-practice.md`) and continues the latency work on the single call.

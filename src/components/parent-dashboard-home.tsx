@@ -5,6 +5,7 @@ import { NoteCard } from "@/components/parent-maya-notes";
 import { DeskText, MayaNoticeCard, MayaChatRow, ProgressCard } from "@/components/parent-home-rows";
 import type { HomeProgress } from "@/lib/progress-preview-server";
 import { ParentAlerts, ParentTestStart } from "@/components/parent-assessment";
+import { DeskButton } from "@/components/parent-desk-button";
 import { OnTheWay, ParentOverview, homeHasParts } from "@/components/parent-overview";
 import { SupportPage } from "@/components/support-page";
 import type { StartState } from "@/lib/assessment";
@@ -15,7 +16,7 @@ import type { ChatUsage } from "@/lib/maya-chat";
 import type { ParentNote } from "@/lib/parent-maya-notes";
 import type { ParentDashboard } from "@/lib/parent-dashboard-server";
 import type { OverviewView } from "@/lib/parent-view";
-import { activeTab, pickChild, tabLinks } from "@/lib/parent-shell";
+import { activeTab, overviewDesk, pickChild, tabLinks } from "@/lib/parent-shell";
 import { CURRICULA, type CurriculumId } from "@/lib/signup";
 import { stateFor } from "@/lib/test-attempt";
 import type { WorkbookSummary } from "@/lib/workbook-content";
@@ -58,7 +59,9 @@ export function ParentDashboardHome({ dashboard, overview, kids, addressChild, p
   const view = pickChild(dashboard.children, addressChild, dashboard.remembered);
   const kid = kids.find((k) => k.id === view?.id);
   const links = tabLinks(view);
-  const label = links.find((l) => l.tab === activeTab("/account", links))?.label ?? "Your account";
+  // The tab's own name is the bottom bar and the sidebar's to say, so the Overview shows no label above the name (#1024).
+  const tab = activeTab("/account", links);
+  const label = tab === "overview" ? "" : (links.find((l) => l.tab === tab)?.label ?? "Your account");
   const state = kid && stateFor(states, kid.id);
   // A sign-in link goes to the family's first child (Parent home says so too).
   const sentHere = sent && kid?.id === kids[0]?.id;
@@ -81,11 +84,12 @@ export function ParentDashboardHome({ dashboard, overview, kids, addressChild, p
   }
   // Option A Home (#1003): the Overview alone. Its own parts replace the test, desk, Maya and goal rows, which the other
   // tabs hold. Only when the Overview cannot be read, or has no part to show (a first book still in the mail), does the page
-  // keep those rows, as before, so it is never just the child's name.
+  // keep those rows, as before, so it is never just the child's name. The child's name is the first line (#1024), with the
+  // desk button on its right (the frame's header leaves its own out on a phone by the same rule, `overviewDesk`).
   const shown = !!kid && overview?.child.id === kid.id ? overview : null;
   const home = !!shown && homeHasParts(shown);
   return (
-    <SupportPage label={label} title={kid?.first_name ?? "Your account"} titleHidden={home}>
+    <SupportPage label={label} title={kid?.first_name ?? "Your account"} titleAction={kid ? (view && overviewDesk("/account", view) ? <DeskButton child={view} pinSet={dashboard.pinSet} /> : null) : undefined}>
       {note}
       <ParentAlerts {...alerts} />
       {noticeDue && current.size > 0 && <MayaNoticeCard />}

@@ -87,6 +87,15 @@ export function pickChild<T extends { id: string }>(children: readonly T[], from
   return find(fromAddress) ?? find(remembered) ?? children[0] ?? null;
 }
 
+/**
+ * Whether the Overview puts the desk on the child's name line itself (#1024): the dashboard home, for a child whose page is
+ * not the test (a child who starts or waits for a test gets the test page, which has no name line). The page and the frame
+ * both read this one rule, so the phone shows exactly one desk button: the frame's header leaves its own out when the
+ * page has one. No stylesheet selector has to look inside the page for it.
+ */
+export const overviewDesk = (pathname: string, child: Pick<ChildView, "opensOn"> | null): boolean =>
+  pathname === "/account" && !!child && child.opensOn !== "start_test" && child.opensOn !== "continue_or_wait";
+
 /** The tab a page belongs to; null when that tab is not shown. */
 export function activeTab(pathname: string, links: readonly TabLink[]): ChildTab | null {
   const has = (tab: ChildTab) => links.some((l) => l.tab === tab);

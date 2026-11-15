@@ -309,6 +309,16 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
       const n = raw === undefined || raw === "" ? -1 : Number(raw);
       return Number.isSafeInteger(n) && n >= 0 ? n : -1;
     };
+    const mayaGone = () => {
+      if (room.current !== r || terminal || liveSince.current === null) return;
+      // ConnectionState.Reconnecting and SignalReconnecting, by value (a room without a state reads as not reconnecting).
+      if (["reconnecting", "signalReconnecting"].includes(String(r.state))) return;
+      if ([...r.remoteParticipants.values()].some((p) => isMaya(p) && segmentOf(p) >= newestSegment)) return;
+      liveSince.current = null;
+      setError("disconnected");
+      setPhase("failed");
+      void onUpdate();
+    };
     const readMaya = () => {
       if (room.current !== r || terminal) return;
       const candidates = [...r.remoteParticipants.values()].filter((p) => isMaya(p) && segmentOf(p) >= newestSegment);
@@ -316,12 +326,10 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
       agent.current = p?.identity ?? null;
       if (!p) {
         setMaya(null);
-        if (liveSince.current !== null) {
-          liveSince.current = null;
-          setError("disconnected");
-          setPhase("failed");
-          void onUpdate();
-        }
+        // A full reconnect removes every remote participant first and enters Reconnecting just after, in the same task
+        // (livekit-client handleRestarting, #992). The check waits for that state, and the screen waits while the room
+        // reconnects: Reconnected reads Maya again.
+        if (liveSince.current !== null) queueMicrotask(mayaGone);
         return;
       }
       newestSegment = Math.max(newestSegment, segmentOf(p));
@@ -412,7 +420,7 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
     };
     r.on(RoomEvent.Reconnecting, () => roomMark("sdk_reconnecting"));
     r.on(RoomEvent.SignalReconnecting, () => roomMark("sdk_signal_reconnecting"));
-    r.on(RoomEvent.Reconnected, () => roomMark("sdk_reconnected"));
+    r.on(RoomEvent.Reconnected, () => { roomMark("sdk_reconnected"); readMaya(); });
     r.on(RoomEvent.Disconnected, reason => {
       roomMark("sdk_disconnected", { disconnectReason: voiceDisconnectReason(reason) });
       closed = true;

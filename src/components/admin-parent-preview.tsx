@@ -10,6 +10,7 @@ import { FEEDBACK_MESSAGES, type FeedbackError } from "@/lib/feedback";
 import { ParentShell } from "@/components/parent-shell";
 import { ParentTestStart, ParentReport } from "@/components/parent-assessment";
 import { ParentOverview } from "@/components/parent-overview";
+import { DeskButton } from "@/components/parent-desk-button";
 import { ParentWorkbookAnswerKey } from "@/components/parent-workbook-answers";
 import { workbookAnswerPages, type ParentWorkbookAnswers } from "@/lib/parent-workbook-answers";
 import { sampleWorkbook } from "@/lib/workbook-sample";
@@ -41,7 +42,7 @@ import type { ParentNoteSession } from "@/lib/parent-maya-notes";
 import type { ParentPlan } from "@/lib/parent-plan";
 import type { ChildView, OverviewView, ProgressNumbers, WorkbooksView } from "@/lib/parent-view";
 import { freeMonthWords } from "@/lib/parent-assessment";
-import { tabLinks } from "@/lib/parent-shell";
+import { overviewDesk, tabLinks } from "@/lib/parent-shell";
 import { nextStep } from "@/lib/report-view";
 import { PLANS } from "@/lib/site";
 import { sampleReportView } from "@/lib/sample-children";
@@ -214,7 +215,7 @@ function previewContent(selection: PreviewSelection, child: ChildView | undefine
       return <ParentReport view={view} child={child} next={next} newTest={state === "unreliable" ? { state: { kind: "open" }, href: `/account/start/${child.id}`, label: "Start a new test" } : null} learning={null} alerts={alerts} tracked={false} src="account"
         nextActions={<ReportNextView reportId={view.id} step={nextStep(view)} words={view.model.callToAction === "card" ? freeMonthWords(child.firstName) : undefined} childName={child.firstName} province={view.province} {...next} card={card} wait={state === "joined" ? "joined" : state === "waitlist_error" ? "error" : "join"} busy={state === "busy_card" ? "one" : state === "busy_waitlist" ? "waitlist" : null} announce="" savedPlan={start.saved} choose={noAction} join={noAction} checkAgain={noAction} pinned />} />;
     }
-    case "overview": return <SupportPage label="Overview" title={child.firstName}><ParentOverview overview={overview(child, state)} /></SupportPage>;
+    case "overview": return <SupportPage label="" title={child.firstName} titleAction={overviewDesk("/account", child) ? <DeskButton child={child} pinSet={selection.scenario !== "no_pin"} /> : null}><ParentOverview overview={overview(child, state)} /></SupportPage>;
     case "workbook_answers": return <ParentWorkbookAnswerKey answerKey={answerKey(child, state)} />;
     case "workbooks": return <ParentWorkbooks {...workbooks(child, state)} history={workbookHistory(child, state)} />;
     case "schedule": return <ParentSchedule schedule={state === "waiting" || state === "unavailable" ? { kind: state, child: { ...child, parentId: "sample-parent" } } : {

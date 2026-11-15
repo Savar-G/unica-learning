@@ -419,9 +419,11 @@ describe("a family the switch opens to", () => {
       return renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({ child: "c1" }) })));
     };
 
-    it("shows this week, the workbook card and the skills since the child started, naming the child once (the h1 is for screen readers only)", async () => {
+    it("shows this week, the workbook card and the skills since the child started, naming the child once, as the first line with the desk beside it and no label above it (#1024)", async () => {
       const out = await render(full());
-      expect(out).toContain("<h1 class=\"sr-only\">Asha</h1>");
+      expect(out).toContain('<div class="pd-name-row"><h1>Asha</h1><form class="pd-desk-form" action="/api/desk/open" method="post"><input type="hidden" name="child" value="c1"/>');
+      expect(out.match(/<h1/g)).toHaveLength(1);
+      expect(out).not.toContain('class="eyebrow"');
       for (const [i, word] of ["Mon: done", "Tue: done", "Wed: done", "Thu: today, not done yet", "Fri: coming up"].entries()) expect(out.split('class="pa-vh"')[i + 1]).toContain(word);
       expect(out).toContain("Workbook 2</p>");
       expect(out).toMatch(/Day 4<small> of 10<\/small>/);
@@ -464,7 +466,7 @@ describe("a family the switch opens to", () => {
     it("a part with no data does not appear", async () => {
       const out = await render({ ...full(), week: null, workbook: null, skills: null, scanPrompt: { day: 1, pages: 8 } });
       for (const absent of ["po-week", "po-book", "Skills", "po-side"]) expect(out).not.toContain(absent);
-      expect(out).toContain("<h1 class=\"sr-only\">Asha</h1>");
+      expect(out).toContain('<div class="pd-name-row"><h1>Asha</h1>');
       expect(out).toContain("Scan the first pages");
       expect(out).not.toContain('id="pd-test"');
     });
@@ -475,7 +477,9 @@ describe("a family the switch opens to", () => {
       mayaNotice.books = [{ id: "w1", childId: "c1", number: 1, status: "shipped" }];
       try {
         const out = await render({ ...full(), week: null, workbook: null, scanPrompt: null, skills: null }, ["overview", "workbooks", "assessment", "account"]);
-        expect(out).toContain("<h1>Asha</h1>");
+        // The desk is on the name line here too, the one place the frame's header leaves its own out for (overviewDesk).
+        expect(out).toContain('<div class="pd-name-row"><h1>Asha</h1><form class="pd-desk-form" action="/api/desk/open"');
+        expect(out.match(/action="\/api\/desk\/open"/g)).toHaveLength(1);
         expect(out).toContain('id="pd-test"');
         expect(out).toContain("On the desk");
         expect(out).toContain("Asha used 7 of 60 chat messages today.");
@@ -520,7 +524,7 @@ describe("a family the switch opens to", () => {
 
     it("keeps the test row when the Overview cannot be read, so the page is never empty", async () => {
       const out = await render(null);
-      expect(out).toContain("<h1>Asha</h1>");
+      expect(out).toContain('<div class="pd-name-row"><h1>Asha</h1><form class="pd-desk-form" action="/api/desk/open"');
       expect(out).toContain('id="pd-test"');
     });
 
