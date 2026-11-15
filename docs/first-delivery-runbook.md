@@ -152,7 +152,7 @@ Stop. Ask Savar in writing. Wait for a clear yes before you go on.
   - "Not approved:" with a list of reasons: fix each reason, then approve again.
   - "Version N is not the current version": reload the page.
   - "Update first?" (new marks since the plan): this applies to next-book drafts. Press "Update with new marks". "Approve anyway" is noted in the audit. Ask Savar.
-  - Baseline pending with reason `planning-capture-missing`, `curriculum-version-changed` or `planned-on-another-build`: recover it on the Mac, before any page is marked: `npm run workbooks:book1-recover -- --run <run id>` (it saves nothing), then add `--save` if the verdict says so (`docs/workbook-worker.md`, "Book 1 baseline recovery"). After the first mark the save refuses (`activity-before-boundary`).
+  - Baseline pending with reason `planning-capture-missing`, `curriculum-version-changed` or `planned-on-another-build`: recover it on the Mac, before any page is marked: `npm run workbooks:book1-recover -- --run <run id>` (it saves nothing). If the verdict says to save, ask Savar first, then run it again with `--save` (`docs/workbook-worker.md`, "Book 1 baseline recovery"). After the first mark the save refuses (`activity-before-boundary`).
   - Pending reason `revision-changed`: approve the newest version again.
 - **Sources:** `src/app/api/admin/workbooks/runs/[id]/approve/route.ts`, `src/components/workbook-ship-actions.tsx`, `src/lib/workbook-ship.ts`, `src/lib/workbook-print-contract.ts`, `src/lib/workbook-book1-capture.ts`, `src/lib/admin-book1-baselines.ts`, `docs/workbook-worker.md`, `docs/workbook-rendering.md`.
 
@@ -240,7 +240,7 @@ Stop. Ask Savar in writing. Wait for a clear yes before you go on.
   1. A confirm box asks "Has <child>'s first workbook arrived at their home? Confirm only after delivery." The box adds the family-window sentences when the family may already have a free window.
   2. `POST /api/admin/cards/<id>/start` with `{deliveryConfirmed: true}` checks the admin, the origin, the saved card, and the delivery receipt (`firstDelivery`). It takes a plan-start hold, then calls `startPlan` (`src/lib/stripe.ts`).
   3. `startPlan` creates a Stripe subscription: CAD 79.99 a month for the first child (CAD 59.99 for each later child), with a 30-day free trial. No charge now. Stripe charges on day 30 and every month after. A sibling who starts inside the family's one 30-day window has the same trial end. A sibling who starts after it pays at once (`docs/plan-controls.md`, "Family admission"). The create call has one Stripe key, so a second press cannot make a second plan.
-  4. `applyPlanStart` writes `public.child_plan_states` (kind `free_month`) at once, before any webhook. This opens the product for that child: Scan pages, Explain, Maya chat and the dashboard follow the plan gate (`src/lib/plan-access.ts`).
+  4. `applyPlanStart` writes `public.child_plan_states` (kind `free_month`) at once, before any webhook. This opens the product for that child: Scan pages, Explain, Maya chat and the dashboard follow the plan gate (`src/lib/plan-access.ts`). Maya chat also needs Grade 3 or up, and it stays closed for every real family when `MAYA_CHAT_ENABLED` is `off` (the emergency stop, `chatFamilyGate` in `src/lib/maya-chat.ts`). Check both before you tell a family that chat is open.
   5. `sendPlanStartEmail` sends one confirmation email per plan generation with the price, the first charge date and how to cancel.
   6. The webhook `/api/stripe-webhook` keeps the row up to date after that. Each day the sweep in `/api/reminders` reads the row again.
   - Tables written: `plan_starts` (the start and its email state), `child_plan_states`.
@@ -259,7 +259,7 @@ Stop. Ask Savar in writing. Wait for a clear yes before you go on.
 | `already` | The child already has a plan in Stripe. | Open it in Stripe. Do not start another. |
 | `restart_required` | The child's plan ended. | The parent restarts in the Account tab. Ask Savar. |
 | `unconfirmed` | Stripe did not confirm the start. | **Do not press again.** Reload in 15 minutes. Check the family in Stripe. |
-| `needs_team` | No plan found after 24 hours. | Open the family in Stripe. If no plan came from this start, press "I checked Stripe: close this start". If you find a plan, leave it. Ask Savar. |
+| `needs_team` | No plan found after 24 hours. | Open the family in Stripe. Ask Savar before you change anything. If he agrees and no plan came from this start, press "I checked Stripe: close this start". If you find a plan, leave it. |
 | `payment_refused` | Stripe refused the saved card. | Ask the parent to update the card in the Account tab. |
 | `family_unavailable` | The family is being deleted. | Stop. Ask Savar. |
 | `failed` or "response was lost" | The route could not confirm. | Check the plan in Stripe before any retry. |
@@ -288,8 +288,8 @@ Stop. Ask Savar in writing. Wait for a clear yes before you go on.
 
 - **Who:** System. The admin watches.
 - **What the system does:**
-  - Stripe emails the parent a reminder 7 days before day 30 and a receipt after the charge (Stripe Billing settings, `docs/workbook-delivery-emails.md`).
-  - On day 30, Stripe charges CAD 79.99. The webhook (`invoice.paid`, `customer.subscription.updated`) moves `child_plan_states` to `paying`. If the payment fails, the plan state becomes `payment_failed` and the product closes for that child (`docs/stripe-webhook.md`).
+  - Stripe emails the parent a reminder 7 days before the first charge, but only when the plan starts with at least 7 days of free time left (a sibling who joins late in the family window can get no reminder, `src/lib/plan-reminder.ts`). Stripe sends a receipt after each charge (Stripe Billing settings, `docs/workbook-delivery-emails.md`).
+  - On the first charge date, Stripe charges CAD 79.99 for the first child (CAD 59.99 for each later child). The webhook (`invoice.paid`, `customer.subscription.updated`) moves `child_plan_states` to `paying`. If the payment fails, the plan state becomes `payment_failed` and the product closes for that child (`docs/stripe-webhook.md`).
   - Workbook 2 and later deliveries never restart the plan (`docs/workbook-delivery.md`).
 - **Check it worked:** In Stripe, one paid invoice. Read-only SQL: `select kind, read_at from public.child_plan_states where child_id = '<child id>';`. Expect `paying`.
 - **Common failure and fix:** `payment_failed`: the parent updates the card in the Account tab. Do not edit Stripe by hand. Ask Savar.
