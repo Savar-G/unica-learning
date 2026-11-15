@@ -160,21 +160,22 @@ export function exampleOnly(pkg: OperationPackage): ReadonlySet<number> {
  * the active problem only while no turn of the call names a number of the easier example only; once one does, code
  * cannot tell which problem is active, and no step text passes on code alone (`exact` is left out).
  */
-export function tutorTexts(pkg: OperationPackage, turns: readonly string[]): Pick<TutorCheckContext, "exact" | "own" | "exampleOnly"> {
+export function tutorTexts(pkg: OperationPackage, turns: readonly string[], exampleSeen = false): Pick<TutorCheckContext, "exact" | "own" | "exampleOnly"> {
   const only = exampleOnly(pkg);
-  const inPlay = pkg.easierExample ? (only.size === 0 || turns.some((t) => sayNumbers(t).some((x) => !!x.q && x.q[1] === 1 && only.has(x.q[0])))) : false;
+  // Final check 5 (2026-11-15): the easier example is in play for the rest of the call once code introduced or showed
+  // it (`exampleSeen`), once any turn, Maya's or the child's, names it ("For the easier example, what do I write in the
+  // ones?") or once a turn says a number only it has. Then no step text passes on code alone, for either problem.
+  const named = (t: string) => /\b(?:easier|example)\b/i.test(t) || sayNumbers(t).some((x) => !!x.q && x.q[1] === 1 && only.has(x.q[0]));
+  const inPlay = pkg.easierExample ? (exampleSeen || only.size === 0 || turns.some(named)) : false;
   return { ...(inPlay ? {} : { exact: exactTexts(pkg) }), own: ownNumbers(pkg), exampleOnly: only };
 }
-
-/** "Subtract the ones", "Add the tens": code alone only for the question's own operation. */
-const OP_PLACE_FORM = new RegExp(String.raw`^(?:now\s+)?(subtract|add)\s+${PLACE}$`, "i");
 
 /**
  * Whether a sentence passes on code alone (the exact-match rule, the CoS decision of 2026-11-15). Only when the whole
  * sentence (exactKey) is (a) one of code's own texts for this question (ctx.exact, exactTexts), or (b) one closed plain
  * form: an equation or place-value claim of numbers (ASSERT_FORM) whose every number and relation code read inside a
- * claim it found true; a closed question form, only in a question; the fixed true trade; a place named alone; or an
- * operation on a place that is the question's own. No lead-in, no {name}, no other word. The true-math checks of
+ * claim it found true, or a closed question form, only in a question. An instruction is code alone only as an exact
+ * text (final check 5). No lead-in, no {name}, no other word. The true-math checks of
  * checkTutorSay still run on it. Every other sentence goes to the math-truth review. The claim reader (falseClaims,
  * answerProblems, claimProblems) only refuses; it never grants a pass.
  */
@@ -186,12 +187,10 @@ export function codeAlone(sentence: string, ctx: Pick<TutorCheckContext, "op" | 
   if (ctx.exact?.has(key)) return true;
   if (judgment(sentence).any) return false;
   const asks = /\?\s*$/.test(sentence.trim());
-  const op = OP_PLACE_FORM.exec(key);
-  // NO_CLAIM_FORMS[0] is the fixed true trade; [1], an operation on a place, is OP_PLACE_FORM. Final check 4: a place
-  // named alone ([2], "The tens.") is a bare answer whose truth depends on what the child asked: it is never code alone.
-  const form = ASSERT_FORM.test(key) || NO_CLAIM_FORMS[0].test(key) ||
-    (op !== null && ctx.op !== undefined && (op[1].toLowerCase() === "add") === (ctx.op === "add")) ||
-    (asks && QUESTION_FORMS.some((re) => re.test(key)) && questionHolds(key, ctx.own));
+  // Final check 5 (2026-11-15): an instruction (a trade, an operation on a place, "write N in the P") is code alone ONLY
+  // as an exact text of the active problem (ctx.exact above): "Subtract the hundred thousands." in 52 - 28 is no step of
+  // it. No instruction form passes otherwise. Final check 4: a place named alone ("The tens.") is never code alone.
+  const form = ASSERT_FORM.test(key) || (asks && QUESTION_FORMS.some((re) => re.test(key)) && questionHolds(key, ctx.own));
   return form && unreadMath(sentence, ctx).length === 0;
 }
 

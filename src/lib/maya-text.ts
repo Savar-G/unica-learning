@@ -32,6 +32,7 @@ import {
   fallbacks,
   tutorTeachingNow,
   tutorStream,
+  tutorStreamReading,
   tutorStreamSentence,
   TUTOR_REVIEW_IGNORED,
   bindingReview,
@@ -60,33 +61,87 @@ import type { SpendHandle, SpendSeam } from "@/lib/maya-spend-seam";
 import { readReuse, withReadReuse } from "@/lib/maya/read-reuse";
 import { sentencesOf } from "@/lib/maya/say-check";
 
+/** The end of a JSON string that starts at `i` (its opening quote), or -1 before its closing quote has come. */
+function stringEnd(text: string, i: number): number {
+  for (let k = i + 1; k < text.length; k++) {
+    if (text[k] === "\\") { k++; continue; }
+    if (text[k] === '"') return k + 1;
+  }
+  return -1;
+}
+
+/** The end of the JSON value that starts at `i`, or -1 while it is not complete. */
+function valueEnd(text: string, i: number): number {
+  const c = text[i];
+  if (c === undefined) return -1;
+  if (c === '"') return stringEnd(text, i);
+  if (c === "{" || c === "[") {
+    let depth = 0;
+    for (let k = i; k < text.length; k++) {
+      const x = text[k];
+      if (x === '"') { const e = stringEnd(text, k); if (e < 0) return -1; k = e - 1; continue; }
+      if (x === "{" || x === "[") depth++;
+      else if (x === "}" || x === "]") { depth--; if (depth === 0) return k + 1; }
+    }
+    return -1;
+  }
+  // A literal (true, false, null, a number) ends at the next "," or "}" of the object.
+  const m = /^[^,}\s]+/.exec(text.slice(i));
+  return m && i + m[0].length < text.length ? i + m[0].length : -1;
+}
+
 /**
- * The `say` string at the start of a version 3 reply as it streams in (D-341: `say` is the first key): its text so far,
- * with JSON escapes read, and whether its closing quote has come. Null before the key.
+ * The `say` string of a version 3 reply as it streams in: its text so far, with JSON escapes read, and whether its
+ * closing quote has come. Null before the key. Final check 5 (2026-11-15): the keys before `say` are read whole, in any
+ * order: `kind` (round 4, P2-7; "math" when `say` is the first key), and `reading`, the model's reading as it wrote it,
+ * or null when `say` began before a complete reading (the tutor's stream then sends nothing on that turn).
  */
-export function partialSay(soFar: string): { text: string; complete: boolean; kind: string | null } | null {
-  // Round 4, P2-7: "kind" may come first; "say" follows it.
-  const m = /^\s*\{\s*(?:"kind"\s*:\s*"([a-z]*)"\s*,\s*)?"say"\s*:\s*"/.exec(soFar);
-  if (!m) return null;
-  const kind = m[1] ?? (/^\s*\{\s*"say"/.test(soFar) ? "math" : null);
+export function partialSay(soFar: string): { text: string; complete: boolean; kind: string | null; reading: Record<string, unknown> | null } | null {
+  const before: Record<string, unknown> = {};
+  let i = /^\s*\{\s*/.exec(soFar)?.[0].length ?? -1;
+  if (i < 0) return null;
+  for (let keys = 0; ; keys++) {
+    if (keys > 0) {
+      const sep = /^\s*,\s*/.exec(soFar.slice(i));
+      if (!sep) return null;
+      i += sep[0].length;
+    }
+    if (soFar[i] !== '"') return null;
+    const keyEnd = stringEnd(soFar, i);
+    if (keyEnd < 0) return null;
+    let key: unknown;
+    try { key = JSON.parse(soFar.slice(i, keyEnd)); } catch { return null; }
+    const colon = /^\s*:\s*/.exec(soFar.slice(keyEnd));
+    if (!colon) return null;
+    i = keyEnd + colon[0].length;
+    if (key === "say") break;
+    const end = valueEnd(soFar, i);
+    if (end < 0) return null;
+    try { before[String(key)] = JSON.parse(soFar.slice(i, end)); } catch { return null; }
+    i = end;
+  }
+  if (soFar[i] !== '"') return null;
+  const kind = typeof before.kind === "string" ? before.kind : Object.keys(before).length === 0 ? "math" : null;
+  const r = before.reading;
+  const reading = typeof r === "object" && r !== null && !Array.isArray(r) ? (r as Record<string, unknown>) : null;
   let text = "";
-  for (let i = m[0].length; i < soFar.length; i++) {
-    const c = soFar[i];
-    if (c === '"') return { text, complete: true, kind };
+  for (let k = i + 1; k < soFar.length; k++) {
+    const c = soFar[k];
+    if (c === '"') return { text, complete: true, kind, reading };
     if (c !== "\\") { text += c; continue; }
-    const e = soFar[i + 1];
+    const e = soFar[k + 1];
     if (e === undefined) break;
     if (e === "u") {
-      const hex = soFar.slice(i + 2, i + 6);
+      const hex = soFar.slice(k + 2, k + 6);
       if (hex.length < 4) break;
       text += String.fromCharCode(parseInt(hex, 16));
-      i += 5;
+      k += 5;
       continue;
     }
     text += ({ n: "\n", t: "\t", r: "\r", b: "\b", f: "\f" } as Record<string, string>)[e] ?? e;
-    i += 1;
+    k += 1;
   }
-  return { text, complete: false, kind };
+  return { text, complete: false, kind, reading };
 }
 import { reviewInput, runReview, CONVERSATION_REVIEW_TIME_LIMIT_MS, REVIEW_TIME_LIMIT_MS, type TalkReviewer } from "@/lib/maya-talk-review";
 import { runMathReview, type MathReviewer } from "@/lib/maya-math-review";
@@ -548,6 +603,10 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       // A safety or stop turn never streams (code's guidance and close come first); any other kind streams, and its
       // sentences that are not plain teaching wait for their own review.
       if (said.kind === "safety" || said.kind === "stop") { streamDone = true; return; }
+      // Final check 5: the reading comes whole before "say". No word goes out before it: a "say" that began before a
+      // complete reading (a model that ignores the order) streams nothing on this turn, and a reading about Maya, safety,
+      // a stop or any priority reading holds the whole message, so code's own line goes first.
+      if (!said.reading || !read(() => tutorStreamReading(session, said.reading!))) { streamDone = true; return; }
       const parts = sentencesOf(said.text);
       const complete = said.complete ? parts : parts.slice(0, -1);
       for (const sentence of complete.slice(seen)) {

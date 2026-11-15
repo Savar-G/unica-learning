@@ -7,6 +7,7 @@ export {
   fallbacks,
   tutorTeachingNow,
   tutorStream,
+  tutorStreamReading,
   mathReviewInput,
   helpBrief,
   fillerTurn,

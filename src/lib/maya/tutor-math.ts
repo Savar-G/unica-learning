@@ -89,6 +89,30 @@ function quantityParts(text: string): { n: number; place: number }[] | null {
   return parts.length ? parts : null;
 }
 
+/** A value code computed that it cannot hold exactly: past the safe integers. */
+const unsafeValue = (v: number) => !Number.isFinite(v) || Math.abs(v) > Number.MAX_SAFE_INTEGER;
+
+/**
+ * Final check 5 (2026-11-15): the digits a sentence names in a place, in digits or words, as groups: each place quantity
+ * ("2 tens and 4 ones", "12 ones") is one group, and each "N in the P" ("Write 2 in the tens place") is a group of one.
+ * `place` is the place's value (1, 10, 100, ...). The session reads them to tell whether a message gives the answer.
+ */
+export function placeDigitsSaid(sentence: string): { n: number; place: number }[][] {
+  const text = sentence.replace(/[−–]/g, "-").replace(/(\d),(?=\d{3}\b)/g, "$1");
+  const groups: { n: number; place: number }[][] = [];
+  const into = new RegExp(String.raw`(${NUM})\s+(?:in|into|for|at|on)\s+(?:the\s+)?(hundred thousand|ten thousand|one|ten|hundred|thousand)s?\b`, "gi");
+  const rest = text.replace(into, (_m, n: string, place: string) => {
+    const v = numberOf(n);
+    if (v !== null) groups.push([{ n: v, place: PLACE[place.toLowerCase()] }]);
+    return " ; ";
+  });
+  for (const m of rest.matchAll(new RegExp(QUANTITY, "gi"))) {
+    const parts = quantityParts(m[0]);
+    if (parts) groups.push(parts);
+  }
+  return groups;
+}
+
 /**
  * `cuts`: when given, gets the index of each item that starts a new clause after a comma (pre-launch check 2: a word
  * after a read claim in the same clause can change it). The items are the same with or without it.
@@ -207,19 +231,23 @@ function sideReader(items: readonly Item[]) {
       place = null;
       next = t.next;
     }
-    // Products and quotients first, then sums and differences, left to right.
+    // Products and quotients first, then sums and differences, left to right. Final check 5 (2026-11-15): every
+    // intermediate value must be one code holds exactly; after an unsafe one the whole side is NaN, so it is not read,
+    // neither true nor false ("100000000 times 100000000 plus 1 minus ..." loses the 1).
     let total = 0;
     let term = values[0];
     let sign = 1;
-    for (let k = 0; k < signs.length; k++) {
+    let unsafe = values.some(unsafeValue);
+    for (let k = 0; k < signs.length && !unsafe; k++) {
       const op = signs[k];
-      if (op === "*") { term *= values[k + 1]; continue; }
+      if (op === "*") { term *= values[k + 1]; unsafe ||= unsafeValue(term); continue; }
       if (op === "/") { term = values[k + 1] === 0 ? NaN : term / values[k + 1]; continue; }
       total += sign * term;
+      unsafe ||= unsafeValue(total);
       sign = op === "+" ? 1 : -1;
       term = values[k + 1];
     }
-    const value = total + sign * term;
+    const value = unsafe ? NaN : total + sign * term;
     return { at, value, units, place, next, ops, sums: signs.length > 0 && signs.every((x) => x === "+") && items[at]?.kind !== "open" };
   };
   /** A side, with an object count and its stated unit read as their product ("4 sticks of ten" is 40). */
@@ -298,10 +326,23 @@ export function unsafeNumberSaid(sentence: string): boolean {
   return [...sentence.replace(/(\d),(?=\d{3}\b)/g, "$1").matchAll(/\d+(?:\.\d+)?/g)].some((m) => m[0].replace(".", "").replace(/^0+/, "").length > 15);
 }
 
-/** A value code computed that it cannot hold exactly: past the safe integers. */
-const unsafeValue = (v: number) => !Number.isFinite(v) || Math.abs(v) > Number.MAX_SAFE_INTEGER;
 
+/**
+ * Final check 5 (2026-11-15): ", and" can end a clause ("make 16 ones, and 10 ones can be traded") or join the parts of
+ * one quantity ("52 is 4 tens, and 12 ones"). Code reads such a sentence both ways. It refuses only when both reads find
+ * a problem, and passes a claim only when both reads agree; otherwise every number goes to the review.
+ */
 export function readClaims(sentence: string, op?: "add" | "subtract", trades: readonly number[] = [], columns: readonly ColumnSum[] = []): { problems: string[]; unread: string[] } {
+  const joined = readClaimsOnce(sentence, op, trades, columns);
+  if (!/,\s*(?:and|or|but)\b/i.test(sentence)) return joined;
+  const split = readClaimsOnce(sentence.replace(/,(?=\s*(?:and|or|but)\b)/gi, ", ¦"), op, trades, columns);
+  if (joined.problems.length && split.problems.length) return joined;
+  const unread = [...new Set([...joined.unread, ...split.unread])];
+  if (!joined.problems.length && !split.problems.length) return { problems: [], unread };
+  return { problems: [], unread: [...unread, ...[...sentence.matchAll(/\d+(?:\.\d+)?/g)].map((m) => m[0]), "a clause after \", and\" that code reads two ways"] };
+}
+
+function readClaimsOnce(sentence: string, op?: "add" | "subtract", trades: readonly number[] = [], columns: readonly ColumnSum[] = []): { problems: string[]; unread: string[] } {
   // Final check 4: an unsafe number is never read; every number of the sentence stays unread.
   if (unsafeNumberSaid(sentence)) return { problems: [], unread: [...sentence.matchAll(/\d+(?:\.\d+)?/g)].map((m) => m[0]) };
   const problems: string[] = [];

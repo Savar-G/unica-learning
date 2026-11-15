@@ -121,13 +121,15 @@ function rulePropose(input: ModelInput): unknown {
 
 /** A version 3 reply with every reading field at its default, for tests and scripted fakes. */
 export function reply(say: string, act: Act, extra: { step?: string; level?: number; reading?: Record<string, unknown>; draw?: { offer: string; place: string }[] } = {}) {
+  // Final check 5: the reading comes before "say", in the tutor's output order; the controller's stream reads either order.
   return {
-    kind: "math", say, act, step: extra.step ?? "", level: extra.level ?? 0,
+    kind: "math",
     reading: {
       answers: [], help: "none", unclear: false, stop: false, safety: "none", writing: false, offTopic: false, mathClaim: false, mathRequests: [],
       outsideScope: "none", scopeSkill: "", unsafeRequest: false, noBoard: false, shorter: false, aboutMaya: "none", start: "none", paper: "none",
       correctsHearing: false, ...(extra.reading ?? {}),
     },
+    say, act, step: extra.step ?? "", level: extra.level ?? 0,
     draw: extra.draw ?? [],
   };
 }

@@ -123,6 +123,9 @@ describe("the model's reading alone", () => {
       expect(all).toContain(AI);
       // When words streamed first, the disclosure is the very next sentence after them.
       const at = disclosureAt(parts);
+      // Final check 5: the tutor writes its reading before "say", so no word streams before a reading about Maya: the
+      // disclosure goes first, as when the stream is off.
+      if (tutor) { expect(at).toBe(0); expect(out.say[0].startsWith(AI)).toBe(true); return; }
       // Model words streamed first (the case of the issue), and the disclosure follows them in the same turn.
       expect(at).toBeGreaterThan(0);
       const first = out.say[0];
