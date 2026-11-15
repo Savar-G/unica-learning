@@ -10,7 +10,7 @@ const NUM = String.raw`(?:\d+|(?:${TENS.join("|")})(?:[- ](?:${SMALL.slice(1, 10
 const UNIT = String.raw`(?:hundred thousands?|ten thousands?|ones?|tens?|hundreds?|thousands?)\b`;
 /** A place quantity: "4 tens and 12 ones", "a ten", "one hundred". */
 const QUANTITY = String.raw`(?:(?:${NUM}|an?)\s+${UNIT})(?:\s+(?:and\s+)?(?:${NUM}|an?)\s+${UNIT})*`;
-const OP = String.raw`(?:plus|\+|minus|take away|-|times|multiplied by|×|\*|x|divided by|÷|/)`;
+const OP = String.raw`(?:plus|\+|minus|take away|-|times|multiplied by|groups? of|×|\*|x|divided by|÷|/)`;
 const REL = String.raw`(?:is not equal to|isn't equal to|is not|isn't|are not|aren't|is the same as|is equal to|equals|is now|are now|is still|becomes|become|became|turns into|turn into|turned into|=|is|are|makes|make|gives)`;
 const TOKEN = new RegExp(String.raw`(${QUANTITY})|(${NUM})(?!\s+${UNIT})|(${OP})(?=\s|\d|$)|(${REL})(?=\s|\d|$)|([a-z']+|[^\sa-z0-9])`, "gi");
 
@@ -63,7 +63,9 @@ function itemsOf(sentence: string): Item[] {
       const w = m[3].toLowerCase();
       // "x" is an operator only between two numbers ("6 x 4").
       if (w === "x" && items.at(-1)?.kind !== "term") { items.push({ kind: "other", word: "x" }); continue; }
-      items.push({ kind: "op", op: /^(?:plus|\+)$/.test(w) ? "+" : /^(?:times|multiplied by|×|\*|x)$/.test(w) ? "*" : /^(?:divided by|÷|\/)$/.test(w) ? "/" : "-" });
+      // "6 groups of 440" is 6 × 440 (F2 builder, 2026-11-15); "in groups of 4" names a thing.
+      if (/^groups? of$/.test(w) && items.at(-1)?.kind !== "term") { items.push({ kind: "other", word: "groups" }); continue; }
+      items.push({ kind: "op", op: /^(?:plus|\+)$/.test(w) ? "+" : /^(?:times|multiplied by|groups? of|×|\*|x)$/.test(w) ? "*" : /^(?:divided by|÷|\/)$/.test(w) ? "/" : "-" });
     }
     else if (m[4]) {
       const r = m[4].toLowerCase();

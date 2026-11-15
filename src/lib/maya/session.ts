@@ -5075,7 +5075,8 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
     const word = claim ? claimSaid({ ...claimTurn(base), claimAsked: true }) : null;
     if (claim && word) stance = word === claim.word ? (stance === "none" ? "right" : stance) : "wrong";
     const op = comparisonOf(pkg);
-    const cw = op ? comparisonWord(base) : null;
+    // The opening asks the comparison itself, so a bare word ("false") sets the stance (F4 builder, 2026-11-15).
+    const cw = op ? comparisonWord({ ...base, claimAsked: true }) : null;
     if (op && cw) stance = sameValue(comparisonAnswer(op, cw.word === comparisonWords(op)[0]), pkg.answer.value) ? (stance === "none" ? "right" : stance) : "wrong";
   }
   // The next open step, for the prepared replies' expected turns (expectedTurns and fitsExpected read the ladder's step).

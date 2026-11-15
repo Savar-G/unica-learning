@@ -81,3 +81,13 @@ describe("core gaps of F1 and F3 (2026-11-15)", () => {
   it.each(["4,000 is 5 thousands.", "48,942 is 4 ten thousands.", "5 tens are now 6 tens.", "0 tens become 11 tens."])("refuses %s", (x) => expect(checkTutorSay(x, sub)).toMatchObject({ ok: false }));
   it.each(["Is 5220 greater than 5226?", "Is 6 times 870 less than 5226?", "Which digit is in the thousands place?", "What is the value of the 4?", "What is 6 times 440?", "What do you get for 1340 divided by 2?", "What is the missing number?"])("treats %s as plain math", (x) => expect(plainTeaching(x)).toBe(true));
 });
+
+// Core gaps of F2 and F4 (2026-11-15): the step questions of × ÷ and comparisons are closed plain forms, and "N groups of
+// M" is read as N × M (a true one passes, a false one is refused).
+describe("core gaps of F2 and F4 (2026-11-15)", () => {
+  it.each(["What is 6 × 870?", "What is 72 ÷ 9?", "What is 6 times 440?", "What is 13 divided by 2?", "Is 1440 greater than 1436?", "Is 7 the same as 6?", "Which is bigger, 42 or 30?", "Which is smaller, 4 times 6 or 30?"])("sends %s with no review", (x) => expect(plainTeaching(x)).toBe(true));
+  it.each(["Which is bigger, you or me?", "Is my sister bigger than me?", "Which is better, 42 or a puppy?"])("reviews %s", (x) => expect(plainTeaching(x)).toBe(false));
+  it.each(["6 groups of 440 is 2640.", "3 groups of 4 make 12."])("passes the true sentence %s", (x) => expect(checkTutorSay(x, { stance: "none" })).toMatchObject({ ok: true }));
+  it.each(["6 groups of 440 is 2600.", "3 groups of 4 make 7."])("refuses %s", (x) => expect(checkTutorSay(x, { stance: "none" })).toMatchObject({ ok: false }));
+  it("reads 'in groups of 4' as words, not an operation", () => expect(checkTutorSay("Put them in groups of 4.", { stance: "none" })).toMatchObject({ ok: true }));
+});

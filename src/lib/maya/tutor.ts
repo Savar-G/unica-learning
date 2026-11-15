@@ -37,6 +37,8 @@ export function plainTeaching(sentence: string, _extra: ReadonlySet<string> = ne
   const text = sentence.replace(/[’]/g, "'").replace(/[−–]/g, "-").trim();
   // Only the exact approved sentences skip the review as they are; an open frame never does (review of #1006).
   if (exactSafe(text)) return true;
+  // "Which is bigger, 42 or 30?" holds a comma inside one closed form, so it is read whole (F4 builder, 2026-11-15).
+  if (WHICH_FORM.test(text.replace(/[.!?]+\s*$/, ""))) return true;
   // Review of #1006 (four rounds): no word list decides it. Each clause (split at ":", ";" and ","), after a short
   // spoken lead-in, must match one of a few complete math forms built only from numbers, places and operations
   // (PLAIN_FORMS). Every other sentence is reviewed, in parallel with the stream.
@@ -52,6 +54,7 @@ const U = String.raw`(?:hundred thousands?|ten thousands?|ones?|tens?|hundreds?|
 const Q = String.raw`(?:${N}(?:\s+${U})?)`;
 const E = String.raw`(?:${Q}(?:\s+(?:plus|minus|take away|times|multiplied by|divided by|\+|-|×|÷|x)\s+(?:the\s+)?${Q})*)`;
 const PLACE = String.raw`(?:the\s+)?${U}(?:\s+(?:column|place))?`;
+const WHICH_FORM = new RegExp(String.raw`^(?:so\s+)?which is (?:bigger|greater|smaller|less|more),?\s+${E}\s+or\s+${E}$`, "i");
 /** The complete math forms a clause may take with no review. Nothing else: no person, no object, no feeling. */
 const PLAIN_FORMS: readonly RegExp[] = [
   // "12 minus 8 is 4", "6 is 8 minus 2", "52 is 4 tens and 12 ones", "2 minus 8 isn't 6"
@@ -75,6 +78,8 @@ const PLAIN_FORMS: readonly RegExp[] = [
   // "the tens", "in the ones column", "the other way around"
   new RegExp(String.raw`^(?:(?:in|for|on|to)\s+)?${PLACE}$`, "i"),
   /^the other way around$/i,
+  // "Is 7 the same as 6?" (F4 builder, 2026-11-15)
+  new RegExp(String.raw`^is\s+${E}\s+the same as\s+${E}$`, "i"),
   // "Is 5220 greater than 5226?", "Is 6 times 870 less than 5226?"
   new RegExp(String.raw`^is\s+${E}\s+(?:greater|less|more|bigger|smaller)\s+than\s+${E}$`, "i"),
   // "Which digit is in the thousands place?", "What is the digit in the tens place?"
