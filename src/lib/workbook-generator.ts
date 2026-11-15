@@ -93,6 +93,9 @@ import type { StepDeclaration, StepReference } from "@/lib/workbook-print-contra
 
 /** A replacement must retain the practice page's own-step minimum before it can borrow review work. */
 function needsOwnPractice(input: GenerateInput, w: PageWork, slot: Slot): boolean {
+  // #759: a U16 lesson's questions stay on the taught step, even when a shorter review would fit. When its small task pool
+  // cannot keep them there (lessonReviewAllowed), the lesson takes review as before.
+  if (input.plan.level === 16 && w.page.type === "new-idea" && !w.lessonReviewAllowed && slot.part.step) return true;
   // Four likelihood questions give a full pair in each U4 practice block before its earlier-step review rows.
   const youngLikelihood = input.plan.level === 4 && !!slot.part.step && /likelihood/.test(slot.part.step.skill);
   if ((input.plan.level < 10 && !youngLikelihood) || w.page.extraPractice || !["practice", "practice-2"].includes(w.page.type)) return false;
@@ -1693,6 +1696,8 @@ function remember(memory: BookMemory, page: number, questions: GeneratedQuestion
 }
 
 interface PageWork {
+  /** #759: a U16 lesson whose questions could not all be kept on its taught step takes review as main does; see needsOwnPractice. */
+  lessonReviewAllowed?: boolean;
   number: number;
   day: number;
   page: PlannedPage;
@@ -3294,7 +3299,10 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
     const required = await fitWorkBudget(input, fitCheck, work, false, true);
     if (required) return required;
     for (const w of work) {
-      if (!["practice", "practice-2", "remember-these", "remember-these-mixed-set", "friday-5", "unit-b"].includes(w.page.type)) continue;
+      // #759: the minimum U16 lesson can fit two questions while stretching hides room for a second pair.
+      // Revisit it without stretched rows before keeping that measured minimum.
+      const lesson = input.plan.level === 16 && w.page.type === "new-idea";
+      if (!lesson && !["practice", "practice-2", "remember-these", "remember-these-mixed-set", "friday-5", "unit-b"].includes(w.page.type)) continue;
       w.page = { ...w.page, capacityChecked: false, fillingComplete: false, atMaximum: false, extraGap: 0, gapCap: undefined, refills: 0 };
       const filled = await fitWorkBudget(input, fitCheck, work, true, true);
       if (filled) return filled;
@@ -3386,6 +3394,8 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         if (input.plan.level === 16 && !holes.length && w.slots.some(s => s.contract?.template && s.part.step
           && (s.contract.template.skill !== s.part.step.skill || s.contract.template.step !== s.part.step.step) && needsOwnPractice(input, w, s))) {
           if (await restoreOwnPractice(input, w, work, fitCheck)) continue;
+          // (A lesson keeps a review question it cannot replace, as before #759; its own-step minimum is the book check's.)
+          if (w.page.type === "new-idea" && !w.lessonReviewAllowed) { w.lessonReviewAllowed = true; continue; }
           return `Page ${w.number}: cannot restore its own-step minimum in complete rows within the page and day limits`;
         }
         const holeSlot = holes.length ? w.slots[holes[0] - 1] : undefined;
@@ -3406,12 +3416,16 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
         // book's Day 9, where the floor is 8.)
         // (Refills stop well before the round limit, so the page's last state is always one that was checked.)
         // (Practice pages only: their floor is 8, Savar's 8 to 10; a new idea's is 2.)
-        const refillPage = ["practice", "practice-2", "word-problems"].includes(w.page.type)
+        const fillLesson = filling && input.plan.level === 16 && w.page.type === "new-idea";
+        const refillPage = fillLesson || ["practice", "practice-2", "word-problems"].includes(w.page.type)
           || input.plan.level === 4 && w.page.type === "remember-these";
         // (Below the page's floor too, whatever the plan gave it: 7 practice questions fit a U4 page and met its
         // fullness, while its floor is 8, Savar's 8 to 10.)
         const counted = w.slots.filter((s) => !["spot-the-error", "solve-it-two-ways", "warm-up", "how-do-you-know"].includes(s.place ?? "")).length;
         const belowFloor = !w.page.extraPractice && counted < minimumFor(w, input.plan.level);
+        // A full-width third lesson question is already a complete, fitting grid. A rejected fourth returns here,
+        // rather than undoing both additions to the old two-question grid.
+        if (fillLesson && fit.ok && !holes.length) rowTrial = null;
         // Apply the short reminder before rejecting an added question that needs calculation space.
         if (!fit.ok && !fit.problems.every(p => p.kind === "fullness") && input.plan.level >= 10 && !w.page.compactPanel
           && ["practice", "practice-2"].includes(w.page.type) && w.panels.some(p => p.place === "watch-one")
@@ -3431,7 +3445,10 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
           }
         }
         if (holes.length >= 2 && !belowFloor && (fit.ok || fit.problems.every(p => p.kind === "fullness")) && await swapCompleteRows(input, w, work, fitCheck)) continue;
-        const wanted = Math.max(minimum, w.slots.length + (belowFloor ? 1 : 0));
+        // The lesson's outlined work area can satisfy fullness with just one pair. Try a second pair before
+        // stretching that minimum; a rejected addition still goes through the same strict fit and bounded rollback.
+        const missingLessonQuestions = fillLesson ? Math.max(0, 4 - w.slots.filter(s => s.place === "now-you").length) : 0;
+        const wanted = Math.max(minimum, w.slots.length + Math.max(belowFloor ? 1 : 0, missingLessonQuestions));
         const restoringFloor = belowFloor;
         const canRefill = restoringFloor ? round < 63 : (w.page.refills ?? 0) < 8 && round < 48;
         const short = fit.ok && (holes.length > 0 || refillPage && w.slots.length < wanted && canRefill);
@@ -3483,6 +3500,8 @@ async function fitWorkBudget(input: GenerateInput, fitCheck: FitCheck, work: Pag
             for(let attempt=0;attempt<512;attempt++) {
               const c=contractFor(input,w,slot,attempt);
               if (!c || !c.template && (c.source==="story" || c.type==="likelihood") && frames.has(storyFrame(c.item.text))) continue;
+              // Extra lesson questions teach this lesson, rather than filling its room with earlier-step review.
+              if (fillLesson && (!c.template || c.template.skill !== slot.part.step?.skill || c.template.step !== slot.part.step?.step)) continue;
               if (repairPartner?.part.step && needsOwnPractice(input, w, repairPartner) && (!c.template || c.template.skill !== repairPartner.part.step.skill || c.template.step !== repairPartner.part.step.step)) continue;
               if (repairDefault && target.part.step) {
                 const sameStep: boolean = c.template ? c.template.skill === target.part.step.skill && c.template.step === target.part.step.step : c.item.skill === target.part.step.skill;

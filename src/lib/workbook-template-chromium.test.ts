@@ -8,7 +8,7 @@ import { WARM_UP_INSTRUCTION } from "@/lib/workbook-page-instructions";
 import { sampleBook } from "@/lib/workbook-sample-book";
 import { titleProblem, UNIT_TITLES } from "@/lib/workbook-titles";
 import { SKILL_TITLES } from "@/lib/workbook-skill-titles";
-import { workbookTemplate } from "@/lib/workbook-template";
+import { pagePlan, workbookTemplate } from "@/lib/workbook-template";
 import { fixedTemplateFonts } from "@/lib/workbook-template-fonts";
 
 // The workbook templates (#310) laid out in real Chromium: one page of each type from sample books at U2 (parent-led),
@@ -39,6 +39,52 @@ function oneOfEach(draft: WorkbookDraft): WorkbookDraft {
 }
 
 describe.skipIf(!chromium)("the workbook templates in Chromium", () => {
+  it("uses a full row for the third U16 lesson question without leaving a half row", async () => {
+    const draft = book("U16", 1);
+    const page = structuredClone(draft.pages.find(p => p.type === "practice")!);
+    if (page.content?.kind !== "day") throw Error("not a day page");
+    page.type = "new-idea";
+    page.questions = page.questions.slice(0, 3);
+    const questions = page.questions.map(q => q.number);
+    page.content = { ...page.content, consistentLayout: true, blocks: [{ slot: "now-you", items: questions }] };
+    let measured: MeasuredElement[] = [];
+    const result = await renderWorkbook({ draft: { ...draft, pages: [page] }, parentId: PARENT, template,
+      engine: { print: async job => { const output = await engine.print(job); measured = output.measured; return output; } },
+    });
+    expect(result.status === "failed" ? result.problems : []).toEqual([]);
+    expect(pagePlan(page)?.incomplete).toEqual([]);
+    const first = measured.find(m => m.name === `question-${questions[0]}`)!;
+    const last = measured.find(m => m.name === `question-${questions[2]}`)!;
+    expect(last.x).toBeCloseTo(first.x, 1);
+    expect(last.width).toBeGreaterThan(first.width * 1.9);
+    expect(last.y).toBeGreaterThan(first.y + first.height);
+  }, 60_000);
+
+  it("keeps Friday 5 at five questions with its last question across the full row (#759)", async () => {
+    const draft = book("U16", 1);
+    const page = structuredClone(draft.pages.find(p => p.type === "friday-5")!);
+    if (page.content?.kind !== "day") throw Error("not a day page");
+    page.content.consistentLayout = true;
+    // The generated page reserves four short review questions beside the five Friday questions.
+    const review = page.content.blocks.find(b => b.slot === "remember-these");
+    if (review) review.items = review.items.slice(0, 4);
+    const kept = new Set(page.content.blocks.flatMap(b => b.items));
+    page.questions = page.questions.filter(q => kept.has(q.number));
+    const questions = page.content.blocks.find(b => b.slot === "friday-5")!.items;
+    expect(questions).toHaveLength(5);
+    let measured: MeasuredElement[] = [];
+    const result = await renderWorkbook({ draft: { ...draft, pages: [page] }, parentId: PARENT, template,
+      engine: { print: async job => { const output = await engine.print(job); measured = output.measured; return output; } },
+    });
+    expect(result.status === "failed" ? result.problems : []).toEqual([]);
+    const first = measured.find(m => m.name === `question-${questions[0]}`)!;
+    const last = measured.find(m => m.name === `question-${questions[4]}`)!;
+    expect(last.visible).toBe(true);
+    expect(last.x).toBeCloseTo(first.x, 1);
+    expect(last.width).toBeGreaterThan(first.width * 1.9);
+    expect(last.y).toBeGreaterThan(first.y + first.height);
+  }, 60_000);
+
   it.each(["U4", "U16"])("prints one whole-page Extra label and generated required minutes in %s", async level => {
     const draft = book(level, 1);
     for (const p of draft.pages) if (p.content?.kind === "day") {

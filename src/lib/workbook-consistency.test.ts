@@ -13,10 +13,10 @@ it("names both true/false and Spot the error's yes/no in a first-customer page i
   const curriculum = curriculumFor("bc")!;
   const placed = planNextWorkbook({ curriculum, grade: 4, profile: firstCustomerProfile(), workbooks: [], number: 1 });
   if (!placed.ok) throw new Error(placed.reason);
-  const day = placed.plan.days[0];
   let tokens = 0;
+  // Every day's lesson: which lesson holds both kinds depends on the tasks the book has left (#759 fills U16 lessons last).
   const result = await generateWorkbook({ workbookId: "00000000-0000-4000-8000-0000000000a1", childId: "00000000-0000-4000-8000-0000000000c1", number: 1, profileBuild: null,
-    curriculum, plan: { ...placed.plan, days: [{ ...day, pages: day.pages.filter(p => p.type === "new-idea") }] }, book: { child: "Noah" }, itemPolicy: "approved-v1" },
+    curriculum, plan: { ...placed.plan, days: placed.plan.days.map(d => ({ ...d, pages: d.pages.filter(p => p.type === "new-idea") })) }, book: { child: "Noah" }, itemPolicy: "approved-v1" },
   { ai: fakeAiClient({ answer: fakeWorkbookItems }), solver: keySolver(), fit: { fits: async p => p.questions.length <= 10 ? { ok: true } : { ok: false, problems: [{ question: null, reason: "Test page holds ten questions" }] } },
     store: { save: async d => ({ status: "saved", draftId: d.id }), draft: async () => null }, qrToken: () => `token-${String(++tokens).padStart(12, "0")}` });
   if (result.status !== "stored") throw new Error(result.status);

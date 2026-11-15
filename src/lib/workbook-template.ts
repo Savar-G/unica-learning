@@ -122,7 +122,7 @@ export function slotMax(slot: SlotName, c: Pick<DayContent, "level" | "pages" | 
     case "in-your-head": case "try-first": case "spot-the-error": case "solve-it-two-ways": case "how-do-you-know": return 1;
     // Short template questions fill a review page in two columns of 7 (#489); the measured fit and the day's minutes cap it.
     case "remember-these": return band.name === "parent" ? 6 : c.consistentLayout ? 24 : 8;
-    case "now-you": return c.consistentLayout ? 5 : 4;
+    case "now-you": return c.consistentLayout && c.level !== 16 ? 5 : 4;
     case "finish-these": return c.consistentLayout ? 4 : 2;
     case "on-your-own": return c.consistentLayout ? 24 : band.name === "mid" ? 8 : 6;
     case "practice-row": return c.consistentLayout ? 24 : 4;
@@ -537,6 +537,9 @@ const CSS = `
 .pg.consistent .two>.seq-wide,.pg.consistent .cols>.seq-wide{grid-column:1/-1}
 .pg.consistent .two>.places-wide,.pg.consistent .cols>.places-wide{grid-column:1/-1}
 .pg.consistent .outl{padding:6px 16px;gap:6px}
+/* Two pairs of lesson questions keep their calculation space; the example gives up vertical padding. */
+.pg.consistent.expanded-lesson .p-ni{padding-block:8px}
+.pg.consistent.expanded-lesson .p-ni .ways .in{padding-block:6px}
 .pg.consistent .error-item{display:flex;flex-direction:column;gap:6px}
 .pg.consistent .error-item>.q:first-child{flex-wrap:nowrap;align-items:baseline}.pg.consistent .error-item>.q:first-child .wk{flex:1 1 0}
 .pg.consistent .error-item .ans{flex-wrap:wrap;gap:12px}.pg.consistent .error-item .ans .fix{margin-left:12px}
@@ -1062,6 +1065,18 @@ function parentItem(q: DraftQuestion, band: Band, figure: Figure | null | undefi
 
 // ---------- Slots ----------
 
+/** Extra U16 lesson questions keep their work space by using less padding in the example. */
+function expandedLesson(page: DraftPage): boolean {
+  const c = page.content;
+  return c?.kind === "day" && !!c.consistentLayout && c.level === 16 && page.type === "new-idea"
+    && c.blocks.some(b => b.slot === "now-you" && b.items.length >= 3);
+}
+
+/** Three lesson questions make one pair and one full-width question, never an empty half row. */
+function wideLessonQuestion(page: DraftPage, items: readonly number[]): number | undefined {
+  return expandedLesson(page) && items.length === 3 ? items[2] : undefined;
+}
+
 interface Ctx {
   page: DraftPage;
   c: DayContent;
@@ -1180,12 +1195,15 @@ function blockHtml(b: Block, i: number, ctx: Ctx): string {
       const why = b.figure || b.explain
         ? `<div class="${b.figure ? "fig2" : "full-width"}">${b.figure ? figureSvg(b.figure, band.name === "mid" ? 1 : 1.3,c.consistentLayout ? 40 : 30) : ""}<div class="why"><div class="lab">What's going on</div><span>${escape(b.explain ?? "")}</span></div></div>`
         : "";
-      return head + `<div class="panel p-ni" data-measure="panel-${i}" style="display:flex;flex-direction:column;gap:12px">${label}${ways}${ways && b.explain && !b.figure ? note(b.explain) : why}</div>`;
+      return head + `<div class="panel p-ni" data-measure="panel-${i}" style="display:flex;flex-direction:column;gap:${expandedLesson(ctx.page) ? 8 : 12}px">${label}${ways}${ways && b.explain && !b.figure ? note(b.explain) : why}</div>`;
     }
     case "now-you":
       return parent
         ? items()
-        : `<div class="outl"><div class="lab" data-measure="heading-${i}">Now it's your turn${b.label ? `: ${escape(b.label)}` : ""}</div><div class="two">${qs.map((q, k) => lineItem(q, band, null, 80, b.figures?.[k])).join("")}</div></div>`;
+        : `<div class="outl"><div class="lab" data-measure="heading-${i}">Now it's your turn${b.label ? `: ${escape(b.label)}` : ""}</div><div class="two">${qs.map((q, k) => {
+          const html = lineItem(q, band, null, 80, b.figures?.[k]);
+          return q.number === wideLessonQuestion(ctx.page, b.items) ? html.replace(/^(<div class="[^"]+")/, '$1 style="grid-column:1/-1"') : html;
+        }).join("")}</div></div>`;
     case "spot-the-error": {
       const fallbackChoice = `<span class="strip"><span class="ch"><i class="tb"></i>Yes</span><span class="ch"><i class="tb"></i>No</span></span>`
         + (isWarmUpPage(c) ? `<span class="t1"><span>Tick one</span><i>✓</i></span>` : "");
@@ -1442,7 +1460,7 @@ export function pagePlan(page: DraftPage): PagePlan | null {
       case "in-your-head": case "try-first": items.forEach(line); break;
       case "now-you":
         if (parent) cards();
-        else { grid(2, wideLine); items.forEach(line); }
+        else { grid(2, n => wideLine(n) || n === wideLessonQuestion(page, items)); items.forEach(line); }
         break;
       case "on-your-own": case "practice-row": {
         // (blockHtml: column sums, their boxes under the rule, when every question is one sum to work.)
@@ -1543,7 +1561,8 @@ function dayPage(page: DraftPage, parts: PageParts, c: DayContent): string {
   // Finished rows share the remaining page space. Two-method pages keep their explicit writing allocation unless
   // their existing plan requires stretching. No new question or answer enters this rendering step.
   const stretch = c.consistentLayout && c.fillingComplete && (c.atMaximum || !c.blocks.some(b => b.slot === "solve-it-two-ways")) ? " stretch" : "";
-  return `<div class="pg ${band.name}${c.consistentLayout ? " consistent" : ""}${c.extraPractice && c.level >= 19 ? " older-extra" : ""}${stretch} f-${familyOf(page, c)}" data-page-type="${page.type}" style="--work-min:${c.consistentLayout ? workMinimum(c.level) : 64}px">${scanMarks}<div class="frame">${header}<main class="ct" style="--extra-gap:${Math.max(0,Math.min(48,c.extraGap ?? 0))}px" ${mark.slot("content")}>${blocks}</main></div>${footer(page, parts, c.id)}</div>`;
+  const lesson = expandedLesson(page) ? " expanded-lesson" : "";
+  return `<div class="pg ${band.name}${lesson}${c.consistentLayout ? " consistent" : ""}${c.extraPractice && c.level >= 19 ? " older-extra" : ""}${stretch} f-${familyOf(page, c)}" data-page-type="${page.type}" style="--work-min:${c.consistentLayout ? workMinimum(c.level) : 64}px">${scanMarks}<div class="frame">${header}<main class="ct" style="--extra-gap:${Math.max(0,Math.min(48,c.extraGap ?? 0))}px" ${mark.slot("content")}>${blocks}</main></div>${footer(page, parts, c.id)}</div>`;
 }
 
 /** Each question's printed number ("3."), marked for the layout checks (src/lib/workbook-layout-check.ts). */
