@@ -17,7 +17,8 @@ describe("the accepted real sentences of 2026-11-14 still pass the math checks",
 });
 
 // Two-layer true math, coverage round of 2026-11-15: a sentence code reads whole needs no math-truth review, so the
-// child hears it at once. Base 5d9ad5448: 104 of 515 (20.2%); this round: 365 (70.9%). The floor keeps the speed.
+// child hears it at once. Base 5d9ad5448: 104 of 515 (20.2%); after the review of #1047 (every word of a clause read):
+// 338 (65.6%). The floor keeps the speed.
 describe("most of the accepted real sentences pass on code alone", () => {
   const rows = corpus as { question: string; sentence: string }[];
   const contextOf = (pkg: OperationPackage) => {
@@ -25,10 +26,10 @@ describe("most of the accepted real sentences pass on code alone", () => {
     const op = kind.op?.(pkg);
     return { stance: "none" as const, claims: (x: string) => kind.claimProblems(pkg, x), facts: tutorReadFacts(pkg), trades: kind.workValues(pkg), ...(op ? { op } : {}), ...(pkg.answer.value.type === "number" ? { answer: pkg.answer.value.value } : {}) };
   };
-  it("passes at least 70% with no review, and refuses none", () => {
+  it("passes at least 65% with no review, and refuses none", () => {
     const verdicts = rows.map(({ question, sentence }) => checkTutorSay(sentence, contextOf(SAMPLE_PACKAGES[question.includes("+") ? "add-27-39" : "subtract-52-28"] as OperationPackage)));
     expect(verdicts.filter((v) => !v.ok)).toEqual([]);
     const code = verdicts.filter((v) => v.ok && v.math.length === 0).length;
-    expect(code / rows.length).toBeGreaterThanOrEqual(0.7);
+    expect(code / rows.length).toBeGreaterThanOrEqual(0.65);
   });
 });

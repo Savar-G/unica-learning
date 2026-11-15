@@ -59,23 +59,25 @@ The false sentences of the Sol rounds (`/tmp/prelaunch-b`, `/tmp/final-2` survey
 
 A sentence code reads whole needs no math review, so the child hears it at once. The readers in `src/lib/maya/tutor-read.ts` read whole clauses of the common shapes and check each one true. A clause no reader matches, or one whose fact code cannot prove, still goes to the review. No reader refuses.
 
-- **Instructions with a number** ("write 4 in the ones", "carry the 1", "write 6 above the hundreds", "bring down 4 to make 14", "the 4 is already in the ones"): the instruction must be the same as one the kind's step texts give. A write with no place of its own must match the step of the place the sentence names ("Multiply the tens: ...; Write 8").
-- **Arithmetic facts**: "you can't take 8 from 2", "2 is too small to take 8", "5 is the tens digit of 52", "12 minus 8 is 4, not 5".
-- **Judgments with a number**: "66 is right" (the answer only), "16 is right for 7 + 9", "Yes, 4 is right: 12 minus 8 is 4", "Not 56" (a number that is not the question's at all).
-- **The question's own operations**: the question named anywhere ("In 27 + 39, ..."); a step's operation named, asked ("How much is 12 minus 8?") or modeled ("Picture 4 blocks and take 2 away"); a counting instruction for a step and its list, one step at a time ("Start at 9 and count up 7 more: 10, 11, ..."). A mistake's operation ("5 − 2" in 52 − 28) is never one of them.
+The rule (review of #1047): a shape covers a clause only when its grammar uses up every word and number of the clause, and its check uses each one: the source place and the destination place, each count's unit, "after the trade", a count and its end, every operand with its unit. A clause with no number beside a clause with math, across ",", ":" or ";", must itself be a whole fixed clause code reads as nothing ("Good question", "and that was the hard part"); any other ("False:", "..., roughly", "..., so not") sends the sentence to the review. A place named alone ("In the tens,", "Multiply the tens:") is read only when the math beside it names that place, works only that place's step, or is an instruction of that step.
+
+- **Instructions with a number** ("write 4 in the ones", "carry the 1", "write 6 above the hundreds", "bring down 4 to make 14", "the 4 is already in the ones"): the instruction must be the same as one the kind's step texts give. When the sentence names a place, it must be an instruction of that place's step. A write and a carry said together must be one step's. A carry's unit and its destination must name one place.
+- **Arithmetic facts**: "you can't take 8 from 2" (each count in its own place; a count with no place word is ones, so "2 tens minus 8" is not read), "2 is too small to take 8", "5 is the tens digit of 52", "12 minus 8 is 4, not 5" (a word after the "not C" sends it to the review).
+- **Judgments with a number**: "66 is right" (the answer only), "16 is right for 7 + 9" (an operation of this question's work), "Yes, 4 is right: 12 minus 8 is 4", "Not 56" (a number that is not the question's at all).
+- **The question's own operations**: the question named anywhere ("In 27 + 39, ..."); a step's operation named, asked ("How much is 12 minus 8?") or modeled ("Picture 4 blocks and take 2 away": both things of one kind, and a place names its step); a counting instruction for a step and its list, one step at a time ("Start at 9 and count up 7 more: 10, 11, ..."; a count and an end said together must agree). A mistake's operation ("5 − 2" in 52 − 28) is never one of them.
 - **Questions and fixed clauses that claim nothing**: "How did you get 66?", "How many tens are left?", "What number is 6 tens and 6 ones?", an offer of a new question, and interjections ("No", "Careful", "Good question").
 - **A kind's own read** (`TutorKind.coveredClaims`, optional): the clauses a kind read whole and found true. The column kind reads the column work against its steps ("we have 4 tens and take away 2 tens", "we use the 12 ones from the trade", "we traded 1 ten away", "the ones are 2 minus 8", "the number is still 52"; `tutor-kinds/column-read.ts`). The place-value kind names a clause whose every number is inside a place claim its readers checked ("the digit in the thousands place is 4").
-- **Link words**: a clause mark (":" or ";"), the `{name}` token, "careful", "said", "found", "got" and "since" are plain link words next to a read number. A clause with no number next to a clause code read, across a comma, must start with a plain link word ("We write 4 in the ones, roughly" goes to the review).
+- **Link words**: the mark of a clause code read whole, the `{name}` token, "careful", "said", "found", "got" and "since" are plain link words next to a read number. A ":" or ";" is not: the word before it is read as next to the number ("False: 12 minus 8 is 4" goes to the review).
 
 Measured on 2026-11-15 (base `5d9ad5448`, which sends a number next to a modifier word to the review):
 
 | Set | Code alone, base | Code alone, now |
 |---|---|---|
-| The 515 accepted real sentences | 104 (20.2%) | 365 (70.9%) |
-| Code's step texts of the Book 1 census (1,573) | 0 (0%) | 1,107 (70.4%) |
+| The 515 accepted real sentences | 104 (20.2%) | 338 (65.6%) |
+| Code's step texts of the Book 1 census (1,573) | 0 (0%) | 981 (62.4%) |
 | Code's step questions of the census (1,397) | 1,386 (99.2%) | 1,386 (99.2%) |
 
-No true sentence of either set is refused by code. Of the 116 false sentences of the Sol rounds, 50 are refused and 66 go to the review: none passes on code alone (`src/lib/maya/tutor-false-sentences.test.ts`). The corpus is two questions (52 − 28 and 27 + 39), so the column readers are tuned to the words the model used there; other questions will pass on code alone less often until their words are measured.
+No true sentence of either set is refused by code. Of the 116 false sentences of the Sol rounds, 50 are refused and 66 go to the review: none passes on code alone (`src/lib/maya/tutor-false-sentences.test.ts`). The 10 findings of the Sol review of #1047 are binding tests in `src/lib/maya/tutor-read.test.ts`. The first version of this round (8d7866694) read 365 (70.9%) and 1,107 (70.4%), but those readers ignored words they matched; reading every word cost 27 corpus sentences. The corpus is two questions (52 − 28 and 27 + 39), so the column readers are tuned to the words the model used there; other questions will pass on code alone less often until their words are measured.
 
 ## Credit, the learning event and the parent note
 

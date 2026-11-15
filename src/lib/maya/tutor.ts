@@ -17,8 +17,8 @@ import { expressionKey, noteFromEquation, type TutorCommand, type TutorKind, typ
 import { tutorKindOf } from "./tutor-kinds";
 import { affirms, equationHolds, equationsOf, neverSayProblem, sayNumbers, sentencesOf } from "./say-check";
 import { exactSafe } from "./math-vocab";
-import { answerClaims, answerProblems, falseClaims, readClaims, REMAINDER_SAID } from "./tutor-math";
-import { clauseKey, countedList, holdsNumber, namesPlace, OFFER, placesIn, OFFER_TAIL, readClause, splitClauses, workExpressions, type TutorReadFacts } from "./tutor-read";
+import { answerClaims, answerProblems, falseClaims, READ_MARK, readClaims, REMAINDER_SAID, termCount } from "./tutor-math";
+import { clauseKey, countedList, holdsNumber, namesPlace, OFFER, placesIn, OFFER_TAIL, readClause, splitClauses, expressionsIn, instructionsOf, workExpressions, workPlaces, type TutorReadFacts } from "./tutor-read";
 
 /** The hard ceiling of one Maya message, in words. Over it, the model gets one repair with the reason; code never trims. */
 export const TUTOR_WORD_LIMIT = 60;
@@ -101,6 +101,8 @@ const NO_CLAIM_FORMS: readonly RegExp[] = [
   // child asked ("How many punches ...? One is right."), so they are reviewed.
   new RegExp(String.raw`^(?:(?:in|for|on|to)\s+)?${PLACE}$`, "i"),
 ];
+/** A place named alone ("the tens", "in the ones column"): in unreadMath it binds the math beside it. */
+const PLACE_ALONE = new RegExp(String.raw`^(?:(?:in|for|on|to)\s+|(?:now\s+)?(?:look at|let's look at|let's do|let's finish|on to|back to|multiply|add|subtract)\s+)?${PLACE}(?:\s+row)?$`, "i");
 /** The complete math forms a clause may take with no review. Nothing else: no person, no object, no feeling. */
 const PLAIN_FORMS: readonly RegExp[] = [ASSERT_FORM, ...QUESTION_FORMS.filter((re) => re !== WHICH_FORM), WRITE_FORM, ...NO_CLAIM_FORMS];
 
@@ -128,28 +130,50 @@ export function unreadMath(sentence: string, ctx: Pick<TutorCheckContext, "op" |
   const counted = countedList(clauses);
   const kindRead = new Set((ctx.facts?.covered?.(sentence) ?? []).map(clauseKey));
   const blanked = new Set<number>();
+  /** A clause read whole and found true, as the claim reader then sees it (a plain link). */
+  const READ = ` ${READ_MARK} `;
   text = parts.map((raw, k) => {
     if (k % 2 === 1) return raw;
     const out = readWhole(raw, k);
-    if (out !== raw) blanked.add(k);
+    if (out === READ) blanked.add(k);
     return out;
   }).join("");
-  // A clause read whole keeps the link-word rule (tutor-math.ts LINK_WORDS) across its commas: a clause next to it with
-  // no number that does not start with a plain link word may change it ("We write 4 in the ones, roughly").
+  // Every word of a clause next to a clause with math must be read too (review of #1047): a clause with no number
+  // beside it, across ",", ":" or ";", may change what it says ("False: 12 minus 8 is 4", "We write 4 in the ones,
+  // roughly"). Only a whole fixed clause code reads as nothing (an interjection, "and that was the hard part") may
+  // stand there; any other sends the sentence to the math review.
   const modifiers: string[] = [];
-  // Only a clause with math needs it: an interjection ("Hmm") read as nothing has no number to change.
-  for (const k of blanked) for (const j of holdsNumber(parts[k]) ? [k - 2, k + 2] : []) {
-    const sep = parts[Math.min(j, k) + 1] ?? "";
-    // The words as said ("or so" keeps its "or"), without the {name} token.
-    const near = j < 0 ? undefined : parts[j]?.trim().replace(/\{name\}[\s,!]*/gi, "").trim();
-    if (near === undefined || blanked.has(j) || !sep.includes(",") || !near || holdsNumber(near)) continue;
-    const first = near.toLowerCase().split(/\s+/)[0];
-    if (!NEIGHBOUR_STARTS.has(first)) modifiers.push(first);
+  for (let k = 0; k < parts.length; k += 2) {
+    if (!holdsNumber(parts[k])) continue;
+    for (const j of [k - 2, k + 2]) {
+      const near = j < 0 ? undefined : parts[j]?.trim().replace(/\{name\}[\s,!]*/gi, "").trim();
+      // A clause with numbers of its own is read, or left unread, by the claim reader; a clause with none ("so not",
+      // "said no one") must be a fixed clause read whole.
+      if (near === undefined || blanked.has(j) || !near || termCount(near) > 0) continue;
+      modifiers.push(`the clause "${near}"`);
+    }
   }
   function readWhole(raw: string, k: number): string {
     const clause = clauses[k];
-    if (NO_CLAIM_FORMS.some((re) => re.test(clause)) || (asks && QUESTION_FORMS.some((re) => re.test(clause)))) return " ; ";
-    if (counted.has(k) || kindRead.has(clauseKey(raw))) return " ; ";
+    // A place named alone says where the math beside it is ("In the tens, 12 minus 8 is 4"): it is read only when each
+    // clause with numbers beside it names that place too (review of #1047).
+    if (PLACE_ALONE.test(clause)) {
+      const named = placesIn(clause);
+      const beside = [k - 2, k + 2].filter((j) => j >= 0 && j < parts.length && holdsNumber(parts[j]));
+      // Each clause beside it names that place, or works only operations of that place's own step ("Multiply the tens:
+      // 4 × 2 = 8").
+      const own = (j: number) => {
+        // An instruction is read only as an instruction of the step this place names (tutor-read.ts readClause).
+        if (instructionsOf(clauses[j]) !== null) return true;
+        const p = placesIn(clauses[j]);
+        if (p.length > 0) return p.every((x) => named.includes(x));
+        const keys = expressionsIn(clauses[j]);
+        return keys.length > 0 && keys.every((key) => named.some((x) => ctx.facts?.expressionPlaces?.get(key)?.has(x)));
+      };
+      return beside.every(own) ? READ : raw;
+    }
+    if (NO_CLAIM_FORMS.some((re) => re.test(clause)) || (asks && QUESTION_FORMS.some((re) => re.test(clause)))) return READ;
+    if (counted.has(k) || kindRead.has(clauseKey(raw))) return READ;
     const next = k + 2 < parts.length && parts[k + 1].includes(":") ? readClaims(parts[k + 2], ctx.op, ctx.trades) : null;
     const shown = next && next.problems.length === 0 && next.unread.length === 0 ? /(\d+)(?!.*\d)/.exec(parts[k + 2])?.[1] : undefined;
     const at = {
@@ -158,14 +182,15 @@ export function unreadMath(sentence: string, ctx: Pick<TutorCheckContext, "op" |
       places: clauses.flatMap((c, j) => (j % 2 === 0 && j !== k ? placesIn(c) : [])),
       boundByColon: k > 0 && parts[k - 1].includes(":") && (holdsNumber(clauses[k - 2]) || namesPlace(clauses[k - 2])),
       offer: k > 0 && (OFFER.test(clauses[k - 2]) || OFFER_TAIL.test(clauses[k - 2])),
+      framedBy: [k - 2, k + 2].filter((j) => j >= 0 && j < parts.length && PLACE_ALONE.test(clauses[j] ?? "")).flatMap((j) => placesIn(clauses[j])),
       ...(shown !== undefined && (ctx.trades ?? []).includes(Number(shown)) ? { shownBy: Number(shown) } : {}),
     };
-    if (OFFER.test(clause) || OFFER_TAIL.test(clause)) return " ; ";
-    return readClause(clause, at, ctx.facts, ctx.answer, ctx.trades ?? []) ? " ; " : raw;
+    if (OFFER.test(clause) || OFFER_TAIL.test(clause)) return READ;
+    return readClause(clause, at, ctx.facts, ctx.answer, ctx.trades ?? []) ? READ : raw;
   }
   if (ctx.answer !== undefined) {
     const spans = answerClaims(text, ctx.answer).read.sort((a, b) => b.index - a.index);
-    for (const { index, length } of spans) text = `${text.slice(0, index)} ; ${text.slice(index + length)}`;
+    for (const { index, length } of spans) text = `${text.slice(0, index)}${READ}${text.slice(index + length)}`;
   }
   const unread = [...readClaims(text, ctx.op, ctx.trades).unread, ...modifiers];
   // "A, so B": once every claim around it is read and true, the "so" between them adds no claim of its own.
@@ -188,17 +213,12 @@ export function tutorReadFacts(pkg: OperationPackage): TutorReadFacts {
   return {
     steps,
     expressions: workExpressions(steps, questionKey(pkg) ?? undefined),
+    expressionPlaces: workPlaces(steps),
     numbers: new Set([...scope.numbers, ...answer]),
     ...(questionKey(pkg) ? { question: questionKey(pkg)! } : {}),
     ...(kind.coveredClaims ? { covered: (sentence: string) => kind.coveredClaims!(pkg, sentence) } : {}),
   };
 }
-
-/**
- * The first words a clause with no number may have next to a clause code read whole: plain links and the start of a
- * new thought. Any other ("roughly", "maybe", "or so") may change what the read clause says, so the sentence is not read whole.
- */
-const NEIGHBOUR_STARTS = new Set(["and", "so", "but", "then", "now", "which", "that", "that's", "this", "it", "it's", "you", "you're", "we", "we're", "i'll", "let's", "how", "what", "because", "since", "look", "yes", "no", "okay", "ok", "right", "good", "great", "nice", "careful", "the", "there", "after", "when", "if", "with", "like"]);
 
 /** A short spoken lead-in before the math of a clause: fixed words only. */
 // Sixth check of #1006: only lead-ins that answer nothing. "Yes", "no", "right", "okay", "not quite" and the like can

@@ -18,6 +18,8 @@ export interface TutorReadFacts {
    * 52 − 28). Never a mistake's operation (the stream scope also lets "5 − 2" be said).
    */
   expressions: ReadonlySet<string>;
+  /** The places of the steps whose text works each operation ("4-2" is the tens step of 52 − 28). */
+  expressionPlaces?: ReadonlyMap<string, ReadonlySet<number>>;
   /** The question's own numbers (TutorKind.streamScope) and the answer. */
   numbers: ReadonlySet<number>;
   /** The question's own operation (expressionKey), when it is one of whole numbers ("52-28"). */
@@ -43,7 +45,7 @@ const WHERE = String.raw`(in|into|on|above|over|on top of|at the top of|below|un
 const PLACE_PHRASE = String.raw`(?:the\s+)?(${P})(?:\s+(?:place|column|row|spot))?`;
 
 /** One written instruction or state, as code compares it with the step texts. */
-interface Instruction { verb: "write" | "carry" | "bring"; n: number; carried: boolean; at: "in" | "above" | "below"; place: number | null; make?: number; from?: number | null }
+interface Instruction { verb: "write" | "carry" | "bring"; n: number; carried: boolean; at: "in" | "above" | "below"; place: number | null; make?: number; from?: number | null; only?: true }
 
 const atOf = (w: string | undefined): Instruction["at"] => (!w || /^(?:in|into|on)$/i.test(w) ? "in" : /^(?:below|under)$/i.test(w) ? "below" : "above");
 
@@ -55,7 +57,7 @@ const WRITE_TWO_FORM = new RegExp(String.raw`^${LEAD}${WHO}${WRITE}\s+and\s+(${N
 const WRITE_CARRY_FORM = new RegExp(String.raw`^${LEAD}${WHO}${WRITE}\s+and\s+(?:then\s+)?${WHO}${CARRY}$`, "i");
 const CARRY_FORM = new RegExp(String.raw`^${LEAD}${WHO}${CARRY}$`, "i");
 /** "4 is already in the ones place", "the carried 1 is in the hundreds". */
-const STATE_FORM = new RegExp(String.raw`^${LEAD}(?:only\s+)?(?:the\s+|that\s+|a\s+)?(carried\s+)?(${N})\s+(?:is|was|goes|went)\s+(?:already\s+|now\s+)?(?:written\s+|put\s+)?${WHERE}\s+${PLACE_PHRASE}$`, "i");
+const STATE_FORM = new RegExp(String.raw`^${LEAD}(only\s+)?(?:the\s+|that\s+|a\s+)?(carried\s+)?(${N})\s+(?:is|was|goes|went)\s+(?:already\s+|now\s+)?(?:written\s+|put\s+)?${WHERE}\s+${PLACE_PHRASE}$`, "i");
 const BRING_FORM = new RegExp(String.raw`^${LEAD}${WHO}(?:bring|brings|brought)\s+down\s+(?:the\s+)?(${N})\s+to\s+make\s+(${N})$`, "i");
 
 function carryOf(n: string | undefined, unit: string | undefined, to: string | undefined): Instruction | null {
@@ -64,7 +66,9 @@ function carryOf(n: string | undefined, unit: string | undefined, to: string | u
   if (n !== undefined && unit === undefined && /^(?:ten|hundred|thousand)$/i.test(n)) [n, unit] = [undefined, n];
   const count = n !== undefined ? value(n) : unit !== undefined ? 1 : null;
   if (count === null) return null;
-  // "the 1 ten" goes into the tens; "to the hundreds" names the place.
+  // "the 1 ten" goes into the tens; "to the hundreds" names the place. Both said must name one place: "carry 1 hundred
+  // to the tens" is not read (review of #1047).
+  if (unit !== undefined && to !== undefined && placeOf(unit) !== placeOf(to)) return null;
   return { verb: "carry", n: count, carried: false, at: "in", place: placeOf(to) ?? placeOf(unit) };
 }
 
@@ -90,8 +94,8 @@ export function instructionsOf(clause: string, defaultPlace: number | null = nul
   }
   m = STATE_FORM.exec(text);
   if (m) {
-    const n = value(m[2]);
-    return n === null ? null : [{ verb: "write", n, carried: !!m[1], at: atOf(m[3]), place: placeOf(m[4]) }];
+    const n = value(m[3]);
+    return n === null ? null : [{ verb: "write", n, carried: !!m[2], at: atOf(m[4]), place: placeOf(m[5]), ...(m[1] ? { only: true as const } : {}) }];
   }
   m = CARRY_FORM.exec(text);
   if (m) {
@@ -119,11 +123,20 @@ export const clauseKey = (clause: string) => clause.replace(/[’]/g, "'").repla
 
 /** The operations a kind's step texts work ("12 − 8 = 4", "1 + 2 + 3 = 6"), as keys, with the question's own. */
 export function workExpressions(steps: readonly TutorStepFact[], question: string | undefined): Set<string> {
-  const out = new Set<string>(question ? [question] : []);
-  const re = new RegExp(String.raw`${N}(?:\s*(?:\+|-|−|minus|plus)\s*${N})+(?=\s*=)`, "gi");
+  return new Set([...(question ? [question] : []), ...workPlaces(steps).keys()]);
+}
+
+/** Each operation the step texts work, with the places of the steps that work it. */
+export function workPlaces(steps: readonly TutorStepFact[]): Map<string, Set<number>> {
+  const out = new Map<string, Set<number>>();
+  const re = new RegExp(String.raw`${N}(?:\s*(?:\+|-|−|minus|plus|×|times)\s*${N})+(?=\s*=)`, "gi");
   for (const st of steps) for (const m of st.work.replace(/[−–]/g, "-").matchAll(re)) {
     const e = expressionOf(m[0]);
-    if (e) out.add(e.key);
+    if (!e) continue;
+    const places = out.get(e.key) ?? new Set<number>();
+    const place = placeOf(st.place);
+    if (place !== null) places.add(place);
+    out.set(e.key, places);
   }
   return out;
 }
@@ -141,13 +154,13 @@ function stepInstructions(steps: readonly TutorStepFact[]): Instruction[] {
 
 /** An instruction of Maya's is true when a step text gives the same: the same number, place (when she names one) and spot. */
 function instructionTrue(said: Instruction, facts: readonly Instruction[]): boolean {
-  return facts.some((f) => f.verb === said.verb && f.n === said.n && f.carried === said.carried && f.at === said.at && (said.place === null || f.place === said.place) && f.make === said.make);
+  return facts.some((f) => f.verb === said.verb && f.n === said.n && f.carried === said.carried && f.at === said.at && (said.place === null || f.place === said.place) && f.make === said.make && !!f.only === !!said.only);
 }
 
 const MINUS = String.raw`(?:minus|take away|−|-)`;
 /** "You can't take 8 from 2 ones", "we cannot do 2 minus 8": true when the first number is bigger (whole numbers). */
-const CANT_TAKE = new RegExp(String.raw`^${LEAD}(?:(?:but|and)\s+)?(?:in the ${P}\s+)?(?:we|you|i)?\s*(?:can't|cannot|can not|couldn't)\s+(?:take|subtract)(?:\s+away)?\s+(?:the\s+)?(${N})(?:\s+(${P}))?\s+(?:from|away from)\s+(?:the\s+|just\s+|only\s+)?(${N})(?:\s+(${P}))?(?:\s+(?:yet|alone|by itself))?$`, "i");
-const CANT_DO = new RegExp(String.raw`^${LEAD}(?:in the ${P}\s+)?(?:we|you|i)?\s*(?:can't|cannot|can not|couldn't)\s+do\s+(${N})(?:\s+(${P}))?\s+${MINUS}\s+(${N})(?:\s+(${P}))?(?:\s+(?:yet|alone|by itself))?$`, "i");
+const CANT_TAKE = new RegExp(String.raw`^${LEAD}(?:(?:but|and)\s+)?(?:we|you|i)?\s*(?:can't|cannot|can not|couldn't)\s+(?:take|subtract)(?:\s+away)?\s+(?:the\s+)?(${N})(?:\s+(${P}))?\s+(?:from|away from)\s+(?:the\s+|just\s+|only\s+)?(${N})(?:\s+(${P}))?(?:\s+(?:yet|alone|by itself))?$`, "i");
+const CANT_DO = new RegExp(String.raw`^${LEAD}(?:we|you|i)?\s*(?:can't|cannot|can not|couldn't)\s+do\s+(${N})(?:\s+(${P}))?\s+${MINUS}\s+(${N})(?:\s+(${P}))?(?:\s+(?:yet|alone|by itself))?$`, "i");
 /** "2 is too small to take 8 from", "1 ten is too small to take 5": true when the first number is smaller. */
 const TOO_SMALL = new RegExp(String.raw`^${LEAD}(?:(?:but|and)\s+)?(?:the\s+)?(${N})(?:\s+(${P}))?\s+(?:is|are)\s+too\s+small\s+to\s+(?:take|subtract)(?:\s+away)?\s+(${N})(?:\s+(${P}))?(?:\s+(?:from|away))?(?:\s+from\s+(?:it|them))?$`, "i");
 
@@ -155,9 +168,11 @@ const TOO_SMALL = new RegExp(String.raw`^${LEAD}(?:(?:but|and)\s+)?(?:the\s+)?($
 function smaller(a: string, ua: string | undefined, b: string, ub: string | undefined): boolean | null {
   const [x, y] = [value(a), value(b)];
   if (x === null || y === null) return null;
-  // Both places named: the same place only ("2 ones" and "8 ones").
-  if (ua && ub && placeOf(ua) !== placeOf(ub)) return null;
-  return x < y;
+  // Each count in its own place; a count with no place word is ones ("take 8 from 2 ones"). "2 tens minus 8" is 20 and
+  // 8, so it is not too small (review of #1047).
+  const [px, py] = [ua === undefined ? 1 : placeOf(ua), ub === undefined ? 1 : placeOf(ub)];
+  if (px === null || py === null) return null;
+  return x * px < y * py;
 }
 
 /** "66 is right", "16 is right for 7 + 9", "Not 56", "36 isn't right", "56 isn't it". */
@@ -166,24 +181,26 @@ const NOT_IT = new RegExp(String.raw`^${LEAD}(?:(?:but|and)\s+)?(?:not\s+(${N})|
 
 /** An expression of whole numbers with + and − ("27 + 39", "12 minus 8", "1 + 2 + 3"), its key and value; or null. */
 function expressionOf(text: string): { key: string; value: number } | null {
-  const parts = text.trim().replace(/[−–]/g, "-").split(/\s*(\+|plus|-|minus|take away)\s*/i);
+  const parts = text.trim().replace(/[−–]/g, "-").split(/\s*(\+|plus|-|minus|take away|×|times)\s*/i);
   if (parts.length < 3 || parts.length % 2 === 0) return null;
   const operands: number[] = [];
   const ops: string[] = [];
   for (const [k, part] of parts.entries()) {
-    if (k % 2 === 1) { ops.push(/^(?:\+|plus)$/i.test(part) ? "+" : "-"); continue; }
+    if (k % 2 === 1) { ops.push(/^(?:\+|plus)$/i.test(part) ? "+" : /^(?:×|times)$/i.test(part) ? "*" : "-"); continue; }
     if (!new RegExp(String.raw`^${N}$`, "i").test(part)) return null;
     const n = value(part);
     if (n === null) return null;
     operands.push(n);
   }
+  // A product only alone ("4 × 2"): a mix of × with + or − is not read here.
+  if (ops.includes("*") && !ops.every((o) => o === "*")) return null;
   let total = operands[0];
-  for (const [k, op] of ops.entries()) total += op === "+" ? operands[k + 1] : -operands[k + 1];
+  for (const [k, op] of ops.entries()) total = op === "*" ? total * operands[k + 1] : total + (op === "+" ? operands[k + 1] : -operands[k + 1]);
   return { key: expressionKey(operands, ops), value: total };
 }
 
 /** A clause that only names one of the question's own operations: "in 52 − 28", "now try 12 − 8", "back to 27 + 39". */
-const MENTION = new RegExp(String.raw`^${LEAD}(?:(?:but|and)\s+)?(?:(?:in|for|back to|now back to|let's try|try|let's do|let's look at|look at|we look at|we need|we need to do|we do|then|now)\s+)?(?:the\s+)?(.+?)(?:\s+again)?$`, "i");
+const MENTION = new RegExp(String.raw`^${LEAD}(?:(?:but|and)\s+)?(?:(?:in|for|back to|now back to|let's try|try|let's do|let's look at|look at|we look at|then|now)\s+)?(?:the\s+)?(.+?)(?:\s+again)?$`, "i");
 
 /** Counting instructions: the start, the direction, how many and where to stop, when said. */
 const COUNT_FORMS: readonly RegExp[] = [
@@ -206,6 +223,8 @@ function countOf(clause: string): Count | null {
     if (a === null || (g.k !== undefined && k === null) || (g.b !== undefined && b === null)) return null;
     const up = !/^(?:down|back)$/i.test(g.dir ?? "up");
     if (b !== null && (up ? b <= a : b >= a)) return null;
+    // "Count up 7 from 9 to 12": the count and the end must agree (review of #1047).
+    if (k !== null && b !== null && b !== (up ? a + k : a - k)) return null;
     return { a, up, k, b };
   }
   return null;
@@ -229,6 +248,10 @@ const CHILD_QUESTION = new RegExp(String.raw`^${LEAD}(?:how did you get|did you 
 const NO_NUMBER: readonly RegExp[] = [
   new RegExp(String.raw`^${LEAD}(?:the\s+)?${P}\s+(?:are|is)\s+(?:done|finished)$`, "i"),
   /^(?:no|nope|yes|yep|yeah|not quite|not yet|hmm+|careful|good question|great question|okay|ok|well|look|great|nice|good|exactly|that's true|that's it|like you said(?: before)?|the other way around|after the trade)$/i,
+  // The order rules, said as code says them: true of any expression, with no number.
+  /^(?:add and subtract from left to right|multiply and divide from left to right|multiply and divide before you add (?:and|or) subtract|before you add (?:and|or) subtract|work the brackets first|a digit's value is the digit times its place|count the places from the right)$/i,
+  // Praise of the work that names no number: it cannot change the math beside it.
+  /^(?:and |but |so )?(?:that was the (?:hard|tricky) part|that fixed it|it worked|that's the key move|now you try|you try)$/i,
 ];
 
 /** A sum or difference of counts of one place ("4 tens minus 2 tens"), as the digits' key ("4-2"), or a plain expression. */
@@ -244,7 +267,7 @@ function placeExpressionOf(text: string): { key: string; value: number } | null 
 const OWN_QUESTIONS: readonly RegExp[] = [
   new RegExp(String.raw`^${LEAD}(?:what|what number) is the (?:whole |final )?answer (?:to|for) (.+)$`, "i"),
   new RegExp(String.raw`^${LEAD}how much is (.+)$`, "i"),
-  new RegExp(String.raw`^${LEAD}(.+?) is how many ${P}$`, "i"),
+  new RegExp(String.raw`^${LEAD}(.+?) is how many (${P})$`, "i"),
 ];
 /** "What number is 6 tens and 6 ones?": a question that names counts of places and asks their number. */
 const NUMBER_OF = new RegExp(String.raw`^${LEAD}what number is ${N}\s+${P}(?:\s+and\s+${N}\s+${P})*$`, "i");
@@ -264,6 +287,8 @@ export interface ClauseContext {
    * a result of the question's work ("Yes, 4 is right: 12 minus 8 is 4" shows 4).
    */
   shownBy?: number;
+  /** The places a place named alone beside it gives ("Now add the tens: 1 + 2 + 3"). */
+  framedBy?: readonly number[];
   /** The clause right before it offers a new question ("Want to try a twin question"): an expression here only names it. */
   offer?: boolean;
 }
@@ -275,7 +300,7 @@ export const OFFER_TAIL = /^(?:new|easier|harder|twin)\s+(?:new\s+|easier\s+|har
 
 /** "Picture 4 blocks and take 2 away", "Hold up 4 fingers and put 2 down", "Think of 4 tens and take away 2 tens". */
 const THINGS = String.raw`(?:blocks?|things?|fingers?|sticks?|bundles?|apples?|tens|ones|sticks of ten|bundles of ten)`;
-const MODEL = new RegExp(String.raw`^${LEAD}(?:picture|think of|hold up|imagine|start with)\s+(${N})\s+${THINGS}\s+(?:and|then)\s+(?:take away|take|cross out|put down|put|cover|remove)\s+(${N})(?:\s+(?:${THINGS}|of them))?(?:\s+(?:away|down))?$`, "i");
+const MODEL = new RegExp(String.raw`^${LEAD}(?:picture|think of|hold up|imagine|start with)\s+(${N})\s+(${THINGS})\s+(?:and|then)\s+(?:take away|take|cross out|put down|put|cover|remove)\s+(${N})(?:\s+(${THINGS}|of them))?(?:\s+(?:away|down))?$`, "i");
 /** "5 is the tens digit of 52", "the tens digit of 52 is 5": a digit of a number, checked. */
 const DIGIT_OF = new RegExp(String.raw`^${LEAD}(?:maybe\s+)?(?:(?:the\s+)?(${N})\s+is\s+the\s+(${P})\s+digit\s+(?:of|from|in)\s+(\d+)|the\s+(?:${P})\s+digit\s+(?:of|in)\s+(\d+)\s+is\s+(${N}))$`, "i");
 
@@ -302,6 +327,9 @@ export function readClause(clause: string, at: ClauseContext, facts: TutorReadFa
     const q = re.exec(text);
     if (!q) continue;
     const e = placeExpressionOf(q[1]);
+    // "4 tens minus 2 tens is how many tens?": the place asked is the place of the counts.
+    if (q[2] !== undefined && placesIn(q[1]).some((p) => p !== placeOf(q[2]))) continue;
+    if (q[2] !== undefined && placesIn(q[1]).length === 0) continue;
     if (e !== null && facts.expressions.has(e.key)) return true;
   }
   // Arithmetic truths, like an equation: whatever the clause is about, the numbers hold.
@@ -316,8 +344,9 @@ export function readClause(clause: string, at: ClauseContext, facts: TutorReadFa
     const n = value(m[1]);
     if (n === null) return false;
     if (m[2] === undefined) return alone && !at.boundByColon && ((answer !== undefined && n === answer) || (at.shownBy !== undefined && at.shownBy === n));
+    // "16 is right for 7 + 9": an operation of this question's own work (review of #1047).
     const e = expressionOf(m[2]);
-    return e !== null && e.value === n;
+    return e !== null && e.value === n && !!facts && facts.expressions.has(e.key);
   }
   m = NOT_IT.exec(text);
   if (m) {
@@ -331,20 +360,29 @@ export function readClause(clause: string, at: ClauseContext, facts: TutorReadFa
     // "Multiply the tens: 4 × 2 = 8; Write 8": a write with no place of its own is the step of the place the sentence
     // names, so it must match that step; with no place named anywhere, any step that writes it.
     const steps = stepInstructions(facts.steps);
-    return !at.boundByColon && said.every((x) => {
-      if (x.place !== null || !at.placeElsewhere) return instructionTrue(x, steps);
-      const places = at.places ?? [];
-      // A write is in the step's place; a carry comes from the step's place.
-      return places.length > 0 && instructionTrue(x, steps.filter((f) => { const p = x.verb === "write" ? f.place : f.from; return p !== null && p !== undefined && places.includes(p); }));
-    });
+    // Another clause that names a place says which step the instruction is in ("In the ones, carry 1 to the hundreds"):
+    // it must be an instruction of that step (review of #1047), whatever place the instruction itself names.
+    const places = at.places ?? [];
+    const inPlace = places.length === 0 ? steps : steps.filter((f) => f.from !== null && f.from !== undefined && places.includes(f.from));
+    // "Write 6 and carry 1": one step's two instructions, never a write of one step and a carry of another ("Write 6 in
+    // the tens and carry 1 to the tens", review of #1047).
+    const froms = [...new Set(inPlace.map((f) => f.from ?? null))];
+    const oneStep = said.some((x) => x.verb === "carry") && said.length > 1;
+    return !at.boundByColon && (!oneStep ? said.every((x) => instructionTrue(x, inPlace)) : froms.some((from) => said.every((x) => instructionTrue(x, inPlace.filter((f) => (f.from ?? null) === from)))));
   }
   const count = countOf(text);
   if (count) return alone && !at.boundByColon && countKeys(count).some((k) => facts.expressions.has(k));
   m = MODEL.exec(text);
   if (m) {
-    // "Picture 4 blocks and take 2 away": a model of one of the question's own subtractions.
-    const [a, b] = [value(m[1]), value(m[2])];
-    return a !== null && b !== null && b <= a && alone && !at.boundByColon && facts.expressions.has(expressionKey([a, b], ["-"]));
+    // "Picture 4 blocks and take 2 away": a model of one of the question's own subtractions. Both things are one kind
+    // ("4 ones and take 2 tens away" is not read, review of #1047); a place names the step it models.
+    const [a, b] = [value(m[1]), value(m[3])];
+    const [first, second] = [m[2].toLowerCase(), m[4]?.toLowerCase()];
+    if (second !== undefined && second !== "of them" && second.replace(/s$/, "") !== first.replace(/s$/, "")) return false;
+    const place = /^(?:tens|ones)$/.test(first) ? placeOf(first) : null;
+    const key = a === null || b === null ? "" : expressionKey([a, b], ["-"]);
+    const steps = facts.expressionPlaces?.get(key);
+    return a !== null && b !== null && b <= a && alone && !at.boundByColon && facts.expressions.has(key) && (place === null || (!!steps && steps.has(place)));
   }
   m = DIGIT_OF.exec(text);
   if (m) {
@@ -360,6 +398,8 @@ export function readClause(clause: string, at: ClauseContext, facts: TutorReadFa
     if (e.key === facts.question) return true;
     // After an offer of a new question ("Want to try a twin question: 38 + 27?"): it names that question, and claims nothing.
     if (at.offer) return true;
+    // Beside a place it is the work of ("Now add the tens: 1 + 2 + 3"): that place's own step.
+    if ((at.framedBy ?? []).length > 0) return !own && (at.framedBy ?? []).every((p) => facts.expressionPlaces?.get(e.key)?.has(p) ?? false);
     return !own && !at.placeElsewhere && !at.boundByColon && facts.expressions.has(e.key);
   }
   return false;
@@ -396,4 +436,10 @@ export function countedList(parts: readonly string[]): Set<number> {
     for (const x of run) read.add(x.at);
   }
   return read;
+}
+
+/** The operations a clause works, as keys ("4 × 2 = 8" works "*2,4"). */
+export function expressionsIn(clause: string): string[] {
+  const re = new RegExp(String.raw`${N}(?:\s*(?:\+|-|−|minus|plus|×|times)\s*${N})+`, "gi");
+  return [...clause.replace(/[−–]/g, "-").matchAll(re)].flatMap((m) => { const e = expressionOf(m[0]); return e ? [e.key] : []; });
 }

@@ -137,6 +137,9 @@ function itemsOf(sentence: string): Item[] {
   return items;
 }
 
+/** How many numbers the claim reader finds in a text ("no one" holds none: "one" there is a pronoun). */
+export const termCount = (text: string): number => itemsOf(text).filter((x) => x.kind === "term").length;
+
 /** "a ÷ b = q R r", in digits or words ("thirteen divided by two is six remainder one"). */
 export const REMAINDER_SAID = String.raw`\b(${NUMBER_SAID})\s*(?:÷|\/|divided by)\s*(${NUMBER_SAID})\s*(?:=|is|equals|makes)\s*(${NUMBER_SAID})\s*(?:with a remainder of|with remainder|remainder|R|r)\s*(${NUMBER_SAID})(?![\w.]*\d)`;
 
@@ -266,11 +269,15 @@ export function falseClaims(sentence: string, op?: "add" | "subtract", trades: r
  * Words that relate numbers ("4 is greater than 8", "12, so 4"): each must be inside a claim code read (two-layer true
  * math, 2026-11-15). The relation items (is, are, equals, makes, becomes, =) count too, and every number.
  */
+/** What the core puts in place of a clause it read whole and found true (tutor.ts unreadMath): a plain link here. */
+export const READ_MARK = "⁂";
+
 /** Words that may stand next to a read number without changing it. Any other word next to it sends the sentence to the math review. */
 const LINK_WORDS = new Set(["and", "so", "then", "now", "next", "first", "because", "in", "on", "at", "the", "we", "you", "it", "yes", "okay", "ok", "here", "also", "too", "from", "to", "for", "with", "is", "are", "what", "get", "gives", "make", "makes", "left", "if", "when", "after", "before", "this", "that's", "but",
-  // A clause mark (the core splits clauses there, and blanks a clause it read as ";"), the {name} token and an attention
-  // word before a claim cannot change a number (coverage round of 2026-11-15).
-  ":", ";", "{", "}", "careful",
+  // The mark the core leaves for a clause it read whole (READ_MARK), the {name} token and an attention word before a
+  // claim cannot change a number (coverage round of 2026-11-15). A ":" or ";" is not a link: the word before it is read
+  // as next to the number ("False: 12 minus 8 is 4").
+  READ_MARK, "{", "}", "careful",
   // Words that say who found a claim ("you said 12 minus 8 is 4"): the claim and its numbers stay as code read them.
   "said", "found", "got", "since"]);
 const RELATION_WORDS = new Set(["greater", "less", "more", "fewer", "bigger", "smaller", "larger", "higher", "lower", "than", "same", "equal", "twice", "double", "half"]);
@@ -419,7 +426,10 @@ export function readClaims(sentence: string, op?: "add" | "subtract", trades: re
       // "12 minus 8 is 4, not 5": the "not" names a value the claim's result is not (coverage round of 2026-11-15).
       const other = wordAt(items, at) === "not" && !rels.some((r) => r.negated) ? full(at + 1) : null;
       const result = sides.at(-1)!;
-      if (other && !other.ops) {
+      // Only a "not C" read whole: a word after C ("not 4 percent") leaves it for the math review, never refused.
+      const after = items[other?.next ?? -1];
+      const whole = after === undefined || (after.kind === "other" && (LINK_WORDS.has(after.word ?? "") || /^[:;.!?]$/.test(after.word ?? "")));
+      if (other && !other.ops && whole) {
         if (near(other.value, result.value)) problems.push(`it says ${result.value} is not ${other.value}`);
         else { mark(at, other.next); at = other.next; }
       }
@@ -437,7 +447,10 @@ export function readClaims(sentence: string, op?: "add" | "subtract", trades: re
   // squared", "4 million", "false that 12 minus 8 is 4"): such a claim is not read whole (final check of #1044).
   for (const k of used) {
     if (items[k]?.kind !== "term") continue;
-    for (const n of [k - 1, k + 1]) {
+    for (const step of [-1, 1]) {
+      // Through a clause mark to the word beyond it: a ":" or ";" changes nothing, so the word before it counts.
+      let n = k + step;
+      while (items[n]?.kind === "other" && /^[:;]$/.test((items[n] as Extract<Item, { kind: "other" }>).word ?? "")) n += step;
       const it = items[n];
       const w = it?.kind === "other" ? it.word ?? "" : "";
       if (w && !used.has(n) && !LINK_WORDS.has(w)) unread.push(w);

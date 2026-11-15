@@ -2,15 +2,23 @@ import { describe, expect, it } from "vitest";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { teachingPackage } from "@/lib/maya-teaching";
 import { storedPlaceValue } from "@/lib/maya-teaching/place-value-samples";
-import type { OperationPackage } from "@/lib/question-package";
+import { operationResult, workedSteps, type Operation, type OperationPackage } from "@/lib/question-package";
 import { checkTutorSay, tutorKind, tutorReadFacts } from "./tutor";
 
 // More true math read by code alone (two-layer true math, coverage round of 2026-11-15): for each new shape, true
 // sentences now pass with no math-truth review, and their false neighbours (a wrong number, place or carry, a modifier
 // word) are refused or still go to the review. The true sentences are from the real corpus of 2026-11-14.
 
+const SUB = SAMPLE_PACKAGES["subtract-52-28"] as OperationPackage;
+/** A question made from an operation, as a call gets it (the review of #1047 used 78 + 56 and 373 × 6). */
+function make(op: Operation): OperationPackage {
+  const easy: Operation = { kind: "add", operands: [2, 3] };
+  const text = `${op.operands[0]} ${op.kind === "add" ? "+" : op.kind === "subtract" ? "−" : "×"} ${op.operands[1]} = ?`;
+  return { ...SUB, id: text, text, operationSource: "maya-teaching", operation: op, steps: workedSteps(op), answer: { value: operationResult(op), accepted: [], unit: null }, wrongAnswers: [{ value: { type: "number", value: 999 }, cause: "careless", description: "A made-up error.", step: null }], easierExample: { text: "2 + 3 = ?", operation: easy, answer: operationResult(easy), steps: workedSteps(easy) } } as OperationPackage;
+}
 const P = {
-  sub: SAMPLE_PACKAGES["subtract-52-28"] as OperationPackage,
+  sub: SUB,
+  bigadd: make({ kind: "add", operands: [78, 56] }),
   add: SAMPLE_PACKAGES["add-27-39"] as OperationPackage,
   pv: teachingPackage(storedPlaceValue({ variant: "1.2", n0: 48942, place: "ten thousands" })) as OperationPackage,
 };
@@ -33,7 +41,7 @@ const SHAPES: { shape: string; yes: [Q, string][]; no: [Q, string][] }[] = [
   },
   {
     shape: "you can't take a bigger number from a smaller one",
-    yes: [["sub", "You can't take 8 from 2 ones."], ["sub", "Good question: in the ones, 2 is too small to take 8 from."], ["sub", "We can't do 2 minus 8, so we use the 12 ones from the trade."]],
+    yes: [["sub", "You can't take 8 from 2 ones."], ["sub", "We can't do 2 minus 8, so we use the 12 ones from the trade."]],
     no: [["sub", "You can't take 2 from 8."], ["sub", "8 is too small to take 2."], ["sub", "We can't do 8 minus 2."], ["sub", "You can't take 8 from 2, I think."]],
   },
   {
@@ -72,6 +80,47 @@ const SHAPES: { shape: string; yes: [Q, string][]; no: [Q, string][] }[] = [
     no: [["sub", "We write 4 in the ones, roughly."], ["sub", "We write 4 in the ones, or so."], ["sub", "Maybe, we write 4 in the ones."], ["sub", "No, 12 minus 8 is 4 percent."], ["sub", "After the trade, 12 minus 8 is 4 squared."], ["sub", "It is false that we write 4 in the ones."], ["sub", "We never write 4 in the ones."], ["sub", "You said 12 minus 8 is 4 percent."]],
   },
 ];
+
+// The Sol review of #1047 (head 8d7866694): each false sentence reached the child with no review. Each binding case
+// must now be refused or go to the math review; its true control passes on code alone.
+const REVIEW_1047: { id: string; no: [Q, string]; yes: [Q, string] }[] = [
+  { id: "a borrow's destination", no: ["sub", "We borrowed 1 ten to the hundreds."], yes: ["sub", "We borrowed 1 ten to the ones."] },
+  { id: "a carry's unit and destination", no: ["add", "Carry 1 hundred to the tens."], yes: ["add", "Carry 1 ten to the tens."] },
+  { id: "the step a place names", no: ["bigadd", "In the ones, carry 1 to the hundreds."], yes: ["bigadd", "In the ones, carry 1 to the tens."] },
+  { id: "a digit is 0 to 9", no: ["sub", "The ones digit is 12."], yes: ["sub", "The ones digit is 4."] },
+  { id: "\"after the trade\"", no: ["sub", "We had 5 tens after the trade and take away 2 tens."], yes: ["sub", "We had 4 tens after the trade and take away 2 tens."] },
+  { id: "each count's unit", no: ["sub", "We cannot do 2 tens minus 8."], yes: ["sub", "We cannot do 2 minus 8."] },
+  { id: "both things of a model", no: ["sub", "Picture 4 ones and take 2 tens away."], yes: ["sub", "Picture 4 tens and take 2 tens away."] },
+  { id: "a count and its end", no: ["add", "Count up 7 from 9 to 12: 10, 11, 12."], yes: ["add", "Count up 7 from 9 to 16: 10, 11, 12."] },
+  { id: "a word before a colon", no: ["sub", "False: 12 minus 8 is 4."], yes: ["sub", "Careful: 12 minus 8 is 4."] },
+];
+
+describe("the review of #1047: every word of a clause is read", () => {
+  for (const { id, no, yes } of REVIEW_1047) {
+    it(`${id}: the false sentence is not passed on code alone, its true control is`, () => {
+      expect(layer(...no)).not.toBe("code");
+      expect(layer(...yes)).toBe("code");
+    });
+  }
+  it("P2: a \"not\" with a word after it goes to the review, never refused", () => {
+    expect(layer("sub", "12 minus 8 is 4, not 4 percent.")).toBe("review");
+    expect(layer("sub", "12 minus 8 is 4, not 5.")).toBe("code");
+    expect(layer("sub", "12 minus 8 is 4, not 4.")).toBe("refused");
+  });
+  it("a leftover clause, a place frame and a joined write and carry are read whole or go to the review", () => {
+    const no: [Q, string][] = [
+      ["sub", "We write 4 in the ones, so not."], ["sub", "We write 4 in the ones, said no one."], ["sub", "In the tens, 12 minus 8 is 4."],
+      ["sub", "The tens: 12 minus 8 is 4."], ["add", "Write 6 in the tens and carry 1 to the tens."], ["bigadd", "Write 4 in the ones and carry 1 to the hundreds."],
+      ["add", "Add the tens: 7 + 9."], ["add", "Now add the ones: 1 + 2 + 3."], ["sub", "So this is false: we write 4 in the ones."], ["bigadd", "In the ones, carry 1 to the hundreds."],
+    ];
+    const yes: [Q, string][] = [
+      ["sub", "In the ones, 12 minus 8 is 4."], ["add", "Write 6 and carry 1 to the tens."], ["bigadd", "Write 4 in the ones and carry 1 to the tens."],
+      ["add", "Add the ones: 7 + 9."], ["add", "Now add the tens: 1 + 2 + 3."], ["sub", "So we borrow: 2 ones become 12 ones."], ["sub", "You borrowed a ten to get 12 ones, and that was the hard part."],
+    ];
+    expect(no.filter(([q, line]) => layer(q, line) === "code").map(([, line]) => line)).toEqual([]);
+    expect(yes.filter(([q, line]) => layer(q, line) !== "code").map(([, line]) => line)).toEqual([]);
+  });
+});
 
 describe("more true math read by code alone", () => {
   for (const { shape, yes, no } of SHAPES) {

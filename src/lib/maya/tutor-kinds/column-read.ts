@@ -58,18 +58,23 @@ const at = (facts: PlaceFacts[], place: string | null) => (place === null ? null
 
 const READERS: readonly [RegExp, Reader][] = [
   // "we have 4 tens and take away 2 tens", "you have 12 ones and we take away 8 ones"
-  [new RegExp(String.raw`${LEAD}${WHO}(?:have|had)\s+(${N})\s+(${P})(?:\s+(?:left|now|on top))?(?:\s+after the trade)?\s+and\s+${WHO}(?:take|took)\s+away\s+(?:the\s+)?(${N})\s+(${P})$`, "i"), (m, facts) => {
-    const f = at(facts, placeName(m[2]));
-    const [a, b] = [num(m[1]), num(m[3])];
-    return !!f && placeName(m[4]) === f.place && a !== null && b !== null && b === f.bottom && (/\bhad\b/i.test(m[0]) ? f.printed.includes(a) : (f.traded ?? f.printed[0]) === a);
+  [new RegExp(String.raw`${LEAD}${WHO}(have|had)\s+(${N})\s+(${P})(\s+(?:left|now|on top))?(\s+after the trade)?\s+and\s+${WHO}(?:take|took)\s+away\s+(?:the\s+)?(${N})\s+(${P})$`, "i"), (m, facts) => {
+    const f = at(facts, placeName(m[3]));
+    const [a, b] = [num(m[2]), num(m[6])];
+    if (!f || placeName(m[7]) !== f.place || a === null || b === null || b !== f.bottom) return false;
+    // Every word of the time is read (review of #1047): "had" with no "after" is the printed top; "have", "left",
+    // "now" or "after the trade" is the top after the trade.
+    const before = /^had$/i.test(m[1]) && !m[4] && !m[5];
+    return before ? f.printed.includes(a) : (f.traded ?? f.printed[0]) === a;
   }],
   // "we have 4 tens left after the trade", "after the trade we have 12 ones", "there are 4 tens left"
   [new RegExp(String.raw`${LEAD}(?:after (?:the trade|we borrow|we borrowed|the borrow)\s+)?(?:${WHO}(?:have|do have|still have)|there\s+(?:are|is))\s+(${N})\s+(${P})(\s+(?:left|now|on top))?(\s+(?:now|after the trade|after we borrowed|after borrowing|after the borrow))?$`, "i"), (m, facts) => {
     const f = at(facts, placeName(m[2]));
     const a = num(m[1]);
     if (!f || a === null || f.bottom === null) return false;
-    // After the trade: the traded top. "left" with no trade said: the traded top, or what is left after taking away.
-    return f.traded !== null ? a === f.traded : !!m[3] && !/after/i.test(m[4] ?? "") && /left/i.test(m[3]) && a === f.write && f.printed.length > 0;
+    // Every word is read: "have", "left", "now", "on top" and "after the trade" all mean the top after the trade, which
+    // only a place that traded has (review of #1047).
+    return f.traded !== null && a === f.traded;
   }],
   // "we had 5 tens"
   [new RegExp(String.raw`${LEAD}${WHO}(?:had|started with)\s+(${N})\s+(${P})$`, "i"), (m, facts) => {
@@ -97,15 +102,20 @@ const READERS: readonly [RegExp, Reader][] = [
     return a !== null && facts.some((f) => f.took && f.traded === a && (place === null || f.place === place));
   }],
   // "we traded 1 ten away", "you borrowed a ten", "we took one ten", "we traded 1 ten for ones"
-  [new RegExp(String.raw`${LEAD}${WHO}(?:traded|borrowed|borrow|took|take|trade|regrouped|used the (?:borrowed|traded))\s+(?:(?:1|one|a|the)\s+)?(ten|hundred|thousand)(?:\s+away(?:\s+for\s+(?:${P}))?|\s+(?:for|into)\s+(?:${P})|\s+to the (?:${P}))?(?:\s+to\s+(?:get|make)\s+(${N})\s+(${P})|\s+and it worked)?$`, "i"), (m, facts) => {
+  [new RegExp(String.raw`${LEAD}${WHO}(?:traded|borrowed|borrow|took|take|trade|regrouped|used the (?:borrowed|traded))\s+(?:(?:1|one|a|the)\s+)?(ten|hundred|thousand)(?:\s+away(?:\s+for\s+(${P}))?|\s+(?:for|into)\s+(?:(?:10|ten)\s+)?(${P})|\s+to the (${P}))?(?:\s+to\s+(?:get|make)\s+(${N})\s+(${P})|\s+and it worked)?$`, "i"), (m, facts) => {
     const place = placeName(m[1]);
     const gave = facts.findIndex((f) => f.place === place && f.gave && f.bottom !== null);
     if (gave < 1) return false;
-    // "to get 12 ones": the place it gave to, after the trade.
-    if (m[2] === undefined) return true;
     const got = facts[gave - 1];
-    return placeName(m[3]) === got.place && got.traded === num(m[2]);
+    // Where the traded unit went, when said, is the place on its right (review of #1047: "1 ten to the hundreds").
+    const to = m[2] ?? m[3] ?? m[4];
+    if (to !== undefined && placeName(to) !== got.place) return false;
+    // "to get 12 ones": the place it gave to, after the trade.
+    if (m[5] === undefined) return true;
+    return placeName(m[6]) === got.place && got.traded === num(m[5]);
   }],
+  // "so we borrow", "we borrowed": a subtraction here trades.
+  [new RegExp(String.raw`${LEAD}${WHO}(?:borrow|borrowed|trade|traded|regroup|regrouped)$`, "i"), (_m, facts) => facts.some((f) => f.took && f.bottom !== null)],
   // "which is why we traded", "and that's why we borrowed": a subtraction here trades.
   [new RegExp(String.raw`${LEAD}(?:which is|that's|that is)\s+why\s+(?:we|you)\s+(?:traded|borrowed|regrouped|needed to trade|needed to borrow)$`, "i"), (_m, facts) => facts.some((f) => f.took && f.bottom !== null)],
   // "the number is still 52", "the number 52 stays the same", "the number stayed 52": a trade keeps the number.
@@ -115,9 +125,17 @@ const READERS: readonly [RegExp, Reader][] = [
     return facts.some((f) => f.took) && said.length > 0 && said.every((n) => n === top);
   }],
   // "the ones are 4 and the tens are 2", "now the ones digit is 4": the answer's digits once written.
-  [new RegExp(String.raw`${LEAD}the\s+(${P})(?:\s+digit|\s+answer)?\s+(?:are|is)\s+(${N})(?:\s+now)?(?:\s+and\s+the\s+(${P})(?:\s+digit|\s+answer)?\s+(?:are|is)\s+(${N})(?:\s+now)?)?$`, "i"), (m, facts) => {
-    const ok = (p: string | undefined, n: string | undefined) => { const f = at(facts, placeName(p)); const a = num(n); return !!f && a !== null && (a === f.write || (f.traded !== null && a === f.traded)); };
-    return ok(m[1], m[2]) && (m[3] === undefined || ok(m[3], m[4]));
+  [new RegExp(String.raw`${LEAD}the\s+(${P})(\s+digit|\s+answer)?\s+(?:are|is)\s+(${N})(\s+now)?(?:\s+and\s+the\s+(${P})(\s+digit|\s+answer)?\s+(?:are|is)\s+(${N})(\s+now)?)?$`, "i"), (m, facts) => {
+    // "the ones digit is 4", "the ones answer is 4": the digit written, 0 to 9 (review of #1047: "The ones digit is 12"
+    // names a place amount, not a digit). "The ones are 12 now": what the place shows after the trade.
+    const ok = (p: string | undefined, named: string | undefined, n: string | undefined, now: string | undefined) => {
+      const f = at(facts, placeName(p));
+      const a = num(n);
+      if (!f || a === null) return false;
+      if (named) return !now && a >= 0 && a <= 9 && a === f.write;
+      return a === f.write || (f.traded !== null && a === f.traded);
+    };
+    return ok(m[1], m[2], m[3], m[4]) && (m[5] === undefined || ok(m[5], m[6], m[7], m[8]));
   }],
   // "put the 2 tens next to the 4 ones": the answer's digits.
   [new RegExp(String.raw`${LEAD}${WHO}(?:put|write)\s+the\s+(${N})\s+(${P})\s+next to\s+the\s+(${N})\s+(${P})$`, "i"), (m, facts) => {
