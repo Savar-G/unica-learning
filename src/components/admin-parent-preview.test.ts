@@ -96,10 +96,10 @@ it.each(PARENT_PREVIEW_VIEWS.find(view => view.id === "overview")!.scenarios.map
 it("shows the sentence under each skill, written by the real module from facts of its own scenario (#989)", () => {
   const rows = (scenario: string, child = "first") => [...dom(renderParentPreview(previewSelection({ view: "overview", scenario, family: "two", child, size: "desktop" }), styles)).querySelectorAll(".po-skill")]
     .map(row => [row.querySelector("b")?.textContent, row.querySelector("small")?.textContent ?? null]);
-  // Needs help is the list that opens: a mistake from the table's own text, and no next-workbook clause with no next workbook.
+  // Needs help is the list that opens: a mistake in its reviewed parent words, and no next-workbook clause with no next workbook.
   expect(rows("active")).toEqual([
-    ["Value of each digit in big numbers", "Reads a digit's face value or the wrong place, not its place value."],
-    ["Subtracting across a zero", "Subtracts the smaller digit from the larger when the top number has a zero."],
+    ["Value of each digit in big numbers", "Mixes up which place each digit is in, such as tens and hundreds."],
+    ["Subtracting across a zero", "Subtracts the wrong way across a zero."],
   ]);
   // With the next workbook in the mail, and only then, the sentence says what comes next.
   for (const scenario of ["book_2_mailed", "book_over"]) {

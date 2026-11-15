@@ -11,7 +11,7 @@ import { capitalName, plainSkillName } from "@/lib/skill-name";
 import type { LearningRow } from "@/lib/learning-style";
 import { firstDeliveryMonth, offeredSummaryMonth } from "@/lib/monthly-summary-offer";
 import { STRUGGLING_WINDOW_DAYS, needsHelpStandards, repeatedMistakes, type HelpMark } from "@/lib/needs-help";
-import { skillSentence, type MistakeFact } from "@/lib/skill-sentences";
+import { firstAnswerAt, skillSentence, type MistakeFact } from "@/lib/skill-sentences";
 import { nextBook, type NextBook } from "@/lib/next-book";
 import type { ParentPlan } from "@/lib/parent-plan";
 import type { CurriculumId } from "@/lib/signup";
@@ -585,8 +585,9 @@ export async function readOverview(reader: ParentViewReader, childId: string, no
     // A failed history read leaves the dates out and keeps the counts from the rule.
     // "Back in the next workbook" only when a next workbook exists, made and in the mail, with questions on the skill: the
     // newest shipped book is that book exactly when it is newer than the delivered one (`onTheWay`), and `read` holds its
-    // standards. A plan that ended has no next workbook.
-    const nextStandards: ReadonlySet<string> = read && onTheWay !== null && !child.readOnly ? new Set(read.workbookStandards) : new Set();
+    // standards. It is a "next" workbook only behind a delivered one: when Book 1 is the book in the mail (`days` is null),
+    // nothing comes before it. A plan that ended has no next workbook.
+    const nextStandards: ReadonlySet<string> = read && days !== null && onTheWay !== null && !child.readOnly ? new Set(read.workbookStandards) : new Set();
     // A failed read of the causes leaves them out and nothing else: a sentence then names no mistake.
     const mistakes = read ? await reader.recentMistakes(child.id, now - (STRUGGLING_WINDOW_DAYS + 1) * 86_400_000).catch((e) => {
       console.error("[parent-view] recent mistakes read failed", e instanceof Error ? e.message : "failed");
@@ -643,21 +644,18 @@ function homeSkills(
     const at = Date.parse(row.changedAt);
     if (Number.isFinite(at) && at >= (lastRow.get(row.standard)?.at ?? -Infinity)) lastRow.set(row.standard, { ...row, at });
   }
-  // The first row of a standard is when its first state was recorded: a Learning skill's "Started <day>".
-  const firstRow = new Map<string, StateChange & { at: number }>();
-  for (const row of history) {
-    const at = Date.parse(row.changedAt);
-    if (Number.isFinite(at) && at < (firstRow.get(row.standard)?.at ?? Infinity)) firstRow.set(row.standard, { ...row, at });
-  }
   const marksOf = new Map<string, HelpMark[]>();
   for (const mark of marks) marksOf.set(mark.standard, [...(marksOf.get(mark.standard) ?? []), mark]);
   const mistakesOf = new Map<string, MistakeFact[]>();
   for (const { standard, cause, at } of mistakes) mistakesOf.set(standard, [...(mistakesOf.get(standard) ?? []), { cause, at }]);
   const sentenceOf = (s: StandardSkillState, group: "mastered" | "learning" | "needs_help", masteredOn: string | null): string | null => {
-    const started = firstRow.get(s.standard);
+    const marksOfStandard = marksOf.get(s.standard) ?? [];
+    // "Started <day>" is the day of the child's first marked answer on the skill: never when a book or a state row was recorded.
+    const startedAt = firstAnswerAt(marksOfStandard);
     return skillSentence({
-      standard: s.standard, group, state: s.state, reason: s.reason, marks: marksOf.get(s.standard) ?? [], mistakes: mistakesOf.get(s.standard) ?? [],
-      masteredOn, startedOn: started?.state === "working_on" && started.at !== first ? dayWords(localDay(started.at, zone), today) : null,
+      standard: s.standard, group, state: s.state, reason: s.reason, evidence: s.evidence, evidenceAt: s.evidenceAt,
+      marks: marksOfStandard, mistakes: mistakesOf.get(s.standard) ?? [],
+      masteredOn, startedOn: startedAt === null ? null : dayWords(localDay(startedAt, zone), today),
       inNextWorkbook: nextStandards.has(s.standard), now, zone,
     })?.text ?? null;
   };

@@ -357,20 +357,50 @@ describe("the Supabase reader of the Overview (#560)", () => {
     expect(asked.get("child_id")).toBe(`eq.${CHILD}`);
     expect(r.session.filter((u) => u.pathname.endsWith("/skill_state_history"))).toEqual([]);
   });
-  it("reads a child's wrong answers with a known cause with the secret key, filtered on the parent and the child; only three fields leave (#989)", async () => {
-    const r = overviewReader({ learning_events: [
-      { id: "e1", skill_standard: "3.1", mistake: "O3", occurred_at: "2026-11-03T20:00:00Z", result: "wrong", stuck_step: "tens", question_source: "workbook", hints: 2 },
-      { id: "e2", skill_standard: "3.2", mistake: null, occurred_at: "2026-11-03T20:00:00Z" },
-    ] });
+  it("reads a child's wrong answers with a known cause from tests only, with the secret key, filtered on the parent and the child; only three fields leave (#989)", async () => {
+    const r = overviewReader({
+      learning_events: [
+        { id: "e1", skill_standard: "3.1", mistake: "O3", occurred_at: "2026-11-03T20:00:00Z", assessment_id: TEST, assessment_question_id: "q1", result: "wrong", stuck_step: "tens", question_source: "assessment", hints: 2 },
+        { id: "e2", skill_standard: "3.2", mistake: null, occurred_at: "2026-11-03T20:00:00Z", assessment_id: TEST, assessment_question_id: "q2" },
+      ],
+      reports: [{ assessment_id: TEST, reliability: null }],
+      assessments: [{ id: TEST, left_out: null }],
+    });
     expect(await r.reader.recentMistakes(CHILD, Date.parse("2026-10-20T00:00:00Z"))).toEqual([{ standard: "3.1", cause: "O3", at: "2026-11-03T20:00:00Z" }]);
     const asked = select(r.admin, "learning_events");
-    expect(asked.get("select")).toBe("skill_standard,mistake,occurred_at");
+    expect(asked.get("select")).toBe("skill_standard,mistake,occurred_at,assessment_id,assessment_question_id");
     expect(asked.get("parent_id")).toBe(`eq.${PARENT}`);
     expect(asked.get("child_id")).toBe(`eq.${CHILD}`);
+    // Only a test's answers: a call or a marked page records no reviewed cause.
+    expect(asked.get("source")).toBe("eq.assessment");
     expect(asked.get("result")).toBe("eq.wrong");
     expect(asked.get("mistake")).toBe("not.is.null");
     expect(asked.get("occurred_at")).toBe("gte.2026-10-20T00:00:00.000Z");
+    for (const table of ["reports", "assessments"]) {
+      const own = select(r.admin, table);
+      expect(own.get("parent_id")).toBe(`eq.${PARENT}`);
+      expect(own.get("child_id")).toBe(`eq.${CHILD}`);
+    }
     expect(r.session.filter((u) => u.pathname.endsWith("/learning_events"))).toEqual([]);
+  });
+  it("leaves out the answers of a test the report calls unreliable, a test with no report yet, and a rushed answer the score left out (#989)", async () => {
+    const OTHER = "55555555-5555-4555-8555-555555555555";
+    const UNREPORTED = "66666666-6666-4666-8666-666666666666";
+    const event = (id: string, assessment: string, question: string) => ({ id, skill_standard: "3.1", mistake: "O3", occurred_at: "2026-11-03T20:00:00Z", assessment_id: assessment, assessment_question_id: question });
+    const r = overviewReader({
+      learning_events: [event("a", TEST, "q1"), event("b", TEST, "q2"), event("c", OTHER, "q1"), event("d", UNREPORTED, "q1")],
+      // The reliability note is the report's own: present means the test is unreliable. UNREPORTED has no report.
+      reports: [{ assessment_id: TEST, reliability: null }, { assessment_id: OTHER, reliability: { reason: "fast" } }],
+      // q2 of TEST was a rushed wrong answer the placement left out of the score.
+      assessments: [{ id: TEST, left_out: ["q2"] }, { id: OTHER, left_out: null }, { id: UNREPORTED, left_out: null }],
+    });
+    expect(await r.reader.recentMistakes(CHILD, Date.parse("2026-10-20T00:00:00Z"))).toEqual([{ standard: "3.1", cause: "O3", at: "2026-11-03T20:00:00Z" }]);
+  });
+  it("makes no report or test read when no cause is recorded, and throws when a read fails (#989)", async () => {
+    const none = overviewReader({ learning_events: [] });
+    expect(await none.reader.recentMistakes(CHILD, 0)).toEqual([]);
+    expect(none.admin.map((u) => u.pathname.replace("/rest/v1/", ""))).toEqual(["learning_events"]);
+    await expect(reader("learning_events").reader.recentMistakes(CHILD, 0)).rejects.toThrow("recent mistakes read");
   });
   it("reads a shipped workbook's question standards with the parent's session (#1003)", async () => {
     const r = overviewReader({ workbook_questions: [{ page_id: "p1", standard: "3.1" }, { page_id: "p2", standard: null }] });

@@ -595,12 +595,29 @@ describe("the Home (#560, #1003)", () => {
         expect(sentences(got?.learning)).toEqual([["3.4", "Getting steadier: right the last 3 times"], ["3.5", null]]);
         expect(JSON.stringify(got)).not.toMatch(/%|percent/);
       });
-      it("Learning: says when it started from the history (a later row, not the starting state); none for a skill in the first batch", async () => {
+      it("Learning: says 'Started' from the child's first marked answer on the skill, not from a history row", async () => {
         const first = "2026-11-02T20:00:00Z";
-        const got = await skills({ ...inBook, history: [change("3.4", "working_on", first), change("3.5", "working_on", first), change("3.6", "mastered", first), change("3.5", "needs_review", "2026-11-03T20:00:00Z")] });
-        expect(sentences(got?.learning)).toEqual([["3.4", null], ["3.5", null]]);
-        const later = await skills({ ...inBook, history: [change("3.6", "mastered", first), change("3.4", "working_on", "2026-11-03T20:00:00Z")] });
-        expect(sentences(later?.learning)).toEqual([["3.4", "Started Tuesday"], ["3.5", null]]);
+        const history = [change("3.6", "mastered", first), change("3.4", "working_on", "2026-11-03T20:00:00Z")];
+        // A history row alone, with no marked answer: no start.
+        expect(sentences((await skills({ ...inBook, history }))?.learning)).toEqual([["3.4", null], ["3.5", null]]);
+        // One wrong answer and one right one on 3.4, the first on Oct 28: the start is that day, whatever the history says.
+        const got = await skills({ ...inBook, history, ...withMarks(answered("3.4", ["w", "r"])) });
+        expect(sentences(got?.learning)).toEqual([["3.4", "Started Oct 28"], ["3.5", null]]);
+        // A blank answer is not a start.
+        const blankMark = { standard: "3.4", right: false, review: false, at: "2026-11-01T18:00:00Z" };
+        const blank = await skills({ ...inBook, overviewProgress: [{ ...own, marks: [], skillMarks: [blankMark], helpMarks: [{ ...blankMark, blank: true }] }] });
+        expect(sentences(blank?.learning)).toEqual([["3.4", null], ["3.5", null]]);
+      });
+      it("Learning: a skill only in a Book 2 that has not been delivered has no start, whatever a rebuild recorded before delivery", async () => {
+        // Book 1 was delivered; Book 2 shipped and is in the mail. 3.5 is only in Book 2, and a rebuild already wrote its working_on row.
+        const two = { workbooks: [{ ...own, id: "wb-1", number: 1, status: "shipped" }, { ...own, id: "wb-2", number: 2, status: "shipped" }] };
+        const book2 = { ...two, questions: [question("d1a", "3.4"), { parentId: "parent-1", workbookId: "wb-2", pageId: "2-d0", standard: "3.5" }] };
+        const rebuilt = [change("3.6", "mastered", "2026-11-02T20:00:00Z"), change("3.5", "working_on", "2026-11-03T20:00:00Z")];
+        const before = await skills({ ...book2, history: rebuilt });
+        expect(sentences(before?.learning)).toEqual([["3.5", null]]);
+        // Once the child has answered the skill on a marked page, the sentence says that day.
+        const after = await skills({ ...book2, history: rebuilt, ...withMarks(answered("3.5", ["w", "r"])) });
+        expect(sentences(after?.learning)).toEqual([["3.5", "Started Oct 28"]]);
       });
       it("Needs help: the table's text for a cause marked on 2 wrong answers lately, and no next-workbook clause without a next workbook", async () => {
         const got = await skills({
@@ -620,6 +637,9 @@ describe("the Home (#560, #1003)", () => {
         expect(sentences(has?.needsHelp)).toEqual([["3.2", "Forgets to carry when adding. Back in the next workbook."]]);
         const lacks = await skills({ ...twoQuestions("3.5"), ...causes });
         expect(sentences(lacks?.needsHelp)).toEqual([["3.2", "Forgets to carry when adding."]]);
+        // Book 1 is the book in the mail: nothing comes before it, so it is never "the next workbook".
+        const first = await skills({ ...inBook, ...causes, deliveries: [] });
+        expect(sentences(first?.needsHelp)).toEqual([["3.2", "Forgets to carry when adding."]]);
         // No book in the mail: the newest shipped book is the delivered one, so there is no next workbook yet.
         expect(sentences((await skills({ ...inBook, ...causes }))?.needsHelp)).toEqual([["3.2", "Forgets to carry when adding."]]);
         // A plan that ended has no next workbook.

@@ -83,10 +83,14 @@ const lowerFirst = (name: string) => `${name.slice(0, 1).toLowerCase()}${name.sl
  * sentence is exactly what a row with those facts would show. `now` is the sample Thursday, Nov 5; the sample marks and
  * mistakes are dated the days before it.
  */
-function sampleRow(code: string, name: string, group: SkillGroup, facts: { masteredOn?: string | null; startedOn?: string | null; marks?: HelpMark[]; mistakes?: MistakeFact[]; next?: boolean; reason?: "failed_review" | "needs_attention_on_test" | "in_workbook" }): SkillItemView {
+function sampleRow(code: string, name: string, group: SkillGroup, facts: { masteredOn?: string | null; startedOn?: string | null; marks?: HelpMark[]; mistakes?: MistakeFact[]; next?: boolean; reason?: "failed_review" | "needs_attention_on_test" | "in_workbook" | "secure_on_test" }): SkillItemView {
   const masteredOn = facts.masteredOn ?? null;
+  // A reason the skill state rule can produce for the state: a Needs help row is `needs_review` from a weak test (or a slip),
+  // a Learning row is in the workbook, a Mastered row is from a test.
+  const state = group === "mastered" ? "mastered" : group === "learning" ? "working_on" : "needs_review";
+  const reason = facts.reason ?? (group === "mastered" ? "secure_on_test" : group === "learning" ? "in_workbook" : "needs_attention_on_test");
   const sentence = skillSentence({
-    standard: code, group, state: group === "mastered" ? "mastered" : group === "learning" ? "working_on" : "needs_review", reason: facts.reason ?? "in_workbook",
+    standard: code, group, state, reason, evidence: reason === "in_workbook" ? "workbook" : reason === "failed_review" ? "pages" : "test", evidenceAt: reason === "in_workbook" ? null : "2026-11-04T18:00:00Z",
     marks: facts.marks ?? [], mistakes: facts.mistakes ?? [], masteredOn, startedOn: facts.startedOn ?? null, inNextWorkbook: facts.next ?? false, now: SAMPLE_NOW, zone,
   });
   return { code, name, masteredOn, sentence: sentence?.text ?? null };
@@ -110,7 +114,7 @@ function sampleSkillFacts(state: string): { skills: OverviewView["skills"]; newl
   // "Back in the next workbook" only where the next workbook is in the mail (the book_2_mailed and book_over scenarios).
   const next = state === "book_2_mailed" || state === "book_over";
   const needsHelp: SkillItemView[] = state === "empty" || quiet ? [] : [
-    // The same cause on two wrong answers lately: the table's own text for N2 and O2.
+    // The same cause on two wrong answers lately: the reviewed parent text for N2 and O2.
     sampleRow("2.3", "Value of each digit in big numbers", "needs_help", { next, mistakes: [{ cause: "N2", at: "2026-11-03T18:00:00Z" }, { cause: "N2", at: "2026-11-04T18:00:00Z" }] }),
     sampleRow("2.7", "Subtracting across a zero", "needs_help", { next, mistakes: [{ cause: "O2", at: "2026-11-02T18:00:00Z" }, { cause: "O2", at: "2026-11-04T18:00:00Z" }] }),
   ];
@@ -118,9 +122,9 @@ function sampleSkillFacts(state: string): { skills: OverviewView["skills"]; newl
     skills: {
       mastered: mastered.map(({ code, name, masteredOn }) => sampleRow(code, name, "mastered", { masteredOn })),
       learning: state === "empty" ? [] : [
-        // A wrong answer, then three right ones in a row: steadier. No marks yet, but a recorded start: when it started.
+        // A wrong answer, then three right ones in a row: steadier. Answered once on a page, then nothing steadier: when it started.
         sampleRow("2.5", "Rounding to the nearest hundred", "learning", { marks: [sampleMark("2.5", false, "2026-11-02T18:00:00Z"), sampleMark("2.5", true, "2026-11-03T18:00:00Z"), sampleMark("2.5", true, "2026-11-04T18:00:00Z"), sampleMark("2.5", true, "2026-11-05T16:00:00Z")] }),
-        sampleRow("2.6", "Number patterns", "learning", { startedOn: "Tuesday" }),
+        sampleRow("2.6", "Number patterns", "learning", { startedOn: "Tuesday", marks: [sampleMark("2.6", true, "2026-11-03T18:00:00Z")] }),
       ],
       needsHelp,
     },
