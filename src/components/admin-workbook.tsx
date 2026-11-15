@@ -168,7 +168,7 @@ function Step({ state, n, title, children }: { state: StepState; n: number; titl
 /**
  * #314: print and ship, as steps. Approve (on the draft's page), then download the PDF for the print partner and "Mark
  * printed" (approved), then "Mark shipped" (printed), then confirm the delivery (shipped). The child's first shipped
- * workbook leads to "Workbook shipped: start plan" (D-140); no plan starts here.
+ * workbook leads to "Workbook delivered: start plan" (D-140); no plan starts here.
  */
 function PrintAndShip({ detail }: { detail: WorkbookDetail }) {
   const { workbook: w, audit } = detail;

@@ -11,7 +11,7 @@
 //
 // Status: approved -> printed -> shipped, each with its time and an audit entry with the actor. A printed or shipped
 // workbook is locked: the store refuses any change to it or to its draft (#313 edits). Shipping the child's first
-// workbook answers firstShipped, so the admin is led to the existing "Workbook shipped: start plan" step (D-140); no
+// workbook answers firstShipped, so the admin is led to the existing "Workbook delivered: start plan" step (D-140); no
 // plan starts here.
 //
 // Approval freezes the print contract (#536, src/lib/workbook-print-contract.ts) as one unit with the revision it
