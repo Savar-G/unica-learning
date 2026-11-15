@@ -339,9 +339,10 @@ export const TUTOR_REPAIR_BUDGET_MS = 6_000;
  */
 export const VOICE_REPAIR_BUDGET_MS = 4_000;
 /**
- * 2026-11-15 (fallback rate): the least time a review gets on a voice repair, in ms, also when the repair's model used
- * nearly all of VOICE_REPAIR_BUDGET_MS (a sample saw a repair's reviews get 76 ms, so every sentence timed out). A
- * review with less time can only fail.
+ * 2026-11-15 (fallback rate): the review time reserved inside VOICE_REPAIR_BUDGET_MS, in ms. The repair's model may use
+ * the budget less this (2.5 s); its reviews end with the budget, so they always have at least this, and nothing of the
+ * repair goes past the 4 s cap (a sample saw a repair's reviews get 76 ms, so every sentence timed out). Review of #1099
+ * (P2): the floor is reserved inside the budget, never added after it.
  */
 export const REVIEW_FLOOR_MS = 1_500;
 /**
@@ -650,8 +651,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   let turnEndsAt = Number.POSITIVE_INFINITY;
   // After #1072: on a voice repair the reviews end with the repair's budget (VOICE_REPAIR_BUDGET_MS); otherwise no end.
   let reviewEndsAt = Number.POSITIVE_INFINITY;
-  /** A review's time limit: its own limit, or the time left of a voice repair when that is less, but not under REVIEW_FLOOR_MS. */
-  const reviewLimit = (ms: number) => Math.min(ms, Math.max(REVIEW_FLOOR_MS, reviewEndsAt - Date.now()));
+  /** A review's time limit: its own limit, or the time left of a voice repair when that is less. */
+  const reviewLimit = (ms: number) => Math.min(ms, Math.max(0, reviewEndsAt - Date.now()));
   /** The math review's own limit: a voice turn's is the conversational limit, a chat or text turn's is longer. */
   const mathLimit = (conversational: boolean) => options.reviewTimeLimitMs ?? (!conversational ? REVIEW_TIME_LIMIT_MS : options.onSayPart ? CONVERSATION_REVIEW_TIME_LIMIT_MS : CHAT_MATH_REVIEW_TIME_LIMIT_MS);
   let quietOpening = false;
@@ -1151,8 +1152,12 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         // turn was said or waits to be said: no streamed sentence and no accepted turn before it in this output (the AI
         // disclosure, safety guidance and a stop are code's own turns, and a repair never follows them).
         const voice = options.onSayPart !== undefined;
-        turnEndsAt = Date.now() + (options.repairBudgetMs ?? (voice ? VOICE_REPAIR_BUDGET_MS : TUTOR_REPAIR_BUDGET_MS));
-        if (voice) reviewEndsAt = turnEndsAt;
+        // Review of #1099 (P2): on a voice turn REVIEW_FLOOR_MS of the budget is the reviews' alone: the model stops that
+        // much before the cap, and the reviews end at it.
+        const budget = options.repairBudgetMs ?? (voice ? VOICE_REPAIR_BUDGET_MS : TUTOR_REPAIR_BUDGET_MS);
+        const repairAt = Date.now();
+        turnEndsAt = repairAt + (voice ? Math.max(0, budget - REVIEW_FLOOR_MS) : budget);
+        if (voice) reviewEndsAt = repairAt + budget;
         const quiet = voice && folded.pending.length === 0 && streamedThisOutput.length === 0;
         let filler: string | null = null;
         if (quiet && options.onRepairStart) {

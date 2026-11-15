@@ -5380,7 +5380,7 @@ function committedRead(base: Session): { read: ReturnType<typeof turnRead>; expl
  *     number (or code's own read of a miss);
  *  5. any other number is "unknown": code cannot tell whose it is or whether it is the child's answer.
  */
-function childAnswerOf(s: Session, hide: (text: string) => string): MathReviewInput["childAnswer"] {
+export function childAnswerOf(s: Session, hide: (text: string) => string): MathReviewInput["childAnswer"] {
   const pkg = s.package;
   if (!pkg || !s.turn) return null;
   const text = s.turn.text;
