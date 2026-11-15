@@ -1,0 +1,18 @@
+{
+  "round": "r-getting-started-video",
+  "route": "design direct",
+  "job_kind": "implementation",
+  "surface": "parent-help and transactional email",
+  "constraint_mode": "existing-system",
+  "base": "fb98903a07daf316bebebde6052d669239f417d9",
+  "entry": "/getting-started",
+  "issue": 1075,
+  "status": "validated; ready for independent review; not deployed",
+  "approved_asset": "walkthrough-v5-final.mp4",
+  "approved_asset_sha256": "2233b9cf6247f1ee6752bbcaf497fee65a1bb617d1c95b5fb506a1a3e6a6d1d5",
+  "design_contract": "DESIGN.md",
+  "artifacts": { "brief": "brief.md", "verification": "verification.md" },
+  "browser_evidence": ["phone-375.png", "tablet-768.png", "desktop-1440.png"],
+  "release_switches_changed": false,
+  "schema_changed": false
+}

@@ -324,7 +324,8 @@ export function MayaCall({ initial, board: firstBoard, childName }: { initial: C
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    if (text.trim() && !busy) void send({ type: "child", text: text.trim() });
+    // B1: this screen plays every batch of the call (no child ink to cover), so each one it holds was shown.
+    if (text.trim() && !busy) void send({ type: "child", text: text.trim(), ...(view.mode === "text" && view.batches.length ? { fates: view.batches.slice(-16).map((b) => ({ batchId: b.transactionId, fate: "shown" as const })) } : {}) });
   }
 
   const boardLabel = `Our board: ${view.questionText ?? "the question"}, as Maya wrote it`;

@@ -5,7 +5,7 @@ name: CI
 # named exactly `test`, needs them all and fails if any failed. Vercel lists the `test` job as a
 # Deployment Check (Settings → Build and Deployment), so a main commit whose tests fail is built but not promoted to
 # production. Branches get no Vercel build (main-only deploys, #774), so the `checks` job runs the type check that
-# `next build` would run: `next typegen` (route types), then `tsc --noEmit`.
+# needs: `next typegen` (route types), then the native TypeScript check. The build retains TypeScript 5.
 # Every main commit needs this check, or its production deploy waits forever. A push made with GITHUB_TOKEN starts no
 # workflow, so the blog publish job (blog-publish.yml) starts this one with workflow_dispatch after it pushes main.
 
@@ -140,8 +140,8 @@ jobs:
           PGPASSWORD: maya-ci-only
       - run: npx eslint src
         timeout-minutes: 5
-      - name: Type check (what next build checks)
-        run: npx next typegen && npx tsc --noEmit
+      - name: App type check
+        run: npm run typecheck
         timeout-minutes: 8
       # The root tsconfig.json excludes worker/, so the Maya voice worker's own type check and tests run here.
       - name: Voice worker type check

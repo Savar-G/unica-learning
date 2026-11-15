@@ -36,7 +36,10 @@ const nextConfig: NextConfig = {
   // only the origin as the referrer, so the next page, and any tag on it, never sees the full address (D-126).
   async headers() {
     const originOnly = [{ key: "Referrer-Policy", value: "strict-origin" }];
-    return ["/thank-you", "/account/:path*", "/auth/:path*", "/sign-in/:path*", "/unsubscribe"].map((source) => ({ source, headers: originOnly }));
+    return [
+      ...["/thank-you", "/account/:path*", "/auth/:path*", "/sign-in/:path*", "/unsubscribe"].map((source) => ({ source, headers: originOnly })),
+      { source: "/video/getting-started-2233b9cf6247.mp4", headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }, { key: "X-Robots-Tag", value: "noindex" }] },
+    ];
   },
 };
 

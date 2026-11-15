@@ -182,7 +182,17 @@ export type SessionEvent =
    * The child hung up on purpose (#323; in the admin demo, the team member playing the child): the call ends now as
    * child_stopped, after the outcome's priority (safety, content, solved). Only a failure is a technical issue.
    */
-  | { type: "hang_up"; at: number };
+  | { type: "hang_up"; at: number }
+  /**
+   * B1 ("shown means shown"): what the child's screen did with a board batch Maya sent (`batch`: its transaction id).
+   * "shown": it is on the board. "skipped": the board refused it (it would cover the child's ink). "cancelled": a voice
+   * call stopped it before its cue (the child talked first). It changes only what the tutor counts as drawn.
+   */
+  | { type: "board_fate"; at: number; batch: string; fate: BoardFate };
+
+/** What the child's screen did with one of Maya's board batches (B1). */
+export type BoardFate = "shown" | "skipped" | "cancelled";
+export const BOARD_FATES: readonly BoardFate[] = ["shown", "skipped", "cancelled"];
 
 export interface Outcome {
   /**
@@ -527,8 +537,12 @@ export interface Session {
   /**
    * D-345: the tutor core teaches this call (tutor.ts): one model message per child turn, checked as a whole. `help`
    * counts Maya's teaching messages since the child last made progress; `drawn` is what the tutor drew on the board.
+   * B1: a drawing counts as on the board only when the child's screen said it showed it. `sent` holds the keys of each
+   * batch sent with no word from the screen yet (by its transaction id): they stay in `drawn`, so nothing is sent twice,
+   * and the brief lists them as sent, not drawn. A batch the screen skipped or cancelled leaves `drawn` and `sent`, so
+   * the brief does not list it and the kind can offer it again. A batch with no word stays sent: never counted as shown.
    */
-  tutor?: { help: number; drawn: string[] };
+  tutor?: { help: number; drawn: string[]; sent?: { batch: string; keys: string[] }[] };
 }
 
 /**
@@ -1460,6 +1474,7 @@ export function step(session: Session, event: SessionEvent): StepResult {
   if (session.now !== null && event.at < session.now) return refuse(session, "invalid_event", "The clock went back.");
   if (session.outcome) return refuse(session, "ended", "The call has ended.");
   if (event.type !== "start" && session.startedAt === null) return refuse(session, "invalid_event", "The call has not started.");
+  if (event.type === "board_fate") return boardFate(session, event);
 
   const s: Session = structuredClone(session);
   // Old saved sessions must not retain obsolete numeric context.
@@ -5850,7 +5865,7 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
     if (r?.verdict !== "true") return no("say_check", `The math review did not find "${sentence}" true (${r ? `${r.verdict}: ${r.reason}` : "no review"}). Every number and relation Maya says must be plainly true: say it with simple true math, such as one equation of the question's own numbers.`, "math_review");
     math.push({ sentence, verdict: "true" });
   }
-  const tutor = { help: progress ? 0 : s.solved === null ? (s.tutor?.help ?? 0) + 1 : 0, drawn: [...(s.tutor?.drawn ?? [])] };
+  const tutor: NonNullable<Session["tutor"]> = { help: progress ? 0 : s.solved === null ? (s.tutor?.help ?? 0) + 1 : 0, drawn: [...(s.tutor?.drawn ?? [])], ...(s.tutor?.sent?.length ? { sent: structuredClone(s.tutor.sent) } : {}) };
   const drawing = s.noBoard ? { commands: [], keys: [] } : tutorDrawings(pkg, out.draw ?? [], tutor.drawn, (i) => `tutor-note-${s.batches + 1}-${i}`);
   tutor.drawn.push(...drawing.keys);
   s.tutor = tutor;
@@ -5889,7 +5904,10 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   s.turns.push({ at: s.now!, speaker: "maya", text: said, state: act === "close" ? "CLOSE" : s.state, act });
   if (drawing.commands.length) {
     s.batches += 1;
-    effects.push({ kind: "board", batch: { transactionId: `${s.callId}-b${s.batches}`, commands: drawing.commands as unknown as Command[] } });
+    const transactionId = `${s.callId}-b${s.batches}`;
+    // B1: sent, not shown, until the child's screen says what it did with the batch (boardFate).
+    if (drawing.keys.length) s.tutor.sent = [...(s.tutor.sent ?? []), { batch: transactionId, keys: [...drawing.keys] }];
+    effects.push({ kind: "board", batch: { transactionId, commands: drawing.commands as unknown as Command[] } });
   }
   s.turn = null;
   delete s.mathClaim;
@@ -5911,12 +5929,6 @@ function tutorHelpOf(base: Session, sentences: readonly string[], notes: readonl
     : sentences.some((x) => equationsOf(x).some((e) => !e.negated && equationHolds(e) === true && e.result.q?.[1] === 1 && (open.some((st) => e.result.q?.[0] === st.result) || tutorKind(pkg).workValues(pkg).includes(e.result.q?.[0] ?? NaN)))) ? "guided" : "hint";
 }
 
-/**
- * Final check 10 (2026-11-15): the help in the sentences Maya already streamed this turn, read before any later routing.
- * Only the right final answer that stood before this turn, or that code's own strict read credits in this turn, lets her
- * say the answer back without giving it, and then nothing is recorded (as on the teaching path; never the model's
- * reading).
- */
 /**
  * Final check 12 (2026-11-15): the help that sentences Maya emitted this turn give, read at the moment they are emitted
  * (the text adapter's onSayPart), with the turn they answer. Null when they give none to record.
@@ -5941,11 +5953,33 @@ export function withEmittedHelp(session: Session, sent: readonly string[]): Sess
   return kind ? withHelp(session, kind) : session;
 }
 
+/**
+ * Final check 10 (2026-11-15): the help in the sentences Maya already streamed this turn, read before any later routing.
+ * Only the right final answer that stood before this turn, or that code's own strict read credits in this turn, lets her
+ * say the answer back without giving it, and then nothing is recorded (as on the teaching path; never the model's
+ * reading).
+ */
 function streamedHelp(base: Session, sent: readonly string[]): Assistance | null {
   if (base.outcome) return null;
   const committedRight = (base.solved === "child" && base.lastResult === "right") || heardAnswers(base).some((a) => a.step === "result" && a.verdict === "right");
   if (committedRight) return null;
   return tutorHelpOf(base, sent.flatMap((x) => sentencesOf(x)), [], base.tutor?.drawn ?? [], false);
+}
+
+/**
+ * B1: the child's screen said what it did with a batch. Shown: its drawings are on the board. Skipped or cancelled: they
+ * are not, so they leave `drawn` and the kind can offer them again. Only a batch still waiting for its word changes:
+ * the first word wins, and a word for any other batch changes nothing. The clock, the state and the turn do not move.
+ */
+function boardFate(session: Session, e: Extract<SessionEvent, { type: "board_fate" }>): StepResult {
+  const s: Session = structuredClone(session);
+  const sent = s.tutor?.sent?.find((x) => x.batch === e.batch);
+  if (!s.tutor || !sent || !BOARD_FATES.includes(e.fate)) return { session: s, effects: [], refusal: null };
+  const rest = s.tutor.sent!.filter((x) => x !== sent);
+  if (rest.length) s.tutor.sent = rest;
+  else delete s.tutor.sent;
+  if (e.fate !== "shown") s.tutor.drawn = s.tutor.drawn.filter((k) => !sent.keys.includes(k));
+  return { session: s, effects: [], refusal: null };
 }
 
 function proposeV3(base: Session, out: ModelOutput, effects: Effect[], reviews: readonly TalkReview[] | undefined, sent: readonly string[] = []): StepResult {

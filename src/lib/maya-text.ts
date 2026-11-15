@@ -316,11 +316,11 @@ export function streamedPriority(raw: string): { repeated: boolean; priority: Re
 
 import { reviewInput, runReview, CONVERSATION_REVIEW_TIME_LIMIT_MS, REVIEW_TIME_LIMIT_MS, type TalkReviewer } from "@/lib/maya-talk-review";
 import { runMathReview, type MathReviewer } from "@/lib/maya-math-review";
-import { mathReviewInput, type MathReview, type MathReviewInput, type MathReviewResult, type TalkReviewInput, type TalkReviewResult } from "@/lib/maya";
+import { BOARD_FATES, mathReviewInput, type BoardFate, type MathReview, type MathReviewInput, type MathReviewResult, type TalkReviewInput, type TalkReviewResult } from "@/lib/maya";
 import { emittedHelpKind, type Assistance } from "@/lib/maya/session";
 import { readFromFence } from "@/lib/ai-fenced";
 import { ACK_PHRASES } from "@/lib/maya-voice-ack";
-import { classifyError, packageHash, redactText, redactTrace, traceCounts, TRACE_KIND, TRACE_VERSION, type MayaTrace, type TraceBoardBatch, type TraceTurn, type TraceObligation } from "@/lib/maya-trace";
+import { boardFateCounts, classifyError, packageHash, redactText, redactTrace, traceCounts, TRACE_KIND, TRACE_VERSION, type MayaTrace, type TraceBoardBatch, type TraceTurn, type TraceObligation } from "@/lib/maya-trace";
 
 /** At most this many Maya turns in a row without the child (the easier example is up to four). */
 export const MAX_MAYA_TURNS = 8;
@@ -538,6 +538,12 @@ export interface TextSession {
   contentProblem(detail: string): Promise<TextOutput>;
   /** The clock moved on with no input (the pause policy may make Maya check in). */
   tick(): Promise<TextOutput>;
+  /**
+   * B1 ("shown means shown"): what the child's screen did with Maya's board batches, by transaction id. Says nothing and
+   * draws nothing. The first word for a batch she sent stands; a word for another batch, or a second word, changes
+   * nothing. A skipped or cancelled drawing is no longer counted as drawn; a drawing with no word stays "sent".
+   */
+  boardFates(fates: readonly BoardFateReport[]): void;
   /** The child starts or stops writing. */
   writing(status: "started" | "done"): Promise<TextOutput>;
   /** The connection or a service failed: the call ends. */
@@ -567,6 +573,23 @@ export interface TextSession {
   trace(): MayaTrace;
   /** The authoritative log at invocation, plus a derived cache. It never waits for a provider. */
   saved(): Promise<SavedTextSession>;
+}
+
+/** B1: one word from the child's screen about one of Maya's board batches. */
+export interface BoardFateReport { batchId: string; fate: BoardFate }
+/** The most words the session takes in one report. */
+export const MAX_FATE_REPORTS = 32;
+/** The words of a report the session can read: a transaction id it could have sent and a known fate, each batch once. */
+export function readFateReports(raw: unknown): BoardFateReport[] | null {
+  if (!Array.isArray(raw) || raw.length > MAX_FATE_REPORTS) return null;
+  const out: BoardFateReport[] = [];
+  for (const x of raw) {
+    if (typeof x !== "object" || x === null) return null;
+    const { batchId, fate } = x as { batchId?: unknown; fate?: unknown };
+    if (typeof batchId !== "string" || !batchId || batchId.length > 64 || !BOARD_FATES.includes(fate as BoardFate)) return null;
+    if (!out.some((f) => f.batchId === batchId)) out.push({ batchId, fate: fate as BoardFate });
+  }
+  return out;
 }
 
 const iso = (ms: number | null) => (ms === null ? null : new Date(ms).toISOString());
@@ -1217,7 +1240,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       ...(session.tutor ? { mathReviewer: options.mathReviewer ? { id: options.mathReviewer.id, promptVersion: options.mathReviewer.promptVersion, ...(options.mathReviewer.retry ? { retryId: options.mathReviewer.retry.id } : {}) } : null } : {}),
       scopeRefusals: structuredClone(session.scopeRefusals ?? []),
       ...(preparations.length ? { preparations: preparationRecords() } : {}),
-      obligations: structuredClone(obligations), turns: structuredClone(turns), board: structuredClone(board), outcome, counts: traceCounts(turns),
+      obligations: structuredClone(obligations), turns: structuredClone(turns), board: structuredClone(board), outcome, counts: { ...traceCounts(turns), boardFates: boardFateCounts(board) },
     }, options.childName ?? null);
   }
   return {
@@ -1239,6 +1262,13 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     mayaSaid: (text) => receive({ type: "maya_said", at: now(), text }),
     contentProblem: (detail) => receive({ type: "content_problem", at: now(), detail: redactText(detail) }),
     tick: () => receive({ type: "tick", at: now() }),
+    boardFates: (fates) => {
+      const read = readFateReports(fates);
+      if (!read?.length) return;
+      // Only batches the call sent and has no word for yet (the fold checks again): no log entry for anything else.
+      const known = read.filter((f) => folded.board.some((b) => b.transactionId === f.batchId && !b.fate) || folded.pending.some((p) => p.batches.some((b) => b.transactionId === f.batchId)));
+      if (known.length) append({ kind: "fates", at: now(), fates: known });
+    },
     writing: (status) => receive({ type: "writing", at: now(), status }),
     technical: (detail) => receive({ type: "technical", at: now(), detail: redactText(detail) }, false),
     safety: (severity) => receive({ type: "safety", at: now(), severity }),
