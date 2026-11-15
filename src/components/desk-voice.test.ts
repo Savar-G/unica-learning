@@ -2,6 +2,7 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
+import { voiceStartMarks, voiceStartTrace } from "@/lib/maya-voice-start-trace";
 import { useDeskVoice, VoiceBoard, VoiceControls, VoiceLimit, VoiceTranscript } from "./desk-voice";
 import type { DeskVoiceCall, DeskVoiceReply, VoiceUsage } from "@/lib/maya-voice-desk";
 
@@ -194,7 +195,10 @@ it("hangs up through Maya's worker and shows Hanging up, never a failed connecti
     : { call: call({ ended: true, started: true }), usage: USAGE };
   const f = await mount();
   await f.click("Call Maya"); await f.click("Start the call"); await join(rooms[0]);
+  voiceStartTrace().clear();
   await f.click("Hang up");
+  expect(voiceStartMarks().filter(m => m.event === "hang_up_button")).toHaveLength(1);
+  expect(voiceStartMarks().filter(m => m.event === "hang_up_rpc_end")).toMatchObject([{ ok: true }]);
   expect(rooms[0].localParticipant.performRpc).toHaveBeenCalledWith(expect.objectContaining({ method: "maya.hang_up", destinationIdentity: "maya-1" }));
   expect(rooms[0].disconnect).toHaveBeenCalledOnce();
   expect(host.textContent).not.toContain("cut off");

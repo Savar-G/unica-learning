@@ -132,7 +132,7 @@ export function VoicePanel({ callId, childName, started, onUpdate, onEnded, onCa
               {call === "live" ? <>Live · <span className="adm-mono">{clock(seconds)}</span></> : "Waiting for Maya to join…"}
             </span>
             {maya && <span className={`mv-maya is-${maya}`} role="status">{MAYA_TEXT[maya]}</span>}
-            <button type="button" className="btn sm ghost adm-btn mv-hang" onClick={() => void hangUp()}>Hang up</button>
+            <button type="button" className="btn sm ghost adm-btn mv-hang" onClick={() => void hangUp("button")}>Hang up</button>
           </div>
           {call === "live" && !fakeSpeech && <p className="mv-hint">Speak as {name}. Maya hears the microphone.</p>}
           {call === "live" && fakeSpeech && (

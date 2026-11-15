@@ -185,7 +185,7 @@ export default defineAgent({
       // Before the child was first here (microphone published), a leave changes nothing: the screen joined before the
       // Connect tap and closed or was cancelled before it. `waitForChild` waits for a join again.
       if (!live || p.identity !== identity) return;
-      void run.childLeft(p.disconnectReason === DisconnectReason.CLIENT_INITIATED ? "hang_up" : "dropped");
+      void run.childLeft(p.disconnectReason === DisconnectReason.CLIENT_INITIATED ? "hang_up" : "dropped", p.disconnectReason);
     });
     // A child who comes back is here again with the same rule as the first time: in the room with the microphone
     // published. The first time is taken below, after the session has started. A child who unpublishes the microphone
@@ -238,7 +238,7 @@ export default defineAgent({
     // The child is here: their microphone is published. `sinceChildMs` in "opening first sound" counts from now.
     childAt = Date.now();
     marks.readyBeforeChild = childAt - readyAt;
-    ctx.addShutdownCallback(() => run.finish({ detail: "the voice worker stopped" }));
+    ctx.addShutdownCallback(() => run.workerShutdown());
     // The connection rows and the session start do not wait for each other.
     const joined = run.agentJoined().then(() => mark("agentJoined"));
     live = true;

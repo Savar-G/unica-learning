@@ -28,7 +28,8 @@ import { speechWords, type BoardSpeech, type SpeechScope } from "@/lib/board-spe
 import { CuePlaybackOutput } from "./cue-playback";
 import { earlyRest, type EarlyRest } from "./early-speech";
 import { detectorVad, HeardSignals, PrepareSignal, silentFinal } from "./heard-signals";
-import { telemetry, type UtteranceKind, type UtteranceOwner } from "./telemetry";
+import { voiceDisconnectReason } from "@/lib/maya-voice-close-reason";
+import { telemetry, type CloseEntry, type CloseProbe, type UtteranceKind, type UtteranceOwner } from "./telemetry";
 import { withRequestContext } from "@/lib/maya-request-trace";
 import { boardAudio, countedSynthesis, type SilentSpeech } from "./speech-audio";
 import { VOICE_METER_TICK_MS } from "@/lib/maya-spend";
@@ -429,6 +430,10 @@ export class VoiceCallRun {
   readonly agent: MayaVoiceAgent;
   /** Immutable revision claimed when this worker opened the call. */
   readonly segment: number;
+  private closeProbe?: CloseProbe;
+  private closeMark(entry: CloseEntry, reason?: unknown, phase?: "origin" | "observation" | "media_close") {
+    try { this.closeProbe?.(entry, reason, phase); } catch { /* Diagnostics never stop media closure. */ }
+  }
 
   constructor(
     private readonly session: voice.AgentSession,
@@ -483,6 +488,7 @@ export class VoiceCallRun {
     // The registry is captured now, so a late callback never logs into a replacement call's registry. A failing setter,
     // listener or log never reaches the call.
     const registry = telemetry();
+    try { this.closeProbe = registry.closeProbe(this.segment); } catch { /* Diagnostics are optional. */ }
     try { call.onPreparation?.(record => { try { registry.preparationDecision(record); } catch { /* a log never fails a call */ } }); } catch { /* the setter is an observer */ }
     session.on(voice.AgentSessionEventTypes.UserInputTranscribed, ev => { if (ev.transcript.trim()) this.wordsHeard(); });
     session.on(voice.AgentSessionEventTypes.UserStateChanged, ev => {
@@ -496,9 +502,10 @@ export class VoiceCallRun {
       }
     });
     session.on(voice.AgentSessionEventTypes.SpeechCreated, ev => { this.speech = ev.speechHandle; });
-    session.on(voice.AgentSessionEventTypes.Close, () => { void this.finish({ detail: "the voice session closed unexpectedly" }); });
+    session.on(voice.AgentSessionEventTypes.Close, ev => { void this.finish({ detail: "the voice session closed unexpectedly" }, false, "sdk_close", ev?.reason); });
     session.on(voice.AgentSessionEventTypes.Error, ev => {
-      if (!ev.error.recoverable) void this.finish({ detail: "the voice provider failed" });
+      if (!ev.error.recoverable) void this.finish({ detail: "the voice provider failed" }, false, "sdk_error", "fatal");
+      else this.closeMark("sdk_error", "recoverable", "observation");
     });
     session.on(voice.AgentSessionEventTypes.AgentStateChanged, ev => {
       if (ev.oldState === "speaking" && ev.newState !== "speaking") {
@@ -1302,7 +1309,7 @@ export class VoiceCallRun {
       void (async () => {
         if (owed) await this.repeatGuidance(owed);
         if (lastWords) await this.sayFirst(null, [lastWords]);
-        else if (this.call.ended) await this.finish({ reason: "child_stopped" });
+        else if (this.call.ended) await this.finish({ reason: "child_stopped" }, false, "controller_end", this.call.session.outcome?.reason);
       })().catch(() => this.finish({ detail: "the final speech failed" }));
     }
     // Bound the opening model request too, before the first session state can be saved.
@@ -1334,7 +1341,9 @@ export class VoiceCallRun {
     }
   }
 
-  async childLeft(how: "hang_up" | "dropped") {
+  async childLeft(how: "hang_up" | "dropped", protocolReason?: unknown) {
+    const reason = voiceDisconnectReason(protocolReason);
+    this.closeMark("participant_disconnect", reason, "observation");
     if (this.finishing) return;
     const generation = ++this.generation;
     this.childHere = false;
@@ -1345,15 +1354,17 @@ export class VoiceCallRun {
     await this.call.connection("child_left");
     if (this.finishing || this.childHere || generation !== this.generation) return;
     if (this.call.lost) return this.finish({ detail: "the disconnect could not be saved" });
-    if (how === "hang_up") return this.finish({ reason: "child_stopped" });
+    if (how === "hang_up") return this.finish({ reason: "child_stopped" }, false, "participant_disconnect", reason);
     if (this.graceTimer === null) {
       this.graceTimer = this.timers.set(RECONNECT_GRACE_MS, () => {
-        if (!this.childHere && generation === this.generation) void this.finish({ detail: "the child's connection dropped and did not come back" });
+        if (!this.childHere && generation === this.generation) void this.finish({ detail: "the child's connection dropped and did not come back" }, false, "participant_disconnect", reason);
       });
     }
   }
 
-  hangUp() { return this.finish({ reason: "child_stopped" }); }
+  hangUp() { return this.finish({ reason: "child_stopped" }, false, "explicit_rpc"); }
+
+  workerShutdown() { return this.finish({ detail: "the voice worker stopped" }, false, "worker_shutdown"); }
 
   async tick() {
     this.tickTimer = null;
@@ -1419,7 +1430,7 @@ export class VoiceCallRun {
       void (async () => {
         try { await handle?.waitForPlayout(); await this.guidance?.over; await this.options.board?.settled(); }
         catch { await this.finish({ detail: "the final speech failed" }); return; }
-        await this.finish({ reason: "child_stopped" });
+        await this.finish({ reason: "child_stopped" }, false, "controller_end", this.call.session.outcome?.reason);
       })();
     } else this.schedule();
     return true;
@@ -1438,7 +1449,8 @@ export class VoiceCallRun {
     if (at !== null) this.tickTimer = this.timers.set(at - this.timers.now(), () => void this.tick());
   }
 
-  finish(how: FinishOptions, limit = false): Promise<void> {
+  finish(how: FinishOptions, limit = false, entry: CloseEntry = "finish", reason?: unknown): Promise<void> {
+    this.closeMark(limit ? "deadline" : entry, limit ? "time_limit" : reason, this.finishing ? "observation" : "origin");
     const scope = this.boardScope;
     // Set the promise before calling close, whose event can call finish again.
     this.finishing ??= Promise.resolve().then(async () => {
@@ -1447,6 +1459,7 @@ export class VoiceCallRun {
       this.closeTurn();
       if (scope) this.stopBoard(scope);
       // Stop media immediately for a deadline, hang-up, failure or lost ownership.
+      this.closeMark(entry, reason, "media_close");
       const closing = this.session.close().catch(() => {});
       let failed = this.call.lost;
       try {
@@ -1475,7 +1488,9 @@ export class VoiceCallRun {
    */
   async standDown() {
     if (this.finishing || this.childHere) return;
+    this.closeMark("stand_down");
     this.finishing = Promise.resolve();
+    this.closeMark("stand_down", "unknown", "media_close");
     await this.session.close().catch(() => {});
   }
 }

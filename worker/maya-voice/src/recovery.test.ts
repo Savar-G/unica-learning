@@ -11,6 +11,7 @@ import { ruleMayaModel } from '@/lib/maya-model-fake';
 import { SAMPLE_PACKAGES } from '@/lib/maya-samples';
 import type { QuestionPackage } from '@/lib/question-package';
 import { VoiceCallRun, voiceSession, type Timers, type CallUpdate } from './agent';
+import { CallTelemetry, setTelemetry, type Emitted } from './telemetry';
 
 initializeLogger({ pretty: false, level: 'silent' });
 const P='11111111-1111-4111-8111-111111111111', C='22222222-2222-4222-8222-222222222222', T='33333333-3333-4333-8333-333333333333';
@@ -130,4 +131,156 @@ it('R408-15 obsolete worker cleanup cannot issue a client disconnect for the liv
   console.log('OLD_WORKER_AFTER_REPLACEMENT',JSON.stringify({old:a.updates.slice(from),replacementRevision:row.revision,status:row.status}));
   try {expect(a.updates.slice(from).filter(u=>u.error==='technical_issue'||u.ended)).toEqual([]);}
   finally {await b.run.hangUp();}
+});
+
+// These controls use the real call and its in-memory stores. Only the media session and clock are supplied.
+function closeLog(callId: string, scopeId = "close-job", sink?: () => void) {
+  const events: Emitted[] = [];
+  setTelemetry(new CallTelemetry({ callId, scopeId, sink: e => { sink?.(); events.push(e); } }));
+  return () => events.filter((e): e is Extract<Emitted, { ev: "close_origin" }> => e.ev === "close_origin");
+}
+
+it.each(["rpc", "disconnect"])("keeps the %s origin despite equal child_stopped outcome and synchronous SDK Close reentry", async path => {
+  const f = await fixture();
+  const log = closeLog(f.id);
+  const r = f.makeRun();
+  r.session.close.mockImplementation(async () => { r.session.emit(voice.AgentSessionEventTypes.Close, { reason: "user_initiated" }); });
+  if (path === "rpc") await r.run.hangUp();
+  else await r.run.childLeft("hang_up", 1);
+  expect(f.store.rows()[0].outcome?.reason).toBe("child_stopped");
+  const origins = log().filter(e => e.phase === "origin");
+  expect(origins).toHaveLength(1);
+  expect(origins[0]).toMatchObject({ entry: path === "rpc" ? "explicit_rpc" : "participant_disconnect", reason: path === "rpc" ? "unknown" : "client_initiated", callId: f.id, workerId: "close-job", segment: r.run.segment });
+  expect(log().find(e => e.phase === "media_close")?.seq).toBeLessThan(log().find(e => e.entry === "sdk_close")!.seq);
+  expect(log().find(e => e.entry === "sdk_close")).toMatchObject({ phase: "observation", originId: origins[0].closeId, reason: "user_initiated" });
+  expect(r.session.close).toHaveBeenCalledOnce();
+});
+
+it("keeps the origin across asynchronous SDK Close and a later participant leave", async () => {
+  const f = await fixture(); const log = closeLog(f.id); const r = f.makeRun();
+  await r.run.hangUp();
+  r.session.emit(voice.AgentSessionEventTypes.Close, { reason: "user_initiated" });
+  await r.run.childLeft("hang_up", 1);
+  expect(log().filter(e => e.phase === "origin").map(e => e.entry)).toEqual(["explicit_rpc"]);
+  expect(log().at(-1)).toMatchObject({ entry: "participant_disconnect", phase: "observation", originId: log()[0].closeId });
+  expect(r.session.close).toHaveBeenCalledOnce();
+});
+
+it("a rejoin during the disconnect save leaves the later RPC as the close origin", async () => {
+  const f = await fixture(); await f.call.start(); const log = closeLog(f.id); const r = f.makeRun();
+  await r.run.agentJoined(); await r.run.childJoined();
+  const entered = barrier(), release = barrier();
+  const append = f.connections.append.bind(f.connections);
+  let held = false;
+  f.connections.append = async (...args) => {
+    if (!held && args[0].kind === "child_left") { held = true; entered.resolve(); await release.promise; }
+    return append(...args);
+  };
+  const leaving = r.run.childLeft("hang_up", 1);
+  await entered.promise;
+  try { await r.run.childJoined(); } finally { release.resolve(); }
+  await leaving;
+  expect(f.store.rows()[0].status).toBe("live");
+  expect(r.session.close).not.toHaveBeenCalled();
+  expect(log().filter(e => e.phase === "origin")).toEqual([]);
+  expect(log()[0]).toMatchObject({ entry: "participant_disconnect", phase: "observation", originId: null });
+  await r.run.hangUp();
+  expect(r.session.close).toHaveBeenCalledOnce();
+  expect(f.store.rows()[0].outcome?.reason).toBe("child_stopped");
+  const origins = log().filter(e => e.phase === "origin");
+  expect(origins.map(e => e.entry)).toEqual(["explicit_rpc"]);
+  expect(log().find(e => e.phase === "media_close")).toMatchObject({ entry: "explicit_rpc", originId: origins[0].closeId });
+});
+
+it("no input stays live through the recorded 13.551 second interval", async () => {
+  const f = await fixture(); await f.call.start(); const log = closeLog(f.id); const r = f.makeRun();
+  await r.run.agentJoined(); await r.run.childJoined();
+  await f.advance(13_551);
+  expect(f.store.rows()[0].status).toBe("live");
+  expect(r.session.close).not.toHaveBeenCalled(); expect(log()).toEqual([]);
+  await r.run.hangUp();
+});
+
+it("a transport drop keeps grace and a reconnect does not create an initiating close", async () => {
+  const f = await fixture(); await f.call.start(); const log = closeLog(f.id); const r = f.makeRun();
+  await r.run.agentJoined(); await r.run.childJoined();
+  await r.run.childLeft("dropped", 9); await f.advance(29_999);
+  expect(r.session.close).not.toHaveBeenCalled();
+  await r.run.childJoined(); await f.advance(1);
+  expect(f.store.rows()[0].status).toBe("live");
+  expect(log().filter(e => e.phase === "origin")).toEqual([]);
+  expect(log()[0]).toMatchObject({ entry: "participant_disconnect", reason: "signal_close", phase: "observation", originId: null });
+  await r.run.hangUp();
+});
+
+it("grace expiry retains the disconnect reason and technical outcome", async () => {
+  const f = await fixture(); await f.call.start(); const log = closeLog(f.id); const r = f.makeRun();
+  await r.run.agentJoined(); await r.run.childJoined(); await r.run.childLeft("dropped", 9);
+  await f.advance(30_000); await r.run.done;
+  expect(log().find(e => e.phase === "origin")).toMatchObject({ entry: "participant_disconnect", reason: "signal_close" });
+  expect(f.store.rows()[0].outcome?.reason).toBe("technical_issue");
+});
+
+it.each(["deadline", "silence"])("records %s separately from an RPC without changing the saved outcome", async path => {
+  const f = await fixture(); await f.call.start(); const log = closeLog(f.id); const r = f.makeRun();
+  await r.run.agentJoined(); await r.run.childJoined();
+  if (path === "deadline") {
+    f.setNow(TIME_LIMITS.endAtMs); await r.run.tick();
+  } else {
+    // Drive the public clock and tick seams through check-in, then no-response close.
+    f.setNow(15_000); await r.run.tick();
+    f.setNow(45_000); await r.run.tick();
+    await flush();
+  }
+  await r.run.done;
+  expect(f.store.rows()[0].outcome?.reason).toBe(path === "deadline" ? "time_limit" : "no_response");
+  expect(log().filter(e => e.phase === "origin")).toMatchObject([{ entry: path === "deadline" ? "deadline" : "controller_end", reason: path === "deadline" ? "time_limit" : "no_response" }]);
+  expect(r.session.close).toHaveBeenCalledOnce();
+});
+
+it.each(["sdk_close", "sdk_error", "worker_shutdown"])("records the actual %s entry and no error text", async entry => {
+  const f = await fixture(); const log = closeLog(f.id); const r = f.makeRun();
+  if (entry === "sdk_close") r.session.emit(voice.AgentSessionEventTypes.Close, { reason: "https://secret.invalid/token" });
+  else if (entry === "sdk_error") r.session.emit(voice.AgentSessionEventTypes.Error, { error: { recoverable: false, message: "private provider text" } });
+  else await r.run.workerShutdown();
+  await r.run.done;
+  expect(log().find(e => e.phase === "origin")).toMatchObject({ entry, reason: entry === "sdk_error" ? "fatal" : "unknown" });
+  expect(JSON.stringify(log())).not.toMatch(/secret|private provider/);
+  expect(f.store.rows()[0].outcome?.reason).toBe("technical_issue");
+});
+
+it("a recoverable SDK error stays an observation and cannot become the later hang-up origin", async () => {
+  const f = await fixture(); const log = closeLog(f.id); const r = f.makeRun();
+  r.session.emit(voice.AgentSessionEventTypes.Error, { error: { recoverable: true, message: "private" } });
+  expect(r.session.close).not.toHaveBeenCalled(); await r.run.hangUp();
+  expect(log().filter(e => e.phase === "origin").map(e => e.entry)).toEqual(["explicit_rpc"]);
+});
+
+it.each([null, -1, 999, 1.5, "CLIENT_INITIATED", "https://private.invalid"])("closes with unknown protocol reason for %s", async reason => {
+  const f = await fixture(); const log = closeLog(f.id); const r = f.makeRun();
+  await r.run.childLeft("hang_up", reason);
+  expect(log()[0]).toMatchObject({ entry: "participant_disconnect", reason: "unknown" });
+  expect(f.store.rows()[0].outcome?.reason).toBe("child_stopped");
+  expect(JSON.stringify(log())).not.toContain("private.invalid");
+});
+
+it("a failed observer cannot prevent media closure or the call end", async () => {
+  const f = await fixture(); closeLog(f.id, "broken", () => { throw Error("diagnostic sink"); }); const r = f.makeRun();
+  await r.run.hangUp();
+  expect(r.session.close).toHaveBeenCalledOnce(); expect(f.store.rows()[0].status).toBe("ended");
+  expect(r.closed).toHaveBeenCalledOnce();
+});
+
+it("a replacement registry and segment cannot borrow the old run's origin", async () => {
+  const f = await fixture(); const oldLog = closeLog(f.id, "old-job"); const a = f.makeRun();
+  const newer = await f.open(); const newLog = closeLog(f.id, "new-job"); const b = f.makeRun(newer);
+  await a.run.hangUp();
+  a.session.emit(voice.AgentSessionEventTypes.Close, { reason: "user_initiated" });
+  expect(newLog()).toEqual([]);
+  await b.run.workerShutdown();
+  expect(oldLog().every(e => e.workerId === "old-job" && e.segment === a.run.segment)).toBe(true);
+  expect(newLog().every(e => e.workerId === "new-job" && e.segment === b.run.segment)).toBe(true);
+  expect(newLog().find(e => e.phase === "origin")).toMatchObject({ entry: "worker_shutdown" });
+  expect(newLog().map(e => e.originId)).not.toContain(oldLog()[0].closeId);
+  expect(b.run.segment).toBeGreaterThan(a.run.segment);
 });

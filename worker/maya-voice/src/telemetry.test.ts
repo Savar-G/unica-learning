@@ -247,3 +247,17 @@ describe("telemetry lifecycle repairs", () => {
     expect(h.events.filter(e => e.ev === "request_end")).toMatchObject([{ outcome: "error" }, { outcome: "ok" }, { outcome: "aborted" }]);
   });
 });
+
+it("bounds close observations and does not share an origin between runs in the same registry", () => {
+  const { t, events } = harness();
+  const old = t.closeProbe(1), next = t.closeProbe(2);
+  old("explicit_rpc"); next("worker_shutdown");
+  old("sdk_close", "private words");
+  const closes = events.filter((e): e is Extract<Emitted, { ev: "close_origin" }> => e.ev === "close_origin");
+  expect(closes[2]).toMatchObject({ reason: "unknown", phase: "observation", originId: closes[0].closeId });
+  expect(closes[1].originId).toBe(closes[1].closeId);
+  expect(closes[1].originId).not.toBe(closes[0].originId);
+  for (let i = 0; i < 100; i++) old("sdk_error", "recoverable", "observation");
+  expect(events.filter(e => e.ev === "close_origin" && e.segment === 1)).toHaveLength(32);
+  expect(JSON.stringify(events)).not.toContain("private words");
+});
