@@ -341,9 +341,9 @@ describe("the Supabase reader of the Overview (#560)", () => {
     expect(select(r.session, "workbook_pages").get("workbook_id")).toBe(`eq.${WORKBOOK}`);
     expect((await r.reader.learningCards())[0]).toMatchObject({ childId: CHILD, interests: ["space"] });
     await readOverview(r.reader, CHILD, NOW);
-    expect(tables(r.session)).toEqual(["card_setups", "children", "parents", "reports", "scan_photos", "workbook_delivery_corrections", "workbook_delivery_receipts", "workbook_pages", "workbooks"]);
-    // The Home reads no test replay and no marking while the Progress tab is off.
-    expect(tables(r.admin)).toEqual(["admin_users", "assessments", "child_plan_states", "test_accounts"]);
+    expect(tables(r.session)).toEqual(["card_setups", "children", "parents", "reports", "scan_photos", "workbook_delivery_corrections", "workbook_delivery_receipts", "workbook_pages", "workbook_questions", "workbooks"]);
+    // The Home's skills (shown with the Progress tab off too) read the progress facts with the secret key, for this child only.
+    expect(tables(r.admin)).toEqual(["admin_users", "assessments", "child_plan_states", "learner_profiles", "reports", "rpc/scan_marking_command", "skill_state_history", "test_accounts"]);
   });
   it("reads the skill state history with the secret key, filtered on the parent and the child; only three fields leave (#1003)", async () => {
     const r = overviewReader({ skill_state_history: [

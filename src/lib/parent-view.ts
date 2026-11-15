@@ -471,8 +471,8 @@ async function readSkillStates(reader: ParentViewReader, child: ChildView, book:
  * answers and nothing from a raw profile, a Maya call, an AI finding or a parent's judgement (D-303).
  *
  * The workbook day is a calendar rule (src/lib/parent-week.ts): Day 1 is the delivery day (or the next Monday-to-Friday
- * day), and each later Monday-to-Friday day is the next. Skills show only with the Progress tab, as before: the skill map
- * is not released until its review (#194).
+ * day), and each later Monday-to-Friday day is the next. Skills show whether or not the Progress tab is
+ * on (Cedric, 2026-11-14); only the tab stays behind PROGRESS_TAB_ENABLED.
  */
 export async function readOverview(reader: ParentViewReader, childId: string, now: number): Promise<OverviewView | null> {
   const [child, children, family, tests, reports, workbooks, scans, deliveries, corrections] = await Promise.all([
@@ -515,8 +515,9 @@ export async function readOverview(reader: ParentViewReader, childId: string, no
     if (row && scans.length === 0 && child.tabs.includes("scan_pages")) scanPrompt = { day, pages: dayPages.length };
   }
 
+  // Home shows the skills whether or not the Progress tab is on (Cedric, 2026-11-14); only the tab stays behind its switch.
   let skills: OverviewView["skills"] = null;
-  if (child.tabs.includes("progress")) {
+  {
     const progress = await reader.overviewProgress(child.id).catch(markingReadFailed);
     const book = workbooks.filter((w) => w.childId === child.id).sort((a, b) => b.number - a.number)[0];
     const read = progress ? await readSkillStates(reader, child, book, progress.skillMarks) : null;

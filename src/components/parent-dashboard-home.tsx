@@ -85,7 +85,7 @@ export function ParentDashboardHome({ dashboard, overview, kids, addressChild, p
   const shown = !!kid && overview?.child.id === kid.id ? overview : null;
   const home = !!shown && homeHasParts(shown);
   return (
-    <SupportPage label={label} title={kid?.first_name ?? "Your account"}>
+    <SupportPage label={label} title={kid?.first_name ?? "Your account"} titleHidden={home}>
       {note}
       <ParentAlerts {...alerts} />
       {noticeDue && current.size > 0 && <MayaNoticeCard />}

@@ -419,9 +419,9 @@ describe("a family the switch opens to", () => {
       return renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({ child: "c1" }) })));
     };
 
-    it("shows this week, the workbook card and the skills since the child started, naming the child", async () => {
+    it("shows this week, the workbook card and the skills since the child started, naming the child once (the h1 is for screen readers only)", async () => {
       const out = await render(full());
-      expect(out).toContain("<h1>Asha</h1>");
+      expect(out).toContain("<h1 class=\"sr-only\">Asha</h1>");
       for (const [i, word] of ["Mon: done", "Tue: done", "Wed: done", "Thu: today, not done yet", "Fri: coming up"].entries()) expect(out.split('class="pa-vh"')[i + 1]).toContain(word);
       expect(out).toContain("Workbook 2</p>");
       expect(out).toMatch(/Day 4<small> of 10<\/small>/);
@@ -464,7 +464,7 @@ describe("a family the switch opens to", () => {
     it("a part with no data does not appear", async () => {
       const out = await render({ ...full(), week: null, workbook: null, skills: null, scanPrompt: { day: 1, pages: 8 } });
       for (const absent of ["po-week", "po-book", "Skills", "po-side"]) expect(out).not.toContain(absent);
-      expect(out).toContain("<h1>Asha</h1>");
+      expect(out).toContain("<h1 class=\"sr-only\">Asha</h1>");
       expect(out).toContain("Scan the first pages");
       expect(out).not.toContain('id="pd-test"');
     });

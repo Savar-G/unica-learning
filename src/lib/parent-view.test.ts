@@ -326,7 +326,7 @@ describe("the Home (#560, #1003)", () => {
 
   it("before any book is delivered: no week and no card; the mailed book is on its way", async () => {
     const view = await read({ deliveries: [] });
-    expect(view).toEqual({ child: expect.objectContaining({ id: "child-1", stage: "first_book_coming" }), resultPreparing: false, resultLate: false, week: null, workbook: null, onTheWay: 1, scanPrompt: null, skills: null, summaryMonth: null });
+    expect(view).toEqual({ child: expect.objectContaining({ id: "child-1", stage: "first_book_coming" }), resultPreparing: false, resultLate: false, week: null, workbook: null, onTheWay: 1, scanPrompt: null, skills: expect.anything(), summaryMonth: null });
     expect((await read({ deliveries: [], workbooks: [] }))?.onTheWay).toBeNull();
   });
 
@@ -492,8 +492,8 @@ describe("the Home (#560, #1003)", () => {
       const got = await skills({ skillTests: [tally("3.1", 4, 4)], history: [change("3.1", "mastered", "2026-11-03T20:00:00Z")], fail: ["history"] });
       expect(got?.mastered).toEqual([{ code: "3.1", name: textOf("3.1"), masteredOn: null }]);
     });
-    it("shows only with the Progress tab", async () => {
-      expect(await skills({ skillTests: [tally("3.1", 4, 4)], switches })).toBeNull();
+    it("shows with the Progress tab off too: only the tab stays behind its switch (2026-11-14)", async () => {
+      expect(await skills({ skillTests: [tally("3.1", 4, 4)], switches })).not.toBeNull();
     });
     it("a failed marking read hides the skills and keeps the week and the card", async () => {
       vi.spyOn(console, "error").mockImplementation(() => {});
