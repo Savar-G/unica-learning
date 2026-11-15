@@ -315,7 +315,7 @@ export function streamedPriority(raw: string): { repeated: boolean; priority: Re
 }
 
 import { reviewInput, runReview, CONVERSATION_REVIEW_TIME_LIMIT_MS, REVIEW_TIME_LIMIT_MS, type TalkReviewer } from "@/lib/maya-talk-review";
-import { fromMalformedAnswer, runMathReview, type MathReviewer } from "@/lib/maya-math-review";
+import { runMathReview, type MathReviewer } from "@/lib/maya-math-review";
 import { mathReviewInput, type MathReview, type MathReviewInput, type MathReviewResult, type TalkReviewInput, type TalkReviewResult } from "@/lib/maya";
 import { readFromFence } from "@/lib/ai-fenced";
 import { classifyError, packageHash, redactText, redactTrace, traceCounts, TRACE_KIND, TRACE_VERSION, type MayaTrace, type TraceBoardBatch, type TraceTurn, type TraceObligation } from "@/lib/maya-trace";
@@ -653,17 +653,19 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   const streamMathReviews = new Map<string, { requestId: number; result: Promise<MathReviewResult> }>();
   const mathKey = (input: MathReviewInput) => JSON.stringify(input);
   /**
-   * Final check 8 (2026-11-15): a sentence whose math review answered malformed is final "unsure" for the child turn: no
-   * second call of any kind, also when the repair says it again. Keyed by the child turn and the sentence.
+   * Final check 9 (2026-11-15): every terminal math review result that is not "true" (false, unsure after its retry,
+   * malformed, an error, a time-out) is final for its sentence for the rest of the child turn: no second call of any
+   * kind, also when the repair says the sentence again, so the repaired message is refused and code's line follows.
+   * Keyed by the child turn and the sentence. A "true" is never kept: the next input is reviewed again.
    */
-  const malformedMath = new Map<string, Promise<MathReviewResult>>();
+  const finalMath = new Map<string, Promise<MathReviewResult>>();
   const reviewMath = (input: MathReviewInput, turn: number, ms: number, onError?: (e: unknown) => void): Promise<MathReviewResult> => {
     const key = `${turn}|${input.sentence}`;
-    const held = malformedMath.get(key);
+    const held = finalMath.get(key);
     if (held) return held;
     const started = runMathReview(options.mathReviewer!, input, ms, onError);
     return started.then((r) => {
-      if (fromMalformedAnswer(r)) malformedMath.set(key, Promise.resolve(r));
+      if (r.verdict !== "true" && !finalMath.has(key)) finalMath.set(key, Promise.resolve(r));
       return r;
     });
   };

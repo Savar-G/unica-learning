@@ -583,7 +583,9 @@ function readClaimsOnce(sentence: string, op?: "add" | "subtract", trades: reado
     if (scopedAfter(at)) unscope(before, eb, chain[0].at, at);
     i = at;
   }
-  if (eqRead < eqSeen) problems.push("it has an \"=\" code cannot read");
+  // Final check 9 (2026-11-15): an "=" code cannot read ("2 times (minus 3 plus 4) = 2", "3 squared = 9") leaves its
+  // clause unread, never refused: the math review judges it. Only a complete clause code proves false is refused.
+  if (eqRead < eqSeen) unread.push("=");
   // Final check 8 (2026-11-15): a bracket this reader cannot read whole ("2 times (minus 3 plus 4) is 2": a sign inside;
   // "2 times (3 plus 4 is 7)") is unread, never refused: the sentence goes to the math review, which judges it.
   for (const [k, it] of items.entries()) {

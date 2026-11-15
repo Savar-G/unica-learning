@@ -2774,6 +2774,18 @@ function checkAnswers(s: Session, given: ChildAnswer[], checked: Checked[], befo
   const bound = boundNumbers(pkg, s.turn.text);
   for (const a of answers) {
     const problem = a.problem ?? "target";
+    // Final check 9 (2026-11-15), inverted: a turn that names the easier example (or another problem) scopes its numbers
+    // to the example: never credit, a miss or any judgment for the target.
+    // These rules hold in the tutor core (D-345); the controller keeps its own commit rules.
+    const tutorCredit = !!s.tutor && isTutorQuestion(pkg);
+    if (tutorCredit && problem === "target" && mentionsExample(s.turn.text)) return { code: "answer_not_committed", reason: "The child named the easier example: their numbers are for the example, not for this question. Ask which problem they mean." };
+    if (tutorCredit && problem === "target" && a.verdict === "right" && a.value.type === "number") {
+      // Final check 9, inverted: a number is final-answer credit only when the turn names no place, column, step, digit,
+      // row or part at all; and any credit, of a step too, only when its clause is read whole (no unit the question
+      // does not ask for).
+      if (a.step === "result" && turnNamesScope(pkg, s.turn.text)) return { code: "answer_not_committed", reason: `The child named a place, a column, a step or a digit: ${a.value.value} is bound to it, not the whole answer. Ask what they mean.` };
+      if (!answerReadWhole(pkg, s.turn.text, a.value.value, a.step !== "result")) return { code: "answer_not_committed", reason: `Code cannot read every word the child said with ${a.value.value} (a unit the question does not ask for?): it is no final answer. Ask what they mean.` };
+    }
     // Final check 8 (2026-11-15): a number the child binds to a place, a column, a step or a scope ("I got 24 for the
     // tens.") is never final-answer credit, and is credited only against the step of the one place it names.
     if (a.verdict === "right" && a.value.type === "number" && problem === "target") {
@@ -3353,6 +3365,61 @@ export function boundNumbers(pkg: OperationPackage, text: string): BoundNumber[]
     }
   }
   return out;
+}
+
+/**
+ * Final check 9 (2026-11-15), inverted: whether the child's turn names a place, a column, a step, a digit, a row or a part
+ * anywhere ("The tens answer is 24.", "24, that is the digit."). A number in such a turn is never final-answer credit: it
+ * is bound to that scope. A scope word the question's own text says ("the ten thousands place" of a place-value
+ * question) is the question's scope, not a part of it, and does not count.
+ */
+export function turnNamesScope(pkg: OperationPackage, text: string): boolean {
+  const question = pkg.text.toLowerCase();
+  const said = (re: RegExp) => [...text.replace(/[’‘]/g, "'").toLowerCase().matchAll(re)].some((m) => !new RegExp(`\\b${m[0].replace(/\s+/g, "\\s+")}\\b`).test(question));
+  return said(new RegExp(SCOPE_PLACE.source, "gi")) || said(/\b(?:columns?|places?|digits?|steps?|rows?|parts?)\b/g) || mentionsExample(text);
+}
+
+/**
+ * Final check 9 (2026-11-15): whether the child's turn names the easier example or another problem ("For the easier
+ * example, ...", "the practice one", "the other one"). Its numbers are the example's: never credit for the target, and
+ * code's verdict is "unknown". Broad on purpose (fail closed).
+ */
+export const mentionsExample = (text: string): boolean =>
+  /\b(?:examples?|easier|practi[cs]e|other (?:one|problem|question|sum)|smaller (?:one|problem|question|sum)|last (?:one|problem|question))\b/i.test(text.replace(/[’‘]/g, "'"));
+
+/** Words a clause that states the final answer may hold besides its numbers and operators (answerReadWhole). */
+const ANSWER_FRAME = new Set(["my", "the", "final", "whole", "answer", "answers", "is", "it's", "its", "it", "i", "got", "get", "have", "wrote", "write", "put",
+  "equals", "equal", "makes", "make", "gives", "so", "yes", "yeah", "yep", "okay", "ok", "um", "uh", "oh", "well", "and", "then", "now", "that's", "that",
+  "plus", "minus", "times", "x", "divided", "by", "take", "away", "add", "subtract", "multiplied", "a", "an", "total", "sum", "result",
+  "said", "say", "mean", "meant", "no", "not", "already", "like", "sure", "i'm", "am", "too", "just", "really"]);
+
+/** Words a clause that states a step may also hold: places, columns and the words of writing and carrying. */
+const STEP_FRAME = new Set(["in", "for", "on", "at", "to", "into", "of", "ones", "tens", "hundreds", "thousands", "ten", "one", "hundred", "thousand", "column", "columns",
+  "place", "places", "digit", "digits", "row", "rows", "carry", "carried", "carrying", "regroup", "regrouped", "trade", "traded", "borrow", "borrowed", "top",
+  "bottom", "over", "under", "keep", "kept", "first", "next", "step", "number", "numbers", "do", "did", "there", "here", "this", "these", "those", "we", "left",
+  "should", "be", "must", "real", "right", "correct", "fix", "fixed", "change", "changed", "instead", "actually"]);
+
+/**
+ * Final check 9 (2026-11-15): whether the child's final answer `value` (or with `step`, a step's value) is read whole: every clause of the turn that holds
+ * the value holds nothing but numbers, operators, answer words ("my answer is", "I got", "so") and the question's own
+ * answer unit ("20 books." for "How many books ...?"). Any other word in such a clause ("20 jars.", a unit the question
+ * does not ask for) leaves it unread: no final-answer credit and no "right" verdict. No word list of wrong units.
+ */
+export function answerReadWhole(pkg: OperationPackage, text: string, value: number, step = false): boolean {
+  const unitWords = new Set<string>();
+  const unit = (pkg.answer as { unit?: unknown }).unit;
+  if (typeof unit === "string") for (const w of unit.toLowerCase().split(/\s+/)) unitWords.add(w);
+  for (const m of pkg.text.toLowerCase().matchAll(/\bhow many\s+([a-z]+)/g)) unitWords.add(m[1]);
+  const opts = readOptionsFor(pkg);
+  for (const sentence of text.replace(/[’‘]/g, "'").split(/(?<=[.!?])\s+|\n+/)) {
+    for (const clause of sentence.replace(/[.!?]+$/, "").split(/\s*[,;:]\s*|\s+(?:because|'cause|cause|cuz|since|but)\s+/i)) {
+      const digits = digitWords(clause.toLowerCase());
+      if (!valuesIn(digits, opts).some((v) => v.type === "number" && v.value === value)) continue;
+      const rest = joinCompounds(clause.toLowerCase()).replace(MATH_NUMBER_RUN, " ").replace(/[\d][\d,.]*/g, " ").replace(/[+\-×x÷*=/]/g, " ").split(/[^a-z']+/).filter(Boolean);
+      if (rest.some((w) => !ANSWER_FRAME.has(w) && !unitWords.has(w) && !(step && STEP_FRAME.has(w)))) return false;
+    }
+  }
+  return true;
 }
 
 /** The step of a place that is not done yet, on the target problem. */
@@ -5181,6 +5248,9 @@ function childAnswerOf(s: Session, hide: (text: string) => string): MathReviewIn
   const text = s.turn.text;
   const raw = (pkg.answer.value as { value?: unknown }).value;
   const right = typeof raw === "number" ? raw : typeof raw === "string" ? hide(raw) : null;
+  // Final check 9 (2026-11-15): a turn that names the easier example (or another problem) is judged by no verdict of the
+  // target: code cannot tell which problem its numbers answer.
+  if (mentionsExample(text)) return valuesIn(text, readOptionsIn(s)).length > 0 ? { value: null, verdict: "unknown", right } : null;
   const credits = heardAnswers(s);
   const credited = credits.filter((a) => a.verdict === "right");
   const numOf = (v: AnswerValue | undefined) => (v?.type === "number" ? v.value : null);
@@ -5465,6 +5535,18 @@ function tellsAnswer(base: Session, pkg: OperationPackage, texts: readonly strin
   return Number.isInteger(answer) && answer >= 0 && digits <= PLACE_NAMES.length && PLACE_NAMES.slice(0, digits).every((place) => drawn.includes(`digit:${place}`) || drawn.includes(`digit:${place.replace(/_/g, " ")}`));
 }
 
+/** Final check 9: the structural fields of a board command (its op and ids), which a child never sees. */
+const BOARD_ID_FIELD = /^(?:op|id|ids|transactionId|[a-z]+Id)$/;
+/** Final check 9 (2026-11-15): every text and value a board command holds, nested ones too, as text. */
+function boardTexts(cmd: unknown, key = ""): string[] {
+  if (BOARD_ID_FIELD.test(key)) return [];
+  if (typeof cmd === "string") return [cmd];
+  if (typeof cmd === "number") return [String(cmd)];
+  if (Array.isArray(cmd)) return cmd.flatMap((x) => boardTexts(x, key));
+  if (cmd && typeof cmd === "object") return Object.entries(cmd as Record<string, unknown>).flatMap(([k, v]) => boardTexts(v, k));
+  return [];
+}
+
 /**
  * D-345, the tutor core: the model's ONE message for this child turn, checked as a whole (tutor.ts, checkTutorSay), then
  * Maya waits for the child. No act gate, help ladder, example rule, number allow-list or answer rule: Maya may tell a
@@ -5631,7 +5713,10 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   const committedRight = s.solved === "child" && s.lastResult === "right";
   if ((s.solved === null || !committedRight) && act === "guide") {
     const open = stepFacts(pkg).filter((st) => !base.done.includes(st.id));
-    const notes = drawing.commands.flatMap((c) => ((c as { op?: unknown; text?: unknown }).op === "write" && typeof (c as { text?: unknown }).text === "string" ? [(c as { text: string }).text] : []));
+    // Final check 9 (2026-11-15), inverted: every board command Maya sends is read as her words are: each text or value
+    // it holds (a put's value, a write's text, a label, any field but its op and ids), so a board that shows the
+    // answer value or a choice word gives the answer.
+    const notes = drawing.commands.flatMap((c) => boardTexts(c));
     const kind: Assistance = tellsAnswer(base, pkg, [...sentencesOf(text), ...notes], tutor.drawn, committedRight) ? "answer_given"
       : sentencesOf(text).some((x) => equationsOf(x).some((e) => !e.negated && equationHolds(e) === true && e.result.q?.[1] === 1 && (open.some((st) => e.result.q?.[0] === st.result) || tutorKind(pkg).workValues(pkg).includes(e.result.q?.[0] ?? NaN)))) ? "guided" : "hint";
     if (!s.assistance.includes(kind)) s.assistance.push(kind);
