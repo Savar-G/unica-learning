@@ -5029,7 +5029,16 @@ export function tutorStream(s: Session): TutorStreamContext | null {
  * board that now holds every digit of the answer.
  */
 function tellsAnswer(base: Session, pkg: OperationPackage, texts: readonly string[], drawn: readonly string[]): boolean {
-  if (pkg.answer.value.type !== "number") return false;
+  // A word answer ("true", "yes", ">"): a statement of Maya's (not a question, not a choice "A or B") that holds the word
+  // the child has not said yet gives it away (final check 1, 2026-11-15: "The answer is true. Circle true.").
+  const word = (pkg.answer.value as { value?: unknown }).value;
+  if (pkg.answer.value.type !== "number") {
+    if (typeof word !== "string" || word.trim() === "") return false;
+    const w = word.trim().toLowerCase();
+    const holds = (t: string) => new RegExp(`(^|[^a-z0-9])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^a-z0-9])`, "i").test(t);
+    const saidBefore = base.turns.some((t) => t.speaker === "child" && holds(t.text));
+    return !saidBefore && texts.some((x) => !/\?\s*$/.test(x) && !/\bor\b/i.test(x) && holds(x));
+  }
   const answer = pkg.answer.value.value;
   const own = new Set<number>([...tutorKind(pkg).workValues(pkg), ...(pkg.operation.operands as unknown[]).filter((v): v is number => typeof v === "number")]);
   const childSaid = base.turns.some((t) => t.speaker === "child" && valuesIn(t.text).some((v) => v.type === "number" && v.value === answer));
@@ -5193,7 +5202,15 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
     if (!s.assistance.includes(kind)) s.assistance.push(kind);
     // The step the child needed help with: the step open when the child asked or made no progress, never a step the
     // child had done before (part C review, 2026-11-15). The first such step stands.
-    if (!progress) s.stuckStep ??= open[0]?.id ?? "result";
+    // A turn with progress and a help request names the step open after this turn's credit (final check 1).
+    const askedHelp = !!base.turn && (helpInWords(base.turn.text) || ASKS_TUTOR.test(base.turn.text) || saysStuck(base.turn.text));
+    // A step the child worked right in this turn's own words ("12 minus 8 is 4. I need help with the tens.") is not the
+    // step they were stuck on, even when a help request keeps it from being credited.
+    const saidRight = (st: { result: number | string }) => !!base.turn && typeof st.result === "number" &&
+      equationsOf(base.turn.text).some((e) => !e.negated && equationHolds(e) === true && e.result.q?.[1] === 1 && e.result.q[0] === st.result);
+    const helped = stepFacts(pkg).find((st) => !s.done.includes(st.id) && !saidRight(st))?.id ?? "result";
+    if (askedHelp) s.stuckStep ??= helped;
+    else if (!progress) s.stuckStep ??= open[0]?.id ?? "result";
   }
   const said = fillName(text, base);
   effects.push({ kind: "say", act, text: said, ...(talk.length ? { talk } : {}) });
