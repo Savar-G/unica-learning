@@ -5176,7 +5176,11 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   const childValues: number[] = [];
   if (base.turn) {
     const read = turnRead(base);
-    const committed = read.final?.type === "number" && !read.choice && !base.turn.text.includes("?") && !helpInWords(base.turn.text) && !saysStuck(base.turn.text);
+    // An explicit final answer commits even beside a help request ("My answer is 36. I need help."): it is judged on its
+    // own (pre-launch check 2, part 1).
+    const explicitAnswer = sentencesOf(base.turn.text).some((x) => !/\?\s*$/.test(x) && /\d|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)\b/i.test(x) &&
+      /^(?:(?:my|the)\s+(?:final\s+|whole\s+)?answer\s+is|i\s+got|it'?s|it\s+is)\b/i.test(x.trim()));
+    const committed = read.final?.type === "number" && !read.choice && (explicitAnswer || (!base.turn.text.includes("?") && !helpInWords(base.turn.text) && !saysStuck(base.turn.text)));
     if (committed && read.final?.type === "number") {
       const n = read.final.value;
       childValues.push(n);
@@ -5194,7 +5198,7 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
       // 36."), whatever the model's reading holds: the result waits for a new right answer (part C review, 2026-11-15).
       // A value of the work the child does not name as the answer ("12") is no final answer.
       const finalSaid = asAnswer || (!workValue && wholeTurn(base.turn.text) !== null && sentenceCount(base.turn.text) === 1);
-      if (!fits && finalSaid && read.sure && !hedgedTurn(base) && s.lastResult === "right") {
+      if (!fits && finalSaid && (explicitAnswer || (read.sure && !hedgedTurn(base))) && s.lastResult === "right") {
         s.solved = null;
         s.lastResult = "wrong";
         s.wrote = false;
@@ -5282,8 +5286,10 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
     const saidRight = (st: { result: number | string }) => !!base.turn && typeof st.result === "number" &&
       equationsOf(base.turn.text).some((e) => !e.negated && equationHolds(e) === true && e.result.q?.[1] === 1 && e.result.q[0] === st.result);
     const helped = stepFacts(pkg).find((st) => !s.done.includes(st.id) && !saidRight(st))?.id ?? "result";
-    if (askedHelp) s.stuckStep ??= helped;
-    else if (!progress) s.stuckStep ??= open[0]?.id ?? "result";
+    // After progress, Maya's help is on the step open after this turn's credit, never on the step just done (pre-launch
+    // check 2, part 1: "12 minus 8 is 4." then Maya teaches the tens).
+    if (askedHelp || progress) s.stuckStep ??= helped;
+    else s.stuckStep ??= open[0]?.id ?? "result";
   }
   const said = fillName(text, base);
   effects.push({ kind: "say", act, text: said, ...(talk.length ? { talk } : {}), ...(math.length ? { math } : {}) });
