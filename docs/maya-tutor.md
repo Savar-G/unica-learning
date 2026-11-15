@@ -261,7 +261,7 @@ Phase 1: 2-digit whole-number addition and subtraction (`isTutorQuestion`), on a
 
 ## Family calls (`MAYA_TUTOR_FAMILIES`)
 
-The server switch `MAYA_TUTOR_FAMILIES` lets the tutor core teach family calls: the desk chat (kind `chat`, channel `chat`) and the child's voice call from the family desk (kind `family`). Only the exact value `on` turns it on. `callSeams` (`src/lib/maya-call-seams.ts`) reads it for the site and the voice worker and passes `tutorFamilies` to the call module; `src/lib/maya-call.ts` never reads the environment. The switch is off by default. Do not set it until Savar approves.
+The server switch `MAYA_TUTOR_FAMILIES` lets the tutor core teach family calls: the desk chat (kind `chat`, channel `chat`) and the child's voice call from the family desk (kind `family`). Only the exact value `on` turns it on. `callSeams` (`src/lib/maya-call-seams.ts`) reads it for the site and the voice worker and passes `tutorFamilies` to the call module; `src/lib/maya-call.ts` never reads the environment. The switch is off by default in code. Savar approved it for families on 2026-11-15 (option B); see "First-week review and kill switches" below.
 
 - The rule: `tutor = seams.tutor !== false && (kind === "admin_test" || (tutorFamilies && (kind === "chat" || kind === "family")))`. The core still decides per question: a question no tutor kind fits keeps the controller.
 - The safety review of each sentence that is not plain teaching runs on family calls too: the call module gives every kind the reviewer. Free talk stays off for chat and family; the tutor's review does not depend on it. Without a reviewer (no `OPENROUTER_API_KEY`) a tutor sentence that needs a review is refused; after the one repair, code's honest line is said.
@@ -270,3 +270,42 @@ The server switch `MAYA_TUTOR_FAMILIES` lets the tutor core teach family calls: 
 - Tests: `src/lib/maya-call-tutor-families.test.ts` and `src/lib/maya-call-seams.test.ts`.
 
 Phase 2 moves every Book 1 question type to the tutor core, and deletes the controller's teaching code as each type moves. Phase 3 rebuilt the practice judge (T01 to T10 plus the trace metrics, `npm run maya:practice -- --tutor`, `docs/maya-practice.md`) and continues the latency work on the single call.
+
+## First-week review and kill switches
+
+Families have been on the tutor core since 2026-11-15 (Savar, option B). For the first week, someone reads a daily review of every family call, and two kill switches stay ready.
+
+**State on 2026-11-15**
+
+- `MAYA_TUTOR_FAMILIES=on` and `MAYA_CHAT_ENABLED=on` are set in Vercel Production. `MAYA_TUTOR_FAMILIES=on` is also set in the voice worker's secrets (LiveKit agent `maya-voice`).
+- Family voice stays closed: `MAYA_VOICE_ENABLED` is unset in Vercel Production (`src/lib/maya-voice-desk.ts`). A test family still has voice. Open it only after one live test-family voice call proves #992 and Savar approves.
+- A call keeps what it started with. A change of a switch does not move a call that is already live.
+
+**Kill switch 1: families back to the controller**
+
+1. Unset `MAYA_TUTOR_FAMILIES` in Vercel Production, then redeploy (a new deploy reads the new value).
+2. Remove it from the worker's secrets, so voice calls stop using the tutor core: `lk agent update-secrets` for agent `maya-voice` (with the secret removed from the env file you give it), then check the agent's secrets with `lk agent secrets`.
+3. New family calls and chats then use the controller. Admin test calls still use the tutor core.
+
+**Kill switch 2: stop desk chat**
+
+- Set `MAYA_CHAT_ENABLED=off` in Vercel Production and redeploy. Desk chat stops for every family except test families. Read on each request; `docs/maya-chat.md`.
+
+**The daily review**
+
+`npm run maya:family-review` reads production (SELECT only) and prints a short markdown report. It needs `SUPABASE_SECRET_KEY` (or `SUPABASE_SECRET_KEY_FILE`, a file that holds the key) in the environment. It never prints the key.
+
+```
+npm run maya:family-review -- [--hours 24] [--out <file>] [--json]
+```
+
+- It lists every family call (kind `chat` or `family`, voice and chat; never `admin_test`) that started in the window. For each call: id, start time, kind and mode, real or test family (`public.test_accounts`) with a short family id, question, turn counts, path (tutor or controller), and the admin call link (`/admin/maya/<id>`). It shows no child name, parent name or email.
+- Code reads five flags from the saved trace, with no AI:
+  1. **Override, repair or fallback.** Count and kind of each (`counts.overrides` rules).
+  2. **Math-review refusal.** Any review whose final result is not "true", with the sentence (`attempts[].math`).
+  3. **Judgment word after a wrong answer.** A Maya sentence that holds right, correct, yes, good job, perfect, exactly, great, well done, nice or that's it, after a child's turn that the reading calls wrong (or after a rise in `finalMisses`). A negated word ("not quite right") is no match. This is a review flag: the fixed list can flag a word in another sense, such as "on the right".
+  4. **Help level against Maya's words.** Maya's words held the answer value before the child said it, but the call records less than `answer_given`, or the parent note says the child needed no help. It reads digits only, and the answer from the stored package (or from the question text of a plain "a + b" or "a - b").
+  5. **Safety.** Any call flag, safety flag or `maya_call_alerts` row.
+- The report has totals first (calls, real and test, tutor and controller, flagged count by flag), then one block per flagged call, then one line of clean calls. The command exits 0 on success and 2 when the read fails.
+- Read each flagged call on its admin page. A flag asks a person to look. It is no verdict. If a flag shows a real fault, use kill switch 1 or 2, then open a ticket.
+- Code: `src/lib/maya-family-review.ts` (pure, tested in `src/lib/maya-family-review.test.ts`) and `scripts/maya-family-review-cli.ts`.
