@@ -14,6 +14,8 @@ Personalized, mailed math and reading workbooks for ages 5 to 14 (Kindergarten t
 
 ## Agent rules
 
+- Clear mock call histories before each test. Restore environment and global stubs after each test. Clear browser storage before each test unless the test creates and checks its own stored state. Run changed test files in random order to check for retained state.
+
 - Workbook generator work: follow `docs/workbook-fast-loop.md`. Use `npm run workbook:fast` and only the touched tests in the inner loop. Review the fake sample with `--diff`. At the end of a round, run exactly one real U4 and U16 pair with `--replay`, in parallel. Run the full gate once before the push. Reviewers read `<label>-pages.md` and the changed-pages sheet.
   Follow the lane ownership and round checks in `docs/workbook-rounds.md` and the shared rules in `docs/agents/delegate-brief.md`.
 

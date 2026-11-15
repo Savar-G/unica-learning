@@ -31,7 +31,7 @@ const button = (text: string) => [...host.querySelectorAll("button")].find((b) =
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  sessionStorage.clear(); requests.length = 0;
+  localStorage.clear(); sessionStorage.clear(); requests.length = 0;
   answer = async () => reply(1);
   vi.stubGlobal("fetch", async (_: string, options: RequestInit) => {
     const action: RequestAction = JSON.parse(String(options.body)); requests.push(action);
