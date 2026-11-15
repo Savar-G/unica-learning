@@ -97,6 +97,30 @@ describe("drawingMatches: the drawing shows what its sentence says", () => {
   });
 });
 
+describe("drawingMatches fails closed: only a plain positive statement of the drawing (Sol review of #1094)", () => {
+  const ones4 = [{ op: "put", target: { objectId: "question", part: "cell", rowId: "answer", column: "ones" }, value: "4" }];
+  const borrow = [{ op: "regroup", id: "t", objectId: "question", rowId: "top", kind: "borrow", from: "tens", to: "ones" }];
+  it("a sentence that negates or defers the action draws nothing", () => {
+    expect(drawingMatches("Do not trade yet.", "trade", borrow)).toBe(false);
+    expect(drawingMatches("Don't borrow from the tens.", "trade", borrow)).toBe(false);
+    expect(drawingMatches("The tens digit stays 5 for now.", "trade", borrow)).toBe(false);
+    expect(drawingMatches("We will trade 1 ten later.", "trade", borrow)).toBe(false);
+    expect(drawingMatches("We trade 1 ten for 10 ones, but not yet.", "trade", borrow)).toBe(false);
+    expect(drawingMatches("Do not write 4 in the ones yet.", "digit", ones4)).toBe(false);
+    expect(drawingMatches("Never write 4 in the ones.", "digit", ones4)).toBe(false);
+  });
+  it("a question or a condition draws nothing", () => {
+    expect(drawingMatches("Should we trade 1 ten for 10 ones?", "trade", borrow)).toBe(false);
+    expect(drawingMatches("If you are stuck, we trade 1 ten for 10 ones.", "trade", borrow)).toBe(false);
+    expect(drawingMatches("When you are ready, write 4 in the ones.", "digit", ones4)).toBe(false);
+  });
+  it("a reason before the statement is fine when it is not about the drawing", () => {
+    expect(drawingMatches("You can't take 8 from 2, so we trade 1 ten for 10 ones.", "trade", borrow)).toBe(true);
+    expect(drawingMatches("You can't take 8 from 2, so do not trade, we trade later.", "trade", borrow)).toBe(false);
+    expect(drawingMatches("Now, write 4 in the ones.", "digit", ones4)).toBe(true);
+  });
+});
+
 describe("sentenceCueWord", () => {
   it("is the last word of the sentence, counted over the whole message", () => {
     expect(sentenceCueWord(TEXT, 0)).toBe(14);

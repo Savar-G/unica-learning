@@ -61,8 +61,8 @@ export interface TextFold {
   pending: PendingOutput[];
   output: Pick<TextOutput, "say" | "board" | "cancelled">;
   /**
-   * B1: the batches the child's screen skipped or cancelled, undone on the server's board so it matches the child's
-   * screen (and a drawing can be sent again). `at`: how many of `board` came before the undo. Absent when none.
+   * B1, before B2's review: the batches the child's screen skipped or cancelled, undone one by one. No longer written:
+   * the server's board is rebuilt from the batch fates (`shownScene`). Kept so an older checkpoint still reads.
    */
   undos?: { at: number; transactionId: string }[];
   /** B1: words from the screen that came while an output was pending, applied once it is delivered. */
@@ -75,29 +75,29 @@ export function saveTextCheckpoint(s: TextFold): TextCheckpoint {
   const committed = s.board.map((b) => ({ transactionId: b.transactionId, commands: b.commands }));
   return structuredClone({ ...data, sceneBatches: [...committed, ...s.pending.flatMap((p) => p.batches)], initialSceneBatches: committed });
 }
-/** B1: the batch that takes a batch the child's screen did not show off the server's board. */
-const undoBatch = (transactionId: string): Batch => ({ transactionId: `${transactionId}-undo`, commands: [{ op: "undo", transactionId }] });
-/** B1: the scene with that batch undone, or the same scene when the core cannot undo it (fail closed: nothing else changes). */
-function undoOn(scene: Scene, transactionId: string): Scene {
-  const applied = applyBatch(scene, undoBatch(transactionId));
-  return applied.ok ? applied.scene : scene;
+/**
+ * B1 and B2 (review of #1094): the server's board as the child's screen holds it, rebuilt from the batch fates: every
+ * batch Maya sent, in order, except the ones the screen skipped or cancelled, then `extra` (batches still pending). One
+ * undo cannot take a skipped batch off when a later shown batch builds on the board after it (per-sentence batches), so
+ * the board is rebuilt, never undone. A batch that no longer fits without a skipped one is left out (fail closed). A
+ * batch that does not fit while nothing was skipped means the saved board is broken: it throws.
+ */
+function shownScene(board: readonly { transactionId: string; commands: readonly unknown[]; fate?: BoardFate }[], extra: readonly Batch[] = []): Scene {
+  let scene = createScene();
+  let hidden = false;
+  for (const b of [...board, ...extra.map((x) => ({ ...x, fate: undefined }))]) {
+    if (b.fate === "skipped" || b.fate === "cancelled") { hidden = true; continue; }
+    const applied = applyBatch(scene, { transactionId: b.transactionId, commands: b.commands as Batch["commands"] });
+    if (applied.ok) scene = applied.scene;
+    else if (!hidden) throw new Error(`maya text: the saved board batch ${b.transactionId} does not apply again`);
+  }
+  return scene;
 }
 export function restoreTextCheckpoint(checkpoint: TextCheckpoint): TextFold {
-  const { sceneBatches, initialSceneBatches, ...data } = structuredClone(checkpoint);
-  const restore = (batches: Batch[]) => {
-    let scene = createScene();
-    // B1: each undo goes back where it was made, after the batches before it.
-    const undos = (n: number) => { for (const u of data.undos ?? []) if (u.at === n) scene = undoOn(scene, u.transactionId); };
-    undos(0);
-    for (const [i, batch] of batches.entries()) {
-      const result = applyBatch(scene, batch);
-      if (!result.ok) throw new Error("maya text: checkpoint board does not apply");
-      scene = result.scene;
-      undos(i + 1);
-    }
-    return scene;
-  };
-  return { ...data, endedAt: data.session.outcome ? data.session.now : null, scene: restore(sceneBatches), initialScene: restore(initialSceneBatches) };
+  const { sceneBatches: _sceneBatches, initialSceneBatches: _initialSceneBatches, ...data } = structuredClone(checkpoint);
+  void _sceneBatches; void _initialSceneBatches;
+  // The batches of the checkpoint are its committed board and its pending outputs, in that order (saveTextCheckpoint).
+  return { ...data, endedAt: data.session.outcome ? data.session.now : null, scene: shownScene(data.board, data.pending.flatMap((p) => p.batches)), initialScene: shownScene(data.board) };
 }
 export const MAX_TEXT_HISTORY_BYTES = 262144;
 const emptyOutput = (): TextFold["output"] => ({ say: [], board: [], cancelled: false });
@@ -138,7 +138,8 @@ function replayControls(s: TextFold, count = s.controls.length) {
       const applied = applyBatch(scene, e.batch);
       if (applied.ok) scene = applied.scene;
     }
-    if (event.type === "board_fate" && event.fate !== "shown") scene = undoOn(scene, event.batch);
+    // A fate is heard only with no output pending, so the board then is the committed board with its fates.
+    if (event.type === "board_fate" && event.fate !== "shown") scene = shownScene(s.board);
   }
   return { session, scene };
 }
@@ -338,8 +339,9 @@ function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt
 /**
  * B1: the child's screen said what it did with Maya's batches. The first word for a batch she sent stands and goes in the
  * trace; any other word changes nothing. While the call is live, the session hears it (a skipped or cancelled drawing
- * is no longer counted as drawn) and the server's board undoes the batch, so it matches the child's screen. Words that
- * come while an output is pending wait until it is delivered, so the undo has one place among the batches.
+ * is no longer counted as drawn) and the server's board is rebuilt from the fates (`shownScene`), so it matches the
+ * child's screen. Words that come while an output is pending wait until it is delivered, so the board they rebuild is
+ * the committed board.
  */
 function applyFates(s: TextFold, fates: readonly { at: number; batchId: string; fate: BoardFate }[]) {
   if (s.pending.length) { s.lateFates = [...(s.lateFates ?? []), ...fates]; return; }
@@ -355,19 +357,12 @@ function applyFates(s: TextFold, fates: readonly { at: number; batchId: string; 
     if (r.refusal) { s.controls.pop(); continue; }
     s.session = r.session;
     if (f.fate === "shown") continue;
-    const undone = undoOn(s.scene, f.batchId);
-    if (undone === s.scene) continue;
-    s.scene = undone;
-    s.undos = [...(s.undos ?? []), { at: s.board.length, transactionId: f.batchId }];
+    s.scene = shownScene(s.board);
   }
 }
 export function initialTextState(initial: TextLogInitial): TextFold {
   const s: TextFold = { ...structuredClone(initial), historyBytes: 0, scene: createScene(), initialSession: structuredClone(initial.session), initialScene: createScene(), controls: [], approvals: [], nextOutputId: 0, approved: structuredClone(initial.approved ?? initial.session.turns.filter((t) => t.speaker === "maya").slice(-1).map((t) => t.text)), obligations: structuredClone(initial.obligations ?? []), childState: initial.childState ?? "listening", request: null, candidate: null, attempts: [], deferred: [], pending: [], output: emptyOutput() };
-  for (const b of s.board) {
-    const applied = applyBatch(s.scene, { transactionId: b.transactionId, commands: b.commands });
-    if (!applied.ok) throw new Error(`maya text: the saved board batch ${b.transactionId} does not apply again`);
-    s.scene = applied.scene;
-  }
+  s.scene = shownScene(s.board);
   s.initialScene = s.scene;
   s.approvals = s.approved.map((text) => ({ outputId: 0, turn: s.session.turns.findLastIndex((t) => t.speaker === "maya" && t.text === text), text, cancelled: false, acknowledged: false }));
   if (!initial.childState) for (const t of s.turns) { if (t.kind === "partial") s.childState = "child_speaking"; if (t.kind === "child") s.childState = "listening"; }

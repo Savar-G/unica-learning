@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { applyBatch, type Batch } from "@/lib/board";
 import type { TutorBrief } from "@/lib/maya";
 import { conversationalFake, reply } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
@@ -110,10 +111,13 @@ describe("a drawing counts as drawn only when the child's screen showed it (B1)"
     expect(resumed.session.tutor?.drawn).not.toContain("trade:ones");
     const out = await resumed.child("Show me again.");
     expect(out.board.some((b) => b.commands.some((x) => (x as { op?: string }).op === "regroup"))).toBe(true);
-    // A checkpoint taken after the undo restores the same board: the undo goes back after its batch.
+    // The server's board is rebuilt from the fates (B2 review): the skipped trade is off it, so it fits again. A
+    // checkpoint restores the same board.
     let fold = initialTextState(saved.initial);
     for (const e of saved.log) fold = foldTextEvent(fold, e);
-    expect(fold.undos).toEqual([{ at: fold.board.length, transactionId: batch }]);
+    const skipped = fold.board.find((b) => b.transactionId === batch)!;
+    expect(skipped.fate).toBe("skipped");
+    expect(applyBatch(fold.scene, { transactionId: "again", commands: skipped.commands as Batch["commands"] }).ok).toBe(true);
     const restored = restoreTextCheckpoint(saveTextCheckpoint(fold));
     expect(JSON.stringify(restored.scene.state)).toBe(JSON.stringify(fold.scene.state));
   });

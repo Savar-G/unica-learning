@@ -155,19 +155,32 @@ function drawingFacts(offer: string, commands: readonly TutorCommand[]): Drawing
 }
 
 /**
- * Whether a drawing matches the sentence it is tied to (B2): the sentence says the drawing's step and numbers.
- * - a written value (a digit, a row, a value, the answer, a division step): the sentence says that number;
- * - a note: the sentence says every number of its equation;
- * - a trade or a highlight: the sentence names its place, or (a trade) says borrow, trade, carry or regroup;
- * - a chart: the sentence says its number or names one of its places;
- * and never a place conflict: when the sentence names places and the drawing is about one, it is one of them.
+ * Whether a drawing matches the sentence it is tied to (B2). Fail closed: the drawing goes only with a sentence that code
+ * reads as a plain positive statement or instruction of what it shows (`positiveClauses`), and that statement says the
+ * drawing's step and numbers:
+ * - a written value (a digit, a row, a value, the answer, a division step): the statement says that number;
+ * - a note: the statement says every number of its equation;
+ * - a trade or a highlight: the statement names its place, or (a trade) says borrow, trade, carry or regroup;
+ * - a chart: the statement says its number or names one of its places;
+ * and never a place conflict: when the statement names places and the drawing is about one, it is one of them.
+ * A question, a condition, a clause about the drawing that code cannot read as positive ("Do not trade yet.", "The tens
+ * digit stays 5 for now."), or any clause after the statement that code cannot read (", but not yet"): no match. The
+ * sentence is still said.
  */
 export function drawingMatches(sentence: string, offer: string, commands: readonly TutorCommand[]): boolean {
   const f = drawingFacts(offer, commands);
-  const said = numbersOf(sentence);
-  const named = placesOf(sentence);
+  const clauses = positiveClauses(sentence);
+  if (clauses === null) return false;
+  const first = clauses.findIndex((c) => c.positive && names(f, offer, c.text));
+  if (first < 0) return false;
+  // Before the statement, a reason may lead up to it ("You can't take 8 from 2, so we trade ..."), but it must not be
+  // about the drawing; after it, every clause must be a plain positive statement too.
+  if (clauses.some((c, i) => !c.positive && (i > first || names(f, offer, c.text)))) return false;
+  const text = clauses.filter((c) => c.positive).map((c) => c.text).join(". ");
+  const said = numbersOf(text);
+  const named = placesOf(text);
   const byValue = f.values.some((v) => said.includes(v));
-  const byPlace = f.places.some((p) => named.includes(p)) || (offer === "trade" && TRADE_WORDS.test(sentence));
+  const byPlace = f.places.some((p) => named.includes(p)) || (offer === "trade" && TRADE_WORDS.test(text));
   const shown = f.by === "all" ? f.values.length > 0 && f.values.every((v) => said.includes(v))
     : f.by === "value" ? byValue
     : f.by === "place" ? byPlace
@@ -176,6 +189,64 @@ export function drawingMatches(sentence: string, offer: string, commands: readon
   // A chart holds every place of its number: no place conflict to read.
   if (f.by === "either" || named.length === 0 || f.places.length === 0) return true;
   return f.places.some((p) => named.includes(p));
+}
+
+/** Whether a piece of text names the drawing at all: one of its values, one of its places, or (a trade) a trade word. */
+function names(f: DrawingFacts, offer: string, text: string): boolean {
+  const said = numbersOf(text);
+  const named = placesOf(text);
+  return f.values.some((v) => said.includes(v)) || f.places.some((p) => named.includes(p)) || (offer === "trade" && TRADE_WORDS.test(text));
+}
+
+// ---------- The positive forms code reads ----------
+
+const NUM_WORDS = "zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand";
+const N = String.raw`(?:\d[\d,]*|(?:${NUM_WORDS})(?:[- ](?:${NUM_WORDS}))*)`;
+const OP = String.raw`(?:plus|minus|times|multiplied by|divided by|take away|[+\-−–×x*÷/])`;
+const PL = String.raw`(?:hundred thousands?|ten thousands?|thousands?|hundreds?|tens?|ones?)`;
+const AT = String.raw`(?: place| column)?`;
+const WHO = String.raw`(?:(?:we|you|let's|let us) )?(?:can )?`;
+/**
+ * The plain positive forms a tied sentence's statement takes, whole (each one anchored). Anything else is not read as
+ * positive: code never guesses from a list of negative words.
+ */
+const POSITIVE = [
+  // An equation: "12 minus 8 is 4", "6 times 870 is 5220".
+  new RegExp(String.raw`^${N}(?: ${OP} ${N})+ (?:is|equals|makes|gives|=) ${N}$`),
+  // A number in places: "52 is 4 tens and 12 ones".
+  new RegExp(String.raw`^${N} (?:is|equals|makes) ${N} ${PL}(?: and ${N} ${PL})*$`),
+  // Writing a digit: "write 4 in the ones", "4 goes in the ones place", "the ones digit is 4", "we get 4 in the ones".
+  new RegExp(String.raw`^${WHO}(?:write|put) (?:a |the )?${N} (?:in|into|under|below) the ${PL}${AT}$`),
+  new RegExp(String.raw`^(?:the )?${N} goes (?:in|into) the ${PL}${AT}$`),
+  new RegExp(String.raw`^the ${PL} digit is ${N}$`),
+  new RegExp(String.raw`^we get ${N}(?: in the ${PL}${AT})?$`),
+  // A trade: "we trade 1 ten for 10 ones", "we borrow 1 ten from the 5 tens", "we carry the 1 to the tens".
+  new RegExp(String.raw`^${WHO}(?:trade|borrow|regroup|carry)(?: (?:${N}|a|an|the|it|for|into|from|to|over|place|column|${PL}))*$`),
+  // A place: "the 4 is in the ten thousands place", "look at the tens".
+  new RegExp(String.raw`^(?:the )?${N} is in the ${PL}${AT}$`),
+  new RegExp(String.raw`^${WHO}look at the ${PL}${AT}$`),
+  // A chart and a division: "let's put 45,672 in a chart", "let's share 84 into 4 groups".
+  new RegExp(String.raw`^${WHO}(?:put|write) ${N} in (?:a|the) (?:place value |place-value )?(?:place )?chart$`),
+  new RegExp(String.raw`^${WHO}(?:share|divide|split) ${N} (?:into|by|between|among) ${N}(?: (?:equal )?groups)?$`),
+];
+/** Words that may open a clause and change nothing it says. */
+const LEAD = /^(?:(?:so|now|then|first|next|okay|ok|and|great|good|right|alright|\{name\}),?\s+)+/;
+/** A clause that makes another one depend on something: never read as a plain statement. */
+const CONDITION = /^(?:if|unless|when|whenever|once|until|before|after|in case|as soon as)\b/;
+
+/**
+ * The clauses of a sentence, each marked positive when it is whole one of the plain positive forms (`POSITIVE`), or
+ * null when the sentence is a question or holds a condition: then no drawing goes with it.
+ */
+function positiveClauses(sentence: string): { text: string; positive: boolean }[] | null {
+  const s = sentence.trim().replace(/[’‘]/g, "'").toLowerCase();
+  if (/\?\s*["')\]]*$/.test(s)) return null;
+  const clauses = s.replace(/[.!]+["')\]]*$/, "").split(/,\s+|;\s+|:\s+|\s+(?=(?:so|but|then|because)\s)/).map((c) => c.trim()).filter(Boolean);
+  if (clauses.some((c) => CONDITION.test(c.replace(LEAD, "")))) return null;
+  return clauses.map((c) => {
+    const text = c.replace(LEAD, "").replace(/^(?:but|because)\s+/, "");
+    return { text, positive: !/^(?:but|because)\s/.test(c) && POSITIVE.some((r) => r.test(text)) };
+  });
 }
 
 // ---------- The cue word ----------

@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-import { boardPaths, type Batch } from "@/lib/board";
-import { createHistory, mayaSteps, mayaWrites } from "@/lib/board-history";
+import { applyBatch, boardPaths, type Batch } from "@/lib/board";
+import { chatBoardFates } from "@/lib/board-fate";
+import { boardScene, createHistory, mayaSteps, mayaWrites } from "@/lib/board-history";
+import { createBoardSession } from "@/lib/board-session";
 import { createBoardReceiver, createBoardSender } from "@/lib/board-protocol";
 import { createMemoryTransport } from "@/lib/board-protocol-memory";
 import { createBoardSpeech, speechWords } from "@/lib/board-speech";
@@ -135,6 +137,78 @@ describe("a refused or held sentence never releases its drawing (B2)", () => {
     const trace = await session.finish({ reason: "child_stopped" });
     expect(trace.counts.fallbacks).toBe(1);
     expect(checkTrace(trace)).toMatchObject({ ok: true });
+  });
+});
+
+describe("review of #1094: a drawing goes only with a positive statement of it", () => {
+  for (const said of ["Do not trade yet.", "Don't trade 1 ten yet.", "The tens digit stays 5 for now."]) {
+    it(`"${said}" with a trade: the words go out, the trade is not drawn`, async () => {
+      const { session } = chat([reply(`${said} How many ones are there now?`, "guide", { draw: [{ offer: "trade", place: "", sentence: 1 }] }), ASK]);
+      await session.start();
+      const out = await session.child("Please help me.");
+      expect(out.say.join(" ")).toBe(`${said} How many ones are there now?`);
+      expect(out.board).toEqual([]);
+      const trace = await session.finish({ reason: "child_stopped" });
+      expect(attempts(trace).flatMap((a) => a.drawDrops ?? [])).toEqual([{ offer: "trade", sentence: 0, reason: "mismatch" }]);
+      expect(checkTrace(trace)).toMatchObject({ ok: true });
+    });
+  }
+  it("a positive trade sentence still draws the trade", async () => {
+    const { session } = chat([reply(`${S1} How many ones are there now?`, "guide", { draw: [{ offer: "trade", place: "", sentence: 1 }] }), ASK]);
+    await session.start();
+    const out = await session.child("Please help me.");
+    expect(out.board.filter(isTrade)).toHaveLength(1);
+  });
+});
+
+describe("review of #1094: the server's board is rebuilt from the fates", () => {
+  it("a skipped trade before a shown digit is off the server's board, so a later trade and a note both draw", async () => {
+    const retry = reply(`${S1} ${S2} How many ones are there now?`, "guide", { draw: [{ offer: "trade", place: "", sentence: 1 }, { offer: "note", place: "12 - 8 = 4", sentence: 2 }] });
+    const { session } = chat([TRADE_AND_DIGIT, retry, ASK]);
+    const opening = await session.start();
+    const out = await session.child("Please help me.");
+    const [trade, digit] = out.board;
+    expect(isTrade(trade) && !isTrade(digit) && isDigit(digit)).toBe(true);
+    // The child's real desk board: the question, then the child writes where the trade would go.
+    let h = createHistory();
+    for (const b of opening.board) { const r = mayaWrites(h, b, 0); if (!r.ok) throw new Error("opening"); h = r.history; }
+    const trial = applyBatch(boardScene(h), trade);
+    if (!trial.ok) throw new Error("trade");
+    const before = new Set(boardPaths(boardScene(h)).map((p) => p.id));
+    const point = boardPaths(trial.scene).filter((p) => !before.has(p.id)).flatMap((p) => p.pts)[0] as [number, number];
+    let t = 10_000;
+    const desk = createBoardSession({ initial: h, restored: true, noStore: true, clock: () => t, wall: () => t });
+    desk.handBack();
+    expect(desk.penDown(point, false, 800)).toBe(true);
+    t += 100;
+    desk.penMove([[point[0] + 0.003, point[1] + 0.003]]);
+    desk.penUp();
+    t += 100;
+    // The desk skips the trade (it would cover the ink) and shows the digit.
+    expect(desk.mayaReply(out.board)).toBe(1);
+    const fates = chatBoardFates(desk.view().history);
+    expect(fates.find((f) => f.batchId === trade.transactionId)?.fate).toBe("skipped");
+    expect(fates.find((f) => f.batchId === digit.transactionId)?.fate).toBe("shown");
+    session.boardFates(fates);
+    expect(session.session.tutor?.drawn).toEqual(["digit:ones"]);
+    const next = await session.child("Please show me the trade.");
+    expect(next.board.filter(isTrade)).toHaveLength(1);
+    expect(next.board.some((b) => b.commands.some((c) => (c as { op?: string }).op === "write"))).toBe(true);
+    const trace = await session.finish({ reason: "child_stopped" });
+    expect(checkTrace(trace)).toMatchObject({ ok: true });
+  });
+
+  it("a saved call rebuilds the same board: the skipped trade stays off it", async () => {
+    const { session } = chat([TRADE_AND_DIGIT, ASK]);
+    await session.start();
+    const out = await session.child("Please help me.");
+    session.boardFates([{ batchId: out.board[0].transactionId, fate: "skipped" }, { batchId: out.board[1].transactionId, fate: "shown" }]);
+    const saved = await session.saved();
+    const model = conversationalFake({ answer: (() => reply(`${S1} How many ones are there now?`, "guide", { draw: [{ offer: "trade", place: "", sentence: 1 }] })) as unknown as (brief: TurnBrief, n: number) => unknown });
+    let now = T0 + 60_000;
+    const resumed = createTextSession({ callId: "speak-1", package: PKG, model, clock: () => (now += 500), random: 3, reviewer: fakeTalkReviewer(), mathReviewer: fakeMathReviewer(), tutor: true, resume: saved });
+    const again = await resumed.child("Show me the trade.");
+    expect(again.board.filter(isTrade)).toHaveLength(1);
   });
 });
 
