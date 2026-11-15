@@ -60,7 +60,7 @@ import { tutorBrief } from "@/lib/maya/tutor-prompt";
 import { preparedReplies, preparedKey, preparedKeys, sameTurn, MAX_PREPARES_PER_TURN, type PrepareHypothesis, type PreparedReply, type PrepareRecord } from "@/lib/maya-prepared";
 import type { SpendHandle, SpendSeam } from "@/lib/maya-spend-seam";
 import { readReuse, withReadReuse } from "@/lib/maya/read-reuse";
-import { sentencesOf } from "@/lib/maya/say-check";
+import { sentenceKey, sentencesOf } from "@/lib/maya/say-check";
 
 /** The end of a JSON string that starts at `i` (its opening quote), or -1 before its closing quote has come. */
 function stringEnd(text: string, i: number): number {
@@ -657,10 +657,12 @@ export function createTextSession(options: TextSessionOptions): TextSession {
    * malformed, an error, a time-out) is final for its sentence for the rest of the child turn: no second call of any
    * kind, also when the repair says the sentence again, so the repaired message is refused and code's line follows.
    * Keyed by the child turn and the sentence. A "true" is never kept: the next input is reviewed again.
+   * Final check 10 (2026-11-15): the sentence key ignores only the surface (sentenceKey: case, punctuation, spaces,
+   * number words against digits), so a repair that changes only "." to "!" keeps the terminal result.
    */
   const finalMath = new Map<string, Promise<MathReviewResult>>();
   const reviewMath = (input: MathReviewInput, turn: number, ms: number, onError?: (e: unknown) => void): Promise<MathReviewResult> => {
-    const key = `${turn}|${input.sentence}`;
+    const key = `${turn}|${sentenceKey(input.sentence)}`;
     const held = finalMath.get(key);
     if (held) return held;
     const started = runMathReview(options.mathReviewer!, input, ms, onError);

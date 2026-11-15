@@ -11,6 +11,7 @@ import type { OperationPackage, Place, WorkedStep } from "@/lib/question-package
 import { digitAt, placeIndex, WHOLE_PLACES, withCommas } from "@/lib/question-package-place-value";
 import { expressionKey, noteFromEquation, type TutorCommand, type TutorDrawing, type TutorKind, type TutorStepFact } from "../tutor-kind";
 import { sentencesIn } from "./asks";
+import { standardNumber } from "../say-check";
 
 type PlaceOp = Extract<OperationPackage["operation"], { kind: "place-value" }>;
 type Ask = "digit" | "value" | "compare" | "sum";
@@ -401,35 +402,9 @@ const TENS = ["twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty"
 const WORD = new RegExp(String.raw`\b(?:${[...SMALL, ...TENS, "hundred", "thousand", "million"].join("|")})\b(?:(?:\s+|\s+and\s+)(?:${[...SMALL, ...TENS, "hundred", "thousand", "million"].join("|")})\b)*`, "g");
 
 /** A run of number words as a number ("forty thousand", "nine thousand and sixty"), or null when it does not parse. */
+/** Final check 10 (2026-11-15): a run of number words, read by the one standard reader (say-check.ts standardNumber). */
 function wordsValue(run: string): number | null {
-  let total = 0;
-  let group = 0;
-  let last: "unit" | "tens" | "scale" | null = null;
-  for (const w of run.split(/\s+/).filter((x) => x !== "and")) {
-    const small = SMALL.indexOf(w);
-    const tens = TENS.indexOf(w);
-    if (small >= 0) {
-      if (last === "unit") return null;
-      if (last === "tens" && small >= 10) return null;
-      group += small;
-      last = "unit";
-    } else if (tens >= 0) {
-      if (last === "unit" || last === "tens") return null;
-      group += (tens + 2) * 10;
-      last = "tens";
-    } else if (w === "hundred") {
-      if (group === 0 || group >= 100) return null;
-      group *= 100;
-      last = "scale";
-    } else {
-      const scale = w === "thousand" ? 1000 : 1_000_000;
-      if (group === 0) return null;
-      total += group * scale;
-      group = 0;
-      last = "scale";
-    }
-  }
-  return total + group;
+  return standardNumber(run);
 }
 
 /**
@@ -630,8 +605,22 @@ const READERS: readonly Reader[] = [
       return (a === b) === (m[4] === "is") ? null : `the ${m[1] ? "value of the " : ""}${placeName(ka)} digit is ${withCommas(a)} and the ${m[5] ? "value of the " : ""}${placeName(kb)} digit is ${withCommas(b)}`;
     },
   },
-  { re: new RegExp(String.raw`\b${D} ${NOT} ${BIG} than (?:the )?${D}\b(?! @)`, "g"), check: (m) => compare(Number(m[1]), m[3], Number(m[4]), m[2] !== "is") },
-  { re: /\b(\d+) ?([<>]) ?(\d+)\b/g, check: (m) => compare(Number(m[1]), m[2], Number(m[3])) },
+  // Final check 10 (2026-11-15): "the value of the 8 is greater than 1000": the digit's place value in the number, read in
+  // full, then compared. A digit the number does not hold once is a side code cannot read: refused (fail closed).
+  {
+    re: new RegExp(String.raw`\bthe (?:value|worth) of (?:the )?(\d) ${NOT} ${BIG} than ${D}\b(?! @)`, "g"),
+    check: (m, n) => {
+      const digits = String(n);
+      const d = m[1];
+      if (digits.split(d).length !== 2) return `${withCommas(n)} does not hold the digit ${d} once: name its place`;
+      const value = Number(d) * 10 ** (digits.length - 1 - digits.indexOf(d));
+      return compare(value, m[3], Number(m[4]), m[2] !== "is");
+    },
+  },
+  // Final check 10 (2026-11-15): a digit said as "the value of the 8" means its place value, not the digit: this bare-digit
+  // reader reads only part of such a side, so it leaves it (the core reads "the value of the 8" whole, or the review).
+  { re: new RegExp(String.raw`(?<!\b(?:value|worth) of (?:the )?)\b${D} ${NOT} ${BIG} than (?:the )?${D}\b(?! @)`, "g"), check: (m) => compare(Number(m[1]), m[3], Number(m[4]), m[2] !== "is") },
+  { re: /(?<!\b(?:value|worth) of (?:the )?)\b(\d+) ?([<>]) ?(\d+)\b/g, check: (m) => compare(Number(m[1]), m[2], Number(m[3])) },
 ];
 
 /** A sentence that only asks: "Which digit is in the thousands place?" (its claims are still read). */

@@ -8,6 +8,8 @@
 // ten"), "which is" / "that's" after a quantity and the value of a digit in a named number are read too. A comparison or
 // a bracket that is said but cannot be read whole is refused (fail closed), never skipped as a count.
 
+import { standardNumber, unreadNumberRuns } from "./say-check";
+
 const SMALL = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
 const TENS = ["twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
 /** Denominator words of a spoken fraction ("five sixths", "a half"). */
@@ -45,25 +47,16 @@ type Item =
   | { kind: "close" }
   | { kind: "other"; word?: string };
 
-/** A number in digits (a decimal too) or words ("forty-two", "one hundred and two", "two thousand three hundred"), or "a"/"an" (1). */
+/**
+ * A number in digits (a decimal too) or words ("forty-two", "one hundred and two", "two thousand three hundred"), or
+ * "a"/"an" (1). Final check 10 (2026-11-15): words are read by the one standard reader (say-check.ts standardNumber), so
+ * "twenty hundred" or "two thousand two thousand" has no value here either.
+ */
 export function numberOf(word: string): number | null {
   const w = word.toLowerCase().trim();
   if (/^\d+(?:\.\d+)?$/.test(w)) return Number(w);
-  let total = 0;
-  let current = 0;
-  let any = false;
-  for (const part of w.split(/[\s-]+/)) {
-    if (part === "and" && any) continue;
-    if ((part === "a" || part === "an") && !any) { current = 1; any = true; continue; }
-    const small = SMALL.indexOf(part);
-    if (small !== -1) { current += small; any = true; continue; }
-    const tens = TENS.indexOf(part);
-    if (tens !== -1) { current += (tens + 2) * 10; any = true; continue; }
-    if (part === "hundred" && any) { current *= 100; continue; }
-    if (part === "thousand" && any) { total += current * 1000; current = 0; continue; }
-    return null;
-  }
-  return any ? total + current : null;
+  if (w === "a" || w === "an") return 1;
+  return standardNumber(w);
 }
 
 /** "five sixths" is 5/6, "a half" is 1/2. */
@@ -121,7 +114,10 @@ function itemsOf(sentence: string, cuts?: Set<number>): Item[] {
   // A comma never joins a number to a place word after it: "15, one less than 16" is 15 and one, not 15 ones.
   const said = sentence.replace(/[−–]/g, "-").replace(/(\d),(?=\d{3}\b)/g, "$1").replace(/,(?=\s*(?:ones?|tens?|hundreds?|thousands?)\b)/gi, " ¦ ");
   const commas = [...said.matchAll(/,/g)].map((m) => m.index!);
-  const text = said.replace(/,/g, " ");
+  // Final check 10 (2026-11-15): a run of number words with no one standard value ("twenty hundred") is one number code
+  // cannot read: a term with no value, so its clause stays unread (neither refused nor read).
+  let text = said.replace(/,/g, " ");
+  for (const run of unreadNumberRuns(text)) text = `${text.slice(0, run.at)}¤${" ".repeat(run.end - run.at - 1)}${text.slice(run.end)}`;
   const items: Item[] = [];
   let end = 0;
   for (const m of text.matchAll(TOKEN)) {
@@ -163,6 +159,7 @@ function itemsOf(sentence: string, cuts?: Set<number>): Item[] {
     } else {
       const word = m[8]?.toLowerCase();
       if (word === "¦") continue;
+      if (word === "¤") { items.push({ kind: "term", value: NaN, unit: false, word: true }); continue; }
       // "the" after an operator changes nothing ("12 minus the 8 is 4").
       if (word === "the" && items.at(-1)?.kind === "op") continue;
       items.push({ kind: "other", word });
@@ -383,7 +380,8 @@ function readClaimsOnce(sentence: string, op?: "add" | "subtract", trades: reado
   let eqRead = 0;
   for (const it of items) if (it.kind === "rel" && it.eq) eqSeen++;
   // The core cannot check a decimal relation yet ("2.5 × 4 = 10"): it is refused, never read as whole numbers.
-  if (items.some((x) => x.kind === "term" && !Number.isInteger(x.value) && x.fraction !== true) && items.some((x) => x.kind === "rel")) problems.push("it has a decimal code cannot read");
+  // A term with no value (a number-word run the standard reader cannot read, final check 10) is unread, not a decimal.
+  if (items.some((x) => x.kind === "term" && Number.isFinite(x.value) && !Number.isInteger(x.value) && x.fraction !== true) && items.some((x) => x.kind === "rel")) problems.push("it has a decimal code cannot read");
   // A column's sum of digits said in its place: "1 + 2 + 3 = 6 tens" (never a bare "4 is 4 tens", and never a product or
   // a difference: "3 groups of 4 is 12 tens" is false, review of #1009).
   const inPlace = (a: Side, b: Side): boolean =>
@@ -425,7 +423,13 @@ function readClaimsOnce(sentence: string, op?: "add" | "subtract", trades: reado
   // Final check 7 (2026-11-15): a side is read only in full. A sign or an operator right before it ("Minus 6 plus 10 is
   // 4", "negative 6 plus 10 is 4") or right after it ("12 minus 8 is 4 minus") is part of it that this reader does not
   // read: the whole claim stays unread (no refusal and no read), and the sentence goes to the math review.
-  const signedAt = (k: number) => items[k]?.kind === "op" || (items[k]?.kind === "other" && /^(?:negative|positive)$/.test((items[k] as { word?: string }).word ?? ""));
+  // Final check 10 (2026-11-15): a side is a part of a longer number when another number runs on from it ("seven thousand
+  // nine hundred" read in parts, "One and a half": the whole number before "and" a fraction, or a fraction after it).
+  // The reader reads such a side only in part: the whole claim stays unread, like a side with a sign.
+  const isTerm = (k: number) => items[k]?.kind === "term";
+  const isFraction = (k: number) => items[k]?.kind === "term" && (items[k] as Extract<Item, { kind: "term" }>).fraction === true;
+  const signedAt = (k: number) => items[k]?.kind === "op" || (items[k]?.kind === "other" && /^(?:negative|positive)$/.test((items[k] as { word?: string }).word ?? "")) ||
+    (isTerm(k) && (isTerm(k - 1) || isTerm(k + 1))) || (wordAt(items, k) === "and" && ((isTerm(k - 1) && isFraction(k + 1)) || (isFraction(k - 1) && isTerm(k + 1))));
   /** Skips a claim this reader does not read in full: its "=" counts as seen on purpose, so it is not refused. */
   const skipClaim = (relAt: number) => { const r = items[relAt]; if (r?.kind === "rel" && r.eq) eqRead++; };
   // Final check 8 (2026-11-15): an enclosing negation or a scope phrase around a claim ("It is not true that 3 times 2 is

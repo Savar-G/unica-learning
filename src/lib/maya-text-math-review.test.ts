@@ -80,7 +80,8 @@ describe("layer 1: coverage accounting in the claim reader", () => {
     expect(unreadMath("12 minus 8 is 4, which is greater than 8.", ctxOf(SUB))).toEqual(["is", "greater", "than", "8"]);
     expect(unreadMath("Write 4 in the ones.", ctxOf(SUB))).toEqual(["4"]);
     expect(unreadMath("12 is 4 steps.", ctxOf(SUB))).toEqual(["12", "is", "4"]);
-    expect(unreadMath("One and a half is one half.", ctxOf(FRACTION))).toEqual(["1"]);
+    // Final check 10: "a half is one half" is only part of the mixed number "one and a half": nothing of it is read.
+    expect(unreadMath("One and a half is one half.", ctxOf(FRACTION))).toEqual(["1", "0.5", "is", "0.5"]);
     expect(unreadMath("Thirteen divided by two is six remainder one, which is two.", ctxOf(DIV))).toEqual(["is", "2"]);
     // A question form claims nothing only in a question: said as a statement, its numbers are not read.
     expect(unreadMath("What is 12 minus 8.", ctxOf(SUB))).not.toEqual([]);

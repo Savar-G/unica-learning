@@ -236,6 +236,51 @@ function wordNumbers(text: string): WordNumber[] {
   return found;
 }
 
+/**
+ * Final check 10 (2026-11-15): the ONE standard number-word reader, for every path that turns number words into a value
+ * (Maya's sentences, the plain forms, the claim reader, the child's answer). The value of `words` when the whole text is
+ * one run of number words that makes one standard value ("seven thousand nine hundred ninety-nine", "a hundred"); null
+ * otherwise ("twenty hundred", "two thousand two thousand", "hundred", a word that is no number word).
+ */
+export function standardNumber(words: string): number | null {
+  const text = words.toLowerCase().trim().replace(/^an?(?=\s+(?:hundred|thousand)\b)/, "one");
+  if (!/^[a-z]+(?:[\s-]+[a-z]+)*$/.test(text)) return null;
+  const runs = wordNumbers(text);
+  if (runs.length !== 1 || Number.isNaN(runs[0].value)) return null;
+  const [run] = runs;
+  return run.at === 0 && run.end === text.length ? run.value : null;
+}
+
+/**
+ * Final check 10 (2026-11-15): the runs of number words in a text that make no one standard value ("twenty hundred",
+ * "two thousand two thousand"), with where they are. A clause that holds one is unread: Maya's words go to the math
+ * review, and the child's answer is "unknown".
+ */
+export function unreadNumberRuns(raw: string): { at: number; end: number; text: string }[] {
+  const text = raw.replace(/[−–]/g, "-");
+  return wordNumbers(text).filter((w) => Number.isNaN(w.value)).map((w) => ({ at: w.at, end: w.end, text: text.slice(w.at, w.end) }));
+}
+
+/**
+ * Final check 10 (2026-11-15): a sentence's key that ignores only its surface: case, quotes, dashes, spaces, every
+ * punctuation mark that is not inside a number, and number words against digits (each number token, read by the standard
+ * reader, is its value). Two sentences with the same key say the same thing: a terminal review result of one holds for
+ * the other.
+ */
+export function sentenceKey(raw: string): string {
+  const text = raw.replace(/[‘’ʼ]/g, "'").replace(/[−–]/g, "-").replace(/(\d),(?=\d{3}\b)/g, "$1");
+  const parts: string[] = [];
+  let at = 0;
+  const words = (piece: string) => { for (const w of piece.toLowerCase().split(/[^a-z0-9']+/)) if (w.replace(/'/g, "")) parts.push(w); };
+  for (const t of sayNumbers(text)) {
+    words(text.slice(at, t.at));
+    parts.push(t.q ? `${t.q[0]}/${t.q[1]}` : t.key.toLowerCase().replace(/\s+/g, " "));
+    at = t.end;
+  }
+  words(text.slice(at));
+  return parts.join(" ");
+}
+
 /** The numbers in a text: digits, decimals, fractions, clock times and number words, in order. */
 export function sayNumbers(raw: string): SayToken[] {
   const text = raw.replace(/[−–]/g, "-").replace(/(\d),(?=\d{3}\b)/g, "$1");

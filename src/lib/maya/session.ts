@@ -67,7 +67,7 @@ import { claimActs, claimAnswers, claimCommitted, claimConfirm, claimQuestionAsk
 import { closeParts, compareEquationSaid, currentPart, evaluateSteps, evaluateTeaching, partBoards, partCovered, partEquationSaid, partIdOf, stepsBeforeLastPart, withEvaluateExample } from "./evaluate";
 import { isSpot, spotAnswers, spotReveals, spotSessionPackage, spotStepHeard } from "./spot-error";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, TUTOR_GATES, isModelOutput, readModelOutput, withoutDefaults, withoutNulls, type Act, type ChildAnswer, type HintLevel, type ModelOutput, type Proposal, type Reading, type Severity } from "./proposal";
-import { checkSay, checkSentence, columnSentenceTruth, equationHolds, heardColumnOf, namesValue, revealsOpenStep, endsWithAsk, INSTRUCTION, MATH_WORD, PRAISE_WORDS, trimSay, equationKeysOf, equationsOf, sentencesOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, type SayReason, type SayRules, type SayValue } from "./say-check";
+import { checkSay, checkSentence, columnSentenceTruth, equationHolds, heardColumnOf, namesValue, revealsOpenStep, endsWithAsk, INSTRUCTION, MATH_WORD, PRAISE_WORDS, trimSay, equationKeysOf, equationsOf, sentencesOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, unreadNumberRuns, type SayReason, type SayRules, type SayValue } from "./say-check";
 import type { TalkReviewResult } from "./talk-review";
 import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
 import { bindingReview, checkTutorSay, childFacts, childSaysFalse, columnSums, isTutorQuestion, tutorTexts, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, TUTOR_REVIEW_IGNORED } from "./tutor";
@@ -2779,6 +2779,9 @@ function checkAnswers(s: Session, given: ChildAnswer[], checked: Checked[], befo
     // These rules hold in the tutor core (D-345); the controller keeps its own commit rules.
     const tutorCredit = !!s.tutor && isTutorQuestion(pkg);
     if (tutorCredit && problem === "target" && mentionsExample(s.turn.text)) return { code: "answer_not_committed", reason: "The child named the easier example: their numbers are for the example, not for this question. Ask which problem they mean." };
+    // Final check 10 (2026-11-15): a run of number words the one standard reader cannot turn into one value ("two
+    // thousand two thousand") leaves the turn unread: no credit and no miss.
+    if (tutorCredit && unreadNumberRuns(s.turn.text).length > 0) return { code: "answer_not_committed", reason: "Code cannot read one of the child's numbers as one value: ask them to say their answer again." };
     if (tutorCredit && problem === "target" && a.verdict === "right" && a.value.type === "number") {
       // Final check 9, inverted: a number is final-answer credit only when the turn names no place, column, step, digit,
       // row or part at all; and any credit, of a step too, only when its clause is read whole (no unit the question
@@ -3418,6 +3421,48 @@ export function answerReadWhole(pkg: OperationPackage, text: string, value: numb
       const rest = joinCompounds(clause.toLowerCase()).replace(MATH_NUMBER_RUN, " ").replace(/[\d][\d,.]*/g, " ").replace(/[+\-×x÷*=/]/g, " ").split(/[^a-z']+/).filter(Boolean);
       if (rest.some((w) => !ANSWER_FRAME.has(w) && !unitWords.has(w) && !(step && STEP_FRAME.has(w)))) return false;
     }
+  }
+  // A step whose value is the whole answer (the last step of 3 × 2 makes 6) is read as the final answer is: in full.
+  const answer = pkg.answer.value.type === "number" ? pkg.answer.value.value : null;
+  return (step && value !== answer) || answerPhraseWhole(text, value, unitWords);
+}
+
+/** Operator words and symbols: a number next to one is an operand of an expression, not a whole answer. */
+const OPERATOR_TOKEN = /^(?:plus|minus|times|x|divided|by|multiplied|take|away|add|subtract|[+\-×÷*=/])$/;
+
+/**
+ * Final check 10 (2026-11-15): the child's final answer phrase is read in full. Each place the turn says `value` must be
+ * the whole answer: no operator just before it, and after it, to the end of its sentence (across commas), only the
+ * question's unit (each unit word at most once) and answer words that are not operators ("is my answer"). A number, an
+ * operator, any other word or any token code cannot place after it ("18, bags.", "24 plus 1.", "24 plus.") makes the
+ * read incomplete. A later sentence that starts with an operator ("24. Plus 1.") continues the answer; a later sentence
+ * with no number may hold only answer words and the unit ("18. Bags."). Unread is no credit: fail closed.
+ */
+function answerPhraseWhole(text: string, value: number, unitWords: ReadonlySet<string>): boolean {
+  const tokensOf = (sentence: string) =>
+    digitWords(joinCompounds(sentence.replace(/[.!?]+$/, "").toLowerCase())).match(/\d+(?:\.\d+)?|[a-z']+|[^\s\da-z']/g) ?? [];
+  const isValue = (t: string) => (/^\d/.test(t) ? Number(t) : /^[a-z]/.test(t) ? plainNumber(t) : null) === value;
+  const isNumber = (t: string) => /^\d/.test(t) || (/^[a-z]/.test(t) && plainNumber(t) !== null);
+  const sentences = text.replace(/[’‘]/g, "'").split(/(?<=[.!?])\s+|\n+/).map(tokensOf).filter((t) => t.length > 0);
+  let last = -1;
+  for (const [index, tokens] of sentences.entries()) {
+    for (const [i, t] of tokens.entries()) {
+      if (!isValue(t)) continue;
+      last = index;
+      if (i > 0 && OPERATOR_TOKEN.test(tokens[i - 1])) return false;
+      const units = new Set<string>();
+      for (const after of tokens.slice(i + 1)) {
+        if (after === "," || after === ";" || after === ":") continue;
+        if (unitWords.has(after) && !units.has(after)) { units.add(after); continue; }
+        if (isNumber(after) || OPERATOR_TOKEN.test(after) || !ANSWER_FRAME.has(after)) return false;
+      }
+    }
+  }
+  // No place code can find the value as a whole token: unread.
+  if (last === -1) return false;
+  for (const tokens of sentences.slice(last + 1)) {
+    if (OPERATOR_TOKEN.test(tokens[0] ?? "")) return false;
+    if (!tokens.some(isNumber) && tokens.some((t) => t !== "," && !unitWords.has(t) && (OPERATOR_TOKEN.test(t) || !ANSWER_FRAME.has(t)))) return false;
   }
   return true;
 }
@@ -5251,6 +5296,9 @@ function childAnswerOf(s: Session, hide: (text: string) => string): MathReviewIn
   // Final check 9 (2026-11-15): a turn that names the easier example (or another problem) is judged by no verdict of the
   // target: code cannot tell which problem its numbers answer.
   if (mentionsExample(text)) return valuesIn(text, readOptionsIn(s)).length > 0 ? { value: null, verdict: "unknown", right } : null;
+  // Final check 10 (2026-11-15): a run of number words with no one standard value ("two thousand two thousand") is a
+  // number code cannot read: "unknown", never a value another reader invents.
+  if (unreadNumberRuns(text).length > 0) return { value: null, verdict: "unknown", right };
   const credits = heardAnswers(s);
   const credited = credits.filter((a) => a.verdict === "right");
   const numOf = (v: AnswerValue | undefined) => (v?.type === "number" ? v.value : null);
@@ -5459,7 +5507,8 @@ export function tutorStream(s: Session): TutorStreamContext | null {
   if (!plainlyMathTurn(s)) return null;
   const word = wordVerdict(s);
   const code = codeStance(s);
-  const stance = word === "wrong" || (code === "none" && childSaysFalse(s.turn.text)) ? "wrong" : code === "none" && word === "right" ? "right" : code;
+  // Final check 10: a number the standard reader cannot read gives no stance at all.
+  const stance = unreadNumberRuns(s.turn.text).length > 0 ? "none" : word === "wrong" || (code === "none" && childSaysFalse(s.turn.text)) ? "wrong" : code === "none" && word === "right" ? "right" : code;
   const credited = heardAnswers(s).flatMap((a) => (a.verdict === "right" && a.value.type === "number" ? [a.value.value] : []));
   // A word question's "yes" streams only on code's right word: with no word code can read, the affirmation waits for
   // the whole message and its check.
@@ -5555,7 +5604,17 @@ function boardTexts(cmd: unknown, key = ""): string[] {
  */
 function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], reviews: readonly TalkReview[] | undefined, sent: readonly string[], fallback: boolean, mathReviews?: readonly MathReview[]): StepResult {
   const reading = out.reading ?? {};
-  if (!tutorTeachingNow(base, reading)) return proposeV3(base, out, effects, reviews, sent);
+  if (!tutorTeachingNow(base, reading)) {
+    // Final check 10 (2026-11-15): the help in sentences already streamed is decided here, before the turn's priority
+    // routing (identity, scope, safety, a stop) commits. Routing can add help, never take it away.
+    const streamed = sent.length > 0 && base.tutor && base.package ? streamedHelp(base, sent) : null;
+    const r = proposeV3(base, out, effects, reviews, sent);
+    if (!streamed || r.refusal) return r;
+    const s = structuredClone(r.session);
+    if (!s.assistance.includes(streamed)) s.assistance.push(streamed);
+    s.stuckStep ??= stepFacts(base.package!).find((st) => !s.done.includes(st.id))?.id ?? "result";
+    return { ...r, session: s };
+  }
   const no = (code: RefusalCode, reason: string, say?: SayReason | "review" | "math_review"): StepResult => ({ session: base, effects, refusal: { code, reason, allowed: ["guide", "close"], ...(say ? { say } : {}) } });
   const pkg = base.package!;
   const s: Session = structuredClone(base);
@@ -5610,7 +5669,8 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   const childValues: number[] = [];
   if (base.turn) {
     const { read, explicitAnswer, committed } = committedRead(base);
-    if (committed && read.final?.type === "number") {
+    // Final check 10: a number the standard reader cannot read is no committed value.
+    if (committed && read.final?.type === "number" && unreadNumberRuns(base.turn.text).length === 0) {
       const n = read.final.value;
       childValues.push(n);
       // A value of the work is no wrong answer: a step's result or digit, or a column's top after the trade (12, 4).
@@ -5717,8 +5777,7 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
     // it holds (a put's value, a write's text, a label, any field but its op and ids), so a board that shows the
     // answer value or a choice word gives the answer.
     const notes = drawing.commands.flatMap((c) => boardTexts(c));
-    const kind: Assistance = tellsAnswer(base, pkg, [...sentencesOf(text), ...notes], tutor.drawn, committedRight) ? "answer_given"
-      : sentencesOf(text).some((x) => equationsOf(x).some((e) => !e.negated && equationHolds(e) === true && e.result.q?.[1] === 1 && (open.some((st) => e.result.q?.[0] === st.result) || tutorKind(pkg).workValues(pkg).includes(e.result.q?.[0] ?? NaN)))) ? "guided" : "hint";
+    const kind = tutorHelpOf(base, sentencesOf(text), notes, tutor.drawn, committedRight);
     if (!s.assistance.includes(kind)) s.assistance.push(kind);
     // The step the child needed help with: the step open when the child asked or made no progress, never a step the
     // child had done before (part C review, 2026-11-15). The first such step stands.
@@ -5748,6 +5807,30 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   if (act === "close") end(s, closeCause(base), effects, false);
   else waitForChild(s);
   return { session: s, effects, refusal: null };
+}
+
+/**
+ * The help a tutor message gives (part C review, 2026-11-15): a message or board that gives the whole answer is
+ * answer_given; else a message that tells an open step's result is a show (guided), else a hint.
+ */
+function tutorHelpOf(base: Session, sentences: readonly string[], notes: readonly string[], drawn: readonly string[], committedRight: boolean): Assistance {
+  const pkg = base.package!;
+  const open = stepFacts(pkg).filter((st) => !base.done.includes(st.id));
+  return tellsAnswer(base, pkg, [...sentences, ...notes], drawn, committedRight) ? "answer_given"
+    : sentences.some((x) => equationsOf(x).some((e) => !e.negated && equationHolds(e) === true && e.result.q?.[1] === 1 && (open.some((st) => e.result.q?.[0] === st.result) || tutorKind(pkg).workValues(pkg).includes(e.result.q?.[0] ?? NaN)))) ? "guided" : "hint";
+}
+
+/**
+ * Final check 10 (2026-11-15): the help in the sentences Maya already streamed this turn, read before any later routing.
+ * Only the right final answer that stood before this turn, or that code's own strict read credits in this turn, lets her
+ * say the answer back without giving it, and then nothing is recorded (as on the teaching path; never the model's
+ * reading).
+ */
+function streamedHelp(base: Session, sent: readonly string[]): Assistance | null {
+  if (base.outcome) return null;
+  const committedRight = (base.solved === "child" && base.lastResult === "right") || heardAnswers(base).some((a) => a.step === "result" && a.verdict === "right");
+  if (committedRight) return null;
+  return tutorHelpOf(base, sent.flatMap((x) => sentencesOf(x)), [], base.tutor?.drawn ?? [], false);
 }
 
 function proposeV3(base: Session, out: ModelOutput, effects: Effect[], reviews: readonly TalkReview[] | undefined, sent: readonly string[] = []): StepResult {

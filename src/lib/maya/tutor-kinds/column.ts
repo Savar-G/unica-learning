@@ -6,6 +6,7 @@
 // Decimals (decimal-add, decimal-subtract) do not fit yet: the core's claim reader (tutor-math.ts) reads "2.5" as 2
 // and 5, so it refuses every true decimal equation, and the board's columns do not draw a decimal point.
 import type { OperationPackage, WorkedStep } from "@/lib/question-package";
+import { standardNumber } from "../say-check";
 import { expressionKey, noteFromEquation, type TutorCommand, type TutorKind, type TutorStepFact } from "../tutor-kind";
 import { clauseWith, countedInText, finalQuestion, isGroup, THING, WHO, WORD } from "./asks";
 
@@ -446,11 +447,8 @@ function wordNumber(word: string): number | null {
   const w = word.toLowerCase();
   if (/^\d+$/.test(w)) return Number(w);
   if (w === "a" || w === "an") return 1;
-  if (SMALL.includes(w)) return SMALL.indexOf(w);
-  const [t, u] = w.split(/[- ]/);
-  if (!TENS.includes(t)) return null;
-  const unit = u === undefined ? 0 : SMALL.indexOf(u);
-  return unit < 1 && u !== undefined ? null : (TENS.indexOf(t) + 2) * 10 + unit;
+  // Final check 10 (2026-11-15): number words go through the one standard reader.
+  return standardNumber(w);
 }
 
 const unitWorth = (unit: string) => {
@@ -562,6 +560,11 @@ function relationProblems(pkg: OperationPackage, sentence: string): string[] {
     const rel = items[left.next] as Extract<ClaimItem, { kind: "rel" }>;
     const right = side(left.next + 1);
     if (!right) { i = left.next + 1; continue; }
+    // Final check 10 (2026-11-15): a side that another number runs on from or into ("is seven thousand nine hundred
+    // ninety-nine": this reader reads only "seven thousand") is read only in part: no refusal; the core and the math
+    // review read it.
+    const runsOn = (k: number) => items[k]?.kind === "term" || (items[k]?.kind === "and" && items[k + 1]?.kind === "term");
+    if (items[i - 1]?.kind === "term" || runsOn(right.next)) { i = right.next; continue; }
     // Only a claim that holds a place quantity: two plain numbers are the core's to read.
     if (left.unit || right.unit) {
       const equal = left.value === right.value || (rel.now && trade(left, right));
