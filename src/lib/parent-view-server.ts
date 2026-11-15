@@ -8,7 +8,7 @@ import { LEARNING_COLUMNS } from "@/lib/learning-style";
 import { chatFamilyGate } from "@/lib/maya-chat";
 import { childPauseMailing } from "@/lib/plan-controls-server";
 import { dayNumber } from "@/lib/parent-week";
-import { readSchedule } from "@/lib/parent-schedule";
+import { readScheduleTopics } from "@/lib/parent-schedule";
 import { parentScheduleStore } from "@/lib/parent-schedule-store";
 import type { ParentViewReader } from "@/lib/parent-view";
 import type { StateChange } from "@/lib/progress-series";
@@ -270,11 +270,10 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
       return data.map((q) => ({ pageId: q.page_id, standard: q.standard }));
     },
     async planTopics(childId, workbookId) {
-      // The Workbooks tab's own read (src/lib/parent-schedule.ts), with this reader's session and secret key. A plan that is
-      // not frozen, does not check out or cannot be read gives null, and Home names the day from its questions instead.
+      // Share the Workbooks tab's frozen-plan validation, without its scan receipts or marks. One deadline covers
+      // every request, including ownership checks. Missing, invalid or slow plans leave Home's question fallback.
       if (!admin) return null;
-      const schedule = await readSchedule(parentScheduleStore(session, admin, parent), parent, { child: childId, book: workbookId });
-      return schedule.kind === "ready" ? schedule.rows.map((r) => ({ day: r.day, topic: r.topic })) : null;
+      return readScheduleTopics(parentScheduleStore(session, admin, parent, AbortSignal.timeout(1500)), parent, childId, workbookId);
     },
     async skillHistory(childId) {
       if (!admin) throw new Error("skill history read: no secret key");

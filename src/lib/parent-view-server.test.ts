@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { PROFILE_SCHEMA_VERSION, createSession, finish, lockStage1, lockStage2, nextQuestion, reportModel, stage3Due, storedTest, submitAnswer, testAreaAnswers, testStep, type Placement, type Session } from "@/lib/assessment";
 import { checked } from "@/lib/assessment/scripted-child";
 import { listChildren, readMonthlySummary, readOverview, readWorkbooks } from "@/lib/parent-view";
+import { scheduleFixture } from "@/lib/parent-schedule.test-fixture";
 import { parentViewReader } from "@/lib/parent-view-server";
 
 // The parent view's Supabase reader, through its interface, against a fake PostgREST. It checks what the memory reader
@@ -30,6 +31,7 @@ const GRANTED: Record<string, Set<string>> = {
 
 const ROWS: Record<string, unknown> = {
   "rpc/plan_mailing_weeks": 0,
+  "rpc/my_family_deletion_state": false,
   child_plan_states: [],
   children: [{ id: CHILD, first_name: "Leah", grade: 3 }],
   reports: [{ id: "report-1", child_id: CHILD, assessment_id: TEST, assessment: { province: "BC" } }],
@@ -196,14 +198,24 @@ describe("the Supabase reader of the Overview (#560)", () => {
     answers: session.answers.map((a) => ({ question_id: a.questionId, response: a.response, time_ms: a.timeMs })),
     ...over,
   });
-  function overviewReader(rows: Record<string, unknown>) {
-    const children = [{ ...(ROWS.children as object[])[0], learning_styles: null, interests: ["space"], learning_note: null, math_feeling: null, learning_goal: null, weekly_time: null }];
+  function overviewReader(rows: Record<string, unknown>, slow?: string) {
+    const children = [{ ...(ROWS.children as object[])[0], parent_id: PARENT, learning_styles: null, interests: ["space"], learning_note: null, math_feeling: null, learning_goal: null, weekly_time: null }];
     const all: Record<string, unknown> = { ...ROWS, children, ...rows };
     const session: URL[] = [];
     const admin: URL[] = [];
+    const signals: AbortSignal[] = [];
     const fake = (requests: URL[]) => createClient<never>("https://fixture.invalid", "synthetic-key", { auth: { persistSession: false }, global: { fetch: async (input, init) => {
       const url = new URL(String(input));
       requests.push(url);
+      if (init?.signal) signals.push(init.signal);
+      if (slow && url.pathname.endsWith(`/${slow}`)) {
+        const signal = init?.signal;
+        if (!signal) throw new Error("Slow plan read needs an abort signal");
+        return new Promise<Response>((_, reject) => {
+          if (signal.aborted) reject(signal.reason);
+          else signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        });
+      }
       if (url.pathname.endsWith("/rpc/scan_marking_command")) {
         const body = JSON.parse(String(init?.body));
         return Response.json(body.p_action === "revision" ? 0 : []);
@@ -211,7 +223,7 @@ describe("the Supabase reader of the Overview (#560)", () => {
       // A count (HEAD) reads its number from this header; no Maya call in these rows.
       return Response.json(all[url.pathname.replace("/rest/v1/", "")] ?? [], { headers: { "content-range": "*/0" } });
     } } }) as never;
-    return { session, admin, reader: parentViewReader(fake(session), PARENT, fake(admin), {}) };
+    return { session, admin, signals, reader: parentViewReader(fake(session), PARENT, fake(admin), {}) };
   }
   const select = (requests: URL[], table: string) => requests.find((u) => u.pathname.endsWith(`/${table}`))!.searchParams;
 
@@ -408,9 +420,60 @@ describe("the Supabase reader of the Overview (#560)", () => {
     expect(select(r.session, "workbook_questions").get("workbook_id")).toBe(`eq.${WORKBOOK}`);
     expect(r.admin.filter((u) => u.pathname.endsWith("/workbook_questions"))).toEqual([]);
   });
-  it("gives no plan topics, and does not throw, when the book's printed plan cannot be read (Home then names the day from its questions)", async () => {
-    // No frozen approval, print manifest or stored pages behind the workbook: the Workbooks tab's own schedule read is not "ready".
-    expect(await overviewReader({}).reader.planTopics(CHILD, WORKBOOK)).toBeNull();
+  function printedPlanRows(): Record<string, unknown> {
+    const data = scheduleFixture(CHILD, PARENT, WORKBOOK);
+    const book = data.books[0], source = data.revisions[0].source;
+    return {
+      workbooks: [{ ...(ROWS.workbooks as object[])[0], parent_id: PARENT, status: "shipped", printed_revision: book.printedRevision,
+        pdf_path: book.pdfPath, pdf_sha256: book.pdfSha256, print_manifest: book.manifest }],
+      workbook_audit: [{ parent_id: PARENT, child_id: CHILD, draft_id: WORKBOOK, workbook_id: WORKBOOK,
+        detail: { revision: 1, number: 1, printedRevision: book.printedRevision } }],
+      workbook_drafts: [{ parent_id: PARENT, child_id: CHILD, number: 1, schema_version: 2, draft: source.draft }],
+      workbook_draft_revisions: { content: source.draft, rendering: source.rendering },
+      workbook_pages: data.pages.map(({ page }) => ({ id: page.id, page_number: page.number, qr_token: page.qrToken, print_contract: page.contract,
+        day_label: source.draft.pages.find(p => p.number === page.number)!.dayLabel,
+        workbook_questions: page.questions.map(q => {
+          const box = q.box as { x: number; y: number; width: number; height: number };
+          return { question_number: q.number, package: q.package, box_x: box.x, box_y: box.y,
+            box_width: box.width, box_height: box.height, regions: q.regions, teaching: q.teaching };
+        }) })),
+      workbook_questions: [{ page_id: data.pages[2].page.id, standard: "3.1" }],
+      workbook_delivery_receipts: [{ child_id: CHILD, workbook_id: WORKBOOK, delivered_at: "2026-11-03T18:00:00Z" }],
+    };
+  }
+  it("gives no plan topics when the shipped book has no frozen plan, after checking the non-deleted family", async () => {
+    const r = overviewReader({ workbooks: [{ ...(ROWS.workbooks as object[])[0], parent_id: PARENT, status: "shipped" }] });
+    expect(await r.reader.planTopics(CHILD, WORKBOOK)).toBeNull();
+    expect(tables(r.session)).toContain("rpc/my_family_deletion_state");
+    expect(select(r.admin, "workbooks").get("child_id")).toBe(`eq.${CHILD}`);
+  });
+  it("returns the frozen plan's topics with ownership filters and no scan receipts or marking reads", async () => {
+    const r = overviewReader(printedPlanRows());
+    expect(await r.reader.planTopics(CHILD, WORKBOOK)).toEqual([
+      { day: 2, topic: "Second printed row first" }, { day: 1, topic: "Addition" },
+    ]);
+    expect(tables(r.session)).toEqual(["children", "rpc/my_family_deletion_state"]);
+    expect(tables(r.admin)).toEqual(["child_deletions", "workbook_audit", "workbook_draft_revisions", "workbook_drafts", "workbook_pages", "workbooks"]);
+    for (const table of ["child_deletions", "workbooks", "workbook_audit", "workbook_drafts", "workbook_pages"]) {
+      expect(select(r.admin, table).get("parent_id")).toBe(`eq.${PARENT}`);
+    }
+    for (const table of ["workbooks", "workbook_audit", "workbook_drafts"]) expect(select(r.admin, table).get("child_id")).toBe(`eq.${CHILD}`);
+    expect(select(r.admin, "workbook_draft_revisions").get("draft_id")).toBe(`eq.${WORKBOOK}`);
+    expect(select(r.admin, "workbook_draft_revisions").get("revision")).toBe("eq.1");
+    expect(r.signals).toHaveLength(8);
+    expect(new Set(r.signals).size).toBe(1);
+    expect((await readOverview(overviewReader(printedPlanRows()).reader, CHILD, NOW))?.workbook?.today?.topic).toBe("Second printed row first");
+  });
+  it.each(["rpc/my_family_deletion_state", "workbook_draft_revisions"])("falls back to the question topic after the 1.5 second deadline on %s", async slow => {
+    const timeout = vi.spyOn(AbortSignal, "timeout");
+    try {
+      const r = overviewReader(printedPlanRows(), slow);
+      const view = await readOverview(r.reader, CHILD, NOW);
+      expect(view?.workbook?.today?.topic).toBe("Number concepts to 1000");
+      expect(timeout).toHaveBeenCalledWith(1500);
+      expect(r.signals.length).toBeGreaterThan(0);
+      expect(r.signals.every(signal => signal.aborted)).toBe(true);
+    } finally { timeout.mockRestore(); }
   });
 });
 
