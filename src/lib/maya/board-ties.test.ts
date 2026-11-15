@@ -85,8 +85,9 @@ describe("what never draws", () => {
 describe("other kinds", () => {
   it("27 + 39: the ones digit and its carry, said in order", () => {
     expect(derive(ADD, "Write 6 in the ones, then we trade 10 ones for 1 ten.").drawings.map((d) => ops(d.commands))).toEqual([["put", "regroup"]]);
-    // The kind writes the carry with the digit: a sentence that says only the digit draws nothing.
-    expect(reasons(derive(ADD, "Write 6 in the ones."))).toEqual(["differs"]);
+    // The digit and its carry are separate actions: the digit alone draws; the carry alone waits for the digit.
+    expect(derive(ADD, "Write 6 in the ones.").drawings.map((d) => ops(d.commands))).toEqual([["put"]]);
+    expect(reasons(derive(ADD, "We trade 10 ones for 1 ten."))).toEqual(["needs_earlier"]);
   });
   it("34 × 12: each row, then the digit", () => {
     const op: Operation = { kind: "multiply", operands: [34, 12] };

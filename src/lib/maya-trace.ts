@@ -187,6 +187,11 @@ export interface TraceAttempt {
    * (the 0-based sentence, the clause), and whether it drew, else why not (board-ties.ts). Absent when none.
    */
   boardReads?: BoardRead[];
+  /**
+   * Version 15 (B2): "derive" when this attempt's drawings were read from Maya's sentences. Absent: the attempt was
+   * stepped as before B2 (its own `draw` list), as a restored older message is.
+   */
+  drawMode?: "derive";
 }
 
 /** One piece of the model's own words in a trace (D-197): the session's TalkCheck. */
@@ -468,6 +473,7 @@ function checkAttempt(a: unknown, path: string) {
   need(x.gateDisagrees === undefined || (x.gateDisagrees === true && (x.source === "model" || x.source === "repair") && x.proposal !== null), `${path}.gateDisagrees`, "true on a model or repair proposal, or absent");
   need(x.fenced === undefined || (x.fenced === true && (x.source === "model" || x.source === "repair") && x.proposal !== null && x.error === undefined), `${path}.fenced`, "true on a model or repair proposal, or absent");
   need(x.filler === undefined || (x.source === "repair" && ACK_PHRASES.some((p) => p.id === x.filler)), `${path}.filler`, "a thinking phrase id on a repair attempt, or absent");
+  need(x.drawMode === undefined || x.drawMode === "derive", `${path}.drawMode`, "derive, or absent");
   if (x.boardReads !== undefined) {
     need(Array.isArray(x.boardReads) && x.boardReads.length > 0 && x.refusal === null && x.error === undefined, `${path}.boardReads`, "a list of board reads, on an accepted attempt");
     (x.boardReads as unknown[]).forEach((d, i) => {
@@ -688,7 +694,7 @@ function check(raw: unknown): MayaTrace {
   });
   turns.forEach((t, i) => {
     if (t.kind !== "maya" || (r.version as number) >= 15) return;
-    (t.attempts as Record<string, unknown>[]).forEach((a, k) => need(a.boardReads === undefined, `turns[${i}].attempts[${k}].boardReads`, "absent before version 15"));
+    (t.attempts as Record<string, unknown>[]).forEach((a, k) => need(a.boardReads === undefined && a.drawMode === undefined, `turns[${i}].attempts[${k}].boardReads`, "absent before version 15"));
   });
 
   need(Array.isArray(r.board), "board", "a list");

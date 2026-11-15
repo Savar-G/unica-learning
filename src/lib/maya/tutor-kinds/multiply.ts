@@ -609,6 +609,26 @@ function claimReads(pkg: OperationPackage, sentence: string): (string | KindRead
   return problems;
 }
 
+/**
+ * B2: what each drawing needs on the board first. A product: each row needs the row before it; each answer digit needs
+ * every row and the digit on its right (the carry comes from it). A division: each step needs the layout and the step
+ * before it. A try is a note of its own.
+ */
+function boardNeeds(pkg: OperationPackage): Record<string, string[]> {
+  const sh = shape(pkg);
+  const needs: Record<string, string[]> = {};
+  if (sh.kind === "multiply") {
+    const answer = String(answerOf(pkg));
+    const rows = String(sh.b).length > 1 ? [...String(sh.b)].map((_, i) => `row:${i}`) : [];
+    rows.forEach((r, i) => { needs[r] = i > 0 ? [rows[i - 1]] : []; });
+    for (let i = 0; i < answer.length && i < PLACES.length; i++) needs[`digit:${PLACES[i]}`] = [...rows, ...(i > 0 ? [`digit:${PLACES[i - 1]}`] : [])];
+  } else if (sh.kind === "divide") {
+    needs.division = [];
+    divSteps(pkg).forEach((_, k) => { needs[`step:${k + 1}`] = ["division", ...(k > 0 ? [`step:${k}`] : [])]; });
+  } else for (const t of sh.trial.tries) needs[`try:${t.value}`] = [];
+  return needs;
+}
+
 export const multiplyKind: TutorKind = {
   id: "multiply",
   fits,
@@ -620,6 +640,7 @@ export const multiplyKind: TutorKind = {
   drawings,
   drawingExamples,
   draw,
+  boardNeeds,
   claimProblems,
   notes,
 };

@@ -70,7 +70,7 @@ import { ACTS, PART_LIMITS, PROPOSAL_VERSION, TUTOR_GATES, isModelOutput, readMo
 import { checkSay, checkSentence, columnSentenceTruth, equationHolds, heardColumnOf, namesValue, revealsOpenStep, endsWithAsk, INSTRUCTION, MATH_WORD, PRAISE_WORDS, trimSay, equationKeysOf, equationsOf, sentencesOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, unreadNumberRuns, type SayReason, type SayRules, type SayValue } from "./say-check";
 import type { TalkReviewResult } from "./talk-review";
 import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
-import { deriveDrawings, legacyDraw, type BoardRead } from "./board-ties";
+import { deriveDrawings, type BoardRead } from "./board-ties";
 import { agreementClause, bindingReview, checkTutorSay, childAnswerCandidate, childFacts, childSaysFalse, columnSums, isTutorQuestion, tutorTexts, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, TUTOR_REVIEW_IGNORED } from "./tutor";
 import { placeDigitsSaid } from "./tutor-math";
 import { MATH_REVIEW_PROMPT_VERSION, mathReviewsOf, type MathReview, type MathReviewInput } from "./math-review";
@@ -159,7 +159,7 @@ export type SessionEvent =
    * `mathReviews` (two-layer true math, 2026-11-15): the math-truth review of each tutor sentence code did not read whole,
    * by its text. With `talkReviews` given and no `mathReviews`, the event was written before the review existed.
    */
-  | { type: "proposal"; at: number; proposal: unknown; talkReviews?: TalkReview[]; mathReviews?: MathReview[]; fallback?: boolean; sent?: string[] }
+  | { type: "proposal"; at: number; proposal: unknown; talkReviews?: TalkReview[]; mathReviews?: MathReview[]; fallback?: boolean; sent?: string[]; drawMode?: "derive" }
   | { type: "tick"; at: number }
   /**
    * Final check 12 (2026-11-15): the help a sentence Maya emitted to the child gave, recorded the moment it went out (the
@@ -1721,7 +1721,7 @@ export function step(session: Session, event: SessionEvent): StepResult {
         // D-341: sentences already streamed to the child (onSayPart) stay said: the turn's words start with them.
         const sent = Array.isArray(event.sent) ? event.sent.filter((x): x is string => typeof x === "string" && x.trim() !== "") : [];
         // Final check 11: the emitted help is in the session before any routing builds an outcome.
-        if (v3 && s.tutor) return proposeTutor(withEmittedHelp(s, sent), raw as ModelOutput, effects, event.talkReviews === undefined ? undefined : reviewsOf(event.talkReviews), sent, event.fallback === true, event.mathReviews === undefined ? undefined : mathReviewsOf(event.mathReviews));
+        if (v3 && s.tutor) return proposeTutor(withEmittedHelp(s, sent), raw as ModelOutput, effects, event.talkReviews === undefined ? undefined : reviewsOf(event.talkReviews), sent, event.fallback === true, event.mathReviews === undefined ? undefined : mathReviewsOf(event.mathReviews), event.drawMode === "derive");
         if (v3) return proposeV3(s, raw as ModelOutput, effects, event.talkReviews === undefined ? undefined : reviewsOf(event.talkReviews), sent);
         return withSent(propose(s, raw as Proposal, effects, reviewsOf(event.talkReviews), event.fallback === true), sent, s, disclosureDue(s));
       }
@@ -5715,7 +5715,7 @@ function boardTexts(cmd: unknown, key = ""): string[] {
  * step or the answer. Code keeps its own credit of the child's answers (D-340, checkAnswers), the safety review of any
  * sentence that is not plain math, and never ends the call on a child who has not solved the question.
  */
-function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], reviews: readonly TalkReview[] | undefined, sent: readonly string[], fallback: boolean, mathReviews?: readonly MathReview[]): StepResult {
+function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], reviews: readonly TalkReview[] | undefined, sent: readonly string[], fallback: boolean, mathReviews?: readonly MathReview[], derive = false): StepResult {
   const reading = out.reading ?? {};
   if (!tutorTeachingNow(base, reading)) {
     // Final check 10 (2026-11-15): the help in sentences already streamed is decided here, before the turn's priority
@@ -5874,10 +5874,13 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   }
   const tutor: NonNullable<Session["tutor"]> = { help: progress ? 0 : s.solved === null ? (s.tutor?.help ?? 0) + 1 : 0, drawn: [...(s.tutor?.drawn ?? [])], ...(s.tutor?.sent?.length ? { sent: structuredClone(s.tutor.sent) } : {}) };
   // B2 (derive the drawing from the sentence): code reads each accepted sentence and draws what it says in full, one
-  // batch per sentence, in sentence order (board-ties.ts). Code's own line draws nothing. A proposal from before B2 (a
-  // `draw` list with no sentences) keeps the old rule.
-  const ties = fallback || s.noBoard || legacyDraw(out.draw) ? null : deriveDrawings(pkg, sentencesOf(text), tutor.drawn, (tutor.sent ?? []).flatMap((x) => x.keys), out.noDraw ?? [], (k, i) => `tutor-note-${s.batches + 1 + k}-${i}`);
-  const legacy = s.noBoard || !legacyDraw(out.draw) ? { commands: [], keys: [] } : tutorDrawings(pkg, out.draw ?? [], tutor.drawn, (i) => `tutor-note-${s.batches + 1}-${i}`);
+  // batch per sentence, in sentence order (board-ties.ts). Only a proposal stepped live since B2 (`drawMode`) derives:
+  // a saved older message replays exactly as it was stepped (its own `draw` list, or nothing), so a restored call keeps
+  // its batches and ids. Code's own line never draws; on a fallback only the sentences already streamed to the child
+  // (accepted and heard) are read.
+  const heard = fallback ? sentencesOf(lead) : sentencesOf(text);
+  const ties = !derive || s.noBoard || (fallback && sent.length === 0) ? null : deriveDrawings(pkg, heard, tutor.drawn, (tutor.sent ?? []).flatMap((x) => x.keys), fallback ? [] : out.noDraw ?? [], (k, i) => `tutor-note-${s.batches + 1 + k}-${i}`);
+  const legacy = s.noBoard || derive ? { commands: [], keys: [] } : tutorDrawings(pkg, out.draw ?? [], tutor.drawn, (i) => `tutor-note-${s.batches + 1}-${i}`);
   const batches: { commands: Record<string, unknown>[]; keys: string[]; sentence?: number; after?: number[] }[] = ties ? ties.drawings : legacy.commands.length ? [legacy] : [];
   const drawing = { commands: batches.flatMap((b) => b.commands), keys: batches.flatMap((b) => b.keys) };
   tutor.drawn.push(...drawing.keys);

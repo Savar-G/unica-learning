@@ -21,8 +21,12 @@ export type TextLogEvent =
   | { kind: "request"; at: number; requestId: number; source: "model" | "repair"; filler?: string }
   | { kind: "response"; at: number; requestId: number; proposal?: unknown; error?: TraceError; ms: number; fenced?: true; sent?: string[]; firstSayMs?: number; gateDisagrees?: true; priority?: Record<string, unknown> }
   /** `mathReviews`: two-layer true math (2026-11-15); absent in an event written before the math-truth review existed. */
-  | { kind: "review"; at: number; requestId: number; reviews: TalkReview[]; mathReviews?: MathReview[]; reviewMs?: number }
-  | { kind: "fallback"; at: number; proposal: unknown }
+  /**
+   * `drawMode` (B2): "derive" on a proposal stepped live since B2 derives drawings from Maya's sentences. A saved event
+   * without it is replayed exactly as it was stepped (no derived drawing), so a restored call keeps its batches and ids.
+   */
+  | { kind: "review"; at: number; requestId: number; reviews: TalkReview[]; mathReviews?: MathReview[]; reviewMs?: number; drawMode?: "derive" }
+  | { kind: "fallback"; at: number; proposal: unknown; drawMode?: "derive" }
   | { kind: "recover"; at: number }
   | { kind: "cancelled"; at: number }
   | { kind: "delivered"; at: number }
@@ -291,11 +295,13 @@ function flushDeferred(s: TextFold) {
     if (child?.status !== "dropped") applyInput(s, entry.event, undefined, false);
   }
 }
-function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt, reviews?: TalkReview[], mathReviews?: MathReview[]) {
+function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt, reviews?: TalkReview[], mathReviews?: MathReview[], drawMode?: "derive") {
   const before = s.session.state;
   // Two-layer true math: every math-truth review of this attempt is kept in the trace, whatever the step decides.
   if (mathReviews?.length) attempt.math = mathReviews.map((r) => ({ sentence: r.text, verdict: r.result.verdict, reason: r.result.reason, ...(r.result.retried ? { retried: true as const } : {}) }));
-  const event: SessionEvent = { type: "proposal", at: Math.max(at, s.session.now ?? 0), proposal: value, talkReviews: reviews, ...(mathReviews ? { mathReviews } : {}), ...(attempt.source === "fallback" ? { fallback: true } : {}), ...(s.sent?.length ? { sent: [...s.sent] } : {}) };
+  const event: SessionEvent = { type: "proposal", at: Math.max(at, s.session.now ?? 0), proposal: value, talkReviews: reviews, ...(mathReviews ? { mathReviews } : {}), ...(attempt.source === "fallback" ? { fallback: true } : {}), ...(s.sent?.length ? { sent: [...s.sent] } : {}), ...(drawMode ? { drawMode } : {}) };
+  // B2: the trace says how this attempt's drawings were made.
+  if (drawMode && s.session.tutor) attempt.drawMode = drawMode;
   let r = step(s.session, event);
   let controlEvent = event;
   let scene = s.scene;
@@ -463,10 +469,10 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
       if (s.request?.id !== e.requestId || s.candidate?.requestId !== e.requestId) break;
       const candidate = s.candidate;
       s.request = null; s.candidate = null;
-      proposal(s, candidate.proposal, e.at, { source: candidate.source, proposal: candidate.proposal, refusal: null, ms: candidate.ms, ...(candidate.fenced ? { fenced: true as const } : {}), ...(candidate.firstSayMs !== undefined ? { firstSayMs: candidate.firstSayMs } : {}), ...(candidate.gateDisagrees ? { gateDisagrees: true as const } : {}), ...(e.reviewMs !== undefined ? { reviewMs: e.reviewMs } : {}), ...(candidate.filler ? { filler: candidate.filler } : {}) }, e.reviews, e.mathReviews);
+      proposal(s, candidate.proposal, e.at, { source: candidate.source, proposal: candidate.proposal, refusal: null, ms: candidate.ms, ...(candidate.fenced ? { fenced: true as const } : {}), ...(candidate.firstSayMs !== undefined ? { firstSayMs: candidate.firstSayMs } : {}), ...(candidate.gateDisagrees ? { gateDisagrees: true as const } : {}), ...(e.reviewMs !== undefined ? { reviewMs: e.reviewMs } : {}), ...(candidate.filler ? { filler: candidate.filler } : {}) }, e.reviews, e.mathReviews, e.drawMode);
       break;
     }
-    case "fallback": proposal(s, e.proposal, e.at, { source: "fallback", proposal: e.proposal, refusal: null }); break;
+    case "fallback": proposal(s, e.proposal, e.at, { source: "fallback", proposal: e.proposal, refusal: null }, undefined, undefined, e.drawMode); break;
     case "recover": if (!s.candidate) s.request = null; break;
     case "cancelled": s.output.cancelled = false; break;
     // A control, so a cancellation's replay keeps it.

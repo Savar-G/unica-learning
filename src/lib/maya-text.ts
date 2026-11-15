@@ -1061,7 +1061,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     const reviewed = Promise.all([reviews, mathReviews]).then(([results, maths]) => {
       for (const key of used) streamReviews.delete(key);
       for (const key of mathUsed) streamMathReviews.delete(key);
-      append({ kind: "review", at: now(), requestId, reviews: results, mathReviews: maths, ...((texts.length && options.reviewer) || (mathTexts.length && options.mathReviewer) ? { reviewMs: now() - t0 } : {}) });
+      append({ kind: "review", at: now(), requestId, reviews: results, mathReviews: maths, ...((texts.length && options.reviewer) || (mathTexts.length && options.mathReviewer) ? { reviewMs: now() - t0 } : {}), drawMode: "derive" });
     });
     await wait(reviewed, controller);
   }
@@ -1075,7 +1075,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   /** The close after the guidance, in code's words. Every fallback here is a close, which ends the call when accepted. */
   function closeByCode() {
     for (const proposal of read(() => fallbacks(folded.session))) {
-      append({ kind: "fallback", at: now(), proposal });
+      append({ kind: "fallback", at: now(), proposal, drawMode: "derive" });
       if (folded.session.outcome) return;
     }
     append({ kind: "input", at: now(), event: { type: "technical", at: now(), detail: "Maya had no safe line to say" } });
@@ -1106,7 +1106,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       if (folded.session.safety.flagged && !folded.session.safety.guided && !folded.candidate && !folded.attempts.length) {
         if (folded.request) append({ kind: "recover", at: now() });
         for (const proposal of read(() => fallbacks(folded.session))) {
-          append({ kind: "fallback", at: now(), proposal });
+          append({ kind: "fallback", at: now(), proposal, drawMode: "derive" });
           if (folded.session.safety.guided || folded.session.outcome) break;
         }
         if (!folded.session.safety.guided && !folded.session.outcome) append({ kind: "input", at: now(), event: { type: "technical", at: now(), detail: "Maya had no safe line to say" } });
@@ -1149,7 +1149,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       if (folded.attempts.length && !folded.session.outcome) {
         const refused = folded.attempts.filter((a) => a.refusal !== null).map((a) => a.proposal);
         for (const proposal of read(() => fallbacks(folded.session, refused))) {
-          append({ kind: "fallback", at: now(), proposal });
+          append({ kind: "fallback", at: now(), proposal, drawMode: "derive" });
           if (!folded.attempts.length) break;
         }
         if (folded.attempts.length) append({ kind: "input", at: now(), event: { type: "technical", at: now(), detail: "Maya had no safe line to say" } });

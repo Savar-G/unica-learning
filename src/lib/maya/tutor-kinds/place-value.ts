@@ -690,6 +690,25 @@ function notes(pkg: OperationPackage): string[] {
   ];
 }
 
+/**
+ * B2: what each drawing needs on the board first: everything goes on the chart, so the chart first; a value written
+ * under a blank chart needs its digit; the answer needs what `draw` writes before it (the asked digit, or each value).
+ */
+function boardNeeds(pkg: OperationPackage): Record<string, string[]> {
+  const f = must(pkg);
+  const blank = blankChart(f);
+  const needs: Record<string, string[]> = { chart: [] };
+  for (let k = 0; k < f.length && k < WHOLE_PLACES.length; k++) needs[`band:${WHOLE_PLACES[k]}`] = ["chart"];
+  for (const p of f.parts) {
+    if (blank) needs[`digit:${p.place}`] = ["chart"];
+    if (f.ask === "value" || f.ask === "sum") needs[`value:${p.place}`] = ["chart", ...(blank ? [`digit:${p.place}`] : [])];
+  }
+  if (f.ask !== "compare" && typeof f.answer === "number") {
+    needs.answer = ["chart", ...(f.ask === "digit" ? (blank ? [`digit:${f.parts[0].place}`] : []) : f.parts.map((p) => `value:${p.place}`))];
+  }
+  return needs;
+}
+
 export const placeValueKind: TutorKind = {
   id: "place-value",
   fits,
@@ -701,6 +720,9 @@ export const placeValueKind: TutorKind = {
   drawings,
   drawingExamples,
   draw,
+  boardNeeds,
+  // A note goes below the chart.
+  noteNeeds: () => ["chart"],
   claimProblems,
   notes,
 };

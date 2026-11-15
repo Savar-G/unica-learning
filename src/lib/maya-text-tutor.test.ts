@@ -42,8 +42,9 @@ describe("the tutor core, test case 1: Savar's call", () => {
     expect(out.say[0]).toMatch(/2 is too small/);
     expect(out.say[0]).toMatch(/trade 1 ten .* for 10 ones/);
     expect(out.say[0].trim().endsWith("?")).toBe(true);
-    // The board shows the trade on the question.
-    expect(out.board.flatMap((b) => b.commands)).toContainEqual(expect.objectContaining({ op: "regroup", kind: "borrow", from: "tens", to: "ones" }));
+    // B2: the board draws only what a sentence says in a plain form code reads in full. "trade 1 ten from the 5 tens for
+    // 10 ones" is not one ("We trade 1 ten for 10 ones." is), and the model's own draw list is ignored: nothing is drawn.
+    expect(out.board).toEqual([]);
     // Maya waits for the child: never a second message in a row.
     expect(session.session.expect).toBe("child");
     // The brief is the tutor's: steps with values and the reason, code's facts on the child's numbers, no act list.
@@ -198,13 +199,12 @@ describe("only tutor calls use the tutor core", () => {
 
 describe("the board never costs the child Maya's words", () => {
   it("draws what fits, in order, and keeps the message when a drawing does not fit", async () => {
-    // Six requests: more than a proposal holds (4). The first four are drawn; the words stay.
-    const notes = Array.from({ length: 5 }, () => ({ offer: "note", place: "12 − 8 = 4" }));
-    const { session } = call(() => reply("12 minus 8 is 4. What do you write in the ones?", "guide", { draw: [{ offer: "digit", place: "tens" }, ...notes] }));
+    // B2: the note draws; the tens digit needs the trade and the ones digit first, so it draws nothing; the words stay.
+    const { session } = call(() => reply("12 minus 8 is 4. Write 2 in the tens. What do you write in the ones?", "guide"));
     await session.start();
     const out = await session.child(SAVAR);
-    expect(out.say).toEqual(["12 minus 8 is 4. What do you write in the ones?"]);
-    expect(out.board.flatMap((b) => b.commands).filter((c) => (c as { op?: string }).op === "write")).toHaveLength(3);
+    expect(out.say).toEqual(["12 minus 8 is 4. Write 2 in the tens. What do you write in the ones?"]);
+    expect(out.board.flatMap((b) => b.commands)).toMatchObject([{ op: "write", text: "12 − 8 = 4" }]);
     expect(session.session.expect).toBe("child");
     const trace = await session.finish({ reason: "child_stopped" });
     expect(trace.counts.refusals).toBe(0);
@@ -328,7 +328,8 @@ describe("code's stance and other-topic talk (D-345, real runs of 2026-11-14)", 
 
 describe("review of #1002: false math and false feedback never reach the child", () => {
   it("writes only a whole equation as a board note, never other text", async () => {
-    const { session } = call(() => reply("What is 12 minus 8?", "guide", { draw: [{ offer: "note", place: "You are stupid. 1+1=2" }, { offer: "note", place: "12 - 8 = 4" }] }));
+    // B2: a note is read from Maya's own step equation; the model's draw list (with other text) is ignored.
+    const { session } = call(() => reply("12 minus 8 is 4. What is 4 minus 2?", "guide", { draw: [{ offer: "note", place: "You are stupid. 1+1=2" }, { offer: "note", place: "12 - 8 = 4" }] }));
     await session.start();
     const out = await session.child("I need help");
     const writes = out.board.flatMap((b) => b.commands).filter((c) => (c as { op?: string }).op === "write") as { text: string }[];

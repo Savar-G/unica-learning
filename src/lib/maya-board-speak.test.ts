@@ -21,8 +21,10 @@ import { conversationalFake, reply } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
 import { createTextSession } from "@/lib/maya-text";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { checkTrace, TRACE_VERSION, type MayaTrace } from "@/lib/maya-trace";
-import type { OperationPackage } from "@/lib/question-package";
+import { workedSteps, type Operation, type OperationPackage } from "@/lib/question-package";
 
 // B2 ("draw while speaking", derived from the sentence) through the public interfaces: code reads each accepted
 // sentence of Maya's message and draws what it says, one batch per sentence that draws, in sentence order. Chat plays
@@ -31,6 +33,7 @@ import type { OperationPackage } from "@/lib/question-package";
 // repeat never draw. Fake models, fake reviews, the in-memory seams; no network.
 
 const PKG = SAMPLE_PACKAGES["subtract-52-28"] as OperationPackage;
+const FIXTURES = join(__dirname, "maya-board-speak-fixtures");
 const T0 = Date.UTC(2026, 10, 15, 16, 0, 0);
 const S1 = "You can't take 8 from 2, so we trade 1 ten for 10 ones.";
 const S2 = "Write 4 in the ones.";
@@ -93,15 +96,11 @@ describe("default on: the board draws what Maya says (B2)", () => {
     expect(out.board).toEqual([]);
   });
 
-  it("a request with no sentence (a proposal from before B2) keeps the old rule: one batch at the end", async () => {
+  it("a live message with an old-style draw list still derives: the list is ignored", async () => {
     const { session } = chat([reply(SAY, "guide", { draw: [{ offer: "trade", place: "" }, { offer: "digit", place: "ones" }] }), ASK]);
     await session.start();
     const out = await session.child("I don't get 2 minus 8.");
-    expect(out.board).toHaveLength(1);
-    expect(isTrade(out.board[0]) && isDigit(out.board[0])).toBe(true);
-    const trace = await session.finish({ reason: "child_stopped" });
-    expect(trace.board.at(-1)?.sentence).toBeUndefined();
-    expect(checkTrace(trace)).toMatchObject({ ok: true });
+    expect(out.board.map((b) => b.commands.map((c) => (c as { op?: string }).op))).toEqual([["regroup"], ["put"]]);
   });
 });
 
@@ -231,6 +230,81 @@ describe("review of #1094, round 5: a batch whose earlier batch the screen skipp
     const resumed = createTextSession({ callId: "speak-1", package: PKG, model, clock: () => (now += 500), random: 3, reviewer: fakeTalkReviewer(), mathReviewer: fakeMathReviewer(), tutor: true, resume: saved });
     const again = await resumed.child("Show me the trade.");
     expect(again.board.filter(isTrade)).toHaveLength(1);
+  });
+});
+
+describe("Sol review of the derived design (d76b6981e)", () => {
+  const op = (kind: "multiply" | "subtract", a: number, b: number): OperationPackage => {
+    const operation = { kind, operands: [a, b] } as Operation;
+    const value = kind === "multiply" ? a * b : a - b;
+    const skill = kind === "multiply" ? { standard: "4.8", skills: ["4.8-multiplication-facts"] } : PKG.skill;
+    return { ...PKG, id: `${kind}-${a}-${b}`, text: `${a} ${kind === "multiply" ? "×" : "−"} ${b} = ?`, level: 12, skill, operation, steps: workedSteps(operation), answer: { value: { type: "number", value }, accepted: [], unit: null }, wrongAnswers: [{ value: { type: "number", value: value + 1 }, cause: "careless", description: "One more than the answer.", step: null }], easierExample: { text: kind === "multiply" ? "12 × 2 = ?" : "12 − 2 = ?", operation: { kind, operands: [12, 2] }, steps: workedSteps({ kind, operands: [12, 2] } as Operation), answer: { type: "number", value: kind === "multiply" ? 24 : 10 } } } as OperationPackage;
+  };
+  const session = (script: unknown[], pkg: OperationPackage) => {
+    let now = T0;
+    const model = conversationalFake({ answer: ((_: TurnBrief, n: number) => script[Math.min(n, script.length - 1)]) as unknown as (brief: TurnBrief, n: number) => unknown });
+    return createTextSession({ callId: "sol-1", package: pkg, model, clock: () => (now += 500), random: 3, reviewer: fakeTalkReviewer(), mathReviewer: fakeMathReviewer(), tutor: true });
+  };
+
+  it("P1: on 23 × 4 the tens digit waits for the ones digit (declared), and names it in `after`", async () => {
+    const alone = session([reply("Write 9 in the tens. What comes next?", "guide"), ASK], op("multiply", 23, 4));
+    await alone.start();
+    expect((await alone.child("Please help.")).board).toEqual([]);
+    const both = session([reply("Write 2 in the ones. Write 9 in the tens. What comes next?", "guide"), ASK], op("multiply", 23, 4));
+    await both.start();
+    const out = await both.child("Please help.");
+    expect(out.board).toHaveLength(2);
+    expect(out.board[1].after).toEqual([out.board[0].transactionId]);
+  });
+
+  it("P1: an old saved message (draw []) replays exactly its stored batches and ids", async () => {
+    const old = JSON.parse(readFileSync(join(FIXTURES, "old-draw-empty.json"), "utf8"));
+    let now = T0 + 60_000;
+    const resumed = createTextSession({ callId: "probe", package: PKG, model: conversationalFake({ answer: () => ASK }), clock: () => (now += 50), tutor: true, reviewer: fakeTalkReviewer(), mathReviewer: fakeMathReviewer(), resume: old });
+    expect((await resumed.saved()).board).toEqual(old.board);
+  });
+
+  it("P1: an old shown note's fate never confirms a derived trade, so the 4 does not draw alone", async () => {
+    const old = JSON.parse(readFileSync(join(FIXTURES, "old-note-shown.json"), "utf8"));
+    let now = T0 + 60_000;
+    const resumed = createTextSession({ callId: "probe", package: PKG, model: conversationalFake({ answer: () => reply("Write 4 in the ones. What is 4 tens minus 2 tens?", "guide") }), clock: () => (now += 50), tutor: true, reviewer: fakeTalkReviewer(), mathReviewer: fakeMathReviewer(), resume: old });
+    expect((await resumed.saved()).board).toEqual(old.board);
+    const out = await resumed.child("Please show me the ones digit.");
+    expect(out.board).toEqual([]);
+  });
+
+  it("P2: a digit and its carry in separate sentences each draw, the carry after the digit", async () => {
+    const add = SAMPLE_PACKAGES["add-27-39"] as OperationPackage;
+    const s = session([reply("Write 6 in the ones. We trade 10 ones for 1 ten. What is 1 plus 2 plus 3?", "guide"), ASK], add);
+    await s.start();
+    const out = await s.child("Please help me.");
+    expect(out.board.map((b) => b.commands.map((c) => (c as { op?: string }).op))).toEqual([["put"], ["regroup"]]);
+    expect(out.board[1].after).toEqual([out.board[0].transactionId]);
+  });
+
+  it("P2: each trade across zeros draws in its own sentence (1002 − 4)", async () => {
+    const s = session([reply("We trade 1 thousand for 10 hundreds. We trade 1 hundred for 10 tens. We trade 1 ten for 10 ones. What do we write in the ones?", "guide"), ASK], op("subtract", 1002, 4));
+    await s.start();
+    const out = await s.child("Please help me.");
+    expect(out.board.map((b) => b.commands.map((c) => (c as { op?: string }).op))).toEqual([["regroup"], ["regroup"], ["regroup"]]);
+    expect(out.board.map((b) => b.after ?? [])).toEqual([[], [out.board[0].transactionId], [out.board[1].transactionId]]);
+  });
+
+  it("P2: a streamed accepted sentence keeps its note when a later sentence fails and the message falls back", async () => {
+    const lead = "12 minus 8 is 4.";
+    const held = "The 12 ones come from the trade.";
+    const parts: string[] = [];
+    let early: string[] = [];
+    const model = conversationalFake({ answer: () => reply(`${lead} ${held}`, "guide"), stream: { chunk: 7, beforeEnd: async () => { for (let i = 0; i < 100; i++) await Promise.resolve(); early = [...parts]; } } });
+    let now = T0;
+    const s = createTextSession({ callId: "stream-1", package: PKG, tutor: true, clock: () => (now += 50), model, reviewer: fakeTalkReviewer(), mathReviewer: fakeMathReviewer((i) => (i.sentence === held ? { verdict: "false", reason: "refused for the test" } : { verdict: "true", reason: "true" })), onSayPart: (text) => parts.push(text) });
+    await s.start();
+    parts.length = 0;
+    const out = await s.child("Please help with 52 minus 28.");
+    expect(early).toContain(lead);
+    expect(out.say.join(" ")).toContain(lead);
+    expect(out.say.join(" ")).not.toContain(held);
+    expect(out.board.map((b) => b.commands)).toMatchObject([[{ op: "write", text: "12 − 8 = 4" }]]);
   });
 });
 

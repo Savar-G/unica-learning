@@ -55,78 +55,130 @@ const noteKey = (text: string) => `note:${text}`;
  * The board drawings of one accepted tutor message, read from its sentences (B2). `drawn`: what the call drew (sent or
  * shown; never twice). `sent`: keys sent with no word yet from the child's screen: earlier work counts only when it is
  * SHOWN (B1). `noDraw`: sentence numbers (1 for the first) the model marked "no draw", or "all". `noteId(batch, i)`.
+ *
+ * Each clause that draws is ONE of the kind's own actions (`kindActions`: a key and the commands `draw` gives for it),
+ * equal to what the clause says in every field. What it needs first comes ONLY from the kind's declared graph
+ * (`TutorKind.boardNeeds`): each needed key is either shown on the child's board, or drawn by an earlier clause of
+ * this message (then the batch names that batch in `after`), or the clause draws nothing.
  */
 export function deriveDrawings(pkg: OperationPackage, sentences: readonly string[], drawn: readonly string[], sent: readonly string[], noDraw: readonly number[] | "all", noteId: (batch: number, i: number) => string): { drawings: TiedDrawing[]; reads: BoardRead[] } {
   const kind = tutorKind(pkg);
   const offers = new Set(kind.drawings(pkg).map((d) => d.id));
+  const actions = kindActions(pkg);
+  const graph = kind.boardNeeds(pkg);
+  const noteNeeds = kind.noteNeeds?.(pkg) ?? [];
   const numbers = tutorBoardNumbers(pkg);
   const facts = problemFacts(pkg);
   const steps = stepEquations(pkg);
   const drawings: TiedDrawing[] = [];
   const reads: BoardRead[] = [];
   const mine: string[] = [];
-  const all = () => [...drawn, ...mine];
-  // Earlier work counts only when the child's screen CONFIRMED it shown (B1), or when an earlier batch of this same
-  // message draws it (then this batch names that one in `after`). A batch sent with no word yet does not count.
+  // Earlier work counts only when the child's screen CONFIRMED it shown (B1), or when an earlier clause of this same
+  // message draws it. A batch sent with no word yet does not count.
   const confirmed = drawn.filter((k) => !sent.includes(k));
-  const shown = () => [...confirmed, ...mine];
+  const all = () => [...drawn, ...mine];
   sentences.forEach((sentence, at) => {
     const parsed = parseSentence(sentence, facts);
-    const actions = parsed.clauses.flatMap((c, k) => (c.read && (c.read.type === "action" || c.read.type === "equation") ? [{ k, text: c.text, action: c.read.action }] : []));
-    if (actions.length === 0) return;
-    const skip = (reason: ReadReason) => actions.forEach((c) => reads.push({ sentence: at, clause: c.text, drew: false, reason }));
+    const said = parsed.clauses.flatMap((c) => (c.read && (c.read.type === "action" || c.read.type === "equation") ? [{ text: c.text, action: c.read.action }] : []));
+    if (said.length === 0) return;
+    const skip = (reason: ReadReason) => said.forEach((c) => reads.push({ sentence: at, clause: c.text, drew: false, reason }));
     if (noDraw === "all" || noDraw.includes(at + 1)) return skip("no_draw");
     if (!parsed.ok) return skip("unread_sentence");
     const commands: TutorCommand[] = [];
     const keys: string[] = [];
     const after = new Set<number>();
-    let notes = 0;
-    for (let i = 0; i < actions.length; i++) {
-      const tried = drawClause(actions.slice(i).map((c) => c.action));
-      if ("reason" in tried) { reads.push({ sentence: at, clause: actions[i].text, drew: false, reason: tried.reason }); continue; }
-      for (let j = 0; j < tried.commands.length; j++) reads.push({ sentence: at, clause: actions[i + j].text, drew: true });
+    for (const c of said) {
+      const tried = drawClause(c.action);
+      if ("reason" in tried) { reads.push({ sentence: at, clause: c.text, drew: false, reason: tried.reason }); continue; }
+      reads.push({ sentence: at, clause: c.text, drew: true });
       commands.push(...tried.commands);
       keys.push(...tried.keys);
       mine.push(...tried.keys);
-      tried.needs.forEach((k) => { const d = drawings.findIndex((x) => x.keys.includes(k)); if (d >= 0) after.add(d); });
-      i += tried.commands.length - 1;
+      for (const n of tried.needs) { const d = drawings.findIndex((x) => x.keys.includes(n)); if (d >= 0) after.add(d); }
     }
-    if (commands.length) drawings.push({ sentence: at, commands, keys, after: [...after].sort((a, b) => a - b) });
+    if (commands.length) drawings.push({ sentence: at, commands, keys, after: [...after].sort((x, y) => x - y) });
 
-    /**
-     * The commands the kind builds for one clause's action, when they are exactly what the clause (and the clauses
-     * after it, for work the kind draws after it, such as a carry) says, or why not.
-     */
-    function drawClause(said: readonly Action[]): { commands: TutorCommand[]; keys: string[]; needs: string[] } | { reason: ReadReason } {
-      const action = said[0];
-      const tries = requestsFor(action).filter((r) => offers.has(r.offer));
-      // Only the question's own equation and each step's own computation draw a note: never a twin, a reversed
-      // subtraction ("8 − 2" in 52 − 28) or any other true equation.
-      if (action.eq && !steps.has(action.key)) return { reason: "not_a_step" };
-      if (tries.length === 0) return { reason: "no_drawing" };
-      const order: ReadReason[] = ["needs_earlier", "differs", "unsafe", "repeat"];
-      let best: ReadReason = "repeat";
-      const worse = (r: ReadReason) => { if (order.indexOf(r) < order.indexOf(best)) best = r; };
-      for (const req of tries) {
-        const r = kind.draw(pkg, [req], shown(), (i) => noteId(drawings.length, notes + i));
-        if (r.commands.length === 0) { worse("repeat"); continue; }
-        // The kind draws earlier work first: a first key of another drawing means that work is not on the board as shown.
-        if (r.keys.length && r.keys[0] !== req.offer && !r.keys[0].startsWith(`${req.offer}:`)) { worse("needs_earlier"); continue; }
-        if (r.keys.some((k) => all().includes(k))) { worse("repeat"); continue; }
-        const written = r.commands.flatMap((c) => (c.op === "write" && typeof c.text === "string" ? [noteKey(c.text)] : []));
-        if (written.some((k) => all().includes(k) || keys.includes(k))) { worse("repeat"); continue; }
-        if (!r.commands.every((c) => safeCommand(c, numbers))) { worse("unsafe"); continue; }
-        if (r.commands.length > said.length || !r.commands.every((c, j) => commandAction(c)?.key === said[j].key)) { worse("differs"); continue; }
-        notes += written.length;
-        // The work of this message it builds on: what the kind would draw first with only the confirmed board.
-        const alone = kind.draw(pkg, [req], confirmed, () => "x");
-        const needs = alone.keys.filter((k) => !r.keys.includes(k) && mine.includes(k));
-        return { commands: r.commands, keys: [...r.keys, ...written], needs };
+    /** What a needed key list allows: every key shown, or drawn earlier in this message (returned), else null. */
+    function ready(needs: readonly string[]): string[] | null {
+      const fromHere: string[] = [];
+      for (const n of needs) {
+        if (confirmed.includes(n)) continue;
+        if (mine.includes(n)) { fromHere.push(n); continue; }
+        return null;
       }
-      return { reason: best };
+      return fromHere;
+    }
+    /** A note's commands with this batch's own note ids. */
+    function withIds(cs: readonly TutorCommand[]): TutorCommand[] {
+      let i = commands.filter((x) => x.op === "write").length;
+      return cs.map((x) => (x.op === "write" ? { ...x, id: noteId(drawings.length, i++) } : x));
+    }
+
+    /** One clause's action as one of the kind's own actions, or why it draws nothing. */
+    function drawClause(a: Action): { commands: TutorCommand[]; keys: string[]; needs: string[] } | { reason: ReadReason } {
+      const match = [...actions].find(([, cs]) => cs.length === 1 && commandAction(cs[0])?.key === a.key);
+      if (match) {
+        const [key, cs] = match;
+        const note = cs[0].op === "write" && typeof cs[0].text === "string" ? noteKey(cs[0].text) : null;
+        if (all().includes(key) || (note && all().includes(note))) return { reason: "repeat" };
+        const needs = ready(graph[key] ?? []);
+        if (!needs) return { reason: "needs_earlier" };
+        if (!cs.every((x) => safeCommand(x, numbers))) return { reason: "unsafe" };
+        return { commands: withIds(cs), keys: [key, ...(note ? [note] : [])], needs };
+      }
+      if (a.eq) {
+        // Only the question's own equation and each step's own computation draw a note: never a twin, a reversed
+        // subtraction ("8 − 2" in 52 − 28) or any other true equation.
+        if (!steps.has(a.key)) return { reason: "not_a_step" };
+        if (!offers.has("note")) return { reason: "no_drawing" };
+        const eq = a.eq;
+        const ascii = eq.operands.map((x, i) => (i === 0 ? String(x) : ` ${eq.ops[i - 1] === "−" ? "-" : eq.ops[i - 1]} ${x}`)).join("");
+        const r = kind.draw(pkg, [{ offer: "note", place: `${ascii} = ${eq.result}` }], [...confirmed, ...mine, ...noteNeeds], () => "x");
+        const cs = r.commands;
+        if (cs.length !== 1 || commandAction(cs[0])?.key !== a.key || typeof cs[0].text !== "string") return { reason: "differs" };
+        const note = noteKey(cs[0].text);
+        if (all().includes(note)) return { reason: "repeat" };
+        const needs = ready(noteNeeds);
+        if (!needs) return { reason: "needs_earlier" };
+        if (!cs.every((x) => safeCommand(x, numbers))) return { reason: "unsafe" };
+        return { commands: withIds(cs), keys: [note], needs };
+      }
+      // A clause of an action this board draws, with other values; or one it never draws.
+      const type = a.key.split("|")[0];
+      return [...actions.values()].some((cs) => cs.some((x) => commandAction(x)?.key.split("|")[0] === type)) ? { reason: "differs" } : { reason: "no_drawing" };
     }
   });
   return { drawings, reads };
+}
+
+/** The places a kind's drawing may name, and none. */
+const SIM_PLACES = ["", "ones", "tens", "hundreds", "thousands", "ten thousands", "hundred thousands", "millions"];
+
+/**
+ * The kind's own keyed board actions for a question: each key with the commands `draw` gives for it, found by asking
+ * for every drawing it offers (each place) from an empty board until nothing new comes. Notes, which have no fixed key,
+ * are not here. Exported for the contract.
+ */
+export function kindActions(pkg: OperationPackage): Map<string, TutorCommand[]> {
+  const kind = tutorKind(pkg);
+  const offers = kind.drawings(pkg).map((d) => d.id).filter((o) => o !== "note");
+  const out = new Map<string, TutorCommand[]>();
+  const drawn: string[] = [];
+  let note = 0;
+  for (let round = 0; round < 60; round++) {
+    let grew = false;
+    for (const offer of offers) for (const place of SIM_PLACES) {
+      const r = kind.draw(pkg, [{ offer, place }], drawn, () => `tutor-note-action-${note++}`);
+      const fresh = r.keys.filter((k) => !drawn.includes(k) && !k.startsWith("note:"));
+      if (fresh.length === 0) continue;
+      if (r.keys.length === r.commands.length) r.keys.forEach((k, i) => { if (!out.has(k) && !k.startsWith("note:")) out.set(k, [r.commands[i]]); });
+      else if (r.keys.length === 1) out.set(r.keys[0], [...r.commands]);
+      drawn.push(...r.keys);
+      grew = true;
+    }
+    if (!grew) break;
+  }
+  return out;
 }
 
 /** The equation keys of the question and of each of its steps, as code computed them ("equation|12−8=4"). */
@@ -139,25 +191,6 @@ function stepEquations(pkg: OperationPackage): Set<string> {
     for (const m of st.work.matchAll(/(\d+(?: [+−×÷] \d+)+) = (\d+)/g)) keys.add(`equation|${m[1].replace(/ /g, "")}=${m[2]}`);
   }
   return keys;
-}
-
-/** The kind's drawing requests that could show one action, most specific first. */
-function requestsFor(a: Action): { offer: string; place?: string }[] {
-  const [kind] = a.key.split("|");
-  const place = a.places[0];
-  switch (kind) {
-    case "write": return place ? [{ offer: "digit", place }, { offer: "value", place }] : [{ offer: "row" }, { offer: "answer" }];
-    case "trade": return [{ offer: "trade" }];
-    case "equation": {
-      const eq = a.eq!;
-      const ascii = eq.operands.map((x, i) => (i === 0 ? String(x) : ` ${({ "−": "-", "×": "×", "÷": "÷", "+": "+" } as Record<string, string>)[eq.ops[i - 1]]} ${x}`)).join("");
-      return [...(eq.operands.length === 2 && eq.ops[0] === "×" ? [{ offer: "try", place: String(eq.operands[1]) }] : []), { offer: "note", place: `${ascii} = ${eq.result}` }];
-    }
-    case "place": return [{ offer: "band", place }];
-    case "chart": return [{ offer: "chart" }];
-    case "divide": return [{ offer: "division" }];
-    default: return [];
-  }
 }
 
 // ---------- The reader ----------

@@ -589,6 +589,8 @@ export const claimKind: TutorKind = {
   drawings: (pkg) => (equationNotes(pkg).length ? DRAWINGS : []),
   drawingExamples: (pkg) => equationNotes(pkg).slice(0, 1).map((place) => ({ offer: "note", place })),
   draw,
+  // B2: notes only, which need nothing on the board first.
+  boardNeeds: () => ({}),
   claimProblems,
   notes,
 };
