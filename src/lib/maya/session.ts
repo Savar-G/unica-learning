@@ -1498,8 +1498,11 @@ export function step(session: Session, event: SessionEvent): StepResult {
   // #1051: code's own read already made the disclosure due; the model's secret-friend reading adds the no-secret line
   // after it ("Are you a real person? Can you be my secret friend?").
   if (s.turn && priority.aboutMaya === "secret_friend" && s.replies?.[0] === "about.ai" && !s.replies.includes("about.no_secret")) s.replies.splice(1, 0, "about.no_secret");
-  if (s.turn && !s.scopeDue && !s.replies?.length && priority.aboutMaya) {
-    s.replies = ["about.ai", ...(priority.aboutMaya === "secret_friend" || asksSecret(s.turn.text) ? ["about.no_secret" as const] : []), "question.problem"];
+  // Final check 7 (2026-11-15): a question about Maya (the gate or the reading) makes the exact disclosure due before any
+  // scope redirect or other reply ("Is a grown-up helping me with 8 plus 2?"). A scope redirect still due follows it
+  // (gate: disclosureDue before scope_first); with none, the question follows.
+  if (s.turn && !s.replies?.length && priority.aboutMaya) {
+    s.replies = ["about.ai", ...(priority.aboutMaya === "secret_friend" || asksSecret(s.turn.text) ? ["about.no_secret" as const] : []), ...(s.scopeDue ? [] : ["question.problem" as const])];
   } else if (secretReplies(s)) {
     s.replies = secretReplies(s)!;
   } else if (s.turn && !s.scopeDue && priority.shorter && !s.replies?.length) s.replies = ["shorter.prompt"];
@@ -5107,8 +5110,14 @@ function childAnswerOf(s: Session, hide: (text: string) => string): MathReviewIn
   const credited = credits.filter((a) => a.verdict === "right");
   const numOf = (v: AnswerValue | undefined) => (v?.type === "number" ? v.value : null);
   const unknown = { value: null, verdict: "unknown" as const, right };
-  // 3. The child's own explicit answer: a sentence that is only "my answer is N", "I got N", "it's N" (no other words).
-  const own = sentencesOf(text).filter((x) => /\d|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|zero)\b/i.test(x) && /^(?:(?:my|the)\s+(?:final\s+|whole\s+)?answer\s+is|i\s+got|it'?s|it\s+is)\b/i.test(x.replace(/[‘’ʼ]/g, "'").trim()) && !/\?\s*$/.test(x));
+  // 3. The child's own answer sentence: "my answer is N", "the answer is N" (an explicit final answer), or "I got N",
+  // "it's N" (which may answer the step the child is on), each with no other words. Final check 7 (2026-11-15): only an
+  // explicit final answer is compared with the whole answer. "It's 4" or "I got 4" uses code's validated credit of the
+  // turn: a step it credits is "right" ("It's 4." for the ones of 52 - 28), a miss it reads is "wrong", and a value of
+  // the work it does not credit is "unknown"; any other value of a one-sentence turn is compared with the whole answer.
+  const FINAL = /^(?:my|the)\s+(?:final\s+|whole\s+)?answer\s+is\b/i;
+  const OWN = /^(?:(?:my|the)\s+(?:final\s+|whole\s+)?answer\s+is|i\s+got|it'?s|it\s+is)\b/i;
+  const own = sentencesOf(text).filter((x) => /\d|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|zero)\b/i.test(x) && OWN.test(x.replace(/[‘’ʼ]/g, "'").trim()) && !/\?\s*$/.test(x));
   if (own.length > 0) {
     const values = own.map((x) => {
       const body = x.replace(/[‘’ʼ]/g, "'").trim().replace(/[.!]+$/, "").replace(/^(?:(?:my|the)\s+(?:final\s+|whole\s+)?answer\s+is|i\s+got|it'?s|it\s+is)\s+/i, "");
@@ -5120,6 +5129,14 @@ function childAnswerOf(s: Session, hide: (text: string) => string): MathReviewIn
     if (values.some((v) => v === null) || new Set(values).size !== 1) return unknown;
     const n = values[0]!;
     const isRight = rightForQuestion(pkg, { type: "number", value: n });
+    const final = own.some((x) => FINAL.test(x.replace(/[‘’ʼ]/g, "'").trim()));
+    if (!final) {
+      if (credited.some((a) => numOf(a.value) === n)) return { value: n, verdict: "right", right };
+      if (credits.some((a) => a.verdict === "wrong" && numOf(a.value) === n)) return { value: n, verdict: "wrong", right };
+      const work = isTutorQuestion(pkg) && tutorKind(pkg).workValues(pkg).includes(n);
+      if (isRight || work || sentenceCount(text) !== 1) return { value: n, verdict: "unknown", right };
+      return { value: n, verdict: "wrong", right };
+    }
     if (!isRight) return { value: n, verdict: "wrong", right };
     return credited.some((a) => numOf(a.value) === n) ? { value: n, verdict: "right", right } : { value: n, verdict: "unknown", right };
   }
@@ -5330,7 +5347,14 @@ function tellsAnswer(base: Session, pkg: OperationPackage, texts: readonly strin
       const or = (a: string, b: string) => new RegExp(`(?:^|[^a-z0-9])${esc(a)},?\\s+or\\s+(?:[a-z]+\\s+){0,3}${esc(b)}(?=$|[^a-z0-9])`, "i").test(t);
       return or(w, o) || or(o, w);
     };
-    const gives = (x: string) => holdsWord(x, w) && (others ? others.every((o) => !holdsWord(x, o) || !openChoice(x, o)) : !/\?\s*$/.test(x) && !/\bor\b/i.test(x));
+    // Final check 7 (2026-11-15), no list of pointing words: with known choice words, a sentence that is not a question
+    // and names any choice word gives the answer ("Circle the first word: true or false."), and so does a question that
+    // names one, unless it is an open choice that offers the answer word and another choice and picks none ("Is it true
+    // or false?").
+    const asks = (x: string) => /\?\s*$/.test(x.trim());
+    const gives = (x: string) => others
+      ? (holdsWord(x, w) || others.some((o) => holdsWord(x, o))) && !(asks(x) && others.some((o) => openChoice(x, o)))
+      : holdsWord(x, w) && !asks(x) && !/\bor\b/i.test(x);
     return !committedRight && texts.some(gives);
   }
   const answer = pkg.answer.value.value;
@@ -6376,7 +6400,7 @@ function rawOffersFor(s: Session, act: Act, view: View): LineOffer[] {
   const pkg = s.package;
   if (!pkg) return [];
   const l = packageLines(pkg);
-  if (s.scopeDue && act === "redirect") return [...l.workbook(), ...l.decline(), ...l.redirect()];
+  if (s.scopeDue && act === "redirect" && !disclosureDue(s)) return [...l.workbook(), ...l.decline(), ...l.redirect()];
   if (s.replies?.length && act === "redirect") {
     return [...fixedOffers(), ...l.question()].filter((o) => o.line === s.replies![0]);
   }

@@ -273,7 +273,7 @@ export function equationsOf(sentence: string): SayEquation[] {
   const text = sentence.replace(/[−–]/g, "-").replace(/×/g, " x ").replace(/÷/g, " ÷ ");
   const tokens = sayNumbers(text).filter((t) => t.q !== null);
   // The stream: numbers, operators and relations, with "the" and "a" skipped; anything else breaks it.
-  type Item = { kind: "n"; t: SayToken } | { kind: "op"; op: Op } | { kind: "rel"; negated: boolean } | { kind: "gap" };
+  type Item = { kind: "n"; t: SayToken } | { kind: "op"; op: Op } | { kind: "sign" } | { kind: "rel"; negated: boolean } | { kind: "gap" };
   const items: Item[] = [];
   let at = 0;
   const lower = text.toLowerCase();
@@ -287,6 +287,9 @@ export function equationsOf(sentence: string): SayEquation[] {
       if (neg) { items.push({ kind: "rel", negated: true }); between = between.slice(neg[0].length); continue; }
       if (eq) { items.push({ kind: "rel", negated: false }); between = between.slice(eq[0].length); continue; }
       if (op) { items.push({ kind: "op", op: op[1] }); between = between.slice(op[0].exec(between)![0].length); continue; }
+      // Final check 7: a sign word ("negative 6") is part of the number after it, which this reader does not hold.
+      const sign = /^(?:negative|positive)\b/.exec(between);
+      if (sign) { items.push({ kind: "sign" }); between = between.slice(sign[0].length); continue; }
       const word = /^(?:the|a|an|so)\b/.exec(between);
       if (word) { between = between.slice(word[0].length); continue; }
       items.push({ kind: "gap" });
@@ -296,6 +299,10 @@ export function equationsOf(sentence: string): SayEquation[] {
     at = t ? t.end : lower.length;
   }
   const found: SayEquation[] = [];
+  // Final check 7 (2026-11-15): an expression is read only in full. A sign or an operator right before it ("Minus 6 plus
+  // 10 is 4", "negative 6 plus 10") or right after it ("12 minus 8 is 4 minus") is part of it, and this reader does not
+  // read that part: the whole equation stays unread (neither true nor false), never judged by its unsigned rest.
+  const signed = (k: number) => items[k]?.kind === "op" || items[k]?.kind === "sign";
   for (let i = 0; i < items.length; i++) {
     // expr rel n
     const expr = (from: number): { operands: SayToken[]; ops: Op[]; next: number } | null => {
@@ -314,6 +321,7 @@ export function equationsOf(sentence: string): SayEquation[] {
     if (left && left.ops.length > 0 && items[left.next]?.kind === "rel" && items[left.next + 1]?.kind === "n") {
       // Both whole sides: "12 minus 8 equals 2 plus 2" compares 4 with 2 + 2, never with the 2 alone (pre-launch review B).
       const right = expr(left.next + 1)!;
+      if (signed(i - 1) || signed(right.next)) { i = right.next - 1; continue; }
       const result = right.ops.length === 0 ? right.operands[0] : sideToken(text, right.operands, right.ops);
       found.push({ operands: left.operands, ops: left.ops, result, negated: (items[left.next] as { negated: boolean }).negated });
       i = right.next - 1;
@@ -322,6 +330,7 @@ export function equationsOf(sentence: string): SayEquation[] {
     // n rel expr ("6 is 8 minus 2")
     if (items[i]?.kind === "n" && items[i + 1]?.kind === "rel") {
       const right = expr(i + 2);
+      if (right && right.ops.length > 0 && (signed(i - 1) || signed(right.next))) { i = right.next - 1; continue; }
       if (right && right.ops.length > 0) {
         found.push({ operands: right.operands, ops: right.ops, result: (items[i] as { t: SayToken }).t, negated: (items[i + 1] as { negated: boolean }).negated });
         i = right.next - 1;

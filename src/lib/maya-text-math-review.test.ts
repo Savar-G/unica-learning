@@ -66,10 +66,14 @@ describe("layer 1: coverage accounting in the claim reader", () => {
     }
     // The exact-match rule (2026-11-15): code reads these whole and finds them true, but no closed form or step text is
     // the whole sentence, so they go to the math review.
-    for (const s of ["The answer is 24.", "24 is the answer.", "2 ones become 12."]) {
+    for (const s of ["The answer is 24.", "24 is the answer."]) {
       expect(unreadMath(s, ctxOf(SUB)), s).toEqual([]);
       expect(checkTutorSay(s, ctxOf(SUB)), s).toMatchObject({ ok: true, math: [s] });
     }
+    // Final check 7: a trade holds only for one problem's work, so code no longer reads it (no literal equality); it
+    // goes to the math review as before.
+    expect(unreadMath("2 ones become 12.", ctxOf(SUB))).not.toEqual([]);
+    expect(checkTutorSay("2 ones become 12.", ctxOf(SUB))).toMatchObject({ ok: true, math: ["2 ones become 12."] });
   });
   it("sends a sentence with any number or relation word code did not read to the review", () => {
     expect(unreadMath("The answer is 24 and a half.", ctxOf(SUB))).toEqual(["is", "24", "0.5"]);

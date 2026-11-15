@@ -177,6 +177,19 @@ Rules, not word lists. Each failure found on `b02df0da9` has a binding test in `
 - **The child's verdict is code's validated stance** (`maya-math-review-5`). In order: a false equation in the child's turn is "wrong"; a word answer uses code's word verdict; an explicit answer of the child's own ("My answer is 36.") is read from its own sentence only, never from the turn's last number ("My friend said 24" is not the child's answer), and is "right" only when code also credits it; else "right" only from code's credit and "wrong" only from a whole turn of one number or code's read of a miss. Any other number is "unknown", and the prompt makes a sentence that calls the child's answer right or wrong "false" then.
 - **An answer word that rejects the other choice gives the answer.** A sentence of Maya's that names both choice words gives the answer ("The answer is true, not false.", "Circle true instead of false."), unless it is an open choice: the two words joined by "or", each said once, with no negating word ("Is it true or false?", "Is it true, or is it false?").
 
+### Final check 7 (2026-11-15)
+
+Rules, not word lists. Each failure found on `debf17c8e` has a binding test in `src/lib/maya/tutor-final7.test.ts`.
+
+- **Only literal equality is context-free.** Code alone reads a relation only when its two sides have equal values ("52 is 4 tens and 12 ones", "12 minus 8 is 4"). A relation that holds only by reading a bare number in a place ("1 + 2 + 3 = 6 tens") or as a trade depends on which problem and which column it means: it passes on code alone only as an exact step text of the active problem, and any other wording goes to the math review. This replaces the column-sum read of pre-launch check 2.
+- **Each operator from its own place.** The child's facts for the review print every operator as the reader read it ("3 × 2 = 6", "8 − 2 + 4 = 10").
+- **An expression is read only in full.** A sign or an operator right before or right after an expression ("Minus 6 plus 10 is 4", "negative 6 plus 10", "12 minus 8 is 4 minus") leaves the whole equation unread, in the equation reader and in the claim reader: no verdict from code on the child's turn ("unknown"), and Maya's sentence goes to the review, never a refusal.
+- **A pattern clause the kind cannot read in full goes to the review.** Only a clause in one of the pattern forms that does not hold is refused. A question, a negation or any other form is not refused.
+- **A repeated key at any depth.** A key written twice in any one object of the output, also inside `reading`, makes the output malformed for routing. Every priority value in any copy applies: the strongest safety level, any identity question, any stop.
+- **The disclosure before a scope redirect.** A question about Maya (the gate or the reading) makes the exact `about.ai` line due before any scope redirect; a redirect still due follows it.
+- **A statement that names a choice word gives the answer.** On a word-answer question, a sentence of Maya's that is not a question and names any choice word gives the answer ("Circle the first word: true or false."), unless the child already committed the right answer. Only a question that offers the answer word and another choice and picks none ("Is it true or false?") is an open choice.
+- **The review's verdict uses the step credit.** "It's N" and "I got N" use code's validated credit of the turn ("It's 4." for the ones of 52 − 28 is "right"). Only an explicit final answer ("my answer is", "the answer is") is compared with the whole answer.
+
 ## Credit, the learning event and the parent note
 
 Code's credit of the child decides the saved result, never the model's reading (part C of the pre-launch review, 2026-11-15; tests: `src/lib/maya-call-tutor-credit.test.ts`, `src/lib/maya/tutor-credit.test.ts`):

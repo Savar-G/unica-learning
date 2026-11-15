@@ -163,62 +163,86 @@ export function partialSay(soFar: string): { text: string; complete: boolean; ki
   return { text, complete: false, kind, gate, reading: readingOf(before.reading), before: Object.keys(before) };
 }
 /**
- * The top-level keys of a reply as it streams in, in the order written, each with its value: the parsed value when
- * complete, else the complete fields of an object not yet closed (a reading cut off), else undefined. Repeated keys are
- * kept, so a caller can see them. Stops at the first value that is not complete.
+ * Final check 7 (2026-11-15): every member of every object in a reply's raw text as it streams in, at any depth, in the
+ * order written, each with its path from the top (["reading", "safety"]) and its value when it is a complete string,
+ * number, boolean or null. Repeated keys are kept, so a caller sees every copy; `repeated` is true when any one object
+ * holds a key twice, at any depth (a final parse keeps only the last copy). Stops at the first value that is not
+ * complete; the members before it stay.
  */
-function topEntries(text: string): { key: string; value: unknown; complete: boolean }[] {
-  const entries: { key: string; value: unknown; complete: boolean }[] = [];
-  const open = /^\s*\{\s*/.exec(text);
-  if (!open) return entries;
-  let i = open[0].length;
-  for (let n = 0; ; n++) {
-    if (n > 0) {
-      const sep = /^\s*,\s*/.exec(text.slice(i));
-      if (!sep) return entries;
-      i += sep[0].length;
+function deepMembers(text: string): { members: { path: string[]; value: unknown }[]; repeated: boolean } {
+  const members: { path: string[]; value: unknown }[] = [];
+  let repeated = false;
+  const ws = (i: number) => { while (i < text.length && /\s/.test(text[i])) i++; return i; };
+  /** The end of the value at `i` (after its last character), or -1 when it is not complete or not JSON. */
+  const value = (i: number, path: string[]): number => {
+    i = ws(i);
+    const c = text[i];
+    if (c === undefined) return -1;
+    if (c === "{") {
+      const keys = new Set<string>();
+      i = ws(i + 1);
+      if (text[i] === "}") return i + 1;
+      for (;;) {
+        if (text[i] !== '"') return -1;
+        const keyEnd = stringEnd(text, i);
+        if (keyEnd < 0) return -1;
+        let key: string;
+        try { key = String(JSON.parse(text.slice(i, keyEnd))); } catch { return -1; }
+        if (keys.has(key)) repeated = true;
+        keys.add(key);
+        i = ws(keyEnd);
+        if (text[i] !== ":") return -1;
+        const end = value(i + 1, [...path, key]);
+        if (end < 0) return -1;
+        i = ws(end);
+        if (text[i] === ",") { i = ws(i + 1); continue; }
+        if (text[i] === "}") return i + 1;
+        return -1;
+      }
     }
-    if (text[i] !== '"') return entries;
-    const keyEnd = stringEnd(text, i);
-    if (keyEnd < 0) return entries;
-    let key: unknown;
-    try { key = JSON.parse(text.slice(i, keyEnd)); } catch { return entries; }
-    const colon = /^\s*:\s*/.exec(text.slice(keyEnd));
-    if (!colon) return entries;
-    i = keyEnd + colon[0].length;
+    if (c === "[") {
+      i = ws(i + 1);
+      if (text[i] === "]") return i + 1;
+      for (;;) {
+        const end = value(i, [...path, "[]"]);
+        if (end < 0) return -1;
+        i = ws(end);
+        if (text[i] === ",") { i = ws(i + 1); continue; }
+        if (text[i] === "]") return i + 1;
+        return -1;
+      }
+    }
     const end = valueEnd(text, i);
-    if (end < 0) {
-      // A value cut off: an object keeps its complete fields (a reading whose priority fields are already written).
-      const inner = text[i] === "{" ? /^\{\s*/.exec(text.slice(i)) : null;
-      entries.push({ key: String(key), value: inner ? keysFrom(text, i + inner[0].length, true, null).keys : undefined, complete: false });
-      return entries;
-    }
-    let value: unknown;
-    try { value = JSON.parse(text.slice(i, end)); } catch { return entries; }
-    entries.push({ key: String(key), value, complete: true });
-    i = end;
-  }
+    if (end < 0) return -1;
+    let v: unknown;
+    try { v = JSON.parse(text.slice(i, end)); } catch { return -1; }
+    members.push({ path, value: v });
+    return end;
+  };
+  value(0, []);
+  return { members, repeated };
 }
 
 /**
- * Final check 6 (2026-11-15): what a reply's raw text, as streamed so far, says before any parse. `repeated`: a top-level
- * key comes twice (a second "gate" or "reading"), which makes the whole output malformed for routing, since a final parse
- * keeps only the last value. `priority`: every priority value in the text, from any copy of any key, whole or cut off,
- * as one reading: a question about Maya (the gate "identity" or aboutMaya), safety (the gate "safety", a severity, kind
- * "safety"), a harmful request, or a stop (the gate "stop", the reading's stop, kind "stop"); null when there is none.
- * A complete priority value is never lost to a failed parse: it applies on its own (fail closed).
+ * Final check 6 (2026-11-15): what a reply's raw text, as streamed so far, says before any parse. `repeated`: a key comes
+ * twice in one object, at ANY depth (a second "gate", a second "reading", or a second "safety" inside the reading; final
+ * check 7), which makes the whole output malformed for routing, since a final parse keeps only the last value.
+ * `priority`: every priority value in the text, from any copy of any key, whole or cut off, as one reading: a question
+ * about Maya (the gate "identity" or aboutMaya), safety (the gate "safety", a severity, kind "safety"; the strongest
+ * severity in any copy wins), a harmful request, or a stop (the gate "stop", the reading's stop, kind "stop"); null when
+ * there is none. A complete priority value is never lost to a failed parse or to a later copy: it applies on its own
+ * (fail closed).
  */
 export function streamedPriority(raw: string): { repeated: boolean; priority: Record<string, unknown> | null } {
-  const entries = topEntries(raw);
-  const keys = entries.map((e) => e.key);
-  const repeated = keys.some((k, n) => keys.indexOf(k) !== n);
+  const { members, repeated } = deepMembers(raw);
   const p: Record<string, unknown> = {};
   const raise = (severity: unknown) => {
     if (severity === "immediate") p.safety = "immediate";
     else if (severity === "concern" && p.safety !== "immediate") p.safety = "concern";
   };
   let gateSafety = false;
-  for (const { key, value } of entries) {
+  for (const { path, value } of members) {
+    const key = path.join(".");
     if (key === "gate") {
       if (value === "identity") p.aboutMaya ??= "identity";
       if (value === "safety") gateSafety = true;
@@ -226,13 +250,11 @@ export function streamedPriority(raw: string): { repeated: boolean; priority: Re
     } else if (key === "kind") {
       if (value === "safety") raise("concern");
       if (value === "stop") p.stop = true;
-    } else if (key === "reading" && typeof value === "object" && value !== null && !Array.isArray(value)) {
-      const r = value as Record<string, unknown>;
-      if (r.aboutMaya === "identity" || r.aboutMaya === "secret_friend") p.aboutMaya = p.aboutMaya === "secret_friend" ? "secret_friend" : r.aboutMaya;
-      raise(r.safety);
-      if (r.stop === true) p.stop = true;
-      if (r.unsafeRequest === true) p.unsafeRequest = true;
-    }
+    } else if (key === "reading.aboutMaya") {
+      if (value === "identity" || value === "secret_friend") p.aboutMaya = p.aboutMaya === "secret_friend" ? "secret_friend" : value;
+    } else if (key === "reading.safety") raise(value);
+    else if (key === "reading.stop" && value === true) p.stop = true;
+    else if (key === "reading.unsafeRequest" && value === true) p.unsafeRequest = true;
   }
   // A "safety" gate on a harmful request is the decline's (as priorityOf reads it); else it is a safety concern.
   if (gateSafety && !p.unsafeRequest) raise("concern");
