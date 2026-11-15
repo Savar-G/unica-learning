@@ -181,16 +181,14 @@ it("keeps the selected child and stage links when Feedback opens, with a parent 
   expect(host.querySelector('.pd-top a[href^="/account/feedback?"][aria-current="page"]')).not.toBeNull();
 });
 
-it("keeps Schedule and the owned child in the address, switch links and cookie", async () => {
-  kids.forEach(k => k.tabs.push("schedule"));
+it("keeps Workbooks, a book's page and the owned child in the address, switch links and cookie, with no Schedule tab (#1031)", async () => {
+  kids.forEach(k => k.tabs.push("workbooks"));
   try {
-    await go("/account/schedule", "omar");
+    await go("/account/workbooks/omar/book/b1", "omar");
     expect(shownName()).toBe("omar");
     expect(savedCookies.at(-1)).toContain("omar");
-    expect(host.querySelector('.pd-side a[href="/account/schedule?child=omar"][aria-current="page"]')).not.toBeNull();
-    expect(host.querySelector('.pd-switch-list a[href="/account/schedule?child=asha"]')).not.toBeNull();
-    await go("/account/schedule", "asha");
-    expect(shownName()).toBe("asha");
-    expect(host.querySelector('.pd-bar a[href="/account/schedule?child=asha"][aria-current="page"]')).not.toBeNull();
-  } finally { kids.forEach(k => { k.tabs = k.tabs.filter(t => t !== "schedule"); }); }
+    expect(host.querySelector('.pd-side a[href="/account/workbooks/omar"][aria-current="page"]')).not.toBeNull();
+    expect(host.querySelector('.pd-side a[href^="/account/schedule"]')).toBeNull();
+    expect(host.querySelector('.pd-switch-list a[href="/account?child=asha"]')).not.toBeNull();
+  } finally { kids.forEach(k => { k.tabs = k.tabs.filter(t => t !== "workbooks"); }); }
 });

@@ -46,7 +46,8 @@ export interface SavedScheduleRow {
   extra: boolean;
 }
 
-export function savedScheduleV1(draft: GeneratedWorkbook): { rows: SavedScheduleRow[]; dailyTime: string } | null {
+/** `minutes`: the book's daily time as the printed plan says it: one figure when the days are timed, else its range. */
+export function savedScheduleV1(draft: GeneratedWorkbook): { rows: SavedScheduleRow[]; dailyTime: string; minutes: { min: number; max: number } } | null {
   const plans = draft.pages.filter(p => p.content?.kind === "how-plan");
   const c = plans[0]?.content;
   if (plans.length !== 1 || plans[0].number !== 2 || c?.kind !== "how-plan" || c.workbook !== draft.number || !c.rows.length) return null;
@@ -66,5 +67,6 @@ export function savedScheduleV1(draft: GeneratedWorkbook): { rows: SavedSchedule
   const extra = timed.some(r => r.extra);
   const dailyTime = timed.length ? `about ${Math.max(...timed.map(r => r.requiredMinutes!))} minutes${extra ? ", plus Extra if there's time" : ""}`
     : `${c.minutes.min === c.minutes.max ? `about ${c.minutes.max}` : `${c.minutes.min} to ${c.minutes.max}`} minutes`;
-  return { rows, dailyTime };
+  const slowest = timed.length ? Math.max(...timed.map(r => r.requiredMinutes!)) : null;
+  return { rows, dailyTime, minutes: slowest === null ? { min: c.minutes.min, max: c.minutes.max } : { min: slowest, max: slowest } };
 }

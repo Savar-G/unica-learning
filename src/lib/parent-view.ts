@@ -251,6 +251,8 @@ export interface ShippedBookView {
 
 export interface WorkbooksView {
   child: ChildView;
+  /** Today in family time (YYYY-MM-DD): the book's calendar day is counted from it (src/lib/parent-week.ts). */
+  today: string;
   /** The newest shipped book; null before the first one ships. */
   current: CurrentWorkbookView | null;
   next: NextBook;
@@ -294,7 +296,7 @@ export async function readWorkbooks(reader: ParentViewReader, childId: string, n
   const next: NextBook = current && current.shippedOn === null && !child.readOnly
     ? { kind: "none" }
     : nextBook({ shippedOn: current?.shippedOn ?? null, deliveredOn: current?.deliveredOn ?? null, today: localDay(now, zone), ended: child.readOnly, pausedWeeks });
-  return { child, current, next, books: books.map((w) => ({ id: w.id, number: w.number, shippedOn: day(w.shippedAt), deliveredOn: day(confirmedWorkbookDelivery(deliveries, corrections, child.id, w.id, now)) })) };
+  return { child, today: localDay(now, zone), current, next, books: books.map((w) => ({ id: w.id, number: w.number, shippedOn: day(w.shippedAt), deliveredOn: day(confirmedWorkbookDelivery(deliveries, corrections, child.id, w.id, now)) })) };
 }
 
 /** One reported area's bar (D-243). The school grade line is the child's `schoolGrade`. */

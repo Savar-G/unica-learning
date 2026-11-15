@@ -203,7 +203,7 @@ describe("the Workbooks tab (#558)", () => {
   it("before the first book ships: the status, with no date and no book", async () => {
     expect(await read({ workbooks: [book(1, { status: "printed" })] })).toEqual({
       child: expect.objectContaining({ id: "child-1", firstName: "Leah", stage: "first_book_coming" }),
-      current: null, next: { kind: "first_book_coming" }, books: [],
+      current: null, next: { kind: "first_book_coming" }, books: [], today: "2026-11-04",
     });
   });
   it("a shipped book with no confirmed delivery: shipped in family time, tracking, and 14 to 35 days after shipping", async () => {
@@ -219,6 +219,9 @@ describe("the Workbooks tab (#558)", () => {
     expect(pacific?.current?.shippedOn).toBe("2026-11-02");
     const late = await read({ workbooks: [book(1, { shippedAt: "2026-11-03T06:30:00Z" })], family: { timeZone: "America/Toronto", postal: null } });
     expect(late?.current?.shippedOn).toBe("2026-11-03");
+    // Today, which the book's calendar day is counted from, is a family-time day too (#1031).
+    expect([view?.today, pacific?.today]).toEqual(["2026-11-04", "2026-11-04"]);
+    expect((await read({ workbooks: [book(1)], family: { timeZone: "America/Toronto", postal: null } }, Date.parse("2026-11-04T04:30:00Z")))?.today).toBe("2026-11-03");
   });
   it("a confirmed delivery ends the range 28 days after it, and the newest correction wins", async () => {
     const deliveries = [{ ...own, workbookId: "wb-1", deliveredAt: "2026-11-05T20:00:00Z" }];

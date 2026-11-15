@@ -7,7 +7,6 @@ import type { EffectiveMark } from "@/lib/scan-marking";
 import { pageCompletion, waitsForTeam } from "@/lib/scan-observation";
 
 export const SCHEDULE_PATH = "/account/schedule";
-export const schedulePath = (child: string) => `${SCHEDULE_PATH}?child=${encodeURIComponent(child)}`;
 export interface ScheduleChild { id: string; parentId: string; firstName: string }
 export interface ScheduleBook {
   id: string; parentId: string; childId: string; number: number; status: string;
@@ -41,12 +40,13 @@ export type ScheduleScanState = { kind: "known"; accepted: number; required: num
 export type ScheduleMarkState =
   | { kind: "all" | "checking" | "none" | "some"; marked: number; total: number }
   | { kind: "unknown" };
-export interface ScheduleRow extends SavedScheduleRow { scan: ScheduleScanState; marks: ScheduleMarkState }
+/** `requiredPages`: the printed page numbers the day requires, from the frozen manifest, in order. */
+export interface ScheduleRow extends SavedScheduleRow { requiredPages: number[]; scan: ScheduleScanState; marks: ScheduleMarkState }
 export type ScheduleView =
   | { kind: "not-found" }
   | { kind: "waiting"; child: ScheduleChild | null }
   | { kind: "unavailable"; child: ScheduleChild | null }
-  | { kind: "ready"; child: ScheduleChild; book: { id: string; number: number }; rows: ScheduleRow[]; dailyTime: string };
+  | { kind: "ready"; child: ScheduleChild; book: { id: string; number: number }; rows: ScheduleRow[]; dailyTime: string; minutes: { min: number; max: number } };
 
 const eligible = (b: ScheduleBook) => b.status === "printed" || b.status === "shipped";
 
@@ -127,9 +127,9 @@ export async function readSchedule(store: ScheduleStore, parent: string, request
       const states = required.map(pageMark), marked = states.filter(s => s === "marked").length;
       const state: ScheduleMarkState = marks === null ? { kind: "unknown" } : { total: required.length, marked,
         kind: states.includes("checking") ? "checking" : marked === required.length ? "all" : marked > 0 ? "some" : "none" };
-      return { ...r, scan, marks: state };
+      return { ...r, requiredPages: [...required].sort((a, b) => a - b), scan, marks: state };
     });
     // Only the safe projection leaves this module. No draft, PDF path, questions or contracts.
-    return { kind: "ready", child, book: { id: book.id, number: book.number }, rows, dailyTime: saved.dailyTime };
+    return { kind: "ready", child, book: { id: book.id, number: book.number }, rows, dailyTime: saved.dailyTime, minutes: saved.minutes };
   } catch { return { kind: "unavailable", child }; }
 }
