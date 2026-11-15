@@ -6,6 +6,7 @@
 import type { AiClient, AiJsonRequest, AiPart } from "@/lib/ai-client";
 import { noteFenced } from "@/lib/ai-fenced";
 import { openRouterJsonOutput } from "@/lib/ai-openrouter-schema";
+import { observeAiCall } from "@/lib/ai-observe";
 
 export const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 /** One request stops after this long. A time-out, a lost connection, a 408, a 429 or a 5xx gets one more try. */
@@ -249,6 +250,7 @@ export function openRouterClient({
   onUsage,
   onErrorAnswer,
   provider,
+  feature = "other",
 }: {
   apiKey: string;
   model: string;
@@ -265,6 +267,8 @@ export function openRouterClient({
   onErrorAnswer?: OnErrorAnswer;
   /** Optional feature-owned route. The default route is unchanged. */
   provider?: OpenRouterProvider;
+  /** What the call is for, on its Sentry span and metrics (src/lib/ai-observe.ts): an AI usage feature name. */
+  feature?: string;
 }): AiClient {
   return {
     model,
@@ -277,16 +281,20 @@ export function openRouterClient({
       };
       // A request with `response_format` keeps its strict reading: a fenced output stays not JSON.
       const strict = "response_format" in sent;
-      for (let attempt = 0; ; attempt++) {
-        if (signal.aborted) throw new Error("time is up");
-        await onRequest?.();
-        if (signal.aborted) throw new Error("time is up");
-        try {
-          return await once(fetch, init, signal, timeout, strict, onDispatch, onUsage, request.onText, request.onCost, onErrorAnswer);
-        } catch (e) {
-          if (!(e instanceof Retryable) || attempt >= maxRetries || signal.aborted) throw e instanceof Retryable ? new Error(e.message) : e;
+      // One Sentry span for the request and its retries, with tokens and cost; never the prompt or the answer.
+      return observeAiCall({ model, feature, provider: "openrouter" }, async (observe) => {
+        const used = (u: OpenRouterUsage) => { observe(u); onUsage?.(u); };
+        for (let attempt = 0; ; attempt++) {
+          if (signal.aborted) throw new Error("time is up");
+          await onRequest?.();
+          if (signal.aborted) throw new Error("time is up");
+          try {
+            return await once(fetch, init, signal, timeout, strict, onDispatch, used, request.onText, request.onCost, onErrorAnswer);
+          } catch (e) {
+            if (!(e instanceof Retryable) || attempt >= maxRetries || signal.aborted) throw e instanceof Retryable ? new Error(e.message) : e;
+          }
         }
-      }
+      });
     },
   };
 }

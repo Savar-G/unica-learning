@@ -1,10 +1,11 @@
+import { monitored } from "@/lib/sentry-cron";
 import { timingSafeEqual } from "node:crypto";
 import { adminClient } from "@/lib/supabase-auth";
 import { cleanupScanPhotos, scanJson } from "@/lib/scan-photo-server";
 
 export const maxDuration = 60;
 
-export async function POST(request: Request) {
+async function run(request: Request) {
   const secret = process.env.CRON_SECRET;
   if (!secret) return scanJson({ error: "unavailable" }, 503);
   const given = Buffer.from(request.headers.get("authorization") ?? "");
@@ -15,3 +16,6 @@ export async function POST(request: Request) {
   try { return scanJson({ removed: await cleanupScanPhotos(db, Date.now() + 45_000) }); }
   catch { return scanJson({ error: "unavailable" }, 503); }
 }
+
+// Each scheduled call checks in with Sentry (src/lib/sentry-cron.ts).
+export const POST = monitored("scan-cleanup", run);

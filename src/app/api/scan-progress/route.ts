@@ -1,10 +1,11 @@
+import { monitored } from "@/lib/sentry-cron";
 import { timingSafeEqual } from "node:crypto";
 import { adminClient } from "@/lib/supabase-auth";
 import { createWorkbookScanProgressSweep } from "@/lib/workbook-scan-progress-sweep-server";
 
 export const maxDuration = 60;
 
-export async function POST(request: Request) {
+async function run(request: Request) {
   const secret = process.env.CRON_SECRET;
   if (!secret) return Response.json({ ok: false, error: "not_configured" }, { status: 503 });
   const given = Buffer.from(request.headers.get("authorization") ?? "");
@@ -30,3 +31,6 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, error: "run_failed" }, { status: 500 });
   }
 }
+
+// Each scheduled call checks in with Sentry (src/lib/sentry-cron.ts).
+export const POST = monitored("scan-progress", run);

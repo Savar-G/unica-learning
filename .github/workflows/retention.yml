@@ -38,6 +38,15 @@ jobs:
         timeout-minutes: 5
       - run: node scripts/build-retention-worker.mjs
         timeout-minutes: 1
+      # Sentry Cron Monitor "family-retention" (docs/sentry.md): a scheduled run checks in when it starts and when it
+      # ends, so a missed or failed run opens an issue. Manual runs do not check in. The address holds the public DSN key.
+      - name: Sentry check-in (start)
+        if: github.event_name == 'schedule'
+        continue-on-error: true
+        timeout-minutes: 1
+        run: curl -fsS -m 10 "$SENTRY_CRON_URL?status=in_progress" > /dev/null
+        env:
+          SENTRY_CRON_URL: https://o4512437890842624.ingest.us.sentry.io/api/4512438134308864/cron/family-retention/10064fe995f8eb573cd252a4327265d0/
       - name: Run foreground worker
         run: exec node --conditions=react-server .retention/worker.mjs --mode "$RETENTION_MODE"
         env:
@@ -46,3 +55,11 @@ jobs:
           SUPABASE_URL: ${{ vars.RETENTION_SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.RETENTION_SUPABASE_SECRET_KEY }}
           STRIPE_SECRET_KEY: ${{ secrets.RETENTION_STRIPE_SECRET_KEY }}
+      - name: Sentry check-in (end)
+        if: always() && github.event_name == 'schedule'
+        continue-on-error: true
+        timeout-minutes: 1
+        run: curl -fsS -m 10 "$SENTRY_CRON_URL?status=$STATUS" > /dev/null
+        env:
+          SENTRY_CRON_URL: https://o4512437890842624.ingest.us.sentry.io/api/4512438134308864/cron/family-retention/10064fe995f8eb573cd252a4327265d0/
+          STATUS: ${{ job.status == 'success' && 'ok' || 'error' }}

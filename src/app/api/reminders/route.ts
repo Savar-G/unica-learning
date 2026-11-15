@@ -1,3 +1,4 @@
+import { monitored } from "@/lib/sentry-cron";
 import { recoverReferralsNow } from "@/lib/referral-server";
 import { reverifyParentExplanationPrice } from "@/lib/parent-explanation-price-server";
 import { timingSafeEqual } from "node:crypto";
@@ -70,7 +71,7 @@ function authorized(header: string | null, secret: string): boolean {
 
 const byKind = (due: DueReminder[]) => Object.fromEntries(REMINDER_KINDS.map((kind) => [kind, due.filter((r) => r.kind === kind).length]));
 
-export async function POST(request: Request) {
+async function run(request: Request) {
   // Never open: without a secret the job does not run at all.
   const secret = process.env.CRON_SECRET;
   if (!secret) {
@@ -235,3 +236,6 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, error: "run_failed" }, { status: 500 });
   }
 }
+
+// Each scheduled call checks in with Sentry (src/lib/sentry-cron.ts).
+export const POST = monitored("reminders", run);
