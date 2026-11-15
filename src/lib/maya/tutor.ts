@@ -14,7 +14,7 @@
 // Phase 1 scope: 2-digit whole-number addition and subtraction (`isTutorQuestion`), on admin test calls.
 import type { OperationPackage, WorkedStep } from "@/lib/question-package";
 import { affirms, equationHolds, equationsOf, neverSayProblem, sayNumbers, sentencesOf } from "./say-check";
-import { exactSafe, MATH_VOCAB, wordsOf } from "./math-vocab";
+import { exactSafe, mathOnly, MATH_VOCAB, wordsOf } from "./math-vocab";
 import { falseClaims } from "./tutor-math";
 
 /** The hard ceiling of one Maya message, in words. Over it, the model gets one repair with the reason; code never trims. */
@@ -43,9 +43,11 @@ export function plainTeaching(sentence: string, extra: ReadonlySet<string> = new
   if (/[^a-z0-9\s.,?!:;()'"+*=<>%/\-×÷−–]/i.test(text.replace(/\{name\}/g, " "))) return false;
   const words = wordsOf(text);
   if (!words.every((w) => MATH_VOCAB.has(w) || TUTOR_MATH_WORDS.has(w) || extra.has(w))) return false;
-  const numbered = /\d/.test(text);
+  // A statement about the child or about Maya is plain only as a math question or a positive math instruction
+  // (mathOnly's own rule): "What do you get for 12 minus 8?" is plain; "You are no good at math, not even 2 plus 2."
+  // and "You're right that 2 is too small." are reviewed (review of #1006).
   const personal = /\b(?:you|you're|your|yourself|i|i'm|i'll|me|my)\b/i.test(text);
-  return !personal || numbered;
+  return !personal || mathOnly(text, new Set([...TUTOR_MATH_WORDS, ...extra]));
 }
 
 type ColumnStep = Extract<WorkedStep, { kind: "add-column" | "subtract-column" }>;
@@ -181,7 +183,14 @@ export interface TutorCheckContext {
   stance: "right" | "wrong" | "none";
   /** The numbers the child committed to this turn (what a judgment names). */
   childValues?: readonly number[];
+  /** The question's operation, for the direction of a trade ("5 tens are now 4 tens" in a subtraction). */
+  op?: "add" | "subtract";
+  /** The question's answer: "N is the answer" must name it. */
+  answer?: number;
 }
+
+/** "4 is the answer", "the whole answer is 24", "your answer 36 is right": a claim about which number is the answer. */
+const ANSWER_CLAIM = /\b(\d+) is (?:the|your|our) (?:whole |final |right )?answer\b|\b(?:the|your|our) (?:whole |final |right )?answer is (\d+)\b/gi;
 
 /** A sentence that says an answer is right. */
 const JUDGES_RIGHT = /^(?:yes|yep|yeah|right|correct|exactly)\b|\b(?:is|that'?s|that is|it'?s|you'?re|you are|you got it)\s+(?:right|correct)\b|\byou got it\b|\bwell done\b/i;
@@ -229,16 +238,22 @@ export function checkTutorSay(text: string, ctx: TutorCheckContext & { extra?: R
       if (holds === null) continue;
       if (holds === e.negated) return { ok: false, reason: "false_equation", detail: `"${sentence}" ${e.negated ? "calls a true equation false" : "holds a false equation"}. Every equation Maya says must be true.` };
     }
-    const claim = falseClaims(sentence)[0];
+    const claim = falseClaims(sentence, ctx.op)[0];
     if (claim) return { ok: false, reason: "false_equation", detail: `"${sentence}": ${claim}. Every equation and place-value statement must be true.` };
+    if (ctx.answer !== undefined) for (const m of sentence.matchAll(ANSWER_CLAIM)) {
+      const n = Number(m[1] ?? m[2]);
+      if (n !== ctx.answer) return { ok: false, reason: "false_equation", detail: `"${sentence}": ${n} is not the answer to the question.` };
+    }
     const place = placeValueProblem(sentence);
     if (place) return { ok: false, reason: "false_equation", detail: `"${sentence}": ${place}. Every place-value statement must be true.` };
   }
   // No false judgment of the child's answer, in any sentence: a "yes" or "right" for a wrong answer, a "not quite" for
-  // a right one. The first sentence is judged strictly; a later one when it names the child's number or none.
+  // a right one. The first sentence is judged strictly. A later one is exempt only when it judges its own true equation
+  // ("Earlier you got 12 − 8 = 4, and that's right"): it names none of the child's numbers and not "your answer".
   const names = (sentence: string, values: readonly number[] | undefined) => {
     const said = sayNumbers(sentence).flatMap((t) => (t.q && t.q[1] === 1 ? [t.q[0]] : []));
-    return said.length === 0 || said.some((n) => (values ?? []).includes(n));
+    const ownEquation = equationsOf(sentence).some((e) => !e.negated && equationHolds(e) === true);
+    return !ownEquation || said.some((n) => (values ?? []).includes(n)) || /your (?:answer|number|work)/i.test(sentence);
   };
   for (const [i, sentence] of sentences.entries()) {
     if (ctx.stance === "wrong" && ((i === 0 && affirms(sentence)) || (JUDGES_RIGHT.test(sentence) && names(sentence, ctx.childValues)))) {
@@ -261,7 +276,15 @@ export function checkTutorSay(text: string, ctx: TutorCheckContext & { extra?: R
 export function tutorStreamSentence(sentence: string, previous: readonly string[], ctx: TutorStreamContext): "send" | "review" | "stop" {
   const verdict = checkTutorSay([...previous, sentence].join(" "), ctx);
   if (!verdict.ok) return "stop";
-  if (previous.length === 0 && ((affirms(sentence) && !ctx.mayAffirm) || (DENIES.test(sentence) && !ctx.mayDeny))) return "stop";
+  // A judgment of the child's answer, in any sentence, waits unless the stream is sure of it: the final check may read
+  // the child's number another way (review of #1006: "I got 4." then "Yes, 4 is the answer.").
+  const judgesRight = (previous.length === 0 && affirms(sentence)) || JUDGES_RIGHT.test(sentence);
+  const judgesWrong = (previous.length === 0 && DENIES.test(sentence)) || JUDGES_WRONG.test(sentence);
+  if ((judgesRight && !ctx.mayAffirm) || (judgesWrong && !ctx.mayDeny)) return "stop";
+  // A number that is not one of this question's (an outside answer, a twin question) waits for the whole message and
+  // its scope reading (review of #1006: "The answer is 56." for outside homework).
+  const foreign = sayNumbers(sentence).some((t) => !t.q || t.q[1] !== 1 || !ctx.allowed.has(t.q[0]));
+  if (foreign) return "stop";
   return plainTeaching(sentence, ctx.extra) ? "send" : "review";
 }
 
@@ -274,22 +297,37 @@ export interface TutorStreamContext extends TutorCheckContext {
   extra?: ReadonlySet<string>;
   mayAffirm: boolean;
   mayDeny: boolean;
+  /** The numbers a streamed sentence may hold: the question's own, its work's, and the child's. */
+  allowed: ReadonlySet<number>;
 }
 
 /** The stream's context for the child's turn `text`, from code's stance. */
-export function tutorStreamContext(pkg: OperationPackage, text: string, stance: TutorCheckContext["stance"], extra: ReadonlySet<string>): TutorStreamContext {
+export function tutorStreamContext(pkg: OperationPackage, text: string, stance: TutorCheckContext["stance"], extra: ReadonlySet<string>, credited: readonly number[] = []): TutorStreamContext {
   // The child's candidate answers: the last number of each sentence ("Is 2 minus 8, 6?" offers 6, not 2 or 8).
   const said = sentencesOf(text).flatMap((x) => {
     const last = sayNumbers(x).filter((t) => t.q && t.q[1] === 1).at(-1);
     return last ? [last.q![0]] : [];
   });
   const answer = pkg.answer.value.type === "number" ? pkg.answer.value.value : null;
-  const right = new Set<number>([...(answer === null ? [] : [answer]), ...tutorSteps(pkg).flatMap((st) => [st.write, st.total, st.operands[0]])]);
+  const steps = tutorSteps(pkg);
+  const right = new Set<number>([...(answer === null ? [] : [answer]), ...steps.flatMap((st) => [st.write, st.total, st.operands[0]])]);
+  const [a, b] = pkg.operation.operands as [number, number];
+  const allowed = new Set<number>([
+    a, b, ...(answer === null ? [] : [answer]), a % 10, Math.floor(a / 10), b % 10, Math.floor(b / 10), 1, 10,
+    ...steps.flatMap((st) => [...st.operands, st.total, st.write, ...(st.printedTop === undefined ? [] : [st.printedTop])]),
+    ...steps.flatMap((st) => [st.total * (st.place === "tens" ? 10 : 1), st.write * (st.place === "tens" ? 10 : 1)]),
+    ...sayNumbers(text).flatMap((t) => (t.q && t.q[1] === 1 ? [t.q[0]] : [])),
+  ]);
   return {
     stance,
     extra,
     childValues: said,
-    mayAffirm: stance === "right" || (stance === "none" && said.length === 0),
+    op: pkg.operation.kind === "add" ? "add" : "subtract",
+    ...(answer === null ? {} : { answer }),
+    allowed,
+    // A "yes" streams only when no reading can make it wrong: the child said no number, or only numbers code's own read
+    // credits as right (the final check keeps code's credit over the model's reading).
+    mayAffirm: said.length === 0 || (stance === "right" && said.every((n) => n === answer || credited.includes(n))),
     mayDeny: stance === "wrong" || (stance === "none" && !said.some((n) => right.has(n))),
   };
 }

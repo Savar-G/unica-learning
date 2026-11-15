@@ -511,8 +511,10 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     // check stops the stream, and the rest waits for the whole message and its whole check.
     const tutor = model.output === 3 && options.onSayPart && !folded.sent?.length && folded.pending.length === 0 ? read(() => tutorStream(folded.session)) : null;
     const passes = (r: TalkReviewResult) => r.verdict === "pass" || (r.verdict === "fail" && r.rules.length > 0 && r.rules.every((id) => TUTOR_REVIEW_IGNORED.includes(id)));
+    // Review of #1006: nothing goes out once the request is cancelled or another one took its place.
+    const live = () => !streamDone && !controller.signal.aborted && folded.request?.id === requestId;
     const flushTutor = () => {
-      while (queue.length && queue[0].state !== "pending" && !streamDone) {
+      while (queue.length && queue[0].state !== "pending" && live()) {
         const next = queue.shift()!;
         if (next.state === "drop") { streamDone = true; queue.length = 0; return; }
         firstSayMs ??= now() - at;
@@ -540,7 +542,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
           const started = runReview(options.reviewer!, input, options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS);
           streamReviews.set(reviewKey(input), { requestId, result: started });
           void started.then((result) => {
-            if (streamDone) return;
+            if (!live()) return;
             item.state = passes(result) ? "ready" : "drop";
             flushTutor();
           });

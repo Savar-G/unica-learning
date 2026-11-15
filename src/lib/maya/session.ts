@@ -4962,6 +4962,9 @@ const PLAN_REFUSALS: readonly RefusalCode[] = ["line_not_offered", "free_talk_in
  * the outside-work redirect and the fixed AI replies. A failed check is a refusal with its typed reason: the adapter
  * asks the model once more, then says code's plan (fallbacks).
  */
+/** D-345: a child's turn that asks Maya something: never a turn the tutor may close on. */
+const ASKS_TUTOR = /\b(?:help|explain|why|how|teach|show|understand|get it|confus\w*|stuck|again|what)\b/i;
+
 /**
  * D-345: whether the tutor core writes this Maya turn: a tutor call on a teaching turn with no priority gate (safety,
  * the content hold, a stop, a repair, silence, a confirmation of what was heard, outside work or a fixed reply). Those
@@ -4986,7 +4989,8 @@ function tutorGate(s: Session, reading: Reading): Allowed | null {
 export function tutorStream(s: Session): TutorStreamContext | null {
   if (!s.tutor || !s.turn || !s.package || !tutorTeachingNow(s)) return null;
   const stance = codeStance(s);
-  return tutorStreamContext(s.package, s.turn.text, stance === "none" && childSaysFalse(s.turn.text) ? "wrong" : stance, vocabExtra(s));
+  const credited = heardAnswers(s).flatMap((a) => (a.verdict === "right" && a.value.type === "number" ? [a.value.value] : []));
+  return tutorStreamContext(s.package, s.turn.text, stance === "none" && childSaysFalse(s.turn.text) ? "wrong" : stance, vocabExtra(s), credited);
 }
 
 /**
@@ -5004,7 +5008,10 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   // Code's credit: its own strict read of the child's turn, and each model reading code's checks agree with.
   const credited: ChildAnswer[] = [];
   if (s.turn) {
-    const candidates = [...heardAnswers(s), ...(reading.answers ?? []).filter((a) => (a.problem ?? "target") === "target")];
+    // Code's own read wins: a model reading of a value code heard as a right answer is left out (review of #1006).
+    const heard = heardAnswers(s);
+    const heardRight = (a: ChildAnswer) => heard.some((h) => h.verdict === "right" && sameValue(h.value, a.value));
+    const candidates = [...heard, ...(reading.answers ?? []).filter((a) => (a.problem ?? "target") === "target" && !(a.verdict === "wrong" && heardRight(a)))];
     for (const a of candidates) {
       if (credited.some((c) => c.step === a.step && sameValue(c.value, a.value))) continue;
       if (checkAnswers(s, [a], []) === null) credited.push(a);
@@ -5041,7 +5048,9 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
       const n = read.final.value;
       childValues.push(n);
       // A value of the work is no wrong answer: a step's result or digit, or a column's top after the trade (12, 4).
-      const fits = rightForQuestion(pkg, read.final) || tutorSteps(pkg).some((st) => st.write === n || st.total === n || st.operands[0] === n);
+      // Not when the child names it as the answer ("My final answer for 52 minus 28 is 12"): then only the answer fits.
+      const asAnswer = /\banswer\b/i.test(base.turn.text);
+      const fits = rightForQuestion(pkg, read.final) || (!asAnswer && tutorSteps(pkg).some((st) => st.write === n || st.total === n || st.operands[0] === n));
       if (!fits) stance = "wrong";
       else if (stance === "none" && rightForQuestion(pkg, read.final)) stance = "right";
     }
@@ -5054,7 +5063,7 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   const act: Act = out.act === "close" ? "close" : "guide";
   if (act === "close" && s.solved === null) return no("act_not_allowed", "The child has not solved the question yet: never end the call on a child who is stuck. Teach the next small step and ask one small question.");
   // Review of #1002: a solved question does not end the call while the child asks for help now.
-  if (act === "close" && base.turn && (helpInWords(base.turn.text) || saysStuck(base.turn.text) || reading.help !== undefined || reading.start === "no_start")) {
+  if (act === "close" && base.turn && (base.turn.text.includes("?") || ASKS_TUTOR.test(base.turn.text) || helpInWords(base.turn.text) || saysStuck(base.turn.text) || reading.help !== undefined || reading.start === "no_start")) {
     return no("act_not_allowed", "The child is asking for help now: never end the call on a child who is stuck. Answer what they asked, then ask one small question.");
   }
   // Sentences already streamed to the child stay said: the turn's words start with them.
@@ -5064,9 +5073,11 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   const honest = tutorFallbackText(pkg, s.done, s.solved !== null);
   let text = fallback ? (sent.length ? `${lead} ${sentencesOf(honest).slice(1).join(" ")}` : honest) : out.say.trim();
   if (!fallback && sent.length && !text.startsWith(lead)) return no("invalid_proposal", "The message must start with the sentences already said.");
-  let verdict = checkTutorSay(text, { stance, extra, childValues });
+  const op = pkg.operation.kind === "add" ? "add" as const : "subtract" as const;
+  const answer = pkg.answer.value.type === "number" ? pkg.answer.value.value : undefined;
+  let verdict = checkTutorSay(text, { stance, extra, childValues, op, ...(answer === undefined ? {} : { answer }) });
   // Code's own line never fails its turn: after streamed words that leave no room, the turn is those words.
-  if (fallback && !verdict.ok && sent.length) { text = lead; verdict = checkTutorSay(text, { stance: "none", extra }); }
+  if (fallback && !verdict.ok && sent.length) { text = lead; verdict = checkTutorSay(text, { stance: "none", extra, op }); }
   if (!verdict.ok) return no("say_check", `Your message was refused (${verdict.reason}): ${verdict.detail}`, verdict.reason);
   if (act === "close" && /\?\s*$/.test(text)) return no("say_check", "A close ends the call, so it asks nothing: say a short goodbye with no question.", "close_asks");
   // Child safety: each sentence that is not plain teaching is reviewed before it is said (the adapter runs the reviews,
