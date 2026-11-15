@@ -58,3 +58,19 @@ describe("a known safety concern cuts in at once", () => {
     expect(checked.ok ? "ok" : checked.reason).toBe("ok");
   });
 });
+
+// Review of #1033: a code-only safety turn holds exactly one guidance message.
+describe("the trace check of a code-only safety turn", () => {
+  it("refuses repeated guidance and accepts one", async () => {
+    const model = conversationalFake({ answer: () => reply("", "close") });
+    const session = createTextSession({ callId: "trace-guidance", package: SAMPLE_PACKAGES["subtract-52-28"], model, channel: "chat", clock: () => 10000 });
+    await session.start();
+    await session.safety("concern");
+    const trace = await session.finish({ reason: "child_stopped" });
+    expect(checkTrace(trace).ok).toBe(true);
+    const guidance = trace.turns.find((t) => t.kind === "maya" && t.output?.act === "safety");
+    if (!guidance || guidance.kind !== "maya" || !guidance.output) throw new Error("missing safety turn");
+    guidance.output.say = [SAFETY_GUIDANCE.concern, SAFETY_GUIDANCE.concern];
+    expect(checkTrace(trace).ok).toBe(false);
+  });
+});

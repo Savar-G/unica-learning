@@ -476,7 +476,8 @@ function checkTurn(t: unknown, path: string, version: number): Record<string, un
       // Review of #1002: also code's safety guidance itself, when the danger was known before any model call (it cuts in).
       if (attempts.length === 1 && attempts[0]?.source === "fallback") {
         const o = x.output as { act?: unknown; say?: unknown } | null;
-        const guidance = o?.act === "safety" && Array.isArray(o.say) && o.say.length > 0 && (o.say as unknown[]).every((t) => (Object.values(SAFETY_GUIDANCE) as unknown[]).includes(t));
+        // Exactly one guidance message (review of #1033).
+        const guidance = o?.act === "safety" && Array.isArray(o.say) && o.say.length === 1 && (Object.values(SAFETY_GUIDANCE) as unknown[]).includes(o.say[0]);
         need(o?.act === "close" || guidance, `${path}.attempts`, "a fallback with no model attempt is only a close (after safety guidance, or a plain stop) or code's exact safety guidance");
       }
       attempts.forEach((a, i) => checkAttempt(a, `${path}.attempts[${i}]`));
