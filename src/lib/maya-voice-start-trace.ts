@@ -1,3 +1,5 @@
+import { voiceDisconnectReason, type VoiceDisconnectReason } from "./maya-voice-close-reason";
+
 // Browser marks for the start of a Maya voice call: from the room joined before the tap to Maya's first sound. Each
 // mark carries the call id, the connection attempt it belongs to, the browser's monotonic clock (performance.now) and
 // its time origin, so the marks of one page line up with each other and, through the origin, with wall time. They are
@@ -26,6 +28,9 @@ export type VoiceStartEvent =
   | "mic_begin" | "mic_end" // The microphone publication (`ok`).
   | "start_audio_begin" | "start_audio_end" // Room.startAudio (`ok`).
   | "remote_playback" // An attached voice element of Maya started playing.
+  | "hang_up_button" | "hang_up_requested" | "hang_up_rpc_begin" | "hang_up_rpc_end"
+  | "component_close" | "call_replaced" | "page_lifecycle"
+  | "sdk_reconnecting" | "sdk_signal_reconnecting" | "sdk_reconnected" | "sdk_disconnected"
   | "maya_live"; // The screen shows the call as live (Maya is in the room after the tap).
 
 /** The start control, by its label on screen. */
@@ -50,6 +55,8 @@ export type PremadeState = "ready" | "starting" | "none";
 
 export interface VoiceStartDetail {
   ok?: boolean;
+  disconnectReason?: VoiceDisconnectReason;
+  lifecycle?: "pagehide" | "beforeunload" | "freeze";
   label?: VoiceTapLabel;
   decision?: PrejoinDecision;
   reason?: PrejoinReason;
@@ -92,6 +99,12 @@ export function createVoiceStartTrace(deps: { now(): number; origin(): number; m
       const m: VoiceStartMark = { v: VOICE_START_MARK_VERSION, clock: "browser", callId, attempt, seq: ++seq, event, at: Math.round(deps.now() * 10) / 10, origin: deps.origin() };
       // Only the closed fields: a caller cannot add free text.
       for (const k of DETAIL_KEYS) if (detail[k] !== undefined) (m as unknown as Record<string, unknown>)[k] = detail[k];
+      if (detail.disconnectReason !== undefined) {
+        // Only the protocol vocabulary. A raw string cannot pass through a cast at a call site.
+        const allowed = Array.from({ length: 17 }, (_, n) => voiceDisconnectReason(n));
+        m.disconnectReason = allowed.includes(detail.disconnectReason) ? detail.disconnectReason : "unknown";
+      }
+      if (["pagehide", "beforeunload", "freeze"].includes(detail.lifecycle ?? "")) m.lifecycle = detail.lifecycle;
       ring.push(m);
       if (ring.length > max) ring.splice(0, ring.length - max);
       return m;

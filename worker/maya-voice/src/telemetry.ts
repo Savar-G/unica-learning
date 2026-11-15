@@ -49,7 +49,13 @@ export interface AdmissionSample {
   outcome: AdmissionOutcome;
 }
 
+export type CloseEntry = "explicit_rpc" | "participant_disconnect" | "sdk_close" | "sdk_error" | "deadline" | "worker_shutdown" | "controller_end" | "finish" | "stand_down";
+const CLOSE_REASONS = ["unknown", "client_initiated", "duplicate_identity", "server_shutdown", "participant_removed", "room_deleted", "state_mismatch", "join_failure", "migration", "signal_close", "room_closed", "user_unavailable", "user_rejected", "sip_trunk_failure", "connection_timeout", "media_failure", "agent_error", "error", "job_shutdown", "participant_disconnected", "user_initiated", "recoverable", "fatal", "no_response", "time_limit"] as const;
+export type CloseReason = typeof CLOSE_REASONS[number];
+export type CloseProbe = (entry: CloseEntry, reason?: unknown, phase?: "origin" | "observation" | "media_close") => void;
+
 export type TelemetryEvent =
+  | { ev: "close_origin"; workerId: string; segment: number; closeId: string; originId: string | null; entry: CloseEntry; reason: CloseReason; phase: "origin" | "observation" | "media_close"; at: number }
   | { ev: "final"; finalId: string; at: number; detectorEndAt: number | null; detectorHeardAt: number | null; levelEndAt: number | null; prepareAt: number | null; hintIds: string[] }
   | { ev: "turn"; turnId: string; finalIds: string[]; at: number }
   | { ev: "prepare_hint"; prepareId: string; at: number }
@@ -154,7 +160,7 @@ export class CallTelemetry {
   private seq = 0;
   private dropped = 0;
   private truncated = false;
-  private ids = { f: 0, t: 0, r: 0, u: 0, p: 0, g: 0, d: 0 };
+  private ids = { f: 0, t: 0, r: 0, u: 0, p: 0, g: 0, d: 0, c: 0 };
   private readonly scopeId: string;
   private readonly finals = new Map<string, FinalRecord>();
   private readonly turns = new Map<string, TurnRecord>();
@@ -195,6 +201,21 @@ export class CallTelemetry {
   get droppedEvents() { return this.dropped; }
 
   private id(kind: keyof CallTelemetry["ids"]) { return `${this.scopeId}:${kind}${++this.ids[kind]}`; }
+
+  /** One run captures this registry and owns its first close cause. Later SDK Close reentry is observation only.
+   * The per-run cap also bounds repeated room/error callbacks. No global reset or call replacement can borrow it. */
+  closeProbe(segment: number): CloseProbe {
+    let originId: string | null = null;
+    let count = 0;
+    return (entry, rawReason = "unknown", requested = "origin") => {
+      if (++count > 32) return;
+      const phase = requested === "origin" && originId ? "observation" : requested;
+      const closeId = this.id("c");
+      if (phase === "origin") originId = closeId;
+      const reason: CloseReason = CLOSE_REASONS.includes(rawReason as CloseReason) ? rawReason as CloseReason : "unknown";
+      this.emit({ ev: "close_origin", workerId: this.scopeId, segment, closeId, originId, entry, reason, phase, at: this.now() });
+    };
+  }
 
   // ----- finals and hints -----
 
