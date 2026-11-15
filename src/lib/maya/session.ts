@@ -5220,7 +5220,8 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
     const r = reviews.find((x) => x.text === sentence)?.result ?? null;
     const pass = r?.verdict === "pass" || (r?.verdict === "fail" && r.rules.length > 0 && r.rules.every((id) => TUTOR_REVIEW_IGNORED.includes(id)));
     if (!pass) return no("say_review", `The safety review refused "${sentence}": ${r?.verdict === "fail" ? `${r.reason} (${r.rules.join(", ")})` : r?.reason ?? "no review"}. Say it another way.`, "review");
-    talk.push({ proposed: sentence, code: null, review: "pass", shown: sentence, ...(r?.verdict === "fail" ? { rules: [...r.rules] } : {}) });
+    // A pass on ignored rules only is stored as a plain pass: the trace check reads "rules" only on a fail (final check of #1044).
+    talk.push({ proposed: sentence, code: null, review: "pass", shown: sentence });
   }
   // Two-layer true math (2026-11-15): each sentence code did not read whole is said only when the math-truth review
   // finds it true ("false", "unsure", an error or no review: one repair with the reason, then code's line). The adapter

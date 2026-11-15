@@ -664,15 +664,18 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     const say = candidate.proposal && typeof candidate.proposal === "object" ? (candidate.proposal as { say?: unknown }).say : undefined;
     const message = typeof say === "string" ? sentencesOf(say.trim()) : [];
     const mathUsed: string[] = [];
-    const mathReviews: Promise<MathReview[]> = options.mathReviewer ? Promise.all(mathTexts.map((text) => {
-      const at = message.indexOf(text);
+    // Each place a sentence stands in the message is reviewed with its own context, and a sentence passes only when every
+    // place of it passes (final check of #1044: "The result we just computed is 4." said twice).
+    const places = message.flatMap((text, at) => (mathTexts.includes(text) ? [{ text, at }] : []));
+    for (const text of mathTexts) if (!places.some((p) => p.text === text)) places.push({ text, at: -1 });
+    const mathReviews: Promise<MathReview[]> = options.mathReviewer ? Promise.all(places.map(({ text, at }) => {
       const input = read(() => mathReviewInput(before, text, at > 0 ? message.slice(0, at) : []));
       const key = mathKey(input);
       const streamed = streamMathReviews.get(key);
       if (streamed && streamed.requestId === requestId) mathUsed.push(key);
       const result = streamed && streamed.requestId === requestId ? streamed.result : runMathReview(options.mathReviewer!, input, options.reviewTimeLimitMs ?? (before.conversational ? CONVERSATION_REVIEW_TIME_LIMIT_MS : REVIEW_TIME_LIMIT_MS), reviewError);
       return result.then((r) => ({ text, result: r }));
-    })) : Promise.resolve([]);
+    })).then((all) => mathTexts.map((text) => all.find((m) => m.text === text && m.result.verdict !== "true") ?? all.find((m) => m.text === text)!)) : Promise.resolve([]);
     const reviewed = Promise.all([reviews, mathReviews]).then(([results, maths]) => {
       for (const key of used) streamReviews.delete(key);
       for (const key of mathUsed) streamMathReviews.delete(key);

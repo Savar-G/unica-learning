@@ -266,6 +266,8 @@ export function falseClaims(sentence: string, op?: "add" | "subtract", trades: r
  * Words that relate numbers ("4 is greater than 8", "12, so 4"): each must be inside a claim code read (two-layer true
  * math, 2026-11-15). The relation items (is, are, equals, makes, becomes, =) count too, and every number.
  */
+/** Words that may stand next to a read number without changing it. Any other word next to it sends the sentence to the math review. */
+const LINK_WORDS = new Set(["and", "so", "then", "now", "next", "first", "because", "in", "on", "at", "the", "we", "you", "it", "yes", "okay", "ok", "here", "also", "too", "from", "to", "for", "with", "is", "are", "what", "get", "gives", "make", "makes", "left", "if", "when", "after", "before", "this", "that's", "but"]);
 const RELATION_WORDS = new Set(["greater", "less", "more", "fewer", "bigger", "smaller", "larger", "higher", "lower", "than", "same", "equal", "twice", "double", "half"]);
 
 /**
@@ -417,6 +419,16 @@ export function readClaims(sentence: string, op?: "add" | "subtract", trades: re
     if (it.kind === "close" && !read.has(k) && items[k + 1]?.kind === "op") problems.push("it has brackets code cannot read");
   }
   const unread: string[] = [];
+  // A word right before or after a read number that is not a plain link word can change its meaning ("4 percent", "4
+  // squared", "4 million", "false that 12 minus 8 is 4"): such a claim is not read whole (final check of #1044).
+  for (const k of used) {
+    if (items[k]?.kind !== "term") continue;
+    for (const n of [k - 1, k + 1]) {
+      const it = items[n];
+      const w = it?.kind === "other" ? it.word ?? "" : "";
+      if (w && !used.has(n) && !LINK_WORDS.has(w)) unread.push(w);
+    }
+  }
   let termSeen = false;
   for (const [k, it] of items.entries()) {
     const word = it.kind === "other" ? it.word ?? "" : "";
