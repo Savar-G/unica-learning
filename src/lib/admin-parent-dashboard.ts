@@ -55,7 +55,9 @@ export const PARENT_PREVIEW_VIEWS = [
     scenario("behind", "A quieter week"), scenario("nothing_to_say", "Nothing to say yet"),
   ] },
   { id: "workbooks", label: "Workbooks", scenarios: [
-    scenario("delivered", "Current and past books"), scenario("mail", "In the mail"), scenario("hand", "Delivery by hand"),
+    scenario("delivered", "Midway: Days 1 and 2 scanned, Day 3 today"), scenario("partial_day", "A day with pages missing"), scenario("scans_unknown", "Scan status unavailable"),
+    scenario("not_started", "Book not started"), scenario("all_scanned", "All days scanned"),
+    scenario("mail", "In the mail"), scenario("hand", "Delivery by hand"),
     scenario("first_book_coming", "First workbook not sent", "first_book_coming"), scenario("late", "Later than estimate"),
     scenario("paused", "Pause moves next mailing"), scenario("ended", "Past books only", "ended"),
     scenario("history_populated", "History: current and past pages"), scenario("history_empty", "History: no saved results"),
@@ -63,12 +65,6 @@ export const PARENT_PREVIEW_VIEWS = [
     scenario("history_failed", "History: could not check"), scenario("history_expired", "History: expired photo"),
     scenario("history_missing_photo", "History: saved marks without photo"), scenario("history_loading", "History: loading"),
     scenario("history_error", "History: load failed"), scenario("history_unavailable", "History: access closed"),
-  ] },
-  { id: "schedule", label: "Schedule", scenarios: [
-    scenario("printed", "Printed first workbook", "first_book_coming"), scenario("accepted", "Accepted required pages"),
-    scenario("partial", "Some required pages accepted"), scenario("expired", "Accepted pages after photo expiry"),
-    scenario("unknown", "Scan read unavailable"), scenario("waiting", "No printed workbook", "first_book_coming"),
-    scenario("unavailable", "Print binding unavailable"), scenario("ended", "Printed book after plan ended", "ended"),
   ] },
   { id: "workbook_answers", label: "Workbook answer key", scenarios: [
     scenario("complete", "Whole delivered workbook"), scenario("mixed", "Multiple answers, examples and open work"),
@@ -144,7 +140,6 @@ export function sampleChildren(selection: PreviewSelection): ChildView[] {
   const make = (id: string, firstName: string): ChildView => {
     const stage = selectedScenario(selection).stage;
     const view = childStage(SAMPLE_STAGE_FACTS[stage], { progress: true, maya: true, scanPages: true });
-    if (selection.view === "schedule" && !["waiting", "unavailable"].includes(selection.scenario)) view.tabs.splice(view.tabs.indexOf("workbooks") + 1, 0, "schedule");
     return { id, firstName, schoolGrade: 3, ...view,
       currentWorkbook: stage === "active" || stage === "ended" ? { number: 3 } : null,
       reportIds: SAMPLE_STAGE_FACTS[stage].test.state === "report_ready" ? ["sample-report"] : [],

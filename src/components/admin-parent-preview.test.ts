@@ -51,32 +51,30 @@ it.each(PARENT_PREVIEW_VIEWS.filter(view => view.id === "overview" || view.id ==
     }
   });
 
-it.each(["desktop", "phone"].flatMap(size => ["first", "second"].map(child => ({ size, child }))))(
-  "keeps the Schedule field labels in the $size preview for the $child child",
-  ({ size, child }) => {
-    const output = dom(renderParentPreview(previewSelection({ view: "schedule", scenario: "partial", family: "two", child, size }), styles));
-    const rows = [...output.querySelectorAll(".ps-table tbody tr")];
-    expect(rows).toHaveLength(10);
-    for (const row of rows) {
-      expect([...row.querySelectorAll("td")].map(cell => cell.getAttribute("data-label")))
-        .toEqual(["Topic", "Pages", "Required time", "Scanned", "Marks"]);
-    }
-  },
-);
-
-it("shows the real Schedule table on both sizes with each child's rows and honest unknown or waiting states", () => {
+it("shows the real Workbooks tab for each book state on both sizes, with the Schedule folded in (#1031)", () => {
   for (const size of ["desktop", "phone"]) {
-    const selection = previewSelection({ view: "schedule", scenario: "partial", family: "two", child: "second", size });
-    const output = dom(renderParentPreview(selection, styles));
-    expect(output.querySelector("h1")?.textContent).toBe("Kai's schedule");
-    expect(output.querySelectorAll(".ps-table tbody tr")).toHaveLength(10);
-    expect(output.querySelector(".ps-table")?.textContent).toContain("Multiplication");
-    expect(output.querySelector(".ps-table")?.textContent).toContain("3 of 8 scanned");
+    const midway = dom(renderParentPreview(previewSelection({ view: "workbooks", scenario: "delivered", family: "two", child: "second", size }), styles));
+    expect(midway.querySelector("h1")?.textContent).toBe("Kai's workbooks");
+    expect(midway.querySelectorAll(".wd-row")).toHaveLength(10);
+    expect(midway.querySelectorAll(".wd-row.is-ok")).toHaveLength(2);
+    expect(midway.querySelector(".wb-cover")?.textContent).toContain("Day 3 of 10 · Adding with regrouping");
+    // Day 3 is today, nothing of it scanned yet: the one orange row.
+    expect(midway.querySelectorAll(".wb-scan")).toHaveLength(1);
+    expect(midway.querySelector(".wb-scan")?.textContent).toContain("Day 3 still to scan");
+    expect(midway.querySelector(".wb-scan")?.textContent).toContain("Pages 19–26");
   }
-  expect(rendered("schedule", "unknown")).toContain("Scan status unavailable");
-  expect(rendered("schedule", "waiting")).toContain("No printed workbook yet");
-  expect(rendered("schedule", "expired")).toContain("8 of 8 scanned");
-  expect(rendered("schedule", "unavailable")).not.toContain("ps-table");
+  expect(dom(rendered("workbooks", "partial_day")).querySelector(".wb-scan")?.textContent).toContain("Day 3 still to scan");
+  expect(dom(rendered("workbooks", "partial_day")).querySelector(".wb-scan")?.textContent).toContain("Pages 22–26");
+  expect(dom(rendered("workbooks", "not_started")).body.textContent).toContain("0 of 80 pages scanned");
+  expect(dom(rendered("workbooks", "not_started")).querySelector(".wb-scan")?.textContent).toContain("Day 1 still to scan");
+  const unknown = dom(rendered("workbooks", "scans_unknown"));
+  expect(unknown.body.textContent).toContain("Scan status unavailable right now.");
+  expect(unknown.querySelector(".wb-scan")).toBeNull();
+  expect(unknown.querySelector(".wd-st")).toBeNull();
+  const all = dom(rendered("workbooks", "all_scanned"));
+  expect(all.querySelectorAll(".wd-row.is-ok")).toHaveLength(10);
+  expect(all.body.textContent).toContain("80 of 80 pages scanned");
+  expect(rendered("schedule", "partial")).not.toContain("ps-table");
 });
 
 beforeEach(() => { vi.clearAllMocks(); vi.stubGlobal("fetch", calls.fetch); });
@@ -235,6 +233,7 @@ it("removes active HTML even if a future component adds it and restricts style s
 it("keeps parent PDFs out of Workbooks previews and shows the real answer-only component for each key scenario", () => {
   const listing = dom(rendered("workbooks", "delivered"));
   expect(listing.body.textContent).toContain("Answer keys");
+  expect(listing.body.textContent).toContain("Older workbooks");
   expect(listing.body.textContent).not.toMatch(/Download PDF|Print a page again/);
   const full = dom(rendered("workbook_answers", "complete"));
   expect(full.querySelectorAll(".pw-answers > li")).toHaveLength(8);
@@ -272,25 +271,22 @@ it("shows every parent explanation state in the inert preview without network or
 });
 
 it.each(["desktop", "phone"].flatMap(size => ["first", "second"].map(child => ({ size, child }))))(
-  "renders the selected child's real history states in the inert $size preview for $child",
+  "renders the selected child's real history states in the opened day of the inert $size preview for $child",
   ({ size, child }) => {
     const output = dom(renderParentPreview(previewSelection({ view: "workbooks", scenario: "history_populated", family: "two", child, size }), styles));
-    const history = output.querySelector('.pw-history .scan-history')!;
+    const day = output.querySelector("details#day-1[open]")!;
     expect(output.querySelector("h1")?.textContent).toBe(`${child === "first" ? "Leah" : "Kai"}'s workbooks`);
-    expect(history.textContent).toContain(`Workbook 3 · Day ${child === "first" ? 1 : 2}`);
-    expect(history.textContent).not.toContain("Workbook 2");
-    expect(history.textContent).toContain("More pages");
-    for (const text of ["Results ready", "2 of 3 right", "Our team is checking", "Not marked yet", "Could not mark", "All answers blank", "Not scored", "No saved results"]) expect(history.textContent).toContain(text);
-    expect(history.textContent).not.toContain("Loading page history");
-    expect(history.querySelectorAll('a[role="link"]')).toHaveLength(6);
-    expect(history.querySelectorAll('[href]')).toHaveLength(0);
+    for (const text of ["Results ready", "2 of 3 right", "answer for our team to check", "Not marked yet", "Could not mark", "All answers blank", "Not scored", "No saved results"]) expect(day.textContent).toContain(text);
+    expect(day.textContent).not.toContain("Loading page history");
+    expect(day.querySelectorAll('a[role="link"]')).toHaveLength(6);
+    expect(output.querySelectorAll("details[open]")).toHaveLength(1);
     expect(calls.fetch).not.toHaveBeenCalled(); expect(calls.client).not.toHaveBeenCalled();
   },
 );
 it("has real empty, expired, missing-photo, loading, error and closed history states in the Admin sandbox", () => {
-  const history = (state: string) => dom(rendered("workbooks", state)).querySelector(".scan-history")!;
-  expect(history("history_empty").textContent).toContain("No saved page results");
-  expect(history("history_review").textContent).toContain("Our team is checking");
+  const history = (state: string) => dom(rendered("workbooks", state)).querySelector("details#day-1")!;
+  expect(history("history_empty").textContent).toContain("No photo yet");
+  expect(history("history_review").textContent).toContain("1 answer for our team to check");
   expect(history("history_review").textContent).not.toMatch(/continue checking|parent check|answers to check/i);
   expect(history("history_pending").textContent).toContain("Not marked yet");
   expect(history("history_failed").textContent).toContain("Could not mark");

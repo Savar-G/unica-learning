@@ -448,6 +448,13 @@ describe("a family the switch opens to", () => {
       for (const gone of ["Level by area", "Working at", "po-bar", "po-maya", "Notes from Maya", "po-action", "Tell us how", "po-summary", "Monthly summary", "We can help", "pd-test", "On the desk"]) expect(out).not.toContain(gone);
     });
 
+    it("links the Today row to the Workbooks page at today's day (#1031), and leaves no link once the book's last day has passed", async () => {
+      const out = await render(full());
+      expect(out).toContain('<a class="po-today" href="/account/workbooks/c1?day=4#day-4">');
+      expect(out.match(/Hundreds, tens and ones[^]*6 of 8 scanned[^]*<\/a>/)).not.toBeNull();
+      expect(await render({ ...full(), workbook: { ...full().workbook!, day: 10, today: null } })).not.toContain("/account/workbooks/c1?day=");
+    });
+
     it("rings today when all of today's pages are scanned, as the circle says", async () => {
       const value = full();
       const out = await render({ ...value, week: value.week!.map((d) => (d.label === "Thu" ? { ...d, state: "today_done" as const } : d)) });

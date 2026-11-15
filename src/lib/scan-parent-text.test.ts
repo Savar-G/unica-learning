@@ -16,7 +16,7 @@ const ROOT = join(__dirname, "..", "..");
 const SOURCES = [
   "src/lib/scan-marking.ts", "src/lib/scan-observation.ts", "src/lib/scan-history.ts", "src/lib/scan-marking-words.ts", "src/lib/scan-stack.ts",
   "src/lib/admin-parent-dashboard.ts",
-  "src/components/scan-marking-results.tsx", "src/components/scan-history.tsx", "src/components/scan-pages.tsx",
+  "src/components/scan-marking-results.tsx", "src/components/scan-history.tsx", "src/components/workbook-days.tsx", "src/components/parent-workbooks.tsx", "src/components/scan-pages.tsx",
   "src/components/scan-preview.tsx", "src/components/scan-post-choice.tsx", "src/components/scan-problem-explanation.tsx", "src/components/scan-email-link.tsx",
   "src/components/admin-parent-preview.tsx",
   "src/app/(product)/account/(dashboard)/scan/page.tsx", "src/app/(product)/account/(dashboard)/scan/results/[id]/page.tsx",
