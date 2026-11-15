@@ -8,6 +8,7 @@
 // invalid or unjudgeable run fails: it never counts as a pass.
 //
 // No network or clock of its own: the models, the store and the clock are passed in.
+import type { MathReviewer } from "@/lib/maya-math-review";
 import { createHash } from "node:crypto";
 import { valuesIn, TEMPLATES, TALK_REVIEW_PROMPT_VERSION } from "@/lib/maya";
 import { practicePackage } from "./packages";
@@ -162,6 +163,8 @@ export interface PracticeDeps {
   /** Free talk for Maya (D-197; default on, as in the admin demo) and its review (null: every piece becomes a bank phrase). */
   freeTalk?: boolean;
   reviewer?: TalkReviewer | null;
+  /** The tutor core's math-truth review (two-layer true math, #1044); without it every sentence code cannot read is refused. */
+  mathReviewer?: MathReviewer | null;
   /** The time limit of one free-talk review (default the live REVIEW_TIME_LIMIT_MS); `claude -p` needs longer. */
   reviewTimeLimitMs?: number;
   /** A practice transport budget. Omit it to keep the live text-session budget. */
@@ -196,7 +199,7 @@ export async function runPractice(c: PracticeCase, n: number, seed: number, deps
   let now = PRACTICE_T0;
   const text = createTextSession({
     callId: `practice-${id}`, package: pkg, model: deps.maya, clock: () => now, random: seed, childName: c.persona.name,
-    channel: execution.channel === "chat" ? "chat" : undefined, freeTalk: execution.freeTalk, reviewer: deps.reviewer ?? null, ...(deps.reviewTimeLimitMs ? { reviewTimeLimitMs: deps.reviewTimeLimitMs } : {}),
+    channel: execution.channel === "chat" ? "chat" : undefined, freeTalk: execution.freeTalk, reviewer: deps.reviewer ?? null, mathReviewer: deps.mathReviewer ?? null, ...(deps.reviewTimeLimitMs ? { reviewTimeLimitMs: deps.reviewTimeLimitMs } : {}),
     ...(deps.turnBudgetMs === undefined ? {} : { turnBudgetMs: deps.turnBudgetMs }),
     ...(execution.tutor ? { tutor: true } : {}),
     onError: (e, where) => deps.onError?.(e, `${id} maya ${typeof where === "string" ? where : `turn ${where.turn} ${where.source}`}`),
