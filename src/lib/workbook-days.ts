@@ -47,6 +47,14 @@ export interface BookDays {
   minutes: { min: number; max: number };
 }
 
+/**
+ * A day's topic as the book's printed plan names it: the one name the Workbooks tab (the day row, the cover) and Home's
+ * Workbook card both say for that day, so a parent who taps Home's Today row lands on the same words. Null when the plan
+ * could not be read or has no such day; the caller then falls back to a topic of its own.
+ */
+export const planDayTopic = (rows: readonly { day: number; topic: string }[] | null | undefined, day: number): string | null =>
+  rows?.find(r => r.day === day)?.topic || null;
+
 /** Where the calendar puts a book: the day it was delivered, today, and whether the plan ended. Null start: no calendar. */
 export interface BookCalendar { start: string | null; today: string; ended: boolean }
 
@@ -99,7 +107,7 @@ export function bookDays(schedule: ReadySchedule, calendar: BookCalendar | null)
   const day = allScanned ? days : start === null ? 1 : ring ?? (bookOver(start, calendar!.today, days) ? days : workbookDay(start, calendar!.today, days) ?? 1);
   return {
     bookId: schedule.book.id, number: schedule.book.number, rows, weeks: [rows.slice(0, 5), rows.slice(5, 10)], day,
-    topic: rows.find(r => r.day === day)?.topic ?? "", scanned, total, percent: total > 0 ? Math.round((scanned / total) * 100) : 0, allScanned,
+    topic: planDayTopic(rows, day) ?? "", scanned, total, percent: total > 0 ? Math.round((scanned / total) * 100) : 0, allScanned,
     gap: gap ? { day: gap.day, pages: gap.missing } : null, scansUnknown, minutes: schedule.minutes,
   };
 }

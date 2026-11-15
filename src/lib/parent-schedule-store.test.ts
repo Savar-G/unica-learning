@@ -8,11 +8,11 @@ function database(tables: Record<string, Record<string, unknown>[]>, deleted = f
   const reads: { table: string; filters: [string, unknown][] }[] = [];
   let fail = "";
   const client = {
-    rpc: async (name: string) => { expect(name).toBe("my_family_deletion_state"); return { data: deleted, error: null }; },
+    rpc: (name: string) => { expect(name).toBe("my_family_deletion_state"); return { abortSignal: () => Promise.resolve({ data: deleted, error: null }) }; },
     from(table: string) {
       const filters: [string, unknown][] = []; let after: [string, string] | null = null, limit = 1000, single = false;
       const query = {
-        select: () => query, eq: (key: string, value: unknown) => { filters.push([key, value]); return query; },
+        select: () => query, abortSignal: () => query, eq: (key: string, value: unknown) => { filters.push([key, value]); return query; },
         in: (key: string, value: unknown[]) => { filters.push([key, value]); return query; },
         gt: (key: string, value: string) => { after = [key, value]; return query; }, order: () => query,
         limit: (n: number) => { limit = n; return query; }, maybeSingle: () => { single = true; return query; },

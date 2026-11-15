@@ -13,23 +13,23 @@ const checked = <T>(r: { data: T; error: { message: string } | null }): T => {
 };
 
 /** Session proves ownership. The service key reads frozen approval records, always with explicit family filters. */
-export function parentScheduleStore(session: SupabaseClient<Database>, service: SupabaseClient<Database>, signedInParent: string): ScheduleStore {
+export function parentScheduleStore(session: SupabaseClient<Database>, service: SupabaseClient<Database>, signedInParent: string, signal: AbortSignal = new AbortController().signal): ScheduleStore {
   const scope = (parent: string) => { if (parent !== signedInParent) throw new Error("Schedule family refused"); };
   return {
     async children(parent) {
       scope(parent);
-      const deleted = checked(await session.rpc("my_family_deletion_state"));
+      const deleted = checked(await session.rpc("my_family_deletion_state").abortSignal(signal));
       if (deleted) throw new Error("Schedule family unavailable");
       const [children, deletions] = await Promise.all([
-        session.from("children").select("id,parent_id,first_name").eq("parent_id", parent).order("created_at").order("id"),
-        service.from("child_deletions").select("child_id").eq("parent_id", parent),
+        session.from("children").select("id,parent_id,first_name").abortSignal(signal).eq("parent_id", parent).order("created_at").order("id"),
+        service.from("child_deletions").select("child_id").abortSignal(signal).eq("parent_id", parent),
       ]);
       const removed = new Set(checked(deletions)?.map(d => d.child_id));
       return checked(children)?.filter(c => !removed.has(c.id)).map(c => ({ id: c.id, parentId: c.parent_id, firstName: c.first_name })) ?? [];
     },
     async books(parent, child) {
       scope(parent);
-      const rows = checked(await service.from("workbooks").select("id,parent_id,child_id,number,status,printed_revision,pdf_path,pdf_sha256,print_manifest")
+      const rows = checked(await service.from("workbooks").select("id,parent_id,child_id,number,status,printed_revision,pdf_path,pdf_sha256,print_manifest").abortSignal(signal)
         .eq("parent_id", parent).eq("child_id", child).order("number", { ascending: false }).limit(500));
       if (rows?.length === 500) throw new Error("Schedule book list incomplete");
       return rows?.map(b => ({ id: b.id, parentId: b.parent_id, childId: b.child_id, number: b.number, status: b.status,
@@ -37,7 +37,7 @@ export function parentScheduleStore(session: SupabaseClient<Database>, service: 
     },
     async approvals(parent, child, book) {
       scope(parent);
-      const rows = checked(await service.from("workbook_audit").select("parent_id,child_id,draft_id,workbook_id,detail")
+      const rows = checked(await service.from("workbook_audit").select("parent_id,child_id,draft_id,workbook_id,detail").abortSignal(signal)
         .eq("parent_id", parent).eq("child_id", child).eq("workbook_id", book).eq("action", "workbook-approved").limit(500));
       if (rows?.length === 500) throw new Error("Schedule approval list incomplete");
       return rows?.map(a => ({ parentId: a.parent_id, childId: a.child_id, draftId: a.draft_id, workbookId: a.workbook_id,
@@ -47,11 +47,11 @@ export function parentScheduleStore(session: SupabaseClient<Database>, service: 
     },
     async revision(parent, child, book, revision) {
       scope(parent);
-      const draft = checked(await service.from("workbook_drafts").select("parent_id,child_id,number,draft,schema_version")
+      const draft = checked(await service.from("workbook_drafts").select("parent_id,child_id,number,draft,schema_version").abortSignal(signal)
         .eq("parent_id", parent).eq("child_id", child).eq("id", book).maybeSingle());
       if (!draft || ![1, 2].includes(draft.schema_version)) return null;
       // A revision has no parent column. The explicitly owned draft above is its only read admission.
-      const saved = checked(await service.from("workbook_draft_revisions").select("content,rendering").eq("draft_id", book).eq("revision", revision).maybeSingle());
+      const saved = checked(await service.from("workbook_draft_revisions").select("content,rendering").abortSignal(signal).eq("draft_id", book).eq("revision", revision).maybeSingle());
       if (!saved || (!saved.content && revision !== 1)) return null;
       return { parentId: draft.parent_id, childId: draft.child_id, number: draft.number, draft: saved.content ?? draft.draft, rendering: saved.rendering };
     },
@@ -59,7 +59,7 @@ export function parentScheduleStore(session: SupabaseClient<Database>, service: 
       scope(parent);
       // `book` was read with both family and child by readSchedule. Pages also carry the family key.
       // Question ids, geometry and teaching participate in printedRevision. No question text leaves this adapter.
-      const rows = checked(await service.from("workbook_pages").select("id,page_number,qr_token,print_contract,workbook_questions(question_number,package,box_x,box_y,box_width,box_height,regions,teaching)")
+      const rows = checked(await service.from("workbook_pages").select("id,page_number,qr_token,print_contract,workbook_questions(question_number,package,box_x,box_y,box_width,box_height,regions,teaching)").abortSignal(signal)
         .eq("parent_id", parent).eq("workbook_id", book).eq("workbook_questions.parent_id", parent).order("page_number").limit(500));
       if (rows?.length === 500) throw new Error("Schedule page list incomplete");
       return rows?.map(p => ({ id: p.id, number: p.page_number, contract: p.print_contract, qrToken: p.qr_token,
@@ -75,7 +75,7 @@ export function parentScheduleStore(session: SupabaseClient<Database>, service: 
       const result: Awaited<ReturnType<ScheduleStore["receipts"]>> = [];
       // Read immutable accepted facts only. Calibration and photo lifecycle cannot retract them.
       for (let after: string | null = null; ;) {
-        const query = service.from("workbook_scan_receipts").select("id,parent_id,child_id,workbook_id,page_id,printed_revision,status")
+        const query = service.from("workbook_scan_receipts").select("id,parent_id,child_id,workbook_id,page_id,printed_revision,status").abortSignal(signal)
           .eq("parent_id", parent).eq("child_id", child).eq("workbook_id", book).eq("printed_revision", revision).eq("status", "accepted");
         const response: { data: Pick<Database["public"]["Tables"]["workbook_scan_receipts"]["Row"], "id" | "parent_id" | "child_id" | "workbook_id" | "page_id" | "printed_revision" | "status">[] | null; error: { message: string } | null } = await (after ? query.gt("id", after) : query).order("id").limit(100);
         const receipts = checked(response);
@@ -92,7 +92,7 @@ export function parentScheduleStore(session: SupabaseClient<Database>, service: 
       // this book and print, validated by the same parser as page results. Only the status leaves readSchedule.
       const result: EffectiveMark[] = [];
       for (let after = ""; ;) {
-        let q = service.from("scan_marking_items").select("id,expected,observation,original_event,event_id,evidence_at,model,prompt")
+        let q = service.from("scan_marking_items").select("id,expected,observation,original_event,event_id,evidence_at,model,prompt").abortSignal(signal)
           .eq("parent_id", parent).eq("child_id", child).eq("workbook_id", book).eq("printed_revision", revision);
         if (after) q = q.gt("id", after);
         const rows = checked(await q.order("id").limit(MARK_PAGE)) ?? [];

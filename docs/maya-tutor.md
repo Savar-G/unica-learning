@@ -25,7 +25,7 @@ Maya is the tutor, and code is the safety net. Savar approved this design on 202
 | Trades ("2 ones become 12", "5 tens became 4 tens") | `placeValueProblem` | Refused |
 | Comparisons ("12 is 4 more than 8", "4 is greater than 8"), brackets, compound number words ("one hundred and two"), spoken fractions ("five sixths"), objects with a stated size ("4 sticks of ten"), "which is" after a quantity and the value of a digit in a named number; a comparison or bracket code cannot read whole, and a decimal relation, are refused (pre-launch review B) | `falseClaims` (`tutor-math.ts`) | Refused |
 | "The answer is ...": the whole value (words, decimals, expressions) and its "not"; a value code cannot read | `answerProblems` (`tutor-math.ts`) | Refused |
-| No correctness judgment against code's stance, in any sentence: any judgment word (right, correct, true, yes, exactly, perfect, great job, well done, nice, spot on, got it, nailed, and the negatives wrong, incorrect, false, not quite, nope) makes a sentence a judgment (`judgment` in `tutor.ts`). With stance "wrong" a positive one is refused, with stance "right" a negative one. The stance comes from code's own read of the child's committed answer and its credit (D-340), never only from the model's reading | `checkTutorSay` and the stream, with the stance | Refused |
+| No correctness judgment against code's stance, in any sentence (a judgment word attached to a true fact the child stated, after a turn with no answer candidate, is an agreement the math review reads: #1072 below): any judgment word (right, correct, true, yes, exactly, perfect, great job, well done, nice, spot on, got it, nailed, and the negatives wrong, incorrect, false, not quite, nope) makes a sentence a judgment (`judgment` in `tutor.ts`). With stance "wrong" a positive one is refused, with stance "right" a negative one. The stance comes from code's own read of the child's committed answer and its credit (D-340), never only from the model's reading | `checkTutorSay` and the stream, with the stance | Refused |
 | At most 60 words (`TUTOR_WORD_LIMIT`) | `checkTutorSay` | Refused; code never trims |
 | A close only after the child solved the question, and never on a turn that asks for help (a stop and the time limit stay code's) | `proposeTutor` in `session.ts` | Refused |
 | Child safety of each sentence that is not plain teaching (`plainTeaching`): safety rules only (`TUTOR_REVIEW_SYSTEM`). A judgment is never plain teaching, and the review's refusal of a judgment is binding, whatever rules it names (`bindingReview`) | the talk review in the adapter, per sentence | Refused |
@@ -235,6 +235,19 @@ Each failure found on `7958a012a` has a binding test in `src/lib/maya-final-chec
 - **The standard reader never joins number groups across anything but spaces or a hyphen** (`wordNumbers`): "two thousand × six hundred forty" is 2000 and 640, never 2640.
 - **The column and place-value kinds refuse only a clause they read in full.** A claim inside an enclosing negation or scope ("It is not true that 1 thousand is 2 thousands.") and a side that goes on ("greater than 9,000 minus 2,000") are not checked there. The core reads them whole, or the math review does.
 
+### The repair always runs; agreeing with a child's fact (#1072, 2026-11-15)
+
+Production chat call `1b428d5b` (83 − 34, the child said "I don't get 3 minus 4"): Maya's message taught the trade, but the math review refused "You're right, 3 ones is too small to take 4 ones, ..." as a verdict while code's verdict was "unknown". No repair ran, and code's plain line went out with no teaching. Each failure has a binding test in `src/lib/maya-repair-agree.test.ts`.
+
+- **Why the repair did not run.** The trace: the model took 3,128 ms and the math review 2,804 ms, so 5,932 ms of the 6,000 ms turn budget (`TURN_BUDGET_MS`) were spent. The repair gate needs time left in the turn (`Date.now() < turnEndsAt`), so it was skipped. Nothing was streamed (chat does not stream).
+- **The repair has its own budget.** On a tutor teaching turn, a refused message (a say check, the talk review or the math review) always gets its one repair. The repair starts with its own model time, `TUTOR_REPAIR_BUDGET_MS` (6,000 ms, option `repairBudgetMs`), which the first attempt and its reviews cannot spend. The repair's reviews keep the review time limit, so a turn is bounded by the turn budget, the repair budget and two review limits. A repair that does not answer in its budget ends in code's line. Other calls keep the old rule (a repair only with time left in the turn).
+- **Voice.** The tutor already repaired in voice (`tutorTeachingNow`, whatever `modelRepair` is). The reserved budget applies to voice too: a refused tutor message whose first attempt used the turn's time now gets its repair, so the child can wait up to the repair budget and one review limit more before Maya speaks. Voice turns of the controller keep D-341 (the first refusal goes to code's line).
+- **Words already streamed.** When a sentence was already streamed, the refusal still goes to code's step question after it, with no repair. The repair writes a new whole message, and the checks read it alone, not as a continuation of the words the child heard (the first-sentence rules, the judgment reader and the "every sentence before it" rule of final check 6 read only the new message). So a repair could repeat or contradict what was said, and no check would see it.
+- **Agreeing with a true fact is not a verdict.** A judgment word attached to a clause by a comma or "that" (`agreementClause` in `tutor.ts`: "You're right, 3 ones is too small to take 4 away.", "You're right that 2 is too small to take 8 away.") is an agreement with a fact the child stated only when the child's turn holds no answer candidate (`childAnswerCandidate` in `tutor.ts`, `answerCandidateIn` and `agreesWithFact` in `session.ts`). Fail closed (review of #1074, P1): the turn holds no candidate only when a closed reader (`STEP_REQUEST`) accepts the WHOLE turn as one request about a step: a short spoken lead-in, then "I don't get", "I can't do", "I'm stuck on", "how do I do" or the like, one operation with no result, and nothing else but "please", "yet" or "at all" ("I don't get 3 minus 4", "How do I do 13 minus 4?"). Any answer word ("answer", "is", "=", "I got", "it's"), an offered expression ("My final answer: twelve minus eight"), a scope ("for the tens"), a second sentence or any other word makes the turn a candidate. A turn about the easier example and a word code reads as the child's answer are candidates too.
+- **The math review reads the clause.** Such a sentence still goes to the math review (no new path skips it). Its input carries `agreement: true` (`maya-math-review-7`), and the review is told that the judgment word agrees with what the child said in `lastTurns.child`, not with an answer. Only "true" passes: every math statement of the clause must be true for this question and be about the numbers or step the child named. The child need not say the fact in the same words: "I don't get 3 minus 4" is agreed with by "You're right, 3 ones is too small to take 4 away". A clause that praises an answer or a result is "false".
+- **A verdict stays a verdict.** After a turn with an answer candidate, every judgment word is a verdict on an answer, read as before: code refuses a "right" against stance "wrong" (and the reverse), and the math review's `childAnswer` rule refuses a judgment code's verdict does not support. A bare judgment ("You're right.", "Yes!") or a clause with another judgment word ("You're right, good job.") is always a verdict.
+- **Code refuses a false "too small".** "A is too small to take B away" claims A < B. Code refuses it only when it reads both complete quantities and their places in full (review of #1074, P2): both places said and the same, or neither said; nothing that can join a quantity right before A ("8 plus 12", "twenty three", "2.5") or right after B ("take 8 plus 8 away"), so the claim ends its clause; no negation or scope before it in its clause; and A is greater than B ("You're right that 4 is too small to take 3 away."; `tooSmallProblems`). Any other form ("12 is too small to take 2 tens away", which is true) goes to the math review. Equal numbers are not refused, because code's own step text names a column's top before its trade ("2 tens is too small to take 2" in 223 − 129). This reader only refuses; it never lets a sentence skip the math review.
+
 ## Credit, the learning event and the parent note
 
 Code's credit of the child decides the saved result, never the model's reading (part C of the pre-launch review, 2026-11-15; tests: `src/lib/maya-call-tutor-credit.test.ts`, `src/lib/maya/tutor-credit.test.ts`):
@@ -245,7 +258,7 @@ Code's credit of the child decides the saved result, never the model's reading (
 - A message or board that gives the whole answer (a true equation with the answer as its result, the answer as a number the child has not said, or every answer digit on the board) records `answer_given` before step help is classified as `guided` or `hint`.
 - The stream and the whole message use the same word verdict (`wordVerdict`). On a word question (a claim or a comparison), a first "yes" streams only on code's right word.
 
-A refused message gets one repair with the reason, also in voice. A second refusal gets code's honest line with the step's question (`tutorFallbackText`), for example "Let me say that another way. What do you get for 12 minus 8?". A refused board drawing is never a reason to lose the words.
+A refused message gets one repair with the reason, also in voice, with its own reserved model time (#1072, above). A second refusal gets code's honest line with the step's question (`tutorFallbackText`), for example "Let me say that another way. What do you get for 12 minus 8?". A refused board drawing is never a reason to lose the words.
 
 Code still owns, unchanged: safety guidance and its close, the AI disclosure opening, the held close, the stop and time closes, confirmations of a number it could not hear, outside-work redirects, the spend block and the `{name}` token. Those turns go through the controller as before (`tutorTeachingNow` is false for them). Other-topic talk ("What is your favorite animal?") is the tutor's to answer, with the safety review; outside math work, another person's work and an unsafe request stay code's redirect. A turn a gate takes after the model's reading gets code's line at once, with no repair.
 
@@ -293,7 +306,7 @@ Phase 1: 2-digit whole-number addition and subtraction (`isTutorQuestion`), on a
 
 ## Family calls (`MAYA_TUTOR_FAMILIES`)
 
-The server switch `MAYA_TUTOR_FAMILIES` lets the tutor core teach family calls: the desk chat (kind `chat`, channel `chat`) and the child's voice call from the family desk (kind `family`). Only the exact value `on` turns it on. `callSeams` (`src/lib/maya-call-seams.ts`) reads it for the site and the voice worker and passes `tutorFamilies` to the call module; `src/lib/maya-call.ts` never reads the environment. The switch is off by default. Do not set it until Savar approves.
+The server switch `MAYA_TUTOR_FAMILIES` lets the tutor core teach family calls: the desk chat (kind `chat`, channel `chat`) and the child's voice call from the family desk (kind `family`). Only the exact value `on` turns it on. `callSeams` (`src/lib/maya-call-seams.ts`) reads it for the site and the voice worker and passes `tutorFamilies` to the call module; `src/lib/maya-call.ts` never reads the environment. The switch is off by default in code. Savar approved it for families on 2026-11-15 (option B); see "First-week review and kill switches" below.
 
 - The rule: `tutor = seams.tutor !== false && (kind === "admin_test" || (tutorFamilies && (kind === "chat" || kind === "family")))`. The core still decides per question: a question no tutor kind fits keeps the controller.
 - The safety review of each sentence that is not plain teaching runs on family calls too: the call module gives every kind the reviewer. Free talk stays off for chat and family; the tutor's review does not depend on it. Without a reviewer (no `OPENROUTER_API_KEY`) a tutor sentence that needs a review is refused; after the one repair, code's honest line is said.
@@ -302,3 +315,42 @@ The server switch `MAYA_TUTOR_FAMILIES` lets the tutor core teach family calls: 
 - Tests: `src/lib/maya-call-tutor-families.test.ts` and `src/lib/maya-call-seams.test.ts`.
 
 Phase 2 moves every Book 1 question type to the tutor core, and deletes the controller's teaching code as each type moves. Phase 3 rebuilt the practice judge (T01 to T10 plus the trace metrics, `npm run maya:practice -- --tutor`, `docs/maya-practice.md`) and continues the latency work on the single call.
+
+## First-week review and kill switches
+
+Families have been on the tutor core since 2026-11-15 (Savar, option B). For the first week, someone reads a daily review of every family call, and two kill switches stay ready.
+
+**State on 2026-11-15**
+
+- `MAYA_TUTOR_FAMILIES=on` and `MAYA_CHAT_ENABLED=on` are set in Vercel Production. `MAYA_TUTOR_FAMILIES=on` is also set in the voice worker's secrets (LiveKit agent `maya-voice`).
+- Family voice stays closed: `MAYA_VOICE_ENABLED` is unset in Vercel Production (`src/lib/maya-voice-desk.ts`). A test family still has voice. Open it only after one live test-family voice call proves #992 and Savar approves.
+- A call keeps what it started with. A change of a switch does not move a call that is already live.
+
+**Kill switch 1: families back to the controller**
+
+1. Unset `MAYA_TUTOR_FAMILIES` in Vercel Production, then redeploy (a new deploy reads the new value).
+2. Remove it from the worker's secrets, so voice calls stop using the tutor core: `lk agent update-secrets` for agent `maya-voice` (with the secret removed from the env file you give it), then check the agent's secrets with `lk agent secrets`.
+3. New family calls and chats then use the controller. Admin test calls still use the tutor core.
+
+**Kill switch 2: stop desk chat**
+
+- Set `MAYA_CHAT_ENABLED=off` in Vercel Production and redeploy. Desk chat stops for every family except test families. Read on each request; `docs/maya-chat.md`.
+
+**The daily review**
+
+`npm run maya:family-review` reads production (SELECT only) and prints a short markdown report. It needs `SUPABASE_SECRET_KEY` (or `SUPABASE_SECRET_KEY_FILE`, a file that holds the key) in the environment. It never prints the key.
+
+```
+npm run maya:family-review -- [--hours 24] [--out <file>] [--json]
+```
+
+- It lists every family call (kind `chat` or `family`, voice and chat; never `admin_test`) that started in the window. For each call: id, start time, kind and mode, real or test family (`public.test_accounts`) with a short family id, question, turn counts, path (tutor or controller), and the admin call link (`/admin/maya/<id>`). It shows no child name, parent name or email.
+- Code reads five flags from the saved trace, with no AI:
+  1. **Override, repair or fallback.** Count and kind of each (`counts.overrides` rules).
+  2. **Math-review refusal.** Any review whose final result is not "true", with the sentence (`attempts[].math`).
+  3. **Judgment word after a wrong answer.** A Maya sentence that holds right, correct, yes, good job, perfect, exactly, great, well done, nice or that's it, after a child's turn that the reading calls wrong (or after a rise in `finalMisses`). A negated word ("not quite right") is no match. This is a review flag: the fixed list can flag a word in another sense, such as "on the right".
+  4. **Help level against Maya's words.** Maya's words held the answer value before the child said it, but the call records less than `answer_given`, or the parent note says the child needed no help. It reads digits only, and the answer from the stored package (or from the question text of a plain "a + b" or "a - b").
+  5. **Safety.** Any call flag, safety flag or `maya_call_alerts` row.
+- The report has totals first (calls, real and test, tutor and controller, flagged count by flag), then one block per flagged call, then one line of clean calls. The command exits 0 on success and 2 when the read fails.
+- Read each flagged call on its admin page. A flag asks a person to look. It is no verdict. If a flag shows a real fault, use kill switch 1 or 2, then open a ticket.
+- Code: `src/lib/maya-family-review.ts` (pure, tested in `src/lib/maya-family-review.test.ts`) and `scripts/maya-family-review-cli.ts`.

@@ -408,6 +408,88 @@ export function stanceHeld(sentence: string, ctx: Pick<TutorCheckContext, "stanc
 /** Whether one sentence, on its own, needs the math-truth review: it does not pass on code alone, or the stance holds it. */
 const needsMath = (sentence: string, ctx: Parameters<typeof stanceHeld>[1]): boolean => !codeAlone(sentence, ctx) || stanceHeld(sentence, ctx);
 
+/**
+ * #1072 (2026-11-15): the factual clause a judgment word is attached to, or null. "You're right, 3 ones is too small to
+ * take 4 away." and "You're right that 2 is too small to take 8 away." attach a clause (after a comma or "that"): the
+ * judgment word may agree with a fact the child stated. A bare judgment ("You're right.", "Yes!") attaches none and is
+ * always a verdict, and so is a clause that holds another judgment word ("You're right, good job."). The clause is only
+ * found here; it is never read as true here (the math review reads it, see `agreesWithFact` in session.ts).
+ */
+export function agreementClause(sentence: string): string | null {
+  const text = sentence.replace(/[‘’ʼ]/g, "'").trim();
+  const m = AGREE_OPENER.exec(text);
+  if (!m) return null;
+  const clause = m[1].replace(/[.!]+\s*$/, "").trim();
+  if (!/[\p{L}\p{N}]/u.test(clause.replace(/\{name\}/gi, "")) || /\?\s*$/.test(text)) return null;
+  return judgment(clause).any ? null : clause;
+}
+const AGREE_OPENER = /^(?:\{name\}\s*,?\s*)?(?:yes|yeah|yep|right|exactly|true|correct|that'?s (?:right|true|correct)|that is (?:right|true|correct)|you'?re (?:right|correct)|you are (?:right|correct))(?:\s*,\s*(?:\{name\}\s*,\s*)?|\s+that\s+)(\S.*)$/i;
+
+const CAND_NUM = String.raw`(?:\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)`;
+const CAND_UNIT = String.raw`(?:ones?|tens?|hundreds?|thousands?)`;
+const CAND_OP = String.raw`(?:plus|minus|take away|times|multiplied by|divided by|\+|-|×|÷|x)`;
+/** An operation of numbers with no result: "3 minus 4", "2 - 8", "thirteen take away four". */
+const CAND_OPERATION = String.raw`(?:the\s+)?${CAND_NUM}(?:\s+${CAND_UNIT})?(?:\s+${CAND_OP}\s+${CAND_NUM}(?:\s+${CAND_UNIT})?)+`;
+/**
+ * #1072 review (P1): the closed reader of a step request. The WHOLE turn must be one request about a step: a short spoken
+ * lead-in, then "I don't get", "I can't do", "I'm stuck on", "how do I do" (or the like), then one operation with no
+ * result, and nothing else but "please", "yet" or "at all". This reads requests, never answers.
+ */
+const STEP_REQUEST = new RegExp(String.raw`^(?:(?:um|uh|so|but|well|okay|ok|hmm)[,\s]+)*(?:i\s+(?:still\s+)?(?:don't|do not|can't|cannot|can not)\s+(?:get|understand|do|figure out|work out|solve)|i\s+(?:don't|do not)\s+know how to\s+(?:do|solve|work out)|(?:i'm|i am)\s+(?:stuck|confused)\s+(?:on|with|about|by)|how\s+(?:do|can|should)\s+(?:i|we|you)\s+(?:do|solve|work out)|(?:can you\s+|please\s+)?(?:help me with|help me do|explain|show me how to do))\s+${CAND_OPERATION}(?:\s+(?:please|yet|at all))?$`, "i");
+
+/**
+ * #1072 (2026-11-15): whether the child's turn holds an answer candidate. Review of #1074 (P1), fail closed: the turn
+ * holds none only when the closed reader STEP_REQUEST accepts the whole turn as one request about a step ("I don't get
+ * 3 minus 4", "I can't do 2 minus 8", "How do I do 13 minus 4?"). Any answer word ("answer", "is", "=", "I got",
+ * "it's"), any other word code does not read, a second sentence, or an offered expression ("My final answer: twelve
+ * minus eight") makes it a candidate. A judgment word of Maya's after a turn with a candidate is a verdict on an answer:
+ * code's stance and the math review's verdict rule read it, as before.
+ */
+export function childAnswerCandidate(text: string): boolean {
+  const said = text.replace(/[‘’ʼ]/g, "'").replace(/[−–]/g, "-").replace(/\s+/g, " ").trim();
+  const asks = /^how\b/i.test(said);
+  // One sentence only, with one final mark: "?" only on a "how" question.
+  const body = said.replace(asks ? /\s*[?.!]?$/ : /\s*[.!]?$/, "");
+  if (!body || /[.!?;:,]/.test(body.replace(/^(?:(?:um|uh|so|but|well|okay|ok|hmm),\s*)+/i, ""))) return true;
+  return !STEP_REQUEST.test(body);
+}
+
+/**
+ * #1072 (2026-11-15): "A is too small to take B away" claims A < B. Code refuses it only when it reads the claim whole and
+ * finds it false ("4 is too small to take 3 away"): both numbers read, the same place (or none), and no negation or scope
+ * before it in its clause ("It is not true that 4 is too small ..." is not refused). It never grants a pass: a sentence
+ * with it still goes to the math review.
+ */
+export function tooSmallProblems(sentence: string): string[] {
+  const text = sentence.replace(/[‘’ʼ]/g, "'").replace(/[−–]/g, "-");
+  const out: string[] = [];
+  for (const m of text.matchAll(TOO_SMALL)) {
+    const clauseStart = Math.max(...[",", ";", ":", "."].map((c) => text.lastIndexOf(c, m.index - 1))) + 1;
+    if (/\b(?:not|no|never|if|when|whether|suppose|imagine|pretend|unless|n't)\b|n't\b/i.test(text.slice(clauseStart, m.index))) continue;
+    // Review of #1074 (P2): refuse only when both complete quantities and their places are read in full. Nothing that
+    // can join a quantity may stand right before the first number ("8 plus 12 is ...", "twenty three is ...", "2.5")
+    // or right after the second ("take 8 plus 8 away", "take twenty three away"): the claim must end its clause there.
+    const before = text.slice(0, m.index);
+    const after = text.slice(m.index + m[0].length);
+    if (QUANTITY_JOIN_BEFORE.test(before) || !CLAUSE_END_AFTER.test(after)) continue;
+    const a = valueOf(m[1]);
+    const b = valueOf(m[3]);
+    const ua = m[2]?.toLowerCase().replace(/s$/, "");
+    const ub = m[4]?.toLowerCase().replace(/s$/, "");
+    // Both places said and the same, or neither said: "12 is too small to take 2 tens away" (12 < 20) is not read.
+    if (a === null || b === null || !Number.isSafeInteger(a) || !Number.isSafeInteger(b) || (ua ?? null) !== (ub ?? null)) continue;
+    // Equal numbers are not refused: code's own step text says the column's top before its trade ("2 tens is too
+    // small to take 2" in 223 − 129, where the tens are 1 after the ones' trade).
+    if (a > b) out.push(`${a} is not too small to take ${b} away: ${a} is not less than ${b}`);
+  }
+  return out;
+}
+/** Something right before a number that can join it into a larger quantity: a digit, a mark inside a number, a sign, an operator or a number word. */
+const QUANTITY_JOIN_BEFORE = new RegExp(String.raw`(?:[\d.,+\-×÷*/=x]|\b(?:plus|minus|times|by|of|over|point|negative|and|a|away|hundred|thousand|${N}))\s*$`, "i");
+/** After the second quantity: only "away", then the end of the clause. */
+const CLAUSE_END_AFTER = /^(?:\s+away)?\s*(?:$|[.!?;:](?!\d)|,(?!\d)|\s+(?:so|because|since|but)\b)/i;
+const TOO_SMALL = new RegExp(String.raw`\b(${N})(?:\s+(${U}))?\s+(?:is|are)\s+(?:too small|too little|not (?:big|large) enough)\s+to\s+(?:take|subtract)\s+(?:away\s+)?(${N})(?:\s+(${U}))?`, "gi");
+
 /** A division with a remainder ("15 ÷ 6 = 2 R 3", in digits or words): falseClaims reads it whole. */
 const REMAINDER_FORM = new RegExp(REMAINDER_SAID, "gi");
 
@@ -451,7 +533,7 @@ export function checkTutorSay(text: string, ctx: TutorCheckContext & { extra?: R
       if (holds === null) continue;
       if (holds === e.negated) return { ok: false, reason: "false_equation", detail: `"${sentence}" ${e.negated ? "calls a true equation false" : "holds a false equation"}. Every equation Maya says must be true.` };
     }
-    const claim = falseClaims(sentence, ctx.op, ctx.trades)[0] ?? ctx.claims?.(sentence)[0];
+    const claim = falseClaims(sentence, ctx.op, ctx.trades)[0] ?? tooSmallProblems(sentence)[0] ?? ctx.claims?.(sentence)[0];
     if (claim) return { ok: false, reason: "false_equation", detail: `"${sentence}": ${claim}. Every equation and place-value statement must be true.` };
     // "4 is the answer", "the whole answer is 24": the whole value and its "not" (pre-launch review B).
     const wrongAnswer = ctx.answer === undefined ? undefined : answerProblems(sentence, ctx.answer)[0];
