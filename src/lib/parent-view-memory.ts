@@ -144,7 +144,8 @@ export interface MemoryParentViewTables {
   maya?: MemoryMayaCall[];
   skillTests?: MemorySkillTest[];
   questions?: MemoryWorkbookQuestion[];
-  overviewProgress?: (Owned & OverviewProgress)[];
+  /** `helpMarks` left out: `skillMarks` with no blank answer. */
+  overviewProgress?: (Owned & Omit<OverviewProgress, "helpMarks"> & { helpMarks?: OverviewProgress["helpMarks"] })[];
   /** The recorded state changes of each child's standards; none when left out. */
   history?: MemorySkillChange[];
   fail?: Table[];
@@ -249,7 +250,9 @@ export function memoryParentViewReaders(tables: MemoryParentViewTables) {
       async overviewProgress(childId) {
         read("overviewProgress");
         if (!own(tables.children).some((c) => c.id === childId)) return null;
-        return own(tables.overviewProgress).find((r) => r.childId === childId) ?? { marks: [], skillMarks: [] };
+        const row = own(tables.overviewProgress).find((r) => r.childId === childId);
+        if (!row) return { marks: [], skillMarks: [], helpMarks: [] };
+        return { ...row, helpMarks: row.helpMarks ?? row.skillMarks.map((m) => ({ ...m, blank: false })) };
       },
       async workbookStandards(workbookId) {
         read("questions");

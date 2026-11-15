@@ -60,7 +60,7 @@ export function ProgressPanels({ name, progress }: { name: string; progress: Pro
   const tiles: { key: string; label: string; value: string; arrow: boolean; sub: string; hot?: boolean }[] = [
     { key: "mastered", label: "Skills mastered", value: String(summary.mastered), arrow: p.gain > 0, sub: p.gain > 0 ? `+${p.gain} ${span}` : `none new ${span}`, hot: true },
     { key: "up", label: "Moved up", value: String(p.movedUp), arrow: p.movedUp > 0, sub: "skills went up a level" },
-    { key: "help", label: "Needs help", value: String(summary.needsHelp), arrow: false, sub: "practised again next" },
+    { key: "help", label: "Needs help", value: String(summary.needsHelp), arrow: false, sub: "skills to work on" },
     period === "week"
       ? { key: "days", label: "Days done", value: `${weekDaysDone ?? 0} of 5`, arrow: false, sub: "this week" }
       : { key: "days", label: "Days done", value: String(bookDaysDone ?? 0), arrow: false, sub: workbookNumber === null ? "in the workbook" : `in Workbook ${workbookNumber}` },

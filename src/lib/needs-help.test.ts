@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { SkillMark, SkillState, StandardSkillState } from "@/lib/assessment/skill-state";
+import type { SkillState, StandardSkillState } from "@/lib/assessment/skill-state";
 import { PACIFIC_ZONE, familyZone } from "@/lib/family-time";
 import {
-  STRUGGLING_BELOW_PERCENT, STRUGGLING_MIN_ANSWERS, STRUGGLING_WINDOW_DAYS, countsAsNeedsHelp, isStruggling, needsHelpStandards,
+  STRUGGLING_BELOW_PERCENT, STRUGGLING_MIN_ANSWERS, STRUGGLING_WINDOW_DAYS, countsAsNeedsHelp, isStruggling, needsHelpStandards, type HelpMark,
 } from "@/lib/needs-help";
 
 // The dashboard's Needs help rule (#1025), through the module's public interface. The family is in Pacific time (UTC-7
@@ -12,7 +12,9 @@ const NOW = Date.parse("2026-11-12T20:00:00Z");
 const zone = PACIFIC_ZONE;
 const EASTERN = familyZone({ province: "ON" });
 
-const mark = (right: boolean, at: string, standard = "3.3"): SkillMark => ({ standard, right, review: false, at });
+const mark = (right: boolean, at: string, standard = "3.3"): HelpMark => ({ standard, right, review: false, at, blank: false });
+/** An answer left blank: not right, as the skill state rule reads it, but flagged for this rule. */
+const blank = (at: string, standard = "3.3"): HelpMark => ({ ...mark(false, at, standard), blank: true });
 /** `rights` as marks, all at noon UTC of one day (the same calendar day in every Canadian zone). */
 const on = (day: string, rights: boolean[], standard = "3.3") => rights.map((right) => mark(right, `${day}T19:00:00Z`, standard));
 const state = (standard: string, s: SkillState): StandardSkillState => ({ standard, state: s, reason: "in_workbook", evidence: "workbook", evidenceAt: null });
@@ -51,6 +53,21 @@ describe("struggling now: fewer than 60% right on at least 4 marked answers in t
     const mixed = [mark(false, "2026-11-10T19:00:00Z"), { ...mark(false, "2026-11-10T19:00:00Z"), review: true }, mark(false, "2026-11-11T19:00:00Z"), { ...mark(false, "2026-11-11T19:00:00Z"), review: true }];
     expect(isStruggling(mixed, NOW, zone)).toBe(true);
     expect(isStruggling([], NOW, zone)).toBe(false);
+  });
+  it("a blank answer is neither an answer nor a wrong one: 4 blanks do not count", () => {
+    expect(isStruggling([1, 2, 3, 4].map(() => blank("2026-11-10T19:00:00Z")), NOW, zone)).toBe(false);
+  });
+  it("3 wrong and 1 blank are 3 answers, under 4, so they do not count", () => {
+    expect(isStruggling([...on("2026-11-10", [false, false, false]), blank("2026-11-10T19:00:00Z")], NOW, zone)).toBe(false);
+  });
+  it("4 wrong answers count, with or without blanks beside them", () => {
+    expect(isStruggling(on("2026-11-10", [false, false, false, false]), NOW, zone)).toBe(true);
+    expect(isStruggling([...on("2026-11-10", [false, false, false, false]), blank("2026-11-10T19:00:00Z"), blank("2026-11-11T19:00:00Z")], NOW, zone)).toBe(true);
+  });
+  it("blanks do not dilute the percent: 2 right, 2 wrong and many blanks is 50%, struggling; 3 right, 2 wrong and a blank is 60%, not", () => {
+    const blanks = [1, 2, 3, 4, 5].map(() => blank("2026-11-10T19:00:00Z"));
+    expect(isStruggling([...on("2026-11-10", [true, true, false, false]), ...blanks], NOW, zone)).toBe(true);
+    expect(isStruggling([...on("2026-11-10", [true, true, true, false, false]), blank("2026-11-10T19:00:00Z")], NOW, zone)).toBe(false);
   });
   it("ignores a mark with no readable time", () => {
     expect(isStruggling([...on("2026-11-10", [false, false, false]), mark(false, "not a time")], NOW, zone)).toBe(false);
@@ -118,6 +135,12 @@ describe("what counts as Needs help", () => {
   it("no other state does: Mastered and Not started keep their state, whatever the marks", () => {
     expect(countsAsNeedsHelp("mastered", wrong, NOW, zone)).toBe(false);
     expect(countsAsNeedsHelp("not_started", wrong, NOW, zone)).toBe(false);
+  });
+  it("a Learning skill with only blank answers is not struggling, and a blank never turns a skill to Needs help", () => {
+    const blanks = [1, 2, 3, 4].map(() => blank("2026-11-10T19:00:00Z"));
+    expect(countsAsNeedsHelp("working_on", blanks, NOW, zone)).toBe(false);
+    expect([...needsHelpStandards([state("3.3", "working_on")], blanks, NOW, zone)]).toEqual([]);
+    expect([...needsHelpStandards([state("3.3", "working_on")], [...blanks, ...on("2026-11-10", [false, false, false, false])], NOW, zone)]).toEqual(["3.3"]);
   });
   it("is read per standard: another standard's wrong answers are not this one's", () => {
     const states = [state("3.3", "working_on"), state("3.4", "working_on"), state("3.5", "needs_review"), state("3.6", "mastered")];

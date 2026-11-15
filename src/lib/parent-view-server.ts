@@ -12,7 +12,7 @@ import type { StateChange } from "@/lib/progress-series";
 import { pinIsSet } from "@/lib/parent-pin-server";
 import { familyOpenPlanChildren } from "@/lib/plan-access";
 import { scanMarkingReader, markingCommand } from "@/lib/scan-marking-reader";
-import { effectiveSkillMarks } from "@/lib/scan-marking";
+import { effectiveHelpMarks, effectiveSkillMarks } from "@/lib/scan-marking";
 import { itemKey, markingEvent } from "@/lib/scan-observation";
 import { scanReleased } from "@/lib/scan-pages-access";
 import { withAnswers } from "@/lib/test-attempt";
@@ -238,7 +238,7 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
           marks.push({ area: REPORTED_STRAND[standard.strand], level: standard.grade, correct: right });
         }
         if (await command("revision", parent, null, null, { child: childId }) !== revision) continue;
-        return { marks, skillMarks: effectiveSkillMarks(items) };
+        return { marks, skillMarks: effectiveSkillMarks(items), helpMarks: effectiveHelpMarks(items) };
       }
       throw new Error("overview progress changed");
     },

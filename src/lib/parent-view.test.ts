@@ -488,6 +488,20 @@ describe("the Home (#560, #1003)", () => {
         // 06:00 UTC on 2026-10-22 is still 2026-10-21 in Vancouver (UTC-7): out of the window there.
         expect((await skills({ ...inBook, ...withMarks(answered("3.4", four, "2026-10-22T06:00:00Z")) }))?.needsHelp).toEqual([]);
       });
+      it("blank answers are not wrong: 4 blanks, or 3 wrong and 1 blank, leave it Learning; 4 wrong moves it", async () => {
+        // The skill state rule still reads a blank as not right (skillMarks), so only helpMarks carries the flag.
+        const at = "2026-11-03T18:00:00Z";
+        const mark = (right: boolean, blank: boolean) => ({ standard: "3.4", right, review: false, at, blank });
+        const withHelpMarks = (helpMarks: ReturnType<typeof mark>[]) => ({ overviewProgress: [{ ...own, marks: [], skillMarks: helpMarks.map(({ standard, right, review, at }) => ({ standard, right, review, at })), helpMarks }] });
+        const four = (...kinds: ("wrong" | "blank")[]) => kinds.map((k) => mark(false, k === "blank"));
+        const learning = async (tables: ReturnType<typeof withHelpMarks>) => (await skills({ ...inBook, ...tables }))!;
+        expect((await learning(withHelpMarks(four("blank", "blank", "blank", "blank")))).needsHelp).toEqual([]);
+        expect((await learning(withHelpMarks(four("wrong", "wrong", "wrong", "blank")))).needsHelp).toEqual([]);
+        const struggling = await learning(withHelpMarks(four("wrong", "wrong", "wrong", "wrong")));
+        expect(struggling.needsHelp.map((s) => s.code)).toEqual(["3.4"]);
+        const blankToo = await learning(withHelpMarks([...four("wrong", "wrong", "wrong", "wrong"), ...four("blank", "blank")]));
+        expect(blankToo.needsHelp.map((s) => s.code)).toEqual(["3.4"]);
+      });
       it("a skill that recovers goes back to Learning", async () => {
         const wrong = answered("3.4", [false, false, false, false], "2026-10-30T18:00:00Z");
         expect((await skills({ ...inBook, ...withMarks(wrong) }))?.needsHelp.map((s) => s.code)).toEqual(["3.4"]);
@@ -811,6 +825,21 @@ describe("the Progress tab (#561, #1004)", () => {
       // Three answers are too few.
       const few = (await read({ ...data, questions, overviewProgress: [{ ...own, marks: [], skillMarks: [mark, ...struggling.slice(1)] }] }))!.progress!;
       expect(few.summary.needsHelp).toBe(1);
+    });
+    it("a topic's Needs help word reads the same set as the tile and Home: a struggling Learning skill alone turns its topic (#1025)", async () => {
+      const questions = [{ parentId: "parent-1", workbookId: "wb-1", pageId: "d3a", standard: "3.4" }];
+      const noMastery = { ...withTest, ...book, questions, skillTests: [] };
+      const marksOf = (rights: boolean[]) => ({ overviewProgress: [{ ...own, marks: [], skillMarks: rights.map((right) => ({ standard: "3.4", right, review: false, at: "2026-11-03T18:00:00Z" })) }] });
+      const calm = (await read({ ...noMastery, ...marksOf([true, true, true, false]) }))!.progress!;
+      const struggling = (await read({ ...noMastery, ...marksOf([false, false, false, false]) }))!.progress!;
+      // No state changed: the skill is Learning in both. Only the rule's set differs.
+      expect(struggling.summary.needsHelp).toBe(1);
+      expect(calm.summary.needsHelp).toBe(0);
+      expect(calm.topics.map((t) => t.word)).not.toContain("Needs help");
+      const changed = struggling.topics.filter((t, i) => t.word !== calm.topics[i].word);
+      expect(changed).toHaveLength(1);
+      expect(changed[0].word).toBe("Needs help");
+      expect(struggling.topics.map((t) => t.name)).toEqual(calm.topics.map((t) => t.name));
     });
     it("one point per week, with a start, labelled by Monday; one per month on Month and All time", async () => {
       const p = (await read(data))!.progress!;

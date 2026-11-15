@@ -171,21 +171,33 @@ describe("marked pages on the map (#880)", () => {
 });
 
 describe("the math topics of the Progress tab (#1004)", () => {
-  const tile = (state: SkillState) => ({ code: "x", name: "x", grade: 3 as const, state, why: "", skills: [], workbookLine: null });
-  const area = (name: string, ...states: SkillState[]): SkillAreaView => ({ area: "number", name, tiles: states.map(tile) });
-  it("Strong when every skill is mastered; Needs help when none is and one needs review; else Getting there", () => {
+  // Each tile has its own code, so the Needs help set (the dashboard's rule, #1025) can name it.
+  const tile = (state: SkillState, code: string) => ({ code, name: code, grade: 3 as const, state, why: "", skills: [], workbookLine: null });
+  const area = (name: string, ...states: SkillState[]): SkillAreaView => ({ area: "number", name, tiles: states.map((s, i) => tile(s, `${name}${i}`)) });
+  const none = new Set<string>();
+  it("Strong when every skill is mastered; Needs help when none is and one needs help; else Getting there", () => {
+    // The set holds what the rule counts: B0 and C1 are needs_review skills, as the rule's set holds them.
     expect(topicBars([
       area("A", "mastered", "mastered"),
       area("B", "needs_review", "working_on"),
       area("C", "mastered", "needs_review"),
       area("D", "not_started", "working_on"),
-    ]).map((t) => [t.word, t.share])).toEqual([["Strong", 1], ["Needs help", 0], ["Getting there", 0.5], ["Getting there", 0]]);
+    ], new Set(["B0", "C1"])).map((t) => [t.word, t.share])).toEqual([["Strong", 1], ["Needs help", 0], ["Getting there", 0.5], ["Getting there", 0]]);
+  });
+  it("a Learning skill in the Needs help set turns its topic to Needs help when none is mastered; the state alone does not", () => {
+    const areas = [area("B", "working_on", "not_started"), area("C", "mastered", "working_on")];
+    expect(topicBars(areas, none).map((t) => t.word)).toEqual(["Getting there", "Getting there"]);
+    // B0 is struggling: B has none mastered, so it needs help. C1 is too, but C has a mastered skill.
+    expect(topicBars(areas, new Set(["B0", "C1"])).map((t) => t.word)).toEqual(["Needs help", "Getting there"]);
+  });
+  it("a needs_review skill the set does not hold does not count: the set is the one rule", () => {
+    expect(topicBars([area("B", "needs_review", "working_on")], none).map((t) => t.word)).toEqual(["Getting there"]);
   });
   it("names the area as the report does and gives only the name, the word and the share", () => {
-    const [bar] = topicBars([area("Fractions and decimals", "mastered", "not_started", "not_started", "not_started")]);
+    const [bar] = topicBars([area("Fractions and decimals", "mastered", "not_started", "not_started", "not_started")], none);
     expect(bar).toEqual({ name: "Fractions and decimals", word: "Getting there", share: 0.25 });
   });
   it("leaves out nothing it is given, and gives nothing for no area", () => {
-    expect(topicBars([])).toEqual([]);
+    expect(topicBars([], none)).toEqual([]);
   });
 });

@@ -135,14 +135,15 @@ export interface TopicBarView {
 
 /**
  * The math topics: one bar per area of the map, the share of its skills mastered. The word: Strong when every skill is
- * mastered; Needs help when none is mastered and one needs review; else Getting there. An area with no skill does not
- * appear. No percent and no count reaches the parent: the bar and the word only.
+ * mastered; Needs help when none is mastered and one needs help; else Getting there. A skill needs help when `help` (the
+ * dashboard's Needs help set, `src/lib/needs-help.ts`, the same one Home and the Needs help tile read) holds its code. An
+ * area with no skill does not appear. No percent and no count reaches the parent: the bar and the word only.
  */
-export function topicBars(areas: readonly SkillAreaView[]): TopicBarView[] {
+export function topicBars(areas: readonly SkillAreaView[], help: ReadonlySet<string>): TopicBarView[] {
   return areas.map(({ name, tiles }): TopicBarView => {
     const mastered = tiles.filter((t) => t.state === "mastered").length;
-    const help = tiles.filter((t) => t.state === "needs_review").length;
-    const word: TopicWord = mastered === tiles.length ? "Strong" : mastered === 0 && help > 0 ? "Needs help" : "Getting there";
+    const needHelp = tiles.filter((t) => help.has(t.code)).length;
+    const word: TopicWord = mastered === tiles.length ? "Strong" : mastered === 0 && needHelp > 0 ? "Needs help" : "Getting there";
     return { name, word, share: mastered / tiles.length };
   });
 }

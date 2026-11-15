@@ -13,7 +13,7 @@ const expected: ExpectedItem = {
   teaching: { curriculum: { key: "bc", version: "1" }, part: "practice", slot: "1", practiceType: "now-you", itemStep: { unit: "U1", skill: "add", step: 1 } },
 };
 const event = { occurredAt: "2026-10-04T18:00:00Z", key: `marking:${createHash("sha256").update(`${book}:${revision}:${page}:item`).digest("hex")}`, parentId: parent, childId: child, source: "marking", question: { source: "workbook", workbookId: book, page: 1, question: 1 }, skill: { standard: "2.4", skills: [] } };
-const mark = (result: "right" | "wrong") => ({ id: "row", expected, observation: { ...firstObservation(expected, "photo"), state: "parent-checked", method: "parent", actor: "admin", result, resultVersion: 2 }, original_event: event, event_id: "event", evidence_at: "2026-11-01T00:00:00Z", model: null, prompt: null });
+const mark = (result: "right" | "wrong" | "blank") => ({ id: "row", expected, observation: { ...firstObservation(expected, "photo"), state: "parent-checked", method: "parent", actor: "admin", result, resultVersion: 2 }, original_event: event, event_id: "event", evidence_at: "2026-11-01T00:00:00Z", model: null, prompt: null });
 
 function reader(items: ReturnType<typeof mark>[], questionId = "item", secondTries: { result: string }[] = [], marking: { revision: number; status: { revision: number; profile_revision: number } | null } = { revision: 1, status: { revision: 1, profile_revision: 1 } }, revisions: number[] = []) {
   const requests: string[] = [];
@@ -49,6 +49,14 @@ describe("stored overview marks", () => {
   it("dates each mark by its original event, so a correction or a re-saved result stays in its month", async () => {
     const changed = { ...mark("right"), evidence_at: "2026-11-02T18:00:00Z" };
     expect((await reader([changed]).value.overviewProgress(child))?.skillMarks).toEqual([{ standard: "2.4", right: true, review: false, at: "2026-10-04T18:00:00Z" }]);
+  });
+  it("gives the Needs help rule a blank flag and leaves the skill state rule's marks as they were (#1025)", async () => {
+    const got = await reader([mark("blank")]).value.overviewProgress(child);
+    // The skill state rule still reads a blank as not right, with no new field.
+    expect(got?.skillMarks).toEqual([{ standard: "2.4", right: false, review: false, at: "2026-10-04T18:00:00Z" }]);
+    expect(got?.helpMarks).toEqual([{ standard: "2.4", right: false, review: false, at: "2026-10-04T18:00:00Z", blank: true }]);
+    expect((await reader([mark("wrong")]).value.overviewProgress(child))?.helpMarks[0]).toMatchObject({ right: false, blank: false });
+    expect((await reader([mark("right")]).value.overviewProgress(child))?.helpMarks[0]).toMatchObject({ right: true, blank: false });
   });
   it("keeps the database's own time format of the original event", async () => {
     const team = { ...mark("right"), original_event: { ...event, occurredAt: "2026-11-01T06:59:59.999999+00:00" } };

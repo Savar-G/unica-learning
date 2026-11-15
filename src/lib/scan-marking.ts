@@ -11,6 +11,7 @@ import { checkWordsReading } from "@/lib/scan-marking-words";
 import type { PrintedRegion } from "@/lib/workbook-print-contract";
 import type { LearningEvent, NewLearningEvent } from "@/lib/learning-events";
 import type { SkillMark } from "@/lib/assessment/skill-state";
+import type { HelpMark } from "@/lib/needs-help";
 import type { ScanCleanFailure } from "@/lib/scan-states";
 
 export const MARKING_PROMPT_VERSION = "whole-page-scalar-readings-v9";
@@ -581,9 +582,17 @@ export function effectiveMarkingEvents(raw: readonly LearningEvent[], marks: rea
 }
 // Corrections replace a result at its original time; evidence_at records the edit, not new practice.
 export function effectiveSkillMarks(marks: readonly EffectiveMark[]): SkillMark[] {
+  // The same items as `effectiveHelpMarks`, without its flag: the skill state rule reads a blank as not right, as before.
+  return effectiveHelpMarks(marks).map(({ standard, right, review, at }) => ({ standard, right, review, at }));
+}
+/**
+ * The same marks as `effectiveSkillMarks`, each with whether the answer was blank. Only the parent dashboard's Needs help
+ * rule reads it (`src/lib/needs-help.ts`): an unfinished page is not a struggling child. The skill state rule never does.
+ */
+export function effectiveHelpMarks(marks: readonly EffectiveMark[]): HelpMark[] {
   return marks.flatMap((m) => {
     const d = markingEvent(m.expected, m.observation);
-    return d.publish && m.originalEvent && m.eventId ? [{ standard: m.originalEvent.skill.standard, right: d.result === "right", review: ["friday-5", "mixed-set", "show-what-you-know"].includes(m.expected.teaching?.part ?? ""), at: m.originalEvent.occurredAt }] : [];
+    return d.publish && m.originalEvent && m.eventId ? [{ standard: m.originalEvent.skill.standard, right: d.result === "right", review: ["friday-5", "mixed-set", "show-what-you-know"].includes(m.expected.teaching?.part ?? ""), at: m.originalEvent.occurredAt, blank: d.result === "blank" }] : [];
   });
 }
 export { waitsForTeam };

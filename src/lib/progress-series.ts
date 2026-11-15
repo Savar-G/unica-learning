@@ -133,7 +133,10 @@ export function progressSummary({ now, zone, current, history, startDay, needsHe
   const byStandard = new Map<string, (StateChange & { at: number })[]>();
   for (const row of history) {
     const at = Date.parse(row.changedAt);
-    if (Number.isFinite(at)) byStandard.set(row.standard, [...(byStandard.get(row.standard) ?? []), { ...row, at }]);
+    if (!Number.isFinite(at)) continue;
+    const own = byStandard.get(row.standard);
+    if (own) own.push({ ...row, at });
+    else byStandard.set(row.standard, [{ ...row, at }]);
   }
   for (const rows of byStandard.values()) rows.sort((a, b) => a.at - b.at);
   const standards = [...new Set([...current.keys(), ...byStandard.keys()])];
