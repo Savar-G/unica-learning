@@ -14,7 +14,7 @@ const OP = String.raw`(?:plus|\+|minus|take away|-)`;
 const REL = String.raw`(?:is not equal to|isn't equal to|is not|isn't|are not|aren't|is the same as|is equal to|equals|is now|are now|is still|=|is|are|makes|make|gives)`;
 const TOKEN = new RegExp(String.raw`(${QUANTITY})|(${NUM})(?!\s+${UNIT})|(${OP})(?=\s|\d|$)|(${REL})(?=\s|\d|$)|([a-z']+|[^\sa-z0-9])`, "gi");
 
-type Item = { kind: "term"; value: number; unit: boolean; one?: true } | { kind: "op"; sign: 1 | -1 } | { kind: "rel"; negated: boolean; eq: boolean; now: boolean } | { kind: "other"; word?: string };
+type Item = { kind: "term"; value: number; unit: boolean; place?: number } | { kind: "op"; sign: 1 | -1 } | { kind: "rel"; negated: boolean; eq: boolean; now: boolean } | { kind: "other"; word?: string };
 
 /** A number in digits or words (0 to 99), or "a"/"an" (1). */
 function numberOf(word: string): number | null {
@@ -50,53 +50,79 @@ function itemsOf(sentence: string): Item[] {
   for (const m of text.matchAll(TOKEN)) {
     if (m[1]) {
       const v = quantityOf(m[1]);
-      items.push(v === null ? { kind: "other" } : { kind: "term", value: v, unit: true });
+      const places = [...m[1].toLowerCase().matchAll(/\b(one|ten|hundred)s?\b/g)].map((x) => PLACE[x[1]]);
+      items.push(v === null ? { kind: "other" } : { kind: "term", value: v, unit: true, ...(places.length === 1 ? { place: places[0] } : {}) });
     } else if (m[2]) {
       const v = numberOf(m[2]);
-      // "one" alone is often a pronoun ("this one"): it is a number only beside an operator or a relation.
-      items.push(v === null ? { kind: "other" } : { kind: "term", value: v, unit: false, ...(m[2].toLowerCase() === "one" ? { one: true as const } : {}) });
+      // "one" after a word such as "this" or "each" is a pronoun ("this one is tricky"), not the number 1.
+      const prev = items.at(-1);
+      const pronoun = m[2].toLowerCase() === "one" && prev?.kind === "other" && !!prev.word && DETERMINERS.has(prev.word);
+      items.push(v === null || pronoun ? { kind: "other", word: m[2].toLowerCase() } : { kind: "term", value: v, unit: false });
     } else if (m[3]) items.push({ kind: "op", sign: /^(?:plus|\+)$/i.test(m[3]) ? 1 : -1 });
     else if (m[4]) {
       const r = m[4].toLowerCase();
       items.push({ kind: "rel", negated: /not|n't/.test(r), eq: r === "=", now: /\bnow\b/.test(r) });
-    } else items.push({ kind: "other", word: m[5]?.toLowerCase() });
+    } else {
+      const word = m[5]?.toLowerCase();
+      // "the" after an operator changes nothing ("12 minus the 8 is 4").
+      if (word === "the" && items.at(-1)?.kind === "op") continue;
+      items.push({ kind: "other", word });
+    }
   }
   return items;
 }
 
-/** Words after a claim that end it: the claim before them stands alone. */
-const CONNECTORS = new Set(["and", "so", "then", "but", "or", "because", "now", "too", "again", "right", "yes", "not", "isn't", "here", "there", "in", "on", "at", "for", "with", "from", "to", "of", "that", "which", "when", "after", "before", "this", "the", "a", "we", "you", "i", "it", "let's"]);
+/** Words before "one" that make it a pronoun. */
+const DETERMINERS = new Set(["this", "that", "each", "every", "which", "another", "next", "last", "first", "other", "any", "no", "new", "same", "easier", "harder", "tricky", "hard", "easy"]);
 
-/** One side of a relation: terms joined by operators, with whether any term is a place quantity. */
-interface Side { value: number; unitless: number | null }
+/** Words after a claim that end it: the claim before them stands alone. */
+const CONNECTORS = new Set(["and", "so", "then", "but", "or", "because", "now", "too", "again", "right", "yes", "not", "isn't", "here", "there", "in", "on", "at", "for", "with", "from", "to", "of", "that", "which", "when", "after", "before", "this", "a", "we", "you", "i", "it", "let's"]);
+
+/** One side of a relation: its value, whether any term is a place quantity, and its one place when it has one. */
+interface Side { value: number; units: boolean; place: number | null; next: number; ops: boolean }
 
 /**
  * The math claims of a sentence that do not hold, as reasons; empty when every claim holds. A claim is a chain
- * `side REL side (REL side)*`, each side terms joined by plus or minus. A side said with no unit beside a side with
- * units is also read in that unit ("4 tens minus 2 tens is 2"), and the claim holds when either reading is true.
+ * `side REL side (REL side)*`, each side terms joined by plus or minus. Values are compared exactly: a number said with
+ * no unit is that number ("4 is 4 tens" is false). "is now" / "are now" between two quantities of one place also says a
+ * trade of the question's operation (`op`, a subtraction when not given): in a subtraction the ones gain 10 and the tens give 1 ten ("the 2 ones are
+ * now 12 ones", "the 5 tens are now 4 tens"); in an addition the ones give 10 and the tens gain 1 ten.
  */
-export function falseClaims(sentence: string): string[] {
+export function falseClaims(sentence: string, op?: "add" | "subtract"): string[] {
   const items = itemsOf(sentence);
   const problems: string[] = [];
   let i = 0;
   let eqSeen = 0;
   let eqRead = 0;
   for (const it of items) if (it.kind === "rel" && it.eq) eqSeen++;
-  const side = (at: number): { side: Side; units: boolean; next: number } | null => {
+  const side = (at: number): Side | null => {
     if (items[at]?.kind !== "term") return null;
     const first = items[at] as Extract<Item, { kind: "term" }>;
-    // "one" alone is a pronoun ("this one is tricky"), never a side; beside an operator it is a number.
-    if (first.one && items[at + 1]?.kind !== "op" && items[at - 1]?.kind !== "op") return null;
     let value = first.value;
     let units = first.unit;
+    let place: number | null = first.place ?? null;
     let next = at + 1;
+    let ops = false;
     while (items[next]?.kind === "op" && items[next + 1]?.kind === "term") {
+      ops = true;
       const t = items[next + 1] as Extract<Item, { kind: "term" }>;
       value += (items[next] as Extract<Item, { kind: "op" }>).sign * t.value;
       units ||= t.unit;
+      place = null;
       next += 2;
     }
-    return { side: { value, unitless: units ? null : value }, units, next };
+    return { value, units, place, next, ops };
+  };
+  // A column's sum of digits said in its place: "1 + 2 + 3 = 6 tens" (never a bare "4 is 4 tens").
+  const inPlace = (a: Side, b: Side): boolean =>
+    (a.ops && !a.units && b.place !== null && a.value * b.place === b.value) || (b.ops && !b.units && a.place !== null && b.value * a.place === a.value);
+  const trade = (a: Side, b: Side): boolean => {
+    if (a.place === null || a.place !== b.place) return false;
+    const gainsTen = a.place === 1 ? op !== "add" : op === "add";
+    const delta = a.place === 1 ? 10 : a.place;
+    const up = b.value === a.value + delta;
+    const down = b.value === a.value - delta;
+    return gainsTen ? up : down;
   };
   while (i < items.length) {
     const left = side(i);
@@ -105,7 +131,8 @@ export function falseClaims(sentence: string): string[] {
     const rels: Extract<Item, { kind: "rel" }>[] = [];
     let at = left.next;
     while (items[at]?.kind === "rel") {
-      const right = side(at + 1);
+      // A side that starts with "the" names a thing ("the 1 is the ten we carried"), not a value.
+      const right = items[at + 1]?.kind === "other" && (items[at + 1] as { word?: string }).word === "the" ? null : side(at + 1);
       if (!right) break;
       rels.push(items[at] as Extract<Item, { kind: "rel" }>);
       chain.push(right);
@@ -118,23 +145,12 @@ export function falseClaims(sentence: string): string[] {
     const after = items[at];
     const runsOn = after?.kind === "other" && !!after.word && /^[a-z']+$/.test(after.word) && !CONNECTORS.has(after.word);
     if ((list || runsOn) && !rels.some((r) => r.eq)) { i = at; continue; }
-    // The place unit of the chain, for a side said with no unit (only when one unit is used).
-    const anyUnits = chain.some((c) => c.units);
     for (let k = 0; k < rels.length; k++) {
       const [a, b] = [chain[k], chain[k + 1]];
-      const readings = [[a.side.value, b.side.value]];
-      if (anyUnits) {
-        for (const scale of [10, 100]) {
-          if (!a.units && b.units) readings.push([a.side.value * scale, b.side.value]);
-          if (a.units && !b.units) readings.push([a.side.value, b.side.value * scale]);
-        }
-      }
-      // "is now" / "are now" also says a trade: "5 tens are now 4 tens", "the 2 ones are now 12 ones".
-      const equal = readings.some(([x, y]) => x === y || (rels[k].now && a.units && b.units && Math.abs(x - y) === 10));
-      const allEqual = readings.every(([x, y]) => x === y);
+      const equal = a.value === b.value || inPlace(a, b) || (rels[k].now && trade(a, b));
       if (rels[k].eq) eqRead++;
-      if (!rels[k].negated && !equal) problems.push(`it says ${a.side.value} and ${b.side.value} are the same`);
-      if (rels[k].negated && allEqual) problems.push(`it says ${a.side.value} and ${b.side.value} are not the same`);
+      if (!rels[k].negated && !equal) problems.push(`it says ${a.value} and ${b.value} are the same`);
+      if (rels[k].negated && a.value === b.value) problems.push(`it says ${a.value} and ${b.value} are not the same`);
     }
     i = at;
   }

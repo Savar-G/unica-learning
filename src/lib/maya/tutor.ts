@@ -148,12 +148,19 @@ export function childFacts(pkg: OperationPackage, text: string): string[] {
   return facts;
 }
 
+/** The child's turn says a false equation ("12 minus 8 is 5"): code's own read, whatever step it is about. */
+export function childSaysFalse(text: string): boolean {
+  return sentencesOf(text).some((x) => equationsOf(x).some((e) => equationHolds(e) === e.negated && equationHolds(e) !== null));
+}
+
 /** The context of the whole-message check: code's verdict on the child's answer this turn. */
 export interface TutorCheckContext {
   /** "wrong": the child committed to a wrong answer this turn; "right": a right one; else "none". */
   stance: "right" | "wrong" | "none";
   /** The numbers the child committed to this turn (what a judgment names). */
   childValues?: readonly number[];
+  /** The question's operation, for the direction of a trade ("5 tens are now 4 tens" in a subtraction). */
+  op?: "add" | "subtract";
 }
 
 /** A sentence that says an answer is right. */
@@ -199,16 +206,18 @@ export function checkTutorSay(text: string, ctx: TutorCheckContext): TutorVerdic
       if (holds === null) continue;
       if (holds === e.negated) return { ok: false, reason: "false_equation", detail: `"${sentence}" ${e.negated ? "calls a true equation false" : "holds a false equation"}. Every equation Maya says must be true.` };
     }
-    const claim = falseClaims(sentence)[0];
+    const claim = falseClaims(sentence, ctx.op)[0];
     if (claim) return { ok: false, reason: "false_equation", detail: `"${sentence}": ${claim}. Every equation and place-value statement must be true.` };
     const place = placeValueProblem(sentence);
     if (place) return { ok: false, reason: "false_equation", detail: `"${sentence}": ${place}. Every place-value statement must be true.` };
   }
   // No false judgment of the child's answer, in any sentence: a "yes" or "right" for a wrong answer, a "not quite" for
-  // a right one. The first sentence is judged strictly; a later one when it names the child's number or none.
+  // a right one. The first sentence is judged strictly. A later one is exempt only when it judges its own true equation
+  // ("Earlier you got 12 − 8 = 4, and that's right"): it names none of the child's numbers and not "your answer".
   const names = (sentence: string, values: readonly number[] | undefined) => {
     const said = sayNumbers(sentence).flatMap((t) => (t.q && t.q[1] === 1 ? [t.q[0]] : []));
-    return said.length === 0 || said.some((n) => (values ?? []).includes(n));
+    const ownEquation = equationsOf(sentence).some((e) => !e.negated && equationHolds(e) === true);
+    return !ownEquation || said.some((n) => (values ?? []).includes(n)) || /your (?:answer|number|work)/i.test(sentence);
   };
   for (const [i, sentence] of sentences.entries()) {
     if (ctx.stance === "wrong" && ((i === 0 && affirms(sentence)) || (JUDGES_RIGHT.test(sentence) && names(sentence, ctx.childValues)))) {

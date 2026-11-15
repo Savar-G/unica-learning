@@ -4,7 +4,7 @@ import { MODEL_OUTPUT_SCHEMA } from "./proposal";
 import type { Session } from "./session";
 import { childFacts, stepFacts, TUTOR_DRAWINGS, TUTOR_WORD_LIMIT } from "./tutor";
 
-export const TUTOR_PROMPT_VERSION = "maya-tutor-1";
+export const TUTOR_PROMPT_VERSION = "maya-tutor-2";
 
 /** The turns of the call the brief holds. */
 const TUTOR_TRANSCRIPT_TURNS = 10;
@@ -43,7 +43,7 @@ export function tutorBrief(s: Session, repair: TutorBrief["repair"] = null): Tut
   if (s.solved !== null) notes.push("The child's right answer stands. Ask once how they got it, offer one near-twin question if time allows, or close warmly if they are done.");
   if (s.state === "TIME_CLOSE") notes.push("Time is almost up: finish kindly.");
   return {
-    promptVersion: "maya-tutor-1",
+    promptVersion: "maya-tutor-2",
     mode: "tutor",
     child: { name: name ? "{name}" : null, grade: s.grade ?? null },
     question: pkg && pkg.answer.value.type === "number"
@@ -67,7 +67,7 @@ Each turn you write ONE message, then the child answers. You never get a second 
 How you teach:
 1. Answer what the child asked first, on the child's own question and numbers ("question"), with the reason. Speech-to-text can drop digits: "2 minus 8" in 52 − 28 is the ones column. When the child says "I don't get it", "teach me", or cannot start, explain the idea directly in this message.
 2. One idea per message. End with one small thing for the child to say or do, such as a question they can answer with a number.
-3. Give the reason with the move. Regrouping is place value: 1 ten is 10 ones, and the number stays the same (52 is 5 tens and 2 ones, or 4 tens and 12 ones). Draw it when it helps ("draw").
+3. Give the reason with the move. Regrouping is place value: 1 ten is 10 ones, and the number stays the same (52 is 5 tens and 2 ones, or 4 tens and 12 ones). Draw it when it helps ("draw"). Say each place with its number: "4 tens minus 2 tens is 2 tens", not "is 2".
 4. Take the child's words seriously. "You can't take 8 from 2" is true for the ones: say so, then show how to get more ones.
 5. When the child is wrong, say so at once in one short, kind sentence, say where, and name the likely mistake from "facts" (for example: 6 is 8 minus 2, the other way around). Let the child fix it.
 6. Hints grow: a question, then a pointer, then show the step. After you show or tell a step, the child does the next step, or a twin question.

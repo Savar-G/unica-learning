@@ -240,3 +240,37 @@ describe("review of #1002: false math and false feedback never reach the child",
     expect(JSON.stringify(briefs[2].repair)).toContain("asking for help");
   });
 });
+
+describe("re-check of #1002 (2026-11-14): the remaining gaps", () => {
+  it.each(["1 is 100 ones.", "4 is 4 tens.", "10 ones is 1.", "One is 2.", "2 is one.", "5 tens are now 6 tens."])("refuses %s", async (bad) => {
+    const say = `${bad} What is 12 minus 8?`;
+    const { session } = call(() => reply(say, "guide"));
+    await session.start();
+    expect((await session.child("I need help")).say).not.toEqual([say]);
+  });
+  it("says a true sentence with an article inside it, with no repair", async () => {
+    const say = "12 minus the 8 is 4. What do you write?";
+    const { session, briefs } = call(() => reply(say, "guide"));
+    await session.start();
+    expect((await session.child("I need help")).say).toEqual([say]);
+    expect(briefs).toHaveLength(1);
+  });
+  it.each(["My final answer for 52 minus 28 is 4.", "My final answer for 52 minus 28 is 12."])("never says yes to the wrong final answer in %s", async (child) => {
+    const say = "Yes, that is the answer to the whole question. Now write it.";
+    const { session } = call(() => reply(say, "guide"));
+    await session.start();
+    expect((await session.child(child)).say).not.toEqual([say]);
+  });
+  it.each(["Now the tens. Yes, that's right, write 4 in the ones.", "Now the tens. Your answer is correct, so write 4."])("no later false yes behind another number: %s", async (say) => {
+    const { session } = call(() => reply(say, "guide"));
+    await session.start();
+    expect((await session.child("It's 36.")).say).not.toEqual([say]);
+  });
+  it.each(["Why did we borrow?", "Can you explain the borrow?", "How did we get 12?", "I need help with the tens."])("never closes on %s after a solve", async (child) => {
+    const right = { answers: [{ value: { type: "number", value: 24 }, step: "result", problem: "target", verdict: "right" }] };
+    const { session } = call((_, n) => n === 0 ? reply("Yes, 24. How did you get it?", "guide", { reading: right }) : reply("Bye for now!", "close"));
+    await session.start();
+    await session.child("It's 24.");
+    expect((await session.child(child)).ended).toBeNull();
+  });
+});
