@@ -410,13 +410,16 @@ const valueOf = (v: string): number => {
   return Number(m[1]) * 10 ** Number(m[2] ?? 0);
 };
 
-/** The number a sentence is about: one it names after "in", "of" or "for", or before "has"; else the question's. */
-function referentOf(t: string, fallback: number): number {
-  const m = /\b(?:in|of|for|number) (\d{2,})\b(?! @)/.exec(t) ?? /(?:^|[,:;] |\bso )(\d{2,}) (?:has|have)\b/.exec(t);
-  return m ? Number(m[1]) : fallback;
-}
+/**
+ * A number a sentence names as what it is about: after "in", "of" or "number" (not "a value of"), or before "has". Not
+ * after "for": "the 8 counts for 800" names a value, not a number (#1017).
+ */
+const REFERENT = /(?<!value )\b(?:in|of|number) (\d{2,})\b(?! @)|(?:^|[,:;] |\bso |\band )(\d{2,}) (?:has|have)\b/g;
 
-type Reader = { re: RegExp; check: (m: RegExpExecArray, n: number, answer: number | null) => string | null };
+/** The numbers a sentence is about, each once. */
+const referentsOf = (t: string): number[] => [...new Set([...t.matchAll(REFERENT)].map((m) => Number(m[1] ?? m[2])))];
+
+type Reader = { re: RegExp; check: (m: RegExpExecArray, n: number, answer: number | string | null) => string | null };
 
 const placeName = (k: number) => WHOLE_PLACES[k] ?? `place ${k}`;
 const inNumber = (n: number, k: number) => k < String(n).length;
@@ -437,11 +440,15 @@ const valueClaim = (n: number, d: number | null, k: number | null, value: number
   return at.some((j) => d! * 10 ** j === value) ? null : `no ${d} in ${withCommas(n)} is worth ${withCommas(value)}`;
 };
 const ORDINALS = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh"];
-const compare = (a: number, how: string, b: number): string | null => {
+const compare = (a: number, how: string, b: number, negated = false): string | null => {
   const bigger = /bigger|greater|larger|more|higher|>/.test(how);
   const holds = bigger ? a > b : a < b;
-  return holds ? null : `${a} is not ${bigger ? "bigger" : "smaller"} than ${b}`;
+  if (holds !== negated) return null;
+  return `${a} is ${holds ? "" : "not "}${bigger ? "bigger" : "smaller"} than ${b}`;
 };
+const NOT = String.raw`(is not|isn't|is)`;
+/** A digit of the number named by its place: "the thousands digit", "the digit in the thousands place" (groups: k, k). */
+const PDIGIT = String.raw`(?:@(\d) digit|digit in the @(\d)(?:\s(?:place|column|spot|position))?)`;
 const BIG = String.raw`(bigger|greater|larger|more|higher|smaller|less|fewer|lower)`;
 
 /** The claim forms this kind reads, each checked against the number the sentence is about. */
@@ -449,16 +456,16 @@ const READERS: readonly Reader[] = [
   // "the 9 is in the thousands place", "9 is in the @3", "the 9 sits in the thousands"
   { re: new RegExp(String.raw`\b${D}${IN} (?:is|sits|goes|is written|lives) in the ${P}${PL}`, "g"), check: (m, n) => digitClaim(n, Number(m[1]), Number(m[2])) },
   // "the digit in the thousands place is 4", "the thousands digit is 4", "the thousands place has a 4", "4 is the thousands digit"
-  { re: new RegExp(String.raw`\bthe digit in the ${P}${PL} (?:is|was) ${D}\b(?! @)`, "g"), check: (m, n) => (Number(m[2]) < 10 ? digitClaim(n, Number(m[2]), Number(m[1])) : valueClaim(n, null, Number(m[1]), Number(m[2]))) },
+  // A digit is one digit: "the digit in the ten thousands place is 40000" is refused (#1017), never read as a value.
+  { re: new RegExp(String.raw`(?<!value of )\bthe digit in the ${P}${PL} (?:is|was) ${D}\b(?! @)`, "g"), check: (m, n) => digitClaim(n, Number(m[2]), Number(m[1])) },
   {
-    // "the thousands digit is 4"; with a number of 10 or more it is a value ("the thousands digit is 4000") or, for a
-    // place, the worth of one of it ("the thousands place is 1000").
-    re: new RegExp(String.raw`\bthe ${P} (digit|place|column) (?:is|was) (?:a |the )?${D}\b(?! @)`, "g"),
+    // "the thousands digit is 4", "the thousands place is 4": a digit. Only a place may be its worth ("the thousands
+    // place is 1000"); a value is never accepted as a digit (#1017).
+    re: new RegExp(String.raw`(?<!\b(?:in|of) )\bthe ${P} (digit|place|column) (?:is|was) (?:a |the )?${D}\b(?! @)`, "g"),
     check: (m, n) => {
       const [k, d] = [Number(m[1]), Number(m[3])];
-      if (d < 10) return digitClaim(n, d, k);
-      if (m[2] !== "digit" && d === 10 ** k) return null;
-      return valueClaim(n, null, k, d);
+      if (m[2] !== "digit" && d >= 10 && d === 10 ** k) return null;
+      return digitClaim(n, d, k);
     },
   },
   // "the thousands place is worth 1000" (one of it), or the digit's value there.
@@ -473,12 +480,12 @@ const READERS: readonly Reader[] = [
   { re: new RegExp(String.raw`\bthe (?:${P} digit|digit in the ${P}${PL}) (?:is not|isn't) ${D}\b(?! @)`, "g"), check: (m, n) => { const k = Number(m[1] ?? m[2]); return inNumber(n, k) && digitAt(n, k) === Number(m[3]) ? `the digit in the ${placeName(k)} place of ${withCommas(n)} is ${m[3]}` : null; } },
   { re: new RegExp(String.raw`\b${D}${IN}(?: in the ${P}${PL})? (?:is not|isn't) worth ${V}\b`, "g"), check: (m, n) => (valueClaim(n, Number(m[1]), m[2] === undefined ? null : Number(m[2]), valueOf(m[3])) === null && (m[2] !== undefined || [...Array(String(n).length).keys()].filter((j) => digitAt(n, j) === Number(m[1])).length === 1) ? `the ${m[1]} is worth ${withCommas(valueOf(m[3]))}` : null) },
   // "the 8 is worth 8000", "the 8 in the thousands place is worth 8 thousands", "the 4 means 40000"
-  { re: new RegExp(String.raw`\b${D}${IN}(?: in the ${P}${PL})? (?:is worth|are worth|means|stands for|has a value of|shows) ${V}\b`, "g"), check: (m, n) => valueClaim(n, Number(m[1]), m[2] === undefined ? null : Number(m[2]), valueOf(m[3])) },
+  { re: new RegExp(String.raw`\b${D}${IN}(?: in the ${P}${PL})? (?:is worth|are worth|means|stands for|has a value of|shows|represents|is equal to|equals|counts for|counts as) ${V}\b`, "g"), check: (m, n) => valueClaim(n, Number(m[1]), m[2] === undefined ? null : Number(m[2]), valueOf(m[3])) },
   // "the value of the 8 is 8000", "the value of the 8 in the thousands place is 8000"
   { re: new RegExp(String.raw`\bvalue of (?:the |that |this )?${D}(?: in the ${P}${PL})? (?:is|was) ${V}\b`, "g"), check: (m, n) => valueClaim(n, Number(m[1]), m[2] === undefined ? null : Number(m[2]), valueOf(m[3])) },
   // "the value of the thousands digit is 8000", "the value of the digit in the thousands place is 8000", "the thousands digit is worth 8000"
   { re: new RegExp(String.raw`\bvalue of the (?:${P} digit|digit in the ${P}${PL}) (?:is|was) ${V}\b`, "g"), check: (m, n) => valueClaim(n, null, Number(m[1] ?? m[2]), valueOf(m[3])) },
-  { re: new RegExp(String.raw`\bthe (?:${P} digit|digit in the ${P}${PL})(?:'s value)? (?:is worth|has a value of|is) ${V}\b`, "g"), check: (m, n) => (/@/.test(m[3]) || valueOf(m[3]) >= 10 || /worth|value/.test(m[0]) ? valueClaim(n, null, Number(m[1] ?? m[2]), valueOf(m[3])) : null) },
+  { re: new RegExp(String.raw`\bthe (?:${P} digit|digit in the ${P}${PL})(?:'s value is| is worth| has a value of| represents| stands for| means) ${V}\b`, "g"), check: (m, n) => valueClaim(n, null, Number(m[1] ?? m[2]), valueOf(m[3])) },
   // "4 ten thousands is 40000", "8 thousands, which is 8000", "8 thousands make 8000"
   {
     re: new RegExp(String.raw`\b${D} ${P},? (?:which |that )?(?:is|are|makes?|equals|is worth|are worth|is the same as) ${V}\b`, "g"),
@@ -515,7 +522,7 @@ const READERS: readonly Reader[] = [
   },
   // "it is 4 ten thousands", "so it is worth 40000", "its value is 40000": a digit of the number, or a digit's value there.
   {
-    re: new RegExp(String.raw`\b(?:it|its value|this digit|that digit|the digit|this one|that one|that|this) (?:is|is worth|has a value of|means|stands for) ${V}\b`, "g"),
+    re: new RegExp(String.raw`\b(?:it|its value|this one|that one|that|this) (?:is|is worth|has a value of|means|stands for|represents) ${V}\b`, "g"),
     check: (m, n, answer) => {
       const v = valueOf(m[1]);
       if (v === answer || v === n) return null;
@@ -524,23 +531,46 @@ const READERS: readonly Reader[] = [
       return digits.some((j) => digitAt(n, j) * 10 ** j === v) ? null : `no digit of ${withCommas(n)} is worth ${withCommas(v)}`;
     },
   },
+  // "the digit is 4": a digit of the number, never a value (#1017).
+  { re: new RegExp(String.raw`\b(?:the|this|that) digit (?:is|was) ${V}\b`, "g"), check: (m, n) => (/@/.test(m[1]) || valueOf(m[1]) >= 10 ? `a digit is one of 0 to 9, not ${withCommas(valueOf(m[1]))}` : [...Array(String(n).length).keys()].some((j) => digitAt(n, j) === valueOf(m[1])) ? null : `${withCommas(n)} has no digit ${m[1]}`) },
+  // "the statement is true", "it is false", "so the statement is not false": the answer word of a true-or-false question.
+  {
+    re: /\b(?:(?:the|this|that) (?:statement|answer|sentence)|it|that)(?: is|'s| was)( not)? (true|false)\b/g,
+    check: (m, _n, answer) => {
+      if (answer !== "true" && answer !== "false") return "this is not a true-or-false question about this number";
+      const said = m[1] ? (m[2] === "true" ? "false" : "true") : m[2];
+      return said === answer ? null : `the statement is ${answer}`;
+    },
+  },
   // "4000 is the thousands place", "4000 is in the thousands": a value that belongs to a place (1 to 9 of it).
   { re: new RegExp(String.raw`\b(\d+) (?:is|is in|belongs to|goes in) the ${P}${PL}`, "g"), check: (m) => { const [v, k] = [Number(m[1]), Number(m[2])]; return v < 10 || (v % 10 ** k === 0 && v / 10 ** k >= 1 && v / 10 ** k <= 9) ? null : `${withCommas(v)} is not a digit's value in the ${placeName(k)} place`; } },
   // "the thousands digit is bigger than the hundreds digit", "the 6 is bigger than the 4", "6 is bigger than 4", "6 > 4"
   {
-    re: new RegExp(String.raw`\bthe (?:${P} digit|digit in the ${P}${PL}) is ${BIG} than the (?:${P} digit|digit in the ${P}${PL})`, "g"),
+    re: new RegExp(String.raw`\b(the value of )?the ${PDIGIT} ${NOT} ${BIG} than (?:the value of )?the ${PDIGIT}`, "g"),
+    check: (m, n) => {
+      const [ka, kb] = [Number(m[2] ?? m[3]), Number(m[6] ?? m[7])];
+      if (!inNumber(n, ka) || !inNumber(n, kb)) return `${withCommas(n)} has no ${placeName(inNumber(n, ka) ? kb : ka)} place`;
+      // "the value of the thousands digit": the digits times their places (both sides are read as values).
+      const of = (k: number) => digitAt(n, k) * (m[1] ? 10 ** k : 1);
+      return compare(of(ka), m[5], of(kb), m[4] !== "is");
+    },
+  },
+  {
+    re: new RegExp(String.raw`\bthe ${PDIGIT} ${NOT} (?:the same as|equal to) the ${PDIGIT}`, "g"),
     check: (m, n) => {
       const [ka, kb] = [Number(m[1] ?? m[2]), Number(m[4] ?? m[5])];
       if (!inNumber(n, ka) || !inNumber(n, kb)) return `${withCommas(n)} has no ${placeName(inNumber(n, ka) ? kb : ka)} place`;
-      return compare(digitAt(n, ka), m[3], digitAt(n, kb));
+      return (digitAt(n, ka) === digitAt(n, kb)) === (m[3] === "is") ? null : `the ${placeName(ka)} digit is ${digitAt(n, ka)} and the ${placeName(kb)} digit is ${digitAt(n, kb)}`;
     },
   },
-  { re: new RegExp(String.raw`\b${D} is ${BIG} than (?:the )?${D}\b(?! @)`, "g"), check: (m) => compare(Number(m[1]), m[2], Number(m[3])) },
+  { re: new RegExp(String.raw`\b${D} ${NOT} ${BIG} than (?:the )?${D}\b(?! @)`, "g"), check: (m) => compare(Number(m[1]), m[3], Number(m[4]), m[2] !== "is") },
   { re: /\b(\d+) ?([<>]) ?(\d+)\b/g, check: (m) => compare(Number(m[1]), m[2], Number(m[3])) },
 ];
 
 /** A sentence that only asks: "Which digit is in the thousands place?" (its claims are still read). */
 const ASKS = /^(?:so |now |ok |okay )?(?:which|what|how|where|can|could|is|are|do|does|did|will|would|why)\b[^.!]*\?$/;
+/** What may follow a read claim's last number and makes it a longer value: "plus 1", "+ 1", ".5", "times 10", "tens". */
+const CONTINUES = /^(?:\.\d|,\d|\s*(?:\+|-|×|÷|\*|\/)\s*\d|\s+(?:plus|minus|times|divided|over|point|and a half|@\d)\b)/;
 /** A word that says something about a number. */
 const CLAIM_VERB = /\b(?:is|are|was|were|has|have|holds|shows|means|stands|worth|equals|makes?|gives|tells)\b|=/;
 
@@ -553,26 +583,37 @@ function claimProblems(pkg: OperationPackage, sentence: string): string[] {
   const f = must(pkg);
   const t = normalized(sentence.trim().replace(/[.!]+$/, ""));
   if (t === null) return ["it has number words code cannot read"];
-  const n = referentOf(t, f.n);
+  // Each claim is checked against the number the sentence is about. Two numbers in one sentence: refused (#1017).
+  const referents = referentsOf(t);
+  if (referents.length > 1) return [`it talks about ${referents.map(withCommas).join(" and ")} in one sentence: say one number's claims per sentence`];
+  const n = referents[0] ?? f.n;
+  const answer = n === f.n ? f.answer : null;
   const problems: string[] = [];
   // Each matched claim is blanked, by position, from what the fail-closed check reads.
   const mask = [...t];
   for (const r of READERS) {
     for (const m of t.matchAll(r.re)) {
-      const problem = r.check(m as RegExpExecArray, n, n === f.n && typeof f.answer === "number" ? f.answer : null);
+      const problem = r.check(m as RegExpExecArray, n, answer);
       if (problem) problems.push(problem);
+      // A claim is read whole: a number that goes on ("8000 plus 1", "40000.5") is a value code did not read (#1017).
+      if (CONTINUES.test(t.slice(m.index! + m[0].length))) problems.push(`"${m[0]}" goes on in a way code cannot read`);
       for (let i = m.index!; i < m.index! + m[0].length; i++) mask[i] = " ";
     }
   }
-  let rest = mask.join("");
   if (problems.length) return [...new Set(problems)];
-  // Fail closed: what is left still names a place and a number and says something.
+  // Fail closed: what is left still says something about a place, a digit, a value or the answer.
   // A number Maya says is not the answer ("not 4 ones", "not 4,000") states nothing about the number.
-  rest = rest.replace(/\b(?:in|of|for|number) \d{2,}\b/g, " ").replace(/\bnot (?:the |a )?\d+(?: @\d)?/g, " ");
-  if (!ASKS.test(t.trim()) && /@\d/.test(rest) && /\b\d+\b/.test(rest.replace(/@\d/g, " ")) && CLAIM_VERB.test(rest)) {
-    return ["it says something about a place and a number that code cannot read: say it as \"the 9 is in the thousands place\" or \"the 9 is worth 9,000\""];
-  }
-  return [];
+  const rest = mask.join("").replace(REFERENT, " ").replace(/\bnot (?:the |a )?\d+(?: @\d)?/g, " ");
+  if (ASKS.test(t.trim())) return [];
+  const hasNumber = /\b\d+\b/.test(rest.replace(/@\d/g, " "));
+  const place = /@\d/.test(rest);
+  const family = /\b(?:digit|value|worth|represents?|stands for|counts? (?:for|as))\b/.test(rest);
+  const unread =
+    (place && hasNumber && CLAIM_VERB.test(rest)) ||
+    (family && hasNumber) ||
+    (/\b(?:bigger|greater|larger|smaller|less|fewer|more|higher|lower|same as|equal to)\b/.test(rest) && (place || family)) ||
+    (/\b(?:true|false)\b/.test(rest) && /\b(?:statement|answer|sentence|it|that)\b/.test(rest));
+  return unread ? ["it says something about a place, a digit, a value or the answer that code cannot read: say it as \"the 9 is in the thousands place\" or \"the 9 is worth 9,000\""] : [];
 }
 
 function notes(pkg: OperationPackage): string[] {
@@ -580,7 +621,7 @@ function notes(pkg: OperationPackage): string[] {
   return [
     `The places of ${withCommas(f.n)} from the right: ${countTo(f.length - 1)}.`,
     "Each place is worth 10 times the place to its right. A digit's value is the digit times its place: the digit 4 in the ten thousands place is worth 4 ten thousands, which is 40,000.",
-    `Code checks each place claim against ${withCommas(f.n)}, unless the sentence names another number ("in 847").`,
+    `Code checks each place claim against ${withCommas(f.n)}, unless the sentence names another number ("in 847"); a sentence names one number at most.`,
   ];
 }
 

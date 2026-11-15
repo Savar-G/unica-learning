@@ -160,3 +160,39 @@ describe("place-value kind: the board", () => {
     expect(kind.draw(pkg, [{ offer: "note", place: "9000 + 60 = 960" }], ["chart"], () => "n").commands).toEqual([]);
   });
 });
+
+// #1017 (the Sol review of #1011): false claims the reader let through. Each item has the false sentences it must refuse
+// and true controls it must keep, all through Maya's whole-message check.
+describe("place-value kind: #1017 false claims", () => {
+  const value = valueAsk(48942, "ten thousands");
+  const compareQ = COMPARE[0]; // 16466: thousands 6, hundreds 4, answer true
+  const verdict = (pkg: OperationPackage, s: string) => checkTutorSay(s, { stance: "none", claims: (x: string) => kind.claimProblems(pkg, x), ...(pkg.answer.value.type === "number" ? { answer: pkg.answer.value.value } : {}) }).ok;
+  const refuses = (pkg: OperationPackage, list: string[]) => { for (const s of list) expect(verdict(pkg, s), s).toBe(false); };
+  const keeps = (pkg: OperationPackage, list: string[]) => { for (const s of list) expect(verdict(pkg, s), s).toBe(true); };
+
+  it("1. a value is never accepted as a digit", () => {
+    refuses(value, ["The digit in the ten thousands place is 40000.", "The ten thousands digit is 40000.", "The ten thousands place is 40000.", "The digit is 40000."]);
+    keeps(value, ["The digit in the ten thousands place is 4.", "The ten thousands digit is 4.", "The value of the digit in the ten thousands place is 40000.", "The ten thousands digit is worth 40000.", "The thousands place is worth 1000."]);
+  });
+  it("2. each claim is checked against its own number, and a sentence with two numbers is refused", () => {
+    refuses(value, ["In 847, the 8 is in the hundreds place, and in 48942, the 8 is in the hundreds place.", "In 48942, the 8 is in the thousands place, and in 847, the 8 is in the thousands place."]);
+    keeps(value, ["In 847, the 8 is in the hundreds place.", "In 48942, the 8 is in the thousands place, so 48942 has 8 thousands.", "The 4 has a value of 40000."]);
+  });
+  it("3. a value is read whole: an unread rest after it is refused", () => {
+    refuses(value, ["The 8 is worth 8000 plus 1.", "The 4 is worth 40000.5.", "The 8 is worth 8000 tens.", "The 8 is worth 8000 + 1."]);
+    keeps(value, ["The 8 is worth 8000.", "The 8 is worth 8,000, and the 4 is worth 40,000.", "The 4 is worth 40000; 40000 + 8000 = 48000."]);
+  });
+  it("4. negated and value comparisons, answer words and other family claims are read, or refused", () => {
+    refuses(compareQ, [
+      "The thousands digit is not bigger than the hundreds digit.", "The statement is false.", "It is false.",
+      "The value of the thousands digit is smaller than the value of the hundreds digit.", "6 is not bigger than 4.",
+      "The thousands digit is the same as the hundreds digit.",
+    ]);
+    keeps(compareQ, [
+      "The thousands digit is bigger than the hundreds digit.", "The hundreds digit is not bigger than the thousands digit.", "The statement is true.",
+      "So the statement is not false.", "The value of the thousands digit is bigger than the value of the hundreds digit.", "6 is not smaller than 4.",
+    ]);
+    refuses(value, ["The 8 represents 800.", "The 4 is worth 40000, and the 8 represents 800.", "The statement is true.", "The 8 counts for 800.", "The 8 is worth 800 for 48942."]);
+    keeps(value, ["The 8 represents 8000.", "The 4 is worth 40000, and the 8 represents 8000."]);
+  });
+});
