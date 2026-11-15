@@ -9,12 +9,12 @@ const TENS = ["twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty"
 const NUM = String.raw`(?:\d+|(?:${TENS.join("|")})(?:[- ](?:${SMALL.slice(1, 10).join("|")}))?|${SMALL.join("|")})`;
 const UNIT = String.raw`(?:ones?|tens?|hundreds?)\b`;
 /** A place quantity: "4 tens and 12 ones", "a ten", "one hundred". */
-const QUANTITY = String.raw`(?:(?:${NUM}|an?)\s+${UNIT})(?:\s+and\s+(?:${NUM}|an?)\s+${UNIT})*`;
+const QUANTITY = String.raw`(?:(?:${NUM}|an?)\s+${UNIT})(?:\s+(?:and\s+)?(?:${NUM}|an?)\s+${UNIT})*`;
 const OP = String.raw`(?:plus|\+|minus|take away|-)`;
-const REL = String.raw`(?:is not equal to|isn't equal to|is not|isn't|are not|aren't|is the same as|is equal to|equals|is now|are now|is still|=|is|are|makes|make|gives)`;
+const REL = String.raw`(?:is not equal to|isn't equal to|is not|isn't|are not|aren't|is the same as|is equal to|equals|is now|are now|is still|becomes|become|became|turns into|turn into|turned into|=|is|are|makes|make|gives)`;
 const TOKEN = new RegExp(String.raw`(${QUANTITY})|(${NUM})(?!\s+${UNIT})|(${OP})(?=\s|\d|$)|(${REL})(?=\s|\d|$)|([a-z']+|[^\sa-z0-9])`, "gi");
 
-type Item = { kind: "term"; value: number; unit: boolean; place?: number } | { kind: "op"; sign: 1 | -1 } | { kind: "rel"; negated: boolean; eq: boolean; now: boolean } | { kind: "other"; word?: string };
+type Item = { kind: "term"; value: number; unit: boolean; place?: number; word?: true } | { kind: "op"; sign: 1 | -1 } | { kind: "rel"; negated: boolean; eq: boolean; now: boolean } | { kind: "other"; word?: string };
 
 /** A number in digits or words (0 to 99), or "a"/"an" (1). */
 function numberOf(word: string): number | null {
@@ -32,16 +32,16 @@ function numberOf(word: string): number | null {
 
 const PLACE: Record<string, number> = { one: 1, ten: 10, hundred: 100 };
 
-/** The value of a place quantity ("4 tens and 12 ones" is 52), or null. */
-function quantityOf(text: string): number | null {
-  let total = 0;
-  for (const part of text.toLowerCase().split(/\s+and\s+/)) {
-    const m = /^(.+?)\s+(one|ten|hundred)s?$/.exec(part.trim());
-    const n = m ? numberOf(m[1]) : null;
-    if (!m || n === null) return null;
-    total += n * PLACE[m[2]];
+/** The parts of a place quantity ("4 tens and 12 ones": 4 of place 10, 12 of place 1), or null. */
+function quantityParts(text: string): { n: number; place: number }[] | null {
+  const parts: { n: number; place: number }[] = [];
+  const re = new RegExp(String.raw`(${NUM}|an?)\s+(one|ten|hundred)s?\b`, "gi");
+  for (const m of text.toLowerCase().replace(/\band\b/g, " ").matchAll(re)) {
+    const n = numberOf(m[1]);
+    if (n === null) return null;
+    parts.push({ n, place: PLACE[m[2]] });
   }
-  return total;
+  return parts.length ? parts : null;
 }
 
 function itemsOf(sentence: string): Item[] {
@@ -49,19 +49,20 @@ function itemsOf(sentence: string): Item[] {
   const items: Item[] = [];
   for (const m of text.matchAll(TOKEN)) {
     if (m[1]) {
-      const v = quantityOf(m[1]);
-      const places = [...m[1].toLowerCase().matchAll(/\b(one|ten|hundred)s?\b/g)].map((x) => PLACE[x[1]]);
-      items.push(v === null ? { kind: "other" } : { kind: "term", value: v, unit: true, ...(places.length === 1 ? { place: places[0] } : {}) });
+      // The place of each part comes from its unit word only ("one ten" is 1 of place 10).
+      const parts = quantityParts(m[1]);
+      const places = [...new Set((parts ?? []).map((x) => x.place))];
+      items.push(parts === null ? { kind: "other" } : { kind: "term", value: parts.reduce((t, x) => t + x.n * x.place, 0), unit: true, ...(places.length === 1 && parts.length === 1 ? { place: places[0] } : {}) });
     } else if (m[2]) {
       const v = numberOf(m[2]);
       // "one" after a word such as "this" or "each" is a pronoun ("this one is tricky"), not the number 1.
       const prev = items.at(-1);
       const pronoun = m[2].toLowerCase() === "one" && prev?.kind === "other" && !!prev.word && DETERMINERS.has(prev.word);
-      items.push(v === null || pronoun ? { kind: "other", word: m[2].toLowerCase() } : { kind: "term", value: v, unit: false });
+      items.push(v === null || pronoun ? { kind: "other", word: m[2].toLowerCase() } : { kind: "term", value: v, unit: false, ...(/^\d+$/.test(m[2]) ? {} : { word: true as const }) });
     } else if (m[3]) items.push({ kind: "op", sign: /^(?:plus|\+)$/i.test(m[3]) ? 1 : -1 });
     else if (m[4]) {
       const r = m[4].toLowerCase();
-      items.push({ kind: "rel", negated: /not|n't/.test(r), eq: r === "=", now: /\bnow\b/.test(r) });
+      items.push({ kind: "rel", negated: /not|n't/.test(r), eq: r === "=", now: /\bnow\b|becom|became|turn/.test(r) });
     } else {
       const word = m[5]?.toLowerCase();
       // "the" after an operator changes nothing ("12 minus the 8 is 4").
@@ -75,8 +76,11 @@ function itemsOf(sentence: string): Item[] {
 /** Words before "one" that make it a pronoun. */
 const DETERMINERS = new Set(["this", "that", "each", "every", "which", "another", "next", "last", "first", "other", "any", "no", "new", "same", "easier", "harder", "tricky", "hard", "easy"]);
 
-/** Words after a claim that end it: the claim before them stands alone. */
-const CONNECTORS = new Set(["and", "so", "then", "but", "or", "because", "now", "too", "again", "right", "yes", "not", "isn't", "here", "there", "in", "on", "at", "for", "with", "from", "to", "of", "that", "which", "when", "after", "before", "this", "a", "we", "you", "i", "it", "let's"]);
+/**
+ * Words a number may run on into that make it a count, not a claim of equality ("12 is 4 steps", "8 and 4 more make
+ * 12", "12 is 4 bigger than 8"). Any other word after a claim leaves the claim checked (fail closed: "4 is 4 tens left").
+ */
+const COUNT_WORDS = new Set(["steps", "step", "jumps", "jump", "fingers", "finger", "more", "less", "fewer", "bigger", "smaller", "greater", "larger", "away", "apart", "times", "blocks", "block", "sticks", "stick", "counts", "numbers", "after", "before", "up", "down", "from", "than"]);
 
 /** One side of a relation: its value, whether any term is a place quantity, and its one place when it has one. */
 interface Side { value: number; units: boolean; place: number | null; next: number; ops: boolean }
@@ -117,12 +121,15 @@ export function falseClaims(sentence: string, op?: "add" | "subtract"): string[]
   const inPlace = (a: Side, b: Side): boolean =>
     (a.ops && !a.units && b.place !== null && a.value * b.place === b.value) || (b.ops && !b.units && a.place !== null && b.value * a.place === a.value);
   const trade = (a: Side, b: Side): boolean => {
-    if (a.place === null || a.place !== b.place) return false;
-    const gainsTen = a.place === 1 ? op !== "add" : op === "add";
-    const delta = a.place === 1 ? 10 : a.place;
-    const up = b.value === a.value + delta;
-    const down = b.value === a.value - delta;
-    return gainsTen ? up : down;
+    // Two digits with no place ("the 2 becomes 12", "the 5 becomes 4"): the ones gain 10 or the tens give 1.
+    if (!a.units && !b.units) return b.value === a.value + 10 || b.value === a.value - 1;
+    // A number with no unit after a place quantity is in its place ("2 ones become 12", "5 tens become 4").
+    const place = a.place ?? (b.units ? null : null);
+    const bValue = b.units ? b.value : a.place !== null ? b.value * a.place : null;
+    if (place === null || bValue === null || (b.units && b.place !== place)) return false;
+    const gainsTen = place === 1 ? op !== "add" : op === "add";
+    const delta = place === 1 ? 10 : place;
+    return gainsTen ? bValue === a.value + delta : bValue === a.value - delta;
   };
   while (i < items.length) {
     const left = side(i);
@@ -131,8 +138,11 @@ export function falseClaims(sentence: string, op?: "add" | "subtract"): string[]
     const rels: Extract<Item, { kind: "rel" }>[] = [];
     let at = left.next;
     while (items[at]?.kind === "rel") {
-      // A side that starts with "the" names a thing ("the 1 is the ten we carried"), not a value.
-      const right = items[at + 1]?.kind === "other" && (items[at + 1] as { word?: string }).word === "the" ? null : side(at + 1);
+      // "the" before a number word alone names a thing ("the 1 is the ten we carried"); before a digit or a place
+      // quantity it is read through ("52 is the 4 tens and 2 ones").
+      const article = items[at + 1]?.kind === "other" && (items[at + 1] as { word?: string }).word === "the";
+      const named = article && items[at + 2]?.kind === "term" && (items[at + 2] as Extract<Item, { kind: "term" }>).word === true && !(items[at + 2] as Extract<Item, { kind: "term" }>).unit;
+      const right = named ? null : side(at + (article ? 2 : 1));
       if (!right) break;
       rels.push(items[at] as Extract<Item, { kind: "rel" }>);
       chain.push(right);
@@ -143,7 +153,7 @@ export function falseClaims(sentence: string, op?: "add" | "subtract"): string[]
     // is not a place ("12 is 4 steps", "8 and 4 more make 12"). An "=" is always read.
     const list = items[i - 1]?.kind === "term";
     const after = items[at];
-    const runsOn = after?.kind === "other" && !!after.word && /^[a-z']+$/.test(after.word) && !CONNECTORS.has(after.word);
+    const runsOn = after?.kind === "other" && !!after.word && COUNT_WORDS.has(after.word);
     if ((list || runsOn) && !rels.some((r) => r.eq)) { i = at; continue; }
     for (let k = 0; k < rels.length; k++) {
       const [a, b] = [chain[k], chain[k + 1]];

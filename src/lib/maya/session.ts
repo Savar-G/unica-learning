@@ -5056,8 +5056,9 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
     }
     for (const a of credited) if (a.value.type === "number" && !childValues.includes(a.value.value)) childValues.push(a.value.value);
   }
-  // A false equation the child said is wrong, whatever step it is about: Maya never says yes to it.
-  if (stance === "none" && base.turn && childSaysFalse(base.turn.text)) stance = "wrong";
+  // A false equation the child said is wrong, whatever step it is about and whatever number it ends on ("12 minus 8 is
+  // 24"): Maya never says yes to it.
+  if (base.turn && childSaysFalse(base.turn.text)) stance = "wrong";
   // The next open step, for the prepared replies' expected turns (expectedTurns and fitsExpected read the ladder's step).
   s.ladder = { ...s.ladder, step: tutorSteps(pkg).find((st) => !s.done.includes(st.id))?.id ?? "result" };
   const act: Act = out.act === "close" ? "close" : "guide";
