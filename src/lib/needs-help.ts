@@ -68,3 +68,40 @@ export function needsHelpStandards(states: readonly StandardSkillState[], marks:
   }
   return new Set(states.filter((s) => countsAsNeedsHelp(s.state, byStandard.get(s.standard) ?? [], now, zone)).map((s) => s.standard));
 }
+
+/** A Needs help skill that was wrong on several different days lately (#990): `days` of them, the most recent at `lastAt` (ms). */
+export interface RepeatedMistake {
+  standard: string;
+  days: number;
+  lastAt: number;
+}
+
+/** A repeated mistake needs wrong answers on at least this many different family-time days in the window. */
+export const REPEATED_MISTAKE_DAYS = 2;
+
+/**
+ * The skills in `help` (the Needs help set) with a wrong answer on at least REPEATED_MISTAKE_DAYS different days of the
+ * last STRUGGLING_WINDOW_DAYS, by the family's local day: the skills that keep coming up wrong. Blank answers, marks with
+ * no readable time and marks after today are left out, as in `isStruggling`. Most days first, then the most recent
+ * wrong answer, then the standard's code. Only a day count leaves: never a percent or a count of wrong answers.
+ */
+export function repeatedMistakes(help: ReadonlySet<string>, marks: readonly HelpMark[], now: number, zone: FamilyZone): RepeatedMistake[] {
+  const today = localDay(now, zone);
+  const first = addDays(today, -(STRUGGLING_WINDOW_DAYS - 1));
+  const byStandard = new Map<string, { days: Set<string>; lastAt: number }>();
+  for (const mark of marks) {
+    if (mark.blank || mark.right || !help.has(mark.standard)) continue;
+    const at = Date.parse(mark.at);
+    if (!Number.isFinite(at)) continue;
+    const day = localDay(at, zone);
+    if (day < first || day > today) continue;
+    const own = byStandard.get(mark.standard) ?? { days: new Set<string>(), lastAt: -Infinity };
+    own.days.add(day);
+    own.lastAt = Math.max(own.lastAt, at);
+    byStandard.set(mark.standard, own);
+  }
+  return [...byStandard]
+    .map(([standard, { days, lastAt }]): RepeatedMistake => ({ standard, days: days.size, lastAt }))
+    .filter((m) => m.days >= REPEATED_MISTAKE_DAYS)
+    .sort((a, b) => b.days - a.days || b.lastAt - a.lastAt || a.standard.localeCompare(b.standard));
+}

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { SkillState, StandardSkillState } from "@/lib/assessment/skill-state";
 import { PACIFIC_ZONE, familyZone } from "@/lib/family-time";
 import {
-  STRUGGLING_BELOW_PERCENT, STRUGGLING_MIN_ANSWERS, STRUGGLING_WINDOW_DAYS, countsAsNeedsHelp, isStruggling, needsHelpStandards, type HelpMark,
+  REPEATED_MISTAKE_DAYS, STRUGGLING_BELOW_PERCENT, STRUGGLING_MIN_ANSWERS, STRUGGLING_WINDOW_DAYS, countsAsNeedsHelp, isStruggling, needsHelpStandards, repeatedMistakes, type HelpMark,
 } from "@/lib/needs-help";
 
 // The dashboard's Needs help rule (#1025), through the module's public interface. The family is in Pacific time (UTC-7
@@ -151,5 +151,34 @@ describe("what counts as Needs help", () => {
     const states = [state("3.3", "working_on")];
     const marks = [mark(false, "2026-11-11T19:00:00Z"), ...on("2026-11-10", [true], "3.4"), mark(false, "2026-11-09T19:00:00Z"), mark(true, "2026-11-08T19:00:00Z"), mark(false, "2026-11-07T19:00:00Z")];
     expect(needsHelpStandards(states, marks, NOW, zone).has("3.3")).toBe(true);
+  });
+});
+
+describe("a skill that keeps coming up wrong (#990)", () => {
+  const help = new Set(["3.3", "3.4"]);
+  it("needs a wrong answer on at least 2 different days of the last 14", () => {
+    expect(REPEATED_MISTAKE_DAYS).toBe(2);
+    expect(repeatedMistakes(help, [...on("2026-11-10", [false, false, false]), ...on("2026-11-11", [false])], NOW, zone)).toEqual([{ standard: "3.3", days: 2, lastAt: Date.parse("2026-11-11T19:00:00Z") }]);
+  });
+  it("three wrong answers on one day are one day, not a repeat", () => {
+    expect(repeatedMistakes(help, on("2026-11-10", [false, false, false]), NOW, zone)).toEqual([]);
+  });
+  it("counts only days, never the answers: right answers, blanks, other days and old days do not count", () => {
+    const marks = [...on("2026-11-10", [true, true]), blank("2026-11-11T19:00:00Z"), ...on("2026-11-12", [false]), ...on("2026-10-20", [false, false])];
+    expect(repeatedMistakes(help, marks, NOW, zone)).toEqual([]);
+  });
+  it("leaves out a skill that is not in Needs help, a mark after today and a mark with no readable time", () => {
+    expect(repeatedMistakes(new Set(["3.4"]), [...on("2026-11-10", [false], "3.3"), ...on("2026-11-11", [false], "3.3")], NOW, zone)).toEqual([]);
+    expect(repeatedMistakes(help, [...on("2026-11-12", [false]), ...on("2026-11-13", [false])], NOW, zone)).toEqual([]);
+    expect(repeatedMistakes(help, [mark(false, "soon"), ...on("2026-11-12", [false])], NOW, zone)).toEqual([]);
+  });
+  it("dates a mark by the family's own day: 11 p.m. in Vancouver is the next day in UTC but the same family day", () => {
+    const late = mark(false, "2026-11-11T06:30:00Z"); // 10:30 p.m. on 2026-11-10 in Vancouver
+    expect(repeatedMistakes(help, [late, ...on("2026-11-10", [false])], NOW, zone)).toEqual([]);
+    expect(repeatedMistakes(help, [late, ...on("2026-11-11", [false])], NOW, zone)).toHaveLength(1);
+  });
+  it("lists the skill with the most days first, then the most recent", () => {
+    const marks = [...on("2026-11-08", [false], "3.4"), ...on("2026-11-09", [false], "3.4"), ...on("2026-11-10", [false], "3.4"), ...on("2026-11-11", [false], "3.3"), ...on("2026-11-12", [false], "3.3")];
+    expect(repeatedMistakes(help, marks, NOW, zone).map((m) => [m.standard, m.days])).toEqual([["3.4", 3], ["3.3", 2]]);
   });
 });

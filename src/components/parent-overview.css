@@ -56,6 +56,15 @@
 .po-skill small { display: block; font-size: 13.5px; color: var(--pa-tx2); margin-top: 2px; }
 .support-page .pa .po-none { color: var(--pa-tx2); }
 
+/* "On track this week." (#990): plain text under the workbook card with a bold lead; no card, icon or pill. */
+.support-page .pa .po-line { margin: 2px 4px 0; font-size: 15px; line-height: 1.4; }
+.po-line b { font-weight: 600; }
+
+/* Highlights (#990): one white card, a short sentence each, a small blue dot beside it. */
+.po-hl { display: flex; flex-direction: column; gap: 12px; }
+.support-page .pa .po-hl p { display: flex; gap: 12px; align-items: flex-start; margin: 0; font-size: 15px; line-height: 1.4; }
+.po-hl-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--pa-s); margin-top: 7px; }
+
 /* "Workbook N is on its way": one plain line above the week while a newer book is in the mail. */
 .po-way { margin: 0; font-size: 14.5px; font-weight: 600; color: var(--pa-tx2, #50505a); }
 

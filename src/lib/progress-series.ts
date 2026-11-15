@@ -201,3 +201,31 @@ export function progressSummary({ now, zone, current, history, startDay, needsHe
     all: summary("all", startDay ?? `${thisMonth}-01`, startOf(startDay ?? `${thisMonth}-01`), monthPoints(firstMonth)),
   };
 }
+
+/**
+ * The standards that are Mastered now and were not when `since` began (#990): "new skills mastered since Monday". The same
+ * boundary as the period summaries: never earlier than the end of the child's start day or the first batch of history
+ * rows, so the starting state is not new. A skill that was mastered, lost it and has it again counts once; one that lost it
+ * and stays lost does not count. A skill with no recorded row is never new, whatever the rule says now. In the rule's order of `current`.
+ */
+export function masteredSince({ now, zone, current, history, startDay, since }: Omit<ProgressSeriesInput, "needsHelp"> & { since: string }): string[] {
+  const byStandard = new Map<string, (StateChange & { at: number })[]>();
+  for (const row of history) {
+    const at = Date.parse(row.changedAt);
+    if (!Number.isFinite(at)) continue;
+    const own = byStandard.get(row.standard);
+    if (own) own.push({ ...row, at });
+    else byStandard.set(row.standard, [{ ...row, at }]);
+  }
+  for (const rows of byStandard.values()) rows.sort((a, b) => a.at - b.at);
+  const batch = firstBatchAt(history);
+  const from = Math.max(
+    localDateTime(since, zone),
+    startDay === null ? -Infinity : localDateTime(addDays(startDay, 1), zone),
+    batch === null ? -Infinity : batch + 1,
+  );
+  // A skill is new only when a recorded row proves it: the row in effect says Mastered and the state when the week began was
+  // not. With no row, the rule's state alone could be a skill mastered before the history began, so it says nothing.
+  const recorded = (standard: string) => { const rows = byStandard.get(standard); return rows?.[rows.length - 1].state === "mastered"; };
+  return [...current].filter(([standard, state]) => state === "mastered" && from <= now && recorded(standard) && historyAt(byStandard.get(standard), from) !== "mastered").map(([standard]) => standard);
+}

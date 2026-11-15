@@ -52,6 +52,7 @@ export const PARENT_PREVIEW_VIEWS = [
     scenario("book_2_mailed", "Next workbook in the mail"), scenario("book_over", "Book finished, next one not here yet"),
     scenario("ended", "Plan ended", "ended"), scenario("preparing", "New result being prepared"), scenario("late", "New result delayed"),
     scenario("no_skills", "Skills not shown yet"), scenario("empty", "No skills of one kind"),
+    scenario("behind", "A quieter week"), scenario("nothing_to_say", "Nothing to say yet"),
   ] },
   { id: "workbooks", label: "Workbooks", scenarios: [
     scenario("delivered", "Current and past books"), scenario("mail", "In the mail"), scenario("hand", "Delivery by hand"),

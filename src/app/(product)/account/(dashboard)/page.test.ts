@@ -411,6 +411,8 @@ describe("a family the switch opens to", () => {
         learning: [{ code: "2.5", name: "Rounding to the nearest hundred", masteredOn: null }],
         needsHelp: [{ code: "2.3", name: "Value of each digit", masteredOn: null }, { code: "2.7", name: "Subtracting across a zero", masteredOn: null }],
       },
+      weekLine: null,
+      highlights: [],
       summaryMonth: null,
     });
     const render = async (value: Home | null, t?: readonly (typeof tabs)[number][]) => {
@@ -451,6 +453,32 @@ describe("a family the switch opens to", () => {
       const out = await render({ ...value, week: value.week!.map((d) => (d.label === "Thu" ? { ...d, state: "today_done" as const } : d)) });
       expect(out).toContain('class="po-day is-today_done"');
       expect(out).toContain("Thu: today, done");
+    });
+
+    it("the week line is plain text with a bold lead under the workbook card, and Highlights is one card at the bottom, one blue dot a sentence (#990)", async () => {
+      const out = await render({ ...full(), weekLine: { lead: "On track this week.", text: "3 days done, and 3 new skills mastered since Monday." }, highlights: ["Asha mastered even and odd this week.", "Asha has done 3 days in a row."] });
+      expect(out).toContain('<p class="po-line"><b>On track this week.</b> 3 days done, and 3 new skills mastered since Monday.</p>');
+      expect(out.indexOf("po-book")).toBeLessThan(out.indexOf("po-line"));
+      expect(out).toContain('<div class="pa-sh"><h2>Highlights</h2></div>');
+      expect(out.match(/class="po-hl-dot"/g)).toHaveLength(2);
+      expect(out).toContain("Asha mastered even and odd this week.");
+      // After the skills list, so it is the last part of the Home.
+      expect(out.indexOf("po-skill-list")).toBeLessThan(out.indexOf("Highlights"));
+      // No icon, pill or extra section beside them.
+      const hl = out.slice(out.indexOf('class="pa-card po-hl"'));
+      expect(hl).not.toMatch(/<svg|pa-tag|pill|badge/);
+    });
+
+    it("with nothing to say there is no line and no Highlights section", async () => {
+      const out = await render(full());
+      expect(out).not.toContain("po-line");
+      expect(out).not.toContain("Highlights");
+    });
+
+    it("Highlights still show when the skills cannot be read", async () => {
+      const out = await render({ ...full(), skills: null, highlights: ["Asha has done 3 days in a row."] });
+      expect(out).toContain("Highlights");
+      expect(out).not.toContain("Since Asha started");
     });
 
     it("before the first scan: no ring, and one prompt to scan the first pages, with the Scan button", async () => {

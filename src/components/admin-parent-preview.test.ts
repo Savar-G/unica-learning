@@ -19,7 +19,13 @@ it.each(PARENT_PREVIEW_VIEWS.filter(view => view.id === "overview" || view.id ==
     for (const child of ["first", "second"]) {
       const output = dom(renderParentPreview(previewSelection({ view, scenario, family: "two", child, size }), styles));
       expect(output.body.textContent).not.toMatch(/of 30 minutes|minutes left|minutes start again|weekly minutes|Try Maya|Start (?:a )?call/i);
-      expect(output.querySelector(".po")?.textContent ?? "").not.toMatch(/minutes|messages|this week/i);
+      // The week line and Highlights (#990) say "this week" on purpose: the guard reads the rest of the Home, and the two
+      // parts are held to the allowance words alone.
+      const home = output.querySelector(".po")?.cloneNode(true) as Element | undefined;
+      const story = [...(home?.querySelectorAll(".po-line, .po-hl") ?? [])];
+      story.forEach((part) => part.remove());
+      expect(home?.textContent ?? "").not.toMatch(/minutes|messages|this week/i);
+      expect(story.map((part) => part.textContent).join(" ")).not.toMatch(/minutes|messages/i);
       const name = child === "first" ? "Leah" : "Kai";
       if (view === "overview" && scenario === "active") {
         // Option A (#1003): the Home holds no Maya tile; the Maya tab holds the notes.

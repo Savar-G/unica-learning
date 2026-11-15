@@ -10,7 +10,11 @@ import "./parent-overview.css";
 // circles, the workbook card, and the skills since the child started. Nothing else: no level tile, area bars, Maya tile,
 // action card, monthly PDF row or goal sentence; no percent right or count of wrong answers; no count beside a heading.
 // The copy names the child and never says she or her. A part with no data does not appear. The sentence under each
-// skill (#989) and Highlights (#990) come later, and the rows leave room for them.
+// skill (#989) comes later, and the rows leave room for it.
+//
+// Two lines of plain text written by code (#990, src/lib/home-highlights.ts): "On track this week." under the workbook
+// card, and Highlights at the bottom, one white card of one or two sentences each with a blue dot. No icons, pills or
+// extra sections; with nothing to say, neither appears.
 
 const SR: Record<WeekDayState, string> = { done: "done", today: "today, not done yet", today_done: "today, done", open: "coming up" };
 
@@ -34,10 +38,10 @@ export function OnTheWay({ number }: { number: number }) {
 }
 
 /** Whether the Home has a part to show; with none, Parent home keeps its old rows so the page is never just a name. */
-export const homeHasParts = ({ week, workbook, scanPrompt, skills }: OverviewView): boolean => !!(week || workbook || scanPrompt || skills);
+export const homeHasParts = ({ week, workbook, scanPrompt, skills, highlights }: OverviewView): boolean => !!(week || workbook || scanPrompt || skills || highlights.length);
 
 export function ParentOverview({ overview }: { overview: OverviewView }) {
-  const { child, resultPreparing, resultLate, week, workbook, onTheWay, scanPrompt, skills } = overview;
+  const { child, resultPreparing, resultLate, week, workbook, onTheWay, scanPrompt, skills, weekLine, highlights } = overview;
   return (
     <div className="pa-wrap"><div className="pa po">
       {resultPreparing && (
@@ -50,7 +54,7 @@ export function ParentOverview({ overview }: { overview: OverviewView }) {
         </section>
       )}
       {onTheWay !== null && <OnTheWay number={onTheWay} />}
-      {(week || workbook || scanPrompt) && (
+      {(week || workbook || scanPrompt || weekLine) && (
         <div className="po-main">
           {week && (
             <ul className="po-week" aria-label="This week">
@@ -80,6 +84,7 @@ export function ParentOverview({ overview }: { overview: OverviewView }) {
               )}
             </section>
           )}
+          {weekLine && <p className="po-line"><b>{weekLine.lead}</b> {weekLine.text}</p>}
           {scanPrompt && (
             <div className="pa-card po-scan">
               <div>
@@ -91,7 +96,19 @@ export function ParentOverview({ overview }: { overview: OverviewView }) {
           )}
         </div>
       )}
-      {skills && <div className="po-side"><HomeSkills name={child.firstName} skills={skills} /></div>}
+      {(skills || highlights.length > 0) && (
+        <div className="po-side">
+          {skills && <HomeSkills name={child.firstName} skills={skills} />}
+          {highlights.length > 0 && (
+            <>
+              <div className="pa-sh"><h2>Highlights</h2></div>
+              <div className="pa-card po-hl">
+                {highlights.map((text) => <p key={text}><span className="po-hl-dot" aria-hidden="true" />{text}</p>)}
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </div></div>
   );
 }

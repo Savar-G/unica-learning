@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bookOver, bookToday, dayNumber, weekCircles, workbookDay } from "@/lib/parent-week";
+import { bookOver, bookToday, dayNumber, doneStreak, weekCircles, weekProgress, workbookDay } from "@/lib/parent-week";
 
 // The Home week circles and the workbook day (#1003), through the module's public interface. 2026-11-02 is a Monday.
 
@@ -95,5 +95,71 @@ describe("the Home's day row", () => {
     expect(bookToday("2026-11-02", "2026-11-14")).toBeNull();
     expect(bookToday("2026-11-02", "2026-11-17")).toBeNull();
     expect(bookToday("2026-11-02", "2026-11-04", { ended: true })).toBeNull();
+  });
+});
+
+describe("how the week is going (#990)", () => {
+  // The book was delivered on Monday 2026-11-02: Day 1 is that Monday, Day 6 is Monday the 9th.
+  const week = (today: string, done: number[], start: string | null = "2026-11-02", opts: Parameters<typeof weekProgress>[3] = {}) => weekProgress(today, start, new Set(done), opts);
+
+  it("on track: every day behind us is done", () => {
+    expect(week("2026-11-04", [1, 2])).toEqual({ done: 2, due: 2, missed: [], catchingUp: false });
+  });
+  it("today's day is not late until it is over, and counts when done", () => {
+    expect(week("2026-11-04", [1, 2, 3])).toEqual({ done: 3, due: 2, missed: [], catchingUp: false });
+    expect(week("2026-11-02", [])).toEqual({ done: 0, due: 0, missed: [], catchingUp: false });
+  });
+  it("lists the due days that are not done, earliest first", () => {
+    expect(week("2026-11-05", [1])).toEqual({ done: 1, due: 3, missed: [2, 3], catchingUp: false });
+    expect(week("2026-11-05", [])).toMatchObject({ done: 0, due: 3, missed: [1, 2, 3] });
+  });
+  it("catching up: a day is open, and the latest day behind us or today's is done", () => {
+    expect(week("2026-11-04", [2])).toMatchObject({ missed: [1], catchingUp: true });
+    expect(week("2026-11-04", [1, 3])).toMatchObject({ missed: [2], catchingUp: true });
+    expect(week("2026-11-05", [1, 2])).toMatchObject({ missed: [3], catchingUp: false });
+  });
+  it("a weekend has the whole week behind it", () => {
+    expect(week("2026-11-07", [1, 2, 3])).toEqual({ done: 3, due: 5, missed: [4, 5], catchingUp: false });
+  });
+  it("counts only the book's days: a book delivered mid-week, and the book's second week", () => {
+    expect(week("2026-11-06", [1, 2], "2026-11-04")).toEqual({ done: 2, due: 2, missed: [], catchingUp: false });
+    expect(week("2026-11-11", [6], "2026-11-02")).toEqual({ done: 1, due: 2, missed: [7], catchingUp: false });
+  });
+  it("is null before the book is delivered, once the plan ended and when no book day falls in the week", () => {
+    expect(week("2026-11-04", [], null)).toBeNull();
+    expect(week("2026-11-04", [1, 2], "2026-11-02", { ended: true })).toBeNull();
+    expect(week("2026-11-18", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])).toBeNull();
+    expect(week("2026-11-04", [], "2026-11-09")).toBeNull();
+  });
+});
+
+describe("days done in a row (#990)", () => {
+  const streak = (today: string, done: number[], start: string | null = "2026-11-02", opts: Parameters<typeof doneStreak>[3] = {}) => doneStreak(today, start, new Set(done), opts);
+
+  it("counts the done days back from today's day", () => {
+    expect(streak("2026-11-05", [1, 2, 3, 4])).toBe(4);
+    expect(streak("2026-11-05", [1, 3, 4])).toBe(2);
+  });
+  it("today's day not done yet does not break it", () => {
+    expect(streak("2026-11-05", [1, 2, 3])).toBe(3);
+    expect(streak("2026-11-05", [])).toBe(0);
+  });
+  it("a day missed before today breaks it", () => {
+    expect(streak("2026-11-05", [1, 2, 4])).toBe(1);
+    expect(streak("2026-11-05", [1, 2])).toBe(0);
+  });
+  it("runs through the weekend and into the next week", () => {
+    expect(streak("2026-11-07", [3, 4, 5])).toBe(3);
+    expect(streak("2026-11-09", [3, 4, 5])).toBe(3);
+    expect(streak("2026-11-10", [4, 5, 6, 7])).toBe(4);
+  });
+  it("a weekend does not skip Friday: Friday's day not done is a break", () => {
+    expect(streak("2026-11-08", [1, 2, 3, 4])).toBe(0);
+  });
+  it("is 0 before the book, after the plan ended, and for a book that finished in an earlier week", () => {
+    expect(streak("2026-11-05", [1, 2, 3], null)).toBe(0);
+    expect(streak("2026-11-05", [1, 2, 3], "2026-11-02", { ended: true })).toBe(0);
+    expect(streak("2026-11-13", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])).toBe(10);
+    expect(streak("2026-11-16", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])).toBe(0);
   });
 });

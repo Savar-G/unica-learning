@@ -5,15 +5,16 @@ import {
   type AreaAnswer, type AreaLabel, type Attempt, type Grade, type Level, type ReportModel, type ReportedStrand, type SkillMark, type SkillState, type SkillTestResult, type StandardSkillState,
 } from "@/lib/assessment";
 import { childStage, type StageView, type TabSwitches, type TestFact } from "@/lib/child-stage";
-import { addDays, addMonths, familyZone, formatCalendarDate, localDateTime, localDay, localMonth, type FamilyZone } from "@/lib/family-time";
+import { addDays, addMonths, familyZone, formatCalendarDate, localDateTime, localDay, localMonth, weekStartFor, type FamilyZone } from "@/lib/family-time";
+import { homeStory } from "@/lib/home-highlights";
 import type { LearningRow } from "@/lib/learning-style";
 import { firstDeliveryMonth, offeredSummaryMonth } from "@/lib/monthly-summary-offer";
-import { needsHelpStandards, type HelpMark } from "@/lib/needs-help";
+import { needsHelpStandards, repeatedMistakes, type HelpMark } from "@/lib/needs-help";
 import { nextBook, type NextBook } from "@/lib/next-book";
 import type { ParentPlan } from "@/lib/parent-plan";
 import type { CurriculumId } from "@/lib/signup";
-import { WORKBOOK_DAYS, bookToday, dayNumber, weekCircles, workbookDay, type WeekDay } from "@/lib/parent-week";
-import { firstBatchAt, progressSummary, type ProgressSummary, type StateChange } from "@/lib/progress-series";
+import { WORKBOOK_DAYS, bookToday, dayNumber, doneStreak, weekCircles, weekProgress, workbookDay, type WeekDay } from "@/lib/parent-week";
+import { firstBatchAt, masteredSince, progressSummary, type ProgressSummary, type StateChange } from "@/lib/progress-series";
 import { skillMapView, topicBars, type TopicBarView } from "@/lib/skill-map-view";
 import { confirmedWorkbookDelivery } from "@/lib/workbook-delivery-access";
 import { workbookDelivery } from "@/lib/workbook-email";
@@ -387,6 +388,10 @@ export interface OverviewView {
   scanPrompt: { day: number; pages: number } | null;
   /** Null when the inputs are unavailable, or the Progress tab is off (the skill map is not released yet: #194). */
   skills: HomeSkillsView | null;
+  /** The one sentence about the week under the Workbook card (#990): a bold lead and the rest; null when the facts say nothing yet. */
+  weekLine: { lead: string; text: string } | null;
+  /** Up to two plain sentences at the bottom of Home (#990), by a fixed priority; empty when nothing qualifies. */
+  highlights: string[];
   /**
    * The monthly summary's month (YYYY-MM, family time) that the dashboard offers: the last finished month, from the month
    * after the child's first confirmed delivery (D-248). Home no longer shows it (#1003); the monthly email agrees with it.
@@ -436,6 +441,8 @@ async function readBookDays(
 
 const capital = (text: string) => `${text.slice(0, 1).toUpperCase()}${text.slice(1)}`;
 const standardText = new Map(BC_SKILL_MAP.standards.map((s) => [s.code, capital(s.text)]));
+/** The standard's own words, for a sentence ("mastered addition and subtraction to 1000"). */
+const standardPhrase = new Map(BC_SKILL_MAP.standards.map((s) => [s.code, s.text]));
 
 /** The standard most of a day's questions are on (the first on a tie, in page order); its text from the skill map. */
 function dayTopic(pageIds: readonly string[], questions: readonly { pageId: string; standard: string | null }[]): string | null {
@@ -482,6 +489,10 @@ async function readSkillStates(reader: ParentViewReader, child: ChildView, book:
  * The workbook day is a calendar rule (src/lib/parent-week.ts): Day 1 is the delivery day (or the next Monday-to-Friday
  * day), and each later Monday-to-Friday day is the next. Skills show whether or not the Progress tab is
  * on (Cedric, 2026-11-14); only the tab stays behind PROGRESS_TAB_ENABLED.
+ *
+ * `weekLine` and `highlights` (#990) are plain sentences written by src/lib/home-highlights.ts from the week's done days,
+ * `skill_state_history.changed_at` and the Needs help rule's marks. They hold no percent and no count of wrong answers,
+ * and are empty or null when no fact qualifies.
  */
 export async function readOverview(reader: ParentViewReader, childId: string, now: number): Promise<OverviewView | null> {
   const [child, children, family, tests, reports, workbooks, scans, deliveries, corrections] = await Promise.all([
@@ -526,16 +537,43 @@ export async function readOverview(reader: ParentViewReader, childId: string, no
 
   // Home shows the skills whether or not the Progress tab is on (Cedric, 2026-11-14); only the tab stays behind its switch.
   let skills: OverviewView["skills"] = null;
+  // The facts the week line and Highlights read (#990); each stays empty when its input cannot be read.
+  let newlyMastered: string[] = [];
+  let repeatedMistake: { name: string; days: number } | null = null;
   {
     const progress = await reader.overviewProgress(child.id).catch(markingReadFailed);
     const book = workbooks.filter((w) => w.childId === child.id).sort((a, b) => b.number - a.number)[0];
     const read = progress ? await readSkillStates(reader, child, book, progress.skillMarks) : null;
     // A failed history read leaves the dates out and keeps the counts from the rule.
     if (read) skills = homeSkills(read.states, progress!.helpMarks, read.historyFailed ? [] : read.history, now, zone);
+    if (read && progress) {
+      // An empty history would call every skill new, so a failed read says nothing about mastery.
+      if (!read.historyFailed) {
+        const firstTest = tests.filter((t) => t.childId === child.id && t.status === "completed" && t.completedAt !== null).reduce<number | null>((best, t) => (best === null || t.completedAt! < best ? t.completedAt! : best), null);
+        newlyMastered = masteredSince({
+          now, zone, current: new Map(read.states.map((s) => [s.standard, s.state])), history: read.history,
+          startDay: firstTest === null ? null : localDay(firstTest, zone), since: weekStartFor(today),
+        }).flatMap((code) => standardPhrase.get(code) ?? []);
+      }
+      const worst = repeatedMistakes(needsHelpStandards(read.states, progress.helpMarks, now, zone), progress.helpMarks, now, zone)[0];
+      const phrase = worst && standardPhrase.get(worst.standard);
+      if (worst && phrase) repeatedMistake = { name: phrase, days: worst.days };
+    }
   }
+  const monday = weekStartFor(today);
+  // The week line judges how scanning is going, so it needs the Scan tab: a family that cannot scan has no days to be on track
+  // for. Before the family's first scan the prompt above already says what to do, so the line says nothing more.
+  const scanning = child.tabs.includes("scan_pages") && scanPrompt === null;
+  const story = homeStory({
+    name: child.firstName,
+    week: days && scanning ? weekProgress(today, days.start, days.doneDays, { ended: child.readOnly }) : null,
+    scansThisWeek: days ? scans.filter((s) => s.workbookId === days.id && Date.parse(s.expiresAt) > now && localDay(s.takenAt, zone) >= monday && localDay(s.takenAt, zone) <= today).length : 0,
+    newlyMastered, repeatedMistake,
+    streak: days ? doneStreak(today, days.start, days.doneDays, { ended: child.readOnly }) : 0,
+  });
 
   const summaryMonth = offeredSummaryMonth(await readFirstDeliveryMonth(reader, child.id, zone), now, zone);
-  return { child, resultPreparing, resultLate: late, week, workbook, onTheWay, scanPrompt, skills, summaryMonth };
+  return { child, resultPreparing, resultLate: late, week, workbook, onTheWay, scanPrompt, skills, weekLine: story.line, highlights: story.highlights, summaryMonth };
 }
 
 /** The three lists: every BC standard by its state now. Mastered newest first, the others in the skill map's order. */

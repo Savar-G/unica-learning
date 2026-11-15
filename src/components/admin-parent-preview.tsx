@@ -42,6 +42,7 @@ import type { ParentNoteSession } from "@/lib/parent-maya-notes";
 import type { ParentPlan } from "@/lib/parent-plan";
 import type { ChildView, OverviewView, ProgressNumbers, WorkbooksView } from "@/lib/parent-view";
 import { freeMonthWords } from "@/lib/parent-assessment";
+import { homeStory, type HomeStoryFacts } from "@/lib/home-highlights";
 import { overviewDesk, tabLinks } from "@/lib/parent-shell";
 import { nextStep } from "@/lib/report-view";
 import { PLANS } from "@/lib/site";
@@ -76,7 +77,20 @@ const sampleSkills = (state: string): OverviewView["skills"] => state === "no_sk
   needsHelp: state === "empty" ? [] : [{ code: "2.3", name: "Value of each digit in big numbers", masteredOn: null }, { code: "2.7", name: "Subtracting across a zero", masteredOn: null }],
 };
 
+/** The sample Home's week line and Highlights, written by the real module (src/lib/home-highlights.ts) from sample facts. */
+function sampleStory(child: ChildView, state: string) {
+  const none: HomeStoryFacts = { name: child.firstName, week: null, scansThisWeek: 0, newlyMastered: [], repeatedMistake: null, streak: 0 };
+  if (state === "first_book_coming" || state === "first_scan" || state === "book_over" || state === "no_skills") return homeStory(none);
+  if (state === "behind") return homeStory({ ...none, week: { done: 2, due: 3, missed: [3], catchingUp: false }, scansThisWeek: 2, repeatedMistake: { name: "subtracting across a zero", days: 3 } });
+  if (state === "nothing_to_say") return homeStory({ ...none, week: { done: 0, due: 0, missed: [], catchingUp: false } });
+  return homeStory({
+    ...none, week: child.stage === "ended" ? null : { done: 3, due: 3, missed: [], catchingUp: false }, scansThisWeek: 6,
+    newlyMastered: ["comparing numbers to 1 000", "even and odd", "multiplying by 10 and 100"], repeatedMistake: { name: "subtracting across a zero", days: 3 }, streak: 3,
+  });
+}
+
 function overview(child: ChildView, state: string): OverviewView {
+  const story = sampleStory(child, state);
   const preparing = state === "preparing" || state === "late";
   const empty = state === "first_book_coming";
   const first = state === "first_scan";
@@ -85,12 +99,15 @@ function overview(child: ChildView, state: string): OverviewView {
   // Book 2 is in the mail: Book 1 is still the card. Over: Book 1's last day has passed, so there is no Today row.
   const mailed = state === "book_2_mailed" || state === "book_over";
   const over = state === "book_over";
-  const states = first ? ["open", "open", "open", "today", "open"] as const : over ? ["done", "done", "done", "done", "done"] as const : ["done", "done", "done", done ? "today_done" : "today", "open"] as const;
+  const behind = state === "behind";
+  const quiet = state === "nothing_to_say";
+  const states = first ? ["open", "open", "open", "today", "open"] as const : quiet ? ["today", "open", "open", "open", "open"] as const : behind ? ["done", "done", "open", "today", "open"] as const : over ? ["done", "done", "done", "done", "done"] as const : ["done", "done", "done", done ? "today_done" : "today", "open"] as const;
   const week: OverviewView["week"] = empty ? null : (["Mon", "Tue", "Wed", "Thu", "Fri"] as const).map((label, i) => ({ label, state: states[i] }));
   return { child, resultPreparing: preparing, resultLate: state === "late", week, onTheWay: mailed ? 2 : null,
     workbook: empty ? null : over ? { number: 1, day: 10, days: 10, percent: 90, today: null }
-      : { number: mailed ? 1 : 3, day: 4, days: 10, percent: first ? null : 38, today: { label: "Today", topic: "Hundreds, tens and ones", scanned: first || notStarted ? 0 : done ? 8 : 6, pages: 8 } },
-    scanPrompt: first ? { day: 1, pages: 8 } : null, skills: sampleSkills(state), summaryMonth: child.stage === "active" || child.stage === "ended" ? "2026-10" : null };
+      : quiet ? { number: 1, day: 1, days: 10, percent: null, today: { label: "Today", topic: "Hundreds, tens and ones", scanned: 0, pages: 8 } }
+      : { number: mailed ? 1 : 3, day: 4, days: 10, percent: first ? null : behind ? 20 : 38, today: { label: "Today", topic: "Hundreds, tens and ones", scanned: first || notStarted ? 0 : done ? 8 : 6, pages: 8 } },
+    scanPrompt: first ? { day: 1, pages: 8 } : null, skills: sampleSkills(state), weekLine: story.line, highlights: story.highlights, summaryMonth: child.stage === "active" || child.stage === "ended" ? "2026-10" : null };
 }
 
 /** Inert Progress numbers: a child in her first week, or one with months of marks. */
