@@ -1,0 +1,138 @@
+import { describe, expect, it } from "vitest";
+import { workedSteps, type Operation, type OperationPackage } from "@/lib/question-package";
+import { missingWork } from "../missing-number";
+import { checkTutorSay } from "../tutor";
+import { describeTutorKind } from "./contract";
+import { tutorKindOf } from "./index";
+import { multiplyKind } from "./multiply";
+
+const num = (value: number) => ({ type: "number" as const, value });
+const base = { ref: { source: "workbook" as const, workbookId: "test", page: 1, question: 1 }, templateId: null, level: 12, difficulty: 2 };
+const skill = (op: Operation) => ({ standard: "4.8", skills: [op.kind === "multiply" ? "4.8-multiplication-facts" : "4.8-division-facts"] });
+const wrongOf = (values: number[], description = "One more than the answer.") => values.map((w) => ({ value: num(w), cause: "careless", description, step: null }));
+const printed = (op: Operation) => `${op.operands[0]} ${op.kind === "multiply" ? "×" : "÷"} ${op.operands[1]} = ?`;
+
+/** A package from an operation, with its own worked steps. */
+function opPkg(text: string, operation: Operation, easier: Operation, wrong: number[] = []): OperationPackage {
+  const value = (op: Operation) => { const [a, b] = op.operands as [number, number]; return op.kind === "multiply" ? a * b : a / b; };
+  return {
+    ...base, id: `t-${text}`, text, skill: skill(operation),
+    answer: { value: num(value(operation)), accepted: [], unit: null }, operation, steps: workedSteps(operation),
+    wrongAnswers: wrongOf(wrong.length ? wrong : [value(operation) + 1]),
+    easierExample: { text: printed(easier), operation: easier, answer: num(value(easier)), steps: workedSteps(easier) },
+  } as OperationPackage;
+}
+
+/** A framed missing factor ("80 × ? = 11200"), as Maya's missing-number code builds it. */
+function missingPkg(known: number, total: number, easier: [number, number]): OperationPackage {
+  const w = missingWork({ sign: "×", known, unknownFirst: false, total })!;
+  const e = missingWork({ sign: "×", known: easier[0], unknownFirst: false, total: easier[1] })!;
+  return {
+    ...base, id: `m-${known}-${total}`, text: `${known} × ? = ${total}`,
+    answer: { value: num(w.answer), accepted: [], unit: null }, operation: w.operation, steps: w.steps, skill: skill(w.operation), wrongAnswers: wrongOf([w.answer + 1]),
+    easierExample: { text: `${easier[0]} × ? = ${easier[1]}`, operation: e.operation, answer: num(e.answer), steps: e.steps },
+  } as OperationPackage;
+}
+
+const mul = (a: number, b: number): Operation => ({ kind: "multiply", operands: [a, b] });
+const div = (a: number, b: number): Operation => ({ kind: "divide", operands: [a, b] });
+
+const P = {
+  fact: opPkg("3 × 2 = ?", mul(3, 2), mul(2, 2), [7]),
+  factCarry: opPkg("9 × 4 = ?", mul(9, 4), mul(2, 4)),
+  tens: opPkg("3 × 10 = ?", mul(3, 10), mul(2, 10)),
+  partials: opPkg("6 × 440 = ?", mul(6, 440), mul(2, 20)),
+  partials880: opPkg("8 × 880 = ?", mul(8, 880), mul(2, 20)),
+  story: opPkg("Each jar has 373 toy cars. Amara has 6 of them. How many toy cars in all?", mul(373, 6), mul(12, 2)),
+  tensByTens: opPkg("40 × 30 = ?", mul(40, 30), mul(20, 10)),
+  divide: opPkg("2 × ? = 1340", div(1340, 2), div(8, 2)),
+  divide60: opPkg("60 × ? = 4800", div(4800, 60), div(120, 60)),
+  zeros: missingPkg(80, 11200, [20, 800]),
+  trial: missingPkg(244, 1464, [122, 366]),
+};
+
+describeTutorKind(multiplyKind, Object.values(P));
+
+describe("multiply kind: what it fits", () => {
+  it("leaves a die question filed as a division to the controller", () => {
+    expect(multiplyKind.fits(opPkg("Roll a die numbered 1 to 8. How many of the numbers are odd?", div(8, 2), div(4, 2)))).toBe(false);
+    expect(multiplyKind.fits(opPkg("Roll a die numbered 1 to 12. How many of the numbers are even?", div(12, 2), div(4, 2)))).toBe(false);
+  });
+  it("leaves a package whose steps are not code's own to the controller", () => {
+    const pkg = P.partials;
+    expect(multiplyKind.fits({ ...pkg, steps: pkg.steps.slice(1) })).toBe(false);
+    expect(multiplyKind.fits({ ...pkg, text: "6 × 441 = ?" })).toBe(false);
+  });
+  it("leaves a claim or a comparison to another family", () => {
+    const pkg = P.fact;
+    expect(multiplyKind.fits({ ...pkg, steps: [...pkg.steps.slice(0, -1), { id: "claim", kind: "claim-compare", relation: "equal", value: 6, shown: 6, holds: true }, pkg.steps.at(-1)!] } as OperationPackage)).toBe(false);
+  });
+  it("is the registry's kind for each shape", () => {
+    for (const pkg of Object.values(P)) expect(tutorKindOf(pkg)?.id).toBe("multiply");
+  });
+});
+
+describe("multiply kind: numberMeaning names real mistakes", () => {
+  it("adding instead of multiplying", () => expect(multiplyKind.numberMeaning(P.fact, 5)).toMatch(/likely mistake: added 3 and 2/));
+  it("a dropped zero and an extra zero", () => {
+    expect(multiplyKind.numberMeaning(P.partials, 264)).toMatch(/likely mistake: a zero dropped/);
+    expect(multiplyKind.numberMeaning(P.partials, 26400)).toMatch(/likely mistake: one zero too many/);
+  });
+  it("a partial product in the wrong place", () => {
+    // 6 × 440: the tens row 240 written as 24, then 24 + 2400.
+    expect(multiplyKind.numberMeaning(P.partials, 2424)).toMatch(/likely mistake: the tens row put in the wrong place/);
+  });
+  it("a carry forgotten in a product", () => {
+    // 373 × 6 = 2238; with no carries 8, 2 and 8 are written: 828.
+    expect(multiplyKind.numberMeaning(P.story, 828)).toMatch(/likely mistake: a carry left out/);
+  });
+  it("one group too many in a fact", () => expect(multiplyKind.numberMeaning(P.factCarry, 45)).toMatch(/one group too many/));
+  it("a 0 left out of the quotient, and multiplying instead of dividing", () => {
+    expect(multiplyKind.numberMeaning(P.divide, 67)).toMatch(/a 0 left out of the quotient/);
+    expect(multiplyKind.numberMeaning(P.divide, 2680)).toMatch(/multiplied 1340 by 2 instead of dividing/);
+  });
+  it("zeros taken off one number only", () => expect(multiplyKind.numberMeaning(P.zeros, 1400)).toMatch(/zeros taken off only one number/));
+  it("a wrong try", () => expect(multiplyKind.numberMeaning(P.trial, 7)).toMatch(/244 × 7 = 1708, which is too big/));
+  it("the package's own wrong answers", () => expect(multiplyKind.numberMeaning(P.fact, 7)).toMatch(/likely mistake: one more than the answer/));
+  it("right for a step", () => {
+    expect(multiplyKind.numberMeaning(P.partials, 240)).toMatch(/right for the tens row/);
+    expect(multiplyKind.numberMeaning(P.divide, 13)).toMatch(/number divided/);
+    expect(multiplyKind.numberMeaning(P.divide, 670)).toMatch(/right answer/);
+  });
+});
+
+describe("multiply kind: claims in words and digits", () => {
+  const ctx = (pkg: OperationPackage) => ({ stance: "none" as const, answer: (pkg.answer.value as { value: number }).value, claims: (x: string) => multiplyKind.claimProblems(pkg, x) });
+  const ok = (pkg: OperationPackage, x: string) => checkTutorSay(x, ctx(pkg)).ok;
+  it("passes true claims", () => {
+    for (const x of ["6 times 440 is 2640.", "6 × 400 = 2400.", "3 tens times 2 is 6 tens.", "So 6 × 440 = 2640."]) expect(ok(P.partials, x), x).toBe(true);
+    for (const x of ["1340 divided by 2 is 670.", "The missing number is 670.", "670 is the missing number.", "2 goes into 13 6 times.", "13 ÷ 2 = 6 R 1."]) expect(ok(P.divide, x), x).toBe(true);
+    for (const x of ["11200 ÷ 80 is the same as 1120 ÷ 8.", "1120 ÷ 8 = 140.", "The missing number is 140."]) expect(ok(P.zeros, x), x).toBe(true);
+  });
+  it("reads equal groups, halves and doubles itself (the core refuses these forms today, true or false)", () => {
+    for (const x of ["6 groups of 440 is 2640.", "Double 670 is 1340."]) expect(multiplyKind.claimProblems(P.partials, x), x).toEqual([]);
+    expect(multiplyKind.claimProblems(P.divide, "Half of 1340 is 670.")).toEqual([]);
+    for (const x of ["6 groups of 440 is 2600.", "Double 670 is 1300.", "Half of 1340 is 680."]) expect(multiplyKind.claimProblems(P.divide, x).length, x).toBe(1);
+  });
+  it("refuses false claims, both ways", () => {
+    for (const x of ["6 times 440 is 2650.", "6 × 440 = 2440.", "6 groups of 440 is 2600.", "3 tens times 2 is 5 tens."]) expect(ok(P.partials, x), x).toBe(false);
+    for (const x of ["1340 divided by 2 is 680.", "The missing number is 67.", "67 is the missing number.", "Half of 1340 is 680.", "2 goes into 13 7 times.", "13 ÷ 2 = 6 R 2.", "2 goes into it a few times."]) expect(ok(P.divide, x), x).toBe(false);
+    expect(ok(P.trial, "The missing number is 7.")).toBe(false);
+    expect(ok(P.trial, "The missing number is 6.")).toBe(true);
+  });
+});
+
+describe("multiply kind: the fallback question", () => {
+  it("asks only in a closed plain math form, else none", () => {
+    // PLAIN_FORMS reads plus and minus: a times or divided-by question gives null (the core says "So what is the whole
+    // answer?") until the core widens it.
+    for (const pkg of Object.values(P)) {
+      const q = multiplyKind.stepQuestion(pkg, []);
+      if (q !== null) expect(q).toMatch(/^What (?:is|do you get for) /);
+    }
+  });
+  it("asks the sum of the rows with plus", () => {
+    const done = multiplyKind.steps(P.partials).filter((s) => !s.id.startsWith("sum")).map((s) => s.id);
+    expect(multiplyKind.stepQuestion(P.partials, done)).toBe("What do you get for 0 plus 0?");
+  });
+});

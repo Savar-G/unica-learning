@@ -3,8 +3,9 @@
 import type { OperationPackage } from "@/lib/question-package";
 import type { TutorKind } from "../tutor-kind";
 import { columnKind } from "./column";
+import { multiplyKind } from "./multiply";
 
-export const TUTOR_KINDS: readonly TutorKind[] = [columnKind];
+export const TUTOR_KINDS: readonly TutorKind[] = [columnKind, multiplyKind];
 
 /** Kinds a test puts first (testKind); never used by the site. */
 const testKinds: TutorKind[] = [];
