@@ -5,7 +5,7 @@ import { fromMalformedAnswer, MATH_REVIEW_HEDGE_MS, runMathReview, type MathRevi
 import { conversationalFake, reply } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { CONVERSATION_REVIEW_TIME_LIMIT_MS, fakeTalkReviewer, REVIEW_HEDGE_MS, runReview, type TalkReviewer } from "@/lib/maya-talk-review";
-import { CHAT_MATH_REVIEW_TIME_LIMIT_MS, createTextSession, REVIEW_FLOOR_MS } from "@/lib/maya-text";
+import { CHAT_MATH_REVIEW_TIME_LIMIT_MS, createTextSession, REVIEW_FLOOR_MS, VOICE_REPAIR_BUDGET_MS } from "@/lib/maya-text";
 import type { OperationPackage } from "@/lib/question-package";
 
 // 2026-11-15 (fallback rate). A real-model sample of desk chat lost teaching turns to review time-outs (the math review's
@@ -254,22 +254,48 @@ describe("the math review's time limit on a chat turn", () => {
   }, 30_000);
 });
 
-describe("a voice repair's review gets at least REVIEW_FLOOR_MS", () => {
-  it("a repair whose model used 3.8 s of its 4 s still has its review read: a 1 s review passes", async () => {
-    expect(REVIEW_FLOOR_MS).toBe(1_500);
-    // The first message holds a false sentence (refused); the repair's model takes 3.8 s and its review 1 s.
-    const c = tutorSession({
-      voice: true,
-      says: (n) => (n === 0 ? "12 minus 8 is 5. What is 12 minus 8?" : REVIEWED),
-      modelMs: (n) => (n === 0 ? 0 : 3_800),
-      mathMs: () => 1_000,
+describe("a voice repair keeps REVIEW_FLOOR_MS for its reviews inside the 4 s budget (review of #1099, P2)", () => {
+  /**
+   * The repair on fake timers: the first message is refused (a false equation); the repair's model takes `modelMs` and
+   * each math review `mathMs`. Returns the ms from the repair's start (the worker's thinking-phrase hook) to the first
+   * sentence said, and the words.
+   */
+  async function voiceRepair(modelMs: number, mathMs: number) {
+    vi.useFakeTimers({ now: 10_000 });
+    let repairAt = 0;
+    const parts: { text: string; at: number }[] = [];
+    const session = createTextSession({
+      callId: "floor", package: SUB, tutor: true, random: 3, clock: () => Date.now(),
+      modelRepair: false, onRepairStart: () => { repairAt = Date.now(); return null; },
+      onSayPart: (text) => parts.push({ text, at: Date.now() }),
+      model: conversationalFake({ answer: async (_b, n) => {
+        if (n === 0) return reply("12 minus 8 is 5.", "guide");
+        await sleep(modelMs);
+        return reply(REVIEWED, "guide");
+      } }),
+      reviewer: fakeTalkReviewer(),
+      mathReviewer: { id: "slow-math", promptVersion: MATH_REVIEW_PROMPT_VERSION, review: async () => { await sleep(mathMs); return TRUE; } },
     });
-    await c.session.start();
-    const out = await c.session.child("I don't get 2 minus 8");
-    expect(out.say.join(" ")).toBe(REVIEWED);
-    const trace = await c.session.finish({ reason: "child_stopped" });
-    expect(trace.counts).toMatchObject({ repairs: 1, repairedOk: 1, fallbacks: 0 });
-  }, 30_000);
+    await session.start();
+    parts.length = 0;
+    const turn = session.child("I don't get 2 minus 8");
+    await vi.advanceTimersByTimeAsync(8_000);
+    const out = await turn;
+    return { ms: (parts[0]?.at ?? Date.now()) - repairAt, say: out.say.join(" ") };
+  }
+
+  it("a 3.9 s repair model and a 1.4 s review: nothing is said after the 4 s cap (code's line, inside it)", async () => {
+    expect(REVIEW_FLOOR_MS).toBe(1_500);
+    const r = await voiceRepair(3_900, 1_400);
+    expect(r.ms).toBeLessThanOrEqual(VOICE_REPAIR_BUDGET_MS);
+    expect(r.say).not.toBe(REVIEWED);
+  });
+
+  it("a 2.4 s repair model has its 1.4 s review read: the repair is said inside 4 s", async () => {
+    const r = await voiceRepair(2_400, 1_400);
+    expect(r.ms).toBeLessThanOrEqual(VOICE_REPAIR_BUDGET_MS);
+    expect(r.say).toBe(REVIEWED);
+  });
 });
 
 describe("a tutor help request with no answer is no confirm (2026-11-15)", () => {
