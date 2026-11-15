@@ -83,7 +83,7 @@ export function partialSay(soFar: string): { text: string; complete: boolean; ki
   return { text, complete: false, kind };
 }
 import { reviewInput, runReview, CONVERSATION_REVIEW_TIME_LIMIT_MS, REVIEW_TIME_LIMIT_MS, type TalkReviewer } from "@/lib/maya-talk-review";
-import type { TalkReviewResult } from "@/lib/maya";
+import type { TalkReviewInput, TalkReviewResult } from "@/lib/maya";
 import { readFromFence } from "@/lib/ai-fenced";
 import { classifyError, packageHash, redactText, redactTrace, traceCounts, TRACE_KIND, TRACE_VERSION, type MayaTrace, type TraceBoardBatch, type TraceTurn, type TraceObligation } from "@/lib/maya-trace";
 
@@ -397,8 +397,16 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   }
   /** Sentences streamed for the output being built (D-341), in the order they were sent. */
   const streamedThisOutput: string[] = [];
-  /** Reviews the stream started for its sentences (round 4), by sentence: the whole-reply review reuses them. */
-  const streamReviews = new Map<string, Promise<TalkReviewResult>>();
+  /**
+   * Reviews the stream started for its sentences (round 4), by the review's whole input (the line, the child's turn, the
+   * turns and the stance): the whole-reply review of the same request uses each once, and never one of another input.
+   */
+  const streamReviews = new Map<string, { requestId: number; result: Promise<TalkReviewResult> }>();
+  const reviewKey = (input: TalkReviewInput) => JSON.stringify(input);
+  /** A review error goes to the observer; an observer that throws changes nothing. */
+  const reviewError = (error: unknown) => {
+    try { options.onError?.(error, { turn: folded.turns.length, source: "review" }); } catch { /* the observer is not the review */ }
+  };
   const newOutput = (): TextOutput => ({ say: [], board: [], ended: null, safetyMessage: null, cancelled: false });
   const now = () => {
     let at = 0;
@@ -499,8 +507,9 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         const item: { sentence: string; state: "ready" | "pending" | "drop" } = { sentence, state: how === "send" ? "ready" : "pending" };
         queue.push(item);
         if (how === "review") {
-          const started = runReview(options.reviewer!, reviewInput(session, sentence, plan.stance), options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS);
-          streamReviews.set(sentence, started);
+          const input = reviewInput(session, sentence, plan.stance);
+          const started = runReview(options.reviewer!, input, options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS);
+          streamReviews.set(reviewKey(input), { requestId, result: started });
           void started.then((result) => {
             item.state = result.verdict === "pass" && !streamDone ? "ready" : "drop";
             if (!streamDone) flush();
@@ -547,9 +556,19 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     const t0 = now();
     const before = folded.session;
     const stance = before.conversational ? read(() => codeStance(before)) : "none";
-    // A sentence the stream already sent to its review is not reviewed twice (round 4).
-    const reviews = options.reviewer ? Promise.all(texts.map(async (text) => ({ text, result: await (streamReviews.get(text) ?? runReview(options.reviewer!, reviewInput(before, text, stance), options.reviewTimeLimitMs ?? (before.conversational ? CONVERSATION_REVIEW_TIME_LIMIT_MS : REVIEW_TIME_LIMIT_MS), (error) => options.onError?.(error, { turn: folded.turns.length, source: "review" }))) }))) : Promise.resolve([]);
+    // A sentence the stream of this request already sent to the same review is not reviewed twice (round 4). Every other
+    // review starts now, all at once.
+    const used: string[] = [];
+    const reviews = options.reviewer ? Promise.all(texts.map((text) => {
+      const input = reviewInput(before, text, stance);
+      const key = reviewKey(input);
+      const streamed = streamReviews.get(key);
+      if (streamed && streamed.requestId === requestId) used.push(key);
+      const result = streamed && streamed.requestId === requestId ? streamed.result : runReview(options.reviewer!, input, options.reviewTimeLimitMs ?? (before.conversational ? CONVERSATION_REVIEW_TIME_LIMIT_MS : REVIEW_TIME_LIMIT_MS), reviewError);
+      return result.then((r) => ({ text, result: r }));
+    })) : Promise.resolve([]);
     const reviewed = reviews.then((results) => {
+      for (const key of used) streamReviews.delete(key);
       append({ kind: "review", at: now(), requestId, reviews: results, ...(texts.length && options.reviewer ? { reviewMs: now() - t0 } : {}) });
     });
     await wait(reviewed, controller);

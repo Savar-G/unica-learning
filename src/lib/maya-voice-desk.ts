@@ -97,8 +97,8 @@ export type VoiceAction =
 export type DeskVoiceCall = ChatView & { mode: "voice"; started: boolean; status: CallStatus };
 
 /** The child-safe view of a family voice call. Never the model, the saved session or any diagnostics. */
-export function deskVoiceCall(view: CallView): DeskVoiceCall {
-  return { ...childChatView(view), mode: "voice", started: view.startedAt !== null, status: view.status };
+export function deskVoiceCall(view: CallView, childName?: string | null): DeskVoiceCall {
+  return { ...childChatView(view, childName), mode: "voice", started: view.startedAt !== null, status: view.status };
 }
 
 /**

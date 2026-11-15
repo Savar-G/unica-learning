@@ -206,7 +206,7 @@ export async function runChat(ctx: ChatContext, action: ChatAction): Promise<Cha
   };
   const reply = async (r: CallRecord | null, error?: string, admission?: ChatReply["admission"]): Promise<ChatReply> => {
     const view = r && recordView(r);
-    const chat = view ? childChatView(view) : null;
+    const chat = view ? childChatView(view, name) : null;
     if (chat && r?.status === "live") {
       const { data, error } = await db.from("maya_chat_messages").select("id").eq("call_id", r.id).eq("claim_revision", r.revision).limit(1);
       if (error) throw Error(error.message);
