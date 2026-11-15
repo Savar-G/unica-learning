@@ -75,9 +75,18 @@ export interface ScrubbableEvent {
 // Request headers that stay on an error: enough to tell the browser and the route, nothing that names a person.
 const KEEP_HEADERS = new Set(["user-agent", "content-type", "accept", "content-length", "x-vercel-id"]);
 
+/**
+ * A CSS selector Sentry built from a clicked element (`button.pill[aria-label="Iris. Change child"]`) without its
+ * attribute values: an aria-label, title, alt or name can hold a child's name. Tag, id and classes stay.
+ */
+export function stripElementLabels(selector: string): string {
+  return selector.replace(/\[[\w:-]+(?:=(?:"[^"]*"|'[^']*'|[^\]]*))?\]/g, "");
+}
+
 function scrubBreadcrumb(crumb: Breadcrumb): Breadcrumb | null {
   // A console line can print anything the code had in hand (a child's answer, an email), so it never goes.
   if (crumb.category === "console") return null;
+  if (crumb.message && crumb.category?.startsWith("ui.")) crumb.message = stripElementLabels(crumb.message);
   if (crumb.message) crumb.message = scrubAddresses(crumb.message);
   if (crumb.data) {
     for (const key of Object.keys(crumb.data)) {
@@ -150,11 +159,16 @@ const CONTENT_ATTRIBUTE = /^gen_ai\.(input|output|prompt|request\.messages|respo
 
 /** A span with its name and attributes cleaned (spans cannot be dropped here: see SPANS_TO_IGNORE). */
 export function scrubSpan<T extends ScrubbableSpan>(span: T): T {
-  span.name = scrubAddresses(span.name);
+  // An interaction span (a click, a key press) is named after its element's selector, labels included.
+  const op = span.attributes?.["sentry.op"];
+  const interaction = typeof op === "string" && op.startsWith("ui.");
+  span.name = scrubAddresses(interaction ? stripElementLabels(span.name) : span.name);
   if (span.attributes) {
     for (const key of Object.keys(span.attributes)) {
+      const value = span.attributes[key];
       if (CONTENT_ATTRIBUTE.test(key)) delete span.attributes[key];
-      else span.attributes[key] = scrubValue(key, span.attributes[key]);
+      else if (typeof value === "string" && (interaction || /element|selector|component/i.test(key))) span.attributes[key] = scrubAddresses(stripElementLabels(value));
+      else span.attributes[key] = scrubValue(key, value);
     }
   }
   return span;
@@ -180,8 +194,32 @@ const NO_REPLAY = [/^\/+tutor(\/|$)/i, /^\/+admin(\/|$)/i, /^\/+account\/+(scan|
  */
 export function replayAllowed(pathOrUrl: string): boolean {
   if (mayCarryQrToken(pathOrUrl)) return false;
-  let path = pathOrUrl;
-  try { path = new URL(pathOrUrl, "https://unicalearning.com").pathname; } catch { return false; }
-  try { path = decodeURIComponent(path); } catch { return false; }
+  let parsed: URL;
+  try { parsed = new URL(pathOrUrl, "https://unicalearning.com"); } catch { return false; }
+  // A replay keeps the full address of each page it saw (Sentry does not clean it), so a page whose address holds
+  // anything after the path (a sign-in or unsubscribe token, a Stripe session, a report or reminder id) is not
+  // recorded. Only ad tags (utm_*) may be there.
+  if (parsed.hash && parsed.hash !== "#") return false;
+  for (const key of parsed.searchParams.keys()) if (!/^utm_[a-z]+$/.test(key)) return false;
+  let path: string;
+  try { path = decodeURIComponent(parsed.pathname); } catch { return false; }
   return !NO_REPLAY.some((rule) => rule.test(path));
+}
+
+/**
+ * A replay recording event with each address in its data cleaned (scrubUrl). Only the page-change events (meta, type
+ * 4) and the breadcrumb events (custom, type 5) hold addresses: the page snapshots are masked and are not walked.
+ */
+export function scrubRecordingEvent<T extends { type?: unknown; data?: unknown }>(event: T): T {
+  if (event.type !== 4 && event.type !== 5) return event;
+  const walk = (value: unknown, depth: number): unknown => {
+    if (typeof value === "string") return /^(https?:\/\/|\/)/.test(value) ? scrubUrl(value) : value;
+    if (depth > 6 || !value || typeof value !== "object") return value;
+    if (Array.isArray(value)) return value.map((v) => walk(v, depth + 1));
+    const record = value as Record<string, unknown>;
+    for (const key of Object.keys(record)) record[key] = key === "message" && typeof record[key] === "string" ? stripElementLabels(record[key] as string) : walk(record[key], depth + 1);
+    return record;
+  };
+  event.data = walk(event.data, 0);
+  return event;
 }

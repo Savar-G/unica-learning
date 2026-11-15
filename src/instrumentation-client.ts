@@ -4,13 +4,14 @@
 //
 // Sentry (docs/sentry.md): errors and a tenth of page loads' traces go to Sentry on every page, cleaned of tokens,
 // queries and personal values (src/lib/sentry-scrub.ts); they set no cookie and hold no identifier. Session Replay
-// loads only after the visitor accepts optional cookies, and never on the child's, scan or admin pages
-// (src/lib/sentry-replay.ts).
+// loads only after the visitor accepts optional cookies, and never on the child's, scan or admin pages or an address
+// with a query (src/lib/sentry-replay.ts).
 import * as Sentry from "@sentry/nextjs";
 import { getAnalytics } from "@/lib/analytics";
 import { getConsent, subscribeConsent } from "@/lib/consent";
 import { sharedOptions } from "@/lib/sentry-options";
 import { replaySwitch, type ReplayHandle } from "@/lib/sentry-replay";
+import { scrubRecordingEvent } from "@/lib/sentry-scrub";
 
 getAnalytics()?.begin();
 
@@ -24,7 +25,7 @@ const options = sharedOptions(env, "browser");
 const replay = replaySwitch({
   consented: () => getConsent() === "granted",
   subscribe: subscribeConsent,
-  path: () => window.location.pathname,
+  href: () => window.location.href,
   load: async () => {
     // A separate chunk: visitors who never accept never download the replay code.
     const { replayIntegration } = await import("@sentry/replay");
@@ -34,8 +35,10 @@ const replay = replaySwitch({
       blockAllMedia: true,
       // No request or response details, headers or bodies (the default, kept explicit).
       networkDetailAllowUrls: [],
-      // A last check when an error happens: the page it happened on must still allow a replay.
-      beforeErrorSampling: () => replay.mayAttach(),
+      // Sentry would turn the buffer into a whole-visit recording on an error; the switch sends one minute itself.
+      beforeErrorSampling: () => replay.onError(),
+      // Page addresses inside the recording lose their query, tokens and element labels.
+      beforeAddRecordingEvent: (event) => scrubRecordingEvent(event),
     });
     Sentry.addIntegration(integration);
     return integration as unknown as ReplayHandle;
@@ -45,9 +48,10 @@ const replay = replaySwitch({
 if (options.enabled) {
   Sentry.init({
     ...options,
-    // Only on error, half of the time; never a whole visit.
+    // Never a whole visit. The error rate keeps the buffer on; which errors send it is REPLAY_ERROR_SAMPLE
+    // (src/lib/sentry-replay.ts).
     replaysSessionSampleRate: 0,
-    replaysOnErrorSampleRate: 0.5,
+    replaysOnErrorSampleRate: 1,
     // Traces join the server's only on our own site.
     tracePropagationTargets: [/^\//, /^https:\/\/unicalearning\.com\//],
   });
@@ -58,5 +62,5 @@ if (options.enabled) {
 export function onRouterTransitionStart(href: string, navigationType: string) {
   if (!options.enabled) return;
   Sentry.captureRouterTransitionStart(href, navigationType);
-  void replay.check(new URL(href, window.location.href).pathname);
+  void replay.check(new URL(href, window.location.href).href);
 }

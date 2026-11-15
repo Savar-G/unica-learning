@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { replayAllowed, scrubEvent, scrubLog, scrubSpan, scrubText, scrubUrl, type ScrubbableEvent } from "@/lib/sentry-scrub";
+import { replayAllowed, scrubEvent, scrubLog, scrubRecordingEvent, scrubSpan, scrubText, scrubUrl, stripElementLabels, type ScrubbableEvent } from "@/lib/sentry-scrub";
 
 const QR = "/tutor/p/AbCdEf0123456789xyz";
 
@@ -105,10 +105,43 @@ describe("scrubSpan", () => {
 });
 
 describe("replayAllowed", () => {
-  it.each(["/", "/pricing", "/start", "/sign-in", "/account", "/account/plan", "/account/progress/abc", "/thank-you"])("records on %s", (path) => {
+  it.each(["/", "/pricing", "/start", "/sign-in", "/account", "/account/plan", "/account/progress/abc", "/thank-you", "/?utm_source=meta&utm_medium=paid", "https://unicalearning.com/pricing"])("records on %s", (path) => {
     expect(replayAllowed(path)).toBe(true);
   });
-  it.each(["/tutor", QR, "/TUTOR/p/x", "/%74utor", "/admin", "/admin/dashboard", "/account/test/abc", "/account/start/abc", "/account/scan", "/account/scan/results", "/sign-in?next=%2Ftutor%2Fp%2Fabc"])("never records on %s", (path) => {
+  it.each(["/tutor", QR, "/TUTOR/p/x", "/%74utor", "/admin", "/admin/dashboard", "/account/test/abc", "/account/start/abc", "/account/scan", "/account/scan/results", "/sign-in?next=%2Ftutor%2Fp%2Fabc",
+    "/sign-in/link?t=abc", "/unsubscribe?token=x", "/thank-you?session_id=cs_1", "/account?reminder=r1", "/report?src=email", "/?gclid=x", "/pricing#plan"])("never records on %s", (path) => {
     expect(replayAllowed(path)).toBe(false);
+  });
+});
+
+const selector = 'div.shell > button.pill[aria-label="Iris. Change child"][title=\'Iris\'][data-x=y]';
+
+describe("element labels", () => {
+  it("strips attribute values and keeps tag, id and classes", () => {
+    expect(stripElementLabels(selector)).toBe("div.shell > button.pill");
+  });
+  it("removes a name from a click breadcrumb", () => {
+    const out = scrubEvent({ breadcrumbs: [{ category: "ui.click", message: selector }] });
+    expect(JSON.stringify(out)).not.toContain("Iris");
+  });
+  it("removes a name from an interaction span and keeps a route name with brackets", () => {
+    expect(scrubSpan({ name: selector, attributes: { "sentry.op": "ui.interaction.click" } }).name).toBe("div.shell > button.pill");
+    expect(scrubSpan({ name: "GET /account/progress/[child]", attributes: { "sentry.op": "http.server" } }).name).toBe("GET /account/progress/[child]");
+  });
+});
+
+describe("scrubRecordingEvent", () => {
+  it("cleans page addresses and click labels in replay meta and breadcrumb events", () => {
+    const meta = scrubRecordingEvent({ type: 4, data: { href: "https://unicalearning.com/sign-in/link?t=secret", width: 390 } });
+    expect(meta.data).toEqual({ href: "https://unicalearning.com/sign-in/link", width: 390 });
+    const crumb = scrubRecordingEvent({ type: 5, data: { tag: "breadcrumb", payload: { category: "ui.click", message: selector, data: { from: QR, to: "/account?reminder=r1" } } } });
+    const text = JSON.stringify(crumb);
+    expect(text).not.toContain("Iris");
+    expect(text).not.toContain("reminder=");
+    expect(text).not.toContain("AbCdEf0123456789xyz");
+  });
+  it("leaves page snapshots alone", () => {
+    const snapshot = { type: 2, data: { node: { href: "/x?y=1" } } };
+    expect(scrubRecordingEvent(snapshot)).toEqual({ type: 2, data: { node: { href: "/x?y=1" } } });
   });
 });

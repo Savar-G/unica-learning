@@ -15,6 +15,9 @@ export async function register() {
     // print counts that the team digest already sends.
     integrations: [Sentry.consoleLoggingIntegration({ levels: ["warn", "error"] })],
   });
+  // AI requests get their spans and metrics (src/lib/ai-observe-sentry.ts).
+  const [{ setAiObserver }, { sentryAiObserver }] = await Promise.all([import("@/lib/ai-observe"), import("@/lib/ai-observe-sentry")]);
+  setAiObserver(sentryAiObserver);
 }
 
 // Errors of Server Components, route handlers, server actions and the proxy.

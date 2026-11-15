@@ -17,7 +17,7 @@ USD 5,000 in credits, which end on 2027-11-15.
 | Traces | Every server request (100%), a tenth of browser page loads | `tracesSampleRate` in `sharedOptions`. Spans stream in batches (SDK 11). |
 | Logs | Server `console.warn` and `console.error` | `consoleLoggingIntegration` in `src/instrumentation.ts`. `info` and `log` lines stay in Vercel only. |
 | Cron monitors | 8 scheduled routes, the retention workflow, the Mac workbook worker | Below |
-| AI monitoring | Every OpenRouter request | `src/lib/ai-observe.ts`: one `gen_ai.chat` span per request with the feature (`gen_ai.agent.name`), model, tokens and cost; metrics `ai.cost` (USD), `ai.tokens`, `ai.failures`. |
+| AI monitoring | Every OpenRouter request on the Next.js server | `src/lib/ai-observe-sentry.ts`, registered by `src/instrumentation.ts` through `setAiObserver` (`src/lib/ai-observe.ts` imports no Sentry, so the Maya voice worker and the Mac worker build without the SDK): one `gen_ai.chat` span per request with the feature (`gen_ai.agent.name`), model, tokens and cost; metrics `ai.cost` (USD), `ai.tokens`, `ai.failures`. |
 | Uptime | `https://unicalearning.com/`, `/start` | Uptime monitors in Sentry, every 5 minutes. |
 | Session Replay | Browser, on error only | `src/lib/sentry-replay.ts`, below |
 
@@ -38,11 +38,15 @@ Children use this site, so Sentry gets no personal values and no child work. Two
    - Emails, bearer values and long tokens in any text become `[email]`, `[token]`.
    - Errors keep no request body, cookie, query, private header, stack frame variable or console breadcrumb.
      The user keeps only our own id, never an email, a name or an IP address.
+   - Click breadcrumbs and interaction spans lose the attribute values of the clicked element
+     (`stripElementLabels`): an `aria-label` such as "Iris. Change child" holds a child's name.
    - Logs keep the cleaned message only, not the printed arguments.
    - Spans lose AI input and output, database statements, bodies and headers.
 
-The browser sends to Sentry through `/monitoring` on our own site (`tunnelRoute` and `src/app/sentry-tunnel/route.ts`).
-The tunnel sends only the payload, so Sentry never sees a visitor's IP address, and ad blockers do not drop error reports.
+The browser sends to Sentry through `/monitoring` on our own site (`tunnelRoute` and `src/app/sentry-tunnel/route.ts`),
+so ad blockers do not drop error reports. Sentry's own tunnel handler forwards the visitor's IP address and the
+`Referer` (on the desk, an address with a QR token), so the route first rebuilds the request with the body, the content
+headers and the user agent only (`bareRequest` in `src/lib/sentry-tunnel.ts`).
 
 Errors and traces from the browser set no cookie and hold no identifier, so they do not wait for the cookie choice.
 
@@ -51,8 +55,15 @@ Errors and traces from the browser set no cookie and hold no identifier, so they
 - Loads only after the visitor accepts optional cookies (`src/lib/consent.ts`), as PostHog does.
 - Never records the child's pages, the scan pages, or the admin area (`replayAllowed`: `/tutor`, `/account/test`,
   `/account/start`, `/account/scan`, `/admin`, and any address that may carry a QR token).
-- Keeps only the last minute in the browser and sends it only when an error happens, for half of the errors
-  (`replaysOnErrorSampleRate: 0.5`). It never records a whole visit (`replaysSessionSampleRate: 0`).
+- Never records a page whose address has a query or a hash, except `utm_*` ad tags. A replay keeps each page's full
+  address, and our addresses can hold sign-in and unsubscribe tokens, Stripe sessions and report or reminder ids.
+  `beforeAddRecordingEvent` also cleans every address and click label in the recording (`scrubRecordingEvent`).
+- Once a blocked page shows, the replay stays off until the next full page load. A client-side move away from a
+  blocked page starts while that page is still on screen, so a new buffer would start with it.
+- Keeps only the last minute in the browser. On an error, half of the time (`REPLAY_ERROR_SAMPLE`), it sends that
+  minute once and starts a new empty buffer. Sentry's own error path would turn the buffer into a recording of the
+  rest of the visit, so `beforeErrorSampling` always declines and `src/lib/sentry-replay.ts` sends the buffer itself.
+  `replaysSessionSampleRate` is 0.
 - Masks all text and inputs, and blocks images, video and canvas. No network details.
 - A move to a blocked page, or a withdrawn consent, stops it at once and sends nothing it held (`stop({ flush: false })`).
 
