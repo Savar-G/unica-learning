@@ -35,6 +35,13 @@ describe("the claim kind: fit", () => {
     expect(claimKind.steps(held("SPOT_MUL")).at(-1)!.work).toContain("the answer is no, and the fix is 4480");
     expect(claimKind.steps(held("COMPARE_FRACTIONS")).at(-1)!.work).toContain("5/6 is greater than 3/6");
   });
+  it("asks each step's question in a closed plain form", () => {
+    expect(claimKind.stepQuestion(held("CLAIM_GT"), ["r1-ones"])).toBe("What is 6 × 4?");
+    expect(claimKind.stepQuestion(held("CLAIM_GT"), ["r1-ones", "r1-tens", "r1-hundreds", "r1-thousands"])).toBe("Is 1440 greater than 1436?");
+    expect(claimKind.stepQuestion(held("CLAIM_DIV"), ["tens", "ones"])).toBe("Is 7 the same as 6?");
+    expect(claimKind.stepQuestion(held("COMPARE_AREAS"), ["left-area", "right-area"])).toBe("Which is bigger, 42 or 30?");
+    expect(claimKind.stepQuestion(held("SPOT_PVV"), [])).toBe("What is the digit in the ten thousands place?");
+  });
   it("gives the missing number's frame as a note, not a step", () => {
     const pkg = held("SPOT_MISS");
     expect(claimKind.steps(pkg).map((s) => s.id)).not.toContain("frame");
@@ -112,9 +119,7 @@ describe("the claim kind: the stance (through the text adapter)", () => {
       }
     });
   }
-  // Core gap (reported to the Maya lead): a bare comparison word ("false" on "True or false: 5/6 > 3/6.") sets no stance
-  // yet, so a "yes" to it passes. This test fails today on purpose; when the core sets the stance, drop .fails.
-  it.fails("never says \"yes\" to a bare wrong comparison word (core gap)", async () => {
+  it("never says \"yes\" to a bare wrong comparison word", async () => {
     let now = Date.UTC(2026, 10, 15);
     const model = conversationalFake({ answer: () => reply("Yes, that's right! Well done.", "guide") });
     const session = createTextSession({ callId: "bare-cmp", package: FIX.COMPARE_FRACTIONS, model, clock: () => (now += 500), tutor: true, reviewer: fakeTalkReviewer() });

@@ -363,16 +363,32 @@ function streamScope(pkg: OperationPackage): { numbers: number[]; expressions: s
   return { numbers, expressions: [...new Set(expressions)] };
 }
 
-/** A question in the core's closed plain form ("What is 12 plus 8?"); the core's own line covers the rest. */
-const PLAIN_QUESTION = /^What is \d{1,3}(?: (?:plus|minus) \d{1,3})+\?$/;
+/** The first whole-number operation of a step's text ("Multiply the tens: 6 × 4 + 2 = 14" gives "6 × 4 + 2"), or null. */
+const OPERATION_IN = /(\d+(?:\s*[+\-−×÷]\s*\d+)+)\s*=/;
 
+/**
+ * The next open step's question in a closed plain form (the core's PLAIN_FORMS): "What is 6 × 4 + 2?", "Is 1440
+ * greater than 1436?", "Which is bigger, 42 or 30?", "What is the digit in the thousands place?". Null for a step with
+ * no such form (a carried digit written, a count of outcomes): then the core's own line is used.
+ */
 function stepQuestion(pkg: OperationPackage, done: readonly string[]): string | null {
   const next = workSteps(pkg).find((st) => !done.includes(st.id));
   if (!next) return null;
-  let q: string | null = null;
-  if (next.kind === "add-column") { const t = [...next.digits, ...(next.carryIn ? [next.carryIn] : [])]; if (t.length > 1) q = `What is ${t.join(" plus ")}?`; }
-  if (next.kind === "operate" && (next.op === "+" || next.op === "−")) q = `What is ${next.left} ${next.op === "+" ? "plus" : "minus"} ${next.right}?`;
-  return q && PLAIN_QUESTION.test(q) ? q : null;
+  switch (next.kind) {
+    case "claim-compare":
+      if (!Number.isInteger(next.value) || !Number.isInteger(next.shown)) return null;
+      return next.relation === "equal" ? `Is ${next.value} the same as ${next.shown}?` : `Is ${next.value} ${next.relation === "greater" ? "greater" : "less"} than ${next.shown}?`;
+    case "comparison":
+      return `Which is bigger, ${next.left} or ${next.right}?`;
+    case "read-digit":
+      return `What is the digit in the ${next.place} place?`;
+    case "comparison-count":
+      return null;
+    default: {
+      const m = OPERATION_IN.exec(workText(pkg, next) ?? "");
+      return m ? `What is ${m[1].replace(/\s+/g, " ")}?` : null;
+    }
+  }
 }
 
 /** The true integer equations of the work, as a note may show them. */
