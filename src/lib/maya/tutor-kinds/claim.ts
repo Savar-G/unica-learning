@@ -190,10 +190,38 @@ function exprValue(raw: string): number | null {
 
 const close = (a: number, b: number) => Math.abs(a - b) < 1e-9;
 
+const SMALL_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
+const TENS_WORDS = ["twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+const NUMBER_WORD = String.raw`(?:${[...SMALL_WORDS, ...TENS_WORDS, "hundred", "thousand", "million"].join("|")})`;
+/** A run of number words: "one thousand four hundred forty", "forty-two", "two hundred and six". */
+const NUMBER_WORDS = new RegExp(String.raw`\b${NUMBER_WORD}(?:(?:\s+and\s+|[\s-]+)${NUMBER_WORD})*\b`, "gi");
+
+/** A run of number words as its value, or null when the words do not make one number. */
+function wordsValue(run: string): number | null {
+  let total = 0;
+  let part = 0;
+  let last: "unit" | "ten" | "hundred" | "big" | null = null;
+  for (const w of run.toLowerCase().split(/(?:\s+and\s+|[\s-]+)/)) {
+    const small = SMALL_WORDS.indexOf(w);
+    const tens = TENS_WORDS.indexOf(w);
+    if (small !== -1) { if (last === "unit" || (last === "ten" && small >= 10)) return null; part += small; last = "unit"; }
+    else if (tens !== -1) { if (last === "unit" || last === "ten") return null; part += (tens + 2) * 10; last = "ten"; }
+    else if (w === "hundred") { if (part === 0 || part >= 100) return null; part *= 100; last = "hundred"; }
+    else if (w === "thousand" || w === "million") { if (part === 0) return null; total += part * (w === "thousand" ? 1000 : 1_000_000); part = 0; last = "big"; }
+    else return null;
+  }
+  return total + part;
+}
+
+/** The sentence with every number said in words written in digits; a run that is no number is left as words. */
+function digitsFor(sentence: string): string {
+  return sentence.replace(NUMBER_WORDS, (run) => { const v = wordsValue(run); return v === null ? run : String(v); });
+}
+
 /** The false comparisons of numbers in a sentence, and those code cannot read (fail closed). */
 function comparisonProblems(sentence: string): string[] {
   const problems: string[] = [];
-  const text = sentence.replace(/(\d),(?=\d{3}\b)/g, "$1");
+  const text = sentence;
   for (const m of text.matchAll(COMPARE_WORDS)) {
     const [a, b] = [exprValue(m[1]), exprValue(m[4])];
     if (a === null || b === null) { problems.push(`code cannot read the comparison "${m[0]}"`); continue; }
@@ -211,20 +239,40 @@ function comparisonProblems(sentence: string): string[] {
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+/**
+ * The word readers: the answer word said ("the answer is no", "we circle yes", "it's true"), the truth of the claim or
+ * the answer given or the person ("Noah is not right"), and a closed comparison's word ("even is more likely", with
+ * any likelihood words after it). Nothing else about the answer is read.
+ */
+function wordReaders(pkg: OperationPackage): [RegExp, RegExp, RegExp | null] {
+  const alt = choiceWords(pkg).map(escape).join("|");
+  const said = new RegExp(String.raw`\b(?:(?:the|your|our)\s+(?:right\s+|final\s+)?(?:answer|word)\s+(?:is|was)|(?:we|you|i)\s+(?:circle|tick|pick|choose|write)|circle|tick|it'?s|it\s+is|so)\s+(?:the\s+word\s+)?(not\s+)?(${alt})\b(?!\s+(?:or|is|are)\b)`, "g");
+  const person = personOf(pkg)?.toLowerCase();
+  const subjects = [String.raw`the (?:claim|statement|sentence)`, String.raw`the answer given`, String.raw`the given answer`, ...(person ? [escape(person)] : [])].join("|");
+  const truth = new RegExp(String.raw`\b(${subjects})\s+(?:is|was)\s+(not\s+)?(true|false|right|correct|wrong)\b`, "g");
+  const cmp = comparisonOp(pkg);
+  const pick = cmp && cmp.context !== "same-denominator" && cmp.context !== "equal-pieces"
+    ? new RegExp(String.raw`\b(${comparisonWords(cmp).map((w) => w.toLowerCase()).sort((x, y) => y.length - x.length).map(escape).join("|")})(?:\s+(?:squares|counters|numbers?))?\s+(?:is|are)\s+(not\s+)?(?:the\s+)?(?:more|most|less|least|bigger|biggest|smaller|smallest|larger|greater)(?:\s+likely)?\b`, "g")
+    : null;
+  return [said, truth, pick];
+}
+
+/** Every reader of a sentence, for the unread check. */
+function readersOf(pkg: OperationPackage): RegExp[] {
+  const [said, truth, pick] = wordReaders(pkg);
+  return [COMPARE_WORDS, COMPARE_SIGNS, ...(pick ? [pick] : []), said, truth];
+}
+
 /** The false claims of the answer word, the claim's truth, or who is right. */
 function wordProblems(pkg: OperationPackage, sentence: string): string[] {
   const word = answerWord(pkg);
   if (word === null) return ["code cannot read this question's answer"];
   const problems: string[] = [];
   const s = sentence.toLowerCase().replace(/[’]/g, "'");
-  const words = new Set<string>([word]);
   const claim = sessionClaim(pkg);
   const cmp = comparisonOp(pkg);
-  if (claim) for (const c of claim.choices) words.add(c);
-  if (cmp) for (const c of comparisonWords(cmp)) words.add(c.toLowerCase());
-  const alt = [...words].sort((x, y) => y.length - x.length).map(escape).join("|");
+  const [said, truth, pick] = wordReaders(pkg);
   // "the answer is no", "we circle yes", "you tick no", "it's true", "the word is false", "the right answer is 7 by 6".
-  const said = new RegExp(String.raw`\b(?:(?:the|your|our)\s+(?:right\s+|final\s+)?(?:answer|word)\s+(?:is|was)|(?:we|you|i)\s+(?:circle|tick|pick|choose|write)|circle|tick|it'?s|it\s+is|so)\s+(?:the\s+word\s+)?(not\s+)?(${alt})\b(?!\s+or\b)`, "g");
   for (const m of s.matchAll(said)) {
     // "Circle yes or no" names both choices; a question asks, it claims nothing.
     if (/\?\s*$/.test(s) || /\bor\b/.test(s.slice(m.index! + m[0].length, m.index! + m[0].length + 4))) continue;
@@ -232,9 +280,6 @@ function wordProblems(pkg: OperationPackage, sentence: string): string[] {
   }
   // "the claim is true", "the answer given is not right", "Noah is right".
   const holds = claim ? claim.holds : cmp ? word === comparisonWords(cmp)[0] && (cmp.context === "same-denominator" || cmp.context === "equal-pieces") : null;
-  const person = personOf(pkg)?.toLowerCase();
-  const subjects = [String.raw`the (?:claim|statement|sentence)`, String.raw`the answer given`, String.raw`the given answer`, ...(person ? [escape(person)] : [])].join("|");
-  const truth = new RegExp(String.raw`\b(${subjects})\s+(?:is|was)\s+(not\s+)?(true|false|right|correct|wrong)\b`, "g");
   for (const m of s.matchAll(truth)) {
     if (holds === null) { problems.push(`code cannot check "${m[0]}" on this question`); continue; }
     if (/\?\s*$/.test(s)) continue;
@@ -243,10 +288,9 @@ function wordProblems(pkg: OperationPackage, sentence: string): string[] {
   }
   // A closed comparison's words: "even is more likely", "7 by 6 is bigger", "red is less likely".
   if (cmp && cmp.context !== "same-denominator" && cmp.context !== "equal-pieces") {
-    const [w0, w1] = comparisonWords(cmp).map((w) => w.toLowerCase());
+    const [w0] = comparisonWords(cmp).map((w) => w.toLowerCase());
     const [left, right] = comparisonSides(cmp);
-    const pick = new RegExp(String.raw`\b(${[w0, w1].sort((x, y) => y.length - x.length).map(escape).join("|")})(?:\s+(?:squares|counters|numbers?))?\s+(?:is|are)\s+(not\s+)?(?:the\s+)?(?:more|most|less|least|bigger|biggest|smaller|smallest|larger|greater)\b`, "g");
-    for (const m of s.matchAll(pick)) {
+    for (const m of s.matchAll(pick!)) {
       if (/\?\s*$/.test(s)) continue;
       const up = /\b(?:more|most|bigger|biggest|larger|greater)\b/.test(m[0].slice(m[1].length));
       const isLeft = m[1] === w0;
@@ -257,8 +301,50 @@ function wordProblems(pkg: OperationPackage, sentence: string): string[] {
   return problems;
 }
 
+/** Words that make a comparison or a likelihood claim. A sentence that keeps one after the readers is not read. */
+const COMPARE_CUE = /\b(?:than|likely|likelier|unlikely|probable|chance|chances|greater|greatest|bigger|biggest|smaller|smallest|larger|largest|fewer|fewest)\b|[<>]/i;
+/** Words that make a claim about the answer word. */
+const ANSWER_CUE = /\b(?:answer|answers|word|words|circle|circles|circled|tick|ticks|ticked|choose|chose|pick|picks|picked|mark|marks)\b/i;
+
+/** The choice words of this question, in lower case, longest first. */
+function choiceWords(pkg: OperationPackage): string[] {
+  const words = new Set<string>();
+  const w = answerWord(pkg);
+  if (w) words.add(w);
+  const claim = sessionClaim(pkg);
+  if (claim) for (const c of claim.choices) words.add(c);
+  const cmp = comparisonOp(pkg);
+  if (cmp) for (const c of comparisonWords(cmp)) words.add(c.toLowerCase());
+  for (const c of ["yes", "no", "true", "false"]) words.add(c);
+  return [...words].sort((x, y) => y.length - x.length);
+}
+
+/**
+ * Fail closed (review of #1013): a statement that still holds a comparison word or an answer word with a choice after
+ * every reader took what it reads is a claim code cannot check ("Red is more likely than the other colours together",
+ * "The answer is definitely no"). A question claims nothing.
+ */
+function unreadProblems(pkg: OperationPackage, sentence: string, readers: readonly RegExp[]): string[] {
+  const s = sentence.toLowerCase().replace(/[’]/g, "'");
+  if (/\?\s*$/.test(s)) return [];
+  const choices = choiceWords(pkg).map(escape).join("|");
+  let rest = s;
+  for (const re of readers) rest = rest.replace(new RegExp(re.source, re.flags.includes("g") ? re.flags : `${re.flags}g`), " ");
+  // "yes or no", "true or false", "7 by 6 or 5 by 6": both choices named, no claim.
+  rest = rest.replace(new RegExp(String.raw`\b(?:${choices})\s*,?\s+or\s+(?:${choices})\b`, "g"), " ");
+  const problems: string[] = [];
+  const answerUnread = ANSWER_CUE.test(rest) && new RegExp(String.raw`\b(?:${choices})\b`).test(rest);
+  // A closed comparison's own words ("less than 2") are names, not claims: the readers above read their claims.
+  const cmp = comparisonOp(pkg);
+  if (cmp) for (const w of comparisonWords(cmp)) rest = rest.split(w.toLowerCase()).join(" ");
+  if (COMPARE_CUE.test(rest)) problems.push(`code cannot read the comparison in "${sentence.trim()}": say it as "A is greater than B" with numbers`);
+  if (answerUnread) problems.push(`code cannot read the answer in "${sentence.trim()}": say "the answer is ..." with the word alone`);
+  return problems;
+}
+
 function claimProblems(pkg: OperationPackage, sentence: string): string[] {
-  return [...comparisonProblems(sentence), ...wordProblems(pkg, sentence)];
+  const text = digitsFor(sentence).replace(/(\d),(?=\d{3}\b)/g, "$1");
+  return [...comparisonProblems(text), ...wordProblems(pkg, text), ...unreadProblems(pkg, text, readersOf(pkg))];
 }
 
 /** The core's math readers and this kind's: true for a text with only true math code can read. */
@@ -276,6 +362,9 @@ function trueMath(pkg: OperationPackage, text: string): boolean {
 function fitsShape(pkg: OperationPackage): boolean {
   const word = answerWord(pkg);
   if (word === null) return false;
+  // Review of #1013: the core's word reader does not read "I tick yes", so a question the child answers with a tick
+  // (spot the error) keeps the controller until it does.
+  if (pkg.item?.regions.some((r) => r.kind === "choice" && r.mark === "tick")) return false;
   if (!pkg.steps.every((s) => s.kind === "result" || WORK_KINDS.has(s.kind) || FRAME_KINDS.has(s.kind))) return false;
   const claim = claimStepOf(pkg);
   const compare = compareStepOf(pkg);
@@ -315,7 +404,10 @@ function fits(pkg: OperationPackage): boolean {
 }
 
 function workValues(pkg: OperationPackage): number[] {
-  return [...new Set(pkg.steps.flatMap(stepValues))];
+  // A rectangle's sides are no wrong answer: "7 by 6" names the bigger rectangle (review of #1013).
+  const op = pkg.operation;
+  const sides = op.kind === "comparison" && op.context === "rectangle-areas" ? [...op.operands] : [];
+  return [...new Set([...pkg.steps.flatMap(stepValues), ...sides])];
 }
 
 function numberMeaning(pkg: OperationPackage, n: number): string {
