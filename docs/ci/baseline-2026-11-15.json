@@ -1,0 +1,749 @@
+{
+  "runCount": 150,
+  "jobCount": 742,
+  "from": "2026-11-15T02:54:39Z",
+  "to": "2026-11-15T18:50:29Z",
+  "conclusions": {
+    "cancelled": 45,
+    "failure": 5,
+    "null": 3,
+    "success": 97
+  },
+  "events": {
+    "pull_request": 117,
+    "push": 33
+  },
+  "attempts": {
+    "1": 149,
+    "2": 1
+  },
+  "roundedRunnerMinutes": 5878,
+  "feedback": [
+    {
+      "event": "pull_request",
+      "conclusion": "success",
+      "n": 66,
+      "p50": 1127,
+      "p95": 1282
+    },
+    {
+      "event": "pull_request",
+      "conclusion": "failure",
+      "n": 4,
+      "p50": 814,
+      "p95": 1111
+    },
+    {
+      "event": "pull_request",
+      "conclusion": "cancelled",
+      "n": 44,
+      "p50": 655,
+      "p95": 1049
+    },
+    {
+      "event": "push",
+      "conclusion": "success",
+      "n": 31,
+      "p50": 1162,
+      "p95": 1279
+    },
+    {
+      "event": "push",
+      "conclusion": "failure",
+      "n": 1,
+      "p50": 1184,
+      "p95": 1184
+    },
+    {
+      "event": "push",
+      "conclusion": "cancelled",
+      "n": 0,
+      "p50": null,
+      "p95": null
+    }
+  ],
+  "jobs": [
+    {
+      "name": "Maya behaviour and word limits",
+      "event": "pull_request",
+      "conclusion": "cancelled",
+      "count": 4,
+      "waiting": {
+        "n": 4,
+        "p50": 1,
+        "p95": 2
+      },
+      "setup": {
+        "n": 3,
+        "p50": 37,
+        "p95": 39
+      },
+      "running": {
+        "n": 3,
+        "p50": 158,
+        "p95": 179
+      },
+      "cleanup": {
+        "n": 3,
+        "p50": 2,
+        "p95": 2
+      },
+      "duration": {
+        "n": 4,
+        "p50": 143,
+        "p95": 220
+      }
+    },
+    {
+      "name": "Maya behaviour and word limits",
+      "event": "pull_request",
+      "conclusion": "success",
+      "count": 112,
+      "waiting": {
+        "n": 112,
+        "p50": 2,
+        "p95": 3
+      },
+      "setup": {
+        "n": 112,
+        "p50": 33,
+        "p95": 38
+      },
+      "running": {
+        "n": 112,
+        "p50": 150,
+        "p95": 203
+      },
+      "cleanup": {
+        "n": 112,
+        "p50": 3,
+        "p95": 4
+      },
+      "duration": {
+        "n": 112,
+        "p50": 185,
+        "p95": 243
+      }
+    },
+    {
+      "name": "Maya behaviour and word limits",
+      "event": "push",
+      "conclusion": "success",
+      "count": 33,
+      "waiting": {
+        "n": 33,
+        "p50": 2,
+        "p95": 2
+      },
+      "setup": {
+        "n": 33,
+        "p50": 31,
+        "p95": 41
+      },
+      "running": {
+        "n": 33,
+        "p50": 147,
+        "p95": 202
+      },
+      "cleanup": {
+        "n": 33,
+        "p50": 2,
+        "p95": 3
+      },
+      "duration": {
+        "n": 33,
+        "p50": 180,
+        "p95": 246
+      }
+    },
+    {
+      "name": "checks",
+      "event": "pull_request",
+      "conclusion": "cancelled",
+      "count": 7,
+      "waiting": {
+        "n": 7,
+        "p50": 2,
+        "p95": 2
+      },
+      "setup": {
+        "n": 6,
+        "p50": 40,
+        "p95": 53
+      },
+      "running": {
+        "n": 6,
+        "p50": 172,
+        "p95": 275
+      },
+      "cleanup": {
+        "n": 6,
+        "p50": 2,
+        "p95": 4
+      },
+      "duration": {
+        "n": 7,
+        "p50": 213,
+        "p95": 332
+      }
+    },
+    {
+      "name": "checks",
+      "event": "pull_request",
+      "conclusion": "success",
+      "count": 109,
+      "waiting": {
+        "n": 108,
+        "p50": 2,
+        "p95": 2
+      },
+      "setup": {
+        "n": 109,
+        "p50": 46,
+        "p95": 53
+      },
+      "running": {
+        "n": 109,
+        "p50": 272,
+        "p95": 373
+      },
+      "cleanup": {
+        "n": 109,
+        "p50": 3,
+        "p95": 6
+      },
+      "duration": {
+        "n": 109,
+        "p50": 322,
+        "p95": 426
+      }
+    },
+    {
+      "name": "checks",
+      "event": "push",
+      "conclusion": "success",
+      "count": 33,
+      "waiting": {
+        "n": 33,
+        "p50": 2,
+        "p95": 2
+      },
+      "setup": {
+        "n": 33,
+        "p50": 45,
+        "p95": 53
+      },
+      "running": {
+        "n": 33,
+        "p50": 265,
+        "p95": 365
+      },
+      "cleanup": {
+        "n": 33,
+        "p50": 3,
+        "p95": 6
+      },
+      "duration": {
+        "n": 33,
+        "p50": 309,
+        "p95": 416
+      }
+    },
+    {
+      "name": "test",
+      "event": "pull_request",
+      "conclusion": "failure",
+      "count": 48,
+      "waiting": {
+        "n": 48,
+        "p50": 2,
+        "p95": 2
+      },
+      "setup": {
+        "n": 48,
+        "p50": 1,
+        "p95": 1
+      },
+      "running": {
+        "n": 48,
+        "p50": 0,
+        "p95": 2
+      },
+      "cleanup": {
+        "n": 48,
+        "p50": 2,
+        "p95": 3
+      },
+      "duration": {
+        "n": 48,
+        "p50": 3,
+        "p95": 4
+      }
+    },
+    {
+      "name": "test",
+      "event": "pull_request",
+      "conclusion": "success",
+      "count": 66,
+      "waiting": {
+        "n": 66,
+        "p50": 2,
+        "p95": 2
+      },
+      "setup": {
+        "n": 66,
+        "p50": 1,
+        "p95": 1
+      },
+      "running": {
+        "n": 66,
+        "p50": 0,
+        "p95": 2
+      },
+      "cleanup": {
+        "n": 66,
+        "p50": 2,
+        "p95": 3
+      },
+      "duration": {
+        "n": 66,
+        "p50": 3,
+        "p95": 4
+      }
+    },
+    {
+      "name": "test",
+      "event": "push",
+      "conclusion": "failure",
+      "count": 1,
+      "waiting": {
+        "n": 1,
+        "p50": 2,
+        "p95": 2
+      },
+      "setup": {
+        "n": 1,
+        "p50": 1,
+        "p95": 1
+      },
+      "running": {
+        "n": 1,
+        "p50": 0,
+        "p95": 0
+      },
+      "cleanup": {
+        "n": 1,
+        "p50": 2,
+        "p95": 2
+      },
+      "duration": {
+        "n": 1,
+        "p50": 3,
+        "p95": 3
+      }
+    },
+    {
+      "name": "test",
+      "event": "push",
+      "conclusion": "success",
+      "count": 31,
+      "waiting": {
+        "n": 31,
+        "p50": 2,
+        "p95": 3
+      },
+      "setup": {
+        "n": 31,
+        "p50": 1,
+        "p95": 1
+      },
+      "running": {
+        "n": 31,
+        "p50": 0,
+        "p95": 2
+      },
+      "cleanup": {
+        "n": 31,
+        "p50": 2,
+        "p95": 3
+      },
+      "duration": {
+        "n": 31,
+        "p50": 3,
+        "p95": 4
+      }
+    },
+    {
+      "name": "unit (1/2)",
+      "event": "pull_request",
+      "conclusion": "cancelled",
+      "count": 40,
+      "waiting": {
+        "n": 40,
+        "p50": 2,
+        "p95": 2
+      },
+      "setup": {
+        "n": 39,
+        "p50": 46,
+        "p95": 55
+      },
+      "running": {
+        "n": 39,
+        "p50": 590,
+        "p95": 1037
+      },
+      "cleanup": {
+        "n": 39,
+        "p50": 3,
+        "p95": 5
+      },
+      "duration": {
+        "n": 40,
+        "p50": 626,
+        "p95": 1019
+      }
+    },
+    {
+      "name": "unit (1/2)",
+      "event": "pull_request",
+      "conclusion": "failure",
+      "count": 3,
+      "waiting": {
+        "n": 3,
+        "p50": 2,
+        "p95": 2
+      },
+      "setup": {
+        "n": 3,
+        "p50": 39,
+        "p95": 43
+      },
+      "running": {
+        "n": 3,
+        "p50": 769,
+        "p95": 876
+      },
+      "cleanup": {
+        "n": 3,
+        "p50": 2,
+        "p95": 3
+      },
+      "duration": {
+        "n": 3,
+        "p50": 808,
+        "p95": 921
+      }
+    },
+    {
+      "name": "unit (1/2)",
+      "event": "pull_request",
+      "conclusion": null,
+      "count": 2,
+      "waiting": {
+        "n": 2,
+        "p50": 2,
+        "p95": 2
+      },
+      "setup": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "running": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "cleanup": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "duration": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      }
+    },
+    {
+      "name": "unit (1/2)",
+      "event": "pull_request",
+      "conclusion": "success",
+      "count": 71,
+      "waiting": {
+        "n": 70,
+        "p50": 2,
+        "p95": 2
+      },
+      "setup": {
+        "n": 71,
+        "p50": 46,
+        "p95": 55
+      },
+      "running": {
+        "n": 71,
+        "p50": 888,
+        "p95": 1210
+      },
+      "cleanup": {
+        "n": 71,
+        "p50": 3,
+        "p95": 5
+      },
+      "duration": {
+        "n": 71,
+        "p50": 934,
+        "p95": 1266
+      }
+    },
+    {
+      "name": "unit (1/2)",
+      "event": "push",
+      "conclusion": "failure",
+      "count": 1,
+      "waiting": {
+        "n": 1,
+        "p50": 2,
+        "p95": 2
+      },
+      "setup": {
+        "n": 1,
+        "p50": 49,
+        "p95": 49
+      },
+      "running": {
+        "n": 1,
+        "p50": 1125,
+        "p95": 1125
+      },
+      "cleanup": {
+        "n": 1,
+        "p50": 3,
+        "p95": 3
+      },
+      "duration": {
+        "n": 1,
+        "p50": 1177,
+        "p95": 1177
+      }
+    },
+    {
+      "name": "unit (1/2)",
+      "event": "push",
+      "conclusion": null,
+      "count": 1,
+      "waiting": {
+        "n": 1,
+        "p50": 1,
+        "p95": 1
+      },
+      "setup": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "running": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "cleanup": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "duration": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      }
+    },
+    {
+      "name": "unit (1/2)",
+      "event": "push",
+      "conclusion": "success",
+      "count": 31,
+      "waiting": {
+        "n": 31,
+        "p50": 2,
+        "p95": 3
+      },
+      "setup": {
+        "n": 31,
+        "p50": 47,
+        "p95": 58
+      },
+      "running": {
+        "n": 31,
+        "p50": 888,
+        "p95": 1220
+      },
+      "cleanup": {
+        "n": 31,
+        "p50": 3,
+        "p95": 5
+      },
+      "duration": {
+        "n": 31,
+        "p50": 942,
+        "p95": 1271
+      }
+    },
+    {
+      "name": "unit (2/2)",
+      "event": "pull_request",
+      "conclusion": "cancelled",
+      "count": 40,
+      "waiting": {
+        "n": 40,
+        "p50": 2,
+        "p95": 2
+      },
+      "setup": {
+        "n": 39,
+        "p50": 47,
+        "p95": 58
+      },
+      "running": {
+        "n": 39,
+        "p50": 596,
+        "p95": 961
+      },
+      "cleanup": {
+        "n": 39,
+        "p50": 3,
+        "p95": 5
+      },
+      "duration": {
+        "n": 40,
+        "p50": 625,
+        "p95": 991
+      }
+    },
+    {
+      "name": "unit (2/2)",
+      "event": "pull_request",
+      "conclusion": "failure",
+      "count": 5,
+      "waiting": {
+        "n": 5,
+        "p50": 2,
+        "p95": 3
+      },
+      "setup": {
+        "n": 5,
+        "p50": 41,
+        "p95": 46
+      },
+      "running": {
+        "n": 5,
+        "p50": 746,
+        "p95": 1061
+      },
+      "cleanup": {
+        "n": 5,
+        "p50": 2,
+        "p95": 5
+      },
+      "duration": {
+        "n": 5,
+        "p50": 788,
+        "p95": 1104
+      }
+    },
+    {
+      "name": "unit (2/2)",
+      "event": "pull_request",
+      "conclusion": null,
+      "count": 1,
+      "waiting": {
+        "n": 1,
+        "p50": 2,
+        "p95": 2
+      },
+      "setup": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "running": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "cleanup": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "duration": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      }
+    },
+    {
+      "name": "unit (2/2)",
+      "event": "pull_request",
+      "conclusion": "success",
+      "count": 70,
+      "waiting": {
+        "n": 69,
+        "p50": 2,
+        "p95": 3
+      },
+      "setup": {
+        "n": 70,
+        "p50": 43,
+        "p95": 51
+      },
+      "running": {
+        "n": 70,
+        "p50": 755,
+        "p95": 1109
+      },
+      "cleanup": {
+        "n": 70,
+        "p50": 3,
+        "p95": 5
+      },
+      "duration": {
+        "n": 70,
+        "p50": 799,
+        "p95": 1163
+      }
+    },
+    {
+      "name": "unit (2/2)",
+      "event": "push",
+      "conclusion": "success",
+      "count": 33,
+      "waiting": {
+        "n": 33,
+        "p50": 2,
+        "p95": 2
+      },
+      "setup": {
+        "n": 33,
+        "p50": 46,
+        "p95": 53
+      },
+      "running": {
+        "n": 33,
+        "p50": 852,
+        "p95": 1112
+      },
+      "cleanup": {
+        "n": 33,
+        "p50": 3,
+        "p95": 5
+      },
+      "duration": {
+        "n": 33,
+        "p50": 903,
+        "p95": 1166
+      }
+    }
+  ]
+}
