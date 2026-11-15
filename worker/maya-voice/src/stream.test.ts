@@ -191,6 +191,8 @@ async function voiceCall(options: { model: MayaModel; ackLimitMs?: number; speec
   let n = 0;
   const store = memoryCallStore({ testFamilies: [PARENT] });
   const seams: CallSeams = {
+    // These tests prove the controller's streaming path (D-341); the tutor core (D-345) does not stream yet.
+    tutor: false,
     store,
     connections: memoryConnectionLog(store, () => Date.now()),
     alerts: { send: async () => {}, list: async () => [] },

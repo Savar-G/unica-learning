@@ -29,6 +29,7 @@ import {
 import { stepText, valueText } from "@/lib/question-package";
 import type { TraceRefusal } from "@/lib/maya-trace";
 import { evaluateModelSteps } from "@/lib/maya/evaluate";
+import { isTutorBrief, tutorBriefParts, TUTOR_OUTPUT_SCHEMA, TUTOR_PROMPT } from "@/lib/maya/tutor-prompt";
 
 /** The version of the prompt and of the model input below. Raise it when either changes; every trace records it. */
 export const PROMPT_VERSION = "maya-text-chat-38";
@@ -393,6 +394,8 @@ export const CONVERSATION_EFFORT: "none" | "low" = "low";
 
 /** The version 3 output schema as sent to the model. */
 const outputSchema = MODEL_OUTPUT_SCHEMA as unknown as Record<string, unknown>;
+/** D-345: the tutor core's output schema. */
+const tutorSchema = TUTOR_OUTPUT_SCHEMA as unknown as Record<string, unknown>;
 
 /**
  * Conversational Maya through the AI client (OpenRouter, D-341): one strict structured-output request per turn, with
@@ -409,10 +412,12 @@ export function conversationalMayaModel(client: AiClient, options: { timeoutMs?:
         const both = AbortSignal.any([signal, limit]);
         // C1: the prompt and the stable part of the brief are cached by the provider (two breakpoints); what changes
         // with the turn comes after them.
-        const [stable, turn] = briefParts(input as TurnBrief);
+        // D-345: a tutor brief goes with the tutor's own prompt and schema.
+        const tutor = isTutorBrief(input);
+        const [stable, turn] = tutor ? tutorBriefParts(input) : briefParts(input as TurnBrief);
         const content: AiPart[] = stable ? [{ type: "text", text: stable, cache: true }, { type: "text", text: turn }] : [{ type: "text", text: turn }];
         return client.json(
-          { name: "maya_reply", system: CONVERSATION_PROMPT, cacheSystem: true, content, schema: outputSchema, effort: options.effort ?? CONVERSATION_EFFORT, maxTokens: 1_500, ...(onText ? { onText } : {}), ...(onCost ? { onCost } : {}) },
+          { name: "maya_reply", system: tutor ? TUTOR_PROMPT : CONVERSATION_PROMPT, cacheSystem: true, content, schema: tutor ? tutorSchema : outputSchema, effort: options.effort ?? CONVERSATION_EFFORT, maxTokens: 1_500, ...(onText ? { onText } : {}), ...(onCost ? { onCost } : {}) },
           both,
         );
       }),

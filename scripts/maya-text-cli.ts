@@ -19,6 +19,7 @@
 //   --real-clock             the real clock with a script, so the trace times each model call
 //   --legacy                 Maya's version 2 model (code-written lines), for a before-and-after comparison
 //   --effort <level>         none, minimal, low (default), medium or high: how much the model thinks first
+//   --tutor                  the tutor core (D-345, docs/maya-tutor.md), as on admin test calls
 //
 // Script lines: a child turn, or "/wait <seconds>" (the clock moves on and the pause policy runs), "/write start",
 // "/write done", "/quit" (the child hangs up: child_stopped). "#" starts a comment. With --script or piped input the
@@ -54,10 +55,12 @@ interface Options {
   legacy: boolean;
   /** How much the model thinks first (D-341 latency checks); default CONVERSATION_EFFORT. */
   effort: "none" | "minimal" | "low" | "medium" | "high" | null;
+  /** D-345: the tutor core. */
+  tutor: boolean;
 }
 
 function parse(argv: string[]): Options {
-  const o: Options = { question: "add-27-39", model: "fake", freeTalk: true, script: null, runner: "livekit", trace: null, seed: 1, name: null, list: false, realClock: false, legacy: false, effort: null };
+  const o: Options = { question: "add-27-39", model: "fake", freeTalk: true, script: null, runner: "livekit", trace: null, seed: 1, name: null, list: false, realClock: false, legacy: false, effort: null, tutor: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const v = () => {
@@ -72,6 +75,7 @@ function parse(argv: string[]): Options {
       o.model = m;
     } else if (a === "--anthropic") o.model = "anthropic";
     else if (a === "--no-free-talk") o.freeTalk = false;
+    else if (a === "--tutor") o.tutor = true;
     else if (a === "--script") o.script = v();
     else if (a === "--runner") {
       const r = v();
@@ -163,7 +167,7 @@ async function main() {
   const callId = `text-${new Date().toISOString().replace(/[:.]/g, "-")}`;
   const text = createTextSession({
     callId, package: pkg, model: m, clock, random: o.seed, childName: o.name, runner: o.runner === "livekit" ? "livekit-text" : "text",
-    freeTalk: o.freeTalk, reviewer: o.freeTalk ? reviewer : null,
+    freeTalk: o.freeTalk, reviewer: o.freeTalk ? reviewer : null, tutor: o.tutor,
     // D-341: stream each checked sentence as it arrives, as the voice worker does; the trace times the first one.
     onSayPart: () => {},
     onError: (e, where) => console.error(`[maya-text] ${typeof where === "string" ? where : `turn ${where.turn} ${where.source}`}: ${e instanceof Error ? e.message : String(e)}`),

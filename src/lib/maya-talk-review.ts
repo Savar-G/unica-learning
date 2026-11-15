@@ -6,7 +6,7 @@
 // The live reviewer goes through the AI client (OpenRouter on the site, MAYA_REVIEW_MODEL, default Claude Haiku 5.5:
 // small and fast, and another model than Maya's). Tests use the fake below.
 import { withTimeLimit, type AiClient } from "@/lib/ai-client";
-import { CONVERSATION_REVIEW_SYSTEM, hideName, readTalkReview, TALK_REVIEW_PROMPT_VERSION, TALK_REVIEW_SCHEMA, TALK_REVIEW_SYSTEM, type Session, type TalkReviewInput, type TalkReviewResult } from "@/lib/maya";
+import { CONVERSATION_REVIEW_SYSTEM, TUTOR_REVIEW_SYSTEM, hideName, readTalkReview, TALK_REVIEW_PROMPT_VERSION, TALK_REVIEW_SCHEMA, TALK_REVIEW_SYSTEM, type Session, type TalkReviewInput, type TalkReviewResult } from "@/lib/maya";
 import { classifyError } from "@/lib/maya-trace";
 
 /** The review model when MAYA_REVIEW_MODEL is not set: an OpenRouter model id with structured output. */
@@ -40,6 +40,7 @@ export function reviewInput(session: Session, line: string, verdict: "wrong" | "
   return {
     ...(session.conversational ? { conversation: true as const } : {}),
     ...(session.conversational && verdict === "wrong" ? { verdict } : {}),
+    ...(session.tutor ? { tutor: true as const } : {}),
     promptVersion: TALK_REVIEW_PROMPT_VERSION,
     line: hide(line),
     childTurn: session.turn ? hide(session.turn.text) : null,
@@ -55,7 +56,7 @@ export function aiTalkReviewer(client: AiClient, options: { effort?: "minimal" |
     promptVersion: TALK_REVIEW_PROMPT_VERSION,
     review: async (input, signal) =>
       readTalkReview(await client.json(
-        { name: "maya_talk_review", system: input.conversation ? CONVERSATION_REVIEW_SYSTEM : TALK_REVIEW_SYSTEM, content: [{ type: "text", text: JSON.stringify(input) }], schema: TALK_REVIEW_SCHEMA as unknown as Record<string, unknown>,
+        { name: "maya_talk_review", system: input.tutor ? TUTOR_REVIEW_SYSTEM : input.conversation ? CONVERSATION_REVIEW_SYSTEM : TALK_REVIEW_SYSTEM, content: [{ type: "text", text: JSON.stringify(input) }], schema: TALK_REVIEW_SCHEMA as unknown as Record<string, unknown>,
           ...(input.conversation ? { effort: conversation.effort, maxTokens: conversation.maxTokens } : { effort: options.effort ?? "low", maxTokens: 2_000 }) },
         signal,
       )),
