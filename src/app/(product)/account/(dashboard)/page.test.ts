@@ -477,8 +477,9 @@ describe("a family the switch opens to", () => {
       mayaNotice.books = [{ id: "w1", childId: "c1", number: 1, status: "shipped" }];
       try {
         const out = await render({ ...full(), week: null, workbook: null, scanPrompt: null, skills: null }, ["overview", "workbooks", "assessment", "account"]);
-        // The rows hold the desk themselves, so the name row has no desk button of its own.
-        expect(out).toContain('<div class="pd-name-row"><h1>Asha</h1></div>');
+        // The desk is on the name line here too, the one place the frame's header leaves its own out for (overviewDesk).
+        expect(out).toContain('<div class="pd-name-row"><h1>Asha</h1><form class="pd-desk-form" action="/api/desk/open"');
+        expect(out.match(/action="\/api\/desk\/open"/g)).toHaveLength(1);
         expect(out).toContain('id="pd-test"');
         expect(out).toContain("On the desk");
         expect(out).toContain("Asha used 7 of 60 chat messages today.");
@@ -523,7 +524,7 @@ describe("a family the switch opens to", () => {
 
     it("keeps the test row when the Overview cannot be read, so the page is never empty", async () => {
       const out = await render(null);
-      expect(out).toContain('<div class="pd-name-row"><h1>Asha</h1></div>');
+      expect(out).toContain('<div class="pd-name-row"><h1>Asha</h1><form class="pd-desk-form" action="/api/desk/open"');
       expect(out).toContain('id="pd-test"');
     });
 

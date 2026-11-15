@@ -8,7 +8,7 @@ import { DeskButton } from "@/components/parent-desk-button";
 import { gradeLabel } from "@/lib/assessment/grades";
 import type { ChildTab } from "@/lib/child-stage";
 import type { ChildView } from "@/lib/parent-view";
-import { activeTab, addressChild, childSwitchPath, lastChildCookie, phoneNav, pickChild, tabLinks, type TabLink } from "@/lib/parent-shell";
+import { activeTab, addressChild, childSwitchPath, lastChildCookie, overviewDesk, phoneNav, pickChild, tabLinks, type TabLink } from "@/lib/parent-shell";
 import { feedbackLink } from "@/lib/feedback";
 import { BRAND } from "@/lib/site";
 import "./parent-shell.css";
@@ -17,7 +17,7 @@ import "./parent-shell.css";
 // header with the child's name, Open the desk and the child pill that opens the switcher. On a laptop the header is the top
 // bar above the content, with the name on the left. On a phone it is the sticky top of the page (the logo on the left, the
 // desk and the pill on the right) and the tabs move to a bottom bar (phoneNav in src/lib/parent-shell.ts); the Overview shows
-// the name and the desk on its own first line instead, so the header leaves its desk button out there. The layout renders it
+// the name and the desk on its own first line instead (`overviewDesk`), so the header leaves its desk button out there. The layout renders it
 // once per page load; the address picks the child when it names one, and otherwise the child stays the one in view.
 
 const ICONS: Record<ChildTab | "more", ReactNode> = {
@@ -68,7 +68,7 @@ export function ParentShell({ kids, remembered, pinSet, timeZoneSaved, children 
   }, [childId]);
 
   return (
-    <div className={`look-root pd-shell${nav.kind === "bar" ? " pd-has-bar" : ""}`} data-look="warm">
+    <div className={`look-root pd-shell${nav.kind === "bar" ? " pd-has-bar" : ""}${overviewDesk(pathname, child) ? " pd-name-desk" : ""}`} data-look="warm">
       {!timeZoneSaved && <SaveTimeZone />}
       <aside className="pd-side">
         <Wordmark />
@@ -78,7 +78,7 @@ export function ParentShell({ kids, remembered, pinSet, timeZoneSaved, children 
         </nav>
       </aside>
       <div className="pd-main">
-        <header className="pd-top">
+        <header className={child ? "pd-top" : "pd-top pd-top-empty"}>
           <div className="pd-top-row">
             <Wordmark />
             {/* The name is the h1 or the pill's label for a screen reader, so the visible copy here is not read again. */}

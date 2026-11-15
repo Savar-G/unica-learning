@@ -16,7 +16,7 @@ import type { ChatUsage } from "@/lib/maya-chat";
 import type { ParentNote } from "@/lib/parent-maya-notes";
 import type { ParentDashboard } from "@/lib/parent-dashboard-server";
 import type { OverviewView } from "@/lib/parent-view";
-import { activeTab, pickChild, tabLinks } from "@/lib/parent-shell";
+import { activeTab, overviewDesk, pickChild, tabLinks } from "@/lib/parent-shell";
 import { CURRICULA, type CurriculumId } from "@/lib/signup";
 import { stateFor } from "@/lib/test-attempt";
 import type { WorkbookSummary } from "@/lib/workbook-content";
@@ -85,11 +85,11 @@ export function ParentDashboardHome({ dashboard, overview, kids, addressChild, p
   // Option A Home (#1003): the Overview alone. Its own parts replace the test, desk, Maya and goal rows, which the other
   // tabs hold. Only when the Overview cannot be read, or has no part to show (a first book still in the mail), does the page
   // keep those rows, as before, so it is never just the child's name. The child's name is the first line (#1024), with the
-  // desk button on its right while the Overview stands alone; the rows of the other case hold the desk themselves.
+  // desk button on its right (the frame's header leaves its own out on a phone by the same rule, `overviewDesk`).
   const shown = !!kid && overview?.child.id === kid.id ? overview : null;
   const home = !!shown && homeHasParts(shown);
   return (
-    <SupportPage label={label} title={kid?.first_name ?? "Your account"} titleAction={kid ? (home && view ? <DeskButton child={view} pinSet={dashboard.pinSet} /> : null) : undefined}>
+    <SupportPage label={label} title={kid?.first_name ?? "Your account"} titleAction={kid ? (view && overviewDesk("/account", view) ? <DeskButton child={view} pinSet={dashboard.pinSet} /> : null) : undefined}>
       {note}
       <ParentAlerts {...alerts} />
       {noticeDue && current.size > 0 && <MayaNoticeCard />}

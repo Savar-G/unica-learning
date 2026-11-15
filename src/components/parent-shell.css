@@ -15,9 +15,11 @@
 .pd-top-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .pd-top .logo, .pd-top-feedback { display: none; }
 .pd-top-name { margin: 0; min-width: 0; font: 700 32px/1.1 var(--sans); letter-spacing: -0.03em; color: var(--ink); overflow-wrap: anywhere; }
-.pd-top-acts { display: flex; align-items: center; gap: 10px; margin-left: auto; min-width: 0; }
-.pd-top:not(:has(.pd-top-name)) { display: none; }
+.pd-top-acts { display: flex; align-items: center; gap: 10px; margin-left: auto; flex: none; }
+.pd-top-empty { display: none; }
+/* The phone's tab links (a child whose tabs are only Assessment and Account): the sidebar holds those tabs on a laptop. */
 .pd-top-links { display: flex; flex-wrap: wrap; gap: 0 14px; width: 100%; }
+@media (min-width: 900px) { .pd-top-links { display: none; } }
 
 /* The child pill: the avatar and the name. Several children: it opens the switcher (a plain list, so it works without JavaScript). */
 .pd-kid { display: inline-flex; align-items: center; gap: 7px; min-width: 0; padding: 5px 10px 5px 5px; border-radius: 999px; background: var(--soft); font: 600 14px/1 var(--sans); color: var(--ink); }
@@ -37,15 +39,18 @@
 
 /* Open the desk: a small outline button, never a bar. */
 .pd-desk-form { margin: 0; flex: none; }
-.pd-desk { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 36px; padding: 0 14px; border: 1.5px solid #dcdad3; border-radius: 999px; background: #fff; color: var(--ink); font: 600 13px/1 var(--sans); white-space: nowrap; text-decoration: none; cursor: pointer; }
+.pd-desk { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 36px; padding: 0 14px; border: 1.5px solid #b8b3aa; border-radius: 999px; background: #fff; color: var(--ink); font: 600 13px/1 var(--sans); white-space: nowrap; text-decoration: none; cursor: pointer; }
 .pd-desk:hover { border-color: var(--ink); }
 .pd-desk:focus-visible { outline: 2px solid var(--sky); outline-offset: 2px; }
 
-/* The Overview's first line: the child's name and the desk. A laptop's top bar shows both, so there the h1 is for screen readers only. */
+/* The Overview's first line: the child's name and the desk. A laptop's top bar shows both, so there the row keeps only its h1,
+   clipped for screen readers, and its desk is not shown at all (display: none, so it is not focusable either): one desk
+   button per page at every width. */
 .pd-name-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 [data-look="warm"] .pd-main .support-page .pd-name-row h1 { margin: 0; min-width: 0; font: 700 30px/1.1 var(--sans); letter-spacing: -0.03em; overflow-wrap: anywhere; }
 @media (min-width: 900px) {
-  .pd-name-row { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .pd-name-row :is(.pd-desk-form, a.pd-desk) { display: none; }
+  [data-look="warm"] .pd-main .support-page .pd-name-row h1 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 }
 
 /* The tabs */
@@ -67,7 +72,9 @@
 [data-look="warm"] .pd-main .support-page .eyebrow::before { display: none; }
 .pd-main .acct-alert + .acct-kids, .pd-main h1 + .acct-kids { margin-top: 28px; }
 /* Cards in the frame: white, a soft shadow and a 20 px radius, never a grey bordered box. */
-.pd-shell .pd-main .support-page :is(.pw-card, .acct-card, .acct-kid.acct-plan, .acd-child, .ps-table-wrap, .rpt-call) { border: 0; border-radius: 20px; background: #fff; box-shadow: var(--pd-shadow); }
+.pd-shell .pd-main .support-page :is(.pw-card, .acct-card, .acct-kid.acct-plan, .acd-child, .ps-table-wrap, .rpt-call):not(.acct-goal, .acct-phone) { border: 0; border-radius: 20px; background: #fff; box-shadow: var(--pd-shadow); }
+/* Two cards keep their own tint (support.css): the light-yellow goal and the grey phone note; only the corners match. */
+.pd-shell .pd-main .support-page :is(.acct-goal, .acct-phone) { border-radius: 20px; }
 .support-page .pd-links { list-style: none; margin: 28px 0 24px; padding: 0; border-top: 1px solid var(--line-soft); }
 .support-page .pd-links li { margin: 0; border-bottom: 1px solid var(--line-soft); }
 .pd-links a { display: flex; align-items: center; min-height: 52px; color: var(--ink); text-decoration: none; }
@@ -169,7 +176,6 @@
   .pd-side { display: none; }
   .pd-top { position: sticky; top: 0; z-index: 30; width: 100%; padding: 8px 16px; background: rgba(255, 255, 255, 0.94); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
   .pd-top-row { min-height: 44px; flex-wrap: wrap; row-gap: 4px; }
-  .pd-top:not(:has(.pd-top-name)) { display: block; }
   .pd-top .logo { display: inline-flex; flex: none; font-size: 17px; }
   .pd-top-name { display: none; }
   .pd-top-acts { gap: 8px; flex: 0 1 auto; }
@@ -177,8 +183,9 @@
   .pd-top .pd-kid b { max-width: 9ch; }
   /* Feedback stays one tap away in the page footer; the header has no room for it beside the desk and the pill. */
   .pd-top-feedback { display: none; }
-  /* The Overview has the desk on the name's own line. */
-  .pd-shell:has(.pd-name-row .pd-desk) .pd-top :is(.pd-desk-form, a.pd-desk) { display: none; }
+  /* The Overview has the desk on the name's own line (the shell sets the class from the address, see overviewDesk). */
+  .pd-name-desk .pd-top :is(.pd-desk-form, a.pd-desk) { display: none; }
+  .pd-top-empty { display: block; }
   .pd-top-links { padding-top: 2px; }
   .pd-top-links a { display: inline-flex; align-items: center; min-height: 44px; color: var(--ink-2); font: 500 15px/1 var(--sans); text-decoration: none; }
   .pd-top-links a[aria-current="page"] { color: var(--ink); font-weight: 600; }

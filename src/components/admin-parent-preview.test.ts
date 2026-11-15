@@ -157,6 +157,14 @@ it("shows the Overview's first line as the child's name once, with the desk besi
   expect(output.querySelector(".pd-top .pd-kid b")?.textContent).toBe("Leah");
 });
 
+it("draws the workbook ring filled to its percent, so the preview matches the page (#1024)", () => {
+  const output = dom(rendered("overview", "active", "one", "phone"));
+  const [track, fill] = [...output.querySelectorAll(".po-ring circle")];
+  expect(track.getAttribute("stroke-dasharray")).toBeNull();
+  const [drawn, whole] = (fill.getAttribute("stroke-dasharray") ?? "").split(" ").map(Number);
+  expect(Math.round((drawn / whole) * 100)).toBe(38);
+});
+
 it("keeps the eyebrow, without a square, on the other pages (#1024)", () => {
   const output = dom(rendered("progress", "week", "one", "phone"));
   expect(output.querySelector(".support-page .eyebrow")?.textContent).toBe("Progress");
