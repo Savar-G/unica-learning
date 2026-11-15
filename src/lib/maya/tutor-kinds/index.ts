@@ -2,9 +2,10 @@
 // a family adds its kind's file in this folder and one line here, before the kinds it must win over.
 import type { OperationPackage } from "@/lib/question-package";
 import type { TutorKind } from "../tutor-kind";
+import { claimKind } from "./claim";
 import { columnKind } from "./column";
 
-export const TUTOR_KINDS: readonly TutorKind[] = [columnKind];
+export const TUTOR_KINDS: readonly TutorKind[] = [columnKind, claimKind];
 
 /** Kinds a test puts first (testKind); never used by the site. */
 const testKinds: TutorKind[] = [];
