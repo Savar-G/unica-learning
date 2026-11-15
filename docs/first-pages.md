@@ -1,6 +1,6 @@
 # First pages of Workbook 1
 
-After a BC parent without a saved card finishes the report, the site can make four real pages of the child's Workbook 1 and show them on the report: the cover with the child's name, the first lesson page with its worked example, and the two practice pages that follow it on the same topic. When all four pages pass every check, one sample email can go to the parent with the four-page PDF and the action "Start your plan today". Both switches are off until Savar approves a complete test example.
+After a BC parent without a saved card finishes the report, the site can make four real pages of the child's Workbook 1 and show them on the report: the cover with the child's name, the first lesson page with its worked example, and the two practice pages that follow it on the same topic. When all four pages pass every check, one sample email can go to the parent with the four-page PDF and the action "Start your plan today". Both switches have been `on` in Vercel Production since 2026-11-11 (the day PR #845 merged). On 2026-11-14 Savar reviewed the test example (a test child in Grade 3, 4 pages, 0 AI calls, made in 6 min 39 s by the Mac worker), the cost (measured USD 0; estimate USD 0 to 0.45 per test on the paid API, at most USD 1.35) and the stored email, and approved keeping both on.
 
 ## Promises
 
@@ -12,7 +12,7 @@ After a BC parent without a saved card finishes the report, the site can make fo
 
 ## Switches
 
-| Variable | Off (default) | On (`on`) |
+| Variable | Off (default) | On (`on`; both are on in Production, approved 2026-11-14) |
 |---|---|---|
 | `FIRST_PAGES_ENABLED` | The report job queues nothing. An admin can still queue one test from the admin test page. | The report job queues the first pages of each new eligible test. |
 | `FIRST_PAGES_EMAIL_ENABLED` | No sample email goes. | The `/api/reminders` run sends the sample email for each ready set that passes the checks before the send. |

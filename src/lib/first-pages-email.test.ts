@@ -47,7 +47,7 @@ describe("the first pages' sample email", () => {
     const s = setup();
     expect(await s.run()).toMatchObject({ due: 1, sent: 1 });
     const [m] = s.mail.delivered;
-    expect(m).toMatchObject({ to: "ana@example.com", sender: { to: "parent", from: "founders" }, subject: "The first pages of Leah's Workbook 1" });
+    expect(m).toMatchObject({ to: "ana@example.com", sender: { to: "parent", from: "results-founders" }, subject: "The first pages of Leah's Workbook 1" });
     expect(m.attachments).toEqual([{ filename: "leah-workbook-1-first-pages.pdf", contentType: "application/pdf", content: PDF }]);
     // The action opens the report's plan choice and card step.
     const action = firstPagesActionUrl(ORIGIN, "report-1");
@@ -58,6 +58,9 @@ describe("the first pages' sample email", () => {
     // The free month starts with the delivery, in the approved words; CASL: unsubscribe link and one-click headers.
     expect(m.text).toContain("Your family gets one free month. It starts when your first workbook arrives.");
     expect(m.text).toContain(`${ORIGIN}/unsubscribe?t=tok1`);
+    // Same sign-off as the report email (D-322).
+    expect(m.text).toContain("Thank you,\nCedric and Savar\nCo-founders, Unica Learning");
+    expect(m.html).toContain("Cedric and Savar");
     expect(m.headers).toEqual({ "List-Unsubscribe": `<${ORIGIN}/api/unsubscribe?t=tok1>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" });
     // No AI words and no grade: only the parent's first name, the child's name and code's sentences.
     expect(m.text.startsWith("Hi Ana,")).toBe(true);

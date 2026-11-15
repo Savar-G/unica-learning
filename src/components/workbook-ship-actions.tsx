@@ -138,7 +138,7 @@ export function NextBookApproval(props: { runId: string; revision: number; workb
 
 const MARK = {
   printed: { label: "Mark printed", busy: "Saving...", confirm: (n: number) => `Mark workbook ${n} printed? After this, the workbook cannot change.` },
-  shipped: { label: "Mark shipped", busy: "Saving...", confirm: (n: number) => `Mark workbook ${n} shipped? The family can then read it in their account.` },
+  shipped: { label: "Mark shipped", busy: "Saving...", confirm: (n: number) => `Mark workbook ${n} shipped? The family sees it in their account, but their desk opens it only after you save its delivery receipt.` },
 } as const;
 
 /** "Mark printed" on an approved workbook, "Mark shipped" on a printed one. */
