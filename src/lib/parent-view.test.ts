@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { BC_SKILL_MAP, type AreaAnswer, type ReportModel } from "@/lib/assessment";
 import { capitalName, plainSkillName } from "@/lib/skill-name";
 import { listChildren, readChild, readMonthlySummary, readOverview, readProgress, readWorkbooks } from "@/lib/parent-view";
+import { bookDays, withHomeCount, type ReadySchedule } from "@/lib/workbook-days";
 import { memoryParentViewReaders, type MemoryParentViewTables, type MemoryResult, type MemoryScan, type MemoryTest, type MemoryWorkbook } from "@/lib/parent-view-memory";
 
 // The parent view module (spec #544), through its public interface, over the in-memory reader, which keeps the
@@ -111,7 +112,7 @@ describe("what a parent reads", () => {
     const readers = memoryParentViewReaders({ children: [younger, omar, leah] });
     const list = await listChildren(readers.parent("parent-1"), NOW);
     expect(list.map((c) => c.firstName)).toEqual(["Leah", "Ana"]);
-    expect(readers.reads).toEqual({ children: 1, tests: 1, reports: 1, cards: 1, deliveries: 1, workbooks: 1, plans: 1, switches: 1, corrections: 0, dispatches: 0, family: 0, results: 0, scans: 0, pages: 0, learning: 0, pin: 0, maya: 0, skillTests: 0, questions: 0, overviewProgress: 0, history: 0, mistakes: 0 });
+    expect(readers.reads).toEqual({ children: 1, tests: 1, reports: 1, cards: 1, deliveries: 1, workbooks: 1, plans: 1, switches: 1, corrections: 0, dispatches: 0, family: 0, results: 0, scans: 0, pages: 0, learning: 0, pin: 0, maya: 0, skillTests: 0, questions: 0, planTopics: 0, overviewProgress: 0, history: 0, mistakes: 0 });
   });
   it("lists a child's reports, the newest test first", async () => {
     const reader = parent({ tests: [test("old", { completedAt: NOW - 90 * HOUR }), test("new", { completedAt: NOW - 10 * HOUR })], reports: [report("old"), report("new")] });
@@ -467,6 +468,45 @@ describe("the Home (#560, #1003)", () => {
       expect((await read({ questions: [question("d3a", "3.5"), question("d3b", "3.4"), question("d3a", "3.4"), question("d1a", "3.1")] }))?.workbook?.today?.topic).toBe(textOf("3.4"));
       expect((await read({}))?.workbook?.today?.topic).toBeNull();
       expect((await read({ fail: ["questions"] }))?.workbook?.today?.topic).toBeNull();
+    });
+    describe("the day's topic is the printed plan's (the Workbooks tab's), not the questions'", () => {
+      const PLAN = ["Hundreds, tens and ones", "Comparing numbers", "Adding with regrouping", "Subtracting across a zero", "Review"];
+      const plan = PLAN.map((topic, i) => ({ ...own, workbookId: "wb-1", day: i + 1, topic }));
+      // Most of Day 3's questions are on 3.1, whose name is not the plan's name for the day.
+      const questions = [question("d3a", "3.1"), question("d3a", "3.1"), question("d3b", "3.2")];
+      const tables = { scans: scans("d1a", "d1b", "d2a", "d2b", "d3a"), questions, planTopics: plan };
+      /** The Workbooks tab's schedule for the same book: the plan's topics, 8 required pages a day. */
+      const schedule = (): ReadySchedule => ({
+        kind: "ready", child: { id: "child-1", parentId: "parent-1", firstName: "Leah" }, book: { id: "wb-1", number: 1 }, dailyTime: "about 19 minutes", minutes: { min: 19, max: 19 }, scansUnknown: false,
+        rows: PLAN.map((topic, i) => ({ day: i + 1, topic, second: "", pages: [3 + i * 8, 10 + i * 8] as [number, number], requiredMinutes: 19, extra: false,
+          requiredPages: Array.from({ length: 8 }, (_, k) => 3 + i * 8 + k), scan: { kind: "unknown" as const }, marks: { kind: "none" as const, marked: 0, total: 8 } })),
+      });
+
+      it("Home and the Workbooks tab name Day 3 the same way, and count the same pages", async () => {
+        expect(textOf("3.1")).not.toBe(PLAN[2]);
+        const home = await read(tables);
+        expect(home?.workbook?.today?.topic).toBe("Adding with regrouping");
+        const reader = parent({ children: [leah, omar], ...delivered, pages, switches, ...tables });
+        const workbooks = await readWorkbooks(reader, "child-1", NOW);
+        const cover = withHomeCount(bookDays(schedule(), { start: workbooks!.current!.deliveredOn, today: workbooks!.today, ended: false }), workbooks!.homeScan!);
+        expect(cover.day).toBe(home!.workbook!.day);
+        expect(cover.topic).toBe(home!.workbook!.today!.topic);
+        expect(cover.rows[cover.day - 1].topic).toBe(home!.workbook!.today!.topic);
+        // The cover's book count is Home's: 5 of the 10 day pages, and the same whole percent.
+        expect([cover.scanned, cover.total, cover.percent]).toEqual([5, 10, home!.workbook!.percent]);
+        expect(home!.workbook!.today).toMatchObject({ scanned: 1, pages: 2 });
+      });
+      it("names each day of the week by the plan, whichever day it is", async () => {
+        for (const [day, at] of [[1, "2026-11-02T20:00:00Z"], [2, "2026-11-03T20:00:00Z"], [4, "2026-11-05T20:00:00Z"]] as const) {
+          expect((await read(tables, Date.parse(at)))?.workbook?.today?.topic).toBe(PLAN[day - 1]);
+        }
+      });
+      it("falls back to the questions' topic when the plan cannot be read, has no row for the day, or is not stored", async () => {
+        expect((await read({ ...tables, fail: ["planTopics"] }))?.workbook?.today?.topic).toBe(textOf("3.1"));
+        expect((await read({ ...tables, planTopics: plan.filter((r) => r.day !== 3) }))?.workbook?.today?.topic).toBe(textOf("3.1"));
+        expect((await read({ ...tables, planTopics: [] }))?.workbook?.today?.topic).toBe(textOf("3.1"));
+        expect((await read({ ...tables, planTopics: plan.map((r) => ({ ...r, parentId: "parent-2" })) }))?.workbook?.today?.topic).toBe(textOf("3.1"));
+      });
     });
   });
 

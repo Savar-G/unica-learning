@@ -8,6 +8,8 @@ import { LEARNING_COLUMNS } from "@/lib/learning-style";
 import { chatFamilyGate } from "@/lib/maya-chat";
 import { childPauseMailing } from "@/lib/plan-controls-server";
 import { dayNumber } from "@/lib/parent-week";
+import { readScheduleTopics } from "@/lib/parent-schedule";
+import { parentScheduleStore } from "@/lib/parent-schedule-store";
 import type { ParentViewReader } from "@/lib/parent-view";
 import type { StateChange } from "@/lib/progress-series";
 import { pinIsSet } from "@/lib/parent-pin-server";
@@ -266,6 +268,12 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
         .order("page_id").order("question_number").limit(2000);
       if (error) throw new Error(`workbook questions read: ${error.message}`);
       return data.map((q) => ({ pageId: q.page_id, standard: q.standard }));
+    },
+    async planTopics(childId, workbookId) {
+      // Share the Workbooks tab's frozen-plan validation, without its scan receipts or marks. One deadline covers
+      // every request, including ownership checks. Missing, invalid or slow plans leave Home's question fallback.
+      if (!admin) return null;
+      return readScheduleTopics(parentScheduleStore(session, admin, parent, AbortSignal.timeout(1500)), parent, childId, workbookId);
     },
     async skillHistory(childId) {
       if (!admin) throw new Error("skill history read: no secret key");

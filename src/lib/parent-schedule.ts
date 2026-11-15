@@ -50,10 +50,17 @@ export type ScheduleView =
     /** The scan records could not be read (#1031): every row's `scan` is "unknown" for that reason, not because nothing was scanned. */
     scansUnknown: boolean };
 
+type PrintedScheduleStore = Pick<ScheduleStore, "children" | "books" | "approvals" | "revision" | "pages">;
+type ScheduleRequest = { child?: string | null; remembered?: string | null; book?: string | null };
+type PrintedSchedule = Exclude<ScheduleView, { kind: "ready" }> | {
+  kind: "ready"; child: ScheduleChild; book: ScheduleBook & { printedRevision: string; manifest: ScanManifest };
+  pages: SchedulePage[]; saved: NonNullable<ReturnType<typeof savedScheduleV1>>;
+};
+
 const eligible = (b: ScheduleBook) => b.status === "printed" || b.status === "shipped";
 
 /** Plain email URLs use the owned remembered child, then the oldest owned child. Explicit foreign ids never fall back. */
-export async function readSchedule(store: ScheduleStore, parent: string, request: { child?: string | null; remembered?: string | null; book?: string | null } = {}): Promise<ScheduleView> {
+async function readPrintedSchedule(store: PrintedScheduleStore, parent: string, request: ScheduleRequest, shippedOnly = false): Promise<PrintedSchedule> {
   let child: ScheduleChild | null = null;
   try {
     const children = (await store.children(parent)).filter(c => c.parentId === parent);
@@ -64,7 +71,7 @@ export async function readSchedule(store: ScheduleStore, parent: string, request
     const books = (await store.books(parent, child.id)).filter(b => b.parentId === parent && b.childId === child!.id);
     const book = explicitBook ? books.find(b => b.id === request.book) : books.filter(eligible).sort((a, b) => b.number - a.number || a.id.localeCompare(b.id))[0];
     if (explicitBook && !book) return { kind: "not-found" };
-    if (!book || !eligible(book)) return { kind: "waiting", child };
+    if (!book || !eligible(book) || (shippedOnly && book.status !== "shipped")) return { kind: "waiting", child };
     if (!isPrintedRevision(book.printedRevision) || !book.pdfPath || !/^[a-f0-9]{64}$/.test(book.pdfSha256 ?? "") || !book.manifest) return { kind: "unavailable", child };
     const approvals = (await store.approvals(parent, child.id, book.id)).filter(a => a.parentId === parent && a.childId === child!.id
       && a.workbookId === book.id && a.draftId === book.id && a.number === book.number && a.printedRevision === book.printedRevision);
@@ -94,6 +101,22 @@ export async function readSchedule(store: ScheduleStore, parent: string, request
       const required = book.manifest!.days.find(d => d.day === r.day)?.pages;
       return !required?.length || required.some(n => n < r.pages[0] || n > r.pages[1]);
     })) return { kind: "unavailable", child };
+    return { kind: "ready", child, book: { ...book, printedRevision: book.printedRevision, manifest: book.manifest }, pages, saved };
+  } catch { return { kind: "unavailable", child }; }
+}
+
+/** Home reads only the owned, shipped book's validated frozen plan, without scan receipts or marks. */
+export async function readScheduleTopics(store: PrintedScheduleStore, parent: string, child: string, book: string): Promise<{ day: number; topic: string }[] | null> {
+  const plan = await readPrintedSchedule(store, parent, { child, book }, true);
+  return plan.kind === "ready" ? plan.saved.rows.map(({ day, topic }) => ({ day, topic })) : null;
+}
+
+/** The Workbooks tab adds scan and marking progress to the same validated frozen plan. */
+export async function readSchedule(store: ScheduleStore, parent: string, request: ScheduleRequest = {}): Promise<ScheduleView> {
+  const plan = await readPrintedSchedule(store, parent, request);
+  if (plan.kind !== "ready") return plan;
+  const { child, book, pages, saved } = plan;
+  try {
     let receipts: ScheduleReceipt[] | null;
     try { receipts = await store.receipts(parent, child.id, book.id, book.printedRevision); } catch { receipts = null; }
     let marks: EffectiveMark[] | null;
