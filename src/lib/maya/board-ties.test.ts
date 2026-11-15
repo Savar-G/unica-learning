@@ -8,7 +8,7 @@ import { sentencesOf } from "./say-check";
 // order of the sentences, and kept only when it matches its sentence. The words are never touched here.
 
 const SUB = SAMPLE_PACKAGES["subtract-52-28"] as OperationPackage;
-const TEXT = "You can't take 8 from 2, so we trade 1 ten for 10 ones. 12 minus 8 is 4. What is 4 tens minus 2 tens?";
+const TEXT = "You can't take 8 from 2, so we trade 1 ten for 10 ones. 12 minus 8 is 4, so write 4 in the ones. What is 4 tens minus 2 tens?";
 const S = sentencesOf(TEXT);
 const id = (k: number, i: number) => `n-${k}-${i}`;
 const ops = (cs: readonly Record<string, unknown>[]) => cs.map((c) => c.op);
@@ -61,39 +61,62 @@ describe("tieDrawings", () => {
   });
 });
 
-describe("drawingMatches: the drawing shows what its sentence says", () => {
+describe("drawingMatches: the drawing's action equals the action of one clause", () => {
   const put = (column: string, value: string) => [{ op: "put", target: { objectId: "question", part: "cell", rowId: "answer", column }, value }];
   const borrow = [{ op: "regroup", id: "t", objectId: "question", rowId: "top", kind: "borrow", from: "tens", to: "ones" }];
-  it("a digit: the sentence says the digit, with no other place", () => {
-    expect(drawingMatches("12 minus 8 is 4.", "digit", put("ones", "4"))).toBe(true);
+  const carry = [{ op: "put", target: { objectId: "question", part: "cell", rowId: "answer", column: "ones" }, value: "4" }, { op: "regroup", id: "c", objectId: "question", rowId: "answer", kind: "carry", from: "ones", to: "tens" }];
+  const note = (text: string) => [{ op: "write", id: "n", text, place: { below: "question" } }];
+  it("a digit: write that value in that place", () => {
     expect(drawingMatches("Write 4 in the ones.", "digit", put("ones", "4"))).toBe(true);
-    // The same number, another place: "4 tens" is not the ones digit.
-    expect(drawingMatches("We have 4 tens left.", "digit", put("ones", "4"))).toBe(false);
-    expect(drawingMatches("We borrow 1 ten from the 5 tens.", "digit", put("ones", "4"))).toBe(false);
+    expect(drawingMatches("4 goes in the ones place.", "digit", put("ones", "4"))).toBe(true);
+    expect(drawingMatches("The ones digit is 4.", "digit", put("ones", "4"))).toBe(true);
+    expect(drawingMatches("12 minus 8 is 4, so write 4 in the ones.", "digit", put("ones", "4"))).toBe(true);
+    // Another kind of action, another value, another place, or a value with no place: no match.
+    expect(drawingMatches("12 minus 8 is 4.", "digit", put("ones", "4"))).toBe(false);
+    expect(drawingMatches("Write 5 in the ones.", "digit", put("ones", "4"))).toBe(false);
+    expect(drawingMatches("Write 4 in the tens.", "digit", put("ones", "4"))).toBe(false);
+    expect(drawingMatches("Write 4.", "digit", put("ones", "4"))).toBe(false);
   });
-  it("a trade: the sentence names its places or says the trade", () => {
-    expect(drawingMatches("52 is 4 tens and 12 ones.", "trade", borrow)).toBe(true);
-    expect(drawingMatches("So we borrow.", "trade", borrow)).toBe(true);
-    expect(drawingMatches("12 minus 8 is 4.", "trade", borrow)).toBe(false);
-    expect(drawingMatches("Look at the hundreds.", "trade", borrow)).toBe(false);
+  it("no field is taken from another clause (review of #1094, round 2)", () => {
+    expect(drawingMatches("Write 4 in the tens, so write 5 in the ones.", "digit", put("ones", "4"))).toBe(false);
+    expect(drawingMatches("Write 5 in the tens, then write 4 in the ones.", "digit", put("ones", "4"))).toBe(true);
   });
-  it("a note: the sentence says every number of its equation", () => {
-    const note = [{ op: "write", id: "n", text: "12 − 8 = 4", place: { below: "question" } }];
-    expect(drawingMatches("12 minus 8 is 4.", "note", note)).toBe(true);
-    expect(drawingMatches("Twelve minus eight is four.", "note", note)).toBe(true);
-    expect(drawingMatches("What is 12 minus 8?", "note", note)).toBe(false);
+  it("a trade: both quantities and both places", () => {
+    expect(drawingMatches("We trade 1 ten for 10 ones.", "trade", borrow)).toBe(true);
+    expect(drawingMatches("We trade one ten for ten ones.", "trade", borrow)).toBe(true);
+    expect(drawingMatches("We trade 2 tens for 20 ones.", "trade", borrow)).toBe(false);
+    expect(drawingMatches("We trade 1 ten for 12 ones.", "trade", borrow)).toBe(false);
+    expect(drawingMatches("We trade 1 hundred for 10 tens.", "trade", borrow)).toBe(false);
+    expect(drawingMatches("52 is 4 tens and 12 ones.", "trade", borrow)).toBe(false);
+    expect(drawingMatches("So we borrow.", "trade", borrow)).toBe(false);
+    // A carry gives 10 ones for 1 ten.
+    expect(drawingMatches("We trade 10 ones for 1 ten.", "trade", carry)).toBe(true);
+    expect(drawingMatches("We trade 1 ten for 10 ones.", "trade", carry)).toBe(false);
+  });
+  it("a note: the same operation, with the same operands in the same roles", () => {
+    expect(drawingMatches("12 minus 8 is 4.", "note", note("12 − 8 = 4"))).toBe(true);
+    expect(drawingMatches("Twelve minus eight is four.", "note", note("12 − 8 = 4"))).toBe(true);
+    expect(drawingMatches("8 plus 4 is 12.", "note", note("12 − 8 = 4"))).toBe(false);
+    expect(drawingMatches("12 minus 4 is 8.", "note", note("12 − 8 = 4"))).toBe(false);
+    expect(drawingMatches("What is 12 minus 8?", "note", note("12 − 8 = 4"))).toBe(false);
+    expect(drawingMatches("6 times 870 is 5220.", "note", note("6 × 870 = 5220"))).toBe(true);
   });
   it("a chart, a highlight and a division layout", () => {
     const chart = [{ op: "place_chart", id: "question", number: "45672", place: { region: "main" } }];
-    expect(drawingMatches("Let's put 45,672 in a chart.", "chart", chart)).toBe(true);
-    expect(drawingMatches("Look at the ten thousands.", "chart", chart)).toBe(true);
-    expect(drawingMatches("Let's look.", "chart", chart)).toBe(false);
+    expect(drawingMatches("Let's put 45,672 in a place value chart.", "chart", chart)).toBe(true);
+    expect(drawingMatches("Let's put 45,000 in a chart.", "chart", chart)).toBe(false);
+    expect(drawingMatches("Look at the ten thousands.", "chart", chart)).toBe(false);
     const band = [{ op: "mark", id: "b", target: { objectId: "question", part: "piece", piece: "band-ten_thousands" }, style: "highlight" }];
-    expect(drawingMatches("The 4 is in the ten thousands place.", "band", band)).toBe(true);
-    expect(drawingMatches("The 5 is in the thousands place.", "band", band)).toBe(false);
+    expect(drawingMatches("Look at the ten thousands place.", "band", band)).toBe(true);
+    expect(drawingMatches("Look at the thousands.", "band", band)).toBe(false);
     const division = [{ op: "division", id: "d", dividend: "84", divisor: "4", place: { region: "main" } }];
     expect(drawingMatches("Let's share 84 into 4 groups.", "division", division)).toBe(true);
-    expect(drawingMatches("Let's start.", "division", division)).toBe(false);
+    expect(drawingMatches("Let's share 84 into 2 groups.", "division", division)).toBe(false);
+  });
+  it("a drawing code cannot read as one action ties to nothing", () => {
+    const chain = [...borrow, { op: "regroup", id: "u", objectId: "question", rowId: "top", kind: "borrow", from: "hundreds", to: "tens" }];
+    expect(drawingMatches("We trade 1 ten for 10 ones.", "trade", chain)).toBe(false);
+    expect(drawingMatches("Write 4 in the ones.", "step", put("ones", "4"))).toBe(false);
   });
 });
 
@@ -119,13 +142,21 @@ describe("drawingMatches fails closed: only a plain positive statement of the dr
     expect(drawingMatches("You can't take 8 from 2, so do not trade, we trade later.", "trade", borrow)).toBe(false);
     expect(drawingMatches("Now, write 4 in the ones.", "digit", ones4)).toBe(true);
   });
+  it("a quote, an answer to a question, or a clause that takes it back draws nothing", () => {
+    expect(drawingMatches("We trade 1 ten for 10 ones? No.", "trade", borrow)).toBe(false);
+    expect(drawingMatches("We trade 1 ten for 10 ones, said nobody.", "trade", borrow)).toBe(false);
+    expect(drawingMatches("\"We trade 1 ten for 10 ones,\" she said.", "trade", borrow)).toBe(false);
+    expect(drawingMatches("Some kids write 4 in the ones, but that is wrong.", "digit", ones4)).toBe(false);
+    expect(drawingMatches("If we write 4 in the ones, it's wrong.", "digit", ones4)).toBe(false);
+    expect(drawingMatches("We should not trade, so we trade 1 ten for 10 ones.", "trade", borrow)).toBe(false);
+  });
 });
 
 describe("sentenceCueWord", () => {
   it("is the last word of the sentence, counted over the whole message", () => {
     expect(sentenceCueWord(TEXT, 0)).toBe(14);
-    expect(sentenceCueWord(TEXT, 1)).toBe(19);
-    expect(sentenceCueWord(TEXT, 2)).toBe(26);
-    expect(sentenceCueWord(TEXT, 9)).toBe(26);
+    expect(sentenceCueWord(TEXT, 1)).toBe(25);
+    expect(sentenceCueWord(TEXT, 2)).toBe(32);
+    expect(sentenceCueWord(TEXT, 9)).toBe(32);
   });
 });

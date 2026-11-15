@@ -76,177 +76,220 @@ export function tieDrawings(pkg: OperationPackage, draw: readonly DrawRequest[],
 }
 
 // ---------- The match check ----------
+//
+// Review of #1094 (round 2): one place, fail closed. Each plain positive form reads ONE clause into a structured action
+// (what it does, its operation, every value, every place, every quantity). Each drawing builds the same structure from
+// the command the kind built. A drawing ties only when its action EQUALS the action of one single clause of its
+// sentence: no field is taken from another clause, and an equation has the same operation and operands in the same
+// roles ("8 plus 4 is 12" is not 12 − 8 = 4). A drawing with no action code can read (a division step, a trade through
+// several places) ties to nothing.
 
-/** The places a board column or a sentence names, as words ("ten thousands"). Plural forms only: "one" and "ten" are numbers. */
-const PLACE_WORDS = /\b(hundred thousands|ten thousands|thousands|hundreds|tens|ones)\b/gi;
-const PLACES = ["ones", "tens", "hundreds", "thousands", "ten thousands", "hundred thousands"] as const;
-/** Words that name a trade: a trade drawing matches a sentence that says one. */
-const TRADE_WORDS = /\b(?:borrow\w*|trad(?:e|es|ed|ing)|carr(?:y|ies|ied|ying)|regroup\w*)\b/i;
-
-const placeOf = (column: unknown): string | null => {
-  if (typeof column !== "string") return null;
-  const p = column.replace(/_/g, " ").toLowerCase();
-  return (PLACES as readonly string[]).includes(p) ? p : null;
-};
-
-/** The whole numbers a sentence says, by the standard reader (sayNumbers). */
-const numbersOf = (text: string): number[] => sayNumbers(text).flatMap((t) => (t.q && t.q[1] === 1 ? [t.q[0]] : []));
-
-/** The places a sentence names. */
-const placesOf = (text: string): string[] => [...text.matchAll(PLACE_WORDS)].map((m) => m[1].toLowerCase().replace(/\s+/g, " "));
-
-const valueOf = (v: unknown): number | null => (typeof v === "string" && /^\d+$/.test(v) ? Number(v) : typeof v === "number" && Number.isInteger(v) ? v : null);
-
-/** What one drawing shows, read from its commands by its offer: the values it writes and the places it is about. */
-interface DrawingFacts {
+/** One action as code reads it: `key` holds every field; `values` and `places` say what it names. */
+interface Action {
+  key: string;
   values: number[];
   places: string[];
-  /** How a sentence must name it: by a value, by a place (or a trade word), or by either. */
-  by: "value" | "place" | "either" | "all";
 }
 
-function drawingFacts(offer: string, commands: readonly TutorCommand[]): DrawingFacts {
-  const puts = commands.filter((c) => c.op === "put");
-  const last = puts.at(-1);
-  const target = (c: TutorCommand | undefined) => (c && typeof c.target === "object" && c.target !== null ? (c.target as Record<string, unknown>) : {});
-  const putFacts = (cs: readonly TutorCommand[]) => ({
-    values: cs.flatMap((c) => { const v = valueOf(c.value); return v === null ? [] : [v]; }),
-    places: cs.flatMap((c) => { const p = placeOf(target(c).column); return p ? [p] : []; }),
-  });
-  const writes = commands.filter((c) => c.op === "write");
-  switch (offer) {
-    // The thing asked for is the last thing written: the earlier trades and digits are the work it needs first.
-    case "digit":
-    case "value":
-    case "answer":
-    case "row":
-      return { ...putFacts(last ? [last] : []), by: "value" };
-    case "step":
-      return { values: putFacts(puts).values, places: [], by: "value" };
-    case "note":
-    case "try":
-      // A note writes one equation: the sentence says it, with all its numbers.
-      return { values: writes.flatMap((c) => (typeof c.text === "string" ? numbersOf(c.text) : [])), places: [], by: "all" };
-    case "division": {
-      const c = commands.find((x) => x.op === "division");
-      return { values: [valueOf(c?.dividend), valueOf(c?.divisor)].flatMap((v) => (v === null ? [] : [v])), places: [], by: "value" };
-    }
-    case "chart": {
-      const c = commands.find((x) => x.op === "place_chart");
-      const n = valueOf(c?.number);
-      return { values: n === null ? [] : [n], places: n === null ? [] : PLACES.slice(0, String(n).length), by: "either" };
-    }
-    case "band": {
-      const c = commands.find((x) => x.op === "mark");
-      const piece = target(c).piece;
-      const p = typeof piece === "string" ? placeOf(piece.replace(/^band-/, "")) : null;
-      return { values: [], places: p ? [p] : [], by: "place" };
-    }
-    case "trade": {
-      const places = commands.filter((c) => c.op === "regroup").flatMap((c) => [placeOf(c.from), placeOf(c.to)].flatMap((p) => (p ? [p] : [])));
-      return { values: putFacts(puts).values, places: [...new Set(places)], by: "place" };
-    }
-    default: {
-      // A drawing this file does not know: any value or place it shows.
-      const f = putFacts(puts);
-      return { values: [...f.values, ...writes.flatMap((c) => (typeof c.text === "string" ? numbersOf(c.text) : []))], places: f.places, by: "either" };
-    }
+const PLACES = ["ones", "tens", "hundreds", "thousands", "ten thousands", "hundred thousands"] as const;
+/** Words that name a trade: a clause about a trade that is not a plain positive trade must not stand beside one. */
+const TRADE_WORDS = /\b(?:borrow\w*|trad(?:e|es|ed|ing)|carr(?:y|ies|ied|ying)|regroup\w*|exchang\w*)\b/i;
+/** The place words a clause names (plural forms only: "one" and "ten" are numbers). */
+const PLACE_WORDS = /\b(hundred thousands|ten thousands|thousands|hundreds|tens|ones)\b/gi;
+
+/** A board column or a spoken place word ("ten", "ones", "ten_thousands") as a place, or null. */
+function placeOf(word: unknown): string | null {
+  if (typeof word !== "string") return null;
+  const w = word.replace(/_/g, " ").toLowerCase().trim().replace(/\s+/g, " ");
+  const plural = w.endsWith("s") ? w : `${w}s`;
+  return (PLACES as readonly string[]).includes(plural) ? plural : null;
+}
+
+const SMALL = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
+const TENS = ["twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+
+/** A number as a clause says it ("45,672", "twelve", "forty-two", "three hundred five"), or null. */
+function toNumber(text: string): number | null {
+  const t = text.trim();
+  if (/^\d{1,3}(?:,\d{3})+$|^\d+$/.test(t)) return Number(t.replace(/,/g, ""));
+  let total = 0;
+  let part = 0;
+  let last: "unit" | "ten" | "scale" | null = null;
+  for (const w of t.split(/[- ]+/)) {
+    const small = SMALL.indexOf(w);
+    const ten = TENS.indexOf(w);
+    if (small >= 0) { if (last === "unit") return null; part += small; last = "unit"; }
+    else if (ten >= 0) { if (last === "unit" || last === "ten") return null; part += (ten + 2) * 10; last = "ten"; }
+    else if (w === "hundred") { if (part === 0 || part >= 100) return null; part *= 100; last = "scale"; }
+    else if (w === "thousand") { if (part === 0) return null; total += part * 1000; part = 0; last = "scale"; }
+    else return null;
   }
+  return last === null ? null : total + part;
 }
 
-/**
- * Whether a drawing matches the sentence it is tied to (B2). Fail closed: the drawing goes only with a sentence that code
- * reads as a plain positive statement or instruction of what it shows (`positiveClauses`), and that statement says the
- * drawing's step and numbers:
- * - a written value (a digit, a row, a value, the answer, a division step): the statement says that number;
- * - a note: the statement says every number of its equation;
- * - a trade or a highlight: the statement names its place, or (a trade) says borrow, trade, carry or regroup;
- * - a chart: the statement says its number or names one of its places;
- * and never a place conflict: when the statement names places and the drawing is about one, it is one of them.
- * A question, a condition, a clause about the drawing that code cannot read as positive ("Do not trade yet.", "The tens
- * digit stays 5 for now."), or any clause after the statement that code cannot read (", but not yet"): no match. The
- * sentence is still said.
- */
-export function drawingMatches(sentence: string, offer: string, commands: readonly TutorCommand[]): boolean {
-  const f = drawingFacts(offer, commands);
-  const clauses = positiveClauses(sentence);
-  if (clauses === null) return false;
-  const first = clauses.findIndex((c) => c.positive && names(f, offer, c.text));
-  if (first < 0) return false;
-  // Before the statement, a reason may lead up to it ("You can't take 8 from 2, so we trade ..."), but it must not be
-  // about the drawing; after it, every clause must be a plain positive statement too.
-  if (clauses.some((c, i) => !c.positive && (i > first || names(f, offer, c.text)))) return false;
-  const text = clauses.filter((c) => c.positive).map((c) => c.text).join(". ");
-  const said = numbersOf(text);
-  const named = placesOf(text);
-  const byValue = f.values.some((v) => said.includes(v));
-  const byPlace = f.places.some((p) => named.includes(p)) || (offer === "trade" && TRADE_WORDS.test(text));
-  const shown = f.by === "all" ? f.values.length > 0 && f.values.every((v) => said.includes(v))
-    : f.by === "value" ? byValue
-    : f.by === "place" ? byPlace
-    : byValue || byPlace;
-  if (!shown) return false;
-  // A chart holds every place of its number: no place conflict to read.
-  if (f.by === "either" || named.length === 0 || f.places.length === 0) return true;
-  return f.places.some((p) => named.includes(p));
-}
-
-/** Whether a piece of text names the drawing at all: one of its values, one of its places, or (a trade) a trade word. */
-function names(f: DrawingFacts, offer: string, text: string): boolean {
-  const said = numbersOf(text);
-  const named = placesOf(text);
-  return f.values.some((v) => said.includes(v)) || f.places.some((p) => named.includes(p)) || (offer === "trade" && TRADE_WORDS.test(text));
-}
-
-// ---------- The positive forms code reads ----------
-
-const NUM_WORDS = "zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand";
-const N = String.raw`(?:\d[\d,]*|(?:${NUM_WORDS})(?:[- ](?:${NUM_WORDS}))*)`;
-const OP = String.raw`(?:plus|minus|times|multiplied by|divided by|take away|[+\-−–×x*÷/])`;
-const PL = String.raw`(?:hundred thousands?|ten thousands?|thousands?|hundreds?|tens?|ones?)`;
+const NUM_WORDS = [...SMALL, ...TENS, "hundred", "thousand"].join("|");
+const N = String.raw`(\d[\d,]*|(?:${NUM_WORDS})(?:[- ](?:${NUM_WORDS}))*)`;
+const OP_WORDS = String.raw`plus|minus|times|multiplied by|divided by|take away|[+\-−–×*÷/]|x`;
+const PL = String.raw`(hundred thousands?|ten thousands?|thousands?|hundreds?|tens?|ones?)`;
 const AT = String.raw`(?: place| column)?`;
 const WHO = String.raw`(?:(?:we|you|let's|let us) )?(?:can )?`;
-/**
- * The plain positive forms a tied sentence's statement takes, whole (each one anchored). Anything else is not read as
- * positive: code never guesses from a list of negative words.
- */
-const POSITIVE = [
+
+const OP_OF: Record<string, string> = { plus: "+", "+": "+", minus: "−", "take away": "−", "-": "−", "−": "−", "–": "−", times: "×", "multiplied by": "×", "×": "×", x: "×", "*": "×", "divided by": "÷", "÷": "÷", "/": "÷" };
+
+/** An equation's action from its expression ("12 minus 8", "12 − 8") and result, or null when code cannot read it whole. */
+function equationAction(expression: string, result: string): Action | null {
+  const parts = expression.trim().split(new RegExp(String.raw` (${OP_WORDS}) `));
+  if (parts.length < 3 || parts.length % 2 === 0) return null;
+  const operands = parts.filter((_, i) => i % 2 === 0).map(toNumber);
+  const ops = parts.filter((_, i) => i % 2 === 1).map((o) => OP_OF[o]);
+  const r = toNumber(result);
+  if (r === null || operands.some((x) => x === null) || ops.some((o) => !o)) return null;
+  const key = `equation|${operands.map((x, i) => (i === 0 ? String(x) : `${ops[i - 1]}${x}`)).join("")}=${r}`;
+  return { key, values: [...(operands as number[]), r], places: [] };
+}
+
+const write = (value: number | null, place: string | null | undefined): Action | null =>
+  value === null || (place !== undefined && place !== null && !placeOf(place)) ? null : { key: `write|${value}|${place ? placeOf(place) : "-"}`, values: [value], places: place ? [placeOf(place)!] : [] };
+
+const trade = (fromPlace: string, give: number | null, toPlace: string, get: number | null): Action | null => {
+  const from = placeOf(fromPlace);
+  const to = placeOf(toPlace);
+  return from && to && give !== null && get !== null ? { key: `trade|${give} ${from}|${get} ${to}`, values: [give, get], places: [from, to] } : null;
+};
+
+/** The plain positive forms, each read whole into one action (anchored). Anything else is not read as positive. */
+const FORMS: { re: RegExp; read: (m: RegExpMatchArray) => Action | null }[] = [
   // An equation: "12 minus 8 is 4", "6 times 870 is 5220".
-  new RegExp(String.raw`^${N}(?: ${OP} ${N})+ (?:is|equals|makes|gives|=) ${N}$`),
-  // A number in places: "52 is 4 tens and 12 ones".
-  new RegExp(String.raw`^${N} (?:is|equals|makes) ${N} ${PL}(?: and ${N} ${PL})*$`),
-  // Writing a digit: "write 4 in the ones", "4 goes in the ones place", "the ones digit is 4", "we get 4 in the ones".
-  new RegExp(String.raw`^${WHO}(?:write|put) (?:a |the )?${N} (?:in|into|under|below) the ${PL}${AT}$`),
-  new RegExp(String.raw`^(?:the )?${N} goes (?:in|into) the ${PL}${AT}$`),
-  new RegExp(String.raw`^the ${PL} digit is ${N}$`),
-  new RegExp(String.raw`^we get ${N}(?: in the ${PL}${AT})?$`),
-  // A trade: "we trade 1 ten for 10 ones", "we borrow 1 ten from the 5 tens", "we carry the 1 to the tens".
-  new RegExp(String.raw`^${WHO}(?:trade|borrow|regroup|carry)(?: (?:${N}|a|an|the|it|for|into|from|to|over|place|column|${PL}))*$`),
-  // A place: "the 4 is in the ten thousands place", "look at the tens".
-  new RegExp(String.raw`^(?:the )?${N} is in the ${PL}${AT}$`),
-  new RegExp(String.raw`^${WHO}look at the ${PL}${AT}$`),
-  // A chart and a division: "let's put 45,672 in a chart", "let's share 84 into 4 groups".
-  new RegExp(String.raw`^${WHO}(?:put|write) ${N} in (?:a|the) (?:place value |place-value )?(?:place )?chart$`),
-  new RegExp(String.raw`^${WHO}(?:share|divide|split) ${N} (?:into|by|between|among) ${N}(?: (?:equal )?groups)?$`),
+  { re: new RegExp(String.raw`^((?:${N.slice(1, -1)})(?: (?:${OP_WORDS}) (?:${N.slice(1, -1)}))+) (?:is|equals|makes|gives|=) ${N}$`), read: (m) => equationAction(m[1], m[2]) },
+  // A number in places: "52 is 4 tens and 12 ones" (a description; no drawing writes it).
+  { re: new RegExp(String.raw`^${N} (?:is|equals|makes) ${N} ${PL}(?: and ${N} ${PL})?$`), read: (m) => {
+    const n = toNumber(m[1]);
+    const a = toNumber(m[2]);
+    const b = m[4] === undefined ? null : toNumber(m[4]);
+    return n === null || a === null || (m[4] !== undefined && b === null) || !placeOf(m[3]) || (m[5] !== undefined && !placeOf(m[5])) ? null
+      : { key: `parts|${n}|${a} ${placeOf(m[3])}${m[4] === undefined ? "" : `|${b} ${placeOf(m[5])}`}`, values: [n, a, ...(b === null ? [] : [b])], places: [placeOf(m[3])!, ...(m[5] ? [placeOf(m[5])!] : [])] };
+  } },
+  // Writing a value: "write 4 in the ones", "4 goes in the ones place", "the ones digit is 4", "write 240".
+  { re: new RegExp(String.raw`^${WHO}(?:write|put) (?:a |the )?${N}(?: (?:in|into|under|below) the ${PL}${AT})?$`), read: (m) => write(toNumber(m[1]), m[2] ?? null) },
+  { re: new RegExp(String.raw`^(?:the )?${N} goes (?:in|into) the ${PL}${AT}$`), read: (m) => write(toNumber(m[1]), m[2]) },
+  { re: new RegExp(String.raw`^the ${PL} digit is ${N}$`), read: (m) => write(toNumber(m[2]), m[1]) },
+  // A trade with both of its quantities: "we trade 1 ten for 10 ones", "we trade 10 ones for 1 ten".
+  { re: new RegExp(String.raw`^${WHO}(?:trade|regroup|exchange|borrow|carry) (?:a |the )?${N} ${PL} (?:for|into) ${N} ${PL}$`), read: (m) => trade(m[2], toNumber(m[1]), m[4], toNumber(m[3])) },
+  // A place: "look at the ten thousands".
+  { re: new RegExp(String.raw`^${WHO}(?:look at|see) the ${PL}${AT}$`), read: (m) => (placeOf(m[1]) ? { key: `place|${placeOf(m[1])}`, values: [], places: [placeOf(m[1])!] } : null) },
+  // A chart and a division: "let's put 45,672 in a place value chart", "let's share 84 into 4 groups".
+  { re: new RegExp(String.raw`^${WHO}(?:put|write) ${N} in (?:a|the) (?:place value |place-value )?(?:place )?chart$`), read: (m) => {
+    const n = toNumber(m[1]);
+    return n === null ? null : { key: `chart|${n}`, values: [n], places: [] };
+  } },
+  { re: new RegExp(String.raw`^${WHO}(?:share|divide|split) ${N} (?:into|by|between|among) ${N}(?: (?:equal )?groups)?$`), read: (m) => {
+    const a = toNumber(m[1]);
+    const b = toNumber(m[2]);
+    return a === null || b === null ? null : { key: `divide|${a}|${b}`, values: [a, b], places: [] };
+  } },
 ];
+
 /** Words that may open a clause and change nothing it says. */
 const LEAD = /^(?:(?:so|now|then|first|next|okay|ok|and|great|good|right|alright|\{name\}),?\s+)+/;
 /** A clause that makes another one depend on something: never read as a plain statement. */
 const CONDITION = /^(?:if|unless|when|whenever|once|until|before|after|in case|as soon as)\b/;
 
+/** One clause's action, or null when it is not whole one plain positive form. */
+function clauseAction(clause: string): Action | null {
+  for (const f of FORMS) {
+    const m = clause.match(f.re);
+    if (m) return f.read(m);
+  }
+  return null;
+}
+
 /**
- * The clauses of a sentence, each marked positive when it is whole one of the plain positive forms (`POSITIVE`), or
- * null when the sentence is a question or holds a condition: then no drawing goes with it.
+ * The clauses of a sentence with their actions (null: not a plain positive statement), or null when the sentence is a
+ * question, quotes someone, or holds a condition: then no drawing goes with it.
  */
-function positiveClauses(sentence: string): { text: string; positive: boolean }[] | null {
+function clausesOf(sentence: string): { text: string; action: Action | null }[] | null {
   const s = sentence.trim().replace(/[’‘]/g, "'").toLowerCase();
-  if (/\?\s*["')\]]*$/.test(s)) return null;
-  const clauses = s.replace(/[.!]+["')\]]*$/, "").split(/,\s+|;\s+|:\s+|\s+(?=(?:so|but|then|because)\s)/).map((c) => c.trim()).filter(Boolean);
+  if (/[?"“”]/.test(s)) return null;
+  const clauses = s.replace(/[.!]+[')\]]*$/, "").split(/,\s+|;\s+|:\s+|\s+(?=(?:so|but|then|because)\s)/).map((c) => c.trim()).filter(Boolean);
   if (clauses.some((c) => CONDITION.test(c.replace(LEAD, "")))) return null;
   return clauses.map((c) => {
     const text = c.replace(LEAD, "").replace(/^(?:but|because)\s+/, "");
-    return { text, positive: !/^(?:but|because)\s/.test(c) && POSITIVE.some((r) => r.test(text)) };
+    return { text, action: /^(?:but|because)\s/.test(c) ? null : clauseAction(text) };
   });
+}
+
+/** The action a drawing shows, read from the command the kind built for it, or null when code cannot read one. */
+function drawingAction(offer: string, commands: readonly TutorCommand[]): Action | null {
+  const target = (c: TutorCommand | undefined) => (c && typeof c.target === "object" && c.target !== null ? (c.target as Record<string, unknown>) : {});
+  const num = (v: unknown) => (typeof v === "string" && /^\d+$/.test(v) ? Number(v) : typeof v === "number" && Number.isInteger(v) ? v : null);
+  switch (offer) {
+    // The thing asked for is the last value written: the trades and digits before it are the work it needs first.
+    case "digit":
+    case "value":
+    case "answer":
+    case "row": {
+      const last = commands.filter((c) => c.op === "put").at(-1);
+      if (!last) return null;
+      const t = target(last);
+      return write(num(last.value), t.part === "cell" ? (placeOf(t.column) ?? "?") : null);
+    }
+    case "note":
+    case "try": {
+      const notes = commands.filter((c) => c.op === "write");
+      const m = notes.length === 1 && typeof notes[0].text === "string" ? /^(.+?) = (\d+)$/.exec(notes[0].text) : null;
+      return m ? equationAction(m[1], m[2]) : null;
+    }
+    case "trade": {
+      // One trade only: a trade through several places has no single clause that says it all.
+      const regroups = commands.filter((c) => c.op === "regroup");
+      if (regroups.length !== 1) return null;
+      const r = regroups[0];
+      if (typeof r.from !== "string" || typeof r.to !== "string") return null;
+      // A borrow gives 1 of the place on the left for 10 of the place on its right; a carry gives 10 for 1.
+      return r.kind === "borrow" ? trade(r.from, 1, r.to, 10) : r.kind === "carry" ? trade(r.from, 10, r.to, 1) : null;
+    }
+    case "division": {
+      const c = commands.find((x) => x.op === "division");
+      const a = num(c?.dividend);
+      const b = num(c?.divisor);
+      return a === null || b === null ? null : { key: `divide|${a}|${b}`, values: [a, b], places: [] };
+    }
+    case "chart": {
+      const n = num(commands.find((x) => x.op === "place_chart")?.number);
+      return n === null ? null : { key: `chart|${n}`, values: [n], places: [] };
+    }
+    case "band": {
+      const piece = target(commands.find((x) => x.op === "mark")).piece;
+      const p = typeof piece === "string" ? placeOf(piece.replace(/^band-/, "")) : null;
+      return p ? { key: `place|${p}`, values: [], places: [p] } : null;
+    }
+    default:
+      return null;
+  }
+}
+
+/** Whether a clause names the drawing at all: one of its values, one of its places, or (a trade) a trade word. */
+function names(a: Action, offer: string, text: string): boolean {
+  const said = sayNumbers(text).flatMap((t) => (t.q && t.q[1] === 1 ? [t.q[0]] : []));
+  const named = [...text.matchAll(PLACE_WORDS)].map((m) => m[1].toLowerCase());
+  return a.values.some((v) => said.includes(v)) || a.places.some((p) => named.includes(p)) || (offer === "trade" && TRADE_WORDS.test(text));
+}
+
+/**
+ * Whether a drawing matches the sentence it is tied to (B2). Fail closed: the drawing's action must equal the action of
+ * one single clause of the sentence, read whole from one plain positive form (every field: what it does, its operation,
+ * its values, places and quantities). A question, a quote, a condition, a clause about the drawing that is not a plain
+ * positive form ("Do not trade yet."), or any clause after the matching one that is not one: no match. A reason
+ * before the matching clause may stand when it does not name the drawing ("You can't take 8 from 2, so we trade 1 ten
+ * for 10 ones."). The sentence is still said.
+ */
+export function drawingMatches(sentence: string, offer: string, commands: readonly TutorCommand[]): boolean {
+  const a = drawingAction(offer, commands);
+  const clauses = clausesOf(sentence);
+  if (!a || !clauses) return false;
+  const at = clauses.findIndex((c) => c.action?.key === a.key);
+  if (at < 0) return false;
+  return !clauses.some((c, i) => c.action === null && (i > at || names(a, offer, c.text)));
 }
 
 // ---------- The cue word ----------

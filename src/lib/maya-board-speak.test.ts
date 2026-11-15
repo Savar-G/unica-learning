@@ -32,7 +32,7 @@ import type { OperationPackage } from "@/lib/question-package";
 const PKG = SAMPLE_PACKAGES["subtract-52-28"] as OperationPackage;
 const T0 = Date.UTC(2026, 10, 15, 16, 0, 0);
 const S1 = "You can't take 8 from 2, so we trade 1 ten for 10 ones.";
-const S2 = "12 minus 8 is 4.";
+const S2 = "12 minus 8 is 4, so write 4 in the ones.";
 const S3 = "What is 4 tens minus 2 tens?";
 const SAY = `${S1} ${S2} ${S3}`;
 const TRADE_AND_DIGIT = reply(SAY, "guide", { draw: [{ offer: "digit", place: "ones", sentence: 2 }, { offer: "trade", place: "", sentence: 1 }] });
@@ -159,6 +159,25 @@ describe("review of #1094: a drawing goes only with a positive statement of it",
     const out = await session.child("Please help me.");
     expect(out.board.filter(isTrade)).toHaveLength(1);
   });
+});
+
+describe("review of #1094, round 2: the drawing's action equals one clause's action", () => {
+  const cases: [string, string, { offer: string; place: string; sentence: number }][] = [
+    ["Write 4 in the tens, so write 5 in the ones.", "the ones digit (4) with another clause's value and place", { offer: "digit", place: "ones", sentence: 1 }],
+    ["8 plus 4 is 12.", "the note 12 − 8 = 4 beside another true equation", { offer: "note", place: "12 - 8 = 4", sentence: 1 }],
+    ["We trade 2 tens for 20 ones.", "the trade of 1 ten beside a trade of 2 tens", { offer: "trade", place: "", sentence: 1 }],
+  ];
+  for (const [said, what, draw] of cases) {
+    it(`"${said}": ${what} is not drawn; the words go out`, async () => {
+      const { session } = chat([reply(`${said} What comes next?`, "guide", { draw: [draw] }), ASK]);
+      await session.start();
+      const out = await session.child("Please help me.");
+      expect(out.say.join(" ")).toBe(`${said} What comes next?`);
+      expect(out.board).toEqual([]);
+      const trace = await session.finish({ reason: "child_stopped" });
+      expect(attempts(trace).flatMap((a) => a.drawDrops ?? [])).toEqual([{ offer: draw.offer, sentence: 0, reason: "mismatch" }]);
+    });
+  }
 });
 
 describe("review of #1094: the server's board is rebuilt from the fates", () => {
