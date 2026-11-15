@@ -11,6 +11,7 @@ import { sayNumbers } from "../say-check";
 import { plainTeaching } from "../tutor";
 import { expressionKey, noteFromEquation, type TutorCommand, type TutorKind, type TutorStepFact } from "../tutor-kind";
 import { clauseAt } from "./clauses";
+import { countedInText, finalQuestion, isGroup, THING } from "./asks";
 
 type MulStep = Extract<WorkedStep, { kind: "multiply-digit" }>;
 type PartialStep = Extract<WorkedStep, { kind: "partial-product" }>;
@@ -74,7 +75,33 @@ function story(pkg: OperationPackage): boolean {
   if (!/[a-z]{3,}/i.test(pkg.text) || !nums.includes(a) || !nums.includes(b)) return false;
   // Every clause of the story is part of the one product: no third number and no step of another operation (F13).
   if (!nums.every((n) => n === a || n === b) || /\d\.\d/.test(pkg.text) || OTHER_STEP.test(pkg.text)) return false;
-  return PRODUCT_STORY.test(pkg.text) && !DIVISION_STORY.test(pkg.text);
+  return PRODUCT_STORY.test(pkg.text) && !DIVISION_STORY.test(pkg.text) && asksProduct(pkg.text, a, b);
+}
+
+/** The closed question forms of a product story; a printed number in a form must be one of the two factors. */
+const PRODUCT_ASKS = [
+  new RegExp(String.raw`^how many ${THING} (?:are there )?(?:in all|altogether|in total)$`),
+  new RegExp(String.raw`^how many ${THING} is that(?: in all)?$`),
+  new RegExp(String.raw`^how many ${THING} (?:are )?in (\d+) ${THING}$`),
+  new RegExp(String.raw`^how many ${THING} can (\d+) ${THING} (?:carry|hold)$`),
+];
+
+/**
+ * Pre-launch check 2: a product story's final question asks for the product, in a closed form, about the things the
+ * groups hold (counted after a printed number, and not a group itself). "How many counters are in each box?" asks for
+ * a factor, and "How many boxes in all?" counts the groups: both keep the controller.
+ */
+function asksProduct(text: string, a: number, b: number): boolean {
+  const q = finalQuestion(text);
+  if (q === null) return false;
+  for (const re of PRODUCT_ASKS) {
+    const m = re.exec(q);
+    if (!m) continue;
+    const n = m[2] === undefined ? null : Number(m[2]);
+    // "in 5 bins", "can 140 buses carry": the number counts groups.
+    return countedInText(text, m[1]) && !isGroup(m[1]) && (n === null || ((n === a || n === b) && isGroup(m[3])));
+  }
+  return false;
 }
 
 /** What the question is: a product, a division, or a missing factor and how it is found. */

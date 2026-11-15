@@ -24,6 +24,7 @@ The first kind that fits a question teaches it. A kind may import another kind's
 | Method | Gives | Rule |
 |---|---|---|
 | `fits(pkg)` | whether the kind teaches the package | Fit only what the kind fully reads. Any other package keeps the controller. |
+| `fits(pkg)`, for a word problem | the final question asks for exactly what the stored operation computes | Pre-launch check 2: closed question forms per kind (`tutor-kinds/asks.ts`): "how many ... in all / altogether / left / now / in 5 bins / more ... does Ava score", "what is the value of the P digit", "true or false: A > B" with the stored relation and sides. A counted thing must follow a printed number and must not be a group (a box, a bag, a day). Any other form, a word such as "double", "half", "sold" or "at first", or a printed relation that differs from the stored one: no fit. |
 | `steps(pkg)` | every work step: id, place, work in plain words with true math, result | Ids are the package's own work step ids. The `work` text passes `checkTutorSay` (the contract checks it). |
 | `numberMeaning(pkg, n)` | right for a step or the answer, a named likely mistake, or "not a value of this question" | Name real mistakes of the family (the column kind's smaller-from-larger is the model). |
 | `workValues(pkg)` | values that are never a wrong answer | Step results, digits and intermediate values the child may say. |

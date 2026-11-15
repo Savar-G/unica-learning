@@ -17,6 +17,7 @@ import { equationHolds, equationsOf, sentencesOf } from "../say-check";
 import { falseClaims } from "../tutor-math";
 import { expressionKey, noteFromEquation, type TutorCommand, type TutorKind, type TutorStepFact } from "../tutor-kind";
 import { clauseAt, statements } from "./clauses";
+import { plainText } from "./asks";
 
 type ClaimStep = Extract<WorkedStep, { kind: "claim-compare" }>;
 type CompareStep = Extract<WorkedStep, { kind: "comparison" }>;
@@ -377,12 +378,67 @@ function fitsShape(pkg: OperationPackage): boolean {
       if (result.type !== "number" || !close(result.value, claim.value)) return false;
     }
     const holds = claim.relation === "equal" ? close(claim.value, claim.shown) : claim.relation === "greater" ? claim.value > claim.shown : claim.value < claim.shown;
-    return holds === claim.holds;
+    return holds === claim.holds && printedRelation(pkg, claim);
   }
   const op = comparisonOp(pkg);
   if (!op || !compare) return false;
   const [left, right] = comparisonSides(op);
-  return compare.left === left && compare.right === right && comparisonAnswer(op).value.toLowerCase() === word;
+  return compare.left === left && compare.right === right && comparisonAnswer(op).value.toLowerCase() === word && printedComparison(pkg.text, op);
+}
+
+/** Printed relation words: "greater than", ">", "less than", "<". */
+const PRINTED_GREATER = /\b(?:greater|bigger|larger|more|higher|more likely) than\b|>/i;
+const PRINTED_LESS = /\b(?:less|smaller|fewer|lower|less likely) than\b|</i;
+
+/**
+ * Pre-launch check 2: a printed claim names the stored relation and no other. "Is 6 × 870 greater than 5226?" for a
+ * stored greater-than; "True or false: 6 × 6 = 37." for an equal. The stored relation reads the computed side first: when
+ * the text prints the shown number before the operation's numbers ("with 1 red, 5 blue and 5 green marbles, red is more
+ * likely than the other colours together"), the printed relation is the other way round. A printed "less than" on a
+ * stored greater-than keeps the controller.
+ */
+function printedRelation(pkg: OperationPackage, claim: Pick<ClaimStep, "relation" | "shown">): boolean {
+  const text = plainText(pkg.text);
+  const greater = PRINTED_GREATER.test(text);
+  const less = PRINTED_LESS.test(text);
+  if (claim.relation === "equal") return !greater && !less;
+  const at = (n: number) => { const m = new RegExp(String.raw`(?<![\d.])${n}(?![\d.])`).exec(text); return m ? m.index : -1; };
+  const shownAt = at(claim.shown);
+  const computedAt = Math.min(...(pkg.operation.operands as unknown[]).filter((v): v is number => typeof v === "number").map(at).filter((i) => i >= 0));
+  const flipped = shownAt >= 0 && Number.isFinite(computedAt) && shownAt < computedAt;
+  const relation = flipped ? (claim.relation === "greater" ? "less" : "greater") : claim.relation;
+  return relation === "greater" ? greater && !less : less && !greater;
+}
+
+/**
+ * Pre-launch check 2: a closed comparison's printed question is the stored comparison in its closed form: its sides in
+ * their order and its one relation (the stored comparison always asks whether the left side is the greater). "True or
+ * false: 5/6 is less than 3/6." on a stored 5/6 > 3/6 keeps the controller.
+ */
+function printedComparison(text: string, op: ComparisonOperation): boolean {
+  const t = plainText(text).toLowerCase();
+  const gt = String.raw`(?:>|is (?:greater|bigger|more) than)`;
+  switch (op.context) {
+    case "same-denominator": {
+      const [a, b] = op.operands;
+      const d = op.denominator;
+      return new RegExp(String.raw`^(?:true or false: )?${a}/${d} ${gt} ${b}/${d}\.?$`).test(t);
+    }
+    case "equal-pieces": {
+      const [a, b] = op.operands;
+      return new RegExp(String.raw`^(?:all (?:the )?pieces (?:have|are) the same size\. )?true or false: ${a} pieces? ${gt} ${b} pieces?\.$`).test(t);
+    }
+    case "rectangle-areas": {
+      const [a, b, c, d] = op.operands;
+      return new RegExp(String.raw`^which is bigger: ${a} by ${b}(?: squares)?,? or ${c} by ${d}(?: squares)?\?$`).test(t);
+    }
+    case "counter-counts": {
+      const [r, b] = op.operands;
+      return new RegExp(String.raw`^a bag has ${r} red counters and ${b} blue counters\. which colou?r is more likely(?: on one random draw)?\?$`).test(t);
+    }
+    case "die-events":
+      return new RegExp(String.raw`^which is more likely(?: on a die numbered 1 to 6| when you roll a die)?: (?:an )?even(?: number)? or (?:a number )?less than ${op.operands[0]}\?$`).test(t);
+  }
 }
 
 function workSteps(pkg: OperationPackage): WorkedStep[] {

@@ -69,7 +69,7 @@ import { ACTS, PART_LIMITS, PROPOSAL_VERSION, isModelOutput, readModelOutput, wi
 import { checkSay, checkSentence, columnSentenceTruth, equationHolds, heardColumnOf, revealsOpenStep, endsWithAsk, INSTRUCTION, MATH_WORD, PRAISE_WORDS, trimSay, equationKeysOf, equationsOf, sentencesOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, type SayReason, type SayRules, type SayValue } from "./say-check";
 import type { TalkReviewResult } from "./talk-review";
 import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
-import { checkTutorSay, childFacts, childSaysFalse, isTutorQuestion, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, TUTOR_REVIEW_IGNORED } from "./tutor";
+import { checkTutorSay, childFacts, childSaysFalse, columnSums, isTutorQuestion, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, TUTOR_REVIEW_IGNORED } from "./tutor";
 import { MATH_REVIEW_PROMPT_VERSION, mathReviewsOf, type MathReview, type MathReviewInput } from "./math-review";
 import { hideName as redactChildName } from "../child-name-redaction";
 
@@ -5036,9 +5036,11 @@ export function mathReviewInput(s: Session, sentence: string, before: readonly s
     sentence: hide(sentence),
     before: before.map(hide),
     question: pkg ? hide(pkg.text) : "",
-    steps: pkg ? stepFacts(pkg).map((st) => ({ work: st.work, result: st.result })) : [],
+    // The step facts and their word results hide the name too: a story's person can be the child's name (pre-launch
+    // check 2: "so Mia is not right").
+    steps: pkg ? stepFacts(pkg).map((st) => ({ work: hide(st.work), result: typeof st.result === "string" ? hide(st.result) : st.result })) : [],
     workValues: pkg ? tutorKind(pkg).workValues(pkg) : [],
-    answer: typeof answer === "number" || typeof answer === "string" ? answer : null,
+    answer: typeof answer === "number" ? answer : typeof answer === "string" ? hide(answer) : null,
     childTurn: s.turn ? hide(s.turn.text) : null,
     childFacts: pkg && s.turn ? childFacts(pkg, s.turn.text).map(hide) : [],
     transcript: s.turns.slice(-MATH_REVIEW_TURNS).map((t) => ({ speaker: t.speaker, text: hide(t.text) })),
@@ -5054,7 +5056,7 @@ function easierFacts(pkg: OperationPackage, hide: (text: string) => string): Mat
   try {
     const twin = { ...pkg, text: e.text, operation: e.operation, answer: { ...pkg.answer, value: e.answer }, steps: e.steps } as OperationPackage;
     const value = (e.answer as { value?: unknown }).value;
-    return { question: hide(e.text), steps: stepFacts(twin).map((st) => ({ work: st.work, result: st.result })), answer: typeof value === "number" || typeof value === "string" ? value : null };
+    return { question: hide(e.text), steps: stepFacts(twin).map((st) => ({ work: hide(st.work), result: typeof st.result === "string" ? hide(st.result) : st.result })), answer: typeof value === "number" ? value : typeof value === "string" ? hide(value) : null };
   } catch {
     return null;
   }
@@ -5233,9 +5235,9 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   const op = kind.op?.(pkg);
   const claims = (sentence: string) => kind.claimProblems(pkg, sentence);
   const answer = pkg.answer.value.type === "number" ? pkg.answer.value.value : undefined;
-  let verdict = checkTutorSay(text, { stance, extra, childValues, claims, trades: tutorKind(pkg).workValues(pkg), nameWords: nameWordsOf(base), ...(op ? { op } : {}), ...(answer === undefined ? {} : { answer }) });
+  let verdict = checkTutorSay(text, { stance, extra, childValues, claims, trades: tutorKind(pkg).workValues(pkg), columns: columnSums(pkg), nameWords: nameWordsOf(base), ...(op ? { op } : {}), ...(answer === undefined ? {} : { answer }) });
   // Code's own line never fails its turn: after streamed words that leave no room, the turn is those words.
-  if (fallback && !verdict.ok && sent.length) { text = lead; verdict = checkTutorSay(text, { stance: "none", extra, claims, trades: tutorKind(pkg).workValues(pkg), nameWords: nameWordsOf(base), ...(op ? { op } : {}) }); }
+  if (fallback && !verdict.ok && sent.length) { text = lead; verdict = checkTutorSay(text, { stance: "none", extra, claims, trades: tutorKind(pkg).workValues(pkg), columns: columnSums(pkg), nameWords: nameWordsOf(base), ...(op ? { op } : {}) }); }
   if (!verdict.ok) return no("say_check", `Your message was refused (${verdict.reason}): ${verdict.detail}`, verdict.reason);
   if (act === "close" && /\?\s*$/.test(text)) return no("say_check", "A close ends the call, so it asks nothing: say a short goodbye with no question.", "close_asks");
   // Child safety: each sentence that is not plain teaching is reviewed before it is said (the adapter runs the reviews,
