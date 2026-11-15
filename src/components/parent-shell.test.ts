@@ -61,6 +61,35 @@ describe("the frame keeps the child in view across pages", () => {
   });
 });
 
+describe("the cleaner frame (#1024)", () => {
+  it("holds only the logo and the tabs in the sidebar; the desk and the child pill are in the header", async () => {
+    await go("/account", "omar");
+    const side = host.querySelector(".pd-side")!;
+    expect(side.querySelector("form, .pd-kid, .pd-switch, .pd-desk")).toBeNull();
+    expect(Array.from(side.querySelectorAll(".pd-nav a")).map(a => a.textContent)).toEqual(["Overview", "Assessment", "Account", "Feedback"]);
+    const top = host.querySelector(".pd-top")!;
+    expect(top.querySelector('form[action="/api/desk/open"] button')?.textContent).toContain("Open the desk");
+    expect(top.querySelector(".pd-kid b")?.textContent).toBe("omar");
+    expect(top.querySelector(".pd-top-name")?.textContent).toBe("omar");
+    // One desk form and one pill in the whole frame, so nothing is sent twice.
+    expect(host.querySelectorAll('form[action="/api/desk/open"]')).toHaveLength(1);
+    expect(host.querySelectorAll(".pd-kid")).toHaveLength(1);
+  });
+  it("shows the child pill as a plain name for one child and as the switcher for several", async () => {
+    await go("/account");
+    expect(host.querySelector(".pd-top details.pd-switch")).not.toBeNull();
+    expect(host.querySelector(".pd-top summary.pd-kid")?.getAttribute("aria-label")).toBe("asha. Change child");
+    await act(async () => root.render(createElement(ParentShell, { ...shellProps, kids: [kid("asha")] })));
+    expect(host.querySelector(".pd-top .pd-switch")).toBeNull();
+    expect(host.querySelector(".pd-top div.pd-kid b")?.textContent).toBe("asha");
+  });
+  it("offers Set your PIN, not the desk form, until a PIN is set", async () => {
+    await act(async () => root.render(createElement(ParentShell, { ...shellProps, pinSet: false, kids })));
+    expect(host.querySelector('form[action="/api/desk/open"]')).toBeNull();
+    expect(host.querySelector('.pd-top a.pd-desk[href="/account/pin?desk=1"]')?.textContent).toBe("Set your PIN");
+  });
+});
+
 it("keeps the selected child and stage links when Feedback opens, with a parent link on desktop and phone", async () => {
   await go("/account", "omar");
   const before = Array.from(host.querySelectorAll<HTMLAnchorElement>(".pd-bar a")).map(a => a.getAttribute("href"));

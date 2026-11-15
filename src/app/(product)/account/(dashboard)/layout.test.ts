@@ -71,7 +71,8 @@ it("adds nothing around the page for a family the switch does not open to", asyn
 it("shows the child, with no dropdown for one child, and no desk before the first shipped workbook", async () => {
   const out = await render();
   expect(out).toContain("Leah");
-  expect(out).toContain("Grade 3");
+  // The pill is the avatar and the name (#1024); the grade is in the switcher's list.
+  expect(out).not.toContain("Grade 3");
   expect(out).not.toContain("<details");
   expect(out).not.toContain("/api/desk/open");
   expect(out).toContain("<p>the page</p>");
@@ -97,7 +98,7 @@ it("opens the desk from the first shipped workbook, as a form to the desk route,
   const open = await render();
   expect(open).toContain('action="/api/desk/open"');
   expect(open).toContain('name="child" value="c1"');
-  expect(open).toContain("Workbook 2");
+  expect(open.match(/action="\/api\/desk\/open"/g)).toHaveLength(1);
   state.dashboard = family({ children: [child({ currentWorkbook: { number: 2 } })], pinSet: false });
   const noPin = await render();
   expect(noPin).not.toContain("/api/desk/open");

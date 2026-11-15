@@ -148,6 +148,21 @@ it("renders the actual confirmation, late mailing, paid restart, decline and sca
   }
 });
 
+it("shows the Overview's first line as the child's name once, with the desk beside it and no eyebrow (#1024)", () => {
+  const output = dom(rendered("overview", "active", "one", "phone"));
+  const headings = [...output.querySelectorAll("h1")];
+  expect(headings.map(h => h.textContent)).toEqual(["Leah"]);
+  expect(headings[0].closest(".pd-name-row")?.querySelector('.pd-desk-form button')?.textContent).toContain("Open the desk");
+  expect(output.querySelector(".support-page .eyebrow")).toBeNull();
+  expect(output.querySelector(".pd-top .pd-kid b")?.textContent).toBe("Leah");
+});
+
+it("keeps the eyebrow, without a square, on the other pages (#1024)", () => {
+  const output = dom(rendered("progress", "week", "one", "phone"));
+  expect(output.querySelector(".support-page .eyebrow")?.textContent).toBe("Progress");
+  expect(output.querySelector(".pd-name-row")).toBeNull();
+});
+
 it("preserves empty families, child selection, long names and URL round trips without account links", () => {
   for (const family of ["none", "one", "two", "long"]) {
     const selection = previewSelection({ view: "account", family, size: "phone", child: "second" });
