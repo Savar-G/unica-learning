@@ -22,6 +22,12 @@
 //   --tutor                  the tutor core (D-345, docs/maya-tutor.md), as on admin test calls
 //   --voice                  as the voice worker: no repair on a controller turn; prints, for each child turn, the ms
 //                            to Maya's first and last sentence (the adapter's onSayPart; no speech-to-text or voice)
+//   --chat                   as desk chat (maya-call.ts textSession for a chat call): channel "chat", the plain runner,
+//                            no free talk but the safety review still on, no streaming (no onSayPart), the real clock
+//
+// With --model openrouter or anthropic the math-truth review of the tutor core is on, built as the site builds it
+// (callMathReviewer in src/lib/maya-call-seams.ts). Without it every tutor sentence code did not read whole is refused.
+// Every review (safety and math, with the math retry) is timed: the times go to <trace>.reviews.json and a summary prints.
 //
 // Script lines: a child turn, or "/wait <seconds>" (the clock moves on and the pause policy runs), "/write start",
 // "/write done", "/quit" (the child hangs up: child_stopped). "#" starts a comment. With --script or piped input the
@@ -30,12 +36,14 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { execFileSync } from "node:child_process";
-import { aiClient } from "@/lib/ai-client";
 import { anthropicClient } from "@/lib/ai-anthropic";
 import { livekitTextSession } from "@/lib/maya-livekit-text";
 import { aiMayaModel, conversationalMayaModel, type MayaModel } from "@/lib/maya-model";
 import { ruleConversationalModel } from "@/lib/maya-model-fake";
-import { aiTalkReviewer, fakeTalkReviewer, REVIEW_DEFAULT_MODEL, type TalkReviewer } from "@/lib/maya-talk-review";
+import { aiTalkReviewer, fakeTalkReviewer, type TalkReviewer } from "@/lib/maya-talk-review";
+import { aiMathReviewer, type MathReviewer } from "@/lib/maya-math-review";
+import { callMathReviewer, callReviewer } from "@/lib/maya-call-seams";
+import { mayaAiClient } from "@/lib/maya-ai-route";
 import { redactText } from "@/lib/maya-trace";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { createTextSession } from "@/lib/maya-text";
@@ -61,10 +69,12 @@ interface Options {
   tutor: boolean;
   /** As the voice worker (modelRepair false), with the first-sentence time of each child turn. */
   voice: boolean;
+  /** As desk chat: channel chat, plain runner, free talk off with the safety review on, no streaming, the real clock. */
+  chat: boolean;
 }
 
 function parse(argv: string[]): Options {
-  const o: Options = { question: "add-27-39", model: "fake", freeTalk: true, script: null, runner: "livekit", trace: null, seed: 1, name: null, list: false, realClock: false, legacy: false, effort: null, tutor: false, voice: false };
+  const o: Options = { question: "add-27-39", model: "fake", freeTalk: true, script: null, runner: "livekit", trace: null, seed: 1, name: null, list: false, realClock: false, legacy: false, effort: null, tutor: false, voice: false, chat: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const v = () => {
@@ -81,6 +91,7 @@ function parse(argv: string[]): Options {
     else if (a === "--no-free-talk") o.freeTalk = false;
     else if (a === "--tutor") o.tutor = true;
     else if (a === "--voice") o.voice = true;
+    else if (a === "--chat") o.chat = true;
     else if (a === "--script") o.script = v();
     else if (a === "--runner") {
       const r = v();
@@ -99,6 +110,8 @@ function parse(argv: string[]): Options {
     }
     else throw new Error(`unknown option ${a}`);
   }
+  if (o.chat && o.voice) throw new Error("--chat and --voice cannot go together");
+  if (o.chat) { o.runner = "plain"; o.freeTalk = false; o.realClock = true; }
   return o;
 }
 
@@ -127,16 +140,58 @@ function anthropicKey(): string {
   return key;
 }
 
-/** Maya's model and the free-talk review (D-197) for the chosen model. */
-function models(o: Options, root: string): { maya: MayaModel; reviewer: TalkReviewer } {
-  if (o.model === "fake") return { maya: ruleConversationalModel(), reviewer: fakeTalkReviewer() };
+/**
+ * Maya's model, the free-talk review (D-197) and the tutor core's math-truth review for the chosen model. The math review
+ * is the site's own (callMathReviewer); the fake rule player has none, as on the site.
+ */
+function models(o: Options, root: string): { maya: MayaModel; reviewer: TalkReviewer; mathReviewer: MathReviewer | null } {
+  if (o.model === "fake") return { maya: ruleConversationalModel(), reviewer: fakeTalkReviewer(), mathReviewer: null };
   if (o.model === "anthropic") {
     const key = anthropicKey();
-    return { maya: conversationalMayaModel(anthropicClient({ apiKey: key })), reviewer: aiTalkReviewer(anthropicClient({ apiKey: key, model: "claude-haiku-5-5" })) };
+    return {
+      maya: conversationalMayaModel(anthropicClient({ apiKey: key })), reviewer: aiTalkReviewer(anthropicClient({ apiKey: key, model: "claude-haiku-5-5" })),
+      mathReviewer: aiMathReviewer(anthropicClient({ apiKey: key, model: "claude-haiku-5-5" }), undefined, { client: anthropicClient({ apiKey: key, model: "claude-sonnet-5-5" }) }),
+    };
   }
+  // The site's own builds: Maya's route (Azure, then Anthropic; mayaAiClient), the review and the math review (callSeams).
   const maya = model(o, root);
-  const review = aiClient(process.env, process.env.MAYA_REVIEW_MODEL?.trim() || REVIEW_DEFAULT_MODEL);
-  return { maya, reviewer: review ? aiTalkReviewer(review) : fakeTalkReviewer(() => ({ verdict: "error", reason: "no review client" })) };
+  const review = callReviewer(maya.id, process.env);
+  return { maya, reviewer: review ?? fakeTalkReviewer(() => ({ verdict: "error", reason: "no review client" })), mathReviewer: callMathReviewer(maya.id, process.env) };
+}
+
+/** One review as the CLI saw it: which, the model, when it started (ms from the session start), how long it took, and its answer. */
+interface ReviewTime { review: "safety" | "math" | "math-retry"; model: string; startMs: number; ms: number; answer: string; input: unknown }
+
+/** The reviewers, each review timed from its start to its answer (or to its end: an error, or the time limit's abort). */
+function timeReviews(reviewer: TalkReviewer, math: MathReviewer | null, times: ReviewTime[], t0: number): { reviewer: TalkReviewer; mathReviewer: MathReviewer | null } {
+  async function time<T extends { verdict: string }>(review: ReviewTime["review"], model: string, input: unknown, run: () => Promise<T>, signal: AbortSignal): Promise<T> {
+    const start = Date.now();
+    try {
+      const r = await run();
+      times.push({ review, model, startMs: start - t0, ms: Date.now() - start, answer: r.verdict, input });
+      return r;
+    } catch (e) {
+      times.push({ review, model, startMs: start - t0, ms: Date.now() - start, answer: signal.aborted ? "time-out" : "error", input });
+      throw e;
+    }
+  }
+  const mathOf = (m: MathReviewer, review: "math" | "math-retry"): MathReviewer => ({
+    id: m.id, promptVersion: m.promptVersion,
+    ...(m.retry ? { retry: mathOf(m.retry, "math-retry") } : {}),
+    review: (input, signal) => time(review, m.id, input, () => m.review(input, signal), signal),
+  });
+  return {
+    reviewer: { id: reviewer.id, promptVersion: reviewer.promptVersion, review: (input, signal) => time("safety", reviewer.id, input, () => reviewer.review(input, signal), signal) },
+    mathReviewer: math ? mathOf(math, "math") : null,
+  };
+}
+
+/** p50, p90 and max of a list of ms. */
+function spread(ms: number[]): string {
+  if (!ms.length) return "none";
+  const s = [...ms].sort((a, b) => a - b);
+  const at = (p: number) => s[Math.min(s.length - 1, Math.ceil(p * s.length) - 1)];
+  return `n ${s.length}, p50 ${at(0.5)} ms, p90 ${at(0.9)} ms, max ${s.at(-1)} ms`;
 }
 
 function model(o: Options, root: string): MayaModel {
@@ -150,7 +205,7 @@ function model(o: Options, root: string): MayaModel {
     if (fromFile.OPENROUTER_API_KEY) process.env.OPENROUTER_API_KEY = fromFile.OPENROUTER_API_KEY;
     env.AI_MODEL ??= fromFile.AI_MODEL;
   }
-  const client = aiClient(env);
+  const client = mayaAiClient(env);
   if (!client) throw new Error("--model openrouter needs OPENROUTER_API_KEY (in the environment or .env.local). The AI is off without it.");
   return o.legacy ? aiMayaModel(client) : conversationalMayaModel(client, o.effort ? { effort: o.effort } : {});
 }
@@ -164,7 +219,10 @@ async function main() {
   }
   const pkg = SAMPLE_PACKAGES[o.question] ?? (existsSync(o.question) ? JSON.parse(readFileSync(o.question, "utf8")) : undefined);
   if (pkg === undefined) throw new Error(`no sample "${o.question}" and no such file (see --list)`);
-  const { maya: m, reviewer } = models(o, root);
+  const reviewTimes: ReviewTime[] = [];
+  const built = models(o, root);
+  const m = built.maya;
+  const { reviewer, mathReviewer } = timeReviews(built.reviewer, built.mathReviewer, reviewTimes, Date.now());
 
   const typed = !o.script && process.stdin.isTTY;
   let simulated = Date.now();
@@ -177,16 +235,21 @@ async function main() {
   const timings: string[] = [];
   const text = createTextSession({
     callId, package: pkg, model: m, clock, random: o.seed, childName: o.name, runner: o.runner === "livekit" ? "livekit-text" : "text",
-    freeTalk: o.freeTalk, reviewer: o.freeTalk ? reviewer : null, tutor: o.tutor,
-    ...(o.voice ? { modelRepair: false } : {}),
-    // D-341: stream each checked sentence as it arrives, as the voice worker does; the trace times the first one.
-    onSayPart: () => {
-      const at = Date.now();
-      if (turnStart !== null) { firstSay ??= at - turnStart; lastSay = at - turnStart; }
-    },
+    // Desk chat keeps the safety review with free talk off (maya-call.ts textSession).
+    freeTalk: o.freeTalk, reviewer: o.freeTalk || o.chat ? reviewer : null, tutor: o.tutor, mathReviewer,
+    ...(o.chat ? { channel: "chat" as const } : {}),
+    // D-341: as the voice worker, stream each checked sentence as it arrives; the trace times the first one. Only a voice
+    // session streams (onSayPart also gives a tutor repair the voice budget), so a text or chat run is not timed so.
+    ...(o.voice ? {
+      modelRepair: false,
+      onSayPart: () => {
+        const at = Date.now();
+        if (turnStart !== null) { firstSay ??= at - turnStart; lastSay = at - turnStart; }
+      },
+    } : {}),
     onError: (e, where) => console.error(`[maya-text] ${typeof where === "string" ? where : `turn ${where.turn} ${where.source}`}: ${e instanceof Error ? e.message : String(e)}`),
   });
-  console.log(`-- Maya text session ${callId}: ${typeof pkg.text === "string" ? pkg.text : o.question} (model ${m.id}, runner ${o.runner}, free talk ${o.freeTalk ? `on, review ${reviewer.id}` : "off"})`);
+  console.log(`-- Maya text session ${callId}: ${typeof pkg.text === "string" ? pkg.text : o.question} (model ${m.id}, runner ${o.runner}${o.chat ? ", chat" : ""}, free talk ${o.freeTalk ? `on, review ${reviewer.id}` : "off"}, math review ${mathReviewer ? `${mathReviewer.id}${mathReviewer.retry ? `, retry ${mathReviewer.retry.id}` : ""}` : "none"})`);
   const path = resolve(o.trace ?? join(root, "traces/maya", `${callId}.json`));
   const timed = !o.voice ? text : new Proxy(text, {
     get(target, key, receiver) {
@@ -220,6 +283,11 @@ async function main() {
   });
   console.log(`-- counts: ${JSON.stringify(trace.counts)}`);
   for (const t of timings) console.log(`-- timing ${t}`);
+  writeFileSync(path.replace(/\.json$/, "") + ".reviews.json", `${JSON.stringify(reviewTimes, null, 2)}\n`);
+  for (const kind of ["safety", "math", "math-retry"] as const) {
+    const all = reviewTimes.filter((r) => r.review === kind);
+    if (all.length) console.log(`-- review times ${kind}: ${spread(all.map((r) => r.ms))}; time-outs ${all.filter((r) => r.answer === "time-out").length}`);
+  }
   // Each piece of Maya's own words, both checks and what was said (D-197).
   for (const t of trace.turns) {
     if (t.kind !== "maya" || !t.output) continue;

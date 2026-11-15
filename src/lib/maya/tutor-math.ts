@@ -42,7 +42,7 @@ const TOKEN = new RegExp(String.raw`(${FRACTION})|(${COMPOUND})|(${QUANTITY})|($
 export const NUMBER_SAID = String.raw`(?:\d+(?:\.\d+)?|(?:${W99}|hundred\b|thousand\b)(?:[\s-]+(?:and\s+)?(?:${W99}|hundred\b|thousand\b))*)`;
 
 type Item =
-  | { kind: "term"; value: number; unit: boolean; place?: number; word?: true; fraction?: true; ambiguous?: true }
+  | { kind: "term"; value: number; unit: boolean; place?: number; word?: true; fraction?: true; ambiguous?: true; joined?: true }
   | { kind: "op"; op: "+" | "-" | "*" | "/" }
   | { kind: "rel"; negated: boolean; eq: boolean; now: boolean }
   | { kind: "open" }
@@ -140,8 +140,10 @@ export function placeDigitsSaid(sentence: string): { n: number; place: number }[
 /**
  * `cuts`: when given, gets the index of each item that starts a new clause after a comma (pre-launch check 2: a word
  * after a read claim in the same clause can change it). The items are the same with or without it.
+ * `where`: when given, gets the text the items were read from (with its commas) and the span [at, end) of each item in
+ * it, so a claim can go through the one full-read guard (`fullRead`).
  */
-function itemsOf(sentence: string, cuts?: Set<number>): Item[] {
+function itemsOf(sentence: string, cuts?: Set<number>, where?: { text: string; spans: [number, number][] }): Item[] {
   // A comma never joins a number to a place word after it: "15, one less than 16" is 15 and one, not 15 ones.
   const said = sentence.replace(/[−–]/g, "-").replace(/(\d),(?=\d{3}\b)/g, "$1").replace(/,(?=\s*(?:ones?|tens?|hundreds?|thousands?)\b)/gi, " ¦ ");
   const commas = [...said.matchAll(/,/g)].map((m) => m.index!);
@@ -151,7 +153,13 @@ function itemsOf(sentence: string, cuts?: Set<number>): Item[] {
   for (const run of unreadNumberRuns(text)) text = `${text.slice(0, run.at)}¤${" ".repeat(run.end - run.at - 1)}${text.slice(run.end)}`;
   const items: Item[] = [];
   let end = 0;
+  // `said` and `text` have the same length: a span in one is the same span in the other.
+  if (where) where.text = said;
+  let span: [number, number] = [0, 0];
+  const place = () => { if (where) while (where.spans.length < items.length) where.spans.push(span); };
   for (const m of text.matchAll(TOKEN)) {
+    place();
+    span = [m.index!, m.index! + m[0].length];
     // A comma between two items starts a clause at the next one; a comma inside one item (a place quantity) does not.
     while (cuts && commas.length && commas[0] < m.index!) if (commas.shift()! >= end) cuts.add(items.length);
     end = m.index! + m[0].length;
@@ -168,7 +176,9 @@ function itemsOf(sentence: string, cuts?: Set<number>): Item[] {
       // "one hundred and two tens" is 120 or 102 tens (1,020): in words, a hundred or a thousand joined by "and" to a
       // smaller place is never read as covered (two-layer true math); the review reads it.
       const ambiguous = /\b(?:hundred|thousand)s?\s+and\s+[a-z]/i.test(m[3]) && !/^\d/.test(m[3].trim());
-      items.push(parts === null ? { kind: "other" } : { kind: "term", value: parts.reduce((t, x) => t + x.n * x.place, 0), unit: true, ...(places.length === 1 && parts.length === 1 ? { place: places[0] } : {}), ...(ambiguous ? { ambiguous: true as const } : {}) });
+      // 2026-11-15 (fallback rate): a quantity whose parts "and" joins ("4 ones and 4 tens") is marked: beside an operator
+      // it has two groupings (sideReader).
+      items.push(parts === null ? { kind: "other" } : { kind: "term", value: parts.reduce((t, x) => t + x.n * x.place, 0), unit: true, ...(places.length === 1 && parts.length === 1 ? { place: places[0] } : {}), ...(ambiguous ? { ambiguous: true as const } : {}), ...(parts.length > 1 && /\band\b/i.test(m[3]) ? { joined: true as const } : {}) });
     } else if (m[4]) {
       const v = numberOf(m[4]);
       // "one" after a word such as "this" or "each" is a pronoun ("this one is tricky"), not the number 1.
@@ -197,6 +207,7 @@ function itemsOf(sentence: string, cuts?: Set<number>): Item[] {
       items.push({ kind: "other", word });
     }
   }
+  place();
   return items;
 }
 
@@ -250,10 +261,12 @@ function sideReader(items: readonly Item[]) {
     let place = first.place;
     let next = first.next;
     let ops = items[at]?.kind === "open";
+    let joined = items[at]?.kind === "term" && (items[at] as Extract<Item, { kind: "term" }>).joined === true;
     while (items[next]?.kind === "op") {
       const t = primary(next + 1);
       if (!t) break;
       ops = true;
+      joined ||= items[next + 1]?.kind === "term" && (items[next + 1] as Extract<Item, { kind: "term" }>).joined === true;
       signs.push((items[next] as Extract<Item, { kind: "op" }>).op);
       values.push(t.value);
       units ||= t.units;
@@ -262,7 +275,9 @@ function sideReader(items: readonly Item[]) {
     }
     // Final check 12: the one shared evaluator (exactValue). Every intermediate must be a safe whole number and every
     // division exact (final checks 5 and 6); else the side is NaN: not read, neither true nor false; the review reads it.
-    const value = exactValue(values, signs) ?? NaN;
+    // 2026-11-15 (fallback rate): a quantity joined by "and" beside an operator has two groupings ("12 minus 8 is 4 ones
+    // and 4 tens minus 2 tens is 2 tens": two claims, or one side of 24): not read, neither true nor false.
+    const value = joined && signs.length > 0 ? NaN : exactValue(values, signs) ?? NaN;
     return { at, value, units, place, next, ops, sums: signs.length > 0 && signs.every((x) => x === "+") && items[at]?.kind !== "open" };
   };
   /** A side, with an object count and its stated unit read as their product ("4 sticks of ten" is 40). */
@@ -347,6 +362,12 @@ const numberish = (w: string) => /^(?:\d|@\d)/.test(w) || NUMBER_WORDS.test(w);
  * nothing runs on after it: no number, operator or number word in the rest of its clause, and no number, operator or
  * number word right after a comma or a joining word that ends it ("8000, plus 1", "8000 and a half"). Else the claim is
  * unread: no refusal, and the math review reads the sentence.
+ * 2026-11-15 (fallback rate): a word right before the claim can also make its first number part of a larger quantity:
+ * "of" ("The tens of 34 is 3": the tens of 34, not 34), a comparison word ("and 1 more ten makes 9 tens": 1 more ten
+ * added to the tens before, not 10), before a number said in words any word that is not a plain link word ("the
+ * carried ten makes 9 tens": the ten we carried, a thing, not the number 10). A result word ("makes", "gives") after
+ * "and" in its clause, with a number before that clause, can also sum the earlier number into it ("8 tens, and the
+ * carried 1 ten makes 9 tens"). "The 1 is 10" stays read in full: a digit named with "the" is a kind's own read.
  */
 export function fullRead(text: string, at: number, end: number): boolean {
   const lower = text.toLowerCase().replace(/[’]/g, "'");
@@ -357,6 +378,12 @@ export function fullRead(text: string, at: number, end: number): boolean {
   const lead = tokens(lower.slice(marks.length ? Math.max(...marks) : 0, at));
   const last = lead.at(-1);
   if (last !== undefined && (numberish(last) || OPERATOR_WORD.test(last) || /^(?:negative|positive)$/.test(last))) return false;
+  if (last !== undefined && (last === "of" || RELATION_WORDS.has(last))) return false;
+  const claim = tokens(lower.slice(at, end));
+  const first = claim[0];
+  if (last !== undefined && first !== undefined && NUMBER_WORDS.test(first) && (last === "the" || !LINK_WORDS.has(last))) return false;
+  const before = lower.slice(0, marks.length ? Math.max(...marks) : 0);
+  if (lead.some((w) => w === "and") && claim.some((w) => /^(?:makes?|gives?)$/.test(w)) && tokens(before).some(numberish)) return false;
   // "that" alone is no enclosure ("You're right that 4 is too small ..."): an enclosing "that" comes with a negation or a
   // scope word this check reads ("It is not true that", "false that", "suppose that").
   if (lead.some((w) => (ENCLOSING.test(w) && w !== "that") || w === "not" || /n't$/.test(w) || w === "true" || w === "false")) return false;
@@ -433,8 +460,18 @@ function readClaimsOnce(sentence: string, op?: "add" | "subtract", trades: reado
   // "4 ones, which is 40", "1 ten, that's 10 ones": the words name the quantity before them (pre-launch review B).
   sentence = sentence.replace(/,\s*(?:and\s+)?(?:which|that)\s+(?:is|are)\b/gi, " is").replace(/,\s*(?:and\s+)?that['’]s\b/gi, " is");
   const cuts = new Set<number>();
-  const items = itemsOf(sentence, cuts);
+  const where = { text: "", spans: [] as [number, number][] };
+  const items = itemsOf(sentence, cuts, where);
   const { full, read } = sideReader(items);
+  // Problems found before the claims (a remainder, a decimal) are about the whole sentence. Each later one belongs to the
+  // claim read when it was found: the items [from, to) (`owner`), so it can go through the one full-read guard.
+  const sentenceWide = problems.length;
+  const owner: { from: number; to: number }[] = [];
+  let claimFrom = 0;
+  const own = (to: number) => {
+    owner.length = Math.min(owner.length, Math.max(0, problems.length - sentenceWide));
+    while (owner.length < problems.length - sentenceWide) owner.push({ from: claimFrom, to });
+  };
   /** The items inside a claim code read and found true. */
   const used = new Set<number>();
   /** Where each claim code read and found true ends: the words after it in its clause are read too (pre-launch check 2). */
@@ -530,6 +567,8 @@ function readClaimsOnce(sentence: string, op?: "add" | "subtract", trades: reado
     unread.push("a claim inside a scope or a negation");
   };
   while (i < items.length) {
+    own(i);
+    claimFrom = i;
     const left = full(i);
     if (!left || items[left.next]?.kind !== "rel") { i++; continue; }
     if (signedAt(i - 1) || scopedBefore(i)) {
@@ -653,6 +692,19 @@ function readClaimsOnce(sentence: string, op?: "add" | "subtract", trades: reado
     if (scopedAfter(at)) unscope(before, eb, chain[0].at, at);
     i = at;
   }
+  own(i);
+  // 2026-11-15 (fallback rate): a claim refusal stands only when the one full-read guard (`fullRead`) finds the claim read
+  // in full in its sentence, as for a kind's refusal ("The tens of 34 is 3", "and 1 more ten makes 9 tens"). Else the
+  // claim is unread: its numbers were never read true (`used`), so the sentence goes to the math review.
+  const kept = problems.filter((_, k) => {
+    const o = owner[k - sentenceWide];
+    if (k < sentenceWide || !o || o.to <= o.from) return true;
+    const [at] = where.spans[o.from] ?? [0, 0];
+    const [, end] = where.spans[Math.min(o.to, items.length) - 1] ?? [0, where.text.length];
+    return fullRead(where.text, at, end);
+  });
+  if (kept.length < problems.length) unread.push("a claim code did not read in full");
+  problems.splice(0, problems.length, ...kept);
   // Final check 9 (2026-11-15): an "=" code cannot read ("2 times (minus 3 plus 4) = 2", "3 squared = 9") leaves its
   // clause unread, never refused: the math review judges it. Only a complete clause code proves false is refused.
   if (eqRead < eqSeen) unread.push("=");

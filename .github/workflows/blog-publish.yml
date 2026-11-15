@@ -4,7 +4,7 @@ name: Blog publish
 # validate: checks that the branch only adds or fixes a post, merges it into main and runs the done gate,
 #   with read-only access (post code runs here, so it gets no write token).
 # publish: runs no post code. It confirms main has not moved, checks the guard again, makes the same merge
-#   and pushes main (Vercel then deploys production). A branch whose name ends in -dryrun stops after validate.
+#   and tests that exact merge on a temporary branch before pushing main. A branch ending in -dryrun stops after validate.
 
 on:
   push:
@@ -35,7 +35,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, maya]
     runs-on: ubuntu-24.04
     # Above the sum of its step limits (checkout 2, setup 1, npm ci 5, Chromium 2, tests 35, eslint 5, build 10).
     timeout-minutes: 65
@@ -75,7 +75,14 @@ jobs:
         timeout-minutes: 2
       # The 2-core runner is slower than a laptop: the assessment bank tests pass the 5 s default locally but not here.
       # Both shards validate the same pinned main commit and blog commit before publication.
-      - run: npm test -- --testTimeout=60000 --shard=${{ matrix.shard }}/2
+      - if: ${{ matrix.shard != 'maya' }}
+        run: npm test -- --exclude='src/lib/maya-gate/{gate,word-count-grade-1,word-count-grade-4}.test.ts' --testTimeout=60000 --shard=${{ matrix.shard }}/2
+        timeout-minutes: 35
+      - if: ${{ matrix.shard == 'maya' }}
+        run: |
+          npm test -- src/lib/maya-gate/gate.test.ts --testTimeout=60000 --maxWorkers=2
+          npm test -- src/lib/maya-gate/word-count-grade-1.test.ts --testTimeout=60000 --maxWorkers=2
+          npm test -- src/lib/maya-gate/word-count-grade-4.test.ts --testTimeout=60000 --maxWorkers=2
         timeout-minutes: 35
       - run: npx eslint src
         timeout-minutes: 5
@@ -86,7 +93,7 @@ jobs:
     needs: [prepare, validate]
     if: ${{ !endsWith(github.ref_name, '-dryrun') }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 60
     permissions:
       contents: write
       actions: write
@@ -108,18 +115,42 @@ jobs:
         run: |
           git show origin/main:scripts/blog-publish-guard.mjs > "$RUNNER_TEMP/blog-publish-guard.mjs"
           node "$RUNNER_TEMP/blog-publish-guard.mjs" origin/main "$GITHUB_SHA"
-      - name: Merge and push main
+      - name: Test the exact merge and publish it
+        id: publish_merge
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           git config user.name "unica-blog-bot"
           git config user.email "unica-blog-bot@users.noreply.github.com"
           git checkout -B publish origin/main
           git merge --no-ff --no-edit -m "Blog: publish $BRANCH" "$GITHUB_SHA"
+          merge_sha=$(git rev-parse HEAD)
+          test_branch="site/blog-publish-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          echo "branch=$test_branch" >> "$GITHUB_OUTPUT"
+          echo "sha=$merge_sha" >> "$GITHUB_OUTPUT"
+          git push origin "HEAD:refs/heads/$test_branch"
+          gh workflow run ci.yml --ref "$test_branch"
+          run_id=""
+          attempt=0
+          while [ "$attempt" -lt 60 ]; do
+            attempt=$((attempt + 1))
+            run_id=$(gh run list --workflow ci.yml --branch "$test_branch" --event workflow_dispatch --json databaseId,headSha --jq ".[] | select(.headSha == \"$merge_sha\") | .databaseId" | head -n 1)
+            if [ -n "$run_id" ]; then break; fi
+            sleep 5
+          done
+          if [ -z "$run_id" ]; then echo "CI run was not found" >&2; exit 1; fi
+          gh run watch "$run_id" --exit-status --interval 30
           git push origin HEAD:main
-      # Vercel promotes a main commit only after its CI `test` check passes. This push used GITHUB_TOKEN, which starts no
-      # workflow, so start CI on main here (workflow_dispatch is allowed from GITHUB_TOKEN).
-      - name: Run CI on the published commit
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh workflow run ci.yml --ref main
       - name: Delete the published branch if it has not changed
         run: git push --force-with-lease="refs/heads/$BRANCH:$GITHUB_SHA" origin ":refs/heads/$BRANCH"
+      - name: Delete the temporary branch if it has not changed
+        if: ${{ always() && steps.publish_merge.outputs.branch != '' }}
+        env:
+          TEST_BRANCH: ${{ steps.publish_merge.outputs.branch }}
+          TEST_SHA: ${{ steps.publish_merge.outputs.sha }}
+        run: |
+          remote_ref=$(git ls-remote --exit-code origin "refs/heads/$TEST_BRANCH") || status=$?
+          if [ "${status:-0}" -eq 2 ]; then exit 0; fi
+          if [ "${status:-0}" -ne 0 ]; then exit "$status"; fi
+          [ -n "$remote_ref" ]
+          git push --force-with-lease="refs/heads/$TEST_BRANCH:$TEST_SHA" origin ":refs/heads/$TEST_BRANCH"

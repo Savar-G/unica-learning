@@ -91,6 +91,69 @@ export function aiClient(env: Readonly<Record<string, string | undefined>> = pro
 }
 
 /**
+ * A hedged request (2026-11-15, Maya's reviews): `request` runs once now and, when it has not settled after `delayMs`,
+ * once more beside it with the same input. The first answer of either copy is the result, and the other copy is aborted.
+ * The result is always one request's whole answer: a hedge never combines or chooses between answers. A copy that fails
+ * without an answer (a network or provider error) waits for the other copy when that one still runs; `isAnswer` names the
+ * errors that count as an answer (a malformed answer is final for the math review), and both copies failing gives the
+ * first error. Both copies end with `signal`: then the result rejects with "aborted".
+ */
+export function hedged<T>(delayMs: number, signal: AbortSignal, request: (signal: AbortSignal) => Promise<T>, isAnswer: (e: unknown) => boolean = () => false): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const copies: AbortController[] = [];
+    let settled = false;
+    let running = 0;
+    let firstError: { e: unknown } | null = null;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const end = () => {
+      settled = true;
+      clearTimeout(timer);
+      signal.removeEventListener("abort", onAbort);
+      for (const c of copies) c.abort();
+    };
+    const onAbort = () => {
+      if (settled) return;
+      end();
+      reject(new Error("aborted"));
+    };
+    const start = () => {
+      const c = new AbortController();
+      copies.push(c);
+      running++;
+      let p: Promise<T>;
+      try { p = request(c.signal); } catch (e) { p = Promise.reject(e); }
+      p.then(
+        (v) => {
+          running--;
+          if (settled) return;
+          end();
+          resolve(v);
+        },
+        (e: unknown) => {
+          running--;
+          if (settled) return;
+          firstError ??= { e };
+          // A failure with no answer waits for the other copy while it runs. A first copy that fails before the delay
+          // ends the request at once: the hedge is no retry.
+          if (!isAnswer(e) && running > 0) return;
+          end();
+          reject(isAnswer(e) ? e : firstError.e);
+        },
+      );
+    };
+    if (signal.aborted) { reject(new Error("aborted")); return; }
+    signal.addEventListener("abort", onAbort, { once: true });
+    start();
+    if (Number.isFinite(delayMs) && !settled) {
+      timer = setTimeout(() => {
+        timer = undefined;
+        if (!settled) start();
+      }, delayMs);
+    }
+  });
+}
+
+/**
  * Runs one AI request with a time limit: the request's signal aborts after `ms`, and the result rejects with "time is
  * up" then, also when the request does not stop on its signal.
  */

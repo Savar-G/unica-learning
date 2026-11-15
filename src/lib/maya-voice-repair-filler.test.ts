@@ -11,7 +11,7 @@ import { fakeMathReviewer } from "@/lib/maya-math-review";
 import { conversationalFake, reply } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
-import { createTextSession, TUTOR_REPAIR_BUDGET_MS, VOICE_REPAIR_BUDGET_MS } from "@/lib/maya-text";
+import { createTextSession, REVIEW_FLOOR_MS, TUTOR_REPAIR_BUDGET_MS, VOICE_REPAIR_BUDGET_MS } from "@/lib/maya-text";
 import { checkTrace, TRACE_VERSION, type MayaTrace } from "@/lib/maya-trace";
 import { ACK_PHRASES, nextAcknowledgement } from "@/lib/maya-voice-ack";
 import { operationResult, workedSteps, type OperationPackage } from "@/lib/question-package";
@@ -171,15 +171,16 @@ describe("the voice repair's own time (VOICE_REPAIR_BUDGET_MS)", () => {
     expect(TUTOR_REPAIR_BUDGET_MS).toBe(6_000);
   });
 
-  it("a voice repair whose model runs past 4 s ends in code's line at the cap", async () => {
+  it("a voice repair whose model runs past its part of the 4 s (4 s less REVIEW_FLOOR_MS) ends in code's line then", async () => {
+    // Review of #1099 (P2): the reviews' 1.5 s is kept inside the budget, so the model part ends at 2.5 s.
     const c = call(true, async (n) => { if (n === 0) return FIRST; await sleep(4_600); return GOOD; });
     await c.session.start();
     c.heard.length = 0;
     const t0 = Date.now();
     const out = await c.session.child(CHILD);
     const ms = Date.now() - t0;
-    expect(ms).toBeGreaterThanOrEqual(3_900);
-    expect(ms).toBeLessThan(4_500);
+    expect(ms).toBeGreaterThanOrEqual(VOICE_REPAIR_BUDGET_MS - REVIEW_FLOOR_MS - 100);
+    expect(ms).toBeLessThan(VOICE_REPAIR_BUDGET_MS);
     expect(out.say.join(" ")).toMatch(LINE);
     // The phrase first, then code's line: never the late repair.
     expect(ACK_TEXT.has(c.heard[0].text)).toBe(true);
@@ -198,14 +199,14 @@ describe("the voice repair's own time (VOICE_REPAIR_BUDGET_MS)", () => {
   }, 15_000);
 
   it("counts the repair's review in the 4 s on a voice turn: a review that ends past the cap gives code's line", async () => {
-    // The repair's model takes 2.5 s and its math review 2.5 s more: 5 s in all, with a review limit of 10 s.
+    // The repair's model takes 2 s and its math review 2.5 s more: 4.5 s in all, with a review limit of 10 s.
     const asked: string[] = [];
     const slow = (repairs: { n: number }) => {
       const math = fakeMathReviewer((i: MathReviewInput) => (i.sentence === BAD ? FALSE : TRUE));
       return Object.assign(Object.create(math), { review: async (i: MathReviewInput, sig: AbortSignal) => { asked.push(i.sentence); if (repairs.n > 0 && i.sentence !== BAD) await sleep(2_500); return math.review(i, sig); } }) as typeof math;
     };
     const voiceTurns = { n: 0 };
-    const c = call(true, async (n) => { if (n === 0) return FIRST; voiceTurns.n++; await sleep(2_500); return REVIEWED; }, { math: slow(voiceTurns) });
+    const c = call(true, async (n) => { if (n === 0) return FIRST; voiceTurns.n++; await sleep(2_000); return REVIEWED; }, { math: slow(voiceTurns) });
     await c.session.start();
     const t0 = Date.now();
     const out = await c.session.child(CHILD);
@@ -219,7 +220,7 @@ describe("the voice repair's own time (VOICE_REPAIR_BUDGET_MS)", () => {
 
     // Chat: the same timing passes (the review keeps its own limit after the model's 6 s).
     const chatTurns = { n: 0 };
-    const chat = call(false, async (n) => { if (n === 0) return FIRST; chatTurns.n++; await sleep(2_500); return REVIEWED; }, { math: slow(chatTurns) });
+    const chat = call(false, async (n) => { if (n === 0) return FIRST; chatTurns.n++; await sleep(2_000); return REVIEWED; }, { math: slow(chatTurns) });
     await chat.session.start();
     expect((await chat.session.child(CHILD)).say.join(" ")).toBe(REVIEWED);
   }, 30_000);

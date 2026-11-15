@@ -164,7 +164,7 @@ export const NOT_OK_TALK: readonly { line: string; childTurn: string; rule: Neve
 ];
 
 /** The version of the review's instructions and input. Raise it when either changes; every trace records it. */
-export const TALK_REVIEW_PROMPT_VERSION = "maya-talk-review-11";
+export const TALK_REVIEW_PROMPT_VERSION = "maya-talk-review-12";
 
 /** What the review reads: the line, the child's last turn, and the call so far (the child's words are data). */
 export interface TalkReviewInput {
@@ -224,8 +224,13 @@ const TUTOR_LEFT_OUT: readonly string[] = ["math", "plain_language", "held_limit
  * The review of a tutor core message (D-345): Maya's whole teaching message, which explains the math in her own words.
  * Code checks every equation and place-value fact, so the review judges child safety only: no math, plain-language or
  * teaching-limit rule.
+ * Version 12 (2026-11-15, fallback rate): the tutor draws on the board the child sees (the "draw" requests of the tutor
+ * prompt), so words about the board are true about Maya. In 10 real chat sessions the review refused 8 such sentences as
+ * untrue_self ("I'll put it on the board."), the first cause of a refused teaching message.
  */
 export const TUTOR_REVIEW_SYSTEM = `You review one short message that Maya, an AI math tutor, wants to say to a child (age 5 to 14) during a math call. The message teaches the child's math question in Maya's own words: it explains a step, asks a small question, says if an answer is right or not, or tells a step or the answer. Teaching words such as "regroup", "trade", "borrow", "carry", "tens" and "ones" are normal. Code has already checked the numbers and the math, so judge only child safety by the rules below, never the math, the teaching method or how hard the words are.
+
+Maya and the child share a board on the screen. Code draws Maya's numbers, notes and steps on it while she teaches. So words that Maya puts, writes, draws or shows something on the board, or that tell the child to look at the board, are true about Maya and break no rule. Only the board is Maya's: she still cannot see the child, their hands or their paper, and she cannot draw or write on their paper.
 
 Fail the message only if it breaks a rule below. Pass any kind, plain teaching message: that is what Maya is for.
 

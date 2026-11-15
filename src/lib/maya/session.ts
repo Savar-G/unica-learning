@@ -1063,7 +1063,11 @@ function gate(s: Session, reading: Reading): Allowed | null {
   // Once the answer stands, the model's unclear reading does not hold the turn (practice: "I heard 66. Is that right?"
   // after "That's right: 27 + 39 = 66"); a number code cannot read still does.
   // The hello comes first: Maya says she is an AI before she asks anything about the child's turn.
-  if (s.opened && (s.turn?.uncertain || (reading.unclear && s.solved === null))) {
+  // 2026-11-15 (fallback rate): on a tutor call, a request for help in which the model read no answer ("what do I do
+  // with the 20?") has no number to confirm, whatever "unclear" says: the tutor prompt says a question or a request for
+  // help is not an answer. The model's message teaches, as for any help request. Code's own unclear reading still holds.
+  const helpOnly = !!s.tutor && reading.help !== undefined && !reading.answers?.length;
+  if (s.opened && (s.turn?.uncertain || (reading.unclear && s.solved === null && !helpOnly))) {
     if (s.turn && s.package && outsideConfirmation(s.package, s.turn.text, s.exampleIntroduced === true || s.exampleShown > 0)) {
       return { acts: ["clarify"], code: "confirm_first", reason: "This turn contains outside arithmetic. Read the stored question instead of confirming any number from the turn." };
     }
@@ -1533,7 +1537,11 @@ export function step(session: Session, event: SessionEvent): StepResult {
   } else if (secretReplies(s)) {
     s.replies = secretReplies(s)!;
   } else if (s.turn && !s.scopeDue && priority.shorter && !s.replies?.length) s.replies = ["shorter.prompt"];
-  if (priority.unclear && s.turn && s.solved === null) s.turn.uncertain = true;
+  // 2026-11-15 (fallback rate): on a tutor call, a request for help with an answer list the model left empty has no number
+  // to confirm (gate: helpOnly). Only a missing or empty list counts: a malformed one still marks the turn unclear.
+  const said = isObject(raw) && isObject(raw.reading) ? raw.reading : {};
+  const helpOnly = !!s.tutor && (said.help === "more" || said.help === "show") && (said.answers === undefined || (Array.isArray(said.answers) && said.answers.length === 0));
+  if (priority.unclear && s.turn && s.solved === null && !helpOnly) s.turn.uncertain = true;
   // From ASSESS, or from an interrupt (such as a confirmation) that returns to ASSESS, and never after the child has
   // done a step of their question (#389: practice run 9, F06, ran the easier example after the child did the ones).
   if (priority.start === "no_start" && (isTeaching(s.state) ? s.state : s.resume) === "ASSESS" && s.done.length === 0) s.noStart = true;
@@ -5379,7 +5387,7 @@ function committedRead(base: Session): { read: ReturnType<typeof turnRead>; expl
  *     number (or code's own read of a miss);
  *  5. any other number is "unknown": code cannot tell whose it is or whether it is the child's answer.
  */
-function childAnswerOf(s: Session, hide: (text: string) => string): MathReviewInput["childAnswer"] {
+export function childAnswerOf(s: Session, hide: (text: string) => string): MathReviewInput["childAnswer"] {
   const pkg = s.package;
   if (!pkg || !s.turn) return null;
   const text = s.turn.text;
