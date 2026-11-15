@@ -5012,13 +5012,34 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
     } else stance = "wrong";
   }
   if (progress) s.noStart = false;
+  // Code's own read of the child's committed answer decides the stance too, whatever the model's reading holds
+  // (review of #1002: "It's 36." with no reading must not get "Yes!"). A question, a choice or a help request commits
+  // nothing.
+  const childValues: number[] = [];
+  if (base.turn) {
+    const read = turnRead(base);
+    const committed = read.final?.type === "number" && !read.choice && !base.turn.text.includes("?") && !helpInWords(base.turn.text) && !saysStuck(base.turn.text);
+    if (committed && read.final?.type === "number") {
+      const n = read.final.value;
+      childValues.push(n);
+      // A value of the work is no wrong answer: a step's result or digit, or a column's top after the trade (12, 4).
+      const fits = rightForQuestion(pkg, read.final) || tutorSteps(pkg).some((st) => st.write === n || st.total === n || st.operands[0] === n);
+      if (!fits) stance = "wrong";
+      else if (stance === "none" && rightForQuestion(pkg, read.final)) stance = "right";
+    }
+    for (const a of credited) if (a.value.type === "number" && !childValues.includes(a.value.value)) childValues.push(a.value.value);
+  }
   // The next open step, for the prepared replies' expected turns (expectedTurns and fitsExpected read the ladder's step).
   s.ladder = { ...s.ladder, step: tutorSteps(pkg).find((st) => !s.done.includes(st.id))?.id ?? "result" };
   const act: Act = out.act === "close" ? "close" : "guide";
   if (act === "close" && s.solved === null) return no("act_not_allowed", "The child has not solved the question yet: never end the call on a child who is stuck. Teach the next small step and ask one small question.");
+  // Review of #1002: a solved question does not end the call while the child asks for help now.
+  if (act === "close" && base.turn && (helpInWords(base.turn.text) || saysStuck(base.turn.text) || reading.help !== undefined || reading.start === "no_start")) {
+    return no("act_not_allowed", "The child is asking for help now: never end the call on a child who is stuck. Answer what they asked, then ask one small question.");
+  }
   // Code's honest line asks about the step that is open after this turn's credit.
   const text = fallback ? tutorFallbackText(pkg, s.done, s.solved !== null) : out.say.trim();
-  const verdict = checkTutorSay(text, { stance });
+  const verdict = checkTutorSay(text, { stance, childValues });
   if (!verdict.ok) return no("say_check", `Your message was refused (${verdict.reason}): ${verdict.detail}`, verdict.reason);
   if (act === "close" && /\?\s*$/.test(text)) return no("say_check", "A close ends the call, so it asks nothing: say a short goodbye with no question.", "close_asks");
   // Child safety: a message that is not plain math is reviewed as a whole before it is said (the adapter runs it).

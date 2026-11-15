@@ -202,3 +202,41 @@ describe("the board never costs the child Maya's words", () => {
     expect(trace.counts.refusals).toBe(0);
   });
 });
+
+describe("review of #1002: false math and false feedback never reach the child", () => {
+  it("writes only a whole equation as a board note, never other text", async () => {
+    const { session } = call(() => reply("What is 12 minus 8?", "guide", { draw: [{ offer: "note", place: "You are stupid. 1+1=2" }, { offer: "note", place: "12 - 8 = 4" }] }));
+    await session.start();
+    const out = await session.child("I need help");
+    const writes = out.board.flatMap((b) => b.commands).filter((c) => (c as { op?: string }).op === "write") as { text: string }[];
+    expect(writes.map((w) => w.text)).toEqual(["12 − 8 = 4"]);
+  });
+  it.each(["1 ten is 100 ones. What is 12 minus 8?", "52 is four tens and two ones. What is 12 minus 8?", "12 − 8 = 4 = 5. What is 4 minus 2?"])("refuses %s", async (bad) => {
+    const { session, briefs } = call((_, n) => n === 0 ? reply(bad, "guide") : reply("What is 12 minus 8?", "guide"));
+    await session.start();
+    expect((await session.child("I need help")).say).toEqual(["What is 12 minus 8?"]);
+    expect(JSON.stringify(briefs[1].repair)).toContain("false_equation");
+  });
+  it("never says yes to a committed wrong answer the model did not read", async () => {
+    const { session, briefs } = call((_, n) => n === 0 ? reply("Yes! Now what is 12 minus 8?", "guide") : reply("Not yet: 36 takes the small digit from the big one. What is 12 minus 8?", "guide"));
+    await session.start();
+    await session.child("It's 36.");
+    expect(JSON.stringify(briefs[1].repair)).toContain("affirms_wrong");
+  });
+  it("never says a wrong answer is right after a neutral first sentence", async () => {
+    const wrong = { answers: [{ value: { type: "number", value: 36 }, step: "result", problem: "target", verdict: "wrong" }] };
+    const { session, briefs } = call((_, n) => n === 0 ? reply("Now the tens. Yes, 36 is right! What is 12 minus 8?", "guide", { reading: wrong }) : reply("36 is not right yet. What is 12 minus 8?", "guide", { reading: wrong }));
+    await session.start();
+    await session.child("It's 36.");
+    expect(JSON.stringify(briefs[1].repair)).toContain("affirms_wrong");
+  });
+  it("never closes on a help request after the question was solved", async () => {
+    const right = { answers: [{ value: { type: "number", value: 24 }, step: "result", problem: "target", verdict: "right" }] };
+    const { session, briefs } = call((_, n) => n === 0 ? reply("Yes, 24. How did you get it?", "guide", { reading: right }) : n === 1 ? reply("Bye for now!", "close", { reading: { help: "more" } }) : reply("Sure. We traded 1 ten for 10 ones, so 2 ones became 12. What is 12 minus 8?", "guide"));
+    await session.start();
+    await session.child("It's 24.");
+    const out = await session.child("I don't understand. Please teach me.");
+    expect(out.ended).toBeNull();
+    expect(JSON.stringify(briefs[2].repair)).toContain("asking for help");
+  });
+});

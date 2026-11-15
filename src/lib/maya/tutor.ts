@@ -14,6 +14,7 @@
 // Phase 1 scope: 2-digit whole-number addition and subtraction (`isTutorQuestion`), on admin test calls.
 import type { OperationPackage, WorkedStep } from "@/lib/question-package";
 import { affirms, equationHolds, equationsOf, neverSayProblem, sayNumbers, sentencesOf } from "./say-check";
+import { falseClaims } from "./tutor-math";
 import { mathOnly } from "./math-vocab";
 
 /** The hard ceiling of one Maya message, in words. Over it, the model gets one repair with the reason; code never trims. */
@@ -151,7 +152,14 @@ export function childFacts(pkg: OperationPackage, text: string): string[] {
 export interface TutorCheckContext {
   /** "wrong": the child committed to a wrong answer this turn; "right": a right one; else "none". */
   stance: "right" | "wrong" | "none";
+  /** The numbers the child committed to this turn (what a judgment names). */
+  childValues?: readonly number[];
 }
+
+/** A sentence that says an answer is right. */
+const JUDGES_RIGHT = /^(?:yes|yep|yeah|right|correct|exactly)\b|\b(?:is|that'?s|that is|it'?s|you'?re|you are|you got it)\s+(?:right|correct)\b|\byou got it\b|\bwell done\b/i;
+/** A sentence that says an answer is not right. */
+const JUDGES_WRONG = /\b(?:not quite|not yet|not right|isn'?t right|incorrect|that'?s wrong|is wrong|try again)\b/i;
 
 export type TutorVerdict =
   | { ok: true; needsReview: boolean }
@@ -161,13 +169,8 @@ export type TutorVerdict =
 function placeValueProblem(sentence: string): string | null {
   const text = sentence.replace(/[−–]/g, "-").toLowerCase();
   const word = String.raw`(\d+)`;
-  for (const m of text.matchAll(new RegExp(String.raw`${word}\s+(?:is|=|equals|is the same as)\s+${word}\s+tens?\s+and\s+${word}\s+ones?`, "g"))) {
-    if (Number(m[1]) !== Number(m[2]) * 10 + Number(m[3])) return `${m[1]} is not ${m[2]} tens and ${m[3]} ones`;
-  }
-  for (const m of text.matchAll(new RegExp(String.raw`${word}\s+tens?\s+and\s+${word}\s+ones?\s+(?:is|=|equals|makes|make)\s+${word}`, "g"))) {
-    if (Number(m[3]) !== Number(m[1]) * 10 + Number(m[2])) return `${m[1]} tens and ${m[2]} ones is not ${m[3]}`;
-  }
-  for (const m of text.matchAll(new RegExp(String.raw`${word}\s+(ones?|tens?)?\s*(?:becomes?|turns? into|is now|are now)\s+${word}\s*(ones?|tens?)?`, "g"))) {
+  // Equalities ("52 is 4 tens and 12 ones", "1 ten is 10 ones") and "is now" are read by falseClaims (tutor-math.ts).
+  for (const m of text.matchAll(new RegExp(String.raw`${word}\s+(ones?\b|tens?\b)?\s*(?:becomes?|became|turns? into)\s+${word}(?:\s+(ones?\b|tens?\b))?`, "g"))) {
     const [from, to] = [Number(m[1]), Number(m[3])];
     const tens = /^ten/.test(m[2] ?? m[4] ?? "");
     const fine = tens ? to === from - 1 : to === from + 10 || to === from - 1;
@@ -196,12 +199,24 @@ export function checkTutorSay(text: string, ctx: TutorCheckContext): TutorVerdic
       if (holds === null) continue;
       if (holds === e.negated) return { ok: false, reason: "false_equation", detail: `"${sentence}" ${e.negated ? "calls a true equation false" : "holds a false equation"}. Every equation Maya says must be true.` };
     }
+    const claim = falseClaims(sentence)[0];
+    if (claim) return { ok: false, reason: "false_equation", detail: `"${sentence}": ${claim}. Every equation and place-value statement must be true.` };
     const place = placeValueProblem(sentence);
     if (place) return { ok: false, reason: "false_equation", detail: `"${sentence}": ${place}. Every place-value statement must be true.` };
   }
-  if (ctx.stance === "wrong" && affirms(sentences[0] ?? "")) return { ok: false, reason: "affirms_wrong", detail: "Code found the child's answer wrong: never start with yes or right. Say kindly that it is not right yet, and where." };
-  if (ctx.stance === "right" && /\b(?:not quite|not yet|not right|isn'?t right|incorrect|that'?s wrong|is wrong|try again)\b/i.test(sentences[0] ?? "")) {
-    return { ok: false, reason: "wrong_stance", detail: "Code found the child's answer right: say so, never \"not quite\"." };
+  // No false judgment of the child's answer, in any sentence: a "yes" or "right" for a wrong answer, a "not quite" for
+  // a right one. The first sentence is judged strictly; a later one when it names the child's number or none.
+  const names = (sentence: string, values: readonly number[] | undefined) => {
+    const said = sayNumbers(sentence).flatMap((t) => (t.q && t.q[1] === 1 ? [t.q[0]] : []));
+    return said.length === 0 || said.some((n) => (values ?? []).includes(n));
+  };
+  for (const [i, sentence] of sentences.entries()) {
+    if (ctx.stance === "wrong" && ((i === 0 && affirms(sentence)) || (JUDGES_RIGHT.test(sentence) && names(sentence, ctx.childValues)))) {
+      return { ok: false, reason: "affirms_wrong", detail: "Code found the child's answer wrong: never say it is right. Say kindly that it is not right yet, and where." };
+    }
+    if (ctx.stance === "right" && ((i === 0 && JUDGES_WRONG.test(sentence)) || (JUDGES_WRONG.test(sentence) && names(sentence, ctx.childValues)))) {
+      return { ok: false, reason: "wrong_stance", detail: "Code found the child's answer right: say so, never \"not quite\"." };
+    }
   }
   const needsReview = !sentences.every((x) => mathOnly(x, TUTOR_MATH_WORDS));
   return { ok: true, needsReview };
@@ -275,9 +290,14 @@ export function tutorDrawings(pkg: OperationPackage, draw: readonly { offer: str
         keys.push("digit:hundreds");
       }
     } else if (d.offer === "note" && d.place) {
-      const text = d.place.replace(/-/g, "−").trim();
-      const eqs = equationsOf(text);
-      if (text.length > 40 || eqs.length === 0 || eqs.some((e) => e.negated || equationHolds(e) !== true)) continue;
+      // Only a whole equation of numbers, rebuilt from its values: no other text reaches the board.
+      const m = /^\s*(\d{1,4}(?:\s*[+\-−–]\s*\d{1,4}){1,3})\s*=\s*(\d{1,5})\s*$/.exec(d.place);
+      if (!m) continue;
+      const nums = m[1].split(/[+\-−–]/).map((x) => Number(x.trim()));
+      const signs = [...m[1].matchAll(/[+\-−–]/g)].map((x) => (x[0] === "+" ? 1 : -1));
+      const value = nums.slice(1).reduce((acc, n, k) => acc + signs[k] * n, nums[0]);
+      if (value !== Number(m[2])) continue;
+      const text = `${nums.map((n, k) => (k === 0 ? String(n) : `${signs[k - 1] === 1 ? "+" : "−"} ${n}`)).join(" ")} = ${Number(m[2])}`;
       commands.push({ op: "write", id: noteId(notes++), text, place: { below: "question" } });
     }
   }
