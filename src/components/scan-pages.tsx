@@ -658,7 +658,11 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     const oldPage = listing?.pages.find((p) => p.id === oldPhoto?.pageId);
     const target = oldLocal?.target ?? (oldPhoto ? { photoId: oldPhoto.id, pageId: oldPhoto.pageId, workbookId: oldPhoto.workbookId, pageNumber: oldPhoto.pageNumber, day: oldPage?.day ?? null } : undefined);
     // A retake of a photo that never reached us replaces it here; a retake of a saved photo deletes that photo first.
-    if (replaces?.startsWith("local:")) { release(list.find((u) => u.key === replaces)); list = list.filter((u) => u.key !== replaces); }
+    if (replaces) {
+      const superseded = list.filter((upload) => upload.key === replaces || upload.uploadedId === replaces || upload.reservation === replaces);
+      for (const upload of superseded) release(upload);
+      list = list.filter((upload) => !superseded.includes(upload));
+    }
     const added: Local[] = [...files].map((file, i) => ({
       key: `local:${crypto.randomUUID()}`, file, status: "waiting" as const, source,
       target: i === 0 ? target : undefined,

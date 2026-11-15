@@ -10,6 +10,16 @@ Date: 2026-11-15. Scope: the five independent review findings on `7e1fae9ce88d2b
 4. Team-only marks refresh every 30 seconds until complete or unfinished, rather than stopping when `automaticPending` reaches zero. Tests replace the previous no-further-reads assertion, deliver a final team mark without reload or visibility events, and prove fully terminal marks stop phone polling.
 5. A replacement being checked has the heading “Checking your new photo of page 23…” and a neutral checking section label. Only actual failures count in the failure heading. Tests cover the checking-only card and a checking replacement beside another refused page.
 
+## Final superseding-retake regression
+
+The final review found that retaking a replacement after its blur check timed out left the replacement's retained local upload behind. The dock supplied the saved photo ID, but local cleanup matched only a `local:` key. Once the server deleted that photo, its orphaned placeholder could never reach a verdict.
+
+Picking another retake now retires only uploads associated with the replaced local key, uploaded photo ID or reservation ID. Other uploads remain queued, and the server-photo identity still determines which page is being retaken.
+
+The mounted-component regression fails before the fix and passes afterward: refuse page 11, upload a replacement, strand its blur check until Retry appears, choose Retake instead, and upload a passing photo. The superseded server photo disappears, page 11 becomes Ready, the checking card clears, and ten more simulated minutes cause no extra listing requests. The four focused suites passed with 170 tests; changed-file ESLint and `git diff --check` passed.
+
+The final full gate also passed (exit 0): 897 test files passed, 3 skipped; 28,961 tests passed, 36 skipped, 1 todo. Vitest used at most two workers and finished in 1,080 seconds. Full-source ESLint produced no output, and the production build and TypeScript check completed successfully. Logs: `/tmp/scan-retake-final-review-tests.log`, `/tmp/scan-retake-final-review-eslint.log`, `/tmp/scan-retake-final-review-build.log`. This final regression was verified in the mounted component; the earlier browser checks below were not repeated for this change.
+
 ## Browser QA
 
 Used the current higher-priority T3 browser tools against `npm run dev` on local port 3143. A temporary route mounted the real `ScanPages` component and intercepted its API requests with synthetic responses. The uploaded PNG was generated locally: a white page with simple printed lines, not a customer photo. The fixture and dev server were removed/stopped, and the browser tab was closed before the final gate.

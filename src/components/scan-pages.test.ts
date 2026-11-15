@@ -1604,6 +1604,42 @@ it("bounds a stranded blur check, then retries the same photo with POST after it
   } finally { vi.useRealTimers(); }
 });
 
+it("retires a timed-out replacement when its saved photo is retaken instead of retried", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+  seed("old", "p11", { check: "refused", reason: "marks-missing" });
+  await render();
+  const server = global.fetch;
+  let firstReplacement: string | undefined;
+  vi.stubGlobal("fetch", async (path: string, init?: RequestInit) => {
+    const response = await server(path, init);
+    if (!path.startsWith("/api/account/scans?child=")) return response;
+    const data = await response.json();
+    firstReplacement ??= data.photos.find((photo: Photo) => photo.id !== "old")?.id;
+    data.photos = data.photos.map((photo: Photo) => photo.id === firstReplacement
+      ? { ...photo, photoCheckRequired: true, photoCheck: { state: "pending" } }
+      : photo);
+    return Response.json(data);
+  });
+  try {
+    await act(async () => button("Retake page 11")!.click());
+    await choose("camera", "p11.jpg");
+    await act(async () => { await vi.advanceTimersByTimeAsync(120_000); });
+    expect(button("Retry")).toBeDefined();
+    expect(host.querySelector(".scan-need")?.textContent).toContain("We couldn't check this page right now.");
+    await act(async () => button("Retake page 11")!.click());
+    await choose("camera", "p11.jpg");
+    expect(photos.has(firstReplacement!)).toBe(false);
+    expect(admitted).toHaveLength(2);
+    expect(button("Page 11, ready, not sent yet")).toBeDefined();
+    expect(host.querySelector(".scan-need")).toBeNull();
+    const reads = () => calls.filter((call) => call.startsWith("GET /api/account/scans?child=")).length;
+    const finished = reads();
+    await act(async () => { await vi.advanceTimersByTimeAsync(600_000); });
+    expect(host.querySelector(".scan-need")).toBeNull();
+    expect(reads()).toBe(finished);
+  } finally { vi.useRealTimers(); }
+});
+
 it("backs off unchanged marks, pauses hidden and offline reads, and resets on progress and return", async () => {
   markingOn = true;
   seed("sent", "p11", { sentAt: new Date().toISOString(), marks: null });
