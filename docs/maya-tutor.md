@@ -281,7 +281,7 @@ The model asks by id; code builds every command from the checked steps (`tutorDr
 
 A drawing counts as on the board only when the child's screen says it showed it. Until then it is "sent".
 
-- When Maya sends a batch, the session keeps its drawing keys in `tutor.drawn` (so nothing is sent twice) and in `tutor.sent` under the batch's transaction id. The brief lists those keys in `sent`, not in `drawn`. The prompt (`maya-tutor-8`) tells the model not to ask for them again and not to say they are on the board.
+- When Maya sends a batch, the session keeps its drawing keys in `tutor.drawn` (so nothing is sent twice) and in `tutor.sent` under the batch's transaction id. The brief lists those keys in `sent`, not in `drawn`. The prompt (`maya-tutor-8` and later) tells the model not to ask for them again and not to say they are on the board.
 - The child's screen says what it did with each batch (`board_fate`): `shown`, `skipped` (the board refused it because it would cover the child's ink) or `cancelled` (a voice call stopped it before its cue because the child talked first). Shown: the keys stay in `drawn`. Skipped or cancelled: the keys leave `drawn` and `sent`, so the brief does not list them and the kind can offer them again. The text session also undoes the batch on its own board, so the next drawing is planned on the board the child sees.
 - No word means not shown: a batch with no word stays sent for the rest of the call. The first word for a batch stands; a second word, or a word for a batch Maya did not send, changes nothing.
 - Chat: the desk reads its board history (`chatBoardFates`, `src/lib/board-fate.ts`) and sends the fates of Maya's newest 16 batches with the child's next message (`fates` on the chat request, at most 32, read by `readFateReports`). The admin test call screen plays every batch, so it reports each one as shown.
@@ -289,6 +289,23 @@ A drawing counts as on the board only when the child's screen says it showed it.
 - Code's safety rules do not change: Maya's strokes never cover the child's ink, the board math is code-built, and the stream gate and Maya's words do not change.
 - Trace version 14 records each batch's `fate` and `counts.boardFates` (shown, skipped, cancelled, unreported).
 - Tests: `src/lib/maya-text-board-fate.test.ts` (session), `src/lib/board-fate.test.ts` (the desk and the worker), `src/lib/maya-chat-board-fate.test.ts` (a chat end to end with the in-memory seams).
+
+### Draw while speaking (B2)
+
+Each drawing goes with one sentence of Maya's message. The board builds as she speaks: one mark per idea.
+
+- The model names the sentence beside each drawing request: `{offer, place, sentence}`, with 1 for the first sentence of "say" (`TUTOR_OUTPUT_SCHEMA`, prompt `maya-tutor-9`). Code reads it in `tieDrawings` (`src/lib/maya/board-ties.ts`).
+- At most one drawing per sentence. The first request for a sentence stands; a second one is dropped.
+- Each drawing is its own batch. The batches go in the order of the sentences, and each one is built on the drawings before it (a digit after the trade it needs). The model's list order does not change this.
+- The match check (`drawingMatches`): the sentence must say what the drawing shows. Code reads the sentence's numbers with the standard reader (`sayNumbers`) and its place words (ones to hundred thousands, plural forms only), and the drawing's step and values from the commands the kind built. A digit, a row, a value, the answer or a division step: the sentence says that number. A note or a "try": the sentence says every number of its equation. A trade: the sentence names one of its places, or says borrow, trade, carry or regroup. A highlight: the sentence names its place. A chart: its number or one of its places. When the sentence names a place, the drawing's place must be one of them ("4 tens" does not match the ones digit 4).
+- A drawing that fails is dropped. The sentence is never dropped and the message is never refused for a drawing. Other drops: no valid sentence number, nothing new to draw, a command `safeCommand` refuses.
+- Code's own line (a fallback) draws nothing: the sentences the drawings were tied to were not said. A refused message draws nothing either, so a held sentence that a review refuses never releases its drawing.
+- A request with no `sentence` (a proposal saved before B2) keeps the old rule: one batch at the end of the message, with no match check.
+- Voice: a batch is shown when Maya has said its sentence. The cue is the last word of that sentence (`sentenceCueWord`, in `voiceTurn` of `src/lib/maya-call.ts`). With word times from the voice, the batch shows when that word ends; without them, the worker's sentence-end timing shows it when that sentence's audio ends. The batches still go to the child's browser before any audio. A drawing tied to a sentence that was streamed early shows at the first word of the rest of the message (`earlyRest`), because the drawing is known only when the whole message is checked.
+- Chat: the desk plays the batches in the order they came, which is the order of the sentences. The animation timing (`TIMING`, `BATCH_GAP_MS`) and reduced motion do not change. A batch the desk skips over the child's ink no longer takes the other drawings of the message with it.
+- What does not change: Maya's words, every say check and review, the stream gate, safety, the code-built board math, `safeCommand`, B1's fate reports and the rule that the board holds numbers, symbols and short code labels only.
+- Trace version 15 records, on each board batch, `sentence` (the 0-based sentence of its turn's words), on the attempt `drawDrops` (offer, sentence, reason), and `counts.drawDrops`.
+- Tests: `src/lib/maya/board-ties.test.ts` (the ties and the match check), `src/lib/maya-board-speak.test.ts` (the session's batches in sentence order, one drawing per sentence, a mismatch drops only the drawing, refused and held sentences release nothing, chat order on the board's timeline, and the voice cue at the sentence end with and without word times on the real board receiver).
 
 ## Trace
 

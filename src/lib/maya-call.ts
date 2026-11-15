@@ -74,7 +74,7 @@ import { createHistory, inkLog, mayaWrites, readInkEvent, withChildInk, withInkL
 import { fitView, type PlayStep } from "@/lib/board-svg";
 import type { LearningEvents, NewLearningEvent } from "@/lib/learning-events";
 import type { NoteStep } from "@/lib/maya-call-note";
-import { clearStop, heardWordings, learningEvent, limitsOf, mayaPackageCheck, nextActs, SAFETY_GUIDANCE, streamPlan, type Outcome, type Session, type Severity, type WordingHistory, type WordingHistoryStore } from "@/lib/maya";
+import { clearStop, heardWordings, learningEvent, limitsOf, mayaPackageCheck, nextActs, SAFETY_GUIDANCE, sentenceCueWord, streamPlan, type Outcome, type Session, type Severity, type WordingHistory, type WordingHistoryStore } from "@/lib/maya";
 import { createHandleDiagnosticIds } from "@/lib/maya-handle-diagnostic";
 import type { PrepareRecord } from "@/lib/maya-prepared";
 import { withRequestContext } from "@/lib/maya-request-trace";
@@ -1273,7 +1273,8 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         let word = 0;
         const ends = new Map<string, number>();
         const time = { modelMs: 0, repairMs: 0, reviewMs: 0 };
-        for (const t of session.trace().turns.slice(before)) {
+        const { board, turns } = session.trace();
+        for (const t of turns.slice(before)) {
           if (t.kind !== "maya") continue;
           for (const a of t.attempts) {
             if (a.source === "model") time.modelMs += a.ms ?? 0;
@@ -1282,8 +1283,15 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
           }
           if (!t.output) continue;
           // The trace hides the name as {name}, one word; the voice says the name, which can be two ("Mary Ann").
-          word += speechWords(name ? t.output.say.join(" ").replaceAll("{name}", name) : t.output.say.join(" ")).length;
-          for (const id of t.output.board) ends.set(id, word);
+          const said = name ? t.output.say.join(" ").replaceAll("{name}", name) : t.output.say.join(" ");
+          const start = word;
+          word += speechWords(said).length;
+          // B2: a batch tied to a sentence is shown when Maya has said that sentence (its last word, or the sentence's end
+          // when the voice gives no word times); any other batch at the end of its turn.
+          for (const id of t.output.board) {
+            const tie = board.find((b) => b.transactionId === id)?.sentence;
+            ends.set(id, tie === undefined ? word : start + sentenceCueWord(said, tie));
+          }
         }
         const boardCues = out.board.map(batch => ({ batch, word: ends.get(batch.transactionId) ?? speechWords(out.say.join(" ")).length }));
         const state = session.session;

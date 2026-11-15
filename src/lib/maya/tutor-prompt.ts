@@ -6,7 +6,7 @@ import { childFacts, tutorKind, stepFacts, TUTOR_WORD_LIMIT } from "./tutor";
 import type { TutorDrawing, TutorStepFact } from "./tutor-kind";
 import { valueText } from "@/lib/question-package";
 
-export const TUTOR_PROMPT_VERSION = "maya-tutor-8";
+export const TUTOR_PROMPT_VERSION = "maya-tutor-9";
 
 /** The turns of the call the brief holds. */
 const TUTOR_TRANSCRIPT_TURNS = 10;
@@ -125,7 +125,7 @@ The reply, in this order (write each key in this order):
 - "say": your one message.
 - "act": "guide" for every teaching message. "close" only after the child solved the question and is done, or wants to stop: a short goodbye, with no question.
 - "reading" comes after "say". It is bookkeeping code reads; it is never said. It must agree with "gate". "answers": each number the child gave as an answer, with its step id ("result" for the whole question), "problem" "target", and your verdict by the question's steps; a question or a request for help is not an answer. Set the flags that fit (help "more" or "show", unclear when you cannot tell what number the child said, stop, writing, offTopic, mathClaim, safety "concern" or "immediate" for harm or danger, unsafeRequest for harmful content, aboutMaya "identity" or "secret_friend", start "no_start" when the child cannot start, paper "written" when they say they wrote it); else "none", false, "" and [].
-- "draw": [] or board requests, drawn with your message: {"offer": an id from "drawings", "place": what it says it needs, or ""}. "drawings" says what each one shows on this question. Draw what you explain. "drawn" lists what the board already shows. "sent" lists drawings sent with your last messages that the child's screen has not shown yet: do not ask for them again, and do not say they are on the board.
+- "draw": [] or board requests, drawn with your message: {"offer": an id from "drawings", "place": what it says it needs, or "", "sentence": the number of the sentence in "say" it goes with, 1 for the first}. "drawings" says what each one shows on this question. The board draws it while you say that sentence. At most one drawing per sentence. The sentence says what the drawing shows: its numbers (for a digit, the digit; for a note, every number of its equation), or its place (for a trade, its places or the word borrow, trade or carry). Code drops a drawing that does not match its sentence, and your words still go out. "drawn" lists what the board already shows. "sent" lists drawings sent with your last messages that the child's screen has not shown yet: do not ask for them again, and do not say they are on the board.
 - If "repair" is set, code refused your last message for the reason given: fix exactly that, and keep your teaching.`;
 
 /** The tutor's output schema: the conversational schema with only the tutor's acts and drawings. */
@@ -144,7 +144,8 @@ export const TUTOR_OUTPUT_SCHEMA = {
     reading: MODEL_OUTPUT_SCHEMA.properties.reading,
     draw: {
       type: "array",
-      items: { type: "object", additionalProperties: false, required: ["offer", "place"], properties: { offer: { type: "string" }, place: { type: "string" } } },
+      // B2: "sentence" ties the drawing to one sentence of "say" (board-ties.ts).
+      items: { type: "object", additionalProperties: false, required: ["offer", "place", "sentence"], properties: { offer: { type: "string" }, place: { type: "string" }, sentence: { type: "integer" } } },
     },
   },
 } as const;

@@ -28,7 +28,8 @@ export type TextLogEvent =
   /** B1: what the child's screen did with board batches Maya sent (boardFates), by transaction id. */
   | { kind: "fates"; at: number; fates: { batchId: string; fate: BoardFate }[] };
 
-type PendingOutput = { entry: Extract<TraceTurn, { kind: "maya" }>; act: Act; say: string[]; batches: Batch[]; obligations: number[]; control: number };
+/** `ties` (B2): the sentence each batch is tied to, by transaction id; a batch not in it goes at the end of the turn. */
+type PendingOutput = { entry: Extract<TraceTurn, { kind: "maya" }>; act: Act; say: string[]; batches: Batch[]; ties?: Record<string, number>; obligations: number[]; control: number };
 export interface TextFold {
   session: Session;
   /** Upper bound on persisted event content for one live call. */
@@ -215,13 +216,14 @@ function takeEffects(s: TextFold, effects: Effect[], at: number, attempts: Trace
   }
   const says = effects.filter((e) => e.kind === "say");
   const batches = effects.flatMap((e) => e.kind === "board" ? [e.batch] : []);
+  const ties = Object.fromEntries(effects.flatMap((e) => (e.kind === "board" && e.sentence !== undefined ? [[e.batch.transactionId, e.sentence] as const] : [])));
   if (says.length || attempts.length) {
     const act = says.at(-1)?.act ?? (attempts.at(-1)?.proposal as { act?: Act } | null)?.act ?? "close";
     const entry: Extract<TraceTurn, { kind: "maya" }> = { kind: "maya", at, state: stateBefore, stateAfter: s.session.state, finalMisses: s.session.finalMisses ?? 0, attempts: attempts.length ? attempts : [{ source: "controller", proposal: null, refusal: null }], output: null };
     if (says.length || (attempts.length && !attempts.at(-1)?.refusal && !attempts.at(-1)?.error)) {
       const kinds: TraceObligation["kind"][] = act === "open" ? ["opening_due"] : act === "repair" ? ["repair_due"] : act === "safety" ? ["safety_due"] : act === "close" ? ["child_turn_pending", "content_problem"] : s.session.turn === null ? ["child_turn_pending"] : [];
       const ids = s.obligations.filter((o) => o.status === "pending" && kinds.includes(o.kind) && !s.pending.some((p) => p.obligations.includes(o.id))).map((o) => o.id);
-      s.pending.push({ entry, act, say: says.map((e) => e.text), batches, obligations: ids, control: s.controls.length - 1 });
+      s.pending.push({ entry, act, say: says.map((e) => e.text), batches, ...(Object.keys(ties).length ? { ties } : {}), obligations: ids, control: s.controls.length - 1 });
     }
   }
   refreshOutput(s);
@@ -316,6 +318,9 @@ function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt
   if (talk.length) attempt.talk = talk;
   const dropped = r.effects.flatMap((e) => e.kind === "say" ? e.dropped ?? [] : []);
   if (dropped.length) attempt.dropped = dropped;
+  // B2: the drawings code did not draw (board-ties.ts), on the attempt whose words were said.
+  const drawDrops = r.refusal ? [] : r.effects.flatMap((e) => e.kind === "say" ? e.drawDrops ?? [] : []);
+  if (drawDrops.length) attempt.drawDrops = drawDrops;
   if (attempt.source !== "fallback" || !r.refusal) s.attempts.push(attempt);
   if (r.refusal && !s.session.outcome) { takeEffects(s, r.effects, at); return; }
   s.scene = scene;
@@ -458,7 +463,7 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
           const o = s.obligations.find((o) => o.id === id)!;
           if (o.status === "pending") { o.status = "served"; o.servedBy = index; }
         }
-        for (const b of p.batches) s.board.push({ at: turn.at, turn: index, transactionId: b.transactionId, commands: b.commands });
+        for (const b of p.batches) s.board.push({ at: turn.at, turn: index, transactionId: b.transactionId, commands: b.commands, ...(p.ties?.[b.transactionId] === undefined ? {} : { sentence: p.ties[b.transactionId] }) });
       }
       if (terminalTurn) s.turns.push(terminalTurn);
       if (s.output.say.length) {

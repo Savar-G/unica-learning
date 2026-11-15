@@ -278,7 +278,8 @@ export interface ModelOutput {
   step?: string;
   level?: HintLevel;
   reading?: Reading;
-  draw?: { offer: string; place?: string }[];
+  /** B2: `sentence` (the tutor's): the sentence of "say" the drawing goes with, 1 for the first (board-ties.ts). */
+  draw?: { offer: string; place?: string; sentence?: number }[];
 }
 
 /** The tutor's gate values (2026-11-15): "none" lets the stream start; any other holds the whole turn. */
