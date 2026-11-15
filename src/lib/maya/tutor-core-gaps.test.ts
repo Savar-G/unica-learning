@@ -96,3 +96,37 @@ describe("comma numbers in plain forms (F3, 2026-11-15)", () => {
   it.each(["So what is 9,000 plus 60?", "What is the value of the 4 in 48,942?", "48,942 is 4 ten thousands and 8,942 ones."])("sends %s with no review", (x) => expect(plainTeaching(x)).toBe(true));
   it.each(["So, 9, my friend.", "What is 12 minus 8, my friend?"])("reviews %s", (x) => expect(plainTeaching(x)).toBe(false));
 });
+
+// Review of #1009 (Sol, 2026-11-15): three regressions of the core additions, each said to the child before the fix.
+describe("review of #1009: core additions (2026-11-15)", () => {
+  const sub = { stance: "none" as const, op: "subtract" as const };
+  it.each(["5 tens become 15 tens.", "5 tens are now 14 tens."])("refuses the impossible borrow %s", (x) => expect(checkTutorSay(x, sub)).toMatchObject({ ok: false }));
+  it.each(["0 tens become 10 tens.", "0 tens are now 9 tens.", "5 tens become 4 tens."])("still passes the true trade %s", (x) => expect(checkTutorSay(x, sub)).toMatchObject({ ok: true }));
+  it("refuses a product read as a place quantity", () => {
+    expect(checkTutorSay("3 groups of 4 is 12 tens.", { stance: "none" })).toMatchObject({ ok: false });
+    expect(checkTutorSay("3 × 4 is 12 tens.", { stance: "none" })).toMatchObject({ ok: false });
+    expect(checkTutorSay("1 + 2 + 3 = 6 tens.", { stance: "none" })).toMatchObject({ ok: true });
+  });
+  it("reads a bare word after Maya's own question against that question, not the printed claim", async () => {
+    const pkg = FIXTURES.COMPARE_FRACTIONS as OperationPackage;
+    const kind: TutorKind = {
+      id: "comparison-review", fits: (p) => p.operation.kind === "comparison",
+      steps: (p) => p.steps.filter((s) => s.kind !== "result").map((s) => ({ id: s.id, work: "Check the comparison", result: "?" })),
+      numberMeaning: () => "not a value of this question", workValues: () => [],
+      streamScope: () => ({ numbers: [], expressions: [] }), stepQuestion: () => "Which is bigger, 9 or 5?",
+      drawings: () => [], draw: () => ({ commands: [], keys: [] }), claimProblems: () => [],
+    };
+    const undo = testKind(kind);
+    try {
+      let now = Date.UTC(2026, 10, 15);
+      const answerWord = String((pkg.answer.value as unknown as { value?: unknown }).value);
+      const question = answerWord === "true" ? "Is 5 less than 3?" : "Is 5 greater than 3?";
+      const child = answerWord === "true" ? "false" : "true";
+      const model = conversationalFake({ answer: (_b, n) => reply(n === 0 ? question : "Yes. Which is bigger, 5 or 3?", "guide") });
+      const session = createTextSession({ callId: "comparison-review", package: pkg, model, clock: () => (now += 500), tutor: true, reviewer: fakeTalkReviewer() });
+      await session.start();
+      expect((await session.child("I need help")).say).toEqual([question]);
+      expect((await session.child(child)).say.join(" ").startsWith("Yes.")).toBe(true);
+    } finally { undo(); }
+  });
+});

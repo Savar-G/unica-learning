@@ -93,7 +93,7 @@ const DETERMINERS = new Set(["this", "that", "each", "every", "which", "another"
 const COUNT_WORDS = new Set(["steps", "step", "jumps", "jump", "fingers", "finger", "more", "less", "fewer", "bigger", "smaller", "greater", "larger", "away", "apart", "times", "blocks", "block", "sticks", "stick", "counts", "numbers", "after", "before", "up", "down", "from", "than"]);
 
 /** One side of a relation: its value, whether any term is a place quantity, and its one place when it has one. */
-interface Side { value: number; units: boolean; place: number | null; next: number; ops: boolean }
+interface Side { value: number; units: boolean; place: number | null; next: number; ops: boolean; sums: boolean }
 
 /**
  * The math claims of a sentence that do not hold, as reasons; empty when every claim holds. A claim is a chain
@@ -146,11 +146,12 @@ export function falseClaims(sentence: string, op?: "add" | "subtract"): string[]
       term = values[k + 1];
     }
     const value = total + sign * term;
-    return { value, units, place, next, ops };
+    return { value, units, place, next, ops, sums: signs.length > 0 && signs.every((x) => x === "+") };
   };
-  // A column's sum of digits said in its place: "1 + 2 + 3 = 6 tens" (never a bare "4 is 4 tens").
+  // A column's sum of digits said in its place: "1 + 2 + 3 = 6 tens" (never a bare "4 is 4 tens", and never a product or
+  // a difference: "3 groups of 4 is 12 tens" is false, review of #1009).
   const inPlace = (a: Side, b: Side): boolean =>
-    (a.ops && !a.units && b.place !== null && a.value * b.place === b.value) || (b.ops && !b.units && a.place !== null && b.value * a.place === a.value);
+    (a.sums && !a.units && b.place !== null && a.value * b.place === b.value) || (b.sums && !b.units && a.place !== null && b.value * a.place === a.value);
   const trade = (a: Side, b: Side): boolean => {
     // Two digits with no place ("the 2 becomes 12", "the 5 becomes 4"): the ones gain 10 or the tens give 1.
     if (!a.units && !b.units) return b.value === a.value + 10 || b.value === a.value - 1;
@@ -162,7 +163,8 @@ export function falseClaims(sentence: string, op?: "add" | "subtract"): string[]
     const delta = place === 1 ? 10 : place;
     // A borrow across a zero (#1012): in a subtraction a place above the ones may also take 10 of its own units from
     // the left ("0 tens become 10 tens"), then give 1 to the right ("0 tens are now 9 tens").
-    if (place > 1 && op !== "add" && (bValue === a.value + 10 * place || bValue === a.value + 9 * place)) return true;
+    // Only a zero place borrows this way: "5 tens become 15 tens" is false (review of #1009).
+    if (place > 1 && op !== "add" && a.value === 0 && (bValue === 10 * place || bValue === 9 * place)) return true;
     return gainsTen ? bValue === a.value + delta : bValue === a.value - delta;
   };
   while (i < items.length) {

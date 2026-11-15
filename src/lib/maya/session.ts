@@ -5075,8 +5075,11 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
     const word = claim ? claimSaid({ ...claimTurn(base), claimAsked: true }) : null;
     if (claim && word) stance = word === claim.word ? (stance === "none" ? "right" : stance) : "wrong";
     const op = comparisonOf(pkg);
-    // The opening asks the comparison itself, so a bare word ("false") sets the stance (F4 builder, 2026-11-15).
-    const cw = op ? comparisonWord({ ...base, claimAsked: true }) : null;
+    // The opening asks the comparison itself, so a bare word ("false") right after it sets the stance (F4 builder,
+    // 2026-11-15). After Maya asks another question ("Is 5 less than 3?") a bare word may answer that one, so it is not
+    // read against the printed claim (review of #1009).
+    const afterOpening = lastSaid(base) === (base.turns.find((t) => t.speaker === "maya")?.text ?? null);
+    const cw = op ? comparisonWord(afterOpening ? { ...base, claimAsked: true } : base) : null;
     if (op && cw) stance = sameValue(comparisonAnswer(op, cw.word === comparisonWords(op)[0]), pkg.answer.value) ? (stance === "none" ? "right" : stance) : "wrong";
   }
   // The next open step, for the prepared replies' expected turns (expectedTurns and fitsExpected read the ladder's step).
