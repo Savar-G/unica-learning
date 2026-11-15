@@ -85,6 +85,10 @@ export interface SayRules {
   stance?: "wrong" | "none" | "right";
   /** The places of the steps after the current one ("tens"): a reply on a wrong or uncredited turn does not move there. */
   laterPlaces?: readonly string[];
+  /** Effective operands of code's column steps, before the model proposal. */
+  columnSteps?: readonly { operands: readonly [number, number]; op: "minus" | "plus"; place: string; current: boolean; done: boolean }[];
+  /** An operation read from the child's whole plain expression, never the model's reading. */
+  heardColumn?: { operands: readonly [number, number]; op: "minus" | "plus" } | null;
 }
 
 export type SayVerdict =
@@ -404,6 +408,10 @@ function stepLeak(tokens: readonly SayToken[], step: { operands: readonly SayVal
   return true;
 }
 
+/** The same open-step limit applies to the complete reply and to a stream prefix with its required confirmation. */
+export const revealsOpenStep = (text: string, rules: Pick<SayRules, "openSteps">): boolean =>
+  (rules.openSteps ?? []).some((st) => stepLeak(sayNumbers(text), st));
+
 const PLACES = "ones|tens|hundreds|thousands|one|ten|hundred|thousand";
 /** The digits a sentence names with a place ("2 tens", "4 in the ones"), as [digit, place in the plural]. */
 function placed(text: string): [number, string][] {
@@ -467,6 +475,33 @@ function movesTo(text: string, places: readonly string[]): boolean {
 
 // ---------- The checks ----------
 
+/** The child's whole expression, with number words normalized by the same number reader as the say checks. */
+export function heardColumnOf(text: string): NonNullable<SayRules["heardColumn"]> | null {
+  let normalized = text.trim();
+  for (const token of [...sayNumbers(normalized)].reverse()) normalized = normalized.slice(0, token.at) + token.key + normalized.slice(token.end);
+  const match = /^(\d+) (minus|plus) (\d+)(?: (?:is|equals) \d+)?[.!]?$/i.exec(normalized);
+  return match ? { operands: [Number(match[1]), Number(match[3])], op: match[2].toLowerCase() as "minus" | "plus" } : null;
+}
+
+const STEP_ROLE = /^(\d+) (minus|plus) (\d+) (?:is|was) the (ones|tens|hundreds|thousands) step\.?$/i;
+const HEARING_CONTRAST = /^I heard (\d+) (minus|plus) (\d+), but for the (ones|tens|hundreds|thousands) it's (\d+) (minus|plus) (\d+)\.?$/i;
+
+/** Null outside these complete forms. False claims fail before any review, including a passing fake reviewer. */
+export function columnSentenceTruth(sentence: string, rules: Pick<SayRules, "columnSteps" | "heardColumn">, doneOnly = false): boolean | null {
+  if (!rules.columnSteps) return null;
+  const text = sentence.trim().replace(/[’]/g, "'");
+  const role = STEP_ROLE.exec(text);
+  const contrast = HEARING_CONTRAST.exec(text);
+  if (!role && !contrast) return null;
+  const matches = (a: string, op: string, b: string, place: string, current: boolean) => rules.columnSteps!.some((st) =>
+    st.place === place.toLowerCase() && st.op === op.toLowerCase() && st.operands[0] === Number(a) && st.operands[1] === Number(b) &&
+    (current ? st.current && !st.done : !doneOnly || st.done));
+  if (role) return matches(role[1], role[2], role[3], role[4], false);
+  const heard = rules.heardColumn;
+  return !!contrast && !!heard && heard.operands[0] === Number(contrast[1]) && heard.op === contrast[2].toLowerCase() &&
+    heard.operands[1] === Number(contrast[3]) && matches(contrast[5], contrast[6], contrast[7], contrast[4], true);
+}
+
 /** The checks of one sentence (numbers, equations, words, patterns). `index` is its place in the reply. */
 export function checkSentence(sentence: string, rules: SayRules, index = 0): SayVerdict {
   const no = (reason: SayReason, detail: string): SayVerdict => ({ ok: false, reason, detail, sentence: index });
@@ -484,6 +519,7 @@ export function checkSentence(sentence: string, rules: SayRules, index = 0): Say
     return no("reintroduces", "The opening already said who Maya is and the question: answer what the child said instead.");
   }
   if (rules.noBoard && /\b(?:board|look|watch|see|show me|follow along)\b/i.test(text)) return no("board_words", "The child cannot see the board: use spoken words only.");
+  if (columnSentenceTruth(text, rules) === false) return no("false_equation", `"${sentence}" misstates the heard operation or the column step.`);
   const question = /\?\s*$/.test(text);
   // Equations first: a false one fails; one that says a hidden value must be code's own.
   const equations = equationsOf(text);
@@ -554,6 +590,9 @@ export function checkSay(say: string, rules: SayRules): SayVerdict {
   for (const [i, x] of sentences.entries()) {
     const v = checkSentence(x, rules, i);
     if (!v.ok) return v;
+  }
+  if (revealsOpenStep(say, rules)) {
+    return { ok: false, reason: "reveals_step", detail: "The reply combines an open step's operands and result across sentences.", sentence: sentences.length - 1 };
   }
   const places = placed(say);
   if (rules.answerPlaces?.length && rules.answerPlaces.every(([d, p]) => places.some(([n, q]) => n === d && q === p))) {

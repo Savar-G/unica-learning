@@ -63,6 +63,35 @@ describe("sentences", () => {
 });
 
 describe("checkSay", () => {
+  it("checks an open result across sentences, including a confirmation of a heard number", () => {
+    const r = rules({ allowed: valuesOf("12 7 5"), shown: [], forbidden: [], answer: [], wrong: [], mustAsk: numberValue(5), confirming: numberValue(5),
+      openSteps: [{ operands: valuesOf("12 7"), result: numberValue(5), place: "tens", current: true }] });
+    expect(checkSentence("For the tens it's 12 minus 7.", r).ok).toBe(true);
+    expect(checkSentence("Did you say 5?", r).ok).toBe(true);
+    expect(checkSay("For the tens it's 12 minus 7. Did you say 5?", r)).toMatchObject({ ok: false, reason: "reveals_step" });
+    expect(checkSay("Did you say 5?", r).ok).toBe(true);
+    expect(checkSay("What is 12 minus 7?", { ...r, mustAsk: null }).ok).toBe(true);
+  });
+  it.each(["is", "was"])("checks the effective operands and place of a column-role claim with %s", (verb) => {
+    const r = rules({ allowed: valuesOf("12 8"), shown: [], forbidden: [], answer: [], wrong: [],
+      columnSteps: [{ operands: [12, 8], op: "minus", place: "ones", current: false, done: true }] });
+    expect(checkSay(`12 minus 8 ${verb} the ones step.`, r).ok).toBe(true);
+    for (const text of [`12 minus 8 ${verb} the tens step.`, `8 minus 12 ${verb} the ones step.`, `12 plus 8 ${verb} the ones step.`]) {
+      expect(checkSay(text, r)).toMatchObject({ ok: false, reason: "false_equation" });
+    }
+  });
+  it("checks order and operation in both halves of an addition contrast", () => {
+    const r = rules({ allowed: valuesOf("2 6 4 1"), shown: [], forbidden: [], answer: [], wrong: [],
+      heardColumn: { operands: [2, 6], op: "plus" },
+      columnSteps: [{ operands: [4, 1], op: "plus", place: "tens", current: true, done: false }] });
+    expect(checkSay("I heard 2 plus 6, but for the tens it's 4 plus 1.", r).ok).toBe(true);
+    for (const text of [
+      "I heard 6 plus 2, but for the tens it's 4 plus 1.",
+      "I heard 2 plus 6, but for the tens it's 1 plus 4.",
+      "I heard 2 minus 6, but for the tens it's 4 plus 1.",
+      "I heard 2 plus 6, but for the tens it's 4 minus 1.",
+    ]) expect(checkSay(text, r)).toMatchObject({ ok: false, reason: "false_equation" });
+  });
   it("passes Savar's turn: names the mistake and guides the regroup", () => {
     const v = checkSay("Not quite: 2 minus 8 isn't 6. 6 is 8 minus 2. 2 is smaller than 8, so take a ten: what is 12 minus 8?", rules());
     expect(v).toEqual({ ok: true, sentences: expect.any(Array) });
