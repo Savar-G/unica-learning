@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import type { OperationPackage } from "@/lib/question-package";
-import { checkTutorSay, childFacts, isTutorQuestion, numberMeaning, stepFacts, tutorDrawings, tutorFallbackText } from "./tutor";
+import { checkTutorSay, plainTeaching, childFacts, isTutorQuestion, numberMeaning, stepFacts, tutorDrawings, tutorFallbackText } from "./tutor";
 
 // The tutor core's pure parts (D-345): which questions it teaches, the facts in its brief, the whole-message check,
 // code's honest line and the board drawings.
@@ -170,4 +170,9 @@ describe("falseClaims: trades and quantities, both directions (third check of #1
     ["4 is 4 tens left.", sub], ["5 tens are now 6 tens left.", sub], ["52 is the 4 tens and 2 ones.", sub], ["4 tens is the 5 tens.", sub],
     ["One ten is now three tens.", add],
   ])("refuses %s", (x, ctx) => expect(checkTutorSay(x, ctx)).toMatchObject({ ok: false }));
+});
+
+describe("plainTeaching (re-check of #1006)", () => {
+  it.each(["Not quite: 6 is 8 minus 2, the other way around.", "No, 6 is not right.", "Sure, {name}.", "Good question: in the ones, 2 ones is too small to take 8 away.", "12 minus 8 is 4.", "Now the tens: what is 4 minus 2?"])("sends %s with no review", (x) => expect(plainTeaching(x)).toBe(true));
+  it.each(["No good at math, {name}, not even 2 plus 2.", "Not good at this at all, not even 2 plus 2.", "We are not good at math, not even 2 plus 2.", "You are no good at math, not even 2 plus 2.", "2 is too hard for you.", "Sure, you can't do this.", "That's a fun question.", "I'm proud of you."])("reviews %s", (x) => expect(plainTeaching(x)).toBe(false));
 });

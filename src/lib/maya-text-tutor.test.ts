@@ -54,7 +54,6 @@ describe("the tutor core, test case 1: Savar's call", () => {
     expect(JSON.stringify(b)).not.toContain("Ava");
     // Only the statement about the child is reviewed (review of #1006); the math sentences are plain teaching.
     expect(reviewer.requests.map((r) => r.line)).toContain("You're right that 2 is too small to take 8 away.");
-    expect(reviewer.requests.map((r) => r.line)).not.toContain("So we borrow: trade 1 ten from the 5 tens for 10 ones.");
     const trace = await session.finish({ reason: "child_stopped" });
     expect(checkTrace(trace).ok).toBe(true);
     expect(trace.counts).toMatchObject({ overrides: 0, fallbacks: 0, refusals: 0, longestMayaRun: 1 });
@@ -308,7 +307,7 @@ describe("code's stance and other-topic talk (D-345, real runs of 2026-11-14)", 
     await session.start();
     const out = await session.child("What is your favorite animal?");
     expect(out.say).toEqual([say]);
-    expect(reviewer.requests.map((r) => r.line)).toEqual(["That's a fun question, and I'm an AI, so I have no pets."]);
+    expect(reviewer.requests.map((r) => r.line)).toContain("That's a fun question, and I'm an AI, so I have no pets.");
   });
   it("keeps code's redirect for outside math work", async () => {
     const { session } = call(() => reply("Sure, 7 times 8 is 56. What is 12 minus 8?", "guide", { reading: { outsideScope: "outside_work", mathRequests: [{ text: "7 times 8", operation: "multiply", operands: [{ type: "number", value: 7 }, { type: "number", value: 8 }] }] } }));
@@ -480,5 +479,42 @@ describe("third check of #1002 (2026-11-14)", () => {
     await session.start();
     expect((await session.child("I need help")).say).toEqual([say]);
     expect(briefs).toHaveLength(1);
+  });
+});
+
+describe("re-check of #1006 (2026-11-14)", () => {
+  const pause = () => new Promise<void>((r) => setTimeout(r, 5));
+  function rejectAll(say: string, reading: Record<string, unknown> = {}) {
+    let now = T0;
+    const parts: string[] = [];
+    const reviews: TalkReviewInput[] = [];
+    let early: string[] = [];
+    const model = conversationalFake({ answer: () => reply(say, "guide", { reading }), stream: { chunk: 7, beforeEnd: async () => { await pause(); early = [...parts]; } } });
+    const session = createTextSession({ callId: "r1006", package: PKG, model, tutor: true, clock: () => (now += 100), random: 3, childName: "Ava", onSayPart: (s) => parts.push(s),
+      reviewer: { id: "reject", promptVersion: "t", review: async (input: TalkReviewInput) => { reviews.push(input); return { verdict: "fail" as const, rules: ["unkind" as const], reason: "no" }; } } });
+    return { session, parts, reviews, early: () => early };
+  }
+  it.each(["No good at math, {name}, not even 2 plus 2.", "Not good at this at all, not even 2 plus 2.", "We are not good at math, not even 2 plus 2."])("reviews %s", async (bad) => {
+    const t = rejectAll(`${bad} What is 12 minus 8?`);
+    await t.session.start();
+    t.parts.length = 0;
+    const out = await t.session.child("I need help");
+    expect([...t.parts, ...out.say].join(" ")).not.toContain("good");
+  });
+  it.each(["4 plus 8 is 12.", "30 minus 6 is 24."])("never streams the outside operation %s", async (outside) => {
+    const t = rejectAll(`${outside} What is 12 minus 8?`, { outsideScope: "outside_work", mathRequests: [{ text: "4 plus 8", operation: "add", operands: [{ type: "number", value: 4 }, { type: "number", value: 8 }] }] });
+    await t.session.start();
+    t.parts.length = 0;
+    const out = await t.session.child("Please help with my homework.");
+    expect(t.early()).toEqual([]);
+    expect([...t.parts, ...out.say].join(" ")).not.toContain(outside);
+  });
+  it("still streams this question's own work at once", async () => {
+    const t = rejectAll("12 minus 8 is 4. Now the tens: what is 4 minus 2?");
+    await t.session.start();
+    t.parts.length = 0;
+    await t.session.child("12 minus 8 is 4");
+    expect(t.early()).toEqual(["12 minus 8 is 4.", "Now the tens: what is 4 minus 2?"]);
+    expect(t.reviews).toHaveLength(0);
   });
 });

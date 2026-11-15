@@ -41,14 +41,36 @@ export function plainTeaching(sentence: string, extra: ReadonlySet<string> = new
   if (exactSafe(text) || AI_FRAME.test(text)) return true;
   // Only plain letters, digits and math signs: other letters or symbols are read by the review.
   if (/[^a-z0-9\s.,?!:;()'"+*=<>%/\-×÷−–]/i.test(text.replace(/\{name\}/g, " "))) return false;
-  const words = wordsOf(text);
-  if (!words.every((w) => MATH_VOCAB.has(w) || TUTOR_MATH_WORDS.has(w) || extra.has(w))) return false;
-  // A statement about the child or about Maya is plain only as a math question or a positive math instruction
-  // (mathOnly's own rule): "What do you get for 12 minus 8?" is plain; "You are no good at math, not even 2 plus 2."
-  // and "You're right that 2 is too small." are reviewed (review of #1006).
-  const personal = /\b(?:you|you're|your|yourself|i|i'm|i'll|me|my)\b/i.test(text);
-  return !personal || mathOnly(text, new Set([...TUTOR_MATH_WORDS, ...extra]));
+  // Review of #1006: only a concrete math form skips the review. Each clause, after a short spoken lead-in ("Now",
+  // "So", "Good question", the name), is a math question, a positive math instruction or a statement that starts with
+  // a number or a place (mathOnly), or a bare place ("the tens"). "No good at math, {name}, not even 2 plus 2." and
+  // "You're right that 2 is too small." are reviewed, whatever their words.
+  const vocab = new Set([...TUTOR_MATH_WORDS, ...extra]);
+  const end = /[?!.]\s*$/.exec(text)?.[0].trim() ?? ".";
+  return text.replace(/[.!?]+\s*$/, "").split(/\s*[:;,]\s*/).every((raw) => {
+    let clause = raw.trim();
+    for (let k = 0; k < 4; k++) clause = clause.replace(LEAD_IN, "").trim();
+    return clause === "" || BARE_PLACE.test(clause) || mathOnly(`${clause}${end}`, vocab) || numberStatement(clause, vocab);
+  });
 }
+
+/**
+ * A clause that states the math about a number or a place, in math and plain teaching words only, about no person and
+ * judging no one: "2 ones is too small to take 8 away", "6 is 8 minus 2". Never "No good at math" (no number first).
+ */
+function numberStatement(clause: string, vocab: ReadonlySet<string>): boolean {
+  if (!NUMBER_FIRST.test(clause)) return false;
+  const words = wordsOf(clause);
+  if (!words.every((w) => MATH_VOCAB.has(w) || vocab.has(w))) return false;
+  return !/\b(?:you|you're|your|yourself|we|we're|us|our|i|i'm|me|my|good|bad|great|nice|smart|dumb|hard|easy|silly|stupid|fun|love|like)\b/i.test(clause);
+}
+
+const NUMBER_FIRST = /^(?:\d|(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\b|(?:the\s+)?(?:ones|tens|hundreds|top|bottom)\b)/i;
+
+/** A short spoken lead-in before the math of a clause. */
+const LEAD_IN = /^(?:\{name\}|(?:now|so|next|then|first|okay|ok|yes|no|sure|right|good question|great question|that's it|not quite|not yet|let's see|and|but)\b)[\s!.]*/i;
+/** A clause that only names a place or a column. */
+const BARE_PLACE = /^(?:(?:in|for|on|to)\s+)?(?:the\s+)?(?:ones|tens|hundreds)(?:\s+(?:column|place|step))?$|^the other way around$/i;
 
 type ColumnStep = Extract<WorkedStep, { kind: "add-column" | "subtract-column" }>;
 
@@ -268,6 +290,10 @@ export function tutorStreamSentence(sentence: string, previous: readonly string[
   // its scope reading (review of #1006: "The answer is 56." for outside homework).
   const foreign = sayNumbers(sentence).some((t) => !t.q || t.q[1] !== 1 || !ctx.allowed.has(t.q[0]));
   if (foreign) return "stop";
+  // So does an operation that is not part of this question's work, even with its numbers ("4 plus 8 is 12" in
+  // 52 − 28): only the question, its steps, its trades and the child's own expressions stream.
+  const outside = equationsOf(sentence).some((e) => !ctx.expressions.has(expressionKey(e.operands.map((o) => o.q?.[0] ?? NaN), e.ops)));
+  if (outside) return "stop";
   return plainTeaching(sentence, ctx.extra) ? "send" : "review";
 }
 
@@ -282,6 +308,14 @@ export interface TutorStreamContext extends TutorCheckContext {
   mayDeny: boolean;
   /** The numbers a streamed sentence may hold: the question's own, its work's, and the child's. */
   allowed: ReadonlySet<number>;
+  /** The operations a streamed sentence may state (expressionKey): the question's, its steps', its trades', the child's. */
+  expressions: ReadonlySet<string>;
+}
+
+/** An operation as a key, its operands in order ("12-8"); an addition's operands in any order. */
+export function expressionKey(operands: readonly number[], ops: readonly string[]): string {
+  if (ops.every((o) => o === "+")) return `+${[...operands].sort((x, y) => x - y).join(",")}`;
+  return operands.map((n, i) => (i === 0 ? String(n) : `${ops[i - 1]}${n}`)).join("");
 }
 
 /** The stream's context for the child's turn `text`, from code's stance. */
@@ -301,9 +335,22 @@ export function tutorStreamContext(pkg: OperationPackage, text: string, stance: 
     ...steps.flatMap((st) => [st.total * (st.place === "tens" ? 10 : 1), st.write * (st.place === "tens" ? 10 : 1)]),
     ...sayNumbers(text).flatMap((t) => (t.q && t.q[1] === 1 ? [t.q[0]] : [])),
   ]);
+  const expressions = new Set<string>([
+    expressionKey([a, b], [pkg.operation.kind === "add" ? "+" : "-"]),
+    ...steps.flatMap((st) => {
+      const op = st.op === "+" ? "+" : "-";
+      const keys = [expressionKey(st.operands, st.operands.slice(1).map(() => op))];
+      if (st.op === "-") keys.push(expressionKey([st.operands[1], st.operands[0]], ["-"]));
+      if (st.op === "-" && st.printedTop !== undefined) keys.push(expressionKey([st.printedTop, 10], ["+"]), expressionKey([st.printedTop, 1], ["-"]), expressionKey([st.printedTop, st.operands[1]], ["-"]), expressionKey([st.operands[1], st.printedTop], ["-"]));
+      if (st.op === "+") keys.push(expressionKey(st.operands.filter((x, i) => !(i === 0 && st.operands.length > 2)), st.operands.slice(2).map(() => "+")), expressionKey([st.total, 10], ["-"]));
+      return keys;
+    }),
+    ...sentencesOf(text).flatMap((x) => equationsOf(x).map((e) => expressionKey(e.operands.map((o) => o.q?.[0] ?? NaN), e.ops))),
+  ]);
   return {
     stance,
     extra,
+    expressions,
     childValues: said,
     op: pkg.operation.kind === "add" ? "add" : "subtract",
     ...(answer === null ? {} : { answer }),
