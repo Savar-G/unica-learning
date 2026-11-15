@@ -1,9 +1,10 @@
+import { monitored } from "@/lib/sentry-cron";
 import { timingSafeEqual } from "node:crypto";
 import { retryChildDeletions } from "@/lib/child-delete-server";
 import { adminClient } from "@/lib/supabase-auth";
 
 export const maxDuration = 60;
-export async function GET(request: Request) {
+async function run(request: Request) {
   const secret = process.env.CRON_SECRET;
   if (!secret) return Response.json({ ok: false, error: "unavailable" }, { status: 503 });
   const given = Buffer.from(request.headers.get("authorization") ?? ""), expected = Buffer.from(`Bearer ${secret}`);
@@ -17,3 +18,6 @@ export async function GET(request: Request) {
     return Response.json({ ok: false, error: "unavailable" }, { status: 503 });
   }
 }
+
+// Each scheduled call checks in with Sentry (src/lib/sentry-cron.ts).
+export const GET = monitored("child-deletions", run);

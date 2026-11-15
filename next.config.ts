@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs/config";
 
 const POSTHOG = process.env.NEXT_PUBLIC_POSTHOG_INGEST ?? "https://us.i.posthog.com";
 const POSTHOG_ASSETS = POSTHOG.replace(".i.posthog.com", "-assets.i.posthog.com");
@@ -43,4 +44,16 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// Sentry (docs/sentry.md): source maps go up during the Vercel build, with SENTRY_AUTH_TOKEN (Production only; without
+// it the build skips the upload and still passes), and are deleted from the deployment after. The browser sends to
+// Sentry through /monitoring on our own site (src/app/sentry-tunnel/route.ts), so ad blockers keep error reports and
+// Sentry never sees a visitor's address.
+export default withSentryConfig(nextConfig, {
+  org: "unica-learning",
+  project: "unica-web",
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  silent: !process.env.CI,
+  telemetry: false,
+  widenClientFileUpload: true,
+  tunnelRoute: "/monitoring",
+});

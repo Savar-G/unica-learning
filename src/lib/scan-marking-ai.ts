@@ -61,7 +61,7 @@ export function markingAiClient(env: Readonly<Record<string, string | undefined>
     if (!provider) return null;
     let cost: number | null = null, failure: MarkingFailure | null = null;
     const client = openRouterClient({
-      apiKey, model,
+      apiKey, model, feature: (usage ?? { feature: "marking" }).feature,
       provider, maxRetries: route?.maxRetries,
       fetch: costingFetch((usd) => { cost = Math.ceil(usd * 1_000_000); }, fetch),
       // #868: a clean 429, read from the error body the client already read. A request with no answer stays null.

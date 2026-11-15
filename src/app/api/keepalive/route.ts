@@ -1,10 +1,11 @@
+import { monitored } from "@/lib/sentry-cron";
 import { timingSafeEqual } from "node:crypto";
 import { supabase } from "@/lib/supabase";
 
 // Daily Vercel cron (vercel.json). Supabase pauses free projects after 7 days with no
 // database activity; one cheap query a day keeps the signup table reachable.
 // Like every cron route: no CRON_SECRET answers 503 (never open), a wrong header 401, compared in constant time.
-export async function GET(request: Request) {
+async function run(request: Request) {
   const secret = process.env.CRON_SECRET;
   if (!secret) return Response.json({ ok: false, error: "unavailable" }, { status: 503 });
   const given = Buffer.from(request.headers.get("authorization") ?? ""), expected = Buffer.from(`Bearer ${secret}`);
@@ -13,3 +14,6 @@ export async function GET(request: Request) {
   if (error) return Response.json({ ok: false, error: error.message }, { status: 502 });
   return Response.json({ ok: true });
 }
+
+// Each scheduled call checks in with Sentry (src/lib/sentry-cron.ts).
+export const GET = monitored("keepalive", run);

@@ -127,7 +127,7 @@ export function workbookAi(env: Env, o: WorkbookAiOptions): WorkbookAi {
           onUsage: (u) => recordAiUsage(tagOf(feature), { provider: "subscription", model, inputTokens: u.inputTokens, outputTokens: u.outputTokens }) })
     : null;
   const api = (model: string, ms: number, feature: AiFeature) => apiKey
-    ? (onCost: (usd: number) => void, onRequest: () => Promise<void>, onDispatch: () => void) => openRouterClient({ apiKey, model, fetch: costingFetch(onCost, base), timeout: ms, maxRetries: o.singleDispatch ? 0 : 1, onRequest, onDispatch,
+    ? (onCost: (usd: number) => void, onRequest: () => Promise<void>, onDispatch: () => void) => openRouterClient({ apiKey, model, feature, fetch: costingFetch(onCost, base), timeout: ms, maxRetries: o.singleDispatch ? 0 : 1, onRequest, onDispatch,
         onUsage: (u) => recordAiUsage(tagOf(feature), { provider: "openrouter", model, inputTokens: u.inputTokens, outputTokens: u.outputTokens, costUsd: u.costUsd, generationId: u.id }) })
     : null;
   const writeCli = cli(models.cli, "workbook");

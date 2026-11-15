@@ -85,7 +85,7 @@ export function aiClient(env: Readonly<Record<string, string | undefined>> = pro
   const chosen = model?.trim() || env.AI_MODEL?.trim() || AI_DEFAULT_MODEL;
   const { usage: tag, provider, ...rest } = hooks ?? {};
   return openRouterClient({
-    apiKey, model: chosen, ...rest, provider: provider ?? NO_GOOGLE_PROVIDER,
+    apiKey, model: chosen, ...rest, provider: provider ?? NO_GOOGLE_PROVIDER, feature: tag?.feature ?? "other",
     onUsage: (u) => recordAiUsage(tag, { provider: "openrouter", model: chosen, inputTokens: u.inputTokens, outputTokens: u.outputTokens, costUsd: u.costUsd, generationId: u.id }),
   });
 }
