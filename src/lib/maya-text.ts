@@ -338,6 +338,20 @@ export const TUTOR_REPAIR_BUDGET_MS = 6_000;
  * TUTOR_REPAIR_BUDGET_MS for the model, with the review limit after it.
  */
 export const VOICE_REPAIR_BUDGET_MS = 4_000;
+/**
+ * 2026-11-15 (fallback rate): the least time a review gets on a voice repair, in ms, also when the repair's model used
+ * nearly all of VOICE_REPAIR_BUDGET_MS (a sample saw a repair's reviews get 76 ms, so every sentence timed out). A
+ * review with less time can only fail.
+ */
+export const REVIEW_FLOOR_MS = 1_500;
+/**
+ * 2026-11-15 (fallback rate): the math-truth review's time limit on a tutor turn that is not voice (desk chat, admin text
+ * calls), in ms. Chat sends the whole message at once, so a held sentence costs no silence in the middle of speech. In 10
+ * desk-chat sessions the math review's p50 was 2.1 to 2.3 s and its p90 2.8 to 4.0 s: at 4 s, 7 of 58 teaching turns lost
+ * their first message to a time-out; at 6 s, none of 166 reviews in 10 sessions. A stalled request is sent once more at
+ * MATH_REVIEW_HEDGE_MS. Voice keeps CONVERSATION_REVIEW_TIME_LIMIT_MS.
+ */
+export const CHAT_MATH_REVIEW_TIME_LIMIT_MS = 6_000;
 
 export interface TextSessionOptions {
   /** Budget owner refuses speculative takes when only two live attempts remain. No seam disables preparation. */
@@ -636,8 +650,10 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   let turnEndsAt = Number.POSITIVE_INFINITY;
   // After #1072: on a voice repair the reviews end with the repair's budget (VOICE_REPAIR_BUDGET_MS); otherwise no end.
   let reviewEndsAt = Number.POSITIVE_INFINITY;
-  /** A review's time limit: its own limit, or the time left of a voice repair when that is less. */
-  const reviewLimit = (ms: number) => Math.min(ms, Math.max(0, reviewEndsAt - Date.now()));
+  /** A review's time limit: its own limit, or the time left of a voice repair when that is less, but not under REVIEW_FLOOR_MS. */
+  const reviewLimit = (ms: number) => Math.min(ms, Math.max(REVIEW_FLOOR_MS, reviewEndsAt - Date.now()));
+  /** The math review's own limit: a voice turn's is the conversational limit, a chat or text turn's is longer. */
+  const mathLimit = (conversational: boolean) => options.reviewTimeLimitMs ?? (!conversational ? REVIEW_TIME_LIMIT_MS : options.onSayPart ? CONVERSATION_REVIEW_TIME_LIMIT_MS : CHAT_MATH_REVIEW_TIME_LIMIT_MS);
   let quietOpening = false;
   let scheduled = 0;
   let prepareCount = 0;
@@ -926,7 +942,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
           }
           if (how.math) {
             const input = read(() => mathReviewInput(session, sentence, before));
-            const started = reviewMath(input, session.turns.length, reviewLimit(options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS));
+            const started = reviewMath(input, session.turns.length, reviewLimit(mathLimit(true)));
             streamMathReviews.set(mathKey(input), { requestId, result: started });
             checks.push(started.then((r) => r.verdict === "true"));
           }
@@ -1055,7 +1071,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       const key = mathKey(input);
       const streamed = streamMathReviews.get(key);
       if (streamed && streamed.requestId === requestId) mathUsed.push(key);
-      const result = streamed && streamed.requestId === requestId ? streamed.result : reviewMath(input, before.turns.length, reviewLimit(options.reviewTimeLimitMs ?? (before.conversational ? CONVERSATION_REVIEW_TIME_LIMIT_MS : REVIEW_TIME_LIMIT_MS)), reviewError);
+      const result = streamed && streamed.requestId === requestId ? streamed.result : reviewMath(input, before.turns.length, reviewLimit(mathLimit(before.conversational === true)), reviewError);
       return result.then((r) => ({ text, result: r }));
     })).then((all) => mathTexts.map((text) => all.find((m) => m.text === text && m.result.verdict !== "true") ?? all.find((m) => m.text === text)!)) : Promise.resolve([]);
     const reviewed = Promise.all([reviews, mathReviews]).then(([results, maths]) => {

@@ -24,6 +24,11 @@ npm run maya:text -- --anthropic --script scripts/maya-text/no-start.txt   # Cla
 | `--seed <n>`, `--name <name>` | The wording seed and the child's name. |
 | `--real-clock` | The real clock with a script, so the trace times each model call (D-341). |
 | `--legacy` | Maya's version 2 model (code-written lines), to compare with conversational Maya. |
+| `--tutor` | The tutor core (D-345, `docs/maya-tutor.md`), as on admin test calls. |
+| `--chat` | As desk chat (`textSession` in `src/lib/maya-call.ts` for a chat call): channel `chat`, the plain runner, no free talk but the safety review on, no streaming, the real clock. Use it to measure what families get in chat. |
+| `--voice` | As the voice worker: streaming (`onSayPart`), no repair on a controller turn, and the voice repair budget on a tutor turn. Prints the time to Maya's first and last sentence of each turn. |
+
+With `--model openrouter` the reviews are the site's own: Maya's route (`mayaAiClient`), the safety review (`callReviewer`) and the tutor's math-truth review (`callMathReviewer`, Haiku 5.5 with the Sonnet 5.5 retry), all from `src/lib/maya-call-seams.ts`. Before 2026-11-15 the CLI gave no math review, so every tutor sentence that code did not read whole was refused. The CLI times every review request and writes the times to `<trace>.reviews.json`, with a p50, p90 and max for each kind at the end of the run. Without `--voice` the CLI does not stream: before 2026-11-15 it always streamed, which also gave a chat run the voice repair budget.
 
 Script lines: a child turn, `/wait <seconds>` (the clock moves on and the pause policy runs), `/write start`, `/write done`, `/quit` (the child hangs up: the call ends as `child_stopped`). `#` starts a comment. A script or piped input uses a simulated clock (4 seconds a turn, plus each `/wait`). Typed input uses the real clock.
 

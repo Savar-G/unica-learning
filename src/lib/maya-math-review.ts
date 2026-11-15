@@ -9,7 +9,8 @@
 // The live reviewer goes through the AI client (OpenRouter, MAYA_MATH_REVIEW_MODEL, default Claude Haiku 5.5, with the
 // same key as Maya); the retry is MAYA_MATH_REVIEW_RETRY_MODEL (default Claude Sonnet 5.5). Both count their attempts in
 // Maya's spend as review attempts (docs/maya-spend.md). Tests use the fake.
-import { withTimeLimit, type AiClient } from "@/lib/ai-client";
+import { hedged, withTimeLimit, type AiClient } from "@/lib/ai-client";
+import { hedgeDelay } from "@/lib/maya-talk-review";
 import { MATH_REVIEW_PROMPT_VERSION, MATH_REVIEW_SCHEMA, MATH_REVIEW_SYSTEM, readMathReview, type MathReviewInput, type MathReviewResult } from "@/lib/maya/math-review";
 import { classifyError } from "@/lib/maya-trace";
 
@@ -22,6 +23,13 @@ export const MATH_REVIEW_RETRY_DEFAULT_MODEL = "anthropic/claude-sonnet-5.5";
  * on #1056's 124 false sentences: "low" judged 1 or 2 true in 3 of 5 runs, "medium" none in 2; median 1.3 s, not 0.8 s).
  */
 export const MATH_REVIEW_REQUEST = { effort: "medium" as const, maxTokens: 1_500 };
+/**
+ * 2026-11-15 (fallback rate): a math review with no answer after this many ms is sent once more (`hedged`), the first
+ * answer counting. Its latency comes mostly from the sentence (the same slow sentences were slow on every route), so a
+ * hedge at 2.5 s fired on 40% of math reviews in 10 desk-chat sessions and won once: this delay is about the p90 (3.4 s),
+ * for a stalled request only. On a 4 s voice limit no copy is sent (HEDGE_MIN_LEFT_MS).
+ */
+export const MATH_REVIEW_HEDGE_MS = 3_500;
 /** The retry's request: it must answer inside what is left of the same time limit. */
 export const MATH_REVIEW_RETRY_REQUEST = { effort: "low" as const, maxTokens: 1_500 };
 
@@ -71,8 +79,14 @@ const malformedResults = new WeakSet<MathReviewResult>();
 export const fromMalformedAnswer = (r: MathReviewResult): boolean => malformedResults.has(r);
 const MALFORMED_CODES = new Set(["bad_json", "schema_invalid"]);
 
-export async function runMathReview(reviewer: MathReviewer, input: MathReviewInput, ms: number, onError?: (e: unknown) => void): Promise<MathReviewResult> {
+export async function runMathReview(reviewer: MathReviewer, input: MathReviewInput, ms: number, onError?: (e: unknown) => void, hedgeMs: number = MATH_REVIEW_HEDGE_MS): Promise<MathReviewResult> {
   const once = (r: MathReviewer, signal: AbortSignal) => r.review(input, signal).catch((e: unknown) => {
+    throw signal.aborted ? new Error("time is up") : e;
+  });
+  // 2026-11-15 (fallback rate): the first review with no answer after `hedgeMs` is sent once more, the same request beside
+  // it (MATH_REVIEW_HEDGE_MS); the first answer counts. A malformed answer of either copy is an answer (final check 8: it is
+  // final); a copy that fails with no answer waits for the other. The retry model is not hedged.
+  const hedgedOnce = (r: MathReviewer, signal: AbortSignal) => hedged(hedgeDelay(hedgeMs, ms), signal, (copy) => r.review(input, copy), (e) => MALFORMED_CODES.has(classifyError(e, "model").code)).catch((e: unknown) => {
     throw signal.aborted ? new Error("time is up") : e;
   });
   let retrying = false;
@@ -86,7 +100,7 @@ export async function runMathReview(reviewer: MathReviewer, input: MathReviewInp
   };
   try {
     return await withTimeLimit(ms, async (signal) => {
-      const first = await once(reviewer, signal);
+      const first = await hedgedOnce(reviewer, signal);
       // Final check 5: only a well-formed "unsure" goes to the retry; an answer outside the schema is final "unsure".
       if (first.verdict !== "unsure" || first.malformed || !reviewer.retry || signal.aborted) {
         const result: MathReviewResult = { verdict: first.verdict, reason: first.reason, ...(first.retried ? { retried: true as const } : {}) };

@@ -17,7 +17,7 @@ import { expressionKey, noteFromEquation, type TutorCommand, type TutorKind, typ
 import { tutorKindOf } from "./tutor-kinds";
 import { affirms, equationHolds, equationsOf, neverSayProblem, sayNumbers, sentencesOf, type SayEquation } from "./say-check";
 import { exactSafe } from "./math-vocab";
-import { answerClaims, answerProblems, falseClaims, guardedProblems, readClaims, REMAINDER_SAID, unsafeNumberSaid, type ColumnSum, type KindRead } from "./tutor-math";
+import { answerClaims, answerProblems, falseClaims, fullRead, guardedProblems, readClaims, REMAINDER_SAID, unsafeNumberSaid, type ColumnSum, type KindRead } from "./tutor-math";
 
 /** The hard ceiling of one Maya message, in words. Over it, the model gets one repair with the reason; code never trims. */
 export const TUTOR_WORD_LIMIT = 60;
@@ -552,7 +552,9 @@ export function checkTutorSay(text: string, ctx: TutorCheckContext & { extra?: R
     // Final check 8 (2026-11-15): only an equation read in its whole clause is refused. An enclosing negation, a scope,
     // a unit or any other word around it ("It is not true that 3 times 2 is 7.", "52 minus 28 is 2 tens and 4 ones.")
     // leaves it unread: the sentence goes to the math review, never a refusal.
-    for (const e of equationsOf(sentence.replace(REMAINDER_FORM, " "), { whole: true })) {
+    // 2026-11-15 (fallback rate): and only one the one full-read guard finds read in full ("34 times 12 is 34 times 2,
+    // plus 34 times 10" runs on after its comma: it goes to the math review).
+    for (const e of equationsOf(sentence.replace(REMAINDER_FORM, " "), { whole: true, guard: fullRead })) {
       const holds = equationHolds(e);
       if (holds === null) continue;
       if (holds === e.negated) return { ok: false, reason: "false_equation", detail: `"${sentence}" ${e.negated ? "calls a true equation false" : "holds a false equation"}. Every equation Maya says must be true.` };
