@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SAFETY_GUIDANCE } from "@/lib/maya";
+import { SAFETY_GUIDANCE, type TalkReviewResult } from "@/lib/maya";
 import { conversationalFake, reply } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { createTextSession, type TextOutput } from "@/lib/maya-text";
@@ -72,5 +72,67 @@ describe("the trace check of a code-only safety turn", () => {
     if (!guidance || guidance.kind !== "maya" || !guidance.output) throw new Error("missing safety turn");
     guidance.output.say = [SAFETY_GUIDANCE.concern, SAFETY_GUIDANCE.concern];
     expect(checkTrace(trace).ok).toBe(false);
+  });
+});
+
+// #1035: a sentence held for its own review never reaches the child after code's safety guidance, on the controller
+// path and the tutor path. The control: with no safety, the same held sentence goes out once its review passes.
+describe("a held review after the safety guidance", () => {
+  const LINE = "You did that part well.";
+
+  function heldReview(tutor: boolean) {
+    let passReview!: (r: TalkReviewResult) => void;
+    let endModel!: () => void;
+    let reviewStarted!: () => void;
+    const started = new Promise<void>((r) => { reviewStarted = r; });
+    const review = new Promise<TalkReviewResult>((r) => { passReview = r; });
+    const modelHeld = new Promise<void>((r) => { endModel = r; });
+    const events: string[] = [];
+    const model = conversationalFake({
+      answer: (_b, call) => call === 0 ? reply(LINE, "guide") : reply("", "close"),
+      stream: { chunk: 7, beforeEnd: () => modelHeld },
+    });
+    const session = createTextSession({ callId: `held-review-${tutor}`, package: PKG, model, tutor, clock: () => 10_000, turnBudgetMs: 60_000,
+      onSayPart: (s) => events.push(s),
+      onGuidance: (out) => events.push(...out.say),
+      reviewer: { id: "held", promptVersion: "t", review: () => { reviewStarted(); return review; } },
+    });
+    return { session, events, started, passReview, endModel };
+  }
+
+  it.each([
+    [false, "concern"], [false, "immediate"], [true, "concern"], [true, "immediate"],
+  ] as const)("sends nothing when the review passes after safety (tutor %s, %s)", async (tutor, severity) => {
+    const t = heldReview(tutor);
+    await t.session.start();
+    t.events.length = 0;
+    const turn = t.session.child("I need help");
+    await t.started;
+    const work = t.session.safety(severity);
+    await tick();
+    expect(t.events).toEqual([SAFETY_GUIDANCE[severity]]);
+    t.passReview({ verdict: "pass" });
+    await tick();
+    expect(t.events).toEqual([SAFETY_GUIDANCE[severity]]);
+    t.endModel();
+    await Promise.all([turn, work]);
+    await t.session.finish({ reason: "child_stopped" });
+    expect(t.events).not.toContain(LINE);
+    expect(t.events.filter((e) => e === SAFETY_GUIDANCE[severity])).toHaveLength(1);
+  });
+
+  it.each([false, true])("sends the held sentence when no safety came (tutor %s)", async (tutor) => {
+    const t = heldReview(tutor);
+    await t.session.start();
+    t.events.length = 0;
+    const turn = t.session.child("I need help");
+    await t.started;
+    expect(t.events).toEqual([]);
+    t.passReview({ verdict: "pass" });
+    await tick();
+    expect(t.events).toEqual([LINE]);
+    t.endModel();
+    await turn;
+    expect(t.events.filter((e) => e === LINE)).toHaveLength(1);
   });
 });

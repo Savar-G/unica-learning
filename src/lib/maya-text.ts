@@ -497,10 +497,18 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     let words = 0;
     let seen = 0;
     const queue: { sentence: string; state: "ready" | "pending" | "drop" }[] = [];
+    // The one guard of both streams (the controller's and the tutor's) for every sentence, held review and part.
+    // Review of #1006: nothing goes out once the request is cancelled or another one took its place.
+    // Review of #1006 (fourth check): a content hold, a safety flag or the end of the call stops the stream at once.
+    // #1035: a held review that passes after code's safety guidance went out sends nothing.
+    const live = () => !streamDone && !controller.signal.aborted && folded.request?.id === requestId &&
+      folded.session.contentProblem === null && !folded.session.safety.flagged && !folded.session.outcome && folded.session.state !== "CONTENT_HOLD" &&
+      // Review of #1006 (fifth check): never past the call's end, even while a tick waits behind the request.
+      !(folded.session.startedAt !== null && now() - folded.session.startedAt >= (folded.session.limits?.endAtMs ?? 600000));
     const flush = () => {
-      while (queue.length && queue[0].state !== "pending") {
+      while (queue.length && queue[0].state !== "pending" && live()) {
         const next = queue.shift()!;
-        if (next.state === "drop" || streamDone && next.state !== "ready") continue;
+        if (next.state === "drop") continue;
         firstSayMs ??= now() - at;
         options.onSayPart!(fillName(next.sentence, session), sent.length, []);
         sent.push(next.sentence);
@@ -511,12 +519,6 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     // check stops the stream, and the rest waits for the whole message and its whole check.
     const tutor = model.output === 3 && options.onSayPart && !folded.sent?.length && folded.pending.length === 0 ? read(() => tutorStream(folded.session)) : null;
     const passes = (r: TalkReviewResult) => r.verdict === "pass" || (r.verdict === "fail" && r.rules.length > 0 && r.rules.every((id) => TUTOR_REVIEW_IGNORED.includes(id)));
-    // Review of #1006: nothing goes out once the request is cancelled or another one took its place.
-    // Review of #1006 (fourth check): a content hold, a safety flag or the end of the call stops the stream at once.
-    const live = () => !streamDone && !controller.signal.aborted && folded.request?.id === requestId &&
-      folded.session.contentProblem === null && !folded.session.safety.flagged && !folded.session.outcome && folded.session.state !== "CONTENT_HOLD" &&
-      // Review of #1006 (fifth check): never past the call's end, even while a tick waits behind the request.
-      !(folded.session.startedAt !== null && now() - folded.session.startedAt >= (folded.session.limits?.endAtMs ?? 600000));
     const flushTutor = () => {
       while (queue.length && queue[0].state !== "pending" && live()) {
         const next = queue.shift()!;
@@ -555,7 +557,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       flushTutor();
     } : undefined;
     const onText = tutor ? onTutorText : plan ? (soFar: string) => {
-      if (streamDone || folded.request?.id !== requestId || controller.signal.aborted) return;
+      if (!live()) return;
       const said = partialSay(soFar);
       if (!said || !said.kind) return;
       if (said.kind === "safety") { streamDone = true; return; }
@@ -574,8 +576,9 @@ export function createTextSession(options: TextSessionOptions): TextSession {
           const started = runReview(options.reviewer!, input, options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS);
           streamReviews.set(reviewKey(input), { requestId, result: started });
           void started.then((result) => {
-            item.state = result.verdict === "pass" && !streamDone ? "ready" : "drop";
-            if (!streamDone) flush();
+            if (!live()) return;
+            item.state = result.verdict === "pass" ? "ready" : "drop";
+            flush();
           });
         }
       }
