@@ -71,6 +71,7 @@ import { checkSay, checkSentence, columnSentenceTruth, equationHolds, heardColum
 import type { TalkReviewResult } from "./talk-review";
 import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
 import { bindingReview, checkTutorSay, childFacts, childSaysFalse, columnSums, isTutorQuestion, tutorTexts, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, TUTOR_REVIEW_IGNORED } from "./tutor";
+import { placeDigitsSaid } from "./tutor-math";
 import { MATH_REVIEW_PROMPT_VERSION, mathReviewsOf, type MathReview, type MathReviewInput } from "./math-review";
 import { reviewStart, reviewSteps } from "./math-review-steps";
 import { hideName as redactChildName } from "../child-name-redaction";
@@ -5056,6 +5057,50 @@ function wordVerdict(base: Session): "right" | "wrong" | null {
   return null;
 }
 
+/**
+ * Code's read of the child's committed answer in this turn (D-340, pre-launch check 2, final check 3): the read, whether
+ * the child named it as the answer, and whether it commits. A question, a choice or a help request commits nothing,
+ * unless the child names the answer ("My answer is 36. I need help.").
+ */
+function committedRead(base: Session): { read: ReturnType<typeof turnRead>; explicitAnswer: boolean; committed: boolean } {
+  const text = base.turn!.text;
+  const read = turnRead(base);
+  // An explicit final answer commits even beside a help request ("My answer is 36. I need help."): it is judged on its
+  // own (pre-launch check 2, part 1).
+  const explicitAnswer = sentencesOf(text).some((x) => !/\?\s*$/.test(x) && /\d|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)\b/i.test(x) &&
+    /^(?:(?:my|the)\s+(?:final\s+|whole\s+)?answer\s+is|i\s+got|it'?s|it\s+is)\b/i.test(x.trim()));
+  // Final check 3: any help word in the turn ("I have 24 crayons. Help me with this question.") commits nothing unless
+  // the child names their answer; the reader is broad on purpose (fail closed).
+  const helpWord = /\b(?:help|stuck|teach|explain|show me|don'?t (?:know|get|understand))\b/i.test(text);
+  const committed = read.final?.type === "number" && !read.choice && (explicitAnswer || (!text.includes("?") && !helpInWords(text) && !saysStuck(text) && !helpWord));
+  return { read, explicitAnswer, committed };
+}
+
+/**
+ * Final check 5 (2026-11-15): code's verdict on the child's committed answer this turn, for the math-truth review, which
+ * owns correctness judgments: the child's value (null for a word or an equation), "right" or "wrong", and the right
+ * answer. A word answer uses code's word verdict; a false equation the child said is wrong. Null when the child
+ * committed no answer.
+ */
+function childAnswerOf(s: Session, hide: (text: string) => string): MathReviewInput["childAnswer"] {
+  const pkg = s.package;
+  if (!pkg || !s.turn) return null;
+  const raw = (pkg.answer.value as { value?: unknown }).value;
+  const right = typeof raw === "number" ? raw : typeof raw === "string" ? hide(raw) : null;
+  const word = wordVerdict(s);
+  if (word) return { value: null, verdict: word, right };
+  const { read, committed } = committedRead(s);
+  if (committed && read.final?.type === "number") {
+    const n = read.final.value;
+    const asAnswer = /\banswer\b/i.test(s.turn.text);
+    // A value of the work the child does not name as the answer ("12") is no wrong answer (as proposeTutor reads it).
+    const fits = rightForQuestion(pkg, read.final) || (!asAnswer && isTutorQuestion(pkg) && tutorKind(pkg).workValues(pkg).includes(n));
+    return { value: n, verdict: rightForQuestion(pkg, read.final) ? "right" : fits ? "right" : "wrong", right };
+  }
+  if (childSaysFalse(s.turn.text)) return { value: null, verdict: "wrong", right };
+  return null;
+}
+
 /** The last turns of the call the math-truth review reads. */
 const MATH_REVIEW_TURNS = 4;
 /**
@@ -5086,6 +5131,7 @@ export function mathReviewInput(s: Session, sentence: string, before: readonly s
     transcript: s.turns.slice(-MATH_REVIEW_TURNS).map((t) => ({ speaker: t.speaker, text: hide(t.text) })),
     lastTurns: lastTwoTurns(s, hide),
     easierExample: pkg ? easierFacts(pkg, hide) : null,
+    childAnswer: pkg ? childAnswerOf(s, hide) : null,
   };
 }
 
@@ -5099,13 +5145,34 @@ function stepStatesOf(pkg: OperationPackage, hide: (text: string) => string): Ma
 function easierFacts(pkg: OperationPackage, hide: (text: string) => string): MathReviewInput["easierExample"] {
   const e = pkg.easierExample;
   if (!e || typeof e.text !== "string" || !Array.isArray(e.steps)) return null;
+  const value = (e.answer as { value?: unknown }).value;
+  const answer = typeof value === "number" ? value : typeof value === "string" ? hide(value) : null;
   try {
     const twin = { ...pkg, text: e.text, operation: e.operation, answer: { ...pkg.answer, value: e.answer }, steps: e.steps } as OperationPackage;
-    const value = (e.answer as { value?: unknown }).value;
-    return { question: hide(e.text), steps: stepFacts(twin).map((st) => ({ work: hide(st.work), result: typeof st.result === "string" ? hide(st.result) : st.result })), stepStates: stepStatesOf(twin, hide), answer: typeof value === "number" ? value : typeof value === "string" ? hide(value) : null };
+    return { question: hide(e.text), steps: stepFacts(twin).map((st) => ({ work: hide(st.work), result: typeof st.result === "string" ? hide(st.result) : st.result })), stepStates: stepStatesOf(twin, hide), answer };
   } catch {
-    return null;
+    // Final check 5 (2026-11-15): no tutor kind fits the easier example (the multiply kind refuses 0 x 1). Its computed
+    // facts still go to the review: its text, its answer and each computed step as code stores it.
+    return { question: hide(e.text), steps: e.steps.map((st) => ({ work: hide(computedStep(st)), result: stepResult(st) ?? "" })), answer };
   }
+}
+
+/** A computed step as plain text for the review: its kind and its stored values, never the model's or the child's words. */
+function computedStep(st: OperationPackage["steps"][number]): string {
+  const { id: _id, kind, ...rest } = st as { id?: unknown; kind: string } & Record<string, unknown>;
+  void _id;
+  return `${kind}: ${JSON.stringify(rest)}`;
+}
+
+/** A computed step's result when it stores one as a number or a word. */
+function stepResult(st: OperationPackage["steps"][number]): number | string | null {
+  const r = st as unknown as Record<string, unknown>;
+  for (const key of ["value", "result", "product", "total", "write", "worth"]) {
+    const v = r[key];
+    if (typeof v === "number" || typeof v === "string") return v;
+    if (typeof v === "object" && v !== null && (typeof (v as { value?: unknown }).value === "number" || typeof (v as { value?: unknown }).value === "string")) return (v as { value: number | string }).value;
+  }
+  return null;
 }
 
 /**
@@ -5145,6 +5212,18 @@ function plainlyMathTurn(s: Session): boolean {
   return !!words && words.test(text);
 }
 
+/**
+ * Final check 5 (2026-11-15): whether the tutor's stream may send words after the model's reading, which the tutor
+ * output writes whole before "say". A reading about Maya, safety, a stop, an unsafe request, other-topic talk or work
+ * outside the question holds the whole message, so code's own line comes first exactly as when the stream is off; so
+ * does a reading that a priority gate takes (tutorTeachingNow). Over-holding only costs speed.
+ */
+export function tutorStreamReading(s: Session, raw: Record<string, unknown>): boolean {
+  const reading = withoutDefaults(withoutNulls(raw)) as Reading;
+  if (reading.aboutMaya || reading.safety || reading.stop || reading.unsafeRequest || reading.offTopic || reading.outsideScope) return false;
+  return tutorTeachingNow(s, reading);
+}
+
 /** D-345: what the tutor's stream needs before the model writes: code's own stance and the question's words. Null: no stream. */
 export function tutorStream(s: Session): TutorStreamContext | null {
   if (!s.tutor || !s.turn || !s.package || !tutorTeachingNow(s)) return null;
@@ -5159,7 +5238,7 @@ export function tutorStream(s: Session): TutorStreamContext | null {
   // the whole message and its check.
   const wordQuestion = !!sessionClaim(s.package) || !!comparisonOf(s.package);
   // Final check 4: code's texts count only while the main question is the active problem (tutorTexts).
-  const texts = tutorTexts(s.package, [...s.turns.map((t) => t.text), s.turn.text]);
+  const texts = tutorTexts(s.package, [...s.turns.map((t) => t.text), s.turn.text], s.exampleIntroduced === true || s.exampleShown > 0);
   return { ...tutorStreamContext(s.package, s.turn.text, stance, vocabExtra(s), credited, wordQuestion), exact: texts.exact, nameWords: nameWordsOf(s) };
 }
 
@@ -5178,8 +5257,15 @@ function tellsAnswer(base: Session, pkg: OperationPackage, texts: readonly strin
   if (pkg.answer.value.type !== "number") {
     if (typeof word !== "string" || word.trim() === "") return false;
     const w = word.trim().toLowerCase();
-    const holds = (t: string) => new RegExp(`(^|[^a-z0-9])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^a-z0-9])`, "i").test(t);
-    return !committedRight && texts.some((x) => !/\?\s*$/.test(x) && !/\bor\b/i.test(x) && holds(x));
+    const holdsWord = (t: string, x: string) => new RegExp(`(^|[^a-z0-9])${x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^a-z0-9])`, "i").test(t);
+    // Final check 5 (2026-11-15): any message of Maya's, a question too ("Do you agree the answer is true?"), that names
+    // the answer word without naming the other choice word gives the answer. With no choice words code knows, only a
+    // statement with no "or" counts (final check 1).
+    const claim = sessionClaim(pkg);
+    const op = comparisonOf(pkg);
+    const others = claim ? [claim.other] : op ? comparisonWords(op).map((x) => x.toLowerCase()).filter((x) => x !== w) : null;
+    const gives = (x: string) => holdsWord(x, w) && (others ? !others.some((o) => holdsWord(x, o)) : !/\?\s*$/.test(x) && !/\bor\b/i.test(x));
+    return !committedRight && texts.some(gives);
   }
   const answer = pkg.answer.value.value;
   const own = new Set<number>([...tutorKind(pkg).workValues(pkg), ...(pkg.operation.operands as unknown[]).filter((v): v is number => typeof v === "number")]);
@@ -5187,6 +5273,19 @@ function tellsAnswer(base: Session, pkg: OperationPackage, texts: readonly strin
   if (!committedRight) for (const x of texts) {
     if (equationsOf(x).some((e) => !e.negated && equationHolds(e) === true && e.result.q?.[1] === 1 && e.result.q[0] === answer)) return true;
     if (!own.has(answer) && valuesIn(x).some((v) => v.type === "number" && v.value === answer)) return true;
+  }
+  // Final check 5 (2026-11-15): a message that names every digit of the answer in its place, in any order, in digits or
+  // words ("Write 2 in the tens place and 4 in the ones place", "2 tens and 4 ones"), gives the answer. A place quantity
+  // that makes up another number of the question ("28 is 2 tens and 8 ones") names no digit of the answer.
+  if (!committedRight && Number.isInteger(answer) && answer >= 0) {
+    const named = new Map<number, Set<number>>();
+    for (const group of texts.flatMap((x) => placeDigitsSaid(x))) {
+      const total = group.reduce((t, p) => t + p.n * p.place, 0);
+      if (group.length > 1 && total !== answer && own.has(total)) continue;
+      for (const p of group) named.set(p.place, (named.get(p.place) ?? new Set()).add(p.n));
+    }
+    const digitsOf = String(answer).split("").reverse().map(Number);
+    if (digitsOf.every((d, k) => named.get(10 ** k)?.has(d))) return true;
   }
   const digits = String(Math.trunc(Math.abs(answer))).length;
   // The kinds name a place as the package does ("ten thousands"); the board names it with "_".
@@ -5255,15 +5354,7 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   // nothing.
   const childValues: number[] = [];
   if (base.turn) {
-    const read = turnRead(base);
-    // An explicit final answer commits even beside a help request ("My answer is 36. I need help."): it is judged on its
-    // own (pre-launch check 2, part 1).
-    const explicitAnswer = sentencesOf(base.turn.text).some((x) => !/\?\s*$/.test(x) && /\d|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)\b/i.test(x) &&
-      /^(?:(?:my|the)\s+(?:final\s+|whole\s+)?answer\s+is|i\s+got|it'?s|it\s+is)\b/i.test(x.trim()));
-    // Final check 3: any help word in the turn ("I have 24 crayons. Help me with this question.") commits nothing unless
-    // the child names their answer; the reader is broad on purpose (fail closed).
-    const helpWord = /\b(?:help|stuck|teach|explain|show me|don'?t (?:know|get|understand))\b/i.test(base.turn.text);
-    const committed = read.final?.type === "number" && !read.choice && (explicitAnswer || (!base.turn.text.includes("?") && !helpInWords(base.turn.text) && !saysStuck(base.turn.text) && !helpWord));
+    const { read, explicitAnswer, committed } = committedRead(base);
     if (committed && read.final?.type === "number") {
       const n = read.final.value;
       childValues.push(n);
@@ -5321,7 +5412,7 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   const claims = (sentence: string) => kind.claimProblems(pkg, sentence);
   const answer = pkg.answer.value.type === "number" ? pkg.answer.value.value : undefined;
   // Final check 4: code's texts only for the active problem (tutorTexts), with the question's own numbers.
-  const texts = tutorTexts(pkg, [...base.turns.map((t) => t.text), base.turn?.text ?? ""]);
+  const texts = tutorTexts(pkg, [...base.turns.map((t) => t.text), base.turn?.text ?? ""], base.exampleIntroduced === true || base.exampleShown > 0);
   const wordAnswer = !!sessionClaim(pkg) || !!comparisonOf(pkg);
   let verdict = checkTutorSay(text, { stance, extra, childValues, claims, trades: tutorKind(pkg).workValues(pkg), columns: columnSums(pkg), ...texts, wordAnswer, nameWords: nameWordsOf(base), ...(op ? { op } : {}), ...(answer === undefined ? {} : { answer }) });
   // Code's own line never fails its turn: after streamed words that leave no room, the turn is those words.

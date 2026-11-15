@@ -82,7 +82,8 @@ export async function runMathReview(reviewer: MathReviewer, input: MathReviewInp
         onError?.(e);
         first = await once(reviewer, signal);
       }
-      if (first.verdict !== "unsure" || !reviewer.retry || signal.aborted) return first;
+      // Final check 5: only a well-formed "unsure" goes to the retry; an answer outside the schema is final "unsure".
+      if (first.verdict !== "unsure" || first.malformed || !reviewer.retry || signal.aborted) return { verdict: first.verdict, reason: first.reason, ...(first.retried ? { retried: true as const } : {}) };
       retrying = true;
       try {
         const second = await once(reviewer.retry, signal);

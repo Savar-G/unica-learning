@@ -106,9 +106,11 @@ describe("layer 1: only an exact match passes on code alone", () => {
   });
 
   it("passes the closed plain forms with true math and no review; a lead-in, the name or another word sends it to the review", () => {
-    for (const line of ["12 minus 8 is 4.", "52 is 4 tens and 12 ones.", "52 minus 28 isn't 36.", "What is 12 minus 8?", "What do you get for 4 minus 2?", "Trade 1 ten for 10 ones.", "Subtract the ones."]) {
+    for (const line of ["12 minus 8 is 4.", "52 is 4 tens and 12 ones.", "52 minus 28 isn't 36.", "What is 12 minus 8?", "What do you get for 4 minus 2?"]) {
       expect(checkTutorSay(line, ctxOf(SUB)), line).toMatchObject({ ok: true, math: [] });
     }
+    // Final check 5: an instruction is code alone only as an exact step text; these go to the math review.
+    for (const line of ["Trade 1 ten for 10 ones.", "Subtract the ones."]) expect(checkTutorSay(line, ctxOf(SUB)), line).toMatchObject({ ok: true, math: [line] });
     for (const line of ["Now 12 minus 8 is 4.", "{name}, 12 minus 8 is 4.", "The answer is 24.", "Write 3 in the ones.", "Add the ones.", "12 minus 8 is 4 too.", "What is 12 minus 8.", "The tens.", "What is the value of the 8 in 52?"]) {
       expect(codeAlone(line, ctxOf(SUB)), line).toBe(false);
     }
