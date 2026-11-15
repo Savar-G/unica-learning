@@ -4,8 +4,8 @@ import { useState } from "react";
 import type { HomeSkillsView, SkillItemView } from "@/lib/parent-view";
 
 // The Home's skills (#1003, Option A v9): the three counts since the child started (Mastered, Learning, Needs help), and
-// the list of the one picked. Each number shows once, on its button; no count sits beside a heading. The sentence under
-// each skill waits for #989 and Highlights for #990; the rows leave room for them.
+// the list of the one picked. Each number shows once, on its button; no count sits beside a heading. Under each skill name
+// is one short grey line (#989, src/lib/skill-sentences.ts), written by code; with no sentence, the name stands alone.
 
 type Focus = "mastered" | "learning" | "needsHelp";
 const FOCUS: { key: Focus; count: string; heading: string; tone: "g" | "s" | "a"; empty: string }[] = [
@@ -31,7 +31,7 @@ function Row({ item, focus }: { item: SkillItemView; focus: Focus }) {
       <span className={`pa-tag is-${tone}`}>{ICONS[focus]}</span>
       <span className="po-skill">
         <b>{item.name}</b>
-        {focus === "mastered" && item.masteredOn && <small>Mastered {item.masteredOn}</small>}
+        {item.sentence && <small>{item.sentence}</small>}
       </span>
     </li>
   );

@@ -87,11 +87,32 @@ it.each(PARENT_PREVIEW_VIEWS.find(view => view.id === "overview")!.scenarios.map
       if (fromLine && fromHl) expect(Number(fromLine[1])).toBe(fromHl[1] ? Number(fromHl[1]) : 1);
       // When the Mastered list is the one shown, the rows dated this week are the new skills the sentences count.
       const thisWeek = [...out.querySelectorAll(".po-skill small")].filter(row => /Mastered (today|Monday|Tuesday|Wednesday|Thursday|Friday)/.test(row.textContent ?? "")).length;
-      if (out.querySelector(".po-skill small")) expect(thisWeek).toBe(said);
+      if ([...out.querySelectorAll(".pa-sh h2")].some(h => h.textContent === "Mastered")) expect(thisWeek).toBe(said);
       // Nothing to say, and a plan with nothing mastered, says nothing of the kind.
       if (scenario === "nothing_to_say") { expect(line).toBe(""); expect(hl).toEqual([]); }
     }
   });
+
+it("shows the sentence under each skill, written by the real module from facts of its own scenario (#989)", () => {
+  const rows = (scenario: string, child = "first") => [...dom(renderParentPreview(previewSelection({ view: "overview", scenario, family: "two", child, size: "desktop" }), styles)).querySelectorAll(".po-skill")]
+    .map(row => [row.querySelector("b")?.textContent, row.querySelector("small")?.textContent ?? null]);
+  // Needs help is the list that opens: a mistake from the table's own text, and no next-workbook clause with no next workbook.
+  expect(rows("active")).toEqual([
+    ["Value of each digit in big numbers", "Reads a digit's face value or the wrong place, not its place value."],
+    ["Subtracting across a zero", "Subtracts the smaller digit from the larger when the top number has a zero."],
+  ]);
+  // With the next workbook in the mail, and only then, the sentence says what comes next.
+  for (const scenario of ["book_2_mailed", "book_over"]) {
+    for (const [, sentence] of rows(scenario)) expect(sentence).toMatch(/\. Back in the next workbook\.$/);
+  }
+  for (const scenario of ["active", "today_done", "behind", "ended"]) for (const [, sentence] of rows(scenario)) expect(sentence).not.toContain("next workbook");
+  // No Needs help skill: the list that opens is Learning. One steady run, one recorded start; no percent and no count of wrong answers.
+  expect(rows("nothing_to_say")).toEqual([
+    ["Rounding to the nearest hundred", "Getting steadier: right the last 3 times"],
+    ["Number patterns", "Started Tuesday"],
+  ]);
+  for (const scenario of ["active", "nothing_to_say", "book_2_mailed"]) expect(rows(scenario).map(([, s]) => s).join(" ")).not.toMatch(/%|percent|of the last/);
+});
 
 it("shows the real Workbooks tab for each book state on both sizes, with the Schedule folded in (#1031)", () => {
   for (const size of ["desktop", "phone"]) {

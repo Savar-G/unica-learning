@@ -8,7 +8,7 @@ import { LEARNING_COLUMNS } from "@/lib/learning-style";
 import { chatFamilyGate } from "@/lib/maya-chat";
 import { childPauseMailing } from "@/lib/plan-controls-server";
 import { dayNumber } from "@/lib/parent-week";
-import type { ParentViewReader } from "@/lib/parent-view";
+import type { MistakeRecord, ParentViewReader } from "@/lib/parent-view";
 import type { StateChange } from "@/lib/progress-series";
 import { pinIsSet } from "@/lib/parent-pin-server";
 import { familyOpenPlanChildren } from "@/lib/plan-access";
@@ -280,6 +280,21 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
         rows.push(...data.filter((r) => known.has(r.state)).map((r) => ({ standard: r.standard, state: r.state as StateChange["state"], changedAt: r.changed_at })));
         if (data.length < 1000) return rows;
       }
+    },
+    async recentMistakes(childId, since) {
+      if (!admin) throw new Error("recent mistakes read: no secret key");
+      // Parents may not read this table: the secret key reads it, filtered on the parent and the child, and only the
+      // standard, the cause id and the time leave. A wrong answer with no known cause is not selected.
+      const rows: MistakeRecord[] = [];
+      for (let from = 0; from < 5000; from += 1000) {
+        const { data, error } = await admin.from("learning_events").select("skill_standard, mistake, occurred_at")
+          .eq("parent_id", parent).eq("child_id", childId).eq("result", "wrong").not("mistake", "is", null)
+          .gte("occurred_at", new Date(since).toISOString()).order("occurred_at").order("id").range(from, from + 999);
+        if (error) throw new Error(`recent mistakes read: ${error.message}`);
+        rows.push(...data.flatMap((r) => (r.mistake ? [{ standard: r.skill_standard, cause: r.mistake, at: r.occurred_at }] : [])));
+        if (data.length < 1000) break;
+      }
+      return rows;
     },
     async switches() {
       const [scanPages, scanPlanChildren, testFamily] = await Promise.all([

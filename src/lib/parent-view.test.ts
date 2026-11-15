@@ -111,7 +111,7 @@ describe("what a parent reads", () => {
     const readers = memoryParentViewReaders({ children: [younger, omar, leah] });
     const list = await listChildren(readers.parent("parent-1"), NOW);
     expect(list.map((c) => c.firstName)).toEqual(["Leah", "Ana"]);
-    expect(readers.reads).toEqual({ children: 1, tests: 1, reports: 1, cards: 1, deliveries: 1, workbooks: 1, plans: 1, switches: 1, corrections: 0, dispatches: 0, family: 0, results: 0, scans: 0, pages: 0, learning: 0, pin: 0, maya: 0, skillTests: 0, questions: 0, overviewProgress: 0, history: 0 });
+    expect(readers.reads).toEqual({ children: 1, tests: 1, reports: 1, cards: 1, deliveries: 1, workbooks: 1, plans: 1, switches: 1, corrections: 0, dispatches: 0, family: 0, results: 0, scans: 0, pages: 0, learning: 0, pin: 0, maya: 0, skillTests: 0, questions: 0, overviewProgress: 0, history: 0, mistakes: 0 });
   });
   it("lists a child's reports, the newest test first", async () => {
     const reader = parent({ tests: [test("old", { completedAt: NOW - 90 * HOUR }), test("new", { completedAt: NOW - 10 * HOUR })], reports: [report("old"), report("new")] });
@@ -478,9 +478,9 @@ describe("the Home (#560, #1003)", () => {
 
     it("lists Mastered, Learning and Needs help from the skill state rule", async () => {
       expect(await skills({ skillTests: [tally("3.1", 4, 4), tally("3.2", 0, 4)], questions: [question("d1a", "3.4")] })).toEqual({
-        mastered: [{ code: "3.1", name: textOf("3.1"), masteredOn: null }],
-        learning: [{ code: "3.4", name: textOf("3.4"), masteredOn: null }],
-        needsHelp: [{ code: "3.2", name: textOf("3.2"), masteredOn: null }],
+        mastered: [{ code: "3.1", name: textOf("3.1"), masteredOn: null, sentence: null }],
+        learning: [{ code: "3.4", name: textOf("3.4"), masteredOn: null, sentence: null }],
+        needsHelp: [{ code: "3.2", name: textOf("3.2"), masteredOn: null, sentence: "Came up tricky on the test." }],
       });
     });
     describe("Needs help also counts a Learning skill the child is struggling with now (#1025)", () => {
@@ -491,8 +491,11 @@ describe("the Home (#560, #1003)", () => {
 
       it("moves it from Learning to Needs help, beside a needs_review skill, in the skill map's order", async () => {
         const got = await skills({ ...inBook, skillTests: [tally("3.2", 0, 4)], ...withMarks(answered("3.4", [false, false, true, false])) });
-        expect(got?.needsHelp).toEqual([{ code: "3.2", name: textOf("3.2"), masteredOn: null }, { code: "3.4", name: textOf("3.4"), masteredOn: null }]);
-        expect(got?.learning).toEqual([{ code: "3.5", name: textOf("3.5"), masteredOn: null }]);
+        expect(got?.needsHelp).toEqual([
+          { code: "3.2", name: textOf("3.2"), masteredOn: null, sentence: "Came up tricky on the test." },
+          { code: "3.4", name: textOf("3.4"), masteredOn: null, sentence: "Has been tricky on recent pages." },
+        ]);
+        expect(got?.learning).toEqual([{ code: "3.5", name: textOf("3.5"), masteredOn: null, sentence: null }]);
       });
       it("3 answers do not count, and exactly 60% right does not count", async () => {
         expect((await skills({ ...inBook, ...withMarks(answered("3.4", [false, false, false])) }))?.needsHelp).toEqual([]);
@@ -568,7 +571,77 @@ describe("the Home (#560, #1003)", () => {
     it("a history that cannot be read leaves the dates out and keeps the counts", async () => {
       vi.spyOn(console, "error").mockImplementation(() => {});
       const got = await skills({ skillTests: [tally("3.1", 4, 4)], history: [change("3.1", "mastered", "2026-11-03T20:00:00Z")], fail: ["history"] });
-      expect(got?.mastered).toEqual([{ code: "3.1", name: textOf("3.1"), masteredOn: null }]);
+      expect(got?.mastered).toEqual([{ code: "3.1", name: textOf("3.1"), masteredOn: null, sentence: null }]);
+    });
+    describe("the sentence under each skill (#989)", () => {
+      // NOW is Wednesday 2026-11-04 in Vancouver. A skill's sentence is written by src/lib/skill-sentences.ts from the rule's
+      // state and the rows behind it; with too little, the row has none.
+      const inBook = { questions: [question("d1a", "3.4"), question("d1b", "3.5")] };
+      const answered = (standard: string, results: ("r" | "w")[]) => results.map((r, i) => ({ standard, right: r === "r", review: false, at: `2026-10-${String(28 + i).padStart(2, "0")}T18:00:00Z` }));
+      const withMarks = (skillMarks: ReturnType<typeof answered>) => ({ overviewProgress: [{ ...own, marks: [], skillMarks }] });
+      const mistake = (standard: string, cause: string, at: string) => ({ ...own, standard, cause, at });
+      const sentences = (list: { code: string; sentence: string | null }[] | undefined) => list?.map((s) => [s.code, s.sentence]);
+
+      it("Mastered: the date the list shows, nothing about how, and none with no recorded date", async () => {
+        const got = await skills({
+          skillTests: [tally("3.1", 4, 4), tally("3.3", 4, 4)],
+          history: [change("3.2", "needs_review", "2026-10-19T20:00:00Z"), change("3.1", "mastered", "2026-11-03T20:00:00Z")],
+        });
+        expect(sentences(got?.mastered)).toEqual([["3.1", "Mastered Tuesday"], ["3.3", null]]);
+        expect(got?.mastered.map((s) => s.masteredOn)).toEqual(["Tuesday", null]);
+      });
+      it("Learning: getting steadier after a wrong answer and a run of right ones", async () => {
+        const got = await skills({ ...inBook, ...withMarks(answered("3.4", ["w", "r", "r", "r"])) });
+        expect(sentences(got?.learning)).toEqual([["3.4", "Getting steadier: right the last 3 times"], ["3.5", null]]);
+        expect(JSON.stringify(got)).not.toMatch(/%|percent/);
+      });
+      it("Learning: says when it started from the history (a later row, not the starting state); none for a skill in the first batch", async () => {
+        const first = "2026-11-02T20:00:00Z";
+        const got = await skills({ ...inBook, history: [change("3.4", "working_on", first), change("3.5", "working_on", first), change("3.6", "mastered", first), change("3.5", "needs_review", "2026-11-03T20:00:00Z")] });
+        expect(sentences(got?.learning)).toEqual([["3.4", null], ["3.5", null]]);
+        const later = await skills({ ...inBook, history: [change("3.6", "mastered", first), change("3.4", "working_on", "2026-11-03T20:00:00Z")] });
+        expect(sentences(later?.learning)).toEqual([["3.4", "Started Tuesday"], ["3.5", null]]);
+      });
+      it("Needs help: the table's text for a cause marked on 2 wrong answers lately, and no next-workbook clause without a next workbook", async () => {
+        const got = await skills({
+          ...inBook, skillTests: [tally("3.2", 0, 4)],
+          mistakes: [mistake("3.2", "O3", "2026-11-02T18:00:00Z"), mistake("3.2", "O3", "2026-11-03T18:00:00Z"), mistake("3.4", "O1", "2026-11-03T18:00:00Z")],
+        });
+        // 3.4 has one wrong answer with a cause only: not a habit, and it is not struggling, so it is Learning with no sentence.
+        expect(sentences(got?.needsHelp)).toEqual([["3.2", "Forgets to carry when adding."]]);
+        expect(sentences(got?.learning)).toEqual([["3.4", null], ["3.5", null]]);
+      });
+      it("Needs help: says Back in the next workbook only when the book in the mail has the skill", async () => {
+        const mailed = { workbooks: [{ ...own, id: "wb-1", number: 1, status: "shipped" }, { ...own, id: "wb-2", number: 2, status: "shipped" }] };
+        const twoQuestions = (...standards: string[]) => ({ ...mailed, questions: [question("d1a", "3.4"), ...standards.map((standard, i) => ({ parentId: "parent-1", workbookId: "wb-2", pageId: `2-d${i}`, standard }))] });
+        // 3.2 is struggling (a Learning skill in the newest book) or, in a book without it, weak on the test: Needs help either way.
+        const causes = { skillTests: [tally("3.2", 0, 4)], ...withMarks(answered("3.2", ["w", "w", "r", "w"])), mistakes: [mistake("3.2", "O3", "2026-11-02T18:00:00Z"), mistake("3.2", "O3", "2026-11-03T18:00:00Z")] };
+        const has = await skills({ ...twoQuestions("3.2", "3.5"), ...causes });
+        expect(sentences(has?.needsHelp)).toEqual([["3.2", "Forgets to carry when adding. Back in the next workbook."]]);
+        const lacks = await skills({ ...twoQuestions("3.5"), ...causes });
+        expect(sentences(lacks?.needsHelp)).toEqual([["3.2", "Forgets to carry when adding."]]);
+        // No book in the mail: the newest shipped book is the delivered one, so there is no next workbook yet.
+        expect(sentences((await skills({ ...inBook, ...causes }))?.needsHelp)).toEqual([["3.2", "Forgets to carry when adding."]]);
+        // A plan that ended has no next workbook.
+        const ended = await skills({ ...twoQuestions("3.2"), ...causes, plans: [{ ...own, kind: "ended" }] });
+        expect(sentences(ended?.needsHelp)).toEqual([["3.2", "Forgets to carry when adding."]]);
+      });
+      it("Needs help: a struggling Learning skill with no cause says it has been tricky", async () => {
+        const got = await skills({ ...inBook, ...withMarks(answered("3.4", ["w", "w", "r", "w"])) });
+        expect(sentences(got?.needsHelp)).toEqual([["3.4", "Has been tricky on recent pages."]]);
+      });
+      it("a cause older than 14 days, or another child's, names no mistake", async () => {
+        const base = { ...inBook, skillTests: [tally("3.2", 0, 4)] };
+        const old = await skills({ ...base, mistakes: [mistake("3.2", "O3", "2026-10-10T18:00:00Z"), mistake("3.2", "O3", "2026-10-11T18:00:00Z")] });
+        expect(sentences(old?.needsHelp)).toEqual([["3.2", "Came up tricky on the test."]]);
+        const theirs = await skills({ ...base, mistakes: [{ ...own, childId: "child-2", standard: "3.2", cause: "O3", at: "2026-11-02T18:00:00Z" }, { ...own, childId: "child-2", standard: "3.2", cause: "O3", at: "2026-11-03T18:00:00Z" }] });
+        expect(sentences(theirs?.needsHelp)).toEqual([["3.2", "Came up tricky on the test."]]);
+      });
+      it("a cause read that fails leaves the mistake out and the rest as it was", async () => {
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        const got = await skills({ ...inBook, skillTests: [tally("3.2", 0, 4)], mistakes: [mistake("3.2", "O3", "2026-11-02T18:00:00Z"), mistake("3.2", "O3", "2026-11-03T18:00:00Z")], fail: ["mistakes"] });
+        expect(sentences(got?.needsHelp)).toEqual([["3.2", "Came up tricky on the test."]]);
+      });
     });
     it("shows with the Progress tab off too: only the tab stays behind its switch (2026-11-14)", async () => {
       expect(await skills({ skillTests: [tally("3.1", 4, 4)], switches })).not.toBeNull();

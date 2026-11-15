@@ -343,7 +343,7 @@ describe("the Supabase reader of the Overview (#560)", () => {
     await readOverview(r.reader, CHILD, NOW);
     expect(tables(r.session)).toEqual(["card_setups", "children", "parents", "reports", "scan_photos", "workbook_delivery_corrections", "workbook_delivery_receipts", "workbook_pages", "workbook_questions", "workbooks"]);
     // The Home's skills (shown with the Progress tab off too) read the progress facts with the secret key, for this child only.
-    expect(tables(r.admin)).toEqual(["admin_users", "assessments", "child_plan_states", "learner_profiles", "reports", "rpc/scan_marking_command", "skill_state_history", "test_accounts"]);
+    expect(tables(r.admin)).toEqual(["admin_users", "assessments", "child_plan_states", "learner_profiles", "learning_events", "reports", "rpc/scan_marking_command", "skill_state_history", "test_accounts"]);
   });
   it("reads the skill state history with the secret key, filtered on the parent and the child; only three fields leave (#1003)", async () => {
     const r = overviewReader({ skill_state_history: [
@@ -356,6 +356,21 @@ describe("the Supabase reader of the Overview (#560)", () => {
     expect(asked.get("parent_id")).toBe(`eq.${PARENT}`);
     expect(asked.get("child_id")).toBe(`eq.${CHILD}`);
     expect(r.session.filter((u) => u.pathname.endsWith("/skill_state_history"))).toEqual([]);
+  });
+  it("reads a child's wrong answers with a known cause with the secret key, filtered on the parent and the child; only three fields leave (#989)", async () => {
+    const r = overviewReader({ learning_events: [
+      { id: "e1", skill_standard: "3.1", mistake: "O3", occurred_at: "2026-11-03T20:00:00Z", result: "wrong", stuck_step: "tens", question_source: "workbook", hints: 2 },
+      { id: "e2", skill_standard: "3.2", mistake: null, occurred_at: "2026-11-03T20:00:00Z" },
+    ] });
+    expect(await r.reader.recentMistakes(CHILD, Date.parse("2026-10-20T00:00:00Z"))).toEqual([{ standard: "3.1", cause: "O3", at: "2026-11-03T20:00:00Z" }]);
+    const asked = select(r.admin, "learning_events");
+    expect(asked.get("select")).toBe("skill_standard,mistake,occurred_at");
+    expect(asked.get("parent_id")).toBe(`eq.${PARENT}`);
+    expect(asked.get("child_id")).toBe(`eq.${CHILD}`);
+    expect(asked.get("result")).toBe("eq.wrong");
+    expect(asked.get("mistake")).toBe("not.is.null");
+    expect(asked.get("occurred_at")).toBe("gte.2026-10-20T00:00:00.000Z");
+    expect(r.session.filter((u) => u.pathname.endsWith("/learning_events"))).toEqual([]);
   });
   it("reads a shipped workbook's question standards with the parent's session (#1003)", async () => {
     const r = overviewReader({ workbook_questions: [{ page_id: "p1", standard: "3.1" }, { page_id: "p2", standard: null }] });

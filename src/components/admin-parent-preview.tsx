@@ -42,7 +42,9 @@ import { familyZone, startWhen } from "@/lib/family-time";
 import type { LearningRow } from "@/lib/learning-style";
 import type { ParentNoteSession } from "@/lib/parent-maya-notes";
 import type { ParentPlan } from "@/lib/parent-plan";
-import type { ChildView, OverviewView, ProgressNumbers, WorkbooksView } from "@/lib/parent-view";
+import type { ChildView, OverviewView, ProgressNumbers, SkillItemView, WorkbooksView } from "@/lib/parent-view";
+import type { HelpMark } from "@/lib/needs-help";
+import { skillSentence, type MistakeFact, type SkillGroup } from "@/lib/skill-sentences";
 import type { WeekDayState, WeekProgress } from "@/lib/parent-week";
 import { freeMonthWords } from "@/lib/parent-assessment";
 import { homeStory, type HomeStoryFacts } from "@/lib/home-highlights";
@@ -77,6 +79,21 @@ function sampleNote(child: ChildView, chat = false, missing = false): ParentNote
 const lowerFirst = (name: string) => `${name.slice(0, 1).toLowerCase()}${name.slice(1)}`;
 
 /**
+ * A sample row with its sentence written by the real module (src/lib/skill-sentences.ts) from facts of its own, so the
+ * sentence is exactly what a row with those facts would show. `now` is the sample Thursday, Nov 5; the sample marks and
+ * mistakes are dated the days before it.
+ */
+function sampleRow(code: string, name: string, group: SkillGroup, facts: { masteredOn?: string | null; startedOn?: string | null; marks?: HelpMark[]; mistakes?: MistakeFact[]; next?: boolean; reason?: "failed_review" | "needs_attention_on_test" | "in_workbook" }): SkillItemView {
+  const masteredOn = facts.masteredOn ?? null;
+  const sentence = skillSentence({
+    standard: code, group, state: group === "mastered" ? "mastered" : group === "learning" ? "working_on" : "needs_review", reason: facts.reason ?? "in_workbook",
+    marks: facts.marks ?? [], mistakes: facts.mistakes ?? [], masteredOn, startedOn: facts.startedOn ?? null, inNextWorkbook: facts.next ?? false, now: SAMPLE_NOW, zone,
+  });
+  return { code, name, masteredOn, sentence: sentence?.text ?? null };
+}
+const sampleMark = (standard: string, right: boolean, at: string): HelpMark => ({ standard, right, review: false, at, blank: false });
+
+/**
  * One scenario's skill lists and the two facts the Home's sentences read from them, so the sentences and the lists agree:
  * `newlyMastered` is exactly the Mastered rows dated this week, and `watch` is a row of the Needs help list (none when
  * that list is empty). The sample Thursday is today, so "today" and "Wednesday" are this week and "Oct 28" is not.
@@ -90,11 +107,21 @@ function sampleSkillFacts(state: string): { skills: OverviewView["skills"]; newl
     { code: "2.2", name: "Comparing numbers to 1 000", masteredOn: quiet ? "Oct 27" : "Wednesday", thisWeek: !quiet },
     { code: "2.1", name: "Even and odd", masteredOn: quiet ? "Oct 21" : "Oct 28", thisWeek: false },
   ];
-  const needsHelp = state === "empty" || quiet ? [] : [{ code: "2.3", name: "Value of each digit in big numbers", masteredOn: null }, { code: "2.7", name: "Subtracting across a zero", masteredOn: null }];
+  // "Back in the next workbook" only where the next workbook is in the mail (the book_2_mailed and book_over scenarios).
+  const next = state === "book_2_mailed" || state === "book_over";
+  const needsHelp: SkillItemView[] = state === "empty" || quiet ? [] : [
+    // The same cause on two wrong answers lately: the table's own text for N2 and O2.
+    sampleRow("2.3", "Value of each digit in big numbers", "needs_help", { next, mistakes: [{ cause: "N2", at: "2026-11-03T18:00:00Z" }, { cause: "N2", at: "2026-11-04T18:00:00Z" }] }),
+    sampleRow("2.7", "Subtracting across a zero", "needs_help", { next, mistakes: [{ cause: "O2", at: "2026-11-02T18:00:00Z" }, { cause: "O2", at: "2026-11-04T18:00:00Z" }] }),
+  ];
   return {
     skills: {
-      mastered: mastered.map(({ code, name, masteredOn }) => ({ code, name, masteredOn })),
-      learning: state === "empty" ? [] : [{ code: "2.5", name: "Rounding to the nearest hundred", masteredOn: null }, { code: "2.6", name: "Number patterns", masteredOn: null }],
+      mastered: mastered.map(({ code, name, masteredOn }) => sampleRow(code, name, "mastered", { masteredOn })),
+      learning: state === "empty" ? [] : [
+        // A wrong answer, then three right ones in a row: steadier. No marks yet, but a recorded start: when it started.
+        sampleRow("2.5", "Rounding to the nearest hundred", "learning", { marks: [sampleMark("2.5", false, "2026-11-02T18:00:00Z"), sampleMark("2.5", true, "2026-11-03T18:00:00Z"), sampleMark("2.5", true, "2026-11-04T18:00:00Z"), sampleMark("2.5", true, "2026-11-05T16:00:00Z")] }),
+        sampleRow("2.6", "Number patterns", "learning", { startedOn: "Tuesday" }),
+      ],
       needsHelp,
     },
     newlyMastered: mastered.filter((m) => m.thisWeek).map((m) => lowerFirst(m.name)),
