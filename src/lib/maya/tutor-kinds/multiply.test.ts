@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { workedSteps, type Operation, type OperationPackage } from "@/lib/question-package";
 import { missingWork } from "../missing-number";
-import { checkTutorSay } from "../tutor";
+import { checkTutorSay, plainTeaching } from "../tutor";
 import { describeTutorKind } from "./contract";
 import { tutorKindOf } from "./index";
 import { multiplyKind } from "./multiply";
@@ -109,8 +109,9 @@ describe("multiply kind: claims in words and digits", () => {
     for (const x of ["1340 divided by 2 is 670.", "The missing number is 670.", "670 is the missing number.", "2 goes into 13 6 times.", "13 ÷ 2 = 6 R 1."]) expect(ok(P.divide, x), x).toBe(true);
     for (const x of ["11200 ÷ 80 is the same as 1120 ÷ 8.", "1120 ÷ 8 = 140.", "The missing number is 140."]) expect(ok(P.zeros, x), x).toBe(true);
   });
-  it("reads equal groups, halves and doubles itself (the core refuses these forms today, true or false)", () => {
+  it("reads equal groups, halves and doubles itself (the core reads groups, not halves or doubles)", () => {
     for (const x of ["6 groups of 440 is 2640.", "Double 670 is 1340."]) expect(multiplyKind.claimProblems(P.partials, x), x).toEqual([]);
+    expect(ok(P.partials, "6 groups of 440 is 2640.")).toBe(true);
     expect(multiplyKind.claimProblems(P.divide, "Half of 1340 is 670.")).toEqual([]);
     for (const x of ["6 groups of 440 is 2600.", "Double 670 is 1300.", "Half of 1340 is 680."]) expect(multiplyKind.claimProblems(P.divide, x).length, x).toBe(1);
   });
@@ -123,13 +124,21 @@ describe("multiply kind: claims in words and digits", () => {
 });
 
 describe("multiply kind: the fallback question", () => {
-  it("asks only in a closed plain math form, else none", () => {
-    // PLAIN_FORMS reads plus and minus: a times or divided-by question gives null (the core says "So what is the whole
-    // answer?") until the core widens it.
+  it("asks the next step in a closed plain math form with times or divided by", () => {
+    expect(multiplyKind.stepQuestion(P.fact, [])).toBe("What is 3 times 2?");
+    expect(multiplyKind.stepQuestion(P.partials, [])).toBe("What is 6 times 4?");
+    expect(multiplyKind.stepQuestion(P.partials, ["r2-ones", "r2-tens"])).toBe("What is 6 times 40?");
+    expect(multiplyKind.stepQuestion(P.divide, [])).toBe("What is 13 divided by 2?");
+    expect(multiplyKind.stepQuestion(P.zeros, [])).toBe("What is 11 divided by 8?");
+    expect(multiplyKind.stepQuestion(P.trial, [])).toBe("What is 244 times 7?");
     for (const pkg of Object.values(P)) {
       const q = multiplyKind.stepQuestion(pkg, []);
-      if (q !== null) expect(q).toMatch(/^What (?:is|do you get for) /);
+      expect(q, pkg.text).not.toBeNull();
+      expect(plainTeaching(q!), q!).toBe(true);
     }
+  });
+  it("gives no question when every step is done", () => {
+    expect(multiplyKind.stepQuestion(P.fact, multiplyKind.steps(P.fact).map((s) => s.id))).toBeNull();
   });
   it("asks the sum of the rows with plus", () => {
     const done = multiplyKind.steps(P.partials).filter((s) => !s.id.startsWith("sum")).map((s) => s.id);
