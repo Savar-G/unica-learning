@@ -233,21 +233,25 @@ function sideReader(items: readonly Item[]) {
     }
     // Products and quotients first, then sums and differences, left to right. Final check 5 (2026-11-15): every
     // intermediate value must be one code holds exactly; after an unsafe one the whole side is NaN, so it is not read,
-    // neither true nor false ("100000000 times 100000000 plus 1 minus ..." loses the 1).
+    // neither true nor false ("100000000 times 100000000 plus 1 minus ..." loses the 1). Final check 6: an operation
+    // with a value that is not a whole number (a quotient such as 1 / 10000000000, or a fraction in a sum) is not held
+    // exactly either, so its side is NaN too: no code-only pass, no "true" and no refusal from code; the review reads it.
     let total = 0;
     let term = values[0];
     let sign = 1;
-    let unsafe = values.some(unsafeValue);
+    const inexact = (v: number) => unsafeValue(v) || !Number.isInteger(v);
+    let unsafe = values.some(unsafeValue) || (signs.length > 0 && values.some(inexact));
     for (let k = 0; k < signs.length && !unsafe; k++) {
       const op = signs[k];
-      if (op === "*") { term *= values[k + 1]; unsafe ||= unsafeValue(term); continue; }
-      if (op === "/") { term = values[k + 1] === 0 ? NaN : term / values[k + 1]; continue; }
+      if (op === "*") { term *= values[k + 1]; unsafe ||= inexact(term); continue; }
+      if (op === "/") { term = values[k + 1] === 0 ? NaN : term / values[k + 1]; unsafe ||= inexact(term); continue; }
       total += sign * term;
-      unsafe ||= unsafeValue(total);
+      unsafe ||= inexact(total);
       sign = op === "+" ? 1 : -1;
       term = values[k + 1];
     }
-    const value = unsafe ? NaN : total + sign * term;
+    const sum = unsafe ? NaN : total + sign * term;
+    const value = signs.length > 0 && inexact(sum) ? NaN : sum;
     return { at, value, units, place, next, ops, sums: signs.length > 0 && signs.every((x) => x === "+") && items[at]?.kind !== "open" };
   };
   /** A side, with an object count and its stated unit read as their product ("4 sticks of ten" is 40). */
@@ -257,12 +261,14 @@ function sideReader(items: readonly Item[]) {
     const fraction = items[at]?.kind === "term" && (items[at] as Extract<Item, { kind: "term" }>).fraction === true;
     if (s && !s.ops && fraction && wordAt(items, s.next) === "of") {
       const whole = side(s.next + 1);
-      if (whole) return { ...whole, at, value: s.value * whole.value, place: null, ops: true, sums: false };
+      // Final check 6: a product that is not a whole number ("two thirds of 5") is not held exactly: not read.
+      if (whole) { const v = s.value * whole.value; return { ...whole, at, value: Number.isInteger(v) && !unsafeValue(v) ? v : NaN, place: null, ops: true, sums: false }; }
     }
     if (!s || s.ops || !OBJECT_WORDS.has(wordAt(items, s.next)) || wordAt(items, s.next + 1) !== "of") return s;
     const unit = side(s.next + 2);
     if (!unit || unit.ops) return s;
-    return { ...s, value: s.value * unit.value, units: true, place: null, next: unit.next };
+    const product = s.value * unit.value;
+    return { ...s, value: Number.isInteger(product) && !unsafeValue(product) ? product : NaN, units: true, place: null, next: unit.next };
   };
   return { side, full, read };
 }
@@ -535,14 +541,27 @@ function readClaimsOnce(sentence: string, op?: "add" | "subtract", trades: reado
   return { problems, unread };
 }
 
+/**
+ * Final check 6 (2026-11-15): whether words before an answer claim, in its sentence, may give it a scope ("In the ones
+ * column, the answer is 4."): anything but a short lead-in ({name}, now, so, next, then) and punctuation. No word list of
+ * scopes: every other word counts as one, so the claim goes to the math review.
+ */
+function scoped(text: string, at: number): boolean {
+  let lead = text.slice(0, at).split(/[!?]|\.(?!\d)/).at(-1)!.replace(/[\s,;:]+/g, " ").trim();
+  for (let k = 0; k < 4; k++) lead = lead.replace(/^(?:\{name\}|(?:now|so|next|then)\b)[\s!.]*/i, "").trim();
+  return lead !== "";
+}
+
 /** Words that may stand between "the answer is" and its value ("the answer is still 24"). */
 const ANSWER_FILLERS = new Set(["the", "just", "exactly", "still", "now", "really", "actually"]);
 
 /**
  * A claim about which number is the question's answer that does not hold, as reasons (pre-launch review B): "the answer
  * is twenty-five", "the answer is not 24", "the answer is 24 plus 1", "24.5 is the answer". The whole value after "the
- * (whole, final, right) answer is" is read with the claim reader; a value code cannot read is refused ("the answer is
- * about 25"). A clause with no number ("the answer is right") is no claim.
+ * (whole, final, right) answer is" is read with the claim reader. Final check 6 (2026-11-15): a value code cannot read
+ * whole and exactly ("the answer is about 25", an unsafe or inexact side) or a claim with a stated scope ("In the ones
+ * column, the answer is 4.") is never refused: it goes to the math review. A clause with no number ("the answer is
+ * right") is no claim.
  */
 export function answerProblems(sentence: string, answer: number): string[] {
   return answerClaims(sentence, answer).problems;
@@ -561,19 +580,22 @@ export function answerClaims(sentence: string, answer: number): { problems: stri
   const text = sentence.replace(/[’]/g, "'");
   const after = /\b(?:the|your|our)\s+(?:whole\s+|final\s+|right\s+)?answer\s+(is not|isn't|is|equals|=|would be|will be|should be|must be)\s+([^,;:!?]*?)(?=[,;:!?]|\.(?!\d)|$)/gi;
   for (const m of text.matchAll(after)) {
+    // Final check 6 (2026-11-15): code reads an answer claim only when it names the question's answer with no stated
+    // scope: nothing before "the answer" in its sentence but a short lead-in. Any other words ("In the ones column, the
+    // answer is 4.", "For the easier example, the answer is 35.") may name another answer: no refusal and no read.
+    if (scoped(text, m.index!)) continue;
     const negated = /not|n't/.test(m[1]);
     const items = itemsOf(m[2]);
     const { full } = sideReader(items);
     let at = 0;
     while (ANSWER_FILLERS.has(wordAt(items, at))) at++;
     const s = full(at);
-    if (!s) {
-      if (items.some((x) => x.kind === "term")) problems.push(`"${m[0].trim()}" says an answer code cannot read`);
-      continue;
-    }
-    const same = Math.abs(s.value - answer) < 1e-9;
+    // Final check 6: a value code cannot read whole and exactly (an unread word, an unsafe or inexact side, words after
+    // it) is neither refused nor read: the sentence goes to the math review.
+    if (!s || !Number.isSafeInteger(s.value) || s.next !== items.length) continue;
+    const same = s.value === answer;
     if (same === negated) problems.push(`${s.value} is ${negated ? "" : "not "}the answer to the question`);
-    else if (s.next === items.length) read.push({ index: m.index!, length: m[0].length });
+    else read.push({ index: m.index!, length: m[0].length });
   }
   const before = new RegExp(String.raw`(?:^|[^\w.])(${NUMBER_SAID})\s+(is not|isn't|is)\s+(?:the|your|our)\s+(?:whole\s+|final\s+|right\s+)?answer\b`, "gi");
   for (const m of text.matchAll(before)) {
@@ -589,10 +611,13 @@ export function answerClaims(sentence: string, answer: number): { problems: stri
     let subject = text.slice(0, start).split(/[,;:!?]|\.(?!\d)/).at(-1)!.trim();
     for (let k = 0; k < 4; k++) subject = subject.replace(/^(?:\{name\}|(?:now|so|next|then)\b)[\s!.]*/i, "").trim();
     if (subject !== "") continue;
+    // Final check 6: a stated scope before or after the claim ("For the easier example, 35 is the answer.", "4 is the
+    // answer in the ones column") is not resolved by code: no refusal and no read.
+    if (scoped(text, start) || !/^\s*(?:[,;:!?]|\.(?!\d)|$)/.test(text.slice(m.index! + m[0].length))) continue;
     const n = numberOf(m[1]);
-    if (n === null) { problems.push(`"${m[0].trim()}" says an answer code cannot read`); continue; }
+    if (n === null || !Number.isSafeInteger(n)) continue;
     const negated = /not|n't/.test(m[2]);
-    if ((Math.abs(n - answer) < 1e-9) === negated) problems.push(`${n} is ${negated ? "" : "not "}the answer to the question`);
+    if ((n === answer) === negated) problems.push(`${n} is ${negated ? "" : "not "}the answer to the question`);
     else {
       read.push({ index: start, length: m.index! + m[0].length - start });
     }

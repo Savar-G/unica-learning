@@ -33,6 +33,7 @@ import {
   tutorTeachingNow,
   tutorStream,
   tutorStreamReading,
+  gateDisagrees,
   tutorStreamSentence,
   TUTOR_REVIEW_IGNORED,
   bindingReview,
@@ -91,43 +92,61 @@ function valueEnd(text: string, i: number): number {
 }
 
 /**
- * The `say` string of a version 3 reply as it streams in: its text so far, with JSON escapes read, and whether its
- * closing quote has come. Null before the key. Final check 5 (2026-11-15): the keys before `say` are read whole, in any
- * order: `kind` (round 4, P2-7; "math" when `say` is the first key), and `reading`, the model's reading as it wrote it,
- * or null when `say` began before a complete reading (the tutor's stream then sends nothing on that turn).
+ * The complete key-value pairs of a JSON object as it streams in, from `i` (just after "{" when `first`, else just after
+ * a value), until the key `stop` or the first value that is not complete. `at` is the start of the value of `stop`, or
+ * -1 when `stop` has not come (or the text is not an object).
  */
-export function partialSay(soFar: string): { text: string; complete: boolean; kind: string | null; reading: Record<string, unknown> | null } | null {
-  const before: Record<string, unknown> = {};
-  let i = /^\s*\{\s*/.exec(soFar)?.[0].length ?? -1;
-  if (i < 0) return null;
-  for (let keys = 0; ; keys++) {
-    if (keys > 0) {
-      const sep = /^\s*,\s*/.exec(soFar.slice(i));
-      if (!sep) return null;
+function keysFrom(text: string, i: number, first: boolean, stop: string | null): { keys: Record<string, unknown>; at: number } {
+  const keys: Record<string, unknown> = {};
+  for (let n = 0; ; n++) {
+    if (n > 0 || !first) {
+      const sep = /^\s*,\s*/.exec(text.slice(i));
+      if (!sep) return { keys, at: -1 };
       i += sep[0].length;
     }
-    if (soFar[i] !== '"') return null;
-    const keyEnd = stringEnd(soFar, i);
-    if (keyEnd < 0) return null;
+    if (text[i] !== '"') return { keys, at: -1 };
+    const keyEnd = stringEnd(text, i);
+    if (keyEnd < 0) return { keys, at: -1 };
     let key: unknown;
-    try { key = JSON.parse(soFar.slice(i, keyEnd)); } catch { return null; }
-    const colon = /^\s*:\s*/.exec(soFar.slice(keyEnd));
-    if (!colon) return null;
+    try { key = JSON.parse(text.slice(i, keyEnd)); } catch { return { keys, at: -1 }; }
+    const colon = /^\s*:\s*/.exec(text.slice(keyEnd));
+    if (!colon) return { keys, at: -1 };
     i = keyEnd + colon[0].length;
-    if (key === "say") break;
-    const end = valueEnd(soFar, i);
-    if (end < 0) return null;
-    try { before[String(key)] = JSON.parse(soFar.slice(i, end)); } catch { return null; }
+    if (key === stop) return { keys, at: i };
+    const end = valueEnd(text, i);
+    if (end < 0) return { keys, at: -1 };
+    try { keys[String(key)] = JSON.parse(text.slice(i, end)); } catch { return { keys, at: -1 }; }
     i = end;
   }
+}
+
+/**
+ * The `say` string of a version 3 reply as it streams in: its text so far, with JSON escapes read, and whether its
+ * closing quote has come. Null before the key. Final check 5 (2026-11-15): the keys before `say` are read whole, in any
+ * order: `kind` (round 4, P2-7; "math" when `say` is the first key), and the tutor's `gate` (2026-11-15, after final
+ * check 5): the value the model wrote before `say`, or null when `say` began before a complete gate (the tutor's stream
+ * then sends nothing on that turn). `reading` is the model's reading as it wrote it, before `say` or, once `say` is
+ * complete, after it; null while it is not complete.
+ */
+export function partialSay(soFar: string): { text: string; complete: boolean; kind: string | null; gate: string | null; reading: Record<string, unknown> | null; before: string[] } | null {
+  const open = /^\s*\{\s*/.exec(soFar);
+  if (!open) return null;
+  const head = keysFrom(soFar, open[0].length, true, "say");
+  if (head.at < 0) return null;
+  const before = head.keys;
+  const i = head.at;
   if (soFar[i] !== '"') return null;
   const kind = typeof before.kind === "string" ? before.kind : Object.keys(before).length === 0 ? "math" : null;
-  const r = before.reading;
-  const reading = typeof r === "object" && r !== null && !Array.isArray(r) ? (r as Record<string, unknown>) : null;
+  const gate = typeof before.gate === "string" ? before.gate : null;
+  const readingOf = (r: unknown) => (typeof r === "object" && r !== null && !Array.isArray(r) ? (r as Record<string, unknown>) : null);
   let text = "";
   for (let k = i + 1; k < soFar.length; k++) {
     const c = soFar[k];
-    if (c === '"') return { text, complete: true, kind, reading };
+    if (c === '"') {
+      // The keys after `say`: the tutor's reading comes there (2026-11-15).
+      const reading = readingOf(before.reading) ?? readingOf(keysFrom(soFar, k + 1, false, null).keys.reading);
+      return { text, complete: true, kind, gate, reading, before: Object.keys(before) };
+    }
     if (c !== "\\") { text += c; continue; }
     const e = soFar[k + 1];
     if (e === undefined) break;
@@ -141,8 +160,85 @@ export function partialSay(soFar: string): { text: string; complete: boolean; ki
     text += ({ n: "\n", t: "\t", r: "\r", b: "\b", f: "\f" } as Record<string, string>)[e] ?? e;
     k += 1;
   }
-  return { text, complete: false, kind, reading };
+  return { text, complete: false, kind, gate, reading: readingOf(before.reading), before: Object.keys(before) };
 }
+/**
+ * The top-level keys of a reply as it streams in, in the order written, each with its value: the parsed value when
+ * complete, else the complete fields of an object not yet closed (a reading cut off), else undefined. Repeated keys are
+ * kept, so a caller can see them. Stops at the first value that is not complete.
+ */
+function topEntries(text: string): { key: string; value: unknown; complete: boolean }[] {
+  const entries: { key: string; value: unknown; complete: boolean }[] = [];
+  const open = /^\s*\{\s*/.exec(text);
+  if (!open) return entries;
+  let i = open[0].length;
+  for (let n = 0; ; n++) {
+    if (n > 0) {
+      const sep = /^\s*,\s*/.exec(text.slice(i));
+      if (!sep) return entries;
+      i += sep[0].length;
+    }
+    if (text[i] !== '"') return entries;
+    const keyEnd = stringEnd(text, i);
+    if (keyEnd < 0) return entries;
+    let key: unknown;
+    try { key = JSON.parse(text.slice(i, keyEnd)); } catch { return entries; }
+    const colon = /^\s*:\s*/.exec(text.slice(keyEnd));
+    if (!colon) return entries;
+    i = keyEnd + colon[0].length;
+    const end = valueEnd(text, i);
+    if (end < 0) {
+      // A value cut off: an object keeps its complete fields (a reading whose priority fields are already written).
+      const inner = text[i] === "{" ? /^\{\s*/.exec(text.slice(i)) : null;
+      entries.push({ key: String(key), value: inner ? keysFrom(text, i + inner[0].length, true, null).keys : undefined, complete: false });
+      return entries;
+    }
+    let value: unknown;
+    try { value = JSON.parse(text.slice(i, end)); } catch { return entries; }
+    entries.push({ key: String(key), value, complete: true });
+    i = end;
+  }
+}
+
+/**
+ * Final check 6 (2026-11-15): what a reply's raw text, as streamed so far, says before any parse. `repeated`: a top-level
+ * key comes twice (a second "gate" or "reading"), which makes the whole output malformed for routing, since a final parse
+ * keeps only the last value. `priority`: every priority value in the text, from any copy of any key, whole or cut off,
+ * as one reading: a question about Maya (the gate "identity" or aboutMaya), safety (the gate "safety", a severity, kind
+ * "safety"), a harmful request, or a stop (the gate "stop", the reading's stop, kind "stop"); null when there is none.
+ * A complete priority value is never lost to a failed parse: it applies on its own (fail closed).
+ */
+export function streamedPriority(raw: string): { repeated: boolean; priority: Record<string, unknown> | null } {
+  const entries = topEntries(raw);
+  const keys = entries.map((e) => e.key);
+  const repeated = keys.some((k, n) => keys.indexOf(k) !== n);
+  const p: Record<string, unknown> = {};
+  const raise = (severity: unknown) => {
+    if (severity === "immediate") p.safety = "immediate";
+    else if (severity === "concern" && p.safety !== "immediate") p.safety = "concern";
+  };
+  let gateSafety = false;
+  for (const { key, value } of entries) {
+    if (key === "gate") {
+      if (value === "identity") p.aboutMaya ??= "identity";
+      if (value === "safety") gateSafety = true;
+      if (value === "stop") p.stop = true;
+    } else if (key === "kind") {
+      if (value === "safety") raise("concern");
+      if (value === "stop") p.stop = true;
+    } else if (key === "reading" && typeof value === "object" && value !== null && !Array.isArray(value)) {
+      const r = value as Record<string, unknown>;
+      if (r.aboutMaya === "identity" || r.aboutMaya === "secret_friend") p.aboutMaya = p.aboutMaya === "secret_friend" ? "secret_friend" : r.aboutMaya;
+      raise(r.safety);
+      if (r.stop === true) p.stop = true;
+      if (r.unsafeRequest === true) p.unsafeRequest = true;
+    }
+  }
+  // A "safety" gate on a harmful request is the decline's (as priorityOf reads it); else it is a safety concern.
+  if (gateSafety && !p.unsafeRequest) raise("concern");
+  return { repeated, priority: Object.keys(p).length ? p : null };
+}
+
 import { reviewInput, runReview, CONVERSATION_REVIEW_TIME_LIMIT_MS, REVIEW_TIME_LIMIT_MS, type TalkReviewer } from "@/lib/maya-talk-review";
 import { runMathReview, type MathReviewer } from "@/lib/maya-math-review";
 import { mathReviewInput, type MathReview, type MathReviewInput, type MathReviewResult, type TalkReviewInput, type TalkReviewResult } from "@/lib/maya";
@@ -603,10 +699,22 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       // A safety or stop turn never streams (code's guidance and close come first); any other kind streams, and its
       // sentences that are not plain teaching wait for their own review.
       if (said.kind === "safety" || said.kind === "stop") { streamDone = true; return; }
-      // Final check 5: the reading comes whole before "say". No word goes out before it: a "say" that began before a
-      // complete reading (a model that ignores the order) streams nothing on this turn, and a reading about Maya, safety,
-      // a stop or any priority reading holds the whole message, so code's own line goes first.
-      if (!said.reading || !read(() => tutorStreamReading(session, said.reading!))) { streamDone = true; return; }
+      // 2026-11-15 (after final check 5): the small "gate" comes whole before "say". No word goes out before it: a "say"
+      // that began before a complete gate (a model that ignores the order) streams nothing on this turn, and a gate
+      // about Maya, safety or a stop holds the whole message, so code's own line goes first. Code's own read is the
+      // second guard: `tutor` is null (no stream at all) unless code read the turn as plainly math, with no identity
+      // word, no safety and no stop (tutorStream).
+      if (said.gate !== "none") { streamDone = true; return; }
+      // Final check 6: the stream uses the same single gate and reading as final routing. Only "gate" then "kind" may
+      // come before "say" (the schema's order); a key written twice makes the whole output malformed, so nothing further
+      // streams; any priority value anywhere in the text (a copy of the reading, a cut-off reading) holds the rest.
+      const seenSoFar = streamedPriority(soFar);
+      if (seenSoFar.repeated || seenSoFar.priority) { streamDone = true; return; }
+      if (said.before.join(",") !== "gate,kind") { streamDone = true; return; }
+      // The full reading, once complete (after "say", or before it from a model that still writes it first), decides
+      // as before: a reading about Maya, safety, a stop or any priority reading holds every sentence not yet sent, and
+      // code's line follows the words already said. A gate that disagrees with it is recorded in the trace.
+      if (said.reading && !read(() => tutorStreamReading(session, said.reading!))) { streamDone = true; return; }
       const parts = sentencesOf(said.text);
       const complete = said.complete ? parts : parts.slice(0, -1);
       for (const sentence of complete.slice(seen)) {
@@ -675,23 +783,43 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       return sent.length ? { sent: [...sent], firstSayMs } : {};
     };
     // The handler logs even a late response from a provider that ignores abort; a response after the budget is stale.
-    const answered = Promise.resolve().then(() => prepared ? prepared.use(onText, controller.signal) : attempt(source, () => model.propose(input, controller.signal, onText))).then((proposal) => ({ proposal }), (error: unknown) => ({ error }));
+    // Final check 6: the raw text as it streamed in, so a priority value in it is kept even when the final parse fails,
+    // and a key written twice is seen (a final parse keeps only the last copy). Every version 3 request reads its raw
+    // text, also when no sentence may stream on this turn (then nothing is sent from it).
+    let raw = "";
+    const onRaw = onText || model.output === 3 ? (soFar: string) => { raw = soFar; onText?.(soFar); } : undefined;
+    const rawScan = () => (raw ? streamedPriority(raw) : { repeated: false, priority: null });
+    const withPriority = (p: Record<string, unknown> | null) => (p ? { priority: p } : {});
+    const answered = Promise.resolve().then(() => prepared ? prepared.use(onRaw, controller.signal) : attempt(source, () => model.propose(input, controller.signal, onRaw))).then((proposal) => ({ proposal }), (error: unknown) => ({ error }));
     const response = Promise.race([answered, budget]).then((got) => {
       clearTimeout(budgetTimer);
       if (got === "budget") {
         streamDone = true;
-        if (folded.request?.id === requestId) append({ kind: "response", at: now(), requestId, error: classifyError(new Error("the turn's time is up"), "model"), ms: now() - at, ...streamed() });
+        // Final check 6: a priority value the stream already holds applies even though the model did not finish.
+        if (folded.request?.id === requestId) append({ kind: "response", at: now(), requestId, error: classifyError(new Error("the turn's time is up"), "model"), ...withPriority(rawScan().priority), ms: now() - at, ...streamed() });
+        return;
+      }
+      const scan = rawScan();
+      if ("proposal" in got && scan.repeated) {
+        // Final check 6: a key written twice makes the whole output malformed for routing: no part of it is used, and any
+        // priority value in any copy applies (fail closed). It counts as output that is not valid JSON.
+        streamDone = true;
+        append({ kind: "response", at: now(), requestId, error: classifyError(new Error("the output repeats a key: not valid JSON"), "model"), ...withPriority(scan.priority), ms: now() - at, ...streamed() });
         return;
       }
       if ("proposal" in got) {
         // A proposal the client read from inside one code fence is counted in the trace (`fenced`), never told apart otherwise.
         streamDone = true;
-        append({ kind: "response", at: now(), requestId, proposal: got.proposal, ...(readFromFence(got.proposal) ? { fenced: true as const } : {}), ms: now() - at, ...streamed() });
+        // 2026-11-15: a tutor gate that disagrees with the full reading is recorded (`gateDisagrees`).
+        const disagrees = session.tutor && gateDisagrees(got.proposal);
+        append({ kind: "response", at: now(), requestId, proposal: got.proposal, ...(readFromFence(got.proposal) ? { fenced: true as const } : {}), ...(disagrees ? { gateDisagrees: true as const } : {}), ms: now() - at, ...streamed() });
         return;
       }
       streamDone = true;
       const stale = folded.request?.id !== requestId;
-      append({ kind: "response", at: now(), requestId, error: classifyError(got.error, "model"), ms: now() - at, ...streamed() });
+      // Final check 6: a complete priority value seen in the stream is kept when the final parse fails (or the model
+      // fails after it): its guidance or the disclosure is due, never a return to math. A stale request changes nothing.
+      append({ kind: "response", at: now(), requestId, error: classifyError(got.error, "model"), ...withPriority(scan.priority), ms: now() - at, ...streamed() });
       if (!stale) options.onError?.(got.error, { turn: folded.turns.length, source });
     });
     if (await wait(response, controller) === stopped || controller.signal.aborted) return;

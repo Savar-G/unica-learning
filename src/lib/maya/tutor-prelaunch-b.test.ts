@@ -63,7 +63,9 @@ async function said(pkg: OperationPackage, line: string) {
 
 describe("pre-launch review B: false math the child heard is refused", () => {
   it("F01: the whole answer value, in words, decimals and expressions, and its negation", async () => {
-    for (const line of ["The answer is twenty-five.", "The answer is not 24.", "The answer is 24 plus 1.", "The answer is 24.5.", "Twenty-five is the answer.", "The answer is about 25."]) await refused(sub, line);
+    for (const line of ["The answer is twenty-five.", "The answer is not 24.", "The answer is 24 plus 1.", "The answer is 24.5.", "Twenty-five is the answer."]) await refused(sub, line);
+    // Final check 6: an answer value code cannot read whole is never refused by code; the math review reads it.
+    expect(checkTutorSay("The answer is about 25.", context(sub))).toMatchObject({ ok: true, math: ["The answer is about 25."] });
     for (const line of ["The answer is twenty-four.", "The answer is 24.", "The answer is not 25.", "The answer is 2 tens and 4 ones."]) await said(sub, line);
   });
   it("F02: a comparison that does not hold is refused before any count exemption", async () => {

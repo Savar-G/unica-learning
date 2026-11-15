@@ -17,7 +17,7 @@ export interface TextLogInitial {
 export type TextLogEvent =
   | { kind: "input"; at: number; event: SessionEvent; error?: TraceError }
   | { kind: "request"; at: number; requestId: number; source: "model" | "repair" }
-  | { kind: "response"; at: number; requestId: number; proposal?: unknown; error?: TraceError; ms: number; fenced?: true; sent?: string[]; firstSayMs?: number }
+  | { kind: "response"; at: number; requestId: number; proposal?: unknown; error?: TraceError; ms: number; fenced?: true; sent?: string[]; firstSayMs?: number; gateDisagrees?: true; priority?: Record<string, unknown> }
   /** `mathReviews`: two-layer true math (2026-11-15); absent in an event written before the math-truth review existed. */
   | { kind: "review"; at: number; requestId: number; reviews: TalkReview[]; mathReviews?: MathReview[]; reviewMs?: number }
   | { kind: "fallback"; at: number; proposal: unknown }
@@ -43,7 +43,7 @@ export interface TextFold {
   obligations: TraceObligation[];
   childState: "listening" | "child_speaking";
   request: { id: number; source: "model" | "repair" } | null;
-  candidate: { requestId: number; proposal: unknown; ms: number; source: "model" | "repair"; fenced?: true; firstSayMs?: number } | null;
+  candidate: { requestId: number; proposal: unknown; ms: number; source: "model" | "repair"; fenced?: true; firstSayMs?: number; gateDisagrees?: true } | null;
   /** D-341: sentences of the current Maya turn already streamed to the child; every later attempt of the turn starts with them. */
   sent?: string[];
   attempts: TraceAttempt[];
@@ -172,9 +172,9 @@ function syncSafety(s: TextFold, at: number) {
     else old.severity = severity;
   }
 }
-function receiveReading(s: TextFold, reading: unknown, at: number) {
+function receiveReading(s: TextFold, reading: unknown, at: number, gate?: unknown) {
   // Invalid shape applies only the controller's priority reading. It cannot score or speak.
-  const r = controllerStep(s, { type: "proposal", at, proposal: { reading } });
+  const r = controllerStep(s, { type: "proposal", at, proposal: { reading, ...(gate === undefined ? {} : { gate }) } });
   const previous = s.session.safety.severity;
   s.session = r.session;
   syncSafety(s, at);
@@ -374,10 +374,15 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
       if (e.error) {
         s.attempts.push({ source, proposal: null, refusal: null, error: e.error, ms: e.ms, ...(e.firstSayMs !== undefined ? { firstSayMs: e.firstSayMs } : {}) });
         s.request = null;
+        // Final check 6: a priority value the stream held before the model failed (a cut-off or malformed reply) still
+        // applies, through the same priority path as a reading: the guidance or the disclosure is due.
+        if (e.priority) receiveReading(s, e.priority, e.at);
       } else {
-        s.candidate = { requestId: e.requestId, proposal: e.proposal, ms: e.ms, source, ...(e.fenced ? { fenced: true as const } : {}), ...(e.firstSayMs !== undefined ? { firstSayMs: e.firstSayMs } : {}) };
+        s.candidate = { requestId: e.requestId, proposal: e.proposal, ms: e.ms, source, ...(e.fenced ? { fenced: true as const } : {}), ...(e.firstSayMs !== undefined ? { firstSayMs: e.firstSayMs } : {}), ...(e.gateDisagrees ? { gateDisagrees: true as const } : {}) };
         const reading = e.proposal && typeof e.proposal === "object" ? (e.proposal as { reading?: unknown }).reading : undefined;
-        receiveReading(s, reading, e.at);
+        // The tutor's gate (2026-11-15) is a priority reading too: a "safety" gate raises safety at once.
+        const gate = e.proposal && typeof e.proposal === "object" ? (e.proposal as { gate?: unknown }).gate : undefined;
+        receiveReading(s, reading, e.at, gate);
       }
       break;
     }
@@ -385,7 +390,7 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
       if (s.request?.id !== e.requestId || s.candidate?.requestId !== e.requestId) break;
       const candidate = s.candidate;
       s.request = null; s.candidate = null;
-      proposal(s, candidate.proposal, e.at, { source: candidate.source, proposal: candidate.proposal, refusal: null, ms: candidate.ms, ...(candidate.fenced ? { fenced: true as const } : {}), ...(candidate.firstSayMs !== undefined ? { firstSayMs: candidate.firstSayMs } : {}), ...(e.reviewMs !== undefined ? { reviewMs: e.reviewMs } : {}) }, e.reviews, e.mathReviews);
+      proposal(s, candidate.proposal, e.at, { source: candidate.source, proposal: candidate.proposal, refusal: null, ms: candidate.ms, ...(candidate.fenced ? { fenced: true as const } : {}), ...(candidate.firstSayMs !== undefined ? { firstSayMs: candidate.firstSayMs } : {}), ...(candidate.gateDisagrees ? { gateDisagrees: true as const } : {}), ...(e.reviewMs !== undefined ? { reviewMs: e.reviewMs } : {}) }, e.reviews, e.mathReviews);
       break;
     }
     case "fallback": proposal(s, e.proposal, e.at, { source: "fallback", proposal: e.proposal, refusal: null }); break;

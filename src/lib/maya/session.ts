@@ -66,7 +66,7 @@ import { comparisonAnswer, comparisonWords } from "../question-package-compariso
 import { claimActs, claimAnswers, claimCommitted, claimConfirm, claimQuestionAsked, claimRead, claimResultDone, claimReveals, claimSaid, claimStepConfirmable, claimStepHeard, claimSessionPackage, claimUnclear, sessionClaim, type ClaimTurn } from "./claim";
 import { closeParts, compareEquationSaid, currentPart, evaluateSteps, evaluateTeaching, partBoards, partCovered, partEquationSaid, partIdOf, stepsBeforeLastPart, withEvaluateExample } from "./evaluate";
 import { isSpot, spotAnswers, spotReveals, spotSessionPackage, spotStepHeard } from "./spot-error";
-import { ACTS, PART_LIMITS, PROPOSAL_VERSION, isModelOutput, readModelOutput, withoutDefaults, withoutNulls, type Act, type ChildAnswer, type HintLevel, type ModelOutput, type Proposal, type Reading, type Severity } from "./proposal";
+import { ACTS, PART_LIMITS, PROPOSAL_VERSION, TUTOR_GATES, isModelOutput, readModelOutput, withoutDefaults, withoutNulls, type Act, type ChildAnswer, type HintLevel, type ModelOutput, type Proposal, type Reading, type Severity } from "./proposal";
 import { checkSay, checkSentence, columnSentenceTruth, equationHolds, heardColumnOf, revealsOpenStep, endsWithAsk, INSTRUCTION, MATH_WORD, PRAISE_WORDS, trimSay, equationKeysOf, equationsOf, sentencesOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, type SayReason, type SayRules, type SayValue } from "./say-check";
 import type { TalkReviewResult } from "./talk-review";
 import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
@@ -976,13 +976,16 @@ function proposalProblem(p: unknown): string | null {
 /** The priority fields of a proposal's reading, each checked alone: a malformed field elsewhere does not drop them. */
 function priorityOf(raw: unknown): Pick<Reading, "safety" | "stop" | "unclear" | "start" | "noBoard" | "shorter" | "aboutMaya"> {
   const r = isObject(raw) && isObject(raw.reading) ? raw.reading : {};
+  // The tutor's gate (2026-11-15) is a priority reading too, fail closed: a flag the full reading does not repeat still
+  // counts, so code's own line goes first. A "safety" gate on a harmful request (unsafeRequest) is the decline's.
+  const gate = isObject(raw) ? raw.gate : undefined;
   return {
     // Pre-launch review: a proposal of kind "safety" is a safety signal even when its severity is missing ("none").
-    safety: SEVERITIES.includes(r.safety as Severity) ? (r.safety as Severity) : isObject(raw) && raw.kind === "safety" ? "concern" : undefined,
-    stop: r.stop === true,
+    safety: SEVERITIES.includes(r.safety as Severity) ? (r.safety as Severity) : isObject(raw) && (raw.kind === "safety" || (gate === "safety" && r.unsafeRequest !== true)) ? "concern" : undefined,
+    stop: r.stop === true || gate === "stop",
     noBoard: r.noBoard === true,
     shorter: r.shorter === true,
-    aboutMaya: r.aboutMaya === "secret_friend" || r.aboutMaya === "identity" ? r.aboutMaya : undefined,
+    aboutMaya: r.aboutMaya === "secret_friend" || r.aboutMaya === "identity" ? r.aboutMaya : gate === "identity" ? "identity" : undefined,
     unclear: r.unclear === true,
     start: r.start === "no_start" ? "no_start" : undefined,
   };
@@ -4636,9 +4639,10 @@ function plainReading(raw: unknown): unknown {
 /** The shape check of a version 3 output: `say`, a known act, and the version 2 checks of its other fields. */
 function outputProblem(raw: unknown): string | null {
   if (!isObject(raw) || typeof raw.say !== "string") return "the output is an object with `say`";
-  const { say: _say, kind: _kind, ...rest } = raw;
+  const { say: _say, kind: _kind, gate, ...rest } = raw;
   void _say;
   void _kind;
+  if (gate !== undefined && !(TUTOR_GATES as readonly unknown[]).includes(gate)) return `the gate is one of ${TUTOR_GATES.join(", ")}`;
   return proposalProblem({ ...rest, version: PROPOSAL_VERSION, parts: [] });
 }
 
@@ -5078,26 +5082,61 @@ function committedRead(base: Session): { read: ReturnType<typeof turnRead>; expl
 
 /**
  * Final check 5 (2026-11-15): code's verdict on the child's committed answer this turn, for the math-truth review, which
- * owns correctness judgments: the child's value (null for a word or an equation), "right" or "wrong", and the right
- * answer. A word answer uses code's word verdict; a false equation the child said is wrong. Null when the child
- * committed no answer.
+ * owns correctness judgments: the child's value (null for a word or an equation), its verdict, and the right answer.
+ * Null when the child said no answer and no number.
+ *
+ * Final check 6 (2026-11-15): the verdict is code's validated stance, never a raw number match. In order:
+ *  1. a false equation in the child's turn ("12 minus 8 is 24") is "wrong", before any answer verdict;
+ *  2. a word answer uses code's word verdict;
+ *  3. an explicit answer of the child's own ("My answer is 36.") is read from its own sentence only, never from the
+ *     turn's last number ("My answer is 36. My friend said 24." is 36): "right" only when code also credits it;
+ *  4. with no such sentence, "right" only from code's credit (heardAnswers), "wrong" only from a whole turn that is one
+ *     number (or code's own read of a miss);
+ *  5. any other number is "unknown": code cannot tell whose it is or whether it is the child's answer.
  */
 function childAnswerOf(s: Session, hide: (text: string) => string): MathReviewInput["childAnswer"] {
   const pkg = s.package;
   if (!pkg || !s.turn) return null;
+  const text = s.turn.text;
   const raw = (pkg.answer.value as { value?: unknown }).value;
   const right = typeof raw === "number" ? raw : typeof raw === "string" ? hide(raw) : null;
+  if (childSaysFalse(text)) return { value: null, verdict: "wrong", right };
   const word = wordVerdict(s);
   if (word) return { value: null, verdict: word, right };
-  const { read, committed } = committedRead(s);
-  if (committed && read.final?.type === "number") {
-    const n = read.final.value;
-    const asAnswer = /\banswer\b/i.test(s.turn.text);
-    // A value of the work the child does not name as the answer ("12") is no wrong answer (as proposeTutor reads it).
-    const fits = rightForQuestion(pkg, read.final) || (!asAnswer && isTutorQuestion(pkg) && tutorKind(pkg).workValues(pkg).includes(n));
-    return { value: n, verdict: rightForQuestion(pkg, read.final) ? "right" : fits ? "right" : "wrong", right };
+  const credits = heardAnswers(s);
+  const credited = credits.filter((a) => a.verdict === "right");
+  const numOf = (v: AnswerValue | undefined) => (v?.type === "number" ? v.value : null);
+  const unknown = { value: null, verdict: "unknown" as const, right };
+  // 3. The child's own explicit answer: a sentence that is only "my answer is N", "I got N", "it's N" (no other words).
+  const own = sentencesOf(text).filter((x) => /\d|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|zero)\b/i.test(x) && /^(?:(?:my|the)\s+(?:final\s+|whole\s+)?answer\s+is|i\s+got|it'?s|it\s+is)\b/i.test(x.replace(/[‘’ʼ]/g, "'").trim()) && !/\?\s*$/.test(x));
+  if (own.length > 0) {
+    const values = own.map((x) => {
+      const body = x.replace(/[‘’ʼ]/g, "'").trim().replace(/[.!]+$/, "").replace(/^(?:(?:my|the)\s+(?:final\s+|whole\s+)?answer\s+is|i\s+got|it'?s|it\s+is)\s+/i, "");
+      const read = readAnswer(body, readOptionsIn(s));
+      const n = read.final && read.sure && read.kept.length === 1 && valuesIn(body, readOptionsIn(s)).length === 1 ? numOf(read.final) : null;
+      return n !== null && Number.isSafeInteger(n) ? n : null;
+    });
+    // Two different answers, or one code cannot read alone: code cannot tell which is the child's.
+    if (values.some((v) => v === null) || new Set(values).size !== 1) return unknown;
+    const n = values[0]!;
+    const isRight = rightForQuestion(pkg, { type: "number", value: n });
+    if (!isRight) return { value: n, verdict: "wrong", right };
+    return credited.some((a) => numOf(a.value) === n) ? { value: n, verdict: "right", right } : { value: n, verdict: "unknown", right };
   }
-  if (childSaysFalse(s.turn.text)) return { value: null, verdict: "wrong", right };
+  // 4. Code's own credit of the turn.
+  const values = [...new Set(credited.map((a) => numOf(a.value)))];
+  if (credited.length > 0 && values.length === 1 && values[0] !== null) return { value: values[0], verdict: "right", right };
+  const miss = credits.find((a) => a.verdict === "wrong" && numOf(a.value) !== null);
+  if (miss && credited.length === 0) return { value: numOf(miss.value), verdict: "wrong", right };
+  const { read, committed } = committedRead(s);
+  const n = numOf(read.final ?? undefined);
+  if (committed && n !== null && Number.isSafeInteger(n) && wholeTurn(text) !== null && sentenceCount(text) === 1 && valuesIn(text, readOptionsIn(s)).length === 1 && credited.length === 0) {
+    // A value of the work the child does not name as the answer ("12") is no wrong answer (as proposeTutor reads it).
+    const work = isTutorQuestion(pkg) && tutorKind(pkg).workValues(pkg).includes(n);
+    if (!rightForQuestion(pkg, read.final!) && !work) return { value: n, verdict: "wrong", right };
+  }
+  // 5. A number code cannot bind to the child's own answer.
+  if (read.final || valuesIn(text, readOptionsIn(s)).length > 0) return unknown;
   return null;
 }
 
@@ -5224,6 +5263,22 @@ export function tutorStreamReading(s: Session, raw: Record<string, unknown>): bo
   return tutorTeachingNow(s, reading);
 }
 
+/**
+ * The tutor's gate against its full reading (2026-11-15): whether the gate the model wrote first disagrees with the
+ * reading it wrote after "say": "none" beside a question about Maya, a safety severity, a harmful request or a stop, or a
+ * flag the reading does not hold. Recorded in the trace (`gateDisagrees`); code applies the gate and the full reading
+ * both (priorityOf), so a disagreement never lets less through. False when the output has no gate.
+ */
+export function gateDisagrees(raw: unknown): boolean {
+  if (!isObject(raw) || raw.gate === undefined) return false;
+  const r = isObject(raw.reading) ? raw.reading : {};
+  const implied = new Set<string>();
+  if (r.aboutMaya === "identity" || r.aboutMaya === "secret_friend") implied.add("identity");
+  if (SEVERITIES.includes(r.safety as Severity) || r.unsafeRequest === true || raw.kind === "safety") implied.add("safety");
+  if (r.stop === true || raw.kind === "stop") implied.add("stop");
+  return raw.gate === "none" ? implied.size > 0 : !implied.has(String(raw.gate));
+}
+
 /** D-345: what the tutor's stream needs before the model writes: code's own stance and the question's words. Null: no stream. */
 export function tutorStream(s: Session): TutorStreamContext | null {
   if (!s.tutor || !s.turn || !s.package || !tutorTeachingNow(s)) return null;
@@ -5264,7 +5319,18 @@ function tellsAnswer(base: Session, pkg: OperationPackage, texts: readonly strin
     const claim = sessionClaim(pkg);
     const op = comparisonOf(pkg);
     const others = claim ? [claim.other] : op ? comparisonWords(op).map((x) => x.toLowerCase()).filter((x) => x !== w) : null;
-    const gives = (x: string) => holdsWord(x, w) && (others ? !others.some((o) => holdsWord(x, o)) : !/\?\s*$/.test(x) && !/\bor\b/i.test(x));
+    // Final check 6 (2026-11-15): a sentence that names both choice words gives the answer too ("The answer is true, not
+    // false.", "Circle true instead of false."), unless it is an open choice that picks neither: the two words joined by
+    // "or" ("true or false", "true, or is it false"), each said once, and no word that negates.
+    const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const count = (t: string, x: string) => t.match(new RegExp(`(?:^|[^a-z0-9])${esc(x)}(?=$|[^a-z0-9])`, "gi"))?.length ?? 0;
+    const openChoice = (x: string, o: string) => {
+      const t = x.replace(/[‘’ʼ]/g, "'");
+      if (count(t, w) !== 1 || count(t, o) !== 1 || /\b(?:not|never|instead|rather|nor|neither|no)\b|n't\b/i.test(t)) return false;
+      const or = (a: string, b: string) => new RegExp(`(?:^|[^a-z0-9])${esc(a)},?\\s+or\\s+(?:[a-z]+\\s+){0,3}${esc(b)}(?=$|[^a-z0-9])`, "i").test(t);
+      return or(w, o) || or(o, w);
+    };
+    const gives = (x: string) => holdsWord(x, w) && (others ? others.every((o) => !holdsWord(x, o) || !openChoice(x, o)) : !/\?\s*$/.test(x) && !/\bor\b/i.test(x));
     return !committedRight && texts.some(gives);
   }
   const answer = pkg.answer.value.value;
