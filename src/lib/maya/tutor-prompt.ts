@@ -4,6 +4,7 @@ import { MODEL_OUTPUT_SCHEMA } from "./proposal";
 import type { Session } from "./session";
 import { childFacts, tutorKind, stepFacts, TUTOR_WORD_LIMIT } from "./tutor";
 import type { TutorDrawing, TutorStepFact } from "./tutor-kind";
+import { valueText } from "@/lib/question-package";
 
 export const TUTOR_PROMPT_VERSION = "maya-tutor-3";
 
@@ -14,7 +15,8 @@ export interface TutorBrief {
   promptVersion: typeof TUTOR_PROMPT_VERSION;
   mode: "tutor";
   child: { name: "{name}" | null; grade: number | null };
-  question: { text: string; answer: number; kind: string; steps: TutorStepFact[]; notes: string[] } | null;
+  /** The answer as code writes it: a number ("24"), a word ("yes", "true", ">") or a time ("7:03"). */
+  question: { text: string; answer: string; kind: string; steps: TutorStepFact[]; notes: string[] } | null;
   /** The steps the child has done (by id), whether their right answer stands, and Maya's help since their last progress. */
   progress: { done: string[]; solved: boolean; helpGiven: number };
   childTurn: string | null;
@@ -49,15 +51,15 @@ export function tutorBrief(s: Session, repair: TutorBrief["repair"] = null): Tut
     promptVersion: "maya-tutor-3",
     mode: "tutor",
     child: { name: name ? "{name}" : null, grade: s.grade ?? null },
-    question: pkg && pkg.answer.value.type === "number"
-      ? { text: pkg.text, answer: pkg.answer.value.value, kind: tutorKind(pkg).id, steps: stepFacts(pkg), notes: tutorKind(pkg).notes?.(pkg) ?? [] }
+    question: pkg && s.tutor
+      ? { text: pkg.text, answer: valueText(pkg.answer.value), kind: tutorKind(pkg).id, steps: stepFacts(pkg), notes: tutorKind(pkg).notes?.(pkg) ?? [] }
       : null,
     progress: { done: [...done], solved: s.solved !== null, helpGiven: s.tutor?.help ?? 0 },
     childTurn: s.turn ? hide(s.turn.text, name) : null,
     facts: pkg && s.turn ? childFacts(pkg, s.turn.text) : [],
     transcript: s.turns.slice(-TUTOR_TRANSCRIPT_TURNS).map((t) => ({ speaker: t.speaker, text: hide(t.text, name) })),
     noBoard: s.noBoard === true,
-    drawings: pkg && pkg.answer.value.type === "number" ? tutorKind(pkg).drawings(pkg) : [],
+    drawings: pkg && s.tutor ? tutorKind(pkg).drawings(pkg) : [],
     drawn: [...(s.tutor?.drawn ?? [])],
     notes,
     repair,
