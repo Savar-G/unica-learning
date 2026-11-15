@@ -156,6 +156,11 @@ export interface TraceAttempt {
   math?: TraceMath[];
   /** D-341: how long until the first sentence of this attempt was checked and streamed to the child, by the passed-in clock. */
   firstSayMs?: number;
+  /**
+   * The tutor's gate (2026-11-15): true when the gate the model wrote first disagrees with the full reading it wrote
+   * after "say" (gateDisagrees in session.ts). Code applied both. Absent otherwise, and in traces from before.
+   */
+  gateDisagrees?: true;
   /** Round 4: sentences of the model's reply its review did not pass: never said. */
   dropped?: { text: string; reason: string }[];
   /**
@@ -403,6 +408,7 @@ function checkAttempt(a: unknown, path: string) {
   need(!(x.error !== undefined && x.refusal !== null), `${path}`, "an attempt with an error has no refusal");
   need(!(x.source === "fallback" && x.refusal !== null), `${path}`, "a fallback attempt is recorded only when it was accepted");
   need(x.reviewMs === undefined || (isNum(x.reviewMs) && x.reviewMs >= 0), `${path}.reviewMs`, "a duration");
+  need(x.gateDisagrees === undefined || (x.gateDisagrees === true && (x.source === "model" || x.source === "repair") && x.proposal !== null), `${path}.gateDisagrees`, "true on a model or repair proposal, or absent");
   need(x.fenced === undefined || (x.fenced === true && (x.source === "model" || x.source === "repair") && x.proposal !== null && x.error === undefined), `${path}.fenced`, "true on a model or repair proposal, or absent");
   if (x.math !== undefined) {
     need(Array.isArray(x.math) && x.math.length > 0, `${path}.math`, "a list of math-truth reviews");

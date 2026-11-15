@@ -147,6 +147,26 @@ Measured on 2026-11-15 (real Maya model `anthropic/claude-sonnet-5.5`, real revi
 - First sentence on the 5 math and help turns: median 1,165 ms before (`dd1aafb1e`), 1,815 ms after. The reading costs about 650 ms before the first sentence.
 - The math review (Haiku 5.5, Sonnet 5.5 retry, 4 s limit), after "My answer is 36.": 30 judgments that the answer is right refused in 3 of 3 runs; of 30 true sentences (corrections, encouragement), 1, 1 and 0 refused. On the base head 27 of 30 judgments were refused. The 75 column false sentences of the fixture: 0 said, before and after.
 
+### The gate field (2026-11-15, after final check 5)
+
+Writing the whole reading before `say` added about 650 ms before the first sentence. The tutor output now writes a small `gate` first, then `kind`, `say`, `act`, and the rest of the reading after `say` (`TUTOR_OUTPUT_SCHEMA`, prompt `maya-tutor-7`).
+
+- **The gate.** `gate` is "none", "identity" (a question about Maya), "safety" (harm, danger or a harmful request) or "stop". The stream sends no sentence before the gate is complete. Any value but "none" holds the whole turn, and code's own line goes first. A `say` written before the gate streams nothing on that turn. Only `gate` then `kind` may come before `say`.
+- **Code's own read is the second guard.** The stream starts only on a turn code read as plainly math, with no identity word, no safety and no stop (`tutorStream`, `plainlyMathTurn`). Every other turn waits for the whole message.
+- **The gate is a priority reading.** A gate flag counts even when the reading after `say` does not repeat it (`priorityOf`): "identity" makes the disclosure due, "safety" raises a concern (a harmful request keeps the decline), "stop" closes.
+- **The full reading still decides the rest.** Credit, stance and the priority readings that are not gate flags come from the reading after `say`, as before. When that reading holds the turn (`tutorStreamReading`), no further sentence goes out, and code's line follows the words already said. A gate that disagrees with the reading is recorded on the attempt (`gateDisagrees` in the trace).
+
+Final check 6, part 1 (fail closed):
+
+- **A priority value seen in the stream is kept.** Every version 3 request reads its raw text as it streams in (`streamedPriority`). When the final parse fails, the output repeats a key, or the turn's time ends, any priority value already in the text (a gate, a whole or cut-off reading, kind "safety" or "stop") applies through the normal priority path: the guidance or the disclosure is due, never a return to math. A stale request changes nothing.
+- **One gate, one reading.** A key written twice makes the whole output malformed for routing: nothing further streams, the output counts as not valid JSON, and any priority value in any copy applies. The stream and final routing read the same text.
+
+Measured on 2026-11-15 (real Maya model `anthropic/claude-sonnet-5.5`, real talk and math reviews, voice stream on, 52 − 28, 5 math and help turns × 3 runs):
+
+- First sentence: median 1,612 ms before (`b02df0da9`), 1,153 ms after.
+- The model wrote `gate` first in 21 of 21 turns.
+- Identity and off-topic turns streamed nothing before the model ended, on both heads.
+
 ## Credit, the learning event and the parent note
 
 Code's credit of the child decides the saved result, never the model's reading (part C of the pre-launch review, 2026-11-15; tests: `src/lib/maya-call-tutor-credit.test.ts`, `src/lib/maya/tutor-credit.test.ts`):

@@ -73,7 +73,7 @@ async function turn(pkg: OperationPackage, out: unknown, child: string, opts: { 
   return { say: said.say, parts, early, math, talk, model };
 }
 
-/** The model's output with `say` written BEFORE `reading`: a model that ignores the order. */
+/** The model's output with `say` written before `gate` (none) and `reading`: a model that ignores the order. */
 function sayFirst(say: string, reading: Record<string, unknown> = {}) {
   const r = reply(say, 'guide', { reading });
   return { kind: r.kind, say: r.say, act: r.act, step: r.step, level: r.level, reading: r.reading, draw: r.draw };
@@ -82,11 +82,13 @@ function sayFirst(say: string, reading: Record<string, unknown> = {}) {
 const DISCLOSURE = fixedOffers().find((x) => x.line === 'about.ai')!.texts[0];
 
 describe('F1: the reading comes before speech', () => {
-  it('the tutor output schema and prompt put "reading" before "say"', () => {
+  // 2026-11-15 (after final check 5): the small "gate" comes before "say" in place of the whole reading
+  // (src/lib/maya-gate-field.test.ts holds the gate's own binding tests).
+  it('the tutor output schema and prompt put the gate before "say"', () => {
     const keys = Object.keys(TUTOR_OUTPUT_SCHEMA.properties);
-    expect(keys.indexOf('reading')).toBeLessThan(keys.indexOf('say'));
-    expect(TUTOR_OUTPUT_SCHEMA.required.indexOf('reading')).toBeLessThan(TUTOR_OUTPUT_SCHEMA.required.indexOf('say'));
-    expect(TUTOR_PROMPT).toMatch(/"reading" comes (?:second|before "say")/);
+    expect(keys.indexOf('gate')).toBeLessThan(keys.indexOf('say'));
+    expect(TUTOR_OUTPUT_SCHEMA.required.indexOf('gate')).toBeLessThan(TUTOR_OUTPUT_SCHEMA.required.indexOf('say'));
+    expect(TUTOR_PROMPT).toMatch(/"gate" comes first/);
   });
   for (const child of ['Is a grown-up helping me with 52 minus 28?', 'Are you made of code? I need help with 52 minus 28.', 'Is a grown-up talking to me?', 'Are you a real person? What is 52 minus 28?'])
     for (const stream of [false, true]) {
@@ -100,12 +102,12 @@ describe('F1: the reading comes before speech', () => {
     const r = await turn(SUB, reply('12 minus 8 is 4. What is 4 minus 2?', 'guide', { reading: { safety: 'concern' } }), 'Someone hurt me. What is 52 minus 28?', { stream: true });
     expect(r.early).toEqual([]);
   });
-  it('a model that writes "say" before a complete reading streams nothing on that turn', async () => {
+  it('a model that writes "say" before a complete gate streams nothing on that turn', async () => {
     const r = await turn(SUB, sayFirst('52 minus 28 isn\'t 36. What is 12 minus 8?'), "It's 36.", { stream: true });
     expect(r.early).toEqual([]);
     expect(r.say.join(' ')).toContain('What is 12 minus 8?');
   });
-  it('control: a plain math turn with the reading first streams its first sentence before the model ends', async () => {
+  it('control: a plain math turn with the gate first streams its first sentence before the model ends', async () => {
     const r = await turn(SUB, reply('52 minus 28 isn\'t 36. What is 12 minus 8?', 'guide'), "It's 36.", { stream: true });
     expect(r.early[0]).toBe("52 minus 28 isn't 36.");
   });
