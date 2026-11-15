@@ -91,3 +91,8 @@ describe("core gaps of F2 and F4 (2026-11-15)", () => {
   it.each(["6 groups of 440 is 2600.", "3 groups of 4 make 7."])("refuses %s", (x) => expect(checkTutorSay(x, { stance: "none" })).toMatchObject({ ok: false }));
   it("reads 'in groups of 4' as words, not an operation", () => expect(checkTutorSay("Put them in groups of 4.", { stance: "none" })).toMatchObject({ ok: true }));
 });
+
+describe("comma numbers in plain forms (F3, 2026-11-15)", () => {
+  it.each(["So what is 9,000 plus 60?", "What is the value of the 4 in 48,942?", "48,942 is 4 ten thousands and 8,942 ones."])("sends %s with no review", (x) => expect(plainTeaching(x)).toBe(true));
+  it.each(["So, 9, my friend.", "What is 12 minus 8, my friend?"])("reviews %s", (x) => expect(plainTeaching(x)).toBe(false));
+});

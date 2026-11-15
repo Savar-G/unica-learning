@@ -46,7 +46,8 @@ export function plainTeaching(sentence: string, _extra: ReadonlySet<string> = ne
   // (PLAIN_FORMS). Every other sentence is reviewed, in parallel with the stream.
   // Sixth check of #1006: a sentence with no math clause left after its lead-in ("Yes.") is reviewed: a bare word can
   // answer anything the child asked.
-  const clauses = text.replace(/[.!?]+\s*$/, "").split(/\s*[:;,]\s*/).map((raw) => {
+  // A comma inside a number ("9,000") does not split a clause (F3 builder, 2026-11-15).
+  const clauses = text.replace(/[.!?]+\s*$/, "").split(/\s*[:;]\s*|(?<!\d),\s*|,(?!\d{3}(?!\d))\s*/).map((raw) => {
     let clause = raw.trim();
     for (let k = 0; k < 4; k++) clause = clause.replace(LEAD_IN, "").trim();
     return clause;
