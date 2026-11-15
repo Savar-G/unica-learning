@@ -34,7 +34,7 @@ Code still owns, unchanged: safety guidance and its close, the AI disclosure ope
 
 ## Plain teaching and the review
 
-A sentence is plain teaching (`plainTeaching`) only in a concrete math form. After a short spoken lead-in ("Now", "So", "Not quite", "Good question", the name), each clause (split at ":", ";" and ",") is a bare place ("the tens"), a math question, a positive math instruction or a statement that starts with a number or a place, in math words only (`mathOnly` in `math-vocab.ts`), or a number statement with no person words and no judging words ("2 ones is too small to take 8 away"). An exact approved sentence (`EXACT_SAFE`) is plain too; no open frame is. Every other sentence goes to the review: "No good at math, {name}, not even 2 plus 2." and "You're right that 2 is too small." are reviewed. The never-say patterns and the math checks run on every sentence.
+A sentence is plain teaching (`plainTeaching`) only when it is an exact approved sentence (`EXACT_SAFE`), or when each clause (split at ":", ";" and ","), after a fixed spoken lead-in ("Now", "So", "Not quite", the name), is one of a few complete math forms (`PLAIN_FORMS`): an equation of numbers and places ("12 minus 8 is 4", "52 is 4 tens and 12 ones"), "What is ...?", "How many ones ...?", "What do we write in the tens?", "Write 4 in the ones", "Trade 1 ten for 10 ones", "Subtract the ones" or a bare place. No word list decides it. Every other sentence goes to the review, in parallel with the stream. The never-say patterns and the math checks run on every sentence.
 
 ## Streaming (voice)
 
@@ -44,7 +44,7 @@ A tutor message streams to the voice sentence by sentence while the model writes
 - any other sentence is held, alone, while its review runs in parallel; the sentences after it wait behind it, in order;
 - a failed check or a refused review stops the stream; the rest waits for the whole message and its whole check;
 - a first "yes" streams only when code found the child right or the child said no number; a first "not quite" only when code found the child wrong or no answer the child offered (the last number of each sentence) is a value of the question;
-- a safety or stop turn never streams.
+- a safety or stop turn never streams, and a content hold, a safety flag or the end of the call stops the stream at once.
 
 Sentences already said stay said. When the whole message is then refused, no repair follows: code adds only its step question after them. Chat does not stream.
 

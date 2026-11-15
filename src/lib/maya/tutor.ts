@@ -14,7 +14,7 @@
 // Phase 1 scope: 2-digit whole-number addition and subtraction (`isTutorQuestion`), on admin test calls.
 import type { OperationPackage, WorkedStep } from "@/lib/question-package";
 import { affirms, equationHolds, equationsOf, neverSayProblem, sayNumbers, sentencesOf } from "./say-check";
-import { exactSafe, mathOnly, MATH_VOCAB, wordsOf } from "./math-vocab";
+import { exactSafe } from "./math-vocab";
 import { falseClaims } from "./tutor-math";
 
 /** The hard ceiling of one Maya message, in words. Over it, the model gets one repair with the reason; code never trims. */
@@ -23,53 +23,60 @@ export const TUTOR_WORD_LIMIT = 60;
 /** Review rules that only shape talk: the tutor review ignores them (D-345). The math rule: code checks the math. */
 export const TUTOR_REVIEW_IGNORED: readonly string[] = ["math", "plain_language", "held_limit"];
 
-/** Words of a teaching sentence beyond the math vocabulary (MATH_VOCAB) that still name only the math or the work. */
-const TUTOR_MATH_WORDS: ReadonlySet<string> = new Set(["quite", "moment", "ago", "around", "back", "wait", "become", "becomes", "make", "makes", "borrow", "borrowed", "trade", "traded", "swap", "small", "big", "into", "fingers", "finger", "blocks", "block", "sticks", "stick", "picture", "board", "loose", "stayed", "name", "new", "after", "count", "up", "hold", "question", "good", "thinking"]);
 
 /**
- * A sentence the child may hear with no safety review (D-345, the CoS rule of 2026-11-14: review only non-math or
- * personal content): every word is a math or plain teaching word (MATH_VOCAB and TUTOR_MATH_WORDS, or the question's
- * own words), and it is not a statement about the child or about Maya without a number in it ("You can't do this",
- * "I can't help"): such a sentence is reviewed. An exact safe sentence (EXACT_SAFE) is plain too. The never-say
- * patterns and the math checks run on every sentence either way.
+ * A sentence the child may hear with no safety review (D-345; the CoS rule of 2026-11-14: review only non-math or
+ * personal content). Only an exact approved sentence (EXACT_SAFE), or a sentence whose every clause is one of the
+ * complete math forms in PLAIN_FORMS (numbers, places and operations only). The never-say patterns and the math checks
+ * run on every sentence either way.
  */
-export function plainTeaching(sentence: string, extra: ReadonlySet<string> = new Set()): boolean {
-  const text = sentence.replace(/[’]/g, "'").trim();
-  // Only the exact approved sentences skip the review as they are; an open frame never does (review of #1006: "I'm an
-  // AI, so I don't have a favorite ..." took any words after it).
+export function plainTeaching(sentence: string, _extra: ReadonlySet<string> = new Set()): boolean {
+  void _extra;
+  const text = sentence.replace(/[’]/g, "'").replace(/[−–]/g, "-").trim();
+  // Only the exact approved sentences skip the review as they are; an open frame never does (review of #1006).
   if (exactSafe(text)) return true;
-  // Only plain letters, digits and math signs: other letters or symbols are read by the review.
-  if (/[^a-z0-9\s.,?!:;()'"+*=<>%/\-×÷−–]/i.test(text.replace(/\{name\}/g, " "))) return false;
-  // Review of #1006: only a concrete math form skips the review. Each clause, after a short spoken lead-in ("Now",
-  // "So", "Good question", the name), is a math question, a positive math instruction or a statement that starts with
-  // a number or a place (mathOnly), or a bare place ("the tens"). "No good at math, {name}, not even 2 plus 2." and
-  // "You're right that 2 is too small." are reviewed, whatever their words.
-  const vocab = new Set([...TUTOR_MATH_WORDS, ...extra]);
-  const end = /[?!.]\s*$/.exec(text)?.[0].trim() ?? ".";
+  // Review of #1006 (four rounds): no word list decides it. Each clause (split at ":", ";" and ","), after a short
+  // spoken lead-in, must match one of a few complete math forms built only from numbers, places and operations
+  // (PLAIN_FORMS). Every other sentence is reviewed, in parallel with the stream.
   return text.replace(/[.!?]+\s*$/, "").split(/\s*[:;,]\s*/).every((raw) => {
     let clause = raw.trim();
     for (let k = 0; k < 4; k++) clause = clause.replace(LEAD_IN, "").trim();
-    return clause === "" || BARE_PLACE.test(clause) || mathOnly(`${clause}${end}`, vocab) || numberStatement(clause, vocab);
+    return clause === "" || PLAIN_FORMS.some((re) => re.test(clause));
   });
 }
 
-/**
- * A clause that states the math about a number or a place, in math and plain teaching words only, about no person and
- * judging no one: "2 ones is too small to take 8 away", "6 is 8 minus 2". Never "No good at math" (no number first).
- */
-function numberStatement(clause: string, vocab: ReadonlySet<string>): boolean {
-  if (!NUMBER_FIRST.test(clause)) return false;
-  const words = wordsOf(clause);
-  if (!words.every((w) => MATH_VOCAB.has(w) || vocab.has(w))) return false;
-  return !/\b(?:you|you're|your|yourself|we|we're|us|our|i|i'm|me|my|good|bad|great|nice|smart|dumb|hard|easy|silly|stupid|fun|love|like)\b/i.test(clause);
-}
+const N = String.raw`(?:\d{1,3}|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)`;
+const U = String.raw`(?:ones?|tens?|hundreds?)`;
+const Q = String.raw`(?:${N}(?:\s+${U})?)`;
+const E = String.raw`(?:${Q}(?:\s+(?:plus|minus|take away|\+|-)\s+(?:the\s+)?${Q})*)`;
+const PLACE = String.raw`(?:the\s+)?${U}(?:\s+(?:column|place))?`;
+/** The complete math forms a clause may take with no review. Nothing else: no person, no object, no feeling. */
+const PLAIN_FORMS: readonly RegExp[] = [
+  // "12 minus 8 is 4", "6 is 8 minus 2", "52 is 4 tens and 12 ones", "2 minus 8 isn't 6"
+  new RegExp(String.raw`^(?:so\s+)?${E}\s+(?:is|equals|=|makes|is not|isn't)\s+${E}(?:\s+and\s+${Q})*$`, "i"),
+  // "6 is not right", "4 is right for the ones"
+  new RegExp(String.raw`^${E}\s+(?:is|isn't|is not)\s+(?:right|correct)(?:\s+for\s+${PLACE})?$`, "i"),
+    // "What is 12 minus 8?", "What do you get for 4 minus 2?"
+  new RegExp(String.raw`^(?:so\s+)?(?:what is|what's|what do you get for|what do we get for)\s+${E}$`, "i"),
+  // "How many ones are left?", "How many tens do we have now?"
+  new RegExp(String.raw`^how many ${U}(?:\s+(?:are left|are there|do we have(?: now)?|now))?$`, "i"),
+  // "What do we write in the ones?", "What goes in the tens place?"
+  new RegExp(String.raw`^what (?:do we write|do you write|goes|do we put|do you put) in ${PLACE}$`, "i"),
+  // "What is the whole answer?"
+  /^what is the (?:whole |final )?answer$/i,
+  // "Write 4 in the ones", "Put 2 in the tens place"
+  new RegExp(String.raw`^(?:write|put) ${N} in ${PLACE}$`, "i"),
+  // "Trade 1 ten for 10 ones", "We trade one ten for ten ones"
+  new RegExp(String.raw`^(?:we\s+)?(?:trade|regroup)\s+(?:1|one|a)\s+ten\s+(?:for|into|as)\s+(?:10|ten)\s+ones$`, "i"),
+  // "Subtract the ones", "Add the tens"
+  new RegExp(String.raw`^(?:now\s+)?(?:subtract|add)\s+${PLACE}$`, "i"),
+  // "the tens", "in the ones column", "the other way around"
+  new RegExp(String.raw`^(?:(?:in|for|on|to)\s+)?${PLACE}$`, "i"),
+  /^the other way around$/i,
+];
 
-const NUMBER_FIRST = /^(?:\d|(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\b|(?:the\s+)?(?:ones|tens|hundreds|top|bottom)\b)/i;
-
-/** A short spoken lead-in before the math of a clause. */
-const LEAD_IN = /^(?:\{name\}|(?:now|so|next|then|first|okay|ok|yes|no|sure|right|good question|great question|that's it|not quite|not yet|let's see|and|but)\b)[\s!.]*/i;
-/** A clause that only names a place or a column. */
-const BARE_PLACE = /^(?:(?:in|for|on|to)\s+)?(?:the\s+)?(?:ones|tens|hundreds)(?:\s+(?:column|place|step))?$|^the other way around$/i;
+/** A short spoken lead-in before the math of a clause: fixed words only. */
+const LEAD_IN = /^(?:\{name\}|(?:now|so|next|then|okay|ok|yes|no|right|good question|not quite|not yet|that's it)\b)[\s!.]*/i;
 
 type ColumnStep = Extract<WorkedStep, { kind: "add-column" | "subtract-column" }>;
 

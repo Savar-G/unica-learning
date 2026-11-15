@@ -512,7 +512,9 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     const tutor = model.output === 3 && options.onSayPart && !folded.sent?.length && folded.pending.length === 0 ? read(() => tutorStream(folded.session)) : null;
     const passes = (r: TalkReviewResult) => r.verdict === "pass" || (r.verdict === "fail" && r.rules.length > 0 && r.rules.every((id) => TUTOR_REVIEW_IGNORED.includes(id)));
     // Review of #1006: nothing goes out once the request is cancelled or another one took its place.
-    const live = () => !streamDone && !controller.signal.aborted && folded.request?.id === requestId;
+    // Review of #1006 (fourth check): a content hold, a safety flag or the end of the call stops the stream at once.
+    const live = () => !streamDone && !controller.signal.aborted && folded.request?.id === requestId &&
+      folded.session.contentProblem === null && !folded.session.safety.flagged && !folded.session.outcome && folded.session.state !== "CONTENT_HOLD";
     const flushTutor = () => {
       while (queue.length && queue[0].state !== "pending" && live()) {
         const next = queue.shift()!;
@@ -523,7 +525,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       }
     };
     const onTutorText = tutor ? (soFar: string) => {
-      if (streamDone || folded.request?.id !== requestId || controller.signal.aborted) return;
+      if (!live()) return;
       const said = partialSay(soFar);
       if (!said || !said.kind) return;
       // A safety or stop turn never streams (code's guidance and close come first); any other kind streams, and its
