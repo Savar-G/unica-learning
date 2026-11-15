@@ -2,7 +2,7 @@ import "server-only";
 import { resultLate } from "@/lib/report-late";
 import {
   BC_SKILL_MAP, REPORTED_STRAND_NAMES, areaLevels, attemptState, skillStates, storedLevelCertainty,
-  type AreaAnswer, type AreaLabel, type Attempt, type Grade, type Level, type ReportModel, type ReportedStrand, type SkillMark, type SkillState, type SkillTestResult, type StandardSkillState,
+  type AreaAnswer, type AreaLabel, type Attempt, type Grade, type Level, type ReportModel, type ReportedStrand, type SkillMark, type SkillTestResult, type StandardSkillState,
 } from "@/lib/assessment";
 import { childStage, type StageView, type TabSwitches, type TestFact } from "@/lib/child-stage";
 import { addDays, addMonths, familyZone, formatCalendarDate, localDateTime, localDay, localMonth, weekStartFor, type FamilyZone } from "@/lib/family-time";
@@ -10,7 +10,8 @@ import { homeStory } from "@/lib/home-highlights";
 import { capitalName, plainSkillName } from "@/lib/skill-name";
 import type { LearningRow } from "@/lib/learning-style";
 import { firstDeliveryMonth, offeredSummaryMonth } from "@/lib/monthly-summary-offer";
-import { needsHelpStandards, repeatedMistakes, type HelpMark } from "@/lib/needs-help";
+import { STRUGGLING_WINDOW_DAYS, needsHelpStandards, repeatedMistakes, type HelpMark } from "@/lib/needs-help";
+import { firstAnswerAt, skillSentence, type MistakeFact } from "@/lib/skill-sentences";
 import { nextBook, type NextBook } from "@/lib/next-book";
 import type { ParentPlan } from "@/lib/parent-plan";
 import type { CurriculumId } from "@/lib/signup";
@@ -141,6 +142,17 @@ export interface ParentViewReader {
    * not read the table: the server reads it, filtered on the parent and the child, and only these three fields leave.
    */
   skillHistory(childId: string): Promise<StateChange[]>;
+  /**
+   * One child's wrong answers with a known cause (`learning_events`: result wrong, `mistake` set) from `since` (epoch ms) on,
+   * for the skill sentences. Parents may not read the table: the server reads it with the secret key, filtered on the parent
+   * and the child, and only the standard, the cause id and the time leave.
+   */
+  recentMistakes(childId: string, since: number): Promise<MistakeRecord[]>;
+}
+
+/** One wrong answer of a standard that matched a known wrong answer of its question (a cause id of `MISCONCEPTIONS`). */
+export interface MistakeRecord extends MistakeFact {
+  standard: string;
 }
 
 /** A finished test, as the report reads it. */
@@ -359,6 +371,11 @@ export interface SkillItemView {
   name: string;
   /** "today", a weekday ("Wednesday") within the last week, else a date ("Nov 3"), in family time; null with no recorded row. */
   masteredOn: string | null;
+  /**
+   * The one plain sentence under the skill (#989, src/lib/skill-sentences.ts), written by code from stored facts; null when
+   * they are not enough. Mastered: "Mastered Thursday". Learning: how it is going. Needs help: what goes wrong, then what we do next.
+   */
+  sentence: string | null;
 }
 
 /**
@@ -566,7 +583,17 @@ export async function readOverview(reader: ParentViewReader, childId: string, no
     const book = workbooks.filter((w) => w.childId === child.id).sort((a, b) => b.number - a.number)[0];
     const read = progress ? await readSkillStates(reader, child, book, progress.skillMarks) : null;
     // A failed history read leaves the dates out and keeps the counts from the rule.
-    if (read) skills = homeSkills(read.states, progress!.helpMarks, read.historyFailed ? [] : read.history, now, zone);
+    // "Back in the next workbook" only when a next workbook exists, made and in the mail, with questions on the skill: the
+    // newest shipped book is that book exactly when it is newer than the delivered one (`onTheWay`), and `read` holds its
+    // standards. It is a "next" workbook only behind a delivered one: when Book 1 is the book in the mail (`days` is null),
+    // nothing comes before it. A plan that ended has no next workbook.
+    const nextStandards: ReadonlySet<string> = read && days !== null && onTheWay !== null && !child.readOnly ? new Set(read.workbookStandards) : new Set();
+    // A failed read of the causes leaves them out and nothing else: a sentence then names no mistake.
+    const mistakes = read ? await reader.recentMistakes(child.id, now - (STRUGGLING_WINDOW_DAYS + 1) * 86_400_000).catch((e) => {
+      console.error("[parent-view] recent mistakes read failed", e instanceof Error ? e.message : "failed");
+      return [] as MistakeRecord[];
+    }) : [];
+    if (read) skills = homeSkills(read.states, progress!.helpMarks, read.historyFailed ? [] : read.history, { now, zone, mistakes, nextStandards });
     if (read && progress) {
       // An empty history would call every skill new, so a failed read says nothing about mastery.
       if (!read.historyFailed) {
@@ -601,7 +628,10 @@ export async function readOverview(reader: ParentViewReader, childId: string, no
 }
 
 /** The three lists: every BC standard by its state now. Mastered newest first, the others in the skill map's order. */
-function homeSkills(states: readonly StandardSkillState[], marks: readonly HelpMark[], history: readonly StateChange[], now: number, zone: FamilyZone): HomeSkillsView {
+function homeSkills(
+  states: readonly StandardSkillState[], marks: readonly HelpMark[], history: readonly StateChange[],
+  { now, zone, mistakes, nextStandards }: { now: number; zone: FamilyZone; mistakes: readonly MistakeRecord[]; nextStandards: ReadonlySet<string> },
+): HomeSkillsView {
   const today = localDay(now, zone);
   // Needs help is the rule's needs_review plus a Learning skill the child is struggling with now; Learning is what is left.
   const help = needsHelpStandards(states, marks, now, zone);
@@ -614,17 +644,33 @@ function homeSkills(states: readonly StandardSkillState[], marks: readonly HelpM
     const at = Date.parse(row.changedAt);
     if (Number.isFinite(at) && at >= (lastRow.get(row.standard)?.at ?? -Infinity)) lastRow.set(row.standard, { ...row, at });
   }
-  const items = (state: SkillState, keep: (standard: string) => boolean = () => true): (SkillItemView & { at: number })[] => states.filter((s) => s.state === state && keep(s.standard)).map((s) => {
-    const row = state === "mastered" ? lastRow.get(s.standard) : undefined;
+  const marksOf = new Map<string, HelpMark[]>();
+  for (const mark of marks) marksOf.set(mark.standard, [...(marksOf.get(mark.standard) ?? []), mark]);
+  const mistakesOf = new Map<string, MistakeFact[]>();
+  for (const { standard, cause, at } of mistakes) mistakesOf.set(standard, [...(mistakesOf.get(standard) ?? []), { cause, at }]);
+  const sentenceOf = (s: StandardSkillState, group: "mastered" | "learning" | "needs_help", masteredOn: string | null): string | null => {
+    const marksOfStandard = marksOf.get(s.standard) ?? [];
+    // "Started <day>" is the day of the child's first marked answer on the skill: never when a book or a state row was recorded.
+    const startedAt = firstAnswerAt(marksOfStandard);
+    return skillSentence({
+      standard: s.standard, group, state: s.state, reason: s.reason, evidence: s.evidence, evidenceAt: s.evidenceAt,
+      marks: marksOfStandard, mistakes: mistakesOf.get(s.standard) ?? [],
+      masteredOn, startedOn: startedAt === null ? null : dayWords(localDay(startedAt, zone), today),
+      inNextWorkbook: nextStandards.has(s.standard), now, zone,
+    })?.text ?? null;
+  };
+  const item = (s: StandardSkillState, group: "mastered" | "learning" | "needs_help"): SkillItemView & { at: number } => {
+    const row = group === "mastered" ? lastRow.get(s.standard) : undefined;
     const recorded = row?.state === "mastered" && row.at !== first ? row : undefined;
-    return { code: s.standard, name: standardText.get(s.standard) ?? s.standard, masteredOn: recorded ? dayWords(localDay(recorded.at, zone), today) : null, at: recorded?.at ?? 0 };
-  });
-  const plain = ({ code, name, masteredOn }: SkillItemView): SkillItemView => ({ code, name, masteredOn });
+    const masteredOn = recorded ? dayWords(localDay(recorded.at, zone), today) : null;
+    return { code: s.standard, name: standardText.get(s.standard) ?? s.standard, masteredOn, sentence: sentenceOf(s, group, masteredOn), at: recorded?.at ?? 0 };
+  };
+  const plain = ({ code, name, masteredOn, sentence }: SkillItemView): SkillItemView => ({ code, name, masteredOn, sentence });
   return {
-    mastered: items("mastered").sort((a, b) => b.at - a.at).map(plain),
-    learning: items("working_on", (standard) => !help.has(standard)).map(plain),
+    mastered: states.filter((s) => s.state === "mastered").map((s) => item(s, "mastered")).sort((a, b) => b.at - a.at).map(plain),
+    learning: states.filter((s) => s.state === "working_on" && !help.has(s.standard)).map((s) => plain(item(s, "learning"))),
     // The skill map's order: the rule's needs_review and the struggling Learning skills in one list, as `states` orders them.
-    needsHelp: states.filter((s) => help.has(s.standard)).map((s) => plain({ code: s.standard, name: standardText.get(s.standard) ?? s.standard, masteredOn: null })),
+    needsHelp: states.filter((s) => help.has(s.standard)).map((s) => plain(item(s, "needs_help"))),
   };
 }
 

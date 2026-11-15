@@ -407,9 +407,9 @@ describe("a family the switch opens to", () => {
       onTheWay: null,
       scanPrompt: null,
       skills: {
-        mastered: [{ code: "2.4", name: "Multiplying by 10 and 100", masteredOn: "Thursday" }, { code: "2.1", name: "Even and odd", masteredOn: "Oct 20" }],
-        learning: [{ code: "2.5", name: "Rounding to the nearest hundred", masteredOn: null }],
-        needsHelp: [{ code: "2.3", name: "Value of each digit", masteredOn: null }, { code: "2.7", name: "Subtracting across a zero", masteredOn: null }],
+        mastered: [{ code: "2.4", name: "Multiplying by 10 and 100", masteredOn: "Thursday", sentence: "Mastered Thursday" }, { code: "2.1", name: "Even and odd", masteredOn: "Oct 20", sentence: "Mastered Oct 20" }],
+        learning: [{ code: "2.5", name: "Rounding to the nearest hundred", masteredOn: null, sentence: "Getting steadier: right the last 3 times" }],
+        needsHelp: [{ code: "2.3", name: "Value of each digit", masteredOn: null, sentence: "Forgets to carry when adding. Back in the next workbook." }, { code: "2.7", name: "Subtracting across a zero", masteredOn: null, sentence: null }],
       },
       weekLine: null,
       highlights: [],
@@ -439,6 +439,9 @@ describe("a family the switch opens to", () => {
       expect(out).toMatch(/<b>2<\/b><span>Needs help<\/span>/);
       expect(out).toContain("Needs help with");
       expect(out).toContain("Subtracting across a zero");
+      // One short line under a skill that has a sentence (#989), and nothing under one that has none: no filler, no icon beside it.
+      expect(out).toContain("<small>Forgets to carry when adding. Back in the next workbook.</small>");
+      expect(out).toContain("Subtracting across a zero</b></span></li>");
       expect(out).not.toMatch(/\b(?:she|her|hers|he|his|him)\b/i);
       expect(out).not.toMatch(/streak|wrong|other children|percent right/i);
     });

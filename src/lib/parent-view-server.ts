@@ -281,6 +281,38 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
         if (data.length < 1000) return rows;
       }
     },
+    async recentMistakes(childId, since) {
+      if (!admin) throw new Error("recent mistakes read: no secret key");
+      // Parents may not read this table: the secret key reads it, filtered on the parent and the child, and only the
+      // standard, the cause id and the time leave. Only a test's answers count (`source = 'assessment'`): a call or a
+      // marked page records no cause today, and a cause no one reviewed is never named. A wrong answer with no known
+      // cause is not selected.
+      const events: { standard: string; cause: string; at: string; assessmentId: string; questionId: string | null }[] = [];
+      for (let from = 0; from < 5000; from += 1000) {
+        const { data, error } = await admin.from("learning_events").select("skill_standard, mistake, occurred_at, assessment_id, assessment_question_id")
+          .eq("parent_id", parent).eq("child_id", childId).eq("source", "assessment").eq("result", "wrong").not("mistake", "is", null)
+          .gte("occurred_at", new Date(since).toISOString()).order("occurred_at").order("id").range(from, from + 999);
+        if (error) throw new Error(`recent mistakes read: ${error.message}`);
+        events.push(...data.flatMap((r) => (r.mistake && r.assessment_id ? [{ standard: r.skill_standard, cause: r.mistake, at: r.occurred_at, assessmentId: r.assessment_id, questionId: r.assessment_question_id }] : [])));
+        if (data.length < 1000) break;
+      }
+      if (events.length === 0) return [];
+      // The same tests the skill states count (src/lib/assessment/skill-state.ts): a test with no report yet has unknown
+      // reliability, a test the report calls unreliable (D-258) is no evidence, and a rushed wrong answer the placement
+      // left out of the score (#189, `placement.pace.leftOut`, by question id) is not a sign of what the child knows.
+      const ids = [...new Set(events.map((e) => e.assessmentId))];
+      const [reports, tests] = await Promise.all([
+        admin.from("reports").select("assessment_id, reliability:model->reliability").eq("parent_id", parent).eq("child_id", childId).in("assessment_id", ids),
+        admin.from("assessments").select("id, left_out:placement->pace->leftOut").eq("parent_id", parent).eq("child_id", childId).in("id", ids),
+      ]);
+      if (reports.error) throw new Error(`recent mistakes reports read: ${reports.error.message}`);
+      if (tests.error) throw new Error(`recent mistakes tests read: ${tests.error.message}`);
+      const reliable = new Set(reports.data.filter((r) => !reportCallsUnreliable(r)).map((r) => r.assessment_id));
+      const leftOut = new Map(tests.data.map((t) => [t.id, new Set(Array.isArray(t.left_out) ? t.left_out.filter((q): q is string => typeof q === "string") : [])]));
+      return events
+        .filter((e) => reliable.has(e.assessmentId) && !(e.questionId !== null && leftOut.get(e.assessmentId)?.has(e.questionId)))
+        .map(({ standard, cause, at }) => ({ standard, cause, at }));
+    },
     async switches() {
       const [scanPages, scanPlanChildren, testFamily] = await Promise.all([
         scanReleased(parent, admin, env),
