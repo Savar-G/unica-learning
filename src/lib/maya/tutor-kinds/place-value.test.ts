@@ -1,15 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { applyBatch, createScene, type Batch } from "@/lib/board";
+import { applyBatch, createScene } from "@/lib/board";
 import { teachingPackage } from "@/lib/maya-teaching";
 import { storedCompare, storedSum, storedBuild } from "@/lib/maya-teaching/place-value-parts-samples";
 import { storedPlaceValue } from "@/lib/maya-teaching/place-value-samples";
 import { spotPlaceValue } from "@/lib/maya-teaching/spot-error-samples";
-import { conversationalFake } from "@/lib/maya-model-fake";
-import { createTextSession } from "@/lib/maya-text";
 import type { OperationPackage, Place, QuestionPackage } from "@/lib/question-package";
 import { checkTutorSay } from "../tutor";
 import { describeTutorKind } from "./contract";
-import { tutorKindOf } from "./index";
 import { placeValueKind as kind } from "./place-value";
 
 // Packages built the way Maya's session adapter builds them, from synthetic stored questions (never a customer's book).
@@ -26,54 +23,7 @@ const COMPARE = [
 const SUM = [teach(storedSum({ step: 1, n0: 99467, place: "thousands", second: "tens" })), teach(storedSum({ step: 2, n0: 985939, place: "ten thousands", second: "hundreds" }))];
 const DIGIT = [digitAsk(34924, "thousands"), digitAsk(91639, "ones"), digitAsk(893969, "hundred thousands", "2.1"), digitAsk(735168, "tens", "3.1")];
 
-describeTutorKind(kind, [...VALUE, ...COMPARE, ...SUM]);
-
-// A digit ask's only step is its answer ("result"): the package has no work step, so the contract's step-id rule cannot
-// hold. Every other rule of the contract, here.
-describe("tutor kind \"place-value\": the contract for a digit ask", () => {
-  for (const pkg of DIGIT) {
-    describe(pkg.text, () => {
-      it("fits, and is the kind the registry gives", () => {
-        expect(kind.fits(pkg)).toBe(true);
-        expect(tutorKindOf(pkg)?.id).toBe("place-value");
-      });
-      it("has one step, the answer, with its reason", () => {
-        const steps = kind.steps(pkg);
-        expect(steps.map((s) => s.id)).toEqual(["result"]);
-        expect(steps[0].result).toBe(pkg.answer.value.type === "number" ? pkg.answer.value.value : null);
-        expect(steps[0].work).toMatch(/^count the places from the right: ones/);
-      });
-      it("writes only true math in its own words", () => {
-        const ctx = { stance: "none" as const, claims: (x: string) => kind.claimProblems(pkg, x) };
-        for (const st of kind.steps(pkg)) expect(checkTutorSay(`${st.work}.`, ctx), st.work).toMatchObject({ ok: true });
-        expect(checkTutorSay(kind.stepQuestion(pkg, []) ?? "", ctx)).toMatchObject({ ok: true });
-      });
-      it("reads the answer as right", () => {
-        expect(kind.numberMeaning(pkg, (pkg.answer.value as { value: number }).value)).toMatch(/right/);
-        expect(kind.streamScope(pkg).numbers).toContain(pkg.operation.operands[0]);
-      });
-      it("draws every drawing it offers, and the board takes it", async () => {
-        let now = Date.UTC(2026, 10, 15);
-        const session = createTextSession({ callId: "contract-place-value", package: pkg, model: conversationalFake({ answer: () => { throw new Error("no model"); } }), clock: () => (now += 100), tutor: true });
-        let scene = createScene();
-        for (const b of (await session.start()).board as Batch[]) {
-          const r = applyBatch(scene, b);
-          if (r.ok) scene = r.scene;
-        }
-        let drawn: string[] = [];
-        for (const d of kind.drawings(pkg)) {
-          const { commands, keys } = kind.draw(pkg, [{ offer: d.id, place: "" }], drawn, (i) => `n-${d.id}-${i}`);
-          if (commands.length === 0) continue;
-          const r = applyBatch(scene, { transactionId: `contract-${d.id}`, commands: commands as never });
-          expect(r.ok, `${d.id}: ${r.ok ? "" : JSON.stringify(r.refusal)}`).toBe(true);
-          if (r.ok) scene = r.scene;
-          drawn = [...drawn, ...keys];
-          expect(kind.draw(pkg, [{ offer: d.id, place: "" }], drawn, () => "x").keys.filter((k) => keys.includes(k))).toEqual([]);
-        }
-      });
-    });
-  }
-});
+describeTutorKind(kind, [...DIGIT, ...VALUE, ...COMPARE, ...SUM]);
 
 describe("place-value kind: what it fits", () => {
   it("keeps a spot the error, a tenths build and a 7-digit number for the controller", () => {
@@ -177,12 +127,12 @@ describe("place-value kind: Maya's place claims", () => {
 });
 
 describe("place-value kind: the board", () => {
-  it("draws the chart first, then the checked digit, value, sentence and answer, never twice", () => {
+  it("draws the chart first, then the checked value and answer, never twice", () => {
     const pkg = valueAsk(48942, "ten thousands");
     const { commands, keys } = kind.draw(pkg, [{ offer: "answer" }], [], () => "n");
-    expect(commands.map((c) => c.op)).toEqual(["place_chart", "put", "put", "put"]);
-    expect(commands.at(-2)).toMatchObject({ value: "4 × 10,000 = 40,000" });
-    expect(commands.at(-1)).toMatchObject({ value: "40,000" });
+    expect(commands.map((c) => c.op)).toEqual(["place_chart", "put", "put"]);
+    expect(commands.at(-2)).toMatchObject({ target: { rowId: "value", column: "ten_thousands" }, value: "40000" });
+    expect(commands.at(-1)).toMatchObject({ target: { rowId: "answer" }, value: "40000" });
     let scene = createScene();
     const r = applyBatch(scene, { transactionId: "t", commands: commands as never });
     expect(r.ok).toBe(true);
@@ -196,6 +146,13 @@ describe("place-value kind: the board", () => {
     expect(commands[1]).toMatchObject({ op: "mark", target: { piece: "band-ones" } });
     expect(commands[2]).toMatchObject({ op: "put", target: { column: "thousands", rowId: "digits" }, value: "4" });
     expect(applyBatch(createScene(), { transactionId: "t", commands: commands as never }).ok).toBe(true);
+  });
+  it("never offers a word on the board, and writes a value's note as the digit times its place", () => {
+    expect(kind.drawings(COMPARE[0]).map((d) => d.id)).not.toContain("answer");
+    expect(kind.draw(COMPARE[0], [{ offer: "answer" }], [], () => "n").commands).toEqual([]);
+    expect(kind.draw(VALUE[0], [{ offer: "note", place: "4 × 10,000 = 40,000" }], ["chart"], () => "n").commands).toEqual([{ op: "write", id: "n", text: "4 × 10000 = 40000", place: { below: "question" } }]);
+    // A hundred thousands value does not fit the note's equation form, so no note is offered.
+    expect(kind.drawings(VALUE[2]).map((d) => d.id)).not.toContain("note");
   });
   it("writes a sum's note only from a true equation", () => {
     const pkg = SUM[0];

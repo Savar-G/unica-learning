@@ -195,23 +195,26 @@ function streamScope(pkg: OperationPackage): { numbers: number[]; expressions: s
   return { numbers, expressions };
 }
 
-/** The next open step's question, or the whole question when every step is done. */
-function stepQuestion(pkg: OperationPackage, done: readonly string[]): string {
+/**
+ * The next open step's question, or null when every step is done. Code says it with no review, so it is one of the core's
+ * plain forms (plainTeaching), with numbers written without commas (the plain forms split a clause at a comma).
+ */
+function stepQuestion(pkg: OperationPackage, done: readonly string[]): string | null {
   const f = must(pkg);
   const [a, b] = f.parts;
-  const num = withCommas(f.n);
-  const which = (p: Part) => `Which digit is in the ${p.place} place of ${num}?`;
+  const which = (p: Part) => `Which digit is in the ${p.place} place of ${f.n}?`;
+  const valueOfDigit = (p: Part) => `What is the value of the digit in the ${p.place} place?`;
   if (f.ask === "digit") return which(a);
-  if (f.ask === "value") return done.includes("digit") ? `What is the value of the ${a.digit} in the ${a.place} place?` : which(a);
+  if (f.ask === "value") return done.includes("digit") ? valueOfDigit(a) : which(a);
   if (f.ask === "sum") {
-    if (!done.includes("worth-1")) return `What is the value of the ${a.place} digit of ${num}?`;
-    if (!done.includes("worth-2")) return `What is the value of the ${b.place} digit of ${num}?`;
-    return `So what is ${withCommas(a.value)} plus ${withCommas(b.value)}?`;
+    if (!done.includes("worth-1")) return valueOfDigit(a);
+    if (!done.includes("worth-2")) return valueOfDigit(b);
+    return `So what is ${a.value} plus ${b.value}?`;
   }
   if (!done.includes("digit-1")) return which(a);
   if (!done.includes("digit-2")) return which(b);
-  if (a.digit !== b.digit && !done.includes("bigger")) return `Which is bigger, ${a.digit} or ${b.digit}?`;
-  return "So is the statement true or false?";
+  if (a.digit !== b.digit && !done.includes("bigger")) return `Is ${a.digit} greater than ${b.digit}?`;
+  return null;
 }
 
 // ---------- Board ----------
@@ -229,10 +232,29 @@ function drawings(pkg: OperationPackage): readonly TutorDrawing[] {
   ];
   if (blankChart(f)) out.push({ id: "digit", does: `writes the digit of the place given in the chart ("place": ${places})` });
   if (f.ask === "value" || f.ask === "sum") out.push({ id: "value", does: `writes the value of the digit of the place given under it ("place": ${places})` });
-  if (f.ask !== "sum") out.push({ id: "sentence", does: f.ask === "compare" ? "writes the two digits compared under the chart" : "writes the digit times its place under the chart" });
-  out.push({ id: "answer", does: "writes the checked answer on the chart" });
-  if (f.ask === "sum") out.push({ id: "note", does: "writes one true equation of numbers below the chart (\"place\": \"9000 + 60 = 9060\")" });
+  // A compare's answer is a word: the board writes only the question's numbers (safeCommand).
+  if (f.ask !== "compare") out.push({ id: "answer", does: "writes the checked answer on the chart" });
+  if (noteFits(f)) out.push({ id: "note", does: `writes one true equation of numbers below the chart ("place": "${noteExample(f)}")` });
   return out;
+}
+
+/** The note a value or a sum question shows: the digit times its place, or the two values added. */
+const noteExample = (f: Facts): string => {
+  const [a, b] = f.parts;
+  return f.ask === "sum" ? `${a.value} + ${b.value} = ${a.value + b.value}` : `${a.digit} × ${10 ** a.k} = ${a.value}`;
+};
+
+/** Whether the note fits the board's equation form (numbers of at most 5 digits: not a hundred thousands value). */
+const noteFits = (f: Facts) => (f.ask === "value" || f.ask === "sum") && noteFromEquation(noteExample(f)) !== null;
+
+/** A valid request of each drawing, for the contract. */
+function drawingExamples(pkg: OperationPackage): readonly { offer: string; place: string }[] {
+  const f = must(pkg);
+  const place = f.parts[0].place;
+  return [
+    { offer: "chart", place: "" }, { offer: "band", place }, { offer: "digit", place }, { offer: "value", place }, { offer: "answer", place: "" },
+    ...(noteFits(f) ? [{ offer: "note", place: noteExample(f) }] : []),
+  ];
 }
 
 /**
@@ -267,18 +289,6 @@ function draw(pkg: OperationPackage, requests: readonly { offer: string; place?:
     commands.push({ op: "put", target: cell("value", p), value: String(p.value) });
     keys.push(`value:${p.place}`);
   };
-  const sentence = () => {
-    if (has("sentence") || f.ask === "sum") return;
-    const [a, b] = f.parts;
-    if (f.ask === "compare") {
-      digit(a);
-      digit(b);
-    } else value(a);
-    chart();
-    const text = f.ask === "compare" ? `${a.digit} ${a.digit > b.digit ? ">" : a.digit < b.digit ? "<" : "="} ${b.digit}` : `${a.digit} × ${withCommas(10 ** a.k)} = ${withCommas(a.value)}`;
-    commands.push({ op: "put", target: { objectId: "question", part: "row", rowId: "equation" }, value: text });
-    keys.push("sentence");
-  };
   let notes = 0;
   for (const d of requests) {
     if (d.offer === "chart") chart();
@@ -296,14 +306,13 @@ function draw(pkg: OperationPackage, requests: readonly { offer: string; place?:
     } else if (d.offer === "value" && (f.ask === "value" || f.ask === "sum")) {
       const p = asked("value", d.place);
       if (p) value(p);
-    } else if (d.offer === "sentence") sentence();
-    else if (d.offer === "answer") {
-      if (has("answer")) continue;
+    } else if (d.offer === "answer") {
+      // Numbers only: the board shows the question's own numbers (safeCommand), never a word.
+      if (has("answer") || typeof f.answer !== "number") continue;
       if (f.ask === "digit") digit(f.parts[0]);
-      else if (f.ask === "sum") f.parts.forEach(value);
-      else sentence();
+      else f.parts.forEach(value);
       chart();
-      commands.push({ op: "put", target: { objectId: "question", part: "row", rowId: "answer" }, value: typeof f.answer === "number" ? withCommas(f.answer) : f.answer });
+      commands.push({ op: "put", target: { objectId: "question", part: "row", rowId: "answer" }, value: String(f.answer) });
       keys.push("answer");
     } else if (d.offer === "note" && d.place) {
       // Only a whole equation of numbers, rebuilt from its values: no other text reaches the board.
@@ -584,6 +593,7 @@ export const placeValueKind: TutorKind = {
   streamScope,
   stepQuestion,
   drawings,
+  drawingExamples,
   draw,
   claimProblems,
   notes,
