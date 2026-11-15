@@ -80,7 +80,8 @@ describe("layer 1: coverage accounting in the claim reader", () => {
     expect(unreadMath("Thirteen divided by two is six remainder one, which is two.", ctxOf(DIV))).toEqual(["is", "2"]);
     // A question form claims nothing only in a question: said as a statement, its numbers are not read.
     expect(unreadMath("What is 12 minus 8.", ctxOf(SUB))).not.toEqual([]);
-    expect(checkTutorSay("That is a good try. 12 minus 8 is 4.", ctxOf(SUB))).toMatchObject({ ok: true, math: ["That is a good try."] });
+    // Final check 6: after a sentence that needs the review, every later sentence of the message needs it too.
+    expect(checkTutorSay("That is a good try. 12 minus 8 is 4.", ctxOf(SUB))).toMatchObject({ ok: true, math: ["That is a good try.", "12 minus 8 is 4."] });
   });
   it("still refuses a false claim code finds, before any review", () => {
     for (const s of ["12 minus 8 is 5.", "4 is greater than 8.", "The answer is 25.", "Five sixths is three sixths."]) expect(checkTutorSay(s, ctxOf(s.startsWith("Five") ? FRACTION : SUB)), s).toMatchObject({ ok: false, reason: "false_equation" });
@@ -141,7 +142,7 @@ describe("layer 2: the math-truth review", () => {
     expect(input.lastTurns.child).toBe("{name} says 6 again.");
     expect(input.lastTurns.maya).not.toBeNull();
     expect(JSON.stringify(input)).not.toMatch(/Zoe/);
-    expect(input.promptVersion).toBe("maya-math-review-4");
+    expect(input.promptVersion).toBe("maya-math-review-5");
   });
 
   it("gives the review code's facts of the question and the child's turn, never the child's name", async () => {
@@ -177,11 +178,12 @@ describe("layer 2: the math-truth review", () => {
     const got = await out;
     expect(early()).toContain("12 minus 8 is 4.");
     expect(got.say.join(" ")).toBe("12 minus 8 is 4. That 4 is already in the ones. What is 4 minus 2?");
-    expect(mathReviewer!.requests.map((r) => r.sentence)).toEqual(["That 4 is already in the ones."]);
+    // Final check 6: the sentence after a reviewed one is reviewed too.
+    expect(mathReviewer!.requests.map((r) => r.sentence)).toEqual(["That 4 is already in the ones.", "What is 4 minus 2?"]);
     const trace = await session.finish({ reason: "child_stopped" });
     expect(checkTrace(trace)).toMatchObject({ ok: true });
-    expect(trace.counts).toMatchObject({ mathReviews: 1, mathRefusals: 0, refusals: 0 });
-    expect(trace.mathReviewer).toEqual({ id: "fake-math-review", promptVersion: "maya-math-review-4" });
+    expect(trace.counts).toMatchObject({ mathReviews: 2, mathRefusals: 0, refusals: 0 });
+    expect(trace.mathReviewer).toEqual({ id: "fake-math-review", promptVersion: "maya-math-review-5" });
   });
 
   it.each([

@@ -244,7 +244,11 @@ export function unreadMath(sentence: string, ctx: Pick<TutorCheckContext, "op" |
     return NO_CLAIM_FORMS.some((re) => re.test(clause)) || (asks && QUESTION_FORMS.some((re) => re.test(clause))) ? " ; " : raw;
   }).join("");
   if (ctx.answer !== undefined) {
-    const spans = answerClaims(text, ctx.answer).read.sort((a, b) => b.index - a.index);
+    // Final check 6: the clause forms above can drop a stated scope ("In the ones column, the answer is 24."), so a
+    // claim is read only when the sentence as said reads as many claims whole.
+    const said = answerClaims(sentence.replace(/[’]/g, "'").replace(/[−–]/g, "-").trim(), ctx.answer).read.length;
+    const found = answerClaims(text, ctx.answer).read;
+    const spans = (found.length <= said ? found : []).sort((a, b) => b.index - a.index);
     for (const { index, length } of spans) text = `${text.slice(0, index)} ; ${text.slice(index + length)}`;
   }
   return readClaims(text, ctx.op, ctx.trades, ctx.columns).unread;
@@ -378,6 +382,9 @@ export function stanceHeld(sentence: string, ctx: Pick<TutorCheckContext, "stanc
   return !(plainTeaching(text, ctx.extra) && codeAlone(text, ctx));
 }
 
+/** Whether one sentence, on its own, needs the math-truth review: it does not pass on code alone, or the stance holds it. */
+const needsMath = (sentence: string, ctx: Parameters<typeof stanceHeld>[1]): boolean => !codeAlone(sentence, ctx) || stanceHeld(sentence, ctx);
+
 /** A division with a remainder ("15 ÷ 6 = 2 R 3", in digits or words): falseClaims reads it whole. */
 const REMAINDER_FORM = new RegExp(REMAINDER_SAID, "gi");
 
@@ -442,8 +449,11 @@ export function checkTutorSay(text: string, ctx: TutorCheckContext & { extra?: R
   const active = sentences.some((x) => sayNumbers(x).some((t) => !!t.q && t.q[1] === 1 && !!ctx.exampleOnly?.has(t.q[0]))) ? { ...ctx, exact: undefined } : ctx;
   const review = sentences.filter((x) => !plainTeaching(x, ctx.extra) || stanceHeld(x, active));
   // The exact-match rule (2026-11-15): only an exact match of code's own text or of a closed plain form passes on code
-  // alone; every other sentence goes to the math-truth review.
-  const math = sentences.filter((x) => !codeAlone(x, active) || stanceHeld(x, active));
+  // alone; every other sentence goes to the math-truth review. Final check 6: a sentence passes on code alone only when
+  // every sentence before it in the message passed on code alone too ("Let us try the easier example. Write 4 in the
+  // ones." may have changed the active problem); after the first sentence that needs the review, every later one does.
+  const first = sentences.findIndex((x) => needsMath(x, active));
+  const math = first === -1 ? [] : sentences.slice(first);
   return { ok: true, needsReview: review.length > 0, review, math };
 }
 
@@ -478,7 +488,8 @@ export function tutorStreamSentence(sentence: string, previous: readonly string[
   // safety review when it is not plain teaching.
   const held = stanceHeld(sentence, ctx);
   const talk = !plainTeaching(sentence, ctx.extra) || held;
-  const math = !codeAlone(sentence, ctx) || held;
+  // Final check 6: once a sentence already sent or held in this message needed the math review, every later one does.
+  const math = needsMath(sentence, ctx) || previous.some((x) => needsMath(x, ctx));
   return talk || math ? { talk, math } : "send";
 }
 
