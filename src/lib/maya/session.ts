@@ -22,6 +22,7 @@
 // Pure TypeScript: no React, DOM, network, clock or randomness.
 import { MAX_COMMANDS, PLACE_NAMES, type Batch, type Command, type Place, type Target } from "@/lib/board";
 import { FRACTION_STRIP_LIMITS } from "@/lib/board/model-fraction-strip";
+import { asksIdentity } from "./identity";
 import { MAX_HINTS, MAX_TIME_MS, type NewLearningEvent } from "@/lib/learning-events";
 import {
   checkQuestionPackage,
@@ -1015,6 +1016,8 @@ function gate(s: Session, reading: Reading): Allowed | null {
   if (s.expect !== "maya") return { acts: [], code: "not_mayas_turn", reason: "It is the child's turn: wait for them." };
   if (s.stopRequested || reading.stop) return { acts: ["close"], code: "stop_first", reason: "The child asked to stop: close kindly, with no more questions." };
   if (s.state === "REPAIR_MAYA") return { acts: ["repair"], code: "repair_first", reason: "Maya said something the checked math does not support: correct it first." };
+  // #1051: the disclosure a child asked for comes before a scope redirect.
+  if (disclosureDue(s)) return { acts: ["redirect"], code: "fixed_reply_first", reason: "Say only the next code reply, with no warm or free talk." };
   if (s.scopeDue && s.turn && !reading.unsafeRequest) return { acts: ["redirect"], code: "scope_first", reason: "This request is outside the checked question. Use only redirect.workbook." };
   if (s.replies?.length) return { acts: ["redirect"], code: "fixed_reply_first", reason: "Say only the next code reply, with no warm or free talk." };
   if (s.silence === "close_due") return { acts: ["close"], code: "act_not_allowed", reason: "No answer after the check-in: close." };
@@ -1092,6 +1095,26 @@ function asksSecret(text: string): boolean {
  */
 function secretReplies(s: Session): Session["replies"] | null {
   return s.turn && !s.scopeDue && !s.replies?.length && !s.safety.flagged && asksSecret(s.turn.text) ? ["about.no_secret", "question.problem"] : null;
+}
+
+/** #1051: code's fixed disclosure ("about.ai", then "about.no_secret") is the next reply due. */
+function disclosureDue(s: Pick<Session, "replies">): boolean {
+  return s.replies?.[0] === "about.ai" || s.replies?.[0] === "about.no_secret";
+}
+
+/**
+ * #1051: the disclosure still due when the call closes after safety guidance, in code's exact words (D-205's wording of
+ * each line), so the guidance comes first and the disclosure is never lost. Empty when none is due.
+ */
+/** The words of the safety guidance turn (none: code's guidance is set in the act) or of the close after it. */
+function closeDisclosure(text: string): Spoken {
+  return { text, lines: [], boards: [], replaced: 0, talk: [], segments: text ? [{ kind: "plain", text }] : [], chosen: [] };
+}
+
+function safetyDisclosure(s: Pick<Session, "replies">): string {
+  if (!disclosureDue(s)) return "";
+  const offers = fixedOffers();
+  return s.replies!.filter((r) => r === "about.ai" || r === "about.no_secret").map((r) => offers.find((o) => o.line === r)!.texts[0]).join(" ");
 }
 
 /**
@@ -1463,10 +1486,13 @@ export function step(session: Session, event: SessionEvent): StepResult {
       ...(Array.isArray(r.mathRequests) ? { mathRequests: r.mathRequests as ScopeReading["mathRequests"] } : {}),
     };
     const reason = scopeReason(s.package, s.turn.text, s.exampleIntroduced === true || s.exampleShown > 0, reading);
-    if (reason) s.scopeDue ??= reason;
+    if (reason && !disclosureDue(s)) s.scopeDue ??= reason;
   }
   if (s.turn && priority.noBoard) s.noBoard = true;
   if (s.turn && priority.shorter) s.shorter = true;
+  // #1051: code's own read already made the disclosure due; the model's secret-friend reading adds the no-secret line
+  // after it ("Are you a real person? Can you be my secret friend?").
+  if (s.turn && priority.aboutMaya === "secret_friend" && s.replies?.[0] === "about.ai" && !s.replies.includes("about.no_secret")) s.replies.splice(1, 0, "about.no_secret");
   if (s.turn && !s.scopeDue && !s.replies?.length && priority.aboutMaya) {
     s.replies = ["about.ai", ...(priority.aboutMaya === "secret_friend" || asksSecret(s.turn.text) ? ["about.no_secret" as const] : []), "question.problem"];
   } else if (secretReplies(s)) {
@@ -1531,6 +1557,13 @@ export function step(session: Session, event: SessionEvent): StepResult {
       if (s.package) {
         const reason = scopeReason(s.package, s.turn.text, s.exampleIntroduced === true || s.exampleShown > 0);
         if (reason) s.scopeDue = reason;
+      }
+      // #1051 (safety floor): code's own read of "Are you a real person?" makes the disclosure due now, before any model
+      // call, so no model words stream before it and none replace it. It comes first in this turn; only safety guidance
+      // may come before it (the safety close then says it).
+      if (s.package && asksIdentity(event.text)) {
+        s.replies = ["about.ai", ...(asksSecret(event.text) ? ["about.no_secret" as const] : []), "question.problem"];
+        delete s.scopeDue;
       }
       // A checked right answer the child takes back ("Actually 56", or a new answer code cannot read) stands no longer,
       // whatever a later reading names: the result waits for a new checked final answer. The help history stays. A
@@ -1636,7 +1669,7 @@ export function step(session: Session, event: SessionEvent): StepResult {
         const sent = Array.isArray(event.sent) ? event.sent.filter((x): x is string => typeof x === "string" && x.trim() !== "") : [];
         if (v3 && s.tutor) return proposeTutor(s, raw as ModelOutput, effects, event.talkReviews === undefined ? undefined : reviewsOf(event.talkReviews), sent, event.fallback === true, event.mathReviews === undefined ? undefined : mathReviewsOf(event.mathReviews));
         if (v3) return proposeV3(s, raw as ModelOutput, effects, event.talkReviews === undefined ? undefined : reviewsOf(event.talkReviews), sent);
-        return withSent(propose(s, raw as Proposal, effects, reviewsOf(event.talkReviews), event.fallback === true), sent, s);
+        return withSent(propose(s, raw as Proposal, effects, reviewsOf(event.talkReviews), event.fallback === true), sent, s, disclosureDue(s));
       }
     default:
       return refuse(session, "invalid_event", "Unknown event type.");
@@ -1798,7 +1831,9 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
   // Do not select or record model wordings that this fixed opening will not say.
   const spoken: Spoken | { code: RefusalCode; reason: string } = forcedOpening
     ? { text: forcedOpening, lines: [], boards: [], replaced: 0, talk: [], segments: [{ kind: "math", text: forcedOpening }], chosen: [] }
-    : p.act === "safety" || safetyClose ? { text: "", lines: [], boards: [], replaced: 0, talk: [], segments: [], chosen: [] } : speak(s, p, view, reviews);
+    : p.act === "safety" || safetyClose ? closeDisclosure(safetyClose ? safetyDisclosure(s) : "") : speak(s, p, view, reviews);
+  // #1051: the disclosure due after a safety concern is said in the close; no question line follows it.
+  if (safetyClose) delete s.replies;
   if ("code" in spoken) return no(spoken.code, spoken.reason, allowedNow);
   const say = spoken.text;
   if (say === "" && !safetyClose && !["wait", "safety"].includes(p.act)) return no("invalid_proposal", "Maya needs words for this act.", allowedNow);
@@ -2143,7 +2178,7 @@ function propose(base: Session, p: Proposal, effects: Effect[], reviews: readonl
     if (s.noBoard && /\b(?:board|look|watch|see|show me|follow along)\b/i.test(text)) return no("board_not_allowed", "Use only spoken help. No visual action is available.", allowedNow);
   }
 
-  if (p.act !== "safety" && !backupClose && speechWords(text) > turnWordLimit(s)) {
+  if (p.act !== "safety" && !safetyClose && !backupClose && speechWords(text) > turnWordLimit(s)) {
     return no("turn_too_long", `This turn has ${speechWords(text)} spoken words. The limit is ${turnWordLimit(s)}.`, allowedNow);
   }
   if (s.replies?.length && p.act === "redirect") {
@@ -4962,7 +4997,8 @@ export function fillName(text: string, s: Session): string {
 
 
 /** Lines code says in its own words whatever the model wrote: the decline, the outside-work redirect and the fixed AI replies. */
-const CODE_WORD_LINES: readonly string[] = ["redirect.decline", "about.no_secret"];
+// #1051, D-205: "about.ai" is said exactly, never in the model's words.
+const CODE_WORD_LINES: readonly string[] = ["redirect.decline", "about.ai", "about.no_secret"];
 
 /** Refusals that are about code's own choice of lines, not the model's act: the next planned set is tried. */
 const PLAN_REFUSALS: readonly RefusalCode[] = ["line_not_offered", "free_talk_in_math_turn", "math_line_not_last", "invalid_proposal", "turn_too_long", "missing_disclosure", "fixed_reply_first", "hint_too_high", "same_hint_again", "board_not_code", "board_not_allowed", "board_wrong_problem"];
@@ -5338,7 +5374,7 @@ function proposeV3(base: Session, out: ModelOutput, effects: Effect[], reviews: 
   if (sent.length > 0) {
     const plan = codePlan(base, effects);
     if (plan) {
-      if (plan.codeWords) return withSent(plan.r, sent, base);
+      if (plan.codeWords) return withSent(plan.r, sent, base, disclosureDue(base));
       return withStreamed(base, plan.r, plan.at, plan.planned, out.say, sent, plan.rules, reviews);
     }
   }
@@ -5367,7 +5403,7 @@ function proposeV3(base: Session, out: ModelOutput, effects: Effect[], reviews: 
   const planned = (r.effects[at] as Extract<Effect, { kind: "say" }>).text;
   const codeWords = !!comparisonOf(base.package) || p.act === "safety" || base.state === "CONTENT_HOLD" || (p.act === "close" && base.state === "SAFETY") ||
     p.parts.some((x) => "line" in x && (CODE_WORD_LINES.includes(x.line) || (x.line === "redirect.workbook" && base.scopeDue === "outside_work"))) || (p.act === "open" && !!base.confirmWorkbook);
-  if (codeWords) return withSent(r, sent, base);
+  if (codeWords) return withSent(r, sent, base, disclosureDue(base));
   const rules = sayRules(base, r.session, p, planned);
   // Too long is cut, not repaired: the leading sentences that fit are kept, each still checked (round 2).
   const say = trimSay(out.say, rules.wordLimit);
@@ -5459,7 +5495,7 @@ export function codePlan(s: Session, effects: Effect[] = []): { p: Proposal; r: 
  * A turn whose first sentences were already said (streamed): they lead its words, whatever code's plan says after them.
  * Code's guidance after a streamed sentence keeps that sentence first in the saved turn (round 4).
  */
-function withSent(r: StepResult, sent: readonly string[], base: Session): StepResult {
+function withSent(r: StepResult, sent: readonly string[], base: Session, whole = false): StepResult {
   if (r.refusal || sent.length === 0) return r;
   const lead = sent.join(" ");
   const at = r.effects.findLastIndex((e) => e.kind === "say");
@@ -5470,7 +5506,8 @@ function withSent(r: StepResult, sent: readonly string[], base: Session): StepRe
   // Code's own words (safety guidance) follow in full. Else, what was said already asks about the step: code's line adds
   // nothing; or only its closing question follows.
   const question = sentencesOf(said).filter((x) => /\?\s*$/.test(x)).at(-1);
-  const text = said.startsWith(filled) ? said : effect.act === "safety" ? `${filled} ${said}` : endsWithAsk(lead) ? filled : `${filled} ${question ?? said}`;
+  // #1051: code's disclosure (`whole`) is said in full after them too, never dropped for a question already asked.
+  const text = said.startsWith(filled) ? said : effect.act === "safety" || whole ? `${filled} ${said}` : endsWithAsk(lead) ? filled : `${filled} ${question ?? said}`;
   const turns = [...r.session.turns];
   const last = turns.findLastIndex((t) => t.speaker === "maya" && t.text === said);
   if (last !== -1) turns[last] = { ...turns[last], text, planned: turns[last].planned ?? said };
