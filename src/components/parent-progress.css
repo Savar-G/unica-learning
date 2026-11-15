@@ -1,57 +1,57 @@
-/* The Progress tab (#561): the mock's "Skill map" block in the warm look's tokens. The state colours follow the mock:
-   Mastered leaf, Working on tangerine, Needs review sun, Not started grey. Each tile also says its state in words. */
-.pp-card { margin: 28px 0; padding: 22px; border: 1px solid var(--line); border-radius: 14px; background: #fff; min-width: 0; }
-.support-page .pp-card h2 { margin: 0; font-size: 19px; font-weight: 500; letter-spacing: -0.01em; }
-.support-page .pp-intro { margin: 6px 0 0; font-size: 15px; line-height: 1.45; color: var(--ink-2); }
-.support-page .pp-note, .support-page .pp-empty { margin: 28px 0 0; font-size: 15px; line-height: 1.45; color: var(--ink-2); }
-.support-page .pp-note + .pp-card { margin-top: 14px; }
+/* The Progress tab (#1004, #1005): Option A's look (parent-option-a.css). A phone is one column with the tiles two by two;
+   when the tab itself is wide enough, the four tiles go in one row and the topics in two columns. */
+.pp { gap: 14px; }
 
-.is-mastered { --pp-bg: color-mix(in srgb, var(--leaf) 14%, #fff); --pp-fg: #15694a; }
-.is-working_on { --pp-bg: color-mix(in srgb, var(--tang) 12%, #fff); --pp-fg: #a53a10; }
-.is-needs_review { --pp-bg: color-mix(in srgb, var(--sun) 26%, #fff); --pp-fg: #6f5100; }
-.is-not_started { --pp-bg: var(--card); --pp-fg: #5e5e67; }
+.pp-seg { display: flex; background: var(--pa-soft); border-radius: 11px; padding: 3px; }
+.pp-seg button { flex: 1; min-height: 44px; border: 0; background: none; border-radius: 9px; padding: 8px 4px; font-size: 14px; font-weight: 600; color: var(--pa-tx3); }
+.pp-seg button[aria-pressed="true"] { background: #fff; color: var(--pa-tx); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); }
 
-.support-page .pp-legend { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; margin: 14px 0 0; padding: 0; }
-.support-page .pp-legend li { margin: 0; }
-.pp-chip { display: inline-block; padding: 3px 10px; border-radius: 999px; background: var(--pp-bg); color: var(--pp-fg); font: 400 12px/1.4 var(--mono); white-space: nowrap; }
+.pp-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.pp-tile { background: var(--pa-soft); border-radius: 18px; padding: 14px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.pp-k { font-size: 13px; color: var(--pa-tx2); font-weight: 500; }
+.pp-v { display: flex; align-items: center; gap: 8px; font-size: 24px; font-weight: 700; letter-spacing: -0.02em; }
+.pp-v i { font-style: normal; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; background: #fff; color: var(--pa-tx2); }
+.pp-s { font-size: 12.5px; color: var(--pa-tx2); }
+.pp-tile.is-hot { background: var(--pa-g); color: #fff; }
+.pp-tile.is-hot .pp-k, .pp-tile.is-hot .pp-s { color: rgba(255, 255, 255, 0.88); }
+.pp-tile.is-hot .pp-v i { background: rgba(255, 255, 255, 0.22); color: #fff; }
 
-.pp-areas { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 22px 12px; margin-top: 20px; align-items: start; }
-.pp-area { min-width: 0; }
-.support-page .pp-area h3 { margin: 0 0 10px; font-size: 15px; font-weight: 500; line-height: 1.3; letter-spacing: 0; }
-.support-page .pp-area ul { display: grid; gap: 8px; list-style: none; margin: 0; padding: 0; }
-.support-page .pp-area li { margin: 0; }
-.pp-tile {
-  display: grid; gap: 6px; width: 100%; min-height: 44px; padding: 10px 12px; border: 0; border-radius: 10px; background: var(--pp-bg);
-  color: var(--ink); font: inherit; text-align: left; cursor: pointer; transition: box-shadow 120ms ease;
+/* The line: a small drawing for a phone and a wide one for a laptop; the page shows the one that fits. */
+.pp-chart { padding: 18px 14px 10px; }
+.pp-chart svg { width: 100%; height: auto; display: block; }
+.pp-chart text { fill: var(--pa-tx3); font-size: 10.5px; font-family: var(--sans); }
+.pp-chart-w { display: none !important; }
+.pp-chart-w text { font-size: 13px; }
+
+.support-page .pa .pp-topics li { padding: 13px 0; border-top: 1px solid var(--pa-line); display: flex; flex-direction: column; gap: 8px; margin: 0; }
+.support-page .pa .pp-topics li:first-child { border-top: 0; padding-top: 0; }
+.support-page .pa .pp-topics li:last-child { padding-bottom: 0; }
+.pp-topic-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.pp-topic-row b { font-weight: 600; }
+.pp-topic-row span { font-size: 13.5px; font-weight: 600; white-space: nowrap; }
+.pp-topic-row .is-g { color: var(--pa-gt); }
+.pp-topic-row .is-s { color: var(--pa-st); }
+.pp-topic-row .is-a { color: var(--pa-at); }
+.pp-track { height: 5px; border-radius: 3px; background: var(--pa-soft); overflow: hidden; }
+.pp-track i { display: block; height: 100%; border-radius: 3px; }
+.pp-track .is-g { background: var(--pa-g); }
+.pp-track .is-s { background: var(--pa-s); }
+.pp-track .is-a { background: var(--pa-a); }
+
+.pp-empty { display: grid; gap: 8px; justify-items: start; }
+.support-page .pa .pp-empty b { font-size: 17px; }
+.support-page .pa .pp-empty p { color: var(--pa-tx2); }
+.pp-empty .pa-scanbtn { margin-top: 6px; }
+
+[data-look="warm"] .pd-main .support-page:has(.pp) h1 { font-weight: 700; letter-spacing: -0.02em; }
+
+/* The laptop: the four tiles in one row, the line wide, the topics in two columns. */
+@container (min-width: 760px) {
+  .pp-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+  .pp-chart-s { display: none !important; }
+  .pp-chart-w { display: block !important; }
+  .pp-chart { padding: 22px 20px 12px; }
+  .support-page .pa .pp-topics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 40px; }
+  .support-page .pa .pp-topics li:nth-child(2) { border-top: 0; padding-top: 0; }
+  .support-page .pa .pp-topics li:nth-last-child(2):nth-child(odd) { padding-bottom: 13px; }
 }
-.pp-tile:hover { box-shadow: inset 0 0 0 1.5px var(--pp-fg); }
-.pp-tile:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
-.pp-tile-name { font-size: 14px; line-height: 1.3; overflow-wrap: anywhere; }
-.pp-tile-state { font: 400 12px/1.3 var(--mono); color: var(--pp-fg); }
-
-/* The panel: the browser's modal dialog, at the right side. */
-.pp-panel {
-  position: fixed; inset: 0 0 0 auto; width: min(420px, 100vw); max-width: none; height: 100dvh; max-height: none; margin: 0; padding: 0;
-  border: 0; border-left: 1px solid var(--line); background: #fff; color: var(--ink); overscroll-behavior: contain;
-}
-.pp-panel::backdrop { background: rgb(12 12 14 / 0.28); }
-.pp-panel-in { display: grid; gap: 14px; padding: 20px 24px 32px; }
-.pp-panel-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.pp-close { display: grid; place-items: center; width: 44px; height: 44px; margin: -6px -10px -6px 0; border: 0; border-radius: 10px; background: transparent; color: var(--ink); cursor: pointer; }
-.pp-close:hover { background: var(--card); }
-.pp-close:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
-.support-page .pp-panel h3 { margin: 0; font-size: 22px; font-weight: 400; line-height: 1.25; letter-spacing: -0.015em; overflow-wrap: anywhere; }
-.support-page .pp-why { margin: 0; font-size: 16px; line-height: 1.45; }
-.support-page .pp-panel h4 { margin: 8px 0 8px; font: 400 12px/1.3 var(--mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); }
-.support-page .pp-list { display: grid; gap: 8px; list-style: none; margin: 0; padding: 0; font-size: 15px; line-height: 1.4; }
-.support-page .pp-list li { margin: 0; padding-top: 8px; border-top: 1px solid var(--line-soft); }
-.support-page .pp-list li:first-child { padding-top: 0; border-top: 0; }
-
-@media (max-width: 699px) {
-  .pp-card { margin-top: 20px; padding: 18px 16px; }
-  .pp-areas { grid-template-columns: minmax(0, 1fr); }
-  /* A sheet from the bottom, above the bottom bar. */
-  .pp-panel { inset: auto 0 0 0; width: 100%; height: auto; max-height: 85dvh; border-left: 0; border-top: 1px solid var(--line); border-radius: 16px 16px 0 0; overflow-y: auto; }
-  .pp-panel-in { padding: 14px 16px calc(24px + env(safe-area-inset-bottom)); }
-}
-@media (prefers-reduced-motion: reduce) { .pp-tile { transition: none; } }

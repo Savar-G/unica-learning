@@ -19,7 +19,6 @@ import { ScanHistoryView, type HistoryListing, type HistoryState } from "@/compo
 import { HISTORY_LABELS, type HistoryStatus } from "@/lib/scan-history";
 import { ParentSchedule } from "@/components/parent-schedule";
 import { ParentProgress } from "@/components/parent-progress";
-import { SkillPanel } from "@/components/parent-skill-map";
 import { NoteCard, ParentSessionView } from "@/components/parent-maya-notes";
 import { MayaChatRow } from "@/components/parent-home-rows";
 import { AccountBilling } from "@/components/account-billing";
@@ -40,13 +39,12 @@ import { familyZone, startWhen } from "@/lib/family-time";
 import type { LearningRow } from "@/lib/learning-style";
 import type { ParentNoteSession } from "@/lib/parent-maya-notes";
 import type { ParentPlan } from "@/lib/parent-plan";
-import type { ChildView, OverviewView, WorkbooksView } from "@/lib/parent-view";
+import type { ChildView, OverviewView, ProgressNumbers, WorkbooksView } from "@/lib/parent-view";
 import { freeMonthWords } from "@/lib/parent-assessment";
 import { tabLinks } from "@/lib/parent-shell";
 import { nextStep } from "@/lib/report-view";
 import { PLANS } from "@/lib/site";
 import { sampleReportView } from "@/lib/sample-children";
-import { skillMapView } from "@/lib/skill-map-view";
 import "@/ds/styles/base.css";
 import "@/ds/styles/warm.css";
 import "@/ds/styles/support.css";
@@ -71,16 +69,35 @@ function sampleNote(child: ChildView, chat = false, missing = false): ParentNote
   };
 }
 
+const sampleSkills = (state: string): OverviewView["skills"] => state === "no_skills" || state === "first_book_coming" || state === "first_scan" ? null : {
+  mastered: [{ code: "2.4", name: "Multiplying by 10 and 100", masteredOn: "Thursday" }, { code: "2.2", name: "Comparing numbers to 1 000", masteredOn: "Wednesday" }, { code: "2.1", name: "Even and odd", masteredOn: "Nov 3" }],
+  learning: state === "empty" ? [] : [{ code: "2.5", name: "Rounding to the nearest hundred", masteredOn: null }, { code: "2.6", name: "Number patterns", masteredOn: null }],
+  needsHelp: state === "empty" ? [] : [{ code: "2.3", name: "Value of each digit in big numbers", masteredOn: null }, { code: "2.7", name: "Subtracting across a zero", masteredOn: null }],
+};
+
 function overview(child: ChildView, state: string): OverviewView {
   const preparing = state === "preparing" || state === "late";
-  const empty = preparing || state === "empty" || state === "first_book_coming";
-  return { child, level: empty ? null : { working: 2, earlySign: state === "early", testedOn: "2026-10-22", unreliable: state === "unreliable" },
-    areas: empty || state === "unreliable" ? [] : [
-      { area: "number", name: "Number", level: 2, label: "building-up", earlySign: state === "early" },
-      { area: "fractions", name: "Fractions", level: 3, label: "at-grade", earlySign: false },
-      { area: "shapes", name: "Shapes and measurement", level: 4, label: "ahead", earlySign: false },
-    ], skills: empty ? null : { mastered: 12, atLevel: { grade: 2, mastered: 5, total: 14 }, moreThisMonth: 3 }, areasIncludeMarks: !empty, resultPreparing: preparing, resultLate: state === "late", workbook: child.currentWorkbook ? { number: 3, scannedDays: 4, days: 10 } : null,
-    action: state === "payment_failed" || state === "no_pin" || state === "learning_card_empty" ? state : null, summaryMonth: child.stage === "active" || child.stage === "ended" ? "2026-10" : null };
+  const empty = state === "first_book_coming";
+  const first = state === "first_scan";
+  const done = state === "today_done";
+  const notStarted = state === "day_not_started";
+  const states = first ? ["open", "open", "open", "today", "open"] as const : ["done", "done", "done", done ? "today_done" : "today", "open"] as const;
+  const week: OverviewView["week"] = empty ? null : (["Mon", "Tue", "Wed", "Thu", "Fri"] as const).map((label, i) => ({ label, state: states[i] }));
+  return { child, resultPreparing: preparing, resultLate: state === "late", week,
+    workbook: empty ? null : { number: 3, day: 4, days: 10, percent: first ? null : 38, today: { label: "Today", topic: "Hundreds, tens and ones", scanned: first || notStarted ? 0 : done ? 8 : 6, pages: 8 } },
+    scanPrompt: first ? { day: 1, pages: 8 } : null, skills: sampleSkills(state), summaryMonth: child.stage === "active" || child.stage === "ended" ? "2026-10" : null };
+}
+
+/** Inert Progress numbers: a child in her first week, or one with months of marks. */
+function sampleProgress(state: string): ProgressNumbers {
+  const week = state !== "long";
+  const point = (label: string, value: number) => ({ label, value });
+  const weeks = week ? [point("Nov 2", 0), point("Nov 9", 6)] : [point("Oct 5", 0), point("Oct 12", 1), point("Oct 19", 2), point("Oct 26", 4), point("Nov 2", 5), point("Nov 9", 6)];
+  const months = week ? [point("Oct", 0), point("Nov", 6)] : [point("Jun", 0), point("Jul", 1), point("Aug", 2), point("Sep", 4), point("Oct", 5), point("Nov", 6)];
+  const summary = (period: "week" | "month" | "all", since: string, points: typeof weeks) => ({ period, since, gain: period === "week" ? 3 : 6, movedUp: period === "week" ? 4 : 9, points });
+  return { summary: { mastered: 6, needsHelp: 2, week: summary("week", "2026-11-09", weeks), month: summary("month", "2026-11-01", months), all: summary("all", "2026-11-07", months) },
+    weekDaysDone: 3, bookDaysDone: 4, workbookNumber: 3, startedOn: "Nov 7", monthName: "November",
+    topics: [{ name: "Number and operations", word: "Getting there", share: 0.4 }, { name: "Fractions and decimals", word: "Strong", share: 1 }, { name: "Patterns and algebra", word: "Needs help", share: 0 }, { name: "Shapes, measurement and data", word: "Getting there", share: 0.5 }] };
 }
 
 function workbooks(child: ChildView, state: string): WorkbooksView {
@@ -205,11 +222,7 @@ function previewContent(selection: PreviewSelection, child: ChildView | undefine
           : state === "partial" && i === 0 ? { kind: "some", marked: 2, total: 8 } : { kind: "none", marked: 0, total: 8 },
       })),
     }} />;
-    case "progress": {
-      const areas = state === "empty" ? [] : skillMapView({ firstName: child.firstName, schoolGrade: child.schoolGrade, workingLevel: 2, tests: [{ standard: "2.1", correct: 4, total: 4, unreliable: false, at: "2026-11-04T20:00:00Z" }, { standard: "2.3", correct: 0, total: 4, unreliable: false, at: "2026-11-04T20:00:00Z" }], workbookStandards: ["2.1", "2.2"], workbookNumber: 3, marks: [], day: at => at.slice(0, 10) });
-      return <ParentProgress child={child} level={state === "empty" ? null : { working: 2, earlySign: false, testedOn: "2026-11-04", unreliable: state === "unreliable" }} workbookNumber={3} areas={areas}
-        panel={state === "panel" && areas[0]?.tiles[0] ? <dialog open className="pp-panel" aria-labelledby="pp-panel-title"><SkillPanel tile={areas[0].tiles[0]} onClose={noAction} /></dialog> : undefined} />;
-    }
+    case "progress": return <ParentProgress child={child} progress={state === "empty" ? null : sampleProgress(state)} />;
     case "maya": {
       const note = sampleNote(child, state === "chat", state === "missing");
       if (["session", "chat", "missing"].includes(state)) return <ParentSessionView note={note} name={child.firstName} zone={zone} back={{ href: `/account/notes/${child.id}`, label: "← Back to Maya" }} />;

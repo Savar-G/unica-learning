@@ -227,25 +227,23 @@ describe("the Supabase reader of the Overview (#560)", () => {
   it("a replay that agrees with the stored score gives the bars, with rushed answers left out by both", async () => {
     const session = take(4);
     expect(testAreaAnswers(session).length).toBe(session.answers.length - 4);
-    const view = await readOverview(overviewReader(scored(session)).reader, CHILD, NOW);
+    const rows = { ...scored(session), workbook_delivery_receipts: [{ child_id: CHILD, workbook_id: WORKBOOK, delivered_at: "2026-09-20T18:00:00Z" }] };
+    const view = await readMonthlySummary(overviewReader(rows).reader, CHILD, "2026-10", NOW);
     expect(view?.level?.working).toBe(finish(session).workingLevel);
     expect(view?.areas.length).toBeGreaterThan(0);
   });
-  it("a test the report calls unreliable (pace.unreliable) gives no bars on the Overview and in the monthly summary (D-258)", async () => {
+  it("a test the report calls unreliable (pace.unreliable) gives no bars in the monthly summary (D-258)", async () => {
     const session = take(16);
     const placement = finish(session);
     expect(placement.pace?.unreliable).toBe(true);
     const rows = { ...scored(session), workbook_delivery_receipts: [{ child_id: CHILD, workbook_id: WORKBOOK, delivered_at: "2026-09-20T18:00:00Z" }] };
     // The replay adds up: only the report's flag takes the bars away.
     expect(await overviewReader(rows).reader.testResult(TEST)).toEqual({ level: modelOf(placement).level, answers: testAreaAnswers(session), unreliable: true });
-    const overview = await readOverview(overviewReader(rows).reader, CHILD, NOW);
-    expect(overview?.level).toMatchObject({ working: placement.workingLevel, unreliable: true });
-    expect(overview?.areas).toEqual([]);
     const summary = await readMonthlySummary(overviewReader(rows).reader, CHILD, "2026-10", NOW);
-    expect(summary?.level?.unreliable).toBe(true);
+    expect(summary?.level).toMatchObject({ working: placement.workingLevel, unreliable: true });
     expect(summary?.areas).toEqual([]);
   });
-  it("a score stored before the rushing rule differs from the replay: the Level tile stays and no bar shows", async () => {
+  it("a score stored before the rushing rule differs from the replay: the level stays and no bar shows", async () => {
     const session = take(4);
     // As a test stored before #189: the report counted the rushed answers, and the stored score has no pace.
     const counted = finish({ ...session, answers: session.answers.map((a) => ({ ...a, timeMs: 9_000 })) });
@@ -253,7 +251,8 @@ describe("the Supabase reader of the Overview (#560)", () => {
     const old = { ...counted, pace: undefined };
     const r = overviewReader(scored(session, { assessments: [{ ...scored(session).assessments[0], placement: old }] }, modelOf(old)));
     expect(await r.reader.testResult(TEST)).toEqual({ level: modelOf(old).level, answers: null, unreliable: false });
-    const view = await readOverview(r.reader, CHILD, NOW);
+    const rows = { ...scored(session, { assessments: [{ ...scored(session).assessments[0], placement: old }] }, modelOf(old)), workbook_delivery_receipts: [{ child_id: CHILD, workbook_id: WORKBOOK, delivered_at: "2026-09-20T18:00:00Z" }] };
+    const view = await readMonthlySummary(overviewReader(rows).reader, CHILD, "2026-10", NOW);
     expect(view?.level?.working).toBe(old.workingLevel);
     expect(view?.areas).toEqual([]);
     expect(log).not.toHaveBeenCalled();
@@ -278,7 +277,7 @@ describe("the Supabase reader of the Overview (#560)", () => {
     const r = overviewReader(scored(session, { assessments: [{ ...scored(session).assessments[0], placement: null }] }));
     expect(await r.reader.testResult(TEST)).toEqual({ level: modelOf(finish(session)).level, answers: null, unreliable: false });
   });
-  it("a score stored again after the report was made (a rescore) gives no bars beside the report's older level, on the Overview and the monthly summary", async () => {
+  it("a score stored again after the report was made (a rescore) gives no bars beside the report's older level, in the monthly summary", async () => {
     const session = take();
     const now = finish(session);
     // The report was made from an earlier score: Kindergarten, with other counts. The stored score and the replay agree
@@ -288,9 +287,6 @@ describe("the Supabase reader of the Overview (#560)", () => {
     const rows = { ...scored(session, {}, modelOf(before)), workbook_delivery_receipts: [{ child_id: CHILD, workbook_id: WORKBOOK, delivered_at: "2026-09-20T18:00:00Z" }] };
     const r = overviewReader(rows);
     expect(await r.reader.testResult(TEST)).toEqual({ level: modelOf(before).level, answers: null, unreliable: false });
-    const overview = await readOverview(r.reader, CHILD, NOW);
-    expect(overview?.level?.working).toBe(0);
-    expect(overview?.areas).toEqual([]);
     const summary = await readMonthlySummary(overviewReader(rows).reader, CHILD, "2026-10", NOW);
     expect(summary?.level?.working).toBe(0);
     expect(summary?.areas).toEqual([]);
@@ -346,7 +342,26 @@ describe("the Supabase reader of the Overview (#560)", () => {
     expect((await r.reader.learningCards())[0]).toMatchObject({ childId: CHILD, interests: ["space"] });
     await readOverview(r.reader, CHILD, NOW);
     expect(tables(r.session)).toEqual(["card_setups", "children", "parents", "reports", "scan_photos", "workbook_delivery_corrections", "workbook_delivery_receipts", "workbook_pages", "workbooks"]);
-    expect(tables(r.admin)).toEqual(["admin_users", "answers", "assessments", "child_plan_states", "rpc/scan_marking_command", "test_accounts"]);
+    // The Home reads no test replay and no marking while the Progress tab is off.
+    expect(tables(r.admin)).toEqual(["admin_users", "assessments", "child_plan_states", "test_accounts"]);
+  });
+  it("reads the skill state history with the secret key, filtered on the parent and the child; only three fields leave (#1003)", async () => {
+    const r = overviewReader({ skill_state_history: [
+      { id: 1, standard: "3.1", state: "mastered", changed_at: "2026-11-03T20:00:00Z", reason: "secure_on_test", evidence_source: "test", evidence_at: "2026-11-03T19:00:00Z" },
+      { id: 2, standard: "3.2", state: "not-a-state", changed_at: "2026-11-03T20:00:00Z" },
+    ] });
+    expect(await r.reader.skillHistory(CHILD)).toEqual([{ standard: "3.1", state: "mastered", changedAt: "2026-11-03T20:00:00Z" }]);
+    const asked = select(r.admin, "skill_state_history");
+    expect(asked.get("select")).toBe("standard,state,changed_at");
+    expect(asked.get("parent_id")).toBe(`eq.${PARENT}`);
+    expect(asked.get("child_id")).toBe(`eq.${CHILD}`);
+    expect(r.session.filter((u) => u.pathname.endsWith("/skill_state_history"))).toEqual([]);
+  });
+  it("reads a shipped workbook's question standards with the parent's session (#1003)", async () => {
+    const r = overviewReader({ workbook_questions: [{ page_id: "p1", standard: "3.1" }, { page_id: "p2", standard: null }] });
+    expect(await r.reader.workbookQuestions(WORKBOOK)).toEqual([{ pageId: "p1", standard: "3.1" }, { pageId: "p2", standard: null }]);
+    expect(select(r.session, "workbook_questions").get("workbook_id")).toBe(`eq.${WORKBOOK}`);
+    expect(r.admin.filter((u) => u.pathname.endsWith("/workbook_questions"))).toEqual([]);
   });
 });
 

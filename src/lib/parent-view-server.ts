@@ -8,6 +8,7 @@ import { LEARNING_COLUMNS } from "@/lib/learning-style";
 import { chatFamilyGate } from "@/lib/maya-chat";
 import { childPauseMailing } from "@/lib/plan-controls-server";
 import type { ParentViewReader } from "@/lib/parent-view";
+import type { StateChange } from "@/lib/progress-series";
 import { pinIsSet } from "@/lib/parent-pin-server";
 import { familyOpenPlanChildren } from "@/lib/plan-access";
 import { scanMarkingReader, markingCommand } from "@/lib/scan-marking-reader";
@@ -43,6 +44,8 @@ import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
 // stored report calls it unreliable (only the report's reliability note is read, not its model). A test with no report
 // yet gives no tally. A shipped workbook's
 // standards come from the session; only the code in each question package leaves that read.
+// The Home's and Progress tab's dates and line (#1003, #1004) read `skill_state_history` the same way (`skillHistory`):
+// the secret key, filtered on the parent and the child; only the standard, the state and `changed_at` leave.
 // A database error throws, and so does a missing secret key: an empty read would show a paying family "Start the test".
 
 /** The reader of this parent, from their session and the secret key. */
@@ -243,6 +246,26 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
       const { data, error } = await session.from("workbook_questions").select("standard:package->skill->>standard").eq("workbook_id", workbookId);
       if (error) throw new Error(`workbook standards read: ${error.message}`);
       return [...new Set(data.flatMap((q) => q.standard ?? []))];
+    },
+    async workbookQuestions(workbookId) {
+      const { data, error } = await session.from("workbook_questions").select("page_id, standard:package->skill->>standard").eq("workbook_id", workbookId)
+        .order("page_id").order("question_number").limit(2000);
+      if (error) throw new Error(`workbook questions read: ${error.message}`);
+      return data.map((q) => ({ pageId: q.page_id, standard: q.standard }));
+    },
+    async skillHistory(childId) {
+      if (!admin) throw new Error("skill history read: no secret key");
+      // Parents may not read this table: the secret key reads it, filtered on the parent and the child, and only the
+      // standard, the state and the time leave. A state this code does not know is left out.
+      const known = new Set<string>(["mastered", "working_on", "needs_review", "not_started"]);
+      const rows: StateChange[] = [];
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await admin.from("skill_state_history").select("standard, state, changed_at")
+          .eq("parent_id", parent).eq("child_id", childId).order("id").range(from, from + 999);
+        if (error) throw new Error(`skill history read: ${error.message}`);
+        rows.push(...data.filter((r) => known.has(r.state)).map((r) => ({ standard: r.standard, state: r.state as StateChange["state"], changedAt: r.changed_at })));
+        if (data.length < 1000) return rows;
+      }
     },
     async switches() {
       const [scanPages, scanPlanChildren, testFamily] = await Promise.all([

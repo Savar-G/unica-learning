@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { createElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { SkillPanel } from "@/components/parent-skill-map";
 import { adsBlockedPath } from "@/lib/ad-tags";
 import { deskGate } from "@/lib/desk";
 import { memoryParentViewReaders, type MemoryParentViewTables } from "@/lib/parent-view-memory";
@@ -36,6 +35,9 @@ const tables = (over: Partial<MemoryParentViewTables> = {}): MemoryParentViewTab
     { parentId: "p1", childId: "c1", assessmentId: "t1", standard: "3.1", correct: 2, total: 2, at: "2026-10-30T18:00:00Z" },
     { parentId: "p1", childId: "c1", assessmentId: "t1", standard: "3.2", correct: 0, total: 4, at: "2026-10-30T18:00:00Z" },
   ],
+  // A marked page: without one, the tab says progress starts after the first marked pages.
+  overviewProgress: [{ parentId: "p1", childId: "c1", marks: [], skillMarks: [{ standard: "3.3", right: true, review: false, at: "2026-11-02T18:00:00Z" }] }],
+  history: [{ parentId: "p1", childId: "c1", standard: "3.1", state: "mastered", changedAt: "2026-11-02T18:00:00Z" }],
   ...over,
 });
 const render = async (over: Partial<MemoryParentViewTables> = {}, id = "c1") => {
@@ -66,61 +68,51 @@ describe("who gets the page", () => {
 });
 
 describe("what a parent reads", () => {
-  it("shows the map with the four state words, the areas and the child's name", async () => {
+  it("shows Week, Month and All time, the four tiles, the line, and the math topics, naming the child", async () => {
     const html = await render();
     expect(html).toContain("Leah&#x27;s progress");
-    expect(html).toContain("BC Grade 3 math skills, the level Leah works at.");
-    for (const word of ["Mastered", "Working on", "Needs review", "Not started"]) expect(html).toContain(word);
+    for (const word of ["Week", "Month", "All time"]) expect(html).toContain(`>${word}</button>`);
+    expect(html).toContain('aria-pressed="true">Week</button>');
+    for (const tile of ["Skills mastered", "Moved up", "Needs help", "Days done"]) expect(html).toContain(`<span class="pp-k">${tile}</span>`);
+    expect(html).toContain("This week");
+    expect(html).toContain("Skills mastered over time");
+    expect(html).toContain("per week");
+    expect(html).toContain("Math topics");
+    expect(html).toContain("Leah&#x27;s level in each");
     for (const area of ["Number and operations", "Fractions and decimals", "Patterns and algebra", "Shapes, measurement and data"]) expect(html).toContain(area);
-    expect(html).toContain("Number concepts to 1000");
-    expect(html).toContain('aria-haspopup="dialog"');
+    for (const word of ["Strong", "Getting there", "Needs help"]) if (word !== "Needs help") expect(html).toContain(word === "Strong" ? "pp-topic-row" : word);
   });
-  it("names no U-level, percent, count of wrong answers, she or her, and no marks section", async () => {
-    const text = (await render()).replace(/<[^>]+>/g, " ");
+  it("draws one point per week on Week, labelled by Monday, never one per day", async () => {
+    // The page reads the clock: Wednesday 4 November is in the week of Monday 2 November.
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.parse("2026-11-04T18:00:00Z") });
+    try {
+      const html = await render();
+      expect(html).toContain('aria-label="Skills mastered over time, per week: Oct 26 0, Nov 2 1"');
+      // Two points in each of the two drawings (a phone's and a laptop's).
+      expect(html.match(/<circle /g)!.length).toBe(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it("has no starting-test comparison, no percent, no U-level, no she or her, and no marks or skill map", async () => {
+    const html = await render();
+    const text = html.replace(/<[^>]+>/g, " ");
     expect(text).not.toMatch(/\b(she|her|hers)\b/i);
     expect(text).not.toMatch(/\d\s*%|\bU\d+\b/);
-    for (const absent of ["What we", "Marks", "Change this mark", "Maya", "Pages"]) expect(text).not.toContain(absent);
+    for (const absent of ["starting test", "Starting test", "this month vs", "Skill map", "Marks", "Change this mark", "pp-tile-name"]) expect(text + html).not.toContain(absent);
   });
-  it("marks a tile from another grade with its grade", async () => {
-    const html = await render({
-      workbooks: [{ parentId: "p1", childId: "c1", number: 1, status: "shipped" }],
-      questions: [{ parentId: "p1", workbookId: "wb-c1-1", standard: "2.1" }],
-    });
-    expect(html).toContain("Working on · Grade 2");
+  it("with no marked page it says progress starts after the first marked pages, with no chart", async () => {
+    const html = await render({ overviewProgress: [] });
+    expect(html).toContain("Progress starts after the first marked pages");
+    expect(html).toContain("When Leah finishes Day 1, scan the pages.");
+    expect(html).not.toContain("pp-chart");
+    expect(html).not.toContain("Skills mastered over time");
+    expect(html).not.toMatch(/\b(she|her|hers)\b/i);
   });
-  it("says one line when there is no map, with no empty chart", async () => {
-    const html = await render({ tests: [], reports: [], results: [], skillTests: [] });
-    expect(html).toContain("Leah&#x27;s skill map appears once a test report is ready.");
-    expect(html).not.toContain("pp-areas");
-  });
-  it("keeps the map with the report's note on an unreliable test, and says an Early sign", async () => {
-    const html = await render({ results: [{ parentId: "p1", childId: "c1", assessmentId: "t1", level: { working: 3, top: 3, certainty: "early-sign", confidence: "low" } as never, answers: [], unreliable: true }] });
-    expect(html).toContain("The last test may not show Leah&#x27;s level reliably");
-    expect(html).toContain("This level is an Early sign");
-  });
-  it("shows no Needs review tile from an unreliable test, under the report's note", async () => {
-    const html = await render({
-      results: [{ parentId: "p1", childId: "c1", assessmentId: "t1", level: { working: 3, top: 3, certainty: "early-sign", confidence: "low" } as never, answers: [], unreliable: true }],
-      skillTests: [{ parentId: "p1", childId: "c1", assessmentId: "t1", standard: "3.1", correct: 0, total: 4, at: "2026-10-30T18:00:00Z" }],
-    });
-    expect(html).toContain("The last test may not show Leah&#x27;s level reliably");
-    expect(html).not.toContain("pp-tile is-needs_review");
-    expect(html).not.toContain("pp-tile is-mastered");
-  });
-});
-
-describe("the panel on a selected skill", () => {
-  const tile = { code: "3.1", name: "Number concepts to 1000", grade: 3 as const, state: "mastered" as const, why: "Leah got every counted answer on this right on the test on October 30.", skills: ["Read numbers to 1000"] };
-  const panel = (workbookLine: string | null) => renderToStaticMarkup(createElement(SkillPanel, { tile: { ...tile, workbookLine }, onClose: () => {} }));
-  it("says the current workbook has the skill as a plain fact, and nothing about what comes next", () => {
-    const html = panel("This is in Workbook 3.");
-    expect(html).toContain("This is in Workbook 3.");
-    expect(html).toContain(tile.why);
-    expect(html).toContain("Read numbers to 1000");
-    expect(html).not.toMatch(/comes next/i);
-  });
-  it("has no workbook line for a skill the workbook does not have", () => {
-    expect(panel(null)).not.toContain("Workbook");
+  it("offers Go to Scan only where the Scan tab is open", async () => {
+    const delivered = { deliveries: [{ parentId: "p1", childId: "c1" }], overviewProgress: [] };
+    expect(await render({ ...delivered, switches: { progress: true, maya: false, scanPages: true } })).toContain('href="/account/scan"');
+    expect(await render(delivered)).not.toContain('href="/account/scan"');
   });
 });
 

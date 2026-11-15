@@ -86,6 +86,8 @@ const ICONS = {
   corners: <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><path d="M12 15V9h6M30 9h6v6M12 33v6h6M30 39h6v-6" /><rect x="17" y="15" width="14" height="18" fill="#fff" strokeWidth="1.2" /></svg>,
   camera: <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.8l1.4-2h4.6l1.4 2h1.8A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5z" /><circle cx="12" cy="12.5" r="3.5" /></svg>,
   check: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 13l4.5 4.5L19 7" /></svg>,
+  // The fifth tip's tick (#1005 round): brand green on a green wash, drawn in the icon so it needs no colour rule.
+  anyOrder: <svg viewBox="0 0 48 48" fill="none" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="24" cy="24" r="14" fill="#e7f6ee" stroke="#16A06A" /><path d="M17.5 24.5l4.5 4.5 9-10" stroke="#16A06A" /></svg>,
   // A page held here, not sent yet (the Undo's wait, or kept back): a clock, never the sent arrow.
   clock: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></svg>,
 };
@@ -1072,6 +1074,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     <li>{ICONS.light}<span><b>Good light, no flash</b>Keep your hand&apos;s shadow off the page. If you see a shiny patch, tilt the book or step to the side.</span></li>
     <li>{ICONS.corners}<span><b>Fill the photo with the page</b>Hold the phone close, with the corners and the small code in view.</span></li>
     <li>{ICONS.camera}<span><b>Snap all your pages, then tap Done</b>Already took photos? Pick them from the photo button in the camera.</span></li>
+    <li>{ICONS.anyOrder}<span><b>Any order is fine</b>We&apos;ll tell you if a page needs a retake.</span></li>
     {/* The code on each page files it with its own child (#915), so siblings' pages go in one scan with no switch. The list
         holds only children whose plan opens scanning, so every child named here can take their pages. */}
     {siblings && <li>{ICONS.check}<span><b>Scanning for {siblings}?</b>Snap any page. Each one goes to the right child.</span></li>}
@@ -1079,7 +1082,6 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   const tipsSheet = sheet?.kind === "add" && <Sheet label="How to scan" onClose={() => setSheet(null)}>
     <h2>How to scan</h2>
     {tipList}
-    <p>{checks ? "Each photo is checked as it arrives. After you tap Done, any page that needs another photo shows at the top, and pages that pass are sent for marking on their own, with a few seconds to undo." : `We keep the photos to mark ${name}'s work later.`} Pages can be scanned in any order.</p>
     <p className="small">Photos are private and kept for 90 days. <button type="button" className="scan-link" onClick={() => setSheet({ kind: "notice", then: null })}>More about photos</button></p>
     <button type="button" className="btn" data-first-focus onClick={() => setSheet(null)}>Close</button>
   </Sheet>;
@@ -1176,7 +1178,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
   }
 
   const noBook = listing !== null && !listing.pages.length && !photos.length;
-  // Step 1: the first visit only, before any photo: the four tips, then Scan pages.
+  // Step 1: the first visit only, before any photo: the tips, then Scan pages.
   if (phone && listing && !tipsSeen && !tipsDone && !photos.length && !uploads.length && !noBook) {
     return <div className="scan-pages is-start">
       {inputs}

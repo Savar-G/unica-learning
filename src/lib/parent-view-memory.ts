@@ -6,6 +6,7 @@ import type { AreaAnswer, AttemptStatus, Grade, ReportModel } from "@/lib/assess
 import type { TabSwitches } from "@/lib/child-stage";
 import type { LearningRow } from "@/lib/learning-style";
 import type { OverviewProgress, ParentViewReader, PlanRecord } from "@/lib/parent-view";
+import type { StateChange } from "@/lib/progress-series";
 import type { CurriculumId } from "@/lib/signup";
 
 interface Owned {
@@ -111,9 +112,13 @@ export interface MemoryWorkbookQuestion {
   parentId: string;
   workbookId: string;
   standard: string | null;
+  /** The page the question is on; "" when left out. */
+  pageId?: string;
 }
+/** One recorded change of a standard's state (public.skill_state_history). */
+export type MemorySkillChange = Owned & StateChange;
 
-const TABLES = ["children", "tests", "reports", "cards", "deliveries", "workbooks", "plans", "switches", "corrections", "dispatches", "family", "results", "scans", "pages", "learning", "pin", "maya", "skillTests", "questions", "overviewProgress"] as const;
+const TABLES = ["children", "tests", "reports", "cards", "deliveries", "workbooks", "plans", "switches", "corrections", "dispatches", "family", "results", "scans", "pages", "learning", "pin", "maya", "skillTests", "questions", "overviewProgress", "history"] as const;
 type Table = (typeof TABLES)[number];
 
 export interface MemoryParentViewTables {
@@ -140,6 +145,8 @@ export interface MemoryParentViewTables {
   skillTests?: MemorySkillTest[];
   questions?: MemoryWorkbookQuestion[];
   overviewProgress?: (Owned & OverviewProgress)[];
+  /** The recorded state changes of each child's standards; none when left out. */
+  history?: MemorySkillChange[];
   fail?: Table[];
 }
 
@@ -250,6 +257,15 @@ export function memoryParentViewReaders(tables: MemoryParentViewTables) {
         const shipped = own(tables.workbooks).some((w) => (w.id ?? `wb-${w.childId}-${w.number}`) === workbookId && w.status === "shipped");
         if (!shipped) return [];
         return [...new Set(own(tables.questions).filter((q) => q.workbookId === workbookId).flatMap((q) => q.standard ?? []))];
+      },
+      async workbookQuestions(workbookId) {
+        read("questions");
+        const shipped = own(tables.workbooks).some((w) => (w.id ?? `wb-${w.childId}-${w.number}`) === workbookId && w.status === "shipped");
+        return shipped ? own(tables.questions).filter((q) => q.workbookId === workbookId).map((q) => ({ pageId: q.pageId ?? "", standard: q.standard })) : [];
+      },
+      async skillHistory(childId) {
+        read("history");
+        return own(tables.history).filter((r) => r.childId === childId).map((r) => ({ standard: r.standard, state: r.state, changedAt: r.changedAt }));
       },
       async pinSet() {
         // As the server: a PIN that cannot be read is null, not an error.
