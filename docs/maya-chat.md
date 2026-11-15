@@ -28,7 +28,7 @@ The screenshots and probe results are in `.design/experiments/r358/`. Savar appr
 
 What the desk's board did with each of Maya's batches goes to the call with the child's next message (B1, `fates` on the chat request): shown, or skipped when the batch would cover the child's ink. Maya then counts only what the child saw as drawn (`docs/maya-tutor.md`, "Shown means shown"). The child sees no change.
 
-Since B2 each of Maya's drawings is tied to one sentence of her message and is its own batch, in the order of her sentences. The desk plays them in that order with the same animation timing, so the board builds as the text reads (`docs/maya-tutor.md`, "Draw while speaking").
+Since B2 code reads Maya's drawings from her own sentences: each sentence that draws is its own batch, in the order of her sentences. A batch that builds on an earlier one of the same message is skipped when the desk skipped that one. The desk plays them in that order with the same animation timing, so the board builds as the text reads (`docs/maya-tutor.md`, "Draw while speaking").
 
 The shared controller keeps the easier example and its steps together above the target question, with space between them. Calls, chat and replay use the same board positions. The chat note, "Follow each step. Then write on your paper.", sits below the board at every width. The chat route reads the child profile grade and passes it into the saved session as `grade`. PR #443 is merged into this branch. Its 25-word limit applies to grades 1-3, including resumed chats.
 

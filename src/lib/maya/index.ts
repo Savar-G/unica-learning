@@ -96,7 +96,7 @@ export {
 } from "./proposal";
 export { allLineTexts, heldSentences, openingLine, spokenQuestion, LINE_IDS, LINES_VERSION, TEMPLATES, type LineChoice, type LineId, type LineOffer, type Slots, type TemplateKey } from "./lines";
 export { talkMath } from "./claims";
-export { DRAW_DROP_REASONS, drawingMatches, sentenceCueWord, tieDrawings, tiesSentences, type DrawDrop, type DrawDropReason, type DrawRequest, type TiedDrawing } from "./board-ties";
+export { deriveDrawings, legacyDraw, problemFacts, READ_REASONS, sentenceCueWord, type BoardRead, type DrawRequest, type ReadReason, type TiedDrawing } from "./board-ties";
 export { speechKey, speechWords } from "./speech";
 export { cheerful, FEELING_SMALLTALK, FREE_TALK_LIMITS, hardFeeling, NEUTRAL_SMALLTALK, replyFor, type ReplyPick, PHRASE_ACTS, PHRASE_GROUPS, PHRASES, feelingClaim, freeTalkProblem, plainLanguageProblem, PLAIN_LANGUAGE_BANNED, workProblem, type PhraseGroup } from "./phrases";
 export {

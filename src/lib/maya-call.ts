@@ -595,7 +595,8 @@ const iso = (ms: number) => new Date(ms).toISOString();
 export const FAKE_MODEL_ID = "fake";
 
 /** The board batches of a trace or a live session, as the board core took them. */
-const batchesOf = (board: readonly { transactionId: string; commands: readonly unknown[] }[]): Batch[] => board.map((b) => ({ transactionId: b.transactionId, commands: b.commands }));
+// B2: `after` goes with a batch, so the desk can skip a batch whose earlier batch it skipped.
+const batchesOf = (board: readonly { transactionId: string; commands: readonly unknown[]; after?: readonly string[] }[]): Batch[] => board.map((b) => ({ transactionId: b.transactionId, commands: b.commands, ...(b.after?.length ? { after: [...b.after] } : {}) }));
 
 /** The transcript from a trace: the child's turns, Maya's words, and notes for writing, waits and failures. */
 function transcriptOf(trace: MayaTrace): TranscriptLine[] {

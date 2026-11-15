@@ -70,7 +70,7 @@ import { ACTS, PART_LIMITS, PROPOSAL_VERSION, TUTOR_GATES, isModelOutput, readMo
 import { checkSay, checkSentence, columnSentenceTruth, equationHolds, heardColumnOf, namesValue, revealsOpenStep, endsWithAsk, INSTRUCTION, MATH_WORD, PRAISE_WORDS, trimSay, equationKeysOf, equationsOf, sentencesOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, unreadNumberRuns, type SayReason, type SayRules, type SayValue } from "./say-check";
 import type { TalkReviewResult } from "./talk-review";
 import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
-import { tieDrawings, tiesSentences, type DrawDrop } from "./board-ties";
+import { deriveDrawings, legacyDraw, type BoardRead } from "./board-ties";
 import { agreementClause, bindingReview, checkTutorSay, childAnswerCandidate, childFacts, childSaysFalse, columnSums, isTutorQuestion, tutorTexts, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, TUTOR_REVIEW_IGNORED } from "./tutor";
 import { placeDigitsSaid } from "./tutor-math";
 import { MATH_REVIEW_PROMPT_VERSION, mathReviewsOf, type MathReview, type MathReviewInput } from "./math-review";
@@ -245,7 +245,7 @@ export type Effect =
    * `math` (two-layer true math): the tutor sentences code did not read whole, each with its math-truth review: "not_run"
    * on the step before the reviews (the adapter reviews those), "true" when it passed.
    */
-  | { kind: "say"; act: Act; text: string; talkReplaced?: number; talk?: TalkCheck[]; math?: { sentence: string; verdict: "not_run" | "true" }[]; planned?: string; dropped?: { text: string; reason: string }[]; drawDrops?: DrawDrop[] }
+  | { kind: "say"; act: Act; text: string; talkReplaced?: number; talk?: TalkCheck[]; math?: { sentence: string; verdict: "not_run" | "true" }[]; planned?: string; dropped?: { text: string; reason: string }[]; boardReads?: BoardRead[] }
   /** `sentence` (B2): the 0-based sentence of the turn's words the batch is tied to; absent: the end of the turn. */
   | { kind: "board"; batch: Batch; sentence?: number }
   /** Stop speaking and drop board batches not yet shown. */
@@ -963,8 +963,12 @@ function proposalProblem(p: unknown): string | null {
   if (p.understanding !== undefined && p.understanding !== "evidence_observed" && p.understanding !== "uncertain") return "understanding is evidence_observed or uncertain";
   if (p.draw !== undefined && (!Array.isArray(p.draw) || p.draw.length === 0 || p.draw.length > 4 ||
     !p.draw.every((d) => isObject(d) && typeof d.offer === "string" && (d.place === undefined || typeof d.place === "string") && (d.sentence === undefined || typeof d.sentence === "number") && Object.keys(d).every((k) => k === "offer" || k === "place" || k === "sentence")))) {
-    // B2: `sentence` is read by code (tieDrawings): a number out of range drops the drawing, never the message.
+    // B2: `sentence` came from the first B2 shape; code now reads the drawings from the sentences, so it is a hint only.
     return "draw is a list of 1 to 4 board offers: { offer, place?, sentence? }";
+  }
+  // B2: the sentences (1 for the first) that draw nothing, or "all" (code's retry after the board refused a batch).
+  if (p.noDraw !== undefined && p.noDraw !== "all" && !(Array.isArray(p.noDraw) && p.noDraw.length <= 20 && p.noDraw.every((n) => typeof n === "number"))) {
+    return "noDraw is a list of sentence numbers";
   }
   if (p.board !== undefined && (!Array.isArray(p.board) || p.board.length === 0 || p.board.length > MAX_COMMANDS || !p.board.every((c) => isObject(c) && typeof c.op === "string"))) {
     return `the board is a list of 1 to ${MAX_COMMANDS} commands, each with an op`;
@@ -5869,11 +5873,12 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
     math.push({ sentence, verdict: "true" });
   }
   const tutor: NonNullable<Session["tutor"]> = { help: progress ? 0 : s.solved === null ? (s.tutor?.help ?? 0) + 1 : 0, drawn: [...(s.tutor?.drawn ?? [])], ...(s.tutor?.sent?.length ? { sent: structuredClone(s.tutor.sent) } : {}) };
-  // B2: each drawing is tied to one sentence and is its own batch, in sentence order (board-ties.ts). Code's own line
-  // draws nothing: the model's sentences it was tied to were not said. A request with no sentence keeps the old rule.
-  const ties = fallback || s.noBoard ? null : tiesSentences(out.draw ?? []) ? tieDrawings(pkg, out.draw ?? [], sentencesOf(text), tutor.drawn, (k, i) => `tutor-note-${s.batches + 1 + k}-${i}`) : null;
-  const legacy = s.noBoard || ties ? { commands: [], keys: [] } : tutorDrawings(pkg, out.draw ?? [], tutor.drawn, (i) => `tutor-note-${s.batches + 1}-${i}`);
-  const batches: { commands: Record<string, unknown>[]; keys: string[]; sentence?: number }[] = ties ? ties.drawings : legacy.commands.length ? [legacy] : [];
+  // B2 (derive the drawing from the sentence): code reads each accepted sentence and draws what it says in full, one
+  // batch per sentence, in sentence order (board-ties.ts). Code's own line draws nothing. A proposal from before B2 (a
+  // `draw` list with no sentences) keeps the old rule.
+  const ties = fallback || s.noBoard || legacyDraw(out.draw) ? null : deriveDrawings(pkg, sentencesOf(text), tutor.drawn, (tutor.sent ?? []).flatMap((x) => x.keys), out.noDraw ?? [], (k, i) => `tutor-note-${s.batches + 1 + k}-${i}`);
+  const legacy = s.noBoard || !legacyDraw(out.draw) ? { commands: [], keys: [] } : tutorDrawings(pkg, out.draw ?? [], tutor.drawn, (i) => `tutor-note-${s.batches + 1}-${i}`);
+  const batches: { commands: Record<string, unknown>[]; keys: string[]; sentence?: number; after?: number[] }[] = ties ? ties.drawings : legacy.commands.length ? [legacy] : [];
   const drawing = { commands: batches.flatMap((b) => b.commands), keys: batches.flatMap((b) => b.keys) };
   tutor.drawn.push(...drawing.keys);
   s.tutor = tutor;
@@ -5908,14 +5913,17 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
     else s.stuckStep ??= open[0]?.id ?? "result";
   }
   const said = fillName(text, base);
-  effects.push({ kind: "say", act, text: said, ...(talk.length ? { talk } : {}), ...(math.length ? { math } : {}), ...(ties?.drops.length ? { drawDrops: ties.drops } : {}) });
+  effects.push({ kind: "say", act, text: said, ...(talk.length ? { talk } : {}), ...(math.length ? { math } : {}), ...(ties?.reads.length ? { boardReads: ties.reads } : {}) });
   s.turns.push({ at: s.now!, speaker: "maya", text: said, state: act === "close" ? "CLOSE" : s.state, act });
+  const first = s.batches + 1;
   for (const b of batches) {
     s.batches += 1;
     const transactionId = `${s.callId}-b${s.batches}`;
     // B1: sent, not shown, until the child's screen says what it did with the batch (boardFate).
     if (b.keys.length) s.tutor.sent = [...(s.tutor.sent ?? []), { batch: transactionId, keys: [...b.keys] }];
-    effects.push({ kind: "board", batch: { transactionId, commands: b.commands as unknown as Command[] }, ...(b.sentence === undefined ? {} : { sentence: b.sentence }) });
+    // B2: the earlier batches of this message it builds on (the desk skips it when it skipped one of them).
+    const after = (b.after ?? []).map((k) => `${s.callId}-b${first + k}`);
+    effects.push({ kind: "board", batch: { transactionId, commands: b.commands as unknown as Command[], ...(after.length ? { after } : {}) }, ...(b.sentence === undefined ? {} : { sentence: b.sentence }) });
   }
   s.turn = null;
   delete s.mathClaim;

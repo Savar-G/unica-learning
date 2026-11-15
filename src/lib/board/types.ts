@@ -174,6 +174,11 @@ export interface Batch {
   transactionId: string;
   /** Untrusted model output: every command is checked before the scene changes. */
   commands: readonly unknown[];
+  /**
+   * B2: the batches this one builds on (a digit after the trade of the same message). The core ignores it; the desk
+   * skips this batch when it skipped or cancelled one of them, and the server's board drops it too.
+   */
+  after?: readonly string[];
 }
 
 /** Why the core refused a batch. `valid` lists the targets the model may use instead, when that helps. */

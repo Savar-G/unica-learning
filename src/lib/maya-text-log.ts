@@ -82,11 +82,13 @@ export function saveTextCheckpoint(s: TextFold): TextCheckpoint {
  * the board is rebuilt, never undone. A batch that no longer fits without a skipped one is left out (fail closed). A
  * batch that does not fit while nothing was skipped means the saved board is broken: it throws.
  */
-function shownScene(board: readonly { transactionId: string; commands: readonly unknown[]; fate?: BoardFate }[], extra: readonly Batch[] = []): Scene {
+function shownScene(board: readonly { transactionId: string; commands: readonly unknown[]; fate?: BoardFate; after?: readonly string[] }[], extra: readonly Batch[] = []): Scene {
   let scene = createScene();
   let hidden = false;
+  const off = new Set<string>();
   for (const b of [...board, ...extra.map((x) => ({ ...x, fate: undefined }))]) {
-    if (b.fate === "skipped" || b.fate === "cancelled") { hidden = true; continue; }
+    // B2: a batch that builds on one the screen did not show is off the board too.
+    if (b.fate === "skipped" || b.fate === "cancelled" || b.after?.some((id) => off.has(id))) { hidden = true; off.add(b.transactionId); continue; }
     const applied = applyBatch(scene, { transactionId: b.transactionId, commands: b.commands as Batch["commands"] });
     if (applied.ok) scene = applied.scene;
     else if (!hidden) throw new Error(`maya text: the saved board batch ${b.transactionId} does not apply again`);
@@ -300,8 +302,9 @@ function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt
   if (!r.refusal) for (const e of r.effects) if (e.kind === "board") {
     const applied = applyBatch(scene, e.batch);
     // D-345: a tutor message the board cannot draw keeps its words: the same message is stepped again with no drawing.
-    if (!applied.ok && s.session.tutor && value && typeof value === "object" && Array.isArray((value as { draw?: unknown }).draw) && (value as { draw: unknown[] }).draw.length > 0) {
-      controlEvent = { ...event, proposal: { ...(value as Record<string, unknown>), draw: [] } };
+    // B2: the drawings are read from the sentences, so the retry also says "no draw" for every sentence.
+    if (!applied.ok && s.session.tutor && value && typeof value === "object") {
+      controlEvent = { ...event, proposal: { ...(value as Record<string, unknown>), draw: [], noDraw: "all" } };
       r = step(s.session, controlEvent);
       scene = s.scene;
       if (r.refusal) break;
@@ -325,9 +328,9 @@ function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt
   if (talk.length) attempt.talk = talk;
   const dropped = r.effects.flatMap((e) => e.kind === "say" ? e.dropped ?? [] : []);
   if (dropped.length) attempt.dropped = dropped;
-  // B2: the drawings code did not draw (board-ties.ts), on the attempt whose words were said.
-  const drawDrops = r.refusal ? [] : r.effects.flatMap((e) => e.kind === "say" ? e.drawDrops ?? [] : []);
-  if (drawDrops.length) attempt.drawDrops = drawDrops;
+  // B2: each clause code read as a board action, drawn or why not (board-ties.ts), on the attempt whose words were said.
+  const boardReads = r.refusal ? [] : r.effects.flatMap((e) => e.kind === "say" ? e.boardReads ?? [] : []);
+  if (boardReads.length) attempt.boardReads = boardReads;
   if (attempt.source !== "fallback" || !r.refusal) s.attempts.push(attempt);
   if (r.refusal && !s.session.outcome) { takeEffects(s, r.effects, at); return; }
   s.scene = scene;
@@ -358,6 +361,16 @@ function applyFates(s: TextFold, fates: readonly { at: number; batchId: string; 
     s.session = r.session;
     if (f.fate === "shown") continue;
     s.scene = shownScene(s.board);
+  }
+  // B2: a batch that builds on one the screen skipped or cancelled is not on the screen either (the desk skips it); with
+  // no word of its own it counts as skipped, so the session does not count it as drawn.
+  for (const b of s.board) {
+    if (b.fate || !b.after?.some((id) => ["skipped", "cancelled"].includes(s.board.find((x) => x.transactionId === id)?.fate ?? ""))) continue;
+    b.fate = "skipped";
+    if (s.session.outcome || s.session.startedAt === null) continue;
+    const r = controllerStep(s, { type: "board_fate", at: s.session.now ?? 0, batch: b.transactionId, fate: "skipped" });
+    if (r.refusal) { s.controls.pop(); continue; }
+    s.session = r.session;
   }
 }
 export function initialTextState(initial: TextLogInitial): TextFold {
@@ -471,7 +484,7 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
           const o = s.obligations.find((o) => o.id === id)!;
           if (o.status === "pending") { o.status = "served"; o.servedBy = index; }
         }
-        for (const b of p.batches) s.board.push({ at: turn.at, turn: index, transactionId: b.transactionId, commands: b.commands, ...(p.ties?.[b.transactionId] === undefined ? {} : { sentence: p.ties[b.transactionId] }) });
+        for (const b of p.batches) s.board.push({ at: turn.at, turn: index, transactionId: b.transactionId, commands: b.commands, ...(p.ties?.[b.transactionId] === undefined ? {} : { sentence: p.ties[b.transactionId] }), ...(b.after?.length ? { after: [...b.after] } : {}) });
       }
       if (terminalTurn) s.turns.push(terminalTurn);
       if (s.output.say.length) {

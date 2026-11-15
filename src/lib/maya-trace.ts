@@ -8,7 +8,7 @@ import { SCOPE_REASONS } from "@/lib/maya/scope";
 // Plain JSON. Pure TypeScript except `packageHash`, which uses node:crypto (server and scripts only).
 import { createHash } from "node:crypto";
 import { ACK_PHRASES } from "@/lib/maya-voice-ack";
-import { ACTS, DRAW_DROP_REASONS, sentencesOf, SAFETY_GUIDANCE, ASSISTANCE, heldSentences, INTERRUPTS, MAIN_STATES, NEVER_SAY_IDS, PATIENT_LINES, PHRASES, type Act, type Outcome, type RefusalCode, type SessionState, type DrawDrop, type TalkCheck } from "@/lib/maya";
+import { ACTS, READ_REASONS, sentencesOf, SAFETY_GUIDANCE, ASSISTANCE, heldSentences, INTERRUPTS, MAIN_STATES, NEVER_SAY_IDS, PATIENT_LINES, PHRASES, type Act, type Outcome, type RefusalCode, type SessionState, type BoardRead, type TalkCheck } from "@/lib/maya";
 
 /** Why a proposal was refused: the session's refusal, or "board_refused" when the board core refused a batch the session built. */
 export interface TraceRefusal {
@@ -39,9 +39,9 @@ export interface TraceRefusal {
  * and the count `fillers`. Version 14 (B1, "shown means shown") adds, on a board batch, `fate`: what the child's screen
  * said it did with it (shown, skipped or cancelled; absent when it said nothing), and `counts.boardFates`, the batches by
  * fate. Version 15 (B2, "draw while speaking") adds, on a board batch, `sentence`: the sentence of its turn's words the
- * batch is tied to (0-based; absent: the end of the turn), and, on an accepted attempt, `drawDrops`: each drawing the
- * model asked for that code did not draw, with the reason (a mismatch with its sentence, a second drawing for one
- * sentence ...), and the count `drawDrops`. `checkTrace` reads all fifteen versions.
+ * batch is tied to (0-based; absent: the end of the turn) and `after` (the batches of the same turn it builds on), and,
+ * on an accepted attempt, `boardReads`: each clause code read as a board action, drawn or why not (the drawings are read
+ * from Maya's sentences), with the counts `clausesDrawn` and `clausesNotDrawn`. `checkTrace` reads all fifteen versions.
  */
 export const TRACE_VERSION = 15;
 /** The trace versions `checkTrace` reads. */
@@ -183,10 +183,10 @@ export interface TraceAttempt {
    */
   filler?: string;
   /**
-   * Version 15 (B2), on an accepted tutor attempt: each drawing the model asked for that code did not draw (its offer,
-   * the 0-based sentence it named or null, and why: board-ties.ts). The words were said. Absent when none.
+   * Version 15 (B2), on an accepted tutor attempt: each clause of Maya's sentences that code read as a board action
+   * (the 0-based sentence, the clause), and whether it drew, else why not (board-ties.ts). Absent when none.
    */
-  drawDrops?: DrawDrop[];
+  boardReads?: BoardRead[];
 }
 
 /** One piece of the model's own words in a trace (D-197): the session's TalkCheck. */
@@ -258,6 +258,8 @@ export interface TraceBoardBatch {
    * a proposal from before B2).
    */
   sentence?: number;
+  /** Version 15 (B2): the batches of the same turn this one builds on; it is off the board when one of them is. */
+  after?: string[];
 }
 
 /** Version 14 (B1): the board batches by what the child's screen did with them; `unreported`: no word from the screen. */
@@ -338,8 +340,9 @@ export interface TraceCounts {
   fillers?: number;
   /** Version 14 (B1): the board batches by what the child's screen did with them (boardFateCounts). */
   boardFates?: TraceBoardFates;
-  /** Version 15 (B2): drawings the model asked for that code did not draw (`drawDrops` on the attempts). */
-  drawDrops?: number;
+  /** Version 15 (B2): clauses of Maya's sentences that drew, and clauses read as a board action that did not. */
+  clausesDrawn?: number;
+  clausesNotDrawn?: number;
 }
 
 /** The counts of a trace's turns. */
@@ -363,7 +366,8 @@ export function traceCounts(turns: readonly TraceTurn[]): TraceCounts {
     mathRefusals: attempts.filter((a) => a.refusal?.say === "math_review").length,
     mathRetries: attempts.reduce((n, a) => n + (a.math?.filter((m) => m.retried).length ?? 0), 0),
     fillers: attempts.filter((a) => a.filler !== undefined).length,
-    drawDrops: attempts.reduce((n, a) => n + (a.drawDrops?.length ?? 0), 0),
+    clausesDrawn: attempts.reduce((n, a) => n + (a.boardReads?.filter((x) => x.drew).length ?? 0), 0),
+    clausesNotDrawn: attempts.reduce((n, a) => n + (a.boardReads?.filter((x) => !x.drew).length ?? 0), 0),
   };
 }
 
@@ -464,11 +468,11 @@ function checkAttempt(a: unknown, path: string) {
   need(x.gateDisagrees === undefined || (x.gateDisagrees === true && (x.source === "model" || x.source === "repair") && x.proposal !== null), `${path}.gateDisagrees`, "true on a model or repair proposal, or absent");
   need(x.fenced === undefined || (x.fenced === true && (x.source === "model" || x.source === "repair") && x.proposal !== null && x.error === undefined), `${path}.fenced`, "true on a model or repair proposal, or absent");
   need(x.filler === undefined || (x.source === "repair" && ACK_PHRASES.some((p) => p.id === x.filler)), `${path}.filler`, "a thinking phrase id on a repair attempt, or absent");
-  if (x.drawDrops !== undefined) {
-    need(Array.isArray(x.drawDrops) && x.drawDrops.length > 0 && x.refusal === null && x.error === undefined, `${path}.drawDrops`, "a list of dropped drawings, on an accepted attempt");
-    (x.drawDrops as unknown[]).forEach((d, i) => {
+  if (x.boardReads !== undefined) {
+    need(Array.isArray(x.boardReads) && x.boardReads.length > 0 && x.refusal === null && x.error === undefined, `${path}.boardReads`, "a list of board reads, on an accepted attempt");
+    (x.boardReads as unknown[]).forEach((d, i) => {
       const y = d as Record<string, unknown>;
-      need(isObject(d) && Object.keys(y).every((k) => ["offer", "sentence", "reason"].includes(k)) && isText(y.offer) && (y.sentence === null || (Number.isInteger(y.sentence) && (y.sentence as number) >= 0)) && oneOf(DRAW_DROP_REASONS, y.reason), `${path}.drawDrops[${i}]`, "an offer, a sentence (0 or more, or null) and a reason");
+      need(isObject(d) && Object.keys(y).every((k) => ["sentence", "clause", "drew", "reason"].includes(k)) && Number.isInteger(y.sentence) && (y.sentence as number) >= 0 && isText(y.clause) && typeof y.drew === "boolean" && (y.drew ? y.reason === undefined : oneOf(READ_REASONS, y.reason)), `${path}.boardReads[${i}]`, "a sentence, a clause, drew, and a reason when it did not draw");
     });
   }
   if (x.math !== undefined) {
@@ -684,7 +688,7 @@ function check(raw: unknown): MayaTrace {
   });
   turns.forEach((t, i) => {
     if (t.kind !== "maya" || (r.version as number) >= 15) return;
-    (t.attempts as Record<string, unknown>[]).forEach((a, k) => need(a.drawDrops === undefined, `turns[${i}].attempts[${k}].drawDrops`, "absent before version 15"));
+    (t.attempts as Record<string, unknown>[]).forEach((a, k) => need(a.boardReads === undefined, `turns[${i}].attempts[${k}].boardReads`, "absent before version 15"));
   });
 
   need(Array.isArray(r.board), "board", "a list");
