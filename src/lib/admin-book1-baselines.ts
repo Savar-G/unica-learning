@@ -40,3 +40,24 @@ export const book1ItemText = (i: Pick<Book1BaselineItem, "kind" | "reason" | "tr
 
 /** The script can save an item only while its book has no activity, and never for a version that is not the approved one. */
 export const book1ItemSavable = (i: Pick<Book1BaselineItem, "kind" | "reason">) => !(i.kind === "pending" && (i.reason === "activity-before-boundary" || i.reason === "revision-changed"));
+
+/**
+ * The rule of admin_book1_baseline_items (migration admin_book1_baseline_items), for readers that use the secret key and so
+ * cannot call that admin-only function (the team digest): a pending record still needs the team only when its revision is
+ * the draft's newest approval (the workbook_audit "workbook-approved" row with the highest id and a numeric revision) and
+ * no baseline holds that draft and revision. Pending rows are immutable, so an old revision stays in them forever.
+ */
+export function openBook1Records<T extends { draftId: string; revision: number }>(
+  pending: T[],
+  approvals: { id: number; draftId: string | null; revision: unknown }[],
+  baselines: { draftId: string; revision: number }[],
+): T[] {
+  const latest = new Map<string, { id: number; revision: number }>();
+  for (const a of approvals) {
+    if (a.draftId === null || typeof a.revision !== "number") continue;
+    const seen = latest.get(a.draftId);
+    if (!seen || a.id > seen.id) latest.set(a.draftId, { id: a.id, revision: a.revision });
+  }
+  const saved = new Set(baselines.map((b) => `${b.draftId}:${b.revision}`));
+  return pending.filter((p) => latest.get(p.draftId)?.revision === p.revision && !saved.has(`${p.draftId}:${p.revision}`));
+}

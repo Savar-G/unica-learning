@@ -1,5 +1,7 @@
 # Confirm delivery of a numbered workbook
 
+The whole first-delivery path, from saved card to started plan, is in [first-delivery-runbook.md](first-delivery-runbook.md).
+
 Open a shipped workbook under Admin > Workbooks. Enter the date and time when it arrived at the family's home. The form shows the family's time zone in plain words, such as "Toronto time". Press **Confirm workbook delivered**. Reload shows the saved time and who recorded it. The workbook status remains `shipped`.
 
 Each numbered workbook needs its own receipt. Repeat the same confirmation safely. An ordinary repeat confirmation with a different time is refused. To fix a wrong time, choose **Correct delivery time** and enter the correct time and a short reason. Each correction adds an audit entry with the original time, previous time, new time, reason, admin, and server time. The original receipt and earlier corrections stay unchanged. The receipt's actual delivery time and server record time are separate. No old receipt is inferred from a shipment, an email, a card Boolean, or a Stripe date.

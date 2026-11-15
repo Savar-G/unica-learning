@@ -34,6 +34,8 @@ const h = vi.hoisted(() => ({
   reportRuns: [] as { dry: boolean; startedAt: number }[],
   book1Throws: false,
   book1Runs: 0,
+  digestRuns: 0,
+  digestThrows: false,
 }));
 
 vi.mock("@/lib/account-server", () => ({ linkOrigin: () => "https://unicalearning.com" }));
@@ -42,6 +44,16 @@ vi.mock("@/lib/workbook-book1-capture-server", () => ({
     h.book1Runs++;
     if (h.book1Throws) throw new Error("book1 step failed");
     return { due: 0, saved: 0, existing: 0, pending: 0, retry: 0, failed: 0 };
+  },
+}));
+vi.mock("@/lib/team-digest-store", () => ({ teamDigestStore: () => ({}) }));
+vi.mock("@/lib/team-digest-send", () => ({
+  runTeamDigest: async (_store: unknown, _now: number, { transport }: { transport: { send(m: unknown): Promise<unknown> } }) => {
+    h.digestRuns++;
+    h.transports.add(transport);
+    if (h.digestThrows) throw new Error("digest read failed");
+    await transport.send({ to: "team-digest@unicalearning.com" });
+    return { status: "sent", weekly: false };
   },
 }));
 vi.mock("@/lib/supabase-auth", () => ({ adminClient: () => ({}) }));
@@ -167,6 +179,8 @@ beforeEach(() => {
   h.reportRuns = [];
   h.book1Throws = false;
   h.book1Runs = 0;
+  h.digestRuns = 0;
+  h.digestThrows = false;
 });
 
 afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers(); });
@@ -331,3 +345,24 @@ it("a Book 1 baseline step that throws hides nothing else: the emails still go a
   expect(h.mail.delivered.map((m) => m.to)).toContain("weekly@family.ca");
   expect(h.book1Runs).toBe(1);
 });
+
+it("sends the team digest after every parent email of the run, on the same transport, and a failed digest fails nothing", async () => {
+  // Wrong if: the digest starts beside the parent emails, so a slow digest send can sit in front of a ready parent email.
+  vi.stubEnv("TEAM_DIGEST_EMAIL_ENABLED", "on");
+  h.weeklySend = true;
+  h.cardSends = 2;
+  h.maySends = 1;
+  expect(await (await call()).json()).toMatchObject({ ok: true, teamDigest: { status: "sent" }, maya: { sent: 1 }, monthly: { sent: 1 } });
+  const order = h.mail.delivered.map((m) => m.to);
+  expect(order).toHaveLength(6);
+  expect(order.at(-1)).toBe("team-digest@unicalearning.com");
+  expect(h.transports.size).toBe(1);
+  h.digestThrows = true;
+  const res = await call();
+  expect(res.status).toBe(200);
+  expect(await res.json()).toMatchObject({ ok: true, teamDigest: { status: "failed" } });
+  vi.stubEnv("TEAM_DIGEST_EMAIL_ENABLED", undefined);
+  const runs = h.digestRuns;
+  expect(await (await call()).json()).toMatchObject({ ok: true, teamDigest: { status: "off" } });
+  expect(h.digestRuns).toBe(runs);
+}, 15_000);

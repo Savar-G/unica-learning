@@ -67,13 +67,13 @@ export function firstPagesEmail({ parentName, childName, url, unsubscribeUrl }: 
   ];
   const freeMonth = familyPlanWords.freeMonth;
   const why = `You get this email because you asked for ${childName}'s free math placement report.`;
-  const footer = { why, unsubscribe: { url: unsubscribeUrl, label: "Unsubscribe" }, signer: "founders" as const };
+  const footer = { why, unsubscribe: { url: unsubscribeUrl, label: "Unsubscribe" }, signer: "results-founders" as const };
   const text = [
     `Hi ${first},`,
     ...lines,
     `${START_PLAN_TODAY}: ${url}`,
     freeMonth,
-    emailSignatureText(undefined, "founders"),
+    emailSignatureText(undefined, "results-founders"),
     emailFooterText(footer),
   ].join("\n\n");
   const p = (s: string, color = INK) => `<p style="margin:0 0 16px;color:${color}">${s}</p>`;
@@ -131,7 +131,7 @@ export async function runFirstPagesEmails(store: FirstPagesEmailStore, o: {
       const { token, hash } = o.newToken();
       const email = firstPagesEmail({ parentName: d.parentName, childName: d.childName, url: firstPagesActionUrl(o.origin, d.reportId), unsubscribeUrl: `${o.origin}/unsubscribe?t=${token}` });
       const message: EmailMessage = {
-        sender: { to: "parent", from: "founders" }, to: d.parentEmail, replyTo: SUPPORT_EMAIL, ...email,
+        sender: { to: "parent", from: "results-founders" }, to: d.parentEmail, replyTo: SUPPORT_EMAIL, ...email,
         headers: { "List-Unsubscribe": `<${o.origin}/api/unsubscribe?t=${token}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
         attachments: [{ filename: firstPagesFilename(d.childName), contentType: "application/pdf", content: pdf }],
       };
