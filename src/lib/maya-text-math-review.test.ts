@@ -31,7 +31,7 @@ const DIV = make("1340 ÷ 2 = ?", { kind: "divide", operands: [1340, 2] });
 const FRACTION = createSession({ callId: "fraction", package: FIXTURES.COMPARE_FRACTIONS, conversational: true, tutor: true }).package as OperationPackage;
 const settle = async () => { for (let i = 0; i < 60; i++) await Promise.resolve(); };
 
-type MathAnswer = (input: MathReviewInput, n: number) => MathReviewResult | "throw" | "hang";
+type MathAnswer = (input: MathReviewInput, n: number) => MathReviewResult | "throw" | "bad_json" | "hang";
 function call(pkg: unknown, says: string[], math: MathAnswer | null, stream = false) {
   let now = T0;
   const parts: string[] = [];
@@ -83,6 +83,55 @@ describe("layer 2: the math-truth review", () => {
     expect(r2).toEqual({ verdict: "unsure", reason: "the math review did not answer in time" });
   });
 
+  it("asks again once, at once, after an answer that is not JSON; a second one is unsure", async () => {
+    const once = fakeMathReviewer((_, n) => (n === 0 ? "bad_json" : { verdict: "true", reason: "all true" }));
+    expect(await runMathReview(once, {} as MathReviewInput, 50)).toEqual({ verdict: "true", reason: "all true" });
+    expect(once.requests).toHaveLength(2);
+    const twice = fakeMathReviewer(() => "bad_json");
+    expect(await runMathReview(twice, {} as MathReviewInput, 50)).toEqual({ verdict: "unsure", reason: "the math review call failed (bad_json)" });
+    expect(twice.requests).toHaveLength(2);
+  });
+
+  it("never asks again after a time-out or another error", async () => {
+    const hang = fakeMathReviewer(() => "hang");
+    expect(await runMathReview(hang, {} as MathReviewInput, 20)).toEqual({ verdict: "unsure", reason: "the math review did not answer in time" });
+    expect(hang.requests).toHaveLength(1);
+    const thrown = fakeMathReviewer(() => "throw");
+    expect((await runMathReview(thrown, {} as MathReviewInput, 50)).verdict).toBe("unsure");
+    expect(thrown.requests).toHaveLength(1);
+    // The second ask after an answer that is not JSON stays inside the same time limit.
+    const slow = fakeMathReviewer((_, n) => (n === 0 ? "bad_json" : "hang"));
+    expect(await runMathReview(slow, {} as MathReviewInput, 20)).toEqual({ verdict: "unsure", reason: "the math review did not answer in time" });
+    expect(slow.requests).toHaveLength(2);
+  });
+
+  it("says a sentence after one answer that is not JSON, with no repair", async () => {
+    const line = "That 4 is already in the ones.";
+    const { session, model, mathReviewer } = call(SUB, [line], (_, n) => (n === 0 ? "bad_json" : { verdict: "true", reason: "all true" }));
+    await session.start();
+    const out = await session.child("Help me please.");
+    expect(out.say.join(" ")).toBe(line);
+    expect(model.briefs).toHaveLength(1);
+    expect(mathReviewer!.requests.map((r) => r.sentence)).toEqual([line, line]);
+  });
+
+  it("gives the review the last 2 turns as code holds them, with the child's name as {name}", async () => {
+    let n = 0;
+    const says = ["Hi Zoe! What is 2 minus 8 in the ones?", "That's 8 minus 2, the other way around."];
+    const model = conversationalFake({ answer: () => reply(says[Math.min(n++, says.length - 1)], "guide") });
+    const mathReviewer = fakeMathReviewer();
+    let now = T0;
+    const session = createTextSession({ callId: "math-review-turns", package: SUB, model, clock: () => (now += 100), random: 3, tutor: true, reviewTimeLimitMs: 50, reviewer: fakeTalkReviewer(), mathReviewer, childName: "Zoe" });
+    await session.start();
+    await session.child("Zoe thinks it is 6.");
+    await session.child("Zoe says 6 again.");
+    const input = mathReviewer.requests.find((r) => r.sentence === "That's 8 minus 2, the other way around.")!;
+    expect(input.lastTurns.child).toBe("{name} says 6 again.");
+    expect(input.lastTurns.maya).not.toBeNull();
+    expect(JSON.stringify(input)).not.toMatch(/Zoe/);
+    expect(input.promptVersion).toBe("maya-math-review-2");
+  });
+
   it("gives the review code's facts of the question and the child's turn, never the child's name", async () => {
     const { session, mathReviewer } = call(SUB, ["You can't take 8 from 2, so we use the 12 ones from the trade."], () => ({ verdict: "true", reason: "all true" }));
     await session.start();
@@ -94,6 +143,11 @@ describe("layer 2: the math-truth review", () => {
     expect(input.steps.map((s) => s.result)).toEqual([4, 2]);
     expect(input.workValues).toContain(12);
     expect(input.childFacts.join(" ")).toContain("The child said 36:");
+    expect(input.lastTurns.child).toBe("I got 36.");
+    // The easier example Maya may teach first, with code's own steps and answer.
+    expect(input.easierExample?.question).toBe(SUB.easierExample.text);
+    expect(input.easierExample?.answer).toBe((SUB.easierExample.answer as { value: number }).value);
+    expect(input.easierExample?.steps.length).toBeGreaterThan(0);
   });
 
   it("holds an uncovered sentence in the stream and sends it when the review says true; a covered sentence goes first with no review", async () => {
@@ -115,7 +169,7 @@ describe("layer 2: the math-truth review", () => {
     const trace = await session.finish({ reason: "child_stopped" });
     expect(checkTrace(trace)).toMatchObject({ ok: true });
     expect(trace.counts).toMatchObject({ mathReviews: 1, mathRefusals: 0, refusals: 0 });
-    expect(trace.mathReviewer).toEqual({ id: "fake-math-review", promptVersion: "maya-math-review-1" });
+    expect(trace.mathReviewer).toEqual({ id: "fake-math-review", promptVersion: "maya-math-review-2" });
   });
 
   it.each([

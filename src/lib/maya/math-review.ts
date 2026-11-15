@@ -9,7 +9,7 @@
 // in src/lib/maya-math-review.ts (the AI client seam).
 
 /** The version of the review's instructions and input. Raise it when either changes; every trace records it. */
-export const MATH_REVIEW_PROMPT_VERSION = "maya-math-review-1";
+export const MATH_REVIEW_PROMPT_VERSION = "maya-math-review-2";
 
 /** What the review reads for one sentence: the sentence, the message before it, and code's facts of the question. */
 export interface MathReviewInput {
@@ -32,6 +32,17 @@ export interface MathReviewInput {
   childFacts: string[];
   /** The last turns of the call, oldest first (the child's name hidden): a sentence may name a moment of the work. */
   transcript: { speaker: "child" | "maya"; text: string }[];
+  /**
+   * The last 2 turns as code holds them (version 2, 2026-11-15): Maya's message before the child's turn, and the child's
+   * turn she answers now, each with the child's name as {name}. A sentence often points back to them ("That's 8 minus 2,
+   * the other way around" answers a child who said 6). Null when there is no such turn.
+   */
+  lastTurns: { maya: string | null; child: string | null };
+  /**
+   * The question's easier example, which Maya may teach first (version 2): its text, code's steps with their results and
+   * its answer. Null when the question has none.
+   */
+  easierExample: { question: string; steps: { work: string; result: number | string }[]; answer: number | string | null } | null;
 }
 
 /** The review's answer as code reads it. Only "true" lets the sentence be said. */
@@ -50,6 +61,12 @@ export interface MathReview {
 export const MATH_REVIEW_SYSTEM = `You check the math of one sentence that Maya, an AI math tutor, wants to say to a child (age 5 to 14) about one math question. Code computed the true facts of the question: the steps with their results, the work values and the answer. Code also judged each number the child said this turn. These facts are true. Use them, and your own careful arithmetic, to decide if every math statement in the sentence is true.
 
 The call so far is in "transcript" and Maya's sentences before this one are in "before": a sentence may name a moment inside the work (after the trade, the tens are 4; the 12 ones we have after borrowing). It is true when it is true at that moment of the work.
+
+"lastTurns" holds the last 2 turns: "maya" is what Maya said before the child spoke, and "child" is the child's words she answers now. A sentence often points back to them: "that", "the 5", "the other way around", "if we forgot the carried 1". Read such a sentence against those words: "That's 8 minus 2, the other way around" is true when the child said 6 for 2 minus 8; "Maybe the 5 came from forgetting the carried ten" is true when the child's answer has a 5 that a forgotten carry gives. "{name}" stands for the child's name.
+
+"easierExample" holds code's facts of the question's easier example, which Maya may teach first. A sentence about the easier example ("That finishes the easier one: 42 minus 7 is 35.", "Write 3 in the tens place." while she teaches 42 minus 7) is true when it is true for the easier example.
+
+A sentence that is true at one moment of this question's work or of the easier example ("We have 4 tens" after the trade; "Write 3 in the tens place" in 42 minus 7) is true, unless "before", "lastTurns" or "transcript" shows a different moment. Do not answer "false" or "unsure" only because the earlier turns are not shown. A number or relation that fits no moment of either is still false. A word quantity that can be read two ways ("one hundred and three tens" is 130 or 1,030) is "unsure".
 
 Answer "true" when every number, every relation (is, equals, makes, becomes, more, less, greater, than, the same as), every remainder, fraction, place value and digit in the sentence is true for this question, and every claim about the child's answer agrees with code's verdict. A sentence that makes no math claim (a question to the child, praise, an instruction that fits the facts, a sentence with no numbers) is "true".
 

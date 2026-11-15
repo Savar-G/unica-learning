@@ -55,6 +55,31 @@ Measured on 2026-11-15 (base `aa4eef2c0`):
 
 The false sentences of the Sol rounds (`/tmp/prelaunch-b`, `/tmp/final-2` survey, matrix and confirmed cases; 116 distinct, not counting the fit findings, which are sentence-true and belong to the fit checks): 50 are refused by code, 66 go to the review, 0 pass on code alone. The real review (Haiku 5.5, `low` effort) judged all 66 "false" (USD 0.014 for the run, median 0.8 s per call). On 20 true controls from the corpus it judged 16 "true"; of the 4 others, 2 need the child's earlier words, which the corpus does not keep, and 2 were call errors (`bad_json`), which count as "unsure". With `minimal` effort the verdicts were worse (the review said "false" while it explained the math was true), so the request uses `low`.
 
+### A reliable review and a verifiable first sentence (2026-11-15)
+
+- **A second ask after bad JSON.** An answer of the math review that is not JSON (`bad_json`) is asked again once, at once, inside the same time limit (`runMathReview`). Only a second failure is "unsure". A time-out and every other error are not asked again.
+- **The last 2 turns and the easier example.** The review input (version `maya-math-review-2`) holds `lastTurns`: Maya's message before the child's turn and the child's turn she answers, as code holds them, with the child's name as `{name}`. A sentence that points back ("That's 8 minus 2, the other way around") is read against them. It also holds `easierExample`, code's steps and answer of the question's easier example, which Maya may teach first ("Write 3 in the tens place" is true in 42 − 7 and false in 52 − 28). The instructions say that a sentence true at one moment of the work or of the easier example is true unless the call shows another moment, and that a word quantity with two readings ("one hundred and three tens") is "unsure".
+- **The first sentence.** The tutor prompt (`maya-tutor-4`) tells the model to open a "math" or "help" message with one sentence code checks alone: a true equation of the question's numbers ("52 is 4 tens and 12 ones."), the child's wrong number back ("52 minus 28 isn't 36."), the question with its answer when the child is right, or a plain question ("What is 2 minus 8?"). The child hears it at once while the reviews of the next sentences run. The rule never comes before safety or the AI disclosure: on "offtopic", "stop", "safety", "other" or a question about Maya, the message starts with the answer to the child. The bare expression "52 minus 28." is not read by code today, so the prompt does not offer it.
+
+Measured on 2026-11-15 on base `5d9ad5448` (real review, Haiku 5.5, `low` effort, the live 4 s limit; the 66 false sentences of the Sol rounds that reach the review; 20 true corpus controls picked as #1044 picks them, and #1044's own 20):
+
+| Run | False sentences judged "false" | New 20 controls judged "true" | #1044's 20 controls judged "true" |
+|---|---|---|---|
+| #1044 (`f471900d2`, 8 s limit) | 66 of 66 | - | 16 of 20 |
+| This change, run 1 | 66 of 66 | 19 of 20 | 17 of 20 |
+| This change, run 2 | 66 of 66 | 19 of 20 | 19 of 20 |
+
+Each miss is a "false" whose own reason finds the math true ("12 is how many ones we have after the trade: 2 + 10.", "Now the number is still 52, just split a new way."). Code never turns a "false" into a pass: the sentence gets a repair. With the reason written before the verdict the controls were 20 of 20, but 1 to 4 false sentences were judged "true" ("One hundred and three tens is 130."), so the verdict stays first. The two controls that need the child's words got a child turn rebuilt from the sentence ("I got 56.", "I got 36."), because the corpus keeps none. One run met a `bad_json` answer: the second ask answered.
+
+First sentence, real Maya model (`anthropic/claude-sonnet-5.5`), real talk and math reviews, 52 − 28, 5 turns (right answer, wrong answer, "teach me", off-topic, help request), 3 runs each:
+
+| | First sentence on code alone | Median time to the first sentence |
+|---|---|---|
+| Before (`5d9ad5448`) | 0 of 15 | 1,835 ms (math and help turns: 1,875 ms) |
+| After | 12 of 15 (12 of 12 math and help turns, 0 of 3 off-topic) | 903 ms (math and help turns: 854 ms) |
+
+On every off-topic turn, before and after, the message starts with "I'm an AI". Before, 2 of 15 turns ended in code's fallback line; after, none.
+
 ## Credit, the learning event and the parent note
 
 Code's credit of the child decides the saved result, never the model's reading (part C of the pre-launch review, 2026-11-15; tests: `src/lib/maya-call-tutor-credit.test.ts`, `src/lib/maya/tutor-credit.test.ts`):

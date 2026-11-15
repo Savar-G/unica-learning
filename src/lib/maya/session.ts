@@ -5042,7 +5042,33 @@ export function mathReviewInput(s: Session, sentence: string, before: readonly s
     childTurn: s.turn ? hide(s.turn.text) : null,
     childFacts: pkg && s.turn ? childFacts(pkg, s.turn.text).map(hide) : [],
     transcript: s.turns.slice(-MATH_REVIEW_TURNS).map((t) => ({ speaker: t.speaker, text: hide(t.text) })),
+    lastTurns: lastTwoTurns(s, hide),
+    easierExample: pkg ? easierFacts(pkg, hide) : null,
   };
+}
+
+/** Code's facts of the question's easier example for the math-truth review (version 2), or null. */
+function easierFacts(pkg: OperationPackage, hide: (text: string) => string): MathReviewInput["easierExample"] {
+  const e = pkg.easierExample;
+  if (!e || typeof e.text !== "string" || !Array.isArray(e.steps)) return null;
+  try {
+    const twin = { ...pkg, text: e.text, operation: e.operation, answer: { ...pkg.answer, value: e.answer }, steps: e.steps } as OperationPackage;
+    const value = (e.answer as { value?: unknown }).value;
+    return { question: hide(e.text), steps: stepFacts(twin).map((st) => ({ work: st.work, result: st.result })), answer: typeof value === "number" || typeof value === "string" ? value : null };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The last 2 turns the math-truth review reads (version 2): the child's turn Maya answers now and Maya's message before
+ * it, as code holds them, the child's name hidden as {name}.
+ */
+function lastTwoTurns(s: Session, hide: (text: string) => string): MathReviewInput["lastTurns"] {
+  const c = s.turns.findLastIndex((t) => t.speaker === "child");
+  const child = c >= 0 ? s.turns[c].text : s.turn?.text ?? null;
+  const maya = s.turns.slice(0, c >= 0 ? c : s.turns.length).findLast((t) => t.speaker === "maya")?.text ?? null;
+  return { maya: maya === null ? null : hide(maya), child: child === null ? null : hide(child) };
 }
 
 /** D-345: what the tutor's stream needs before the model writes: code's own stance and the question's words. Null: no stream. */

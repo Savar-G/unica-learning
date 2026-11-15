@@ -38,14 +38,25 @@ export function aiMathReviewer(client: AiClient, request: { effort: "minimal" | 
 }
 
 /**
- * Runs one review with the time limit, and never throws: a throw or a time-out is "unsure". The error's own text is never
- * kept (a provider's message can hold a key): only fixed wording, with the trace's fixed error code for a failed call.
+ * Runs one review with the time limit, and never throws: a throw or a time-out is "unsure". An answer that is not JSON
+ * (bad_json) is asked again once, at once, inside the same time limit: only a second failure is "unsure". A time-out is
+ * never asked again (it used the time), and no other error is either. The error's own text is never kept (a provider's
+ * message can hold a key): only fixed wording, with the trace's fixed error code for a failed call.
  */
 export async function runMathReview(reviewer: MathReviewer, input: MathReviewInput, ms: number, onError?: (e: unknown) => void): Promise<MathReviewResult> {
+  const once = (signal: AbortSignal) => reviewer.review(input, signal).catch((e: unknown) => {
+    throw signal.aborted ? new Error("time is up") : e;
+  });
   try {
-    return await withTimeLimit(ms, (signal) => reviewer.review(input, signal).catch((e: unknown) => {
-      throw signal.aborted ? new Error("time is up") : e;
-    }));
+    return await withTimeLimit(ms, async (signal) => {
+      try {
+        return await once(signal);
+      } catch (e) {
+        if (signal.aborted || classifyError(e, "model").code !== "bad_json") throw e;
+        onError?.(e);
+        return await once(signal);
+      }
+    });
   } catch (e) {
     onError?.(e);
     const text = e instanceof Error ? e.message : "";
@@ -55,9 +66,10 @@ export async function runMathReview(reviewer: MathReviewer, input: MathReviewInp
 
 /**
  * A fake reviewer for tests: `answer` gives the result for each sentence (`call` counts from 0); "throw" fails the call,
- * "hang" never answers (the time limit ends it). It records every request. By default every sentence is true.
+ * "bad_json" fails it as an answer that is not JSON, "hang" never answers (the time limit ends it). It records every
+ * request. By default every sentence is true.
  */
-export function fakeMathReviewer(answer: (input: MathReviewInput, call: number) => MathReviewResult | "throw" | "hang" = () => ({ verdict: "true", reason: "all true" }), id = "fake-math-review"): MathReviewer & { requests: MathReviewInput[] } {
+export function fakeMathReviewer(answer: (input: MathReviewInput, call: number) => MathReviewResult | "throw" | "bad_json" | "hang" = () => ({ verdict: "true", reason: "all true" }), id = "fake-math-review"): MathReviewer & { requests: MathReviewInput[] } {
   const requests: MathReviewInput[] = [];
   return {
     id,
@@ -67,6 +79,7 @@ export function fakeMathReviewer(answer: (input: MathReviewInput, call: number) 
       requests.push(structuredClone(input));
       const a = answer(input, requests.length - 1);
       if (a === "throw") return Promise.reject(new Error("the fake math review failed"));
+      if (a === "bad_json") return Promise.reject(new Error("The model's answer was not valid JSON."));
       if (a === "hang") return new Promise((_, reject) => signal.addEventListener("abort", () => reject(new Error("aborted"))));
       return Promise.resolve(a);
     },

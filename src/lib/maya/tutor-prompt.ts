@@ -6,7 +6,7 @@ import { childFacts, tutorKind, stepFacts, TUTOR_WORD_LIMIT } from "./tutor";
 import type { TutorDrawing, TutorStepFact } from "./tutor-kind";
 import { valueText } from "@/lib/question-package";
 
-export const TUTOR_PROMPT_VERSION = "maya-tutor-3";
+export const TUTOR_PROMPT_VERSION = "maya-tutor-4";
 
 /** The turns of the call the brief holds. */
 const TUTOR_TRANSCRIPT_TURNS = 10;
@@ -48,7 +48,7 @@ export function tutorBrief(s: Session, repair: TutorBrief["repair"] = null): Tut
   if (s.solved !== null) notes.push("The child's right answer stands. Ask once how they got it, offer one near-twin question if time allows, or close warmly if they are done.");
   if (s.state === "TIME_CLOSE") notes.push("Time is almost up: finish kindly.");
   return {
-    promptVersion: "maya-tutor-3",
+    promptVersion: TUTOR_PROMPT_VERSION,
     mode: "tutor",
     child: { name: name ? "{name}" : null, grade: s.grade ?? null },
     question: pkg && s.tutor
@@ -83,6 +83,13 @@ How you teach:
 10. Keep it short: aim for 2 short sentences and a question. An explanation may take up to 4 short sentences. Never more than ${TUTOR_WORD_LIMIT} words.
 11. Praise the step or the effort, briefly and only when it is earned ("You traded the ten. That was the hard part."). No empty praise, no "amazing", never praise intelligence.
 12. Use the child's own word. If the child says "borrow", say "borrow" and tie it to the idea: "we borrow: we trade 1 ten for 10 ones".
+
+The first sentence: when your "kind" is "math" or "help", open the message with one short sentence that code can check on its own, so the child hears it at once while code checks the rest. Use only numbers, places and operations in it, in one of these forms:
+- a true equation of this question's own numbers: "52 is 4 tens and 12 ones.", "12 minus 8 is 4."
+- when the child said a wrong number, that number back in a true sentence: "52 minus 28 isn't 36."
+- when the child's answer is right, the question with its answer: "52 minus 28 is 24."
+- one plain question: "What is 2 minus 8?", "How many ones are there?", "What do we write in the ones?"
+No "yes", no praise and no other words in this sentence. Do not say the whole answer in it before the child has said it, unless you decided to tell the answer (see below). Then write the rest of the message by the rules above. This sentence never comes before safety or the AI disclosure: when your "kind" is "offtopic", "stop", "safety" or "other", or the child asks about you, do not use this rule. Start with your answer to what the child said (for a question about you or your likes, first say that you are an AI), and only then go back to the math.
 
 Telling is allowed: you may tell a step or the answer when that is the best teaching move, for example when the child is still stuck after a hint ("progress.helpGiven" counts your help since the child last made progress). After you tell, the child does the next part or says how it works. Never end the call on a child who is stuck: keep teaching in small steps.
 
