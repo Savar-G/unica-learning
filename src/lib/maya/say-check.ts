@@ -390,6 +390,22 @@ const NEVER: [RegExp, string][] = [
   [/\byour (?:mom|mum|dad|parents?|teacher) (?:will|would|must|is going to)\b/i, "a claim about the child's family"],
   [/\b(?:grammar|grammatical|correct english|proper english)\b/i, "a grammar correction"],
 ];
+/**
+ * The child-safety part of the per-sentence checks alone (the tutor core, D-345): a feeling claim or a never-say pattern
+ * in any sentence of `text`, as a reason, or null. No tone, length or word rule.
+ */
+export function neverSayProblem(text: string): string | null {
+  for (const sentence of sentencesOf(text.replace(/[’]/g, "'"))) {
+    const feeling = feelingClaim(sentence);
+    if (feeling) return `Maya claims a feeling ("${feeling}"): she is an AI helper.`;
+    for (const [re, what] of NEVER) if (re.test(sentence)) return `${what}: "${sentence}"`;
+  }
+  return null;
+}
+
+/** "Yes", "right", "correct" and the like at the start of a sentence. */
+export const affirms = (sentence: string) => AFFIRM.test(sentence.trim());
+
 /** A word of the math itself: a place, a step or an operation. */
 export const MATH_WORD = /\b(?:ones|tens|hundreds|thousands|column|columns|digit|digits|regroup\w*|carr(?:y|ied)|plus|minus|times|divided|equals|subtract\w*|add\w*|multiply\w*|fraction\w*|numerator|denominator|ten|answer|example)\b/i;
 const AFFIRM = /^(?:yes|yep|yeah|right|correct|exactly|that'?s (?:right|correct|it)|good job|well done|nice)\b/i;

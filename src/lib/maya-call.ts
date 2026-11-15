@@ -258,6 +258,11 @@ export interface CallModelOptions {
 }
 
 export interface CallSeams {
+  /**
+   * D-345: whether admin test calls teach with the tutor core (default on). False keeps them on the controller, for the
+   * controller's own tests; family calls always keep the controller in Phase 1.
+   */
+  tutor?: boolean;
   store: CallStore;
   /** The children's wording history: read before a call, added to when it ends. */
   history: WordingHistoryStore;
@@ -878,11 +883,13 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
     }
   }
 
-  /** A call's text session. Admin test calls have free talk on (D-197), with the model's review; chat has it off. A resumed call keeps its flag. */
+  /** A call's text session. Admin test calls have free talk on (D-197), with the model's review, and the tutor core (D-345); chat has it off. A resumed call keeps its flags. */
   function textSession(record: Pick<CallRecord, "id" | "parentId" | "childId"> & { kind: CallKind }, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number, grade?: number, confirmWorkbook?: boolean, onGuidance?: (output: TextOutput) => void, sayHooks?: Pick<TextSessionOptions, "onSayPart" | "onSayCancel" | "onSayEnd" | "modelRepair" | "onPreparation" | "withModelAttempt">, spend?: SpendCall, preparing?: Pick<TextSessionOptions, "spend" | "prepareModel" | "prepareHandleId">): TextSession {
     return createTextSession({
       onGuidance, ...sayHooks, ...preparing,
       callId: record.id, channel: record.kind === "chat" ? "chat" : undefined, package: pkg, model, clock: seams.clock, random: seed, history, childName, runner: "text", resume: saved, limitMs, grade, confirmWorkbook,
+      // D-345, Phase 1: the tutor core teaches admin test calls only (chat and voice); family calls keep the controller.
+      tutor: record.kind === "admin_test" && seams.tutor !== false,
       freeTalk: record.kind !== "chat" && record.kind !== "family", reviewer: seams.reviewer?.(model.id, spend ?? spendCall(record)) ?? null,
     });
   }
@@ -1177,6 +1184,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
         onSayCancel: (fromIndex) => listener?.cancel?.(fromIndex),
         onSayEnd: () => listener?.end?.(),
         // A voice call has no time for a second model request: a refused first proposal goes straight to code's line.
+        // D-345: a tutor teaching turn still gets its one repair (createTextSession), paid from the same budget block.
         modelRepair: false,
         onPreparation: (record) => hearPreparation?.(record),
         withModelAttempt: (source, run) => withRequestContext({ source, prepareId: null, diagnosticHandleId: null }, run),

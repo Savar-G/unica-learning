@@ -249,6 +249,15 @@ export interface TraceCounts {
   silent: number;
   /** D-341: the model's own words refused by the say checks (and the review, "review"), by reason. */
   sayRefusals?: Record<string, number>;
+  /**
+   * D-345: Maya turns where code changed the model's first words: a refusal (then a repair or code's line), a fallback,
+   * or a sentence the review dropped. The teaching rebuild's target is under 5% of Maya turns.
+   */
+  overrides?: number;
+  /** D-345: sentences of the model's words a review dropped (the controller only; the tutor core never drops). */
+  dropped?: number;
+  /** D-345: the longest run of Maya turns with no child turn between them (target 1). */
+  longestMayaRun?: number;
 }
 
 /** The counts of a trace's turns. */
@@ -264,7 +273,21 @@ export function traceCounts(turns: readonly TraceTurn[]): TraceCounts {
     modelErrors: attempts.filter((a) => a.error !== undefined).length,
     silent: maya.filter((t) => t.output === null).length,
     sayRefusals: attempts.reduce<Record<string, number>>((n, a) => (a.refusal?.say ? { ...n, [a.refusal.say]: (n[a.refusal.say] ?? 0) + 1 } : n), {}),
+    overrides: maya.filter((t) => t.attempts.some((a) => a.source !== "controller" && (a.refusal !== null || a.source === "fallback" || (a.dropped?.length ?? 0) > 0))).length,
+    dropped: attempts.reduce((n, a) => n + (a.dropped?.length ?? 0), 0),
+    longestMayaRun: longestMayaRun(turns),
   };
+}
+
+/** The longest run of Maya turns that said something, with no child turn between them (the opening counts). */
+function longestMayaRun(turns: readonly TraceTurn[]): number {
+  let run = 0;
+  let most = 0;
+  for (const t of turns) {
+    if (t.kind === "child") run = 0;
+    else if (t.kind === "maya" && t.output && t.output.say.length > 0) most = Math.max(most, ++run);
+  }
+  return most;
 }
 
 /** The model calls of a trace, and how many of their proposals the client read from inside one code fence. */

@@ -30,6 +30,7 @@ import { type Batch } from "@/lib/board";
 import {
   createSession,
   fallbacks,
+  tutorTeachingNow,
   nextActs,
   step,
   streamPlan,
@@ -48,7 +49,8 @@ import {
   type Severity,
   type WordingHistory,
 } from "@/lib/maya";
-import { modelInput, turnBrief, type MayaModel, type ModelInput } from "@/lib/maya-model";
+import { modelInput, turnBrief, type MayaModel, type ModelInput, type TurnBrief } from "@/lib/maya-model";
+import { tutorBrief } from "@/lib/maya/tutor-prompt";
 import { preparedReplies, preparedKey, preparedKeys, sameTurn, MAX_PREPARES_PER_TURN, type PrepareHypothesis, type PreparedReply, type PrepareRecord } from "@/lib/maya-prepared";
 import type { SpendHandle, SpendSeam } from "@/lib/maya-spend-seam";
 import { readReuse, withReadReuse } from "@/lib/maya/read-reuse";
@@ -140,6 +142,11 @@ export interface TextSessionOptions {
   freeTalk?: boolean;
   /** The call's end when it is shorter than 10 minutes (ms). A resumed call keeps the limits it started with. */
   limitMs?: number;
+  /**
+   * D-345: teach with the tutor core when the question is one it teaches (src/lib/maya/tutor.ts). A resumed call keeps
+   * what it started with. On a tutor teaching turn a refused message gets one repair, also in voice.
+   */
+  tutor?: boolean;
   /** The free-talk review (src/lib/maya-talk-review.ts), or null. D-341: it reads each reply that is not plain math talk. */
   reviewer?: TalkReviewer | null;
   /**
@@ -305,7 +312,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   if (resume?.v === 6 && (!resume.initial || !Array.isArray(resume.log))) throw new Error("maya text: the saved event log is missing");
   if (resume && (![1, 6].includes(resume.v) || (resume.v === 6 ? resume.initial!.session.callId : resume.session.callId) !== options.callId)) throw new Error("maya text: the saved session is not this call's");
   const initial: TextLogInitial = resume?.v === 6 && resume.initial ? structuredClone(resume.initial) : {
-    session: resume ? structuredClone(resume.session) : createSession({ callId: options.callId, confirmWorkbook: options.confirmWorkbook, channel: options.channel, package: options.package, random: options.random, grade: options.grade, history: options.history, childName: options.childName, freeTalk: options.freeTalk === true, limitMs: options.limitMs, conversational: model.output === 3 }),
+    session: resume ? structuredClone(resume.session) : createSession({ callId: options.callId, confirmWorkbook: options.confirmWorkbook, channel: options.channel, package: options.package, random: options.random, grade: options.grade, history: options.history, childName: options.childName, freeTalk: options.freeTalk === true, limitMs: options.limitMs, conversational: model.output === 3, tutor: options.tutor === true }),
     endedAt: resume?.endedAt ?? null, turns: resume?.turns ?? [], board: resume?.board ?? [],
     approved: resume?.approved, obligations: resume?.obligations, childState: resume?.childState, problems: resume?.problems,
   };
@@ -356,7 +363,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     const at = now();
     const copy = foldTextEvent(restoreTextCheckpoint(saveTextCheckpoint(folded)), { kind: "input", at, event: { type: "child_turn", at, text: h.text } });
     if (!plainMathTurn(copy.session) || copy.session.outcome) return false;
-    const brief = turnBrief(copy.session);
+    // D-345: a tutor call prepares its own brief; the reply still goes through the whole-message check.
+    const brief = copy.session.tutor ? tutorBrief(copy.session) as unknown as TurnBrief : turnBrief(copy.session);
     const key = preparedKey(copy.session, brief);
     if (cache.get(key)) { cache.share(key, h); return false; }
     if (prepareCount >= MAX_PREPARES_PER_TURN) return false;
@@ -374,8 +382,9 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     committing = null;
     if (!batch || !cache) return;
     const plain = plainMathTurn(folded.session);
-    const brief = turnBrief(folded.session);
-    const keys = preparedKeys(folded.session, brief);
+    const tutor = folded.session.tutor !== undefined;
+    const brief = tutor ? tutorBrief(folded.session) as unknown as TurnBrief : turnBrief(folded.session);
+    const keys = tutor ? [preparedKey(folded.session, brief)] : preparedKeys(folded.session, brief);
     let selected: PreparedReply | undefined;
     for (const entry of batch.entries.values()) {
       if (!entry.available()) {
@@ -461,7 +470,9 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       proposal: folded.attempts.at(-1)!.proposal,
       refusal: folded.attempts.at(-1)!.refusal!,
     } : null;
-    const input = read(() => model.output === 3 ? turnBrief(folded.session, repair ? { said: repair.proposal, refusal: repair.refusal } : null) as unknown as ModelInput : modelInput(folded.session, repair));
+    const input = read(() => model.output === 3
+      ? (folded.session.tutor ? tutorBrief(folded.session, repair ? { said: repair.proposal, refusal: repair.refusal } : null) : turnBrief(folded.session, repair ? { said: repair.proposal, refusal: repair.refusal } : null)) as unknown as ModelInput
+      : modelInput(folded.session, repair));
     const at = Math.max(clock(), now());
     append({ kind: "request", at, requestId, source });
     if (folded.session.outcome || folded.request?.id !== requestId) return;
@@ -476,7 +487,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     // Round 4: code's plan for the turn is settled before the call; the "kind" the model writes first decides how its
     // sentences go out: math or help stream (math-only sentences at once, others after their own review, started the
     // moment the sentence is complete); any other kind reviews every sentence first; safety streams nothing.
-    const plan = model.output === 3 && options.onSayPart && !folded.sent?.length && folded.pending.length === 0 ? read(() => streamPlan(folded.session)) : null;
+    // D-345: a tutor message is said only after its whole-message check: nothing streams.
+    const plan = model.output === 3 && options.onSayPart && !folded.session.tutor && !folded.sent?.length && folded.pending.length === 0 ? read(() => streamPlan(folded.session)) : null;
     const session = folded.session;
     let streamDone = false;
     let words = 0;
@@ -608,13 +620,16 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         if (!folded.session.outcome) closeByCode();
         break;
       }
+      // D-345: on a tutor call, only a tutor teaching turn gets a repair (also in voice); any other turn is code's own line.
+      const tutorTurn = folded.session.tutor ? read(() => tutorTeachingNow(folded.session)) : null;
       if (folded.candidate) await reviewCandidate(controller);
       else if (!folded.attempts.length) await request("model", controller);
       if (controller.signal.aborted) break;
       // With the danger known, a refused proposal gets code's guidance now, not a second model call.
       const safetyDue = folded.session.safety.flagged && !folded.session.safety.guided;
       // Words already streamed cannot be taken back: a refusal then goes straight to code's line after them.
-      if (options.modelRepair !== false && folded.attempts.at(-1)?.source === "model" && folded.attempts.at(-1)?.refusal && !folded.session.outcome && !safetyDue && Date.now() < turnEndsAt && !folded.sent?.length) await request("repair", controller);
+      const repairs = tutorTurn === null ? options.modelRepair !== false : tutorTurn;
+      if (repairs && folded.attempts.at(-1)?.source === "model" && folded.attempts.at(-1)?.refusal && !folded.session.outcome && !safetyDue && Date.now() < turnEndsAt && !folded.sent?.length) await request("repair", controller);
       if (controller.signal.aborted) break;
       if (folded.attempts.length && !folded.session.outcome) {
         const refused = folded.attempts.filter((a) => a.refusal !== null).map((a) => a.proposal);

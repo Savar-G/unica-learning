@@ -265,6 +265,15 @@ function proposal(s: TextFold, value: unknown, at: number, attempt: TraceAttempt
   let scene = s.scene;
   if (!r.refusal) for (const e of r.effects) if (e.kind === "board") {
     const applied = applyBatch(scene, e.batch);
+    // D-345: a tutor message the board cannot draw keeps its words: the same message is stepped again with no drawing.
+    if (!applied.ok && s.session.tutor && value && typeof value === "object" && Array.isArray((value as { draw?: unknown }).draw) && (value as { draw: unknown[] }).draw.length > 0) {
+      controlEvent = { ...event, proposal: { ...(value as Record<string, unknown>), draw: [] } };
+      r = step(s.session, controlEvent);
+      scene = s.scene;
+      if (r.refusal) break;
+      for (const again of r.effects) if (again.kind === "board") { const redo = applyBatch(scene, again.batch); if (redo.ok) scene = redo.scene; }
+      break;
+    }
     if (!applied.ok) {
       const reading = value && typeof value === "object" ? (value as { reading?: unknown }).reading : undefined;
       controlEvent = { type: "proposal", at, proposal: { reading } };
