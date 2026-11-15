@@ -97,3 +97,35 @@ Cedric added 20 photos: 10 clear single pages, 5 flash or lamp glare and 5 hand 
 
 No kind ships, so the thresholds and their version do not change. What it shows: in these photos the glare and the shadow left every answer readable (each was checked by eye for the truth file), and Jev rates them like clear pages. The photos the page check refuses (QR not read, ambiguous page) are where a parent needs a sentence, so the refusal messages, not the check, are where "too much glare" and "too blurry" belong for now.
 
+
+### Third real run (2026-11-14, a customer's printed book)
+
+Cedric's Slack note for #856: measure `blurry`, `glare` and `shadow` (skip `faint`, no new photos). New photos: 26 iPhone photos of a real customer's printed, coil-bound Workbook 1, with blank pages (no handwriting). Two are photos of an open book, so 28 pages. These photos, their names and the per-photo answers stay outside the repository. Only the counts below are here.
+
+**How the set was made.** `--book` (below) runs each photo through the upload's own reading (`normalizeScanPhoto`, which splits an open book into its two pages) and then the crop job itself (`runScanCrops` on the in-memory store, sheet check included). The print contracts, codes and question boxes come from the book's stored rows, read-only. The page images were made again from the printed PDF at the stored size (1275 × 1650). They are the same print but not the same bytes as the stored PNGs, so the set takes each page's image fingerprint from the image it is given (`src/lib/photo-check-book-set.ts`). In exchange, it reads each given page image's own code and refuses a book whose image is not the page it is filed under. The sheet check compares a page with the same book's pages of the same kind. In the app it also compares with the child's other printed books; this child has one.
+
+- **Page check:** 23 of the 28 pages were made ready. 5 were refused: 2 `marks-missing`, 3 `faint` (the sheet check's refusal, not the faint question).
+- **Labels:** all 28 pages are `shadow`. A hand or phone shadow lies over questions or answer boxes, and no photo shows glare, blur or faint print. Two photos were first labelled clear from thumbnails. Both scored high on shadow, so they were checked again on the straightened page. Each has a hand shadow over answer boxes, so both were relabelled `shadow` before the table below. With the first labels, shadow would sit at 0.81 and catch 11 of 58 asks.
+- **Run:** all four questions in one request per page, two runs, `typesafe/jev-1.14`. 46 requests, **USD 0.0104**, none failed, p50 245 ms, p95 319 ms. The Robin answers are reused from the second run (`--with docs/photo-check-real-results-20261114-v2.json`, the same model and questions). They were not asked again.
+
+| Question | Highest on a clear photo | Its photos | Caught at the threshold | Ships? |
+|---|---|---|---|---|
+| blurry | 0.13 | 0 (every blurry photo is refused by the page check first) | - | no; stays at 0.50 from the synthetic set |
+| glare | 0.20 | 11 (all Robin; the book photos have none) | 2 of 22 asks (the plastic-bag photo) | no |
+| shadow | 0.45 | 31 (8 Robin, 23 book pages) | 32 of 62 asks (52%) at 0.50; the book pages alone 29 of 46 (63%) | no |
+| faint | 0.05 | skipped (Cedric, 2026-11-14) | - | no |
+
+Clear photos: the 18 Robin clear pages (36 asks). The book set added none.
+
+No kind ships, so `PHOTO_CHECK_THRESHOLDS` and `PHOTO_CHECK_VERSION` (1) do not change.
+
+**What it shows.** On the book pages, Jev's shadow answer ranges from 0.08 to 0.97, and two runs of the same page agree within about 0.07. So the answer is stable, but it does not follow the shadow: one page with a hand shadow over the work areas of its first two questions scored 0.12. The lowest threshold that keeps every clear photo clean (0.50) still misses about half the shadow photos. Shadow stays off on this model. The model choice is Savar's (#853). As the second run found, the page check's refusals, not this check, are where a parent hears about blur and glare today.
+
+Run it again (BOOK.json: the book's printed revision and pages, each with its code, kind, size, stored print contract or null, question regions, and the path of its printed page image; LABELS.csv: `file,label` rows):
+
+```bash
+node scripts/photo-check-thresholds.mjs --book BOOK.json --photos PHOTOS --labels LABELS.csv --out SET
+DECISIONS_OPENROUTER_API_KEY=... node scripts/photo-check-thresholds.mjs --physical SET --runs 2 --max-usd 0.25 --with docs/photo-check-real-results-20261114-v2.json --out RESULTS [--estimate]
+```
+
+The first step sends nothing and reads no key. For a real family's photos, keep BOOK, PHOTOS, SET and RESULTS outside the repository.
