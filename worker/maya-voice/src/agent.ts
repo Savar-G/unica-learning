@@ -16,7 +16,8 @@
 //
 // VoiceCallRun owns the call's life around the speech: the opening when the child is there, the ticks the session asks
 // for silence (counted from the end of speech), an independent deadline, the connection leases, the
-// hang-up, a dropped connection (the call ends if the child is not back within RECONNECT_GRACE_MS), and the end. It
+// hang-up, a dropped connection (the call ends if the child is not back within RECONNECT_GRACE_MS, or
+// REJOIN_AFTER_LEAVE_MS after a leave the screen sent, #992), and the end. It
 // takes its clock and timers, so a test drives it without waiting.
 import { ReadableStream, TransformStream } from "node:stream/web";
 import { FlushSentinel, stt, voice, type llm, type tts, type VAD } from "@livekit/agents";
@@ -34,7 +35,7 @@ import { withRequestContext } from "@/lib/maya-request-trace";
 import { boardAudio, countedSynthesis, type SilentSpeech } from "./speech-audio";
 import { VOICE_METER_TICK_MS } from "@/lib/maya-spend";
 import { limitsOf, sentencesOf } from "@/lib/maya";
-import { asksForNumber, CONNECTION_RENEW_MS, childTurnFrom, endsInOpenNumber, GREETING_ID, GREETING_TEXT, nextTickAt, openingAsksForNumber, RECONNECT_GRACE_MS, type Heard, type TurnSilence, type VoiceTuning } from "@/lib/maya-voice";
+import { asksForNumber, CONNECTION_RENEW_MS, childTurnFrom, endsInOpenNumber, GREETING_ID, GREETING_TEXT, nextTickAt, openingAsksForNumber, RECONNECT_GRACE_MS, REJOIN_AFTER_LEAVE_MS, type Heard, type TurnSilence, type VoiceTuning } from "@/lib/maya-voice";
 import { ACK_HOLD_LIMIT_MS, ACK_LIMIT_MS, ACK_NOT_STREAMED_MS, ACK_PHRASES, nextAcknowledgement } from "@/lib/maya-voice-ack";
 import { finalMark, heardMarks, TurnClock, type AckSkip, type FinalMark, type TurnOutcome, type VoiceTurnSample } from "./turn-timing";
 
@@ -1354,12 +1355,17 @@ export class VoiceCallRun {
     await this.call.connection("child_left");
     if (this.finishing || this.childHere || generation !== this.generation) return;
     if (this.call.lost) return this.finish({ detail: "the disconnect could not be saved" });
-    if (how === "hang_up") return this.finish({ reason: "child_stopped" }, false, "participant_disconnect", reason);
-    if (this.graceTimer === null) {
-      this.graceTimer = this.timers.set(RECONNECT_GRACE_MS, () => {
-        if (!this.childHere && generation === this.generation) void this.finish({ detail: "the child's connection dropped and did not come back" }, false, "participant_disconnect", reason);
-      });
-    }
+    // A leave the screen sent is a hang-up only when the child stays away: a LiveKit full reconnect sends the same leave
+    // and joins again (#992). The button itself ends the call at once through the maya.hang_up RPC (hangUp).
+    // Each leave starts its own wait: an earlier wait belongs to an older generation and would do nothing when it ends
+    // (a rejoin without the microphone, then a second leave).
+    if (this.graceTimer !== null) this.timers.clear(this.graceTimer);
+    this.graceTimer = this.timers.set(how === "hang_up" ? REJOIN_AFTER_LEAVE_MS : RECONNECT_GRACE_MS, () => {
+      if (this.childHere || generation !== this.generation) return;
+      this.graceTimer = null;
+      if (how === "hang_up") void this.finish({ reason: "child_stopped" }, false, "participant_disconnect", reason);
+      else void this.finish({ detail: "the child's connection dropped and did not come back" }, false, "participant_disconnect", reason);
+    });
   }
 
   hangUp() { return this.finish({ reason: "child_stopped" }, false, "explicit_rpc"); }
