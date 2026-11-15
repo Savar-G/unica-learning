@@ -49,6 +49,7 @@ describeTutorKind(columnKind, [
   SAMPLE_PACKAGES["subtract-52-28"], SAMPLE_PACKAGES["add-27-39"],
   ADD_30_70, ADD_78_56, ADD_7_7, ADD_18000, ADD_4567, ADD_STORY,
   SUB_110_50, SUB_90_40, SUB_ZEROS, SUB_4005, SUB_STORY, ADD_SIX, SUB_SIX,
+  pkg("add", 4700, 12), pkg("subtract", 223, 129), pkg("subtract", 1002, 4),
 ] as OperationPackage[]);
 
 describe("column kind: which questions it reads", () => {
@@ -191,5 +192,52 @@ describe("column kind: its own claims in the thousands", () => {
     expect(columnKind.claimProblems(SUB_SIX, "1 hundred thousand is 10 ten thousands.")).toEqual([]);
     expect(columnKind.claimProblems(SUB_SIX, "1 hundred thousand is 100 ten thousands.")).not.toEqual([]);
     expect(columnKind.claimProblems(SUB_SIX, "Now the ten thousands are 9.")).toEqual([]);
+  });
+});
+
+// The Sol review of #1012 (issue #1019): one binding test per finding, each with a true or right control.
+describe("column kind: review of #1012 (#1019)", () => {
+  const ADD_4700_12 = pkg("add", 4700, 12);
+  const SUB_223_129 = pkg("subtract", 223, 129);
+  const SUB_1002_4 = pkg("subtract", 1002, 4);
+
+  it("1: a lone printed digit is not a carry", () => {
+    const hundreds = columnKind.steps(ADD_4700_12).find((st) => st.id === "hundreds")!;
+    expect(hundreds.work).toBe("only the 7 is in the hundreds, with nothing to add to it; write 7 in the hundreds");
+    expect(hundreds.work).not.toContain("carried");
+    expect(columnKind.notes!(ADD_4700_12).join(" ")).not.toContain("carry");
+    // Control: a column with only the carried 1 still says so.
+    expect(columnKind.steps(ADD_78_56).find((st) => st.id === "hundreds")!.work).toBe("only the carried 1 is in the hundreds; write 1 in the hundreds");
+    expect(columnKind.notes!(ADD_78_56).join(" ")).toContain("The last carry makes a new place");
+  });
+
+  it("2: the top after the trades counts the 1 already given", () => {
+    expect(columnKind.numberMeaning(SUB_223_129, 11)).toContain("the tens after the trade (2 + 10 − 1)");
+    expect(columnKind.numberMeaning(SUB_223_129, 11)).not.toContain("(2 + 10)");
+    // Control: a place that only takes 10 keeps its expression.
+    expect(columnKind.numberMeaning(SAMPLE_PACKAGES["subtract-52-28"] as OperationPackage, 12)).toContain("the ones after the trade (2 + 10)");
+  });
+
+  it("3: a trade of unequal quantities is refused", () => {
+    const say = "Trade 1 thousand for 100 hundreds. What do you get for 10 minus 1?";
+    expect(columnKind.claimProblems(SUB_ZEROS, say)).not.toEqual([]);
+    expect(checkTutorSay(say, { stance: "none", op: "subtract", claims: (s) => columnKind.claimProblems(SUB_ZEROS, s) })).toMatchObject({ ok: false, reason: "false_equation" });
+    expect(columnKind.claimProblems(SUB_ZEROS, "We trade 1 ten for 100 ones.")).not.toEqual([]);
+    // Control: true trades pass, in every place, and the kind's own step text still passes.
+    expect(columnKind.claimProblems(SUB_ZEROS, "Trade 1 ten from the 5 tens for 100 ones.")).not.toEqual([]);
+    for (const s of ["Trade 1 thousand for 10 hundreds. What do you get for 10 minus 1?", "So we borrow: trade 1 ten from the 5 tens for 10 ones.", "We trade 1 ten for 10 ones.", "Trade 1 ten thousand for 10 thousands, then 1 thousand for 10 hundreds."]) {
+      expect(columnKind.claimProblems(SUB_ZEROS, s), s).toEqual([]);
+      expect(checkTutorSay(s, { stance: "none", op: "subtract", claims: (x) => columnKind.claimProblems(SUB_ZEROS, x) }), s).toMatchObject({ ok: true });
+    }
+  });
+
+  it("4: a value between two trades is a value of the work", () => {
+    expect(columnKind.workValues(SUB_1002_4)).toContain(10);
+    expect(columnKind.numberMeaning(SUB_1002_4, 10)).toContain("the tens between the two trades (0 + 10)");
+    expect(columnKind.workValues(SUB_223_129)).toContain(1);
+    // Control: the right answer is still right, and a number of no step is still not a work value.
+    expect(columnKind.numberMeaning(SUB_1002_4, 998)).toBe("the right answer to the whole question");
+    expect(columnKind.workValues(SUB_1002_4)).not.toContain(11);
+    expect(columnKind.numberMeaning(SUB_1002_4, 11)).toBe("not a value of this question");
   });
 });

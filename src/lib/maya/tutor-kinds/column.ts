@@ -70,7 +70,22 @@ export interface TutorStep {
   lent?: boolean;
   /** Subtraction: the leftmost column is 0 after its trade, and a 0 on the left of an answer is not written. */
   blank?: boolean;
+  /** Addition: the column holds only the carried 1 and no printed digit (the new place of 78 + 56). */
+  carryOnly?: boolean;
 }
+
+/**
+ * Subtraction: the value a place shows between its two trades, when it both gives 1 and takes 10. A place with a digit
+ * gives first (223 - 129: the tens are 2 - 1 = 1, then 11); a 0 place takes first (1002 - 4: the tens are 0 + 10 = 10,
+ * then 9). Null for a place with one trade or none.
+ */
+function between(st: TutorStep): { value: number; expression: string } | null {
+  if (st.op !== "-" || !st.trade || !st.lent || st.printedTop === undefined) return null;
+  return st.printedTop > 0 ? { value: st.printedTop - 1, expression: `${st.printedTop} − 1` } : { value: st.printedTop + 10, expression: `${st.printedTop} + 10` };
+}
+
+/** Subtraction: how a place's top after its trades is made ("2 + 10", or "2 + 10 − 1" when it also gave 1). */
+const afterTrade = (st: TutorStep) => (st.lent ? `${st.printedTop} + 10 − 1` : `${st.printedTop} + 10`);
 
 export function tutorSteps(pkg: OperationPackage): TutorStep[] {
   return pkg.steps.filter(isColumn).map((st) => {
@@ -83,7 +98,7 @@ export function tutorSteps(pkg: OperationPackage): TutorStep[] {
       };
     }
     const operands = st.carryIn ? [st.carryIn, ...st.digits] : [...st.digits];
-    return { id: st.id, place: st.place, operands, op: "+" as const, total: st.total, write: st.write, trade: st.carryOut > 0 };
+    return { id: st.id, place: st.place, operands, op: "+" as const, total: st.total, write: st.write, trade: st.carryOut > 0, ...(st.carryIn > 0 && st.digits.length === 0 ? { carryOnly: true } : {}) };
   });
 }
 
@@ -146,7 +161,8 @@ function steps(pkg: OperationPackage): TutorStepFact[] {
       parts.push(`write ${st.write} in the ${st.place}`);
       return { id: st.id, place: st.place, work: parts.join("; "), result: st.write };
     }
-    if (st.operands.length === 1) parts.push(`only the carried 1 is in the ${st.place}`);
+    if (st.carryOnly) parts.push(`only the carried 1 is in the ${st.place}`);
+    else if (st.operands.length === 1) parts.push(`only the ${st.operands[0]} is in the ${st.place}, with nothing to add to it`);
     else parts.push(stepEquation(st));
     if (st.trade) parts.push(`trade 10 ${st.place} for 1 ${unitOf(placeLeft(st.place) ?? st.place)}: write ${st.write} and carry 1 to the ${placeLeft(st.place)}`);
     else parts.push(`write ${st.write} in the ${st.place}`);
@@ -174,7 +190,9 @@ function numberMeaning(pkg: OperationPackage, n: number): string {
     if (st.blank) continue;
     if (n === st.write) meanings.push(`right for the ${st.place} digit (${stepEquation(st)})`);
     else if (n === st.total) meanings.push(`right for the ${st.place} (${stepEquation(st)})`);
-    if (st.op === "-" && st.trade && n === st.operands[0]) meanings.push(`the ${st.place} after the trade (${st.printedTop === 0 && st.lent ? `10 − 1` : `${st.printedTop} + 10`})`);
+    if (st.op === "-" && st.trade && n === st.operands[0]) meanings.push(`the ${st.place} after the trade (${afterTrade(st)})`);
+    const mid = between(st);
+    if (mid && n === mid.value) meanings.push(`the ${st.place} between the two trades (${mid.expression})`);
     if (st.op === "-" && st.trade && st.printedTop !== undefined && st.operands[1] > st.printedTop && n === st.operands[1] - st.printedTop) mistake(`the small digit taken from the big one in the ${st.place} (${st.operands[1]} − ${st.printedTop}) instead of trading first`);
     if (st.op === "-" && st.lent && !st.trade && st.printedTop !== undefined && st.printedTop >= st.operands[1] && n === st.printedTop - st.operands[1]) mistake(`the ${st.place} without taking away the traded ${unitOf(st.place)} (${st.printedTop} − ${st.operands[1]})`);
     if (st.op === "+" && i > 0 && steps[i - 1].trade && st.operands.length > 1 && (n === st.total - 1 || n === (st.total - 1) % 10)) mistake(`the ${st.place} without the carried 1`);
@@ -208,9 +226,12 @@ function numberMeaning(pkg: OperationPackage, n: number): string {
   return "not a value of this question";
 }
 
-/** Values of the work that are never a wrong answer: each column's result, digit and top after the trade. */
+/** Values of the work that are never a wrong answer: each column's result, digit, top after its trades and between them. */
 function workValues(pkg: OperationPackage): number[] {
-  return tutorSteps(pkg).flatMap((st) => (st.blank ? [st.operands[0]] : [st.write, st.total, st.operands[0]]));
+  return tutorSteps(pkg).flatMap((st) => {
+    const mid = between(st);
+    return [...(st.blank ? [st.operands[0]] : [st.write, st.total, st.operands[0]]), ...(mid ? [mid.value] : [])];
+  });
 }
 
 /** The numbers and operations a streamed sentence may hold. */
@@ -222,7 +243,7 @@ function streamScope(pkg: OperationPackage): { numbers: number[]; expressions: s
   const numbers = [
     a, b, ...(answer === null ? [] : [answer]), ...digitsOf(a, places), ...digitsOf(b, places), 1, 10,
     ...steps.flatMap((st) => [...st.operands, st.total, st.write, ...(st.printedTop === undefined ? [] : [st.printedTop])]),
-    ...steps.flatMap((st) => [st.total * worth(st.place), st.write * worth(st.place)]),
+    ...steps.flatMap((st) => [st.total * worth(st.place), st.write * worth(st.place), ...(between(st) ? [between(st)!.value] : [])]),
   ];
   const expressions = [
     expressionKey([a, b], [pkg.operation.kind === "add" ? "+" : "-"]),
@@ -231,7 +252,7 @@ function streamScope(pkg: OperationPackage): { numbers: number[]; expressions: s
       const keys = [expressionKey(st.operands, st.operands.slice(1).map(() => op))];
       if (st.op === "-") keys.push(expressionKey([st.operands[1], st.operands[0]], ["-"]));
       if (st.op === "-" && st.printedTop !== undefined) keys.push(expressionKey([st.printedTop, 10], ["+"]), expressionKey([st.printedTop, 1], ["-"]), expressionKey([st.printedTop, st.operands[1]], ["-"]), expressionKey([st.operands[1], st.printedTop], ["-"]));
-      if (st.op === "-" && st.lent && st.trade) keys.push(expressionKey([st.printedTop! + 10, 1], ["-"]));
+      if (st.op === "-" && st.lent && st.trade) keys.push(expressionKey([st.printedTop! + 10, 1], ["-"]), expressionKey([st.printedTop!, 10, 1], ["+", "-"]), expressionKey([st.printedTop! - 1, 10], ["+"]));
       if (st.op === "+") keys.push(expressionKey(st.operands.filter((_, i) => !(i === 0 && st.operands.length > 2)), st.operands.slice(2).map(() => "+")), expressionKey([st.total, 10], ["-"]));
       return keys;
     }),
@@ -354,6 +375,37 @@ type ClaimItem = { kind: "term"; value: number; place: number | null; unit: bool
  * the carried 1, or both.
  */
 function claimProblems(pkg: OperationPackage, sentence: string): string[] {
+  return [...tradeProblems(sentence), ...relationProblems(pkg, sentence)];
+}
+
+/** A sentence that trades or swaps: each "Q for Q" in it is a trade, and its two quantities must be worth the same. */
+const TRADE_WORD = /\b(?:trade|trades|traded|trading|regroup|regroups|regrouped|exchange|exchanged|swap|swapped|change|changed|break|breaks|broke|carry|carried)\b/i;
+const TRADE_VERB = String.raw`(?:trade|trades|traded|trading|regroup|regroups|regrouped|exchange|exchanged|swap|swapped|change|changed|break|breaks|broke|carry|carried)`;
+/**
+ * A trade's two quantities: what is given right after the trade word or a list word ("trade 1 thousand for 10 hundreds,
+ * then 1 hundred for 10 tens"), with an optional "from the 5 tens" between it and "for".
+ */
+const TRADE_PAIR = new RegExp(String.raw`(?:\b(?:${TRADE_VERB}|then|and)|,)\s+(?:the\s+)?(${NUM})\s+(${UNIT})(?:\s+from\s+[^,.;:]*?)?\s+(?:for|into|as)\s+(${NUM})\s+(${UNIT})`, "gi");
+
+/**
+ * The false trades of a sentence ("Trade 1 thousand for 100 hundreds", "trade 1 ten for 100 ones"): in a sentence with
+ * a trade word, each pair of place quantities joined by "for", "into" or "as" must be worth the same. Every place.
+ */
+function tradeProblems(sentence: string): string[] {
+  if (!TRADE_WORD.test(sentence)) return [];
+  const text = sentence.replace(/(\d),(?=\d{3}\b)/g, "$1");
+  const problems: string[] = [];
+  for (const m of text.matchAll(TRADE_PAIR)) {
+    const [x, y] = [wordNumber(m[1]), wordNumber(m[3])];
+    if (x === null || y === null) continue;
+    const [give, get] = [x * unitWorth(m[2]), y * unitWorth(m[4])];
+    if (give !== get) problems.push(`it trades ${give} for ${get}, which are not the same`);
+  }
+  return problems;
+}
+
+/** The relations of a sentence that names a thousands or larger place (the kind's own second read). */
+function relationProblems(pkg: OperationPackage, sentence: string): string[] {
   if (!BIG.test(sentence)) return [];
   const text = sentence.replace(/[−–]/g, "-").replace(/(\d),(?=\d{3}\b)/g, "$1");
   const items: ClaimItem[] = [];
@@ -435,7 +487,7 @@ function notes(pkg: OperationPackage): string[] {
   if (steps.length > 2) out.push("Work the columns from the ones to the left, one place at a time.");
   if (steps.some((st) => st.lent && st.trade && st.printedTop === 0)) out.push("A trade across zeros: a 0 place has nothing to give, so the trade starts at the first place with a digit, and each 0 place on the way gets 10 and gives 1 on, so it shows 9.");
   const last = steps.at(-1);
-  if (last?.op === "+" && last.operands.length === 1) out.push(`The last carry makes a new place: the 1 is written in the ${last.place}.`);
+  if (last?.op === "+" && last.carryOnly) out.push(`The last carry makes a new place: the 1 is written in the ${last.place}.`);
   return out;
 }
 
