@@ -7,7 +7,7 @@
 // the printed missing number), so a stored package that differs keeps the controller (fail closed).
 import { workedSteps, type MissingNumberStep, type OperationPackage, type WorkedStep } from "@/lib/question-package";
 import { missingWork, readPrinted } from "../missing-number";
-import { sayNumbers, sentencesOf } from "../say-check";
+import { sayNumbers } from "../say-check";
 import { plainTeaching } from "../tutor";
 import { expressionKey, noteFromEquation, type TutorCommand, type TutorKind, type TutorStepFact } from "../tutor-kind";
 
@@ -47,13 +47,24 @@ function printedOperation(text: string): { sign: "×" | "÷"; a: number; b: numb
   return m ? { sign: m[2] === "÷" ? "÷" : "×", a: Number(m[1]), b: Number(m[3]) } : null;
 }
 
-/** A word problem: both numbers of the operation stand in the text, and it is not about dice or chance. */
+/** Words of a story that shares, splits or measures out: a division, never a product. */
+const DIVISION_STORY = /\b(?:cut|cuts|piece|pieces|share|shares|shared|sharing|split|splits|equally|equal groups|divide|divides|divided|left over|leftover|each (?:get|gets|receive|receives)|how many (?:groups|teams|bags|boxes|rows|packs|jars|bins|pieces|times))\b/i;
+/** Words of a story that puts equal groups together: a product. */
+const PRODUCT_STORY = /\b(?:each|every|per|in all|altogether|groups? of|rows? of|packs? of|boxes? of|bags? of|sets? of|jars? of|times as many)\b|\bcan \d+ [a-z]+ (?:carry|hold)\b/i;
+
+/**
+ * A word problem the kind can match to its operation: both numbers stand in the text, it is not about dice or chance,
+ * and its words are a product's (equal groups put together, and nothing shared, cut or split). The kind reads no
+ * division story: one fits only as a printed division or a printed missing factor (fail closed).
+ */
 function story(pkg: OperationPackage): boolean {
+  if (pkg.operation.kind !== "multiply") return false;
   const [a, b] = operandsOf(pkg);
   const nums = textNumbers(pkg.text);
   if (/\b(?:die|dice|roll|rolls|spinner|likely|chance)\b/i.test(pkg.text)) return false;
   if (/[=?]\s*$/.test(pkg.text.trim()) && /[×x÷+\-−]\s*\d|\d\s*[×x÷+\-−]/.test(pkg.text)) return false;
-  return /[a-z]{3,}/i.test(pkg.text) && nums.includes(a) && nums.includes(b);
+  if (!/[a-z]{3,}/i.test(pkg.text) || !nums.includes(a) || !nums.includes(b)) return false;
+  return PRODUCT_STORY.test(pkg.text) && !DIVISION_STORY.test(pkg.text);
 }
 
 /** What the question is: a product, a division, or a missing factor and how it is found. */
@@ -171,7 +182,8 @@ function steps(pkg: OperationPackage): TutorStepFact[] {
 function workValues(pkg: OperationPackage): number[] {
   const sh = shape(pkg);
   const out: number[] = [];
-  if (sh.kind === "try") out.push(sh.trial.value, sh.trial.total, sh.frame.known, sh.frame.total);
+  // Every try's product is true work (244 × 7 = 1708 is right, and too big); a tried factor other than the answer is not.
+  if (sh.kind === "try") out.push(sh.trial.value, sh.trial.total, sh.frame.known, sh.frame.total, ...sh.trial.tries.map((x) => x.product));
   if (sh.kind === "divide") {
     if (sh.zeros) out.push(sh.zeros.toFrom, sh.zeros.toBy, sh.zeros.from, sh.zeros.by);
     if (sh.frame) out.push(sh.frame.from, sh.frame.by);
@@ -244,6 +256,7 @@ function numberMeaning(pkg: OperationPackage, n: number): string {
   if (n === answer) return sh.kind === "multiply" ? "the right answer to the whole question" : "the right answer to the whole question (the missing number or the quotient)";
   const right: string[] = [];
   if (sh.kind === "try" && n === sh.trial.total) right.push(`the product to reach (${sh.trial.factor} × ${sh.trial.value} = ${sh.trial.total})`);
+  if (sh.kind === "try") for (const x of sh.trial.tries) if (x.value !== sh.trial.value && n === x.product) right.push(`right for the try ${sh.trial.factor} × ${x.value} = ${x.product}, which is too ${x.product > sh.trial.total ? "big" : "small"}, so ${x.value} is not the missing number`);
   if (sh.kind === "divide") {
     const d = divisorOf(pkg);
     if (sh.zeros && (n === sh.zeros.toFrom || n === sh.zeros.toBy)) right.push(`a number of the division after the zeros came off (${sh.zeros.toFrom} ÷ ${sh.zeros.toBy})`);
@@ -461,48 +474,78 @@ function draw(pkg: OperationPackage, requests: readonly { offer: string; place?:
 
 // ---------- Claims ----------
 
-const WORD_NUMBERS: Record<string, number> = { zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
-const NUM = String.raw`(\d+|${Object.keys(WORD_NUMBERS).join("|")})`;
-const valueOf = (w: string) => (/^\d+$/.test(w) ? Number(w) : WORD_NUMBERS[w.toLowerCase()]);
+/**
+ * The sentence with every whole number as digits ("sixty-seven" is 67), lower case. A number that is not whole (a
+ * fraction or a decimal) becomes "#", so no claim form below reads it as a number (and its claim is refused).
+ */
+function digitsOf(sentence: string): string {
+  let text = sentence.replace(/[−–]/g, "-").replace(/(\d),(?=\d{3}\b)/g, "$1");
+  for (const t of [...sayNumbers(text)].sort((x, y) => y.at - x.at)) {
+    const value = t.q && t.q[1] === 1 ? String(t.q[0]) : "#";
+    text = text.slice(0, t.at) + value + text.slice(t.end);
+  }
+  return text.toLowerCase();
+}
+
+/** Every match of `form` in `text`, and whether the matches cover every place `cue` is found (fail closed). */
+function readAll(text: string, cue: RegExp, form: RegExp): { matches: RegExpMatchArray[]; whole: boolean } {
+  const matches = [...text.matchAll(form)];
+  const cues = [...text.matchAll(cue)].map((m) => m.index!);
+  const whole = cues.every((at) => matches.some((m) => at >= m.index! && at < m.index! + m[0].length));
+  return { matches, whole };
+}
+
+const REL = String.raw`\s+(?:is|are|makes|make|equals|=|gives)\s+`;
 
 /**
- * The F2 claim forms the core does not read: which number is missing ("the missing number is 670"), equal groups ("6
- * groups of 440 is 2640"), halves and doubles ("half of 1340 is 670"), and "2 goes into 13 6 times". A form of these
- * the reader cannot read whole is refused (fail closed).
+ * The F2 claim forms the core does not read: which number is missing ("the missing number is 670"), halves and doubles
+ * ("half of 1340 is 670"), and "2 goes into 13 6 times" (with its remainder, when it says one). Number words are read
+ * as numbers. Every place a claim word stands must be read whole by one of these forms, or the sentence is refused
+ * (fail closed): "the missing number is sixty-seven" is read and refused; "2 goes into it a few times" is refused.
  */
 function claimProblems(pkg: OperationPackage, sentence: string): string[] {
   const problems: string[] = [];
   const answer = answerOf(pkg);
-  const text = sentence.replace(/(\d),(?=\d{3}\b)/g, "$1").toLowerCase();
-  for (const m of text.matchAll(/\bthe missing (?:number|factor)\s+(?:is|=|must be|has to be)\s+(\d+)\b|\b(\d+)\s+is the missing (?:number|factor)\b/g)) {
+  const text = digitsOf(sentence);
+
+  // The missing number: "the missing number is 670", "670 is the missing number". A question ("What is the missing
+  // number?") claims nothing; any other statement of it must be one of these forms.
+  const missingCue = /\bmissing (?:number|factor)\b/g;
+  const missing = readAll(text, missingCue, /\b(?:the )?missing (?:number|factor)\s+(?:is|=|equals|must be|has to be)\s+(\d+)\b(?!\s*(?:[×x*÷/+\-]|times|divided|plus|minus))|\b(\d+)\s+is (?:the )?missing (?:number|factor)\b/g);
+  for (const m of missing.matches) {
     const n = Number(m[1] ?? m[2]);
     if (n !== answer) problems.push(`it says ${n} is the missing number, but it is ${answer}`);
   }
-  const relation = String.raw`\s+(?:is|are|makes|make|equals|=|gives)\s+`;
-  const grouped = new RegExp(String.raw`\b${NUM}\s+(?:groups|lots|sets|rows|jars|boxes|bags) of\s+${NUM}${relation}${NUM}\b`, "g");
-  for (const m of text.matchAll(grouped)) {
-    const [x, y, z] = [valueOf(m[1]), valueOf(m[2]), valueOf(m[3])];
-    if (x * y !== z) problems.push(`it says ${x} groups of ${y} is ${z}, but it is ${x * y}`);
-  }
-  for (const m of text.matchAll(new RegExp(String.raw`\b(half|double|twice) of\s+${NUM}${relation}${NUM}\b|\b(double|twice)\s+${NUM}${relation}${NUM}\b`, "g"))) {
-    const kind = m[1] ?? m[4];
-    const [x, z] = m[1] ? [valueOf(m[2]), valueOf(m[3])] : [valueOf(m[5]), valueOf(m[6])];
+  const asks = /^\s*(?:what|which|can you|do you|how|where)\b/.test(text) || /\?\s*$/.test(text);
+  if (!missing.whole && !asks) problems.push("it names the missing number in a form code cannot read");
+
+  // Halves and doubles: "half of 1340 is 670", "double 670 is 1340", "twice 20 is 40", "670 is half of 1340".
+  const halfCue = /\b(?:half|halves|double|doubles|twice)\b/g;
+  const halves = readAll(text, halfCue, new RegExp(String.raw`\b(half|double|twice) of (\d+)${REL}(\d+)\b|\b(double|twice) (\d+)${REL}(\d+)\b|\b(\d+)${REL}(half|double|twice) (?:of )?(\d+)\b`, "g"));
+  for (const m of halves.matches) {
+    const [kind, x, z] = m[1] ? [m[1], Number(m[2]), Number(m[3])] : m[4] ? [m[4], Number(m[5]), Number(m[6])] : [m[8], Number(m[9]), Number(m[7])];
     const want = kind === "half" ? x / 2 : x * 2;
     if (want !== z) problems.push(`it says ${kind} of ${x} is ${z}, but it is ${want}`);
   }
-  if (/\bgoes into\b|\bgo into\b/.test(text)) {
-    const m = new RegExp(String.raw`\b${NUM}\s+goes into\s+${NUM}\s+${NUM}\s+times\b`).exec(text);
-    if (!m) problems.push("it says \"goes into\" in a form code cannot read");
-    else {
-      const [d, n, q] = [valueOf(m[1]), valueOf(m[2]), valueOf(m[3])];
-      if (d === 0 || Math.floor(n / d) !== q) problems.push(`it says ${d} goes into ${n} ${q} times, but it is ${d === 0 ? "no" : Math.floor(n / d)} times`);
-    }
+  if (!halves.whole && /\b(?:half|halves|double|doubles|twice)\b\s*(?:of\s+)?[\d#]|[\d#]\s*(?:is|are)\s+(?:half|double|twice)\b/.test(text)) problems.push("it says half or double in a form code cannot read");
+
+  // "2 goes into 13 6 times", each one in the sentence, with any remainder it states ("with a remainder of 1",
+  // "with 1 left over", "remainder 1", "R 1").
+  const goesCue = /\bgo(?:es)? into\b/g;
+  const goes = readAll(text, goesCue, /\b(\d+) go(?:es)? into (\d+),? (\d+) times?\b(?:,?\s*(?:with (?:a remainder of |remainder )?(\d+)(?: left(?: over)?)?|(?:and )?(?:a )?remainder (?:of )?(\d+)|r (\d+)))?/g);
+  for (const m of goes.matches) {
+    const [d, n, q] = [Number(m[1]), Number(m[2]), Number(m[3])];
+    const r = m[4] ?? m[5] ?? m[6];
+    if (d === 0 || Math.floor(n / d) !== q) problems.push(`it says ${d} goes into ${n} ${q} times, but it is ${d === 0 ? "no" : Math.floor(n / d)} times`);
+    else if (r !== undefined && Number(r) !== n % d) problems.push(`it says ${d} goes into ${n} with ${r} left, but ${n % d} is left`);
+    // A remainder said in a form not read above ("with 2 more", "and 2 over") is refused.
+    else if (r === undefined && /^\s*,?\s*(?:with|and (?:a )?remainder|remainder|r\b|leaving|left)/.test(text.slice(m.index! + m[0].length))) problems.push("it says a remainder in a form code cannot read");
   }
-  // "? = 670" or "the ? is 670" said aloud as a number.
-  for (const s of sentencesOf(sentence)) if (/\?\s*(?:=|is)\s*\d/.test(s)) {
-    const n = sayNumbers(s.slice(s.indexOf("?"))).find((t) => t.q && t.q[1] === 1)?.q?.[0];
-    if (n !== undefined && n !== answer) problems.push(`it says the ? is ${n}, but it is ${answer}`);
-  }
+  if (!goes.whole) problems.push("it says \"goes into\" in a form code cannot read");
+
+  // "? = 670" or "the ? is 670": the ? is the missing number.
+  for (const m of text.matchAll(/\?\s*(?:=|is)\s*(\d+)\b/g)) if (Number(m[1]) !== answer) problems.push(`it says the ? is ${m[1]}, but it is ${answer}`);
+
   return problems;
 }
 

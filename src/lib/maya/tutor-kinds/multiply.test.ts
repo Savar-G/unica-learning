@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { conversationalFake, reply } from "@/lib/maya-model-fake";
+import { fakeTalkReviewer } from "@/lib/maya-talk-review";
+import { createTextSession } from "@/lib/maya-text";
 import { workedSteps, type Operation, type OperationPackage } from "@/lib/question-package";
 import { missingWork } from "../missing-number";
 import { checkTutorSay, plainTeaching } from "../tutor";
@@ -28,7 +31,7 @@ function missingPkg(known: number, total: number, easier: [number, number]): Ope
   const w = missingWork({ sign: "×", known, unknownFirst: false, total })!;
   const e = missingWork({ sign: "×", known: easier[0], unknownFirst: false, total: easier[1] })!;
   return {
-    ...base, id: `m-${known}-${total}`, text: `${known} × ? = ${total}`,
+    ...base, id: `m-${known}-${total}`, text: `${known} × ? = ${total}`, operationSource: "maya-teaching",
     answer: { value: num(w.answer), accepted: [], unit: null }, operation: w.operation, steps: w.steps, skill: skill(w.operation), wrongAnswers: wrongOf([w.answer + 1]),
     easierExample: { text: `${easier[0]} × ? = ${easier[1]}`, operation: e.operation, answer: num(e.answer), steps: e.steps },
   } as OperationPackage;
@@ -66,6 +69,15 @@ describe("multiply kind: what it fits", () => {
   it("leaves a claim or a comparison to another family", () => {
     const pkg = P.fact;
     expect(multiplyKind.fits({ ...pkg, steps: [...pkg.steps.slice(0, -1), { id: "claim", kind: "claim-compare", relation: "equal", value: 6, shown: 6, holds: true }, pkg.steps.at(-1)!] } as OperationPackage)).toBe(false);
+  });
+  it("opens a tutor call on each shape (the session admits every test package)", async () => {
+    for (const pkg of Object.values(P)) {
+      let now = Date.UTC(2026, 10, 15);
+      const session = createTextSession({ callId: `open-${pkg.id}`, package: pkg, model: conversationalFake({ answer: () => reply("What is the first step?", "guide") }), clock: () => (now += 100), reviewer: fakeTalkReviewer(), tutor: true });
+      const opening = await session.start();
+      expect(opening.ended, pkg.text).toBeNull();
+      expect(session.session.tutor, pkg.text).toBeDefined();
+    }
   });
   it("is the registry's kind for each shape", () => {
     for (const pkg of Object.values(P)) expect(tutorKindOf(pkg)?.id).toBe("multiply");
@@ -110,10 +122,11 @@ describe("multiply kind: claims in words and digits", () => {
     for (const x of ["11200 ÷ 80 is the same as 1120 ÷ 8.", "1120 ÷ 8 = 140.", "The missing number is 140."]) expect(ok(P.zeros, x), x).toBe(true);
   });
   it("reads equal groups, halves and doubles itself (the core reads groups, not halves or doubles)", () => {
-    for (const x of ["6 groups of 440 is 2640.", "Double 670 is 1340."]) expect(multiplyKind.claimProblems(P.partials, x), x).toEqual([]);
+    expect(multiplyKind.claimProblems(P.partials, "Double 670 is 1340.")).toEqual([]);
     expect(ok(P.partials, "6 groups of 440 is 2640.")).toBe(true);
+    expect(ok(P.partials, "6 groups of 440 is 2600.")).toBe(false);
     expect(multiplyKind.claimProblems(P.divide, "Half of 1340 is 670.")).toEqual([]);
-    for (const x of ["6 groups of 440 is 2600.", "Double 670 is 1300.", "Half of 1340 is 680."]) expect(multiplyKind.claimProblems(P.divide, x).length, x).toBe(1);
+    for (const x of ["Double 670 is 1300.", "Half of 1340 is 680."]) expect(multiplyKind.claimProblems(P.divide, x).length, x).toBe(1);
   });
   it("refuses false claims, both ways", () => {
     for (const x of ["6 times 440 is 2650.", "6 × 440 = 2440.", "6 groups of 440 is 2600.", "3 tens times 2 is 5 tens."]) expect(ok(P.partials, x), x).toBe(false);
@@ -143,5 +156,56 @@ describe("multiply kind: the fallback question", () => {
   it("asks the sum of the rows with plus", () => {
     const done = multiplyKind.steps(P.partials).filter((s) => !s.id.startsWith("sum")).map((s) => s.id);
     expect(multiplyKind.stepQuestion(P.partials, done)).toBe("What do you get for 0 plus 0?");
+  });
+});
+
+// The Sol review of #1014 (#1020): one binding test per item, each with a true-sentence or right-answer control.
+describe("#1020 review fixes", () => {
+  const ctx = (pkg: OperationPackage) => ({ stance: "none" as const, answer: (pkg.answer.value as { value: number }).value, claims: (x: string) => multiplyKind.claimProblems(pkg, x) });
+  const ok = (pkg: OperationPackage, x: string) => checkTutorSay(x, ctx(pkg)).ok;
+
+  it("1. reads claims with number words, and refuses a false one", () => {
+    for (const x of ["The missing number is sixty-seven.", "Half of thirteen is thirteen.", "Double twenty is twenty.", "Twice twenty is thirty.", "Half of 1340 is 670 and half of 13 is 7."]) expect(ok(P.divide, x), x).toBe(false);
+    // Controls: the same forms, true.
+    // (The core's own reader refuses any "half of 20 is 10" today; the kind's reader passes the true forms.)
+    for (const x of ["Half of twenty is ten.", "Double twenty is forty.", "Twice 20 is 40.", "Ten is half of twenty."]) expect(multiplyKind.claimProblems(P.divide, x), x).toEqual([]);
+    expect(ok(P.divide, "What is the missing number?")).toBe(true);
+    expect(ok(P.fact, "The missing number is six.")).toBe(true);
+    expect(ok(P.divide, "The missing number is six hundred seventy.")).toBe(true);
+  });
+
+  it("2. checks every \"goes into\" claim and its remainder", () => {
+    for (const x of ["2 goes into 13 6 times with a remainder of 2.", "2 goes into 13 6 times, and 2 goes into 14 8 times.", "2 goes into 13 6 times with 3 left over.", "2 goes into 13 6 times, remainder 2.", "2 goes into 13 6 times with some more."]) expect(ok(P.divide, x), x).toBe(false);
+    // Controls: true, with and without the remainder.
+    for (const x of ["2 goes into 13 6 times with a remainder of 1.", "2 goes into 13 6 times, and 2 goes into 14 7 times.", "2 goes into 13 6 times with 1 left over.", "2 goes into 14 7 times."]) expect(ok(P.divide, x), x).toBe(true);
+  });
+
+  it("3. keeps a right trial product as work, and the tried factor as not the answer", async () => {
+    expect(multiplyKind.workValues(P.trial)).toContain(1708);
+    expect(multiplyKind.numberMeaning(P.trial, 1708)).toMatch(/right for the try 244 × 7 = 1708, which is too big/);
+    expect(multiplyKind.numberMeaning(P.trial, 7)).toMatch(/likely mistake/);
+    expect(multiplyKind.workValues(P.trial)).not.toContain(7);
+    // Through the call: Maya says the child's true try product is right, and it reaches the child.
+    const say = "Yes, 244 times 7 is 1708. Try a smaller number.";
+    let now = Date.UTC(2026, 10, 15);
+    const session = createTextSession({ callId: "f2-trial", package: P.trial, model: conversationalFake({ answer: () => reply(say, "guide") }), clock: () => (now += 100), reviewer: fakeTalkReviewer(), tutor: true });
+    await session.start();
+    expect((await session.child("244 times 7 is 1708.")).say).toEqual([say]);
+    // Control: a "yes" to the tried factor as the answer is still refused.
+    const yesToSeven = "Yes, 7 is the missing number.";
+    let later = Date.UTC(2026, 10, 15);
+    const wrong = createTextSession({ callId: "f2-trial-wrong", package: P.trial, model: conversationalFake({ answer: () => reply(yesToSeven, "guide") }), clock: () => (later += 100), reviewer: fakeTalkReviewer(), tutor: true });
+    await wrong.start();
+    expect((await wrong.child("Is it 7?")).say).not.toEqual([yesToSeven]);
+  });
+
+  it("4. does not fit a story whose words are not its operation's", () => {
+    expect(multiplyKind.fits(opPkg("A ribbon is 6 cm long. Each piece is 2 cm long. How many pieces can be cut?", mul(6, 2), mul(2, 2)))).toBe(false);
+    expect(multiplyKind.fits(opPkg("Sam shares 12 apples equally with 3 friends. How many does each get?", div(12, 3), div(8, 2)))).toBe(false);
+    expect(multiplyKind.fits(opPkg("12 apples and 3 pears are in a bag. How many in all?", mul(12, 3), mul(2, 2)))).toBe(true);
+    // Controls: product stories fit.
+    expect(multiplyKind.fits(P.story)).toBe(true);
+    expect(multiplyKind.fits(opPkg("A bus carries 60 people. How many people can 100 buses carry?", mul(60, 100), mul(20, 10)))).toBe(true);
+    expect(multiplyKind.fits(opPkg("Kai buys 20 packs of 3 books. How many books is that?", mul(20, 3), mul(2, 2)))).toBe(true);
   });
 });
