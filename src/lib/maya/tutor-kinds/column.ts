@@ -7,6 +7,7 @@
 // and 5, so it refuses every true decimal equation, and the board's columns do not draw a decimal point.
 import type { OperationPackage, WorkedStep } from "@/lib/question-package";
 import { standardNumber } from "../say-check";
+import { ENCLOSING } from "../tutor-math";
 import { expressionKey, noteFromEquation, type TutorCommand, type TutorKind, type TutorStepFact } from "../tutor-kind";
 import { clauseWith, countedInText, finalQuestion, isGroup, THING, WHO, WORD } from "./asks";
 
@@ -456,7 +457,7 @@ const unitWorth = (unit: string) => {
   return u === "hundred thousand" ? 100000 : u === "ten thousand" ? 10000 : u === "thousand" ? 1000 : u === "hundred" ? 100 : u === "ten" ? 10 : 1;
 };
 
-type ClaimItem = { kind: "term"; value: number; place: number | null; unit: boolean } | { kind: "op"; sign: 1 | -1 } | { kind: "rel"; negated: boolean; now: boolean } | { kind: "and" } | { kind: "other" };
+type ClaimItem = { kind: "term"; value: number; place: number | null; unit: boolean } | { kind: "op"; sign: 1 | -1 } | { kind: "rel"; negated: boolean; now: boolean } | { kind: "and" } | { kind: "other"; word?: string };
 
 /**
  * The false claims of a sentence that names a thousands, ten thousands or hundred thousands place, read again here:
@@ -525,7 +526,7 @@ function relationProblems(pkg: OperationPackage, sentence: string): string[] {
       const r = m[5].toLowerCase();
       items.push({ kind: "rel", negated: /not|n't/.test(r), now: /\bnow\b|becom|became|turn/.test(r) });
     } else if (m[6]) items.push({ kind: "and" });
-    else if (!(m[7]?.toLowerCase() === "the")) items.push({ kind: "other" });
+    else if (!(m[7]?.toLowerCase() === "the")) items.push({ kind: "other", word: m[7]?.toLowerCase() });
   }
   type Side = { value: number; place: number | null; unit: boolean; next: number };
   const side = (at: number): Side | null => {
@@ -552,6 +553,16 @@ function relationProblems(pkg: OperationPackage, sentence: string): string[] {
     const change = (after - x.value) / x.place;
     return subtract ? [10, -1, 9].includes(change) : [-10, 1, -9].includes(change);
   };
+  /** Whether anything before item `at`, in its clause, encloses a claim there: a relation, a negation or a scope word. */
+  const enclosedBefore = (at: number): boolean => {
+    for (let k = at - 1; k >= 0; k--) {
+      const it = items[k];
+      if (it.kind === "other" && /^[,;:.!?]$/.test(it.word ?? "")) return false;
+      if (it.kind === "rel") return true;
+      if (it.kind === "other" && (ENCLOSING.test(it.word ?? "") || /n't$/.test(it.word ?? "") || it.word === "true")) return true;
+    }
+    return false;
+  };
   const problems: string[] = [];
   let i = 0;
   while (i < items.length) {
@@ -565,6 +576,9 @@ function relationProblems(pkg: OperationPackage, sentence: string): string[] {
     // review read it.
     const runsOn = (k: number) => items[k]?.kind === "term" || (items[k]?.kind === "and" && items[k + 1]?.kind === "term");
     if (items[i - 1]?.kind === "term" || runsOn(right.next)) { i = right.next; continue; }
+    // Final check 11 (2026-11-15): a claim inside an enclosing negation or scope ("It is not true that 1 thousand is 2
+    // thousands.", "If ...") is not read in full here: no refusal; the core and the math review read it.
+    if (enclosedBefore(i)) { i = right.next; continue; }
     // Only a claim that holds a place quantity: two plain numbers are the core's to read.
     if (left.unit || right.unit) {
       const equal = left.value === right.value || (rel.now && trade(left, right));

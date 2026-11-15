@@ -157,6 +157,17 @@ const SCALES = new Set(["hundred", "thousand", "million", "billion", "trillion"]
  * (NaN): its clause stays unread, never read as another number. Never multiplies a value it read before by a scale.
  */
 function wordNumbers(text: string): WordNumber[] {
+  // Final check 11 (2026-11-15): a run never joins words across anything but spaces or a hyphen: an operator, a symbol,
+  // a comma or a clause mark between two groups ("two thousand × six hundred forty") makes two runs, never one value.
+  const found: WordNumber[] = [];
+  for (const piece of text.matchAll(/[a-z]+(?:[\s-]+[a-z]+)*/gi)) {
+    for (const w of wordRuns(piece[0])) found.push({ ...w, at: w.at + piece.index!, end: w.end + piece.index! });
+  }
+  return found;
+}
+
+/** The number-word runs of one stretch of words joined only by spaces or hyphens (wordNumbers). */
+function wordRuns(text: string): WordNumber[] {
   const found: WordNumber[] = [];
   const re = /[a-z]+/gi;
   const words: { w: string; at: number; end: number }[] = [];
@@ -268,16 +279,25 @@ export function unreadNumberRuns(raw: string): { at: number; end: number; text: 
  * the other.
  */
 export function sentenceKey(raw: string): string {
-  const text = raw.replace(/[‘’ʼ]/g, "'").replace(/[−–]/g, "-").replace(/(\d),(?=\d{3}\b)/g, "$1");
+  const text = raw.replace(/[‘’ʼ]/g, "'").replace(/[−–]/g, "-").replace(/(\d),(?=\d{3}\b)/g, "$1").toLowerCase();
+  // Every run of number words, read by the standard reader (a lone "one" or "ten" too): its value, or "?" and its words.
+  const runs = new Map(wordNumbers(text).map((w) => [w.at, w]));
   const parts: string[] = [];
-  let at = 0;
-  const words = (piece: string) => { for (const w of piece.toLowerCase().split(/[^a-z0-9']+/)) if (w.replace(/'/g, "")) parts.push(w); };
-  for (const t of sayNumbers(text)) {
-    words(text.slice(at, t.at));
-    parts.push(t.q ? `${t.q[0]}/${t.q[1]}` : t.key.toLowerCase().replace(/\s+/g, " "));
-    at = t.end;
+  const tokens = [...text.matchAll(/\d+\s*\/\s*\d+|\d{1,2}:\d{2}|\d+(?:\.\d+)?|[a-z]+(?:'[a-z]+)*/g)];
+  for (let k = 0; k < tokens.length; k++) {
+    const t = tokens[k];
+    const run = runs.get(t.index!);
+    let key: string;
+    if (run) {
+      key = Number.isNaN(run.value) ? `?${run.words.join(" ")}` : String(run.value);
+      while (k + 1 < tokens.length && tokens[k + 1].index! < run.end) k++;
+    } else if (/^\d/.test(t[0])) key = t[0].replace(/\s+/g, "").replace(/^(\d+)(?:\.0+)?$/, (_m, n: string) => String(Number(n)));
+    else { parts.push(t[0].replace(/'/g, "")); continue; }
+    // A count of a denominator ("five sixths", "5 sixths") is the fraction "5/6".
+    const den = tokens[k + 1]?.[0];
+    if (/^[\d.]+$|^\d/.test(key) && !key.includes("/") && !key.includes(":") && den !== undefined && Object.hasOwn(DENOMINATORS, den)) { key = `${key}/${DENOMINATORS[den]}`; k++; }
+    parts.push(key);
   }
-  words(text.slice(at));
   return parts.join(" ");
 }
 

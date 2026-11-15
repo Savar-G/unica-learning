@@ -627,6 +627,40 @@ const READERS: readonly Reader[] = [
 const ASKS = /^(?:so |now |ok |okay )?(?:which|what|how|where|can|could|is|are|do|does|did|will|would|why)\b[^.!]*\?$/;
 /** What may follow a read claim's last number and makes it a longer value: "plus 1", "+ 1", ".5", "times 10", "tens". */
 const CONTINUES = /^(?:\.\d|,\d|\s*(?:\+|-|×|÷|\*|\/)\s*\d|\s+(?:plus|minus|times|divided|over|point|and a half|@\d)\b)/;
+/**
+ * Final check 11 (2026-11-15): the whole side that ends with the number before `end` and goes on in whole-number
+ * arithmetic ("9000 minus 2000", "8000 + 1"), computed in full (products and quotients first), or null when the
+ * continuation is anything else (a decimal, a place, a value that is not a safe whole number) or runs on after it.
+ */
+function arithmeticSide(t: string, end: number): { start: number; end: number; value: number } | null {
+  const last = /(\d+)$/.exec(t.slice(0, end));
+  if (!last) return null;
+  const start = end - last[1].length;
+  const OP = String.raw`\s*(?:\+|-|×|÷|\*|\/|plus|minus|times|divided by)\s*`;
+  const run = new RegExp(String.raw`^(?:${OP}\d+)+`).exec(t.slice(end));
+  if (!run) return null;
+  const after = end + run[0].length;
+  // The side must end there: no decimal, place, comma group or further math after it.
+  if (/^(?:\.\d|,\d|\s*(?:@\d|point|and a half|over)\b)/.test(t.slice(after))) return null;
+  const parts = `${last[1]}${run[0]}`.match(/\d+|\+|-|×|÷|\*|\/|plus|minus|times|divided by/g)!;
+  const values = [Number(parts[0])];
+  const ops: string[] = [];
+  for (let k = 1; k < parts.length; k += 2) { ops.push(parts[k]); values.push(Number(parts[k + 1])); }
+  let total = 0;
+  let term = values[0];
+  let sign = 1;
+  for (let k = 0; k < ops.length; k++) {
+    const op = ops[k];
+    if (/^(?:×|\*|times)$/.test(op)) { term *= values[k + 1]; continue; }
+    if (/^(?:÷|\/|divided by)$/.test(op)) { term = values[k + 1] === 0 ? NaN : term / values[k + 1]; continue; }
+    total += sign * term;
+    sign = /^(?:\+|plus)$/.test(op) ? 1 : -1;
+    term = values[k + 1];
+  }
+  const value = total + sign * term;
+  return Number.isSafeInteger(value) && value >= 0 ? { start, end: after, value } : null;
+}
+
 /** A word that says something about a number. */
 const CLAIM_VERB = /\b(?:is|are|was|were|has|have|holds|shows|means|stands|worth|equals|makes?|gives|tells)\b|=/;
 
@@ -649,11 +683,31 @@ function claimProblems(pkg: OperationPackage, sentence: string): string[] {
   const mask = [...t];
   for (const r of READERS) {
     for (const m of t.matchAll(r.re)) {
-      const problem = r.check(m as RegExpExecArray, n, answer);
-      if (problem) problems.push(problem);
-      // A claim is read whole: a number that goes on ("8000 plus 1", "40000.5") is a value code did not read (#1017).
-      if (CONTINUES.test(t.slice(m.index! + m[0].length))) problems.push(`"${m[0]}" goes on in a way code cannot read`);
-      for (let i = m.index!; i < m.index! + m[0].length; i++) mask[i] = " ";
+      // A claim is read whole: a number that goes on ("8000 plus 1", "9,000 minus 2,000", "40000.5") is a side this
+      // reader reads only in part (#1017). Final check 11 (2026-11-15): a side that goes on in whole-number arithmetic is
+      // computed in full and the claim is checked with that value ("greater than 9,000 minus 2,000" is "greater than
+      // 7000"; "worth 8000 plus 1" is "worth 8001"). Any other continuation is neither checked nor refused here: the core
+      // reads it whole, or the math review does.
+      const end = m.index! + m[0].length;
+      let span = end;
+      if (!CONTINUES.test(t.slice(end))) {
+        const problem = r.check(m as RegExpExecArray, n, answer);
+        if (problem) problems.push(problem);
+      } else {
+        const whole = arithmeticSide(t, end);
+        if (whole) {
+          span = whole.end;
+          const again = new RegExp(r.re.source, "g");
+          again.lastIndex = m.index!;
+          const said = `${t.slice(0, whole.start)}${whole.value}${t.slice(whole.end)}`;
+          const m2 = again.exec(said);
+          if (m2 && m2.index === m.index && m2.index + m2[0].length === whole.start + String(whole.value).length) {
+            const problem = r.check(m2, n, answer);
+            if (problem) problems.push(problem);
+          }
+        }
+      }
+      for (let i = m.index!; i < span; i++) mask[i] = " ";
     }
   }
   if (problems.length) return [...new Set(problems)];

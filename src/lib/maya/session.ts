@@ -1675,7 +1675,8 @@ export function step(session: Session, event: SessionEvent): StepResult {
       {
         // D-341: sentences already streamed to the child (onSayPart) stay said: the turn's words start with them.
         const sent = Array.isArray(event.sent) ? event.sent.filter((x): x is string => typeof x === "string" && x.trim() !== "") : [];
-        if (v3 && s.tutor) return proposeTutor(s, raw as ModelOutput, effects, event.talkReviews === undefined ? undefined : reviewsOf(event.talkReviews), sent, event.fallback === true, event.mathReviews === undefined ? undefined : mathReviewsOf(event.mathReviews));
+        // Final check 11: the emitted help is in the session before any routing builds an outcome.
+        if (v3 && s.tutor) return proposeTutor(withEmittedHelp(s, sent), raw as ModelOutput, effects, event.talkReviews === undefined ? undefined : reviewsOf(event.talkReviews), sent, event.fallback === true, event.mathReviews === undefined ? undefined : mathReviewsOf(event.mathReviews));
         if (v3) return proposeV3(s, raw as ModelOutput, effects, event.talkReviews === undefined ? undefined : reviewsOf(event.talkReviews), sent);
         return withSent(propose(s, raw as Proposal, effects, reviewsOf(event.talkReviews), event.fallback === true), sent, s, disclosureDue(s));
       }
@@ -3422,47 +3423,80 @@ export function answerReadWhole(pkg: OperationPackage, text: string, value: numb
       if (rest.some((w) => !ANSWER_FRAME.has(w) && !unitWords.has(w) && !(step && STEP_FRAME.has(w)))) return false;
     }
   }
-  // A step whose value is the whole answer (the last step of 3 × 2 makes 6) is read as the final answer is: in full.
-  const answer = pkg.answer.value.type === "number" ? pkg.answer.value.value : null;
-  return (step && value !== answer) || answerPhraseWhole(text, value, unitWords);
+  return answerPhraseWhole(text, value, unitWords, step);
 }
 
 /** Operator words and symbols: a number next to one is an operand of an expression, not a whole answer. */
 const OPERATOR_TOKEN = /^(?:plus|minus|times|x|divided|by|multiplied|take|away|add|subtract|[+\-×÷*=/])$/;
+/** Relation words: a clause that holds one with a number after it states its own claim. */
+const RELATION_TOKEN = /^(?:is|are|was|were|equals|equal|makes|make|gives|give|=)$/;
+/** Where a clause can end inside a sentence: punctuation, or a word that joins two clauses. */
+const CLAUSE_JOIN = /^(?:[,;:]|and|so|then|because|'cause|cause|cuz|since|but)$/;
 
 /**
- * Final check 10 (2026-11-15): the child's final answer phrase is read in full. Each place the turn says `value` must be
- * the whole answer: no operator just before it, and after it, to the end of its sentence (across commas), only the
- * question's unit (each unit word at most once) and answer words that are not operators ("is my answer"). A number, an
- * operator, any other word or any token code cannot place after it ("18, bags.", "24 plus 1.", "24 plus.") makes the
- * read incomplete. A later sentence that starts with an operator ("24. Plus 1.") continues the answer; a later sentence
- * with no number may hold only answer words and the unit ("18. Bags."). Unread is no credit: fail closed.
+ * Final check 11 (2026-11-15): the ONE whole-phrase reader for every value code credits: the final answer, a step, a
+ * column, a digit (`value`, a number) and a choice word (`value`, a word: "true", "yes", ">"). Each place the turn says
+ * the value is either an operand of another complete claim ("4 minus 2 is 2" holds the 4 of "12 minus 8 is 4"), which
+ * this phrase leaves to that claim, or the child's answer phrase, which must be whole: no operator just before it, and
+ * after it only the unit (each word once), answer words that are not operators and, for a step, place and carrying
+ * words, up to the end of its sentence or a joint that starts another clause of the child's own (one with a word before
+ * its first number, or with a relation and a number after it). A number, an operator or any other word or token in the
+ * phrase ("4 plus 1.", "4, with a negative sign.", "18, bags.", "24 plus.") leaves it unread: no credit, the verdict is
+ * "unknown". A later sentence that starts with an operator continues the phrase; a later sentence with no number may
+ * hold only the phrase's own words ("18. Bags."). A turn with no whole phrase for the value gives no credit.
  */
-function answerPhraseWhole(text: string, value: number, unitWords: ReadonlySet<string>): boolean {
+export function answerPhraseWhole(text: string, value: number | string, unitWords: ReadonlySet<string> = new Set(), step = false): boolean {
   const tokensOf = (sentence: string) =>
-    digitWords(joinCompounds(sentence.replace(/[.!?]+$/, "").toLowerCase())).match(/\d+(?:\.\d+)?|[a-z']+|[^\s\da-z']/g) ?? [];
-  const isValue = (t: string) => (/^\d/.test(t) ? Number(t) : /^[a-z]/.test(t) ? plainNumber(t) : null) === value;
+    digitWords(joinCompounds(sentence.replace(/[.!?]+$/, "").toLowerCase())).match(/\d+(?:\.\d+)?|[a-z']+|[<>]|[^\s\da-z']/g) ?? [];
+  const word = typeof value === "string" ? value.trim().toLowerCase() : null;
+  const isValue = (t: string) => (word !== null ? t === word : (/^\d/.test(t) ? Number(t) : /^[a-z]/.test(t) ? plainNumber(t) : null) === value);
   const isNumber = (t: string) => /^\d/.test(t) || (/^[a-z]/.test(t) && plainNumber(t) !== null);
+  const isOperator = (t: string | undefined) => t !== undefined && OPERATOR_TOKEN.test(t);
+  const allowed = (t: string) => !isOperator(t) && (ANSWER_FRAME.has(t) || (step && STEP_FRAME.has(t)));
   const sentences = text.replace(/[’‘]/g, "'").split(/(?<=[.!?])\s+|\n+/).map(tokensOf).filter((t) => t.length > 0);
+  // Whether the tokens from `k` on, to the end, are a complete claim's rest: (operator number)* relation number.
+  const claimRest = (tokens: readonly string[], k: number): boolean => {
+    while (isOperator(tokens[k]) && isNumber(tokens[k + 1] ?? "")) k += 2;
+    return RELATION_TOKEN.test(tokens[k] ?? "") && tokens.slice(k + 1).some(isNumber);
+  };
+  // Whether a joint at `k` starts another clause of the child's own: not an operator first, and a word before its first
+  // number or a relation with a number after it.
+  const newClause = (tokens: readonly string[], k: number): boolean => {
+    let at = k;
+    while (CLAUSE_JOIN.test(tokens[at] ?? "")) at++;
+    const rest = tokens.slice(at);
+    if (rest.length === 0 || isOperator(rest[0]) || !rest.some(isNumber)) return false;
+    return !isNumber(rest[0]) || rest.some((t, n) => RELATION_TOKEN.test(t) && rest.slice(n + 1).some(isNumber));
+  };
   let last = -1;
+  let phrases = 0;
   for (const [index, tokens] of sentences.entries()) {
     for (const [i, t] of tokens.entries()) {
       if (!isValue(t)) continue;
       last = index;
-      if (i > 0 && OPERATOR_TOKEN.test(tokens[i - 1])) return false;
+      // An operand of another complete claim ("4 minus 2 is 2", "28 plus 24 is 52"): that claim's, not this phrase.
+      if (isOperator(tokens[i - 1]) || isOperator(tokens[i + 1])) {
+        let start = i;
+        while (isOperator(tokens[start - 1]) && isNumber(tokens[start - 2] ?? "")) start -= 2;
+        if (!isOperator(tokens[start - 1]) && claimRest(tokens, i + 1)) continue;
+        return false;
+      }
+      phrases++;
       const units = new Set<string>();
-      for (const after of tokens.slice(i + 1)) {
+      for (let k = i + 1; k < tokens.length; k++) {
+        const after = tokens[k];
+        if (CLAUSE_JOIN.test(after) && newClause(tokens, k)) break;
         if (after === "," || after === ";" || after === ":") continue;
         if (unitWords.has(after) && !units.has(after)) { units.add(after); continue; }
-        if (isNumber(after) || OPERATOR_TOKEN.test(after) || !ANSWER_FRAME.has(after)) return false;
+        if (isNumber(after) || !allowed(after)) return false;
       }
     }
   }
-  // No place code can find the value as a whole token: unread.
-  if (last === -1) return false;
+  // No place code can find the value as a whole answer phrase: unread.
+  if (last === -1 || phrases === 0) return false;
   for (const tokens of sentences.slice(last + 1)) {
-    if (OPERATOR_TOKEN.test(tokens[0] ?? "")) return false;
-    if (!tokens.some(isNumber) && tokens.some((t) => t !== "," && !unitWords.has(t) && (OPERATOR_TOKEN.test(t) || !ANSWER_FRAME.has(t)))) return false;
+    if (isOperator(tokens[0])) return false;
+    if (!tokens.some(isNumber) && tokens.some((t) => t !== "," && !unitWords.has(t) && !allowed(t))) return false;
   }
   return true;
 }
@@ -5826,6 +5860,17 @@ function tutorHelpOf(base: Session, sentences: readonly string[], notes: readonl
  * say the answer back without giving it, and then nothing is recorded (as on the teaching path; never the model's
  * reading).
  */
+/** The session with the help in sentences Maya already emitted this turn recorded (final check 11). */
+export function withEmittedHelp(session: Session, sent: readonly string[]): Session {
+  // Final check 11 (2026-11-15): applied where each streamed sentence is accepted (the text adapter's response, and a
+  // proposal that carries them), before any routing (identity, scope, safety, a stop, the end) builds an outcome, so every
+  // outcome builder reads it. Help only rises. The step the child was stuck on is left to the turn (or its defaults).
+  if (!session.tutor || !session.package || session.outcome || sent.length === 0) return session;
+  const kind = streamedHelp(session, sent);
+  if (!kind || session.assistance.includes(kind)) return session;
+  return { ...session, assistance: [...session.assistance, kind] };
+}
+
 function streamedHelp(base: Session, sent: readonly string[]): Assistance | null {
   if (base.outcome) return null;
   const committedRight = (base.solved === "child" && base.lastResult === "right") || heardAnswers(base).some((a) => a.step === "result" && a.verdict === "right");

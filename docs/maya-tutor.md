@@ -225,6 +225,16 @@ Rules, not word lists; they fail closed. Each failure found on `484f5b9bc` has a
 - **A terminal math review result holds for every surface form of its sentence** (`sentenceKey` in `say-check.ts`, used by `finalMath` in `maya-text.ts`). The key ignores case, punctuation, spaces and number words against digits, so a repair that changes only "." to "!" is refused too.
 - **A reader refuses only a clause it reads in full.** A side that another number runs on from or into (a compound number read in parts, "one and a half": a whole number and a fraction joined by "and") is a partial read: the claim is unread and goes to the math review (`tutor-math.ts`, the column kind). A digit said as "the value of the 8" means its place value: the place-value kind computes it before it compares ("In 48,942, the value of the 8 is greater than 1,000." is true), and the bare-digit comparison does not read it.
 
+### Final check 11 (2026-11-15)
+
+Each failure found on `7958a012a` has a binding test in `src/lib/maya-final-check11.test.ts` (credit and help records) or `src/lib/maya-final-check11-math.test.ts` (true math).
+
+- **One whole-phrase reader for every credited value** (`answerPhraseWhole` in `session.ts`): the final answer, a step, a column and a digit, through `checkAnswers`. Each place the turn says the value is either an operand of another complete claim ("4 minus 2 is 2"), which the phrase leaves to that claim, or the child's answer phrase. That phrase must be whole: the value, at most its unit, answer words that are not operators and, for a step, place and carrying words. It ends at the end of its sentence or at a joint that starts another clause of the child's own. Anything else ("I got 4 plus 1.", "I got 4, with a negative sign.") gives no credit, and the verdict is "unknown". Code never credits a matching operand.
+- **Emitted help is applied where each streamed sentence is accepted** (`withEmittedHelp`): in the text adapter's response that carries the sentences, and again in the proposal that carries them. This happens before any routing (identity, scope, safety, a stop, an error, the end) builds an outcome, so every outcome builder reads it. Help only rises.
+- **The terminal review key is a function of the standard reader's tokens** (`sentenceKey`): every run of number words, a lone "one" or "ten" too, is its value, and a count of a denominator is a fraction. "one" and "1" give one key.
+- **The standard reader never joins number groups across anything but spaces or a hyphen** (`wordNumbers`): "two thousand × six hundred forty" is 2000 and 640, never 2640.
+- **The column and place-value kinds refuse only a clause they read in full.** A claim inside an enclosing negation or scope ("It is not true that 1 thousand is 2 thousands.") and a side that goes on ("greater than 9,000 minus 2,000") are not checked there. The core reads them whole, or the math review does.
+
 ## Credit, the learning event and the parent note
 
 Code's credit of the child decides the saved result, never the model's reading (part C of the pre-launch review, 2026-11-15; tests: `src/lib/maya-call-tutor-credit.test.ts`, `src/lib/maya/tutor-credit.test.ts`):

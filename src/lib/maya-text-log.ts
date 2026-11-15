@@ -1,5 +1,6 @@
 // Persistent transition rules for the text adapter. No provider, clock, promise or abort signal enters this fold.
 import { applyBatch, createScene, type Batch, type Scene } from "@/lib/board";
+import { withEmittedHelp } from "@/lib/maya/session";
 import { nextActs, speechKey, step, TIME_LIMITS, SAFETY_GUIDANCE, type Act, type Effect, type MathReview, type Session, type SessionEvent, type TalkReview } from "@/lib/maya";
 import { type TraceAttempt, type TraceBoardBatch, type TraceError, type TraceObligation, type TraceTurn } from "@/lib/maya-trace";
 import type { TextOutput } from "@/lib/maya-text";
@@ -370,7 +371,12 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
     case "response": {
       if (s.request?.id !== e.requestId) break;
       const source = s.request.source;
-      if (e.sent?.length) s.sent = [...(s.sent ?? []), ...e.sent];
+      if (e.sent?.length) {
+        s.sent = [...(s.sent ?? []), ...e.sent];
+        // Final check 11 (2026-11-15): the single point where streamed sentences are accepted. Their help is in the session
+        // now, before this response or any later input (an error, a priority reading, a stop, the end) builds an outcome.
+        s.session = withEmittedHelp(s.session, s.sent);
+      }
       if (e.error) {
         s.attempts.push({ source, proposal: null, refusal: null, error: e.error, ms: e.ms, ...(e.firstSayMs !== undefined ? { firstSayMs: e.firstSayMs } : {}) });
         s.request = null;

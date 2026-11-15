@@ -179,7 +179,14 @@ describe("place-value kind: #1017 false claims", () => {
     keeps(value, ["In 847, the 8 is in the hundreds place.", "In 48942, the 8 is in the thousands place, so 48942 has 8 thousands.", "The 4 has a value of 40000."]);
   });
   it("3. a value is read whole: an unread rest after it is refused", () => {
-    refuses(value, ["The 8 is worth 8000 plus 1.", "The 4 is worth 40000.5.", "The 8 is worth 8000 tens.", "The 8 is worth 8000 + 1."]);
+    refuses(value, ["The 8 is worth 8000 plus 1.", "The 8 is worth 8000 + 1."]);
+    // Final check 11: a continuation this reader cannot compute in full is not refused here; it is never passed by code
+    // alone either: the math review reads it.
+    for (const s of ["The 4 is worth 40000.5.", "The 8 is worth 8000 tens."]) {
+      const r = checkTutorSay(s, { stance: "none", claims: (x: string) => kind.claimProblems(value, x), answer: value.answer.value.type === "number" ? value.answer.value.value : undefined });
+      expect(r.ok && r.math.includes(s), s).toBe(r.ok);
+    }
+    keeps(value, ["The 8 is worth 9000 minus 1000."]);
     keeps(value, ["The 8 is worth 8000.", "The 8 is worth 8,000, and the 4 is worth 40,000.", "The 4 is worth 40000; 40000 + 8000 = 48000."]);
   });
   it("4. negated and value comparisons, answer words and other family claims are read, or refused", () => {

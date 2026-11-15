@@ -313,7 +313,7 @@ const LINK_WORDS = new Set(["and", "so", "then", "now", "next", "first", "becaus
  * Final check 8: a word before a claim in its clause that encloses it: a negation, a word that opens an embedded clause
  * or a hypothesis, or a word that opens a scope (a place, an example, a condition).
  */
-const ENCLOSING = /^(?:not|never|no|nor|neither|false|untrue|wrong|that|if|whether|unless|suppose|pretend|imagine|when|where|in|for|on|at|with|without|during|instead|rather|than|example|easier|maybe|might|could|would|should|wish|doubt)$/;
+export const ENCLOSING = /^(?:not|never|no|nor|neither|false|untrue|wrong|that|if|whether|unless|suppose|pretend|imagine|when|where|in|for|on|at|with|without|during|instead|rather|than|example|easier|maybe|might|could|would|should|wish|doubt)$/;
 /** Final check 8: words that start a new clause after a claim: the scope scan after it stops there. */
 const NEW_CLAUSE = new Set(["so", "then", "because", "cause", "cuz", "before", "after", "and", "but", "when", "while", "since", "which", "until", "or", "as"]);
 const RELATION_WORDS = new Set(["greater", "less", "more", "fewer", "bigger", "smaller", "larger", "higher", "lower", "than", "same", "equal", "twice", "double", "half"]);
