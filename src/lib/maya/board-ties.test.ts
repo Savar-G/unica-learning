@@ -89,9 +89,9 @@ describe("drawingMatches: the drawing's action equals the action of one clause",
     expect(drawingMatches("We trade 1 hundred for 10 tens.", "trade", borrow)).toBe(false);
     expect(drawingMatches("52 is 4 tens and 12 ones.", "trade", borrow)).toBe(false);
     expect(drawingMatches("So we borrow.", "trade", borrow)).toBe(false);
-    // A carry gives 10 ones for 1 ten.
-    expect(drawingMatches("We trade 10 ones for 1 ten.", "trade", carry)).toBe(true);
-    expect(drawingMatches("We trade 1 ten for 10 ones.", "trade", carry)).toBe(false);
+    // A carry gives 10 ones for 1 ten. The kind writes the ones digit first, so the sentence states both.
+    expect(drawingMatches("Write 4 in the ones, then we trade 10 ones for 1 ten.", "trade", carry)).toBe(true);
+    expect(drawingMatches("Write 4 in the ones, then we trade 1 ten for 10 ones.", "trade", carry)).toBe(false);
   });
   it("a note: the same operation, with the same operands in the same roles", () => {
     expect(drawingMatches("12 minus 8 is 4.", "note", note("12 − 8 = 4"))).toBe(true);
@@ -113,10 +113,20 @@ describe("drawingMatches: the drawing's action equals the action of one clause",
     expect(drawingMatches("Let's share 84 into 4 groups.", "division", division)).toBe(true);
     expect(drawingMatches("Let's share 84 into 2 groups.", "division", division)).toBe(false);
   });
-  it("a drawing code cannot read as one action ties to nothing", () => {
-    const chain = [...borrow, { op: "regroup", id: "u", objectId: "question", rowId: "top", kind: "borrow", from: "hundreds", to: "tens" }];
+  it("every command of the batch needs its own clause (review of #1094, round 3)", () => {
+    const chain = [{ op: "regroup", id: "u", objectId: "question", rowId: "top", kind: "borrow", from: "hundreds", to: "tens" }, ...borrow];
     expect(drawingMatches("We trade 1 ten for 10 ones.", "trade", chain)).toBe(false);
-    expect(drawingMatches("Write 4 in the ones.", "step", put("ones", "4"))).toBe(false);
+    expect(drawingMatches("We trade 1 hundred for 10 tens, then we trade 1 ten for 10 ones.", "trade", chain)).toBe(true);
+    // A division step writes four values: one clause says only one of them.
+    const row = (rowId: string, value: string) => ({ op: "put", target: { objectId: "d", part: "row", rowId }, value });
+    const step = [row("bring2", "4"), { op: "put", target: { objectId: "d", part: "cell", rowId: "quotient", column: "ones" }, value: "1" }, row("product2", "4"), row("difference2", "0")];
+    expect(drawingMatches("Write 1 in the ones.", "step", step)).toBe(false);
+    // The kind draws the trade before the digit: the sentence must say both, or nothing is drawn.
+    const tradeThenDigit = [...borrow, ...put("ones", "4")];
+    expect(drawingMatches("Write 4 in the ones.", "digit", tradeThenDigit)).toBe(false);
+    expect(drawingMatches("We trade 1 ten for 10 ones, so write 4 in the ones.", "digit", tradeThenDigit)).toBe(true);
+    // A command code cannot read: no match.
+    expect(drawingMatches("Write 4 in the ones.", "digit", [{ op: "erase", id: "x" }, ...put("ones", "4")])).toBe(false);
   });
 });
 
@@ -141,6 +151,16 @@ describe("drawingMatches fails closed: only a plain positive statement of the dr
     expect(drawingMatches("You can't take 8 from 2, so we trade 1 ten for 10 ones.", "trade", borrow)).toBe(true);
     expect(drawingMatches("You can't take 8 from 2, so do not trade, we trade later.", "trade", borrow)).toBe(false);
     expect(drawingMatches("Now, write 4 in the ones.", "digit", ones4)).toBe(true);
+  });
+  it("every clause must be read: an unread lead-in draws nothing (review of #1094, round 3)", () => {
+    expect(drawingMatches("Do not do this: write 4 in the ones.", "digit", ones4)).toBe(false);
+    expect(drawingMatches("It would be wrong to do this: write 4 in the ones.", "digit", ones4)).toBe(false);
+    expect(drawingMatches("This is what some children mistakenly do: write 4 in the ones.", "digit", ones4)).toBe(false);
+    expect(drawingMatches("Do not trade, so write 4 in the ones.", "digit", ones4)).toBe(false);
+    // A reason clause is read only as a TRUE fact.
+    expect(drawingMatches("2 is less than 8, so we trade 1 ten for 10 ones.", "trade", borrow)).toBe(true);
+    expect(drawingMatches("8 is less than 2, so we trade 1 ten for 10 ones.", "trade", borrow)).toBe(false);
+    expect(drawingMatches("You can't take 2 from 8, so we trade 1 ten for 10 ones.", "trade", borrow)).toBe(false);
   });
   it("a quote, an answer to a question, or a clause that takes it back draws nothing", () => {
     expect(drawingMatches("We trade 1 ten for 10 ones? No.", "trade", borrow)).toBe(false);

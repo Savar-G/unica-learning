@@ -180,6 +180,36 @@ describe("review of #1094, round 2: the drawing's action equals one clause's act
   }
 });
 
+describe("review of #1094, round 3: the whole sentence is read, and the whole batch is stated", () => {
+  it("an unread lead-in releases nothing: \"Do not do this: write 4 in the ones.\"", async () => {
+    const said = "Do not do this: write 4 in the ones. What comes next?";
+    const { session } = chat([reply(said, "guide", { draw: [{ offer: "digit", place: "ones", sentence: 1 }] }), ASK]);
+    await session.start();
+    const out = await session.child("Please help me.");
+    expect(out.say.join(" ")).toBe(said);
+    expect(out.board).toEqual([]);
+  });
+  it("a digit whose batch also trades is dropped whole when the sentence does not state the trade", async () => {
+    const said = "Do not trade, so write 4 in the ones. What comes next?";
+    const { session } = chat([reply(said, "guide", { draw: [{ offer: "digit", place: "ones", sentence: 1 }] }), ASK]);
+    await session.start();
+    const out = await session.child("Please help me.");
+    expect(out.say.join(" ")).toBe(said);
+    // Never a part of the batch: no trade and no digit.
+    expect(out.board).toEqual([]);
+    expect(session.session.tutor?.drawn).toEqual([]);
+  });
+  it("the same batch is drawn whole when the sentence states the trade and the digit", async () => {
+    const said = "We trade 1 ten for 10 ones, so write 4 in the ones. What comes next?";
+    const { session } = chat([reply(said, "guide", { draw: [{ offer: "digit", place: "ones", sentence: 1 }] }), ASK]);
+    await session.start();
+    const out = await session.child("Please help me.");
+    expect(out.board).toHaveLength(1);
+    expect(isTrade(out.board[0]) && isDigit(out.board[0])).toBe(true);
+    expect(session.session.tutor?.drawn).toEqual(["trade:ones", "digit:ones"]);
+  });
+});
+
 describe("review of #1094: the server's board is rebuilt from the fates", () => {
   it("a skipped trade before a shown digit is off the server's board, so a later trade and a note both draw", async () => {
     const retry = reply(`${S1} ${S2} How many ones are there now?`, "guide", { draw: [{ offer: "trade", place: "", sentence: 1 }, { offer: "note", place: "12 - 8 = 4", sentence: 2 }] });

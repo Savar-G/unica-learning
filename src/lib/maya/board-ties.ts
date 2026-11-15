@@ -4,14 +4,13 @@
 //
 // The model names the sentence (`sentence`, 1 for the first) beside each drawing request. Code checks it:
 // - at most one drawing per sentence (one mark per idea): a second request for the same sentence is dropped;
-// - the match check: the drawing shows the step and the numbers the sentence says (sayNumbers, the standard reader,
-//   on the sentence; the drawing's step and values from the commands the kind built). A mismatch drops the drawing,
-//   never the sentence;
+// - the match check (drawingMatches): code reads the whole sentence with a closed reader, and every command of the
+//   drawing's batch is stated by its own clause. A mismatch drops the whole drawing, never the sentence;
 // - every command is safe (tutor.ts, safeCommand), as before.
 // A dropped drawing goes in the trace (`drawDrops` on the attempt). A drawing request with no `sentence` (a proposal
 // from before B2) keeps the old rule: one batch, released at the end of the message, with no match check.
 import type { OperationPackage } from "@/lib/question-package";
-import { sayNumbers, sentencesOf } from "./say-check";
+import { sentencesOf } from "./say-check";
 import { tutorBoardNumbers, tutorKind, safeCommand } from "./tutor";
 import type { TutorCommand } from "./tutor-kind";
 
@@ -77,12 +76,12 @@ export function tieDrawings(pkg: OperationPackage, draw: readonly DrawRequest[],
 
 // ---------- The match check ----------
 //
-// Review of #1094 (round 2): one place, fail closed. Each plain positive form reads ONE clause into a structured action
-// (what it does, its operation, every value, every place, every quantity). Each drawing builds the same structure from
-// the command the kind built. A drawing ties only when its action EQUALS the action of one single clause of its
-// sentence: no field is taken from another clause, and an equation has the same operation and operands in the same
-// roles ("8 plus 4 is 12" is not 12 − 8 = 4). A drawing with no action code can read (a division step, a trade through
-// several places) ties to nothing.
+// Review of #1094 (rounds 2 and 3): one place, fail closed. Each plain positive form reads ONE clause into a structured
+// action (what it does, its operation, every value, every place, every quantity); a few reason forms read a clause as a
+// true math fact. A sentence is read only when EVERY clause is one of these. Each command of a drawing's batch builds
+// the same structure, and each must equal the action of its own clause: no field is taken from another clause, an
+// equation has the same operation and operands in the same roles ("8 plus 4 is 12" is not 12 − 8 = 4), and earlier
+// work the kind draws first (a trade before a digit) must be stated too.
 
 /** One action as code reads it: `key` holds every field; `values` and `places` say what it names. */
 interface Action {
@@ -92,10 +91,6 @@ interface Action {
 }
 
 const PLACES = ["ones", "tens", "hundreds", "thousands", "ten thousands", "hundred thousands"] as const;
-/** Words that name a trade: a clause about a trade that is not a plain positive trade must not stand beside one. */
-const TRADE_WORDS = /\b(?:borrow\w*|trad(?:e|es|ed|ing)|carr(?:y|ies|ied|ying)|regroup\w*|exchang\w*)\b/i;
-/** The place words a clause names (plural forms only: "one" and "ten" are numbers). */
-const PLACE_WORDS = /\b(hundred thousands|ten thousands|thousands|hundreds|tens|ones)\b/gi;
 
 /** A board column or a spoken place word ("ten", "ones", "ten_thousands") as a place, or null. */
 function placeOf(word: unknown): string | null {
@@ -189,78 +184,77 @@ const FORMS: { re: RegExp; read: (m: RegExpMatchArray) => Action | null }[] = [
   } },
 ];
 
+/**
+ * The plain reason forms (review of #1094, round 3): a clause that leads up to the drawing's statement, read whole as a
+ * TRUE math fact ("you can't take 8 from 2" holds because 2 is less than 8). No other clause is read: any clause that is
+ * neither one of these nor a positive form (above) leaves the sentence unread, and nothing is drawn with it.
+ */
+const REASONS: { re: RegExp; holds: (m: RegExpMatchArray) => boolean }[] = [
+  { re: new RegExp(String.raw`^(?:you|we) (?:can't|cannot|can not) take ${N} (?:away )?from ${N}$`), holds: (m) => lessThan(m[2], m[1]) },
+  { re: new RegExp(String.raw`^${N} is (?:smaller|less) than ${N}$`), holds: (m) => lessThan(m[1], m[2]) },
+  { re: new RegExp(String.raw`^${N} is (?:bigger|greater|more) than ${N}$`), holds: (m) => lessThan(m[2], m[1]) },
+];
+const lessThan = (a: string, b: string) => { const x = toNumber(a); const y = toNumber(b); return x !== null && y !== null && x < y; };
+
 /** Words that may open a clause and change nothing it says. */
 const LEAD = /^(?:(?:so|now|then|first|next|okay|ok|and|great|good|right|alright|\{name\}),?\s+)+/;
-/** A clause that makes another one depend on something: never read as a plain statement. */
-const CONDITION = /^(?:if|unless|when|whenever|once|until|before|after|in case|as soon as)\b/;
 
-/** One clause's action, or null when it is not whole one plain positive form. */
-function clauseAction(clause: string): Action | null {
+/** One clause read whole: its action (a positive form), or a true reason (no action), or null when code cannot read it. */
+function readClause(clause: string): { action: Action | null } | null {
   for (const f of FORMS) {
     const m = clause.match(f.re);
-    if (m) return f.read(m);
+    if (m) { const a = f.read(m); return a ? { action: a } : null; }
+  }
+  for (const r of REASONS) {
+    const m = clause.match(r.re);
+    if (m) return r.holds(m) ? { action: null } : null;
   }
   return null;
 }
 
 /**
- * The clauses of a sentence with their actions (null: not a plain positive statement), or null when the sentence is a
- * question, quotes someone, or holds a condition: then no drawing goes with it.
+ * The actions of a sentence, one per clause it states, when code reads the WHOLE sentence with its closed reader: every
+ * clause is a plain positive form or a true reason form. Null when any clause is unread (a "do not", a "but", a
+ * condition, a lead-in such as "Do not do this:"), and for a question or a quote.
  */
-function clausesOf(sentence: string): { text: string; action: Action | null }[] | null {
+function sentenceActions(sentence: string): Action[] | null {
   const s = sentence.trim().replace(/[’‘]/g, "'").toLowerCase();
   if (/[?"“”]/.test(s)) return null;
-  const clauses = s.replace(/[.!]+[')\]]*$/, "").split(/,\s+|;\s+|:\s+|\s+(?=(?:so|but|then|because)\s)/).map((c) => c.trim()).filter(Boolean);
-  if (clauses.some((c) => CONDITION.test(c.replace(LEAD, "")))) return null;
-  return clauses.map((c) => {
-    const text = c.replace(LEAD, "").replace(/^(?:but|because)\s+/, "");
-    return { text, action: /^(?:but|because)\s/.test(c) ? null : clauseAction(text) };
-  });
+  const clauses = s.replace(/[.!]+[')\]]*$/, "").split(/,\s+|;\s+|:\s+|\s+(?=(?:so|but|then|because)\s)/).map((c) => `${c.trim()} `.replace(LEAD, "").trim()).filter(Boolean);
+  const actions: Action[] = [];
+  for (const c of clauses) {
+    const read = readClause(c);
+    if (!read) return null;
+    if (read.action) actions.push(read.action);
+  }
+  return actions;
 }
 
-/** The action a drawing shows, read from the command the kind built for it, or null when code cannot read one. */
-function drawingAction(offer: string, commands: readonly TutorCommand[]): Action | null {
-  const target = (c: TutorCommand | undefined) => (c && typeof c.target === "object" && c.target !== null ? (c.target as Record<string, unknown>) : {});
+/** The action one board command shows, read from the command the kind built, or null when code cannot read one. */
+function commandAction(c: TutorCommand): Action | null {
+  const target = typeof c.target === "object" && c.target !== null ? (c.target as Record<string, unknown>) : {};
   const num = (v: unknown) => (typeof v === "string" && /^\d+$/.test(v) ? Number(v) : typeof v === "number" && Number.isInteger(v) ? v : null);
-  switch (offer) {
-    // The thing asked for is the last value written: the trades and digits before it are the work it needs first.
-    case "digit":
-    case "value":
-    case "answer":
-    case "row": {
-      const last = commands.filter((c) => c.op === "put").at(-1);
-      if (!last) return null;
-      const t = target(last);
-      return write(num(last.value), t.part === "cell" ? (placeOf(t.column) ?? "?") : null);
-    }
-    case "note":
-    case "try": {
-      const notes = commands.filter((c) => c.op === "write");
-      const m = notes.length === 1 && typeof notes[0].text === "string" ? /^(.+?) = (\d+)$/.exec(notes[0].text) : null;
+  switch (c.op) {
+    case "put":
+      return write(num(c.value), target.part === "cell" ? (placeOf(target.column) ?? "?") : null);
+    case "write": {
+      const m = typeof c.text === "string" ? /^(.+?) = (\d+)$/.exec(c.text) : null;
       return m ? equationAction(m[1], m[2]) : null;
     }
-    case "trade": {
-      // One trade only: a trade through several places has no single clause that says it all.
-      const regroups = commands.filter((c) => c.op === "regroup");
-      if (regroups.length !== 1) return null;
-      const r = regroups[0];
-      if (typeof r.from !== "string" || typeof r.to !== "string") return null;
-      // A borrow gives 1 of the place on the left for 10 of the place on its right; a carry gives 10 for 1.
-      return r.kind === "borrow" ? trade(r.from, 1, r.to, 10) : r.kind === "carry" ? trade(r.from, 10, r.to, 1) : null;
-    }
+    // A borrow gives 1 of a place for 10 of the place on its right; a carry gives 10 for 1.
+    case "regroup":
+      return typeof c.from !== "string" || typeof c.to !== "string" ? null : c.kind === "borrow" ? trade(c.from, 1, c.to, 10) : c.kind === "carry" ? trade(c.from, 10, c.to, 1) : null;
     case "division": {
-      const c = commands.find((x) => x.op === "division");
-      const a = num(c?.dividend);
-      const b = num(c?.divisor);
+      const a = num(c.dividend);
+      const b = num(c.divisor);
       return a === null || b === null ? null : { key: `divide|${a}|${b}`, values: [a, b], places: [] };
     }
-    case "chart": {
-      const n = num(commands.find((x) => x.op === "place_chart")?.number);
+    case "place_chart": {
+      const n = num(c.number);
       return n === null ? null : { key: `chart|${n}`, values: [n], places: [] };
     }
-    case "band": {
-      const piece = target(commands.find((x) => x.op === "mark")).piece;
-      const p = typeof piece === "string" ? placeOf(piece.replace(/^band-/, "")) : null;
+    case "mark": {
+      const p = typeof target.piece === "string" ? placeOf(target.piece.replace(/^band-/, "")) : null;
       return p ? { key: `place|${p}`, values: [], places: [p] } : null;
     }
     default:
@@ -268,28 +262,27 @@ function drawingAction(offer: string, commands: readonly TutorCommand[]): Action
   }
 }
 
-/** Whether a clause names the drawing at all: one of its values, one of its places, or (a trade) a trade word. */
-function names(a: Action, offer: string, text: string): boolean {
-  const said = sayNumbers(text).flatMap((t) => (t.q && t.q[1] === 1 ? [t.q[0]] : []));
-  const named = [...text.matchAll(PLACE_WORDS)].map((m) => m[1].toLowerCase());
-  return a.values.some((v) => said.includes(v)) || a.places.some((p) => named.includes(p)) || (offer === "trade" && TRADE_WORDS.test(text));
-}
-
 /**
- * Whether a drawing matches the sentence it is tied to (B2). Fail closed: the drawing's action must equal the action of
- * one single clause of the sentence, read whole from one plain positive form (every field: what it does, its operation,
- * its values, places and quantities). A question, a quote, a condition, a clause about the drawing that is not a plain
- * positive form ("Do not trade yet."), or any clause after the matching one that is not one: no match. A reason
- * before the matching clause may stand when it does not name the drawing ("You can't take 8 from 2, so we trade 1 ten
- * for 10 ones."). The sentence is still said.
+ * Whether a drawing's batch matches the sentence it is tied to (B2, review of #1094 round 3). Fail closed, whole batch:
+ * - code reads the WHOLE sentence (sentenceActions): every clause is a plain positive form or a true reason form;
+ * - EVERY command of the batch is one action code reads (commandAction), and each action is stated by its own clause
+ *   of the sentence, equal in every field (kind, operation, values, places, amounts). Earlier work the kind draws first
+ *   (a trade before a digit) must be stated too: "We trade 1 ten for 10 ones, so write 4 in the ones." Work already on
+ *   the board is not in the batch, so it needs no clause.
+ * Otherwise the whole drawing is dropped (never a part of its batch), and the sentence is still said.
  */
-export function drawingMatches(sentence: string, offer: string, commands: readonly TutorCommand[]): boolean {
-  const a = drawingAction(offer, commands);
-  const clauses = clausesOf(sentence);
-  if (!a || !clauses) return false;
-  const at = clauses.findIndex((c) => c.action?.key === a.key);
-  if (at < 0) return false;
-  return !clauses.some((c, i) => c.action === null && (i > at || names(a, offer, c.text)));
+export function drawingMatches(sentence: string, _offer: string, commands: readonly TutorCommand[]): boolean {
+  void _offer;
+  const said = sentenceActions(sentence);
+  if (!said || commands.length === 0) return false;
+  const free = [...said];
+  for (const c of commands) {
+    const a = commandAction(c);
+    const at = a ? free.findIndex((x) => x.key === a.key) : -1;
+    if (at < 0) return false;
+    free.splice(at, 1);
+  }
+  return true;
 }
 
 // ---------- The cue word ----------
