@@ -35,7 +35,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, maya]
     runs-on: ubuntu-24.04
     # Above the sum of its step limits (checkout 2, setup 1, npm ci 5, Chromium 2, tests 35, eslint 5, build 10).
     timeout-minutes: 65
@@ -75,7 +75,14 @@ jobs:
         timeout-minutes: 2
       # The 2-core runner is slower than a laptop: the assessment bank tests pass the 5 s default locally but not here.
       # Both shards validate the same pinned main commit and blog commit before publication.
-      - run: npm test -- --testTimeout=60000 --shard=${{ matrix.shard }}/2
+      - if: ${{ matrix.shard != 'maya' }}
+        run: npm test -- --exclude='src/lib/maya-gate/{gate,word-count-grade-1,word-count-grade-4}.test.ts' --testTimeout=60000 --shard=${{ matrix.shard }}/2
+        timeout-minutes: 35
+      - if: ${{ matrix.shard == 'maya' }}
+        run: |
+          npm test -- src/lib/maya-gate/gate.test.ts --testTimeout=60000 --maxWorkers=2
+          npm test -- src/lib/maya-gate/word-count-grade-1.test.ts --testTimeout=60000 --maxWorkers=2
+          npm test -- src/lib/maya-gate/word-count-grade-4.test.ts --testTimeout=60000 --maxWorkers=2
         timeout-minutes: 35
       - run: npx eslint src
         timeout-minutes: 5
