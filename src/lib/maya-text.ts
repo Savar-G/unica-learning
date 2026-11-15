@@ -514,7 +514,9 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     // Review of #1006: nothing goes out once the request is cancelled or another one took its place.
     // Review of #1006 (fourth check): a content hold, a safety flag or the end of the call stops the stream at once.
     const live = () => !streamDone && !controller.signal.aborted && folded.request?.id === requestId &&
-      folded.session.contentProblem === null && !folded.session.safety.flagged && !folded.session.outcome && folded.session.state !== "CONTENT_HOLD";
+      folded.session.contentProblem === null && !folded.session.safety.flagged && !folded.session.outcome && folded.session.state !== "CONTENT_HOLD" &&
+      // Review of #1006 (fifth check): never past the call's end, even while a tick waits behind the request.
+      !(folded.session.startedAt !== null && now() - folded.session.startedAt >= (folded.session.limits?.endAtMs ?? 600000));
     const flushTutor = () => {
       while (queue.length && queue[0].state !== "pending" && live()) {
         const next = queue.shift()!;
