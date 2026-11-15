@@ -14,10 +14,11 @@ export const CHILD_COST_PATH = "/admin/ai/children";
 
 /**
  * The print and postage cost of one shipped workbook, in CAD cents. An ESTIMATE, not a bill: no table records what one
- * workbook costs to print and mail. Change it here when the real cost is known; the page shows the budget tracker's
- * printing and postage total of the month beside it.
+ * workbook costs to print and mail. Savar (2026-11-14): printing is about CAD 21 to 23 a workbook; postage is not known
+ * yet, because no workbook has shipped. So this is the printing midpoint only. Change it when the first shipment gives
+ * the real postage; the page shows the budget tracker's printing and postage total of the month beside it.
  */
-export const WORKBOOK_PHYSICAL_COST_CAD = 30;
+export const WORKBOOK_PHYSICAL_COST_CAD = 22;
 export const WORKBOOK_PHYSICAL_COST_CENTS = Math.round(WORKBOOK_PHYSICAL_COST_CAD * 100);
 
 /** The plan's monthly price (CAD 79.99), in cents: the line the average cost per paying child is held against. */

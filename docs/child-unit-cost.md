@@ -14,7 +14,7 @@ The month pills are "This month", "Last month" and "Two months ago": a calendar 
 |---|---|---|
 | AI calls | `ai_usage_events`, and `workbook_run_ai_calls` for older runs | US dollars, turned into CAD with the one rate `MAYA_USD_TO_CAD` (`docs/maya-spend.md`). For one call the new ledger wins, as on `/admin/ai` (`docs/ai-usage.md`). Older Maya model rows of `maya_spend` (CAD) count when the call has no new row. |
 | Maya speech and voice | `maya_spend`, `what` = `speech_to_text` and `voice` | An estimate (the providers report no cost per call). Always counted. |
-| Print and postage | workbooks with `shipped_at` in the month | An estimate: `WORKBOOK_PHYSICAL_COST_CAD` in `src/lib/child-unit-cost.ts` (CAD 30) for each workbook shipped. No table records the real cost of one workbook. |
+| Print and postage | workbooks with `shipped_at` in the month | An estimate: `WORKBOOK_PHYSICAL_COST_CAD` in `src/lib/child-unit-cost.ts` (CAD 22) for each workbook shipped: printing only, the midpoint of about CAD 21 to 23 (Savar, 2026-11-14). Postage is not known until the first workbook ships, so it is not in the estimate yet. No table records the real cost of one workbook. |
 | Subscription calls | `provider = 'subscription'` (`claude -p` on the Mac) | Counted, never priced: "subscription, not in the total". |
 
 The parts are added exactly in integers (nano US dollars times the rate in millionths, and CAD micros) and each total is rounded to cents once, half up. Each column is also rounded on its own, so the columns of a row can differ from its total by a cent; the page says so.

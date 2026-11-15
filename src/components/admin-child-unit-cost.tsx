@@ -42,7 +42,7 @@ export function ChildUnitCostPage({ view, monthKey, error }: { view: UnitCostVie
       {view.pastMonth && <p className="ai-note">The plan state is stored only as it is today, so for an earlier month the paid column shows today&apos;s plan. It is right when the plan did not change since.</p>}
 
       <section className="ap-card" aria-labelledby="cc-physical">
-        <SectionHead id="cc-physical" title="Print and postage" line={`An estimate: ${money(WORKBOOK_PHYSICAL_COST_CENTS)} for each workbook shipped (WORKBOOK_PHYSICAL_COST_CAD).`} />
+        <SectionHead id="cc-physical" title="Print and postage" line={`An estimate: ${money(WORKBOOK_PHYSICAL_COST_CENTS)} of printing for each workbook shipped (WORKBOOK_PHYSICAL_COST_CAD). Postage is not in it yet: it is known after the first shipment.`} />
         <dl className="ai-check">
           <div><dt>Estimate</dt><dd>{money(view.physical.estimateCents)}</dd></div>
           <div><dt>Workbooks shipped</dt><dd>{view.physical.workbooks.toLocaleString("en-CA")}</dd></div>
