@@ -17,7 +17,7 @@ import { expressionKey, noteFromEquation, type TutorCommand, type TutorKind, typ
 import { tutorKindOf } from "./tutor-kinds";
 import { affirms, equationHolds, equationsOf, neverSayProblem, sayNumbers, sentencesOf } from "./say-check";
 import { exactSafe } from "./math-vocab";
-import { falseClaims } from "./tutor-math";
+import { answerProblems, falseClaims, REMAINDER_SAID } from "./tutor-math";
 
 /** The hard ceiling of one Maya message, in words. Over it, the model gets one repair with the reason; code never trims. */
 export const TUTOR_WORD_LIMIT = 60;
@@ -162,11 +162,8 @@ export interface TutorCheckContext {
   nameWords?: number;
 }
 
-/** "4 is the answer", "the whole answer is 24", "your answer 36 is right": a claim about which number is the answer. */
-const ANSWER_CLAIM = /\b(\d+) is (?:the|your|our) (?:whole |final |right )?answer\b|\b(?:the|your|our) (?:whole |final |right )?answer is (\d+)\b/gi;
-
-/** A division with a remainder ("15 ÷ 6 = 2 R 3"): falseClaims reads it whole. */
-const REMAINDER_FORM = /\d+\s*(?:÷|\/|divided by)\s*\d+\s*(?:=|is|equals|makes)\s*\d+\s*(?:R|r|remainder|with a remainder of|with remainder)\s*\d+/g;
+/** A division with a remainder ("15 ÷ 6 = 2 R 3", in digits or words): falseClaims reads it whole. */
+const REMAINDER_FORM = new RegExp(REMAINDER_SAID, "gi");
 
 /** A sentence that says an answer is right. */
 const JUDGES_RIGHT = /^(?:yes|yep|yeah|right|correct|exactly)\b|\b(?:is|that'?s|that is|it'?s|you'?re|you are|you got it)\s+(?:right|correct)\b|\byou got it\b|\bwell done\b/i;
@@ -203,10 +200,9 @@ export function checkTutorSay(text: string, ctx: TutorCheckContext & { extra?: R
     }
     const claim = falseClaims(sentence, ctx.op, ctx.trades)[0] ?? ctx.claims?.(sentence)[0];
     if (claim) return { ok: false, reason: "false_equation", detail: `"${sentence}": ${claim}. Every equation and place-value statement must be true.` };
-    if (ctx.answer !== undefined) for (const m of sentence.matchAll(ANSWER_CLAIM)) {
-      const n = Number(m[1] ?? m[2]);
-      if (n !== ctx.answer) return { ok: false, reason: "false_equation", detail: `"${sentence}": ${n} is not the answer to the question.` };
-    }
+    // "4 is the answer", "the whole answer is 24": the whole value and its "not" (pre-launch review B).
+    const wrongAnswer = ctx.answer === undefined ? undefined : answerProblems(sentence, ctx.answer)[0];
+    if (wrongAnswer) return { ok: false, reason: "false_equation", detail: `"${sentence}": ${wrongAnswer}.` };
   }
   // No false judgment of the child's answer, in any sentence: a "yes" or "right" for a wrong answer, a "not quite" for
   // a right one. The first sentence is judged strictly. A later one is exempt only when it judges its own true equation
@@ -269,7 +265,7 @@ export interface TutorStreamContext extends TutorCheckContext {
 }
 
 /** The stream's context for the child's turn `text`, from code's stance. */
-export function tutorStreamContext(pkg: OperationPackage, text: string, stance: TutorCheckContext["stance"], extra: ReadonlySet<string>, credited: readonly number[] = []): TutorStreamContext {
+export function tutorStreamContext(pkg: OperationPackage, text: string, stance: TutorCheckContext["stance"], extra: ReadonlySet<string>, credited: readonly number[] = [], wordQuestion = false): TutorStreamContext {
   const kind = tutorKind(pkg);
   // The child's candidate answers: the last number of each sentence ("Is 2 minus 8, 6?" offers 6, not 2 or 8).
   const said = sentencesOf(text).flatMap((x) => {
@@ -293,8 +289,9 @@ export function tutorStreamContext(pkg: OperationPackage, text: string, stance: 
     trades: kind.workValues(pkg),
     allowed,
     // A "yes" streams only when no reading can make it wrong: the child said no number, or only numbers code's own read
-    // credits as right (the final check keeps code's credit over the model's reading).
-    mayAffirm: said.length === 0 || (stance === "right" && said.every((n) => n === answer || credited.includes(n))),
+    // credits as right (the final check keeps code's credit over the model's reading). On a word question (a claim or a
+    // comparison) the child's answer is a word, not a number: only code's right word lets a "yes" stream.
+    mayAffirm: wordQuestion ? stance === "right" && said.every((n) => n === answer || credited.includes(n)) : said.length === 0 || (stance === "right" && said.every((n) => n === answer || credited.includes(n))),
     mayDeny: stance === "wrong" || (stance === "none" && !said.some((n) => right.has(n))),
   };
 }

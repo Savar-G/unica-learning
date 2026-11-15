@@ -312,8 +312,11 @@ export function equationsOf(sentence: string): SayEquation[] {
     };
     const left = expr(i);
     if (left && left.ops.length > 0 && items[left.next]?.kind === "rel" && items[left.next + 1]?.kind === "n") {
-      found.push({ operands: left.operands, ops: left.ops, result: (items[left.next + 1] as { t: SayToken }).t, negated: (items[left.next] as { negated: boolean }).negated });
-      i = left.next + 1;
+      // Both whole sides: "12 minus 8 equals 2 plus 2" compares 4 with 2 + 2, never with the 2 alone (pre-launch review B).
+      const right = expr(left.next + 1)!;
+      const result = right.ops.length === 0 ? right.operands[0] : sideToken(text, right.operands, right.ops);
+      found.push({ operands: left.operands, ops: left.ops, result, negated: (items[left.next] as { negated: boolean }).negated });
+      i = right.next - 1;
       continue;
     }
     // n rel expr ("6 is 8 minus 2")
@@ -326,6 +329,14 @@ export function equationsOf(sentence: string): SayEquation[] {
     }
   }
   return found;
+}
+
+/** An expression on the right of a relation as one token: its exact value (no value when it divides by zero). */
+function sideToken(text: string, operands: SayToken[], ops: Op[]): SayToken {
+  const q = evaluate({ operands, ops, result: operands[0], negated: false });
+  const at = operands[0].at;
+  const end = operands[operands.length - 1].end;
+  return { key: q ? (q[1] === 1 ? String(q[0]) : `${q[0]}/${q[1]}`) : text.slice(at, end), q, at, end, text: text.slice(at, end) };
 }
 
 /** The exact value of an equation's left side, with × and ÷ before + and -; null when it divides by zero. */

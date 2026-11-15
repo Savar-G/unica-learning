@@ -10,6 +10,7 @@ import { missingWork, readPrinted } from "../missing-number";
 import { sayNumbers } from "../say-check";
 import { plainTeaching } from "../tutor";
 import { expressionKey, noteFromEquation, type TutorCommand, type TutorKind, type TutorStepFact } from "../tutor-kind";
+import { clauseAt } from "./clauses";
 
 type MulStep = Extract<WorkedStep, { kind: "multiply-digit" }>;
 type PartialStep = Extract<WorkedStep, { kind: "partial-product" }>;
@@ -53,9 +54,16 @@ const DIVISION_STORY = /\b(?:cut|cuts|piece|pieces|share|shares|shared|sharing|s
 const PRODUCT_STORY = /\b(?:each|every|per|in all|altogether|groups? of|rows? of|packs? of|boxes? of|bags? of|sets? of|jars? of|times as many)\b|\bcan \d+ [a-z]+ (?:carry|hold)\b/i;
 
 /**
- * A word problem the kind can match to its operation: both numbers stand in the text, it is not about dice or chance,
- * and its words are a product's (equal groups put together, and nothing shared, cut or split). The kind reads no
- * division story: one fits only as a printed division or a printed missing factor (fail closed).
+ * Words of a story with another step than the product (pre-launch review B, F13: "10 counters are removed"): something
+ * taken away, added or compared, or a number said in words. Such a story is not one product, so it does not fit.
+ */
+const OTHER_STEP = /\b(?:removes?|removed|takes? away|took away|taken|left|leftover|remains?|remaining|gives?|gave|given|away|sells?|sold|spends?|spent|eats?|ate|eaten|loses?|lost|breaks?|broke|broken|uses?|used|more|fewer|less|plus|minus|adds?|added|extra|another|then|half|halves|double|twice|triple|dozens?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|[a-z]+teen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundreds?|thousands?)\b/i;
+
+/**
+ * A word problem the kind can match to its operation: both numbers stand in the text and no other number does, it is
+ * not about dice or chance, and its words are a product's (equal groups put together, and nothing shared, cut, split,
+ * taken away or added). The kind reads no division story: one fits only as a printed division or a printed missing
+ * factor (fail closed).
  */
 function story(pkg: OperationPackage): boolean {
   if (pkg.operation.kind !== "multiply") return false;
@@ -64,6 +72,8 @@ function story(pkg: OperationPackage): boolean {
   if (/\b(?:die|dice|roll|rolls|spinner|likely|chance)\b/i.test(pkg.text)) return false;
   if (/[=?]\s*$/.test(pkg.text.trim()) && /[×x÷+\-−]\s*\d|\d\s*[×x÷+\-−]/.test(pkg.text)) return false;
   if (!/[a-z]{3,}/i.test(pkg.text) || !nums.includes(a) || !nums.includes(b)) return false;
+  // Every clause of the story is part of the one product: no third number and no step of another operation (F13).
+  if (!nums.every((n) => n === a || n === b) || /\d\.\d/.test(pkg.text) || OTHER_STEP.test(pkg.text)) return false;
   return PRODUCT_STORY.test(pkg.text) && !DIVISION_STORY.test(pkg.text);
 }
 
@@ -190,9 +200,11 @@ function workValues(pkg: OperationPackage): number[] {
     for (const st of divSteps(pkg)) out.push(st.current, st.quotient, st.product, st.remainder, st.digit, ...(st.write === null ? [] : [st.write]));
   }
   for (const st of stepsOf(pkg)) {
-    if (st.kind === "multiply-digit") out.push(st.total, st.carryIn, st.carryOut, ...(st.write === null ? [] : [st.write]));
+    // A carry is a value of the work only when it happens: 3 × 2 has no carry, so 0 is not one of its values (F10). A 0
+    // that is a result (the 0 written for 5 × 2 = 10, or 0 × 2 = 0) is.
+    if (st.kind === "multiply-digit") out.push(st.total, ...(st.carryIn > 0 ? [st.carryIn] : []), ...(st.carryOut > 0 ? [st.carryOut] : []), ...(st.write === null ? [] : [st.write]));
     if (st.kind === "partial-product") out.push(st.value);
-    if (st.kind === "add-column") out.push(st.total, st.write, st.carryOut);
+    if (st.kind === "add-column") out.push(st.total, st.write, ...(st.carryOut > 0 ? [st.carryOut] : []));
   }
   return [...new Set(out)];
 }
@@ -487,12 +499,15 @@ function digitsOf(sentence: string): string {
   return text.toLowerCase();
 }
 
-/** Every match of `form` in `text`, and whether the matches cover every place `cue` is found (fail closed). */
-function readAll(text: string, cue: RegExp, form: RegExp): { matches: RegExpMatchArray[]; whole: boolean } {
+/**
+ * Every match of `form` in `text`, the places `cue` is found that no match covers, and whether the matches cover every
+ * one (fail closed).
+ */
+function readAll(text: string, cue: RegExp, form: RegExp): { matches: RegExpMatchArray[]; unread: number[]; whole: boolean } {
   const matches = [...text.matchAll(form)];
   const cues = [...text.matchAll(cue)].map((m) => m.index!);
-  const whole = cues.every((at) => matches.some((m) => at >= m.index! && at < m.index! + m[0].length));
-  return { matches, whole };
+  const unread = cues.filter((at) => !matches.some((m) => at >= m.index! && at < m.index! + m[0].length));
+  return { matches, unread, whole: unread.length === 0 };
 }
 
 const REL = String.raw`\s+(?:is|are|makes|make|equals|=|gives)\s+`;
@@ -516,8 +531,9 @@ function claimProblems(pkg: OperationPackage, sentence: string): string[] {
     const n = Number(m[1] ?? m[2]);
     if (n !== answer) problems.push(`it says ${n} is the missing number, but it is ${answer}`);
   }
-  const asks = /^\s*(?:what|which|can you|do you|how|where)\b/.test(text) || /\?\s*$/.test(text);
-  if (!missing.whole && !asks) problems.push("it names the missing number in a form code cannot read");
+  // Only a clause that asks claims nothing: "The missing number is definitely 671, shall we write it?" states it first
+  // (pre-launch review B, F11).
+  if (missing.unread.some((at) => !clauseAt(text, at).asks)) problems.push("it names the missing number in a form code cannot read");
 
   // Halves and doubles: "half of 1340 is 670", "double 670 is 1340", "twice 20 is 40", "670 is half of 1340".
   const halfCue = /\b(?:half|halves|double|doubles|twice)\b/g;
@@ -530,16 +546,19 @@ function claimProblems(pkg: OperationPackage, sentence: string): string[] {
   if (!halves.whole && /\b(?:half|halves|double|doubles|twice)\b\s*(?:of\s+)?[\d#]|[\d#]\s*(?:is|are)\s+(?:half|double|twice)\b/.test(text)) problems.push("it says half or double in a form code cannot read");
 
   // "2 goes into 13 6 times", each one in the sentence, with any remainder it states ("with a remainder of 1",
-  // "with 1 left over", "remainder 1", "R 1").
+  // "with 1 left over", "and 1 left over", "remainder 1", "R 1").
   const goesCue = /\bgo(?:es)? into\b/g;
-  const goes = readAll(text, goesCue, /\b(\d+) go(?:es)? into (\d+),? (\d+) times?\b(?:,?\s*(?:with (?:a remainder of |remainder )?(\d+)(?: left(?: over)?)?|(?:and )?(?:a )?remainder (?:of )?(\d+)|r (\d+)))?/g);
+  const goes = readAll(text, goesCue, /\b(\d+) go(?:es)? into (\d+),? (\d+) times?\b(?:,?\s*(?:with (?:a remainder of |remainder )?(\d+)(?: left(?: over)?)?|and (\d+) (?:is |are )?left(?: over)?|(?:and )?(?:a )?remainder (?:of )?(\d+)|r (\d+)))?/g);
   for (const m of goes.matches) {
     const [d, n, q] = [Number(m[1]), Number(m[2]), Number(m[3])];
-    const r = m[4] ?? m[5] ?? m[6];
+    const r = m[4] ?? m[5] ?? m[6] ?? m[7];
+    // What the sentence says after this claim, up to its end or the next "goes into".
+    const after = text.slice(m.index! + m[0].length).split(/[.;!?]|\bgo(?:es)? into\b/)[0];
     if (d === 0 || Math.floor(n / d) !== q) problems.push(`it says ${d} goes into ${n} ${q} times, but it is ${d === 0 ? "no" : Math.floor(n / d)} times`);
     else if (r !== undefined && Number(r) !== n % d) problems.push(`it says ${d} goes into ${n} with ${r} left, but ${n % d} is left`);
-    // A remainder said in a form not read above ("with 2 more", "and 2 over") is refused.
-    else if (r === undefined && /^\s*,?\s*(?:with|and (?:a )?remainder|remainder|r\b|leaving|left)/.test(text.slice(m.index! + m[0].length))) problems.push("it says a remainder in a form code cannot read");
+    // A remainder said in a form not read above ("and 2 left over" as "and there are 2 left over", "so the remainder
+    // is 2", "with 2 more") is refused: the whole remainder clause is read or refused (pre-launch review B, F07).
+    else if (r === undefined && (/^\s*,?\s*with\b/.test(after) || /\b(?:left|leftover|over|remainders?|r|rest|leaving|spare)\b/.test(after))) problems.push("it says a remainder in a form code cannot read");
   }
   if (!goes.whole) problems.push("it says \"goes into\" in a form code cannot read");
 

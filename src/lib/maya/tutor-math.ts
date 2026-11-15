@@ -2,32 +2,77 @@
 // and place quantities in a sentence, in digits or words, chained or not. "1 ten is 10 ones", "52 is 4 tens and 12
 // ones", "12 − 8 = 4" and "4 tens minus 2 tens is 2 tens" are read and computed; a false one is refused. An "=" the
 // reader cannot read is refused too. Trades ("2 ones become 12") are read by tutor.ts.
+//
+// Pre-launch review B (2026-11-15): compound number words ("one hundred and two"), decimals, spoken fractions ("five
+// sixths"), brackets, comparisons ("12 is 4 more than 8", "4 is greater than 8"), objects with a stated unit ("4 sticks of
+// ten"), "which is" / "that's" after a quantity and the value of a digit in a named number are read too. A comparison or
+// a bracket that is said but cannot be read whole is refused (fail closed), never skipped as a count.
 
 const SMALL = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
 const TENS = ["twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+/** Denominator words of a spoken fraction ("five sixths", "a half"). */
+const DENOMINATORS: Record<string, number> = {
+  half: 2, halves: 2, third: 3, thirds: 3, quarter: 4, quarters: 4, fourth: 4, fourths: 4, fifth: 5, fifths: 5, sixth: 6, sixths: 6,
+  seventh: 7, sevenths: 7, eighth: 8, eighths: 8, ninth: 9, ninths: 9, tenth: 10, tenths: 10, twelfth: 12, twelfths: 12, hundredth: 100, hundredths: 100,
+};
 
-const NUM = String.raw`(?:\d+|(?:${TENS.join("|")})(?:[- ](?:${SMALL.slice(1, 10).join("|")}))?|${SMALL.join("|")})`;
+/** Longest first, so "sixteen" is never read as "six" and the rest. */
+const alternatives = (words: readonly string[]) => [...words].sort((a, b) => b.length - a.length).join("|");
+/** A number word below 100: "seven", "sixteen", "forty", "forty-two". */
+const W99 = String.raw`(?:(?:${alternatives(TENS)})(?:[- ](?:${alternatives(SMALL.slice(1, 10))}))?|(?:${alternatives(SMALL)}))\b`;
 const UNIT = String.raw`(?:hundred thousands?|ten thousands?|ones?|tens?|hundreds?|thousands?)\b`;
+const DENOMINATOR = String.raw`(?:${alternatives(Object.keys(DENOMINATORS))})\b`;
+const HUNDREDS = String.raw`(?:(?:${W99}|an?)\s+hundred\b(?:\s+(?:and\s+)?${W99})?)`;
+/** A compound number word with a part after its scale: "one hundred and two", "two thousand three hundred". */
+const COMPOUND = String.raw`(?:(?:${HUNDREDS}|${W99}|an?)\s+thousand\b\s+(?:and\s+)?(?:${HUNDREDS}|${W99})|(?:${W99}|an?)\s+hundred\b\s+(?:and\s+)?${W99})(?![-\w])(?!\s+(?:${UNIT}|${DENOMINATOR}))`;
+const NUM = String.raw`(?:\d+(?:\.\d+)?(?!\.?\d)|${W99})`;
+/** A spoken fraction: "five sixths", "5 sixths", "a half", "three-quarters". */
+const FRACTION = String.raw`(?:\d+|${W99}|an?)[\s-]+${DENOMINATOR}`;
 /** A place quantity: "4 tens and 12 ones", "a ten", "one hundred". */
 const QUANTITY = String.raw`(?:(?:${NUM}|an?)\s+${UNIT})(?:\s+(?:and\s+)?(?:${NUM}|an?)\s+${UNIT})*`;
 const OP = String.raw`(?:plus|\+|minus|take away|-|times|multiplied by|groups? of|×|\*|x|divided by|÷|/)`;
 const REL = String.raw`(?:is not equal to|isn't equal to|is not|isn't|are not|aren't|is the same as|is equal to|equals|is now|are now|is still|becomes|become|became|turns into|turn into|turned into|=|is|are|makes|make|gives)`;
-const TOKEN = new RegExp(String.raw`(${QUANTITY})|(${NUM})(?!\s+${UNIT})|(${OP})(?=\s|\d|$)|(${REL})(?=\s|\d|$)|([a-z']+|[^\sa-z0-9])`, "gi");
+const TOKEN = new RegExp(String.raw`(${FRACTION})|(${COMPOUND})|(${QUANTITY})|(${NUM})(?!\s+${UNIT})|(${OP})(?=\s|\d|\(|$)|(${REL})(?=\s|\d|\(|$)|([()])|([a-z']+|[^\sa-z0-9])`, "gi");
 
-type Item = { kind: "term"; value: number; unit: boolean; place?: number; word?: true } | { kind: "op"; op: "+" | "-" | "*" | "/" } | { kind: "rel"; negated: boolean; eq: boolean; now: boolean } | { kind: "other"; word?: string };
+/** A number said in digits (with a decimal part) or in words, compound words too ("one hundred and two"). */
+export const NUMBER_SAID = String.raw`(?:\d+(?:\.\d+)?|(?:${W99}|hundred\b|thousand\b)(?:[\s-]+(?:and\s+)?(?:${W99}|hundred\b|thousand\b))*)`;
 
-/** A number in digits or words (0 to 99), or "a"/"an" (1). */
-function numberOf(word: string): number | null {
+type Item =
+  | { kind: "term"; value: number; unit: boolean; place?: number; word?: true; fraction?: true }
+  | { kind: "op"; op: "+" | "-" | "*" | "/" }
+  | { kind: "rel"; negated: boolean; eq: boolean; now: boolean }
+  | { kind: "open" }
+  | { kind: "close" }
+  | { kind: "other"; word?: string };
+
+/** A number in digits (a decimal too) or words ("forty-two", "one hundred and two", "two thousand three hundred"), or "a"/"an" (1). */
+export function numberOf(word: string): number | null {
   const w = word.toLowerCase().trim();
-  if (/^\d+$/.test(w)) return Number(w);
-  if (w === "a" || w === "an") return 1;
-  const small = SMALL.indexOf(w);
-  if (small !== -1) return small;
-  const [t, u] = w.split(/[- ]/);
-  const tens = TENS.indexOf(t);
-  if (tens === -1) return null;
-  const unit = u === undefined ? 0 : SMALL.indexOf(u);
-  return unit < 1 && u !== undefined ? null : (tens + 2) * 10 + unit;
+  if (/^\d+(?:\.\d+)?$/.test(w)) return Number(w);
+  let total = 0;
+  let current = 0;
+  let any = false;
+  for (const part of w.split(/[\s-]+/)) {
+    if (part === "and" && any) continue;
+    if ((part === "a" || part === "an") && !any) { current = 1; any = true; continue; }
+    const small = SMALL.indexOf(part);
+    if (small !== -1) { current += small; any = true; continue; }
+    const tens = TENS.indexOf(part);
+    if (tens !== -1) { current += (tens + 2) * 10; any = true; continue; }
+    if (part === "hundred" && any) { current *= 100; continue; }
+    if (part === "thousand" && any) { total += current * 1000; current = 0; continue; }
+    return null;
+  }
+  return any ? total + current : null;
+}
+
+/** "five sixths" is 5/6, "a half" is 1/2. */
+function fractionOf(text: string): number | null {
+  const m = /^(.*?)[\s-]+([a-z]+)$/i.exec(text.trim());
+  if (!m) return null;
+  const n = numberOf(m[1]);
+  const d = DENOMINATORS[m[2].toLowerCase()];
+  return n === null || !d ? null : n / d;
 }
 
 const PLACE: Record<string, number> = { one: 1, ten: 10, hundred: 100, thousand: 1000, "ten thousand": 10000, "hundred thousand": 100000 };
@@ -45,33 +90,42 @@ function quantityParts(text: string): { n: number; place: number }[] | null {
 }
 
 function itemsOf(sentence: string): Item[] {
-  const text = sentence.replace(/[−–]/g, "-").replace(/(\d),(?=\d{3}\b)/g, "$1").replace(/,/g, " ");
+  // A comma never joins a number to a place word after it: "15, one less than 16" is 15 and one, not 15 ones.
+  const text = sentence.replace(/[−–]/g, "-").replace(/(\d),(?=\d{3}\b)/g, "$1").replace(/,(?=\s*(?:ones?|tens?|hundreds?|thousands?)\b)/gi, " ¦ ").replace(/,/g, " ");
   const items: Item[] = [];
   for (const m of text.matchAll(TOKEN)) {
     if (m[1]) {
-      // The place of each part comes from its unit word only ("one ten" is 1 of place 10).
-      const parts = quantityParts(m[1]);
-      const places = [...new Set((parts ?? []).map((x) => x.place))];
-      items.push(parts === null ? { kind: "other" } : { kind: "term", value: parts.reduce((t, x) => t + x.n * x.place, 0), unit: true, ...(places.length === 1 && parts.length === 1 ? { place: places[0] } : {}) });
+      const v = fractionOf(m[1]);
+      items.push(v === null ? { kind: "other", word: m[1].toLowerCase() } : { kind: "term", value: v, unit: false, fraction: true });
     } else if (m[2]) {
       const v = numberOf(m[2]);
+      items.push(v === null ? { kind: "other" } : { kind: "term", value: v, unit: false, word: true });
+    } else if (m[3]) {
+      // The place of each part comes from its unit word only ("one ten" is 1 of place 10).
+      const parts = quantityParts(m[3]);
+      const places = [...new Set((parts ?? []).map((x) => x.place))];
+      items.push(parts === null ? { kind: "other" } : { kind: "term", value: parts.reduce((t, x) => t + x.n * x.place, 0), unit: true, ...(places.length === 1 && parts.length === 1 ? { place: places[0] } : {}) });
+    } else if (m[4]) {
+      const v = numberOf(m[4]);
       // "one" after a word such as "this" or "each" is a pronoun ("this one is tricky"), not the number 1.
       const prev = items.at(-1);
-      const pronoun = m[2].toLowerCase() === "one" && prev?.kind === "other" && !!prev.word && DETERMINERS.has(prev.word);
-      items.push(v === null || pronoun ? { kind: "other", word: m[2].toLowerCase() } : { kind: "term", value: v, unit: false, ...(/^\d+$/.test(m[2]) ? {} : { word: true as const }) });
-    } else if (m[3]) {
-      const w = m[3].toLowerCase();
+      const pronoun = m[4].toLowerCase() === "one" && prev?.kind === "other" && !!prev.word && DETERMINERS.has(prev.word);
+      items.push(v === null || pronoun ? { kind: "other", word: m[4].toLowerCase() } : { kind: "term", value: v, unit: false, ...(/^\d/.test(m[4]) ? {} : { word: true as const }) });
+    } else if (m[5]) {
+      const w = m[5].toLowerCase();
       // "x" is an operator only between two numbers ("6 x 4").
-      if (w === "x" && items.at(-1)?.kind !== "term") { items.push({ kind: "other", word: "x" }); continue; }
+      if (w === "x" && items.at(-1)?.kind !== "term" && items.at(-1)?.kind !== "close") { items.push({ kind: "other", word: "x" }); continue; }
       // "6 groups of 440" is 6 × 440 (F2 builder, 2026-11-15); "in groups of 4" names a thing.
       if (/^groups? of$/.test(w) && items.at(-1)?.kind !== "term") { items.push({ kind: "other", word: "groups" }); continue; }
       items.push({ kind: "op", op: /^(?:plus|\+)$/.test(w) ? "+" : /^(?:times|multiplied by|groups? of|×|\*|x)$/.test(w) ? "*" : /^(?:divided by|÷|\/)$/.test(w) ? "/" : "-" });
-    }
-    else if (m[4]) {
-      const r = m[4].toLowerCase();
+    } else if (m[6]) {
+      const r = m[6].toLowerCase();
       items.push({ kind: "rel", negated: /not|n't/.test(r), eq: r === "=", now: /\bnow\b|becom|became|turn/.test(r) });
+    } else if (m[7]) {
+      items.push({ kind: m[7] === "(" ? "open" : "close" });
     } else {
-      const word = m[5]?.toLowerCase();
+      const word = m[8]?.toLowerCase();
+      if (word === "¦") continue;
       // "the" after an operator changes nothing ("12 minus the 8 is 4").
       if (word === "the" && items.at(-1)?.kind === "op") continue;
       items.push({ kind: "other", word });
@@ -80,64 +134,65 @@ function itemsOf(sentence: string): Item[] {
   return items;
 }
 
-/** "a ÷ b = q R r", in digits or words. */
-const REMAINDER = /(\d+)\s*(?:÷|\/|divided by)\s*(\d+)\s*(?:=|is|equals|makes)\s*(\d+)\s*(?:R|r|remainder|with a remainder of|with remainder)\s*(\d+)/g;
+/** "a ÷ b = q R r", in digits or words ("thirteen divided by two is six remainder one"). */
+export const REMAINDER_SAID = String.raw`\b(${NUMBER_SAID})\s*(?:÷|\/|divided by)\s*(${NUMBER_SAID})\s*(?:=|is|equals|makes)\s*(${NUMBER_SAID})\s*(?:with a remainder of|with remainder|remainder|R|r)\s*(${NUMBER_SAID})(?![\w.]*\d)`;
 
 /** Words before "one" that make it a pronoun. */
 const DETERMINERS = new Set(["this", "that", "each", "every", "which", "another", "next", "last", "first", "other", "any", "no", "new", "same", "easier", "harder", "tricky", "hard", "easy"]);
 
 /**
  * Words a number may run on into that make it a count, not a claim of equality ("12 is 4 steps", "8 and 4 more make
- * 12", "12 is 4 bigger than 8"). Any other word after a claim leaves the claim checked (fail closed: "4 is 4 tens left").
+ * 12"). Any other word after a claim leaves the claim checked (fail closed: "4 is 4 tens left"). A comparison with
+ * "than" is never a count: it is read, and refused when it does not hold.
  */
 const COUNT_WORDS = new Set(["more", "less", "fewer", "bigger", "smaller", "greater", "larger", "away", "apart", "times", "counts", "numbers"]);
 /** Things a number may count, also after a place quantity ("4 tens is 4 sticks of ten"). */
 const OBJECT_WORDS = new Set(["steps", "step", "jumps", "jump", "fingers", "finger", "blocks", "block", "sticks", "stick", "bundles", "bundle", "rods", "rod", "cubes", "cube"]);
+/** Comparison words: +1 says "more than", -1 says "less than". */
+const COMPARE: Record<string, 1 | -1> = { more: 1, bigger: 1, greater: 1, larger: 1, higher: 1, less: -1, fewer: -1, smaller: -1, lower: -1 };
+const compareSign = (word: string): 1 | -1 | 0 => (Object.hasOwn(COMPARE, word) ? COMPARE[word] : 0);
 
 /** One side of a relation: its value, whether any term is a place quantity, and its one place when it has one. */
-interface Side { value: number; units: boolean; place: number | null; next: number; ops: boolean; sums: boolean }
+interface Side { at: number; value: number; units: boolean; place: number | null; next: number; ops: boolean; sums: boolean }
 
-/**
- * The math claims of a sentence that do not hold, as reasons; empty when every claim holds. A claim is a chain
- * `side REL side (REL side)*`, each side terms joined by plus or minus. Values are compared exactly: a number said with
- * no unit is that number ("4 is 4 tens" is false). "is now" / "are now" between two quantities of one place also says a
- * trade of the question's operation (`op`, a subtraction when not given): in a subtraction the ones gain 10 and the tens give 1 ten ("the 2 ones are
- * now 12 ones", "the 5 tens are now 4 tens"); in an addition the ones give 10 and the tens gain 1 ten.
- */
-/**
- * `trades`: the question's own work values (TutorKind.workValues). A place above the ones that both lends and borrows
- * ("2 tens become 11 tens" in 223 − 129) is true only when its result is one of them (review of #1009).
- */
-export function falseClaims(sentence: string, op?: "add" | "subtract", trades: readonly number[] = []): string[] {
-  const problems: string[] = [];
-  // A division with a remainder ("15 ÷ 6 = 2 R 3", "15 divided by 6 is 2 remainder 3") is read whole, then left out.
-  sentence = sentence.replace(REMAINDER, (all, a: string, b: string, q: string, r: string) => {
-    const [x, y, z, w] = [a, b, q, r].map(Number);
-    if (!(y > 0 && x === y * z + w && w < y)) problems.push(`${x} divided by ${y} is not ${z} remainder ${w}`);
-    return " ";
-  });
-  const items = itemsOf(sentence);
-  let i = 0;
-  let eqSeen = 0;
-  let eqRead = 0;
-  for (const it of items) if (it.kind === "rel" && it.eq) eqSeen++;
+const wordAt = (items: readonly Item[], at: number): string => {
+  const it = items[at];
+  return it?.kind === "other" ? it.word ?? "" : "";
+};
+
+/** Reads sides of claims from one sentence's items: sums of products of terms and brackets. */
+function sideReader(items: readonly Item[]) {
+  /** Brackets read as part of a side. */
+  const read = new Set<number>();
+  const primary = (at: number): { value: number; units: boolean; place: number | null; next: number } | null => {
+    const it = items[at];
+    if (it?.kind === "term") return { value: it.value, units: it.unit, place: it.place ?? null, next: at + 1 };
+    if (it?.kind === "open") {
+      const inner = side(at + 1);
+      if (!inner || items[inner.next]?.kind !== "close") return null;
+      read.add(at).add(inner.next);
+      return { value: inner.value, units: inner.units, place: null, next: inner.next + 1 };
+    }
+    return null;
+  };
   const side = (at: number): Side | null => {
-    if (items[at]?.kind !== "term") return null;
-    const first = items[at] as Extract<Item, { kind: "term" }>;
+    const first = primary(at);
+    if (!first) return null;
     const values = [first.value];
     const signs: ("+" | "-" | "*" | "/")[] = [];
-    let units = first.unit;
-    let place: number | null = first.place ?? null;
-    let next = at + 1;
-    let ops = false;
-    while (items[next]?.kind === "op" && items[next + 1]?.kind === "term") {
+    let units = first.units;
+    let place = first.place;
+    let next = first.next;
+    let ops = items[at]?.kind === "open";
+    while (items[next]?.kind === "op") {
+      const t = primary(next + 1);
+      if (!t) break;
       ops = true;
-      const t = items[next + 1] as Extract<Item, { kind: "term" }>;
       signs.push((items[next] as Extract<Item, { kind: "op" }>).op);
       values.push(t.value);
-      units ||= t.unit;
+      units ||= t.units;
       place = null;
-      next += 2;
+      next = t.next;
     }
     // Products and quotients first, then sums and differences, left to right.
     let total = 0;
@@ -152,15 +207,82 @@ export function falseClaims(sentence: string, op?: "add" | "subtract", trades: r
       term = values[k + 1];
     }
     const value = total + sign * term;
-    return { value, units, place, next, ops, sums: signs.length > 0 && signs.every((x) => x === "+") };
+    return { at, value, units, place, next, ops, sums: signs.length > 0 && signs.every((x) => x === "+") && items[at]?.kind !== "open" };
   };
+  /** A side, with an object count and its stated unit read as their product ("4 sticks of ten" is 40). */
+  const full = (at: number): Side | null => {
+    const s = side(at);
+    // "two thirds of 6" is 2/3 × 6.
+    const fraction = items[at]?.kind === "term" && (items[at] as Extract<Item, { kind: "term" }>).fraction === true;
+    if (s && !s.ops && fraction && wordAt(items, s.next) === "of") {
+      const whole = side(s.next + 1);
+      if (whole) return { ...whole, at, value: s.value * whole.value, place: null, ops: true, sums: false };
+    }
+    if (!s || s.ops || !OBJECT_WORDS.has(wordAt(items, s.next)) || wordAt(items, s.next + 1) !== "of") return s;
+    const unit = side(s.next + 2);
+    if (!unit || unit.ops) return s;
+    return { ...s, value: s.value * unit.value, units: true, place: null, next: unit.next };
+  };
+  return { side, full, read };
+}
+
+/**
+ * The value of a digit side said as "the value of the 8": that digit's place value in the one number of the sentence
+ * that holds the digit once ("In 48,942, the value of the 8 is 8,000"). Undefined: the side is not such a side. Null:
+ * code cannot tell which digit it names (the kind's own claim check reads it).
+ */
+function digitValue(items: readonly Item[], s: Side): number | null | undefined {
+  const it = items[s.at];
+  if (s.ops || it?.kind !== "term" || it.unit || !Number.isInteger(it.value) || it.value > 9 || it.value < 0) return undefined;
+  const before = wordAt(items, s.at - 1) === "the" ? s.at - 2 : s.at - 1;
+  if (wordAt(items, before) !== "of" || !["value", "worth"].includes(wordAt(items, before - 1))) return undefined;
+  const digit = String(it.value);
+  const named = [...new Set(items.flatMap((x) => (x.kind === "term" && !x.unit && Number.isInteger(x.value) && x.value >= 10 ? [String(x.value)] : [])))];
+  const holds = named.filter((n) => n.split(digit).length === 2);
+  if (holds.length !== 1) return null;
+  return it.value * 10 ** (holds[0].length - 1 - holds[0].indexOf(digit));
+}
+
+/**
+ * The math claims of a sentence that do not hold, as reasons; empty when every claim holds. A claim is a chain
+ * `side REL side (REL side)*`, each side terms joined by operators, with brackets. Values are compared exactly: a number
+ * said with no unit is that number ("4 is 4 tens" is false). "is now" / "are now" between two quantities of one place also
+ * says a trade of the question's operation (`op`, a subtraction when not given): in a subtraction the ones gain 10 and
+ * the tens give 1 ten ("the 2 ones are now 12 ones", "the 5 tens are now 4 tens"); in an addition the ones give 10 and the
+ * tens gain 1 ten. Comparisons ("12 is 4 more than 8", "4 is greater than 8") must hold.
+ */
+/**
+ * `trades`: the question's own work values (TutorKind.workValues). A place above the ones that both lends and borrows
+ * ("2 tens become 11 tens" in 223 − 129) is true only when its result is one of them (review of #1009).
+ */
+export function falseClaims(sentence: string, op?: "add" | "subtract", trades: readonly number[] = []): string[] {
+  const problems: string[] = [];
+  // A division with a remainder ("15 ÷ 6 = 2 R 3", "thirteen divided by two is six remainder one") is read whole, then
+  // left out.
+  sentence = sentence.replace(new RegExp(REMAINDER_SAID, "gi"), (all, a: string, b: string, q: string, r: string) => {
+    const [x, y, z, w] = [a, b, q, r].map(numberOf);
+    if (x === null || y === null || z === null || w === null) problems.push(`it has a remainder code cannot read: "${all}"`);
+    else if (!(y > 0 && x === y * z + w && w < y)) problems.push(`${x} divided by ${y} is not ${z} remainder ${w}`);
+    return " ";
+  });
+  // "4 ones, which is 40", "1 ten, that's 10 ones": the words name the quantity before them (pre-launch review B).
+  sentence = sentence.replace(/,\s*(?:and\s+)?(?:which|that)\s+(?:is|are)\b/gi, " is").replace(/,\s*(?:and\s+)?that['’]s\b/gi, " is");
+  const items = itemsOf(sentence);
+  const { full, read } = sideReader(items);
+  let i = 0;
+  let eqSeen = 0;
+  let eqRead = 0;
+  for (const it of items) if (it.kind === "rel" && it.eq) eqSeen++;
+  // The core cannot check a decimal relation yet ("2.5 × 4 = 10"): it is refused, never read as whole numbers.
+  if (items.some((x) => x.kind === "term" && !Number.isInteger(x.value) && x.fraction !== true) && items.some((x) => x.kind === "rel")) problems.push("it has a decimal code cannot read");
   // A column's sum of digits said in its place: "1 + 2 + 3 = 6 tens" (never a bare "4 is 4 tens", and never a product or
   // a difference: "3 groups of 4 is 12 tens" is false, review of #1009).
   const inPlace = (a: Side, b: Side): boolean =>
     (a.sums && !a.units && b.place !== null && a.value * b.place === b.value) || (b.sums && !b.units && a.place !== null && b.value * a.place === a.value);
   const trade = (a: Side, b: Side): boolean => {
-    // Two digits with no place ("the 2 becomes 12", "the 5 becomes 4"): the ones gain 10 or the tens give 1.
-    if (!a.units && !b.units) return b.value === a.value + 10 || b.value === a.value - 1;
+    // Two digits with no place ("the 2 becomes 12", "the 5 becomes 4"): in a subtraction the ones gain 10 or the tens
+    // give 1; in an addition the ones give 10 or the tens gain 1 ("16 becomes 6", pre-launch review B).
+    if (!a.units && !b.units) return op === "add" ? b.value === a.value - 10 || b.value === a.value + 1 : b.value === a.value + 10 || b.value === a.value - 1;
     // A number with no unit beside a place quantity is in its place ("2 ones become 12", "5 tens become 4", "the 2
     // becomes 12 ones").
     const place = a.place ?? b.place;
@@ -176,8 +298,16 @@ export function falseClaims(sentence: string, op?: "add" | "subtract", trades: r
     if (place > 1 && op !== "add" && trades.includes(bValue / place) && (bValue === aValue + 10 * place || bValue === aValue + 9 * place)) return true;
     return gainsTen ? bValue === aValue + delta : bValue === aValue - delta;
   };
+  /** A side's value as the claim means it: a "value of the 8" side becomes its place value; null when code cannot tell. */
+  const valued = (s: Side): Side | null => {
+    const v = digitValue(items, s);
+    return v === undefined ? s : v === null ? null : { ...s, value: v, units: true, place: null };
+  };
+  /** "than C" at `at` (with an optional "the"): the side C. */
+  const than = (at: number): Side | null => (wordAt(items, at) !== "than" ? null : full(wordAt(items, at + 1) === "the" ? at + 2 : at + 1));
+  const near = (x: number, y: number) => Math.abs(x - y) < 1e-9;
   while (i < items.length) {
-    const left = side(i);
+    const left = full(i);
     if (!left || items[left.next]?.kind !== "rel") { i++; continue; }
     const chain = [left];
     const rels: Extract<Item, { kind: "rel" }>[] = [];
@@ -185,46 +315,118 @@ export function falseClaims(sentence: string, op?: "add" | "subtract", trades: r
     while (items[at]?.kind === "rel") {
       // "the" before a number word alone names a thing ("the 1 is the ten we carried"); before a digit or a place
       // quantity it is read through ("52 is the 4 tens and 2 ones").
-      const article = items[at + 1]?.kind === "other" && (items[at + 1] as { word?: string }).word === "the";
+      const article = wordAt(items, at + 1) === "the";
       // Only a lone number word with no operator after it ("4 tens is the twenty plus thirty" is read).
       const named = article && items[at + 2]?.kind === "term" && (items[at + 2] as Extract<Item, { kind: "term" }>).word === true && !(items[at + 2] as Extract<Item, { kind: "term" }>).unit && items[at + 3]?.kind !== "op";
-      const right = named ? null : side(at + (article ? 2 : 1));
+      const right = named ? null : full(at + (article ? 2 : 1));
       if (!right) break;
       rels.push(items[at] as Extract<Item, { kind: "rel" }>);
       chain.push(right);
       at = right.next;
     }
-    if (chain.length < 2) { i = left.next + 1; continue; }
+    if (chain.length < 2) {
+      // "4 is greater than 8", "2 is not smaller than 8": a comparison must hold (pre-launch review B).
+      const rel = items[left.next] as Extract<Item, { kind: "rel" }>;
+      const sign = compareSign(wordAt(items, left.next + 1));
+      const base = sign && !rel.now ? than(left.next + 2) : null;
+      if (sign && base) {
+        const [a, b] = [valued(left), valued(base)];
+        if (a && b) {
+          const holds = sign > 0 ? a.value > b.value + 1e-9 : a.value < b.value - 1e-9;
+          if (holds === rel.negated) problems.push(`it says ${a.value} is ${rel.negated ? "not " : ""}${sign > 0 ? "more" : "less"} than ${b.value}`);
+          if (rel.eq) eqRead++;
+        }
+        i = base.next;
+        continue;
+      }
+      i = left.next + 1;
+      continue;
+    }
     // Not a claim of equality: a counting list ("9, 10, 11, 12 is 4 steps") or a number that goes on into a word that
     // is not a place ("12 is 4 steps", "8 and 4 more make 12"). An "=" is always read.
     // A count ("12 is 4 steps", "12 is 4 more than 8"): only with a count word after it and no place unit on any
     // side; a place-value claim is always read (#1008).
-    const after = items[at];
-    const word = after?.kind === "other" ? after.word ?? "" : "";
-    // "A is B more than C" ("12 is 4 more than 8", "4 tens is 1 ten more than 3 tens"): true when A = C + B or C - B
-    // (review of #1032).
-    const thanAt = items[at + 1]?.kind === "other" && (items[at + 1] as { word?: string }).word === "than" ? at + 2 : -1;
-    const base = thanAt > 0 && chain.length === 2 && !rels[0].negated && !rels[0].eq ? side(thanAt) : null;
-    const sign = ["more", "bigger", "greater", "larger"].includes(word) ? 1 : ["less", "fewer", "smaller"].includes(word) ? -1 : 0;
-    // Only a comparison that holds is skipped this way; any other one is read as before (a place quantity is read as a
-    // claim and refused, "15, one less than 16" is a count).
-    if (base && sign !== 0 && Math.abs(chain[0].value - (base.value + sign * chain[1].value)) < 1e-9) { i = base.next; continue; }
-    // An object count after a place quantity names the same number of that place ("4 tens is 4 sticks of ten"); any other
-    // count is read as a claim ("4 tens is 5 bundles of ten" is false, review of #1032).
+    const word = wordAt(items, at);
+    // "A is B more than C" ("12 is 4 more than 8", "4 tens is 1 ten more than 3 tens"): true when A = C + B, or C - B
+    // for "less". A comparison that does not hold is refused before any count exemption (pre-launch review B).
+    const sign = compareSign(word);
+    const base = sign && chain.length === 2 && !rels[0].now ? than(at + 1) : null;
+    if (sign && base) {
+      const [a, b, c] = [valued(chain[0]), valued(chain[1]), valued(base)];
+      if (a && b && c) {
+        const holds = near(a.value, c.value + sign * b.value);
+        if (holds === rels[0].negated) problems.push(`it says ${a.value} is ${rels[0].negated ? "not " : ""}${b.value} ${sign > 0 ? "more" : "less"} than ${c.value}`);
+        if (rels[0].eq) eqRead++;
+      }
+      i = base.next;
+      continue;
+    }
+    // An object count after a place quantity with no stated unit names the same number of that place ("4 tens is 4
+    // sticks"); with a stated unit ("4 sticks of ten") the side is already the product. Any other count is read as a
+    // claim ("4 tens is 5 bundles of ten" is false, review of #1032).
     const unitSide = chain.find((c) => c.units && c.place !== null);
-    const objects = OBJECT_WORDS.has(word) && (!chain.some((c) => c.units) || (!!unitSide && chain.every((c) => c === unitSide || (!c.units && c.value * unitSide.place! === unitSide.value))));
-    const runsOn = objects || (COUNT_WORDS.has(word) && !chain.some((c) => c.units));
+    const objects = OBJECT_WORDS.has(word) && wordAt(items, at + 1) !== "of" && (!chain.some((c) => c.units) || (!!unitSide && chain.every((c) => c === unitSide || (!c.units && c.value * unitSide.place! === unitSide.value))));
+    const runsOn = objects || (COUNT_WORDS.has(word) && wordAt(items, at + 1) !== "than" && !chain.some((c) => c.units));
     if (runsOn && !rels.some((r) => r.eq)) { i = at; continue; }
+    // An object word with "of" and a unit code could not read ("4 tens is 4 sticks of wood") leaves the count unread.
+    if (OBJECT_WORDS.has(word) && wordAt(items, at + 1) === "of" && chain.some((c) => c.units)) problems.push(`it counts ${word} with a size code cannot read`);
+    const sides = chain.map(valued);
     for (let k = 0; k < rels.length; k++) {
-      const [a, b] = [chain[k], chain[k + 1]];
-      const same = Math.abs(a.value - b.value) < 1e-9;
-      const equal = same || inPlace(a, b) || (rels[k].now && trade(a, b));
+      const [a, b] = [sides[k], sides[k + 1]];
       if (rels[k].eq) eqRead++;
+      // A "value of the 4" side code cannot tie to one digit: the kind's own check reads it.
+      if (!a || !b) continue;
+      const same = near(a.value, b.value);
+      const equal = same || inPlace(a, b) || (rels[k].now && trade(a, b));
       if (!rels[k].negated && !equal) problems.push(`it says ${a.value} and ${b.value} are the same`);
       if (rels[k].negated && same) problems.push(`it says ${a.value} and ${b.value} are not the same`);
     }
     i = at;
   }
   if (eqRead < eqSeen) problems.push("it has an \"=\" code cannot read");
+  // A bracket that is an operand but cannot be read whole ("2 times (3 plus 4 is 7)") is refused, never skipped.
+  for (const [k, it] of items.entries()) {
+    if (it.kind === "open" && !read.has(k) && items[k - 1]?.kind === "op") problems.push("it has brackets code cannot read");
+    if (it.kind === "close" && !read.has(k) && items[k + 1]?.kind === "op") problems.push("it has brackets code cannot read");
+  }
+  return problems;
+}
+
+/** Words that may stand between "the answer is" and its value ("the answer is still 24"). */
+const ANSWER_FILLERS = new Set(["the", "just", "exactly", "still", "now", "really", "actually"]);
+
+/**
+ * A claim about which number is the question's answer that does not hold, as reasons (pre-launch review B): "the answer
+ * is twenty-five", "the answer is not 24", "the answer is 24 plus 1", "24.5 is the answer". The whole value after "the
+ * (whole, final, right) answer is" is read with the claim reader; a value code cannot read is refused ("the answer is
+ * about 25"). A clause with no number ("the answer is right") is no claim.
+ */
+export function answerProblems(sentence: string, answer: number): string[] {
+  const problems: string[] = [];
+  const text = sentence.replace(/[’]/g, "'");
+  const after = /\b(?:the|your|our)\s+(?:whole\s+|final\s+|right\s+)?answer\s+(is not|isn't|is|equals|=|would be|will be|should be|must be)\s+([^,;:!?]*?)(?=[,;:!?]|\.(?!\d)|$)/gi;
+  for (const m of text.matchAll(after)) {
+    const negated = /not|n't/.test(m[1]);
+    const items = itemsOf(m[2]);
+    const { full } = sideReader(items);
+    let at = 0;
+    while (ANSWER_FILLERS.has(wordAt(items, at))) at++;
+    const s = full(at);
+    if (!s) {
+      if (items.some((x) => x.kind === "term")) problems.push(`"${m[0].trim()}" says an answer code cannot read`);
+      continue;
+    }
+    const same = Math.abs(s.value - answer) < 1e-9;
+    if (same === negated) problems.push(`${s.value} is ${negated ? "" : "not "}the answer to the question`);
+  }
+  const before = new RegExp(String.raw`(?:^|[^\w.])(${NUMBER_SAID})\s+(is not|isn't|is)\s+(?:the|your|our)\s+(?:whole\s+|final\s+|right\s+)?answer\b`, "gi");
+  for (const m of text.matchAll(before)) {
+    const lead = text.slice(0, m.index! + m[0].indexOf(m[1])).trim().split(/\s+/).at(-1)?.toLowerCase() ?? "";
+    if (DETERMINERS.has(lead)) continue;
+    const n = numberOf(m[1]);
+    if (n === null) { problems.push(`"${m[0].trim()}" says an answer code cannot read`); continue; }
+    const negated = /not|n't/.test(m[2]);
+    if ((Math.abs(n - answer) < 1e-9) === negated) problems.push(`${n} is ${negated ? "" : "not "}the answer to the question`);
+  }
   return problems;
 }

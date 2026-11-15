@@ -16,6 +16,7 @@ import { missingStepText } from "../missing-number-text";
 import { equationHolds, equationsOf, sentencesOf } from "../say-check";
 import { falseClaims } from "../tutor-math";
 import { expressionKey, noteFromEquation, type TutorCommand, type TutorKind, type TutorStepFact } from "../tutor-kind";
+import { clauseAt, statements } from "./clauses";
 
 type ClaimStep = Extract<WorkedStep, { kind: "claim-compare" }>;
 type CompareStep = Extract<WorkedStep, { kind: "comparison" }>;
@@ -274,15 +275,16 @@ function wordProblems(pkg: OperationPackage, sentence: string): string[] {
   const [said, truth, pick] = wordReaders(pkg);
   // "the answer is no", "we circle yes", "you tick no", "it's true", "the word is false", "the right answer is 7 by 6".
   for (const m of s.matchAll(said)) {
-    // "Circle yes or no" names both choices; a question asks, it claims nothing.
-    if (/\?\s*$/.test(s) || /\bor\b/.test(s.slice(m.index! + m[0].length, m.index! + m[0].length + 4))) continue;
+    // "Circle yes or no" names both choices; a question asks, it claims nothing. Only the clause that asks is a
+    // question: "The answer is no, shall we circle it?" states the answer first (pre-launch review B, F11).
+    if (clauseAt(s, m.index!).asks || /\bor\b/.test(s.slice(m.index! + m[0].length, m.index! + m[0].length + 4))) continue;
     if ((m[2] === word) === !!m[1]) problems.push(`it says the answer is ${m[1] ? "not " : ""}${m[2]}, but the answer is ${word}`);
   }
   // "the claim is true", "the answer given is not right", "Noah is right".
   const holds = claim ? claim.holds : cmp ? word === comparisonWords(cmp)[0] && (cmp.context === "same-denominator" || cmp.context === "equal-pieces") : null;
   for (const m of s.matchAll(truth)) {
     if (holds === null) { problems.push(`code cannot check "${m[0]}" on this question`); continue; }
-    if (/\?\s*$/.test(s)) continue;
+    if (clauseAt(s, m.index!).asks) continue;
     const positive = ["true", "right", "correct"].includes(m[3]) !== !!m[2];
     if (positive !== holds) problems.push(`it says ${m[0]}, but ${m[1]} is ${holds ? "true" : "not true"}`);
   }
@@ -291,7 +293,7 @@ function wordProblems(pkg: OperationPackage, sentence: string): string[] {
     const [w0] = comparisonWords(cmp).map((w) => w.toLowerCase());
     const [left, right] = comparisonSides(cmp);
     for (const m of s.matchAll(pick!)) {
-      if (/\?\s*$/.test(s)) continue;
+      if (clauseAt(s, m.index!).asks) continue;
       const up = /\b(?:more|most|bigger|biggest|larger|greater)\b/.test(m[0].slice(m[1].length));
       const isLeft = m[1] === w0;
       const really = isLeft ? left > right : right > left;
@@ -325,8 +327,9 @@ function choiceWords(pkg: OperationPackage): string[] {
  * "The answer is definitely no"). A question claims nothing.
  */
 function unreadProblems(pkg: OperationPackage, sentence: string, readers: readonly RegExp[]): string[] {
-  const s = sentence.toLowerCase().replace(/[’]/g, "'");
-  if (/\?\s*$/.test(s)) return [];
+  // Only what the sentence states: each clause that asks claims nothing (F11).
+  const s = statements(sentence.toLowerCase().replace(/[’]/g, "'"));
+  if (s.trim() === "") return [];
   const choices = choiceWords(pkg).map(escape).join("|");
   let rest = s;
   for (const re of readers) rest = rest.replace(new RegExp(re.source, re.flags.includes("g") ? re.flags : `${re.flags}g`), " ");

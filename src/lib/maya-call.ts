@@ -783,7 +783,9 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       };
       const proposal = await model.propose(modelInput(session), new AbortController().signal);
       const safety = (proposal as { reading?: { safety?: unknown } | null } | null)?.reading?.safety;
-      return { proposal, severity: safety === "concern" || safety === "immediate" ? safety : null, unsafe: readsUnsafe(proposal) };
+      // A proposal of kind "safety" with no severity is a concern (final check 1, 2026-11-15; as priorityOf in session.ts).
+      const kindSafety = (proposal as { kind?: unknown } | null)?.kind === "safety";
+      return { proposal, severity: safety === "concern" || safety === "immediate" ? safety : kindSafety ? "concern" : null, unsafe: readsUnsafe(proposal) };
     } catch (e) {
       console.error("[maya call] the safety read failed", record.id, e instanceof Error ? e.message : String(e));
       return null;
