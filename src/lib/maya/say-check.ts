@@ -320,6 +320,14 @@ export function sayNumbers(raw: string): SayToken[] {
     const after = text.slice(end).trimStart().toLowerCase();
     // "10 ones", "1 ten": a place said as a count, never a value (the regroup is the same for every question).
     if ((m[0] === "10" && PLACE_PLURAL.test(after)) || (m[0] === "1" && PLACE_SINGULAR.test(after))) continue;
+    // Final check 12 (2026-11-15): a digit count of a denominator ("6 halves", "5 sixths") is one fraction, as "six
+    // halves" is: never its count alone.
+    const den = /^[\s-]+([a-z]+)/i.exec(text.slice(end));
+    if (den && Object.hasOwn(DENOMINATORS, den[1].toLowerCase())) {
+      const stop = end + den[0].length;
+      push({ ...fractionValue(Number(m[0]), DENOMINATORS[den[1].toLowerCase()]), at, end: stop, text: text.slice(at, stop) });
+      continue;
+    }
     push({ key: String(Number(m[0])), q: rational(Number(m[0]), 1), at, end, text: m[0] });
   }
   for (const w of wordNumbers(text)) {

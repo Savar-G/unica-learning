@@ -1,6 +1,6 @@
 // Persistent transition rules for the text adapter. No provider, clock, promise or abort signal enters this fold.
 import { applyBatch, createScene, type Batch, type Scene } from "@/lib/board";
-import { withEmittedHelp } from "@/lib/maya/session";
+import { withEmittedHelp, type Assistance } from "@/lib/maya/session";
 import { nextActs, speechKey, step, TIME_LIMITS, SAFETY_GUIDANCE, type Act, type Effect, type MathReview, type Session, type SessionEvent, type TalkReview } from "@/lib/maya";
 import { type TraceAttempt, type TraceBoardBatch, type TraceError, type TraceObligation, type TraceTurn } from "@/lib/maya-trace";
 import type { TextOutput } from "@/lib/maya-text";
@@ -24,7 +24,12 @@ export type TextLogEvent =
   | { kind: "fallback"; at: number; proposal: unknown }
   | { kind: "recover"; at: number }
   | { kind: "cancelled"; at: number }
-  | { kind: "delivered"; at: number };
+  | { kind: "delivered"; at: number }
+  /**
+   * Final check 12 (2026-11-15): the help a sentence gave, written the moment it was emitted to the child (the help
+   * ledger). Cancellation, a deadline, a hang-up, a replacement turn and an error never take it back.
+   */
+  | { kind: "help"; at: number; assistance: Assistance };
 
 type PendingOutput = { entry: Extract<TraceTurn, { kind: "maya" }>; act: Act; say: string[]; batches: Batch[]; obligations: number[]; control: number };
 export interface TextFold {
@@ -402,6 +407,8 @@ export function foldTextEvent(s: TextFold, e: TextLogEvent): TextFold {
     case "fallback": proposal(s, e.proposal, e.at, { source: "fallback", proposal: e.proposal, refusal: null }); break;
     case "recover": if (!s.candidate) s.request = null; break;
     case "cancelled": s.output.cancelled = false; break;
+    // A control, so a cancellation's replay keeps it.
+    case "help": s.session = controllerStep(s, { type: "help", at: e.at, assistance: e.assistance }).session; break;
     case "delivered": {
       const last = s.turns.at(-1);
       const terminalTurn = last && ["hang_up", "technical"].includes(last.kind) ? s.turns.pop() : undefined;

@@ -294,8 +294,10 @@ const OP_SIGN: Record<SayEquation["ops"][number], string> = { "+": "+", "-": "�
  * (2026-11-15): an equation is printed only when code read every token of its clause (`equationsOf` with `whole`): "3
  * times 2 is 6 tens", "It is not true that 3 times 2 is 7" print no equation, never one of their parts.
  */
-export function childFacts(pkg: OperationPackage, text: string): string[] {
+export function childFacts(pkg: OperationPackage, text: string, readWhole: (value: number) => boolean = () => false): string[] {
   const facts: string[] = [];
+  /** Numbers an equation fact below already states. */
+  const inEquations = new Set<number>();
   for (const sentence of sentencesOf(text)) {
     for (const e of equationsOf(sentence, { whole: true })) {
       const holds = equationHolds(e);
@@ -304,14 +306,22 @@ export function childFacts(pkg: OperationPackage, text: string): string[] {
       // "8 − 2 + 4 = 10"), never the first operator for all of them.
       const said = `${e.operands.map((o, k) => (k === 0 ? o.key : `${OP_SIGN[e.ops[k - 1]]} ${o.key}`)).join(" ")} ${e.negated ? "≠" : "="} ${e.result.key}`;
       facts.push(`The child said ${said}: that is ${holds !== e.negated ? "true" : "false"}.`);
+      for (const v of [...e.operands, e.result]) if (v.q && v.q[1] === 1) inEquations.add(v.q[0]);
     }
   }
+  // Final check 12 (2026-11-15): a number's fact comes only from the whole-phrase reader (`readWhole`, the session's
+  // answerReadWhole): the number, at most the question's unit and answer words. Any other number, or a number form that
+  // is no whole number ("6 halves"), gets no value: one fact says code did not read it.
   const seen = new Set<number>();
+  let unread = false;
   for (const t of sayNumbers(text)) {
-    if (!t.q || t.q[1] !== 1 || seen.has(t.q[0])) continue;
+    if (!t.q || t.q[1] !== 1) { unread = true; continue; }
+    if (seen.has(t.q[0]) || inEquations.has(t.q[0])) continue;
     seen.add(t.q[0]);
+    if (!readWhole(t.q[0])) { unread = true; continue; }
     facts.push(`The child said ${t.q[0]}: ${numberMeaning(pkg, t.q[0])}.`);
   }
+  if (unread) facts.push("Code did not read all of the child's words in full: it cannot say which number the child gave, or whether it is right.");
   return facts;
 }
 

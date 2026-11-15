@@ -85,6 +85,35 @@ function quantityParts(text: string): { n: number; place: number }[] | null {
 /** A value code computed that it cannot hold exactly: past the safe integers. */
 const unsafeValue = (v: number) => !Number.isFinite(v) || Math.abs(v) > Number.MAX_SAFE_INTEGER;
 
+/** An arithmetic operation the shared evaluator computes. */
+export type ArithOp = "+" | "-" | "*" | "/";
+
+/**
+ * Final check 12 (2026-11-15): THE one evaluator of arithmetic for the core and every tutor kind. `values` joined by
+ * `ops`, products and quotients first, then sums and differences, left to right. With no operation it is the value
+ * itself (a fraction too). With any operation every value and every intermediate product, quotient and sum must be a
+ * safe whole number and every division exact; else null: code cannot hold it exactly, so the clause is unread (the math
+ * review reads it), never computed another way.
+ */
+export function exactValue(values: readonly number[], ops: readonly ArithOp[]): number | null {
+  if (values.length === 0 || values.length !== ops.length + 1) return null;
+  if (ops.length === 0) return unsafeValue(values[0]) ? null : values[0];
+  if (!values.every((v) => Number.isSafeInteger(v))) return null;
+  let total = 0;
+  let term = values[0];
+  let sign = 1;
+  for (let k = 0; k < ops.length; k++) {
+    const op = ops[k];
+    const next = values[k + 1];
+    if (op === "*") term *= next;
+    else if (op === "/") { if (next === 0 || term % next !== 0) return null; term /= next; }
+    else { total += sign * term; sign = op === "+" ? 1 : -1; term = next; }
+    if (!Number.isSafeInteger(term) || !Number.isSafeInteger(total)) return null;
+  }
+  const value = total + sign * term;
+  return Number.isSafeInteger(value) ? value : null;
+}
+
 /**
  * Final check 5 (2026-11-15): the digits a sentence names in a place, in digits or words, as groups: each place quantity
  * ("2 tens and 4 ones", "12 ones") is one group, and each "N in the P" ("Write 2 in the tens place") is a group of one.
@@ -228,27 +257,9 @@ function sideReader(items: readonly Item[]) {
       place = null;
       next = t.next;
     }
-    // Products and quotients first, then sums and differences, left to right. Final check 5 (2026-11-15): every
-    // intermediate value must be one code holds exactly; after an unsafe one the whole side is NaN, so it is not read,
-    // neither true nor false ("100000000 times 100000000 plus 1 minus ..." loses the 1). Final check 6: an operation
-    // with a value that is not a whole number (a quotient such as 1 / 10000000000, or a fraction in a sum) is not held
-    // exactly either, so its side is NaN too: no code-only pass, no "true" and no refusal from code; the review reads it.
-    let total = 0;
-    let term = values[0];
-    let sign = 1;
-    const inexact = (v: number) => unsafeValue(v) || !Number.isInteger(v);
-    let unsafe = values.some(unsafeValue) || (signs.length > 0 && values.some(inexact));
-    for (let k = 0; k < signs.length && !unsafe; k++) {
-      const op = signs[k];
-      if (op === "*") { term *= values[k + 1]; unsafe ||= inexact(term); continue; }
-      if (op === "/") { term = values[k + 1] === 0 ? NaN : term / values[k + 1]; unsafe ||= inexact(term); continue; }
-      total += sign * term;
-      unsafe ||= inexact(total);
-      sign = op === "+" ? 1 : -1;
-      term = values[k + 1];
-    }
-    const sum = unsafe ? NaN : total + sign * term;
-    const value = signs.length > 0 && inexact(sum) ? NaN : sum;
+    // Final check 12: the one shared evaluator (exactValue). Every intermediate must be a safe whole number and every
+    // division exact (final checks 5 and 6); else the side is NaN: not read, neither true nor false; the review reads it.
+    const value = exactValue(values, signs) ?? NaN;
     return { at, value, units, place, next, ops, sums: signs.length > 0 && signs.every((x) => x === "+") && items[at]?.kind !== "open" };
   };
   /** A side, with an object count and its stated unit read as their product ("4 sticks of ten" is 40). */
@@ -264,8 +275,7 @@ function sideReader(items: readonly Item[]) {
     if (!s || s.ops || !OBJECT_WORDS.has(wordAt(items, s.next)) || wordAt(items, s.next + 1) !== "of") return s;
     const unit = side(s.next + 2);
     if (!unit || unit.ops) return s;
-    const product = s.value * unit.value;
-    return { ...s, value: Number.isInteger(product) && !unsafeValue(product) ? product : NaN, units: true, place: null, next: unit.next };
+    return { ...s, value: exactValue([s.value, unit.value], ["*"]) ?? NaN, units: true, place: null, next: unit.next };
   };
   return { side, full, read };
 }
@@ -316,6 +326,56 @@ const LINK_WORDS = new Set(["and", "so", "then", "now", "next", "first", "becaus
 export const ENCLOSING = /^(?:not|never|no|nor|neither|false|untrue|wrong|that|if|whether|unless|suppose|pretend|imagine|when|where|in|for|on|at|with|without|during|instead|rather|than|example|easier|maybe|might|could|would|should|wish|doubt)$/;
 /** Final check 8: words that start a new clause after a claim: the scope scan after it stops there. */
 const NEW_CLAUSE = new Set(["so", "then", "because", "cause", "cuz", "before", "after", "and", "but", "when", "while", "since", "which", "until", "or", "as"]);
+
+/**
+ * Final check 12 (2026-11-15): a refusal of a tutor kind, with what the kind read: `text` (the text the kind read, as it
+ * read it) and the span [`at`, `end`) of the claim in it. A plain string is a refusal about the whole sentence.
+ */
+export interface KindRead { problem: string; text: string; at: number; end: number }
+
+const NUMBER_WORDS = /^(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|half|halves|third|thirds|quarter|quarters|fourth|fourths|fifth|fifths|sixth|sixths|eighth|eighths|tenth|tenths)$/;
+const OPERATOR_WORD = /^(?:plus|minus|times|divided|multiplied|over|point|squared|cubed|percent|[+\-×x÷*/=<>^%])$/;
+const numberish = (w: string) => /^(?:\d|@\d)/.test(w) || NUMBER_WORDS.test(w);
+
+/**
+ * Final check 12 (2026-11-15): THE one full-read guard. A kind may refuse a claim only when it read the claim in full:
+ * nothing in its clause before it encloses it (a negation or a scope word: "It is not true that ...", "If ...", "In the
+ * easier example ..."), nothing of a number or an operator runs into it from before ("negative", "plus", a number), and
+ * nothing runs on after it: no number, operator or number word in the rest of its clause, and no number, operator or
+ * number word right after a comma or a joining word that ends it ("8000, plus 1", "8000 and a half"). Else the claim is
+ * unread: no refusal, and the math review reads the sentence.
+ */
+export function fullRead(text: string, at: number, end: number): boolean {
+  const lower = text.toLowerCase().replace(/[’]/g, "'");
+  const tokens = (piece: string) => piece.match(/@\d|\d+(?:\.\d+)?|[a-z']+|[^\s\da-z']/g) ?? [];
+  // Before: from the last clause mark (a comma that is not inside a number, or a sentence mark) to the claim.
+  const marks = [...lower.slice(0, at).matchAll(/[;:!?]|\.(?!\d)|,(?!\d{3})/g)].map((m) => m.index! + 1);
+  const lead = tokens(lower.slice(marks.length ? Math.max(...marks) : 0, at));
+  const last = lead.at(-1);
+  if (last !== undefined && (numberish(last) || OPERATOR_WORD.test(last) || /^(?:negative|positive)$/.test(last))) return false;
+  if (lead.some((w) => ENCLOSING.test(w) || w === "not" || /n't$/.test(w) || w === "true" || w === "false")) return false;
+  // After: a decimal or digit group that goes on ("40000.5", "8,0"), the rest of the clause, then the first words after
+  // the mark or joining word that ends it.
+  if (/^(?:\.\d|,\d)/.test(lower.slice(end))) return false;
+  const rest = tokens(lower.slice(end));
+  for (let k = 0; k < rest.length; k++) {
+    const w = rest[k];
+    if (/^[;:.!?]$/.test(w)) return true;
+    if (w === "," || NEW_CLAUSE.has(w)) {
+      let j = k + 1;
+      while (rest[j] === "," || rest[j] === "a" || rest[j] === "an") j++;
+      const next = rest[j];
+      return next === undefined || !(numberish(next) || OPERATOR_WORD.test(next));
+    }
+    if (numberish(w) || OPERATOR_WORD.test(w)) return false;
+  }
+  return true;
+}
+
+/** Final check 12: the kind refusals that stand: each read through the one full-read guard (`fullRead`). */
+export function guardedProblems(reads: readonly (string | KindRead)[]): string[] {
+  return reads.flatMap((r) => (typeof r === "string" ? [r] : fullRead(r.text, r.at, r.end) ? [r.problem] : []));
+}
 const RELATION_WORDS = new Set(["greater", "less", "more", "fewer", "bigger", "smaller", "larger", "higher", "lower", "than", "same", "equal", "twice", "double", "half"]);
 
 /**

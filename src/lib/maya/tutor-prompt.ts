@@ -1,7 +1,7 @@
 // The tutor core's prompt, output schema and brief (D-345). Savar approves the principles, not single lines: the 12
 // tutor rules below come from the approved teaching design (2026-11-14, section 3) and its research.
 import { MODEL_OUTPUT_SCHEMA, TUTOR_GATES } from "./proposal";
-import type { Session } from "./session";
+import { answerReadWhole, type Session } from "./session";
 import { childFacts, tutorKind, stepFacts, TUTOR_WORD_LIMIT } from "./tutor";
 import type { TutorDrawing, TutorStepFact } from "./tutor-kind";
 import { valueText } from "@/lib/question-package";
@@ -56,7 +56,7 @@ export function tutorBrief(s: Session, repair: TutorBrief["repair"] = null): Tut
       : null,
     progress: { done: [...done], solved: s.solved !== null, helpGiven: s.tutor?.help ?? 0 },
     childTurn: s.turn ? hide(s.turn.text, name) : null,
-    facts: pkg && s.turn ? childFacts(pkg, s.turn.text) : [],
+    facts: pkg && s.turn ? childFacts(pkg, s.turn.text, (v) => answerReadWhole(pkg, s.turn!.text, v, true)) : [],
     transcript: s.turns.slice(-TUTOR_TRANSCRIPT_TURNS).map((t) => ({ speaker: t.speaker, text: hide(t.text, name) })),
     noBoard: s.noBoard === true,
     drawings: pkg && s.tutor ? tutorKind(pkg).drawings(pkg) : [],

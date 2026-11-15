@@ -160,6 +160,11 @@ export type SessionEvent =
    */
   | { type: "proposal"; at: number; proposal: unknown; talkReviews?: TalkReview[]; mathReviews?: MathReview[]; fallback?: boolean; sent?: string[] }
   | { type: "tick"; at: number }
+  /**
+   * Final check 12 (2026-11-15): the help a sentence Maya emitted to the child gave, recorded the moment it went out (the
+   * help ledger). A control like any other input, so a cancellation or a replay never takes it back. Help only rises.
+   */
+  | { type: "help"; at: number; assistance: Assistance }
   /** The child starts or stops writing on the board. */
   | { type: "writing"; at: number; status: "started" | "done" }
   /** A safety signal from outside the model (a classifier or a person). */
@@ -1587,6 +1592,20 @@ export function step(session: Session, event: SessionEvent): StepResult {
         if (s.state === "CHECK" || s.state === "WRITE_CLOSE") moveTo(s, "GUIDE_TARGET");
         if (s.resume === "CHECK" || s.resume === "WRITE_CLOSE") s.resume = "GUIDE_TARGET";
       }
+      // Final check 12 (2026-11-15), the answer state: on a tutor call, each child turn reconciles the result before any
+      // routing (identity, safety, a stop, scope, the end) or outcome reads it. A turn that holds an explicit answer
+      // attempt clears a standing success unless code's whole-phrase read (heardAnswers, checkAnswers) credits a right
+      // final answer in it now. Unread or wrong: no success. Every outcome builder reads only this state.
+      if (s.tutor && s.package && isTutorQuestion(s.package) && s.solved === "child" && answerAttempt(s) &&
+          !heardAnswers({ ...s, solved: null, lastResult: null }).some((a) => a.step === "result" && a.verdict === "right")) {
+        s.lastResult = null;
+        s.solved = null;
+        s.wrote = false;
+        s.writeAsked = false;
+        s.paper = "unknown";
+        if (s.state === "CHECK" || s.state === "WRITE_CLOSE") moveTo(s, "GUIDE_TARGET");
+        if (s.resume === "CHECK" || s.resume === "WRITE_CLOSE") s.resume = "GUIDE_TARGET";
+      }
       if (s.state === "OPEN" && s.opened) s.state = "ASSESS";
       s.expect = "maya";
       s.silence = "none";
@@ -1637,6 +1656,10 @@ export function step(session: Session, event: SessionEvent): StepResult {
       }
       break;
     case "safety":
+      break;
+    case "help":
+      if (!ASSISTANCE.includes(event.assistance)) return refuse(session, "invalid_event", "A help event needs a known help kind.");
+      if (!s.outcome && !s.assistance.includes(event.assistance)) s.assistance.push(event.assistance);
       break;
     case "maya_said":
       // Nothing is repaired before the opening, after a safety concern or a content hold, or twice at once.
@@ -5293,6 +5316,19 @@ function wordVerdict(base: Session): "right" | "wrong" | null {
  * the child named it as the answer, and whether it commits. A question, a choice or a help request commits nothing,
  * unless the child names the answer ("My answer is 36. I need help.").
  */
+/**
+ * Final check 12 (2026-11-15): whether the child's turn holds an explicit answer attempt: an answer sentence ("My answer
+ * is ...", "I got ...", "It's ..."), or a committed number that is not a value of the work ("36."; "12 minus 8 is 4." is
+ * work). Broad on purpose: it only decides that a standing success must be read again.
+ */
+function answerAttempt(s: Session): boolean {
+  if (!s.package || !s.turn) return false;
+  const { read, explicitAnswer, committed } = committedRead(s);
+  if (explicitAnswer) return true;
+  if (!committed || read.final?.type !== "number") return false;
+  return rightForQuestion(s.package, read.final) || !tutorKind(s.package).workValues(s.package).includes(read.final.value);
+}
+
 function committedRead(base: Session): { read: ReturnType<typeof turnRead>; explicitAnswer: boolean; committed: boolean } {
   const text = base.turn!.text;
   const read = turnRead(base);
@@ -5420,7 +5456,7 @@ export function mathReviewInput(s: Session, sentence: string, before: readonly s
     workValues: pkg ? tutorKind(pkg).workValues(pkg) : [],
     answer: typeof answer === "number" ? answer : typeof answer === "string" ? hide(answer) : null,
     childTurn: s.turn ? hide(s.turn.text) : null,
-    childFacts: pkg && s.turn ? childFacts(pkg, s.turn.text).map(hide) : [],
+    childFacts: pkg && s.turn ? childFacts(pkg, s.turn.text, (v) => answerReadWhole(pkg, s.turn!.text, v, true)).map(hide) : [],
     transcript: s.turns.slice(-MATH_REVIEW_TURNS).map((t) => ({ speaker: t.speaker, text: hide(t.text) })),
     lastTurns: lastTwoTurns(s, hide),
     easierExample: pkg ? easierFacts(pkg, hide) : null,
@@ -5860,15 +5896,28 @@ function tutorHelpOf(base: Session, sentences: readonly string[], notes: readonl
  * say the answer back without giving it, and then nothing is recorded (as on the teaching path; never the model's
  * reading).
  */
+/**
+ * Final check 12 (2026-11-15): the help that sentences Maya emitted this turn give, read at the moment they are emitted
+ * (the text adapter's onSayPart), with the turn they answer. Null when they give none to record.
+ */
+export function emittedHelpKind(session: Session, sent: readonly string[]): Assistance | null {
+  if (!session.tutor || !session.package || session.outcome || sent.length === 0) return null;
+  return streamedHelp(session, sent);
+}
+
+/** The session with one help kind in its ledger (`assistance`): help only rises, and an ended call keeps its outcome. */
+export function withHelp(session: Session, kind: Assistance): Session {
+  if (session.outcome || session.assistance.includes(kind)) return session;
+  return { ...session, assistance: [...session.assistance, kind] };
+}
+
 /** The session with the help in sentences Maya already emitted this turn recorded (final check 11). */
 export function withEmittedHelp(session: Session, sent: readonly string[]): Session {
   // Final check 11 (2026-11-15): applied where each streamed sentence is accepted (the text adapter's response, and a
   // proposal that carries them), before any routing (identity, scope, safety, a stop, the end) builds an outcome, so every
   // outcome builder reads it. Help only rises. The step the child was stuck on is left to the turn (or its defaults).
-  if (!session.tutor || !session.package || session.outcome || sent.length === 0) return session;
-  const kind = streamedHelp(session, sent);
-  if (!kind || session.assistance.includes(kind)) return session;
-  return { ...session, assistance: [...session.assistance, kind] };
+  const kind = emittedHelpKind(session, sent);
+  return kind ? withHelp(session, kind) : session;
 }
 
 function streamedHelp(base: Session, sent: readonly string[]): Assistance | null {

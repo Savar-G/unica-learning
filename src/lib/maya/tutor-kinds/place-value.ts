@@ -12,6 +12,7 @@ import { digitAt, placeIndex, WHOLE_PLACES, withCommas } from "@/lib/question-pa
 import { expressionKey, noteFromEquation, type TutorCommand, type TutorDrawing, type TutorKind, type TutorStepFact } from "../tutor-kind";
 import { sentencesIn } from "./asks";
 import { standardNumber } from "../say-check";
+import { exactValue, guardedProblems, type KindRead } from "../tutor-math";
 
 type PlaceOp = Extract<OperationPackage["operation"], { kind: "place-value" }>;
 type Ask = "digit" | "value" | "compare" | "sum";
@@ -420,9 +421,14 @@ function normalized(sentence: string): string | null {
   const PLACES: [RegExp, number][] = [[/\bhundred thousands\b/g, 5], [/\bten thousands\b/g, 4], [/\bmillions\b/g, 6], [/\bthousands\b/g, 3], [/\bhundreds\b/g, 2], [/\btens\b/g, 1], [/\bones\b/g, 0]];
   for (const [re, k] of PLACES) t = t.replace(re, `@${k}`);
   // Digits before a scale word: "8 thousand" is 8000, "4 hundred thousand" is 400000.
-  t = t.replace(/\b(\d+) ((?:(?:hundred|thousand|million) )*(?:hundred|thousand|million))\b/g, (_, d: string, scales: string) => String(scales.split(" ").reduce((v, w) => v * (w === "hundred" ? 100 : w === "thousand" ? 1000 : 1_000_000), Number(d))));
+  // Final check 12: every product through the one shared evaluator; a value it cannot hold stays as said (unread).
+  t = t.replace(/\b(\d+) ((?:(?:hundred|thousand|million) )*(?:hundred|thousand|million))\b/g, (all: string, d: string, scales: string) => {
+    const words = scales.split(" ");
+    const v = exactValue([Number(d), ...words.map((w) => (w === "hundred" ? 100 : w === "thousand" ? 1000 : 1_000_000))], words.map(() => "*" as const));
+    return v === null ? all : String(v);
+  });
   let bad = false;
-  const products = (x: string) => x.replace(/\b(\d+) (?:times|×|x) (\d+)\b/g, (_, a: string, b: string) => String(Number(a) * Number(b)));
+  const products = (x: string) => x.replace(/\b(\d+) (?:times|×|x) (\d+)\b/g, (all: string, a: string, b: string) => String(exactValue([Number(a), Number(b)], ["*"]) ?? all));
   t = t.replace(WORD, (run) => {
     // A run that is two numbers joined by "and" ("six and four") is read as each number.
     const parts = run.trim().split(/ and /);
@@ -625,42 +631,6 @@ const READERS: readonly Reader[] = [
 
 /** A sentence that only asks: "Which digit is in the thousands place?" (its claims are still read). */
 const ASKS = /^(?:so |now |ok |okay )?(?:which|what|how|where|can|could|is|are|do|does|did|will|would|why)\b[^.!]*\?$/;
-/** What may follow a read claim's last number and makes it a longer value: "plus 1", "+ 1", ".5", "times 10", "tens". */
-const CONTINUES = /^(?:\.\d|,\d|\s*(?:\+|-|×|÷|\*|\/)\s*\d|\s+(?:plus|minus|times|divided|over|point|and a half|@\d)\b)/;
-/**
- * Final check 11 (2026-11-15): the whole side that ends with the number before `end` and goes on in whole-number
- * arithmetic ("9000 minus 2000", "8000 + 1"), computed in full (products and quotients first), or null when the
- * continuation is anything else (a decimal, a place, a value that is not a safe whole number) or runs on after it.
- */
-function arithmeticSide(t: string, end: number): { start: number; end: number; value: number } | null {
-  const last = /(\d+)$/.exec(t.slice(0, end));
-  if (!last) return null;
-  const start = end - last[1].length;
-  const OP = String.raw`\s*(?:\+|-|×|÷|\*|\/|plus|minus|times|divided by)\s*`;
-  const run = new RegExp(String.raw`^(?:${OP}\d+)+`).exec(t.slice(end));
-  if (!run) return null;
-  const after = end + run[0].length;
-  // The side must end there: no decimal, place, comma group or further math after it.
-  if (/^(?:\.\d|,\d|\s*(?:@\d|point|and a half|over)\b)/.test(t.slice(after))) return null;
-  const parts = `${last[1]}${run[0]}`.match(/\d+|\+|-|×|÷|\*|\/|plus|minus|times|divided by/g)!;
-  const values = [Number(parts[0])];
-  const ops: string[] = [];
-  for (let k = 1; k < parts.length; k += 2) { ops.push(parts[k]); values.push(Number(parts[k + 1])); }
-  let total = 0;
-  let term = values[0];
-  let sign = 1;
-  for (let k = 0; k < ops.length; k++) {
-    const op = ops[k];
-    if (/^(?:×|\*|times)$/.test(op)) { term *= values[k + 1]; continue; }
-    if (/^(?:÷|\/|divided by)$/.test(op)) { term = values[k + 1] === 0 ? NaN : term / values[k + 1]; continue; }
-    total += sign * term;
-    sign = /^(?:\+|plus)$/.test(op) ? 1 : -1;
-    term = values[k + 1];
-  }
-  const value = total + sign * term;
-  return Number.isSafeInteger(value) && value >= 0 ? { start, end: after, value } : null;
-}
-
 /** A word that says something about a number. */
 const CLAIM_VERB = /\b(?:is|are|was|were|has|have|holds|shows|means|stands|worth|equals|makes?|gives|tells)\b|=/;
 
@@ -678,38 +648,23 @@ function claimProblems(pkg: OperationPackage, sentence: string): string[] {
   if (referents.length > 1) return [`it talks about ${referents.map(withCommas).join(" and ")} in one sentence: say one number's claims per sentence`];
   const n = referents[0] ?? f.n;
   const answer = n === f.n ? f.answer : null;
-  const problems: string[] = [];
+  const reads: KindRead[] = [];
   // Each matched claim is blanked, by position, from what the fail-closed check reads.
   const mask = [...t];
   for (const r of READERS) {
     for (const m of t.matchAll(r.re)) {
-      // A claim is read whole: a number that goes on ("8000 plus 1", "9,000 minus 2,000", "40000.5") is a side this
-      // reader reads only in part (#1017). Final check 11 (2026-11-15): a side that goes on in whole-number arithmetic is
-      // computed in full and the claim is checked with that value ("greater than 9,000 minus 2,000" is "greater than
-      // 7000"; "worth 8000 plus 1" is "worth 8001"). Any other continuation is neither checked nor refused here: the core
-      // reads it whole, or the math review does.
+      // A claim is read whole: a number that goes on ("8000 plus 1", "9,000 minus 2,000", "40000.5"), a negation or a
+      // scope around it ("It is not true that the 8 is worth 1,000.") leaves it unread. Final check 12 (2026-11-15): the
+      // one full-read guard decides that (guardedProblems below), never this reader: such a claim is not refused here,
+      // and the core or the math review reads it.
       const end = m.index! + m[0].length;
-      let span = end;
-      if (!CONTINUES.test(t.slice(end))) {
-        const problem = r.check(m as RegExpExecArray, n, answer);
-        if (problem) problems.push(problem);
-      } else {
-        const whole = arithmeticSide(t, end);
-        if (whole) {
-          span = whole.end;
-          const again = new RegExp(r.re.source, "g");
-          again.lastIndex = m.index!;
-          const said = `${t.slice(0, whole.start)}${whole.value}${t.slice(whole.end)}`;
-          const m2 = again.exec(said);
-          if (m2 && m2.index === m.index && m2.index + m2[0].length === whole.start + String(whole.value).length) {
-            const problem = r.check(m2, n, answer);
-            if (problem) problems.push(problem);
-          }
-        }
-      }
-      for (let i = m.index!; i < span; i++) mask[i] = " ";
+      const problem = r.check(m as RegExpExecArray, n, answer);
+      if (problem) reads.push({ problem, text: t, at: m.index!, end });
+      for (let i = m.index!; i < end; i++) mask[i] = " ";
     }
   }
+  // Final check 12: every refusal passes the one full-read guard (tutor-math.ts).
+  const problems = guardedProblems(reads);
   if (problems.length) return [...new Set(problems)];
   // Fail closed: what is left still says something about a place, a digit, a value or the answer.
   // A number Maya says is not the answer ("not 4 ones", "not 4,000") states nothing about the number.
