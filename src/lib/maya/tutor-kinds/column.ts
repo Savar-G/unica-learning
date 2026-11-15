@@ -7,6 +7,7 @@
 // and 5, so it refuses every true decimal equation, and the board's columns do not draw a decimal point.
 import type { OperationPackage, WorkedStep } from "@/lib/question-package";
 import { expressionKey, noteFromEquation, type TutorCommand, type TutorKind, type TutorStepFact } from "../tutor-kind";
+import { columnCoveredClaims } from "./column-read";
 
 type ColumnStep = Extract<WorkedStep, { kind: "add-column" | "subtract-column" }>;
 
@@ -538,6 +539,8 @@ export const columnKind: TutorKind = {
   // The core reads the equations, the place quantities and the trades (tutor-math.ts); this kind reads the thousands
   // and larger places again with its own trade rule (a place may get 10, give 1, or both).
   claimProblems,
+  // Maya's words about the column work, read whole against the column steps (column-read.ts).
+  coveredClaims: columnCoveredClaims,
   op: (pkg) => (pkg.operation.kind === "add" ? "add" : "subtract"),
   notes,
 };

@@ -10,6 +10,7 @@
 import type { OperationPackage, Place, WorkedStep } from "@/lib/question-package";
 import { digitAt, placeIndex, WHOLE_PLACES, withCommas } from "@/lib/question-package-place-value";
 import { expressionKey, noteFromEquation, type TutorCommand, type TutorDrawing, type TutorKind, type TutorStepFact } from "../tutor-kind";
+import { splitClauses } from "../tutor-read";
 
 type PlaceOp = Extract<OperationPackage["operation"], { kind: "place-value" }>;
 type Ask = "digit" | "value" | "compare" | "sum";
@@ -636,6 +637,41 @@ function claimProblems(pkg: OperationPackage, sentence: string): string[] {
   return unread ? ["it says something about a place, a digit, a value or the answer that code cannot read: say it as \"the 9 is in the thousands place\" or \"the 9 is worth 9,000\""] : [];
 }
 
+/** Words that may be left in a clause around the claims the readers read, adding no claim of their own. */
+const PLAIN_REST = new Set(["so", "and", "now", "then", "yes", "ok", "okay", "the", "place", "column", "look", "at", "number"]);
+
+/**
+ * The clauses of `sentence` this kind read whole and found true (TutorKind.coveredClaims; two-layer true math, coverage
+ * round of 2026-11-15): each number of the clause is inside a claim a reader matched and checked against the
+ * question's number ("the digit in the thousands place is 4"), with no problem, and only plain words are left. A clause
+ * about another number, or with a word the readers did not read, is not named: it goes to the math-truth review.
+ */
+function coveredClaims(pkg: OperationPackage, sentence: string): string[] {
+  const f = must(pkg);
+  const parts = splitClauses(sentence);
+  const out: string[] = [];
+  for (let k = 0; k < parts.length; k += 2) {
+    const t = normalized(parts[k].trim());
+    if (t === null || ASKS.test(t)) continue;
+    const referents = referentsOf(t);
+    if (referents.length > 1 || (referents.length === 1 && referents[0] !== f.n)) continue;
+    const mask = [...t];
+    let read = 0;
+    let bad = false;
+    for (const r of READERS) {
+      for (const m of t.matchAll(r.re)) {
+        if (r.check(m as RegExpExecArray, f.n, f.answer) || CONTINUES.test(t.slice(m.index! + m[0].length))) bad = true;
+        for (let i = m.index!; i < m.index! + m[0].length; i++) mask[i] = " ";
+        read++;
+      }
+    }
+    if (bad || read === 0) continue;
+    const rest = mask.join("").replace(REFERENT, " ").replace(/[,;:]/g, " ").trim().split(/\s+/).filter(Boolean);
+    if (rest.every((w) => PLAIN_REST.has(w))) out.push(parts[k]);
+  }
+  return out;
+}
+
 function notes(pkg: OperationPackage): string[] {
   const f = must(pkg);
   return [
@@ -657,5 +693,7 @@ export const placeValueKind: TutorKind = {
   drawingExamples,
   draw,
   claimProblems,
+  // The place claims of a clause, read whole against the question's number.
+  coveredClaims,
   notes,
 };

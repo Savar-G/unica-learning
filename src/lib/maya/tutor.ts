@@ -18,6 +18,7 @@ import { tutorKindOf } from "./tutor-kinds";
 import { affirms, equationHolds, equationsOf, neverSayProblem, sayNumbers, sentencesOf } from "./say-check";
 import { exactSafe } from "./math-vocab";
 import { answerClaims, answerProblems, falseClaims, readClaims, REMAINDER_SAID } from "./tutor-math";
+import { clauseKey, countedList, holdsNumber, namesPlace, OFFER, placesIn, OFFER_TAIL, readClause, splitClauses, workExpressions, type TutorReadFacts } from "./tutor-read";
 
 /** The hard ceiling of one Maya message, in words. Over it, the model gets one repair with the reason; code never trims. */
 export const TUTOR_WORD_LIMIT = 60;
@@ -111,23 +112,93 @@ const PLAIN_FORMS: readonly RegExp[] = [ASSERT_FORM, ...QUESTION_FORMS.filter((r
  * question); the fixed true trade and a place named alone claim nothing; an answer claim read whole and true is read.
  * The kinds' own checks (claimProblems) refuse, but read nothing here: a sentence only a kind reads goes to the review.
  */
-export function unreadMath(sentence: string, ctx: Pick<TutorCheckContext, "op" | "trades" | "answer"> = {}): string[] {
+export function unreadMath(sentence: string, ctx: Pick<TutorCheckContext, "op" | "trades" | "answer" | "facts"> = {}): string[] {
   let text = sentence.replace(/[’]/g, "'").replace(/[−–]/g, "-").trim();
   const asks = /\?\s*$/.test(text);
   // The clauses as plainTeaching splits them, with their separators kept, so the claim reader reads the rest as said.
-  const parts = text.replace(/[.!?]+\s*$/, "").split(/(\s*[:;]\s*|(?<!\d),\s*|,(?!\d{3}(?!\d))\s*)/);
-  text = parts.map((raw, k) => {
+  const parts = splitClauses(sentence);
+  const clauses = parts.map((raw, k) => {
     if (k % 2 === 1) return raw;
     let clause = raw.trim();
     for (let n = 0; n < 4; n++) clause = clause.replace(LEAD_IN, "").replace(/^(?:and|or|but)\s+/i, "").trim();
-    return NO_CLAIM_FORMS.some((re) => re.test(clause)) || (asks && QUESTION_FORMS.some((re) => re.test(clause))) ? " ; " : raw;
+    return clause;
+  });
+  // More true math read by code alone (tutor-read.ts): whole clauses of common shapes, checked true by code; the kind's
+  // own read of the clauses it checked (TutorKind.coveredClaims).
+  const counted = countedList(clauses);
+  const kindRead = new Set((ctx.facts?.covered?.(sentence) ?? []).map(clauseKey));
+  const blanked = new Set<number>();
+  text = parts.map((raw, k) => {
+    if (k % 2 === 1) return raw;
+    const out = readWhole(raw, k);
+    if (out !== raw) blanked.add(k);
+    return out;
   }).join("");
+  // A clause read whole keeps the link-word rule (tutor-math.ts LINK_WORDS) across its commas: a clause next to it with
+  // no number that does not start with a plain link word may change it ("We write 4 in the ones, roughly").
+  const modifiers: string[] = [];
+  // Only a clause with math needs it: an interjection ("Hmm") read as nothing has no number to change.
+  for (const k of blanked) for (const j of holdsNumber(parts[k]) ? [k - 2, k + 2] : []) {
+    const sep = parts[Math.min(j, k) + 1] ?? "";
+    // The words as said ("or so" keeps its "or"), without the {name} token.
+    const near = j < 0 ? undefined : parts[j]?.trim().replace(/\{name\}[\s,!]*/gi, "").trim();
+    if (near === undefined || blanked.has(j) || !sep.includes(",") || !near || holdsNumber(near)) continue;
+    const first = near.toLowerCase().split(/\s+/)[0];
+    if (!NEIGHBOUR_STARTS.has(first)) modifiers.push(first);
+  }
+  function readWhole(raw: string, k: number): string {
+    const clause = clauses[k];
+    if (NO_CLAIM_FORMS.some((re) => re.test(clause)) || (asks && QUESTION_FORMS.some((re) => re.test(clause)))) return " ; ";
+    if (counted.has(k) || kindRead.has(clauseKey(raw))) return " ; ";
+    const next = k + 2 < parts.length && parts[k + 1].includes(":") ? readClaims(parts[k + 2], ctx.op, ctx.trades) : null;
+    const shown = next && next.problems.length === 0 && next.unread.length === 0 ? /(\d+)(?!.*\d)/.exec(parts[k + 2])?.[1] : undefined;
+    const at = {
+      asks,
+      placeElsewhere: clauses.some((c, j) => j % 2 === 0 && j !== k && namesPlace(c)),
+      places: clauses.flatMap((c, j) => (j % 2 === 0 && j !== k ? placesIn(c) : [])),
+      boundByColon: k > 0 && parts[k - 1].includes(":") && (holdsNumber(clauses[k - 2]) || namesPlace(clauses[k - 2])),
+      offer: k > 0 && (OFFER.test(clauses[k - 2]) || OFFER_TAIL.test(clauses[k - 2])),
+      ...(shown !== undefined && (ctx.trades ?? []).includes(Number(shown)) ? { shownBy: Number(shown) } : {}),
+    };
+    if (OFFER.test(clause) || OFFER_TAIL.test(clause)) return " ; ";
+    return readClause(clause, at, ctx.facts, ctx.answer, ctx.trades ?? []) ? " ; " : raw;
+  }
   if (ctx.answer !== undefined) {
     const spans = answerClaims(text, ctx.answer).read.sort((a, b) => b.index - a.index);
     for (const { index, length } of spans) text = `${text.slice(0, index)} ; ${text.slice(index + length)}`;
   }
-  return readClaims(text, ctx.op, ctx.trades).unread;
+  const unread = [...readClaims(text, ctx.op, ctx.trades).unread, ...modifiers];
+  // "A, so B": once every claim around it is read and true, the "so" between them adds no claim of its own.
+  return unread.every((x) => x === "so") ? [] : unread;
 }
+
+/** The question's own operation as a key ("52-28", "+27,39"), for a whole-number addition or subtraction of two numbers. */
+function questionKey(pkg: OperationPackage): string | null {
+  const op = pkg.operation;
+  if ((op.kind !== "add" && op.kind !== "subtract") || op.operands.length !== 2 || !op.operands.every((n) => typeof n === "number")) return null;
+  return expressionKey(op.operands as number[], [op.kind === "add" ? "+" : "-"]);
+}
+
+/** The facts the readers check a clause against (tutor-read.ts), from the question's kind. */
+export function tutorReadFacts(pkg: OperationPackage): TutorReadFacts {
+  const kind = tutorKind(pkg);
+  const scope = kind.streamScope(pkg);
+  const answer = pkg.answer.value.type === "number" ? [pkg.answer.value.value] : [];
+  const steps = kind.steps(pkg);
+  return {
+    steps,
+    expressions: workExpressions(steps, questionKey(pkg) ?? undefined),
+    numbers: new Set([...scope.numbers, ...answer]),
+    ...(questionKey(pkg) ? { question: questionKey(pkg)! } : {}),
+    ...(kind.coveredClaims ? { covered: (sentence: string) => kind.coveredClaims!(pkg, sentence) } : {}),
+  };
+}
+
+/**
+ * The first words a clause with no number may have next to a clause code read whole: plain links and the start of a
+ * new thought. Any other ("roughly", "maybe", "or so") may change what the read clause says, so the sentence is not read whole.
+ */
+const NEIGHBOUR_STARTS = new Set(["and", "so", "but", "then", "now", "which", "that", "that's", "this", "it", "it's", "you", "you're", "we", "we're", "i'll", "let's", "how", "what", "because", "since", "look", "yes", "no", "okay", "ok", "right", "good", "great", "nice", "careful", "the", "there", "after", "when", "if", "with", "like"]);
 
 /** A short spoken lead-in before the math of a clause: fixed words only. */
 // Sixth check of #1006: only lead-ins that answer nothing. "Yes", "no", "right", "okay", "not quite" and the like can
@@ -195,6 +266,8 @@ export interface TutorCheckContext {
   trades?: readonly number[];
   /** The words of the child's name, which replaces each {name} before the child hears it (default 1). */
   nameWords?: number;
+  /** What code reads more math against (tutor-read.ts, tutorReadFacts): with none, only the claim reader reads. */
+  facts?: TutorReadFacts;
 }
 
 /** A division with a remainder ("15 ÷ 6 = 2 R 3", in digits or words): falseClaims reads it whole. */
@@ -331,6 +404,7 @@ export function tutorStreamContext(pkg: OperationPackage, text: string, stance: 
     ...(op ? { op } : {}),
     ...(answer === null ? {} : { answer }),
     claims: (sentence: string) => kind.claimProblems(pkg, sentence),
+    facts: tutorReadFacts(pkg),
     trades: kind.workValues(pkg),
     allowed,
     // A "yes" streams only when no reading can make it wrong: the child said no number, or only numbers code's own read
@@ -352,7 +426,7 @@ export function tutorFallbackText(pkg: OperationPackage, done: readonly string[]
   const kind = tutorKind(pkg);
   const q = kind.stepQuestion(pkg, done);
   const op = kind.op?.(pkg);
-  const verdict = q === null ? null : checkTutorSay(q, { stance: "none", claims: (x) => kind.claimProblems(pkg, x), trades: kind.workValues(pkg), ...(op ? { op } : {}) });
+  const verdict = q === null ? null : checkTutorSay(q, { stance: "none", claims: (x) => kind.claimProblems(pkg, x), facts: tutorReadFacts(pkg), trades: kind.workValues(pkg), ...(op ? { op } : {}) });
   // Two-layer true math: code's own line has every number read by code (it gets no math review either).
   const safe = q !== null && plainTeaching(q) && verdict?.ok === true && verdict.math.length === 0;
   return `Let me say that another way. ${safe ? q : "So what is the whole answer?"}`;

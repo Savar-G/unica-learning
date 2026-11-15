@@ -61,6 +61,13 @@ export interface TutorKind {
    * every claim the kind reads is true. Fail closed: a claim form the kind cannot read is not proven true.
    */
   claimProblems(pkg: OperationPackage, sentence: string): string[];
+  /**
+   * Optional (two-layer true math, 2026-11-15): the clauses of the sentence (as the core splits it, at ":", ";" and ","
+   * outside a number) that the kind read whole and found true, each as said. The core counts them as read by code, so
+   * they need no math-truth review. Name only a clause every number and relation word of which the kind checked; a
+   * clause it did not read whole is left out, and goes to the review.
+   */
+  coveredClaims?(pkg: OperationPackage, sentence: string): string[];
   /** The direction of a trade in an "is now" / "becomes" claim, for kinds with column trades. */
   op?(pkg: OperationPackage): "add" | "subtract" | undefined;
   /** Short facts about how this kind's idea is worked, for the brief (never teaching rules). */

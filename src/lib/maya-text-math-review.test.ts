@@ -84,11 +84,11 @@ describe("layer 2: the math-truth review", () => {
   });
 
   it("gives the review code's facts of the question and the child's turn, never the child's name", async () => {
-    const { session, mathReviewer } = call(SUB, ["You can't take 8 from 2, so we use the 12 ones from the trade."], () => ({ verdict: "true", reason: "all true" }));
+    const { session, mathReviewer } = call(SUB, ["The 12 ones are the 2 + 10 part of the trade."], () => ({ verdict: "true", reason: "all true" }));
     await session.start();
     await session.child("I got 36.");
     const input = mathReviewer!.requests[0];
-    expect(input.sentence).toBe("You can't take 8 from 2, so we use the 12 ones from the trade.");
+    expect(input.sentence).toBe("The 12 ones are the 2 + 10 part of the trade.");
     expect(input.question).toBe(SUB.text);
     expect(input.answer).toBe(24);
     expect(input.steps.map((s) => s.result)).toEqual([4, 2]);
@@ -99,7 +99,7 @@ describe("layer 2: the math-truth review", () => {
   it("holds an uncovered sentence in the stream and sends it when the review says true; a covered sentence goes first with no review", async () => {
     let release: (r: MathReviewResult) => void = () => {};
     const held = new Promise<MathReviewResult>((r) => { release = r; });
-    const { session, parts, early, mathReviewer } = call(SUB, ["12 minus 8 is 4. That 4 is already in the ones. What is 4 minus 2?"], () => "hang", true);
+    const { session, parts, early, mathReviewer } = call(SUB, ["12 minus 8 is 4. The 4 comes from 12 minus 8. What is 4 minus 2?"], () => "hang", true);
     // The fake answers when released, well inside the limit.
     (mathReviewer as { review: (i: MathReviewInput, s: AbortSignal) => Promise<MathReviewResult> }).review = (input) => { mathReviewer!.requests.push(input); return held; };
     await session.start();
@@ -110,8 +110,8 @@ describe("layer 2: the math-truth review", () => {
     release({ verdict: "true", reason: "all true" });
     const got = await out;
     expect(early()).toContain("12 minus 8 is 4.");
-    expect(got.say.join(" ")).toBe("12 minus 8 is 4. That 4 is already in the ones. What is 4 minus 2?");
-    expect(mathReviewer!.requests.map((r) => r.sentence)).toEqual(["That 4 is already in the ones."]);
+    expect(got.say.join(" ")).toBe("12 minus 8 is 4. The 4 comes from 12 minus 8. What is 4 minus 2?");
+    expect(mathReviewer!.requests.map((r) => r.sentence)).toEqual(["The 4 comes from 12 minus 8."]);
     const trace = await session.finish({ reason: "child_stopped" });
     expect(checkTrace(trace)).toMatchObject({ ok: true });
     expect(trace.counts).toMatchObject({ mathReviews: 1, mathRefusals: 0, refusals: 0 });

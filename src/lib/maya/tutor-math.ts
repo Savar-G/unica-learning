@@ -267,7 +267,12 @@ export function falseClaims(sentence: string, op?: "add" | "subtract", trades: r
  * math, 2026-11-15). The relation items (is, are, equals, makes, becomes, =) count too, and every number.
  */
 /** Words that may stand next to a read number without changing it. Any other word next to it sends the sentence to the math review. */
-const LINK_WORDS = new Set(["and", "so", "then", "now", "next", "first", "because", "in", "on", "at", "the", "we", "you", "it", "yes", "okay", "ok", "here", "also", "too", "from", "to", "for", "with", "is", "are", "what", "get", "gives", "make", "makes", "left", "if", "when", "after", "before", "this", "that's", "but"]);
+const LINK_WORDS = new Set(["and", "so", "then", "now", "next", "first", "because", "in", "on", "at", "the", "we", "you", "it", "yes", "okay", "ok", "here", "also", "too", "from", "to", "for", "with", "is", "are", "what", "get", "gives", "make", "makes", "left", "if", "when", "after", "before", "this", "that's", "but",
+  // A clause mark (the core splits clauses there, and blanks a clause it read as ";"), the {name} token and an attention
+  // word before a claim cannot change a number (coverage round of 2026-11-15).
+  ":", ";", "{", "}", "careful",
+  // Words that say who found a claim ("you said 12 minus 8 is 4"): the claim and its numbers stay as code read them.
+  "said", "found", "got", "since"]);
 const RELATION_WORDS = new Set(["greater", "less", "more", "fewer", "bigger", "smaller", "larger", "higher", "lower", "than", "same", "equal", "twice", "double", "half"]);
 
 /**
@@ -409,7 +414,16 @@ export function readClaims(sentence: string, op?: "add" | "subtract", trades: re
       if (rels[k].negated && same) problems.push(`it says ${a.value} and ${b.value} are not the same`);
     }
     // Read whole and true: every side code could value, and no problem found.
-    if (problems.length === before && sides.every((x) => x !== null)) mark(chain[0].at, at);
+    if (problems.length === before && sides.every((x) => x !== null)) {
+      mark(chain[0].at, at);
+      // "12 minus 8 is 4, not 5": the "not" names a value the claim's result is not (coverage round of 2026-11-15).
+      const other = wordAt(items, at) === "not" && !rels.some((r) => r.negated) ? full(at + 1) : null;
+      const result = sides.at(-1)!;
+      if (other && !other.ops) {
+        if (near(other.value, result.value)) problems.push(`it says ${result.value} is not ${other.value}`);
+        else { mark(at, other.next); at = other.next; }
+      }
+    }
     i = at;
   }
   if (eqRead < eqSeen) problems.push("it has an \"=\" code cannot read");

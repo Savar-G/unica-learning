@@ -69,7 +69,7 @@ import { ACTS, PART_LIMITS, PROPOSAL_VERSION, isModelOutput, readModelOutput, wi
 import { checkSay, checkSentence, columnSentenceTruth, equationHolds, heardColumnOf, revealsOpenStep, endsWithAsk, INSTRUCTION, MATH_WORD, PRAISE_WORDS, trimSay, equationKeysOf, equationsOf, sentencesOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, type SayReason, type SayRules, type SayValue } from "./say-check";
 import type { TalkReviewResult } from "./talk-review";
 import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
-import { checkTutorSay, childFacts, childSaysFalse, isTutorQuestion, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, TUTOR_REVIEW_IGNORED } from "./tutor";
+import { checkTutorSay, childFacts, childSaysFalse, isTutorQuestion, tutorKind, tutorReadFacts, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, TUTOR_REVIEW_IGNORED } from "./tutor";
 import { MATH_REVIEW_PROMPT_VERSION, mathReviewsOf, type MathReview, type MathReviewInput } from "./math-review";
 import { hideName as redactChildName } from "../child-name-redaction";
 
@@ -5207,9 +5207,10 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   const op = kind.op?.(pkg);
   const claims = (sentence: string) => kind.claimProblems(pkg, sentence);
   const answer = pkg.answer.value.type === "number" ? pkg.answer.value.value : undefined;
-  let verdict = checkTutorSay(text, { stance, extra, childValues, claims, trades: tutorKind(pkg).workValues(pkg), nameWords: nameWordsOf(base), ...(op ? { op } : {}), ...(answer === undefined ? {} : { answer }) });
+  const facts = tutorReadFacts(pkg);
+  let verdict = checkTutorSay(text, { stance, extra, childValues, claims, facts, trades: tutorKind(pkg).workValues(pkg), nameWords: nameWordsOf(base), ...(op ? { op } : {}), ...(answer === undefined ? {} : { answer }) });
   // Code's own line never fails its turn: after streamed words that leave no room, the turn is those words.
-  if (fallback && !verdict.ok && sent.length) { text = lead; verdict = checkTutorSay(text, { stance: "none", extra, claims, trades: tutorKind(pkg).workValues(pkg), nameWords: nameWordsOf(base), ...(op ? { op } : {}) }); }
+  if (fallback && !verdict.ok && sent.length) { text = lead; verdict = checkTutorSay(text, { stance: "none", extra, claims, facts, trades: tutorKind(pkg).workValues(pkg), nameWords: nameWordsOf(base), ...(op ? { op } : {}) }); }
   if (!verdict.ok) return no("say_check", `Your message was refused (${verdict.reason}): ${verdict.detail}`, verdict.reason);
   if (act === "close" && /\?\s*$/.test(text)) return no("say_check", "A close ends the call, so it asks nothing: say a short goodbye with no question.", "close_asks");
   // Child safety: each sentence that is not plain teaching is reviewed before it is said (the adapter runs the reviews,
