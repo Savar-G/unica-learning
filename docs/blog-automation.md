@@ -17,6 +17,7 @@ and pushes `main`. Vercel then deploys production. You never push to `main` your
 1. **Read the contract.** Read `docs/blog-style.md` (binding), `src/lib/blog.ts`, the newest post in
    `src/content/blog/` (your template for the file shape), and the copy rules in `DESIGN.md` (the
    "No proof", "Comparative and performance claims" and competitor lines).
+   Also read `docs/facts.md`. State only claims about Unica that are in it, and do not use anything it lists under "Never say".
 
 2. **Pick ONE topic** from `docs/blog-topics.md`:
    - Take the first row in the queue with status `todo`, from the top. Skip a row whose "Season" column

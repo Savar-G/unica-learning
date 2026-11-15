@@ -44,6 +44,7 @@ The post is not an ad. Mention Unica only where it is the honest next step, at m
 - Competitors may be named in blog posts under the `/resources` rule (D-074, extended to `/blog` by D-152): facts from the provider's own pages, cited and dated; prices "as listed in <Month Year>" and "varies by centre"; no disparagement, no claims about anyone's outcomes, no logos or testimonial quotes. When a provider does not publish a price, say so and tell the parent to ask.
 - In headlines and kickers, Unica is "a personalized math learning program", not "workbooks". In the body, "workbook" can name what arrives in the mail.
 - Facts about Unica come from the site itself (`src/lib/site.ts`, `src/lib/faq.ts`, `/llms.txt`): ages 5 to 14, Kindergarten to Grade 9, a free online math assessment on a laptop or tablet, paper workbooks mailed home, the price and offer on the home page. Never invent a feature.
+- Read `docs/facts.md` before you write anything about Unica. Use only claims from it. A claim that is not there needs a source and a new row in that file first.
 - Never write "Pagewise".
 
 ## Topic choice
