@@ -75,6 +75,10 @@ describe("the desk hearing contrast uses the child's operation and the current e
     "I heard 12 minus 8, but for the tens it's 12 plus 7.",
     "12 minus 8 is the tens step.",
     "12 minus 8 was the tens step.",
+    "12 minus 8 is the tens step!",
+    "12 minus 8 was the tens step!",
+    "Twelve minus eight is the tens step.",
+    "Twelve minus eight was the tens step.",
   ])("a passing reviewer cannot authorize false column facts: %s", async (sentence) => {
     for (const stream of [false, true]) {
       const c = await desk(`${sentence} Did you say 6?`, stream, true);
@@ -82,6 +86,30 @@ describe("the desk hearing contrast uses the child's operation and the current e
       expect(out.say.join(" ")).not.toContain(sentence);
       expect(c.parts).not.toContain(sentence);
       expect(c.session.session.done).toEqual(["ones"]);
+    }
+  });
+  it.each([
+    "12 minus 8 is the ones step!",
+    "12 minus 8 was the ones step!",
+    "Twelve minus eight is the ones step.",
+    "Twelve minus eight was the ones step.",
+  ])("preserves true role statements: %s", async (sentence) => {
+    for (const stream of [false, true]) {
+      const c = await desk(`${sentence} Did you say 6?`, stream, true);
+      const out = await c.session.child("12 minus 8 is 6.");
+      expect(out.say.join(" ")).toBe(`${sentence} Did you say 6?`);
+      if (stream) expect(c.parts).toContain(sentence);
+    }
+  });
+  it.each([
+    "I heard twelve minus eight, but for the tens it's twelve minus seven.",
+    "I heard 12 minus 8, but for the tens it's 12 minus 7!",
+  ])("a true noncanonical hearing form retains its review: %s", async (sentence) => {
+    for (const stream of [false, true]) {
+      const c = await desk(`${sentence} Did you say 6?`, stream, true);
+      const out = await c.session.child("12 minus 8 is 6.");
+      expect(out.say.join(" ")).toBe(`${sentence} Did you say 6?`);
+      expect(c.reviewer.requests.map(request => request.line)).toContain(sentence);
     }
   });
   it.each(["5.", "12 minus 8 is 5. Help.", "12 minus 8 is 5. Stop.", "Maybe 12 minus 8 is 5.", "I am sad. 12 minus 8 is 5.", "12 minus 8 is 5. I am unsafe."])("no closed hearing exemption for %s", async (child) => {

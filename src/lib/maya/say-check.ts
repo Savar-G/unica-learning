@@ -487,15 +487,20 @@ const STEP_ROLE = /^(\d+) (minus|plus) (\d+) (?:is|was) the (ones|tens|hundreds|
 const HEARING_CONTRAST = /^I heard (\d+) (minus|plus) (\d+), but for the (ones|tens|hundreds|thousands) it's (\d+) (minus|plus) (\d+)\.?$/i;
 
 /** Null outside these complete forms. False claims fail before any review, including a passing fake reviewer. */
-export function columnSentenceTruth(sentence: string, rules: Pick<SayRules, "columnSteps" | "heardColumn">, doneOnly = false): boolean | null {
+export function columnSentenceTruth(sentence: string, rules: Pick<SayRules, "columnSteps" | "heardColumn">, how: { doneOnly?: boolean; exactForm?: boolean } = {}): boolean | null {
   if (!rules.columnSteps) return null;
-  const text = sentence.trim().replace(/[’]/g, "'");
+  let text = sentence.trim().replace(/[’]/g, "'");
+  // Truth checks cover ordinary spoken numbers and statement punctuation. Review admission keeps the exact form.
+  if (!how.exactForm) {
+    for (const token of [...sayNumbers(text)].reverse()) text = text.slice(0, token.at) + token.key + text.slice(token.end);
+    text = text.replace(/[.!]+$/, "");
+  }
   const role = STEP_ROLE.exec(text);
   const contrast = HEARING_CONTRAST.exec(text);
   if (!role && !contrast) return null;
   const matches = (a: string, op: string, b: string, place: string, current: boolean) => rules.columnSteps!.some((st) =>
     st.place === place.toLowerCase() && st.op === op.toLowerCase() && st.operands[0] === Number(a) && st.operands[1] === Number(b) &&
-    (current ? st.current && !st.done : !doneOnly || st.done));
+    (current ? st.current && !st.done : !how.doneOnly || st.done));
   if (role) return matches(role[1], role[2], role[3], role[4], false);
   const heard = rules.heardColumn;
   return !!contrast && !!heard && heard.operands[0] === Number(contrast[1]) && heard.op === contrast[2].toLowerCase() &&

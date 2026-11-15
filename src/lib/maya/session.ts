@@ -4903,7 +4903,7 @@ function closedMathSentence(sentence: string, s: Session): boolean {
   const text = sentence.trim().replace(/[’]/g, "'");
   const hedge = HEARD_HEDGES.has(text.replace(/[.!]+$/, "").toLowerCase());
   const confirm = SAID_CONFIRM.exec(text);
-  const column = columnSentenceTruth(text, columnRules(s), true);
+  const column = columnSentenceTruth(text, columnRules(s), { doneOnly: true, exactForm: true });
   if (!hedge && !confirm && column !== true) return false;
   if (!s.turn) return false;
   let plain = plainTurnRead.get(s);
