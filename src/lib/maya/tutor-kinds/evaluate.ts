@@ -141,7 +141,43 @@ function fits(pkg: OperationPackage): boolean {
   }
   if (steps.at(-1)!.value !== pkg.answer.value.value) return false;
   if (speaksOfPattern(pkg.text)) return patternOf(pkg) !== null;
-  return storyMatches(pkg.text, steps);
+  return storyMatches(pkg.text, steps) && printedAgrees(pkg.text, tokens, pkg.answer.value.value);
+}
+
+/** The numbers of a token list, in order. */
+const numbersOf = (tokens: readonly Token[]) => tokens.filter((t): t is number => typeof t === "number");
+const sameNumbers = (x: readonly number[], y: readonly number[]) => x.length === y.length && [...x].sort((p, q) => p - q).every((n, i) => n === [...y].sort((p, q) => p - q)[i]);
+
+/**
+ * Pre-launch review B, F14: a bare printed expression must be the stored one. "What is 9 × 880 + 9 × 40?" stored as
+ * 9 × 880 + 9 × 50 would teach 8370. The printed numbers must be the stored numbers, and the printed math must give the
+ * stored answer: "E = ?" and "What is E?" have E's signs and value; "9 × ? = 8150 − 500" holds with the answer as its "?". Any
+ * other bare text keeps the controller. A story's words are read by `storyMatches`.
+ */
+function printedAgrees(text: string, stored: readonly Token[], answer: number): boolean {
+  const bare = text.replace(/\d[\d,]*/g, " ").replace(/[+−×÷\-x*/=?().:]/g, " ").replace(/\b(?:what is|find|work out|calculate)\b/gi, " ").trim();
+  if (bare !== "") return true;
+  let math = text.replace(/(\d),(?=\d{3}\b)/g, "$1").replace(/\b(?:what is|find|work out|calculate)\b/gi, " ").replace(/:/g, " ").trim();
+  // The question mark of "What is E?" is not an unknown; the "?" of "E = ?" is the answer's place.
+  if (!/=\s*\?$/.test(math)) math = math.replace(/\?$/, "").trim();
+  const sides = math.split("=").map((x) => x.trim());
+  if (sides.length > 2 || sides.some((x) => x === "")) return false;
+  const unknown = (x: string) => x.includes("?");
+  const parse = (x: string) => tokensOf(x.replace(/\?/g, String(answer)));
+  if (sides.length === 1 || sides[1] === "?") {
+    // "What is E?", "E = ?": E itself, with no unknown in it.
+    if (unknown(sides[0])) return false;
+    const printed = parse(sides[0]);
+    const signs = (t: readonly Token[]) => t.filter((x) => typeof x === "string" && x !== "(" && x !== ")").sort().join();
+    return printed !== null && sameNumbers(numbersOf(printed), numbersOf(stored)) && signs(printed) === signs(stored) && evaluate(printed, "standard") === answer;
+  }
+  // "9 × ? = 8150 − 500": one "?", and both sides equal with the answer in its place.
+  if ((math.match(/\?/g) ?? []).length !== 1) return false;
+  const [left, right] = sides.map(parse);
+  if (left === null || right === null) return false;
+  const printed = [...numbersOf(tokensOf(sides[0].replace(/\?/g, " ")) ?? []), ...numbersOf(tokensOf(sides[1].replace(/\?/g, " ")) ?? [])];
+  const l = evaluate(left, "standard");
+  return sameNumbers(printed, numbersOf(stored)) && l !== null && l === evaluate(right, "standard");
 }
 
 /** Words of a story that say each operation (D-345 review of #1018: a story's words must give the operation). */
