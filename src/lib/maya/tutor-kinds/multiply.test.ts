@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { conversationalFake, reply } from "@/lib/maya-model-fake";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
+import { fakeMathReviewer } from "@/lib/maya-math-review";
 import { createTextSession } from "@/lib/maya-text";
 import { workedSteps, type Operation, type OperationPackage } from "@/lib/question-package";
 import { missingWork } from "../missing-number";
@@ -73,7 +74,7 @@ describe("multiply kind: what it fits", () => {
   it("opens a tutor call on each shape (the session admits every test package)", async () => {
     for (const pkg of Object.values(P)) {
       let now = Date.UTC(2026, 10, 15);
-      const session = createTextSession({ callId: `open-${pkg.id}`, package: pkg, model: conversationalFake({ answer: () => reply("What is the first step?", "guide") }), clock: () => (now += 100), reviewer: fakeTalkReviewer(), tutor: true });
+      const session = createTextSession({ callId: `open-${pkg.id}`, package: pkg, model: conversationalFake({ answer: () => reply("What is the first step?", "guide") }), clock: () => (now += 100), mathReviewer: fakeMathReviewer(), reviewer: fakeTalkReviewer(), tutor: true });
       const opening = await session.start();
       expect(opening.ended, pkg.text).toBeNull();
       expect(session.session.tutor, pkg.text).toBeDefined();
@@ -188,13 +189,13 @@ describe("#1020 review fixes", () => {
     // Through the call: Maya says the child's true try product is right, and it reaches the child.
     const say = "Yes, 244 times 7 is 1708. Try a smaller number.";
     let now = Date.UTC(2026, 10, 15);
-    const session = createTextSession({ callId: "f2-trial", package: P.trial, model: conversationalFake({ answer: () => reply(say, "guide") }), clock: () => (now += 100), reviewer: fakeTalkReviewer(), tutor: true });
+    const session = createTextSession({ callId: "f2-trial", package: P.trial, model: conversationalFake({ answer: () => reply(say, "guide") }), clock: () => (now += 100), mathReviewer: fakeMathReviewer(), reviewer: fakeTalkReviewer(), tutor: true });
     await session.start();
     expect((await session.child("244 times 7 is 1708.")).say).toEqual([say]);
     // Control: a "yes" to the tried factor as the answer is still refused.
     const yesToSeven = "Yes, 7 is the missing number.";
     let later = Date.UTC(2026, 10, 15);
-    const wrong = createTextSession({ callId: "f2-trial-wrong", package: P.trial, model: conversationalFake({ answer: () => reply(yesToSeven, "guide") }), clock: () => (later += 100), reviewer: fakeTalkReviewer(), tutor: true });
+    const wrong = createTextSession({ callId: "f2-trial-wrong", package: P.trial, model: conversationalFake({ answer: () => reply(yesToSeven, "guide") }), clock: () => (later += 100), mathReviewer: fakeMathReviewer(), reviewer: fakeTalkReviewer(), tutor: true });
     await wrong.start();
     expect((await wrong.child("Is it 7?")).say).not.toEqual([yesToSeven]);
   });

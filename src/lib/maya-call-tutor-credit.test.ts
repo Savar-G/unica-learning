@@ -11,6 +11,7 @@ import { callNotes, noteStep } from "@/lib/maya-call-note";
 import { memoryNoteStore } from "@/lib/maya-call-note-memory";
 import { conversationalFake, reply } from "@/lib/maya-model-fake";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
+import { fakeMathReviewer } from "@/lib/maya-math-review";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
 
@@ -42,7 +43,7 @@ async function family(pkg: QuestionPackage, script: unknown[], childTurns: strin
       return true;
     },
     model: () => model,
-    reviewer: () => fakeTalkReviewer(),
+    reviewer: () => fakeTalkReviewer(), mathReviewer: () => fakeMathReviewer(),
     isTestFamily: async () => false,
     canChat: async () => true,
     canCallVoice: async () => true,

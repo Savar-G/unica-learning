@@ -29,6 +29,56 @@ Maya is the tutor, and code is the safety net. Savar approved this design on 202
 | At most 60 words (`TUTOR_WORD_LIMIT`) | `checkTutorSay` | Refused; code never trims |
 | A close only after the child solved the question, and never on a turn that asks for help (a stop and the time limit stay code's) | `proposeTutor` in `session.ts` | Refused |
 | Child safety of each sentence that is not plain teaching (`plainTeaching`): safety rules only (`TUTOR_REVIEW_SYSTEM`) | the talk review in the adapter, per sentence | Refused |
+| True math of each sentence whose math code did not read whole (`unreadMath`): the math-truth review with code's facts | the math review in the adapter, per sentence (below) | Refused |
+
+## Two-layer true math (2026-11-15)
+
+Each review round of the claim reader found new false sentences next to the last fix ("The answer is 24 and a half" read as 24; "4, which is greater than 8"; "One and a half is one half"). Patching phrasings does not end. The Chief of Staff's design has two layers:
+
+1. **Code alone.** A sentence passes on code alone only when the claim reader accounts for every number (digits, number words, fractions, "and a half", a remainder, mixed numbers) and every relation word (is, are, equals, makes, becomes, which is, that is, so after a number, greater, less, more, than, same) inside a claim it checked and found true (`readClaims` in `tutor-math.ts`, `unreadMath` in `tutor.ts`). A closed question form ("What is 12 minus 8?") claims nothing, but only in a question; the fixed true trade ("Trade 1 ten for 10 ones") and a place named alone claim nothing; an answer claim read whole and true is read. A word quantity such as "one hundred and two tens" (120 or 1,020) is never read as covered. A false claim code finds is refused as before: one repair, then code's honest line.
+2. **The math-truth review.** A sentence with no found problem that code did not read whole is not refused. It goes to one small model call (`src/lib/maya-math-review.ts`, `MAYA_MATH_REVIEW_MODEL`, default `anthropic/claude-haiku-5.5`, Maya's OpenRouter key) with the sentence, Maya's sentences before it, the question, the steps with their results, the work values, the answer, code's verdicts on the child's numbers this turn and the last 4 turns (`mathReviewInput`, the child's name hidden; the contract is `src/lib/maya/math-review.ts`). It answers strict JSON `{verdict: "true" | "false" | "unsure", reason}`. Only "true" lets the sentence be said. "false", "unsure", an error, a time-out (the talk review's limit) or JSON outside the schema means one repair with the reason, then code's honest line. Without a math reviewer (no key) such a sentence is refused.
+
+The kinds' own checks (`claimProblems`) still refuse. A sentence only a kind reads ("the digit in the hundreds place is 2") is not core-covered: it goes to the review. The talk review is unchanged; a sentence may need both reviews, both run in parallel and both must pass. In the stream, a covered sentence goes out at once; an uncovered one is held, alone, while its reviews run, and the sentences after it wait. Admin test calls and family calls (`MAYA_TUTOR_FAMILIES`) both use it; the controller path is unchanged. Each review is kept in the trace (version 12: `attempts[].math`, `mathReviewer`, `counts.mathReviews`, `counts.mathRefusals`). Its attempts count in Maya's spend as review attempts (`docs/maya-spend.md`).
+
+Measured on 2026-11-15 (base `aa4eef2c0`):
+
+| Set | Passes on code alone | Goes to the review | Refused by code |
+|---|---|---|---|
+| The 515 accepted real sentences of 2026-11-14 (`tutor-corpus-20261114.json`) | 133 (25.8%) | 382 (74.2%) | 0 (0%) |
+| Code's step texts of the Book 1 census (567 tutor questions, 1,573 sentences) | 49 (3.1%) | 1,524 (96.9%) | 0 (0%) |
+| Code's step questions of the census (code's honest line, 1,397) | 1,386 (99.2%) | 11 (0.8%) | 0 (0%) |
+
+- No true sentence of either set is refused by code (false refusals of layer 1: 0 of 515, 0 of 1,573).
+- Before this change only 35 of the 515 corpus sentences were plain teaching (said with no review). 31 of them still pass on code alone; the other 4 ("Write 4 in the ones place") now wait for the math review. The other 378 sentences that go to the math review are not plain teaching, so they already waited for the talk review, which runs beside it.
+- The step texts go to the review mostly for an instruction number ("write 4 in the ones", "carry 1"), a kind-only claim ("the digit in the hundreds place is 2") or a list of place names. Reading these in code is the next coverage work.
+- The first sentence of a plain message is unchanged: 1 to 2 ms of code time on both heads in the text adapter with an 800 ms review (a covered sentence takes no review).
+
+The false sentences of the Sol rounds (`/tmp/prelaunch-b`, `/tmp/final-2` survey, matrix and confirmed cases; 116 distinct, not counting the fit findings, which are sentence-true and belong to the fit checks): 50 are refused by code, 66 go to the review, 0 pass on code alone. The real review (Haiku 5.5, `low` effort) judged all 66 "false" (USD 0.014 for the run, median 0.8 s per call). On 20 true controls from the corpus it judged 16 "true"; of the 4 others, 2 need the child's earlier words, which the corpus does not keep, and 2 were call errors (`bad_json`), which count as "unsure". With `minimal` effort the verdicts were worse (the review said "false" while it explained the math was true), so the request uses `low`.
+
+### A reliable review and a verifiable first sentence (2026-11-15)
+
+- **A second ask after bad JSON.** An answer of the math review that is not JSON (`bad_json`) is asked again once, at once, inside the same time limit (`runMathReview`). Only a second failure is "unsure". A time-out and every other error are not asked again.
+- **The last 2 turns and the easier example.** The review input (version `maya-math-review-2`) holds `lastTurns`: Maya's message before the child's turn and the child's turn she answers, as code holds them, with the child's name as `{name}`. A sentence that points back ("That's 8 minus 2, the other way around") is read against them. It also holds `easierExample`, code's steps and answer of the question's easier example, which Maya may teach first ("Write 3 in the tens place" is true in 42 − 7 and false in 52 − 28). The instructions say that a sentence true at one moment of the work or of the easier example is true unless the call shows another moment, and that a word quantity with two readings ("one hundred and three tens") is "unsure".
+- **The first sentence.** The tutor prompt (`maya-tutor-4`) tells the model to open a "math" or "help" message with one sentence code checks alone: a true equation of the question's numbers ("52 is 4 tens and 12 ones."), the child's wrong number back ("52 minus 28 isn't 36."), the question with its answer when the child is right, or a plain question ("What is 2 minus 8?"). The child hears it at once while the reviews of the next sentences run. The rule never comes before safety or the AI disclosure: on "offtopic", "stop", "safety", "other" or a question about Maya, the message starts with the answer to the child. The bare expression "52 minus 28." is not read by code today, so the prompt does not offer it.
+
+Measured on 2026-11-15 on base `5d9ad5448` (real review, Haiku 5.5, `low` effort, the live 4 s limit; the 66 false sentences of the Sol rounds that reach the review; 20 true corpus controls picked as #1044 picks them, and #1044's own 20):
+
+| Run | False sentences judged "false" | New 20 controls judged "true" | #1044's 20 controls judged "true" |
+|---|---|---|---|
+| #1044 (`f471900d2`, 8 s limit) | 66 of 66 | - | 16 of 20 |
+| This change, run 1 | 66 of 66 | 19 of 20 | 17 of 20 |
+| This change, run 2 | 66 of 66 | 19 of 20 | 19 of 20 |
+
+Each miss is a "false" whose own reason finds the math true ("12 is how many ones we have after the trade: 2 + 10.", "Now the number is still 52, just split a new way."). Code never turns a "false" into a pass: the sentence gets a repair. With the reason written before the verdict the controls were 20 of 20, but 1 to 4 false sentences were judged "true" ("One hundred and three tens is 130."), so the verdict stays first. The two controls that need the child's words got a child turn rebuilt from the sentence ("I got 56.", "I got 36."), because the corpus keeps none. One run met a `bad_json` answer: the second ask answered.
+
+First sentence, real Maya model (`anthropic/claude-sonnet-5.5`), real talk and math reviews, 52 − 28, 5 turns (right answer, wrong answer, "teach me", off-topic, help request), 3 runs each:
+
+| | First sentence on code alone | Median time to the first sentence |
+|---|---|---|
+| Before (`5d9ad5448`) | 0 of 15 | 1,835 ms (math and help turns: 1,875 ms) |
+| After | 12 of 15 (12 of 12 math and help turns, 0 of 3 off-topic) | 903 ms (math and help turns: 854 ms) |
+
+On every off-topic turn, before and after, the message starts with "I'm an AI". Before, 2 of 15 turns ended in code's fallback line; after, none.
 
 ## Credit, the learning event and the parent note
 

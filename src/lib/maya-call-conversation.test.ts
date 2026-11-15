@@ -7,6 +7,7 @@ import { memoryCallStore } from "@/lib/maya-call-memory";
 import type { TurnBrief } from "@/lib/maya-model";
 import { conversationalFake, reply } from "@/lib/maya-model-fake";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
+import { fakeMathReviewer } from "@/lib/maya-math-review";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { checkTrace } from "@/lib/maya-trace";
 import type { OperationPackage, QuestionPackage } from "@/lib/question-package";
@@ -46,7 +47,7 @@ function setup() {
     isTestFamily: async (parentId) => parentId === PARENT,
     canChat: async () => true,
     note: async () => "done" as const,
-    reviewer: () => fakeTalkReviewer(),
+    reviewer: () => fakeTalkReviewer(), mathReviewer: () => fakeMathReviewer(),
     alerts: { send: async () => {}, list: async () => [] },
     clock: () => now,
     newId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`,

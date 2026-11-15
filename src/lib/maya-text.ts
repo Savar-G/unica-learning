@@ -88,7 +88,8 @@ export function partialSay(soFar: string): { text: string; complete: boolean; ki
   return { text, complete: false, kind };
 }
 import { reviewInput, runReview, CONVERSATION_REVIEW_TIME_LIMIT_MS, REVIEW_TIME_LIMIT_MS, type TalkReviewer } from "@/lib/maya-talk-review";
-import type { TalkReviewInput, TalkReviewResult } from "@/lib/maya";
+import { runMathReview, type MathReviewer } from "@/lib/maya-math-review";
+import { mathReviewInput, type MathReview, type MathReviewInput, type MathReviewResult, type TalkReviewInput, type TalkReviewResult } from "@/lib/maya";
 import { readFromFence } from "@/lib/ai-fenced";
 import { classifyError, packageHash, redactText, redactTrace, traceCounts, TRACE_KIND, TRACE_VERSION, type MayaTrace, type TraceBoardBatch, type TraceTurn, type TraceObligation } from "@/lib/maya-trace";
 
@@ -152,6 +153,12 @@ export interface TextSessionOptions {
   tutor?: boolean;
   /** The free-talk review (src/lib/maya-talk-review.ts), or null. D-341: it reads each reply that is not plain math talk. */
   reviewer?: TalkReviewer | null;
+  /**
+   * Two-layer true math (2026-11-15): the math-truth review of the tutor core (src/lib/maya-math-review.ts), or null. It
+   * reads each tutor sentence whose math code did not read whole; without it such a sentence is refused (one repair, then
+   * code's line). It runs beside the free-talk review, with the same time limit.
+   */
+  mathReviewer?: MathReviewer | null;
   /**
    * D-341: the time one Maya turn may take for the model and its repair (default TURN_BUDGET_MS). When it is spent,
    * Maya says code's own line (fallbacks). Voice sets less.
@@ -415,6 +422,9 @@ export function createTextSession(options: TextSessionOptions): TextSession {
    */
   const streamReviews = new Map<string, { requestId: number; result: Promise<TalkReviewResult> }>();
   const reviewKey = (input: TalkReviewInput) => JSON.stringify(input);
+  /** Math-truth reviews the stream started (two-layer true math), by their whole input, used once by the whole-reply check. */
+  const streamMathReviews = new Map<string, { requestId: number; result: Promise<MathReviewResult> }>();
+  const mathKey = (input: MathReviewInput) => JSON.stringify(input);
   /** A review error goes to the observer; an observer that throws changes nothing. */
   const reviewError = (error: unknown) => {
     try { options.onError?.(error, { turn: folded.turns.length, source: "review" }); } catch { /* the observer is not the review */ }
@@ -487,6 +497,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     const sent: string[] = [];
     let firstSayMs: number | undefined;
     streamReviews.clear();
+    streamMathReviews.clear();
     // Round 4: code's plan for the turn is settled before the call; the "kind" the model writes first decides how its
     // sentences go out: math or help stream (math-only sentences at once, others after their own review, started the
     // moment the sentence is complete); any other kind reviews every sentence first; safety streams nothing.
@@ -539,17 +550,30 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       const complete = said.complete ? parts : parts.slice(0, -1);
       for (const sentence of complete.slice(seen)) {
         const how = read(() => tutorStreamSentence(sentence, complete.slice(0, seen), tutor));
-        if (how === "stop" || (how === "review" && !options.reviewer)) { streamDone = true; return; }
+        if (how === "stop" || (how !== "send" && ((how.talk && !options.reviewer) || (how.math && !options.mathReviewer)))) { streamDone = true; return; }
+        const before = complete.slice(0, seen);
         seen++;
         const item: { sentence: string; state: "ready" | "pending" | "drop" } = { sentence, state: how === "send" ? "ready" : "pending" };
         queue.push(item);
-        if (how === "review") {
-          const input = reviewInput(session, sentence, tutor.stance);
-          const started = runReview(options.reviewer!, input, options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS);
-          streamReviews.set(reviewKey(input), { requestId, result: started });
-          void started.then((result) => {
+        if (how !== "send") {
+          // The sentence is held, alone, while its reviews run in parallel: the safety review when it is not plain
+          // teaching, the math-truth review when code did not read its math whole. Both must pass.
+          const checks: Promise<boolean>[] = [];
+          if (how.talk) {
+            const input = reviewInput(session, sentence, tutor.stance);
+            const started = runReview(options.reviewer!, input, options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS);
+            streamReviews.set(reviewKey(input), { requestId, result: started });
+            checks.push(started.then(passes));
+          }
+          if (how.math) {
+            const input = read(() => mathReviewInput(session, sentence, before));
+            const started = runMathReview(options.mathReviewer!, input, options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS);
+            streamMathReviews.set(mathKey(input), { requestId, result: started });
+            checks.push(started.then((r) => r.verdict === "true"));
+          }
+          void Promise.all(checks).then((ok) => {
             if (!live()) return;
-            item.state = passes(result) ? "ready" : "drop";
+            item.state = ok.every(Boolean) ? "ready" : "drop";
             flushTutor();
           });
         }
@@ -619,6 +643,9 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     // Priority readings are already folded before any external free-talk review.
     const first = read(() => step(folded.session, { type: "proposal", at: now(), proposal: candidate.proposal, ...(folded.sent?.length ? { sent: [...folded.sent] } : {}) }));
     const texts = [...new Set(first.refusal ? [] : first.effects.flatMap((e) => e.kind === "say" ? e.talk ?? [] : []).filter((t) => t.code === null && t.review === "not_run").map((t) => t.proposed))];
+    // Two-layer true math: the tutor sentences code did not read whole, each with the sentences before it in the message.
+    const said = first.refusal ? [] : first.effects.flatMap((e) => (e.kind === "say" ? [e] : []));
+    const mathTexts = [...new Set(said.flatMap((e) => (e.math ?? []).filter((m) => m.verdict === "not_run").map((m) => m.sentence)))];
     const t0 = now();
     const before = folded.session;
     const stance = before.conversational ? read(() => codeStance(before)) : "none";
@@ -633,9 +660,26 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       const result = streamed && streamed.requestId === requestId ? streamed.result : runReview(options.reviewer!, input, options.reviewTimeLimitMs ?? (before.conversational ? CONVERSATION_REVIEW_TIME_LIMIT_MS : REVIEW_TIME_LIMIT_MS), reviewError);
       return result.then((r) => ({ text, result: r }));
     })) : Promise.resolve([]);
-    const reviewed = reviews.then((results) => {
+    // The math-truth reviews run beside the safety reviews; one the stream started for the same input is used once.
+    const say = candidate.proposal && typeof candidate.proposal === "object" ? (candidate.proposal as { say?: unknown }).say : undefined;
+    const message = typeof say === "string" ? sentencesOf(say.trim()) : [];
+    const mathUsed: string[] = [];
+    // Each place a sentence stands in the message is reviewed with its own context, and a sentence passes only when every
+    // place of it passes (final check of #1044: "The result we just computed is 4." said twice).
+    const places = message.flatMap((text, at) => (mathTexts.includes(text) ? [{ text, at }] : []));
+    for (const text of mathTexts) if (!places.some((p) => p.text === text)) places.push({ text, at: -1 });
+    const mathReviews: Promise<MathReview[]> = options.mathReviewer ? Promise.all(places.map(({ text, at }) => {
+      const input = read(() => mathReviewInput(before, text, at > 0 ? message.slice(0, at) : []));
+      const key = mathKey(input);
+      const streamed = streamMathReviews.get(key);
+      if (streamed && streamed.requestId === requestId) mathUsed.push(key);
+      const result = streamed && streamed.requestId === requestId ? streamed.result : runMathReview(options.mathReviewer!, input, options.reviewTimeLimitMs ?? (before.conversational ? CONVERSATION_REVIEW_TIME_LIMIT_MS : REVIEW_TIME_LIMIT_MS), reviewError);
+      return result.then((r) => ({ text, result: r }));
+    })).then((all) => mathTexts.map((text) => all.find((m) => m.text === text && m.result.verdict !== "true") ?? all.find((m) => m.text === text)!)) : Promise.resolve([]);
+    const reviewed = Promise.all([reviews, mathReviews]).then(([results, maths]) => {
       for (const key of used) streamReviews.delete(key);
-      append({ kind: "review", at: now(), requestId, reviews: results, ...(texts.length && options.reviewer ? { reviewMs: now() - t0 } : {}) });
+      for (const key of mathUsed) streamMathReviews.delete(key);
+      append({ kind: "review", at: now(), requestId, reviews: results, mathReviews: maths, ...((texts.length && options.reviewer) || (mathTexts.length && options.mathReviewer) ? { reviewMs: now() - t0 } : {}) });
     });
     await wait(reviewed, controller);
   }
@@ -790,6 +834,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       model: { id: model.id, promptVersion: model.promptVersion }, versions: { proposal: PROPOSAL_VERSION, lines: LINES_VERSION, session: session.version },
       question: { id: typeof raw.id === "string" ? raw.id : null, ref: raw.ref ?? null, text: typeof raw.text === "string" ? raw.text : null, hash: packageHash(options.package) },
       freeTalk: session.freeTalk, reviewer: options.reviewer ? { id: options.reviewer.id, promptVersion: options.reviewer.promptVersion } : null,
+      ...(session.tutor ? { mathReviewer: options.mathReviewer ? { id: options.mathReviewer.id, promptVersion: options.mathReviewer.promptVersion } : null } : {}),
       scopeRefusals: structuredClone(session.scopeRefusals ?? []),
       ...(preparations.length ? { preparations: preparationRecords() } : {}),
       obligations: structuredClone(obligations), turns: structuredClone(turns), board: structuredClone(board), outcome, counts: traceCounts(turns),

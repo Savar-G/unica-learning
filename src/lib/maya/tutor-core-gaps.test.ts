@@ -3,6 +3,7 @@ import { conversationalFake, reply } from "@/lib/maya-model-fake";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
 import { createTextSession } from "@/lib/maya-text";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
+import { fakeMathReviewer } from "@/lib/maya-math-review";
 import type { OperationPackage } from "@/lib/question-package";
 import { checkTutorSay, plainTeaching } from "./tutor";
 import { testKind } from "./tutor-kinds";
@@ -34,7 +35,7 @@ describe("code's credit sees a word answer (F4 builder)", () => {
         let now = Date.UTC(2026, 10, 15);
         const model = conversationalFake({ answer: (_b, n) => (n === 0 ? reply("Yes, that's right! Well done.", "guide") : reply("Let's check it together. Is the claim true?", "guide")) });
         // A reviewer that passes everything: only code's stance can stop the false "yes".
-        const session = createTextSession({ callId: `w-${name}`, package: pkg, model, clock: () => (now += 500), tutor: true, reviewer: fakeTalkReviewer() });
+        const session = createTextSession({ callId: `w-${name}`, package: pkg, model, clock: () => (now += 500), tutor: true, mathReviewer: fakeMathReviewer(), reviewer: fakeTalkReviewer() });
         await session.start();
         expect(session.session.tutor).toBeDefined();
         const out = await session.child(child);
@@ -57,7 +58,7 @@ describe("review of #1009: a kind cannot bypass the core", () => {
     undo = testKind(liar({ stepQuestion: () => "You are no good at math, not even 2 plus 2." }));
     let now = Date.UTC(2026, 10, 15);
     const model = conversationalFake({ answer: () => reply("6 × 8 = 49.", "guide") });
-    const session = createTextSession({ callId: "liar-1", package: SUB, model, clock: () => (now += 500), tutor: true, reviewer: fakeTalkReviewer() });
+    const session = createTextSession({ callId: "liar-1", package: SUB, model, clock: () => (now += 500), tutor: true, mathReviewer: fakeMathReviewer(), reviewer: fakeTalkReviewer() });
     await session.start();
     const out = await session.child("I need help");
     expect(out.say.join(" ")).not.toContain("no good");
@@ -67,7 +68,7 @@ describe("review of #1009: a kind cannot bypass the core", () => {
     undo = testKind(liar({ draw: (_p, req) => ({ commands: req.map((r, i) => ({ op: "write", id: `liar-${i}`, text: r.place ?? "", place: { below: "question" } })), keys: [] }) }));
     let now = Date.UTC(2026, 10, 15);
     const model = conversationalFake({ answer: () => reply("What is 6 times 8?", "guide", { draw: [{ offer: "note", place: "12 - 8 = 5" }, { offer: "note", place: "You are dumb" }] }) });
-    const session = createTextSession({ callId: "liar-2", package: SUB, model, clock: () => (now += 500), tutor: true, reviewer: fakeTalkReviewer() });
+    const session = createTextSession({ callId: "liar-2", package: SUB, model, clock: () => (now += 500), tutor: true, mathReviewer: fakeMathReviewer(), reviewer: fakeTalkReviewer() });
     await session.start();
     const out = await session.child("I need help");
     const writes = out.board.flatMap((b) => b.commands).filter((c) => (c as { op?: string }).op === "write");
@@ -123,7 +124,7 @@ describe("review of #1009: core additions (2026-11-15)", () => {
       const question = answerWord === "true" ? "Is 5 less than 3?" : "Is 5 greater than 3?";
       const child = answerWord === "true" ? "false" : "true";
       const model = conversationalFake({ answer: (_b, n) => reply(n === 0 ? question : "Yes. Which is bigger, 5 or 3?", "guide") });
-      const session = createTextSession({ callId: "comparison-review", package: pkg, model, clock: () => (now += 500), tutor: true, reviewer: fakeTalkReviewer() });
+      const session = createTextSession({ callId: "comparison-review", package: pkg, model, clock: () => (now += 500), tutor: true, mathReviewer: fakeMathReviewer(), reviewer: fakeTalkReviewer() });
       await session.start();
       expect((await session.child("I need help")).say).toEqual([question]);
       expect((await session.child(child)).say.join(" ").startsWith("Yes.")).toBe(true);
@@ -154,7 +155,7 @@ describe("the next open step's result is right (review of #1018)", () => {
     try {
       let now = Date.UTC(2026, 10, 15);
       const model = conversationalFake({ answer: () => reply("Not quite. What comes next?", "guide") });
-      const session = createTextSession({ callId: "open-step-review", package: pkg, model, clock: () => (now += 500), tutor: true, reviewer: fakeTalkReviewer() });
+      const session = createTextSession({ callId: "open-step-review", package: pkg, model, clock: () => (now += 500), tutor: true, mathReviewer: fakeMathReviewer(), reviewer: fakeTalkReviewer() });
       await session.start();
       expect((await session.child("28")).say.join(" ")).not.toMatch(/not quite/i);
     } finally { undo(); }

@@ -3,6 +3,7 @@ import { FIXTURES } from "@/lib/maya-gate/fixtures";
 import { conversationalFake, reply } from "@/lib/maya-model-fake";
 import { createTextSession } from "@/lib/maya-text";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
+import { fakeMathReviewer } from "@/lib/maya-math-review";
 import type { OperationPackage } from "@/lib/question-package";
 import { createSession } from "../session";
 import { checkTutorSay } from "../tutor";
@@ -112,7 +113,7 @@ describe("the claim kind: the stance (through the text adapter)", () => {
       for (const child of turns) {
         let now = Date.UTC(2026, 10, 15);
         const model = conversationalFake({ answer: (_b, n) => (n === 0 ? reply("Yes, that's right! Well done.", "guide") : reply("Let's check it together. Which word do you circle?", "guide")) });
-        const session = createTextSession({ callId: `stance-${id}`, package: FIX[id], model, clock: () => (now += 500), tutor: true, reviewer: fakeTalkReviewer() });
+        const session = createTextSession({ callId: `stance-${id}`, package: FIX[id], model, clock: () => (now += 500), tutor: true, mathReviewer: fakeMathReviewer(), reviewer: fakeTalkReviewer() });
         await session.start();
         expect(session.session.tutor).toBeDefined();
         const out = await session.child(child);
@@ -123,14 +124,14 @@ describe("the claim kind: the stance (through the text adapter)", () => {
   it("never says \"yes\" to a bare wrong comparison word", async () => {
     let now = Date.UTC(2026, 10, 15);
     const model = conversationalFake({ answer: () => reply("Yes, that's right! Well done.", "guide") });
-    const session = createTextSession({ callId: "bare-cmp", package: FIX.COMPARE_FRACTIONS, model, clock: () => (now += 500), tutor: true, reviewer: fakeTalkReviewer() });
+    const session = createTextSession({ callId: "bare-cmp", package: FIX.COMPARE_FRACTIONS, model, clock: () => (now += 500), tutor: true, mathReviewer: fakeMathReviewer(), reviewer: fakeTalkReviewer() });
     await session.start();
     expect((await session.child("false")).say.join(" ")).not.toContain("that's right");
   });
   it("refuses a false comparison in Maya's message and gives code's line", async () => {
     let now = Date.UTC(2026, 10, 15);
     const model = conversationalFake({ answer: () => reply("1440 is less than 1436, so we circle no.", "guide") });
-    const session = createTextSession({ callId: "false-cmp", package: FIX.CLAIM_GT, model, clock: () => (now += 500), tutor: true, reviewer: fakeTalkReviewer() });
+    const session = createTextSession({ callId: "false-cmp", package: FIX.CLAIM_GT, model, clock: () => (now += 500), tutor: true, mathReviewer: fakeMathReviewer(), reviewer: fakeTalkReviewer() });
     await session.start();
     const out = await session.child("I got 1440.");
     expect(out.say.join(" ")).not.toContain("less than 1436");
@@ -139,7 +140,7 @@ describe("the claim kind: the stance (through the text adapter)", () => {
     let now = Date.UTC(2026, 10, 15);
     const say = "4 × 360 = 1440. Is 1440 greater than 1436?";
     const model = conversationalFake({ answer: () => reply(say, "guide") });
-    const session = createTextSession({ callId: "true-cmp", package: FIX.CLAIM_GT, model, clock: () => (now += 500), tutor: true, reviewer: fakeTalkReviewer() });
+    const session = createTextSession({ callId: "true-cmp", package: FIX.CLAIM_GT, model, clock: () => (now += 500), tutor: true, mathReviewer: fakeMathReviewer(), reviewer: fakeTalkReviewer() });
     await session.start();
     const out = await session.child("I got 1440.");
     expect(out.say).toEqual([say]);
@@ -150,7 +151,7 @@ describe("the claim kind: the stance (through the text adapter)", () => {
 describe("review of #1013", () => {
   async function speak(id: string, child: string, say: string) {
     let now = Date.UTC(2026, 10, 15);
-    const session = createTextSession({ callId: `r1013-${id}`, package: FIX[id], tutor: true, model: conversationalFake({ answer: () => reply(say, "guide") }), clock: () => (now += 500), reviewer: fakeTalkReviewer() });
+    const session = createTextSession({ callId: `r1013-${id}`, package: FIX[id], tutor: true, model: conversationalFake({ answer: () => reply(say, "guide") }), clock: () => (now += 500), mathReviewer: fakeMathReviewer(), reviewer: fakeTalkReviewer() });
     await session.start();
     expect(session.session.tutor).toBeDefined();
     return (await session.child(child)).say.join(" ");

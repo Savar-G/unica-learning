@@ -19,6 +19,7 @@ import { mayaCallStore, mayaConnectionLog } from "@/lib/maya-call-store";
 import { conversationalMayaModel, type MayaModel } from "@/lib/maya-model";
 import { ruleConversationalModel } from "@/lib/maya-model-fake";
 import { aiTalkReviewer, REVIEW_DEFAULT_MODEL, type TalkReviewer } from "@/lib/maya-talk-review";
+import { aiMathReviewer, MATH_REVIEW_DEFAULT_MODEL, type MathReviewer } from "@/lib/maya-math-review";
 import { wordingHistoryStore } from "@/lib/maya-wording-history-store";
 import { chargeOf, type SpendLedger } from "@/lib/maya-spend";
 import { profileAi } from "@/lib/maya-spend-ai";
@@ -59,6 +60,18 @@ export function callReviewer(modelId: string, env: Env = process.env, metered?: 
   const model = env.MAYA_REVIEW_MODEL?.trim() || REVIEW_DEFAULT_MODEL;
   const client = metered ? meteredClient(env, metered.ledger, { charge: chargeOf(metered.call), callId: metered.call.id, budgetKey: metered.call.budgetKey, newId: metered.newId }, "review", model) : mayaAiClient(env, model);
   return client ? aiTalkReviewer(client) : null;
+}
+
+/**
+ * The tutor core's math-truth review of a call (two-layer true math, 2026-11-15): MAYA_MATH_REVIEW_MODEL (default Claude
+ * Haiku 5.5) through OpenRouter with Maya's key, metered as a review attempt in Maya's spend. Null for the fake rule
+ * player and without OPENROUTER_API_KEY (then a sentence code did not read whole is refused).
+ */
+export function callMathReviewer(modelId: string, env: Env = process.env, metered?: { ledger: SpendLedger; call: SpendCall; newId: () => string }): MathReviewer | null {
+  if (modelId === FAKE_MODEL_ID) return null;
+  const model = env.MAYA_MATH_REVIEW_MODEL?.trim() || MATH_REVIEW_DEFAULT_MODEL;
+  const client = metered ? meteredClient(env, metered.ledger, { charge: chargeOf(metered.call), callId: metered.call.id, budgetKey: metered.call.budgetKey, newId: metered.newId }, "review", model) : mayaAiClient(env, model);
+  return client ? aiMathReviewer(client) : null;
 }
 
 async function isTestFamily(db: SupabaseClient<Database>, parentId: string): Promise<boolean> {
@@ -105,6 +118,7 @@ export function callSeams(db: SupabaseClient<Database>, options: { env?: Env; or
     rebuild: options.rebuild ?? ((childId, o) => rebuild(db, env, ledger, childId, o)),
     model: (id, call, how) => callModel(id, env, meter(call, how)),
     reviewer: (modelId, call) => callReviewer(modelId, env, meter(call)),
+    mathReviewer: (modelId, call) => callMathReviewer(modelId, env, meter(call)),
     spend: mayaCallSpend(ledger, () => randomUUID()),
     isTestFamily: (parentId) => isTestFamily(db, parentId),
     note: writeNoteAfterCall(db, { ledger }),

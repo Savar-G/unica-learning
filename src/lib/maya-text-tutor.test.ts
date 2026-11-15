@@ -4,6 +4,7 @@ import { conversationalFake, reply } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { createTextSession } from "@/lib/maya-text";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
+import { fakeMathReviewer } from "@/lib/maya-math-review";
 import { checkTrace } from "@/lib/maya-trace";
 import type { TurnBrief } from "@/lib/maya-model";
 import { workedSteps, type OperationPackage } from "@/lib/question-package";
@@ -26,7 +27,7 @@ function call(answer: Answer, more: Partial<Parameters<typeof createTextSession>
   let now = T0;
   const model = conversationalFake({ answer: answer as unknown as (brief: TurnBrief, n: number) => unknown });
   const reviewer = fakeTalkReviewer(more.review);
-  const session = createTextSession({ callId: "tutor-1", package: PKG, model, clock: () => (now += 500), random: 3, childName: "Ava", reviewer, tutor: true, ...more });
+  const session = createTextSession({ callId: "tutor-1", package: PKG, model, clock: () => (now += 500), random: 3, childName: "Ava", reviewer, mathReviewer: fakeMathReviewer(), tutor: true, ...more });
   return { session, model, reviewer, briefs: model.briefs as unknown as TutorBrief[] };
 }
 
@@ -179,7 +180,7 @@ describe("only tutor calls use the tutor core", () => {
   it("a call without the option keeps the controller's brief", async () => {
     let now = T0;
     const model = conversationalFake({ answer: () => reply("What is 12 minus 8?", "guide", { step: "ones", level: 2 }) });
-    const session = createTextSession({ callId: "ctl-1", package: PKG, model, clock: () => (now += 500), random: 3, reviewer: fakeTalkReviewer() });
+    const session = createTextSession({ callId: "ctl-1", package: PKG, model, clock: () => (now += 500), random: 3, mathReviewer: fakeMathReviewer(), reviewer: fakeTalkReviewer() });
     await session.start();
     await session.child(SAVAR);
     expect((model.briefs[0] as unknown as { mode?: string }).mode).toBeUndefined();
@@ -213,7 +214,7 @@ describe("the tutor message streams to the voice sentence by sentence (D-345, th
     });
     const requests: TalkReviewInput[] = [];
     const reviewer = { id: "fake-review", promptVersion: "t", review: async (input: TalkReviewInput) => { requests.push(input); return review ? review(input) : { verdict: "pass" as const }; } };
-    const session = createTextSession({ callId: "tutor-s", package: PKG, model, clock: () => (now += 500), random: 3, childName: "Ava", reviewer, tutor: true, onSayPart: (sentence) => parts.push(sentence) });
+    const session = createTextSession({ callId: "tutor-s", package: PKG, model, clock: () => (now += 500), random: 3, childName: "Ava", reviewer, mathReviewer: fakeMathReviewer(), tutor: true, onSayPart: (sentence) => parts.push(sentence) });
     return { session, parts, before: () => beforeEnd, requests };
   }
 
@@ -398,7 +399,7 @@ describe("review of #1006: the stream never sends what the whole check would not
     let early: string[] = [];
     const model = conversationalFake({ answer: () => reply(say, "guide", { reading }), stream: { chunk: 7, beforeEnd: async () => { await pause(); early = [...parts]; } } });
     const session = createTextSession({ callId: "s1006", package: PKG, model, tutor: true, clock: () => (now += 100), random: 3, onSayPart: (s) => parts.push(s),
-      reviewer: { id: "reject", promptVersion: "t", review: async (input: TalkReviewInput) => { reviews.push(input); return { verdict: "fail" as const, rules: ["unkind" as const], reason: "no" }; } } });
+      mathReviewer: fakeMathReviewer(), reviewer: { id: "reject", promptVersion: "t", review: async (input: TalkReviewInput) => { reviews.push(input); return { verdict: "fail" as const, rules: ["unkind" as const], reason: "no" }; } } });
     return { session, parts, reviews, early: () => early };
   }
 
@@ -439,7 +440,7 @@ describe("review of #1006: the stream never sends what the whole check would not
     const parts: string[] = [];
     const model = conversationalFake({ answer: () => reply("You did that part well. What is 12 minus 8?", "guide"), stream: { chunk: 7, beforeEnd: () => pendingModel } });
     const session = createTextSession({ callId: "cancel-1006", package: PKG, tutor: true, model, clock: () => T0, onSayPart: (s) => parts.push(s),
-      reviewer: { id: "held", promptVersion: "t", review: () => { reviewStarted(); return pendingReview; } } });
+      mathReviewer: fakeMathReviewer(), reviewer: { id: "held", promptVersion: "t", review: () => { reviewStarted(); return pendingReview; } } });
     await session.start();
     parts.length = 0;
     const out = session.child("I need help");
@@ -491,7 +492,7 @@ describe("re-check of #1006 (2026-11-14)", () => {
     let early: string[] = [];
     const model = conversationalFake({ answer: () => reply(say, "guide", { reading }), stream: { chunk: 7, beforeEnd: async () => { await pause(); early = [...parts]; } } });
     const session = createTextSession({ callId: "r1006", package: PKG, model, tutor: true, clock: () => (now += 100), random: 3, childName: "Ava", onSayPart: (s) => parts.push(s),
-      reviewer: { id: "reject", promptVersion: "t", review: async (input: TalkReviewInput) => { reviews.push(input); return { verdict: "fail" as const, rules: ["unkind" as const], reason: "no" }; } } });
+      mathReviewer: fakeMathReviewer(), reviewer: { id: "reject", promptVersion: "t", review: async (input: TalkReviewInput) => { reviews.push(input); return { verdict: "fail" as const, rules: ["unkind" as const], reason: "no" }; } } });
     return { session, parts, reviews, early: () => early };
   }
   it.each(["No good at math, {name}, not even 2 plus 2.", "Not good at this at all, not even 2 plus 2.", "We are not good at math, not even 2 plus 2."])("reviews %s", async (bad) => {
@@ -527,7 +528,7 @@ describe("third check of #1006 (2026-11-14)", () => {
     const say = "I'm an AI, so I don't have a favorite sex toy. What is 12 minus 8?";
     const model = conversationalFake({ answer: () => reply(say, "guide", { reading: { offTopic: true, outsideScope: "other_topic" } }), stream: { chunk: 7 } });
     const session = createTextSession({ callId: "c1006", package: PKG, model, tutor: true, clock: () => (now += 100), random: 3, onSayPart: (s) => parts.push(s),
-      reviewer: { id: "reject", promptVersion: "t", review: async (input: TalkReviewInput) => { reviews.push(input); return { verdict: "fail" as const, rules: ["sexual" as const], reason: "no" }; } } });
+      mathReviewer: fakeMathReviewer(), reviewer: { id: "reject", promptVersion: "t", review: async (input: TalkReviewInput) => { reviews.push(input); return { verdict: "fail" as const, rules: ["sexual" as const], reason: "no" }; } } });
     await session.start();
     parts.length = 0;
     const out = await session.child("What is your favorite toy?");
@@ -547,7 +548,7 @@ describe("fourth check of #1006 (2026-11-14)", () => {
     const reviews: TalkReviewInput[] = [];
     const model = conversationalFake({ answer: () => reply(`${bad} What is 12 minus 8?`, "guide"), stream: { chunk: 7 } });
     const session = createTextSession({ callId: "d1006", package: PKG, model, tutor: true, clock: () => (now += 100), random: 3, childName: "Ava", onSayPart: (s) => parts.push(s),
-      reviewer: { id: "reject", promptVersion: "t", review: async (input: TalkReviewInput) => { reviews.push(input); return { verdict: "fail" as const, rules: ["unkind" as const], reason: "no" }; } } });
+      mathReviewer: fakeMathReviewer(), reviewer: { id: "reject", promptVersion: "t", review: async (input: TalkReviewInput) => { reviews.push(input); return { verdict: "fail" as const, rules: ["unkind" as const], reason: "no" }; } } });
     await session.start();
     parts.length = 0;
     const out = await session.child("I need help");
@@ -563,7 +564,7 @@ describe("fourth check of #1006 (2026-11-14)", () => {
     const parts: string[] = [];
     const model = conversationalFake({ answer: () => reply("That part was quick. What is 12 minus 8?", "guide"), stream: { chunk: 7, beforeEnd: () => pendingModel } });
     const session = createTextSession({ callId: "hold-1006", package: PKG, tutor: true, model, clock: () => T0, onSayPart: (s) => parts.push(s),
-      reviewer: { id: "held", promptVersion: "t", review: () => { reviewStarted(); return pendingReview; } } });
+      mathReviewer: fakeMathReviewer(), reviewer: { id: "held", promptVersion: "t", review: () => { reviewStarted(); return pendingReview; } } });
     await session.start();
     parts.length = 0;
     const out = session.child("I need help");
@@ -595,7 +596,7 @@ describe("fifth check of #1006 (2026-11-15)", () => {
     const parts: string[] = [];
     const model = conversationalFake({ answer: () => reply("You did that part well. What is 12 minus 8?", "guide"), stream: { chunk: 7, beforeEnd: () => pendingModel } });
     const session = createTextSession({ callId: "deadline-1006", package: PKG, tutor: true, model, clock: () => now, onSayPart: (s) => parts.push(s),
-      reviewer: { id: "held", promptVersion: "t", review: () => { reviewStarted(); return pendingReview; } } });
+      mathReviewer: fakeMathReviewer(), reviewer: { id: "held", promptVersion: "t", review: () => { reviewStarted(); return pendingReview; } } });
     await session.start();
     parts.length = 0;
     const out = session.child("I need help");

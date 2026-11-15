@@ -5,6 +5,7 @@ import { teachingPackage } from "@/lib/maya-teaching";
 import { storedPlaceValue } from "@/lib/maya-teaching/place-value-samples";
 import { conversationalFake, reply } from "@/lib/maya-model-fake";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
+import { fakeMathReviewer } from "@/lib/maya-math-review";
 import { createTextSession } from "@/lib/maya-text";
 import { workedSteps, type OperationPackage } from "@/lib/question-package";
 import { createSession } from "./session";
@@ -43,7 +44,7 @@ function context(pkg: OperationPackage) {
 async function speak(pkg: OperationPackage, text: string) {
   let now = Date.UTC(2026, 10, 15);
   const model = conversationalFake({ answer: () => reply(text, "guide") });
-  const s = createTextSession({ callId: "probe-" + text, package: pkg, model, clock: () => (now += 100), random: 3, reviewer: fakeTalkReviewer(() => ({ verdict: "fail", rules: ["math"], reason: "The math is false." })), tutor: true });
+  const s = createTextSession({ callId: "probe-" + text, package: pkg, model, clock: () => (now += 100), random: 3, mathReviewer: fakeMathReviewer(), reviewer: fakeTalkReviewer(() => ({ verdict: "fail", rules: ["math"], reason: "The math is false." })), tutor: true });
   await s.start();
   const out = await s.child("Please help me.");
   await s.finish({ reason: "child_stopped" });

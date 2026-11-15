@@ -80,6 +80,7 @@ import type { PrepareRecord } from "@/lib/maya-prepared";
 import { withRequestContext } from "@/lib/maya-request-trace";
 import { modelInput, type MayaModel } from "@/lib/maya-model";
 import type { TalkReviewer } from "@/lib/maya-talk-review";
+import type { MathReviewer } from "@/lib/maya-math-review";
 import { createTextSession, type FinishOptions, type SavedTextSession, type TextOutput, type TextSession, type TextSessionOptions } from "@/lib/maya-text";
 import { packageHash, type MayaTrace } from "@/lib/maya-trace";
 import { type QuestionPackage, type QuestionRef } from "@/lib/question-package";
@@ -285,6 +286,11 @@ export interface CallSeams {
    * Optional: without it a call has no review.
    */
   reviewer?(modelId: string, call?: SpendCall): TalkReviewer | null;
+  /**
+   * Two-layer true math (2026-11-15): the tutor core's math-truth review for a call on this model, or null. Optional:
+   * without it a tutor sentence whose math code did not read whole is refused (one repair, then code's line).
+   */
+  mathReviewer?(modelId: string, call?: SpendCall): MathReviewer | null;
   /** Maya's spending cap (src/lib/maya-spend.ts). Optional: without it nothing is charged or capped. */
   spend?: CallSpend;
   /** True when the family is marked as a test family (public.test_accounts). */
@@ -899,6 +905,7 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
       // MAYA_TUTOR_FAMILIES switch is on. The core still decides per question (isTutorQuestion).
       tutor: seams.tutor !== false && (record.kind === "admin_test" || (seams.tutorFamilies === true && (record.kind === "chat" || record.kind === "family"))),
       freeTalk: record.kind !== "chat" && record.kind !== "family", reviewer: seams.reviewer?.(model.id, spend ?? spendCall(record)) ?? null,
+      mathReviewer: seams.mathReviewer?.(model.id, spend ?? spendCall(record)) ?? null,
     });
   }
 
