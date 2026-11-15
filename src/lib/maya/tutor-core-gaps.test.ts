@@ -4,7 +4,7 @@ import { FIXTURES } from "@/lib/maya-gate/fixtures";
 import { createTextSession } from "@/lib/maya-text";
 import { fakeTalkReviewer } from "@/lib/maya-talk-review";
 import type { OperationPackage } from "@/lib/question-package";
-import { checkTutorSay } from "./tutor";
+import { checkTutorSay, plainTeaching } from "./tutor";
 import { testKind } from "./tutor-kinds";
 import type { TutorKind } from "./tutor-kind";
 
@@ -73,4 +73,11 @@ describe("review of #1009: a kind cannot bypass the core", () => {
     const writes = out.board.flatMap((b) => b.commands).filter((c) => (c as { op?: string }).op === "write");
     expect(writes).toEqual([]);
   });
+});
+
+describe("core gaps of F1 and F3 (2026-11-15)", () => {
+  const sub = { stance: "none" as const, op: "subtract" as const };
+  it.each(["4,000 is 4 thousands.", "48,942 is 4 ten thousands and 8 thousands and 9 hundreds and 4 tens and 2 ones.", "4 × 10,000 = 40,000.", "0 tens become 10 tens.", "0 tens are now 9 tens.", "10000 is 9 thousands and 10 hundreds."])("passes %s", (x) => expect(checkTutorSay(x, sub)).toMatchObject({ ok: true }));
+  it.each(["4,000 is 5 thousands.", "48,942 is 4 ten thousands.", "5 tens are now 6 tens.", "0 tens become 11 tens."])("refuses %s", (x) => expect(checkTutorSay(x, sub)).toMatchObject({ ok: false }));
+  it.each(["Is 5220 greater than 5226?", "Is 6 times 870 less than 5226?", "Which digit is in the thousands place?", "What is the value of the 4?", "What is 6 times 440?", "What do you get for 1340 divided by 2?", "What is the missing number?"])("treats %s as plain math", (x) => expect(plainTeaching(x)).toBe(true));
 });

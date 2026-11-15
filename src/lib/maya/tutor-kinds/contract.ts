@@ -11,7 +11,11 @@ import { tutorKindOf } from "./index";
 import { checkTutorSay, plainTeaching, tutorDrawings } from "../tutor";
 
 /** The work steps of a package (its steps without the result and framing steps). */
-const workIds = (pkg: OperationPackage) => pkg.steps.filter((st) => !["result", "missing-frame", "drop-zeros"].includes(st.kind)).map((st) => st.id);
+const workIds = (pkg: OperationPackage) => {
+  const work = pkg.steps.filter((st) => !["result", "missing-frame", "drop-zeros"].includes(st.kind)).map((st) => st.id);
+  // A question with no work step (a digit ask) has its answer as its only step (#1011).
+  return work.length > 0 ? work : pkg.steps.filter((st) => st.kind === "result").map((st) => st.id);
+};
 
 export function describeTutorKind(kind: TutorKind, packages: readonly OperationPackage[]) {
   describe(`tutor kind "${kind.id}": the contract`, () => {

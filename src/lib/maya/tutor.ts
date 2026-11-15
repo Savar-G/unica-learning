@@ -47,10 +47,10 @@ export function plainTeaching(sentence: string, _extra: ReadonlySet<string> = ne
   });
 }
 
-const N = String.raw`(?:\d{1,3}|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)`;
-const U = String.raw`(?:ones?|tens?|hundreds?)`;
+const N = String.raw`(?:\d{1,3}(?:,\d{3})+|\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)`;
+const U = String.raw`(?:hundred thousands?|ten thousands?|ones?|tens?|hundreds?|thousands?)`;
 const Q = String.raw`(?:${N}(?:\s+${U})?)`;
-const E = String.raw`(?:${Q}(?:\s+(?:plus|minus|take away|\+|-)\s+(?:the\s+)?${Q})*)`;
+const E = String.raw`(?:${Q}(?:\s+(?:plus|minus|take away|times|multiplied by|divided by|\+|-|×|÷|x)\s+(?:the\s+)?${Q})*)`;
 const PLACE = String.raw`(?:the\s+)?${U}(?:\s+(?:column|place))?`;
 /** The complete math forms a clause may take with no review. Nothing else: no person, no object, no feeling. */
 const PLAIN_FORMS: readonly RegExp[] = [
@@ -75,6 +75,14 @@ const PLAIN_FORMS: readonly RegExp[] = [
   // "the tens", "in the ones column", "the other way around"
   new RegExp(String.raw`^(?:(?:in|for|on|to)\s+)?${PLACE}$`, "i"),
   /^the other way around$/i,
+  // "Is 5220 greater than 5226?", "Is 6 times 870 less than 5226?"
+  new RegExp(String.raw`^is\s+${E}\s+(?:greater|less|more|bigger|smaller)\s+than\s+${E}$`, "i"),
+  // "Which digit is in the thousands place?", "What is the digit in the tens place?"
+  new RegExp(String.raw`^(?:which digit is|what digit is|what is the digit) in ${PLACE}(?:\s+of\s+${N})?$`, "i"),
+  // "What is the value of the 4?", "What is the value of the 4 in 48942?"
+  new RegExp(String.raw`^what is the value of (?:the\s+)?(?:${N}|digit in ${PLACE})(?:\s+in\s+${N})?$`, "i"),
+  // "What is the missing number?"
+  /^what is the missing number$/i,
 ];
 
 /** A short spoken lead-in before the math of a clause: fixed words only. */

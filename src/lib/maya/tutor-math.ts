@@ -7,7 +7,7 @@ const SMALL = ["zero", "one", "two", "three", "four", "five", "six", "seven", "e
 const TENS = ["twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
 
 const NUM = String.raw`(?:\d+|(?:${TENS.join("|")})(?:[- ](?:${SMALL.slice(1, 10).join("|")}))?|${SMALL.join("|")})`;
-const UNIT = String.raw`(?:ones?|tens?|hundreds?)\b`;
+const UNIT = String.raw`(?:hundred thousands?|ten thousands?|ones?|tens?|hundreds?|thousands?)\b`;
 /** A place quantity: "4 tens and 12 ones", "a ten", "one hundred". */
 const QUANTITY = String.raw`(?:(?:${NUM}|an?)\s+${UNIT})(?:\s+(?:and\s+)?(?:${NUM}|an?)\s+${UNIT})*`;
 const OP = String.raw`(?:plus|\+|minus|take away|-|times|multiplied by|×|\*|x|divided by|÷|/)`;
@@ -30,12 +30,12 @@ function numberOf(word: string): number | null {
   return unit < 1 && u !== undefined ? null : (tens + 2) * 10 + unit;
 }
 
-const PLACE: Record<string, number> = { one: 1, ten: 10, hundred: 100 };
+const PLACE: Record<string, number> = { one: 1, ten: 10, hundred: 100, thousand: 1000, "ten thousand": 10000, "hundred thousand": 100000 };
 
 /** The parts of a place quantity ("4 tens and 12 ones": 4 of place 10, 12 of place 1), or null. */
 function quantityParts(text: string): { n: number; place: number }[] | null {
   const parts: { n: number; place: number }[] = [];
-  const re = new RegExp(String.raw`(${NUM}|an?)\s+(one|ten|hundred)s?\b`, "gi");
+  const re = new RegExp(String.raw`(${NUM}|an?)\s+(hundred thousand|ten thousand|one|ten|hundred|thousand)s?\b`, "gi");
   for (const m of text.toLowerCase().replace(/\band\b/g, " ").matchAll(re)) {
     const n = numberOf(m[1]);
     if (n === null) return null;
@@ -158,6 +158,9 @@ export function falseClaims(sentence: string, op?: "add" | "subtract"): string[]
     if (place === null || bValue === null || (b.units && b.place !== place)) return false;
     const gainsTen = place === 1 ? op !== "add" : op === "add";
     const delta = place === 1 ? 10 : place;
+    // A borrow across a zero (#1012): in a subtraction a place above the ones may also take 10 of its own units from
+    // the left ("0 tens become 10 tens"), then give 1 to the right ("0 tens are now 9 tens").
+    if (place > 1 && op !== "add" && (bValue === a.value + 10 * place || bValue === a.value + 9 * place)) return true;
     return gainsTen ? bValue === a.value + delta : bValue === a.value - delta;
   };
   while (i < items.length) {
