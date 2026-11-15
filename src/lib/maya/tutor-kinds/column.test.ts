@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { applyBatch, createScene, type Batch } from "@/lib/board";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { workedSteps, type OperationPackage } from "@/lib/question-package";
-import { checkTutorSay } from "../tutor";
+import { checkTutorSay, tutorDrawings } from "../tutor";
 import { columnKind } from "./column";
 import { describeTutorKind } from "./contract";
 
@@ -148,6 +148,12 @@ describe("column kind: the board", () => {
     expect(columnKind.draw(SUB_ZEROS, [{ offer: "trade" }], d.keys, () => "x").commands).toEqual([]);
     const r = applyBatch(await board(SUB_ZEROS), { transactionId: "t", commands: d.commands as never });
     expect(r.ok, r.ok ? "" : JSON.stringify(r.refusal)).toBe(true);
+  });
+  it("offers a trade only when the question has one, and the core passes every command", () => {
+    expect(columnKind.drawings(SUB_90_40).map((d) => d.id)).toEqual(["digit", "note"]);
+    expect(columnKind.drawings(SUB_ZEROS).map((d) => d.id)).toEqual(["trade", "digit", "note"]);
+    const all = columnKind.draw(SUB_SIX, [{ offer: "digit", place: "ten thousands" }], [], () => "x");
+    expect(tutorDrawings(SUB_SIX, [{ offer: "digit", place: "ten thousands" }], [], () => "x").commands).toEqual(all.commands);
   });
   it("writes every digit of the answer in order and never a 0 on its left", async () => {
     const d = columnKind.draw(SUB_ZEROS, [{ offer: "digit", place: "thousands" }], [], () => "x");

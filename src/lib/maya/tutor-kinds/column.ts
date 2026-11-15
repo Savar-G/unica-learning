@@ -347,7 +347,7 @@ const unitWorth = (unit: string) => {
 type ClaimItem = { kind: "term"; value: number; place: number | null; unit: boolean } | { kind: "op"; sign: 1 | -1 } | { kind: "rel"; negated: boolean; now: boolean } | { kind: "and" } | { kind: "other" };
 
 /**
- * The false claims of a sentence that names a thousands or ten thousands place, which the core's reader does not read:
+ * The false claims of a sentence that names a thousands, ten thousands or hundred thousands place, read again here:
  * "1 thousand is 100 hundreds", "the 0 thousands are now 10 thousands". Each side is a place quantity ("9 thousands and
  * 10 hundreds") or a number, joined by plus or minus. "is now" / "become" between two counts of one place says a trade:
  * in a subtraction a place gets 10, gives 1, or both (0 thousands become 9 thousands); in an addition it gives 10, gets
@@ -447,19 +447,20 @@ export const columnKind: TutorKind = {
   workValues,
   streamScope,
   stepQuestion,
-  drawings: () => DRAWINGS,
+  // A question with no trade (90 - 40) offers no trade drawing.
+  drawings: (pkg) => DRAWINGS.filter((d) => d.id !== "trade" || tutorSteps(pkg).some((st) => st.trade)),
   drawingExamples: (pkg) => {
     const steps = tutorSteps(pkg);
-    const st = steps[0];
+    const worked = steps.find((st) => st.operands.length > 1);
     return [
       { offer: "trade", place: "" },
-      { offer: "digit", place: st?.place ?? "ones" },
-      ...(st ? [{ offer: "note", place: stepEquation(st).replace("−", "-") }] : []),
+      { offer: "digit", place: steps[0]?.place ?? "ones" },
+      ...(worked ? [{ offer: "note", place: stepEquation(worked).replace("−", "-") }] : []),
     ];
   },
   draw,
-  // The core reads the equations and the place quantities to the hundreds (tutor-math.ts); this kind reads the
-  // thousands and ten thousands.
+  // The core reads the equations, the place quantities and the trades (tutor-math.ts); this kind reads the thousands
+  // and larger places again with its own trade rule (a place may get 10, give 1, or both).
   claimProblems,
   op: (pkg) => (pkg.operation.kind === "add" ? "add" : "subtract"),
   notes,
