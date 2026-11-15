@@ -21,6 +21,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Room as LkRoom } from "livekit-client";
 import { createBoardReceiver, type BoardSnapshot } from "@/lib/board-protocol";
 import { BOARD_RPC, boardRpcHandler } from "@/lib/board-rpc";
+import { voiceDisconnectReason } from "@/lib/maya-voice-close-reason";
 import type { VoiceTicket } from "@/lib/maya-voice";
 import { newAttemptId, voiceStartTrace, type PrejoinDropReason, type PrejoinReason, type PrejoinStage, type VoiceStartDetail, type VoiceStartEvent, type VoiceTapLabel } from "@/lib/maya-voice-start-trace";
 import { addHeard, childTranscription, clearHeard, heardFinals, heardSegment, heardText, TRANSCRIPTION_TOPIC, type HeardSegment } from "@/lib/maya-voice-hearing";
@@ -223,12 +224,34 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
     return () => clearInterval(t);
   }, [phase]);
 
+  // Observe the room that actually exists when the lifecycle event fires. Do not close it here: the SDK owns that.
+  const markOwned = useCallback((event: VoiceStartEvent, detail?: VoiceStartDetail) => {
+    const p = claimed.current ?? prepared.current;
+    const id = room.current ? roomCall.current : p?.callId;
+    const attempt = room.current ? roomAttempt.current : p?.attempt;
+    if (id) { try { voiceStartTrace().mark(id, attempt ?? null, event, detail); } catch {} }
+  }, []);
+  useEffect(() => {
+    const pagehide = () => markOwned("page_lifecycle", { lifecycle: "pagehide" });
+    const beforeunload = () => markOwned("page_lifecycle", { lifecycle: "beforeunload" });
+    const freeze = () => markOwned("page_lifecycle", { lifecycle: "freeze" });
+    window.addEventListener("pagehide", pagehide);
+    window.addEventListener("beforeunload", beforeunload);
+    document.addEventListener("freeze", freeze);
+    return () => {
+      window.removeEventListener("pagehide", pagehide);
+      window.removeEventListener("beforeunload", beforeunload);
+      document.removeEventListener("freeze", freeze);
+    };
+  }, [markOwned]);
+
   // Leaving the page hangs up, and leaves a room joined before the tap. A tap still waiting for its join stops.
   useEffect(() => () => {
+    markOwned("component_close");
     invalidate();
     void room.current?.disconnect();
     leave();
-  }, [leave, invalidate]);
+  }, [leave, invalidate, markOwned]);
 
   // Another call id (the desk's next call): the room of the call before is left, so it never stays joined with its
   // microphone on, and never stops the next call's room from joining before the tap. A room the call before still holds
@@ -241,6 +264,7 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
     if (early && early.callId !== callId) dropPrepared(early, "other_call");
     const r = room.current;
     if (!r || roomCall.current === callId) return;
+    try { voiceStartTrace().mark(roomCall.current!, roomAttempt.current, "call_replaced"); } catch {}
     room.current = null;
     roomCall.current = null;
     agent.current = null;
@@ -383,7 +407,14 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
         void onUpdate().then(() => { if (room.current === r) setLine(clearHeard(heardLine.current, saved)); }, () => {});
       }
     });
-    r.on(RoomEvent.Disconnected, () => {
+    const roomMark = (event: VoiceStartEvent, detail?: VoiceStartDetail) => {
+      try { voiceStartTrace().mark(callId, attempt, event, detail); } catch {}
+    };
+    r.on(RoomEvent.Reconnecting, () => roomMark("sdk_reconnecting"));
+    r.on(RoomEvent.SignalReconnecting, () => roomMark("sdk_signal_reconnecting"));
+    r.on(RoomEvent.Reconnected, () => roomMark("sdk_reconnected"));
+    r.on(RoomEvent.Disconnected, reason => {
+      roomMark("sdk_disconnected", { disconnectReason: voiceDisconnectReason(reason) });
       closed = true;
       // A room joined before the tap that drops is forgotten: the tap joins in full.
       const early = prepared.current;
@@ -632,7 +663,15 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
     return done;
   }, [join, callId]);
 
-  const hangUp = useCallback(async () => {
+  const hangUp = useCallback(async (source?: "button") => {
+    // Capture identity before awaits or invalidation; a later room cannot own this RPC's end mark.
+    const owner = roomCall.current ?? claimed.current?.callId ?? prepared.current?.callId ?? callId;
+    const attempt = room.current ? roomAttempt.current : claimed.current?.attempt ?? prepared.current?.attempt ?? null;
+    const closeMark = (event: VoiceStartEvent, detail?: VoiceStartDetail) => {
+      try { voiceStartTrace().mark(owner, attempt, event, detail); } catch {}
+    };
+    if (source === "button") closeMark("hang_up_button");
+    closeMark("hang_up_requested");
     // A tap still waiting for its join stops: nothing of it turns on.
     invalidate();
     const r = room.current;
@@ -640,7 +679,13 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
     const notify = endNotification.current?.room === r ? endNotification.current.notify : null;
     setPhase("ending");
     try {
-      if (agent.current) await r.localParticipant.performRpc({ destinationIdentity: agent.current, method: "maya.hang_up", payload: "", responseTimeout: 5000 });
+      if (agent.current) {
+        closeMark("hang_up_rpc_begin");
+        try {
+          await r.localParticipant.performRpc({ destinationIdentity: agent.current, method: "maya.hang_up", payload: "", responseTimeout: 5000 });
+          closeMark("hang_up_rpc_end", { ok: true });
+        } catch (e) { closeMark("hang_up_rpc_end", { ok: false }); throw e; }
+      }
     } catch {}
     try {
       await r.disconnect();
@@ -656,7 +701,7 @@ export function useMayaVoiceRoom(options: MayaVoiceRoomOptions) {
       }
       await notify?.();
     }
-  }, [invalidate]);
+  }, [invalidate, callId]);
 
   /** Typed words for a worker with fake speech-to-text. True when Maya's worker took them. */
   const say = useCallback(async (words: string): Promise<boolean> => {

@@ -28,3 +28,15 @@ it("keeps the newest marks up to its limit", () => {
   trace.clear();
   expect(trace.marks()).toEqual([]);
 });
+
+it("rejects raw close reasons and lifecycle text, and never resets the tab sequence", () => {
+  const trace = createVoiceStartTrace({ now: () => 1, origin: () => 2 });
+  const first = trace.mark("old-call", "old-attempt", "sdk_disconnected", { disconnectReason: "url?token=private", lifecycle: "private words" } as never);
+  expect(first).toMatchObject({ disconnectReason: "unknown" });
+  expect(first.lifecycle).toBeUndefined();
+  trace.clear();
+  const next = trace.mark("new-call", "new-attempt", "sdk_disconnected", { disconnectReason: "client_initiated" });
+  expect(next.seq).toBe(first.seq + 1);
+  expect(next).toMatchObject({ callId: "new-call", attempt: "new-attempt", disconnectReason: "client_initiated" });
+  expect(JSON.stringify(trace.marks())).not.toContain("private");
+});

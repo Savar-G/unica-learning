@@ -383,7 +383,7 @@ export function useDeskVoice(initial: { usage: VoiceUsage } | null, at: { book: 
   const hangUp = () => {
     live.current.hungUp = true;
     setHungUp(true);
-    void room.hangUp();
+    void room.hangUp("button");
   };
 
   /** Joins again after a drop, with a new ticket. */

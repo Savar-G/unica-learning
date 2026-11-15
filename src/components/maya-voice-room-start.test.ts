@@ -17,7 +17,7 @@ interface TestRoom {
   connected: unknown[];
   disconnect: ReturnType<typeof vi.fn>;
   startAudio: ReturnType<typeof vi.fn>;
-  localParticipant: { setMicrophoneEnabled: ReturnType<typeof vi.fn> };
+  localParticipant: { setMicrophoneEnabled: ReturnType<typeof vi.fn>; performRpc: ReturnType<typeof vi.fn> };
 }
 const lk = vi.hoisted(() => ({ connect: [] as Array<"ok" | "hold">, held: [] as Array<() => void>, rooms: [] as TestRoom[] }));
 vi.mock("livekit-client", () => {
@@ -317,4 +317,76 @@ it("fresh join attaches an already subscribed real SDK audio track only once", a
     expect(track.attachedElements).toHaveLength(1);
     expect(play).toHaveBeenCalledOnce();
   } finally { play.mockRestore(); Object.defineProperty(HTMLMediaElement.prototype, 'srcObject', srcDescriptor); }
+});
+
+const closeEvents = () => voiceStartMarks().filter(m => /hang_up|sdk_|component_close|page_lifecycle|call_replaced/.test(m.event));
+const addAgent = async (room: TestRoom) => {
+  const p = { identity: "maya", kind: 4, attributes: { "maya.segment": "1", "lk.agent.state": "listening" } };
+  await act(async () => { room.remoteParticipants.set("maya", p); room.emit("ParticipantConnected", p); });
+};
+
+it.each([true, false])("marks Hang up RPC success=%s on the room's own call and attempt", async ok => {
+  await mount("close-a"); await act(async () => { await api.connect(); }); await addAgent(lk.rooms[0]);
+  const attempt = voiceStartMarks().find(m => m.event === "mic_begin")!.attempt;
+  if (!ok) lk.rooms[0].localParticipant.performRpc.mockRejectedValueOnce(Error("private rpc failure"));
+  await act(async () => { await api.hangUp("button"); });
+  expect(closeEvents().map(m => m.event)).toEqual(["hang_up_button", "hang_up_requested", "hang_up_rpc_begin", "hang_up_rpc_end", "sdk_disconnected"]);
+  expect(closeEvents().every(m => m.callId === "close-a" && m.attempt === attempt)).toBe(true);
+  expect(closeEvents().find(m => m.event === "hang_up_rpc_end")?.ok).toBe(ok);
+  expect(lk.rooms[0].disconnect).toHaveBeenCalledOnce();
+  expect(JSON.stringify(closeEvents())).not.toContain("private");
+});
+
+it("records reconnect observations without a Hang up mark or a new close", async () => {
+  await mount(); await act(async () => { await api.connect(); }); await addAgent(lk.rooms[0]);
+  await act(async () => { lk.rooms[0].emit("Reconnecting"); lk.rooms[0].emit("SignalReconnecting"); lk.rooms[0].emit("Reconnected"); });
+  expect(closeEvents().map(m => m.event)).toEqual(["sdk_reconnecting", "sdk_signal_reconnecting", "sdk_reconnected"]);
+  expect(api.phase).toBe("live"); expect(lk.rooms[0].disconnect).not.toHaveBeenCalled();
+});
+
+it.each([1, 9, "https://private.invalid/token"])("records the closed disconnected reason %s without implying a button press", async reason => {
+  await mount(); await act(async () => { await api.connect(); });
+  await act(async () => { lk.rooms[0].emit("Disconnected", reason); });
+  expect(closeEvents()).toMatchObject([{ event: "sdk_disconnected", disconnectReason: reason === 1 ? "client_initiated" : reason === 9 ? "signal_close" : "unknown" }]);
+  expect(api.phase).toBe("failed");
+  expect(JSON.stringify(closeEvents())).not.toContain("private");
+});
+
+it("marks actual page lifecycle events and unmount, and keeps existing disconnect behavior", async () => {
+  await mount(); await act(async () => { await api.connect(); });
+  window.dispatchEvent(new Event("pagehide")); window.dispatchEvent(new Event("beforeunload")); document.dispatchEvent(new Event("freeze"));
+  expect(closeEvents().map(m => m.lifecycle)).toEqual(["pagehide", "beforeunload", "freeze"]);
+  expect(lk.rooms[0].disconnect).not.toHaveBeenCalled();
+  await act(async () => { root!.unmount(); root = undefined; });
+  expect(closeEvents().map(m => m.event)).toEqual(["page_lifecycle", "page_lifecycle", "page_lifecycle", "component_close", "sdk_disconnected"]);
+  expect(lk.rooms[0].localParticipant.performRpc).not.toHaveBeenCalled();
+  expect(lk.rooms[0].disconnect).toHaveBeenCalledOnce();
+  const count = closeEvents().length; window.dispatchEvent(new Event("pagehide"));
+  expect(closeEvents()).toHaveLength(count);
+});
+
+it("an old RPC completion and room event cannot borrow a new call's attempt", async () => {
+  const render = await mount("old-call"); await act(async () => { await api.connect(); }); await addAgent(lk.rooms[0]);
+  let releaseRpc!: () => void;
+  lk.rooms[0].localParticipant.performRpc.mockImplementationOnce(() => new Promise<void>(resolve => { releaseRpc = resolve; }));
+  let ending!: Promise<void>; await act(async () => { ending = api.hangUp("button"); });
+  const oldAttempt = closeEvents().find(m => m.event === "hang_up_rpc_begin")!.attempt;
+  await render("new-call"); await act(async () => { await api.connect(); });
+  await act(async () => { releaseRpc(); await ending; lk.rooms[0].emit("Reconnected"); });
+  window.dispatchEvent(new Event("pagehide"));
+  const old = closeEvents().filter(m => m.event === "hang_up_rpc_end" || m.event === "sdk_reconnected" || m.event === "call_replaced");
+  expect(old).toHaveLength(3);
+  expect(old.every(m => m.callId === "old-call" && m.attempt === oldAttempt)).toBe(true);
+  expect(closeEvents().at(-1)).toMatchObject({ callId: "new-call", event: "page_lifecycle" });
+  expect(closeEvents().at(-1)!.attempt).not.toBe(oldAttempt);
+  expect(lk.rooms[1].disconnect).not.toHaveBeenCalled();
+});
+
+it("a failed browser diagnostic observer cannot prevent the RPC or media close", async () => {
+  await mount(); await act(async () => { await api.connect(); }); await addAgent(lk.rooms[0]);
+  const observer = vi.spyOn(voiceStartTrace(), "mark").mockImplementation(() => { throw Error("observer"); });
+  try {
+    await act(async () => { await api.hangUp("button"); });
+    expect(lk.rooms[0].localParticipant.performRpc).toHaveBeenCalledOnce(); expect(lk.rooms[0].disconnect).toHaveBeenCalledOnce();
+  } finally { observer.mockRestore(); }
 });
