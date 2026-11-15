@@ -156,7 +156,12 @@ describe("falseClaims: real sentences of 2026-11-14", () => {
     "12 minus the 8 is 4.",
     "The 2 ones are now 12 ones.",
   ])("passes the true sentence %s", (x) => expect(checkTutorSay(x, none)).toMatchObject({ ok: true }));
-  it.each(["12 is 4.", "12 − 8 = 4 apples = 5.", "1 ten is 100 ones.", "12 minus 8 is 5 so we write 5.", "4 is 4 tens.", "1 + 2 + 3 = 7 tens.", "The 1 is 10.", "5 tens are now 6 tens."])("refuses %s", (x) => expect(checkTutorSay(x, none)).toMatchObject({ ok: false }));
+  // Final check 9 (2026-11-15): an "=" code cannot read ("4 apples = 5") leaves its clause unread: the math review judges it.
+  it("sends 12 − 8 = 4 apples = 5. to the math review", () => {
+    const r = checkTutorSay("12 − 8 = 4 apples = 5.", none);
+    expect(r.ok === false || r.math.includes("12 − 8 = 4 apples = 5.")).toBe(true);
+  });
+  it.each(["12 is 4.", "1 ten is 100 ones.", "12 minus 8 is 5 so we write 5.", "4 is 4 tens.", "1 + 2 + 3 = 7 tens.", "The 1 is 10.", "5 tens are now 6 tens."])("refuses %s", (x) => expect(checkTutorSay(x, none)).toMatchObject({ ok: false }));
 });
 
 describe("falseClaims: trades and quantities, both directions (third check of #1002)", () => {

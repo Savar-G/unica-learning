@@ -49,7 +49,7 @@ export const TUTOR_CASES: PracticeCase[] = [
     reasons: ["solved"],
     opener: "Can you teach me how to do 2 minus 8? I don't get it.",
     validity: { stages: [{ name: "first try", opens: "start", numbers: [] }, B_EXAMPLE, AFTER_HELP], mustSay: [{ pattern: /2 minus 8/i, within: 1, what: "asks about 2 minus 8" }] },
-    fakeScript: ["Can you teach me how to do 2 minus 8? I don't get it.", "12.", "4.", "4 tens minus 2 tens is 2 tens, so 24.", "Because I traded a ten.", "I wrote it."],
+    fakeScript: ["Can you teach me how to do 2 minus 8? I don't get it.", "12.", "4.", "4 minus 2 is 2, so 24.", "Because I traded a ten.", "I wrote it."],
     tutor: { checks: SAVAR_CALL_CHECKS },
   },
   {
@@ -73,7 +73,7 @@ export const TUTOR_CASES: PracticeCase[] = [
     dimensions: TEACHING,
     reasons: ["solved"],
     validity: { stages: [{ name: "first try", opens: "start", numbers: [34, 12, 4, 3, 5, 2] }, B_EXAMPLE, AFTER_HELP], firstNumbers: [34, 12, 4] },
-    fakeScript: ["I got 34. I did 12 take away 8 is 4.", "I did 5 take away 2 is 3.", "Oh, I traded a ten, so 4 tens.", "4 tens take away 2 tens is 2, so 24.", "I wrote it."],
+    fakeScript: ["I got 34. I did 12 take away 8 is 4.", "I did 5 take away 2 is 3.", "Oh, I traded a ten, so 4 tens.", "4 take away 2 is 2, so 24.", "I wrote it."],
     tutor: { misconception: { wrong: [34], right: 24 } },
   },
   {
@@ -98,7 +98,7 @@ export const TUTOR_CASES: PracticeCase[] = [
     reasons: ["solved"],
     opener: "I don't get it.",
     validity: { stages: [{ name: "first try", opens: "start", numbers: [] }, B_EXAMPLE, AFTER_HELP], mustSay: [{ pattern: /(?:don'?t|do not) get it/i, within: 2, what: "says they don't get it" }] },
-    fakeScript: ["I don't get it.", "I still don't get it.", "12.", "4.", "4 tens minus 2 tens is 2 tens, so 24.", "I wrote it."],
+    fakeScript: ["I don't get it.", "I still don't get it.", "12.", "4.", "4 minus 2 is 2, so 24.", "I wrote it."],
   },
   {
     id: "K06",
@@ -109,7 +109,7 @@ export const TUTOR_CASES: PracticeCase[] = [
     dimensions: TEACHING,
     reasons: ["solved"],
     validity: { stages: [{ name: "first try", opens: "start", numbers: [26] }, B_EXAMPLE, AFTER_HELP], firstNumbers: [26] },
-    fakeScript: ["I think it's 26.", "12 take away 8 is 4.", "4 tens take away 2 tens is 2, so 24.", "Because I traded a ten.", "I wrote it."],
+    fakeScript: ["I think it's 26.", "12 take away 8 is 4.", "4 take away 2 is 2, so 24.", "Because I traded a ten.", "I wrote it."],
     tutor: { misconception: { wrong: [26], right: 24 } },
   },
 ];

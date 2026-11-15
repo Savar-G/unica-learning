@@ -58,7 +58,8 @@ export function aiMathReviewer(client: AiClient, request: ReviewRequest = MATH_R
  * Runs one review with the time limit, and never throws: a throw or a time-out is "unsure". Final check 8 (2026-11-15): a
  * malformed answer (not JSON, outside the schema, an unknown verdict) is a FINAL "unsure" for that sentence: no second
  * call of any kind, to the same model or to the retry, and the text adapter does not review that sentence again in the
- * same child turn (`fromMalformedAnswer`), not even in the repair. A time-out and every other error are final too. Only a
+ * same child turn, not even in the repair. A time-out and every other error are final too (final check 9: the text
+ * adapter keeps every terminal result that is not "true" for its sentence for the rest of the child turn). Only a
  * well-formed "unsure" answer of the first review goes once
  * to `reviewer.retry`, inside the same time limit; the retry's answer is final and marked `retried` (its error or
  * time-out is "unsure"). The error's own text is never kept (a provider's message can hold a key): only fixed wording,

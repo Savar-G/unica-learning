@@ -140,9 +140,22 @@ export const timeValue = (h: number, m: number): SayValue => ({ key: `${h}:${Str
 export const sameSayValue = (a: SayValue, b: SayValue) => (a.q && b.q ? a.q[0] === b.q[0] && a.q[1] === b.q[1] : a.key === b.key);
 const within = (v: SayValue, list: readonly SayValue[]) => list.some((x) => sameSayValue(v, x));
 
-interface WordNumber { value: number; at: number; end: number; words: string[] }
+/**
+ * A run of number words. `value` is NaN when the run makes no one standard value (final check 9): "two thousand two
+ * thousand", "five hundred thousand thousand", "twenty hundred". `pieces`: the values its parts make, for namesValue.
+ */
+interface WordNumber { value: number; at: number; end: number; words: string[]; pieces: number[] }
 
-/** Number words in a row ("twenty four", "one hundred and five"), with where they are. */
+const SCALES = new Set(["hundred", "thousand", "million", "billion", "trillion"]);
+
+/**
+ * Number words in a row ("twenty four", "one hundred and five", "two thousand six hundred and forty"), with where they are.
+ *
+ * Final check 9 (2026-11-15): read by separate groups, as standard English names a number: [a group below 1000]
+ * "thousand" [and] [a group below 1000], where a group is [1-9 "hundred" [and]] [1-99]. A run of number words that does
+ * not make one such value (a scale after a complete value, a hundred of 10 or more, "and zero") is one run with no value
+ * (NaN): its clause stays unread, never read as another number. Never multiplies a value it read before by a scale.
+ */
 function wordNumbers(text: string): WordNumber[] {
   const found: WordNumber[] = [];
   const re = /[a-z]+/gi;
@@ -151,9 +164,11 @@ function wordNumbers(text: string): WordNumber[] {
   let i = 0;
   const unit = (w: string) => UNITS.indexOf(w);
   const ten = (w: string) => TENS.indexOf(w);
+  const numberWord = (w: string | undefined) => w !== undefined && (unit(w) >= 0 || ten(w) >= 2 || SCALES.has(w));
   while (i < words.length) {
     const start = i;
-    let value = -1;
+    let bad = false;
+    const pieces: number[] = [];
     const take = (): number => {
       // A number below 100: "twenty", "twenty four", "seven", "fifteen".
       const w = words[i]?.w;
@@ -175,25 +190,48 @@ function wordNumbers(text: string): WordNumber[] {
       }
       return -1;
     };
-    const first = take();
-    if (first < 0) {
+    // [rest]: after a scale and an optional "and", a number below `limit` or nothing. "and" with no number after it
+    // ("one hundred and the ones") is no part of the number.
+    const rest = (below: () => number): number => {
+      const after = i;
+      if (words[i]?.w === "and") i++;
+      const r = below();
+      if (r < 0) { i = after; return 0; }
+      if (r === 0) bad = true;
+      return r;
+    };
+    // A group below 1000: "six hundred and forty", "ninety-nine", "seven".
+    const group = (): number => {
+      const a = take();
+      if (a < 0) return -1;
+      pieces.push(a);
+      if (words[i]?.w !== "hundred") return a;
+      i++;
+      if (a < 1 || a > 9) bad = true;
+      const r = rest(take);
+      pieces.push(a * 100, r);
+      return a * 100 + r;
+    };
+    let value = group();
+    if (value < 0) {
       i++;
       continue;
     }
-    value = first;
-    // "one hundred and five", "three thousand two hundred".
-    while (words[i] && (words[i].w === "hundred" || words[i].w === "thousand")) {
-      const scale = words[i].w === "hundred" ? 100 : 1000;
-      // "a hundred" and "one hundred" said as a place ("trade one hundred for ten tens") stay a place word.
-      const save = i;
+    if (words[i]?.w === "thousand") {
       i++;
-      value *= scale;
-      if (words[i]?.w === "and") i++;
-      const rest = take();
-      if (rest >= 0) value += rest;
-      else if (words[save + 1]?.w === "and") i = save + 1;
+      if (value < 1) bad = true;
+      const r = rest(group);
+      pieces.push(value * 1000, r);
+      value = value * 1000 + r;
     }
-    found.push({ value, at: words[start].at, end: words[i - 1].end, words: words.slice(start, i).map((x) => x.w) });
+    // A scale after a complete value ("two thousand two thousand", "five hundred thousand thousand") makes no one value.
+    if (SCALES.has(words[i]?.w ?? "")) bad = true;
+    if (bad) {
+      // The whole run of number words (and "and" between them) is one unread run.
+      while (numberWord(words[i]?.w) || (words[i]?.w === "and" && numberWord(words[i + 1]?.w))) i++;
+      value = NaN;
+    }
+    found.push({ value, at: words[start].at, end: words[i - 1].end, words: words.slice(start, i).map((x) => x.w), pieces });
   }
   return found;
 }
@@ -221,6 +259,8 @@ export function sayNumbers(raw: string): SayToken[] {
   }
   for (const w of wordNumbers(text)) {
     if (!free(w.at, w.end)) continue;
+    // Final check 9: a run that makes no one standard value is a number token with no value (unread).
+    if (Number.isNaN(w.value)) { push({ key: `?${text.slice(w.at, w.end)}`, q: null, at: w.at, end: w.end, text: text.slice(w.at, w.end) }); continue; }
     const after = text.slice(w.end).toLowerCase();
     const den = /^[\s-]+([a-z]+)/.exec(after);
     const denominator = den && Object.hasOwn(DENOMINATORS, den[1]) ? DENOMINATORS[den[1]] : undefined;
@@ -253,7 +293,7 @@ export function namesValue(raw: string, value: number): boolean {
   const text = raw.replace(/[−–]/g, "-").replace(/(\d),(?=\d{3}\b)/g, "$1");
   if (sayNumbers(text).some((t) => (t.q ? t.q[1] !== 0 && t.q[0] === value * t.q[1] : t.key === String(value)))) return true;
   if (Number.isInteger(value) && new RegExp(`(?<![\\d.])${Math.abs(value)}(?![\\d]|\\.\\d)`).test(text)) return true;
-  return wordNumbers(text).some((w) => w.value === Math.abs(value));
+  return wordNumbers(text).some((w) => w.value === Math.abs(value) || w.pieces.includes(Math.abs(value)));
 }
 
 /** The values in a text, to build an allowed set from code's own words. */
