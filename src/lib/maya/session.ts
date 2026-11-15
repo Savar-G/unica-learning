@@ -5116,7 +5116,7 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   const tutor = { help: progress ? 0 : s.solved === null ? (s.tutor?.help ?? 0) + 1 : 0, drawn: [...(s.tutor?.drawn ?? [])] };
   if (s.solved === null && act === "guide") {
     const open = stepFacts(pkg).filter((st) => !base.done.includes(st.id));
-    const tells = sentencesOf(text).some((x) => equationsOf(x).some((e) => !e.negated && equationHolds(e) === true && e.result.q?.[1] === 1 && open.some((st) => e.result.q?.[0] === st.result)));
+    const tells = sentencesOf(text).some((x) => equationsOf(x).some((e) => !e.negated && equationHolds(e) === true && e.result.q?.[1] === 1 && (open.some((st) => e.result.q?.[0] === st.result) || tutorKind(pkg).workValues(pkg).includes(e.result.q?.[0] ?? NaN))));
     const kind: Assistance = tells ? "guided" : "hint";
     if (!s.assistance.includes(kind)) s.assistance.push(kind);
   }

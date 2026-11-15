@@ -13,7 +13,7 @@
 //
 // Phase 1 scope: 2-digit whole-number addition and subtraction (`isTutorQuestion`), on admin test calls.
 import type { OperationPackage } from "@/lib/question-package";
-import { expressionKey, type TutorCommand, type TutorKind, type TutorStepFact } from "./tutor-kind";
+import { expressionKey, noteFromEquation, type TutorCommand, type TutorKind, type TutorStepFact } from "./tutor-kind";
 import { tutorKindOf } from "./tutor-kinds";
 import { affirms, equationHolds, equationsOf, neverSayProblem, sayNumbers, sentencesOf } from "./say-check";
 import { exactSafe } from "./math-vocab";
@@ -278,12 +278,45 @@ const DENIES = /^\s*(?:not quite|not yet|not right|no\b|nope|that'?s not|that is
 /** Code's honest line when the model's message failed twice (D-345): one short line and the step's question. */
 export function tutorFallbackText(pkg: OperationPackage, done: readonly string[], solved: boolean): string {
   if (solved) return "Let me say that another way. How did you get your answer?";
-  return `Let me say that another way. ${tutorKind(pkg).stepQuestion(pkg, done) ?? "So what is the whole answer?"}`;
+  // Review of #1009: a kind's question is code's line only in a closed plain math form with true math; else the core's
+  // own question (the child hears this line with no review).
+  const kind = tutorKind(pkg);
+  const q = kind.stepQuestion(pkg, done);
+  const op = kind.op?.(pkg);
+  const safe = q !== null && plainTeaching(q) && checkTutorSay(q, { stance: "none", claims: (x) => kind.claimProblems(pkg, x), ...(op ? { op } : {}) }).ok;
+  return `Let me say that another way. ${safe ? q : "So what is the whole answer?"}`;
 }
 
 /** The commands for the model's drawing requests (the question's kind builds them from its checked steps). */
 export function tutorDrawings(pkg: OperationPackage, draw: readonly { offer: string; place?: string }[], drawn: readonly string[], noteId: (i: number) => string): { commands: TutorCommand[]; keys: string[] } {
-  return tutorKind(pkg).draw(pkg, draw, drawn, noteId);
+  const kind = tutorKind(pkg);
+  const { commands, keys } = kind.draw(pkg, draw, drawn, noteId);
+  // Review of #1009: the core checks every kind command before the board gets it. A batch with any command that fails
+  // is not drawn at all (the words still go out).
+  const answer = pkg.answer.value.type === "number" ? [pkg.answer.value.value] : [];
+  const numbers = new Set<string>([...kind.streamScope(pkg).numbers, ...kind.workValues(pkg), ...answer].map(String));
+  return commands.every((c) => safeCommand(c, numbers)) ? { commands, keys } : { commands: [], keys: [] };
+}
+
+/** Fields of a board command that carry text a child sees. */
+const SHOWN_FIELDS = new Set(["text", "label", "caption", "title", "value", "values"]);
+
+/**
+ * A kind's board command the child may see: every shown field is one of the question's own numbers ("value") or a
+ * whole true equation that noteFromEquation rebuilds the same ("text"); every other string is a short structural id
+ * (no spaces). Nested objects and lists are read the same way.
+ */
+export function safeCommand(cmd: unknown, numbers: ReadonlySet<string>, key = ""): boolean {
+  if (typeof cmd === "string") {
+    if (!SHOWN_FIELDS.has(key)) return !/\s/.test(cmd) && cmd.length <= 40;
+    if (/^\d+$/.test(cmd)) return numbers.has(String(Number(cmd)));
+    return noteFromEquation(cmd) === cmd;
+  }
+  if (typeof cmd === "number") return !SHOWN_FIELDS.has(key) || numbers.has(String(cmd));
+  if (cmd === null || typeof cmd === "boolean") return true;
+  if (Array.isArray(cmd)) return cmd.every((x) => safeCommand(x, numbers, key));
+  if (typeof cmd === "object") return Object.entries(cmd as Record<string, unknown>).every(([k, v]) => safeCommand(v, numbers, k));
+  return false;
 }
 
 export { expressionKey } from "./tutor-kind";

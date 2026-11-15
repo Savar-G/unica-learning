@@ -47,6 +47,8 @@ export interface TutorKind {
   stepQuestion(pkg: OperationPackage, done: readonly string[]): string | null;
   /** The drawings the model may ask for on this question. */
   drawings(pkg: OperationPackage): readonly TutorDrawing[];
+  /** A valid request of each drawing, for the contract test (a drawing with no request here is tried with place ""). */
+  drawingExamples?(pkg: OperationPackage): readonly { offer: string; place: string }[];
   /**
    * The commands for the model's drawing requests, in order, and the keys of what they drew. `drawn` is what the call
    * drew already: never draw it twice. Every command comes from the checked steps; never from the model's text, except a

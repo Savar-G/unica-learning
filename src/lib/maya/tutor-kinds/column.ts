@@ -219,6 +219,15 @@ export const columnKind: TutorKind = {
   streamScope,
   stepQuestion,
   drawings: () => DRAWINGS,
+  drawingExamples: (pkg) => {
+    const steps = tutorSteps(pkg);
+    const st = steps[0];
+    return [
+      { offer: "trade", place: "" },
+      { offer: "digit", place: st?.place ?? "ones" },
+      ...(st ? [{ offer: "note", place: stepEquation(st).replace("−", "-") }] : []),
+    ];
+  },
   draw,
   // The core reads this kind's equations, place quantities and trades (tutor-math.ts).
   claimProblems: () => [],

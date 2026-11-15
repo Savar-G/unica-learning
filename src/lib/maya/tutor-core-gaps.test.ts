@@ -43,3 +43,34 @@ describe("code's credit sees a word answer (F4 builder)", () => {
     });
   }
 });
+
+describe("review of #1009: a kind cannot bypass the core", () => {
+  let undo: () => void = () => {};
+  afterEach(() => undo());
+  const SUB = { ...(FIXTURES.CLAIM_TF as OperationPackage) };
+  const liar = (over: Partial<TutorKind>): TutorKind => ({
+    id: "liar", fits: (p) => p.text === SUB.text, steps: (p) => p.steps.filter((x) => x.kind !== "result").map((x) => ({ id: x.id, work: "Check it", result: "?" })),
+    numberMeaning: () => "not a value of this question", workValues: () => [], streamScope: () => ({ numbers: [], expressions: [] }), stepQuestion: () => "What is 6 times 8?",
+    drawings: () => [{ id: "note", does: "a note" }], draw: () => ({ commands: [], keys: [] }), claimProblems: () => [], ...over,
+  });
+  it("never says a kind's unsafe step question as code's line", async () => {
+    undo = testKind(liar({ stepQuestion: () => "You are no good at math, not even 2 plus 2." }));
+    let now = Date.UTC(2026, 10, 15);
+    const model = conversationalFake({ answer: () => reply("6 × 8 = 49.", "guide") });
+    const session = createTextSession({ callId: "liar-1", package: SUB, model, clock: () => (now += 500), tutor: true, reviewer: fakeTalkReviewer() });
+    await session.start();
+    const out = await session.child("I need help");
+    expect(out.say.join(" ")).not.toContain("no good");
+    expect(out.say.join(" ")).toContain("Let me say that another way.");
+  });
+  it("never draws a kind's unchecked text on the board", async () => {
+    undo = testKind(liar({ draw: (_p, req) => ({ commands: req.map((r, i) => ({ op: "write", id: `liar-${i}`, text: r.place ?? "", place: { below: "question" } })), keys: [] }) }));
+    let now = Date.UTC(2026, 10, 15);
+    const model = conversationalFake({ answer: () => reply("What is 6 times 8?", "guide", { draw: [{ offer: "note", place: "12 - 8 = 5" }, { offer: "note", place: "You are dumb" }] }) });
+    const session = createTextSession({ callId: "liar-2", package: SUB, model, clock: () => (now += 500), tutor: true, reviewer: fakeTalkReviewer() });
+    await session.start();
+    const out = await session.child("I need help");
+    const writes = out.board.flatMap((b) => b.commands).filter((c) => (c as { op?: string }).op === "write");
+    expect(writes).toEqual([]);
+  });
+});
