@@ -95,6 +95,8 @@ export function callSeams(db: SupabaseClient<Database>, options: { env?: Env; or
   const ledger = mayaSpendLedger(db, { env });
   const meter = (call: SpendCall | undefined, how?: CallModelOptions) => (call ? { ledger, call, newId: () => randomUUID(), ...how } : undefined);
   return {
+    // D-345: only the exact value "on" lets the tutor core teach family calls (desk chat and family voice).
+    tutorFamilies: env.MAYA_TUTOR_FAMILIES === "on",
     alerts: callAlerts({ ledger: mayaAlertLedger(db), to: env.SIGNUP_NOTIFY_EMAIL || null, origin: options.origin ?? siteOrigin(env), transport: options.transport }),
     store: mayaCallStore(db),
     connections: mayaConnectionLog(db),

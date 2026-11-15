@@ -259,10 +259,15 @@ export interface CallModelOptions {
 
 export interface CallSeams {
   /**
-   * D-345: whether admin test calls teach with the tutor core (default on). False keeps them on the controller, for the
-   * controller's own tests; family calls always keep the controller in Phase 1.
+   * D-345: whether admin test calls teach with the tutor core (default on). False keeps every call on the controller,
+   * for the controller's own tests.
    */
   tutor?: boolean;
+  /**
+   * D-345: whether family calls (desk chat, kind "chat", and family voice, kind "family") also teach with the tutor core.
+   * The server's MAYA_TUTOR_FAMILIES switch (callSeams); only true turns it on. A resumed call keeps what it started with.
+   */
+  tutorFamilies?: boolean;
   store: CallStore;
   /** The children's wording history: read before a call, added to when it ends. */
   history: WordingHistoryStore;
@@ -883,13 +888,14 @@ export function mayaCalls(seams: CallSeams): MayaCalls {
     }
   }
 
-  /** A call's text session. Admin test calls have free talk on (D-197), with the model's review, and the tutor core (D-345); chat has it off. A resumed call keeps its flags. */
+  /** A call's text session. Admin test calls have free talk on (D-197), with the model's review, and the tutor core (D-345); chat has free talk off; family calls get the tutor core behind `tutorFamilies`. A resumed call keeps its flags. */
   function textSession(record: Pick<CallRecord, "id" | "parentId" | "childId"> & { kind: CallKind }, pkg: QuestionPackage, model: MayaModel, childName: string | null, saved?: SavedTextSession, seed?: number, history?: WordingHistory, limitMs?: number, grade?: number, confirmWorkbook?: boolean, onGuidance?: (output: TextOutput) => void, sayHooks?: Pick<TextSessionOptions, "onSayPart" | "onSayCancel" | "onSayEnd" | "modelRepair" | "onPreparation" | "withModelAttempt">, spend?: SpendCall, preparing?: Pick<TextSessionOptions, "spend" | "prepareModel" | "prepareHandleId">): TextSession {
     return createTextSession({
       onGuidance, ...sayHooks, ...preparing,
       callId: record.id, channel: record.kind === "chat" ? "chat" : undefined, package: pkg, model, clock: seams.clock, random: seed, history, childName, runner: "text", resume: saved, limitMs, grade, confirmWorkbook,
-      // D-345, Phase 1: the tutor core teaches admin test calls only (chat and voice); family calls keep the controller.
-      tutor: record.kind === "admin_test" && seams.tutor !== false,
+      // D-345: the tutor core teaches admin test calls, and family calls (desk chat and family voice) only when the
+      // MAYA_TUTOR_FAMILIES switch is on. The core still decides per question (isTutorQuestion).
+      tutor: seams.tutor !== false && (record.kind === "admin_test" || (seams.tutorFamilies === true && (record.kind === "chat" || record.kind === "family"))),
       freeTalk: record.kind !== "chat" && record.kind !== "family", reviewer: seams.reviewer?.(model.id, spend ?? spendCall(record)) ?? null,
     });
   }
