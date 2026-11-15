@@ -257,11 +257,18 @@ export interface ShippedBookView {
 
 export interface WorkbooksView {
   child: ChildView;
+  /** Today in family time (YYYY-MM-DD): the book's calendar day is counted from it (src/lib/parent-week.ts). */
+  today: string;
   /** The newest shipped book; null before the first one ships. */
   current: CurrentWorkbookView | null;
   next: NextBook;
   /** Every shipped book, newest first. */
   books: ShippedBookView[];
+  /**
+   * Home's count for the child's current book (the newest with a confirmed delivery), so the Workbooks cover says the same
+   * number: saved, unexpired photos over the book's day pages. Null when there is no such book or it cannot be read.
+   */
+  homeScan: { bookId: string; scanned: number; total: number } | null;
 }
 
 function deliveryView(value: unknown): WorkbookDeliveryView | null {
@@ -300,7 +307,20 @@ export async function readWorkbooks(reader: ParentViewReader, childId: string, n
   const next: NextBook = current && current.shippedOn === null && !child.readOnly
     ? { kind: "none" }
     : nextBook({ shippedOn: current?.shippedOn ?? null, deliveredOn: current?.deliveredOn ?? null, today: localDay(now, zone), ended: child.readOnly, pausedWeeks });
-  return { child, current, next, books: books.map((w) => ({ id: w.id, number: w.number, shippedOn: day(w.shippedAt), deliveredOn: day(confirmedWorkbookDelivery(deliveries, corrections, child.id, w.id, now)) })) };
+  const shown = books.map((w) => ({ id: w.id, number: w.number, shippedOn: day(w.shippedAt), deliveredOn: day(confirmedWorkbookDelivery(deliveries, corrections, child.id, w.id, now)) }));
+  // Home's book: the newest with a confirmed delivery. Its count is Home's: day pages (a page with a "Day N" label) that have
+  // a saved photo that has not expired.
+  const home = shown.find((b) => b.deliveredOn !== null);
+  let homeScan: WorkbooksView["homeScan"] = null;
+  if (home) {
+    try {
+      const [pages, scans] = await Promise.all([reader.workbookPages(home.id), reader.savedScans()]);
+      const saved = new Set(scans.filter((s) => s.workbookId === home.id && Date.parse(s.expiresAt) > now).map((s) => s.pageId));
+      const day = pages.filter((p) => dayNumber(p.dayLabel) !== null);
+      homeScan = { bookId: home.id, scanned: day.filter((p) => saved.has(p.id)).length, total: day.length };
+    } catch { homeScan = null; }
+  }
+  return { child, today: localDay(now, zone), current, next, books: shown, homeScan };
 }
 
 /** One reported area's bar (D-243). The school grade line is the child's `schoolGrade`. */

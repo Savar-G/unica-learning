@@ -2,6 +2,7 @@ import Link from "next/link";
 import { HomeSkills } from "@/components/parent-home-skills";
 import { SUPPORT_EMAIL, SUPPORT_HREF } from "@/lib/contact";
 import type { OverviewView } from "@/lib/parent-view";
+import { workbooksDayPath } from "@/lib/parent-shell";
 import type { WeekDayState } from "@/lib/parent-week";
 import "./parent-option-a.css";
 import "./parent-overview.css";
@@ -73,10 +74,11 @@ export function ParentOverview({ overview }: { overview: OverviewView }) {
                 {workbook.percent !== null && <Ring percent={workbook.percent} book={workbook.number} />}
               </div>
               {workbook.today && (
-                <div className="po-today">
+                <Link className="po-today" href={workbooksDayPath(child.id, workbook.day)}>
                   <div><b>{workbook.today.label}</b>{workbook.today.topic && <span>{workbook.today.topic}</span>}</div>
                   {workbook.today.pages > 0 && <span className="po-pp">{workbook.today.scanned} of {workbook.today.pages} scanned</span>}
-                </div>
+                  <span className="po-chev" aria-hidden="true">›</span>
+                </Link>
               )}
             </section>
           )}
