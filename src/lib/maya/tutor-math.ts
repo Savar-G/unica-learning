@@ -312,6 +312,13 @@ export function falseClaims(sentence: string, op?: "add" | "subtract", trades: r
  */
 /** Words that may stand next to a read number without changing it. Any other word next to it sends the sentence to the math review. */
 const LINK_WORDS = new Set(["and", "so", "then", "now", "next", "first", "because", "in", "on", "at", "the", "we", "you", "it", "yes", "okay", "ok", "here", "also", "too", "from", "to", "for", "with", "is", "are", "what", "get", "gives", "make", "makes", "left", "if", "when", "after", "before", "this", "that's", "but"]);
+/**
+ * Final check 8: a word before a claim in its clause that encloses it: a negation, a word that opens an embedded clause
+ * or a hypothesis, or a word that opens a scope (a place, an example, a condition).
+ */
+const ENCLOSING = /^(?:not|never|no|nor|neither|false|untrue|wrong|that|if|whether|unless|suppose|pretend|imagine|when|where|in|for|on|at|with|without|during|instead|rather|than|example|easier|maybe|might|could|would|should|wish|doubt)$/;
+/** Final check 8: words that start a new clause after a claim: the scope scan after it stops there. */
+const NEW_CLAUSE = new Set(["so", "then", "because", "cause", "cuz", "before", "after", "and", "but", "when", "while", "since", "which", "until", "or", "as"]);
 const RELATION_WORDS = new Set(["greater", "less", "more", "fewer", "bigger", "smaller", "larger", "higher", "lower", "than", "same", "equal", "twice", "double", "half"]);
 
 /**
@@ -370,6 +377,7 @@ function readClaimsOnce(sentence: string, op?: "add" | "subtract", trades: reado
   /** Where each claim code read and found true ends: the words after it in its clause are read too (pre-launch check 2). */
   const ends: number[] = [];
   const mark = (from: number, to: number) => { for (let k = from; k < to; k++) used.add(k); ends.push(to); };
+  const unread: string[] = [];
   let i = 0;
   let eqSeen = 0;
   let eqRead = 0;
@@ -420,10 +428,41 @@ function readClaimsOnce(sentence: string, op?: "add" | "subtract", trades: reado
   const signedAt = (k: number) => items[k]?.kind === "op" || (items[k]?.kind === "other" && /^(?:negative|positive)$/.test((items[k] as { word?: string }).word ?? ""));
   /** Skips a claim this reader does not read in full: its "=" counts as seen on purpose, so it is not refused. */
   const skipClaim = (relAt: number) => { const r = items[relAt]; if (r?.kind === "rel" && r.eq) eqRead++; };
+  // Final check 8 (2026-11-15): an enclosing negation or a scope phrase around a claim ("It is not true that 3 times 2 is
+  // 7.", "If 3 times 2 is 7, ...", "... in the easier example", "... with a negative sign") can change what it says.
+  // Such a claim is unread: no refusal and no read; the sentence goes to the math review. Before the claim, in its
+  // clause, a negation, a relation or a word that opens a scope or an embedded clause encloses it; after it, to the end
+  // of its clause or the next word that starts a new clause, any word that is not a plain link word does.
+  const stops = (k: number) => cuts.has(k + 1) || (items[k]?.kind === "other" && /^[;:.!?]$/.test((items[k] as { word?: string }).word ?? ""));
+  const scopedBefore = (from: number): boolean => {
+    for (let k = from - 1; k >= 0 && !stops(k); k--) {
+      const it = items[k];
+      if (it.kind === "rel" && it.negated) return true;
+      if (it.kind === "other" && (ENCLOSING.test(it.word ?? "") || /n't$/.test(it.word ?? ""))) return true;
+    }
+    return false;
+  };
+  const scopedAfter = (to: number): boolean => {
+    for (let k = to; k < items.length && !cuts.has(k); k++) {
+      const it = items[k];
+      if (it.kind !== "other") return false;
+      const w = it.word ?? "";
+      if (/^[;:.!?]$/.test(w) || NEW_CLAUSE.has(w)) return false;
+      if (!LINK_WORDS.has(w)) return true;
+    }
+    return false;
+  };
+  /** Takes back what a scoped claim found (from `pb` and `eb`): its problems and its read become unread. */
+  const unscope = (pb: number, eb: number, from: number, to: number) => {
+    problems.splice(pb);
+    ends.splice(eb);
+    for (let k = from; k < to; k++) used.delete(k);
+    unread.push("a claim inside a scope or a negation");
+  };
   while (i < items.length) {
     const left = full(i);
     if (!left || items[left.next]?.kind !== "rel") { i++; continue; }
-    if (signedAt(i - 1)) {
+    if (signedAt(i - 1) || scopedBefore(i)) {
       // Every "=" of the claim's chain is left unread on purpose.
       let k = left.next;
       while (items[k]?.kind === "rel") { skipClaim(k); const r = full(k + 1); if (!r) break; k = r.next; }
@@ -458,12 +497,16 @@ function readClaimsOnce(sentence: string, op?: "add" | "subtract", trades: reado
       const rel = items[left.next] as Extract<Item, { kind: "rel" }>;
       const sign = compareSign(wordAt(items, left.next + 1));
       const base = sign && !rel.now ? than(left.next + 2) : null;
+      // Final check 8: a base that runs on into an operator or a sign is not read in full: unread.
+      if (sign && base && signedAt(base.next)) { skipClaim(left.next); i = base.next; continue; }
       if (sign && base) {
         const [a, b] = [valued(left), valued(base)];
         if (a && b && !unsafeValue(a.value) && !unsafeValue(b.value)) {
+          const [pb, eb] = [problems.length, ends.length];
           const holds = sign > 0 ? a.value > b.value + 1e-9 : a.value < b.value - 1e-9;
           if (holds === rel.negated) problems.push(`it says ${a.value} is ${rel.negated ? "not " : ""}${sign > 0 ? "more" : "less"} than ${b.value}`);
           else mark(left.at, base.next);
+          if (scopedAfter(base.next)) unscope(pb, eb, left.at, base.next);
           if (rel.eq) eqRead++;
         }
         i = base.next;
@@ -481,12 +524,22 @@ function readClaimsOnce(sentence: string, op?: "add" | "subtract", trades: reado
     // for "less". A comparison that does not hold is refused before any count exemption (pre-launch review B).
     const sign = compareSign(word);
     const base = sign && chain.length === 2 && !rels[0].now ? than(at + 1) : null;
+    // Final check 8 (2026-11-15): a comparison this reader cannot read in full ("4 is 6 more than minus 2": its base has
+    // a sign; a chain or a "now" relation before the comparison word; a base that runs on into an operator or a sign) is
+    // unread: no refusal and no read, never the equality of its first two numbers. It goes to the math review.
+    if (sign && (!base || signedAt(base.next))) {
+      for (let k = left.next; k < at; k++) skipClaim(k);
+      i = at;
+      continue;
+    }
     if (sign && base) {
       const [a, b, c] = [valued(chain[0]), valued(chain[1]), valued(base)];
       if (a && b && c && ![a, b, c].some((x) => unsafeValue(x.value))) {
+        const [pb, eb] = [problems.length, ends.length];
         const holds = near(a.value, c.value + sign * b.value);
         if (holds === rels[0].negated) problems.push(`it says ${a.value} is ${rels[0].negated ? "not " : ""}${b.value} ${sign > 0 ? "more" : "less"} than ${c.value}`);
         else mark(chain[0].at, base.next);
+        if (scopedAfter(base.next)) unscope(pb, eb, chain[0].at, base.next);
         if (rels[0].eq) eqRead++;
       }
       i = base.next;
@@ -524,16 +577,18 @@ function readClaimsOnce(sentence: string, op?: "add" | "subtract", trades: reado
       if (rels[k].negated && same) problems.push(`it says ${a.value} and ${b.value} are not the same`);
     }
     // Read whole and true: every side code could value, and no problem found.
+    const eb = ends.length;
     if (problems.length === before && sides.every((x) => x !== null) && !unbound && literal) mark(chain[0].at, at);
+    // Final check 8: a scope phrase after the claim in its clause leaves it unread, true or false.
+    if (scopedAfter(at)) unscope(before, eb, chain[0].at, at);
     i = at;
   }
   if (eqRead < eqSeen) problems.push("it has an \"=\" code cannot read");
-  // A bracket that is an operand but cannot be read whole ("2 times (3 plus 4 is 7)") is refused, never skipped.
+  // Final check 8 (2026-11-15): a bracket this reader cannot read whole ("2 times (minus 3 plus 4) is 2": a sign inside;
+  // "2 times (3 plus 4 is 7)") is unread, never refused: the sentence goes to the math review, which judges it.
   for (const [k, it] of items.entries()) {
-    if (it.kind === "open" && !read.has(k) && items[k - 1]?.kind === "op") problems.push("it has brackets code cannot read");
-    if (it.kind === "close" && !read.has(k) && items[k + 1]?.kind === "op") problems.push("it has brackets code cannot read");
+    if ((it.kind === "open" || it.kind === "close") && !read.has(k)) unread.push(it.kind === "open" ? "(" : ")");
   }
-  const unread: string[] = [];
   // A word right before or after a read number that is not a plain link word can change its meaning ("4 percent", "4
   // squared", "4 million", "false that 12 minus 8 is 4"): such a claim is not read whole (final check of #1044).
   for (const k of used) {

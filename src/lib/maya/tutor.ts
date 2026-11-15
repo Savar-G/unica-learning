@@ -289,11 +289,15 @@ export const numberMeaning = (pkg: OperationPackage, n: number): string => tutor
 /** The printed sign of each operator the equation reader reads. */
 const OP_SIGN: Record<SayEquation["ops"][number], string> = { "+": "+", "-": "−", "*": "×", "/": "÷" };
 
-/** Code's verdict on every number and every equation in the child's turn, as sentences for the brief. */
+/**
+ * Code's verdict on every number and every equation in the child's turn, as sentences for the brief. Final check 8
+ * (2026-11-15): an equation is printed only when code read every token of its clause (`equationsOf` with `whole`): "3
+ * times 2 is 6 tens", "It is not true that 3 times 2 is 7" print no equation, never one of their parts.
+ */
 export function childFacts(pkg: OperationPackage, text: string): string[] {
   const facts: string[] = [];
   for (const sentence of sentencesOf(text)) {
-    for (const e of equationsOf(sentence)) {
+    for (const e of equationsOf(sentence, { whole: true })) {
       const holds = equationHolds(e);
       if (holds === null) continue;
       // Final check 7 (2026-11-15): each operator is printed from its own place, as the reader read it ("3 × 2 = 6",
@@ -311,9 +315,13 @@ export function childFacts(pkg: OperationPackage, text: string): string[] {
   return facts;
 }
 
-/** The child's turn says a false equation ("12 minus 8 is 5"): code's own read, whatever step it is about. */
-export function childSaysFalse(text: string): boolean {
-  return sentencesOf(text).some((x) => equationsOf(x).some((e) => equationHolds(e) === e.negated && equationHolds(e) !== null));
+/**
+ * The child's turn says a false equation ("12 minus 8 is 5"): code's own read, whatever step it is about. `whole` (final
+ * check 8): only an equation read in its whole clause counts; the child's verdict for the review uses it. Without it the
+ * read is broad on purpose: it only keeps Maya from praising the turn (the stance), so reading too much fails closed.
+ */
+export function childSaysFalse(text: string, options: { whole?: boolean } = {}): boolean {
+  return sentencesOf(text).some((x) => equationsOf(x, options).some((e) => equationHolds(e) === e.negated && equationHolds(e) !== null));
 }
 
 /** The context of the whole-message check: code's verdict on the child's answer this turn. */
@@ -425,7 +433,10 @@ export function checkTutorSay(text: string, ctx: TutorCheckContext & { extra?: R
   const sentences = sentencesOf(say);
   for (const sentence of sentences) {
     // A division with a remainder is read by falseClaims; the plain equation reader would read "2 R 3" as 2.
-    for (const e of equationsOf(sentence.replace(REMAINDER_FORM, " "))) {
+    // Final check 8 (2026-11-15): only an equation read in its whole clause is refused. An enclosing negation, a scope,
+    // a unit or any other word around it ("It is not true that 3 times 2 is 7.", "52 minus 28 is 2 tens and 4 ones.")
+    // leaves it unread: the sentence goes to the math review, never a refusal.
+    for (const e of equationsOf(sentence.replace(REMAINDER_FORM, " "), { whole: true })) {
       const holds = equationHolds(e);
       if (holds === null) continue;
       if (holds === e.negated) return { ok: false, reason: "false_equation", detail: `"${sentence}" ${e.negated ? "calls a true equation false" : "holds a false equation"}. Every equation Maya says must be true.` };

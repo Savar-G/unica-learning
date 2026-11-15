@@ -223,6 +223,55 @@ function deepMembers(text: string): { members: { path: string[]; value: unknown 
   return { members, repeated };
 }
 
+/** The fields whose values route a turn before any math (the gate and the priority readings). */
+const PRIORITY_KEYS = new Set(["gate", "kind", "aboutMaya", "safety", "stop", "unsafeRequest"]);
+
+/**
+ * Final check 8 (2026-11-15): every complete `"key": value` pair of a priority field in raw text, at any place, in the
+ * order written. A tolerant scan: JSON strings are read whole (with their escapes), and any other character that is no
+ * JSON token (a fence, "NaN", prose) only breaks the pair it stands in. A value is a string or true, false or null.
+ */
+export function rawPriorityMembers(raw: string): { key: string; value: unknown }[] {
+  type Tok = { t: "str"; v: string } | { t: "colon" } | { t: "lit"; v: unknown } | { t: "other" };
+  const toks: Tok[] = [];
+  for (let i = 0; i < raw.length;) {
+    const c = raw[i];
+    if (/\s/.test(c)) { i++; continue; }
+    if (c === '"') {
+      const end = stringEnd(raw, i);
+      if (end < 0) break;
+      let v: unknown;
+      try { v = JSON.parse(raw.slice(i, end)); } catch { v = null; }
+      toks.push(typeof v === "string" ? { t: "str", v } : { t: "other" });
+      i = end;
+      continue;
+    }
+    if (c === ":") { toks.push({ t: "colon" }); i++; continue; }
+    const lit = /^(?:true|false|null)\b/.exec(raw.slice(i, i + 6));
+    if (lit) { toks.push({ t: "lit", v: JSON.parse(lit[0]) }); i += lit[0].length; continue; }
+    toks.push({ t: "other" });
+    i++;
+  }
+  const out: { key: string; value: unknown }[] = [];
+  for (let k = 0; k + 2 < toks.length; k++) {
+    const a = toks[k], b = toks[k + 1], v = toks[k + 2];
+    if (a.t === "str" && PRIORITY_KEYS.has(a.v) && b.t === "colon" && (v.t === "str" || v.t === "lit")) out.push({ key: a.v, value: v.v });
+  }
+  return out;
+}
+
+/** Whether a parsed reading carries every priority value the raw text holds (a stronger or equal one counts). */
+export function priorityCovered(parsed: Record<string, unknown> | null, raw: Record<string, unknown> | null): boolean {
+  if (!raw) return true;
+  if (!parsed) return false;
+  const rank = (x: unknown) => (x === "immediate" ? 2 : x === "concern" ? 1 : 0);
+  if (rank(raw.safety) > rank(parsed.safety)) return false;
+  if (raw.aboutMaya && parsed.aboutMaya !== raw.aboutMaya && parsed.aboutMaya !== "secret_friend") return false;
+  if (raw.stop && !parsed.stop) return false;
+  if (raw.unsafeRequest && !parsed.unsafeRequest) return false;
+  return true;
+}
+
 /**
  * Final check 6 (2026-11-15): what a reply's raw text, as streamed so far, says before any parse. `repeated`: a key comes
  * twice in one object, at ANY depth (a second "gate", a second "reading", or a second "safety" inside the reading; final
@@ -234,15 +283,19 @@ function deepMembers(text: string): { members: { path: string[]; value: unknown 
  * (fail closed).
  */
 export function streamedPriority(raw: string): { repeated: boolean; priority: Record<string, unknown> | null } {
-  const { members, repeated } = deepMembers(raw);
+  const { repeated } = deepMembers(raw);
+  // Final check 8 (2026-11-15): the priority fields are read from the RAW text, never only from parsed JSON: every
+  // complete `"key": value` pair of a priority field wherever it stands, inside an outer Markdown fence, after an invalid
+  // value ("gate": NaN) or in a cut-off copy. Text inside a JSON string (the `say` text) is one token, so a key written in
+  // it is no member. Any non-"none" priority value seen anywhere applies; over-triggering only adds code's fixed line.
+  const members = rawPriorityMembers(raw);
   const p: Record<string, unknown> = {};
   const raise = (severity: unknown) => {
     if (severity === "immediate") p.safety = "immediate";
     else if (severity === "concern" && p.safety !== "immediate") p.safety = "concern";
   };
   let gateSafety = false;
-  for (const { path, value } of members) {
-    const key = path.join(".");
+  for (const { key, value } of members) {
     if (key === "gate") {
       if (value === "identity") p.aboutMaya ??= "identity";
       if (value === "safety") gateSafety = true;
@@ -250,11 +303,11 @@ export function streamedPriority(raw: string): { repeated: boolean; priority: Re
     } else if (key === "kind") {
       if (value === "safety") raise("concern");
       if (value === "stop") p.stop = true;
-    } else if (key === "reading.aboutMaya") {
+    } else if (key === "aboutMaya") {
       if (value === "identity" || value === "secret_friend") p.aboutMaya = p.aboutMaya === "secret_friend" ? "secret_friend" : value;
-    } else if (key === "reading.safety") raise(value);
-    else if (key === "reading.stop" && value === true) p.stop = true;
-    else if (key === "reading.unsafeRequest" && value === true) p.unsafeRequest = true;
+    } else if (key === "safety") raise(value);
+    else if (key === "stop" && value === true) p.stop = true;
+    else if (key === "unsafeRequest" && value === true) p.unsafeRequest = true;
   }
   // A "safety" gate on a harmful request is the decline's (as priorityOf reads it); else it is a safety concern.
   if (gateSafety && !p.unsafeRequest) raise("concern");
@@ -262,7 +315,7 @@ export function streamedPriority(raw: string): { repeated: boolean; priority: Re
 }
 
 import { reviewInput, runReview, CONVERSATION_REVIEW_TIME_LIMIT_MS, REVIEW_TIME_LIMIT_MS, type TalkReviewer } from "@/lib/maya-talk-review";
-import { runMathReview, type MathReviewer } from "@/lib/maya-math-review";
+import { fromMalformedAnswer, runMathReview, type MathReviewer } from "@/lib/maya-math-review";
 import { mathReviewInput, type MathReview, type MathReviewInput, type MathReviewResult, type TalkReviewInput, type TalkReviewResult } from "@/lib/maya";
 import { readFromFence } from "@/lib/ai-fenced";
 import { classifyError, packageHash, redactText, redactTrace, traceCounts, TRACE_KIND, TRACE_VERSION, type MayaTrace, type TraceBoardBatch, type TraceTurn, type TraceObligation } from "@/lib/maya-trace";
@@ -599,6 +652,21 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   /** Math-truth reviews the stream started (two-layer true math), by their whole input, used once by the whole-reply check. */
   const streamMathReviews = new Map<string, { requestId: number; result: Promise<MathReviewResult> }>();
   const mathKey = (input: MathReviewInput) => JSON.stringify(input);
+  /**
+   * Final check 8 (2026-11-15): a sentence whose math review answered malformed is final "unsure" for the child turn: no
+   * second call of any kind, also when the repair says it again. Keyed by the child turn and the sentence.
+   */
+  const malformedMath = new Map<string, Promise<MathReviewResult>>();
+  const reviewMath = (input: MathReviewInput, turn: number, ms: number, onError?: (e: unknown) => void): Promise<MathReviewResult> => {
+    const key = `${turn}|${input.sentence}`;
+    const held = malformedMath.get(key);
+    if (held) return held;
+    const started = runMathReview(options.mathReviewer!, input, ms, onError);
+    return started.then((r) => {
+      if (fromMalformedAnswer(r)) malformedMath.set(key, Promise.resolve(r));
+      return r;
+    });
+  };
   /** A review error goes to the observer; an observer that throws changes nothing. */
   const reviewError = (error: unknown) => {
     try { options.onError?.(error, { turn: folded.turns.length, source: "review" }); } catch { /* the observer is not the review */ }
@@ -758,7 +826,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
           }
           if (how.math) {
             const input = read(() => mathReviewInput(session, sentence, before));
-            const started = runMathReview(options.mathReviewer!, input, options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS);
+            const started = reviewMath(input, session.turns.length, options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS);
             streamMathReviews.set(mathKey(input), { requestId, result: started });
             checks.push(started.then((r) => r.verdict === "true"));
           }
@@ -822,7 +890,10 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         return;
       }
       const scan = rawScan();
-      if ("proposal" in got && scan.repeated) {
+      // Final check 8 (2026-11-15): a parsed proposal that does not carry every priority value of its raw text (one in a
+      // fenced copy the parse dropped, or after an invalid value) is malformed for routing too: the raw value applies.
+      const lost = "proposal" in got && !priorityCovered(streamedPriority(JSON.stringify(got.proposal ?? null)).priority, scan.priority);
+      if ("proposal" in got && (scan.repeated || lost)) {
         // Final check 6: a key written twice makes the whole output malformed for routing: no part of it is used, and any
         // priority value in any copy applies (fail closed). It counts as output that is not valid JSON.
         streamDone = true;
@@ -884,7 +955,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       const key = mathKey(input);
       const streamed = streamMathReviews.get(key);
       if (streamed && streamed.requestId === requestId) mathUsed.push(key);
-      const result = streamed && streamed.requestId === requestId ? streamed.result : runMathReview(options.mathReviewer!, input, options.reviewTimeLimitMs ?? (before.conversational ? CONVERSATION_REVIEW_TIME_LIMIT_MS : REVIEW_TIME_LIMIT_MS), reviewError);
+      const result = streamed && streamed.requestId === requestId ? streamed.result : reviewMath(input, before.turns.length, options.reviewTimeLimitMs ?? (before.conversational ? CONVERSATION_REVIEW_TIME_LIMIT_MS : REVIEW_TIME_LIMIT_MS), reviewError);
       return result.then((r) => ({ text, result: r }));
     })).then((all) => mathTexts.map((text) => all.find((m) => m.text === text && m.result.verdict !== "true") ?? all.find((m) => m.text === text)!)) : Promise.resolve([]);
     const reviewed = Promise.all([reviews, mathReviews]).then(([results, maths]) => {
