@@ -115,12 +115,20 @@ export interface MemoryWorkbookQuestion {
   /** The page the question is on; "" when left out. */
   pageId?: string;
 }
+/** One day of a workbook's printed plan: its topic, as the Workbooks tab names it. */
+export interface MemoryPlanTopic {
+  parentId: string;
+  childId: string;
+  workbookId: string;
+  day: number;
+  topic: string;
+}
 /** One recorded change of a standard's state (public.skill_state_history). */
 export type MemorySkillChange = Owned & StateChange;
 /** One wrong answer with a known cause (public.learning_events: result wrong, `mistake` set). */
 export type MemoryMistake = Owned & MistakeRecord & { childId: string };
 
-const TABLES = ["children", "tests", "reports", "cards", "deliveries", "workbooks", "plans", "switches", "corrections", "dispatches", "family", "results", "scans", "pages", "learning", "pin", "maya", "skillTests", "questions", "overviewProgress", "history", "mistakes"] as const;
+const TABLES = ["children", "tests", "reports", "cards", "deliveries", "workbooks", "plans", "switches", "corrections", "dispatches", "family", "results", "scans", "pages", "learning", "pin", "maya", "skillTests", "questions", "planTopics", "overviewProgress", "history", "mistakes"] as const;
 type Table = (typeof TABLES)[number];
 
 export interface MemoryParentViewTables {
@@ -146,6 +154,8 @@ export interface MemoryParentViewTables {
   maya?: MemoryMayaCall[];
   skillTests?: MemorySkillTest[];
   questions?: MemoryWorkbookQuestion[];
+  /** The printed plan's day topics of each workbook; a workbook with none has no readable plan (Home names its days from the questions). */
+  planTopics?: MemoryPlanTopic[];
   /** `helpMarks` left out: `skillMarks` with no blank answer. */
   overviewProgress?: (Owned & Omit<OverviewProgress, "helpMarks"> & { helpMarks?: OverviewProgress["helpMarks"] })[];
   /** The recorded state changes of each child's standards; none when left out. */
@@ -269,6 +279,11 @@ export function memoryParentViewReaders(tables: MemoryParentViewTables) {
         read("questions");
         const shipped = own(tables.workbooks).some((w) => (w.id ?? `wb-${w.childId}-${w.number}`) === workbookId && w.status === "shipped");
         return shipped ? own(tables.questions).filter((q) => q.workbookId === workbookId).map((q) => ({ pageId: q.pageId ?? "", standard: q.standard })) : [];
+      },
+      async planTopics(childId, workbookId) {
+        read("planTopics");
+        const rows = own(tables.planTopics).filter((r) => r.childId === childId && r.workbookId === workbookId);
+        return rows.length ? rows.map(({ day, topic }) => ({ day, topic })) : null;
       },
       async skillHistory(childId) {
         read("history");

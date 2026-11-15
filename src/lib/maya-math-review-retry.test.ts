@@ -94,7 +94,7 @@ describe("code's facts per step in the review's input", () => {
     if (input) {
       expect(states.length).toBe(input.steps.length);
       expect(input.stepStates).toEqual(states);
-      expect(input.promptVersion).toBe("maya-math-review-5");
+      expect(input.promptVersion).toBe("maya-math-review-7");
     }
     check(states, input!);
   });
@@ -138,11 +138,11 @@ describe("one retry of an unsure answer", () => {
     }
   });
 
-  it("keeps the one second ask of an answer that is not JSON, then retries its unsure", async () => {
+  it("final check 8: an answer that is not JSON is final unsure, with no second ask and no retry", async () => {
     const { reviewer, retry } = withRetry((_, n) => (n === 0 ? "bad_json" : UNSURE), () => TRUE);
-    expect(await runMathReview(reviewer, {} as MathReviewInput, 50)).toEqual({ verdict: "true", reason: "all true", retried: true });
-    expect(reviewer.requests).toHaveLength(2);
-    expect(retry.requests).toHaveLength(1);
+    expect(await runMathReview(reviewer, {} as MathReviewInput, 50)).toEqual({ verdict: "unsure", reason: "the math review call failed (bad_json)" });
+    expect(reviewer.requests).toHaveLength(1);
+    expect(retry.requests).toHaveLength(0);
   });
 
   it("takes a retry error or time-out as final: unsure, never asked again", async () => {
@@ -206,7 +206,7 @@ describe("the retry in a call", () => {
     expect(retry.requests.map((r) => r.sentence)).toEqual([LINE]);
     const trace = await session.finish({ reason: "child_stopped" });
     expect(checkTrace(trace)).toMatchObject({ ok: true });
-    expect(trace.mathReviewer).toEqual({ id: "fake-math-review", promptVersion: "maya-math-review-5", retryId: "fake-math-retry" });
+    expect(trace.mathReviewer).toEqual({ id: "fake-math-review", promptVersion: "maya-math-review-7", retryId: "fake-math-retry" });
     expect(trace.counts).toMatchObject({ mathReviews: 1, mathRetries: 1, mathRefusals: 0 });
     const math = trace.turns.flatMap((t) => (t.kind === "maya" ? t.attempts.flatMap((a) => a.math ?? []) : []));
     expect(math).toEqual([{ sentence: LINE, verdict: "true", reason: "all true", retried: true }]);

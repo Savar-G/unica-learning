@@ -163,62 +163,139 @@ export function partialSay(soFar: string): { text: string; complete: boolean; ki
   return { text, complete: false, kind, gate, reading: readingOf(before.reading), before: Object.keys(before) };
 }
 /**
- * The top-level keys of a reply as it streams in, in the order written, each with its value: the parsed value when
- * complete, else the complete fields of an object not yet closed (a reading cut off), else undefined. Repeated keys are
- * kept, so a caller can see them. Stops at the first value that is not complete.
+ * Final check 7 (2026-11-15): every member of every object in a reply's raw text as it streams in, at any depth, in the
+ * order written, each with its path from the top (["reading", "safety"]) and its value when it is a complete string,
+ * number, boolean or null. Repeated keys are kept, so a caller sees every copy; `repeated` is true when any one object
+ * holds a key twice, at any depth (a final parse keeps only the last copy). Stops at the first value that is not
+ * complete; the members before it stay.
  */
-function topEntries(text: string): { key: string; value: unknown; complete: boolean }[] {
-  const entries: { key: string; value: unknown; complete: boolean }[] = [];
-  const open = /^\s*\{\s*/.exec(text);
-  if (!open) return entries;
-  let i = open[0].length;
-  for (let n = 0; ; n++) {
-    if (n > 0) {
-      const sep = /^\s*,\s*/.exec(text.slice(i));
-      if (!sep) return entries;
-      i += sep[0].length;
+function deepMembers(text: string): { members: { path: string[]; value: unknown }[]; repeated: boolean } {
+  const members: { path: string[]; value: unknown }[] = [];
+  let repeated = false;
+  const ws = (i: number) => { while (i < text.length && /\s/.test(text[i])) i++; return i; };
+  /** The end of the value at `i` (after its last character), or -1 when it is not complete or not JSON. */
+  const value = (i: number, path: string[]): number => {
+    i = ws(i);
+    const c = text[i];
+    if (c === undefined) return -1;
+    if (c === "{") {
+      const keys = new Set<string>();
+      i = ws(i + 1);
+      if (text[i] === "}") return i + 1;
+      for (;;) {
+        if (text[i] !== '"') return -1;
+        const keyEnd = stringEnd(text, i);
+        if (keyEnd < 0) return -1;
+        let key: string;
+        try { key = String(JSON.parse(text.slice(i, keyEnd))); } catch { return -1; }
+        if (keys.has(key)) repeated = true;
+        keys.add(key);
+        i = ws(keyEnd);
+        if (text[i] !== ":") return -1;
+        const end = value(i + 1, [...path, key]);
+        if (end < 0) return -1;
+        i = ws(end);
+        if (text[i] === ",") { i = ws(i + 1); continue; }
+        if (text[i] === "}") return i + 1;
+        return -1;
+      }
     }
-    if (text[i] !== '"') return entries;
-    const keyEnd = stringEnd(text, i);
-    if (keyEnd < 0) return entries;
-    let key: unknown;
-    try { key = JSON.parse(text.slice(i, keyEnd)); } catch { return entries; }
-    const colon = /^\s*:\s*/.exec(text.slice(keyEnd));
-    if (!colon) return entries;
-    i = keyEnd + colon[0].length;
+    if (c === "[") {
+      i = ws(i + 1);
+      if (text[i] === "]") return i + 1;
+      for (;;) {
+        const end = value(i, [...path, "[]"]);
+        if (end < 0) return -1;
+        i = ws(end);
+        if (text[i] === ",") { i = ws(i + 1); continue; }
+        if (text[i] === "]") return i + 1;
+        return -1;
+      }
+    }
     const end = valueEnd(text, i);
-    if (end < 0) {
-      // A value cut off: an object keeps its complete fields (a reading whose priority fields are already written).
-      const inner = text[i] === "{" ? /^\{\s*/.exec(text.slice(i)) : null;
-      entries.push({ key: String(key), value: inner ? keysFrom(text, i + inner[0].length, true, null).keys : undefined, complete: false });
-      return entries;
+    if (end < 0) return -1;
+    let v: unknown;
+    try { v = JSON.parse(text.slice(i, end)); } catch { return -1; }
+    members.push({ path, value: v });
+    return end;
+  };
+  value(0, []);
+  return { members, repeated };
+}
+
+/** The fields whose values route a turn before any math (the gate and the priority readings). */
+const PRIORITY_KEYS = new Set(["gate", "kind", "aboutMaya", "safety", "stop", "unsafeRequest"]);
+
+/**
+ * Final check 8 (2026-11-15): every complete `"key": value` pair of a priority field in raw text, at any place, in the
+ * order written. A tolerant scan: JSON strings are read whole (with their escapes), and any other character that is no
+ * JSON token (a fence, "NaN", prose) only breaks the pair it stands in. A value is a string or true, false or null.
+ */
+export function rawPriorityMembers(raw: string): { key: string; value: unknown }[] {
+  type Tok = { t: "str"; v: string } | { t: "colon" } | { t: "lit"; v: unknown } | { t: "other" };
+  const toks: Tok[] = [];
+  for (let i = 0; i < raw.length;) {
+    const c = raw[i];
+    if (/\s/.test(c)) { i++; continue; }
+    if (c === '"') {
+      const end = stringEnd(raw, i);
+      if (end < 0) break;
+      let v: unknown;
+      try { v = JSON.parse(raw.slice(i, end)); } catch { v = null; }
+      toks.push(typeof v === "string" ? { t: "str", v } : { t: "other" });
+      i = end;
+      continue;
     }
-    let value: unknown;
-    try { value = JSON.parse(text.slice(i, end)); } catch { return entries; }
-    entries.push({ key: String(key), value, complete: true });
-    i = end;
+    if (c === ":") { toks.push({ t: "colon" }); i++; continue; }
+    const lit = /^(?:true|false|null)\b/.exec(raw.slice(i, i + 6));
+    if (lit) { toks.push({ t: "lit", v: JSON.parse(lit[0]) }); i += lit[0].length; continue; }
+    toks.push({ t: "other" });
+    i++;
   }
+  const out: { key: string; value: unknown }[] = [];
+  for (let k = 0; k + 2 < toks.length; k++) {
+    const a = toks[k], b = toks[k + 1], v = toks[k + 2];
+    if (a.t === "str" && PRIORITY_KEYS.has(a.v) && b.t === "colon" && (v.t === "str" || v.t === "lit")) out.push({ key: a.v, value: v.v });
+  }
+  return out;
+}
+
+/** Whether a parsed reading carries every priority value the raw text holds (a stronger or equal one counts). */
+export function priorityCovered(parsed: Record<string, unknown> | null, raw: Record<string, unknown> | null): boolean {
+  if (!raw) return true;
+  if (!parsed) return false;
+  const rank = (x: unknown) => (x === "immediate" ? 2 : x === "concern" ? 1 : 0);
+  if (rank(raw.safety) > rank(parsed.safety)) return false;
+  if (raw.aboutMaya && parsed.aboutMaya !== raw.aboutMaya && parsed.aboutMaya !== "secret_friend") return false;
+  if (raw.stop && !parsed.stop) return false;
+  if (raw.unsafeRequest && !parsed.unsafeRequest) return false;
+  return true;
 }
 
 /**
- * Final check 6 (2026-11-15): what a reply's raw text, as streamed so far, says before any parse. `repeated`: a top-level
- * key comes twice (a second "gate" or "reading"), which makes the whole output malformed for routing, since a final parse
- * keeps only the last value. `priority`: every priority value in the text, from any copy of any key, whole or cut off,
- * as one reading: a question about Maya (the gate "identity" or aboutMaya), safety (the gate "safety", a severity, kind
- * "safety"), a harmful request, or a stop (the gate "stop", the reading's stop, kind "stop"); null when there is none.
- * A complete priority value is never lost to a failed parse: it applies on its own (fail closed).
+ * Final check 6 (2026-11-15): what a reply's raw text, as streamed so far, says before any parse. `repeated`: a key comes
+ * twice in one object, at ANY depth (a second "gate", a second "reading", or a second "safety" inside the reading; final
+ * check 7), which makes the whole output malformed for routing, since a final parse keeps only the last value.
+ * `priority`: every priority value in the text, from any copy of any key, whole or cut off, as one reading: a question
+ * about Maya (the gate "identity" or aboutMaya), safety (the gate "safety", a severity, kind "safety"; the strongest
+ * severity in any copy wins), a harmful request, or a stop (the gate "stop", the reading's stop, kind "stop"); null when
+ * there is none. A complete priority value is never lost to a failed parse or to a later copy: it applies on its own
+ * (fail closed).
  */
 export function streamedPriority(raw: string): { repeated: boolean; priority: Record<string, unknown> | null } {
-  const entries = topEntries(raw);
-  const keys = entries.map((e) => e.key);
-  const repeated = keys.some((k, n) => keys.indexOf(k) !== n);
+  const { repeated } = deepMembers(raw);
+  // Final check 8 (2026-11-15): the priority fields are read from the RAW text, never only from parsed JSON: every
+  // complete `"key": value` pair of a priority field wherever it stands, inside an outer Markdown fence, after an invalid
+  // value ("gate": NaN) or in a cut-off copy. Text inside a JSON string (the `say` text) is one token, so a key written in
+  // it is no member. Any non-"none" priority value seen anywhere applies; over-triggering only adds code's fixed line.
+  const members = rawPriorityMembers(raw);
   const p: Record<string, unknown> = {};
   const raise = (severity: unknown) => {
     if (severity === "immediate") p.safety = "immediate";
     else if (severity === "concern" && p.safety !== "immediate") p.safety = "concern";
   };
   let gateSafety = false;
-  for (const { key, value } of entries) {
+  for (const { key, value } of members) {
     if (key === "gate") {
       if (value === "identity") p.aboutMaya ??= "identity";
       if (value === "safety") gateSafety = true;
@@ -226,13 +303,11 @@ export function streamedPriority(raw: string): { repeated: boolean; priority: Re
     } else if (key === "kind") {
       if (value === "safety") raise("concern");
       if (value === "stop") p.stop = true;
-    } else if (key === "reading" && typeof value === "object" && value !== null && !Array.isArray(value)) {
-      const r = value as Record<string, unknown>;
-      if (r.aboutMaya === "identity" || r.aboutMaya === "secret_friend") p.aboutMaya = p.aboutMaya === "secret_friend" ? "secret_friend" : r.aboutMaya;
-      raise(r.safety);
-      if (r.stop === true) p.stop = true;
-      if (r.unsafeRequest === true) p.unsafeRequest = true;
-    }
+    } else if (key === "aboutMaya") {
+      if (value === "identity" || value === "secret_friend") p.aboutMaya = p.aboutMaya === "secret_friend" ? "secret_friend" : value;
+    } else if (key === "safety") raise(value);
+    else if (key === "stop" && value === true) p.stop = true;
+    else if (key === "unsafeRequest" && value === true) p.unsafeRequest = true;
   }
   // A "safety" gate on a harmful request is the decline's (as priorityOf reads it); else it is a safety concern.
   if (gateSafety && !p.unsafeRequest) raise("concern");
@@ -243,12 +318,25 @@ import { reviewInput, runReview, CONVERSATION_REVIEW_TIME_LIMIT_MS, REVIEW_TIME_
 import { runMathReview, type MathReviewer } from "@/lib/maya-math-review";
 import { mathReviewInput, type MathReview, type MathReviewInput, type MathReviewResult, type TalkReviewInput, type TalkReviewResult } from "@/lib/maya";
 import { readFromFence } from "@/lib/ai-fenced";
+import { ACK_PHRASES } from "@/lib/maya-voice-ack";
 import { classifyError, packageHash, redactText, redactTrace, traceCounts, TRACE_KIND, TRACE_VERSION, type MayaTrace, type TraceBoardBatch, type TraceTurn, type TraceObligation } from "@/lib/maya-trace";
 
 /** At most this many Maya turns in a row without the child (the easier example is up to four). */
 export const MAX_MAYA_TURNS = 8;
 /** D-341: the time one Maya turn may take in chat for the model and its repair, in ms. */
 export const TURN_BUDGET_MS = 6_000;
+/**
+ * #1072 (2026-11-15): the model time reserved for the one repair of a refused tutor teaching message, in ms. The first
+ * attempt and its reviews cannot spend it: the repair starts with this budget whatever time is left of the turn.
+ */
+export const TUTOR_REPAIR_BUDGET_MS = 6_000;
+/**
+ * After #1072 (2026-11-15, Chief of Staff rule: a child must not sit in silence for up to 10 s): the time of the one
+ * repair on a voice turn (the session has `onSayPart`), in ms. It covers the repair's model call AND its reviews: a
+ * review that starts later gets only the time left, and a repair that runs over ends in code's line. Chat keeps
+ * TUTOR_REPAIR_BUDGET_MS for the model, with the review limit after it.
+ */
+export const VOICE_REPAIR_BUDGET_MS = 4_000;
 
 export interface TextSessionOptions {
   /** Budget owner refuses speculative takes when only two live attempts remain. No seam disables preparation. */
@@ -316,6 +404,19 @@ export interface TextSessionOptions {
    * Maya says code's own line (fallbacks). Voice sets less.
    */
   turnBudgetMs?: number;
+  /**
+   * #1072: the model time reserved for the repair of a refused tutor teaching message (default TUTOR_REPAIR_BUDGET_MS;
+   * VOICE_REPAIR_BUDGET_MS on a voice turn). The first attempt and its reviews never spend it. In chat the repair's
+   * reviews keep the review time limit, so the turn is bounded by the turn budget, the repair budget and two review
+   * limits. On a voice turn the repair's reviews end inside this budget too.
+   */
+  repairBudgetMs?: number;
+  /**
+   * After #1072: a voice turn's repair starts and nothing was said in the turn yet. The voice worker may say its thinking
+   * phrase now (`ACK_PHRASES`, its own choice rule) and returns the phrase's id, or null when it said none. The id is kept
+   * on the repair attempt in the trace (`filler`). Only a voice call sets it; it is called only when `onSayPart` is set.
+   */
+  onRepairStart?: () => string | null;
   /**
    * Whether a refused first proposal gets a second model request that fixes it (default true). A voice call sets false:
    * the repair costs two seconds of silence and failed in live practice (980571e0), so the first refusal goes straight
@@ -492,6 +593,10 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   let generation = 0;
   let queue: Promise<unknown> = Promise.resolve();
   let turnEndsAt = Number.POSITIVE_INFINITY;
+  // After #1072: on a voice repair the reviews end with the repair's budget (VOICE_REPAIR_BUDGET_MS); otherwise no end.
+  let reviewEndsAt = Number.POSITIVE_INFINITY;
+  /** A review's time limit: its own limit, or the time left of a voice repair when that is less. */
+  const reviewLimit = (ms: number) => Math.min(ms, Math.max(0, reviewEndsAt - Date.now()));
   let quietOpening = false;
   let scheduled = 0;
   let prepareCount = 0;
@@ -577,6 +682,23 @@ export function createTextSession(options: TextSessionOptions): TextSession {
   /** Math-truth reviews the stream started (two-layer true math), by their whole input, used once by the whole-reply check. */
   const streamMathReviews = new Map<string, { requestId: number; result: Promise<MathReviewResult> }>();
   const mathKey = (input: MathReviewInput) => JSON.stringify(input);
+  /**
+   * Final check 9 (2026-11-15): every terminal math review result that is not "true" (false, unsure after its retry,
+   * malformed, an error, a time-out) is final for its sentence for the rest of the child turn: no second call of any
+   * kind, also when the repair says the sentence again, so the repaired message is refused and code's line follows.
+   * Keyed by the child turn and the sentence. A "true" is never kept: the next input is reviewed again.
+   */
+  const finalMath = new Map<string, Promise<MathReviewResult>>();
+  const reviewMath = (input: MathReviewInput, turn: number, ms: number, onError?: (e: unknown) => void): Promise<MathReviewResult> => {
+    const key = `${turn}|${input.sentence}`;
+    const held = finalMath.get(key);
+    if (held) return held;
+    const started = runMathReview(options.mathReviewer!, input, ms, onError);
+    return started.then((r) => {
+      if (r.verdict !== "true" && !finalMath.has(key)) finalMath.set(key, Promise.resolve(r));
+      return r;
+    });
+  };
   /** A review error goes to the observer; an observer that throws changes nothing. */
   const reviewError = (error: unknown) => {
     try { options.onError?.(error, { turn: folded.turns.length, source: "review" }); } catch { /* the observer is not the review */ }
@@ -628,7 +750,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     }
     return run();
   }
-  async function request(source: "model" | "repair", controller: AbortController) {
+  async function request(source: "model" | "repair", controller: AbortController, filler: string | null = null) {
     const prepared = source === "model" ? preparedForTurn() : undefined;
     const requestId = nextRequestId++;
     const repair = source === "repair" && folded.attempts.at(-1)?.refusal ? {
@@ -639,7 +761,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       ? (folded.session.tutor ? tutorBrief(folded.session, repair ? { said: repair.proposal, refusal: repair.refusal } : null) : turnBrief(folded.session, repair ? { said: repair.proposal, refusal: repair.refusal } : null)) as unknown as ModelInput
       : modelInput(folded.session, repair));
     const at = Math.max(clock(), now());
-    append({ kind: "request", at, requestId, source });
+    append({ kind: "request", at, requestId, source, ...(filler ? { filler } : {}) });
     if (folded.session.outcome || folded.request?.id !== requestId) return;
     // D-341: the turn's time budget. When it is spent, the request counts as a time-out and code's line follows.
     const left = Math.max(0, turnEndsAt - Date.now());
@@ -730,13 +852,13 @@ export function createTextSession(options: TextSessionOptions): TextSession {
           const checks: Promise<boolean>[] = [];
           if (how.talk) {
             const input = reviewInput(session, sentence, tutor.stance);
-            const started = runReview(options.reviewer!, input, options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS);
+            const started = runReview(options.reviewer!, input, reviewLimit(options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS));
             streamReviews.set(reviewKey(input), { requestId, result: started });
             checks.push(started.then((r) => passes(r, sentence)));
           }
           if (how.math) {
             const input = read(() => mathReviewInput(session, sentence, before));
-            const started = runMathReview(options.mathReviewer!, input, options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS);
+            const started = reviewMath(input, session.turns.length, reviewLimit(options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS));
             streamMathReviews.set(mathKey(input), { requestId, result: started });
             checks.push(started.then((r) => r.verdict === "true"));
           }
@@ -766,7 +888,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         queue.push(item);
         if (how === "review") {
           const input = reviewInput(session, sentence, plan.stance);
-          const started = runReview(options.reviewer!, input, options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS);
+          const started = runReview(options.reviewer!, input, reviewLimit(options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS));
           streamReviews.set(reviewKey(input), { requestId, result: started });
           void started.then((result) => {
             if (!live()) return;
@@ -800,7 +922,10 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         return;
       }
       const scan = rawScan();
-      if ("proposal" in got && scan.repeated) {
+      // Final check 8 (2026-11-15): a parsed proposal that does not carry every priority value of its raw text (one in a
+      // fenced copy the parse dropped, or after an invalid value) is malformed for routing too: the raw value applies.
+      const lost = "proposal" in got && !priorityCovered(streamedPriority(JSON.stringify(got.proposal ?? null)).priority, scan.priority);
+      if ("proposal" in got && (scan.repeated || lost)) {
         // Final check 6: a key written twice makes the whole output malformed for routing: no part of it is used, and any
         // priority value in any copy applies (fail closed). It counts as output that is not valid JSON.
         streamDone = true;
@@ -846,7 +971,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       const key = reviewKey(input);
       const streamed = streamReviews.get(key);
       if (streamed && streamed.requestId === requestId) used.push(key);
-      const result = streamed && streamed.requestId === requestId ? streamed.result : runReview(options.reviewer!, input, options.reviewTimeLimitMs ?? (before.conversational ? CONVERSATION_REVIEW_TIME_LIMIT_MS : REVIEW_TIME_LIMIT_MS), reviewError);
+      const result = streamed && streamed.requestId === requestId ? streamed.result : runReview(options.reviewer!, input, reviewLimit(options.reviewTimeLimitMs ?? (before.conversational ? CONVERSATION_REVIEW_TIME_LIMIT_MS : REVIEW_TIME_LIMIT_MS)), reviewError);
       return result.then((r) => ({ text, result: r }));
     })) : Promise.resolve([]);
     // The math-truth reviews run beside the safety reviews; one the stream started for the same input is used once.
@@ -862,7 +987,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       const key = mathKey(input);
       const streamed = streamMathReviews.get(key);
       if (streamed && streamed.requestId === requestId) mathUsed.push(key);
-      const result = streamed && streamed.requestId === requestId ? streamed.result : runMathReview(options.mathReviewer!, input, options.reviewTimeLimitMs ?? (before.conversational ? CONVERSATION_REVIEW_TIME_LIMIT_MS : REVIEW_TIME_LIMIT_MS), reviewError);
+      const result = streamed && streamed.requestId === requestId ? streamed.result : reviewMath(input, before.turns.length, reviewLimit(options.reviewTimeLimitMs ?? (before.conversational ? CONVERSATION_REVIEW_TIME_LIMIT_MS : REVIEW_TIME_LIMIT_MS)), reviewError);
       return result.then((r) => ({ text, result: r }));
     })).then((all) => mathTexts.map((text) => all.find((m) => m.text === text && m.result.verdict !== "true") ?? all.find((m) => m.text === text)!)) : Promise.resolve([]);
     const reviewed = Promise.all([reviews, mathReviews]).then(([results, maths]) => {
@@ -930,7 +1055,28 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       // Words already streamed cannot be taken back: a refusal then goes straight to code's line after them.
       // A turn a priority gate took after the model's reading (a scope redirect, a confirmation) is code's own line.
       const repairs = tutorTurn === null ? options.modelRepair !== false : tutorTurn && read(() => tutorTeachingNow(folded.session));
-      if (repairs && folded.attempts.at(-1)?.source === "model" && folded.attempts.at(-1)?.refusal && !folded.session.outcome && !safetyDue && Date.now() < turnEndsAt && !folded.sent?.length) await request("repair", controller);
+      const refusedFirst = repairs && folded.attempts.at(-1)?.source === "model" && folded.attempts.at(-1)?.refusal && !folded.session.outcome && !safetyDue && !folded.sent?.length;
+      // #1072 (2026-11-15): on a tutor teaching turn the repair has its own reserved budget. Production call 1b428d5b:
+      // the model took 3,128 ms and the math review 2,804 ms of the 6,000 ms turn, so no repair ran and code's plain line
+      // went out with no teaching. Now a refused tutor message always gets its one repair, with TUTOR_REPAIR_BUDGET_MS
+      // of model time that the first attempt and its reviews cannot spend. A message with streamed words still goes to
+      // code's line (the repair's message is checked alone, not as a continuation of the words already said).
+      if (refusedFirst && tutorTurn) {
+        // After #1072 (Chief of Staff rule: no silence of up to 10 s). On a voice turn the repair and its reviews end
+        // inside VOICE_REPAIR_BUDGET_MS, and the worker may say its thinking phrase at once, but only when nothing of this
+        // turn was said or waits to be said: no streamed sentence and no accepted turn before it in this output (the AI
+        // disclosure, safety guidance and a stop are code's own turns, and a repair never follows them).
+        const voice = options.onSayPart !== undefined;
+        turnEndsAt = Date.now() + (options.repairBudgetMs ?? (voice ? VOICE_REPAIR_BUDGET_MS : TUTOR_REPAIR_BUDGET_MS));
+        if (voice) reviewEndsAt = turnEndsAt;
+        const quiet = voice && folded.pending.length === 0 && streamedThisOutput.length === 0;
+        let filler: string | null = null;
+        if (quiet && options.onRepairStart) {
+          try { filler = options.onRepairStart(); } catch { /* the worker's ear never fails the turn */ }
+          if (!ACK_PHRASES.some((p) => p.id === filler)) filler = null;
+        }
+        try { await request("repair", controller, filler); } finally { reviewEndsAt = Number.POSITIVE_INFINITY; }
+      } else if (refusedFirst && Date.now() < turnEndsAt) await request("repair", controller);
       if (controller.signal.aborted) break;
       if (folded.attempts.length && !folded.session.outcome) {
         const refused = folded.attempts.filter((a) => a.refusal !== null).map((a) => a.proposal);

@@ -15,6 +15,7 @@ import { firstAnswerAt, skillSentence, type MistakeFact } from "@/lib/skill-sent
 import { nextBook, type NextBook } from "@/lib/next-book";
 import type { ParentPlan } from "@/lib/parent-plan";
 import type { CurriculumId } from "@/lib/signup";
+import { planDayTopic } from "@/lib/workbook-days";
 import { WORKBOOK_DAYS, bookToday, dayNumber, doneStreak, earliestOpenDay, weekCircles, weekProgress, workbookDay, type WeekDay } from "@/lib/parent-week";
 import { firstBatchAt, masteredSince, progressSummary, type ProgressSummary, type StateChange } from "@/lib/progress-series";
 import { skillMapView, topicBars, type TopicBarView } from "@/lib/skill-map-view";
@@ -137,6 +138,12 @@ export interface ParentViewReader {
   workbookStandards(workbookId: string): Promise<string[]>;
   /** The standard of each question of one of the family's shipped workbooks, with the page it is on (null: no standard). */
   workbookQuestions(workbookId: string): Promise<{ pageId: string; standard: string | null }[]>;
+  /**
+   * The topic each day of one of the family's shipped workbooks has in its printed plan (the Workbooks tab's day names,
+   * src/lib/parent-schedule.ts); null when the plan cannot be read (not frozen yet, or a failed check). Home says these
+   * topics, so it names a day as the Workbooks tab does.
+   */
+  planTopics(childId: string, workbookId: string): Promise<{ day: number; topic: string }[] | null>;
   /**
    * Each recorded change of a BC standard's state for one child (public.skill_state_history), by `changed_at`. Parents may
    * not read the table: the server reads it, filtered on the parent and the child, and only these three fields leave.
@@ -403,7 +410,7 @@ export interface WorkbookCardView {
   today: {
     /** "Today"; "Friday" on a weekend; "Day 1 · Monday" before the book's first weekday (a weekend delivery). */
     label: string;
-    /** The skill most of the day's questions are on; null when the book's questions cannot be read. */
+    /** The day's topic in the book's printed plan, as the Workbooks tab names it; else the skill most of the day's questions are on; null when neither can be read. */
     topic: string | null;
     scanned: number;
     pages: number;
@@ -560,14 +567,18 @@ export async function readOverview(reader: ParentViewReader, childId: string, no
     // With no row (the book is over, or the plan ended) the card still shows the book at its last day.
     const day = row?.day ?? workbookDay(days.start, today) ?? 1;
     const dayPages = days.pages.get(day) ?? [];
-    const questions = row ? await reader.workbookQuestions(days.id).catch(() => []) : [];
+    // The printed plan's topic for the day, as the Workbooks tab names it. Only when the plan cannot be read does the topic
+    // come from the day's questions (the standard most of them are on).
+    const plan = row ? await reader.planTopics(child.id, days.id).catch(() => null) : null;
+    const planned = planDayTopic(plan, day);
+    const questions = row && planned === null ? await reader.workbookQuestions(days.id).catch(() => []) : [];
     const all = [...days.pages.values()].flat();
     const scanned = all.filter((id) => days.saved.has(id)).length;
     workbook = {
       number: days.number, day, days: WORKBOOK_DAYS,
       // Floor, never round: a ring never says "100% done" with a page left.
       percent: scanned > 0 && all.length > 0 ? Math.floor((scanned / all.length) * 100) : null,
-      today: row && { label: row.label, topic: dayTopic(dayPages, questions), scanned: dayPages.filter((id) => days.saved.has(id)).length, pages: dayPages.length },
+      today: row && { label: row.label, topic: planned ?? dayTopic(dayPages, questions), scanned: dayPages.filter((id) => days.saved.has(id)).length, pages: dayPages.length },
     };
     // The Scan tab covers scanning; only a family with no saved photo at all gets this prompt, and only where the tab is.
     if (row && scans.length === 0 && child.tabs.includes("scan_pages")) scanPrompt = { day, pages: dayPages.length };

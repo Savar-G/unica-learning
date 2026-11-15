@@ -44,9 +44,9 @@ describe("F1: a column sum said in a place is read only for the question's own c
     // 27 + 39: the tens are 1 + 2 + 3 = 6 tens, never 6 hundreds.
     expect(unreadMath("1 plus 2 plus 3 is 6 hundreds.", ctxOf(ADD))).not.toEqual([]);
   });
-  it("control: reads the question's own column sum whole, with no review", () => {
-    expect(checkTutorSay("1 plus 2 plus 3 is 6 tens.", ctxOf(ADD))).toMatchObject({ ok: true, math: [] });
-    expect(checkTutorSay("3 plus 2 plus 1 is 6 tens.", ctxOf(ADD))).toMatchObject({ ok: true, math: [] });
+  it("final check 7: the question's own column sum in other words goes to the math review too (it is not context-free)", () => {
+    expect(checkTutorSay("1 plus 2 plus 3 is 6 tens.", ctxOf(ADD))).toMatchObject({ ok: true, math: ["1 plus 2 plus 3 is 6 tens."] });
+    expect(checkTutorSay("3 plus 2 plus 1 is 6 tens.", ctxOf(ADD))).toMatchObject({ ok: true, math: ["3 plus 2 plus 1 is 6 tens."] });
   });
 });
 

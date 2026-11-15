@@ -140,9 +140,22 @@ export const timeValue = (h: number, m: number): SayValue => ({ key: `${h}:${Str
 export const sameSayValue = (a: SayValue, b: SayValue) => (a.q && b.q ? a.q[0] === b.q[0] && a.q[1] === b.q[1] : a.key === b.key);
 const within = (v: SayValue, list: readonly SayValue[]) => list.some((x) => sameSayValue(v, x));
 
-interface WordNumber { value: number; at: number; end: number; words: string[] }
+/**
+ * A run of number words. `value` is NaN when the run makes no one standard value (final check 9): "two thousand two
+ * thousand", "five hundred thousand thousand", "twenty hundred". `pieces`: the values its parts make, for namesValue.
+ */
+interface WordNumber { value: number; at: number; end: number; words: string[]; pieces: number[] }
 
-/** Number words in a row ("twenty four", "one hundred and five"), with where they are. */
+const SCALES = new Set(["hundred", "thousand", "million", "billion", "trillion"]);
+
+/**
+ * Number words in a row ("twenty four", "one hundred and five", "two thousand six hundred and forty"), with where they are.
+ *
+ * Final check 9 (2026-11-15): read by separate groups, as standard English names a number: [a group below 1000]
+ * "thousand" [and] [a group below 1000], where a group is [1-9 "hundred" [and]] [1-99]. A run of number words that does
+ * not make one such value (a scale after a complete value, a hundred of 10 or more, "and zero") is one run with no value
+ * (NaN): its clause stays unread, never read as another number. Never multiplies a value it read before by a scale.
+ */
 function wordNumbers(text: string): WordNumber[] {
   const found: WordNumber[] = [];
   const re = /[a-z]+/gi;
@@ -151,9 +164,11 @@ function wordNumbers(text: string): WordNumber[] {
   let i = 0;
   const unit = (w: string) => UNITS.indexOf(w);
   const ten = (w: string) => TENS.indexOf(w);
+  const numberWord = (w: string | undefined) => w !== undefined && (unit(w) >= 0 || ten(w) >= 2 || SCALES.has(w));
   while (i < words.length) {
     const start = i;
-    let value = -1;
+    let bad = false;
+    const pieces: number[] = [];
     const take = (): number => {
       // A number below 100: "twenty", "twenty four", "seven", "fifteen".
       const w = words[i]?.w;
@@ -175,25 +190,48 @@ function wordNumbers(text: string): WordNumber[] {
       }
       return -1;
     };
-    const first = take();
-    if (first < 0) {
+    // [rest]: after a scale and an optional "and", a number below `limit` or nothing. "and" with no number after it
+    // ("one hundred and the ones") is no part of the number.
+    const rest = (below: () => number): number => {
+      const after = i;
+      if (words[i]?.w === "and") i++;
+      const r = below();
+      if (r < 0) { i = after; return 0; }
+      if (r === 0) bad = true;
+      return r;
+    };
+    // A group below 1000: "six hundred and forty", "ninety-nine", "seven".
+    const group = (): number => {
+      const a = take();
+      if (a < 0) return -1;
+      pieces.push(a);
+      if (words[i]?.w !== "hundred") return a;
+      i++;
+      if (a < 1 || a > 9) bad = true;
+      const r = rest(take);
+      pieces.push(a * 100, r);
+      return a * 100 + r;
+    };
+    let value = group();
+    if (value < 0) {
       i++;
       continue;
     }
-    value = first;
-    // "one hundred and five", "three thousand two hundred".
-    while (words[i] && (words[i].w === "hundred" || words[i].w === "thousand")) {
-      const scale = words[i].w === "hundred" ? 100 : 1000;
-      // "a hundred" and "one hundred" said as a place ("trade one hundred for ten tens") stay a place word.
-      const save = i;
+    if (words[i]?.w === "thousand") {
       i++;
-      value *= scale;
-      if (words[i]?.w === "and") i++;
-      const rest = take();
-      if (rest >= 0) value += rest;
-      else if (words[save + 1]?.w === "and") i = save + 1;
+      if (value < 1) bad = true;
+      const r = rest(group);
+      pieces.push(value * 1000, r);
+      value = value * 1000 + r;
     }
-    found.push({ value, at: words[start].at, end: words[i - 1].end, words: words.slice(start, i).map((x) => x.w) });
+    // A scale after a complete value ("two thousand two thousand", "five hundred thousand thousand") makes no one value.
+    if (SCALES.has(words[i]?.w ?? "")) bad = true;
+    if (bad) {
+      // The whole run of number words (and "and" between them) is one unread run.
+      while (numberWord(words[i]?.w) || (words[i]?.w === "and" && numberWord(words[i + 1]?.w))) i++;
+      value = NaN;
+    }
+    found.push({ value, at: words[start].at, end: words[i - 1].end, words: words.slice(start, i).map((x) => x.w), pieces });
   }
   return found;
 }
@@ -221,6 +259,8 @@ export function sayNumbers(raw: string): SayToken[] {
   }
   for (const w of wordNumbers(text)) {
     if (!free(w.at, w.end)) continue;
+    // Final check 9: a run that makes no one standard value is a number token with no value (unread).
+    if (Number.isNaN(w.value)) { push({ key: `?${text.slice(w.at, w.end)}`, q: null, at: w.at, end: w.end, text: text.slice(w.at, w.end) }); continue; }
     const after = text.slice(w.end).toLowerCase();
     const den = /^[\s-]+([a-z]+)/.exec(after);
     const denominator = den && Object.hasOwn(DENOMINATORS, den[1]) ? DENOMINATORS[den[1]] : undefined;
@@ -241,6 +281,19 @@ export function sayNumbers(raw: string): SayToken[] {
     if (free(m.index!, m.index! + m[0].length)) push({ ...fractionValue(1, DENOMINATORS[m[1]]), at: m.index!, end: m.index! + m[0].length, text: m[0] });
   }
   return tokens.sort((a, b) => a.at - b.at);
+}
+
+/**
+ * Final check 8 (2026-11-15): whether a text names a whole number in any form, digits or words: every number token
+ * (sayNumbers), and also the counting words it sets aside ("one", "ten", "10 ones"), so a place said as a count never
+ * hides the value. Broad on purpose: it decides that a message gave the answer, and reading too much fails closed.
+ */
+export function namesValue(raw: string, value: number): boolean {
+  if (!Number.isFinite(value)) return false;
+  const text = raw.replace(/[−–]/g, "-").replace(/(\d),(?=\d{3}\b)/g, "$1");
+  if (sayNumbers(text).some((t) => (t.q ? t.q[1] !== 0 && t.q[0] === value * t.q[1] : t.key === String(value)))) return true;
+  if (Number.isInteger(value) && new RegExp(`(?<![\\d.])${Math.abs(value)}(?![\\d]|\\.\\d)`).test(text)) return true;
+  return wordNumbers(text).some((w) => w.value === Math.abs(value) || w.pieces.includes(Math.abs(value)));
 }
 
 /** The values in a text, to build an allowed set from code's own words. */
@@ -268,25 +321,46 @@ export interface SayEquation {
 export const equationKey = (e: Pick<SayEquation, "operands" | "ops" | "result">) =>
   `${e.operands.map((o) => o.key).join(` `)}|${e.ops.join("")}|${e.result.key}`;
 
-/** The equations in one sentence: "12 - 8 = 4", "2 minus 8 isn't 6", "6 is 8 minus 2". */
-export function equationsOf(sentence: string): SayEquation[] {
-  const text = sentence.replace(/[−–]/g, "-").replace(/×/g, " x ").replace(/÷/g, " ÷ ");
+/**
+ * The equations in one sentence: "12 - 8 = 4", "2 minus 8 isn't 6", "6 is 8 minus 2".
+ *
+ * Final check 8 (2026-11-15), `whole`: the reader of the CHILD's words (childFacts and the child's verdict for the
+ * review), and the refusal of Maya's words. It reads an equation only when it reads every token of its clause (a clause
+ * ends at "," ";" ":" "." or "!"): a unit ("6 tens"), a scope ("in the easier example"), an enclosing negation ("It is
+ * not true that ..."), a leading sign, a question mark or any other word left over leaves the clause unread, neither
+ * true nor false. Only a short lead word (so, now, next, then, and, okay, yes, well) and "the" or "a" may stand in it.
+ * The same fail-closed coverage rule as Maya's layer 1.
+ */
+export function equationsOf(sentence: string, options: { whole?: boolean } = {}): SayEquation[] {
+  const whole = options.whole === true;
+  const text = (whole ? sentence.replace(/(\d),(?=\d{3}\b)/g, "$1") : sentence).replace(/[−–]/g, "-").replace(/×/g, " x ").replace(/÷/g, " ÷ ");
   const tokens = sayNumbers(text).filter((t) => t.q !== null);
   // The stream: numbers, operators and relations, with "the" and "a" skipped; anything else breaks it.
-  type Item = { kind: "n"; t: SayToken } | { kind: "op"; op: Op } | { kind: "rel"; negated: boolean } | { kind: "gap" };
+  type Item = { kind: "n"; t: SayToken } | { kind: "op"; op: Op } | { kind: "sign" } | { kind: "rel"; negated: boolean } | { kind: "gap" } | { kind: "cut" };
   const items: Item[] = [];
   let at = 0;
   const lower = text.toLowerCase();
   for (const t of [...tokens, null]) {
-    let between = lower.slice(at, t ? t.at : lower.length).replace(/[,]/g, " ");
+    let between = lower.slice(at, t ? t.at : lower.length);
+    if (!whole) between = between.replace(/[,]/g, " ");
     while (between.trim() !== "") {
       between = between.trimStart();
+      if (whole) {
+        // A word that starts a new clause ("because", "so", "since") ends the clause before it, as a comma does.
+        const cut = /^(?:[,;:.!]+|(?:because|'cause|cause|cuz|since|so)\b)/.exec(between);
+        if (cut) { items.push({ kind: "cut" }); between = between.slice(cut[0].length); continue; }
+        const lead = /^(?:now|next|then|and|okay|ok|yes|well)\b/.exec(between);
+        if (lead) { between = between.slice(lead[0].length); continue; }
+      }
       const op = OPS.find(([re]) => re.test(between));
       const neg = NOT_EQUAL.exec(between);
       const eq = EQUAL.exec(between);
       if (neg) { items.push({ kind: "rel", negated: true }); between = between.slice(neg[0].length); continue; }
       if (eq) { items.push({ kind: "rel", negated: false }); between = between.slice(eq[0].length); continue; }
       if (op) { items.push({ kind: "op", op: op[1] }); between = between.slice(op[0].exec(between)![0].length); continue; }
+      // Final check 7: a sign word ("negative 6") is part of the number after it, which this reader does not hold.
+      const sign = /^(?:negative|positive)\b/.exec(between);
+      if (sign) { items.push({ kind: "sign" }); between = between.slice(sign[0].length); continue; }
       const word = /^(?:the|a|an|so)\b/.exec(between);
       if (word) { between = between.slice(word[0].length); continue; }
       items.push({ kind: "gap" });
@@ -296,6 +370,13 @@ export function equationsOf(sentence: string): SayEquation[] {
     at = t ? t.end : lower.length;
   }
   const found: SayEquation[] = [];
+  // Final check 7 (2026-11-15): an expression is read only in full. A sign or an operator right before it ("Minus 6 plus
+  // 10 is 4", "negative 6 plus 10") or right after it ("12 minus 8 is 4 minus") is part of it, and this reader does not
+  // read that part: the whole equation stays unread (neither true nor false), never judged by its unsigned rest.
+  const signed = (k: number) => items[k]?.kind === "op" || items[k]?.kind === "sign";
+  // Final check 8: the equation from `from` to `to` is its whole clause: nothing but a cut (or the sentence's edge) on
+  // either side of it.
+  const wholeClause = (from: number, to: number) => (from === 0 || items[from - 1].kind === "cut") && (to === items.length || items[to].kind === "cut");
   for (let i = 0; i < items.length; i++) {
     // expr rel n
     const expr = (from: number): { operands: SayToken[]; ops: Op[]; next: number } | null => {
@@ -314,6 +395,7 @@ export function equationsOf(sentence: string): SayEquation[] {
     if (left && left.ops.length > 0 && items[left.next]?.kind === "rel" && items[left.next + 1]?.kind === "n") {
       // Both whole sides: "12 minus 8 equals 2 plus 2" compares 4 with 2 + 2, never with the 2 alone (pre-launch review B).
       const right = expr(left.next + 1)!;
+      if (signed(i - 1) || signed(right.next) || (whole && !wholeClause(i, right.next))) { i = right.next - 1; continue; }
       const result = right.ops.length === 0 ? right.operands[0] : sideToken(text, right.operands, right.ops);
       found.push({ operands: left.operands, ops: left.ops, result, negated: (items[left.next] as { negated: boolean }).negated });
       i = right.next - 1;
@@ -322,6 +404,7 @@ export function equationsOf(sentence: string): SayEquation[] {
     // n rel expr ("6 is 8 minus 2")
     if (items[i]?.kind === "n" && items[i + 1]?.kind === "rel") {
       const right = expr(i + 2);
+      if (right && right.ops.length > 0 && (signed(i - 1) || signed(right.next) || (whole && !wholeClause(i, right.next)))) { i = right.next - 1; continue; }
       if (right && right.ops.length > 0) {
         found.push({ operands: right.operands, ops: right.ops, result: (items[i] as { t: SayToken }).t, negated: (items[i + 1] as { negated: boolean }).negated });
         i = right.next - 1;

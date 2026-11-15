@@ -4,6 +4,7 @@ vi.mock("@/lib/supabase-auth", () => ({ adminClient: () => null }));
 vi.mock("@/lib/parent-problem-explanation-store", () => ({ parentExplanationStore: () => ({}) }));
 vi.mock("@/lib/parent-problem-explanation-ai", () => ({ explanationAiClient: () => ({}) }));
 vi.mock("@/lib/parent-problem-explanation", () => ({ explainParentProblem: vi.fn() }));
+vi.mock("@/lib/parent-problem-explanation-page-server", () => ({ readPageExplanations: vi.fn() }));
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database";
 import { childPlanAccess } from "@/lib/plan-access";

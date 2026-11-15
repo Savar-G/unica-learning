@@ -66,10 +66,14 @@ describe("layer 1: coverage accounting in the claim reader", () => {
     }
     // The exact-match rule (2026-11-15): code reads these whole and finds them true, but no closed form or step text is
     // the whole sentence, so they go to the math review.
-    for (const s of ["The answer is 24.", "24 is the answer.", "2 ones become 12."]) {
+    for (const s of ["The answer is 24.", "24 is the answer."]) {
       expect(unreadMath(s, ctxOf(SUB)), s).toEqual([]);
       expect(checkTutorSay(s, ctxOf(SUB)), s).toMatchObject({ ok: true, math: [s] });
     }
+    // Final check 7: a trade holds only for one problem's work, so code no longer reads it (no literal equality); it
+    // goes to the math review as before.
+    expect(unreadMath("2 ones become 12.", ctxOf(SUB))).not.toEqual([]);
+    expect(checkTutorSay("2 ones become 12.", ctxOf(SUB))).toMatchObject({ ok: true, math: ["2 ones become 12."] });
   });
   it("sends a sentence with any number or relation word code did not read to the review", () => {
     expect(unreadMath("The answer is 24 and a half.", ctxOf(SUB))).toEqual(["is", "24", "0.5"]);
@@ -96,13 +100,10 @@ describe("layer 2: the math-truth review", () => {
     expect(r2).toEqual({ verdict: "unsure", reason: "the math review did not answer in time" });
   });
 
-  it("asks again once, at once, after an answer that is not JSON; a second one is unsure", async () => {
+  it("final check 8: an answer that is not JSON is final unsure, never asked again", async () => {
     const once = fakeMathReviewer((_, n) => (n === 0 ? "bad_json" : { verdict: "true", reason: "all true" }));
-    expect(await runMathReview(once, {} as MathReviewInput, 50)).toEqual({ verdict: "true", reason: "all true" });
-    expect(once.requests).toHaveLength(2);
-    const twice = fakeMathReviewer(() => "bad_json");
-    expect(await runMathReview(twice, {} as MathReviewInput, 50)).toEqual({ verdict: "unsure", reason: "the math review call failed (bad_json)" });
-    expect(twice.requests).toHaveLength(2);
+    expect(await runMathReview(once, {} as MathReviewInput, 50)).toEqual({ verdict: "unsure", reason: "the math review call failed (bad_json)" });
+    expect(once.requests).toHaveLength(1);
   });
 
   it("never asks again after a time-out or another error", async () => {
@@ -112,20 +113,15 @@ describe("layer 2: the math-truth review", () => {
     const thrown = fakeMathReviewer(() => "throw");
     expect((await runMathReview(thrown, {} as MathReviewInput, 50)).verdict).toBe("unsure");
     expect(thrown.requests).toHaveLength(1);
-    // The second ask after an answer that is not JSON stays inside the same time limit.
-    const slow = fakeMathReviewer((_, n) => (n === 0 ? "bad_json" : "hang"));
-    expect(await runMathReview(slow, {} as MathReviewInput, 20)).toEqual({ verdict: "unsure", reason: "the math review did not answer in time" });
-    expect(slow.requests).toHaveLength(2);
   });
 
-  it("says a sentence after one answer that is not JSON, with no repair", async () => {
+  it("final check 8: a sentence after an answer that is not JSON is not said, and its repair is not reviewed again", async () => {
     const line = "That 4 is already in the ones.";
-    const { session, model, mathReviewer } = call(SUB, [line], (_, n) => (n === 0 ? "bad_json" : { verdict: "true", reason: "all true" }));
+    const { session, mathReviewer } = call(SUB, [line], (_, n) => (n === 0 ? "bad_json" : { verdict: "true", reason: "all true" }));
     await session.start();
     const out = await session.child("Help me please.");
-    expect(out.say.join(" ")).toBe(line);
-    expect(model.briefs).toHaveLength(1);
-    expect(mathReviewer!.requests.map((r) => r.sentence)).toEqual([line, line]);
+    expect(out.say.join(" ")).not.toContain(line);
+    expect(mathReviewer!.requests.map((r) => r.sentence)).toEqual([line]);
   });
 
   it("gives the review the last 2 turns as code holds them, with the child's name as {name}", async () => {
@@ -142,7 +138,7 @@ describe("layer 2: the math-truth review", () => {
     expect(input.lastTurns.child).toBe("{name} says 6 again.");
     expect(input.lastTurns.maya).not.toBeNull();
     expect(JSON.stringify(input)).not.toMatch(/Zoe/);
-    expect(input.promptVersion).toBe("maya-math-review-5");
+    expect(input.promptVersion).toBe("maya-math-review-7");
   });
 
   it("gives the review code's facts of the question and the child's turn, never the child's name", async () => {
@@ -183,7 +179,7 @@ describe("layer 2: the math-truth review", () => {
     const trace = await session.finish({ reason: "child_stopped" });
     expect(checkTrace(trace)).toMatchObject({ ok: true });
     expect(trace.counts).toMatchObject({ mathReviews: 2, mathRefusals: 0, refusals: 0 });
-    expect(trace.mathReviewer).toEqual({ id: "fake-math-review", promptVersion: "maya-math-review-5" });
+    expect(trace.mathReviewer).toEqual({ id: "fake-math-review", promptVersion: "maya-math-review-7" });
   });
 
   it.each([
