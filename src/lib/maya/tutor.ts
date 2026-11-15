@@ -15,7 +15,7 @@
 import type { OperationPackage } from "@/lib/question-package";
 import { expressionKey, noteFromEquation, type TutorCommand, type TutorKind, type TutorStepFact } from "./tutor-kind";
 import { tutorKindOf } from "./tutor-kinds";
-import { affirms, equationHolds, equationsOf, neverSayProblem, sayNumbers, sentencesOf } from "./say-check";
+import { affirms, equationHolds, equationsOf, neverSayProblem, sayNumbers, sentencesOf, type SayEquation } from "./say-check";
 import { exactSafe } from "./math-vocab";
 import { answerClaims, answerProblems, falseClaims, readClaims, REMAINDER_SAID, unsafeNumberSaid, type ColumnSum } from "./tutor-math";
 
@@ -286,6 +286,9 @@ export const stepFacts = (pkg: OperationPackage): TutorStepFact[] => tutorKind(p
 /** What a number the child said means for this question: right, a known mistake, or not one of its values. */
 export const numberMeaning = (pkg: OperationPackage, n: number): string => tutorKind(pkg).numberMeaning(pkg, n);
 
+/** The printed sign of each operator the equation reader reads. */
+const OP_SIGN: Record<SayEquation["ops"][number], string> = { "+": "+", "-": "−", "*": "×", "/": "÷" };
+
 /** Code's verdict on every number and every equation in the child's turn, as sentences for the brief. */
 export function childFacts(pkg: OperationPackage, text: string): string[] {
   const facts: string[] = [];
@@ -293,7 +296,9 @@ export function childFacts(pkg: OperationPackage, text: string): string[] {
     for (const e of equationsOf(sentence)) {
       const holds = equationHolds(e);
       if (holds === null) continue;
-      const said = `${e.operands.map((o) => o.key).join(` ${e.ops[0] === "+" ? "+" : "−"} `)} ${e.negated ? "≠" : "="} ${e.result.key}`;
+      // Final check 7 (2026-11-15): each operator is printed from its own place, as the reader read it ("3 × 2 = 6",
+      // "8 − 2 + 4 = 10"), never the first operator for all of them.
+      const said = `${e.operands.map((o, k) => (k === 0 ? o.key : `${OP_SIGN[e.ops[k - 1]]} ${o.key}`)).join(" ")} ${e.negated ? "≠" : "="} ${e.result.key}`;
       facts.push(`The child said ${said}: that is ${holds !== e.negated ? "true" : "false"}.`);
     }
   }

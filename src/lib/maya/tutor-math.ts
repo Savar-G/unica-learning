@@ -414,12 +414,26 @@ function readClaimsOnce(sentence: string, op?: "add" | "subtract", trades: reado
   /** "than C" at `at` (with an optional "the"): the side C. */
   const than = (at: number): Side | null => (wordAt(items, at) !== "than" ? null : full(wordAt(items, at + 1) === "the" ? at + 2 : at + 1));
   const near = (x: number, y: number) => Math.abs(x - y) < 1e-9;
+  // Final check 7 (2026-11-15): a side is read only in full. A sign or an operator right before it ("Minus 6 plus 10 is
+  // 4", "negative 6 plus 10 is 4") or right after it ("12 minus 8 is 4 minus") is part of it that this reader does not
+  // read: the whole claim stays unread (no refusal and no read), and the sentence goes to the math review.
+  const signedAt = (k: number) => items[k]?.kind === "op" || (items[k]?.kind === "other" && /^(?:negative|positive)$/.test((items[k] as { word?: string }).word ?? ""));
+  /** Skips a claim this reader does not read in full: its "=" counts as seen on purpose, so it is not refused. */
+  const skipClaim = (relAt: number) => { const r = items[relAt]; if (r?.kind === "rel" && r.eq) eqRead++; };
   while (i < items.length) {
     const left = full(i);
     if (!left || items[left.next]?.kind !== "rel") { i++; continue; }
+    if (signedAt(i - 1)) {
+      // Every "=" of the claim's chain is left unread on purpose.
+      let k = left.next;
+      while (items[k]?.kind === "rel") { skipClaim(k); const r = full(k + 1); if (!r) break; k = r.next; }
+      i = Math.max(k, left.next + 1);
+      continue;
+    }
     const chain = [left];
     const rels: Extract<Item, { kind: "rel" }>[] = [];
     let at = left.next;
+    let cutOff = false;
     while (items[at]?.kind === "rel") {
       // "the" before a number word alone names a thing ("the 1 is the ten we carried"); before a digit or a place
       // quantity it is read through ("52 is the 4 tens and 2 ones").
@@ -428,9 +442,16 @@ function readClaimsOnce(sentence: string, op?: "add" | "subtract", trades: reado
       const named = article && items[at + 2]?.kind === "term" && (items[at + 2] as Extract<Item, { kind: "term" }>).word === true && !(items[at + 2] as Extract<Item, { kind: "term" }>).unit && items[at + 3]?.kind !== "op";
       const right = named ? null : full(at + (article ? 2 : 1));
       if (!right) break;
+      if (signedAt(right.next)) { cutOff = true; at = right.next; break; }
       rels.push(items[at] as Extract<Item, { kind: "rel" }>);
       chain.push(right);
       at = right.next;
+    }
+    if (cutOff) {
+      // A side runs on into a sign or an operator this reader does not read: the whole chain stays unread.
+      for (let k = left.next; k < at; k++) skipClaim(k);
+      i = at;
+      continue;
     }
     if (chain.length < 2) {
       // "4 is greater than 8", "2 is not smaller than 8": a comparison must hold (pre-launch review B).
@@ -484,6 +505,11 @@ function readClaimsOnce(sentence: string, op?: "add" | "subtract", trades: reado
     const sides = chain.map(valued).map((x) => (x && unsafeValue(x.value) ? null : x));
     const before = problems.length;
     let unbound = false;
+    // Final check 7 (2026-11-15): a relation that holds only by reading a bare number in a place ("1 + 2 + 3 = 6 tens":
+    // the sum is read as tens) or as a trade depends on which problem and which column it means. It is not
+    // context-free, so code alone never reads it (it passes on code alone only as an exact text of the active problem,
+    // tutor.ts codeAlone); it goes to the math review. Only relations of literally equal values are read.
+    let literal = true;
     for (let k = 0; k < rels.length; k++) {
       const [a, b] = [sides[k], sides[k + 1]];
       if (rels[k].eq) eqRead++;
@@ -493,11 +519,12 @@ function readClaimsOnce(sentence: string, op?: "add" | "subtract", trades: reado
       const traded = rels[k].now && trade(a, b);
       if (!same && !traded && inPlace(a, b) && !boundInPlace(a, b)) unbound = true;
       const equal = same || inPlace(a, b) || traded;
+      if (!same && !rels[k].negated) literal = false;
       if (!rels[k].negated && !equal) problems.push(`it says ${a.value} and ${b.value} are the same`);
       if (rels[k].negated && same) problems.push(`it says ${a.value} and ${b.value} are not the same`);
     }
     // Read whole and true: every side code could value, and no problem found.
-    if (problems.length === before && sides.every((x) => x !== null) && !unbound) mark(chain[0].at, at);
+    if (problems.length === before && sides.every((x) => x !== null) && !unbound && literal) mark(chain[0].at, at);
     i = at;
   }
   if (eqRead < eqSeen) problems.push("it has an \"=\" code cannot read");

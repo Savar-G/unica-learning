@@ -418,8 +418,10 @@ const DOWN = /^(?:subtracts|subtract|takes away|take away|goes down by|shrinks b
  * - "it adds 8 each time", "it subtracts 3 each time" (the size and the direction of the change);
  * - "it starts at 20", "start at 20";
  * - "the change from the start to the 3rd term", "share the change into 2" (the kind's own step words).
- * Fail closed: any other clause about the pattern (a negation, a remainder, a sum, a word code cannot read) is
- * refused, and a question with no pattern refuses every clause about a term or a pattern.
+ * Only a clause in one of these forms that does not hold is refused (final check 7, 2026-11-15). Any other clause
+ * about the pattern (a question, a negation, a remainder, a sum, a word code cannot read) is no proved false claim: it
+ * is not refused, and the sentence goes to the math review. A question with no pattern still refuses every clause about
+ * a term or a pattern.
  */
 export function patternClaimProblems(pkg: OperationPackage, sentence: string): string[] {
   const p = fits(pkg) ? patternOf(pkg) : null;
@@ -433,7 +435,10 @@ export function patternClaimProblems(pkg: OperationPackage, sentence: string): s
     let clause = raw.trim();
     for (let k = 0; k < 4; k++) clause = clause.replace(LEAD, "").trim();
     const c = inDigits(clause)?.toLowerCase().replace(/\s+/g, " ").trim();
-    if (!c || /\bnot\b|n't\b|\bnever\b|\bno\b/.test(c)) { problems.push(`"${raw.trim()}" says something about the pattern in a form code cannot check`); continue; }
+    // Final check 7 (2026-11-15): a clause this kind cannot read in full (a question, a negation, any form below it does
+    // not match) is no proved false claim: it is not refused, and the sentence goes to the math review (no form here
+    // grants a pass on code alone).
+    if (!c || /\bnot\b|n't\b|\bnever\b|\bno\b/.test(c)) continue;
     let m: RegExpExecArray | null;
     if ((m = /^(?:the|its) (\d+)(?:st|nd|rd|th) term (?:is|=|equals|will be) (\d+)$/.exec(c))) {
       const n = Number(m[1]);
@@ -449,7 +454,7 @@ export function patternClaimProblems(pkg: OperationPackage, sentence: string): s
       if (Number(m[1]) !== p.term) problems.push(`the question names the ${ordinalText(p.term)} term, not the ${ordinalText(Number(m[1]))}`);
     } else if ((m = /^share (?:it|the change) into (\d+)(?: (?:equal )?(?:jumps|parts))?$/.exec(c))) {
       if (p.asks !== "step" || Number(m[1]) !== p.term - 1) problems.push(`the change is shared into ${p.term - 1} jumps, not ${m[1]}`);
-    } else problems.push(`"${raw.trim()}" says something about the pattern in a form code cannot check`);
+    }
   }
   return problems;
 }
