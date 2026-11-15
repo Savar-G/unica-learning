@@ -138,7 +138,7 @@ describe("layer 2: the math-truth review", () => {
     expect(input.lastTurns.child).toBe("{name} says 6 again.");
     expect(input.lastTurns.maya).not.toBeNull();
     expect(JSON.stringify(input)).not.toMatch(/Zoe/);
-    expect(input.promptVersion).toBe("maya-math-review-5");
+    expect(input.promptVersion).toBe("maya-math-review-6");
   });
 
   it("gives the review code's facts of the question and the child's turn, never the child's name", async () => {
@@ -179,7 +179,7 @@ describe("layer 2: the math-truth review", () => {
     const trace = await session.finish({ reason: "child_stopped" });
     expect(checkTrace(trace)).toMatchObject({ ok: true });
     expect(trace.counts).toMatchObject({ mathReviews: 2, mathRefusals: 0, refusals: 0 });
-    expect(trace.mathReviewer).toEqual({ id: "fake-math-review", promptVersion: "maya-math-review-5" });
+    expect(trace.mathReviewer).toEqual({ id: "fake-math-review", promptVersion: "maya-math-review-6" });
   });
 
   it.each([
