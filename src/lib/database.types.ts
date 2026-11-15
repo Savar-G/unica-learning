@@ -2883,8 +2883,12 @@ export type Database = {
       }
       parent_explanation_prices: {
         Row: {
+          approved_metadata: Json | null
+          check_error: string | null
           enabled: boolean
           evidence: string | null
+          last_checked_at: string | null
+          last_observed_metadata: Json | null
           max_input_bytes: number
           max_tokens: number
           maximum_micros: number | null
@@ -2893,8 +2897,12 @@ export type Database = {
           verified_at: string | null
         }
         Insert: {
+          approved_metadata?: Json | null
+          check_error?: string | null
           enabled?: boolean
           evidence?: string | null
+          last_checked_at?: string | null
+          last_observed_metadata?: Json | null
           max_input_bytes?: number
           max_tokens?: number
           maximum_micros?: number | null
@@ -2903,8 +2911,12 @@ export type Database = {
           verified_at?: string | null
         }
         Update: {
+          approved_metadata?: Json | null
+          check_error?: string | null
           enabled?: boolean
           evidence?: string | null
+          last_checked_at?: string | null
+          last_observed_metadata?: Json | null
           max_input_bytes?: number
           max_tokens?: number
           maximum_micros?: number | null
@@ -10380,6 +10392,10 @@ export type Database = {
       retry_workbook_run: {
         Args: { p_error: string; p_lease: string; p_run: string }
         Returns: boolean
+      }
+      reverify_parent_explanation_price: {
+        Args: { p_error?: string; p_metadata: Json }
+        Returns: string
       }
       route_workbook_run: {
         Args: { p_run: string; p_runner: string; p_stale_seconds: number }
