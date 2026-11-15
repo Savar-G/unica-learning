@@ -57,7 +57,7 @@ export function ChildUnitCostPage({ view, monthKey, error }: { view: UnitCostVie
 
       <section aria-labelledby="cc-children">
         <SectionHead id="cc-children" title="Cost per child" count={view.rows.length}
-          line={`CAD. AI calls at ${view.rate.toFixed(2)} CAD per USD (MAYA_USD_TO_CAD). Maya's speech and voice and print and postage are estimates. Each total is rounded once.`} />
+          line={`CAD. AI calls at ${view.rate.toFixed(2)} CAD per USD (MAYA_USD_TO_CAD). Maya's speech and voice and print and postage are estimates. Each total is rounded once from the exact parts, and each column is rounded on its own, so the columns can differ from the total by a cent of rounding.`} />
         <Table label="Cost per child" head={["Child", "Plan", "AI calls", "Maya speech and voice (estimate)", "Print and postage (estimate)", "Total cost", "Paid", "Margin"]} empty="No child had a cost or a plan charge in this month.">
           {view.rows.map((r) => (
             <tr key={`${r.parentId}:${r.childId ?? ""}`}>

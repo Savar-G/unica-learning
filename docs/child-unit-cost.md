@@ -17,7 +17,7 @@ The month pills are "This month", "Last month" and "Two months ago": a calendar 
 | Print and postage | workbooks with `shipped_at` in the month | An estimate: `WORKBOOK_PHYSICAL_COST_CAD` in `src/lib/child-unit-cost.ts` (CAD 30) for each workbook shipped. No table records the real cost of one workbook. |
 | Subscription calls | `provider = 'subscription'` (`claude -p` on the Mac) | Counted, never priced: "subscription, not in the total". |
 
-The parts are added exactly in integers (nano US dollars times the rate in millionths, and CAD micros) and each total is rounded to cents once, half up.
+The parts are added exactly in integers (nano US dollars times the rate in millionths, and CAD micros) and each total is rounded to cents once, half up. Each column is also rounded on its own, so the columns of a row can differ from its total by a cent; the page says so.
 
 Beside the estimate, the page shows the budget tracker's actual printing and postage expenses (`budget_entries` in categories whose name holds "print", "postage" or "shipping") dated in the calendar month. They can hold test prints, so they are a comparison, not a per-child cost.
 
@@ -25,7 +25,7 @@ Calls a family made with no child named (for example a photo check) show on thei
 
 ## What counts as paid
 
-From the child's stored plan state (`child_plan_states`): `paying` charges its price; `ending` charges its price until its end date, unless it was a free month; a free month and every other state is 0. The price is the stored `monthly_cents`, else the agreed price of the child's newest started plan start (`plan_starts.monthly_cents`). A cancelled plan's stored row has no price, and a sibling pays CAD 59.99 (`docs/plan-controls.md`), so the plan price is never assumed. With neither price, the paid and margin columns say "unknown", and that child is left out of the paid and margin totals and the average. The table holds only today's state, so for an earlier month the paid column shows today's plan. The page says so.
+From the child's stored plan state (`child_plan_states`): `paying` charges its price; `ending` charges its price until its end date, unless it was a free month; a free month and every other state is 0. The price is the stored `monthly_cents`, else the agreed price of the child's newest started plan start (`plan_starts.monthly_cents`; when that newest start has no price, the price is unknown, never an older start's, migration `admin_child_unit_cost_newest_start`). A cancelled plan's stored row has no price, and a sibling pays CAD 59.99 (`docs/plan-controls.md`), so the plan price is never assumed. With neither price, the paid and margin columns say "unknown", and that child is left out of the paid and margin totals and the average. The table holds only today's state, so for an earlier month the paid column shows today's plan. The page says so.
 
 The summary line gives the average total cost of the children whose plan charged in the month, against the plan price, CAD 79.99 (`PLAN_PRICE_CENTS`, from `src/lib/subscription-plan.ts`).
 
