@@ -116,7 +116,7 @@ function workbooks(child: ChildView, state: string): WorkbooksView {
   const deliveredOn = (number: number) => number === 3 ? "2026-11-01" : number === 2 ? "2026-10-18" : "2026-10-04";
   return { child, today: state === "not_started" ? "2026-11-02" : SAMPLE_TODAY, current: state === "first_book_coming" ? null : { id: "sample-book-3", number: 3, shippedOn: "2026-10-28", deliveredOn: mailed ? null : "2026-11-01", delivery: state === "hand" ? { method: "hand" } : { method: "mail", carrier: "Canada Post", trackingNumber: "SAMPLE 000 000", trackingUrl: "https://example.invalid/track" } },
     next: child.readOnly || state === "first_book_coming" ? { kind: "none" } : state === "late" ? { kind: "past_estimate" } : { kind: "range", earliest: state === "paused" ? "2026-12-10" : "2026-11-26", latest: state === "paused" ? "2026-12-15" : "2026-12-01" },
-    books: state === "first_book_coming" ? [] : [3, 2, 1].map(number => ({ id: `sample-book-${number}`, number, shippedOn: "2026-10-28", deliveredOn: number === 3 && mailed ? null : deliveredOn(number) })) };
+    books: state === "first_book_coming" ? [] : [3, 2, 1].map(number => ({ id: `sample-book-${number}`, number, shippedOn: "2026-10-28", deliveredOn: number === 3 && mailed ? null : deliveredOn(number) })), homeScan: null };
 }
 
 /** The printed plan of the sample's current book: 10 days of 8 pages, scanned as the scenario says. */
@@ -129,7 +129,7 @@ function samplePlan(book: { id: string; number: number }, child: ChildView, stat
     if (state === "partial_day" && day === 3) return { kind: "known", accepted: 3, required: 8, missing: Array.from({ length: 5 }, (_, k) => first + 3 + k) };
     return { kind: "unknown" };
   };
-  return { kind: "ready", child: { id: child.id, parentId: "sample-parent", firstName: child.firstName }, book, dailyTime: "about 19 minutes", minutes: { min: 19, max: 19 },
+  return { kind: "ready", child: { id: child.id, parentId: "sample-parent", firstName: child.firstName }, book, dailyTime: "about 19 minutes", minutes: { min: 19, max: 19 }, scansUnknown: state === "scans_unknown",
     rows: SAMPLE_TOPICS.map((topic, i): ScheduleRow => {
       const first = 3 + i * 8;
       return { day: i + 1, topic, second: "", pages: [first, first + 7], requiredMinutes: 19, extra: false, requiredPages: Array.from({ length: 8 }, (_, k) => first + k), scan: scan(i + 1, first), marks: { kind: "none", marked: 0, total: 8 } };
@@ -158,7 +158,7 @@ function workbooksPage(child: ChildView, state: string) {
   const main = mainBook(view.books);
   const days = main ? bookDays(samplePlan(main, child, state), main.deliveredOn ? { start: main.deliveredOn, today: view.today, ended: child.readOnly } : null) : null;
   const history = workbookHistory(child, state);
-  const list = days && main && <WorkbookDaysView book={main.id} weeks={days.weeks} openDay={state.startsWith("history_") ? 1 : null} state={history.state} pages={history.pages.map(p => ({ ...p, workbookId: main.id }))} />;
+  const list = days && main && <WorkbookDaysView book={main.id} weeks={days.weeks} openDay={state.startsWith("history_") ? 1 : null} checking={history.pages.filter(p => p.status === "review").length} state={history.state} pages={history.pages.map(p => ({ ...p, workbookId: main.id }))} />;
   return <ParentWorkbooks view={view} days={days} list={list} scanOpen />;
 }
 

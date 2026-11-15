@@ -52,12 +52,19 @@ it("shows the real Workbooks tab for each book state on both sizes, with the Sch
     expect(midway.querySelectorAll(".wd-row")).toHaveLength(10);
     expect(midway.querySelectorAll(".wd-row.is-ok")).toHaveLength(2);
     expect(midway.querySelector(".wb-cover")?.textContent).toContain("Day 3 of 10 · Adding with regrouping");
-    expect(midway.querySelector(".wb-scan")).toBeNull();
+    // Day 3 is today, nothing of it scanned yet: the one orange row.
+    expect(midway.querySelectorAll(".wb-scan")).toHaveLength(1);
+    expect(midway.querySelector(".wb-scan")?.textContent).toContain("Day 3 still to scan");
+    expect(midway.querySelector(".wb-scan")?.textContent).toContain("Pages 19–26");
   }
   expect(dom(rendered("workbooks", "partial_day")).querySelector(".wb-scan")?.textContent).toContain("Day 3 still to scan");
   expect(dom(rendered("workbooks", "partial_day")).querySelector(".wb-scan")?.textContent).toContain("Pages 22–26");
   expect(dom(rendered("workbooks", "not_started")).body.textContent).toContain("0 of 80 pages scanned");
-  expect(dom(rendered("workbooks", "not_started")).querySelector(".wb-scan")).toBeNull();
+  expect(dom(rendered("workbooks", "not_started")).querySelector(".wb-scan")?.textContent).toContain("Day 1 still to scan");
+  const unknown = dom(rendered("workbooks", "scans_unknown"));
+  expect(unknown.body.textContent).toContain("Scan status unavailable right now.");
+  expect(unknown.querySelector(".wb-scan")).toBeNull();
+  expect(unknown.querySelector(".wd-st")).toBeNull();
   const all = dom(rendered("workbooks", "all_scanned"));
   expect(all.querySelectorAll(".wd-row.is-ok")).toHaveLength(10);
   expect(all.body.textContent).toContain("80 of 80 pages scanned");

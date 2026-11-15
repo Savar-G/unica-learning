@@ -20,6 +20,7 @@
 .wb-tile.is-small .wb-mark { width: 22px; height: 22px; border-radius: 5px; }
 .wb-tile.is-small b { font-size: 9px; }
 
+.support-page .pa .wb-unknown { margin: 8px 0 0; font-size: 13px; line-height: 1.4; color: var(--pa-tx2); }
 .support-page .pa .wb-facts { font-size: 13.5px; line-height: 1.4; color: var(--pa-tx2); margin: 0 4px; }
 
 /* The orange row of a day with pages still to scan */
@@ -52,7 +53,8 @@
 
 /* Older workbooks: one row each, opening that book's page */
 .support-page .pa .wb-label { margin: 0 0 8px 4px; font-size: 12px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--pa-tx3); }
-.pa .wb-older { padding: 4px 14px; }
+/* Beats `.support-page .pa ul { padding: 0 }`, which has more weight than `.pa .wb-older`. */
+.support-page .pa .wb-older { padding: 4px 14px; }
 .support-page .pa .wb-older li { margin: 0; }
 .support-page .pa .wb-older li + li { border-top: 1px solid var(--pa-line); }
 .support-page .pa .wb-older a { display: flex; align-items: center; gap: 12px; min-height: 68px; padding: 8px 0; color: inherit; text-decoration: none; }

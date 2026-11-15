@@ -54,7 +54,7 @@ export const PARENT_PREVIEW_VIEWS = [
     scenario("no_skills", "Skills not shown yet"), scenario("empty", "No skills of one kind"),
   ] },
   { id: "workbooks", label: "Workbooks", scenarios: [
-    scenario("delivered", "Midway: Days 1 and 2 scanned, Day 3 today"), scenario("partial_day", "A day with pages missing"),
+    scenario("delivered", "Midway: Days 1 and 2 scanned, Day 3 today"), scenario("partial_day", "A day with pages missing"), scenario("scans_unknown", "Scan status unavailable"),
     scenario("not_started", "Book not started"), scenario("all_scanned", "All days scanned"),
     scenario("mail", "In the mail"), scenario("hand", "Delivery by hand"),
     scenario("first_book_coming", "First workbook not sent", "first_book_coming"), scenario("late", "Later than estimate"),

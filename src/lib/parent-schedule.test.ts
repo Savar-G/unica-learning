@@ -123,9 +123,10 @@ it("counts immutable receipts once through later rechecks, expiry and image clea
   }
   data.receipts = [];
   // The receipt epoch has no historical backfill. Empty history is unknown, never zero scans.
-  expect(await read(data)).toMatchObject({ rows: [{ scan: { kind: "unknown" } }, { scan: { kind: "unknown" } }] });
+  expect(await read(data)).toMatchObject({ scansUnknown: false, rows: [{ scan: { kind: "unknown" } }, { scan: { kind: "unknown" } }] });
+  // A failed read is told apart from an empty history: the page must not call every day To scan for it.
   data.fail = "receipts";
-  expect(await read(data)).toMatchObject({ kind: "ready", rows: [{ scan: { kind: "unknown" } }, { scan: { kind: "unknown" } }] });
+  expect(await read(data)).toMatchObject({ kind: "ready", scansUnknown: true, rows: [{ scan: { kind: "unknown" } }, { scan: { kind: "unknown" } }] });
   data.fail = "pages"; expect(await read(data)).toMatchObject({ kind: "unavailable" });
 });
 

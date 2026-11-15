@@ -46,7 +46,9 @@ export type ScheduleView =
   | { kind: "not-found" }
   | { kind: "waiting"; child: ScheduleChild | null }
   | { kind: "unavailable"; child: ScheduleChild | null }
-  | { kind: "ready"; child: ScheduleChild; book: { id: string; number: number }; rows: ScheduleRow[]; dailyTime: string; minutes: { min: number; max: number } };
+  | { kind: "ready"; child: ScheduleChild; book: { id: string; number: number }; rows: ScheduleRow[]; dailyTime: string; minutes: { min: number; max: number };
+    /** The scan records could not be read (#1031): every row's `scan` is "unknown" for that reason, not because nothing was scanned. */
+    scansUnknown: boolean };
 
 const eligible = (b: ScheduleBook) => b.status === "printed" || b.status === "shipped";
 
@@ -130,6 +132,6 @@ export async function readSchedule(store: ScheduleStore, parent: string, request
       return { ...r, requiredPages: [...required].sort((a, b) => a - b), scan, marks: state };
     });
     // Only the safe projection leaves this module. No draft, PDF path, questions or contracts.
-    return { kind: "ready", child, book: { id: book.id, number: book.number }, rows, dailyTime: saved.dailyTime, minutes: saved.minutes };
+    return { kind: "ready", child, book: { id: book.id, number: book.number }, rows, dailyTime: saved.dailyTime, minutes: saved.minutes, scansUnknown: receipts === null };
   } catch { return { kind: "unavailable", child }; }
 }

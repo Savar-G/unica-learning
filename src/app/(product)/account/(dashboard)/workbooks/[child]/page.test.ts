@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, it, vi } from "vitest";
 import { memoryParentViewReaders, type MemoryParentViewTables } from "@/lib/parent-view-memory";
 
-const fake = vi.hoisted(() => ({ parent: "parent" as string | null, dashboard: true, scans: true, marking: true, reader: null as unknown, days: vi.fn(), access: vi.fn(), schedule: "ready" as "ready" | "waiting" | "unavailable" }));
+const fake = vi.hoisted(() => ({ parent: "parent" as string | null, dashboard: true, scans: true, marking: true, reader: null as unknown, days: vi.fn(), access: vi.fn(), schedule: "ready" as "ready" | "waiting" | "unavailable", scansUnknown: false, history: vi.fn(), review: vi.fn(), reviewCount: 0 as number | null }));
 vi.mock("server-only", () => ({}));
 vi.mock("next/navigation", () => ({ usePathname: () => "/account/workbooks/child", redirect: (path: string) => { throw new Error(`redirect:${path}`); }, notFound: () => { throw new Error("not-found"); } }));
 vi.mock("@/lib/supabase-auth", () => ({ sessionClient: async () => ({}), parentId: async () => fake.parent, adminClient: () => ({}) }));
@@ -14,15 +14,24 @@ vi.mock("@/lib/scan-marking-server", () => ({ markingAccess: async () => { fake.
 // The live day list loads over the network: here it renders the same presentation with no pages and no loader.
 vi.mock("@/components/workbook-days", async importOriginal => {
   const actual = await importOriginal<typeof import("@/components/workbook-days")>();
-  return { ...actual, WorkbookDays: (props: { parent: string; child: string; book: string; open: boolean; openDay?: number | null; weeks: import("@/lib/workbook-days").DayRow[][] }) => {
+  return { ...actual, WorkbookDays: (props: { parent: string; child: string; book: string; open: boolean; openDay?: number | null; checking?: number; weeks: import("@/lib/workbook-days").DayRow[][] }) => {
     fake.days({ parent: props.parent, child: props.child, book: props.book, open: props.open, openDay: props.openDay ?? null });
-    return createElement(actual.WorkbookDaysView, { book: props.book, weeks: props.weeks as never, openDay: props.openDay, state: props.open ? "ready" : "unavailable", pages: [] });
+    return createElement(actual.WorkbookDaysView, { book: props.book, weeks: props.weeks as never, openDay: props.openDay, state: props.open ? "ready" : "unavailable", pages: [], checking: props.checking });
   } };
 });
+// The plain page list a book falls back to when its plan cannot be read: here a marker with the props it got.
+vi.mock("@/components/scan-history", async importOriginal => {
+  const actual = await importOriginal<typeof import("@/components/scan-history")>();
+  return { ...actual, ScanHistory: (props: { parent: string; child: string; books?: readonly string[] }) => { fake.history(props); return createElement("section", { className: "scan-history" }, "Page history"); } };
+});
+// The pages our team is checking: one server read, with the largest limit.
+vi.mock("@/lib/scan-history-reader", () => ({ scanHistoryStore: () => ({}) }));
+vi.mock("@/lib/scan-history", async importOriginal => ({ ...await importOriginal<typeof import("@/lib/scan-history")>(),
+  readScanHistory: async (...args: unknown[]) => { fake.review(...args); return fake.reviewCount === null ? null : { pages: Array.from({ length: fake.reviewCount }, () => ({})) }; } }));
 const TOPICS = ["Hundreds, tens and ones", "Comparing numbers", "Adding with regrouping", "Subtracting across a zero", "Review", "Rounding", "Word problems", "Patterns", "Even and odd", "Review"];
 vi.mock("@/lib/parent-schedule-server", () => ({ parentSchedule: async (parent: string, child: string, book: string) => {
   if (fake.schedule !== "ready") return { kind: fake.schedule, child: null };
-  return { kind: "ready", child: { id: child, parentId: parent, firstName: "Leah" }, book: { id: book, number: 1 }, dailyTime: "about 19 minutes", minutes: { min: 19, max: 19 },
+  return { kind: "ready", child: { id: child, parentId: parent, firstName: "Leah" }, book: { id: book, number: 1 }, dailyTime: "about 19 minutes", minutes: { min: 19, max: 19 }, scansUnknown: fake.scansUnknown,
     rows: TOPICS.map((topic, i) => ({ day: i + 1, topic, second: "", pages: [3 + i * 8, 10 + i * 8], requiredMinutes: 19, extra: false, requiredPages: Array.from({ length: 8 }, (_, k) => 3 + i * 8 + k),
       scan: i === 0 ? { kind: "known", accepted: 8, required: 8, missing: [] } : { kind: "unknown" }, marks: { kind: "none", marked: 0, total: 8 } })) };
 } }));
@@ -31,7 +40,7 @@ import WorkbookBook from "./book/[workbook]/page";
 const page = (child = "child", query: Record<string, string> = {}) => Workbooks({ params: Promise.resolve({ child }), searchParams: Promise.resolve(query) });
 const bookPage = (child: string, workbook: string, query: Record<string, string> = {}) => WorkbookBook({ params: Promise.resolve({ child, workbook }), searchParams: Promise.resolve(query) });
 beforeEach(() => {
-  Object.assign(fake, { parent: "parent", dashboard: true, scans: true, marking: true }); fake.days.mockClear(); fake.access.mockClear(); fake.schedule = "ready";
+  Object.assign(fake, { parent: "parent", dashboard: true, scans: true, marking: true }); fake.days.mockClear(); fake.access.mockClear(); fake.history.mockClear(); fake.review.mockClear(); fake.schedule = "ready"; fake.scansUnknown = false; fake.reviewCount = 0;
   fake.reader = memoryParentViewReaders({
     children: [{ id: "child", parentId: "parent", firstName: "Leah", grade: 3, createdAt: "2026-01-01" }, { id: "sibling", parentId: "parent", firstName: "Kai", grade: 2, createdAt: "2026-02-01" }, { id: "foreign", parentId: "other-parent", firstName: "Foreign", grade: 3, createdAt: "2026-01-01" }],
     cards: ["child", "sibling"].map(childId => ({ childId, parentId: "parent", cardSavedAt: "2026-10-01" })),
@@ -73,8 +82,53 @@ it("shows the cover and no days when the book's printed plan cannot be read", as
     const html = renderToStaticMarkup(await page());
     expect(html).toContain("Workbook 1");
     expect(html).not.toContain("wd-row");
+    expect(html).not.toContain("How to follow");
     expect(fake.days).not.toHaveBeenCalled();
   }
+});
+it("a book whose plan cannot be read keeps its page results as the plain list scoped to that book, where the Scan tab's link lands", async () => {
+  fake.schedule = "unavailable";
+  const html = renderToStaticMarkup(await page());
+  expect(html).toMatch(/<div id="page-history"><section class="scan-history">Page history<\/section><\/div>/);
+  expect(fake.history).toHaveBeenLastCalledWith({ parent: "parent", child: "child", books: ["past-book"] });
+  renderToStaticMarkup(await bookPage("child", "own-book"));
+  expect(fake.history).toHaveBeenLastCalledWith({ parent: "parent", child: "child", books: ["own-book"] });
+  // With the page results closed to the family there is nothing to list, and no link to it.
+  fake.history.mockClear(); fake.marking = false;
+  expect(renderToStaticMarkup(await page())).not.toContain("page-history");
+  expect(fake.history).not.toHaveBeenCalled();
+});
+it("says once, above the weeks, how many pages our team is checking, and nothing for none or a closed gate", async () => {
+  fake.reviewCount = 2;
+  const html = renderToStaticMarkup(await page());
+  expect(html).toMatch(/id="page-history"[^>]*><p class="wd-check" role="status">Our team is checking 2 pages<\/p><section/);
+  expect(fake.review).toHaveBeenCalledWith(expect.anything(), { child: "child", workbook: "past-book", status: "review", scannedOnly: true }, expect.any(Number), 100);
+  fake.reviewCount = 1;
+  expect(renderToStaticMarkup(await page())).toContain("Our team is checking 1 page<");
+  for (const count of [0, null]) { fake.reviewCount = count; expect(renderToStaticMarkup(await page())).not.toContain("Our team is checking"); }
+  fake.reviewCount = 3; fake.marking = false; fake.review.mockClear();
+  expect(renderToStaticMarkup(await page())).not.toContain("Our team is checking");
+  expect(fake.review).not.toHaveBeenCalled();
+});
+it("when the scan records cannot be read the page says so and shows no scan statuses", async () => {
+  fake.scansUnknown = true;
+  const html = renderToStaticMarkup(await page());
+  expect(html).toContain("Scan status unavailable right now.");
+  expect(html).not.toMatch(/wd-st|still to scan|pages scanned/);
+});
+it("the current book's cover says the number Home says: saved, unexpired photos over its day pages", async () => {
+  const own = { parentId: "parent", workbookId: "past-book" };
+  fake.reader = memoryParentViewReaders({
+    children: [{ id: "child", parentId: "parent", firstName: "Leah", grade: 3, createdAt: "2026-01-01" }], cards: [{ childId: "child", parentId: "parent", cardSavedAt: "2026-10-01" }],
+    workbooks: [{ id: "past-book", parentId: "parent", childId: "child", number: 1, status: "shipped", pdfPath: null, shippedAt: "2026-09-01" }],
+    deliveries: [{ parentId: "parent", childId: "child", workbookId: "past-book", deliveredAt: "2026-09-02" }],
+    pages: [{ ...own, id: "a", dayLabel: "Day 1" }, { ...own, id: "b", dayLabel: "Day 1" }, { ...own, id: "c", dayLabel: "Day 2" }, { ...own, id: "cover", dayLabel: null }],
+    scans: [{ parentId: "parent", childId: "child", workbookId: "past-book", pageId: "a", state: "saved", expiresAt: "2099-01-01T00:00:00Z" }],
+  }).parent("parent");
+  // The printed plan's own count is 8 of 80; Home's is 1 of 3.
+  const html = renderToStaticMarkup(await page());
+  expect(html).toContain("1 of 3 pages scanned");
+  expect(html).toContain('aria-valuenow="33"');
 });
 it("opens an older book as the same page, and refuses another family's, a sibling's and an unknown book", async () => {
   const html = renderToStaticMarkup(await bookPage("child", "own-book", { day: "2" }));

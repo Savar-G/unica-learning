@@ -1,8 +1,8 @@
-import { WorkbookDays } from "@/components/workbook-days";
+import { WorkbookBookList } from "@/components/workbook-book-list";
 import { ParentWorkbooks } from "@/components/parent-workbooks";
 import { pageMetadata } from "@/lib/metadata";
 import { mainBook } from "@/lib/workbook-days";
-import { loadWorkbooksPage, openDayOf, workbookDaysFor } from "@/lib/workbooks-page-server";
+import { bookChecking, loadWorkbooksPage, openDayOf, workbookDaysFor } from "@/lib/workbooks-page-server";
 
 export const metadata = pageMetadata({ path: "/account/workbooks", title: "Workbooks", description: "Your child's workbooks.", index: false });
 
@@ -13,6 +13,7 @@ export default async function Workbooks({ params, searchParams }: PageProps<"/ac
   const main = mainBook(view.books);
   const days = main ? await workbookDaysFor(parent, view, main) : null;
   const openDay = openDayOf((await searchParams).day);
+  const checking = main ? await bookChecking(parent, view.child.id, main.id, days, historyAvailable) : 0;
   return <ParentWorkbooks view={view} days={days} scanOpen={view.child.tabs.includes("scan_pages")}
-    list={days && main && <WorkbookDays parent={parent} child={view.child.id} book={main.id} weeks={days.weeks} openDay={openDay} open={historyAvailable} />} />;
+    list={main && <WorkbookBookList parent={parent} child={view.child.id} book={main.id} days={days} open={historyAvailable} openDay={openDay} checking={checking} />} />;
 }

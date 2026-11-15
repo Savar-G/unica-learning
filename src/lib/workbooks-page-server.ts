@@ -7,7 +7,9 @@ import { parentSchedule } from "@/lib/parent-schedule-server";
 import { readWorkbooks, type ShippedBookView, type WorkbooksView } from "@/lib/parent-view";
 import { parentViewReader } from "@/lib/parent-view-server";
 import { adminClient, parentId, sessionClient } from "@/lib/supabase-auth";
-import { bookDays, mainBook, type BookDays } from "@/lib/workbook-days";
+import { bookDays, mainBook, withHomeCount, type BookDays } from "@/lib/workbook-days";
+import { readScanHistory } from "@/lib/scan-history";
+import { scanHistoryStore } from "@/lib/scan-history-reader";
 import { scanChildAccess } from "@/lib/scan-pages-access";
 import { markingAccess } from "@/lib/scan-marking-server";
 
@@ -42,7 +44,25 @@ export async function workbookDaysFor(parent: string, view: WorkbooksView, book:
   const schedule = await parentSchedule(parent, view.child.id, book.id);
   if (schedule.kind !== "ready") return null;
   const isMain = mainBook(view.books)?.id === book.id;
-  return bookDays(schedule, isMain && book.deliveredOn ? { start: book.deliveredOn, today: view.today, ended: view.child.readOnly } : null);
+  const days = bookDays(schedule, isMain && book.deliveredOn ? { start: book.deliveredOn, today: view.today, ended: view.child.readOnly } : null);
+  // The current book's cover counts pages the way Home does, so a parent who taps Today sees the same number.
+  return view.homeScan?.bookId === book.id && !days.scansUnknown ? withHomeCount(days, view.homeScan) : days;
+}
+
+/**
+ * How many pages of the book our team is checking (an answer the AI was unsure of): the Page history's "Our team is
+ * checking" count, read once on the server so the line above the days needs no request from the browser. 0 when there is
+ * none or it cannot be read: the page then says nothing about it.
+ */
+export async function bookChecking(parent: string, childId: string, bookId: string, days: BookDays | null, historyAvailable: boolean): Promise<number> {
+  // Only a book with its days says it above them, and only where the family has saved page results.
+  const admin = days && historyAvailable ? adminClient() : null;
+  if (!admin) return 0;
+  try {
+    // A book is a few dozen pages: one read with the largest limit holds every page our team is checking.
+    const result = await readScanHistory(scanHistoryStore(admin, { parent }), { child: childId, workbook: bookId, status: "review", scannedOnly: true }, Date.now(), 100);
+    return result ? result.pages.length : 0;
+  } catch { return 0; }
 }
 
 /** `?day=3` opens Day 3 of the book (Home's "Today" row); anything else opens none. */

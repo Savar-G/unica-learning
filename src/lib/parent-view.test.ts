@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BC_SKILL_MAP, type AreaAnswer, type ReportModel } from "@/lib/assessment";
 import { listChildren, readChild, readMonthlySummary, readOverview, readProgress, readWorkbooks } from "@/lib/parent-view";
-import { memoryParentViewReaders, type MemoryParentViewTables, type MemoryResult, type MemoryTest, type MemoryWorkbook } from "@/lib/parent-view-memory";
+import { memoryParentViewReaders, type MemoryParentViewTables, type MemoryResult, type MemoryScan, type MemoryTest, type MemoryWorkbook } from "@/lib/parent-view-memory";
 
 // The parent view module (spec #544), through its public interface, over the in-memory reader, which keeps the
 // database's access rules: a parent reads only their own rows, and only shipped workbooks.
@@ -203,8 +203,23 @@ describe("the Workbooks tab (#558)", () => {
   it("before the first book ships: the status, with no date and no book", async () => {
     expect(await read({ workbooks: [book(1, { status: "printed" })] })).toEqual({
       child: expect.objectContaining({ id: "child-1", firstName: "Leah", stage: "first_book_coming" }),
-      current: null, next: { kind: "first_book_coming" }, books: [], today: "2026-11-04",
+      current: null, next: { kind: "first_book_coming" }, books: [], today: "2026-11-04", homeScan: null,
     });
+  });
+  it("counts the current book's scanned pages the way Home does: saved photos that have not expired, over its day pages", async () => {
+    const page = (id: string, dayLabel: string | null) => ({ parentId: "parent-1", workbookId: "wb-1", id, dayLabel });
+    const scan = (pageId: string, over: Partial<MemoryScan> = {}): MemoryScan => ({ ...own, workbookId: "wb-1", pageId, state: "saved", expiresAt: "2027-01-01T00:00:00Z", ...over });
+    const tables = {
+      workbooks: [book(1)], deliveries: [{ ...own, workbookId: "wb-1", deliveredAt: "2026-11-02T22:00:00Z" }],
+      pages: [page("c", null), page("a", "Day 1"), page("b", "Day 1"), page("d", "Day 2"), page("e", "Day 2")],
+      scans: [scan("a"), scan("b", { expiresAt: "2026-11-01T00:00:00Z" }), scan("c"), scan("d", { state: "rejected" }), scan("e", { workbookId: "wb-other" })],
+    };
+    // One of four day pages: the expired photo, the cover, the rejected photo and another book's photo do not count.
+    expect((await read(tables))?.homeScan).toEqual({ bookId: "wb-1", scanned: 1, total: 4 });
+    expect((await readOverview(parent({ ...card, ...tables }), "child-1", NOW))?.workbook?.percent).toBe(25);
+    // No delivered book: nothing to count. A failed read leaves the count out and the page still reads.
+    expect((await read({ workbooks: [book(1)] }))?.homeScan).toBeNull();
+    expect((await read({ ...tables, fail: ["scans"] }))?.homeScan).toBeNull();
   });
   it("a shipped book with no confirmed delivery: shipped in family time, tracking, and 14 to 35 days after shipping", async () => {
     const view = await read({ workbooks: [book(1)], dispatches: [{ ...own, number: 1, delivery: mail }] });

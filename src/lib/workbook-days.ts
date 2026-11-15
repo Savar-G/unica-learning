@@ -1,5 +1,6 @@
 import type { ScheduleView } from "@/lib/parent-schedule";
-import { WORKBOOK_DAYS, bookOver, bookToday, workbookDay } from "@/lib/parent-week";
+import type { HistoryPage } from "@/lib/scan-history";
+import { WORKBOOK_DAYS, bookOver, bookToday, dayNumber, workbookDay } from "@/lib/parent-week";
 
 // The Workbooks tab's 10 days (#1031): a book's printed plan (src/lib/parent-schedule.ts) turned into the day rows, the
 // scan row and the cover's numbers. Pure: no database, network or clock; the caller passes today in family time. The
@@ -20,7 +21,7 @@ export interface DayRow {
   status: DayStatus;
   /** The ringed circle: the day the child is on by the calendar (Home's "Today" row). */
   today: boolean;
-  /** Required pages with no accepted scan, for a day that has started. Empty for a day with no scan yet. */
+  /** Required pages with no accepted scan, for a day that has started: the known missing ones, else all its required pages. */
   missing: number[];
 }
 
@@ -38,8 +39,10 @@ export interface BookDays {
   total: number;
   percent: number;
   allScanned: boolean;
-  /** Days that have started and still have pages to scan: the orange rows. */
-  gaps: { day: number; pages: number[] }[];
+  /** The one orange row: the earliest started day that still has pages to scan. Null when there is none. */
+  gap: { day: number; pages: number[] } | null;
+  /** The scan records could not be read: no day says Scanned or To scan, there is no orange row and no count. */
+  scansUnknown: boolean;
   /** The printed plan's daily minutes. */
   minutes: { min: number; max: number };
 }
@@ -61,30 +64,35 @@ export function pageList(numbers: readonly number[]): string {
 }
 
 /**
- * The book's day rows. A day is Scanned when every required page has an accepted scan. A day that has started and has
- * pages left is To scan, with its missing pages (the Schedule page's rule). With a calendar, every unscanned day up to the
- * day the child is on is To scan too, and the first day after them is Next. Without one (an older book, or a book not
- * delivered yet) only started days say anything: nothing marks a day Next.
+ * The book's day rows. A day has started when it has an accepted scan, or when the calendar has reached it (the current
+ * book only: a book with a start day and a plan that has not ended). A started day with pages left is To scan; its missing
+ * pages are the known missing ones, else all its required pages. A day whose every required page has a scan is Scanned.
+ * The first day after the days the calendar has reached is Next, unless the plan ended. Without a calendar (an older book,
+ * or a book not delivered yet) only days with a scan say anything, and nothing is Next. When the scan records could not
+ * be read, no day says Scanned, To scan or Next: the page shows one line instead.
  */
 export function bookDays(schedule: ReadySchedule, calendar: BookCalendar | null): BookDays {
   const start = calendar?.start ?? null;
   const ended = calendar?.ended ?? false;
+  const scansUnknown = schedule.scansUnknown;
   const reached = start === null || ended ? null : workbookDay(start, calendar!.today);
   const ring = start === null || !calendar ? null : bookToday(start, calendar.today, { ended })?.day ?? null;
   const rows = schedule.rows.map((r): DayRow => {
-    const known = r.scan.kind === "known" ? r.scan : null;
+    const known = !scansUnknown && r.scan.kind === "known" ? r.scan : null;
     const scanned = known !== null && known.missing.length === 0;
-    const started = known !== null && known.missing.length > 0;
-    const status: DayStatus = scanned ? "scanned" : started || (reached !== null && r.day <= reached) ? "to_scan" : null;
-    return { day: r.day, topic: r.topic, pages: r.pages, requiredPages: r.requiredPages, status, today: ring === r.day, missing: started ? known.missing : [] };
+    const started = !scansUnknown && (known !== null || (reached !== null && r.day <= reached));
+    const left = started && !scanned;
+    const status: DayStatus = scanned ? "scanned" : left ? "to_scan" : null;
+    return { day: r.day, topic: r.topic, pages: r.pages, requiredPages: r.requiredPages, status, today: ring === r.day, missing: left ? known?.missing ?? r.requiredPages : [] };
   });
-  // Next: the first day with nothing yet, once the book has a calendar or a scan to count from.
-  if (calendar !== null && (start !== null || rows.some(r => r.status !== null))) {
+  // Next: the first day with nothing yet, once the book has a calendar or a scan to count from. Never on an ended plan.
+  if (!scansUnknown && !ended && calendar !== null && (start !== null || rows.some(r => r.status !== null))) {
     const next = rows.find(r => r.status === null);
     if (next) next.status = "next";
   }
   const total = schedule.rows.reduce((n, r) => n + r.requiredPages.length, 0);
-  const scanned = schedule.rows.reduce((n, r) => n + (r.scan.kind === "known" ? r.scan.accepted : 0), 0);
+  const scanned = scansUnknown ? 0 : schedule.rows.reduce((n, r) => n + (r.scan.kind === "known" ? r.scan.accepted : 0), 0);
+  const gap = rows.find(r => r.missing.length > 0) ?? null;
   const allScanned = rows.length > 0 && rows.every(r => r.status === "scanned");
   const days = rows.length || WORKBOOK_DAYS;
   // Home's rule for "Day X": the calendar's day, Day 1 before the book's first weekday; Day 10 once it is over or all is scanned.
@@ -92,8 +100,33 @@ export function bookDays(schedule: ReadySchedule, calendar: BookCalendar | null)
   return {
     bookId: schedule.book.id, number: schedule.book.number, rows, weeks: [rows.slice(0, 5), rows.slice(5, 10)], day,
     topic: rows.find(r => r.day === day)?.topic ?? "", scanned, total, percent: total > 0 ? Math.round((scanned / total) * 100) : 0, allScanned,
-    gaps: rows.filter(r => r.missing.length > 0).map(r => ({ day: r.day, pages: r.missing })), minutes: schedule.minutes,
+    gap: gap ? { day: gap.day, pages: gap.missing } : null, scansUnknown, minutes: schedule.minutes,
   };
+}
+
+/**
+ * The cover's count the way Home counts it (src/lib/parent-view.ts `readBookDays`): saved, unexpired photos over the book's
+ * day pages, percent floored. The Workbooks tab and Home then say the same number for the current book.
+ */
+export const withHomeCount = (days: BookDays, count: { scanned: number; total: number }): BookDays =>
+  ({ ...days, scanned: count.scanned, total: count.total, percent: count.total > 0 ? Math.floor((count.scanned / count.total) * 100) : 0 });
+
+/**
+ * The saved results of pages that belong to a day but are not among its required pages (the print manifest leaves extra
+ * practice out): by the page's own "Day N" label, else by the day's printed page range. A required page of any day is never
+ * extra. The pages of one day come in printed order.
+ */
+export function extraPracticePages(rows: readonly DayRow[], pages: readonly HistoryPage[], book: string): Map<number, HistoryPage[]> {
+  const required = new Set(rows.flatMap(r => r.requiredPages));
+  const found = new Map<number, HistoryPage[]>();
+  for (const page of pages) {
+    if (page.workbookId !== book || required.has(page.pageNumber)) continue;
+    const labelled = dayNumber(page.day);
+    const day = labelled !== null ? rows.find(r => r.day === labelled)?.day : rows.find(r => page.pageNumber >= r.pages[0] && page.pageNumber <= r.pages[1])?.day;
+    if (day !== undefined) found.set(day, [...(found.get(day) ?? []), page]);
+  }
+  for (const list of found.values()) list.sort((a, b) => a.pageNumber - b.pageNumber);
+  return found;
 }
 
 /** "About 19 min a day", or "About 20–25 min a day". */

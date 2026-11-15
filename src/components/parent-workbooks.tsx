@@ -42,9 +42,10 @@ function coverSub(book: ShippedBookView, days: BookDays | null, showDay: boolean
 }
 
 /**
- * One book: its cover card, the quiet line of facts, the orange row of a day with pages still to scan, the days and "How to
- * follow the 10 days". `days` null: the printed plan could not be read, so only the cover shows. `showDay`: the cover says
- * which day the child is on (the current book only).
+ * One book: its cover card, the quiet line of facts, the one orange row (the earliest day with pages still to scan), the days
+ * and "How to follow the 10 days". `days` null: the printed plan could not be read, so only the cover shows, and `list` is
+ * the plain page list of saved results, when the family has it. `showDay`: the cover says which day the child is on (the
+ * current book only).
  */
 export function BookPanel({ book, days, list, showDay, delivery = null, scanOpen, below }: {
   book: ShippedBookView; days: BookDays | null; list: ReactNode; showDay: boolean; delivery?: CurrentWorkbookView | null; scanOpen: boolean; below?: ReactNode;
@@ -57,7 +58,8 @@ export function BookPanel({ book, days, list, showDay, delivery = null, scanOpen
         <div className="wb-cover-text">
           <h2>Workbook {book.number}</h2>
           <p className="wb-sub">{coverSub(book, days, showDay, delivery)}</p>
-          {days && delivered && <>
+          {days && delivered && days.scansUnknown && <p className="wb-unknown" role="status">Scan status unavailable right now.</p>}
+          {days && delivered && !days.scansUnknown && <>
             <div className="wb-bar" role="progressbar" aria-label={`Workbook ${book.number} pages scanned`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={days.percent}><i style={{ width: `${days.percent}%` }} /></div>
             <p className="wb-sub">{days.scanned} of {days.total} pages scanned</p>
           </>}
@@ -65,13 +67,13 @@ export function BookPanel({ book, days, list, showDay, delivery = null, scanOpen
       </section>
       {days && <p className="wb-facts">{minutesLine(days.minutes)} · 5 days a week · Days 1–{days.rows.length} in order</p>}
       {below}
-      {days && delivered && scanOpen && days.gaps.map(gap => (
-        <div className="pa-card wb-scan" key={gap.day}>
-          <div><b>Day {gap.day} still to scan</b><span>Pages {pageList(gap.pages)}</span></div>
-          <Link className="pa-scanbtn" href={scanPagePath(book.id, gap.pages[0])} aria-label={`Scan Day ${gap.day}`}>Scan</Link>
+      {days && delivered && scanOpen && days.gap && (
+        <div className="pa-card wb-scan">
+          <div><b>Day {days.gap.day} still to scan</b><span>Pages {pageList(days.gap.pages)}</span></div>
+          <Link className="pa-scanbtn" href={scanPagePath(book.id, days.gap.pages[0])} aria-label={`Scan Day ${days.gap.day}`}>Scan</Link>
         </div>
-      ))}
-      {days && list}
+      )}
+      {list}
       {days && (
         <details className="pa-card wb-guide">
           <summary><b>How to follow the {days.rows.length} days</b><span className="wb-chev" aria-hidden="true">›</span></summary>
