@@ -140,7 +140,56 @@ function fits(pkg: OperationPackage): boolean {
     known.add(st.value);
   }
   if (steps.at(-1)!.value !== pkg.answer.value.value) return false;
-  return !speaksOfPattern(pkg.text) || patternOf(pkg) !== null;
+  if (speaksOfPattern(pkg.text)) return patternOf(pkg) !== null;
+  return storyMatches(pkg.text, steps);
+}
+
+/** Words of a story that say each operation (D-345 review of #1018: a story's words must give the operation). */
+const CUES: Record<Sign | "total", RegExp> = {
+  "+": /\b(?:more|buys?|bought|gets?|got|adds?|added|gains?|gained|finds?|found|earns?|earned|receives?|received|joins?|joined|comes?|came|arrives?|arrived|moves? in|moved in|plus|grows?|grew)\b/i,
+  "−": /\b(?:sells?|sold|gives?(?: away)?|gave|uses?|used|eats?|ate|loses?|lost|spends?|spent|takes?\b.*\b(?:off|away|out)|took\b.*\b(?:off|away|out)|moves? away|moved away|sends?\b.*\baway|sent\b.*\baway|leave|removes?|removed|breaks?|broke|fewer|less|minus)\b/i,
+  "×": /\b(?:each|every|per|times)\b|\d+\s+(?:[a-z]+\s+)?[a-z]+s of\b/i,
+  "÷": /\b(?:shares?|shared|splits?|split|divides?|divided|equal groups|among|between)\b/i,
+  total: /\b(?:in all|altogether|total|together|in total|both)\b/i,
+};
+
+/**
+ * Whether the question's words give each operation of its expression. A bare expression ("What is 9 × 880 + 9 × 40?",
+ * "9 × ? = 8150 − 500") and a rectangle's perimeter (2 × (length + width)) need no words. In a story, each step whose
+ * printed number stands in one clause (cut at ".", "?", "!", ",", "and" and "then") needs that clause to say its
+ * operation and not the opposite one (a product: either number's clause says "each" or "boxes of"); a sum of two
+ * worked values needs "in all", "altogether" or "total". Any other story keeps the controller.
+ */
+export function storyMatches(text: string, steps: readonly OperateStep[]): boolean {
+  const bare = text.replace(/\d[\d,]*/g, " ").replace(/[+−×÷\-x*/=?().:]/g, " ").replace(/\b(?:what is|find|work out|calculate)\b/gi, " ").trim();
+  if (bare === "") return true;
+  if (/\brectangle\b/i.test(text) && /\bperimeter\b/i.test(text) && steps.length === 2) {
+    const [sum, twice] = steps;
+    const length = /\blength (\d+)/i.exec(text)?.[1];
+    const width = /\bwidth (\d+)/i.exec(text)?.[1];
+    return sum.op === "+" && twice.op === "×" && twice.left === 2 && twice.right === sum.value && [sum.left, sum.right].sort().join() === [Number(length), Number(width)].sort().join();
+  }
+  const clauses = text.replace(/(\d),(?=\d{3}\b)/g, "$1").split(/[.?!,]|\s+(?:and|then)\s+/i);
+  const clauseOf = (n: number) => {
+    const found = clauses.filter((c) => new RegExp(String.raw`(?<!\d)${n}(?!\d)`).test(c));
+    return found.length === 1 ? found[0] : null;
+  };
+  // Each worked value keeps the printed numbers it came from: a sum such as 30 + 4 × 3 ("A plant is 30 cm tall and
+  // grows 4 cm each week") finds its "grows" in the clause of the 4.
+  const sources = new Map<number, number[]>();
+  const printedOf = (n: number) => sources.get(n) ?? [n];
+  for (const st of steps) {
+    const opposite = st.op === "+" ? CUES["−"] : st.op === "−" ? CUES["+"] : null;
+    const direct = [st.left, st.right].filter((n) => !sources.has(n)).map(clauseOf);
+    const behind = [st.left, st.right].flatMap(printedOf).map(clauseOf);
+    if (direct.includes(null) || behind.includes(null)) return false;
+    if (opposite && direct.some((c) => opposite.test(c!))) return false;
+    const said = behind.some((c) => CUES[st.op].test(c!));
+    // Two worked values added: a total ("in all") or the operation's own word.
+    if (!said && !(st.op === "+" && direct.length === 0 && CUES.total.test(text))) return false;
+    sources.set(st.value, [st.left, st.right].flatMap(printedOf));
+  }
+  return true;
 }
 
 const equation = (st: OperateStep) => `${st.left} ${st.op} ${st.right} = ${st.value}`;
@@ -149,7 +198,7 @@ const equation = (st: OperateStep) => `${st.left} ${st.op} ${st.right} = ${st.va
 function reason(pkg: OperationPackage, st: OperateStep): string {
   const p = patternOf(pkg);
   if (p && p.asks === "step" && st.rule === "brackets") return `the change from the start to the ${ordinalText(p.term)} term`;
-  if (p && p.asks === "step" && st.op === "÷") return `${p.term - 1} equal jumps make that change, so share it into ${p.term - 1}`;
+  if (p && p.asks === "step" && st.op === "÷") return `the ${ordinalText(p.term)} term is ${p.term - 1} jumps after the start, so share the change into ${p.term - 1}`;
   if (p && p.asks === "term" && st.op === "×") return `the ${ordinalText(p.term)} term is ${p.term - 1} jumps after the start`;
   if (st.rule === "brackets") return "work the brackets first";
   if (st.rule === "multiply-divide") return /[+−]/.test(pkg.operation.operands[0] as string) ? "multiply and divide before you add or subtract" : "multiply and divide from left to right";
@@ -240,48 +289,89 @@ function draw(pkg: OperationPackage, requests: readonly { offer: string; place?:
   return { commands, keys: [] };
 }
 
-const RELATION = String.raw`(?:is|=|equals|will be|would be|comes to|makes)`;
+const ONES = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
+const TENS = ["twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+const ORDINAL_NAMES: Record<string, string> = { first: "1st", second: "2nd", third: "3rd", fourth: "4th", fifth: "5th", sixth: "6th", seventh: "7th", eighth: "8th", ninth: "9th", tenth: "10th", eleventh: "11th", twelfth: "12th" };
+const WORD = String.raw`(?:${[...ONES, ...TENS, "hundred"].join("|")})`;
+
+/** A run of number words as one number ("twenty eight" is 28, "one hundred and four" is 104), or null. */
+function wordsValue(run: string): number | null {
+  let total = 0;
+  let part = 0;
+  for (const w of run.toLowerCase().split(/[\s-]+/).filter((x) => x && x !== "and")) {
+    const small = ONES.indexOf(w);
+    const tens = TENS.indexOf(w);
+    if (small !== -1) { if (part % 10 !== 0 || (part > 0 && part < 20)) return null; part += small; }
+    else if (tens !== -1) { if (part % 100 !== 0) return null; part += (tens + 2) * 10; }
+    else if (w === "hundred") { if (part < 1 || part > 9) return null; total += part * 100; part = 0; }
+    else return null;
+  }
+  return total + part;
+}
+
+/** The clause with its number words and ordinal words written in digits ("the third term is twenty eight" gives "the 3rd term is 28"). */
+function inDigits(clause: string): string | null {
+  let bad = false;
+  const out = clause
+    .replace(new RegExp(String.raw`\b(${Object.keys(ORDINAL_NAMES).join("|")})\b`, "gi"), (w) => ORDINAL_NAMES[w.toLowerCase()])
+    .replace(new RegExp(String.raw`\b${WORD}(?:(?:\s+|-)(?:and\s+)?${WORD})*\b`, "gi"), (run) => {
+      const v = wordsValue(run);
+      if (v === null) bad = true;
+      return String(v);
+    });
+  return bad ? null : out;
+}
+
+/** Words that make a clause speak of the pattern: every such clause must be one form code reads whole. */
+const PATTERN_WORDS = /\b(?:terms?|pattern|each time|every time|each step|start(?:s|ed|ing)?|adds|added|adding|subtracts|subtracted|subtracting|takes away|took away|goes (?:up|down)|went (?:up|down)|grows?|grew|shrinks?|increases?|decreases?|jumps?|change|changes|share)\b/i;
+/** On a question with no pattern, only these words speak of one. */
+const NO_PATTERN_WORDS = /\b(?:terms?|pattern|each time|every time)\b/i;
+const LEAD = /^(?:\{name\}|so|now|next|then|and|yes|okay|ok|great|remember|because)\b[\s,!.]*/i;
+const UP = /^(?:adds|add|goes up by|grows by|increases by)$/;
+const DOWN = /^(?:subtracts|subtract|takes away|take away|goes down by|shrinks by|decreases by)$/;
 
 /**
- * The pattern claims of one sentence that are false: a term's value ("the 3rd term is 36"), a term's jumps from the
- * start ("the 3rd term is 2 jumps after the start"), the change each time ("it adds 8 each time") and the start
- * ("it starts at 20"). Fail closed: a term claim code cannot read is refused, and a question with no pattern refuses
- * every term claim.
+ * The pattern claims of one sentence that are false or that code cannot read. The sentence is cut into clauses (at
+ * ",", ";", ":" and "and", "but", "which", "because"), number words are read as numbers, and each clause that speaks of
+ * the pattern (PATTERN_WORDS) must be one whole form code checks:
+ * - "the 3rd term is 36" (the term's value);
+ * - "the 3rd term is 2 jumps after the start";
+ * - "it adds 8 each time", "it subtracts 3 each time" (the size and the direction of the change);
+ * - "it starts at 20", "start at 20";
+ * - "the change from the start to the 3rd term", "share the change into 2" (the kind's own step words).
+ * Fail closed: any other clause about the pattern (a negation, a remainder, a sum, a word code cannot read) is
+ * refused, and a question with no pattern refuses every clause about a term or a pattern.
  */
 export function patternClaimProblems(pkg: OperationPackage, sentence: string): string[] {
-  const text = sentence.replace(/[−–]/g, "-");
   const p = fits(pkg) ? patternOf(pkg) : null;
+  const words = p ? PATTERN_WORDS : NO_PATTERN_WORDS;
+  if (!words.test(sentence)) return [];
+  if (!p) return ["this question has no pattern"];
   const problems: string[] = [];
-  let rest = text;
-  const read = (re: RegExp, check: (m: RegExpExecArray) => string | null) => {
-    rest = rest.replace(re, (...args) => {
-      const m = args.slice(0, -2) as unknown as RegExpExecArray;
-      const problem = check(m);
-      if (problem) problems.push(problem);
-      return " ";
-    });
-  };
-  const term = (m: RegExpExecArray, at: number) => ordinalOf(m[at], m[at + 1]);
-  read(new RegExp(String.raw`\b(?:(?:the|its)\s+)?(?:${ORDINAL})\s+term\s+${RELATION}\s+(\d+)\s+(?:jumps?|steps?)\s+(?:after|from|past)\s+(?:the\s+)?(?:start|1st term|first term)\b`, "gi"), (m) => {
-    if (!p) return "this question has no pattern";
-    const n = term(m, 1);
-    return Number(m[3]) === n - 1 ? null : `the ${ordinalText(n)} term is ${n - 1} jumps after the start, not ${m[3]}`;
-  });
-  read(new RegExp(String.raw`\b(?:(?:the|its)\s+)?(?:${ORDINAL})\s+term\s+${RELATION}\s+(\d+)\b(?!\s*(?:[+\-×÷*/x]|plus|minus|times|divided))`, "gi"), (m) => {
-    if (!p) return "this question has no pattern";
-    const n = term(m, 1);
-    return Number(m[3]) === termOf(p, n) ? null : `the ${ordinalText(n)} term is ${termOf(p, n)}, not ${m[3]}`;
-  });
-  read(/\b(?:adds|add|adding|goes up by|takes away|take away|subtracts|subtract|goes down by|changes by|jumps? (?:of|by))\s+(\d+)\s+each\s+(?:time|step)\b/gi, (m) => {
-    if (!p) return null;
-    return Number(m[1]) === Math.abs(p.step) ? null : `the pattern changes by ${Math.abs(p.step)} each time, not ${m[1]}`;
-  });
-  read(/\bstarts?\s+(?:at|with)\s+(\d+)\b/gi, (m) => {
-    if (!p) return null;
-    return Number(m[1]) === p.start ? null : `the pattern starts at ${p.start}, not ${m[1]}`;
-  });
-  // A term claim left that code could not read: "the 3rd term is the answer plus 8", "is the 3rd term".
-  if (/\bterms?\b[^.?!]*(?:\b(?:is|equals|will be|would be|comes to|makes)\b|=)|(?:\b(?:is|equals)\b|=)\s*the\s+(?:\w+\s+)?term\b/i.test(rest) && /\d/.test(rest)) problems.push("it says what a term is in a form code cannot check");
+  const clauses = sentence.replace(/[−–]/g, "-").replace(/[.!?]+\s*$/, "").split(/\s*[:;]\s*|\s*,\s*|\s+(?:and|but|which|because)\s+/i);
+  for (const raw of clauses) {
+    if (!words.test(raw)) continue;
+    let clause = raw.trim();
+    for (let k = 0; k < 4; k++) clause = clause.replace(LEAD, "").trim();
+    const c = inDigits(clause)?.toLowerCase().replace(/\s+/g, " ").trim();
+    if (!c || /\bnot\b|n't\b|\bnever\b|\bno\b/.test(c)) { problems.push(`"${raw.trim()}" says something about the pattern in a form code cannot check`); continue; }
+    let m: RegExpExecArray | null;
+    if ((m = /^(?:the|its) (\d+)(?:st|nd|rd|th) term (?:is|=|equals|will be) (\d+)$/.exec(c))) {
+      const n = Number(m[1]);
+      if (n < 1 || Number(m[2]) !== termOf(p, n)) problems.push(`the ${ordinalText(n)} term is ${termOf(p, n)}, not ${m[2]}`);
+    } else if ((m = /^(?:the|its) (\d+)(?:st|nd|rd|th) term is (\d+) (?:jumps?|steps?) (?:after|from) the (?:start|1st term)$/.exec(c))) {
+      if (Number(m[2]) !== Number(m[1]) - 1) problems.push(`the ${ordinalText(Number(m[1]))} term is ${Number(m[1]) - 1} jumps after the start, not ${m[2]}`);
+    } else if ((m = /^(?:(?:it|the pattern|each term) )?(adds|add|goes up by|grows by|increases by|subtracts|subtract|takes away|take away|goes down by|shrinks by|decreases by) (\d+)(?: (?:each|every) (?:time|step))?$/.exec(c))) {
+      const sign = UP.test(m[1]) ? 1 : DOWN.test(m[1]) ? -1 : 0;
+      if (sign * Number(m[2]) !== p.step) problems.push(`the pattern ${p.step > 0 ? "adds" : "takes away"} ${Math.abs(p.step)} each time, not ${m[1]} ${m[2]}`);
+    } else if ((m = /^(?:(?:it|the pattern) )?(?:starts?|started) (?:at|with) (\d+)$/.exec(c))) {
+      if (Number(m[1]) !== p.start) problems.push(`the pattern starts at ${p.start}, not ${m[1]}`);
+    } else if ((m = /^the change from the start to the (\d+)(?:st|nd|rd|th) term$/.exec(c))) {
+      if (Number(m[1]) !== p.term) problems.push(`the question names the ${ordinalText(p.term)} term, not the ${ordinalText(Number(m[1]))}`);
+    } else if ((m = /^share (?:it|the change) into (\d+)(?: (?:equal )?(?:jumps|parts))?$/.exec(c))) {
+      if (p.asks !== "step" || Number(m[1]) !== p.term - 1) problems.push(`the change is shared into ${p.term - 1} jumps, not ${m[1]}`);
+    } else problems.push(`"${raw.trim()}" says something about the pattern in a form code cannot check`);
+  }
   return problems;
 }
 

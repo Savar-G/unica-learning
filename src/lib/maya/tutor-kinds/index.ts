@@ -4,9 +4,10 @@ import type { OperationPackage } from "@/lib/question-package";
 import type { TutorKind } from "../tutor-kind";
 import { columnKind } from "./column";
 import { evaluateKind } from "./evaluate";
-import { timeAddKind } from "./time-add";
 
-export const TUTOR_KINDS: readonly TutorKind[] = [columnKind, evaluateKind, timeAddKind];
+export const TUTOR_KINDS: readonly TutorKind[] = [columnKind, evaluateKind];
+// time-add.ts (clock-time adds) is not registered for launch (review of #1018): the core does not check a clock-valued
+// answer, and clock claims in words are not read. Its tests run it through testKind.
 
 /** Kinds a test puts first (testKind); never used by the site. */
 const testKinds: TutorKind[] = [];
