@@ -19,7 +19,7 @@ import { mayaCallStore, mayaConnectionLog } from "@/lib/maya-call-store";
 import { conversationalMayaModel, type MayaModel } from "@/lib/maya-model";
 import { ruleConversationalModel } from "@/lib/maya-model-fake";
 import { aiTalkReviewer, REVIEW_DEFAULT_MODEL, type TalkReviewer } from "@/lib/maya-talk-review";
-import { aiMathReviewer, MATH_REVIEW_DEFAULT_MODEL, type MathReviewer } from "@/lib/maya-math-review";
+import { aiMathReviewer, MATH_REVIEW_DEFAULT_MODEL, MATH_REVIEW_RETRY_DEFAULT_MODEL, type MathReviewer } from "@/lib/maya-math-review";
 import { wordingHistoryStore } from "@/lib/maya-wording-history-store";
 import { chargeOf, type SpendLedger } from "@/lib/maya-spend";
 import { profileAi } from "@/lib/maya-spend-ai";
@@ -64,14 +64,16 @@ export function callReviewer(modelId: string, env: Env = process.env, metered?: 
 
 /**
  * The tutor core's math-truth review of a call (two-layer true math, 2026-11-15): MAYA_MATH_REVIEW_MODEL (default Claude
- * Haiku 5.5) through OpenRouter with Maya's key, metered as a review attempt in Maya's spend. Null for the fake rule
- * player and without OPENROUTER_API_KEY (then a sentence code did not read whole is refused).
+ * Haiku 5.5) through OpenRouter with Maya's key, and its retry on "unsure", MAYA_MATH_REVIEW_RETRY_MODEL (default Claude
+ * Sonnet 5.5, math review version 3). Each is metered as a review attempt in Maya's spend. Null for the fake rule player
+ * and without OPENROUTER_API_KEY (then a sentence code did not read whole is refused).
  */
 export function callMathReviewer(modelId: string, env: Env = process.env, metered?: { ledger: SpendLedger; call: SpendCall; newId: () => string }): MathReviewer | null {
   if (modelId === FAKE_MODEL_ID) return null;
-  const model = env.MAYA_MATH_REVIEW_MODEL?.trim() || MATH_REVIEW_DEFAULT_MODEL;
-  const client = metered ? meteredClient(env, metered.ledger, { charge: chargeOf(metered.call), callId: metered.call.id, budgetKey: metered.call.budgetKey, newId: metered.newId }, "review", model) : mayaAiClient(env, model);
-  return client ? aiMathReviewer(client) : null;
+  const clientOf = (model: string) => metered ? meteredClient(env, metered.ledger, { charge: chargeOf(metered.call), callId: metered.call.id, budgetKey: metered.call.budgetKey, newId: metered.newId }, "review", model) : mayaAiClient(env, model);
+  const client = clientOf(env.MAYA_MATH_REVIEW_MODEL?.trim() || MATH_REVIEW_DEFAULT_MODEL);
+  const retry = clientOf(env.MAYA_MATH_REVIEW_RETRY_MODEL?.trim() || MATH_REVIEW_RETRY_DEFAULT_MODEL);
+  return client ? aiMathReviewer(client, undefined, retry ? { client: retry } : undefined) : null;
 }
 
 async function isTestFamily(db: SupabaseClient<Database>, parentId: string): Promise<boolean> {

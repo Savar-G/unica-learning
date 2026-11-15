@@ -173,6 +173,8 @@ export interface TraceMath {
   sentence: string;
   verdict: "true" | "false" | "unsure";
   reason: string;
+  /** The first review was "unsure" and this verdict and reason are the retry model's (math review version 3). */
+  retried?: true;
 }
 
 /** What reached the child in one Maya turn: only text and board batches the session accepted. */
@@ -241,8 +243,11 @@ export interface MayaTrace {
   freeTalk: boolean;
   /** Version 3: the free-talk review's model and prompt version, or null when the call had no reviewer. */
   reviewer?: { id: string; promptVersion: string } | null;
-  /** Version 12, on a tutor call: the math-truth review's model and prompt version, or null when the call had none. */
-  mathReviewer?: { id: string; promptVersion: string } | null;
+  /**
+   * Version 12, on a tutor call: the math-truth review's model and prompt version, or null when the call had none.
+   * `retryId`: the model asked once when the review is "unsure" (math review version 3), when the call has one.
+   */
+  mathReviewer?: { id: string; promptVersion: string; retryId?: string } | null;
   /** Version 7: reason codes only. No additional child text. */
   scopeRefusals?: import("@/lib/maya").ScopeRefusal[];
   turns: TraceTurn[];
@@ -277,6 +282,8 @@ export interface TraceCounts {
   /** Version 12: math-truth reviews of tutor sentences (two-layer true math), and attempts the review refused. */
   mathReviews?: number;
   mathRefusals?: number;
+  /** Math-truth reviews the retry model answered after an "unsure" (math review version 3). */
+  mathRetries?: number;
 }
 
 /** The counts of a trace's turns. */
@@ -298,6 +305,7 @@ export function traceCounts(turns: readonly TraceTurn[]): TraceCounts {
     longestMayaRun: longestMayaRun(turns),
     mathReviews: attempts.reduce((n, a) => n + (a.math?.length ?? 0), 0),
     mathRefusals: attempts.filter((a) => a.refusal?.say === "math_review").length,
+    mathRetries: attempts.reduce((n, a) => n + (a.math?.filter((m) => m.retried).length ?? 0), 0),
   };
 }
 
@@ -400,7 +408,7 @@ function checkAttempt(a: unknown, path: string) {
     need(Array.isArray(x.math) && x.math.length > 0, `${path}.math`, "a list of math-truth reviews");
     (x.math as unknown[]).forEach((m, i) => {
       const y = m as Record<string, unknown>;
-      need(isObject(m) && Object.keys(y).every((k) => ["sentence", "verdict", "reason"].includes(k)) && isText(y.sentence) && oneOf(["true", "false", "unsure"], y.verdict) && typeof y.reason === "string", `${path}.math[${i}]`, "a sentence, a verdict (true, false or unsure) and a reason");
+      need(isObject(m) && Object.keys(y).every((k) => ["sentence", "verdict", "reason", "retried"].includes(k)) && isText(y.sentence) && oneOf(["true", "false", "unsure"], y.verdict) && typeof y.reason === "string" && (y.retried === undefined || y.retried === true), `${path}.math[${i}]`, "a sentence, a verdict (true, false or unsure), a reason, and retried only as true");
     });
   }
   if (x.talk !== undefined) {
@@ -589,7 +597,7 @@ function check(raw: unknown): MayaTrace {
   } else need(r.reviewer === undefined, "reviewer", "absent before version 3");
   if ((r.version as number) >= 12) {
     const mr = r.mathReviewer;
-    need(mr === undefined || mr === null || (isObject(mr) && isName(mr.id) && isName(mr.promptVersion) && Object.keys(mr).length === 2), "mathReviewer", "absent, null, or the math review's model id and prompt version");
+    need(mr === undefined || mr === null || (isObject(mr) && isName(mr.id) && isName(mr.promptVersion) && (mr.retryId === undefined || isName(mr.retryId)) && Object.keys(mr).every((k) => ["id", "promptVersion", "retryId"].includes(k))), "mathReviewer", "absent, null, or the math review's model id, prompt version and retry model id");
   } else need(r.mathReviewer === undefined, "mathReviewer", "absent before version 12");
 
   need(Array.isArray(r.turns), "turns", "a list");
