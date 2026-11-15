@@ -5,6 +5,7 @@ import { templateSkills } from '@/lib/assessment';
 import { learningEvents } from '@/lib/learning-events';
 import { memoryLearningEventStore } from '@/lib/learning-events-memory';
 import { memoryWordingHistoryStore, TIME_LIMITS } from '@/lib/maya';
+import { REJOIN_AFTER_LEAVE_MS } from '@/lib/maya-voice';
 import { mayaCalls, type CallSeams } from '@/lib/maya-call';
 import { memoryCallStore, memoryConnectionLog } from '@/lib/maya-call-memory';
 import { ruleMayaModel } from '@/lib/maya-model-fake';
@@ -146,7 +147,7 @@ it.each(["rpc", "disconnect"])("keeps the %s origin despite equal child_stopped 
   const r = f.makeRun();
   r.session.close.mockImplementation(async () => { r.session.emit(voice.AgentSessionEventTypes.Close, { reason: "user_initiated" }); });
   if (path === "rpc") await r.run.hangUp();
-  else await r.run.childLeft("hang_up", 1);
+  else { await r.run.childLeft("hang_up", 1); await f.advance(REJOIN_AFTER_LEAVE_MS); }
   expect(f.store.rows()[0].outcome?.reason).toBe("child_stopped");
   const origins = log().filter(e => e.phase === "origin");
   expect(origins).toHaveLength(1);
@@ -258,7 +259,7 @@ it("a recoverable SDK error stays an observation and cannot become the later han
 
 it.each([null, -1, 999, 1.5, "CLIENT_INITIATED", "https://private.invalid"])("closes with unknown protocol reason for %s", async reason => {
   const f = await fixture(); const log = closeLog(f.id); const r = f.makeRun();
-  await r.run.childLeft("hang_up", reason);
+  await r.run.childLeft("hang_up", reason); await f.advance(REJOIN_AFTER_LEAVE_MS);
   expect(log()[0]).toMatchObject({ entry: "participant_disconnect", reason: "unknown" });
   expect(f.store.rows()[0].outcome?.reason).toBe("child_stopped");
   expect(JSON.stringify(log())).not.toContain("private.invalid");

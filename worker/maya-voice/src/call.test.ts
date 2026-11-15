@@ -18,7 +18,7 @@ import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { callSpend, createSpendLedger, spendConfig, SPEND_CLOSE, WEEK_MICROS } from "@/lib/maya-spend";
 import { memorySpendStore } from "@/lib/maya-spend-memory";
 import { checkTrace } from "@/lib/maya-trace";
-import { RECONNECT_GRACE_MS, voiceProviders } from "@/lib/maya-voice";
+import { RECONNECT_GRACE_MS, REJOIN_AFTER_LEAVE_MS, voiceProviders } from "@/lib/maya-voice";
 import type { QuestionPackage } from "@/lib/question-package";
 import { mayaWorkbookFixture } from "@/lib/maya-workbook-fixture";
 import { selectWorkbookQuestion } from "@/lib/maya-workbook-question";
@@ -301,6 +301,71 @@ describe("a voice call through LiveKit with the fake providers", () => {
     const [row] = c.store.rows();
     expect(row.connectedSeconds).toBe(10 + RECONNECT_GRACE_MS / 1000 + 1);
     expect(row.outcome?.reason).not.toBe("technical_issue");
+  });
+});
+
+// #992: a LiveKit full reconnect (livekit-client 2.23.0) leaves with CLIENT_INITIATED, which main.ts reads as "hang_up",
+// and joins again about 2 s later. A leave like that is a hang-up only when the child stays away; the button is the RPC.
+describe("a leave the child's screen sent (#992)", () => {
+  it("goes on when the child joins again 2 s after the leave, as a full reconnect does", async () => {
+    const c = await voiceCall();
+    await c.run.childJoined();
+    await waitFor(() => c.said().length === 1, "Maya's opening");
+    await c.clock.advance(14);
+    await c.run.childLeft("hang_up", 1);
+    await c.clock.advance(2);
+    await c.run.childJoined();
+    await c.clock.advance(REJOIN_AFTER_LEAVE_MS / 1000 + 1);
+    expect(c.closed).not.toHaveBeenCalled();
+    expect(c.store.rows()[0].status).toBe("live");
+    expect((await c.childSays("Is it 66?")).length).toBeGreaterThan(0);
+    await c.run.hangUp();
+    expect(c.store.rows()[0].outcome?.reason).toBe("child_stopped");
+  });
+
+  it("ends as the child stopping when the child does not come back within the wait", async () => {
+    const c = await voiceCall();
+    await c.run.childJoined();
+    await waitFor(() => c.said().length === 1, "Maya's opening");
+    await c.clock.advance(14);
+    await c.run.childLeft("hang_up", 1);
+    await c.clock.advance(REJOIN_AFTER_LEAVE_MS / 1000 - 1);
+    expect(c.closed).not.toHaveBeenCalled();
+    expect(c.store.rows()[0].status).toBe("live");
+    await c.clock.advance(1);
+    await waitFor(() => c.closed.mock.calls.length === 1, "the call to close");
+    const [row] = c.store.rows();
+    expect(row).toMatchObject({ status: "ended", connectedSeconds: 14 });
+    expect(row.outcome?.reason).toBe("child_stopped");
+  });
+
+  it("ends at once on the Hang up RPC, and the leave after it changes nothing", async () => {
+    const c = await voiceCall();
+    await c.run.childJoined();
+    await waitFor(() => c.said().length === 1, "Maya's opening");
+    await c.clock.advance(14);
+    await c.run.hangUp();
+    expect(c.closed).toHaveBeenCalledTimes(1);
+    expect(c.store.rows()[0].status).toBe("ended");
+    expect(c.store.rows()[0].outcome?.reason).toBe("child_stopped");
+    await c.run.childLeft("hang_up", 1);
+    await c.clock.advance(REJOIN_AFTER_LEAVE_MS / 1000 + 1);
+    expect(c.closed).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the full reconnect grace for a dropped connection, past the shorter wait", async () => {
+    const c = await voiceCall();
+    await c.run.childJoined();
+    await waitFor(() => c.said().length === 1, "Maya's opening");
+    await c.clock.advance(14);
+    await c.run.childLeft("dropped", 9);
+    await c.clock.advance(REJOIN_AFTER_LEAVE_MS / 1000 + 1);
+    expect(c.closed).not.toHaveBeenCalled();
+    await c.clock.advance(RECONNECT_GRACE_MS / 1000 - REJOIN_AFTER_LEAVE_MS / 1000 - 2);
+    expect(c.store.rows()[0].status).toBe("live");
+    await c.clock.advance(2);
+    await waitFor(() => c.closed.mock.calls.length === 1, "the call to close");
+    expect(c.store.rows()[0].outcome?.reason).toBe("technical_issue");
   });
 });
 

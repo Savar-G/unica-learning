@@ -13,6 +13,7 @@ import { PREJOIN_WAIT_MS, useMayaVoiceRoom } from "./maya-voice-room";
 
 interface TestRoom {
   remoteParticipants: Map<string, unknown>;
+  state?: string;
   emit(event: string, ...args: unknown[]): void;
   connected: unknown[];
   disconnect: ReturnType<typeof vi.fn>;
@@ -342,6 +343,45 @@ it("records reconnect observations without a Hang up mark or a new close", async
   await act(async () => { lk.rooms[0].emit("Reconnecting"); lk.rooms[0].emit("SignalReconnecting"); lk.rooms[0].emit("Reconnected"); });
   expect(closeEvents().map(m => m.event)).toEqual(["sdk_reconnecting", "sdk_signal_reconnecting", "sdk_reconnected"]);
   expect(api.phase).toBe("live"); expect(lk.rooms[0].disconnect).not.toHaveBeenCalled();
+});
+
+// #992: livekit-client 2.23.0's full reconnect removes every remote participant, then enters Reconnecting in the same
+// task, and joins again. The screen waits through it; Maya missing after Reconnected, or with no reconnect, fails.
+const fullReconnect = async (room: TestRoom) => {
+  await act(async () => {
+    const p = room.remoteParticipants.get("maya");
+    room.remoteParticipants.delete("maya");
+    room.emit("ParticipantDisconnected", p);
+    room.state = "reconnecting";
+    room.emit("Reconnecting");
+  });
+  await settle();
+};
+
+it("waits while the room makes a full reconnect, and is live again when Maya is back", async () => {
+  await mount(); await act(async () => { await api.connect(); }); await addAgent(lk.rooms[0]);
+  await fullReconnect(lk.rooms[0]);
+  expect(api.phase).toBe("live"); expect(api.error).toBeNull();
+  await act(async () => { lk.rooms[0].state = "connected"; });
+  await addAgent(lk.rooms[0]);
+  await act(async () => { lk.rooms[0].emit("Reconnected"); });
+  await settle();
+  expect(api.phase).toBe("live"); expect(lk.rooms[0].disconnect).not.toHaveBeenCalled();
+});
+
+it("shows the call as disconnected when Maya is not back after the reconnect", async () => {
+  await mount("call-a"); await act(async () => { await api.connect(); }); await addAgent(lk.rooms[0]);
+  await fullReconnect(lk.rooms[0]);
+  await act(async () => { lk.rooms[0].state = "connected"; lk.rooms[0].emit("Reconnected"); });
+  await settle();
+  expect(api.phase).toBe("failed"); expect(api.error).toBe("disconnected");
+});
+
+it("shows the call as disconnected when Maya leaves a connected room", async () => {
+  await mount(); await act(async () => { await api.connect(); }); await addAgent(lk.rooms[0]);
+  await act(async () => { const p = lk.rooms[0].remoteParticipants.get("maya"); lk.rooms[0].remoteParticipants.delete("maya"); lk.rooms[0].emit("ParticipantDisconnected", p); });
+  await settle();
+  expect(api.phase).toBe("failed"); expect(api.error).toBe("disconnected");
 });
 
 it.each([1, 9, "https://private.invalid/token"])("records the closed disconnected reason %s without implying a button press", async reason => {

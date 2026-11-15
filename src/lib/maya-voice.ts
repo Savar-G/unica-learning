@@ -22,6 +22,12 @@ export const VOICE_AGENT_NAME = "maya-voice";
 export const VOICE_TOKEN_TTL_SECONDS = 5 * 60;
 /** How long the worker waits for the child to come back after the connection drops (ms). */
 export const RECONNECT_GRACE_MS = 30_000;
+/**
+ * How long the worker waits for the child to come back after a leave that says the child's screen left (#992). The
+ * hang-up button ends the call at once through the maya.hang_up RPC; a leave alone is not proof of it, because a
+ * LiveKit full reconnect sends the same leave and joins again about 2 s later (ms).
+ */
+export const REJOIN_AFTER_LEAVE_MS = 5_000;
 /** The maximum worker connection lease, including a crash gap (ms). */
 export const CONNECTION_LEASE_MS = 15_000;
 export const CONNECTION_RENEW_MS = 5_000;
