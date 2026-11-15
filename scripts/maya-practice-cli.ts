@@ -3,6 +3,8 @@
 //
 // Options:
 //   --channel <voice|chat>   voice through the text adapter (default), or actual child chat settings
+//   --tutor                  run the tutor core cases (D-345: TUTOR_CASES, Maya teaches with the tutor core) and add the teaching
+//                            judge (T01 to T10) and the trace metrics to the report. --estimate prints the cost first.
 //   --generated              add real-generator U4/U16 Day 1 packages with local synthetic inputs
 //   --fake                   fake models only: the rule player as Maya, the scripted children, a fake judge. No key,
 //                            no network, no cost. It checks the plumbing, not Maya.
@@ -60,9 +62,9 @@ import type { Database } from "@/lib/database";
 import { createSpendLedger, recordLocalSpend, spendConfig } from "@/lib/maya-spend";
 import { mayaSpendStore } from "@/lib/maya-spend-store";
 import {
-  generatedPracticeSet, practiceExecution, aiChildSimulator, aiJudge, aiValidityJudge, buildReport, capProblem, checkCredits, fakeValidityJudge, fileHash, cappedClient, estimateCost, fakeJudge, freeTalkMarkdown, freeTalkReport, inFlightNeed, meteredFetch, planSuite, practiceConcurrency, PRACTICE_CASES, reportMarkdown,
+  aiTeachingJudge, fakeTeachingJudge, fakeTutorModel, generatedPracticeSet, judgeFamilyProblem, practiceExecution, TUTOR_CASES, aiChildSimulator, aiJudge, aiValidityJudge, buildReport, capProblem, checkCredits, fakeValidityJudge, fileHash, cappedClient, estimateCost, fakeJudge, freeTalkMarkdown, freeTalkReport, inFlightNeed, meteredFetch, planSuite, practiceConcurrency, PRACTICE_CASES, reportMarkdown,
   RUNS_PER_CASE, runSuite, scriptedSimulator, SIMULATOR_PROMPT_VERSION, Spending, timedTurns, turnTimeMarkdown, worstReviewUsd,
-  type ExecutionOptions, type AiJudge, type ByRole, type ChildSimulator, type ValidityJudge, type CostEstimate, type PracticeCase, type PracticeStore, type Price, type Role,
+  type ExecutionOptions, type TeachingJudge, type AiJudge, type ByRole, type ChildSimulator, type ValidityJudge, type CostEstimate, type PracticeCase, type PracticeStore, type Price, type Role,
 } from "@/lib/maya-practice";
 
 export const DEFAULT_SIM_MODEL = "anthropic/claude-haiku-5.5";
@@ -97,6 +99,8 @@ interface Options {
   fake: boolean;
   channel: "voice" | "chat";
   generated: boolean;
+  /** D-345: the tutor core cases, the teaching judge and the trace metrics. */
+  tutor: boolean;
   provider: Provider;
   freeTalk: boolean;
   reviewCheck: boolean;
@@ -112,7 +116,7 @@ interface Options {
 }
 
 function parse(argv: string[]): Options {
-  const o: Options = { fake: false, channel: "voice", generated: false, provider: "openrouter", freeTalk: true, reviewCheck: false, estimate: false, maxUsd: null, cases: null, runs: RUNS_PER_CASE, concurrency: null, out: null, report: null, models: {} };
+  const o: Options = { fake: false, channel: "voice", generated: false, tutor: false, provider: "openrouter", freeTalk: true, reviewCheck: false, estimate: false, maxUsd: null, cases: null, runs: RUNS_PER_CASE, concurrency: null, out: null, report: null, models: {} };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const v = () => {
@@ -131,6 +135,7 @@ function parse(argv: string[]): Options {
       o.channel = channel;
     }
     else if (a === "--generated") o.generated = true;
+    else if (a === "--tutor") o.tutor = true;
     else if (a === "--fake") o.fake = true;
     else if (a === "--anthropic") o.provider = "anthropic";
     else if (a === "--subscription") o.provider = "subscription";
@@ -156,6 +161,7 @@ function parse(argv: string[]): Options {
     else throw new Error(`unknown option ${a}`);
   }
   if (o.channel === "chat") o.freeTalk = false;
+  if (o.tutor && o.generated) throw new Error("--tutor and --generated cannot run together: the generated cases are for the controller.");
   return o;
 }
 
@@ -357,7 +363,7 @@ async function main() {
   const root = resolve(process.env.MAYA_ROOT ?? process.cwd());
   const o = parse(process.argv.slice(2));
   const generated = o.generated ? await generatedPracticeSet() : null;
-  const required = [...PRACTICE_CASES, ...(generated?.cases ?? [])];
+  const required = o.tutor ? [...TUTOR_CASES] : [...PRACTICE_CASES, ...(generated?.cases ?? [])];
   const execution = practiceExecution(o);
   const concurrency = o.concurrency ?? practiceConcurrency(o.provider, o.fake);
   const cases = o.cases ? o.cases.map((id) => required.find((c) => c.id === id) ?? (() => { throw new Error(`no case ${id}`); })()) : required;
@@ -376,6 +382,11 @@ async function main() {
           judge: o.models.judge ?? (process.env.MAYA_JUDGE_MODEL?.trim() || DEFAULT_JUDGE_MODEL),
           reviewer: o.models.reviewer ?? (process.env.MAYA_REVIEW_MODEL?.trim() || REVIEW_DEFAULT_MODEL),
         };
+  // D-345: the teaching judge must be another model family than Maya. On OpenRouter that is a choice of model, so a clash stops the
+  // run. With --anthropic or --subscription every model is Claude, so the run says so in its report instead.
+  const family = o.tutor && !o.fake ? judgeFamilyProblem(models.maya, models.judge) : null;
+  if (family && o.provider === "openrouter") throw new Error(`${family}. Pass --judge-model with another family.`);
+  if (family) console.log(`-- note: ${family}. The report says so.`);
   // Conversational sentences need review even when open-ended free talk is off, as on the family chat path.
   const paid: ByRole<string> = models;
 
@@ -383,6 +394,7 @@ async function main() {
   let simulator: ChildSimulator;
   let validity: ValidityJudge;
   let judge: AiJudge;
+  let teachingJudge: TeachingJudge | undefined;
   let reviewer: TalkReviewer | null = null;
   let spending = new Spending(null);
   // Set when a `claude -p` call met the subscription's usage limit: the suite stops as at the spending cap.
@@ -390,12 +402,13 @@ async function main() {
   const stopped = () => spending.reached || usageLimit !== null;
   if (o.reviewCheck && o.fake) throw new Error("--review-check needs a real review model: drop --fake.");
   if (o.fake) {
-    maya = ruleConversationalModel();
+    maya = o.tutor ? fakeTutorModel() : ruleConversationalModel();
     reviewer = fakeTalkReviewer();
     const scripts = new Map(cases.map((c) => [c.persona.name, c.fakeScript]));
     simulator = { id: "fake-child", promptVersion: SIMULATOR_PROMPT_VERSION, next: (input, s) => scriptedSimulator(scripts.get(input.persona.name) ?? []).next(input, s) };
     validity = fakeValidityJudge();
     judge = fakeJudge();
+    if (o.tutor) teachingJudge = fakeTeachingJudge();
     if (o.estimate) {
       console.log("-- --fake costs nothing.");
       return;
@@ -421,6 +434,7 @@ async function main() {
     simulator = aiChildSimulator(client("simulator"), { timeoutMs: SUBSCRIPTION_MAYA_MS });
     validity = aiValidityJudge(client("validity"), { timeoutMs: SUBSCRIPTION_MAYA_MS });
     judge = aiJudge(client("judge"), { timeoutMs: 3 * SUBSCRIPTION_MAYA_MS });
+    if (o.tutor) teachingJudge = aiTeachingJudge(client("judge"), { timeoutMs: 3 * SUBSCRIPTION_MAYA_MS });
     reviewer = aiTalkReviewer(client("reviewer"));
   } else {
     const anthropic = o.provider === "anthropic";
@@ -458,6 +472,7 @@ async function main() {
     simulator = aiChildSimulator(client("simulator"));
     validity = aiValidityJudge(client("validity"));
     judge = aiJudge(client("judge"));
+    if (o.tutor) teachingJudge = aiTeachingJudge(client("judge"));
     reviewer = aiTalkReviewer(client("reviewer"));
   }
 
@@ -481,19 +496,22 @@ async function main() {
     simulator: { model: simulator.id, promptVersion: simulator.promptVersion },
     validity: { model: validity.id, promptVersion: validity.promptVersion },
     judge: { model: judge.id, promptVersion: judge.promptVersion },
+    ...(teachingJudge ? { teaching: { model: teachingJudge.id, promptVersion: teachingJudge.promptVersion } } : {}),
     reviewer: reviewer ? { model: reviewer.id, promptVersion: reviewer.promptVersion } : null,
     meta: {
       commit: git("rev-parse HEAD"), changes: git("status --porcelain") ? "uncommitted changes" : "clean", date: new Date().toISOString(),
       ...(generated ? { generatedArtifact: fileHash(store.load("generated-packages.json")!) } : {}),
       mode: o.fake ? "fake" : o.provider, freeTalk: o.freeTalk ? "on" : "off",
+      ...(o.tutor ? { tutor: "on", teachingJudgeFamily: family ? "same" : "other" } : {}),
       ...(o.provider === "subscription" && !o.fake ? { turnBudgetMs: String(SUBSCRIPTION_TURN_MS), reviewTimeLimitMs: String(SUBSCRIPTION_REVIEW_MS) } : {}),
     },
   }, { runs: o.runs, maxUsd: spending.maxUsd, ...execution });
+  console.log(`-- tutor core: ${o.tutor ? "on (TUTOR_CASES, teaching judge, trace metrics)" : "off"}`);
   console.log(`-- channel: ${execution.channel}; free talk: ${execution.freeTalk ? "on" : "off"}; generated packages: ${generated ? "U4,U16 Day 1 (synthetic)" : "none"}`);
   console.log(`-- ${plan.runs.length} runs into ${dir}`);
   let done = 0;
   await runSuite(cases, plan, {
-    maya, simulator, validity, judge, store, concurrency, freeTalk: o.freeTalk, reviewer,
+    maya, simulator, validity, judge, ...(teachingJudge ? { teachingJudge } : {}), store, concurrency, freeTalk: o.freeTalk, reviewer,
     ...(o.provider === "subscription" && !o.fake ? { reviewTimeLimitMs: SUBSCRIPTION_REVIEW_MS, turnBudgetMs: SUBSCRIPTION_TURN_MS } : {}),
     capped: stopped,
     onRun: (id) => console.log(`   ${++done}/${plan.runs.length} ${id}${o.fake || o.provider === "subscription" ? "" : ` (spent ${usd(spending.spent)})`}`),

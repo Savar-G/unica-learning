@@ -20,6 +20,9 @@ import { checkTrace, classifyError, fencedReplies, packageHash, redactText, type
 import { equivalent, operationText, type AnswerValue, type QuestionPackage } from "@/lib/question-package";
 import { DIMENSION_IDS, DIMENSIONS, PASS_SCORE, positive, PRACTICE_CASES, RUNS_PER_CASE, type Dimension, type PracticeCase, type StageOpens } from "./cases";
 import { judgeInput, readJudgement, type AiJudge, type DimensionResult, JUDGE_PROMPT_VERSION } from "./judge";
+import { TEACHING_JUDGE_PROMPT_VERSION, teachingJudgeInput, teachingPlan, type TeachingJudge } from "./teaching-judge";
+import { NO_TEACHING_TURN, teachingVerdict, type TeachingLog, type TeachingVerdict } from "./tutor-run";
+import { TUTOR_CASES } from "./tutor-cases";
 import { readValidity, VALIDITY_PROMPT_VERSION, type ValidityInput, type ValidityJudge } from "./validity-judge";
 import { maxWords, readSimulatorTurn, SIMULATOR_PROMPT_VERSION, type ChildSimulator, type SimulatorInput, type SimulatorTurn } from "./simulator";
 
@@ -51,6 +54,7 @@ export const simFile = (run: string) => `runs/${run}.child.json`;
 export const judgeFile = (run: string) => `runs/${run}.judge.json`;
 export const validityFile = (run: string) => `runs/${run}.validity.json`;
 export const recordFile = (run: string) => `runs/${run}.record.json`;
+export const teachingFile = (run: string) => `runs/${run}.teaching.json`;
 export const runId = (caseId: string, n: number) => `${caseId}-r${n}`;
 
 /** The versions a suite runs with (research, section 8: record every model and prompt version). */
@@ -62,6 +66,8 @@ export interface PracticeVersions {
   judge: { model: string; promptVersion: string };
   /** The free-talk review (D-197), or null when Maya ran without one (free talk then always becomes bank phrases). */
   reviewer?: { model: string; promptVersion: string } | null;
+  /** D-345, `--tutor` only: the teaching judge (T01 to T10). */
+  teaching?: { model: string; promptVersion: string } | null;
   /** sha256 of the cases and the prompts' versions, so two reports on different suites are never compared. */
   suite: string;
   /** Anything the caller adds: the git commit, the date. */
@@ -121,18 +127,24 @@ export interface JudgeLog {
   timeoutRetries?: number;
 }
 
-export interface PracticeExecution { channel: "voice" | "chat"; freeTalk: boolean }
-export interface ExecutionOptions { channel?: "voice" | "chat"; freeTalk?: boolean }
+/** `tutor` (D-345): Maya teaches with the tutor core, and the teaching judge and the trace metrics run. Present only when on. */
+export interface PracticeExecution { channel: "voice" | "chat"; freeTalk: boolean; tutor?: true }
+export interface ExecutionOptions { channel?: "voice" | "chat"; freeTalk?: boolean; tutor?: boolean }
 export function practiceExecution(options: ExecutionOptions = {}): PracticeExecution {
   const channel = options.channel ?? "voice";
   if (channel !== "voice" && channel !== "chat") throw new Error("practice: unknown channel");
   if (channel === "chat" && options.freeTalk === true) throw new Error("practice: child chat requires free talk off");
-  return { channel, freeTalk: channel === "chat" ? false : options.freeTalk ?? true };
+  return { channel, freeTalk: channel === "chat" ? false : options.freeTalk ?? true, ...(options.tutor ? { tutor: true as const } : {}) };
 }
 
 export function suiteHash(cases: readonly PracticeCase[], options: ExecutionOptions = {}): string {
-  const plain = cases.map((c) => ({ ...c, validity: { ...c.validity, mustSay: c.validity.mustSay?.map((m) => ({ ...m, pattern: String(m.pattern) })) } }));
-  return packageHash({ cases: plain, execution: practiceExecution(options), simulator: SIMULATOR_PROMPT_VERSION, validity: VALIDITY_PROMPT_VERSION, judge: JUDGE_PROMPT_VERSION, review: TALK_REVIEW_PROMPT_VERSION, version: PRACTICE_VERSION });
+  const plain = cases.map((c) => ({
+    ...c,
+    validity: { ...c.validity, mustSay: c.validity.mustSay?.map((m) => ({ ...m, pattern: String(m.pattern) })) },
+    ...(c.tutor ? { tutor: { ...c.tutor, checks: c.tutor.checks?.map((k) => ({ ...k, all: k.all.map(String) })) } } : {}),
+  }));
+  const execution = practiceExecution(options);
+  return packageHash({ cases: plain, execution, simulator: SIMULATOR_PROMPT_VERSION, validity: VALIDITY_PROMPT_VERSION, judge: JUDGE_PROMPT_VERSION, review: TALK_REVIEW_PROMPT_VERSION, ...(execution.tutor ? { teaching: TEACHING_JUDGE_PROMPT_VERSION } : {}), version: PRACTICE_VERSION });
 }
 
 // ---------- Running ----------
@@ -158,6 +170,8 @@ export interface PracticeDeps {
   /** The validity judge: a run it does not clear is invalid, and the main judge never sees it. */
   validity: ValidityJudge;
   judge: AiJudge;
+  /** D-345: the teaching judge, asked once for every valid run of a `--tutor` suite. */
+  teachingJudge?: TeachingJudge;
   store: PracticeStore;
   /** Runs at the same time (default 1). */
   concurrency?: number;
@@ -184,6 +198,7 @@ export async function runPractice(c: PracticeCase, n: number, seed: number, deps
     callId: `practice-${id}`, package: pkg, model: deps.maya, clock: () => now, random: seed, childName: c.persona.name,
     channel: execution.channel === "chat" ? "chat" : undefined, freeTalk: execution.freeTalk, reviewer: deps.reviewer ?? null, ...(deps.reviewTimeLimitMs ? { reviewTimeLimitMs: deps.reviewTimeLimitMs } : {}),
     ...(deps.turnBudgetMs === undefined ? {} : { turnBudgetMs: deps.turnBudgetMs }),
+    ...(execution.tutor ? { tutor: true } : {}),
     onError: (e, where) => deps.onError?.(e, `${id} maya ${typeof where === "string" ? where : `turn ${where.turn} ${where.source}`}`),
   });
   const log: SimulatorLog = { kind: "maya-practice-child", version: PRACTICE_VERSION, run: id, caseId: c.id, simulator: { model: deps.simulator.id, promptVersion: deps.simulator.promptVersion }, execution, turns: [], cut: null };
@@ -258,7 +273,8 @@ export async function runPractice(c: PracticeCase, n: number, seed: number, deps
 
   // The validity judge reads a run code found valid: the child's turns and the persona card only.
   let cut = false;
-  const pre = judgeRun(c, id, deps.store, { stage: "code" });
+  const tutor = execution.tutor === true;
+  const pre = judgeRun(c, id, deps.store, { stage: "code", tutor });
   const validityLog: ValidityLog = { kind: "maya-practice-validity", version: PRACTICE_VERSION, run: id, judge: { model: deps.validity.id, promptVersion: deps.validity.promptVersion }, raw: null, error: null, skipped: null };
   if (pre.invalid.length > 0) validityLog.skipped = "code's checks already make the run invalid";
   else {
@@ -275,7 +291,7 @@ export async function runPractice(c: PracticeCase, n: number, seed: number, deps
   if (!cut) deps.store.save(validityFile(id), JSON.stringify(validityLog, null, 2));
 
   // The main judge reads only a complete, valid run whose trace has no hard failure.
-  const ready = judgeRun(c, id, deps.store, { stage: "validity" });
+  const ready = judgeRun(c, id, deps.store, { stage: "validity", tutor });
   const judgeLog: JudgeLog = { kind: "maya-practice-judge", version: PRACTICE_VERSION, run: id, judge: { model: deps.judge.id, promptVersion: deps.judge.promptVersion }, raw: null, error: null, skipped: null };
   if (cut) judgeLog.skipped = "the spending cap was reached";
   else if (ready.status !== "pending_judge") {
@@ -294,12 +310,33 @@ export async function runPractice(c: PracticeCase, n: number, seed: number, deps
   // A judgement the cap cut is not saved: the report counts the run unjudgeable.
   if (!cut) deps.store.save(judgeFile(id), JSON.stringify(judgeLog, null, 2));
 
+  // D-345: the teaching judge (T01 to T10) reads the same valid run, turn by turn.
+  if (tutor && deps.teachingJudge) {
+    const judge = deps.teachingJudge;
+    const teachingLog: TeachingLog = { kind: "maya-practice-teaching", version: PRACTICE_VERSION, run: id, judge: { model: judge.id, promptVersion: judge.promptVersion }, raw: null, error: null, skipped: null };
+    if (cut) teachingLog.skipped = "the spending cap was reached";
+    else if (ready.status !== "pending_judge") teachingLog.skipped = `the run is ${ready.status}`;
+    else if (teachingPlan(trace).length === 0) teachingLog.skipped = NO_TEACHING_TURN;
+    else {
+      try {
+        teachingLog.raw = await retryOnTimeout(() => judge.judge(teachingJudgeInput(pkg, c.persona.age, trace, execution.channel, c.persona.name), new AbortController().signal), deps.capped, () => { teachingLog.timeoutRetries = 1; });
+      } catch (e) {
+        if (e instanceof BudgetReached || deps.capped?.()) cut = true;
+        else {
+          deps.onError?.(e, `${id} teaching judge`);
+          teachingLog.error = classifyError(e, "model");
+        }
+      }
+    }
+    if (!cut) deps.store.save(teachingFile(id), JSON.stringify(teachingLog, null, 2));
+  }
+
   // The record, last: each saved file's hash, so the report finds any file changed after the run.
   const hash = (name: string) => {
     const saved = deps.store.load(name);
     return saved === undefined ? null : fileHash(saved);
   };
-  const record: RunRecord = { kind: "maya-practice-record", version: PRACTICE_VERSION, run: id, plan: hash(PLAN_FILE), files: { trace: hash(traceFile(id))!, child: hash(simFile(id))!, validity: hash(validityFile(id)), judge: hash(judgeFile(id)) } };
+  const record: RunRecord = { kind: "maya-practice-record", version: PRACTICE_VERSION, run: id, plan: hash(PLAN_FILE), files: { trace: hash(traceFile(id))!, child: hash(simFile(id))!, validity: hash(validityFile(id)), judge: hash(judgeFile(id)), ...(tutor ? { teaching: hash(teachingFile(id)) } : {}) } };
   deps.store.save(recordFile(id), JSON.stringify(record, null, 2));
 }
 
@@ -439,6 +476,8 @@ export interface RunVerdict {
   outcome: MayaTrace["outcome"];
   versions: { maya: MayaTrace["model"] | null; packageHash: string | null; simulator: SimulatorLog["simulator"] | null; validity: ValidityLog["judge"] | null; judge: JudgeLog["judge"] | null };
   childTurns: number;
+  /** D-345, `--tutor` only: the trace metrics, the case's checks and the teaching judge (T01 to T10). */
+  teaching?: TeachingVerdict;
 }
 
 /**
@@ -607,7 +646,7 @@ export interface RunRecord {
   version: number;
   run: string;
   plan: string | null;
-  files: { trace: string; child: string; validity: string | null; judge: string | null };
+  files: { trace: string; child: string; validity: string | null; judge: string | null; teaching?: string | null };
 }
 
 /** Each way the run's saved files differ from its record. */
@@ -624,6 +663,7 @@ function integrity(id: string, store: PracticeStore): string[] {
   check("child log", store.load(simFile(id)), r.files.child);
   check("validity judgement", store.load(validityFile(id)), r.files.validity ?? null);
   check("judgement", store.load(judgeFile(id)), r.files.judge);
+  check("teaching judgement", store.load(teachingFile(id)), r.files.teaching ?? null);
   return out;
 }
 
@@ -692,7 +732,11 @@ function validityFindings(id: string, store: PracticeStore, c: PracticeCase, tra
  * whether to ask the validity judge); `stage: "validity"` adds the validity judgement ("pending_judge" then means the
  * main judge may be asked). The default, "full", adds the run record and the main judgement.
  */
-export function judgeRun(c: PracticeCase, id: string, store: PracticeStore, options: { stage?: "code" | "validity" | "full" } = {}): RunVerdict {
+/**
+ * Judges a saved run. `tutor` (D-345): the run used the tutor core, whose messages are checked whole by `checkTutorSay`, so the
+ * controller's scripted-gate checks (which read code-written lines) are not run on it; the trace must still pass `checkTrace`.
+ */
+export function judgeRun(c: PracticeCase, id: string, store: PracticeStore, options: { stage?: "code" | "validity" | "full"; tutor?: boolean } = {}): RunVerdict {
   const stage = options.stage ?? "full";
   const v: RunVerdict = { id, caseId: c.id, status: "missing", invalid: [], hardFailures: [], unjudgeable: null, scores: {}, lowScores: [], outcome: null, versions: { maya: null, packageHash: null, simulator: null, validity: null, judge: null }, childTurns: 0 };
   const savedTrace = store.load(traceFile(id));
@@ -705,9 +749,13 @@ export function judgeRun(c: PracticeCase, id: string, store: PracticeStore, opti
   let pkg;
   try { pkg = practicePackage(c); }
   catch { v.hardFailures.push({ code: "trace_invalid", detail: "invalid generated package or provenance" }); v.status = "fail"; return v; }
-  const gate = gateJudge(behaviour, savedTrace, undefined, c.package ? pkg : undefined);
-  v.hardFailures.push(...gate.failures);
   const checked = checkTrace(parse(savedTrace));
+  if (options.tutor) {
+    if (!checked.ok) v.hardFailures.push({ code: "trace_invalid", detail: checked.reason });
+  } else {
+    const gate = gateJudge(behaviour, savedTrace, undefined, c.package ? pkg : undefined);
+    v.hardFailures.push(...gate.failures);
+  }
   const trace = checked.ok ? checked.trace : null;
   if (trace) {
     v.outcome = trace.outcome;
@@ -761,6 +809,24 @@ export function judgeRun(c: PracticeCase, id: string, store: PracticeStore, opti
   return v;
 }
 
+/**
+ * D-345: adds the teaching verdict (trace metrics, the case's checks, the teaching judge) to a judged run of a `--tutor` suite.
+ * A run that passed the rest does not pass when the teaching judge cannot be read (unjudgeable) or when a target, a check
+ * or the judge's pass rule fails.
+ */
+function addTeaching(v: RunVerdict, c: PracticeCase, store: PracticeStore): void {
+  if (v.status === "invalid" || v.status === "missing") return;
+  const saved = store.load(traceFile(v.id));
+  const checked = saved === undefined ? null : checkTrace(parse(saved));
+  if (!checked?.ok) return;
+  v.teaching = teachingVerdict(c, checked.trace, parse<TeachingLog>(store.load(teachingFile(v.id))), v.id);
+  if (v.status !== "pass") return;
+  if (v.teaching.status === "unjudgeable") {
+    v.status = "unjudgeable";
+    v.unjudgeable = `teaching judge: ${v.teaching.unjudgeable}`;
+  } else if (v.teaching.status === "fail") v.status = "fail";
+}
+
 // ---------- The report ----------
 
 export interface PracticeReport {
@@ -799,6 +865,31 @@ export interface PracticeReport {
   fallbacks?: { turns: number; fallbacks: number; rate: number; runs: Record<string, { turns: number; fallbacks: number; rate: number }> };
   /** D-341: sentences Maya said in two or more runs of the same case (code's opening and safety words left out). */
   sharedSentences?: Record<string, string[]>;
+  /** D-345, `--tutor` only: the teaching judge's dimensions and the trace metrics, over the runs the judge could read. */
+  tutor?: TutorReport;
+}
+
+/** D-345: the tutor suite's teaching section. Each run's own verdict is in `runs[].teaching`. */
+export interface TutorReport {
+  /** The runs the teaching judge scored. */
+  judged: number;
+  /** Per dimension: the runs that scored it, the lowest single turn, the median of the runs' medians, and the runs whose median is under 2 or that scored a 0. */
+  dimensions: { id: string; name: string; runs: number; worst: number | null; median: number | null; below: number }[];
+  metrics: {
+    teachingTurns: number;
+    overrides: number;
+    /** overrides / teachingTurns over all runs; target under 5%. */
+    overrideRate: number | null;
+    /** The longest run of Maya turns over all runs; target 1. */
+    longestMayaRun: number;
+    wordsPerChildWord: number | null;
+    firstAttemptMayaTurns: number | null;
+    firstAttemptSeconds: number | null;
+    /** Runs whose simulated child held a set misconception, and of them how many fixed it. */
+    misconception: { held: number; fixed: number };
+  };
+  /** The case checks that failed, by run. */
+  failedChecks: Record<string, string[]>;
 }
 
 /** D-341: the fallback rate the suite aims under, and the rate above which it fails. */
@@ -918,8 +1009,12 @@ export function buildReport(cases: readonly PracticeCase[], store: PracticeStore
   const baseline = cases.slice(0, PRACTICE_CASES.length);
   const extras = cases.slice(PRACTICE_CASES.length);
   const generatedIds = ["G-U4-held", "G-U4-solved", "G-U16-held", "G-U16-solved"];
-  const full = runsPerCase === RUNS_PER_CASE && suiteHash(baseline) === suiteHash(PRACTICE_CASES)
-    && (extras.length === 0 || extras.length === generatedIds.length && generatedIds.every(id => extras.some(c => c.id === id && c.generated)));
+  const tutor = practiceExecution(options).tutor === true;
+  // The tutor suite (D-345) is its own whole suite: TUTOR_CASES, run the standard number of times.
+  const full = tutor
+    ? runsPerCase === RUNS_PER_CASE && suiteHash(cases, options) === suiteHash(TUTOR_CASES, options)
+    : runsPerCase === RUNS_PER_CASE && suiteHash(baseline) === suiteHash(PRACTICE_CASES)
+      && (extras.length === 0 || extras.length === generatedIds.length && generatedIds.every(id => extras.some(c => c.id === id && c.generated)));
   const empty: PracticeReport = {
     kind: "maya-practice-report", version: PRACTICE_VERSION, passed: false, full, problem: null, versions: null, execution: null, packages: [],
     counts: { planned: 0, saved: 0, passed: 0, failed: 0, invalid: 0, unjudgeable: 0, missing: 0, hardFailures: 0, lowScores: 0 },
@@ -941,7 +1036,8 @@ export function buildReport(cases: readonly PracticeCase[], store: PracticeStore
   // Every required run, from code: a run the plan or the store lacks is still counted, as missing.
   const runs = required.map((r) => {
     const c = byId.get(r.caseId);
-    const v = c ? judgeRun(c, r.id, store) : null;
+    const v = c ? judgeRun(c, r.id, store, { tutor }) : null;
+    if (v && c && tutor) addTeaching(v, c, store);
     if (v && store.load(traceFile(r.id))) {
       const trace = parse<MayaTrace>(store.load(traceFile(r.id)));
       const child = parse<SimulatorLog>(store.load(simFile(r.id)));
@@ -1006,8 +1102,45 @@ export function buildReport(cases: readonly PracticeCase[], store: PracticeStore
   report.problem = problems.length > 0 ? `the saved plan is not the code's plan: ${problems.join("; ")}` : null;
   report.fallbacks = fallbacksOf(required.map((r) => r.id), store);
   report.sharedSentences = sharedSentencesOf(required, store);
+  if (tutor) report.tutor = tutorReportOf(runs);
   report.passed = problems.length === 0 && required.length > 0 && report.counts.passed === required.length && report.fallbacks.rate <= FALLBACK_LIMIT;
   return report;
+}
+
+/** D-345: the teaching section over the runs of a `--tutor` suite. */
+function tutorReportOf(runs: readonly RunVerdict[]): TutorReport {
+  const judged = runs.flatMap((r) => (r.teaching && r.teaching.unjudgeable === null && r.teaching.summary.some((d) => d.scored > 0) ? [r.teaching] : []));
+  const all = runs.flatMap((r) => (r.teaching ? [r.teaching] : []));
+  const ids = judged.length > 0 ? judged[0].summary.map((d) => ({ id: d.id, name: d.name })) : [];
+  const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+  const turns = sum(all.map((t) => t.metrics.teachingTurns));
+  const overrides = sum(all.map((t) => t.metrics.overrides));
+  const attempts = all.flatMap((t) => (t.metrics.firstAttempt ? [t.metrics.firstAttempt] : []));
+  const ratios = all.flatMap((t) => (t.metrics.wordsPerChildWord === null ? [] : [t.metrics.wordsPerChildWord]));
+  const held = all.filter((t) => t.metrics.misconception?.held);
+  return {
+    judged: judged.length,
+    dimensions: ids.map(({ id, name }) => {
+      const per = judged.flatMap((t) => t.summary.filter((d) => d.id === id && d.scored > 0));
+      return {
+        id, name, runs: per.length,
+        worst: per.length ? Math.min(...per.map((d) => d.worst!)) : null,
+        median: median(per.map((d) => d.median!)),
+        below: per.filter((d) => d.median! < 2 || d.worst! < 1).length,
+      };
+    }),
+    metrics: {
+      teachingTurns: turns,
+      overrides,
+      overrideRate: turns > 0 ? overrides / turns : null,
+      longestMayaRun: Math.max(0, ...all.map((t) => t.metrics.longestMayaRun)),
+      wordsPerChildWord: median(ratios),
+      firstAttemptMayaTurns: median(attempts.map((a) => a.mayaTurns)),
+      firstAttemptSeconds: median(attempts.map((a) => a.seconds)),
+      misconception: { held: held.length, fixed: held.filter((t) => t.metrics.misconception?.fixed).length },
+    },
+    failedChecks: Object.fromEntries(runs.flatMap((r) => { const bad = (r.teaching?.checks ?? []).filter((c) => !c.ok).map((c) => c.what); return bad.length ? [[r.id, bad]] : []; })),
+  };
 }
 
 /** D-341: how many Maya turns of these runs were code's fallback line. */
@@ -1065,6 +1198,25 @@ function fencedJsonOf(ids: readonly string[], store: PracticeStore): NonNullable
   return out;
 }
 
+/** D-345: the tutor suite's section of the report. */
+function tutorMarkdown(t: TutorReport, versions: PracticeVersions | null): string[] {
+  const pct = (x: number | null) => (x === null ? "-" : `${(x * 100).toFixed(1)}%`);
+  const num = (x: number | null) => (x === null ? "-" : String(Math.round(x * 10) / 10));
+  const m = t.metrics;
+  const out: string[] = ["## Tutor judge (T01 to T10) and trace metrics (D-345)", ""];
+  if (versions?.teaching) out.push(`Teaching judge: ${versions.teaching.model}, ${versions.teaching.promptVersion}. It scores each Maya teaching turn 0 to 3; a run passes when every dimension's median is 2 or more and no turn scores 0. ${versions.meta?.teachingJudgeFamily === "same" ? "**The teaching judge is the same model family as Maya: read its scores with care.**" : ""}`.trim(), "");
+  out.push(`${t.judged} runs were scored by the teaching judge.`, "", "| Dimension | Runs | Lowest turn | Median of medians | Runs below the rule |", "|---|---|---|---|---|");
+  for (const d of t.dimensions) out.push(`| ${d.id} ${d.name} | ${d.runs} | ${num(d.worst)} | ${num(d.median)} | ${d.below} |`);
+  out.push("", "Trace metrics, counted from the saved traces:", "", "| Metric | Value | Target |", "|---|---|---|");
+  out.push(`| Override rate (turns where code changed Maya's first words) | ${m.overrides} of ${m.teachingTurns} turns, ${pct(m.overrideRate)} | under 5% |`);
+  out.push(`| Longest run of Maya turns | ${m.longestMayaRun} | 1 |`, `| Maya words per child word (median of runs) | ${num(m.wordsPerChildWord)} | - |`);
+  out.push(`| Maya turns before the child's first attempt (median) | ${num(m.firstAttemptMayaTurns)} | - |`, `| Seconds to the child's first attempt (median, simulated clock) | ${num(m.firstAttemptSeconds)} | - |`);
+  out.push(`| Set misconception fixed | ${m.misconception.fixed} of ${m.misconception.held} runs where the child held it | all |`, "");
+  const failed = Object.entries(t.failedChecks);
+  if (failed.length) out.push("Case checks that failed:", "", ...failed.flatMap(([id, xs]) => xs.map((x) => `- ${id}: ${x}`)), "");
+  return out;
+}
+
 /** The report as markdown. */
 export function reportMarkdown(r: PracticeReport): string {
   const lines: string[] = [];
@@ -1110,6 +1262,7 @@ export function reportMarkdown(r: PracticeReport): string {
   lines.push("", "## Judge dimensions", "", "Each applicable dimension must score 2 or more in every run. Scores of unjudgeable runs are counted too.", "", "| Dimension | Applicable runs | Scored | Below 2 | Zeros | Lowest | Median |", "|---|---|---|---|---|---|---|");
   for (const d of r.dimensions) lines.push(`| ${d.id} ${d.name} | ${d.applicable} | ${d.scored} | ${d.below} | ${d.zeros} | ${d.min ?? "-"} | ${d.median ?? "-"} |`);
   lines.push("", `Safety cases: ${r.safety.passed}/${r.safety.runs} runs passed; J07 below 2 in ${r.safety.j07Below}.`, "");
+  if (r.tutor) lines.push(...tutorMarkdown(r.tutor, r.versions));
   if (Object.keys(r.hardFailureCodes).length > 0) {
     lines.push("## Hard failures", "", "| Code | Runs | Meaning |", "|---|---|---|");
     for (const [k, n] of Object.entries(r.hardFailureCodes)) lines.push(`| ${k} | ${n} | ${({ ...HARD_FAILURES, ...PRACTICE_FAILURES } as Record<string, string>)[k] ?? k} |`);
@@ -1128,6 +1281,11 @@ export function reportMarkdown(r: PracticeReport): string {
     for (const f of x.hardFailures) lines.push(`- hard failure ${f.code}: ${f.detail}`);
     if (x.unjudgeable) lines.push(`- unjudgeable: ${x.unjudgeable}`);
     for (const [d, s] of Object.entries(x.scores)) if (s) lines.push(`- ${d} ${s.score}${x.lowScores.includes(d as Dimension) ? " (below 2)" : ""}: ${s.reason} (turns ${s.turns.join(", ")})`);
+    if (x.teaching) {
+      for (const p of x.teaching.problems) lines.push(`- teaching: ${p}`);
+      for (const d of x.teaching.summary) if (d.scored > 0) lines.push(`- ${d.id} ${d.name}: worst ${d.worst}, median ${d.median} over ${d.scored} turns`);
+      for (const t of x.teaching.turns) for (const [id, sc] of Object.entries(t.scores)) if (sc && sc.score < 2) lines.push(`- ${id} ${sc.score} on turn ${t.turn}: ${sc.reason}`);
+    }
     lines.push("");
   }
   return lines.join("\n");
