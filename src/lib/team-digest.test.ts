@@ -84,7 +84,7 @@ describe("the digest builder", () => {
       book1Pending: [{ draftId: "dddddddd-0000-4000-8000-000000000001", childId: CHILD, parentId: REAL, reason: "no-planning-capture", at }],
       planStates: [{ childId: CHILD, parentId: REAL, kind: "payment_failed", eventAt: iso(pt(1, 1)) }],
       planStarts: [{ parentId: REAL, state: "open", startedAt: iso(pt(10, 1)), finishedAt: null }, { parentId: REAL, state: "open", startedAt: iso(pt(12, 5)), finishedAt: null }],
-      adVisits: [{ visitId: "v1", campaign: "bc-launch", at }, { visitId: "v2", campaign: "bc-launch", at }, { visitId: "v3", campaign: null, at }],
+      adVisits: [{ visitId: "v1", campaign: "bc-launch-test", at }, { visitId: "v2", campaign: "bc-launch-test", at }, { visitId: "v3", campaign: null, at }],
       adSteps: [{ visitId: "v1", step: "start_open", at }, { visitId: "v1", step: "code_sent", at }],
       aiUsage: [{ feature: "maya", provider: "openrouter", costUsd: 0.5, calls: 2, at }, { feature: "workbook", provider: "subscription", costUsd: null, calls: 1, at }],
     }), digestPeriod(THURSDAY));
@@ -99,7 +99,7 @@ describe("the digest builder", () => {
       { text: "1 plan start open for more than 24 hours", path: "/admin/next-steps" },
     ]);
     expect(section("Waiting for the team").map((l) => l.path)).toEqual(["/admin/scans", "/admin/workbooks/runs/rrrrrrrr-0000-4000-8000-000000000001", "/admin/next-steps"]);
-    expect(section("Ad visits by campaign").map((l) => l.text)).toEqual(["bc-launch: 2 visits, 1 opened /start, 1 got an email code", "(no campaign): 1 visit"]);
+    expect(section("Ad visits by campaign").map((l) => l.text)).toEqual(["bc-launch-test: 2 visits, 1 opened /start, 1 got an email code", "(no campaign): 1 visit"]);
     expect(section("AI cost").map((l) => l.text)).toEqual([
       "USD 0.50 for 2 calls with a reported cost", "1 subscription call, no per-call charge", "maya: USD 0.50 for 2 calls", "workbook: 1 subscription call",
     ]);
@@ -114,7 +114,7 @@ describe("the digest builder", () => {
       signups: [...many(2, thisWeek), ...many(6, lastWeek), ...many(9, thisWeek, TEST)],
       emailProblems: [{ type: "failed", parentId: REAL, at: thisWeek }, { type: "failed", parentId: REAL, at: thisWeek }, { type: "bounced", parentId: null, at: thisWeek }],
       aiUsage: [{ feature: "maya", provider: "openrouter", costUsd: 9, calls: 10, at: thisWeek }, { feature: "maya", provider: "openrouter", costUsd: 2, calls: 3, at: lastWeek }],
-      adVisits: Array.from({ length: 20 }, (_, i) => ({ visitId: `w${i}`, campaign: "quiet-ad", at: thisWeek })),
+      adVisits: Array.from({ length: 20 }, (_, i) => ({ visitId: `w${i}`, campaign: "bc-round-3", at: thisWeek })),
     }), digestPeriod(FRIDAY));
     expect(d.weekly).toBe(true);
     expect(d.week!.current).toMatchObject({ signups: 2, finishedTests: 0, emailProblems: 3, adVisits: 20, adCodesSent: 0, aiCostUsd: 9 });
@@ -124,7 +124,7 @@ describe("the digest builder", () => {
       "Signups fell from 6 to 2.",
       "3 emails had a delivery problem this week (last week 0).",
       "AI cost rose to USD 9.00 from USD 2.00.",
-      'Campaign "quiet-ad" had 20 or more visits this week and no email code was sent.',
+      'Campaign "bc-round-3" had 20 or more visits this week and no email code was sent.',
     ]);
     const email = teamDigestEmail(d, ORIGIN);
     expect(email.subject).toContain("with this week");
@@ -232,7 +232,7 @@ describe("the review findings of PR #999", () => {
     expect(email.text + email.html).not.toMatch(/Emma|example\.com|cannot log in|parent@/);
     expect(email.text).toContain("(other tagged visits): 1 visit");
     for (const ok of ["bc-launch-test", "bc_fee_research_20261101", "door-to-door"]) expect(campaignLabel(ok)).toBe(ok);
-    for (const bad of ["Emma", "a@b.co", "two words", "x".repeat(41), "<b>"]) expect(campaignLabel(bad)).toBe("(other tagged visits)");
+    for (const bad of ["Emma", "a@b.co", "two words", "x".repeat(41), "<b>", "emma-watson", "my-child-emma-needs-help"]) expect(campaignLabel(bad)).toBe("(other tagged visits)");
     expect(campaignLabel("  ")).toBe("(no campaign)");
   });
 

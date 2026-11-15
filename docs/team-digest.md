@@ -56,7 +56,7 @@ A table of 7-day totals against the 7 days before: signups, finished tests, new 
 
 ## Privacy
 
-The email leaves our system. It holds only counts, short ids and admin links: no child name, no parent name or email, no feedback or message text. The reader (`src/lib/team-digest-store.ts`) selects only ids, kinds and times. The one free text it reads, `utm_campaign`, is printed only in our tag style (`campaignLabel`). A read that reaches its 10,000-row limit is named in the email, and its count is a floor.
+The email leaves our system. It holds only counts, short ids and admin links: no child name, no parent name or email, no feedback or message text. The reader (`src/lib/team-digest-store.ts`) selects only ids, kinds and times. The one free text it reads, `utm_campaign`, is printed by name only when it is one of the team's own campaigns (`KNOWN_CAMPAIGNS` in `src/lib/team-digest.ts`; add a new campaign there when it starts). Any other value counts under "(other tagged visits)". A read that reaches its 10,000-row limit is named in the email, and its count is a floor.
 
 ## Code
 

@@ -121,17 +121,26 @@ const OPEN_START_HOURS = 24;
 const HOUR = 3_600_000;
 const NO_CAMPAIGN = "(no campaign)";
 const OTHER_CAMPAIGN = "(other tagged visits)";
-/** A campaign the email may print: our own tag style, lowercase letters, digits, hyphens and underscores, at most 40. */
-const SAFE_CAMPAIGN = /^[a-z0-9][a-z0-9_-]{0,39}$/;
+/**
+ * The campaigns the email may print by name: the team's own tags (docs/ad-tracking.md, .design/ads/). Add a new campaign
+ * here when it starts. A character rule is not enough: "emma-watson" fits any tag pattern.
+ */
+export const KNOWN_CAMPAIGNS: ReadonlySet<string> = new Set([
+  "bc-launch-test",
+  "bc-round-3",
+  "bc_fee_research_20261101",
+  "door-to-door",
+  "lead-form-nov",
+]);
 
 /**
- * The campaign as the email shows it. utm_campaign is public text anyone can put in an address, so a value that is not in
- * our tag style (a name, an email address, a sentence) is never printed: it counts under "(other tagged visits)".
+ * The campaign as the email shows it. utm_campaign is public text anyone can put in an address, so only a campaign in
+ * KNOWN_CAMPAIGNS is printed; any other value (a name, an email address, a sentence) counts under "(other tagged visits)".
  */
 export function campaignLabel(raw: string | null): string {
   const name = raw?.trim();
   if (!name) return NO_CAMPAIGN;
-  return SAFE_CAMPAIGN.test(name) ? name : OTHER_CAMPAIGN;
+  return KNOWN_CAMPAIGNS.has(name) ? name : OTHER_CAMPAIGN;
 }
 
 const ms = (at: At) => Date.parse(at);

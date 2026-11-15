@@ -13,6 +13,8 @@ const PAGE = 1_000;
 const MAX_ROWS = 10_000;
 /** Ids per `in` filter, so a follow-up read stays inside the address length limit. */
 const CHUNK = 200;
+/** Drafts per approvals read. A draft can hold many approvals, so a small chunk keeps each read far under MAX_ROWS. */
+const APPROVAL_CHUNK = 10;
 
 interface Page<T> { data: T[] | null; error: { message: string } | null }
 type Ranged<T> = { range(from: number, to: number): { abortSignal(s: AbortSignal): PromiseLike<Page<T>> } };
@@ -45,10 +47,10 @@ export function teamDigestStore(db: SupabaseClient<Database>): TeamDigestStore {
         return out;
       }
       /** A follow-up read by ids, in chunks; each chunk pages as `all` does. */
-      async function byIds<T>(what: string, ids: string[], query: (chunk: string[]) => Ranged<T>): Promise<T[]> {
+      async function byIds<T>(what: string, ids: string[], query: (chunk: string[]) => Ranged<T>, size = CHUNK): Promise<T[]> {
         const unique = [...new Set(ids)];
         const out: T[] = [];
-        for (let i = 0; i < unique.length; i += CHUNK) out.push(...await all(what, () => query(unique.slice(i, i + CHUNK))));
+        for (let i = 0; i < unique.length; i += size) out.push(...await all(what, () => query(unique.slice(i, i + size))));
         return out;
       }
       const [admins, tests, parents, finished, feedback, events, alerts, plans, starts, runs, book1, visits, steps, ai, scan] = await Promise.all([
@@ -75,7 +77,7 @@ export function teamDigestStore(db: SupabaseClient<Database>): TeamDigestStore {
       const drafts = book1.map((b) => b.draft_id);
       const [copies, approvals, baselines] = await Promise.all([
         byIds("email copies", eventIds, (chunk) => db.from("email_copies").select("id, email_id, parent_id").in("email_id", chunk).order("id")),
-        byIds("Book 1 approvals", drafts, (chunk) => db.from("workbook_audit").select("id, workbook_id, detail").eq("action", "workbook-approved").in("workbook_id", chunk).order("id")),
+        byIds("Book 1 approvals", drafts, (chunk) => db.from("workbook_audit").select("id, workbook_id, detail").eq("action", "workbook-approved").in("workbook_id", chunk).order("id"), APPROVAL_CHUNK),
         byIds("Book 1 baselines", drafts, (chunk) => db.from("workbook_book1_baselines").select("id, draft_id, draft_revision").in("draft_id", chunk).order("id")),
       ]);
       const familyOf = new Map(copies.flatMap((c) => (c.email_id ? [[c.email_id, c.parent_id] as const] : [])));
