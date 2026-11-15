@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PACIFIC_ZONE } from "@/lib/family-time";
 import type { SkillState } from "@/lib/assessment/skill-state";
-import { movedUpBetween, progressSummary, type StateChange } from "@/lib/progress-series";
+import { firstBatchAt, movedUpBetween, progressSummary, type StateChange } from "@/lib/progress-series";
 
 // The Progress tab's tiles and line (#1004), through the module's public interface. The family is in Pacific time
 // (UTC-7 all year since March 2026, src/lib/family-time.ts). 2026-11-09 is a Monday; "now" is Thursday 2026-11-12, noon in Vancouver.
@@ -40,15 +40,18 @@ describe("a family with one week of data", () => {
 
 describe("Moved up", () => {
   const moved = (cur: Record<string, SkillState>, history: StateChange[]) => run({ current: current(cur), history }).week.movedUp;
-  it("counts Needs review to Working on, Working on to Mastered and Not started to Mastered", () => {
-    expect(moved({ a: "working_on", b: "mastered", c: "mastered" }, [
+  it("counts Needs review to Mastered, Working on to Mastered and Not started to Mastered", () => {
+    expect(moved({ a: "mastered", b: "mastered", c: "mastered" }, [
       row("a", "needs_review", "2026-11-02T18:00:00Z"), row("b", "working_on", "2026-11-02T18:00:00Z"),
     ])).toBe(3);
   });
-  it("does not count a skill only entering the current workbook (Not started to Working on)", () => {
+  it("never counts a change into Working on, from any state: that is only the skill entering the workbook", () => {
     expect(moved({ a: "working_on" }, [])).toBe(0);
     expect(movedUpBetween("not_started", "working_on")).toBe(false);
+    expect(movedUpBetween("needs_review", "working_on")).toBe(false);
     expect(movedUpBetween("needs_review", "not_started")).toBe(true);
+    // A Needs review skill the book came back to is not up until it is Mastered.
+    expect(moved({ a: "working_on", b: "mastered" }, [row("a", "needs_review", "2026-11-02T18:00:00Z"), row("b", "needs_review", "2026-11-02T18:00:00Z")])).toBe(1);
   });
   it("does not count a skill that fell, or one that ended where it began", () => {
     expect(moved({ a: "working_on", b: "needs_review", c: "mastered" }, [
@@ -129,5 +132,55 @@ describe("a family with no marks yet", () => {
     const summary = run({ startDay: null });
     expect(summary.week.points).toHaveLength(2);
     expect(summary.month.points).toHaveLength(2);
+  });
+});
+
+describe("a period never begins before the child's start", () => {
+  it("Month never exceeds All time: the starting test's skills are new in neither", () => {
+    // The child started Wednesday 2026-11-11 (this month and this week). Two skills were mastered by the starting test,
+    // recorded on the start day; one was mastered since.
+    const summary = run({
+      startDay: "2026-11-11",
+      current: current({ a: "mastered", b: "mastered", c: "mastered" }),
+      history: [row("a", "mastered", "2026-11-11T20:00:00Z"), row("b", "mastered", "2026-11-11T20:00:00Z"), row("c", "mastered", "2026-11-12T18:00:00Z")],
+    });
+    expect(summary.all.gain).toBe(1);
+    expect(summary.month.gain).toBe(1);
+    expect(summary.week.gain).toBe(1);
+    expect(summary.month.gain).toBeLessThanOrEqual(summary.all.gain);
+    expect(summary.week.movedUp).toBe(1);
+  });
+  it("a child who started today has no gain in any period", () => {
+    const summary = run({ startDay: "2026-11-12", current: current({ a: "mastered" }), history: [row("a", "mastered", "2026-11-12T18:00:00Z")] });
+    expect([summary.week.gain, summary.month.gain, summary.all.gain, summary.week.movedUp]).toEqual([0, 0, 0, 0]);
+  });
+});
+
+describe("history from before the table began (2026-11-04)", () => {
+  // The child started 2026-10-20, but the table's first rows were written by their first rebuild on 2026-11-10.
+  const early = { startDay: "2026-10-20" };
+  const batch = "2026-11-10T18:00:00Z";
+  it("the first batch is the starting state: not a gain and not Moved up, in any period", () => {
+    const summary = run({
+      ...early,
+      current: current({ a: "mastered", b: "mastered", c: "working_on" }),
+      history: [row("a", "mastered", batch), row("b", "mastered", batch), row("c", "working_on", batch)],
+    });
+    expect([summary.week.gain, summary.month.gain, summary.all.gain]).toEqual([0, 0, 0]);
+    expect([summary.week.movedUp, summary.month.movedUp, summary.all.movedUp]).toEqual([0, 0, 0]);
+    expect(summary.mastered).toBe(2);
+  });
+  it("a change after the first batch counts", () => {
+    const summary = run({
+      ...early,
+      current: current({ a: "mastered", b: "mastered" }),
+      history: [row("a", "mastered", batch), row("b", "working_on", batch), row("b", "mastered", "2026-11-11T18:00:00Z")],
+    });
+    expect([summary.week.gain, summary.month.gain, summary.all.gain]).toEqual([1, 1, 1]);
+    expect(summary.week.movedUp).toBe(1);
+  });
+  it("finds the first batch: the earliest time, whatever the order, and none without rows", () => {
+    expect(firstBatchAt([row("a", "mastered", "2026-11-11T18:00:00Z"), row("b", "mastered", batch)])).toBe(Date.parse(batch));
+    expect(firstBatchAt([])).toBeNull();
   });
 });

@@ -36,11 +36,27 @@ export interface StateChange {
 const RANK: Record<SkillState, number> = { needs_review: 0, not_started: 1, working_on: 2, mastered: 3 };
 
 /**
- * "Moved up" (#1004): a skill whose state is higher at the end of the period than at its start, except Not started to
- * Working on. That step is only the skill entering the current workbook (the rule's "in_workbook"), not something the
- * child did, so a new book does not count its whole skill list as moving up.
+ * "Moved up" (#1004): a skill whose state is higher at the end of the period than at its start, except a change into
+ * Working on. That step, from any state, is only the skill entering the current workbook (the rule's "in_workbook"), not
+ * something the child did, so a new book does not count its whole skill list as moving up, and a Needs review skill the
+ * book comes back to is not "up" until it is Mastered.
  */
-export const movedUpBetween = (from: SkillState, to: SkillState): boolean => RANK[to] > RANK[from] && !(from === "not_started" && to === "working_on");
+export const movedUpBetween = (from: SkillState, to: SkillState): boolean => RANK[to] > RANK[from] && to !== "working_on";
+
+/**
+ * When a child's first batch of history rows was recorded: the earliest `changed_at`, as an instant (ms); null with no
+ * rows. The table began on 2026-11-04, so a child who started earlier got all their rows at their first rebuild, dated
+ * then. That batch is the starting state, not something the child did that day: it is neither a gain nor Moved up, and a
+ * skill in it has no "Mastered <date>". Later rows are real changes.
+ */
+export function firstBatchAt(history: readonly StateChange[]): number | null {
+  let first: number | null = null;
+  for (const row of history) {
+    const at = Date.parse(row.changedAt);
+    if (Number.isFinite(at) && (first === null || at < first)) first = at;
+  }
+  return first;
+}
 
 export type Period = "week" | "month" | "all";
 
@@ -55,7 +71,11 @@ export interface PeriodSummary {
   period: Period;
   /** The first day of the period, in family time: this Monday, the 1st of this month, or the child's start day. */
   since: string;
-  /** Skills mastered now less skills mastered when the period began; never below 0. */
+  /**
+   * Skills mastered now less skills mastered when the period began; never below 0. Every period begins no earlier than
+   * the end of the child's start day and the first batch of history, so Month never exceeds All time and the starting
+   * state is never new.
+   */
   gain: number;
   /** Skills that moved up since the period began (`movedUpBetween`). */
   movedUp: number;
@@ -119,13 +139,19 @@ export function progressSummary({ now, zone, current, history, startDay }: Progr
   /** The start of a family-time day, as an instant. */
   const startOf = (day: string) => localDateTime(day, zone);
 
-  /** `began`: the instant the period's change counts from. */
+  // The starting state: what the child's starting test showed (everything up to the end of the start day) and the first
+  // batch of history rows, whenever it was recorded (`firstBatchAt`). No period counts a change from before it.
+  const batch = firstBatchAt(history);
+  const startedAt = Math.max(startDay === null ? -Infinity : startOf(addDays(startDay, 1)), batch === null ? -Infinity : batch + 1);
+
+  /** `began`: the instant the period's own start; the change counts from the later of it and the starting state. */
   const summary = (period: Period, since: string, began: number, points: ChartPoint[]): PeriodSummary => {
+    const from = Math.max(began, startedAt);
     return {
       period,
       since,
-      gain: Math.max(0, masteredAt(now + 1) - masteredAt(began)),
-      movedUp: standards.filter((s) => movedUpBetween(stateAt(s, began), stateAt(s, now + 1))).length,
+      gain: Math.max(0, masteredAt(now + 1) - masteredAt(from)),
+      movedUp: standards.filter((s) => movedUpBetween(stateAt(s, from), stateAt(s, now + 1))).length,
       points,
     };
   };
@@ -162,7 +188,7 @@ export function progressSummary({ now, zone, current, history, startDay }: Progr
     needsHelp: standards.filter((s) => stateAt(s, now + 1) === "needs_review").length,
     week: summary("week", thisMonday, startOf(thisMonday), weekPoints),
     month: summary("month", `${thisMonth}-01`, startOf(`${thisMonth}-01`), monthPoints(firstMonth < recent ? recent : firstMonth)),
-    // All time counts from the end of the day the child started, so what the starting test showed is not "new".
-    all: summary("all", startDay ?? `${thisMonth}-01`, startOf(startDay === null ? `${thisMonth}-01` : addDays(startDay, 1)), monthPoints(firstMonth)),
+    // All time begins at the child's start; the others never begin before it either, so Month cannot exceed All time.
+    all: summary("all", startDay ?? `${thisMonth}-01`, startOf(startDay ?? `${thisMonth}-01`), monthPoints(firstMonth)),
   };
 }

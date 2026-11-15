@@ -56,12 +56,15 @@
 .po-skill small { display: block; font-size: 13.5px; color: var(--pa-tx2); margin-top: 2px; }
 .support-page .pa .po-none { color: var(--pa-tx2); }
 
+/* "Workbook N is on its way": one plain line above the week while a newer book is in the mail. */
+.po-way { margin: 0; font-size: 14.5px; font-weight: 600; color: var(--pa-tx2, #50505a); }
+
 /* The page's own title is the child's name: the approved look is bold. */
 [data-look="warm"] .pd-main .support-page:has(.po) h1 { font-weight: 700; letter-spacing: -0.02em; }
 
 /* The laptop: two columns when the Home itself is wide enough. */
 @container (min-width: 760px) {
   .po { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
-  .po > .po-preparing-card { grid-column: 1 / -1; }
+  .po > .po-preparing-card, .po > .po-way { grid-column: 1 / -1; }
 }
 @media (prefers-reduced-motion: reduce) { .po-count { transition: none; } }

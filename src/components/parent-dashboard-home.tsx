@@ -5,7 +5,7 @@ import { NoteCard } from "@/components/parent-maya-notes";
 import { DeskText, MayaNoticeCard, MayaChatRow, ProgressCard } from "@/components/parent-home-rows";
 import type { HomeProgress } from "@/lib/progress-preview-server";
 import { ParentAlerts, ParentTestStart } from "@/components/parent-assessment";
-import { ParentOverview } from "@/components/parent-overview";
+import { OnTheWay, ParentOverview, homeHasParts } from "@/components/parent-overview";
 import { SupportPage } from "@/components/support-page";
 import type { StartState } from "@/lib/assessment";
 import { gradeLabel } from "@/lib/assessment/grades";
@@ -80,15 +80,18 @@ export function ParentDashboardHome({ dashboard, overview, kids, addressChild, p
     );
   }
   // Option A Home (#1003): the Overview alone. Its own parts replace the test, desk, Maya and goal rows, which the other
-  // tabs hold. Only when the Overview cannot be read does the page keep those rows, as before, so it is never empty.
-  const home = !!kid && overview?.child.id === kid.id;
+  // tabs hold. Only when the Overview cannot be read, or has no part to show (a first book still in the mail), does the page
+  // keep those rows, as before, so it is never just the child's name.
+  const shown = !!kid && overview?.child.id === kid.id ? overview : null;
+  const home = !!shown && homeHasParts(shown);
   return (
     <SupportPage label={label} title={kid?.first_name ?? "Your account"}>
       {note}
       <ParentAlerts {...alerts} />
       {noticeDue && current.size > 0 && <MayaNoticeCard />}
       {!kid && <p className="lead">Add a child on the <Link href="/account/settings">Account</Link> page to start.</p>}
-      {home && <ParentOverview overview={overview} />}
+      {home && <ParentOverview overview={shown} />}
+      {!home && shown?.onTheWay != null && <OnTheWay number={shown.onTheWay} />}
       {!home && progressCard}
       {!home && kid && state && (
         <>

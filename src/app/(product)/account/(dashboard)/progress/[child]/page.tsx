@@ -7,10 +7,10 @@ import { signedInParentView } from "@/lib/parent-view-server";
 
 export const metadata = pageMetadata({ path: "/account/progress", title: "Progress", description: "Your child's progress.", index: false });
 
-// The Progress tab (#561, spec #544, D-244): the skill map by reported area, and a panel on the selected skill. Only for
-// families the dashboard is open to, and only with the switch for #194 on (PROGRESS_TAB_ENABLED); every other family gets
-// the 404. The progress line, pages, marks, repeated mistakes and Maya calls come with #565. What we've learned shows only
-// facts code counted, and before marks there are none, so the section does not appear.
+// The Progress tab (#561, #1004, spec #544, D-244): the child's skills, week by week: the tiles, the skills mastered over
+// time, and the math topics. Only for families the dashboard is open to, and only with the switch for #194 on
+// (PROGRESS_TAB_ENABLED); every other family gets the 404. Before the first marked pages there are no numbers, and a read
+// that fails says the tab can't load. Pages, marks, repeated mistakes and Maya calls come with #565.
 
 /** The signed-in parent's child's Progress tab; a redirect or the 404 when there is none to show. */
 async function load(childId: string) {

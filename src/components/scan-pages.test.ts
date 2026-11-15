@@ -561,6 +561,16 @@ it("brings the tips back from How to scan, and says pages can go in any order", 
   expect(text()).not.toContain("Pages can be scanned in any order.");
 });
 
+it("promises no retake notice to a family without the photo checks: the fifth tip says the photos are kept for marking", async () => {
+  checks = false;
+  await render();
+  await choose("library", "p10.jpg");
+  await act(async () => button("How to scan")!.click());
+  expect(text()).toContain("Any order is fine");
+  expect(text()).toContain("We keep the photos to mark Leah's work later.");
+  expect(text()).not.toContain("needs a retake");
+});
+
 it("shows Checking, never Got it, while a page is checked (#915)", async () => {
   let open!: () => void;
   putGate = new Promise<void>((resolve) => { open = resolve; });

@@ -49,6 +49,7 @@ export const PARENT_PREVIEW_VIEWS = [
   { id: "overview", label: "Home", scenarios: [
     scenario("active", "Mid-week"), scenario("today_done", "All of today's pages scanned"), scenario("day_not_started", "A day not started"),
     scenario("first_scan", "Before the first scan"), scenario("first_book_coming", "First workbook not sent", "first_book_coming"),
+    scenario("book_2_mailed", "Next workbook in the mail"), scenario("book_over", "Book finished, next one not here yet"),
     scenario("ended", "Plan ended", "ended"), scenario("preparing", "New result being prepared"), scenario("late", "New result delayed"),
     scenario("no_skills", "Skills not shown yet"), scenario("empty", "No skills of one kind"),
   ] },
@@ -73,7 +74,7 @@ export const PARENT_PREVIEW_VIEWS = [
     scenario("empty", "No stored answers"), scenario("ended", "Delivered book after plan ended", "ended"),
   ] },
   { id: "progress", label: "Progress", scenarios: [
-    scenario("week", "A week of data"), scenario("long", "Months of data"), scenario("empty", "No marked pages yet", "first_book_coming"),
+    scenario("week", "A week of data"), scenario("long", "Months of data"), scenario("empty", "No marked pages yet", "first_book_coming"), scenario("unavailable", "Progress can't load"),
     scenario("ended", "Past skills", "ended"),
   ] },
   { id: "maya", label: "Maya notes", scenarios: [

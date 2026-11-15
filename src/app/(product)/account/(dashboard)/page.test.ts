@@ -404,6 +404,7 @@ describe("a family the switch opens to", () => {
       resultLate: false,
       week: [{ label: "Mon", state: "done" }, { label: "Tue", state: "done" }, { label: "Wed", state: "done" }, { label: "Thu", state: "today" }, { label: "Fri", state: "open" }],
       workbook: { number: 2, day: 4, days: 10, percent: 38, today: { label: "Today", topic: "Hundreds, tens and ones", scanned: 6, pages: 8 } },
+      onTheWay: null,
       scanPrompt: null,
       skills: {
         mastered: [{ code: "2.4", name: "Multiplying by 10 and 100", masteredOn: "Thursday" }, { code: "2.1", name: "Even and odd", masteredOn: "Oct 20" }],
@@ -452,7 +453,7 @@ describe("a family the switch opens to", () => {
 
     it("before the first scan: no ring, and one prompt to scan the first pages, with the Scan button", async () => {
       const value = full();
-      const out = await render({ ...value, workbook: { ...value.workbook!, percent: null, today: { ...value.workbook!.today, scanned: 0 } }, scanPrompt: { day: 1, pages: 8 }, skills: null });
+      const out = await render({ ...value, workbook: { ...value.workbook!, percent: null, today: { ...value.workbook!.today!, scanned: 0 } }, scanPrompt: { day: 1, pages: 8 }, skills: null });
       expect(out).not.toContain("po-ring");
       expect(out).toContain("Scan the first pages when they&#x27;re done");
       expect(out).toContain("Day 1 has 8 pages. Any order is fine.");
@@ -461,9 +462,44 @@ describe("a family the switch opens to", () => {
     });
 
     it("a part with no data does not appear", async () => {
-      const out = await render({ ...full(), week: null, workbook: null, skills: null });
-      for (const absent of ["po-week", "po-book", "Skills", "po-main", "po-side"]) expect(out).not.toContain(absent);
+      const out = await render({ ...full(), week: null, workbook: null, skills: null, scanPrompt: { day: 1, pages: 8 } });
+      for (const absent of ["po-week", "po-book", "Skills", "po-side"]) expect(out).not.toContain(absent);
       expect(out).toContain("<h1>Asha</h1>");
+      expect(out).toContain("Scan the first pages");
+      expect(out).not.toContain('id="pd-test"');
+    });
+
+    it("never renders empty: with no week, workbook, scan prompt or skills it keeps the old rows (test, desk, Maya, scan link)", async () => {
+      scanning.enabled = true;
+      chats.value.set("c1", { used: 7, left: 53, backAt: "midnight on November 9", resetsAt: Date.parse("2026-11-09T07:00:00Z") });
+      mayaNotice.books = [{ id: "w1", childId: "c1", number: 1, status: "shipped" }];
+      try {
+        const out = await render({ ...full(), week: null, workbook: null, scanPrompt: null, skills: null }, ["overview", "workbooks", "assessment", "account"]);
+        expect(out).toContain("<h1>Asha</h1>");
+        expect(out).toContain('id="pd-test"');
+        expect(out).toContain("On the desk");
+        expect(out).toContain("Asha used 7 of 60 chat messages today.");
+        expect(out).toContain('href="/account/scan"');
+        expect(out).not.toContain("po-week");
+      } finally { mayaNotice.books = []; }
+    });
+
+    it("says the next workbook is on its way, above the week, and again when it is the only thing to say", async () => {
+      const out = await render({ ...full(), onTheWay: 3 });
+      expect(out).toContain('<p class="po-way">Workbook 3 is on its way</p>');
+      expect(out.indexOf("po-way")).toBeLessThan(out.indexOf("po-week"));
+      expect(await render(full())).not.toContain("is on its way");
+      const only = await render({ ...full(), week: null, workbook: null, skills: null, onTheWay: 1 });
+      expect(only).toContain("Workbook 1 is on its way");
+      expect(only).toContain('id="pd-test"');
+    });
+
+    it("the card after the book is over has no Today row and still shows the book and its percent", async () => {
+      const value = full();
+      const out = await render({ ...value, workbook: { ...value.workbook!, day: 10, percent: 90, today: null }, week: value.week!.map((d) => ({ ...d, state: "done" as const })) });
+      expect(out).toContain("90% of Workbook 2&#x27;s pages scanned");
+      expect(out).not.toContain("po-today");
+      expect(out).not.toContain("is-today");
     });
 
     it("says a new result is being prepared, and keeps the rest of the Home", async () => {

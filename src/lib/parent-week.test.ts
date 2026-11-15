@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dayNumber, weekCircles, workbookDay } from "@/lib/parent-week";
+import { bookOver, bookToday, dayNumber, weekCircles, workbookDay } from "@/lib/parent-week";
 
 // The Home week circles and the workbook day (#1003), through the module's public interface. 2026-11-02 is a Monday.
 
@@ -59,10 +59,41 @@ describe("this week's circles", () => {
   it("a weekend rings no circle", () => {
     expect(states("2026-11-14", "2026-11-02", [6, 7, 8, 9, 10])).toEqual(["Mon:done", "Tue:done", "Wed:done", "Thu:done", "Fri:done"]);
   });
-  it("after the book's last day nothing is a book day", () => {
-    expect(states("2026-11-17", "2026-11-02", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])).toEqual(["Mon:open", "Tue:today", "Wed:open", "Thu:open", "Fri:open"]);
+  it("after the book's last day nothing is a book day, and no circle is ringed", () => {
+    expect(states("2026-11-17", "2026-11-02", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])).toEqual(["Mon:open", "Tue:open", "Wed:open", "Thu:open", "Fri:open"]);
+  });
+  it("on the book's last day it is still ringed; the day after it is not", () => {
+    expect(states("2026-11-13", "2026-11-02", [6, 7, 8, 9])).toEqual(["Mon:done", "Tue:done", "Wed:done", "Thu:done", "Fri:today"]);
+    expect(states("2026-11-13", "2026-11-02", [6, 7, 8, 9, 10])).toEqual(["Mon:done", "Tue:done", "Wed:done", "Thu:done", "Fri:today_done"]);
+  });
+  it("once the plan ended no circle is ringed, though the days done stay done", () => {
+    const ended = weekCircles("2026-11-12", "2026-11-02", new Set([6, 7, 8]), { ended: true }).map((d) => `${d.label}:${d.state}`);
+    expect(ended).toEqual(["Mon:done", "Tue:done", "Wed:done", "Thu:open", "Fri:open"]);
   });
   it("before the book is delivered nothing is done", () => {
     expect(states("2026-11-12", null, [1, 2, 3])).toEqual(["Mon:open", "Tue:open", "Wed:open", "Thu:today", "Fri:open"]);
+  });
+});
+
+describe("the Home's day row", () => {
+  // Book delivered Monday 2026-11-02: Day 10 is Friday 2026-11-13. 2026-11-07 is a Saturday.
+  it("is Today on a Monday-to-Friday day, with that day's number", () => {
+    expect(bookToday("2026-11-02", "2026-11-04")).toEqual({ day: 3, label: "Today" });
+    expect(bookToday("2026-11-02", "2026-11-13")).toEqual({ day: 10, label: "Today" });
+  });
+  it("shows the Friday's day, named Friday, over a weekend inside the book", () => {
+    expect(bookToday("2026-11-02", "2026-11-07")).toEqual({ day: 5, label: "Friday" });
+    expect(bookToday("2026-11-02", "2026-11-08")).toEqual({ day: 5, label: "Friday" });
+  });
+  it("before the first weekday (delivered on a weekend) is Day 1 named by the next weekday, never Friday", () => {
+    expect(bookToday("2026-11-07", "2026-11-07")).toEqual({ day: 1, label: "Day 1 · Monday" });
+    expect(bookToday("2026-11-07", "2026-11-08")).toEqual({ day: 1, label: "Day 1 · Monday" });
+    expect(bookToday("2026-11-07", "2026-11-09")).toEqual({ day: 1, label: "Today" });
+  });
+  it("is none once the last day has passed, a weekend after it included, and once the plan ended", () => {
+    expect(bookOver("2026-11-02", "2026-11-13")).toBe(false);
+    expect(bookToday("2026-11-02", "2026-11-14")).toBeNull();
+    expect(bookToday("2026-11-02", "2026-11-17")).toBeNull();
+    expect(bookToday("2026-11-02", "2026-11-04", { ended: true })).toBeNull();
   });
 });

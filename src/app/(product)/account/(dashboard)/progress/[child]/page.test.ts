@@ -109,6 +109,15 @@ describe("what a parent reads", () => {
     expect(html).not.toContain("Skills mastered over time");
     expect(html).not.toMatch(/\b(she|her|hers)\b/i);
   });
+  it.each(["overviewProgress", "history"] as const)("a failed %s read says Progress can't load, with no numbers and not the empty state", async (table) => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const html = await render({ fail: [table] });
+    expect(html).toContain("Progress can&#x27;t load right now.");
+    expect(html).toContain("Try again in a moment.");
+    expect(html).not.toContain("Progress starts after the first marked pages");
+    for (const absent of ["pp-chart", "Skills mastered over time", "pp-k", "Math topics"]) expect(html).not.toContain(absent);
+    expect(html).toContain("Leah&#x27;s progress");
+  });
   it("offers Go to Scan only where the Scan tab is open", async () => {
     const delivered = { deliveries: [{ parentId: "p1", childId: "c1" }], overviewProgress: [] };
     expect(await render({ ...delivered, switches: { progress: true, maya: false, scanPages: true } })).toContain('href="/account/scan"');

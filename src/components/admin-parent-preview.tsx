@@ -81,10 +81,14 @@ function overview(child: ChildView, state: string): OverviewView {
   const first = state === "first_scan";
   const done = state === "today_done";
   const notStarted = state === "day_not_started";
-  const states = first ? ["open", "open", "open", "today", "open"] as const : ["done", "done", "done", done ? "today_done" : "today", "open"] as const;
+  // Book 2 is in the mail: Book 1 is still the card. Over: Book 1's last day has passed, so there is no Today row.
+  const mailed = state === "book_2_mailed" || state === "book_over";
+  const over = state === "book_over";
+  const states = first ? ["open", "open", "open", "today", "open"] as const : over ? ["done", "done", "done", "done", "done"] as const : ["done", "done", "done", done ? "today_done" : "today", "open"] as const;
   const week: OverviewView["week"] = empty ? null : (["Mon", "Tue", "Wed", "Thu", "Fri"] as const).map((label, i) => ({ label, state: states[i] }));
-  return { child, resultPreparing: preparing, resultLate: state === "late", week,
-    workbook: empty ? null : { number: 3, day: 4, days: 10, percent: first ? null : 38, today: { label: "Today", topic: "Hundreds, tens and ones", scanned: first || notStarted ? 0 : done ? 8 : 6, pages: 8 } },
+  return { child, resultPreparing: preparing, resultLate: state === "late", week, onTheWay: mailed ? 2 : null,
+    workbook: empty ? null : over ? { number: 1, day: 10, days: 10, percent: 90, today: null }
+      : { number: mailed ? 1 : 3, day: 4, days: 10, percent: first ? null : 38, today: { label: "Today", topic: "Hundreds, tens and ones", scanned: first || notStarted ? 0 : done ? 8 : 6, pages: 8 } },
     scanPrompt: first ? { day: 1, pages: 8 } : null, skills: sampleSkills(state), summaryMonth: child.stage === "active" || child.stage === "ended" ? "2026-10" : null };
 }
 
@@ -222,7 +226,7 @@ function previewContent(selection: PreviewSelection, child: ChildView | undefine
           : state === "partial" && i === 0 ? { kind: "some", marked: 2, total: 8 } : { kind: "none", marked: 0, total: 8 },
       })),
     }} />;
-    case "progress": return <ParentProgress child={child} progress={state === "empty" ? null : sampleProgress(state)} />;
+    case "progress": return <ParentProgress child={child} progress={state === "empty" || state === "unavailable" ? null : sampleProgress(state)} unavailable={state === "unavailable"} />;
     case "maya": {
       const note = sampleNote(child, state === "chat", state === "missing");
       if (["session", "chat", "missing"].includes(state)) return <ParentSessionView note={note} name={child.firstName} zone={zone} back={{ href: `/account/notes/${child.id}`, label: "← Back to Maya" }} />;

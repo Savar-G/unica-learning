@@ -11,8 +11,8 @@ import { firstDeliveryMonth, offeredSummaryMonth } from "@/lib/monthly-summary-o
 import { nextBook, type NextBook } from "@/lib/next-book";
 import type { ParentPlan } from "@/lib/parent-plan";
 import type { CurriculumId } from "@/lib/signup";
-import { WORKBOOK_DAYS, dayNumber, weekCircles, workbookDay, workbookDayLabel, type WeekDay } from "@/lib/parent-week";
-import { progressSummary, type ProgressSummary, type StateChange } from "@/lib/progress-series";
+import { WORKBOOK_DAYS, bookToday, dayNumber, weekCircles, workbookDay, type WeekDay } from "@/lib/parent-week";
+import { firstBatchAt, progressSummary, type ProgressSummary, type StateChange } from "@/lib/progress-series";
 import { skillMapView, topicBars, type TopicBarView } from "@/lib/skill-map-view";
 import { confirmedWorkbookDelivery } from "@/lib/workbook-delivery-access";
 import { workbookDelivery } from "@/lib/workbook-email";
@@ -348,14 +348,18 @@ export interface WorkbookCardView {
   days: number;
   /** Pages scanned of the book's day pages, as a whole percent; null before any page is scanned. */
   percent: number | null;
+  /**
+   * The day row; null once the book's last day has passed or the plan has ended: the card then shows only the book and its
+   * percent done.
+   */
   today: {
-    /** "Today", or "Friday" on a weekend, when the day shown is the last one. */
+    /** "Today"; "Friday" on a weekend; "Day 1 · Monday" before the book's first weekday (a weekend delivery). */
     label: string;
     /** The skill most of the day's questions are on; null when the book's questions cannot be read. */
     topic: string | null;
     scanned: number;
     pages: number;
-  };
+  } | null;
 }
 
 export interface OverviewView {
@@ -366,8 +370,10 @@ export interface OverviewView {
   resultLate: boolean;
   /** Monday to Friday of this week; null until the current book is delivered. */
   week: WeekDay[] | null;
-  /** The current workbook; null until it is delivered. */
+  /** The newest book with a confirmed delivery; null until one is delivered. */
   workbook: WorkbookCardView | null;
+  /** The number of a newer book that is mailed and not delivered yet ("Workbook 2 is on its way"); null when there is none. */
+  onTheWay: number | null;
   /** The family has no saved scan yet: "Scan the first pages when they're done". Null after the first scan. */
   scanPrompt: { day: number; pages: number } | null;
   /** Null when the inputs are unavailable, or the Progress tab is off (the skill map is not released yet: #194). */
@@ -379,7 +385,7 @@ export interface OverviewView {
   summaryMonth: string | null;
 }
 
-/** The newest shipped book's day pages and scans, for one delivered child. */
+/** The newest delivered book's day pages and scans, for one child. */
 interface BookDays {
   id: string;
   number: number;
@@ -394,7 +400,8 @@ interface BookDays {
 }
 
 /**
- * The child's current book as the Home and the Progress tab count it: delivered (confirmed), with its day pages. A day
+ * The child's current book as the Home and the Progress tab count it: the newest book with a confirmed delivery (a newer
+ * book still in the mail does not hide it), with its day pages. A day
  * is done when every page with that day label has a saved photo that has not expired. Null before delivery.
  * Pages to scan and the Day 7 rule (#475) will count days from the print manifest; until then this counts whole days.
  */
@@ -402,10 +409,12 @@ async function readBookDays(
   reader: ParentViewReader, child: ChildView, now: number, zone: FamilyZone,
   { workbooks, deliveries, corrections, scans }: { workbooks: readonly ShippedWorkbook[]; deliveries: readonly DeliveryRecord[]; corrections: readonly DeliveryCorrectionRecord[]; scans: readonly SavedScanRecord[] },
 ): Promise<BookDays | null> {
-  const book = workbooks.filter((w) => w.childId === child.id).sort((a, b) => b.number - a.number)[0];
-  if (!book) return null;
-  const deliveredAt = confirmedWorkbookDelivery(deliveries, corrections, child.id, book.id, now);
-  if (deliveredAt === null) return null;
+  let book: ShippedWorkbook | undefined, deliveredAt: string | null = null;
+  for (const w of workbooks.filter((w) => w.childId === child.id).sort((a, b) => b.number - a.number)) {
+    deliveredAt = confirmedWorkbookDelivery(deliveries, corrections, child.id, w.id, now);
+    if (deliveredAt !== null) { book = w; break; }
+  }
+  if (!book || deliveredAt === null) return null;
   const pages = new Map<number, string[]>();
   for (const page of await reader.workbookPages(book.id)) {
     const day = dayNumber(page.dayLabel);
@@ -433,20 +442,25 @@ function dayWords(day: string, today: string): string {
   return day > addDays(today, -7) ? formatCalendarDate(day, { weekday: "long" }) : formatCalendarDate(day, { month: "short", day: "numeric" });
 }
 
-/** The rule's states and the history rows, for one child, as Home and Progress read them; null when an input cannot be read. */
-async function readSkillStates(reader: ParentViewReader, child: ChildView, book: { id: string } | undefined, marks: readonly SkillMark[]): Promise<{ states: StandardSkillState[]; history: StateChange[]; tests: SkillTestResult[]; workbookStandards: string[] } | null> {
+/**
+ * The rule's states and the history rows, for one child, as Home and Progress read them; null when an input cannot be
+ * read. A failed history read gives no rows and `historyFailed`: Home then shows no dates, and Progress shows nothing,
+ * because an empty history would count every skill mastered as new.
+ */
+async function readSkillStates(reader: ParentViewReader, child: ChildView, book: { id: string } | undefined, marks: readonly SkillMark[]): Promise<{ states: StandardSkillState[]; history: StateChange[]; historyFailed: boolean; tests: SkillTestResult[]; workbookStandards: string[] } | null> {
+  let historyFailed = false;
   const [workbookStandards, results, history] = await Promise.all([
     book ? reader.workbookStandards(book.id).catch(() => null) : [],
     reader.skillTests(child.id).catch(() => null),
-    // History only dates a state; a failed read leaves the dates out and the counts from the rule.
     reader.skillHistory(child.id).catch((e) => {
+      historyFailed = true;
       console.error("[parent-view] skill history read failed", e instanceof Error ? e.message : "failed");
       return [] as StateChange[];
     }),
   ]);
   if (!workbookStandards || !results) return null;
   const tests = tallies(results);
-  return { states: skillStates({ schoolGrade: child.schoolGrade, workbookStandards, tests, marks }), history, tests, workbookStandards };
+  return { states: skillStates({ schoolGrade: child.schoolGrade, workbookStandards, tests, marks }), history, historyFailed, tests, workbookStandards };
 }
 
 /**
@@ -479,21 +493,26 @@ export async function readOverview(reader: ParentViewReader, childId: string, no
   let week: OverviewView["week"] = null;
   let workbook: OverviewView["workbook"] = null;
   let scanPrompt: OverviewView["scanPrompt"] = null;
+  // A newer shipped book than the delivered one is in the mail: it has no confirmed delivery, or `days` would be it.
+  const newest = workbooks.filter((w) => w.childId === child.id).sort((a, b) => b.number - a.number)[0];
+  const onTheWay = newest && newest.id !== days?.id ? newest.number : null;
   if (days) {
-    week = weekCircles(today, days.start, days.doneDays);
-    // Before the first Monday-to-Friday day of the book (a weekend delivery), Day 1 is next.
-    const day = workbookDay(days.start, today) ?? 1;
+    week = weekCircles(today, days.start, days.doneDays, { ended: child.readOnly });
+    const row = bookToday(days.start, today, { ended: child.readOnly });
+    // With no row (the book is over, or the plan ended) the card still shows the book at its last day.
+    const day = row?.day ?? workbookDay(days.start, today) ?? 1;
     const dayPages = days.pages.get(day) ?? [];
-    const questions = await reader.workbookQuestions(days.id).catch(() => []);
+    const questions = row ? await reader.workbookQuestions(days.id).catch(() => []) : [];
     const all = [...days.pages.values()].flat();
     const scanned = all.filter((id) => days.saved.has(id)).length;
     workbook = {
       number: days.number, day, days: WORKBOOK_DAYS,
-      percent: scanned > 0 && all.length > 0 ? Math.round((scanned / all.length) * 100) : null,
-      today: { label: workbookDayLabel(today), topic: dayTopic(dayPages, questions), scanned: dayPages.filter((id) => days.saved.has(id)).length, pages: dayPages.length },
+      // Floor, never round: a ring never says "100% done" with a page left.
+      percent: scanned > 0 && all.length > 0 ? Math.floor((scanned / all.length) * 100) : null,
+      today: row && { label: row.label, topic: dayTopic(dayPages, questions), scanned: dayPages.filter((id) => days.saved.has(id)).length, pages: dayPages.length },
     };
     // The Scan tab covers scanning; only a family with no saved photo at all gets this prompt, and only where the tab is.
-    if (scans.length === 0 && child.tabs.includes("scan_pages")) scanPrompt = { day, pages: dayPages.length };
+    if (row && scans.length === 0 && child.tabs.includes("scan_pages")) scanPrompt = { day, pages: dayPages.length };
   }
 
   let skills: OverviewView["skills"] = null;
@@ -501,16 +520,20 @@ export async function readOverview(reader: ParentViewReader, childId: string, no
     const progress = await reader.overviewProgress(child.id).catch(markingReadFailed);
     const book = workbooks.filter((w) => w.childId === child.id).sort((a, b) => b.number - a.number)[0];
     const read = progress ? await readSkillStates(reader, child, book, progress.skillMarks) : null;
-    if (read) skills = homeSkills(read.states, read.history, now, zone);
+    // A failed history read leaves the dates out and keeps the counts from the rule.
+    if (read) skills = homeSkills(read.states, read.historyFailed ? [] : read.history, now, zone);
   }
 
   const summaryMonth = offeredSummaryMonth(await readFirstDeliveryMonth(reader, child.id, zone), now, zone);
-  return { child, resultPreparing, resultLate: late, week, workbook, scanPrompt, skills, summaryMonth };
+  return { child, resultPreparing, resultLate: late, week, workbook, onTheWay, scanPrompt, skills, summaryMonth };
 }
 
 /** The three lists: every BC standard by its state now. Mastered newest first, the others in the skill map's order. */
 function homeSkills(states: readonly StandardSkillState[], history: readonly StateChange[], now: number, zone: FamilyZone): HomeSkillsView {
   const today = localDay(now, zone);
+  // The child's first batch of rows is the starting state, recorded when the table began or at the first rebuild, so a skill
+  // in it has no date (firstBatchAt).
+  const first = firstBatchAt(history);
   // The row in effect for a standard is its last one; a Mastered skill's date is when a rebuild recorded that row.
   const lastRow = new Map<string, StateChange & { at: number }>();
   for (const row of history) {
@@ -519,7 +542,7 @@ function homeSkills(states: readonly StandardSkillState[], history: readonly Sta
   }
   const items = (state: SkillState): (SkillItemView & { at: number })[] => states.filter((s) => s.state === state).map((s) => {
     const row = state === "mastered" ? lastRow.get(s.standard) : undefined;
-    const recorded = row?.state === "mastered" ? row : undefined;
+    const recorded = row?.state === "mastered" && row.at !== first ? row : undefined;
     return { code: s.standard, name: standardText.get(s.standard) ?? s.standard, masteredOn: recorded ? dayWords(localDay(recorded.at, zone), today) : null, at: recorded?.at ?? 0 };
   });
   const plain = ({ code, name, masteredOn }: SkillItemView): SkillItemView => ({ code, name, masteredOn });
@@ -560,8 +583,13 @@ async function readFirstDeliveryMonth(reader: ParentViewReader, childId: string,
 /** The Progress tab (#561, #1004): the tiles, the weekly and monthly line, and the math topics. */
 export interface ProgressView {
   child: ChildView;
-  /** Null before the first marked page: the tab says progress starts after it, and shows no chart. */
+  /** Null before the first marked page, and when `unavailable`: the tab then shows no chart and no numbers. */
   progress: ProgressNumbers | null;
+  /**
+   * A read it rests on failed (the marks or the history): the tab says it cannot load, never "starts after the first
+   * marked pages", and never numbers from a partial read.
+   */
+  unavailable: boolean;
 }
 
 export interface ProgressNumbers {
@@ -594,16 +622,19 @@ const tallies = (results: readonly SkillTestResult[]): SkillTestResult[] =>
  * its stage has none, or the switch for #194 is off. The numbers come from the skill state rule (now) and the recorded
  * history (before now, by `changed_at` in family time); the topics from the skill map (src/lib/skill-map-view.ts). Nothing
  * comes from an AI finding. A child with no marked page has no `progress`: there is no learning to chart yet. A failed
- * marking read reads the same way, because the marks are what the tab rests on.
+ * marking read or a failed history read is `unavailable`, not empty and not partial: the marks and the history are what
+ * every number rests on, and a missing history would count each mastered skill as new.
  */
 export async function readProgress(reader: ParentViewReader, childId: string, now: number): Promise<ProgressView | null> {
   const child = await readChild(reader, childId, now);
   if (!child || !child.tabs.includes("progress")) return null;
+  let markingFailed = false;
   const [children, family, tests, reports, workbooks, marking, scans, deliveries, corrections] = await Promise.all([
     reader.children(), reader.family(), reader.tests(), reader.reports(), reader.shippedWorkbooks(),
-    reader.overviewProgress(child.id).catch(markingReadFailed), reader.savedScans(), reader.deliveries(), reader.deliveryCorrections(),
+    reader.overviewProgress(child.id).catch((e) => { markingFailed = true; return markingReadFailed(e); }), reader.savedScans(), reader.deliveries(), reader.deliveryCorrections(),
   ]);
-  if (!marking || marking.skillMarks.length === 0) return { child, progress: null };
+  if (markingFailed) return { child, progress: null, unavailable: true };
+  if (!marking || marking.skillMarks.length === 0) return { child, progress: null, unavailable: false };
   const zone = familyZone({ timeZone: family.timeZone, postal: family.postal, province: children[0]?.province ?? null });
   const own = tests.filter((t) => t.childId === child.id && t.status === "completed" && t.completedAt !== null);
   const latest = own.reduce<TestRecord | null>((best, t) => (!best || t.completedAt! > best.completedAt! ? t : best), null);
@@ -614,6 +645,7 @@ export async function readProgress(reader: ParentViewReader, childId: string, no
   const book = workbooks.filter((w) => w.childId === child.id).sort((a, b) => b.number - a.number)[0];
   const read = await readSkillStates(reader, child, book, marking.skillMarks);
   if (!read) throw new Error("progress: skill inputs unavailable");
+  if (read.historyFailed) return { child, progress: null, unavailable: true };
   const startDay = first ? localDay(first.completedAt!, zone) : null;
   const summary = progressSummary({ now, zone, current: new Map(read.states.map((s) => [s.standard, s.state])), history: read.history, startDay });
   const days = await readBookDays(reader, child, now, zone, { workbooks, deliveries, corrections, scans });
@@ -623,9 +655,10 @@ export async function readProgress(reader: ParentViewReader, childId: string, no
   });
   return {
     child,
+    unavailable: false,
     progress: {
       summary,
-      weekDaysDone: days ? weekCircles(localDay(now, zone), days.start, days.doneDays).filter((d) => d.state === "done" || d.state === "today_done").length : null,
+      weekDaysDone: days ? weekCircles(localDay(now, zone), days.start, days.doneDays, { ended: child.readOnly }).filter((d) => d.state === "done" || d.state === "today_done").length : null,
       bookDaysDone: days ? [...days.doneDays].filter((d) => d >= 1 && d <= WORKBOOK_DAYS).length : null,
       workbookNumber: days?.number ?? null,
       startedOn: startDay ? formatCalendarDate(startDay, { month: "short", day: "numeric" }) : null,

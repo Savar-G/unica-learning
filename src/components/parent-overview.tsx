@@ -28,8 +28,16 @@ function Ring({ percent, book }: { percent: number; book: number }) {
   );
 }
 
+/** One plain line for a newer book that is mailed and not delivered yet. */
+export function OnTheWay({ number }: { number: number }) {
+  return <p className="po-way">Workbook {number} is on its way</p>;
+}
+
+/** Whether the Home has a part to show; with none, Parent home keeps its old rows so the page is never just a name. */
+export const homeHasParts = ({ week, workbook, scanPrompt, skills }: OverviewView): boolean => !!(week || workbook || scanPrompt || skills);
+
 export function ParentOverview({ overview }: { overview: OverviewView }) {
-  const { child, resultPreparing, resultLate, week, workbook, scanPrompt, skills } = overview;
+  const { child, resultPreparing, resultLate, week, workbook, onTheWay, scanPrompt, skills } = overview;
   return (
     <div className="pa-wrap"><div className="pa po">
       {resultPreparing && (
@@ -41,6 +49,7 @@ export function ParentOverview({ overview }: { overview: OverviewView }) {
           </p>
         </section>
       )}
+      {onTheWay !== null && <OnTheWay number={onTheWay} />}
       {(week || workbook || scanPrompt) && (
         <div className="po-main">
           {week && (
@@ -63,10 +72,12 @@ export function ParentOverview({ overview }: { overview: OverviewView }) {
                 </div>
                 {workbook.percent !== null && <Ring percent={workbook.percent} book={workbook.number} />}
               </div>
-              <div className="po-today">
-                <div><b>{workbook.today.label}</b>{workbook.today.topic && <span>{workbook.today.topic}</span>}</div>
-                {workbook.today.pages > 0 && <span className="po-pp">{workbook.today.scanned} of {workbook.today.pages} scanned</span>}
-              </div>
+              {workbook.today && (
+                <div className="po-today">
+                  <div><b>{workbook.today.label}</b>{workbook.today.topic && <span>{workbook.today.topic}</span>}</div>
+                  {workbook.today.pages > 0 && <span className="po-pp">{workbook.today.scanned} of {workbook.today.pages} scanned</span>}
+                </div>
+              )}
             </section>
           )}
           {scanPrompt && (

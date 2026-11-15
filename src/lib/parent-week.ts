@@ -1,4 +1,4 @@
-import { addDays, weekStartFor } from "@/lib/family-time";
+import { addDays, formatCalendarDate, weekStartFor } from "@/lib/family-time";
 
 // This week on the dashboard Home (#1003, Option A v9): the child's Monday-to-Friday circles and which day of the
 // workbook the child is on. Pure: no database, network or clock; every day is a calendar date (YYYY-MM-DD) in family
@@ -8,7 +8,8 @@ import { addDays, weekStartFor } from "@/lib/family-time";
 // the first Monday-to-Friday day on or after the day the book was delivered, and each later Monday-to-Friday day is the
 // next one; weekends hold no day. A weekend shows the last weekday's day. A day is "done" when every page of it has a
 // saved photo (the caller's `doneDays`), never by the calendar alone. The calendar fixes which day the child is on today;
-// the scans say what is finished.
+// the scans say what is finished. After the book's last day, or once the plan has ended, there is no "today": no Today
+// row and no ringed circle (`bookToday`, `weekCircles`).
 
 export const WORKBOOK_DAYS = 10;
 export const WEEK_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri"] as const;
@@ -25,8 +26,37 @@ function weekdayIndex(day: string): number {
   return (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7;
 }
 
-/** What the Home's day row is called: "Today" on a Monday-to-Friday day; on a weekend it shows Friday's day. */
-export const workbookDayLabel = (today: string): string => (weekdayIndex(today) < 5 ? "Today" : "Friday");
+/** The date of the book's `n`th day: the `n`th Monday-to-Friday day from `start` (the first is on or after `start`). */
+export function bookDayDate(start: string, n: number): string {
+  let day = start, count = 0;
+  for (;;) {
+    if (weekdayIndex(day) < 5 && ++count === n) return day;
+    day = addDays(day, 1);
+  }
+}
+
+/** The book's last day has passed: `today` is after the date of its day `days`. */
+export const bookOver = (start: string, today: string, days = WORKBOOK_DAYS): boolean => today > bookDayDate(start, days);
+
+/** The Home's day row: its label and the day it is about. */
+export interface BookToday {
+  /** "Today" on a Monday-to-Friday day; "Friday" on a weekend after Day 1; "Day 1 · Monday" before the first weekday. */
+  label: string;
+  /** The workbook day, 1 to `days`. */
+  day: number;
+}
+
+/**
+ * The Home's day row for `today`, or null when there is none: the plan ended, or the book's last day has passed. A weekend
+ * shows the last weekday's day, named by its weekday. Before the book's first weekday (delivered on a weekend) the row is
+ * Day 1, named by the weekday it starts on, never by "Friday".
+ */
+export function bookToday(start: string, today: string, { days = WORKBOOK_DAYS, ended = false }: { days?: number; ended?: boolean } = {}): BookToday | null {
+  if (ended || bookOver(start, today, days)) return null;
+  const count = weekdaysThrough(start, today);
+  if (count === 0) return { day: 1, label: `Day 1 · ${formatCalendarDate(bookDayDate(start, 1), { weekday: "long" })}` };
+  return { day: Math.min(count, days), label: weekdayIndex(today) < 5 ? "Today" : "Friday" };
+}
 
 /** The workbook day number in a page's label ("Day 4" is 4); null for a cover or any other label. */
 export function dayNumber(label: string | null): number | null {
@@ -54,15 +84,17 @@ export function workbookDay(start: string, day: string, days = WORKBOOK_DAYS): n
 /**
  * The five circles of the week `today` is in. `start`: the book's first possible day; null before it is delivered, which
  * leaves every circle open. `doneDays`: the day numbers whose every page has a saved photo. A circle is a book day only
- * on a Monday-to-Friday day from `start` through the book's last day; any other circle stays open.
+ * on a Monday-to-Friday day from `start` through the book's last day; any other circle stays open. Today's circle is ringed
+ * only while the book is on: not after its last day and not once the plan `ended`.
  */
-export function weekCircles(today: string, start: string | null, doneDays: ReadonlySet<number>, days = WORKBOOK_DAYS): WeekDay[] {
+export function weekCircles(today: string, start: string | null, doneDays: ReadonlySet<number>, { days = WORKBOOK_DAYS, ended = false }: { days?: number; ended?: boolean } = {}): WeekDay[] {
   const monday = weekStartFor(today);
+  const ringed = !ended && !(start !== null && bookOver(start, today, days));
   return WEEK_LABELS.map((label, i): WeekDay => {
     const date = addDays(monday, i);
     const count = start === null || date < start ? 0 : weekdaysThrough(start, date);
     const done = count >= 1 && count <= days && doneDays.has(count);
-    const state: WeekDayState = date === today ? (done ? "today_done" : "today") : done ? "done" : "open";
+    const state: WeekDayState = ringed && date === today ? (done ? "today_done" : "today") : done ? "done" : "open";
     return { label, state };
   });
 }

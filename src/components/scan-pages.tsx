@@ -1074,7 +1074,8 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     <li>{ICONS.light}<span><b>Good light, no flash</b>Keep your hand&apos;s shadow off the page. If you see a shiny patch, tilt the book or step to the side.</span></li>
     <li>{ICONS.corners}<span><b>Fill the photo with the page</b>Hold the phone close, with the corners and the small code in view.</span></li>
     <li>{ICONS.camera}<span><b>Snap all your pages, then tap Done</b>Already took photos? Pick them from the photo button in the camera.</span></li>
-    <li>{ICONS.anyOrder}<span><b>Any order is fine</b>We&apos;ll tell you if a page needs a retake.</span></li>
+    {/* Only a family with the photo checks is told about retakes; without them the photos are kept for marking later. */}
+    <li>{ICONS.anyOrder}<span><b>Any order is fine</b>{checks ? <>We&apos;ll tell you if a page needs a retake.</> : <>We keep the photos to mark {name}&apos;s work later.</>}</span></li>
     {/* The code on each page files it with its own child (#915), so siblings' pages go in one scan with no switch. The list
         holds only children whose plan opens scanning, so every child named here can take their pages. */}
     {siblings && <li>{ICONS.check}<span><b>Scanning for {siblings}?</b>Snap any page. Each one goes to the right child.</span></li>}
