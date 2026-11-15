@@ -2,9 +2,10 @@
 // tutor rules below come from the approved teaching design (2026-11-14, section 3) and its research.
 import { MODEL_OUTPUT_SCHEMA } from "./proposal";
 import type { Session } from "./session";
-import { childFacts, stepFacts, TUTOR_DRAWINGS, TUTOR_WORD_LIMIT } from "./tutor";
+import { childFacts, tutorKind, stepFacts, TUTOR_WORD_LIMIT } from "./tutor";
+import type { TutorDrawing, TutorStepFact } from "./tutor-kind";
 
-export const TUTOR_PROMPT_VERSION = "maya-tutor-2";
+export const TUTOR_PROMPT_VERSION = "maya-tutor-3";
 
 /** The turns of the call the brief holds. */
 const TUTOR_TRANSCRIPT_TURNS = 10;
@@ -13,7 +14,7 @@ export interface TutorBrief {
   promptVersion: typeof TUTOR_PROMPT_VERSION;
   mode: "tutor";
   child: { name: "{name}" | null; grade: number | null };
-  question: { text: string; answer: number; steps: { id: string; place: string; work: string; result: number }[] } | null;
+  question: { text: string; answer: number; kind: string; steps: TutorStepFact[]; notes: string[] } | null;
   /** The steps the child has done (by id), whether their right answer stands, and Maya's help since their last progress. */
   progress: { done: string[]; solved: boolean; helpGiven: number };
   childTurn: string | null;
@@ -21,6 +22,8 @@ export interface TutorBrief {
   facts: string[];
   transcript: { speaker: "child" | "maya"; text: string }[];
   noBoard: boolean;
+  /** The drawings the model may ask for on this question (TutorKind.drawings). */
+  drawings: readonly TutorDrawing[];
   /** What the board already shows (never drawn twice). */
   drawn: string[];
   notes: string[];
@@ -43,17 +46,18 @@ export function tutorBrief(s: Session, repair: TutorBrief["repair"] = null): Tut
   if (s.solved !== null) notes.push("The child's right answer stands. Ask once how they got it, offer one near-twin question if time allows, or close warmly if they are done.");
   if (s.state === "TIME_CLOSE") notes.push("Time is almost up: finish kindly.");
   return {
-    promptVersion: "maya-tutor-2",
+    promptVersion: "maya-tutor-3",
     mode: "tutor",
     child: { name: name ? "{name}" : null, grade: s.grade ?? null },
     question: pkg && pkg.answer.value.type === "number"
-      ? { text: pkg.text, answer: pkg.answer.value.value, steps: stepFacts(pkg) }
+      ? { text: pkg.text, answer: pkg.answer.value.value, kind: tutorKind(pkg).id, steps: stepFacts(pkg), notes: tutorKind(pkg).notes?.(pkg) ?? [] }
       : null,
     progress: { done: [...done], solved: s.solved !== null, helpGiven: s.tutor?.help ?? 0 },
     childTurn: s.turn ? hide(s.turn.text, name) : null,
     facts: pkg && s.turn ? childFacts(pkg, s.turn.text) : [],
     transcript: s.turns.slice(-TUTOR_TRANSCRIPT_TURNS).map((t) => ({ speaker: t.speaker, text: hide(t.text, name) })),
     noBoard: s.noBoard === true,
+    drawings: pkg && pkg.answer.value.type === "number" ? tutorKind(pkg).drawings(pkg) : [],
     drawn: [...(s.tutor?.drawn ?? [])],
     notes,
     repair,
@@ -67,7 +71,7 @@ Each turn you write ONE message, then the child answers. You never get a second 
 How you teach:
 1. Answer what the child asked first, on the child's own question and numbers ("question"), with the reason. Speech-to-text can drop digits: "2 minus 8" in 52 − 28 is the ones column. When the child says "I don't get it", "teach me", or cannot start, explain the idea directly in this message.
 2. One idea per message. End with one small thing for the child to say or do, such as a question they can answer with a number.
-3. Give the reason with the move. Regrouping is place value: 1 ten is 10 ones, and the number stays the same (52 is 5 tens and 2 ones, or 4 tens and 12 ones). Draw it when it helps ("draw"). Say each place with its number: "4 tens minus 2 tens is 2 tens", not "is 2".
+3. Give the reason with the move: the idea behind the step, from "question.steps" and "question.notes" (for regrouping: 1 ten is 10 ones, and the number stays the same, 52 is 5 tens and 2 ones or 4 tens and 12 ones). Draw it when it helps ("draw"). Say each place with its number: "4 tens minus 2 tens is 2 tens", not "is 2".
 4. Take the child's words seriously. "You can't take 8 from 2" is true for the ones: say so, then show how to get more ones.
 5. When the child is wrong, say so at once in one short, kind sentence, say where, and name the likely mistake from "facts" (for example: 6 is 8 minus 2, the other way around). Let the child fix it.
 6. Hints grow: a question, then a pointer, then show the step. After you show or tell a step, the child does the next step, or a twin question.
@@ -98,7 +102,7 @@ The reply:
 - "say": your one message.
 - "act": "guide" for every teaching message. "close" only after the child solved the question and is done, or wants to stop: a short goodbye, with no question.
 - "reading" is bookkeeping code reads; it is never said. "answers": each number the child gave as an answer, with its step id ("result" for the whole question), "problem" "target", and your verdict by the question's steps; a question or a request for help is not an answer. Set the flags that fit (help "more" or "show", unclear when you cannot tell what number the child said, stop, writing, offTopic, mathClaim, safety "concern" or "immediate" for harm or danger, unsafeRequest for harmful content, aboutMaya "identity" or "secret_friend", start "no_start" when the child cannot start, paper "written" when they say they wrote it); else "none", false, "" and [].
-- "draw": [] or board requests, drawn with your message: {"offer":"trade","place":""} shows the next trade on the question (it crosses out a tens digit and gives the ones 10 more; for addition, the carried 1); {"offer":"digit","place":"ones"} writes the answer digit in that place; {"offer":"note","place":"12 − 8 = 4"} writes one true equation below the question. Draw what you explain. "drawn" lists what the board already shows.
+- "draw": [] or board requests, drawn with your message: {"offer": an id from "drawings", "place": what it says it needs, or ""}. "drawings" says what each one shows on this question. Draw what you explain. "drawn" lists what the board already shows.
 - If "repair" is set, code refused your last message for the reason given: fix exactly that, and keep your teaching.`;
 
 /** The tutor's output schema: the conversational schema with only the tutor's acts and drawings. */
@@ -113,7 +117,7 @@ export const TUTOR_OUTPUT_SCHEMA = {
     reading: MODEL_OUTPUT_SCHEMA.properties.reading,
     draw: {
       type: "array",
-      items: { type: "object", additionalProperties: false, required: ["offer", "place"], properties: { offer: { enum: [...TUTOR_DRAWINGS] }, place: { type: "string" } } },
+      items: { type: "object", additionalProperties: false, required: ["offer", "place"], properties: { offer: { type: "string" }, place: { type: "string" } } },
     },
   },
 } as const;
