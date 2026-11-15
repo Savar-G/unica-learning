@@ -138,11 +138,11 @@ describe("one retry of an unsure answer", () => {
     }
   });
 
-  it("keeps the one second ask of an answer that is not JSON, then retries its unsure", async () => {
+  it("final check 8: an answer that is not JSON is final unsure, with no second ask and no retry", async () => {
     const { reviewer, retry } = withRetry((_, n) => (n === 0 ? "bad_json" : UNSURE), () => TRUE);
-    expect(await runMathReview(reviewer, {} as MathReviewInput, 50)).toEqual({ verdict: "true", reason: "all true", retried: true });
-    expect(reviewer.requests).toHaveLength(2);
-    expect(retry.requests).toHaveLength(1);
+    expect(await runMathReview(reviewer, {} as MathReviewInput, 50)).toEqual({ verdict: "unsure", reason: "the math review call failed (bad_json)" });
+    expect(reviewer.requests).toHaveLength(1);
+    expect(retry.requests).toHaveLength(0);
   });
 
   it("takes a retry error or time-out as final: unsure, never asked again", async () => {

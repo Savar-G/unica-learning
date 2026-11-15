@@ -100,13 +100,10 @@ describe("layer 2: the math-truth review", () => {
     expect(r2).toEqual({ verdict: "unsure", reason: "the math review did not answer in time" });
   });
 
-  it("asks again once, at once, after an answer that is not JSON; a second one is unsure", async () => {
+  it("final check 8: an answer that is not JSON is final unsure, never asked again", async () => {
     const once = fakeMathReviewer((_, n) => (n === 0 ? "bad_json" : { verdict: "true", reason: "all true" }));
-    expect(await runMathReview(once, {} as MathReviewInput, 50)).toEqual({ verdict: "true", reason: "all true" });
-    expect(once.requests).toHaveLength(2);
-    const twice = fakeMathReviewer(() => "bad_json");
-    expect(await runMathReview(twice, {} as MathReviewInput, 50)).toEqual({ verdict: "unsure", reason: "the math review call failed (bad_json)" });
-    expect(twice.requests).toHaveLength(2);
+    expect(await runMathReview(once, {} as MathReviewInput, 50)).toEqual({ verdict: "unsure", reason: "the math review call failed (bad_json)" });
+    expect(once.requests).toHaveLength(1);
   });
 
   it("never asks again after a time-out or another error", async () => {
@@ -116,20 +113,15 @@ describe("layer 2: the math-truth review", () => {
     const thrown = fakeMathReviewer(() => "throw");
     expect((await runMathReview(thrown, {} as MathReviewInput, 50)).verdict).toBe("unsure");
     expect(thrown.requests).toHaveLength(1);
-    // The second ask after an answer that is not JSON stays inside the same time limit.
-    const slow = fakeMathReviewer((_, n) => (n === 0 ? "bad_json" : "hang"));
-    expect(await runMathReview(slow, {} as MathReviewInput, 20)).toEqual({ verdict: "unsure", reason: "the math review did not answer in time" });
-    expect(slow.requests).toHaveLength(2);
   });
 
-  it("says a sentence after one answer that is not JSON, with no repair", async () => {
+  it("final check 8: a sentence after an answer that is not JSON is not said, and its repair is not reviewed again", async () => {
     const line = "That 4 is already in the ones.";
-    const { session, model, mathReviewer } = call(SUB, [line], (_, n) => (n === 0 ? "bad_json" : { verdict: "true", reason: "all true" }));
+    const { session, mathReviewer } = call(SUB, [line], (_, n) => (n === 0 ? "bad_json" : { verdict: "true", reason: "all true" }));
     await session.start();
     const out = await session.child("Help me please.");
-    expect(out.say.join(" ")).toBe(line);
-    expect(model.briefs).toHaveLength(1);
-    expect(mathReviewer!.requests.map((r) => r.sentence)).toEqual([line, line]);
+    expect(out.say.join(" ")).not.toContain(line);
+    expect(mathReviewer!.requests.map((r) => r.sentence)).toEqual([line]);
   });
 
   it("gives the review the last 2 turns as code holds them, with the child's name as {name}", async () => {

@@ -67,7 +67,7 @@ import { claimActs, claimAnswers, claimCommitted, claimConfirm, claimQuestionAsk
 import { closeParts, compareEquationSaid, currentPart, evaluateSteps, evaluateTeaching, partBoards, partCovered, partEquationSaid, partIdOf, stepsBeforeLastPart, withEvaluateExample } from "./evaluate";
 import { isSpot, spotAnswers, spotReveals, spotSessionPackage, spotStepHeard } from "./spot-error";
 import { ACTS, PART_LIMITS, PROPOSAL_VERSION, TUTOR_GATES, isModelOutput, readModelOutput, withoutDefaults, withoutNulls, type Act, type ChildAnswer, type HintLevel, type ModelOutput, type Proposal, type Reading, type Severity } from "./proposal";
-import { checkSay, checkSentence, columnSentenceTruth, equationHolds, heardColumnOf, revealsOpenStep, endsWithAsk, INSTRUCTION, MATH_WORD, PRAISE_WORDS, trimSay, equationKeysOf, equationsOf, sentencesOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, type SayReason, type SayRules, type SayValue } from "./say-check";
+import { checkSay, checkSentence, columnSentenceTruth, equationHolds, heardColumnOf, namesValue, revealsOpenStep, endsWithAsk, INSTRUCTION, MATH_WORD, PRAISE_WORDS, trimSay, equationKeysOf, equationsOf, sentencesOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, type SayReason, type SayRules, type SayValue } from "./say-check";
 import type { TalkReviewResult } from "./talk-review";
 import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
 import { bindingReview, checkTutorSay, childFacts, childSaysFalse, columnSums, isTutorQuestion, tutorTexts, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, TUTOR_REVIEW_IGNORED } from "./tutor";
@@ -2771,8 +2771,21 @@ function checkAnswers(s: Session, given: ChildAnswer[], checked: Checked[], befo
   const index = (a: ChildAnswer) => ((a.problem ?? "target") !== "target" ? -1 : a.step === "result" ? Infinity : workSteps(pkg).findIndex((st) => st.id === a.step));
   const answers = [...given].sort((x, y) => index(x) - index(y));
   const earlier: string[] = [...before];
+  const bound = boundNumbers(pkg, s.turn.text);
   for (const a of answers) {
     const problem = a.problem ?? "target";
+    // Final check 8 (2026-11-15): a number the child binds to a place, a column, a step or a scope ("I got 24 for the
+    // tens.") is never final-answer credit, and is credited only against the step of the one place it names.
+    if (a.verdict === "right" && a.value.type === "number" && problem === "target") {
+      const value = a.value.value;
+      // Only when every place the child says this number binds it: "24. I got 2 for the tens." keeps 24 free.
+      const said = bound.filter((b) => b.value === value);
+      const binds = said.length > 0 && said.every((b) => b.bound) ? said : [];
+      if (a.step === "result" && binds.length > 0) return { code: "answer_not_committed", reason: `The child bound ${value} to a place or a step, not to the whole question: it is no final answer. Ask what they mean.` };
+      const at = workSteps(pkg).find((x) => x.id === a.step);
+      const own = at && "place" in at ? at.place : null;
+      if (a.step !== "result" && binds.some((b) => b.place !== null && b.place !== own)) return { code: "answer_not_committed", reason: `The child said ${value} for another place, not for ${a.step}.` };
+    }
     // A reading of a step this turn only copies (copiedStep, round 4) is no credit, no miss and no refusal: the ladder
     // goes past the step, and the rest of the turn is read as it is.
     // A step code credits as the child's own (stepTurnHeard) keeps its credit.
@@ -3297,6 +3310,69 @@ const OWN_PLACES = "ten thousands|hundred thousands|ones|tens|hundreds|thousands
 
 /** The digit text with a place word after a number left out ("1 ten", "6 ones" are 1 and 6), to read the numbers alone. */
 const collapsed = (text: string) => text.replace(new RegExp(`(\\d)\\s+(?:${OWN_PLACES}|ten|one)\\b`, "g"), "$1");
+
+/** Final check 8: the place a clause names ("for the tens", "in the ones", "the hundreds digit"). */
+const SCOPE_PLACE = /\b(ten thousands|hundred thousands|ones|tens|hundreds|thousands|millions|tenths|hundredths|thousandths)\b|\b(one|ten|hundred|thousand)s?\s+(?:place|column|digit)\b/gi;
+/** Final check 8: words that bind a number to a column, a step or another scope rather than the whole question. */
+const SCOPE_WORD = /\b(?:columns?|places?|digits?|steps?|example|easier|parts?|rows?)\b/i;
+
+/**
+ * A number the child says, clause by clause: `bound` when its clause binds it to a place, column, step or scope; `place`:
+ * the one place the clause names, else null.
+ */
+export interface BoundNumber { value: number; place: string | null; single: boolean; bound: boolean }
+
+/**
+ * Final check 8 (2026-11-15): the numbers the child binds to a place, a column, a step or another scope ("I got 24 for
+ * the tens.", "My answer for the tens is 24.", "For the tens, I got 24.", "3 times 2 is 6 tens."). Read clause by clause
+ * (a clause ends at "," ";" ":" or before so, because, since, then, but); a clause that names only a scope binds the next
+ * one. Broad on purpose: a bound number is never final-answer credit (fail closed), and it is credited only against the
+ * step of the one place its clause names. `single`: the clause holds this one number and names one place.
+ */
+export function boundNumbers(pkg: OperationPackage, text: string): BoundNumber[] {
+  // Every number of the turn, each marked bound or free.
+  const opts = readOptionsFor(pkg);
+  const out: BoundNumber[] = [];
+  for (const sentence of text.replace(/[’‘]/g, "'").split(/(?<=[.!?])\s+|\n+/)) {
+    const clauses = sentence.replace(/[.!?]+$/, "").split(/\s*[,;:]\s*|\s+(?:so|because|'cause|cause|cuz|since|then|but)\s+/i);
+    let carried: string[] | null = null;
+    for (const clause of clauses) {
+      // A place binds a number when the clause puts the number in it: after a preposition ("for the tens", "in the
+      // ones"), as a unit after a number ("6 tens"), or as a place noun ("the tens digit"). A place that is only the
+      // subject of the narration ("and the tens make 66") binds nothing.
+      const lower = clause.toLowerCase();
+      const places = [...new Set([...lower.matchAll(SCOPE_PLACE)].filter((m) => !!m[2] || /(?:\b(?:for|in|on|at|into|under|of|to)\s+(?:the\s+|my\s+|that\s+|this\s+|your\s+)?|(?:\d|\b[a-z]+(?:teen|ty)|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|zero))\s+)$/.test(lower.slice(0, m.index)) || /^\s+(?:place|column|digit)/.test(lower.slice(m.index! + m[0].length))).map((m) => (m[1] ?? `${m[2]}s`)))];
+      const scoped = places.length > 0 || SCOPE_WORD.test(clause);
+      const digits = digitWords(clause.toLowerCase());
+      const values = [...new Set([...valuesIn(collapsed(digits), opts), ...valuesIn(digits, opts)].flatMap((v) => (v.type === "number" ? [v.value] : [])))];
+      if (values.length === 0) { carried = scoped ? places : carried; continue; }
+      const bindPlaces = scoped ? places : carried;
+      carried = null;
+      const place = bindPlaces?.length === 1 ? bindPlaces[0] : null;
+      for (const value of values) out.push({ value, place, single: !!bindPlaces && values.length === 1 && place !== null, bound: !!bindPlaces });
+    }
+  }
+  return out;
+}
+
+/** The step of a place that is not done yet, on the target problem. */
+function placeStep(s: Session, place: string): WorkedStep | null {
+  return workSteps(s.package!).find((st) => "place" in st && st.place === place && !behind(s).includes(st.id)) ?? null;
+}
+
+/**
+ * Final check 8 (2026-11-15): a number the child binds to one place whose open step it does not answer ("I got 24 for
+ * the tens." on 52 − 28, where the tens step makes 2): wrong for that step. Null when there is none.
+ */
+export function scopedMiss(s: Session): { value: number; step: string } | null {
+  if (!s.package || !s.turn) return null;
+  for (const b of boundNumbers(s.package, s.turn.text)) {
+    if (!b.bound || !b.single || !b.place) continue;
+    const st = placeStep(s, b.place);
+    if (st && !stepAnswers(st).some((v) => v.type === "number" && v.value === b.value)) return { value: b.value, step: st.id };
+  }
+  return null;
+}
 
 /** The text with number words as digits ("seven plus nine is sixteen" is "7 plus 9 is 16"), for the rule's own reading. */
 function digitWords(text: string): string {
@@ -4918,6 +4994,8 @@ function stanceRules(before: Session, after: Session, p: Proposal, released: boo
 /** Code's own verdict on the child's turn before any model call (round 4): for the review's input and the stream. */
 export function codeStance(s: Session): "wrong" | "right" | "none" {
   if (!s.package || !s.turn) return "none";
+  // Final check 8: a number bound to a place that its step does not make is wrong for that step.
+  if (scopedMiss(s)) return "wrong";
   if (heardAnswers(s).some((a) => a.verdict === "right")) return "right";
   return turnFacts(s).some((f) => f.wrong) ? "wrong" : "none";
 }
@@ -5103,12 +5181,19 @@ function childAnswerOf(s: Session, hide: (text: string) => string): MathReviewIn
   const text = s.turn.text;
   const raw = (pkg.answer.value as { value?: unknown }).value;
   const right = typeof raw === "number" ? raw : typeof raw === "string" ? hide(raw) : null;
-  if (childSaysFalse(text)) return { value: null, verdict: "wrong", right };
-  const word = wordVerdict(s);
-  if (word) return { value: null, verdict: word, right };
   const credits = heardAnswers(s);
   const credited = credits.filter((a) => a.verdict === "right");
   const numOf = (v: AnswerValue | undefined) => (v?.type === "number" ? v.value : null);
+  // Final check 8 (2026-11-15), before any early return: a number bound to a place its step does not make is wrong for
+  // that step ("I got 24 for the tens."), and an unambiguous step credit this turn is right for that step ("I got 4 in
+  // the ones.": one credited step, one value, no final answer).
+  const miss = scopedMiss(s);
+  if (miss) return { value: miss.value, verdict: "wrong", right };
+  const stepValues = [...new Set(credited.map((a) => numOf(a.value)))];
+  if (credited.length === 1 && credited[0].step !== "result" && stepValues[0] !== null && !childSaysFalse(text, { whole: true })) return { value: stepValues[0], verdict: "right", right };
+  if (childSaysFalse(text, { whole: true })) return { value: null, verdict: "wrong", right };
+  const word = wordVerdict(s);
+  if (word) return { value: null, verdict: word, right };
   const unknown = { value: null, verdict: "unknown" as const, right };
   // 3. The child's own answer sentence: "my answer is N", "the answer is N" (an explicit final answer), or "I got N",
   // "it's N" (which may answer the step the child is on), each with no other words. Final check 7 (2026-11-15): only an
@@ -5143,8 +5228,8 @@ function childAnswerOf(s: Session, hide: (text: string) => string): MathReviewIn
   // 4. Code's own credit of the turn.
   const values = [...new Set(credited.map((a) => numOf(a.value)))];
   if (credited.length > 0 && values.length === 1 && values[0] !== null) return { value: values[0], verdict: "right", right };
-  const miss = credits.find((a) => a.verdict === "wrong" && numOf(a.value) !== null);
-  if (miss && credited.length === 0) return { value: numOf(miss.value), verdict: "wrong", right };
+  const missed = credits.find((a) => a.verdict === "wrong" && numOf(a.value) !== null);
+  if (missed && credited.length === 0) return { value: numOf(missed.value), verdict: "wrong", right };
   const { read, committed } = committedRead(s);
   const n = numOf(read.final ?? undefined);
   if (committed && n !== null && Number.isSafeInteger(n) && wholeTurn(text) !== null && sentenceCount(text) === 1 && valuesIn(text, readOptionsIn(s)).length === 1 && credited.length === 0) {
@@ -5336,34 +5421,32 @@ function tellsAnswer(base: Session, pkg: OperationPackage, texts: readonly strin
     const claim = sessionClaim(pkg);
     const op = comparisonOf(pkg);
     const others = claim ? [claim.other] : op ? comparisonWords(op).map((x) => x.toLowerCase()).filter((x) => x !== w) : null;
-    // Final check 6 (2026-11-15): a sentence that names both choice words gives the answer too ("The answer is true, not
-    // false.", "Circle true instead of false."), unless it is an open choice that picks neither: the two words joined by
-    // "or" ("true or false", "true, or is it false"), each said once, and no word that negates.
+    // Final check 8 (2026-11-15), inverted: a sentence that names ANY choice word, a question too ("Will you circle the
+    // first word: true or false?"), gives the answer by default. Only a proven open choice does not: the whole sentence
+    // is one closed question form that offers the answer word and one other choice, each once, and picks neither ("Is it
+    // true or false?", "True or false?"). A question mark and two words joined by "or" prove nothing alone.
     const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const count = (t: string, x: string) => t.match(new RegExp(`(?:^|[^a-z0-9])${esc(x)}(?=$|[^a-z0-9])`, "gi"))?.length ?? 0;
     const openChoice = (x: string, o: string) => {
-      const t = x.replace(/[‘’ʼ]/g, "'");
-      if (count(t, w) !== 1 || count(t, o) !== 1 || /\b(?:not|never|instead|rather|nor|neither|no)\b|n't\b/i.test(t)) return false;
-      const or = (a: string, b: string) => new RegExp(`(?:^|[^a-z0-9])${esc(a)},?\\s+or\\s+(?:[a-z]+\\s+){0,3}${esc(b)}(?=$|[^a-z0-9])`, "i").test(t);
-      return or(w, o) || or(o, w);
+      const t = x.replace(/[‘’ʼ]/g, "'").trim().toLowerCase().replace(/\s+/g, " ");
+      const pair = `(?:${esc(w)} or ${esc(o)}|${esc(o)} or ${esc(w)})`;
+      const ask = "(?:is it|is that|is this|is the (?:answer|claim|statement|sentence)|which is it,|do you think it is|do you think it's)";
+      // Also the two-question form that offers each choice once: "Is it true, or is it false?".
+      const split = `(?:${ask} ${esc(w)},? or ${ask} ${esc(o)}|${ask} ${esc(o)},? or ${ask} ${esc(w)})`;
+      return new RegExp(`^(?:(?:\\{name\\}|so|now|okay|ok),? )?(?:(?:${ask} )?${pair}|${split})\\?$`).test(t);
     };
-    // Final check 7 (2026-11-15), no list of pointing words: with known choice words, a sentence that is not a question
-    // and names any choice word gives the answer ("Circle the first word: true or false."), and so does a question that
-    // names one, unless it is an open choice that offers the answer word and another choice and picks none ("Is it true
-    // or false?").
-    const asks = (x: string) => /\?\s*$/.test(x.trim());
     const gives = (x: string) => others
-      ? (holdsWord(x, w) || others.some((o) => holdsWord(x, o))) && !(asks(x) && others.some((o) => openChoice(x, o)))
-      : holdsWord(x, w) && !asks(x) && !/\bor\b/i.test(x);
+      ? (holdsWord(x, w) || others.some((o) => holdsWord(x, o))) && !others.some((o) => openChoice(x, o))
+      : holdsWord(x, w);
     return !committedRight && texts.some(gives);
   }
   const answer = pkg.answer.value.value;
   const own = new Set<number>([...tutorKind(pkg).workValues(pkg), ...(pkg.operation.operands as unknown[]).filter((v): v is number => typeof v === "number")]);
   // Maya saying back the answer the child committed to gives nothing away.
-  if (!committedRight) for (const x of texts) {
-    if (equationsOf(x).some((e) => !e.negated && equationHolds(e) === true && e.result.q?.[1] === 1 && e.result.q[0] === answer)) return true;
-    if (!own.has(answer) && valuesIn(x).some((v) => v.type === "number" && v.value === answer)) return true;
-  }
+  // Final check 8 (2026-11-15), inverted: before the child committed the right answer, any sentence of Maya's (a
+  // question too) or note on the board that holds the answer value in any form, digits or words, gives the answer, also
+  // when the value is a value of the work too ("The answer is 6.", "Write 6 on your paper." on 3 × 2). "hint" or "guided"
+  // is recorded only when code proves the message holds no answer value.
+  if (!committedRight && texts.some((x) => namesValue(x, answer))) return true;
   // Final check 5 (2026-11-15): a message that names every digit of the answer in its place, in any order, in digits or
   // words ("Write 2 in the tens place and 4 in the ones place", "2 tens and 4 ones"), gives the answer. A place quantity
   // that makes up another number of the question ("28 is 2 tens and 8 ones") names no digit of the answer.
@@ -5475,6 +5558,8 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   // A false equation the child said is wrong, whatever step it is about and whatever number it ends on ("12 minus 8 is
   // 24"): Maya never says yes to it.
   if (base.turn && childSaysFalse(base.turn.text)) stance = "wrong";
+  // Final check 8: a number bound to a place its step does not make ("I got 24 for the tens.") is wrong for that step.
+  if (base.turn && scopedMiss(base)) stance = "wrong";
   // A bare word ("false", "no") is not committed, so it is not credited, but Maya never says "yes" to a wrong one or
   // "not quite" to a right one (F4 builder, 2026-11-15).
   if (base.turn && !credited.some((a) => a.step === "result")) {

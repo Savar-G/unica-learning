@@ -55,13 +55,21 @@ export function aiMathReviewer(client: AiClient, request: ReviewRequest = MATH_R
 }
 
 /**
- * Runs one review with the time limit, and never throws: a throw or a time-out is "unsure". An answer that is not JSON
- * (bad_json) is asked again once, at once, inside the same time limit: only a second failure is "unsure". A time-out is
- * never asked again (it used the time), and no other error is either. An "unsure" answer of the first review goes once
+ * Runs one review with the time limit, and never throws: a throw or a time-out is "unsure". Final check 8 (2026-11-15): a
+ * malformed answer (not JSON, outside the schema, an unknown verdict) is a FINAL "unsure" for that sentence: no second
+ * call of any kind, to the same model or to the retry, and the text adapter does not review that sentence again in the
+ * same child turn (`fromMalformedAnswer`), not even in the repair. A time-out and every other error are final too. Only a
+ * well-formed "unsure" answer of the first review goes once
  * to `reviewer.retry`, inside the same time limit; the retry's answer is final and marked `retried` (its error or
  * time-out is "unsure"). The error's own text is never kept (a provider's message can hold a key): only fixed wording,
  * with the trace's fixed error code for a failed call.
  */
+/** Final check 8: the results that came from a malformed review answer (the caller never reviews that sentence again). */
+const malformedResults = new WeakSet<MathReviewResult>();
+/** Final check 8 (2026-11-15): whether a result came from a malformed answer (not JSON, outside the schema, no verdict). */
+export const fromMalformedAnswer = (r: MathReviewResult): boolean => malformedResults.has(r);
+const MALFORMED_CODES = new Set(["bad_json", "schema_invalid"]);
+
 export async function runMathReview(reviewer: MathReviewer, input: MathReviewInput, ms: number, onError?: (e: unknown) => void): Promise<MathReviewResult> {
   const once = (r: MathReviewer, signal: AbortSignal) => r.review(input, signal).catch((e: unknown) => {
     throw signal.aborted ? new Error("time is up") : e;
@@ -70,25 +78,27 @@ export async function runMathReview(reviewer: MathReviewer, input: MathReviewInp
   const failed = (e: unknown): MathReviewResult => {
     const text = e instanceof Error ? e.message : "";
     const what = retrying ? "the second math review" : "the math review";
-    return { verdict: "unsure", reason: text === "time is up" ? `${what} did not answer in time` : `${what} call failed (${classifyError(e, "model").code})`, ...(retrying ? { retried: true as const } : {}) };
+    const code = classifyError(e, "model").code;
+    const result: MathReviewResult = { verdict: "unsure", reason: text === "time is up" ? `${what} did not answer in time` : `${what} call failed (${code})`, ...(retrying ? { retried: true as const } : {}) };
+    if (text !== "time is up" && MALFORMED_CODES.has(code)) malformedResults.add(result);
+    return result;
   };
   try {
     return await withTimeLimit(ms, async (signal) => {
-      let first: MathReviewResult;
-      try {
-        first = await once(reviewer, signal);
-      } catch (e) {
-        if (signal.aborted || classifyError(e, "model").code !== "bad_json") throw e;
-        onError?.(e);
-        first = await once(reviewer, signal);
-      }
+      const first = await once(reviewer, signal);
       // Final check 5: only a well-formed "unsure" goes to the retry; an answer outside the schema is final "unsure".
-      if (first.verdict !== "unsure" || first.malformed || !reviewer.retry || signal.aborted) return { verdict: first.verdict, reason: first.reason, ...(first.retried ? { retried: true as const } : {}) };
+      if (first.verdict !== "unsure" || first.malformed || !reviewer.retry || signal.aborted) {
+        const result: MathReviewResult = { verdict: first.verdict, reason: first.reason, ...(first.retried ? { retried: true as const } : {}) };
+        if (first.malformed) malformedResults.add(result);
+        return result;
+      }
       retrying = true;
       try {
         const second = await once(reviewer.retry, signal);
         // Only the retry's own answer counts; a "retried" mark it carries is its own.
-        return { verdict: second.verdict, reason: second.reason, retried: true as const };
+        const result: MathReviewResult = { verdict: second.verdict, reason: second.reason, retried: true as const };
+        if (second.malformed) malformedResults.add(result);
+        return result;
       } catch (e) {
         if (signal.aborted) throw new Error("time is up");
         onError?.(e);
