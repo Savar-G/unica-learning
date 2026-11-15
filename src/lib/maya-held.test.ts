@@ -224,10 +224,10 @@ describe("stored held traces stay readable (D-327, trace version 9)", () => {
     return json;
   };
 
-  it("writes version 11 with the D-327 held text", async () => {
+  it("writes the current version (12, #1044) with the D-327 held text", async () => {
     const trace = await heldTrace();
-    expect(TRACE_VERSION).toBe(11);
-    expect(trace.version).toBe(11);
+    expect(TRACE_VERSION).toBe(12);
+    expect(trace.version).toBe(12);
     expect(checkTrace(trace)).toMatchObject({ ok: true });
   });
 
