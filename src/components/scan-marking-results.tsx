@@ -17,7 +17,7 @@ export function pageLine(result: Pick<ReturnType<typeof markingPageView>, "compl
   return result.counts.scored > 0 ? "Some answers on this page are not marked yet." : "This page is not marked yet.";
 }
 /** `zone`: the family's time zone (src/lib/family-time.ts), resolved on the server; Pacific when none is given. */
-export function ScanMarkingResults({ result, showHeading = true, photo, parent, itemExplanation, zone = PACIFIC_ZONE }: { zone?: FamilyZone; parent?: string; photo?: string; result: ReturnType<typeof markingPageView> & { photoAvailable: boolean; budgetHeld?: boolean; unfinished?: boolean }; showHeading?: boolean; itemExplanation?: (item: ReturnType<typeof markingPageView>["items"][number]) => ReactNode }) {
+export function ScanMarkingResults({ result, showHeading = true, photo, parent, itemExplanation, zone = PACIFIC_ZONE }: { zone?: FamilyZone; parent?: string; photo?: string; result: Omit<ReturnType<typeof markingPageView>, "items"> & { items: (ReturnType<typeof markingPageView>["items"][number] & { explainable?: boolean; questionText?: string | null; correctAnswer?: string | null })[]; photoAvailable: boolean; budgetHeld?: boolean; unfinished?: boolean }; showHeading?: boolean; itemExplanation?: (item: ReturnType<typeof markingPageView>["items"][number]) => ReactNode }) {
   return <section className="scan-preview scan-marking-results" aria-label="Page results">
     {showHeading && <h2>Page results</h2>}
     {result.budgetHeld && <p role="status">We cannot check more pages right now</p>}
@@ -27,12 +27,14 @@ export function ScanMarkingResults({ result, showHeading = true, photo, parent, 
         <p role="status">{pageLine(result)}</p>
         <ol>{result.items.map((item) => <li key={item.itemId}>
           <p><b>Question {item.number}</b>: {item.label}</p>
+          {result.solutionsAvailable && item.questionText && <p>{item.questionText}</p>}
+          {result.solutionsAvailable && item.correctAnswer && <p>Stored correct answer: {item.correctAnswer}</p>}
           {item.readAnswerText !== null && <p>We read: {item.readAnswerText === "" ? "Empty answer" : item.readAnswerText}</p>}
           {item.result !== null && <p className="small">{item.actor === "parent" ? "Parent" : item.actor === "admin" ? "Our team" : "Automatic check"}{Number.isFinite(Date.parse(item.at)) && <> · {familyMoment(item.at, zone)}</>}</p>}
           {result.solutionsAvailable && itemExplanation?.(item)}
           {/* No parent changes a mark (2026-11-14): only our team does, through admin_set_scan_mark. A Wrong mark the AI
               read, on a complete page, offers its explanation. */}
-          {photo && item.canChange && result.completion.status === "complete" && item.result === "wrong" && (item.state === "scored" || item.state === "parent-checked") && item.readAnswerText?.trim()
+          {photo && item.explainable === true && item.canChange && result.completion.status === "complete" && item.result === "wrong" && (item.state === "scored" || item.state === "parent-checked") && item.readAnswerText?.trim()
             && <ScanProblemExplanation key={`${parent}:${photo}:${item.itemId}:${item.version}:${item.readAnswerText}`} parent={parent} photo={photo} itemId={item.itemId} version={item.version} number={item.number} />}
         </li>)}</ol>
       </>}

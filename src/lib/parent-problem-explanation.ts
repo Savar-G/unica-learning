@@ -42,20 +42,27 @@ function rightAnswerWrongMethod(pkg: QuestionPackage, readAnswer: string): boole
   return box?.kind === "box" && box.answer?.type === "number" && read !== undefined && exactNumber(read, false) === box.answer.value;
 }
 /** Only trusted, persisted question fields enter the model. No photo, identity, skill/profile or family fields. */
-export function explanationInput(context: ExplanationContext): { correctAnswer: string; request: AiJsonRequest } | null {
+export function explanationProblem(context: ExplanationContext): { package: QuestionPackage; correctAnswer: string } | null {
   try {
     const check = checkQuestionPackage(context.package, context.schemaVersion);
     if (check.status !== "checked") return null;
     const pkg = check.package;
     if (pkg.id !== context.itemId || pkg.ref.source !== "workbook" || pkg.ref.workbookId !== context.workbook
-      || pkg.ref.page !== context.pageNumber || pkg.ref.question !== context.number || !plain(pkg.text, 2400)
-      || typeof context.readAnswer !== "string" || !context.readAnswer.trim() || context.readAnswer.length > 200) return null;
+      || pkg.ref.page !== context.pageNumber || pkg.ref.question !== context.number || !plain(pkg.text, 2400)) return null;
     const question = storedQuestion({ number: context.number, schemaVersion: context.schemaVersion, package: pkg,
       box: { x: 0, y: 0, width: 1, height: 1 }, teaching: context.teaching, regions: context.regions }, pkg.ref);
     const answer = workbookAnswerPages({ id: context.workbook, pages: [{ number: context.pageNumber, dayLabel: null, type: "practice", image: null, qrToken: "", printContract: null, questions: [question] }] })?.[0]?.questions[0];
     if (!answer || answer.kind !== "fixed" || !answer.answers.length || answer.answers.length > 8) return null;
     const correctAnswer = answer.answers.map(a => answer.answers.length === 1 ? a.value : `${a.part}: ${a.value}`).join("; ");
     if (!plain(correctAnswer, 800)) return null;
+    return { package: pkg, correctAnswer };
+  } catch { return null; }
+}
+export function explanationInput(context: ExplanationContext): { correctAnswer: string; request: AiJsonRequest } | null {
+  try {
+    const problem = explanationProblem(context);
+    if (!problem || typeof context.readAnswer !== "string" || !context.readAnswer.trim() || context.readAnswer.length > 200) return null;
+    const { package: pkg, correctAnswer } = problem;
     const steps = pkg.operation ? pkg.steps.map(s => stepText(s, pkg.operation!)) : templateSolvingSteps(pkg) ?? [];
     if (steps.length > 16 || steps.some(s => !plain(s, 500))) return null;
     const request: AiJsonRequest = { name: "parent_problem_explanation", effort: "low", maxTokens: EXPLANATION_MAX_TOKENS,
