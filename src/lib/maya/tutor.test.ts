@@ -123,3 +123,18 @@ describe("tutorDrawings", () => {
     expect(d.commands[1]).toMatchObject({ kind: "carry", rowId: "answer", from: "ones", to: "tens" });
   });
 });
+
+describe("falseClaims: real sentences of 2026-11-14", () => {
+  const none = { stance: "none" as const };
+  it.each([
+    "Count up from 8 to 12: 9, 10, 11, 12 is 4 steps, and you said 4 a minute ago.",
+    "8 and 4 more make 12.",
+    "6 is 8 minus 2, the other way around.",
+    "4 tens minus 2 tens is 2 tens.",
+    "This one is tricky, but 12 minus 8 is 4.",
+    "One ten is ten ones.",
+    "2 minus 8 isn't 6.",
+    "12 minus 8 is 4 so we write 4.",
+  ])("passes the true sentence %s", (x) => expect(checkTutorSay(x, none)).toMatchObject({ ok: true }));
+  it.each(["12 is 4.", "12 − 8 = 4 apples = 5.", "1 ten is 100 ones.", "12 minus 8 is 5 so we write 5."])("refuses %s", (x) => expect(checkTutorSay(x, none)).toMatchObject({ ok: false }));
+});

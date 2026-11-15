@@ -14,7 +14,7 @@ const OP = String.raw`(?:plus|\+|minus|take away|-)`;
 const REL = String.raw`(?:is not equal to|isn't equal to|is not|isn't|are not|aren't|is the same as|is equal to|equals|is now|are now|is still|=|is|are|makes|make|gives)`;
 const TOKEN = new RegExp(String.raw`(${QUANTITY})|(${NUM})(?!\s+${UNIT})|(${OP})(?=\s|\d|$)|(${REL})(?=\s|\d|$)|([a-z']+|[^\sa-z0-9])`, "gi");
 
-type Item = { kind: "term"; value: number; unit: boolean; one?: true } | { kind: "op"; sign: 1 | -1 } | { kind: "rel"; negated: boolean; eq: boolean; now: boolean } | { kind: "other" };
+type Item = { kind: "term"; value: number; unit: boolean; one?: true } | { kind: "op"; sign: 1 | -1 } | { kind: "rel"; negated: boolean; eq: boolean; now: boolean } | { kind: "other"; word?: string };
 
 /** A number in digits or words (0 to 99), or "a"/"an" (1). */
 function numberOf(word: string): number | null {
@@ -59,10 +59,13 @@ function itemsOf(sentence: string): Item[] {
     else if (m[4]) {
       const r = m[4].toLowerCase();
       items.push({ kind: "rel", negated: /not|n't/.test(r), eq: r === "=", now: /\bnow\b/.test(r) });
-    } else items.push({ kind: "other" });
+    } else items.push({ kind: "other", word: m[5]?.toLowerCase() });
   }
   return items;
 }
+
+/** Words after a claim that end it: the claim before them stands alone. */
+const CONNECTORS = new Set(["and", "so", "then", "but", "or", "because", "now", "too", "again", "right", "yes", "not", "isn't", "here", "there", "in", "on", "at", "for", "with", "from", "to", "of", "that", "which", "when", "after", "before", "this", "the", "a", "we", "you", "i", "it", "let's"]);
 
 /** One side of a relation: terms joined by operators, with whether any term is a place quantity. */
 interface Side { value: number; unitless: number | null }
@@ -109,6 +112,12 @@ export function falseClaims(sentence: string): string[] {
       at = right.next;
     }
     if (chain.length < 2) { i = left.next + 1; continue; }
+    // Not a claim of equality: a counting list ("9, 10, 11, 12 is 4 steps") or a number that goes on into a word that
+    // is not a place ("12 is 4 steps", "8 and 4 more make 12"). An "=" is always read.
+    const list = items[i - 1]?.kind === "term";
+    const after = items[at];
+    const runsOn = after?.kind === "other" && !!after.word && /^[a-z']+$/.test(after.word) && !CONNECTORS.has(after.word);
+    if ((list || runsOn) && !rels.some((r) => r.eq)) { i = at; continue; }
     // The place unit of the chain, for a side said with no unit (only when one unit is used).
     const anyUnits = chain.some((c) => c.units);
     for (let k = 0; k < rels.length; k++) {
