@@ -130,7 +130,8 @@ describe("P2-7: kind first, code's plan settled before anything streams", () => 
   });
   it("a streamed sentence is never followed by a refused act: code's plan wins", async () => {
     const c = call(() => ({ ...reply("Let's look at the ones. What is 12 minus 8?", "accept_answer"), kind: "math" }), { stream: true });
-    const [out] = await said(c, ["Can we start?"]);
+    // Final check 4: only a turn plainly about the math streams (here code's own help read).
+    const [out] = await said(c, ["Can we start? Help me."]);
     expect(c.parts[0]).toBe("Let's look at the ones.");
     expect(out.startsWith("Let's look at the ones.")).toBe(true);
     const t = c.session.trace().turns.filter((x) => x.kind === "maya").at(-1);
@@ -146,7 +147,8 @@ describe("P2-7: kind first, code's plan settled before anything streams", () => 
   it("after a streamed sentence, a turn that turns into safety guidance keeps the streamed sentence, then the guidance", async () => {
     // The model's reading raises safety after its first sentence has gone out (kind said math).
     const c = call(() => ({ ...reply("Let's look at the ones. What is 12 minus 8?", "safety", { reading: { safety: "concern" } }), kind: "math" }), { stream: true });
-    const [out] = await said(c, ["Can we start?"]);
+    // Final check 4: only a turn plainly about the math streams (here code's own help read).
+    const [out] = await said(c, ["Can we start? Help me."]);
     expect(c.parts[0]).toBe("Let's look at the ones.");
     expect(out.startsWith("Let's look at the ones. ")).toBe(true);
     const t = c.session.trace().turns.find((x) => x.kind === "maya" && x.output?.act === "safety");

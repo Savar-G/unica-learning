@@ -106,12 +106,13 @@ describe("layer 1: only an exact match passes on code alone", () => {
   });
 
   it("passes the closed plain forms with true math and no review; a lead-in, the name or another word sends it to the review", () => {
-    for (const line of ["12 minus 8 is 4.", "52 is 4 tens and 12 ones.", "52 minus 28 isn't 36.", "What is 12 minus 8?", "What do you get for 4 minus 2?", "Trade 1 ten for 10 ones.", "Subtract the ones.", "The tens."]) {
+    for (const line of ["12 minus 8 is 4.", "52 is 4 tens and 12 ones.", "52 minus 28 isn't 36.", "What is 12 minus 8?", "What do you get for 4 minus 2?", "Trade 1 ten for 10 ones.", "Subtract the ones."]) {
       expect(checkTutorSay(line, ctxOf(SUB)), line).toMatchObject({ ok: true, math: [] });
     }
-    for (const line of ["Now 12 minus 8 is 4.", "{name}, 12 minus 8 is 4.", "The answer is 24.", "Write 3 in the ones.", "Add the ones.", "12 minus 8 is 4 too.", "What is 12 minus 8."]) {
+    for (const line of ["Now 12 minus 8 is 4.", "{name}, 12 minus 8 is 4.", "The answer is 24.", "Write 3 in the ones.", "Add the ones.", "12 minus 8 is 4 too.", "What is 12 minus 8.", "The tens.", "What is the value of the 8 in 52?"]) {
       expect(codeAlone(line, ctxOf(SUB)), line).toBe(false);
     }
+    // Final check 4: a bare place ("The tens.") answers what the child asked, and 52 holds no 8: both go to the review.
     // A part of code's own step text is an exact match: "write 4 in the ones" is true in 52 − 28.
     expect(codeAlone("Write 4 in the ones.", ctxOf(SUB))).toBe(true);
   });
@@ -156,7 +157,8 @@ describe("final check 3, F1: a turn with an identity word streams nothing before
     const { session, parts, early } = call("12 minus 8 is 4. What is 4 minus 2?", { stream: true });
     await session.start();
     parts.length = 0;
-    await session.child("Help me with the ones please.");
+    // Final check 4: only a turn plainly about the math streams (a number, an operation word, code's help read).
+    await session.child("Help me please.");
     expect(early()).toContain("12 minus 8 is 4.");
   });
 });

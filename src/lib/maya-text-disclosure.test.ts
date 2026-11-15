@@ -108,7 +108,8 @@ describe("the model's reading alone", () => {
   // A turn each path streams for: the tutor's plain teaching sentence, and the controller's step line on a turn about the
   // ones. Code's reader does not fire on either; only the model's reading says aboutMaya.
   const cases = [
-    { path: "tutor", tutor: true, child: "Do you have a body?", say: MATH },
+    // Final check 4: only a turn plainly about the math streams before the reading; this one holds a number.
+    { path: "tutor", tutor: true, child: "Is it 12 for the ones? Do you have a body?", say: MATH },
     { path: "controller", tutor: false, child: "Is it 12 for the ones? Do you have a body?", say: "Subtract the ones: 12 − 8. What do you get?", step: "ones" },
   ];
   for (const { path, tutor, child, say, step } of cases) {
