@@ -5011,7 +5011,16 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
     // Code's own read wins: a model reading of a value code heard as a right answer is left out (review of #1006).
     const heard = heardAnswers(s);
     const heardRight = (a: ChildAnswer) => heard.some((h) => h.verdict === "right" && sameValue(h.value, a.value));
-    const candidates = [...heard, ...(reading.answers ?? []).filter((a) => (a.problem ?? "target") === "target" && !(a.verdict === "wrong" && heardRight(a)))];
+    // A word answer (yes/no, true/false, a comparison word) is code's own read only (claim.ts, comparison.ts): the
+    // model's reading of the final word is left out, and code's word counts, right or wrong (F4 builder, 2026-11-15).
+    const wordQuestion = !!sessionClaim(pkg) || !!comparisonOf(pkg);
+    const words = [
+      // The opening asks the question itself, so a bare word ("no", "false") answers the claim.
+      ...(sessionClaim(pkg) ? claimAnswers({ ...claimTurn(s), claimAsked: true }, [], false) ?? [] : []),
+      ...(comparisonOf(pkg) ? (comparisonAnswers(s, []) ?? []).filter((a) => a.step === "result") : []),
+    ];
+    credited.push(...words);
+    const candidates = [...heard, ...(reading.answers ?? []).filter((a) => (a.problem ?? "target") === "target" && !(a.verdict === "wrong" && heardRight(a)) && !(wordQuestion && a.step === "result"))];
     for (const a of candidates) {
       if (credited.some((c) => c.step === a.step && sameValue(c.value, a.value))) continue;
       if (checkAnswers(s, [a], []) === null) credited.push(a);
@@ -5059,6 +5068,16 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   // A false equation the child said is wrong, whatever step it is about and whatever number it ends on ("12 minus 8 is
   // 24"): Maya never says yes to it.
   if (base.turn && childSaysFalse(base.turn.text)) stance = "wrong";
+  // A bare word ("false", "no") is not committed, so it is not credited, but Maya never says "yes" to a wrong one or
+  // "not quite" to a right one (F4 builder, 2026-11-15).
+  if (base.turn && !credited.some((a) => a.step === "result")) {
+    const claim = sessionClaim(pkg);
+    const word = claim ? claimSaid({ ...claimTurn(base), claimAsked: true }) : null;
+    if (claim && word) stance = word === claim.word ? (stance === "none" ? "right" : stance) : "wrong";
+    const op = comparisonOf(pkg);
+    const cw = op ? comparisonWord(base) : null;
+    if (op && cw) stance = sameValue(comparisonAnswer(op, cw.word === comparisonWords(op)[0]), pkg.answer.value) ? (stance === "none" ? "right" : stance) : "wrong";
+  }
   // The next open step, for the prepared replies' expected turns (expectedTurns and fitsExpected read the ladder's step).
   s.ladder = { ...s.ladder, step: stepFacts(pkg).find((st) => !s.done.includes(st.id))?.id ?? "result" };
   const act: Act = out.act === "close" ? "close" : "guide";

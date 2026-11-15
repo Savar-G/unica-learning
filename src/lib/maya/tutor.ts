@@ -140,6 +140,9 @@ export interface TutorCheckContext {
 /** "4 is the answer", "the whole answer is 24", "your answer 36 is right": a claim about which number is the answer. */
 const ANSWER_CLAIM = /\b(\d+) is (?:the|your|our) (?:whole |final |right )?answer\b|\b(?:the|your|our) (?:whole |final |right )?answer is (\d+)\b/gi;
 
+/** A division with a remainder ("15 ÷ 6 = 2 R 3"): falseClaims reads it whole. */
+const REMAINDER_FORM = /\d+\s*(?:÷|\/|divided by)\s*\d+\s*(?:=|is|equals|makes)\s*\d+\s*(?:R|r|remainder|with a remainder of|with remainder)\s*\d+/g;
+
 /** A sentence that says an answer is right. */
 const JUDGES_RIGHT = /^(?:yes|yep|yeah|right|correct|exactly)\b|\b(?:is|that'?s|that is|it'?s|you'?re|you are|you got it)\s+(?:right|correct)\b|\byou got it\b|\bwell done\b/i;
 /** A sentence that says an answer is not right. */
@@ -166,7 +169,8 @@ export function checkTutorSay(text: string, ctx: TutorCheckContext & { extra?: R
   if (never) return { ok: false, reason: "never_say", detail: never };
   const sentences = sentencesOf(say);
   for (const sentence of sentences) {
-    for (const e of equationsOf(sentence)) {
+    // A division with a remainder is read by falseClaims; the plain equation reader would read "2 R 3" as 2.
+    for (const e of equationsOf(sentence.replace(REMAINDER_FORM, " "))) {
       const holds = equationHolds(e);
       if (holds === null) continue;
       if (holds === e.negated) return { ok: false, reason: "false_equation", detail: `"${sentence}" ${e.negated ? "calls a true equation false" : "holds a false equation"}. Every equation Maya says must be true.` };

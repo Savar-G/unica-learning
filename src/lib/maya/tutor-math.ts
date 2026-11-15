@@ -10,11 +10,11 @@ const NUM = String.raw`(?:\d+|(?:${TENS.join("|")})(?:[- ](?:${SMALL.slice(1, 10
 const UNIT = String.raw`(?:ones?|tens?|hundreds?)\b`;
 /** A place quantity: "4 tens and 12 ones", "a ten", "one hundred". */
 const QUANTITY = String.raw`(?:(?:${NUM}|an?)\s+${UNIT})(?:\s+(?:and\s+)?(?:${NUM}|an?)\s+${UNIT})*`;
-const OP = String.raw`(?:plus|\+|minus|take away|-)`;
+const OP = String.raw`(?:plus|\+|minus|take away|-|times|multiplied by|×|\*|x|divided by|÷|/)`;
 const REL = String.raw`(?:is not equal to|isn't equal to|is not|isn't|are not|aren't|is the same as|is equal to|equals|is now|are now|is still|becomes|become|became|turns into|turn into|turned into|=|is|are|makes|make|gives)`;
 const TOKEN = new RegExp(String.raw`(${QUANTITY})|(${NUM})(?!\s+${UNIT})|(${OP})(?=\s|\d|$)|(${REL})(?=\s|\d|$)|([a-z']+|[^\sa-z0-9])`, "gi");
 
-type Item = { kind: "term"; value: number; unit: boolean; place?: number; word?: true } | { kind: "op"; sign: 1 | -1 } | { kind: "rel"; negated: boolean; eq: boolean; now: boolean } | { kind: "other"; word?: string };
+type Item = { kind: "term"; value: number; unit: boolean; place?: number; word?: true } | { kind: "op"; op: "+" | "-" | "*" | "/" } | { kind: "rel"; negated: boolean; eq: boolean; now: boolean } | { kind: "other"; word?: string };
 
 /** A number in digits or words (0 to 99), or "a"/"an" (1). */
 function numberOf(word: string): number | null {
@@ -59,7 +59,12 @@ function itemsOf(sentence: string): Item[] {
       const prev = items.at(-1);
       const pronoun = m[2].toLowerCase() === "one" && prev?.kind === "other" && !!prev.word && DETERMINERS.has(prev.word);
       items.push(v === null || pronoun ? { kind: "other", word: m[2].toLowerCase() } : { kind: "term", value: v, unit: false, ...(/^\d+$/.test(m[2]) ? {} : { word: true as const }) });
-    } else if (m[3]) items.push({ kind: "op", sign: /^(?:plus|\+)$/i.test(m[3]) ? 1 : -1 });
+    } else if (m[3]) {
+      const w = m[3].toLowerCase();
+      // "x" is an operator only between two numbers ("6 x 4").
+      if (w === "x" && items.at(-1)?.kind !== "term") { items.push({ kind: "other", word: "x" }); continue; }
+      items.push({ kind: "op", op: /^(?:plus|\+)$/.test(w) ? "+" : /^(?:times|multiplied by|×|\*|x)$/.test(w) ? "*" : /^(?:divided by|÷|\/)$/.test(w) ? "/" : "-" });
+    }
     else if (m[4]) {
       const r = m[4].toLowerCase();
       items.push({ kind: "rel", negated: /not|n't/.test(r), eq: r === "=", now: /\bnow\b|becom|became|turn/.test(r) });
@@ -72,6 +77,9 @@ function itemsOf(sentence: string): Item[] {
   }
   return items;
 }
+
+/** "a ÷ b = q R r", in digits or words. */
+const REMAINDER = /(\d+)\s*(?:÷|\/|divided by)\s*(\d+)\s*(?:=|is|equals|makes)\s*(\d+)\s*(?:R|r|remainder|with a remainder of|with remainder)\s*(\d+)/g;
 
 /** Words before "one" that make it a pronoun. */
 const DETERMINERS = new Set(["this", "that", "each", "every", "which", "another", "next", "last", "first", "other", "any", "no", "new", "same", "easier", "harder", "tricky", "hard", "easy"]);
@@ -93,8 +101,14 @@ interface Side { value: number; units: boolean; place: number | null; next: numb
  * now 12 ones", "the 5 tens are now 4 tens"); in an addition the ones give 10 and the tens gain 1 ten.
  */
 export function falseClaims(sentence: string, op?: "add" | "subtract"): string[] {
-  const items = itemsOf(sentence);
   const problems: string[] = [];
+  // A division with a remainder ("15 ÷ 6 = 2 R 3", "15 divided by 6 is 2 remainder 3") is read whole, then left out.
+  sentence = sentence.replace(REMAINDER, (all, a: string, b: string, q: string, r: string) => {
+    const [x, y, z, w] = [a, b, q, r].map(Number);
+    if (!(y > 0 && x === y * z + w && w < y)) problems.push(`${x} divided by ${y} is not ${z} remainder ${w}`);
+    return " ";
+  });
+  const items = itemsOf(sentence);
   let i = 0;
   let eqSeen = 0;
   let eqRead = 0;
@@ -102,7 +116,8 @@ export function falseClaims(sentence: string, op?: "add" | "subtract"): string[]
   const side = (at: number): Side | null => {
     if (items[at]?.kind !== "term") return null;
     const first = items[at] as Extract<Item, { kind: "term" }>;
-    let value = first.value;
+    const values = [first.value];
+    const signs: ("+" | "-" | "*" | "/")[] = [];
     let units = first.unit;
     let place: number | null = first.place ?? null;
     let next = at + 1;
@@ -110,11 +125,25 @@ export function falseClaims(sentence: string, op?: "add" | "subtract"): string[]
     while (items[next]?.kind === "op" && items[next + 1]?.kind === "term") {
       ops = true;
       const t = items[next + 1] as Extract<Item, { kind: "term" }>;
-      value += (items[next] as Extract<Item, { kind: "op" }>).sign * t.value;
+      signs.push((items[next] as Extract<Item, { kind: "op" }>).op);
+      values.push(t.value);
       units ||= t.unit;
       place = null;
       next += 2;
     }
+    // Products and quotients first, then sums and differences, left to right.
+    let total = 0;
+    let term = values[0];
+    let sign = 1;
+    for (let k = 0; k < signs.length; k++) {
+      const op = signs[k];
+      if (op === "*") { term *= values[k + 1]; continue; }
+      if (op === "/") { term = values[k + 1] === 0 ? NaN : term / values[k + 1]; continue; }
+      total += sign * term;
+      sign = op === "+" ? 1 : -1;
+      term = values[k + 1];
+    }
+    const value = total + sign * term;
     return { value, units, place, next, ops };
   };
   // A column's sum of digits said in its place: "1 + 2 + 3 = 6 tens" (never a bare "4 is 4 tens").
@@ -157,10 +186,11 @@ export function falseClaims(sentence: string, op?: "add" | "subtract"): string[]
     if ((list || runsOn) && !rels.some((r) => r.eq)) { i = at; continue; }
     for (let k = 0; k < rels.length; k++) {
       const [a, b] = [chain[k], chain[k + 1]];
-      const equal = a.value === b.value || inPlace(a, b) || (rels[k].now && trade(a, b));
+      const same = Math.abs(a.value - b.value) < 1e-9;
+      const equal = same || inPlace(a, b) || (rels[k].now && trade(a, b));
       if (rels[k].eq) eqRead++;
       if (!rels[k].negated && !equal) problems.push(`it says ${a.value} and ${b.value} are the same`);
-      if (rels[k].negated && a.value === b.value) problems.push(`it says ${a.value} and ${b.value} are not the same`);
+      if (rels[k].negated && same) problems.push(`it says ${a.value} and ${b.value} are not the same`);
     }
     i = at;
   }

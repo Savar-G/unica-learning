@@ -6,7 +6,16 @@ import { columnKind } from "./column";
 
 export const TUTOR_KINDS: readonly TutorKind[] = [columnKind];
 
+/** Kinds a test puts first (testKind); never used by the site. */
+const testKinds: TutorKind[] = [];
+
 /** The kind that teaches this question, or null: the controller keeps it. */
 export function tutorKindOf(pkg: OperationPackage): TutorKind | null {
-  return TUTOR_KINDS.find((k) => k.fits(pkg)) ?? null;
+  return testKinds.find((k) => k.fits(pkg)) ?? TUTOR_KINDS.find((k) => k.fits(pkg)) ?? null;
+}
+
+/** Tests only: puts `kind` before the registry until the returned function is called. */
+export function testKind(kind: TutorKind): () => void {
+  testKinds.unshift(kind);
+  return () => { const i = testKinds.indexOf(kind); if (i !== -1) testKinds.splice(i, 1); };
 }

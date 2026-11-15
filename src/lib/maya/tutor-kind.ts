@@ -77,16 +77,17 @@ export function expressionKey(operands: readonly number[], ops: readonly string[
  * anything else: no other text from the model reaches the board.
  */
 export function noteFromEquation(place: string): string | null {
-  const m = /^\s*(\d{1,5}(?:\s*[+\-−–×x*]\s*\d{1,5}){1,3})\s*=\s*(\d{1,6})\s*$/i.exec(place);
+  const m = /^\s*(\d{1,5}(?:\s*[+\-−–×x*÷/]\s*\d{1,5}){1,3})\s*=\s*(\d{1,6})\s*$/i.exec(place);
   if (!m) return null;
-  const nums = m[1].split(/[+\-−–×x*]/i).map((x) => Number(x.trim()));
-  const signs = [...m[1].matchAll(/[+\-−–×x*]/gi)].map((x) => (x[0] === "+" ? "+" : /[×x*]/i.test(x[0]) ? "×" : "−"));
+  const nums = m[1].split(/[+\-−–×x*÷/]/i).map((x) => Number(x.trim()));
+  const signs = [...m[1].matchAll(/[+\-−–×x*÷/]/gi)].map((x) => (x[0] === "+" ? "+" : /[×x*]/i.test(x[0]) ? "×" : /[÷/]/.test(x[0]) ? "÷" : "−"));
   // Left to right, products first: a × b ± c.
   let total = 0;
   let term = nums[0];
   let sign = 1;
   for (let k = 0; k < signs.length; k++) {
     if (signs[k] === "×") { term *= nums[k + 1]; continue; }
+    if (signs[k] === "÷") { if (nums[k + 1] === 0 || term % nums[k + 1] !== 0) return null; term /= nums[k + 1]; continue; }
     total += sign * term;
     sign = signs[k] === "+" ? 1 : -1;
     term = nums[k + 1];
