@@ -72,6 +72,30 @@ Our own data decides the test, not the ad platforms: they see only visitors who 
 - The table also includes other tagged links, including organic social posts. Filter by the exact source, medium and campaign before calling a visit paid traffic. A total of all `ad_visits` rows is not an ad-only total.
 - Leave test families out (`public.test_accounts`), as the dashboard does.
 
+## Weekly review
+
+`npm run ads:review` turns the "Where tagged visitors stop" query into a report for each ad: the funnel (visits, opened `/start`, typed in or chose Google, email code sent, signed up), the step rates, cost per signup when you give the spend, and a proposal to **scale**, **keep** or **kill** the ad, with the reason. It only reads (`public.ad_visits`, `public.ad_visit_steps`, `parents.source->>'visit_id'`). It changes no ad, no budget and no row, and it has no schedule: a person or an agent runs it by hand, and **a person approves every change in Meta or Google Ads.**
+
+```
+npm run ads:review -- --days 7 --spend spend.json --out ad-review.md
+```
+
+- `--days` is the window back from now (default 7). `--out` also writes the Markdown to a file. `--source` is the list of `utm_source` values that count as ads (default `meta,google`; `all` also keeps organic tagged links).
+- `--spend` is optional. It is a JSON array you type from Meta and Google Ads, in CAD: `[{ "source": "meta", "campaign": "bc-round-3", "content": "right-level", "amount": 33.33 }]`. Add `"medium"` to count an entry for one placement only. Entries for the same ad add up. An entry that matches no ad is listed at the end of the report (a typo in a tag, or an ad with no visits). Without spend, the report shows no cost figures.
+- The secret key comes from `SUPABASE_SECRET_KEY`, else from the Management API with the token in `SUPABASE_ACCESS_TOKEN` or the Keychain item `supabase-pagewise`.
+- An ad is the exact `utm_source`, `utm_campaign` and `utm_content` of its link. The placement (`utm_medium`) is shown inside the ad, not as a separate ad. Visits of a test family or a team account (`public.test_accounts`, `public.admin_users`) are dropped, and the report says how many. The team's own check tags (`reviewcheck`, `pixel-check`) are left out.
+
+How to read the verdicts (the numbers are named constants at the top of `src/lib/ad-review.ts`, each with its reason):
+
+| Verdict | Rule |
+|---|---|
+| NOT ENOUGH DATA | Fewer than 100 visits to the ad. With 0 opens in 100 visits the real rate can still be about 3%, so a smaller sample says nothing. Wait. |
+| SCALE | At least 3 opens of `/start`, and an open rate at least 2 times the best other ad of the same campaign that has enough visits (the Round 3 rule, as a rate because ads get different visits). With no other ad to compare with, the open rate must be at least 5%. |
+| KILL | 0 opens in 100 visits or more, or another ad of the campaign has at least 3 opens and at least 2 times this ad's open rate. |
+| KEEP | Enough visits, and not clearly better or worse. A tie means the next test is the home page or the signup page, not another ad. |
+
+The verdicts judge the ad by opens of `/start`, the step the ad controls. A note under an ad says when visitors open `/start` and nobody types in: that is a signup page problem, not an ad problem. Cost per finished assessment (the measure of the ad test) still needs the finished-test join described above; the report stops at signups.
+
 ## Setup
 
 1. Apply `supabase/migrations/20261017_add_ad_visits.sql` and `supabase/migrations/20261022_add_ad_visit_steps.sql` before the code ships. Until the tables exist, `/api/visit` and `/api/visit/step` log "not counted" and the site works as before; signups still keep their tags.

@@ -17,6 +17,7 @@
     "area-levels:check": "node scripts/area-level-check.mjs",
     "maya:text": "node scripts/maya-text.mjs",
     "maya:demo-child": "node scripts/maya-demo-child.mjs",
+    "ads:review": "node scripts/ad-review.mjs",
     "maya:practice": "node scripts/maya-practice.mjs",
     "voice:build": "node worker/maya-voice/build.mjs",
     "voice:typecheck": "tsc -p worker/maya-voice/tsconfig.json",
