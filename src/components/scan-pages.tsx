@@ -592,6 +592,12 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     if (u?.reservation) void api(`/api/account/scans/${u.reservation}/release`, { method: "POST" }).catch(() => {});
   }
 
+  function retireUploads(identity: string, keepKey?: string) {
+    const superseded = uploadsRef.current.filter((upload) => upload.key !== keepKey && (upload.key === identity || upload.uploadedId === identity || upload.reservation === identity));
+    for (const upload of superseded) release(upload);
+    return uploadsRef.current.filter((upload) => !superseded.includes(upload));
+  }
+
   /** One photo, start to end. Its slot frees when it ends, and the next waiting photo starts. */
   async function runUpload(next: Local, version: number) {
     try {
@@ -658,11 +664,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     const oldPage = listing?.pages.find((p) => p.id === oldPhoto?.pageId);
     const target = oldLocal?.target ?? (oldPhoto ? { photoId: oldPhoto.id, pageId: oldPhoto.pageId, workbookId: oldPhoto.workbookId, pageNumber: oldPhoto.pageNumber, day: oldPage?.day ?? null } : undefined);
     // A retake of a photo that never reached us replaces it here; a retake of a saved photo deletes that photo first.
-    if (replaces) {
-      const superseded = list.filter((upload) => upload.key === replaces || upload.uploadedId === replaces || upload.reservation === replaces);
-      for (const upload of superseded) release(upload);
-      list = list.filter((upload) => !superseded.includes(upload));
-    }
+    if (replaces) list = retireUploads(replaces);
     const added: Local[] = [...files].map((file, i) => ({
       key: `local:${crypto.randomUUID()}`, file, status: "waiting" as const, source,
       target: i === 0 ? target : undefined,
@@ -973,6 +975,7 @@ export function ScanPages({ childrenList, parent, noticeAcknowledged, mode = "ph
     setBatch((b) => b.filter((id) => id !== old));
     // The old photo leaves the Undo: its server hold goes, so the server never sends it while the swap runs.
     releaseHolds([old]);
+    putUploads(retireUploads(old, key));
     patchUpload(key, { status: "waiting", reason: undefined, replaceOf: old, replaceable: undefined, page: undefined, reservation: undefined });
     pump();
   }

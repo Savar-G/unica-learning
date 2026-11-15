@@ -1640,6 +1640,48 @@ it("retires a timed-out replacement when its saved photo is retaken instead of r
   } finally { vi.useRealTimers(); }
 });
 
+it("retires a timed-out replacement when a duplicate is used instead, preserving other pages", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+  seed("old", "p11", { check: "refused", reason: "marks-missing" });
+  await render();
+  const server = global.fetch;
+  let firstReplacement: string | undefined;
+  vi.stubGlobal("fetch", async (path: string, init?: RequestInit) => {
+    const response = await server(path, init);
+    if (!path.startsWith("/api/account/scans?child=")) return response;
+    const data = await response.json();
+    firstReplacement ??= data.photos.find((photo: Photo) => photo.id !== "old")?.id;
+    data.photos = data.photos.map((photo: Photo) => photo.id === firstReplacement
+      ? { ...photo, photoCheckRequired: true, photoCheck: { state: "pending" } }
+      : photo);
+    return Response.json(data);
+  });
+  try {
+    await act(async () => button("Retake page 11")!.click());
+    await choose("camera", "p11.jpg");
+    await act(async () => { await vi.advanceTimersByTimeAsync(120_000); });
+    expect(button("Retry")).toBeDefined();
+    await choose("library", "p10.jpg");
+    const otherPhoto = [...photos.values()].find((photo) => photo.pageId === "p10")!.id;
+    await act(async () => button("Scan pages")!.click());
+    await choose("camera", "p11.jpg");
+    await act(async () => button("Done")!.click()); await settle();
+    expect(button("Use this new photo instead")).toBeDefined();
+    await act(async () => button("Use this new photo instead")!.click()); await settle();
+    expect(photos.has(firstReplacement!)).toBe(false);
+    expect(photos.has(otherPhoto)).toBe(true);
+    expect(button("Page 11, ready, not sent yet")).toBeDefined();
+    expect(button("Page 10, ready, not sent yet")).toBeDefined();
+    expect(host.querySelector(".scan-need")).toBeNull();
+    expect(text()).not.toContain("already scanned");
+    const reads = () => calls.filter((call) => call.startsWith("GET /api/account/scans?child=")).length;
+    const finished = reads();
+    await act(async () => { await vi.advanceTimersByTimeAsync(600_000); });
+    expect(host.querySelector(".scan-need")).toBeNull();
+    expect(reads()).toBe(finished);
+  } finally { vi.useRealTimers(); }
+});
+
 it("backs off unchanged marks, pauses hidden and offline reads, and resets on progress and return", async () => {
   markingOn = true;
   seed("sent", "p11", { sentAt: new Date().toISOString(), marks: null });
