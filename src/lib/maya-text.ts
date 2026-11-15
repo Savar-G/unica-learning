@@ -324,6 +324,11 @@ import { boardFateCounts, classifyError, packageHash, redactText, redactTrace, t
 export const MAX_MAYA_TURNS = 8;
 /** D-341: the time one Maya turn may take in chat for the model and its repair, in ms. */
 export const TURN_BUDGET_MS = 6_000;
+/**
+ * #1072 (2026-11-15): the model time reserved for the one repair of a refused tutor teaching message, in ms. The first
+ * attempt and its reviews cannot spend it: the repair starts with this budget whatever time is left of the turn.
+ */
+export const TUTOR_REPAIR_BUDGET_MS = 6_000;
 
 export interface TextSessionOptions {
   /** Budget owner refuses speculative takes when only two live attempts remain. No seam disables preparation. */
@@ -391,6 +396,12 @@ export interface TextSessionOptions {
    * Maya says code's own line (fallbacks). Voice sets less.
    */
   turnBudgetMs?: number;
+  /**
+   * #1072: the model time reserved for the repair of a refused tutor teaching message (default TUTOR_REPAIR_BUDGET_MS).
+   * The first attempt and its reviews never spend it. The repair's reviews keep the review time limit, so the turn is
+   * bounded by the turn budget, the repair budget and two review limits.
+   */
+  repairBudgetMs?: number;
   /**
    * Whether a refused first proposal gets a second model request that fixes it (default true). A voice call sets false:
    * the repair costs two seconds of silence and failed in live practice (980571e0), so the first refusal goes straight
@@ -1048,7 +1059,16 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       // Words already streamed cannot be taken back: a refusal then goes straight to code's line after them.
       // A turn a priority gate took after the model's reading (a scope redirect, a confirmation) is code's own line.
       const repairs = tutorTurn === null ? options.modelRepair !== false : tutorTurn && read(() => tutorTeachingNow(folded.session));
-      if (repairs && folded.attempts.at(-1)?.source === "model" && folded.attempts.at(-1)?.refusal && !folded.session.outcome && !safetyDue && Date.now() < turnEndsAt && !folded.sent?.length) await request("repair", controller);
+      const refusedFirst = repairs && folded.attempts.at(-1)?.source === "model" && folded.attempts.at(-1)?.refusal && !folded.session.outcome && !safetyDue && !folded.sent?.length;
+      // #1072 (2026-11-15): on a tutor teaching turn the repair has its own reserved budget. Production call 1b428d5b:
+      // the model took 3,128 ms and the math review 2,804 ms of the 6,000 ms turn, so no repair ran and code's plain line
+      // went out with no teaching. Now a refused tutor message always gets its one repair, with TUTOR_REPAIR_BUDGET_MS
+      // of model time that the first attempt and its reviews cannot spend. A message with streamed words still goes to
+      // code's line (the repair's message is checked alone, not as a continuation of the words already said).
+      if (refusedFirst && tutorTurn) {
+        turnEndsAt = Date.now() + (options.repairBudgetMs ?? TUTOR_REPAIR_BUDGET_MS);
+        await request("repair", controller);
+      } else if (refusedFirst && Date.now() < turnEndsAt) await request("repair", controller);
       if (controller.signal.aborted) break;
       if (folded.attempts.length && !folded.session.outcome) {
         const refused = folded.attempts.filter((a) => a.refusal !== null).map((a) => a.proposal);

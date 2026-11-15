@@ -70,7 +70,7 @@ import { ACTS, PART_LIMITS, PROPOSAL_VERSION, TUTOR_GATES, isModelOutput, readMo
 import { checkSay, checkSentence, columnSentenceTruth, equationHolds, heardColumnOf, namesValue, revealsOpenStep, endsWithAsk, INSTRUCTION, MATH_WORD, PRAISE_WORDS, trimSay, equationKeysOf, equationsOf, sentencesOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, type SayReason, type SayRules, type SayValue } from "./say-check";
 import type { TalkReviewResult } from "./talk-review";
 import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
-import { bindingReview, checkTutorSay, childFacts, childSaysFalse, columnSums, isTutorQuestion, tutorTexts, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, TUTOR_REVIEW_IGNORED } from "./tutor";
+import { agreementClause, bindingReview, checkTutorSay, childAnswerCandidate, childFacts, childSaysFalse, columnSums, isTutorQuestion, tutorTexts, tutorKind, stepFacts, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, TUTOR_REVIEW_IGNORED } from "./tutor";
 import { placeDigitsSaid } from "./tutor-math";
 import { MATH_REVIEW_PROMPT_VERSION, mathReviewsOf, type MathReview, type MathReviewInput } from "./math-review";
 import { reviewStart, reviewSteps } from "./math-review-steps";
@@ -5358,7 +5358,28 @@ export function mathReviewInput(s: Session, sentence: string, before: readonly s
     lastTurns: lastTwoTurns(s, hide),
     easierExample: pkg ? easierFacts(pkg, hide) : null,
     childAnswer: pkg ? childAnswerOf(s, hide) : null,
+    ...(pkg && agreesWithFact(s, sentence) ? { agreement: true as const } : {}),
   };
+}
+
+/**
+ * #1072 (2026-11-15): the child's turn holds an answer candidate (childAnswerCandidate in tutor.ts): a number or a choice
+ * word that could answer the question or a step, a word code reads as the child's answer, or a turn about the easier
+ * example. Fail closed: with no child turn there is no fact to agree with, so nothing is an agreement either.
+ */
+export function answerCandidateIn(s: Session): boolean {
+  if (!s.turn) return false;
+  return childAnswerCandidate(s.turn.text) || mentionsExample(s.turn.text) || (!!s.package && wordVerdict(s) !== null);
+}
+
+/**
+ * #1072 (2026-11-15): a sentence of Maya's whose judgment word agrees with a fact the child stated, not with an answer:
+ * the judgment word is attached to a clause (agreementClause: "You're right, 3 ones is too small to take 4 away.") and
+ * the child's turn holds no answer candidate ("I don't get 3 minus 4"). Such a sentence still goes to the math review,
+ * which reads it as an agreement with the child's words: only "true" lets it be said. Any other judgment is a verdict.
+ */
+export function agreesWithFact(s: Session, sentence: string): boolean {
+  return !!s.turn && agreementClause(sentence) !== null && !answerCandidateIn(s);
 }
 
 /** Code's facts per step for the math-truth review (version 3), with any word a story's person shares with the name hidden. */
