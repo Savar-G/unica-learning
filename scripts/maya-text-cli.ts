@@ -20,6 +20,8 @@
 //   --legacy                 Maya's version 2 model (code-written lines), for a before-and-after comparison
 //   --effort <level>         none, minimal, low (default), medium or high: how much the model thinks first
 //   --tutor                  the tutor core (D-345, docs/maya-tutor.md), as on admin test calls
+//   --voice                  as the voice worker: no repair on a controller turn; prints, for each child turn, the ms
+//                            to Maya's first and last sentence (the adapter's onSayPart; no speech-to-text or voice)
 //
 // Script lines: a child turn, or "/wait <seconds>" (the clock moves on and the pause policy runs), "/write start",
 // "/write done", "/quit" (the child hangs up: child_stopped). "#" starts a comment. With --script or piped input the
@@ -57,10 +59,12 @@ interface Options {
   effort: "none" | "minimal" | "low" | "medium" | "high" | null;
   /** D-345: the tutor core. */
   tutor: boolean;
+  /** As the voice worker (modelRepair false), with the first-sentence time of each child turn. */
+  voice: boolean;
 }
 
 function parse(argv: string[]): Options {
-  const o: Options = { question: "add-27-39", model: "fake", freeTalk: true, script: null, runner: "livekit", trace: null, seed: 1, name: null, list: false, realClock: false, legacy: false, effort: null, tutor: false };
+  const o: Options = { question: "add-27-39", model: "fake", freeTalk: true, script: null, runner: "livekit", trace: null, seed: 1, name: null, list: false, realClock: false, legacy: false, effort: null, tutor: false, voice: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const v = () => {
@@ -76,6 +80,7 @@ function parse(argv: string[]): Options {
     } else if (a === "--anthropic") o.model = "anthropic";
     else if (a === "--no-free-talk") o.freeTalk = false;
     else if (a === "--tutor") o.tutor = true;
+    else if (a === "--voice") o.voice = true;
     else if (a === "--script") o.script = v();
     else if (a === "--runner") {
       const r = v();
@@ -165,17 +170,38 @@ async function main() {
   let simulated = Date.now();
   const clock = typed || o.realClock ? () => Date.now() : () => simulated;
   const callId = `text-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+  // --voice: the time from each child turn to Maya's first and last sentence.
+  let turnStart: number | null = null;
+  let firstSay: number | null = null;
+  let lastSay: number | null = null;
+  const timings: string[] = [];
   const text = createTextSession({
     callId, package: pkg, model: m, clock, random: o.seed, childName: o.name, runner: o.runner === "livekit" ? "livekit-text" : "text",
     freeTalk: o.freeTalk, reviewer: o.freeTalk ? reviewer : null, tutor: o.tutor,
+    ...(o.voice ? { modelRepair: false } : {}),
     // D-341: stream each checked sentence as it arrives, as the voice worker does; the trace times the first one.
-    onSayPart: () => {},
+    onSayPart: () => {
+      const at = Date.now();
+      if (turnStart !== null) { firstSay ??= at - turnStart; lastSay = at - turnStart; }
+    },
     onError: (e, where) => console.error(`[maya-text] ${typeof where === "string" ? where : `turn ${where.turn} ${where.source}`}: ${e instanceof Error ? e.message : String(e)}`),
   });
   console.log(`-- Maya text session ${callId}: ${typeof pkg.text === "string" ? pkg.text : o.question} (model ${m.id}, runner ${o.runner}, free talk ${o.freeTalk ? `on, review ${reviewer.id}` : "off"})`);
   const path = resolve(o.trace ?? join(root, "traces/maya", `${callId}.json`));
+  const timed = !o.voice ? text : new Proxy(text, {
+    get(target, key, receiver) {
+      if (key !== "child") return Reflect.get(target, key, receiver);
+      return async (line: string, opts?: Parameters<typeof text.child>[1]) => {
+        turnStart = Date.now(); firstSay = null; lastSay = null;
+        const out = await target.child(line, opts);
+        timings.push(`${JSON.stringify(line)}: first ${firstSay ?? "-"} ms, last ${lastSay ?? "-"} ms`);
+        turnStart = null;
+        return out;
+      };
+    },
+  });
   const { trace, error } = await runTextSession({
-    text,
+    text: timed,
     lines: () =>
       o.script
         ? (async function* () { yield* readFileSync(o.script!, "utf8").split("\n"); })()
@@ -193,6 +219,7 @@ async function main() {
     },
   });
   console.log(`-- counts: ${JSON.stringify(trace.counts)}`);
+  for (const t of timings) console.log(`-- timing ${t}`);
   // Each piece of Maya's own words, both checks and what was said (D-197).
   for (const t of trace.turns) {
     if (t.kind !== "maya" || !t.output) continue;

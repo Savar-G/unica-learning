@@ -31,6 +31,9 @@ import {
   createSession,
   fallbacks,
   tutorTeachingNow,
+  tutorStream,
+  tutorStreamSentence,
+  TUTOR_REVIEW_IGNORED,
   nextActs,
   step,
   streamPlan,
@@ -503,7 +506,55 @@ export function createTextSession(options: TextSessionOptions): TextSession {
         sent.push(next.sentence);
       }
     };
-    const onText = plan ? (soFar: string) => {
+    // D-345: a tutor message streams too. A plain teaching sentence goes out once every check passes on the words so
+    // far; any other sentence is held, alone, while its safety review runs in parallel; a refused review or a failed
+    // check stops the stream, and the rest waits for the whole message and its whole check.
+    const tutor = model.output === 3 && options.onSayPart && !folded.sent?.length && folded.pending.length === 0 ? read(() => tutorStream(folded.session)) : null;
+    const passes = (r: TalkReviewResult) => r.verdict === "pass" || (r.verdict === "fail" && r.rules.length > 0 && r.rules.every((id) => TUTOR_REVIEW_IGNORED.includes(id)));
+    // Review of #1006: nothing goes out once the request is cancelled or another one took its place.
+    // Review of #1006 (fourth check): a content hold, a safety flag or the end of the call stops the stream at once.
+    const live = () => !streamDone && !controller.signal.aborted && folded.request?.id === requestId &&
+      folded.session.contentProblem === null && !folded.session.safety.flagged && !folded.session.outcome && folded.session.state !== "CONTENT_HOLD" &&
+      // Review of #1006 (fifth check): never past the call's end, even while a tick waits behind the request.
+      !(folded.session.startedAt !== null && now() - folded.session.startedAt >= (folded.session.limits?.endAtMs ?? 600000));
+    const flushTutor = () => {
+      while (queue.length && queue[0].state !== "pending" && live()) {
+        const next = queue.shift()!;
+        if (next.state === "drop") { streamDone = true; queue.length = 0; return; }
+        firstSayMs ??= now() - at;
+        options.onSayPart!(fillName(next.sentence, session), sent.length, []);
+        sent.push(next.sentence);
+      }
+    };
+    const onTutorText = tutor ? (soFar: string) => {
+      if (!live()) return;
+      const said = partialSay(soFar);
+      if (!said || !said.kind) return;
+      // A safety or stop turn never streams (code's guidance and close come first); any other kind streams, and its
+      // sentences that are not plain teaching wait for their own review.
+      if (said.kind === "safety" || said.kind === "stop") { streamDone = true; return; }
+      const parts = sentencesOf(said.text);
+      const complete = said.complete ? parts : parts.slice(0, -1);
+      for (const sentence of complete.slice(seen)) {
+        const how = read(() => tutorStreamSentence(sentence, complete.slice(0, seen), tutor));
+        if (how === "stop" || (how === "review" && !options.reviewer)) { streamDone = true; return; }
+        seen++;
+        const item: { sentence: string; state: "ready" | "pending" | "drop" } = { sentence, state: how === "send" ? "ready" : "pending" };
+        queue.push(item);
+        if (how === "review") {
+          const input = reviewInput(session, sentence, tutor.stance);
+          const started = runReview(options.reviewer!, input, options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS);
+          streamReviews.set(reviewKey(input), { requestId, result: started });
+          void started.then((result) => {
+            if (!live()) return;
+            item.state = passes(result) ? "ready" : "drop";
+            flushTutor();
+          });
+        }
+      }
+      flushTutor();
+    } : undefined;
+    const onText = tutor ? onTutorText : plan ? (soFar: string) => {
       if (streamDone || folded.request?.id !== requestId || controller.signal.aborted) return;
       const said = partialSay(soFar);
       if (!said || !said.kind) return;
@@ -628,7 +679,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
       // With the danger known, a refused proposal gets code's guidance now, not a second model call.
       const safetyDue = folded.session.safety.flagged && !folded.session.safety.guided;
       // Words already streamed cannot be taken back: a refusal then goes straight to code's line after them.
-      const repairs = tutorTurn === null ? options.modelRepair !== false : tutorTurn;
+      // A turn a priority gate took after the model's reading (a scope redirect, a confirmation) is code's own line.
+      const repairs = tutorTurn === null ? options.modelRepair !== false : tutorTurn && read(() => tutorTeachingNow(folded.session));
       if (repairs && folded.attempts.at(-1)?.source === "model" && folded.attempts.at(-1)?.refusal && !folded.session.outcome && !safetyDue && Date.now() < turnEndsAt && !folded.sent?.length) await request("repair", controller);
       if (controller.signal.aborted) break;
       if (folded.attempts.length && !folded.session.outcome) {

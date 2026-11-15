@@ -69,7 +69,7 @@ import { ACTS, PART_LIMITS, PROPOSAL_VERSION, isModelOutput, readModelOutput, wi
 import { checkSay, checkSentence, columnSentenceTruth, equationHolds, heardColumnOf, revealsOpenStep, endsWithAsk, INSTRUCTION, MATH_WORD, PRAISE_WORDS, trimSay, equationKeysOf, equationsOf, sentencesOf, fractionValue, numberValue, timeValue, valuesOf, sameSayValue, type SayReason, type SayRules, type SayValue } from "./say-check";
 import type { TalkReviewResult } from "./talk-review";
 import { exactSafe, mathOnly, wordsOf } from "./math-vocab";
-import { checkTutorSay, childSaysFalse, isTutorQuestion, tutorDrawings, tutorFallbackText, tutorSteps, TUTOR_REVIEW_IGNORED } from "./tutor";
+import { checkTutorSay, childSaysFalse, isTutorQuestion, tutorStreamContext, type TutorStreamContext, tutorDrawings, tutorFallbackText, tutorSteps, TUTOR_REVIEW_IGNORED } from "./tutor";
 import { hideName as redactChildName } from "../child-name-redaction";
 
 /** Closing starts 9 minutes into the call; the call ends at 10 minutes. */
@@ -4970,8 +4970,27 @@ const ASKS_TUTOR = /\b(?:help|explain|why|how|teach|show|understand|get it|confu
  * the content hold, a stop, a repair, silence, a confirmation of what was heard, outside work or a fixed reply). Those
  * stay code's own, through the controller below.
  */
-export function tutorTeachingNow(s: Session): boolean {
-  return !!s.tutor && !!s.package && !s.outcome && s.expect === "maya" && isTeaching(s.state) && s.state !== "OPEN" && gate(s, {}) === null;
+export function tutorTeachingNow(s: Session, reading: Reading = {}): boolean {
+  return !!s.tutor && !!s.package && !s.outcome && s.expect === "maya" && isTeaching(s.state) && s.state !== "OPEN" && tutorGate(s, reading) === null;
+}
+
+/**
+ * The priority gates on a tutor call: the controller's, except that other-topic talk ("What is your favorite animal?")
+ * is the tutor's to answer, with the safety review (D-345: non-math talk gets the review). Outside math work, another
+ * person's work and an unsafe request stay code's redirect.
+ */
+function tutorGate(s: Session, reading: Reading): Allowed | null {
+  const g = gate(s, reading);
+  if (g?.code === "scope_first" && s.scopeDue === "other_topic" && !reading.unsafeRequest && !s.mathClaim) return null;
+  return g;
+}
+
+/** D-345: what the tutor's stream needs before the model writes: code's own stance and the question's words. Null: no stream. */
+export function tutorStream(s: Session): TutorStreamContext | null {
+  if (!s.tutor || !s.turn || !s.package || !tutorTeachingNow(s)) return null;
+  const stance = codeStance(s);
+  const credited = heardAnswers(s).flatMap((a) => (a.verdict === "right" && a.value.type === "number" ? [a.value.value] : []));
+  return tutorStreamContext(s.package, s.turn.text, stance === "none" && childSaysFalse(s.turn.text) ? "wrong" : stance, vocabExtra(s), credited);
 }
 
 /**
@@ -4982,14 +5001,17 @@ export function tutorTeachingNow(s: Session): boolean {
  */
 function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], reviews: readonly TalkReview[] | undefined, sent: readonly string[], fallback: boolean): StepResult {
   const reading = out.reading ?? {};
-  if (!tutorTeachingNow(base) || gate(base, reading) !== null) return proposeV3(base, out, effects, reviews, sent);
+  if (!tutorTeachingNow(base, reading)) return proposeV3(base, out, effects, reviews, sent);
   const no = (code: RefusalCode, reason: string, say?: SayReason | "review"): StepResult => ({ session: base, effects, refusal: { code, reason, allowed: ["guide", "close"], ...(say ? { say } : {}) } });
   const pkg = base.package!;
   const s: Session = structuredClone(base);
   // Code's credit: its own strict read of the child's turn, and each model reading code's checks agree with.
   const credited: ChildAnswer[] = [];
   if (s.turn) {
-    const candidates = [...heardAnswers(s), ...(reading.answers ?? []).filter((a) => (a.problem ?? "target") === "target")];
+    // Code's own read wins: a model reading of a value code heard as a right answer is left out (review of #1006).
+    const heard = heardAnswers(s);
+    const heardRight = (a: ChildAnswer) => heard.some((h) => h.verdict === "right" && sameValue(h.value, a.value));
+    const candidates = [...heard, ...(reading.answers ?? []).filter((a) => (a.problem ?? "target") === "target" && !(a.verdict === "wrong" && heardRight(a)))];
     for (const a of candidates) {
       if (credited.some((c) => c.step === a.step && sameValue(c.value, a.value))) continue;
       if (checkAnswers(s, [a], []) === null) credited.push(a);
@@ -5045,21 +5067,29 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   if (act === "close" && base.turn && (base.turn.text.includes("?") || ASKS_TUTOR.test(base.turn.text) || helpInWords(base.turn.text) || saysStuck(base.turn.text) || reading.help !== undefined || reading.start === "no_start")) {
     return no("act_not_allowed", "The child is asking for help now: never end the call on a child who is stuck. Answer what they asked, then ask one small question.");
   }
-  // Code's honest line asks about the step that is open after this turn's credit.
-  const text = fallback ? tutorFallbackText(pkg, s.done, s.solved !== null) : out.say.trim();
-  const verdict = checkTutorSay(text, { stance, childValues, op: pkg.operation.kind === "add" ? "add" : "subtract" });
+  // Sentences already streamed to the child stay said: the turn's words start with them.
+  const lead = sent.join(" ");
+  const extra = vocabExtra(base);
+  // Code's honest line asks about the step that is open after this turn's credit; after streamed words, only its question.
+  const honest = tutorFallbackText(pkg, s.done, s.solved !== null);
+  let text = fallback ? (sent.length ? `${lead} ${sentencesOf(honest).slice(1).join(" ")}` : honest) : out.say.trim();
+  if (!fallback && sent.length && !text.startsWith(lead)) return no("invalid_proposal", "The message must start with the sentences already said.");
+  const op = pkg.operation.kind === "add" ? "add" as const : "subtract" as const;
+  const answer = pkg.answer.value.type === "number" ? pkg.answer.value.value : undefined;
+  let verdict = checkTutorSay(text, { stance, extra, childValues, op, ...(answer === undefined ? {} : { answer }) });
+  // Code's own line never fails its turn: after streamed words that leave no room, the turn is those words.
+  if (fallback && !verdict.ok && sent.length) { text = lead; verdict = checkTutorSay(text, { stance: "none", extra, op }); }
   if (!verdict.ok) return no("say_check", `Your message was refused (${verdict.reason}): ${verdict.detail}`, verdict.reason);
   if (act === "close" && /\?\s*$/.test(text)) return no("say_check", "A close ends the call, so it asks nothing: say a short goodbye with no question.", "close_asks");
-  // Child safety: a message that is not plain math is reviewed as a whole before it is said (the adapter runs it).
-  let talk: TalkCheck[] = [];
-  if (verdict.needsReview && !fallback) {
-    if (reviews === undefined) talk = [{ proposed: text, code: null, review: "not_run", shown: text }];
-    else {
-      const r = reviews.find((x) => x.text === text)?.result ?? null;
-      const pass = r?.verdict === "pass" || (r?.verdict === "fail" && r.rules.length > 0 && r.rules.every((id) => TUTOR_REVIEW_IGNORED.includes(id)));
-      if (!pass) return no("say_review", `The safety review refused your message: ${r?.verdict === "fail" ? `${r.reason} (${r.rules.join(", ")})` : r?.reason ?? "no review"}. Say it another way.`, "review");
-      talk = [{ proposed: text, code: null, review: "pass", shown: text, ...(r?.verdict === "fail" ? { rules: [...r.rules] } : {}) }];
-    }
+  // Child safety: each sentence that is not plain teaching is reviewed before it is said (the adapter runs the reviews,
+  // in parallel with the stream). Code's own line is not reviewed.
+  const talk: TalkCheck[] = [];
+  if (!fallback) for (const sentence of verdict.review) {
+    if (reviews === undefined) { talk.push({ proposed: sentence, code: null, review: "not_run", shown: sentence }); continue; }
+    const r = reviews.find((x) => x.text === sentence)?.result ?? null;
+    const pass = r?.verdict === "pass" || (r?.verdict === "fail" && r.rules.length > 0 && r.rules.every((id) => TUTOR_REVIEW_IGNORED.includes(id)));
+    if (!pass) return no("say_review", `The safety review refused "${sentence}": ${r?.verdict === "fail" ? `${r.reason} (${r.rules.join(", ")})` : r?.reason ?? "no review"}. Say it another way.`, "review");
+    talk.push({ proposed: sentence, code: null, review: "pass", shown: sentence, ...(r?.verdict === "fail" ? { rules: [...r.rules] } : {}) });
   }
   // Help and assistance for the outcome: a message that tells an open step's result is a show (guided), else a hint.
   const tutor = { help: progress ? 0 : s.solved === null ? (s.tutor?.help ?? 0) + 1 : 0, drawn: [...(s.tutor?.drawn ?? [])] };
@@ -5082,6 +5112,7 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   s.turn = null;
   delete s.mathClaim;
   delete s.thinking;
+  delete s.scopeDue;
   if (act === "close") end(s, closeCause(base), effects, false);
   else waitForChild(s);
   return { session: s, effects, refusal: null };

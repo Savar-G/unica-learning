@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import type { OperationPackage } from "@/lib/question-package";
-import { checkTutorSay, childFacts, isTutorQuestion, numberMeaning, stepFacts, tutorDrawings, tutorFallbackText } from "./tutor";
+import { checkTutorSay, plainTeaching, childFacts, isTutorQuestion, numberMeaning, stepFacts, tutorDrawings, tutorFallbackText } from "./tutor";
 
 // The tutor core's pure parts (D-345): which questions it teaches, the facts in its brief, the whole-message check,
 // code's honest line and the board drawings.
@@ -69,6 +69,12 @@ describe("checkTutorSay: the whole-message check", () => {
     expect(checkTutorSay("So 2 ones become 12 ones.", none)).toMatchObject({ ok: true });
     expect(checkTutorSay("So 2 ones become 11 ones.", none)).toMatchObject({ ok: false, reason: "false_equation" });
     expect(checkTutorSay("The 5 tens become 4 tens.", none)).toMatchObject({ ok: true });
+    // Real run, 2026-11-14: a true regroup said with "is now" was refused before.
+    expect(checkTutorSay("So we borrow: we trade 1 ten for 10 ones, and 52 is now 4 tens and 12 ones.", none)).toMatchObject({ ok: true });
+    expect(checkTutorSay("52 is now 4 tens and 2 ones.", none)).toMatchObject({ ok: false, reason: "false_equation" });
+    expect(checkTutorSay("The 5 tens are now 4 tens.", none)).toMatchObject({ ok: true });
+    expect(checkTutorSay("The 2 ones are now 12 ones.", none)).toMatchObject({ ok: true });
+    expect(checkTutorSay("The 2 ones are now 13 ones.", none)).toMatchObject({ ok: false, reason: "false_equation" });
   });
   it("has one hard ceiling and never trims", () => {
     const long = Array.from({ length: 61 }, () => "ones").join(" ") + ".";
@@ -85,8 +91,16 @@ describe("checkTutorSay: the whole-message check", () => {
     expect(checkTutorSay("Not quite. 6 is 8 minus 2, the other way around. Where could we get more ones?", { stance: "wrong" })).toMatchObject({ ok: true });
   });
   it("sends a plain math message without the talk review, and any other words to it", () => {
-    expect(checkTutorSay("What is 12 minus 8?", none)).toEqual({ ok: true, needsReview: false });
-    expect(checkTutorSay("Good question. What is 12 minus 8?", none)).toEqual({ ok: true, needsReview: true });
+    expect(checkTutorSay("What is 12 minus 8?", none)).toEqual({ ok: true, needsReview: false, review: [] });
+    // Sixth check of #1006: a lead-in that can answer the child ("Good question", "Yes") is reviewed.
+    expect(checkTutorSay("Good question. What is 12 minus 8?", none)).toEqual({ ok: true, needsReview: true, review: ["Good question."] });
+    expect(checkTutorSay("You did well. What is 12 minus 8?", none)).toEqual({ ok: true, needsReview: true, review: ["You did well."] });
+    expect(checkTutorSay("I'm an AI, so I don't have a dog. What is 12 minus 8?", none)).toMatchObject({ review: [] });
+    expect(checkTutorSay("Dogs are fun. What is 12 minus 8?", none)).toMatchObject({ review: ["Dogs are fun."] });
+    expect(checkTutorSay("I'm an AI, so I don't have a dog. What is 12 minus 8?", none)).toMatchObject({ review: [] });
+    for (const x of ["I'm an AI, so I don't have a favorite animal.", "I'm an AI, so I don't have a favorite secret friend at home.", "I'm an AI, so I don't have a favorite sex toy."]) {
+      expect(checkTutorSay(`${x} What is 12 minus 8?`, none)).toMatchObject({ review: [x] });
+    }
   });
 });
 
@@ -159,4 +173,14 @@ describe("falseClaims: trades and quantities, both directions (third check of #1
     ["4 is 4 tens left.", sub], ["5 tens are now 6 tens left.", sub], ["52 is the 4 tens and 2 ones.", sub], ["4 tens is the 5 tens.", sub],
     ["One ten is now three tens.", add],
   ])("refuses %s", (x, ctx) => expect(checkTutorSay(x, ctx)).toMatchObject({ ok: false }));
+});
+
+describe("plainTeaching (re-check of #1006)", () => {
+  it.each(["12 minus 8 is 4.", "Now the tens: what is 4 minus 2?", "So, 12 minus 8 is 4.", "{name}, what is 12 minus 8?", "I'm an AI helper."])("sends %s with no review", (x) => expect(plainTeaching(x)).toBe(true));
+  // Sixth check of #1006: words that agree with or deny what the child said are reviewed, and so is an approved sentence
+  // whose meaning depends on the child's turn.
+  it.each(["Yes.", "No.", "Yes, 12 minus 8 is 4.", "Not quite: 6 is 8 minus 2, the other way around.", "No, 6 is not right.", "Okay.", "Right.", "That sounds fun.", "That sounds nice.", "Thanks for telling me.", "{name}."])("reviews %s", (x) => expect(plainTeaching(x)).toBe(false));
+  // The closed forms of the fourth check of #1006: a teaching sentence in other words is reviewed (in parallel).
+  it.each(["Sure, {name}.", "Good question: in the ones, 2 ones is too small to take 8 away."])("reviews %s", (x) => expect(plainTeaching(x)).toBe(false));
+  it.each(["No good at math, {name}, not even 2 plus 2.", "Not good at this at all, not even 2 plus 2.", "We are not good at math, not even 2 plus 2.", "You are no good at math, not even 2 plus 2.", "2 is too hard for you.", "Sure, you can't do this.", "That's a fun question.", "I'm proud of you."])("reviews %s", (x) => expect(plainTeaching(x)).toBe(false));
 });

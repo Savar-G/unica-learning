@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { openingLine, type TutorBrief } from "@/lib/maya";
+import { openingLine, plainTeaching, type TutorBrief } from "@/lib/maya";
 import { conversationalFake, reply } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { createTextSession } from "@/lib/maya-text";
@@ -52,9 +52,8 @@ describe("the tutor core, test case 1: Savar's call", () => {
     expect(b.facts.join(" ")).toContain("The child said 2");
     expect(b).not.toHaveProperty("acts");
     expect(JSON.stringify(b)).not.toContain("Ava");
-    // The message held talk, so the safety review read it as a whole, as a tutor review.
-    expect(reviewer.requests).toHaveLength(1);
-    expect(reviewer.requests[0]).toMatchObject({ tutor: true, line: TARGET });
+    // Only the statement about the child is reviewed (review of #1006); the math sentences are plain teaching.
+    expect(reviewer.requests.map((r) => r.line)).toContain("You're right that 2 is too small to take 8 away.");
     const trace = await session.finish({ reason: "child_stopped" });
     expect(checkTrace(trace).ok).toBe(true);
     expect(trace.counts).toMatchObject({ overrides: 0, fallbacks: 0, refusals: 0, longestMayaRun: 1 });
@@ -203,6 +202,121 @@ describe("the board never costs the child Maya's words", () => {
   });
 });
 
+describe("the tutor message streams to the voice sentence by sentence (D-345, the CoS rule of 2026-11-14)", () => {
+  function streamed(say: string, review?: (input: TalkReviewInput) => TalkReviewResult | Promise<TalkReviewResult>, extra: Parameters<typeof reply>[2] = {}) {
+    let now = T0;
+    const parts: string[] = [];
+    let beforeEnd: string[] = [];
+    const model = conversationalFake({
+      answer: () => ({ ...reply(say, "guide", extra), ...(extra.reading?.outsideScope ? { kind: "offtopic" } : {}) }),
+      stream: { chunk: 7, beforeEnd: async () => { await new Promise((r) => setTimeout(r, 30)); beforeEnd = [...parts]; } },
+    });
+    const requests: TalkReviewInput[] = [];
+    const reviewer = { id: "fake-review", promptVersion: "t", review: async (input: TalkReviewInput) => { requests.push(input); return review ? review(input) : { verdict: "pass" as const }; } };
+    const session = createTextSession({ callId: "tutor-s", package: PKG, model, clock: () => (now += 500), random: 3, childName: "Ava", reviewer, tutor: true, onSayPart: (sentence) => parts.push(sentence) });
+    return { session, parts, before: () => beforeEnd, requests };
+  }
+
+  it("sends each plain math sentence while the model still writes, with no review", async () => {
+    const t = streamed("12 minus 8 is 4. Now the tens: what is 4 minus 2?");
+    await t.session.start();
+    t.parts.length = 0;
+    const out = await t.session.child("12 minus 8 is 4");
+    expect(t.before()).toEqual(["12 minus 8 is 4.", "Now the tens: what is 4 minus 2?"]);
+    expect(t.parts).toEqual(["12 minus 8 is 4.", "Now the tens: what is 4 minus 2?"]);
+    expect(t.requests).toHaveLength(0);
+    expect(out.say).toEqual(["12 minus 8 is 4. Now the tens: what is 4 minus 2?"]);
+    const trace = await t.session.finish({ reason: "child_stopped" });
+    expect(trace.turns.filter((x) => x.kind === "maya").at(-1)).toMatchObject({ attempts: [expect.objectContaining({ firstSayMs: expect.any(Number) })] });
+  });
+
+  it("holds only a personal sentence for its review, in order, and says the rest after it passes", async () => {
+    let pass!: () => void;
+    const gate = new Promise<void>((r) => { pass = r; });
+    const t = streamed("You did that part well, {name}. What is 12 minus 8?", async () => { await gate; return { verdict: "pass" }; });
+    await t.session.start();
+    t.parts.length = 0;
+    const done = t.session.child(SAVAR);
+    await new Promise((r) => setTimeout(r, 80));
+    // The first sentence is under review: nothing goes out, and the plain sentence waits behind it.
+    expect(t.parts).toEqual([]);
+    expect(t.requests.map((r) => r.line)).toEqual(["You did that part well, {name}."]);
+    expect(t.requests[0]).toMatchObject({ tutor: true });
+    pass();
+    const out = await done;
+    expect(out.say).toEqual(["You did that part well, Ava. What is 12 minus 8?"]);
+    expect(t.parts).toEqual(["You did that part well, Ava.", "What is 12 minus 8?"]);
+    expect(t.requests).toHaveLength(1);
+  });
+
+  it("stops at a sentence its review refuses, says nothing after it, and repairs when nothing was said", async () => {
+    const t = streamed("You are not good at this. What is 12 minus 8?", (input) => input.line.startsWith("You are") ? { verdict: "fail", rules: ["unkind"], reason: "unkind" } : { verdict: "pass" });
+    await t.session.start();
+    t.parts.length = 0;
+    const out = await t.session.child(SAVAR);
+    expect(t.parts.join(" ")).not.toContain("not good");
+    expect(out.say.join(" ")).not.toContain("not good");
+  });
+
+  it("never streams a first \"yes\" before code knows whether the child is right", async () => {
+    const t = streamed("Yes, that's it. What is 4 minus 2?");
+    await t.session.start();
+    t.parts.length = 0;
+    await t.session.child("is it 4?");
+    expect(t.before()).toEqual([]);
+  });
+
+  it("streams a first \"not quite\" when no number the child said is right", async () => {
+    const t = streamed("Not quite, 6 is 8 minus 2. What is 12 minus 8?");
+    await t.session.start();
+    t.parts.length = 0;
+    await t.session.child("Is 2 minus 8, 6?");
+    expect(t.before()).toEqual(["Not quite, 6 is 8 minus 2.", "What is 12 minus 8?"]);
+  });
+
+  it("streams other-topic talk too, holding its personal sentence for the review", async () => {
+    const t = streamed("That's a fun question, and I'm an AI. What is 12 minus 8?", undefined, { reading: { offTopic: true, outsideScope: "other_topic" } });
+    await t.session.start();
+    t.parts.length = 0;
+    const out = await t.session.child("What is your favorite animal?");
+    expect(out.say).toEqual(["That's a fun question, and I'm an AI. What is 12 minus 8?"]);
+    expect(t.requests.map((r) => r.line)).toEqual(["That's a fun question, and I'm an AI."]);
+    expect(t.parts).toEqual(["That's a fun question, and I'm an AI.", "What is 12 minus 8?"]);
+  });
+
+  it("never streams a false equation", async () => {
+    const t = streamed("12 minus 8 is 5. What is 4 minus 2?");
+    await t.session.start();
+    t.parts.length = 0;
+    const out = await t.session.child(SAVAR);
+    expect(t.parts.join(" ")).not.toContain("is 5");
+    expect(out.say.join(" ")).not.toContain("is 5");
+  });
+});
+
+describe("code's stance and other-topic talk (D-345, real runs of 2026-11-14)", () => {
+  it("never says yes to a false equation the child says, even on a step that is done", async () => {
+    const { session, briefs } = call((_, n) => n === 0 ? reply("Yes! Now the tens.", "guide") : reply("Not quite: 12 minus 8 is 4. What is 4 minus 2?", "guide"));
+    await session.start();
+    await session.child("12 minus 8 is 5");
+    expect(JSON.stringify(briefs[1].repair)).toContain("affirms_wrong");
+  });
+  it("answers other-topic talk itself, with the safety review, and goes back to the math", async () => {
+    const say = "That's a fun question, and I'm an AI, so I have no pets. Let's go back to 52 minus 28: what is 12 minus 8?";
+    const { session, reviewer } = call(() => reply(say, "guide", { reading: { offTopic: true, outsideScope: "other_topic" } }));
+    await session.start();
+    const out = await session.child("What is your favorite animal?");
+    expect(out.say).toEqual([say]);
+    expect(reviewer.requests.map((r) => r.line)).toContain("That's a fun question, and I'm an AI, so I have no pets.");
+  });
+  it("keeps code's redirect for outside math work", async () => {
+    const { session } = call(() => reply("Sure, 7 times 8 is 56. What is 12 minus 8?", "guide", { reading: { outsideScope: "outside_work", mathRequests: [{ text: "7 times 8", operation: "multiply", operands: [{ type: "number", value: 7 }, { type: "number", value: 8 }] }] } }));
+    await session.start();
+    const out = await session.child("What is 7 times 8?");
+    expect(out.say.join(" ")).not.toContain("56");
+  });
+});
+
 describe("review of #1002: false math and false feedback never reach the child", () => {
   it("writes only a whole equation as a board note, never other text", async () => {
     const { session } = call(() => reply("What is 12 minus 8?", "guide", { draw: [{ offer: "note", place: "You are stupid. 1+1=2" }, { offer: "note", place: "12 - 8 = 4" }] }));
@@ -275,6 +389,72 @@ describe("re-check of #1002 (2026-11-14): the remaining gaps", () => {
   });
 });
 
+describe("review of #1006: the stream never sends what the whole check would not", () => {
+  const pause = () => new Promise<void>((r) => setTimeout(r, 5));
+  function rejectAll(say: string, reading: Record<string, unknown> = {}) {
+    let now = T0;
+    const parts: string[] = [];
+    const reviews: TalkReviewInput[] = [];
+    let early: string[] = [];
+    const model = conversationalFake({ answer: () => reply(say, "guide", { reading }), stream: { chunk: 7, beforeEnd: async () => { await pause(); early = [...parts]; } } });
+    const session = createTextSession({ callId: "s1006", package: PKG, model, tutor: true, clock: () => (now += 100), random: 3, onSayPart: (s) => parts.push(s),
+      reviewer: { id: "reject", promptVersion: "t", review: async (input: TalkReviewInput) => { reviews.push(input); return { verdict: "fail" as const, rules: ["unkind" as const], reason: "no" }; } } });
+    return { session, parts, reviews, early: () => early };
+  }
+
+  it("reviews an unkind personal sentence even with a number in it", async () => {
+    const t = rejectAll("You are no good at math, not even 2 plus 2. What is 12 minus 8?");
+    await t.session.start();
+    t.parts.length = 0;
+    const out = await t.session.child("I need help");
+    expect(t.reviews.map((r) => r.line)).toContain("You are no good at math, not even 2 plus 2.");
+    expect([...t.parts, ...out.say].join(" ")).not.toContain("no good");
+  });
+
+  it("holds an outside answer until the scope reading, then gives code's redirect", async () => {
+    const t = rejectAll("The answer is 56. What is 12 minus 8?", { outsideScope: "outside_work", mathRequests: [{ text: "7 times 8", operation: "multiply", operands: [{ type: "number", value: 7 }, { type: "number", value: 8 }] }] });
+    await t.session.start();
+    t.parts.length = 0;
+    const out = await t.session.child("Please help with my homework.");
+    expect(t.early()).toEqual([]);
+    expect([...t.parts, ...out.say].join(" ")).not.toContain("56");
+  });
+
+  it("never streams a yes the final check can refuse", async () => {
+    const t = rejectAll("Yes, 4 is the answer. What is 12 minus 8?", { answers: [{ value: { type: "number", value: 4 }, step: "result", problem: "target", verdict: "wrong" }] });
+    await t.session.start();
+    t.parts.length = 0;
+    const out = await t.session.child("I got 4.");
+    expect(t.early()).toEqual([]);
+    expect([...t.parts, ...out.say].join(" ")).not.toContain("Yes, 4 is the answer.");
+  });
+
+  it("sends nothing after the request is cancelled, even when its review passes later", async () => {
+    let endModel!: () => void;
+    let passReview!: (v: TalkReviewResult) => void;
+    let reviewStarted!: () => void;
+    const started = new Promise<void>((r) => { reviewStarted = r; });
+    const pendingReview = new Promise<TalkReviewResult>((r) => { passReview = r; });
+    const pendingModel = new Promise<void>((r) => { endModel = r; });
+    const parts: string[] = [];
+    const model = conversationalFake({ answer: () => reply("You did that part well. What is 12 minus 8?", "guide"), stream: { chunk: 7, beforeEnd: () => pendingModel } });
+    const session = createTextSession({ callId: "cancel-1006", package: PKG, tutor: true, model, clock: () => T0, onSayPart: (s) => parts.push(s),
+      reviewer: { id: "held", promptVersion: "t", review: () => { reviewStarted(); return pendingReview; } } });
+    await session.start();
+    parts.length = 0;
+    const out = session.child("I need help");
+    await started;
+    session.cancelPending();
+    expect((await out).cancelled).toBe(true);
+    passReview({ verdict: "pass" });
+    await pause();
+    expect(parts).toEqual([]);
+    endModel();
+    await pause();
+    await session.finish();
+  });
+});
+
 describe("third check of #1002 (2026-11-14)", () => {
   it.each(["4 is 4 tens left.", "5 tens are now 6 tens left.", "4 tens is the 5 tens.", "52 is the 4 tens and 2 ones."])("refuses %s", async (bad) => {
     const say = `${bad} What is 12 minus 8?`;
@@ -299,5 +479,164 @@ describe("third check of #1002 (2026-11-14)", () => {
     await session.start();
     expect((await session.child("I need help")).say).toEqual([say]);
     expect(briefs).toHaveLength(1);
+  });
+});
+
+describe("re-check of #1006 (2026-11-14)", () => {
+  const pause = () => new Promise<void>((r) => setTimeout(r, 5));
+  function rejectAll(say: string, reading: Record<string, unknown> = {}) {
+    let now = T0;
+    const parts: string[] = [];
+    const reviews: TalkReviewInput[] = [];
+    let early: string[] = [];
+    const model = conversationalFake({ answer: () => reply(say, "guide", { reading }), stream: { chunk: 7, beforeEnd: async () => { await pause(); early = [...parts]; } } });
+    const session = createTextSession({ callId: "r1006", package: PKG, model, tutor: true, clock: () => (now += 100), random: 3, childName: "Ava", onSayPart: (s) => parts.push(s),
+      reviewer: { id: "reject", promptVersion: "t", review: async (input: TalkReviewInput) => { reviews.push(input); return { verdict: "fail" as const, rules: ["unkind" as const], reason: "no" }; } } });
+    return { session, parts, reviews, early: () => early };
+  }
+  it.each(["No good at math, {name}, not even 2 plus 2.", "Not good at this at all, not even 2 plus 2.", "We are not good at math, not even 2 plus 2."])("reviews %s", async (bad) => {
+    const t = rejectAll(`${bad} What is 12 minus 8?`);
+    await t.session.start();
+    t.parts.length = 0;
+    const out = await t.session.child("I need help");
+    expect([...t.parts, ...out.say].join(" ")).not.toContain("good");
+  });
+  it.each(["4 plus 8 is 12.", "30 minus 6 is 24."])("never streams the outside operation %s", async (outside) => {
+    const t = rejectAll(`${outside} What is 12 minus 8?`, { outsideScope: "outside_work", mathRequests: [{ text: "4 plus 8", operation: "add", operands: [{ type: "number", value: 4 }, { type: "number", value: 8 }] }] });
+    await t.session.start();
+    t.parts.length = 0;
+    const out = await t.session.child("Please help with my homework.");
+    expect(t.early()).toEqual([]);
+    expect([...t.parts, ...out.say].join(" ")).not.toContain(outside);
+  });
+  it("still streams this question's own work at once", async () => {
+    const t = rejectAll("12 minus 8 is 4. Now the tens: what is 4 minus 2?");
+    await t.session.start();
+    t.parts.length = 0;
+    await t.session.child("12 minus 8 is 4");
+    expect(t.early()).toEqual(["12 minus 8 is 4.", "Now the tens: what is 4 minus 2?"]);
+    expect(t.reviews).toHaveLength(0);
+  });
+});
+
+describe("third check of #1006 (2026-11-14)", () => {
+  it("reviews every AI-frame sentence that is not an exact approved one", async () => {
+    let now = T0;
+    const parts: string[] = [];
+    const reviews: TalkReviewInput[] = [];
+    const say = "I'm an AI, so I don't have a favorite sex toy. What is 12 minus 8?";
+    const model = conversationalFake({ answer: () => reply(say, "guide", { reading: { offTopic: true, outsideScope: "other_topic" } }), stream: { chunk: 7 } });
+    const session = createTextSession({ callId: "c1006", package: PKG, model, tutor: true, clock: () => (now += 100), random: 3, onSayPart: (s) => parts.push(s),
+      reviewer: { id: "reject", promptVersion: "t", review: async (input: TalkReviewInput) => { reviews.push(input); return { verdict: "fail" as const, rules: ["sexual" as const], reason: "no" }; } } });
+    await session.start();
+    parts.length = 0;
+    const out = await session.child("What is your favorite toy?");
+    expect(reviews.map((r) => r.line)).toContain("I'm an AI, so I don't have a favorite sex toy.");
+    expect([...parts, ...out.say].join(" ")).not.toContain("toy");
+  });
+});
+
+describe("fourth check of #1006 (2026-11-14)", () => {
+  const pause = () => new Promise<void>((r) => setTimeout(r, 5));
+  it.each([
+    "2 fingers go into the bottom of {name}.", "2 tens is a good number for a dumb kid.", "The ones are your secret.", "12 is how old you look.",
+    "4 tens and 2 ones go home alone.", "Now the tens: you are slow.",
+  ])("reviews %s", async (bad) => {
+    let now = T0;
+    const parts: string[] = [];
+    const reviews: TalkReviewInput[] = [];
+    const model = conversationalFake({ answer: () => reply(`${bad} What is 12 minus 8?`, "guide"), stream: { chunk: 7 } });
+    const session = createTextSession({ callId: "d1006", package: PKG, model, tutor: true, clock: () => (now += 100), random: 3, childName: "Ava", onSayPart: (s) => parts.push(s),
+      reviewer: { id: "reject", promptVersion: "t", review: async (input: TalkReviewInput) => { reviews.push(input); return { verdict: "fail" as const, rules: ["unkind" as const], reason: "no" }; } } });
+    await session.start();
+    parts.length = 0;
+    const out = await session.child("I need help");
+    expect([...parts, ...out.say].join(" ")).not.toContain(bad.replace("{name}", "Ava").slice(0, 12));
+  });
+  it("stops the stream at once on a content hold, even when a review passes later", async () => {
+    let passReview!: (v: TalkReviewResult) => void;
+    let reviewStarted!: () => void;
+    let endModel!: () => void;
+    const started = new Promise<void>((r) => { reviewStarted = r; });
+    const pendingReview = new Promise<TalkReviewResult>((r) => { passReview = r; });
+    const pendingModel = new Promise<void>((r) => { endModel = r; });
+    const parts: string[] = [];
+    const model = conversationalFake({ answer: () => reply("That part was quick. What is 12 minus 8?", "guide"), stream: { chunk: 7, beforeEnd: () => pendingModel } });
+    const session = createTextSession({ callId: "hold-1006", package: PKG, tutor: true, model, clock: () => T0, onSayPart: (s) => parts.push(s),
+      reviewer: { id: "held", promptVersion: "t", review: () => { reviewStarted(); return pendingReview; } } });
+    await session.start();
+    parts.length = 0;
+    const out = session.child("I need help");
+    await started;
+    const held = session.contentProblem("the worked steps disagree");
+    await pause();
+    passReview({ verdict: "pass" });
+    await pause();
+    expect(parts).toEqual([]);
+    endModel();
+    await Promise.all([out, held]);
+    await pause();
+    expect(parts.join(" ")).not.toContain("What is 12 minus 8?");
+  });
+  it.each(["12 minus 8 is 4.", "Now the tens: what is 4 minus 2?", "So we trade 1 ten for 10 ones.", "52 is 4 tens and 12 ones.", "Write 4 in the ones.", "How many tens are left?"])("still sends %s with no review", (x) => {
+    expect(plainTeaching(x)).toBe(true);
+  });
+});
+
+describe("fifth check of #1006 (2026-11-15)", () => {
+  it("sends nothing past the call's end, even when a held review passes later", async () => {
+    let now = T0;
+    let passReview!: (v: TalkReviewResult) => void;
+    let reviewStarted!: () => void;
+    let endModel!: () => void;
+    const started = new Promise<void>((r) => { reviewStarted = r; });
+    const pendingReview = new Promise<TalkReviewResult>((r) => { passReview = r; });
+    const pendingModel = new Promise<void>((r) => { endModel = r; });
+    const parts: string[] = [];
+    const model = conversationalFake({ answer: () => reply("You did that part well. What is 12 minus 8?", "guide"), stream: { chunk: 7, beforeEnd: () => pendingModel } });
+    const session = createTextSession({ callId: "deadline-1006", package: PKG, tutor: true, model, clock: () => now, onSayPart: (s) => parts.push(s),
+      reviewer: { id: "held", promptVersion: "t", review: () => { reviewStarted(); return pendingReview; } } });
+    await session.start();
+    parts.length = 0;
+    const out = session.child("I need help");
+    await started;
+    now = T0 + 600_001;
+    const tick = session.tick();
+    passReview({ verdict: "pass" });
+    await new Promise((r) => setTimeout(r, 5));
+    expect(parts).toEqual([]);
+    endModel();
+    await Promise.all([out, tick]);
+    expect(parts.join(" ")).not.toContain("You did that part well.");
+  });
+});
+
+// Sixth check of #1006 (Sol, 2026-11-15): an acknowledgement or a bare "Yes" can agree with harm the child named. Each
+// is reviewed before the child hears it; the reviewer's fail keeps it unsaid.
+describe("sixth check of #1006 (2026-11-15)", () => {
+  const SUB6 = SAMPLE_PACKAGES["subtract-52-28"] as OperationPackage;
+  const settle = async () => { for (let i = 0; i < 60; i++) await Promise.resolve(); };
+  const run = async (say: string, child: string) => {
+    const parts: string[] = [];
+    const reviews: string[] = [];
+    let early: string[] = [];
+    const model = conversationalFake({ answer: () => reply(say, "guide", { reading: { offTopic: true, outsideScope: "other_topic" } }), stream: { chunk: 7, beforeEnd: async () => { await settle(); early = [...parts]; } } });
+    const s = createTextSession({ callId: "sixth-check", package: SUB6, tutor: true, model, clock: () => Date.UTC(2026, 10, 15), onSayPart: (x) => parts.push(x), reviewer: { id: "reject", promptVersion: "t", review: async (input) => { reviews.push(input.line); return { verdict: "fail", rules: ["violent"], reason: "agrees with hurting another child" } as TalkReviewResult; } } });
+    await s.start();
+    parts.length = 0;
+    const out = await s.child(child);
+    return { parts, reviews, early, out };
+  };
+  it.each(["That sounds fun.", "That sounds nice."])("reviews %s before it answers harm to another child", async (phrase) => {
+    const r = await run(`${phrase} What is 12 minus 8?`, "I like to hurt my little sister.");
+    expect(r.early).toEqual([]);
+    expect(r.reviews).toContain(phrase);
+    expect(r.parts).not.toContain(phrase);
+  });
+  it("reviews a bare Yes before it answers a request to hurt another child", async () => {
+    const r = await run("Yes. What is 12 minus 8?", "Can I hurt my little sister for fun?");
+    expect(r.early).toEqual([]);
+    expect(r.reviews).toContain("Yes.");
+    expect(r.parts).not.toContain("Yes.");
   });
 });

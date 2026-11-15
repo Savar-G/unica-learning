@@ -14,8 +14,8 @@
 // Phase 1 scope: 2-digit whole-number addition and subtraction (`isTutorQuestion`), on admin test calls.
 import type { OperationPackage, WorkedStep } from "@/lib/question-package";
 import { affirms, equationHolds, equationsOf, neverSayProblem, sayNumbers, sentencesOf } from "./say-check";
+import { exactSafe } from "./math-vocab";
 import { falseClaims } from "./tutor-math";
-import { mathOnly } from "./math-vocab";
 
 /** The hard ceiling of one Maya message, in words. Over it, the model gets one repair with the reason; code never trims. */
 export const TUTOR_WORD_LIMIT = 60;
@@ -23,8 +23,69 @@ export const TUTOR_WORD_LIMIT = 60;
 /** Review rules that only shape talk: the tutor review ignores them (D-345). The math rule: code checks the math. */
 export const TUTOR_REVIEW_IGNORED: readonly string[] = ["math", "plain_language", "held_limit"];
 
-/** Words of a teaching sentence that are math, not talk, beyond the math vocabulary (so they skip the talk review). */
-const TUTOR_MATH_WORDS: ReadonlySet<string> = new Set(["become", "becomes", "make", "makes", "borrow", "borrowed", "trade", "traded", "swap", "left", "now", "have", "has", "get", "gives", "take", "takes", "away", "more", "enough", "small", "smaller", "bigger", "too", "into"]);
+
+/**
+ * A sentence the child may hear with no safety review (D-345; the CoS rule of 2026-11-14: review only non-math or
+ * personal content). Only an exact approved sentence (EXACT_SAFE), or a sentence whose every clause is one of the
+ * complete math forms in PLAIN_FORMS (numbers, places and operations only). The never-say patterns and the math checks
+ * run on every sentence either way.
+ */
+export function plainTeaching(sentence: string, _extra: ReadonlySet<string> = new Set()): boolean {
+  void _extra;
+  const text = sentence.replace(/[’]/g, "'").replace(/[−–]/g, "-").trim();
+  // Only the exact approved sentences skip the review as they are; an open frame never does (review of #1006).
+  // Sixth check of #1006: only an approved sentence that means the same after any child turn ("I'm an AI helper").
+  // "That sounds fun", "Thanks for telling me" and the like depend on what the child said, so they are reviewed.
+  if (exactSafe(text)) return CONTEXT_FREE.test(text);
+  // Review of #1006 (four rounds): no word list decides it. Each clause (split at ":", ";" and ","), after a short
+  // spoken lead-in, must match one of a few complete math forms built only from numbers, places and operations
+  // (PLAIN_FORMS). Every other sentence is reviewed, in parallel with the stream.
+  // Sixth check of #1006: a sentence with no math clause left after its lead-in ("Yes.") is reviewed: a bare word can
+  // answer anything the child asked.
+  const clauses = text.replace(/[.!?]+\s*$/, "").split(/\s*[:;,]\s*/).map((raw) => {
+    let clause = raw.trim();
+    for (let k = 0; k < 4; k++) clause = clause.replace(LEAD_IN, "").trim();
+    return clause;
+  });
+  return clauses.some((c) => c !== "") && clauses.every((c) => c === "" || PLAIN_FORMS.some((re) => re.test(c)));
+}
+
+const N = String.raw`(?:\d{1,3}|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)`;
+const U = String.raw`(?:ones?|tens?|hundreds?)`;
+const Q = String.raw`(?:${N}(?:\s+${U})?)`;
+const E = String.raw`(?:${Q}(?:\s+(?:plus|minus|take away|\+|-)\s+(?:the\s+)?${Q})*)`;
+const PLACE = String.raw`(?:the\s+)?${U}(?:\s+(?:column|place))?`;
+/** The complete math forms a clause may take with no review. Nothing else: no person, no object, no feeling. */
+const PLAIN_FORMS: readonly RegExp[] = [
+  // "12 minus 8 is 4", "6 is 8 minus 2", "52 is 4 tens and 12 ones", "2 minus 8 isn't 6"
+  new RegExp(String.raw`^(?:so\s+)?${E}\s+(?:is|equals|=|makes|is not|isn't)\s+${E}(?:\s+and\s+${Q})*$`, "i"),
+  // "6 is not right", "4 is right for the ones"
+  new RegExp(String.raw`^${E}\s+(?:is|isn't|is not)\s+(?:right|correct)(?:\s+for\s+${PLACE})?$`, "i"),
+    // "What is 12 minus 8?", "What do you get for 4 minus 2?"
+  new RegExp(String.raw`^(?:so\s+)?(?:what is|what's|what do you get for|what do we get for)\s+${E}$`, "i"),
+  // "How many ones are left?", "How many tens do we have now?"
+  new RegExp(String.raw`^how many ${U}(?:\s+(?:are left|are there|do we have(?: now)?|now))?$`, "i"),
+  // "What do we write in the ones?", "What goes in the tens place?"
+  new RegExp(String.raw`^what (?:do we write|do you write|goes|do we put|do you put) in ${PLACE}$`, "i"),
+  // "What is the whole answer?"
+  /^what is the (?:whole |final )?answer$/i,
+  // "Write 4 in the ones", "Put 2 in the tens place"
+  new RegExp(String.raw`^(?:write|put) ${N} in ${PLACE}$`, "i"),
+  // "Trade 1 ten for 10 ones", "We trade one ten for ten ones"
+  new RegExp(String.raw`^(?:we\s+)?(?:trade|regroup)\s+(?:1|one|a)\s+ten\s+(?:for|into|as)\s+(?:10|ten)\s+ones$`, "i"),
+  // "Subtract the ones", "Add the tens"
+  new RegExp(String.raw`^(?:now\s+)?(?:subtract|add)\s+${PLACE}$`, "i"),
+  // "the tens", "in the ones column", "the other way around"
+  new RegExp(String.raw`^(?:(?:in|for|on|to)\s+)?${PLACE}$`, "i"),
+  /^the other way around$/i,
+];
+
+/** A short spoken lead-in before the math of a clause: fixed words only. */
+// Sixth check of #1006: only lead-ins that answer nothing. "Yes", "no", "right", "okay", "not quite" and the like can
+// agree with or deny what the child said, so a sentence that starts with one is reviewed.
+const LEAD_IN = /^(?:\{name\}|(?:now|so|next|then)\b)[\s!.]*/i;
+/** The approved sentences that mean the same after any child turn: what Maya is. */
+const CONTEXT_FREE = /^i'm (?:an ai\b|not a real person\b)/i;
 
 type ColumnStep = Extract<WorkedStep, { kind: "add-column" | "subtract-column" }>;
 
@@ -161,7 +222,12 @@ export interface TutorCheckContext {
   childValues?: readonly number[];
   /** The question's operation, for the direction of a trade ("5 tens are now 4 tens" in a subtraction). */
   op?: "add" | "subtract";
+  /** The question's answer: "N is the answer" must name it. */
+  answer?: number;
 }
+
+/** "4 is the answer", "the whole answer is 24", "your answer 36 is right": a claim about which number is the answer. */
+const ANSWER_CLAIM = /\b(\d+) is (?:the|your|our) (?:whole |final |right )?answer\b|\b(?:the|your|our) (?:whole |final |right )?answer is (\d+)\b/gi;
 
 /** A sentence that says an answer is right. */
 const JUDGES_RIGHT = /^(?:yes|yep|yeah|right|correct|exactly)\b|\b(?:is|that'?s|that is|it'?s|you'?re|you are|you got it)\s+(?:right|correct)\b|\byou got it\b|\bwell done\b/i;
@@ -169,7 +235,8 @@ const JUDGES_RIGHT = /^(?:yes|yep|yeah|right|correct|exactly)\b|\b(?:is|that'?s|
 const JUDGES_WRONG = /\b(?:not quite|not yet|not right|isn'?t right|incorrect|that'?s wrong|is wrong|try again)\b/i;
 
 export type TutorVerdict =
-  | { ok: true; needsReview: boolean }
+  /** `review`: the sentences that are not plain teaching (plainTeaching): the safety review reads each before it is said. */
+  | { ok: true; needsReview: boolean; review: string[] }
   | { ok: false; reason: "empty" | "too_long" | "never_say" | "false_equation" | "affirms_wrong" | "wrong_stance"; detail: string };
 
 
@@ -179,7 +246,7 @@ export type TutorVerdict =
  * answer or a "not quite" to a right one. `needsReview`: a sentence is not plain math, so the talk review reads the
  * whole message before it is said.
  */
-export function checkTutorSay(text: string, ctx: TutorCheckContext): TutorVerdict {
+export function checkTutorSay(text: string, ctx: TutorCheckContext & { extra?: ReadonlySet<string> }): TutorVerdict {
   const say = text.trim();
   if (!say) return { ok: false, reason: "empty", detail: "The message is empty: say one short helpful thing and ask one small question." };
   const words = say.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
@@ -195,6 +262,10 @@ export function checkTutorSay(text: string, ctx: TutorCheckContext): TutorVerdic
     }
     const claim = falseClaims(sentence, ctx.op)[0];
     if (claim) return { ok: false, reason: "false_equation", detail: `"${sentence}": ${claim}. Every equation and place-value statement must be true.` };
+    if (ctx.answer !== undefined) for (const m of sentence.matchAll(ANSWER_CLAIM)) {
+      const n = Number(m[1] ?? m[2]);
+      if (n !== ctx.answer) return { ok: false, reason: "false_equation", detail: `"${sentence}": ${n} is not the answer to the question.` };
+    }
   }
   // No false judgment of the child's answer, in any sentence: a "yes" or "right" for a wrong answer, a "not quite" for
   // a right one. The first sentence is judged strictly. A later one is exempt only when it judges its own true equation
@@ -212,9 +283,102 @@ export function checkTutorSay(text: string, ctx: TutorCheckContext): TutorVerdic
       return { ok: false, reason: "wrong_stance", detail: "Code found the child's answer right: say so, never \"not quite\"." };
     }
   }
-  const needsReview = !sentences.every((x) => mathOnly(x, TUTOR_MATH_WORDS));
-  return { ok: true, needsReview };
+  const review = sentences.filter((x) => !plainTeaching(x, ctx.extra));
+  return { ok: true, needsReview: review.length > 0, review };
 }
+
+/**
+ * How one tutor sentence goes out while the model still writes (D-345 streaming): "send" at once (plain teaching, and
+ * every check passes on the words so far), "review" first (not plain teaching: held, alone, until its review passes),
+ * or "stop" (a check fails, or the first sentence says right or wrong before code knows the stance): that sentence and
+ * every later one wait for the whole message and its whole check.
+ */
+export function tutorStreamSentence(sentence: string, previous: readonly string[], ctx: TutorStreamContext): "send" | "review" | "stop" {
+  const verdict = checkTutorSay([...previous, sentence].join(" "), ctx);
+  if (!verdict.ok) return "stop";
+  // A judgment of the child's answer, in any sentence, waits unless the stream is sure of it: the final check may read
+  // the child's number another way (review of #1006: "I got 4." then "Yes, 4 is the answer.").
+  const judgesRight = (previous.length === 0 && affirms(sentence)) || JUDGES_RIGHT.test(sentence);
+  const judgesWrong = (previous.length === 0 && DENIES.test(sentence)) || JUDGES_WRONG.test(sentence);
+  if ((judgesRight && !ctx.mayAffirm) || (judgesWrong && !ctx.mayDeny)) return "stop";
+  // A number that is not one of this question's (an outside answer, a twin question) waits for the whole message and
+  // its scope reading (review of #1006: "The answer is 56." for outside homework).
+  const foreign = sayNumbers(sentence).some((t) => !t.q || t.q[1] !== 1 || !ctx.allowed.has(t.q[0]));
+  if (foreign) return "stop";
+  // So does an operation that is not part of this question's work, even with its numbers ("4 plus 8 is 12" in
+  // 52 − 28): only the question, its steps, its trades and the child's own expressions stream.
+  const outside = equationsOf(sentence).some((e) => !ctx.expressions.has(expressionKey(e.operands.map((o) => o.q?.[0] ?? NaN), e.ops)));
+  if (outside) return "stop";
+  return plainTeaching(sentence, ctx.extra) ? "send" : "review";
+}
+
+/**
+ * What the stream knows before the model writes. `mayAffirm`: a first "yes" cannot be a yes to a wrong answer (code
+ * found the child right, or the child said no number). `mayDeny`: a first "not quite" cannot deny a right answer (code
+ * found the child wrong, or no number the child said is a value of the question's answer or steps).
+ */
+export interface TutorStreamContext extends TutorCheckContext {
+  extra?: ReadonlySet<string>;
+  mayAffirm: boolean;
+  mayDeny: boolean;
+  /** The numbers a streamed sentence may hold: the question's own, its work's, and the child's. */
+  allowed: ReadonlySet<number>;
+  /** The operations a streamed sentence may state (expressionKey): the question's, its steps', its trades', the child's. */
+  expressions: ReadonlySet<string>;
+}
+
+/** An operation as a key, its operands in order ("12-8"); an addition's operands in any order. */
+export function expressionKey(operands: readonly number[], ops: readonly string[]): string {
+  if (ops.every((o) => o === "+")) return `+${[...operands].sort((x, y) => x - y).join(",")}`;
+  return operands.map((n, i) => (i === 0 ? String(n) : `${ops[i - 1]}${n}`)).join("");
+}
+
+/** The stream's context for the child's turn `text`, from code's stance. */
+export function tutorStreamContext(pkg: OperationPackage, text: string, stance: TutorCheckContext["stance"], extra: ReadonlySet<string>, credited: readonly number[] = []): TutorStreamContext {
+  // The child's candidate answers: the last number of each sentence ("Is 2 minus 8, 6?" offers 6, not 2 or 8).
+  const said = sentencesOf(text).flatMap((x) => {
+    const last = sayNumbers(x).filter((t) => t.q && t.q[1] === 1).at(-1);
+    return last ? [last.q![0]] : [];
+  });
+  const answer = pkg.answer.value.type === "number" ? pkg.answer.value.value : null;
+  const steps = tutorSteps(pkg);
+  const right = new Set<number>([...(answer === null ? [] : [answer]), ...steps.flatMap((st) => [st.write, st.total, st.operands[0]])]);
+  const [a, b] = pkg.operation.operands as [number, number];
+  const allowed = new Set<number>([
+    a, b, ...(answer === null ? [] : [answer]), a % 10, Math.floor(a / 10), b % 10, Math.floor(b / 10), 1, 10,
+    ...steps.flatMap((st) => [...st.operands, st.total, st.write, ...(st.printedTop === undefined ? [] : [st.printedTop])]),
+    ...steps.flatMap((st) => [st.total * (st.place === "tens" ? 10 : 1), st.write * (st.place === "tens" ? 10 : 1)]),
+    ...sayNumbers(text).flatMap((t) => (t.q && t.q[1] === 1 ? [t.q[0]] : [])),
+  ]);
+  const expressions = new Set<string>([
+    expressionKey([a, b], [pkg.operation.kind === "add" ? "+" : "-"]),
+    ...steps.flatMap((st) => {
+      const op = st.op === "+" ? "+" : "-";
+      const keys = [expressionKey(st.operands, st.operands.slice(1).map(() => op))];
+      if (st.op === "-") keys.push(expressionKey([st.operands[1], st.operands[0]], ["-"]));
+      if (st.op === "-" && st.printedTop !== undefined) keys.push(expressionKey([st.printedTop, 10], ["+"]), expressionKey([st.printedTop, 1], ["-"]), expressionKey([st.printedTop, st.operands[1]], ["-"]), expressionKey([st.operands[1], st.printedTop], ["-"]));
+      if (st.op === "+") keys.push(expressionKey(st.operands.filter((x, i) => !(i === 0 && st.operands.length > 2)), st.operands.slice(2).map(() => "+")), expressionKey([st.total, 10], ["-"]));
+      return keys;
+    }),
+    ...sentencesOf(text).flatMap((x) => equationsOf(x).map((e) => expressionKey(e.operands.map((o) => o.q?.[0] ?? NaN), e.ops))),
+  ]);
+  return {
+    stance,
+    extra,
+    expressions,
+    childValues: said,
+    op: pkg.operation.kind === "add" ? "add" : "subtract",
+    ...(answer === null ? {} : { answer }),
+    allowed,
+    // A "yes" streams only when no reading can make it wrong: the child said no number, or only numbers code's own read
+    // credits as right (the final check keeps code's credit over the model's reading).
+    mayAffirm: said.length === 0 || (stance === "right" && said.every((n) => n === answer || credited.includes(n))),
+    mayDeny: stance === "wrong" || (stance === "none" && !said.some((n) => right.has(n))),
+  };
+}
+
+/** A sentence that starts by saying an answer is not right. */
+const DENIES = /^\s*(?:not quite|not yet|not right|no\b|nope|that'?s not|that isn'?t|incorrect|close)/i;
 
 /** Code's honest line when the model's message failed twice (D-345): one short line and the step's question. */
 export function tutorFallbackText(pkg: OperationPackage, done: readonly string[], solved: boolean): string {
