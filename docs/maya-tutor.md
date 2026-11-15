@@ -21,10 +21,11 @@ Maya is the tutor, and code is the safety net. Savar approved this design on 202
 |---|---|---|
 | Never-say patterns (secrecy, personal questions, claims to see, promises, unkind words, feelings) | `neverSayProblem` in `say-check.ts` | Refused |
 | Every equation true, and no true equation called false | `equationsOf` and `equationHolds` | Refused |
-| Place-value claims ("52 is 4 tens and 12 ones", "2 ones become 12") | `placeValueProblem` | Refused |
-| No "yes" to a wrong answer (or to a false equation the child said), no "not quite" to a right one, by code's own credit (D-340) | `checkTutorSay` with the stance | Refused |
+| Every relation of numbers and place quantities, in digits or words, chained or not ("1 ten is 10 ones", "52 is four tens and two ones", "12 − 8 = 4 = 5"); an "=" code cannot read | `falseClaims` (`tutor-math.ts`) | Refused |
+| Trades ("2 ones become 12", "5 tens became 4 tens") | `placeValueProblem` | Refused |
+| No "yes" or "right" for a wrong answer (or for a false equation the child said), no "not quite" for a right one, in any sentence: the stance comes from code's own read of the child's committed answer and its credit (D-340), never only from the model's reading | `checkTutorSay` with the stance | Refused |
 | At most 60 words (`TUTOR_WORD_LIMIT`) | `checkTutorSay` | Refused; code never trims |
-| A close only after the child solved the question (a stop and the time limit stay code's) | `proposeTutor` in `session.ts` | Refused |
+| A close only after the child solved the question, and never on a turn that asks for help (a stop and the time limit stay code's) | `proposeTutor` in `session.ts` | Refused |
 | Child safety of each sentence that is not plain teaching (`plainTeaching`): safety rules only (`TUTOR_REVIEW_SYSTEM`) | the talk review in the adapter, per sentence | Refused |
 
 A refused message gets one repair with the reason, also in voice. A second refusal gets code's honest line with the step's question (`tutorFallbackText`), for example "Let me say that another way. What do you get for 12 minus 8?". A refused board drawing is never a reason to lose the words.
@@ -63,7 +64,7 @@ The model asks by id; code builds every command from the checked steps (`tutorDr
 
 - `trade`: the next trade (a borrow in the top row for subtraction, the carried 1 for addition);
 - `digit` with a place: an answer digit, after the trade it needs;
-- `note` with an equation: one true equation below the question.
+- `note` with an equation: one true equation of numbers below the question. Code rebuilds the text from the values; a note with any other text is not drawn.
 
 ## Trace
 

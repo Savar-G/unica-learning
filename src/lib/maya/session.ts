@@ -5030,12 +5030,33 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
     } else stance = "wrong";
   }
   if (progress) s.noStart = false;
+  // Code's own read of the child's committed answer decides the stance too, whatever the model's reading holds
+  // (review of #1002: "It's 36." with no reading must not get "Yes!"). A question, a choice or a help request commits
+  // nothing.
+  const childValues: number[] = [];
+  if (base.turn) {
+    const read = turnRead(base);
+    const committed = read.final?.type === "number" && !read.choice && !base.turn.text.includes("?") && !helpInWords(base.turn.text) && !saysStuck(base.turn.text);
+    if (committed && read.final?.type === "number") {
+      const n = read.final.value;
+      childValues.push(n);
+      // A value of the work is no wrong answer: a step's result or digit, or a column's top after the trade (12, 4).
+      const fits = rightForQuestion(pkg, read.final) || tutorSteps(pkg).some((st) => st.write === n || st.total === n || st.operands[0] === n);
+      if (!fits) stance = "wrong";
+      else if (stance === "none" && rightForQuestion(pkg, read.final)) stance = "right";
+    }
+    for (const a of credited) if (a.value.type === "number" && !childValues.includes(a.value.value)) childValues.push(a.value.value);
+  }
   // A false equation the child said is wrong, whatever step it is about: Maya never says yes to it.
   if (stance === "none" && base.turn && childSaysFalse(base.turn.text)) stance = "wrong";
   // The next open step, for the prepared replies' expected turns (expectedTurns and fitsExpected read the ladder's step).
   s.ladder = { ...s.ladder, step: tutorSteps(pkg).find((st) => !s.done.includes(st.id))?.id ?? "result" };
   const act: Act = out.act === "close" ? "close" : "guide";
   if (act === "close" && s.solved === null) return no("act_not_allowed", "The child has not solved the question yet: never end the call on a child who is stuck. Teach the next small step and ask one small question.");
+  // Review of #1002: a solved question does not end the call while the child asks for help now.
+  if (act === "close" && base.turn && (helpInWords(base.turn.text) || saysStuck(base.turn.text) || reading.help !== undefined || reading.start === "no_start")) {
+    return no("act_not_allowed", "The child is asking for help now: never end the call on a child who is stuck. Answer what they asked, then ask one small question.");
+  }
   // Sentences already streamed to the child stay said: the turn's words start with them.
   const lead = sent.join(" ");
   const extra = vocabExtra(base);
@@ -5043,7 +5064,7 @@ function proposeTutor(base: Session, out: ModelOutput, effects: Effect[], review
   const honest = tutorFallbackText(pkg, s.done, s.solved !== null);
   let text = fallback ? (sent.length ? `${lead} ${sentencesOf(honest).slice(1).join(" ")}` : honest) : out.say.trim();
   if (!fallback && sent.length && !text.startsWith(lead)) return no("invalid_proposal", "The message must start with the sentences already said.");
-  let verdict = checkTutorSay(text, { stance, extra });
+  let verdict = checkTutorSay(text, { stance, extra, childValues });
   // Code's own line never fails its turn: after streamed words that leave no room, the turn is those words.
   if (fallback && !verdict.ok && sent.length) { text = lead; verdict = checkTutorSay(text, { stance: "none", extra }); }
   if (!verdict.ok) return no("say_check", `Your message was refused (${verdict.reason}): ${verdict.detail}`, verdict.reason);
