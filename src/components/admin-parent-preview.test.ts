@@ -19,7 +19,13 @@ it.each(PARENT_PREVIEW_VIEWS.filter(view => view.id === "overview" || view.id ==
     for (const child of ["first", "second"]) {
       const output = dom(renderParentPreview(previewSelection({ view, scenario, family: "two", child, size }), styles));
       expect(output.body.textContent).not.toMatch(/of 30 minutes|minutes left|minutes start again|weekly minutes|Try Maya|Start (?:a )?call/i);
-      expect(output.querySelector(".po")?.textContent ?? "").not.toMatch(/minutes|messages|this week/i);
+      // The week line and Highlights (#990) say "this week" on purpose: the guard reads the rest of the Home, and the two
+      // parts are held to the allowance words alone.
+      const home = output.querySelector(".po")?.cloneNode(true) as Element | undefined;
+      const story = [...(home?.querySelectorAll(".po-line, .po-hl") ?? [])];
+      story.forEach((part) => part.remove());
+      expect(home?.textContent ?? "").not.toMatch(/minutes|messages|this week/i);
+      expect(story.map((part) => part.textContent).join(" ")).not.toMatch(/minutes|messages/i);
       const name = child === "first" ? "Leah" : "Kai";
       if (view === "overview" && scenario === "active") {
         // Option A (#1003): the Home holds no Maya tile; the Maya tab holds the notes.
@@ -42,6 +48,48 @@ it.each(PARENT_PREVIEW_VIEWS.filter(view => view.id === "overview" || view.id ==
       expect(calls.fetch).not.toHaveBeenCalled();
       expect(calls.client).not.toHaveBeenCalled();
       expect(calls.track).not.toHaveBeenCalled();
+    }
+  });
+
+it.each(PARENT_PREVIEW_VIEWS.find(view => view.id === "overview")!.scenarios.map(scenario => scenario.id))
+  ("keeps the Home's sentences true to the circles and skill counts of its own scenario (#990): %s", scenario => {
+    for (const child of ["first", "second"]) {
+      const out = dom(renderParentPreview(previewSelection({ view: "overview", scenario, family: "two", child, size: "desktop" }), styles));
+      const line = out.querySelector(".po-line")?.textContent ?? "";
+      const hl = [...out.querySelectorAll(".po-hl p")].map(p => p.textContent ?? "");
+      const all = [line, ...hl].join(" ");
+      const days = [...out.querySelectorAll(".po-day")].map(li => /is-(\w+)/.exec(li.className)![1]);
+      const isDone = (state: string) => state === "done" || state === "today_done";
+      const todayAt = days.findIndex(state => state.startsWith("today"));
+      const counts = Object.fromEntries([...out.querySelectorAll(".po-count")].map(b => [b.querySelector("span")!.textContent!, Number(b.querySelector("b")!.textContent)]));
+      const ended = sampleChildren(previewSelection({ view: "overview", scenario, family: "two", child })).at(child === "first" ? 0 : 1)!.stage === "ended";
+
+      // The days done say the days the circles show done.
+      const doneSaid = /(\d+) days? done/.exec(line);
+      if (doneSaid) expect(Number(doneSaid[1])).toBe(days.filter(isDone).length);
+      // "Day N is ready" names an open circle before today's.
+      const ready = /Day (\d+) is ready/.exec(line);
+      if (ready) { const at = Number(ready[1]) - 1; expect(days[at]).toBe("open"); expect(at).toBeLessThan(todayAt); }
+      // A streak is the run of done circles ending at today's, and an ended plan has none and no line.
+      const streak = /done (\d+) workbook days in a row/.exec(all);
+      if (streak) {
+        expect(ended).toBe(false);
+        let run = 0;
+        for (let i = days[todayAt] === "today_done" ? todayAt : todayAt - 1; i >= 0 && isDone(days[i]); i--) run++;
+        expect(Number(streak[1])).toBe(run);
+      }
+      if (ended) { expect(line).toBe(""); expect(all).not.toMatch(/in a row/); }
+      // "One to watch" only with a Needs help list; new skills only with Mastered skills, as many as the dated rows say.
+      if (/one to watch/.test(all)) expect(counts["Needs help"]).toBeGreaterThan(0);
+      const fromLine = /(\d+) new skills? mastered/.exec(line), fromHl = /mastered (\d+) skills|mastered (?!1 new)[^.]+ this week/.exec(hl.join(" "));
+      const said = fromLine ? Number(fromLine[1]) : fromHl ? (fromHl[1] ? Number(fromHl[1]) : 1) : 0;
+      expect(said).toBeLessThanOrEqual(counts["Mastered"] ?? 0);
+      if (fromLine && fromHl) expect(Number(fromLine[1])).toBe(fromHl[1] ? Number(fromHl[1]) : 1);
+      // When the Mastered list is the one shown, the rows dated this week are the new skills the sentences count.
+      const thisWeek = [...out.querySelectorAll(".po-skill small")].filter(row => /Mastered (today|Monday|Tuesday|Wednesday|Thursday|Friday)/.test(row.textContent ?? "")).length;
+      if (out.querySelector(".po-skill small")) expect(thisWeek).toBe(said);
+      // Nothing to say, and a plan with nothing mastered, says nothing of the kind.
+      if (scenario === "nothing_to_say") { expect(line).toBe(""); expect(hl).toEqual([]); }
     }
   });
 

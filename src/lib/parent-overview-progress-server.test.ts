@@ -15,7 +15,7 @@ const expected: ExpectedItem = {
 const event = { occurredAt: "2026-10-04T18:00:00Z", key: `marking:${createHash("sha256").update(`${book}:${revision}:${page}:item`).digest("hex")}`, parentId: parent, childId: child, source: "marking", question: { source: "workbook", workbookId: book, page: 1, question: 1 }, skill: { standard: "2.4", skills: [] } };
 const mark = (result: "right" | "wrong" | "blank") => ({ id: "row", expected, observation: { ...firstObservation(expected, "photo"), state: "parent-checked", method: "parent", actor: "admin", result, resultVersion: 2 }, original_event: event, event_id: "event", evidence_at: "2026-11-01T00:00:00Z", model: null, prompt: null });
 
-function reader(items: ReturnType<typeof mark>[], questionId = "item", secondTries: { result: string }[] = [], marking: { revision: number; status: { revision: number; profile_revision: number } | null } = { revision: 1, status: { revision: 1, profile_revision: 1 } }, revisions: number[] = []) {
+function reader(items: ReturnType<typeof mark>[], questionId = "item", secondTries: { result: string }[] = [], marking: { revision: number; status: { revision: number; profile_revision: number } | null } = { revision: 1, status: { revision: 1, profile_revision: 1 } }, revisions: number[] = [], pages: { id: string; day_label: string | null }[] = [{ id: page, day_label: "Day 3" }]) {
   const requests: string[] = [];
   const selects: string[] = [];
   const db = createClient<never>("https://fixture.invalid", "key", { auth: { persistSession: false }, global: { fetch: async (input, init) => {
@@ -32,6 +32,7 @@ function reader(items: ReturnType<typeof mark>[], questionId = "item", secondTri
     if (table === "child_profiles") return Response.json([{ build_token: "token", assessment_id: "test-1" }]);
     if (table === "scan_marking_revisions") return Response.json(marking.status ? [marking.status] : []);
     if (table === "workbook_questions") return Response.json(url.searchParams.has("id") ? [] : [{ id: "question-row", page_id: page, question_number: 1, qid: questionId, standard: "2.4" }]);
+    if (table === "workbook_pages") return Response.json(pages);
     if (table === "skill_state_history") return Response.json([]);
     if (table === "workbook_second_tries") return Response.json(secondTries);
     throw new Error(`Unexpected ${table}`);
@@ -54,9 +55,16 @@ describe("stored overview marks", () => {
     const got = await reader([mark("blank")]).value.overviewProgress(child);
     // The skill state rule still reads a blank as not right, with no new field.
     expect(got?.skillMarks).toEqual([{ standard: "2.4", right: false, review: false, at: "2026-10-04T18:00:00Z" }]);
-    expect(got?.helpMarks).toEqual([{ standard: "2.4", right: false, review: false, at: "2026-10-04T18:00:00Z", blank: true }]);
+    expect(got?.helpMarks).toEqual([{ standard: "2.4", right: false, review: false, at: "2026-10-04T18:00:00Z", blank: true, day: `${book}:3` }]);
     expect((await reader([mark("wrong")]).value.overviewProgress(child))?.helpMarks[0]).toMatchObject({ right: false, blank: false });
     expect((await reader([mark("right")]).value.overviewProgress(child))?.helpMarks[0]).toMatchObject({ right: true, blank: false });
+  });
+  it("names each mark's workbook day from its page's Day label, and none for a page with no day (#990)", async () => {
+    expect((await reader([mark("wrong")]).value.overviewProgress(child))?.helpMarks[0].day).toBe(`${book}:3`);
+    const cover = await reader([mark("wrong")], "item", [], undefined, [], [{ id: page, day_label: null }]).value.overviewProgress(child);
+    expect(cover?.helpMarks[0].day).toBeNull();
+    // The skill state rule's marks never carry the day.
+    expect(cover?.skillMarks[0]).not.toHaveProperty("day");
   });
   it("keeps the database's own time format of the original event", async () => {
     const team = { ...mark("right"), original_event: { ...event, occurredAt: "2026-11-01T06:59:59.999999+00:00" } };

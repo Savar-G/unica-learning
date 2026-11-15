@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BC_SKILL_MAP, type AreaAnswer, type ReportModel } from "@/lib/assessment";
+import { capitalName, plainSkillName } from "@/lib/skill-name";
 import { listChildren, readChild, readMonthlySummary, readOverview, readProgress, readWorkbooks } from "@/lib/parent-view";
 import { memoryParentViewReaders, type MemoryParentViewTables, type MemoryResult, type MemoryScan, type MemoryTest, type MemoryWorkbook } from "@/lib/parent-view-memory";
 
@@ -334,7 +335,9 @@ describe("the Home (#560, #1003)", () => {
   const question = (pageId: string, standard: string | null) => ({ parentId: "parent-1", workbookId: "wb-1", pageId, standard });
   const read = (tables: Partial<Parameters<typeof parent>[0]> = {}, now = NOW) => readOverview(parent({ children: [leah, omar], ...delivered, pages, switches, ...tables }), "child-1", now);
   const circles = (view: Awaited<ReturnType<typeof read>>) => view?.week?.map((d) => `${d.label}:${d.state}`);
-  const textOf = (code: string) => { const t = BC_SKILL_MAP.standards.find((s) => s.code === code)!.text; return `${t[0].toUpperCase()}${t.slice(1)}`; };
+  // The parent-facing name (src/lib/skill-name.ts): the one Home's lists and sentences both say.
+  const nameOf = (code: string) => plainSkillName(BC_SKILL_MAP.standards.find((s) => s.code === code)!.text);
+  const textOf = (code: string) => capitalName(nameOf(code));
 
   it("is not found for another family's child, and for a stage with no Overview", async () => {
     const readers = memoryParentViewReaders({ children: [leah, omar], cards: [{ parentId: "parent-2", childId: "child-2", cardSavedAt: "2026-10-20T00:00:00Z" }] });
@@ -344,7 +347,7 @@ describe("the Home (#560, #1003)", () => {
 
   it("before any book is delivered: no week and no card; the mailed book is on its way", async () => {
     const view = await read({ deliveries: [] });
-    expect(view).toEqual({ child: expect.objectContaining({ id: "child-1", stage: "first_book_coming" }), resultPreparing: false, resultLate: false, week: null, workbook: null, onTheWay: 1, scanPrompt: null, skills: expect.anything(), summaryMonth: null });
+    expect(view).toEqual({ child: expect.objectContaining({ id: "child-1", stage: "first_book_coming" }), resultPreparing: false, resultLate: false, week: null, workbook: null, onTheWay: 1, scanPrompt: null, skills: expect.anything(), weekLine: null, highlights: [], summaryMonth: null });
     expect((await read({ deliveries: [], workbooks: [] }))?.onTheWay).toBeNull();
   });
 
@@ -581,9 +584,166 @@ describe("the Home (#560, #1003)", () => {
     });
   });
 
+  describe("the week line and Highlights (#990)", () => {
+    // NOW is Wednesday 2026-11-04, Day 3. The book was delivered on Monday 2 November, so Days 1 and 2 are behind us.
+    // The child started on 2026-10-31; the first batch of history rows is dated before the week.
+    const tally = (standard: string, correct: number, total: number) => ({ ...own, assessmentId: "t", standard, correct, total, at: "2026-10-30T18:00:00Z" });
+    const change = (standard: string, state: "mastered" | "working_on" | "needs_review", changedAt: string) => ({ ...own, standard, state, changedAt });
+    // A wrong answer marked on `markedOn` (a day, at 6 p.m. UTC) from the page of Day `bookDay` of Book 1 (the page's own label, not the marking day).
+    const wrongOn = (standard: string, ...entries: [markedOn: string, bookDay: number][]) => entries.map(([d, bookDay]) => ({ standard, right: false, review: false, at: `${d}T18:00:00Z`, blank: false, day: `wb-1:${bookDay}` }));
+    const withMarks = (helpMarks: ReturnType<typeof wrongOn>) => ({ overviewProgress: [{ ...own, marks: [], skillMarks: helpMarks.map(({ standard, right, review, at }) => ({ standard, right, review, at })), helpMarks }] });
+    const base = { switches: { progress: true, maya: false, scanPages: true }, tests: [test("t")], reports: [report("t")] };
+    const START = change("3.4", "working_on", "2026-11-01T20:00:00Z");
+    const story = async (tables: Partial<Parameters<typeof parent>[0]> = {}, now = NOW) => { const v = await read({ ...base, ...tables }, now); return { line: v?.weekLine && `${v.weekLine.lead} ${v.weekLine.text}`, highlights: v?.highlights }; };
+
+    it("on track: the days done against the days behind us, and the new skills mastered since Monday, from the history", async () => {
+      expect(await story({ scans: scans("d1a", "d1b", "d2a", "d2b"), skillTests: [tally("3.1", 4, 4)], history: [START, change("3.1", "mastered", "2026-11-03T20:00:00Z")] })).toEqual({
+        line: "On track this week. 2 days done, and 1 new skill mastered since Monday.",
+        highlights: [`Leah mastered ${nameOf("3.1")} this week.`],
+      });
+      expect((await story({ scans: scans("d1a", "d1b", "d2a", "d2b") })).line).toBe("On track this week. 2 days done.");
+    });
+    it("names several new masteries by their count", async () => {
+      const got = await story({ scans: scans("d1a", "d1b", "d2a", "d2b"), skillTests: [tally("3.1", 4, 4), tally("3.3", 4, 4)], history: [START, change("3.1", "mastered", "2026-11-03T20:00:00Z"), change("3.3", "mastered", "2026-11-04T17:00:00Z")] });
+      expect(got.line).toBe("On track this week. 2 days done, and 2 new skills mastered since Monday.");
+      expect(got.highlights).toEqual(["Leah mastered 2 skills this week."]);
+    });
+    it("a bit behind: a quieter week, and the first open day is ready when the child is", async () => {
+      expect((await story({ scans: scans("d1a", "d1b") })).line).toBe("A quieter week. 1 day done. Day 2 is ready when Leah is.");
+    });
+    it("catching up: an earlier day is open and the latest is done", async () => {
+      expect((await story({ scans: scans("d2a", "d2b") })).line).toBe("Catching up. 1 day done. Day 1 is ready when Leah is.");
+    });
+    it("a day with only some pages scanned is not done", async () => {
+      expect((await story({ scans: scans("d1a", "d1b", "d2a") })).line).toBe("A quieter week. 1 day done. Day 2 is ready when Leah is.");
+    });
+    it("no scans this week: a quiet week, said gently, when the family has scanned another book's pages", async () => {
+      const elsewhere = [{ ...own, workbookId: "wb-0", pageId: "old", state: "saved", expiresAt: "2027-01-01T00:00:00Z", takenAt: "2026-10-20T20:00:00Z" }];
+      expect((await story({ scans: elsewhere })).line).toBe("A quiet week so far. Nothing scanned yet. Day 1 is ready when Leah is.");
+    });
+    it("before the family's first scan, the scan prompt speaks and the line does not; with no Scan tab there is no line", async () => {
+      expect(await story({})).toEqual({ line: null, highlights: [] });
+      expect((await story({ scans: scans("d1a", "d1b"), switches: { progress: true, maya: false, scanPages: false } })).line).toBeNull();
+    });
+    it("nothing to say: a Monday with nothing done yet has no line, and no skill news means no Highlights", async () => {
+      const elsewhere = [{ ...own, workbookId: "wb-0", pageId: "old", state: "saved", expiresAt: "2027-01-01T00:00:00Z", takenAt: "2026-10-20T20:00:00Z" }];
+      expect(await story({ scans: elsewhere }, Date.parse("2026-11-02T22:00:00Z"))).toEqual({ line: null, highlights: [] });
+    });
+    it("no line after the plan ended or once the book is over; the Highlights about skills stay", async () => {
+      const ended = await story({ scans: scans("d1a", "d1b"), plans: [{ ...own, kind: "ended" }], skillTests: [tally("3.1", 4, 4)], history: [START, change("3.1", "mastered", "2026-11-03T20:00:00Z")] });
+      expect(ended.line).toBeNull();
+      expect(ended.highlights).toHaveLength(1);
+      expect((await story({ scans: scans("d1a", "d1b") }, Date.parse("2026-11-20T18:00:00Z"))).line).toBeNull();
+    });
+    it("a repeated mistake: a Needs help skill that was wrong on 2 different days, named in its own words", async () => {
+      const got = await story({ scans: scans("d1a", "d1b"), skillTests: [tally("3.2", 0, 4)], ...withMarks(wrongOn("3.2", ["2026-11-02", 1], ["2026-11-03", 2], ["2026-11-03", 2])) });
+      expect(got.highlights).toEqual([`The one to watch is ${nameOf("3.2")}: it was tricky on 2 workbook days in the last two weeks.`]);
+    });
+    it("wrong answers on one day, or on a skill that is not Needs help, make no repeated mistake", async () => {
+      expect((await story({ scans: scans("d1a", "d1b"), skillTests: [tally("3.2", 0, 4)], ...withMarks(wrongOn("3.2", ["2026-11-03", 2], ["2026-11-03", 2], ["2026-11-03", 2])) })).highlights).toEqual([]);
+      // A Learning skill with 2 wrong answers is too few to be struggling, so it is not Needs help and is not named.
+      expect((await story({ scans: scans("d1a", "d1b"), questions: [question("d1a", "3.4")], ...withMarks(wrongOn("3.4", ["2026-11-02", 1], ["2026-11-03", 2])) })).highlights).toEqual([]);
+    });
+    it("names a skill in the same plain words in the lists and in the sentences: no aside, no prefix", async () => {
+      const done = { scans: scans("d1a", "d1b", "d2a", "d2b"), skillTests: [tally("1.3", 4, 4), tally("8.14", 4, 4)] };
+      const view = await read({ ...base, ...done, history: [START, change("1.3", "mastered", "2026-11-03T20:00:00Z")] });
+      expect(view?.highlights).toEqual(["Leah mastered addition and subtraction to 20 this week."]);
+      expect(view?.skills?.mastered.map((m) => m.name)).toEqual(["Addition and subtraction to 20", "Best buys"]);
+      expect(nameOf("1.3")).toBe("addition and subtraction to 20");
+      expect(nameOf("8.14")).toBe("best buys");
+    });
+    it("a skill name too long for a sentence: the count form for a mastery, no sentence for the one to watch, the whole name in the lists", async () => {
+      const long = nameOf("3.14");
+      expect(long.length).toBeGreaterThan(45);
+      const mastered = await read({ ...base, scans: scans("d1a", "d1b"), skillTests: [tally("3.14", 4, 4)], history: [START, change("3.14", "mastered", "2026-11-03T20:00:00Z")] });
+      expect(mastered?.highlights).toEqual(["Leah mastered 1 new skill this week."]);
+      expect(mastered?.skills?.mastered.map((m) => m.name)).toEqual([capitalName(long)]);
+      const watched = await story({ scans: scans("d1a", "d1b"), skillTests: [tally("3.14", 0, 4)], ...withMarks(wrongOn("3.14", ["2026-11-02", 1], ["2026-11-03", 2])) });
+      expect(watched.highlights).toEqual([]);
+      // The skill is still in Needs help, by its whole name.
+      expect((await read({ ...base, skillTests: [tally("3.14", 0, 4)], ...withMarks(wrongOn("3.14", ["2026-11-02", 1], ["2026-11-03", 2])) }))?.skills?.needsHelp.map((s) => s.name)).toEqual([capitalName(long)]);
+    });
+    it("counts the workbook days a skill was tricky on, not the days it was marked: a week of pages scanned at once is several days", async () => {
+      const got = await story({ scans: scans("d1a", "d1b"), skillTests: [tally("3.2", 0, 4)], ...withMarks(wrongOn("3.2", ["2026-11-03", 1], ["2026-11-03", 2], ["2026-11-03", 3])) });
+      expect(got.highlights).toEqual([`The one to watch is ${nameOf("3.2")}: it was tricky on 3 workbook days in the last two weeks.`]);
+    });
+    it("one evening's marking that crosses midnight is one workbook day, so no repeat", async () => {
+      // 11:30 p.m. on 2026-11-02 and 12:30 a.m. on 2026-11-03 in Vancouver, both from Day 2's pages.
+      const marks = wrongOn("3.2", ["2026-11-03", 2]).map((m, i) => ({ ...m, at: i === 0 ? "2026-11-03T07:30:00Z" : "2026-11-03T08:30:00Z" }));
+      const two = [...marks, { ...marks[0], at: "2026-11-03T08:30:00Z" }];
+      expect((await story({ scans: scans("d1a", "d1b"), skillTests: [tally("3.2", 0, 4)], ...withMarks(two) })).highlights).toEqual([]);
+    });
+    it("a new book delivered mid-week does not hide the pages scanned earlier in the week: no full day yet, not 'nothing scanned'", async () => {
+      // Book 1 was delivered on Monday 2026-10-26; Book 2 on Tuesday 2026-11-03 (Day 1), so on Wednesday Day 1 is behind us and not done.
+      // Some of Book 1's pages were scanned on Monday 2026-11-02, before Book 2 came.
+      const page2 = (id: string, dayLabel: string | null) => ({ parentId: "parent-1", workbookId: "wb-2", id, dayLabel });
+      const got = await story({
+        workbooks: [{ ...own, id: "wb-1", number: 1, status: "shipped" }, { ...own, id: "wb-2", number: 2, status: "shipped" }],
+        deliveries: [{ ...own, workbookId: "wb-1", deliveredAt: "2026-10-26T20:00:00Z" }, { ...own, workbookId: "wb-2", deliveredAt: "2026-11-03T20:00:00Z" }],
+        pages: [...pages, ...[1, 2].flatMap((d) => [page2(`e${d}a`, `Day ${d}`), page2(`e${d}b`, `Day ${d}`)])],
+        scans: [scan("d1a", { takenAt: "2026-11-02T20:00:00Z" })],
+      });
+      expect(got.line).toBe("A quiet week so far. No full day done yet. Day 1 is ready when Leah is.");
+      // A sibling's scans, and scans of no book of this child's, do not count.
+      const sibling = { parentId: "parent-1", childId: "child-2", workbookId: "wb-s", pageId: "s1", state: "saved", expiresAt: "2027-01-01T00:00:00Z", takenAt: "2026-11-02T20:00:00Z" };
+      const alone = await story({
+        workbooks: [{ ...own, id: "wb-1", number: 1, status: "shipped" }, { ...own, id: "wb-2", number: 2, status: "shipped" }, { ...own, childId: "child-2", id: "wb-s", number: 1, status: "shipped" }],
+        deliveries: [{ ...own, workbookId: "wb-1", deliveredAt: "2026-10-26T20:00:00Z" }, { ...own, workbookId: "wb-2", deliveredAt: "2026-11-03T20:00:00Z" }],
+        pages: [...pages, ...[1, 2].flatMap((d) => [page2(`e${d}a`, `Day ${d}`), page2(`e${d}b`, `Day ${d}`)])],
+        scans: [sibling],
+      });
+      expect(alone.line).toBe("A quiet week so far. Nothing scanned yet. Day 1 is ready when Leah is.");
+    });
+    it("names the earliest open day of the book, the Workbooks tab's orange row, not this week's first missed day", async () => {
+      // Delivered Monday 2026-10-26, so Wednesday 2026-11-04 is Day 8. Day 2 was never finished; Day 6 is done, Day 7 is not.
+      const ten = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].flatMap((d) => [page(`d${d}a`, `Day ${d}`), page(`d${d}b`, `Day ${d}`)]);
+      const got = await story({
+        deliveries: [{ ...own, workbookId: "wb-1", deliveredAt: "2026-10-26T20:00:00Z" }], pages: ten,
+        scans: scans("d1a", "d1b", "d2a", "d3a", "d3b", "d4a", "d4b", "d5a", "d5b", "d6a", "d6b"),
+      });
+      expect(got.line).toBe("A quieter week. 1 day done. Day 2 is ready when Leah is.");
+    });
+    it("a streak of days done in a row, from 3", async () => {
+      const got = await story({ scans: scans("d1a", "d1b", "d2a", "d2b", "d3a", "d3b") });
+      expect(got.line).toBe("On track this week. 3 days done.");
+      expect(got.highlights).toEqual(["Leah has done 3 workbook days in a row."]);
+      expect((await story({ scans: scans("d1a", "d1b", "d2a", "d2b") })).highlights).toEqual([]);
+    });
+    it("picks two by priority: a mastery and a repeated mistake come before a streak", async () => {
+      const got = await story({
+        scans: scans("d1a", "d1b", "d2a", "d2b", "d3a", "d3b"), skillTests: [tally("3.1", 4, 4), tally("3.2", 0, 4)], history: [START, change("3.1", "mastered", "2026-11-03T20:00:00Z")],
+        ...withMarks(wrongOn("3.2", ["2026-11-02", 1], ["2026-11-03", 2])),
+      });
+      expect(got.highlights).toEqual([`Leah mastered ${nameOf("3.1")} this week.`, `The one to watch is ${nameOf("3.2")}: it was tricky on 2 workbook days in the last two weeks.`]);
+    });
+    it("a skill mastered before Monday, in the starting batch, or with no recorded row is not new", async () => {
+      const done = { scans: scans("d1a", "d1b", "d2a", "d2b"), skillTests: [tally("3.1", 4, 4)] };
+      expect((await story({ ...done, history: [START, change("3.1", "mastered", "2026-11-01T22:00:00Z")] })).highlights).toEqual([]);
+      expect((await story({ ...done, history: [change("3.1", "mastered", "2026-11-03T20:00:00Z")] })).highlights).toEqual([]);
+      expect((await story(done)).highlights).toEqual([]);
+      expect((await story(done)).line).toBe("On track this week. 2 days done.");
+    });
+    it("a history that cannot be read claims no mastery, and keeps the rest", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const got = await story({ scans: scans("d1a", "d1b", "d2a", "d2b"), skillTests: [tally("3.1", 4, 4)], history: [START, change("3.1", "mastered", "2026-11-03T20:00:00Z")], fail: ["history"] });
+      expect(got).toEqual({ line: "On track this week. 2 days done.", highlights: [] });
+    });
+    it("claims no skill news when the marks cannot be read, and keeps the week", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      expect(await story({ scans: scans("d1a", "d1b", "d2a", "d2b"), skillTests: [tally("3.1", 4, 4)], fail: ["overviewProgress"] })).toEqual({ line: "On track this week. 2 days done.", highlights: [] });
+    });
+    it("uses no percent right, no wrong-answer count and no raw record", async () => {
+      const got = await story({
+        scans: scans("d1a", "d1b", "d2a", "d2b", "d3a", "d3b"), skillTests: [tally("3.1", 4, 4), tally("3.2", 0, 4)], history: [START, change("3.1", "mastered", "2026-11-03T20:00:00Z")],
+        ...withMarks(wrongOn("3.2", ["2026-11-02", 1], ["2026-11-03", 2])),
+      });
+      expect(`${got.line} ${got.highlights!.join(" ")}`).not.toMatch(/%|percent|wrong|score|different days/i);
+    });
+  });
+
   it("holds only the named fields: no percent right, no wrong-answer count, no level or area bar, no raw record", async () => {
     const view = await read({ scans: scans("d1a"), switches: { progress: true, maya: false, scanPages: true }, tests: [test("t")], reports: [report("t")], skillTests: [{ ...own, assessmentId: "t", standard: "3.1", correct: 4, total: 4, at: "2026-10-30T18:00:00Z", secret: "RAW" } as never] });
-    expect(Object.keys(view!).sort()).toEqual(["child", "onTheWay", "resultLate", "resultPreparing", "scanPrompt", "skills", "summaryMonth", "week", "workbook"]);
+    expect(Object.keys(view!).sort()).toEqual(["child", "highlights", "onTheWay", "resultLate", "resultPreparing", "scanPrompt", "skills", "summaryMonth", "week", "weekLine", "workbook"]);
     expect(Object.keys(view!.workbook!).sort()).toEqual(["day", "days", "number", "percent", "today"]);
     expect(JSON.stringify(view)).not.toMatch(/RAW|percentRight|wrong|"level"|"areas"/);
   });

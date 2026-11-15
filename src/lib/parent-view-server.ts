@@ -7,6 +7,7 @@ import type { Database } from "@/lib/database";
 import { LEARNING_COLUMNS } from "@/lib/learning-style";
 import { chatFamilyGate } from "@/lib/maya-chat";
 import { childPauseMailing } from "@/lib/plan-controls-server";
+import { dayNumber } from "@/lib/parent-week";
 import type { ParentViewReader } from "@/lib/parent-view";
 import type { StateChange } from "@/lib/progress-series";
 import { pinIsSet } from "@/lib/parent-pin-server";
@@ -238,7 +239,20 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
           marks.push({ area: REPORTED_STRAND[standard.strand], level: standard.grade, correct: right });
         }
         if (await command("revision", parent, null, null, { child: childId }) !== revision) continue;
-        return { marks, skillMarks: effectiveSkillMarks(items), helpMarks: effectiveHelpMarks(items) };
+        // The workbook day of each marked page ("Day N"), for the repeated-mistake count. A failed read leaves the days out and
+        // nothing else: only the "one to watch" sentence then has nothing to count.
+        const labels = new Map<string, string | null>();
+        const markedBooks = [...new Set(items.map((item) => item.expected.identity.workbookId))];
+        const pageRows = await Promise.all(markedBooks.map((id) => session.from("workbook_pages").select("id, day_label").eq("workbook_id", id)));
+        pageRows.forEach((rows, i) => {
+          if (rows.error) console.error("[parent-view] page day labels read failed");
+          else for (const row of rows.data) labels.set(`${markedBooks[i]}:${row.id}`, row.day_label);
+        });
+        const dayOf = (workbookId: string, pageId: string) => {
+          const day = dayNumber(labels.get(`${workbookId}:${pageId}`) ?? null);
+          return day === null ? null : `${workbookId}:${day}`;
+        };
+        return { marks, skillMarks: effectiveSkillMarks(items), helpMarks: effectiveHelpMarks(items, dayOf) };
       }
       throw new Error("overview progress changed");
     },

@@ -98,3 +98,76 @@ export function weekCircles(today: string, start: string | null, doneDays: Reado
     return { label, state };
   });
 }
+
+/**
+ * How this week is going, from the same rule as the circles (#990). Only book days count: a Monday-to-Friday day of this
+ * week from the book's first day through its last. `due` is how many of them are before `today` (today is not late until
+ * it is over; a weekend has every weekday behind it). `done` counts every done book day of the week, today's and an early
+ * one included. `missed` lists the due days not done, as day numbers, earliest first. `catchingUp`: some day is missed,
+ * and the most recent due day or today is done, so the child is back at it.
+ */
+export interface WeekProgress {
+  done: number;
+  due: number;
+  missed: number[];
+  catchingUp: boolean;
+}
+
+/** Null before the book is delivered, once the plan `ended`, and when no day of the book falls in this week (before it starts or after it ends). */
+export function weekProgress(today: string, start: string | null, doneDays: ReadonlySet<number>, { days = WORKBOOK_DAYS, ended = false }: { days?: number; ended?: boolean } = {}): WeekProgress | null {
+  if (ended || start === null) return null;
+  const monday = weekStartFor(today);
+  let done = 0, due = 0, bookDays = 0, todayDone = false, latestDueDone = false;
+  const missed: number[] = [];
+  for (let i = 0; i < WEEK_LABELS.length; i++) {
+    const date = addDays(monday, i);
+    const count = date < start ? 0 : weekdaysThrough(start, date);
+    if (count < 1 || count > days) continue;
+    bookDays++;
+    const isDone = doneDays.has(count);
+    if (isDone) done++;
+    if (date === today) todayDone = isDone;
+    if (date < today) {
+      due++;
+      latestDueDone = isDone;
+      if (!isDone) missed.push(count);
+    }
+  }
+  if (bookDays === 0) return null;
+  return { done, due, missed, catchingUp: missed.length > 0 && (todayDone || latestDueDone) };
+}
+
+/**
+ * The earliest day of the book that has started and still has a page to scan: the one orange row of the Workbooks tab
+ * (src/lib/workbook-days.ts `bookDays`, its `gap`). A day has started when the calendar has reached it (`workbookDay`, a
+ * weekend counts up to Friday) or when any page of it has a saved photo. `pages`: the page ids of each book day;
+ * `saved`: the page ids with a saved photo. Null when no started day has a page left, and once the plan `ended`.
+ */
+export function earliestOpenDay(start: string, today: string, pages: ReadonlyMap<number, readonly string[]>, saved: ReadonlySet<string>, { days = WORKBOOK_DAYS, ended = false }: { days?: number; ended?: boolean } = {}): number | null {
+  if (ended) return null;
+  const reached = workbookDay(start, today, days);
+  for (const day of [...pages.keys()].sort((a, b) => a - b)) {
+    const ids = pages.get(day)!;
+    const started = (reached !== null && day <= reached) || ids.some((id) => saved.has(id));
+    if (started && ids.some((id) => !saved.has(id))) return day;
+  }
+  return null;
+}
+
+/**
+ * The workbook days the child has done in a row, ending now: the run of done book days back from today's (when today's is not
+ * done yet, back from the day before, so an evening before the day's pages are scanned does not break it). 0 before the
+ * book, after the plan `ended`, once the book finished in an earlier week, and when the day it ends on is not done. A weekend counts back from Friday's day.
+ */
+export function doneStreak(today: string, start: string | null, doneDays: ReadonlySet<number>, { days = WORKBOOK_DAYS, ended = false }: { days?: number; ended?: boolean } = {}): number {
+  if (ended || start === null) return 0;
+  const through = workbookDay(start, today, days);
+  if (through === null) return 0;
+  // A finished book's streak is news only in the week it finished; later it is old.
+  if (bookOver(start, today, days) && bookDayDate(start, days) < weekStartFor(today)) return 0;
+  // Today's own day (a weekday) not done yet is not a break; Friday's day on a weekend, or a book's last day after it ended, is.
+  const todayOpen = weekdayIndex(today) < 5 && !bookOver(start, today, days) && !doneDays.has(through);
+  let n = todayOpen ? through - 1 : through, run = 0;
+  while (n >= 1 && doneDays.has(n)) { run++; n--; }
+  return run;
+}
