@@ -88,4 +88,29 @@ describe("preparation room before the first claim", () => {
     expect(next).not.toBeNull();
     budget.finish(live, 1); budget.finish(speculative, 1); budget.finish(next!, 1); await budget.stop();
   });
+
+  it("starts the early refill on the timer, and settles its late response after stop", async () => {
+    const response = Promise.withResolvers<{ ok: true }>();
+    let n = 0;
+    const reserve = vi.fn(async () => ++n === 1 ? { ok: true as const } : response.promise);
+    const settle = vi.fn(async () => {});
+    const budget = createBudget({ modelMicros: 100, reviewMicros: 10, usdToMicros: usd => usd, clock: () => 1000,
+      newId: () => String(n), reserve, settle });
+    await budget.open();
+    expect(budget.admit(1)).not.toBeNull();
+    expect(budget.admit(1)).not.toBeNull();
+    expect(budget.attempts()).toBe(2);
+    // Live admission at two free attempts keeps its existing no-reservation path.
+    expect(reserve).toHaveBeenCalledTimes(1);
+    budget.tick();
+    expect(reserve).toHaveBeenCalledTimes(2);
+    expect(budget.seam.take("speculative")).toBeNull();
+    const stopped = budget.stop();
+    response.resolve({ ok: true });
+    await stopped;
+    expect(settle).toHaveBeenCalledTimes(2);
+    expect(budget.seam.take("model")).toBeNull();
+    expect(budget.seam.take("speculative")).toBeNull();
+    expect(budget.attempts()).toBe(0);
+  });
 });
