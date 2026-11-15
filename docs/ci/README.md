@@ -45,3 +45,38 @@ The repository is public and owned by personal account `Savar-G`. GitHub merge q
 Runner wait already meets the 10 s target in this sample. No self-hosted runner is registered. The installations API returned 404, so Blacksmith account availability is unverified. Do not change runner labels to an unavailable service. Blacksmith would add a vendor bill to currently free public-repository GitHub runners. See [Blacksmith pricing](https://www.blacksmith.sh/pricing).
 
 The snapshot records 5,878 rounded completed-job runner minutes, including cancelled and failed jobs. Running jobs and earlier attempts are excluded. This is observed runner use, not invoice data or a monthly forecast.
+
+## Local comparisons and limits
+
+All comparisons below used macOS arm64 on Savar's MacBook Pro (4). They establish local behavior. They do not establish Linux runner performance or the requested hosted p50/p95.
+
+- Type check: at audit base `275e329e5`, TypeScript 5.9.3 passed in 42.320 s and native TypeScript preview passed in 4.217 s. Bun 1.4.4 took 0.780 s but reported a tuple error both TypeScript compilers accepted. A separate small PR uses the native compiler. At its newer base `fb98903a`, clean checks took 35.270 s with TypeScript 5 and 3.982 s with the native compiler. Deliberate app, React prop and voice worker errors produced matching diagnostic codes in both compilers. This is bounded compatibility evidence.
+- Install: clean directories with the same package and lock files took 10.359 s with `npm ci`, versus 16.061 s with Bun 1.4.4. Bun also blocked four dependency lifecycle scripts. Keep npm on this evidence. No global runtime changed.
+- Installed-tree cache: the exact installed tree compressed to 275,157,860 bytes. Local zstd save took 37.152 s and restore took 24.841 s, versus 10.359 s for npm installation. Network transfer would add time. The candidate action is retained with the external audit evidence, but is not enabled. A Linux or Blacksmith comparison is still needed before adopting it.
+- Lint: ESLint passed with zero errors and warnings in 38.096 s. The initial Oxlint comparison took 0.242 s, but configuration migration omitted seven existing rules. With the configuration in the repository, Oxlint reported ten errors and one warning, where ESLint reported none. The migration also omitted parser/resolver settings. Do not delete the existing lint gate until diagnostics and rule coverage agree. The default formatter is absent; there is no Prettier installation to remove.
+- Test isolation: a five-file sample passed 193 tests in both modes, so that sample was insufficient. A broader 136-file UI/route comparison, shuffled with seed 17 and four workers, had 9 failures with shared modules and 2 with isolation. Seven additional failures came from sharing, including a retained `next/navigation` mock. The two common failures were retained mock calls in the child-deletion route test and retained browser storage in the desk chat test. A separate small PR resets that state. Both files then passed all 40 tests with seeds 1, 17 and 31. Do not set `isolate: false` on the current suite.
+
+A full local baseline ran 902 files in 619.72 s: 898 passed, one failed, three had existing skips. It passed 29,083 tests, failed one, and had 36 existing skips plus one existing todo. The failure was the Chromium test for partly clipped question content, at its existing 60 s timeout. The initiating cause is not established. The build and ESLint passed. This baseline is not a green full gate, and it is not an after-change result.
+
+The one partial rerun in the hosted sample had an original Maya gate failure: 36,755 ms against its 30,000 ms assertion (`gate.test.ts:136`, job `132902806859`). Its second attempt passed. That is a missed performance budget, not evidence that the first failure can be ignored. Another failed run ended with a runner shutdown signal; its logs do not establish an assertion failure. No retry or larger timeout was added by this work.
+
+## Remaining acceptance work
+
+The targets remain unmet. No hosted after-change distribution exists yet.
+
+1. Resolve organization ownership and enforce the merge queue. Add `merge_group` CI coverage and require the full suite before enabling PR selection. Include the blog direct-push path in that change.
+2. Benchmark approved Blacksmith runners with eight cores before adding shards. Keep per-job CPU concurrency bounded. Keep synthetic databases separate. The current runner wait already meets its target, but Blacksmith may improve execution.
+3. Resolve shared mock/module state before changing test isolation. Keep every existing case and assertion. Use measured file durations for later sharding.
+4. Move lint, app types, voice checks, build and database probes into parallel jobs after the execution bottleneck is addressed. Require every job from `test`.
+5. Recheck dependency caching on the target Linux runner. Measure exact PR cache hits across real runs; there is no verified 95% installed-tree cache hit rate yet.
+6. Add a pre-push hook after the accepted tool changes land. Check format, lint and types. Use complete project type checks for shared types. Demonstrate a nonzero exit on an injected defect and measure the 9 s budget.
+7. Enable affected selection only after the queue is enforced. Use an intentionally missed real dependency to test failure detection. Unknown assets, dynamic reads and configuration changes must fall back to full coverage.
+8. Enforce the requested job budgets after the jobs can meet them. Do not add unconditional short timeouts that make all current runs fail, or widen current limits to manufacture a pass.
+
+## Account and spending decisions
+
+GitHub's organization requirement is an ownership decision. For a public repository the queue itself does not require a private-repository Enterprise subscription. Verify the chosen organization's plan and permissions before transfer. A transfer can affect existing integrations, so it must be a separate approved action.
+
+Blacksmith lists x64 2-vCPU runners at USD 0.004/min and 8-vCPU runners at USD 0.016/min. Its free allowance is 3,000 2-vCPU-equivalent minutes/month. Sticky disks are optional at USD 0.50/GB/month. The public repository's standard GitHub runner compute currently costs USD 0; this is not a claim about all GitHub account charges.
+
+Observed volume was 150 runs in 15.9306 hours, which extrapolates to about 6,779 runs in 30 days if that short burst continues. That is a scenario, not a monthly forecast. At eight 8-vCPU runner-minutes per run, that scenario would cost approximately USD 856/month after the stated compute allowance. At the unchanged observed completed-job minute rate, all on 8-vCPU Blacksmith runners, the scenario is approximately USD 4,239/month. Neither estimate includes sticky disks or assumes a measured Blacksmith speedup. Establish a spend cap and benchmark before a paid switch. No Blacksmith account, token, installation, or bill was created.
