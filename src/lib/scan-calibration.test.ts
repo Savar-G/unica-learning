@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import type { QuestionPackage } from "@/lib/question-package";
 import { FIXTURES } from "@/lib/maya-gate/fixtures";
 import {
+  CALIBRATION_VERSION,
   applyTransform,
   calibratePhoto,
   calibrationForPhoto,
@@ -288,7 +289,8 @@ describe("a photo and its printed revision", () => {
     const result = calibratePhoto({ photo, printed, contract: own, pageLink: LINK });
     if (result.status !== "calibrated") throw new Error("refused");
     expect(result.calibration.revision).toBe(REVISION);
-    expect(result.calibration.version).toBe(2);
+    // The PostgreSQL receipt probe imports this same constant and proves admission.
+    expect(result.calibration.version).toBe(CALIBRATION_VERSION);
     expect(calibrationForPhoto(result.calibration, { printedRevision: REVISION })).toBe(result.calibration);
     const legacy = { ...result.calibration, version: 1 };
     expect(calibrationForPhoto(legacy, { printedRevision: REVISION })).toBe(legacy);
