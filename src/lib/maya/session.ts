@@ -5588,7 +5588,10 @@ function withStreamed(base: Session, r: StepResult, at: number, planned: string,
  * a fixed reply due, or the content hold.
  */
 export function streamPlan(s: Session): { rules: SayRules; act: Act; stance: "wrong" | "right" | "none"; extra: ReadonlySet<string>; greeting: boolean; closed: (sentence: string) => boolean; confirmation: SayValue | null } | null {
-  if (!s.package || !s.turn || s.safety.flagged || s.stopRequested || s.replies?.length || !isTeaching(s.state) || s.scopeDue === "outside_work") return null;
+  // Final check 4: a redirect of a turn that did not stream leaves the call in REDIRECT; the next turn that is plainly
+  // about the math streams again, from the teaching state the call goes back to.
+  const teaching = isTeaching(s.state) || (s.state === "REDIRECT" && !!s.resume && isTeaching(s.resume));
+  if (!s.package || !s.turn || s.safety.flagged || s.stopRequested || s.replies?.length || !teaching || s.scopeDue === "outside_work") return null;
   // Final check 4: only a turn plainly about the math streams before the model's reading is known (a plain hello too).
   const greeting = /^(?:hi|hello|hey|hiya|good (?:morning|afternoon|evening))(?:,?\s+maya)?[\s!.,]*$/i.test(s.turn.text.trim());
   if (!greeting && !plainlyMathTurn(s)) return null;
