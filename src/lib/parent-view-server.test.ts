@@ -408,6 +408,10 @@ describe("the Supabase reader of the Overview (#560)", () => {
     expect(select(r.session, "workbook_questions").get("workbook_id")).toBe(`eq.${WORKBOOK}`);
     expect(r.admin.filter((u) => u.pathname.endsWith("/workbook_questions"))).toEqual([]);
   });
+  it("gives no plan topics, and does not throw, when the book's printed plan cannot be read (Home then names the day from its questions)", async () => {
+    // No frozen approval, print manifest or stored pages behind the workbook: the Workbooks tab's own schedule read is not "ready".
+    expect(await overviewReader({}).reader.planTopics(CHILD, WORKBOOK)).toBeNull();
+  });
 });
 
 describe("the Supabase reader of the monthly summary (#562)", () => {

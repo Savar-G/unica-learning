@@ -8,6 +8,8 @@ import { LEARNING_COLUMNS } from "@/lib/learning-style";
 import { chatFamilyGate } from "@/lib/maya-chat";
 import { childPauseMailing } from "@/lib/plan-controls-server";
 import { dayNumber } from "@/lib/parent-week";
+import { readSchedule } from "@/lib/parent-schedule";
+import { parentScheduleStore } from "@/lib/parent-schedule-store";
 import type { ParentViewReader } from "@/lib/parent-view";
 import type { StateChange } from "@/lib/progress-series";
 import { pinIsSet } from "@/lib/parent-pin-server";
@@ -266,6 +268,13 @@ export function parentViewReader(session: SupabaseClient<Database>, parent: stri
         .order("page_id").order("question_number").limit(2000);
       if (error) throw new Error(`workbook questions read: ${error.message}`);
       return data.map((q) => ({ pageId: q.page_id, standard: q.standard }));
+    },
+    async planTopics(childId, workbookId) {
+      // The Workbooks tab's own read (src/lib/parent-schedule.ts), with this reader's session and secret key. A plan that is
+      // not frozen, does not check out or cannot be read gives null, and Home names the day from its questions instead.
+      if (!admin) return null;
+      const schedule = await readSchedule(parentScheduleStore(session, admin, parent), parent, { child: childId, book: workbookId });
+      return schedule.kind === "ready" ? schedule.rows.map((r) => ({ day: r.day, topic: r.topic })) : null;
     },
     async skillHistory(childId) {
       if (!admin) throw new Error("skill history read: no secret key");
