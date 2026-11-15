@@ -1357,13 +1357,15 @@ export class VoiceCallRun {
     if (this.call.lost) return this.finish({ detail: "the disconnect could not be saved" });
     // A leave the screen sent is a hang-up only when the child stays away: a LiveKit full reconnect sends the same leave
     // and joins again (#992). The button itself ends the call at once through the maya.hang_up RPC (hangUp).
-    if (this.graceTimer === null) {
-      this.graceTimer = this.timers.set(how === "hang_up" ? REJOIN_AFTER_LEAVE_MS : RECONNECT_GRACE_MS, () => {
-        if (this.childHere || generation !== this.generation) return;
-        if (how === "hang_up") void this.finish({ reason: "child_stopped" }, false, "participant_disconnect", reason);
-        else void this.finish({ detail: "the child's connection dropped and did not come back" }, false, "participant_disconnect", reason);
-      });
-    }
+    // Each leave starts its own wait: an earlier wait belongs to an older generation and would do nothing when it ends
+    // (a rejoin without the microphone, then a second leave).
+    if (this.graceTimer !== null) this.timers.clear(this.graceTimer);
+    this.graceTimer = this.timers.set(how === "hang_up" ? REJOIN_AFTER_LEAVE_MS : RECONNECT_GRACE_MS, () => {
+      if (this.childHere || generation !== this.generation) return;
+      this.graceTimer = null;
+      if (how === "hang_up") void this.finish({ reason: "child_stopped" }, false, "participant_disconnect", reason);
+      else void this.finish({ detail: "the child's connection dropped and did not come back" }, false, "participant_disconnect", reason);
+    });
   }
 
   hangUp() { return this.finish({ reason: "child_stopped" }, false, "explicit_rpc"); }

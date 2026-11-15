@@ -5,7 +5,7 @@ import { templateSkills } from '@/lib/assessment';
 import { learningEvents } from '@/lib/learning-events';
 import { memoryLearningEventStore } from '@/lib/learning-events-memory';
 import { memoryWordingHistoryStore, TIME_LIMITS } from '@/lib/maya';
-import { REJOIN_AFTER_LEAVE_MS } from '@/lib/maya-voice';
+import { RECONNECT_GRACE_MS, REJOIN_AFTER_LEAVE_MS } from '@/lib/maya-voice';
 import { mayaCalls, type CallSeams } from '@/lib/maya-call';
 import { memoryCallStore, memoryConnectionLog } from '@/lib/maya-call-memory';
 import { ruleMayaModel } from '@/lib/maya-model-fake';
@@ -212,6 +212,32 @@ it("a transport drop keeps grace and a reconnect does not create an initiating c
   expect(log().filter(e => e.phase === "origin")).toEqual([]);
   expect(log()[0]).toMatchObject({ entry: "participant_disconnect", reason: "signal_close", phase: "observation", originId: null });
   await r.run.hangUp();
+});
+
+// #1029 review: a child who leaves, comes back without the microphone (no childJoined), and leaves again. The second
+// leave starts its own wait; the first wait's generation is old, so it alone would leave the call live to the deadline.
+it.each([["hang_up", "hang_up"], ["hang_up", "dropped"], ["dropped", "hang_up"], ["dropped", "dropped"]] as const)("ends after two leaves with no microphone rejoin between: %s then %s", async (first, second) => {
+  const f = await fixture(); await f.call.start(); const r = f.makeRun();
+  await r.run.agentJoined(); await r.run.childJoined();
+  await r.run.childLeft(first, 1); await f.advance(1000);
+  await r.run.childLeft(second, 1);
+  const wait = second === "hang_up" ? REJOIN_AFTER_LEAVE_MS : RECONNECT_GRACE_MS;
+  await f.advance(wait - 1);
+  expect(f.store.rows()[0].status).toBe("live"); expect(r.session.close).not.toHaveBeenCalled();
+  await f.advance(1); await r.run.done;
+  expect(f.store.rows()[0].outcome?.reason).toBe(second === "hang_up" ? "child_stopped" : "technical_issue");
+  expect(r.session.close).toHaveBeenCalledOnce();
+});
+
+it("a single leave with no rejoin still ends as the child stopping after the wait", async () => {
+  const f = await fixture(); await f.call.start(); const r = f.makeRun();
+  await r.run.agentJoined(); await r.run.childJoined();
+  await r.run.childLeft("hang_up", 1);
+  await f.advance(REJOIN_AFTER_LEAVE_MS - 1);
+  expect(f.store.rows()[0].status).toBe("live"); expect(r.session.close).not.toHaveBeenCalled();
+  await f.advance(1); await r.run.done;
+  expect(f.store.rows()[0].outcome?.reason).toBe("child_stopped");
+  expect(r.session.close).toHaveBeenCalledOnce();
 });
 
 it("grace expiry retains the disconnect reason and technical outcome", async () => {
