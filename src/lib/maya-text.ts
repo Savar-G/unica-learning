@@ -34,6 +34,7 @@ import {
   tutorStream,
   tutorStreamSentence,
   TUTOR_REVIEW_IGNORED,
+  bindingReview,
   nextActs,
   step,
   streamPlan,
@@ -529,7 +530,8 @@ export function createTextSession(options: TextSessionOptions): TextSession {
     // far; any other sentence is held, alone, while its safety review runs in parallel; a refused review or a failed
     // check stops the stream, and the rest waits for the whole message and its whole check.
     const tutor = model.output === 3 && options.onSayPart && !folded.sent?.length && folded.pending.length === 0 ? read(() => tutorStream(folded.session)) : null;
-    const passes = (r: TalkReviewResult) => r.verdict === "pass" || (r.verdict === "fail" && r.rules.length > 0 && r.rules.every((id) => TUTOR_REVIEW_IGNORED.includes(id)));
+    // Final check 3: a refusal of a sentence that judges correctness is binding, whatever rules it names.
+    const passes = (r: TalkReviewResult, sentence: string) => r.verdict === "pass" || (r.verdict === "fail" && r.rules.length > 0 && r.rules.every((id) => TUTOR_REVIEW_IGNORED.includes(id)) && !bindingReview(sentence, tutor?.wordAnswer));
     const flushTutor = () => {
       while (queue.length && queue[0].state !== "pending" && live()) {
         const next = queue.shift()!;
@@ -563,7 +565,7 @@ export function createTextSession(options: TextSessionOptions): TextSession {
             const input = reviewInput(session, sentence, tutor.stance);
             const started = runReview(options.reviewer!, input, options.reviewTimeLimitMs ?? CONVERSATION_REVIEW_TIME_LIMIT_MS);
             streamReviews.set(reviewKey(input), { requestId, result: started });
-            checks.push(started.then(passes));
+            checks.push(started.then((r) => passes(r, sentence)));
           }
           if (how.math) {
             const input = read(() => mathReviewInput(session, sentence, before));

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SAFETY_GUIDANCE, type TalkReviewResult } from "@/lib/maya";
+import { fakeMathReviewer } from "@/lib/maya-math-review";
 import { conversationalFake, reply } from "@/lib/maya-model-fake";
 import { SAMPLE_PACKAGES } from "@/lib/maya-samples";
 import { createTextSession, type TextOutput } from "@/lib/maya-text";
@@ -96,6 +97,7 @@ describe("a held review after the safety guidance", () => {
       onSayPart: (s) => events.push(s),
       onGuidance: (out) => events.push(...out.say),
       reviewer: { id: "held", promptVersion: "t", review: () => { reviewStarted(); return review; } },
+      mathReviewer: fakeMathReviewer(),
     });
     return { session, events, started, passReview, endModel };
   }

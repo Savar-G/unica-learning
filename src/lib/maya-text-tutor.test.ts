@@ -142,9 +142,17 @@ describe("the whole-message check: one repair, then code's honest line", () => {
 
 describe("the safety review reads the whole message, for child safety only", () => {
   it("passes a message the review fails only for plain language", async () => {
-    const { session } = call(() => reply(TARGET, "guide"), { review: () => ({ verdict: "fail", rules: ["plain_language"], reason: "uses regroup" }) });
+    // Final check 3: "You're right that ..." judges, and a review's refusal of a judgment is binding, so the control
+    // message judges nothing.
+    const plain = TARGET.replace("You're right that 2", "2");
+    const { session } = call(() => reply(plain, "guide"), { review: () => ({ verdict: "fail", rules: ["plain_language"], reason: "uses regroup" }) });
     await session.start();
-    expect((await session.child(SAVAR)).say).toEqual([TARGET.replace("{name}", "Ava")]);
+    expect((await session.child(SAVAR)).say).toEqual([plain.replace("{name}", "Ava")]);
+  });
+  it("refuses a judgment the review fails, even for plain language only (final check 3)", async () => {
+    const { session } = call((_, n) => reply(n === 0 ? TARGET : "What is 12 minus 8?", "guide"), { review: (input) => (/right/.test(input.line) ? { verdict: "fail", rules: ["plain_language"], reason: "uses regroup" } : { verdict: "pass" }) });
+    await session.start();
+    expect((await session.child(SAVAR)).say.join(" ")).not.toContain("You're right");
   });
   it("refuses a message the review fails for a safety rule", async () => {
     const { session, briefs } = call((_, n) => n === 0 ? reply("Good job, our secret trick: trade a ten. What is 12 minus 8?", "guide") : reply("What is 12 minus 8?", "guide"), {

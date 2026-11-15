@@ -35,6 +35,9 @@ export const TUTOR_REVIEW_IGNORED: readonly string[] = ["math", "plain_language"
 export function plainTeaching(sentence: string, _extra: ReadonlySet<string> = new Set()): boolean {
   void _extra;
   const text = sentence.replace(/[’]/g, "'").replace(/[−–]/g, "-").trim();
+  // Final check 3 (2026-11-15): a sentence with a correctness judgment word always goes to the talk review, and the
+  // review's refusal of it is binding (bindingReview).
+  if (judgment(text).any) return false;
   // Only the exact approved sentences skip the review as they are; an open frame never does (review of #1006).
   // Sixth check of #1006: only an approved sentence that means the same after any child turn ("I'm an AI helper").
   // "That sounds fun", "Thanks for telling me" and the like depend on what the child said, so they are reviewed.
@@ -103,11 +106,63 @@ const NO_CLAIM_FORMS: readonly RegExp[] = [
 /** The complete math forms a clause may take with no review. Nothing else: no person, no object, no feeling. */
 const PLAIN_FORMS: readonly RegExp[] = [ASSERT_FORM, ...QUESTION_FORMS.filter((re) => re !== WHICH_FORM), WRITE_FORM, ...NO_CLAIM_FORMS];
 
+/** A sentence as the exact-match rule compares it: plain apostrophes and minus signs, one space, no final ".", "!" or "?", lower case. */
+export function exactKey(sentence: string): string {
+  return sentence.replace(/[‘’ʼ]/g, "'").replace(/[−–]/g, "-").replace(/\s+/g, " ").trim().replace(/[.!?]$/, "").trim().toLowerCase();
+}
+
+/**
+ * Code's own texts for this question, as exact keys (exact-match rule, the CoS decision of 2026-11-15): each step's work
+ * text (TutorKind.steps) sentence by sentence, and each of its parts between ";" or ":" (each part is code's own true
+ * statement of this question), and the kind's step question after each number of done steps (TutorKind.stepQuestion).
+ */
+export function exactTexts(pkg: OperationPackage): ReadonlySet<string> {
+  const kind = tutorKind(pkg);
+  const steps = kind.steps(pkg);
+  const keys = new Set<string>();
+  for (const st of steps) for (const sentence of sentencesOf(st.work)) {
+    keys.add(exactKey(sentence));
+    for (const part of sentence.split(/\s*[;:]\s*/)) if (part.trim()) keys.add(exactKey(part));
+  }
+  for (let k = 0; k <= steps.length; k++) {
+    const q = kind.stepQuestion(pkg, steps.slice(0, k).map((st) => st.id));
+    if (q) for (const sentence of sentencesOf(q)) keys.add(exactKey(sentence));
+  }
+  keys.delete("");
+  return keys;
+}
+
+/** "Subtract the ones", "Add the tens": code alone only for the question's own operation. */
+const OP_PLACE_FORM = new RegExp(String.raw`^(?:now\s+)?(subtract|add)\s+${PLACE}$`, "i");
+
+/**
+ * Whether a sentence passes on code alone (the exact-match rule, the CoS decision of 2026-11-15). Only when the whole
+ * sentence (exactKey) is (a) one of code's own texts for this question (ctx.exact, exactTexts), or (b) one closed plain
+ * form: an equation or place-value claim of numbers (ASSERT_FORM) whose every number and relation code read inside a
+ * claim it found true; a closed question form, only in a question; the fixed true trade; a place named alone; or an
+ * operation on a place that is the question's own. No lead-in, no {name}, no other word. The true-math checks of
+ * checkTutorSay still run on it. Every other sentence goes to the math-truth review. The claim reader (falseClaims,
+ * answerProblems, claimProblems) only refuses; it never grants a pass.
+ */
+export function codeAlone(sentence: string, ctx: Pick<TutorCheckContext, "op" | "trades" | "answer" | "columns" | "exact"> = {}): boolean {
+  const key = exactKey(sentence);
+  if (!key || /\{name\}/i.test(key)) return false;
+  if (ctx.exact?.has(key)) return true;
+  if (judgment(sentence).any) return false;
+  const asks = /\?\s*$/.test(sentence.trim());
+  const op = OP_PLACE_FORM.exec(key);
+  // NO_CLAIM_FORMS[0] is the fixed true trade, [2] a place named alone; [1], an operation on a place, is OP_PLACE_FORM.
+  const form = ASSERT_FORM.test(key) || NO_CLAIM_FORMS[0].test(key) || NO_CLAIM_FORMS[2].test(key) ||
+    (op !== null && ctx.op !== undefined && (op[1].toLowerCase() === "add") === (ctx.op === "add")) ||
+    (asks && QUESTION_FORMS.some((re) => re.test(key)));
+  return form && unreadMath(sentence, ctx).length === 0;
+}
+
 /**
  * The words of a sentence's math that code did not read inside a claim it found true (two-layer true math, the CoS design
  * of 2026-11-15): numbers (digits, number words, fractions, "and a half", a remainder), relation words (is, are, equals,
- * makes, becomes, greater, less, more, than, same) and operators. Empty: the sentence passes on code alone. Else it goes
- * to the math-truth review (src/lib/maya-math-review.ts). A closed question form asks and claims nothing (only in a
+ * makes, becomes, greater, less, more, than, same) and operators. Since the exact-match rule (2026-11-15) an empty list
+ * grants nothing alone: it is one condition of a closed plain form in codeAlone. A closed question form asks and claims nothing (only in a
  * question); the fixed true trade and a place named alone claim nothing; an answer claim read whole and true is read.
  * The kinds' own checks (claimProblems) refuse, but read nothing here: a sentence only a kind reads goes to the review.
  */
@@ -204,7 +259,33 @@ export interface TutorCheckContext {
   nameWords?: number;
   /** The question's own column sums (columnSums): only these read "1 + 2 + 3 = 6 tens" whole (pre-launch check 2). */
   columns?: readonly ColumnSum[];
+  /** Code's own texts for the question (exactTexts): a sentence that is one of them passes on code alone. */
+  exact?: ReadonlySet<string>;
+  /** The question's answer is a word ("true", "false", a comparison): "true" and "false" are its content, not a judgment. */
+  wordAnswer?: boolean;
 }
+
+/** Negative judgment words and phrases (final check 3, 2026-11-15). */
+const NEGATIVE_JUDGMENT = /\b(?:not\s+(?:quite|yet|right|correct|true|exactly|it)|isn'?t\s+(?:right|correct|true)|wrong|incorrect|false|nope|try again)\b/gi;
+/** Positive judgment words and phrases. */
+const POSITIVE_JUDGMENT = /\b(?:right|correct(?:ly)?|true|yes|yep|yeah|exactly|perfect(?:ly)?|great job|good job|great work|good work|well done|nice|spot on|got it|nail(?:ed)?|excellent|awesome|brilliant|amazing|you did it)\b/i;
+
+/**
+ * Whether a sentence judges correctness (final check 3, 2026-11-15): any judgment word makes it a judgment, wherever it
+ * stands. Fail closed: the reader is broad on purpose. With stance "wrong" a positive judgment is refused, with stance
+ * "right" a negative one; with stance "none" it goes to the talk review, whose refusal of it is binding. A negative
+ * phrase ("not right") is negative, not positive. On a word question, "true" and "false" in a question are its content.
+ */
+export function judgment(sentence: string, wordAnswer = false): { any: boolean; positive: boolean; negative: boolean } {
+  let text = sentence.replace(/[‘’ʼ]/g, "'");
+  if (wordAnswer) text = text.replace(/\b(?:true|false)\b/gi, " ");
+  const negative = new RegExp(NEGATIVE_JUDGMENT.source, "i").test(text);
+  const positive = POSITIVE_JUDGMENT.test(text.replace(NEGATIVE_JUDGMENT, " "));
+  return { any: negative || positive, positive, negative };
+}
+
+/** A talk-review refusal of this sentence is binding, whatever rules it names: the sentence judges correctness. */
+export const bindingReview = (sentence: string, wordAnswer = false): boolean => judgment(sentence, wordAnswer).any;
 
 /** A division with a remainder ("15 ÷ 6 = 2 R 3", in digits or words): falseClaims reads it whole. */
 const REMAINDER_FORM = new RegExp(REMAINDER_SAID, "gi");
@@ -252,24 +333,22 @@ export function checkTutorSay(text: string, ctx: TutorCheckContext & { extra?: R
     const wrongAnswer = ctx.answer === undefined ? undefined : answerProblems(sentence, ctx.answer)[0];
     if (wrongAnswer) return { ok: false, reason: "false_equation", detail: `"${sentence}": ${wrongAnswer}.` };
   }
-  // No false judgment of the child's answer, in any sentence: a "yes" or "right" for a wrong answer, a "not quite" for
-  // a right one. The first sentence is judged strictly. A later one is exempt only when it judges its own true equation
-  // ("Earlier you got 12 − 8 = 4, and that's right"): it names none of the child's numbers and not "your answer".
-  const names = (sentence: string, values: readonly number[] | undefined) => {
-    const said = sayNumbers(sentence).flatMap((t) => (t.q && t.q[1] === 1 ? [t.q[0]] : []));
-    const ownEquation = equationsOf(sentence).some((e) => !e.negated && equationHolds(e) === true);
-    return !ownEquation || said.some((n) => (values ?? []).includes(n)) || /\byour (?:answer|number|work)\b/i.test(sentence);
-  };
+  // No false judgment of the child's answer, in any sentence (final check 3, 2026-11-15): any sentence with a judgment
+  // word is a judgment. With stance "wrong" a positive judgment is refused, with stance "right" a negative one. The
+  // first sentence is also read by the older forms ("Yes", "Not quite").
   for (const [i, sentence] of sentences.entries()) {
-    if (ctx.stance === "wrong" && ((i === 0 && affirms(sentence)) || (JUDGES_RIGHT.test(sentence) && names(sentence, ctx.childValues)))) {
-      return { ok: false, reason: "affirms_wrong", detail: "Code found the child's answer wrong: never say it is right. Say kindly that it is not right yet, and where." };
+    const j = judgment(sentence, ctx.wordAnswer);
+    if (ctx.stance === "wrong" && (j.positive || (i === 0 && affirms(sentence)) || JUDGES_RIGHT.test(sentence))) {
+      return { ok: false, reason: "affirms_wrong", detail: "Code found the child's answer wrong: never say it is right, correct or well done. Say kindly that it is not right yet, and where." };
     }
-    if (ctx.stance === "right" && ((i === 0 && JUDGES_WRONG.test(sentence)) || (JUDGES_WRONG.test(sentence) && names(sentence, ctx.childValues)))) {
-      return { ok: false, reason: "wrong_stance", detail: "Code found the child's answer right: say so, never \"not quite\"." };
+    if (ctx.stance === "right" && (j.negative || JUDGES_WRONG.test(sentence))) {
+      return { ok: false, reason: "wrong_stance", detail: "Code found the child's answer right: say so, never \"not quite\" or \"wrong\"." };
     }
   }
   const review = sentences.filter((x) => !plainTeaching(x, ctx.extra));
-  const math = sentences.filter((x) => unreadMath(x, ctx).length > 0);
+  // The exact-match rule (2026-11-15): only an exact match of code's own text or of a closed plain form passes on code
+  // alone; every other sentence goes to the math-truth review.
+  const math = sentences.filter((x) => !codeAlone(x, ctx));
   return { ok: true, needsReview: review.length > 0, review, math };
 }
 
@@ -285,8 +364,9 @@ export function tutorStreamSentence(sentence: string, previous: readonly string[
   if (!verdict.ok) return "stop";
   // A judgment of the child's answer, in any sentence, waits unless the stream is sure of it: the final check may read
   // the child's number another way (review of #1006: "I got 4." then "Yes, 4 is the answer.").
-  const judgesRight = (previous.length === 0 && affirms(sentence)) || JUDGES_RIGHT.test(sentence);
-  const judgesWrong = (previous.length === 0 && DENIES.test(sentence)) || JUDGES_WRONG.test(sentence);
+  const j = judgment(sentence, ctx.wordAnswer);
+  const judgesRight = (previous.length === 0 && affirms(sentence)) || JUDGES_RIGHT.test(sentence) || j.positive;
+  const judgesWrong = (previous.length === 0 && DENIES.test(sentence)) || JUDGES_WRONG.test(sentence) || j.negative;
   if ((judgesRight && !ctx.mayAffirm) || (judgesWrong && !ctx.mayDeny)) return "stop";
   // A number that is not one of this question's (an outside answer, a twin question) waits for the whole message and
   // its scope reading (review of #1006: "The answer is 56." for outside homework).
@@ -299,7 +379,7 @@ export function tutorStreamSentence(sentence: string, previous: readonly string[
   // Two-layer true math: a sentence with math code did not read whole is held for the math-truth review, beside the
   // safety review when it is not plain teaching.
   const talk = !plainTeaching(sentence, ctx.extra);
-  const math = unreadMath(sentence, ctx).length > 0;
+  const math = !codeAlone(sentence, ctx);
   return talk || math ? { talk, math } : "send";
 }
 
@@ -342,6 +422,8 @@ export function tutorStreamContext(pkg: OperationPackage, text: string, stance: 
     claims: (sentence: string) => kind.claimProblems(pkg, sentence),
     trades: kind.workValues(pkg),
     columns: columnSums(pkg),
+    exact: exactTexts(pkg),
+    ...(wordQuestion ? { wordAnswer: true } : {}),
     allowed,
     // A "yes" streams only when no reading can make it wrong: the child said no number, or only numbers code's own read
     // credits as right (the final check keeps code's credit over the model's reading). On a word question (a claim or a
@@ -362,7 +444,7 @@ export function tutorFallbackText(pkg: OperationPackage, done: readonly string[]
   const kind = tutorKind(pkg);
   const q = kind.stepQuestion(pkg, done);
   const op = kind.op?.(pkg);
-  const verdict = q === null ? null : checkTutorSay(q, { stance: "none", claims: (x) => kind.claimProblems(pkg, x), trades: kind.workValues(pkg), ...(op ? { op } : {}) });
+  const verdict = q === null ? null : checkTutorSay(q, { stance: "none", claims: (x) => kind.claimProblems(pkg, x), trades: kind.workValues(pkg), exact: exactTexts(pkg), ...(op ? { op } : {}) });
   // Two-layer true math: code's own line has every number read by code (it gets no math review either).
   const safe = q !== null && plainTeaching(q) && verdict?.ok === true && verdict.math.length === 0;
   return `Let me say that another way. ${safe ? q : "So what is the whole answer?"}`;

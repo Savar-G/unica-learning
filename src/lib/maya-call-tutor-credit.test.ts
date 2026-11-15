@@ -156,4 +156,19 @@ describe("tutor core credit on family calls (part C)", () => {
     expect(r.notes[0]?.facts.finished).toBe("answer_given");
     expect(r.notes[0]?.sentences.join(" ")).not.toContain("small hint");
   });
+
+  // Final check 3, F2: only a right final answer the child committed to keeps Maya's full answer from counting as given.
+  for (const voice of [false, true]) {
+    for (const child of ["My answer is not 24. I need help.", "I have 24 crayons. Help me with this question.", "The last question had 24. I need help with this one."]) {
+      it(`a number said in passing is no answer of the child's (voice ${voice}): ${child}`, async () => {
+        const r = await family(SUBTRACT, [reply("52 minus 28 is 24. Write 24 on your paper.", "guide"), reply("Bye for now.", "close")], [child, "It's 24."], voice);
+        expect(r.notes[0]?.transcript.some((t) => t.speaker === "maya" && t.text === "52 minus 28 is 24. Write 24 on your paper.")).toBe(true);
+        expect(r.notes[0]?.facts.finished).toBe("answer_given");
+      });
+    }
+    it(`control: a committed right answer is the child's own work (voice ${voice})`, async () => {
+      const r = await family(SUBTRACT, [reply("Bye for now.", "close")], ["It's 24."], voice);
+      expect(r.notes[0]?.facts.finished).toBe("on_own");
+    });
+  }
 });

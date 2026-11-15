@@ -46,3 +46,14 @@ export function asksIdentity(text: string): boolean {
   const sentences = plain.split(/(?<=[?!.])\s+|\n+/).map((x) => x.trim()).filter(Boolean);
   return sentences.some((x) => PATTERNS.some((p) => p.test(x)));
 }
+
+/**
+ * Final check 3 (2026-11-15): whether the child's words MAY ask what Maya is. Broad on purpose: any identity word holds
+ * every model sentence of the turn until the whole message and its reading are in (no stream), so a disclosure the
+ * reading asks for always comes first. Over-holding costs only speed; it never changes what is said.
+ */
+const IDENTITY_WORD = /\b(?:real|person|people|human|humans|somebody|someone|ai|a\.\s?i\.?|robot|robo|bot|chat\s*bot|computer|machine|alive|live person|actual|who are you|what are you|who is this)\b/i;
+export function mayAskIdentity(text: string): boolean {
+  if (typeof text !== "string") return false;
+  return IDENTITY_WORD.test(text.replace(/[‘’ʼ]/g, "'")) || asksIdentity(text);
+}
