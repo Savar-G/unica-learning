@@ -22,14 +22,38 @@ Maya is the tutor, and code is the safety net. Savar approved this design on 202
 | Never-say patterns (secrecy, personal questions, claims to see, promises, unkind words, feelings) | `neverSayProblem` in `say-check.ts` | Refused |
 | Every equation true, and no true equation called false | `equationsOf` and `equationHolds` | Refused |
 | Place-value claims ("52 is 4 tens and 12 ones", "2 ones become 12") | `placeValueProblem` | Refused |
-| No "yes" to a wrong answer, no "not quite" to a right one, by code's own credit (D-340) | `checkTutorSay` with the stance | Refused |
+| No "yes" to a wrong answer (or to a false equation the child said), no "not quite" to a right one, by code's own credit (D-340) | `checkTutorSay` with the stance | Refused |
 | At most 60 words (`TUTOR_WORD_LIMIT`) | `checkTutorSay` | Refused; code never trims |
 | A close only after the child solved the question (a stop and the time limit stay code's) | `proposeTutor` in `session.ts` | Refused |
-| Child safety of any sentence that is not plain math: the whole message, safety rules only (`TUTOR_REVIEW_SYSTEM`) | the talk review in the adapter | Refused |
+| Child safety of each sentence that is not plain teaching (`plainTeaching`): safety rules only (`TUTOR_REVIEW_SYSTEM`) | the talk review in the adapter, per sentence | Refused |
 
 A refused message gets one repair with the reason, also in voice. A second refusal gets code's honest line with the step's question (`tutorFallbackText`), for example "Let me say that another way. What do you get for 12 minus 8?". A refused board drawing is never a reason to lose the words.
 
-Code still owns, unchanged: safety guidance and its close, the AI disclosure opening, the held close, the stop and time closes, confirmations of a number it could not hear, outside-work redirects, the spend block and the `{name}` token. Those turns go through the controller as before (`tutorTeachingNow` is false for them).
+Code still owns, unchanged: safety guidance and its close, the AI disclosure opening, the held close, the stop and time closes, confirmations of a number it could not hear, outside-work redirects, the spend block and the `{name}` token. Those turns go through the controller as before (`tutorTeachingNow` is false for them). Other-topic talk ("What is your favorite animal?") is the tutor's to answer, with the safety review; outside math work, another person's work and an unsafe request stay code's redirect. A turn a gate takes after the model's reading gets code's line at once, with no repair.
+
+## Plain teaching and the review
+
+A sentence is plain teaching (`plainTeaching`) when every word is a math or plain teaching word (`MATH_VOCAB` in `math-vocab.ts`, `TUTOR_MATH_WORDS`, or the question's own words), and it is not a statement about the child or about Maya without a number in it ("You can't do this" is reviewed; "You can't take 8 from 2" is plain). An exact safe sentence and the frame "I'm an AI, so I don't have a favorite ..." are plain too. Only the other sentences go to the review. The never-say patterns and the math checks run on every sentence.
+
+## Streaming (voice)
+
+A tutor message streams to the voice sentence by sentence while the model writes (`tutorStreamSentence`):
+
+- a plain teaching sentence goes out as soon as every check passes on the words so far;
+- any other sentence is held, alone, while its review runs in parallel; the sentences after it wait behind it, in order;
+- a failed check or a refused review stops the stream; the rest waits for the whole message and its whole check;
+- a first "yes" streams only when code found the child right or the child said no number; a first "not quite" only when code found the child wrong or no answer the child offered (the last number of each sentence) is a value of the question;
+- a safety or stop turn never streams.
+
+Sentences already said stay said. When the whole message is then refused, no repair follows: code adds only its step question after them. Chat does not stream.
+
+Measured on 2026-11-14 with the real model (Sonnet 5.5 and the Haiku review through OpenRouter), `npm run maya:text -- --model openrouter --voice --tutor --real-clock`: Maya's first sentence after the child's turn, in the text adapter (no speech-to-text or voice), across the same 6 inputs:
+
+| Path | First sentence |
+|---|---|
+| Controller (production now) | 0.9 to 1.3 s on plain math turns; 2.2 to 5 s on others; 10 to 14 s on "teach me 2 minus 8" |
+| Tutor core, no stream (#1002) | 2.7 to 4.8 s on every turn |
+| Tutor core, streamed | 0.8 to 1.6 s on all 18 turns of 3 runs, with no override |
 
 The answer rule is lifted: no check blocks a true step value or the answer. Telling is a teaching choice for the prompt.
 
@@ -49,4 +73,4 @@ The model asks by id; code builds every command from the checked steps (`tutorDr
 
 Phase 1: 2-digit whole-number addition and subtraction (`isTutorQuestion`), on admin test calls only (`tutor: record.kind === "admin_test"` in `src/lib/maya-call.ts`), in chat and voice. Family calls keep the controller. The family switches stay off.
 
-Phase 2 moves every Book 1 question type to the tutor core, and deletes the controller's teaching code as each type moves. Phase 3 rebuilds the practice judge (T01 to T10 plus the trace metrics) and brings prepared replies to the single call. A tutor call prepares no reply yet, and a tutor message does not stream: it is said after its whole-message check.
+Phase 2 moves every Book 1 question type to the tutor core, and deletes the controller's teaching code as each type moves. Phase 3 rebuilds the practice judge (T01 to T10 plus the trace metrics) and continues the latency work on the single call.

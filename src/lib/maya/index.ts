@@ -6,6 +6,7 @@ export {
   createSession,
   fallbacks,
   tutorTeachingNow,
+  tutorStream,
   helpBrief,
   fillerTurn,
   PATIENT_LINES,
@@ -116,5 +117,5 @@ export { asksSimplest, isEqualForm, readOptionsFor, rightForQuestion, teachSteps
 export { scopeReason, scopeSkills, SCOPE_LABELS, SCOPE_REASONS, type MathRequest, type ScopeReading, type OutsideReason, type ScopeReason, type ScopeRefusal } from "./scope";
 export { exactSafe, mathOnly, EXACT_SAFE, MATH_VOCAB } from "./math-vocab";
 export { checkSay, checkSentence, numberValue, sentencesOf, sayNumbers, trimSay, valuesOf, SAY_REASONS, SAY_WORDS, type SayReason, type SayRules, type SayVerdict } from "./say-check";
-export { checkTutorSay, childFacts, isTutorQuestion, numberMeaning, stepFacts, tutorDrawings, tutorFallbackText, tutorSteps, TUTOR_DRAWINGS, TUTOR_REVIEW_IGNORED, TUTOR_WORD_LIMIT, type TutorVerdict } from "./tutor";
+export { checkTutorSay, plainTeaching, tutorStreamSentence, tutorStreamContext, childSaysFalse, type TutorStreamContext, childFacts, isTutorQuestion, numberMeaning, stepFacts, tutorDrawings, tutorFallbackText, tutorSteps, TUTOR_DRAWINGS, TUTOR_REVIEW_IGNORED, TUTOR_WORD_LIMIT, type TutorVerdict } from "./tutor";
 export { isTutorBrief, tutorBrief, tutorBriefParts, TUTOR_OUTPUT_SCHEMA, TUTOR_PROMPT, TUTOR_PROMPT_VERSION, type TutorBrief } from "./tutor-prompt";

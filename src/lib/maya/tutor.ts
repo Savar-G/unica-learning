@@ -14,7 +14,7 @@
 // Phase 1 scope: 2-digit whole-number addition and subtraction (`isTutorQuestion`), on admin test calls.
 import type { OperationPackage, WorkedStep } from "@/lib/question-package";
 import { affirms, equationHolds, equationsOf, neverSayProblem, sayNumbers, sentencesOf } from "./say-check";
-import { mathOnly } from "./math-vocab";
+import { exactSafe, MATH_VOCAB, wordsOf } from "./math-vocab";
 
 /** The hard ceiling of one Maya message, in words. Over it, the model gets one repair with the reason; code never trims. */
 export const TUTOR_WORD_LIMIT = 60;
@@ -22,8 +22,30 @@ export const TUTOR_WORD_LIMIT = 60;
 /** Review rules that only shape talk: the tutor review ignores them (D-345). The math rule: code checks the math. */
 export const TUTOR_REVIEW_IGNORED: readonly string[] = ["math", "plain_language", "held_limit"];
 
-/** Words of a teaching sentence that are math, not talk, beyond the math vocabulary (so they skip the talk review). */
-const TUTOR_MATH_WORDS: ReadonlySet<string> = new Set(["become", "becomes", "make", "makes", "borrow", "borrowed", "trade", "traded", "swap", "left", "now", "have", "has", "get", "gives", "take", "takes", "away", "more", "enough", "small", "smaller", "bigger", "too", "into"]);
+/** Words of a teaching sentence beyond the math vocabulary (MATH_VOCAB) that still name only the math or the work. */
+const TUTOR_MATH_WORDS: ReadonlySet<string> = new Set(["quite", "moment", "ago", "around", "back", "wait", "become", "becomes", "make", "makes", "borrow", "borrowed", "trade", "traded", "swap", "small", "big", "into", "fingers", "finger", "blocks", "block", "sticks", "stick", "picture", "board", "loose", "stayed", "name", "new", "after", "count", "up", "hold", "question", "good", "thinking"]);
+
+/** "I'm an AI, so I don't have a favorite animal.": the AI frame with one plain word for the favorite thing. */
+const AI_FRAME = /^I'm an AI,? so I don't have (?:a )?(?:favorite|favourite) [a-z]+(?: [a-z]+)?[.!]?$/i;
+
+/**
+ * A sentence the child may hear with no safety review (D-345, the CoS rule of 2026-11-14: review only non-math or
+ * personal content): every word is a math or plain teaching word (MATH_VOCAB and TUTOR_MATH_WORDS, or the question's
+ * own words), and it is not a statement about the child or about Maya without a number in it ("You can't do this",
+ * "I can't help"): such a sentence is reviewed. An exact safe sentence (EXACT_SAFE) is plain too. The never-say
+ * patterns and the math checks run on every sentence either way.
+ */
+export function plainTeaching(sentence: string, extra: ReadonlySet<string> = new Set()): boolean {
+  const text = sentence.replace(/[’]/g, "'").trim();
+  if (exactSafe(text) || AI_FRAME.test(text)) return true;
+  // Only plain letters, digits and math signs: other letters or symbols are read by the review.
+  if (/[^a-z0-9\s.,?!:;()'"+*=<>%/\-×÷−–]/i.test(text.replace(/\{name\}/g, " "))) return false;
+  const words = wordsOf(text);
+  if (!words.every((w) => MATH_VOCAB.has(w) || TUTOR_MATH_WORDS.has(w) || extra.has(w))) return false;
+  const numbered = /\d/.test(text);
+  const personal = /\b(?:you|you're|your|yourself|i|i'm|i'll|me|my)\b/i.test(text);
+  return !personal || numbered;
+}
 
 type ColumnStep = Extract<WorkedStep, { kind: "add-column" | "subtract-column" }>;
 
@@ -147,6 +169,11 @@ export function childFacts(pkg: OperationPackage, text: string): string[] {
   return facts;
 }
 
+/** The child's turn says a false equation ("12 minus 8 is 5"): code's own read, whatever step it is about. */
+export function childSaysFalse(text: string): boolean {
+  return sentencesOf(text).some((x) => equationsOf(x).some((e) => equationHolds(e) === e.negated && equationHolds(e) !== null));
+}
+
 /** The context of the whole-message check: code's verdict on the child's answer this turn. */
 export interface TutorCheckContext {
   /** "wrong": the child committed to a wrong answer this turn; "right": a right one; else "none". */
@@ -154,20 +181,25 @@ export interface TutorCheckContext {
 }
 
 export type TutorVerdict =
-  | { ok: true; needsReview: boolean }
+  /** `review`: the sentences that are not plain teaching (plainTeaching): the safety review reads each before it is said. */
+  | { ok: true; needsReview: boolean; review: string[] }
   | { ok: false; reason: "empty" | "too_long" | "never_say" | "false_equation" | "affirms_wrong" | "wrong_stance"; detail: string };
 
 /** "N tens and M ones" said equal to a number, or "N (ones) become M": the place-value claims code can check. */
 function placeValueProblem(sentence: string): string | null {
   const text = sentence.replace(/[−–]/g, "-").toLowerCase();
   const word = String.raw`(\d+)`;
-  for (const m of text.matchAll(new RegExp(String.raw`${word}\s+(?:is|=|equals|is the same as)\s+${word}\s+tens?\s+and\s+${word}\s+ones?`, "g"))) {
+  for (const m of text.matchAll(new RegExp(String.raw`${word}\s+(?:is now|is still|is|=|equals|is the same as)\s+${word}\s+tens?\s+and\s+${word}\s+ones?`, "g"))) {
     if (Number(m[1]) !== Number(m[2]) * 10 + Number(m[3])) return `${m[1]} is not ${m[2]} tens and ${m[3]} ones`;
   }
   for (const m of text.matchAll(new RegExp(String.raw`${word}\s+tens?\s+and\s+${word}\s+ones?\s+(?:is|=|equals|makes|make)\s+${word}`, "g"))) {
     if (Number(m[3]) !== Number(m[1]) * 10 + Number(m[2])) return `${m[1]} tens and ${m[2]} ones is not ${m[3]}`;
   }
-  for (const m of text.matchAll(new RegExp(String.raw`${word}\s+(ones?|tens?)?\s*(?:becomes?|turns? into|is now|are now)\s+${word}\s*(ones?|tens?)?`, "g"))) {
+  // "2 ones become 12", "5 tens are now 4 tens"; never "52 is now 4 tens and 12 ones" (read above).
+  for (const m of text.matchAll(new RegExp(String.raw`${word}\s+(ones?\b|tens?\b)?\s*(?:becomes?|became|turns? into|is now|are now)\s+${word}(?:\s+(ones?\b|tens?\b))?`, "g"))) {
+    // A number said as tens and ones after it is the equality above, not a trade.
+    if (/^\s*(?:(?:ones?|tens?)\b)?\s*and\s+\d/.test(text.slice(m.index! + m[0].length))) continue;
+    if (!m[2] && !m[4] && /is now|are now/.test(m[0])) continue;
     const [from, to] = [Number(m[1]), Number(m[3])];
     const tens = /^ten/.test(m[2] ?? m[4] ?? "");
     const fine = tens ? to === from - 1 : to === from + 10 || to === from - 1;
@@ -182,7 +214,7 @@ function placeValueProblem(sentence: string): string | null {
  * answer or a "not quite" to a right one. `needsReview`: a sentence is not plain math, so the talk review reads the
  * whole message before it is said.
  */
-export function checkTutorSay(text: string, ctx: TutorCheckContext): TutorVerdict {
+export function checkTutorSay(text: string, ctx: TutorCheckContext & { extra?: ReadonlySet<string> }): TutorVerdict {
   const say = text.trim();
   if (!say) return { ok: false, reason: "empty", detail: "The message is empty: say one short helpful thing and ask one small question." };
   const words = say.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
@@ -203,9 +235,53 @@ export function checkTutorSay(text: string, ctx: TutorCheckContext): TutorVerdic
   if (ctx.stance === "right" && /\b(?:not quite|not yet|not right|isn'?t right|incorrect|that'?s wrong|is wrong|try again)\b/i.test(sentences[0] ?? "")) {
     return { ok: false, reason: "wrong_stance", detail: "Code found the child's answer right: say so, never \"not quite\"." };
   }
-  const needsReview = !sentences.every((x) => mathOnly(x, TUTOR_MATH_WORDS));
-  return { ok: true, needsReview };
+  const review = sentences.filter((x) => !plainTeaching(x, ctx.extra));
+  return { ok: true, needsReview: review.length > 0, review };
 }
+
+/**
+ * How one tutor sentence goes out while the model still writes (D-345 streaming): "send" at once (plain teaching, and
+ * every check passes on the words so far), "review" first (not plain teaching: held, alone, until its review passes),
+ * or "stop" (a check fails, or the first sentence says right or wrong before code knows the stance): that sentence and
+ * every later one wait for the whole message and its whole check.
+ */
+export function tutorStreamSentence(sentence: string, previous: readonly string[], ctx: TutorStreamContext): "send" | "review" | "stop" {
+  const verdict = checkTutorSay([...previous, sentence].join(" "), ctx);
+  if (!verdict.ok) return "stop";
+  if (previous.length === 0 && ((affirms(sentence) && !ctx.mayAffirm) || (DENIES.test(sentence) && !ctx.mayDeny))) return "stop";
+  return plainTeaching(sentence, ctx.extra) ? "send" : "review";
+}
+
+/**
+ * What the stream knows before the model writes. `mayAffirm`: a first "yes" cannot be a yes to a wrong answer (code
+ * found the child right, or the child said no number). `mayDeny`: a first "not quite" cannot deny a right answer (code
+ * found the child wrong, or no number the child said is a value of the question's answer or steps).
+ */
+export interface TutorStreamContext extends TutorCheckContext {
+  extra?: ReadonlySet<string>;
+  mayAffirm: boolean;
+  mayDeny: boolean;
+}
+
+/** The stream's context for the child's turn `text`, from code's stance. */
+export function tutorStreamContext(pkg: OperationPackage, text: string, stance: TutorCheckContext["stance"], extra: ReadonlySet<string>): TutorStreamContext {
+  // The child's candidate answers: the last number of each sentence ("Is 2 minus 8, 6?" offers 6, not 2 or 8).
+  const said = sentencesOf(text).flatMap((x) => {
+    const last = sayNumbers(x).filter((t) => t.q && t.q[1] === 1).at(-1);
+    return last ? [last.q![0]] : [];
+  });
+  const answer = pkg.answer.value.type === "number" ? pkg.answer.value.value : null;
+  const right = new Set<number>([...(answer === null ? [] : [answer]), ...tutorSteps(pkg).flatMap((st) => [st.write, st.total, st.operands[0]])]);
+  return {
+    stance,
+    extra,
+    mayAffirm: stance === "right" || (stance === "none" && said.length === 0),
+    mayDeny: stance === "wrong" || (stance === "none" && !said.some((n) => right.has(n))),
+  };
+}
+
+/** A sentence that starts by saying an answer is not right. */
+const DENIES = /^\s*(?:not quite|not yet|not right|no\b|nope|that'?s not|that isn'?t|incorrect|close)/i;
 
 /** Code's honest line when the model's message failed twice (D-345): one short line and the step's question. */
 export function tutorFallbackText(pkg: OperationPackage, done: readonly string[], solved: boolean): string {

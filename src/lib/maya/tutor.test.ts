@@ -69,6 +69,12 @@ describe("checkTutorSay: the whole-message check", () => {
     expect(checkTutorSay("So 2 ones become 12 ones.", none)).toMatchObject({ ok: true });
     expect(checkTutorSay("So 2 ones become 11 ones.", none)).toMatchObject({ ok: false, reason: "false_equation" });
     expect(checkTutorSay("The 5 tens become 4 tens.", none)).toMatchObject({ ok: true });
+    // Real run, 2026-11-14: a true regroup said with "is now" was refused before.
+    expect(checkTutorSay("So we borrow: we trade 1 ten for 10 ones, and 52 is now 4 tens and 12 ones.", none)).toMatchObject({ ok: true });
+    expect(checkTutorSay("52 is now 4 tens and 2 ones.", none)).toMatchObject({ ok: false, reason: "false_equation" });
+    expect(checkTutorSay("The 5 tens are now 4 tens.", none)).toMatchObject({ ok: true });
+    expect(checkTutorSay("The 2 ones are now 12 ones.", none)).toMatchObject({ ok: true });
+    expect(checkTutorSay("The 2 ones are now 13 ones.", none)).toMatchObject({ ok: false, reason: "false_equation" });
   });
   it("has one hard ceiling and never trims", () => {
     const long = Array.from({ length: 61 }, () => "ones").join(" ") + ".";
@@ -85,8 +91,13 @@ describe("checkTutorSay: the whole-message check", () => {
     expect(checkTutorSay("Not quite. 6 is 8 minus 2, the other way around. Where could we get more ones?", { stance: "wrong" })).toMatchObject({ ok: true });
   });
   it("sends a plain math message without the talk review, and any other words to it", () => {
-    expect(checkTutorSay("What is 12 minus 8?", none)).toEqual({ ok: true, needsReview: false });
-    expect(checkTutorSay("Good question. What is 12 minus 8?", none)).toEqual({ ok: true, needsReview: true });
+    expect(checkTutorSay("What is 12 minus 8?", none)).toEqual({ ok: true, needsReview: false, review: [] });
+    expect(checkTutorSay("Good question. What is 12 minus 8?", none)).toEqual({ ok: true, needsReview: false, review: [] });
+    expect(checkTutorSay("You did well. What is 12 minus 8?", none)).toEqual({ ok: true, needsReview: true, review: ["You did well."] });
+    expect(checkTutorSay("I'm an AI, so I don't have a dog. What is 12 minus 8?", none)).toMatchObject({ review: [] });
+    expect(checkTutorSay("Dogs are fun. What is 12 minus 8?", none)).toMatchObject({ review: ["Dogs are fun."] });
+    expect(checkTutorSay("I'm an AI, so I don't have a favorite animal. What is 12 minus 8?", none)).toMatchObject({ review: [] });
+    expect(checkTutorSay("I'm an AI, so I don't have a favorite secret friend at home.", none)).toMatchObject({ review: ["I'm an AI, so I don't have a favorite secret friend at home."] });
   });
 });
 
