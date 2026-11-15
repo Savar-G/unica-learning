@@ -1,35 +1,31 @@
-import type { ReactNode } from "react";
-import { SkillMap } from "@/components/parent-skill-map";
+import Link from "next/link";
+import { ProgressPanels } from "@/components/parent-progress-panels";
 import { SupportPage } from "@/components/support-page";
-import { gradeLabel } from "@/lib/assessment/grades";
-import { unreliableAreasText } from "@/lib/report-view";
-import { STATE_ORDER, STATE_WORD } from "@/lib/skill-state-words";
 import type { ProgressView } from "@/lib/parent-view";
+import "./parent-option-a.css";
 import "./parent-progress.css";
 
-export function ParentProgress({ child, level, workbookNumber, areas, panel }: ProgressView & { panel?: ReactNode }) {
+// The Progress tab (#561, #1004, Option A v9): the child's skills, week by week. With no marked page yet it says so, and
+// shows no chart and no zeros. When a read it rests on fails it says it can't load, never the empty line or partial numbers.
+
+export function ParentProgress({ child, progress, unavailable }: ProgressView) {
   const name = child.firstName;
   return (
     <SupportPage label="Progress" title={`${name}'s progress`} wide>
-      {level?.unreliable && <p className="pp-note">{unreliableAreasText(name)}</p>}
-      {areas.length === 0 ? (
-        <p className="pp-empty">{name}&apos;s skill map appears once a test report is ready.</p>
-      ) : (
-        <section className="pp-card" aria-labelledby="pp-map">
-          <h2 id="pp-map">Skill map</h2>
-          <p className="pp-intro">
-            {level
-              ? <>BC {gradeLabel(level.working)} math skills, the level {name} works at.{level.earlySign ? " This level is an Early sign, so it may change." : ""}</>
-              : <>The math skills in Workbook {workbookNumber}.</>}
-            {" "}Select a skill to see why it has its state.
-          </p>
-          <ul className="pp-legend" aria-label="What the states mean">
-            {STATE_ORDER.map((s) => <li key={s} className={`pp-chip is-${s}`}>{STATE_WORD[s]}</li>)}
-          </ul>
-          <SkillMap areas={areas} workingLevel={level?.working ?? null} />
-        </section>
-      )}
-      {panel}
+      <div className="pa-wrap"><div className="pa pp">
+        {unavailable ? (
+          <div className="pa-card pp-empty" role="status">
+            <b>Progress can&apos;t load right now.</b>
+            <p>Try again in a moment.</p>
+          </div>
+        ) : progress ? <ProgressPanels name={name} progress={progress} /> : (
+          <div className="pa-card pp-empty">
+            <b>Progress starts after the first marked pages</b>
+            <p>When {name} finishes Day 1, scan the pages. Once they&apos;re marked, this tab shows the skills {name} masters, week by week.</p>
+            {child.tabs.includes("scan_pages") && <Link className="pa-scanbtn" href="/account/scan">Go to Scan</Link>}
+          </div>
+        )}
+      </div></div>
     </SupportPage>
   );
 }

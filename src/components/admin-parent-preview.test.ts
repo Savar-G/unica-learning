@@ -3,7 +3,6 @@ import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import { renderParentPreview } from "@/components/admin-parent-preview";
 import { PARENT_PREVIEW_VIEWS, SAMPLE_PLANS, SAMPLE_STAGE_FACTS, previewSelection, previewUrl, sampleChildren } from "@/lib/admin-parent-dashboard";
 import { sampleReportView } from "@/lib/sample-children";
-import { STATE_ORDER } from "@/lib/skill-state-words";
 import { childStage } from "@/lib/child-stage";
 import { readOnlyPreviewMarkup, parentPreviewDocument } from "@/lib/admin-parent-preview-document";
 
@@ -23,8 +22,10 @@ it.each(PARENT_PREVIEW_VIEWS.filter(view => view.id === "overview" || view.id ==
       expect(output.querySelector(".po")?.textContent ?? "").not.toMatch(/minutes|messages|this week/i);
       const name = child === "first" ? "Leah" : "Kai";
       if (view === "overview" && scenario === "active") {
-        expect(output.querySelector("#po-maya")?.textContent).toBe("Maya");
-        expect(output.querySelector(".po")?.textContent).toContain("Notes from Maya");
+        // Option A (#1003): the Home holds no Maya tile; the Maya tab holds the notes.
+        expect(output.querySelector("#po-maya")).toBeNull();
+        expect(output.querySelector(".po")?.textContent).not.toContain("Notes from Maya");
+        expect(output.querySelector(".po")?.textContent).toContain("Since");
       }
       if (view === "maya" && scenario === "notes") {
         expect(output.body.textContent).toContain("Read the call");
@@ -122,8 +123,9 @@ it("renders the actual confirmation, late mailing, paid restart, decline and sca
   expect(text("plan", "cancel_pending")).toContain("We could not confirm cancellation");
   expect(text("plan", "pause_saved")).toContain("The pause is saved");
   expect(text("plan", "restart_started")).toContain("The paid plan has restarted");
-  const map = dom(rendered("progress", "map"));
-  for (const state of STATE_ORDER) expect(map.querySelector(`.pp-tile.is-${state}`)).not.toBeNull();
+  const week = dom(rendered("progress", "week"));
+  expect(week.querySelectorAll(".pp-tile")).toHaveLength(4);
+  expect(week.body.textContent).toContain("Skills mastered over time");
   expect(text("plan", "restart_declined")).toContain("Your payment did not go through");
   expect(text("scan_results", "uncertain")).toContain("Our team is checking this answer.");
   expect(text("scan_results", "uncertain")).not.toContain("We cannot read this answer");
@@ -132,7 +134,7 @@ it("renders the actual confirmation, late mailing, paid restart, decline and sca
   expect(text("scan_results", "unscored")).toContain("Not scored");
   expect(text("scan_results", "expired")).toContain("Photo no longer available");
   expect(text("scan_results", "budget")).toContain("We cannot check more pages right now");
-  expect(text("progress", "panel")).toContain("Skills inside this one");
+  expect(text("progress", "empty")).toContain("Progress starts after the first marked pages");
   expect(text("report", "unreliable")).toContain("Start a new test");
   expect(text("report", "waitlist")).toContain("Join the waitlist");
   expect(text("report", "waitlist")).not.toContain("BC topics");

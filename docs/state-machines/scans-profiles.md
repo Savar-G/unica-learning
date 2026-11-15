@@ -201,7 +201,7 @@ Method: rg/sed over src/lib, src/app, src/components, supabase/migrations, docs.
 - DB enforcement: check constraints on state/reason/evidence_source; append-only trigger; row writes only via `save_child_profile_and_skill_changes_from_tests` under the build token (rows from older `record_skill_state_changes` stay unused). The new function does NOT recompute "differs from last row" in SQL (the old one did); safety is the build-token CAS.
 - Impossible/unhandled: two consecutive rows with the same state (possible only if history was written outside the token CAS); not found by code. A failed states step saves facts only and flags pending (machine 7).
 - Race: guarded (token CAS; test rows locked key-share).
-- What the user sees: parent dashboard Progress tab states via parent-view (other lead; gated by PROGRESS_TAB_ENABLED). Words in skill-state-words.ts.
+- What the user sees: parent dashboard Progress tab states via parent-view (other lead; gated by PROGRESS_TAB_ENABLED). The Home and Progress words are in `src/components/parent-home-skills.tsx` and `src/components/parent-progress-panels.tsx` (Option A, #1003, #1004).
 - Existing tests: assessment/skill-state.test.ts (149).
 - Pure core already? YES. This is the model for the others.
 - Value x risk: already good; low action needed. Only the duplicated reason/state lists (TS union vs SQL check) are worth noting.

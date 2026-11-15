@@ -6,7 +6,8 @@ import { CookieSettingsButton } from "@/components/cookie-consent";
 import { BUSINESS_NAME } from "@/lib/contact";
 
 /** `wide` uses the full nav width, for the assessment report (D-087); a page with no `label` shows no eyebrow. */
-export function SupportPage({ label, title, wide = false, children }: { label: string; title: string; wide?: boolean; children: ReactNode }) {
+/** `titleHidden` keeps the page's h1 for screen readers but hides it, where the page already shows the name (#1003). */
+export function SupportPage({ label, title, wide = false, titleHidden = false, children }: { label: string; title: string; wide?: boolean; titleHidden?: boolean; children: ReactNode }) {
   return (
     <div className="look-root support-root" data-look="warm">
       <header className="nav"><div className="in">
@@ -15,7 +16,7 @@ export function SupportPage({ label, title, wide = false, children }: { label: s
       </div></header>
       <main id="main" className={wide ? "support-page support-wide" : "support-page"}>
         {label && <p className="eyebrow">{label}</p>}
-        {title && <h1>{title}</h1>}
+        {title && <h1 className={titleHidden ? "sr-only" : undefined}>{title}</h1>}
         {children}
       </main>
       <footer className="support-footer" aria-label="Site information">

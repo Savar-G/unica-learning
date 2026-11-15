@@ -394,153 +394,137 @@ describe("a family the switch opens to", () => {
     });
   });
 
-  describe("the Overview (#560)", () => {
+  describe("the Home (#560, #1003)", () => {
     const tabs = ["overview", "workbooks", "maya", "assessment", "account"] as const;
     const asha = (t: readonly (typeof tabs)[number][] = tabs) => ({ ...view("c1", "Asha"), stage: "active" as const, opensOn: "overview" as const, tabs: [...t], currentWorkbook: { number: 2 } });
-    const full = (t?: readonly (typeof tabs)[number][]): import("@/lib/parent-view").OverviewView => ({
+    type Home = import("@/lib/parent-view").OverviewView;
+    const full = (t?: readonly (typeof tabs)[number][]): Home => ({
       child: asha(t),
-      level: { working: 4, earlySign: true, testedOn: "2026-10-31", unreliable: false },
-      areas: [
-        { area: "number", name: "Number and operations", level: 3, label: "at-grade", earlySign: false },
-        { area: "fractions", name: "Fractions and decimals", level: 2, label: "building-up", earlySign: true },
-        { area: "shapes", name: "Shapes, measurement and data", level: 4, label: "ahead", earlySign: false },
-      ],
-      skills: null,
-      areasIncludeMarks: false,
       resultPreparing: false,
       resultLate: false,
-      workbook: { number: 2, scannedDays: 3, days: 10 },
-      action: "learning_card_empty",
+      week: [{ label: "Mon", state: "done" }, { label: "Tue", state: "done" }, { label: "Wed", state: "done" }, { label: "Thu", state: "today" }, { label: "Fri", state: "open" }],
+      workbook: { number: 2, day: 4, days: 10, percent: 38, today: { label: "Today", topic: "Hundreds, tens and ones", scanned: 6, pages: 8 } },
+      onTheWay: null,
+      scanPrompt: null,
+      skills: {
+        mastered: [{ code: "2.4", name: "Multiplying by 10 and 100", masteredOn: "Thursday" }, { code: "2.1", name: "Even and odd", masteredOn: "Oct 20" }],
+        learning: [{ code: "2.5", name: "Rounding to the nearest hundred", masteredOn: null }],
+        needsHelp: [{ code: "2.3", name: "Value of each digit", masteredOn: null }, { code: "2.7", name: "Subtracting across a zero", masteredOn: null }],
+      },
       summaryMonth: null,
     });
-    const render = async (value: import("@/lib/parent-view").OverviewView | null, t?: readonly (typeof tabs)[number][]) => {
+    const render = async (value: Home | null, t?: readonly (typeof tabs)[number][]) => {
       dashboard.value = { children: [view("z-old", "Sam"), asha(t)], remembered: null, pinSet: true, timeZoneSaved: true };
       overview.value = value;
       return renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({ child: "c1" }) })));
     };
 
-    it("shows the tiles, the area bars and one thing to do, naming the child", async () => {
+    it("shows this week, the workbook card and the skills since the child started, naming the child once (the h1 is for screen readers only)", async () => {
       const out = await render(full());
-      expect(out).toContain("Working at Grade 4");
-      expect(out).toContain("In Grade 3 at school.");
-      expect(out).toContain("Early sign");
-      expect(out).toContain("From the test on October 31.");
+      expect(out).toContain("<h1 class=\"sr-only\">Asha</h1>");
+      for (const [i, word] of ["Mon: done", "Tue: done", "Wed: done", "Thu: today, not done yet", "Fri: coming up"].entries()) expect(out.split('class="pa-vh"')[i + 1]).toContain(word);
       expect(out).toContain("Workbook 2</p>");
-      expect(out).toContain("3 of 10 days scanned");
-      expect(out).toContain('href="/account/notes/c1">Notes from Maya');
-      expect(out).not.toMatch(/of 30 minutes|minutes left|minutes start again|Try Maya|Start call/i);
-      expect(out).toContain("Level by area");
-      expect(out).toContain("The line marks Asha&#x27;s school grade, Grade 3.");
-      for (const label of ["At grade", "Building up · Early sign", "Ahead"]) expect(out).toContain(label);
-      expect(out.match(/class="po-card po-action/g)).toHaveLength(1);
-      expect(out).toContain("Tell us how Asha learns");
-      expect(out).toContain('href="/account/learning/c1"');
+      expect(out).toMatch(/Day 4<small> of 10<\/small>/);
+      expect(out).toContain("38% of Workbook 2&#x27;s pages scanned");
+      expect(out).toContain("Hundreds, tens and ones");
+      expect(out).toContain("6 of 8 scanned");
+      expect(out).toContain("Since Asha started");
+      // The three counts, each number once, on its own button; the list opens on Needs help.
+      expect(out).toMatch(/<b>2<\/b><span>Mastered<\/span>/);
+      expect(out).toMatch(/<b>1<\/b><span>Learning<\/span>/);
+      expect(out).toMatch(/<b>2<\/b><span>Needs help<\/span>/);
+      expect(out).toContain("Needs help with");
+      expect(out).toContain("Subtracting across a zero");
       expect(out).not.toMatch(/\b(?:she|her|hers|he|his|him)\b/i);
-      expect(out).not.toMatch(/\d\s*%|streak|percent|wrong|other children/i);
+      expect(out).not.toMatch(/streak|wrong|other children|percent right/i);
     });
 
-    it("a test the report calls unreliable: no bars, one sentence and the report's link in their place (D-258)", async () => {
-      const out = await render({ ...full(), child: { ...asha(), reportIds: ["r2", "r1"] }, level: { ...full().level!, unreliable: true }, areas: [] });
-      expect(out).toContain("Working at Grade 4");
-      expect(out).toContain("Level by area");
-      expect(out).toContain("The last test may not show Asha&#x27;s level reliably, so the report offers Asha a new test with new questions.");
-      expect(out).toContain('href="/account/report/r2">See the report');
-      expect(out).not.toContain("po-bar");
-      expect(out).not.toContain("The line marks");
-      expect(out).not.toMatch(/\b(?:she|her)\b/i);
-      expect(await render(full())).not.toContain("may not show");
-    });
-
-    it("links to saved notes only for a child with the Maya tab, without a voice allowance read", async () => {
-      expect(await render(full())).toContain('id="po-maya"');
-      const withoutMaya = tabs.filter((t) => t !== "maya");
-      expect(await render(full(withoutMaya), withoutMaya)).not.toContain('id="po-maya"');
-    });
-
-    it.each(["active", "first_book_coming", "ended"] as const)("keeps %s notes access independent of voice usage and chat release", async (stage) => {
-      const hasMaya = stage !== "first_book_coming";
-      const t = hasMaya ? tabs : tabs.filter(tab => tab !== "maya");
-      const child = { ...asha(t), stage, readOnly: stage === "ended", currentWorkbook: hasMaya ? { number: 2 } : null };
-      dashboard.value = { children: [view("z-old", "Sam"), child], remembered: null, pinSet: true, timeZoneSaved: true };
-      overview.value = { ...full(t), child, workbook: null, level: null, areas: [], resultPreparing: stage === "active" };
-      const out = renderToStaticMarkup(createElement("div", null, await Account({ params: Promise.resolve({}), searchParams: Promise.resolve({ child: "c1" }) })));
-      expect(out.includes('href="/account/notes/c1"')).toBe(hasMaya);
-      expect(out).not.toMatch(/of 30 minutes|minutes left|minutes start again|Try Maya|Start (?:a )?call|chat messages today/i);
-      expect(out).not.toContain("Sam");
-      expect(out).not.toContain("/account/notes/z-old");
-      if (stage === "active") expect(out).toContain("Asha&#x27;s new result is being prepared.");
-    });
-
-    // #771 review: the Overview says the result is late, so the test's line under it does not say it again.
-    it("says once that a late result is late: in the Overview, and the test's line only says the test is done", async () => {
-      vi.useFakeTimers({ toFake: ["Date"], now: Date.parse("2026-10-19T06:00:00Z") });
-      let out: string;
-      try {
-        out = await render({ ...full(), level: null, areas: [], resultPreparing: true, resultLate: true });
-      } finally {
-        vi.useRealTimers();
-      }
-      expect(out.match(/taking longer than it should/g)).toHaveLength(1);
-      expect(out).toContain('class="po-preparing">Asha&#x27;s new result is taking longer than it should.');
-      expect(out).toContain('<span class="small acct-done">Test done. The next test opens at <time');
-      expect(out).not.toContain("The report comes by email");
-    });
-
-    it("a tile or a section with no data does not appear, and no card shows when none applies", async () => {
-      const withoutMaya = tabs.filter((t) => t !== "maya");
-      const out = await render({ ...full(withoutMaya), level: null, areas: [], workbook: null, action: null }, withoutMaya);
-      expect(out).not.toContain("po-tiles");
-      expect(out).not.toContain("Level by area");
-      expect(out).not.toContain("po-action");
-      expect(out).not.toContain("days scanned");
-    });
-
-    it("offers the monthly summary PDF of the month the view names, and nothing without one (#562)", async () => {
+    it("has none of the old Overview: no level, area bars, Maya tile, action card, monthly PDF row, goal sentence, test or desk row", async () => {
       const out = await render({ ...full(), summaryMonth: "2026-10" });
-      expect(out).toContain('id="po-summary"');
-      expect(out).toContain("October 2026");
-      expect(out).toContain('href="/api/account/children/c1/monthly-summary?month=2026-10"');
-      expect(out).toContain("One page on Asha&#x27;s month");
-      expect(out).not.toMatch(/\b(?:she|her|hers|he|his|him)\b/i);
-      expect(await render(full())).not.toContain("po-summary");
+      for (const gone of ["Level by area", "Working at", "po-bar", "po-maya", "Notes from Maya", "po-action", "Tell us how", "po-summary", "Monthly summary", "We can help", "pd-test", "On the desk"]) expect(out).not.toContain(gone);
     });
 
-    it("asks the parent to email us when the new result is late", async () => {
-      const out = await render({ ...full(), level: null, areas: [], workbook: null, resultPreparing: true, resultLate: true });
-      expect(out).toContain("taking longer than it should");
-      expect(out).toContain("mailto:");
-      expect(out).not.toContain("being prepared");
+    it("rings today when all of today's pages are scanned, as the circle says", async () => {
+      const value = full();
+      const out = await render({ ...value, week: value.week!.map((d) => (d.label === "Thu" ? { ...d, state: "today_done" as const } : d)) });
+      expect(out).toContain('class="po-day is-today_done"');
+      expect(out).toContain("Thu: today, done");
     });
 
-    it("says a new result is being prepared, with no Level tile and no bars", async () => {
-      const out = await render({ ...full(), level: null, areas: [], workbook: null, resultPreparing: true });
+    it("before the first scan: no ring, and one prompt to scan the first pages, with the Scan button", async () => {
+      const value = full();
+      const out = await render({ ...value, workbook: { ...value.workbook!, percent: null, today: { ...value.workbook!.today!, scanned: 0 } }, scanPrompt: { day: 1, pages: 8 }, skills: null });
+      expect(out).not.toContain("po-ring");
+      expect(out).toContain("Scan the first pages when they&#x27;re done");
+      expect(out).toContain("Day 1 has 8 pages. Any order is fine.");
+      expect(out).toContain('class="pa-scanbtn" href="/account/scan"');
+      expect(await render(full())).not.toContain("Scan the first pages");
+    });
+
+    it("a part with no data does not appear", async () => {
+      const out = await render({ ...full(), week: null, workbook: null, skills: null, scanPrompt: { day: 1, pages: 8 } });
+      for (const absent of ["po-week", "po-book", "Skills", "po-side"]) expect(out).not.toContain(absent);
+      expect(out).toContain("<h1 class=\"sr-only\">Asha</h1>");
+      expect(out).toContain("Scan the first pages");
+      expect(out).not.toContain('id="pd-test"');
+    });
+
+    it("never renders empty: with no week, workbook, scan prompt or skills it keeps the old rows (test, desk, Maya, scan link)", async () => {
+      scanning.enabled = true;
+      chats.value.set("c1", { used: 7, left: 53, backAt: "midnight on November 9", resetsAt: Date.parse("2026-11-09T07:00:00Z") });
+      mayaNotice.books = [{ id: "w1", childId: "c1", number: 1, status: "shipped" }];
+      try {
+        const out = await render({ ...full(), week: null, workbook: null, scanPrompt: null, skills: null }, ["overview", "workbooks", "assessment", "account"]);
+        expect(out).toContain("<h1>Asha</h1>");
+        expect(out).toContain('id="pd-test"');
+        expect(out).toContain("On the desk");
+        expect(out).toContain("Asha used 7 of 60 chat messages today.");
+        expect(out).toContain('href="/account/scan"');
+        expect(out).not.toContain("po-week");
+      } finally { mayaNotice.books = []; }
+    });
+
+    it("says the next workbook is on its way, above the week, and again when it is the only thing to say", async () => {
+      const out = await render({ ...full(), onTheWay: 3 });
+      expect(out).toContain('<p class="po-way">Workbook 3 is on its way</p>');
+      expect(out.indexOf("po-way")).toBeLessThan(out.indexOf("po-week"));
+      expect(await render(full())).not.toContain("is on its way");
+      const only = await render({ ...full(), week: null, workbook: null, skills: null, onTheWay: 1 });
+      expect(only).toContain("Workbook 1 is on its way");
+      expect(only).toContain('id="pd-test"');
+    });
+
+    it("the card after the book is over has no Today row and still shows the book and its percent", async () => {
+      const value = full();
+      const out = await render({ ...value, workbook: { ...value.workbook!, day: 10, percent: 90, today: null }, week: value.week!.map((d) => ({ ...d, state: "done" as const })) });
+      expect(out).toContain("90% of Workbook 2&#x27;s pages scanned");
+      expect(out).not.toContain("po-today");
+      expect(out).not.toContain("is-today");
+    });
+
+    it("says a new result is being prepared, and keeps the rest of the Home", async () => {
+      const out = await render({ ...full(), resultPreparing: true });
       expect(out).toContain("Asha&#x27;s new result is being prepared.");
-      expect(out).not.toContain("Working at");
-      expect(out).not.toContain("Level by area");
+      expect(out).toContain("po-week");
       expect(out).not.toMatch(/\b(?:she|her)\b/i);
       expect(await render(full())).not.toContain("being prepared");
     });
 
-    it("the card for an open test uses the start control's words", async () => {
-      const out = await render({ ...full(), action: "continue_test" });
-      expect(out).toContain("Go to the test");
-      expect(out).toContain('href="#pd-test"');
-      expect(out).not.toContain("Start the test");
-      expect(out).not.toMatch(/\b(?:she|her)\b/i);
+    it("asks the parent to email us when the new result is late, once", async () => {
+      const out = await render({ ...full(), workbook: null, resultPreparing: true, resultLate: true });
+      expect(out.match(/taking longer than it should/g)).toHaveLength(1);
+      expect(out).toContain('class="po-preparing">Asha&#x27;s new result is taking longer than it should.');
+      expect(out).toContain("mailto:");
+      expect(out).not.toContain("being prepared");
     });
 
-    it.each([
-      ["start_test", "Start the test", "#pd-test"],
-      ["payment_failed", "The last payment for Asha&#x27;s plan did not go through.", "/account/plan"],
-      ["no_pin", "Set a 4-digit PIN before Asha uses the desk.", "/account/pin"],
-    ] as const)("the card for %s", async (action, text, href) => {
-      const out = await render({ ...full(), action });
-      expect(out).toContain(text);
-      expect(out).toContain(`href="${href}"`);
-      expect(out).not.toMatch(/\b(?:she|her)\b/i);
+    it("keeps the test row when the Overview cannot be read, so the page is never empty", async () => {
+      const out = await render(null);
+      expect(out).toContain("<h1>Asha</h1>");
+      expect(out).toContain('id="pd-test"');
     });
 
-    it("shows nothing of the Overview for another child than the one read", async () => {
+    it("shows nothing of the Home for another child than the one read", async () => {
       expect(await render({ ...full(), child: { ...asha(), id: "z-old" } })).not.toContain("po-");
     });
   });

@@ -5,7 +5,7 @@ import { NoteCard } from "@/components/parent-maya-notes";
 import { DeskText, MayaNoticeCard, MayaChatRow, ProgressCard } from "@/components/parent-home-rows";
 import type { HomeProgress } from "@/lib/progress-preview-server";
 import { ParentAlerts, ParentTestStart } from "@/components/parent-assessment";
-import { ParentOverview } from "@/components/parent-overview";
+import { OnTheWay, ParentOverview, homeHasParts } from "@/components/parent-overview";
 import { SupportPage } from "@/components/support-page";
 import type { StartState } from "@/lib/assessment";
 import { gradeLabel } from "@/lib/assessment/grades";
@@ -79,15 +79,21 @@ export function ParentDashboardHome({ dashboard, overview, kids, addressChild, p
       </ParentTestStart>
     );
   }
+  // Option A Home (#1003): the Overview alone. Its own parts replace the test, desk, Maya and goal rows, which the other
+  // tabs hold. Only when the Overview cannot be read, or has no part to show (a first book still in the mail), does the page
+  // keep those rows, as before, so it is never just the child's name.
+  const shown = !!kid && overview?.child.id === kid.id ? overview : null;
+  const home = !!shown && homeHasParts(shown);
   return (
-    <SupportPage label={label} title={kid?.first_name ?? "Your account"}>
+    <SupportPage label={label} title={kid?.first_name ?? "Your account"} titleHidden={home}>
       {note}
       <ParentAlerts {...alerts} />
       {noticeDue && current.size > 0 && <MayaNoticeCard />}
       {!kid && <p className="lead">Add a child on the <Link href="/account/settings">Account</Link> page to start.</p>}
-      {kid && overview?.child.id === kid.id && <ParentOverview overview={overview} />}
-      {progressCard}
-      {kid && state && (
+      {home && <ParentOverview overview={shown} />}
+      {!home && shown?.onTheWay != null && <OnTheWay number={shown.onTheWay} />}
+      {!home && progressCard}
+      {!home && kid && state && (
         <>
           {phone && state.kind !== "wait" && (
             <div className="acct-card acct-phone">
@@ -107,7 +113,7 @@ export function ParentDashboardHome({ dashboard, overview, kids, addressChild, p
               </span>
               {phone && state.kind !== "wait"
                 ? <SendLink key={kid.id} childId={kid.id} name={kid.first_name} sent={sentHere} />
-                : <StartTest childId={kid.id} name={kid.first_name} state={state} when={startWhen(state, timeZone)} report={reportFor(kid.id, state)} late={lateFor(kid.id, state)} lateShown={overview?.child.id === kid.id && overview.resultLate} />}
+                : <StartTest childId={kid.id} name={kid.first_name} state={state} when={startWhen(state, timeZone)} report={reportFor(kid.id, state)} late={lateFor(kid.id, state)} />}
               {current.has(kid.id) && <div className="acct-desk"><DeskText name={kid.first_name} workbook={current.get(kid.id)!} pinSet={dashboard.pinSet} /></div>}
               {mayaHere && chats.has(kid.id) && <MayaChatRow name={kid.first_name} chat={chats.get(kid.id)!} />}
               {mayaHere && notes.has(kid.id) && <NoteCard note={notes.get(kid.id)!} name={kid.first_name} zone={timeZone} latest />}
@@ -115,7 +121,7 @@ export function ParentDashboardHome({ dashboard, overview, kids, addressChild, p
           </ul>
         </>
       )}
-      {scanLink}
+      {!home && scanLink}
     </SupportPage>
   );
 }

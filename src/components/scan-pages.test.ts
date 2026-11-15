@@ -177,7 +177,7 @@ it("keeps both saved photos when the older concurrent list reply arrives last", 
   expect(text()).not.toContain("1 of 4 pages scanned");
 });
 
-it("shows the four tips on the first visit only, then Scan pages opens the camera after the photo notice (#915)", async () => {
+it("shows the tips on the first visit only, then Scan pages opens the camera after the photo notice (#915)", async () => {
   acknowledged = false; localStorage.clear();
   await render();
   expect(text()).toContain("Fill the photo with the page");
@@ -556,7 +556,19 @@ it("brings the tips back from How to scan, and says pages can go in any order", 
   expect(text()).not.toContain("Fill the photo with the page");
   await act(async () => button("How to scan")!.click());
   expect(text()).toContain("Fill the photo with the page");
-  expect(text()).toContain("Pages can be scanned in any order.");
+  expect(text()).toContain("Any order is fine");
+  expect(text()).toContain("We'll tell you if a page needs a retake.");
+  expect(text()).not.toContain("Pages can be scanned in any order.");
+});
+
+it("promises no retake notice to a family without the photo checks: the fifth tip says the photos are kept for marking", async () => {
+  checks = false;
+  await render();
+  await choose("library", "p10.jpg");
+  await act(async () => button("How to scan")!.click());
+  expect(text()).toContain("Any order is fine");
+  expect(text()).toContain("We keep the photos to mark Leah's work later.");
+  expect(text()).not.toContain("needs a retake");
 });
 
 it("shows Checking, never Got it, while a page is checked (#915)", async () => {

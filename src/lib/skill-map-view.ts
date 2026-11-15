@@ -121,3 +121,28 @@ export function skillMapView(input: SkillMapViewInput): SkillAreaView[] {
     return tiles.length > 0 ? [{ area, name: REPORTED_STRAND_NAMES[area], tiles }] : [];
   });
 }
+
+/** The level word of a topic on the Progress tab (#1004). */
+export type TopicWord = "Strong" | "Getting there" | "Needs help";
+
+export interface TopicBarView {
+  /** The area's name, as the report names it. */
+  name: string;
+  word: TopicWord;
+  /** The share of the topic's skills that are mastered, 0 to 1: the bar's length. */
+  share: number;
+}
+
+/**
+ * The math topics: one bar per area of the map, the share of its skills mastered. The word: Strong when every skill is
+ * mastered; Needs help when none is mastered and one needs review; else Getting there. An area with no skill does not
+ * appear. No percent and no count reaches the parent: the bar and the word only.
+ */
+export function topicBars(areas: readonly SkillAreaView[]): TopicBarView[] {
+  return areas.map(({ name, tiles }): TopicBarView => {
+    const mastered = tiles.filter((t) => t.state === "mastered").length;
+    const help = tiles.filter((t) => t.state === "needs_review").length;
+    const word: TopicWord = mastered === tiles.length ? "Strong" : mastered === 0 && help > 0 ? "Needs help" : "Getting there";
+    return { name, word, share: mastered / tiles.length };
+  });
+}

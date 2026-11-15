@@ -1,78 +1,70 @@
-/* The Overview (#560): the mock's white bordered cards with mono labels, in the warm look's tokens. The colours follow
-   the report's ruler: At grade leaf, Building up tangerine, Ahead sky. An Early sign is lighter. */
-.po { display: grid; gap: 14px; margin: 28px 0 28px; container-type: inline-size; }
-/* The tiles: 1, 2 or 3 columns by the Overview's own width (each at least 220 px). Level takes a full row at 2 columns
-   and two columns at 3. Maya is a link, not a number: it fills the rest of its row, so no row is half empty (D-328); the
-   component picks its span for 2 and for 3 columns from the tiles before it. */
-.po-tiles { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
-@container (min-width: 454px) {
-  .po-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .po-level, .po-maya { grid-column: 1 / -1; }
-  .po-maya-2c-1 { grid-column: span 1; }
+/* The dashboard Home (#1003, #1005): this week's circles, the workbook card and the skills, in Option A's look
+   (parent-option-a.css). One column on a phone; two on a laptop (the Home's own width, so the sidebar does not squeeze it):
+   the week and the workbook on the left, the skills on the right. */
+.po { gap: 14px; }
+.po-main, .po-side { display: grid; gap: 14px; align-content: start; min-width: 0; }
+
+/* This week: Mon to Fri. A done day is a green disc with a tick, today is ringed, coming up is an empty circle. */
+.support-page .pa .po-week { display: flex; justify-content: space-between; padding: 4px 2px; }
+.po-day { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 56px; font-size: 12px; color: var(--pa-tx3); position: relative; }
+.po-dot { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; font-size: 14px; font-weight: 600; border: 1.5px solid var(--pa-ring); background: #fff; color: #fff; }
+.po-day.is-done .po-dot, .po-day.is-today_done .po-dot { border: 0; background: var(--pa-g); }
+.po-day.is-today .po-dot { border: 2px solid var(--pa-tx); }
+.po-day.is-today_done .po-dot { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--pa-tx); }
+.po-day.is-today, .po-day.is-today_done { color: var(--pa-tx); font-weight: 600; }
+
+/* The workbook card */
+.po-book { display: grid; gap: 16px; padding: 20px; }
+.po-book-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.support-page .pa .po-k { font-size: 12.5px; font-weight: 600; color: var(--pa-tx3); text-transform: uppercase; letter-spacing: 0.05em; }
+.support-page .pa .po-n { font-size: 40px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.05; margin-top: 6px; }
+.po-n small { font-size: 20px; color: var(--pa-tx3); font-weight: 600; }
+.po-ring { position: relative; flex: 0 0 auto; width: 96px; height: 96px; }
+.po-ring svg { display: block; }
+.po-ring-in { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; font-size: 11.5px; font-weight: 600; line-height: 1.15; color: var(--pa-tx2); align-content: center; }
+.po-ring-in b { display: block; font-size: 18px; color: var(--pa-tx); }
+.po-today { border-top: 1px solid var(--pa-line); padding-top: 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.po-today > div { min-width: 0; }
+.po-today b { display: block; font-size: 15px; font-weight: 600; }
+.po-today span { display: block; font-size: 13.5px; color: var(--pa-tx2); margin-top: 2px; }
+.support-page .pa .po-today .po-pp { font-size: 14px; font-weight: 600; white-space: nowrap; margin-top: 0; color: var(--pa-tx); }
+
+/* "Scan the first pages when they're done": only before the family's first scan */
+.po-scan { display: flex; align-items: center; gap: 12px; padding: 14px 14px 14px 18px; }
+.po-scan > div { flex: 1; min-width: 0; }
+.po-scan b { display: block; font-size: 15.5px; font-weight: 600; }
+.po-scan span { display: block; font-size: 13.5px; color: var(--pa-tx2); margin-top: 2px; }
+
+.support-page .pa .po-preparing { font-size: 15px; line-height: 1.45; color: var(--pa-tx); }
+.support-page .pa .po-preparing a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+
+/* Skills: three counts, then the list of the one picked */
+.po-trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.po-count { background: #fff; border: 0; border-radius: 18px; box-shadow: var(--pa-shadow); padding: 14px 12px; text-align: left; display: flex; flex-direction: column; gap: 10px; min-height: 44px; }
+.po-count b { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; line-height: 1; }
+.po-count span { font-size: 12.5px; font-weight: 600; }
+.po-count[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--pa-tx); }
+.po-count.is-g span { color: var(--pa-gt); }
+.po-count.is-s span { color: var(--pa-st); }
+.po-count.is-a span { color: var(--pa-at); }
+.po-list { display: flex; flex-direction: column; }
+.support-page .pa .po-list li { display: flex; gap: 14px; align-items: center; padding: 14px 0; border-top: 1px solid var(--pa-line); margin: 0; }
+.support-page .pa .po-list li:first-child { border-top: 0; padding-top: 0; }
+.support-page .pa .po-list li:last-child { padding-bottom: 0; }
+.po-skill { flex: 1; min-width: 0; }
+.po-skill b { display: block; font-weight: 600; font-size: 15.5px; line-height: 1.3; overflow-wrap: anywhere; }
+.po-skill small { display: block; font-size: 13.5px; color: var(--pa-tx2); margin-top: 2px; }
+.support-page .pa .po-none { color: var(--pa-tx2); }
+
+/* "Workbook N is on its way": one plain line above the week while a newer book is in the mail. */
+.po-way { margin: 0; font-size: 14.5px; font-weight: 600; color: var(--pa-tx2, #50505a); }
+
+/* The page's own title is the child's name: the approved look is bold. */
+[data-look="warm"] .pd-main .support-page:has(.po) h1 { font-weight: 700; letter-spacing: -0.02em; }
+
+/* The laptop: two columns when the Home itself is wide enough. */
+@container (min-width: 760px) {
+  .po { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+  .po > .po-preparing-card, .po > .po-way { grid-column: 1 / -1; }
 }
-@container (min-width: 688px) {
-  .po-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .po-level { grid-column: span 2; }
-  .po-maya, .po-maya-2c-1 { grid-column: 1 / -1; }
-  .po-maya-3c-1 { grid-column: span 1; }
-  .po-maya-3c-2 { grid-column: span 2; }
-}
-.po-card { --c: var(--leaf); padding: 20px 22px; border: 1px solid var(--line); border-radius: 14px; background: #fff; min-width: 0; }
-.po-label { margin: 0 0 10px; font: 400 12px/1.3 var(--mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); }
-.support-page .po-value { margin: 0; font-size: clamp(22px, 2.2vw, 26px); font-weight: 300; letter-spacing: -0.02em; line-height: 1.2; color: var(--ink); overflow-wrap: anywhere; }
-.support-page .po-sub { margin: 8px 0 0; font-size: 15px; line-height: 1.45; color: var(--ink-2); }
-.support-page .po-card h2 { margin: 0; font-size: 19px; font-weight: 500; letter-spacing: -0.01em; }
-.support-page .po-foot, .support-page .po-note { margin: 12px 0 0; font: 400 12px/1.4 var(--mono); color: var(--ink-2); }
-.support-page .po-preparing { margin: 0; font-size: 15px; line-height: 1.45; color: var(--ink); }
-.po-more { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin-top: 4px; color: var(--ink); font-size: 15px; }
-.po-chip { display: inline-block; padding: 2px 8px; border-radius: 999px; background: var(--soft); border: 1px solid var(--line); font: 400 12px/1.4 var(--mono); color: var(--ink-2); white-space: nowrap; }
-
-.is-building-up { --c: var(--tang); }
-.is-ahead { --c: var(--sky); }
-
-.support-page .po-sub-tight { margin-top: 2px; }
-
-/* The Level tile's ruler: the report's ruler, small. */
-.po-ruler {
-  position: relative; display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); align-items: center;
-  height: 44px; margin-top: 16px; border-radius: 10px; background: var(--soft); border: 1px solid var(--line-soft);
-}
-.po-tick { position: relative; z-index: 1; text-align: center; font: 400 13px/1 var(--mono); color: #6b6b74; }
-.po-tick.is-work { color: #fff; font-weight: 600; }
-.po-gap {
-  position: absolute; top: 6px; bottom: 6px; border-radius: 7px;
-  left: calc(var(--lo) / var(--n) * 100% + 3px); width: calc((var(--hi) - var(--lo) + 1) / var(--n) * 100% - 6px);
-  background: color-mix(in srgb, var(--c) 16%, #fff);
-}
-.po-pin { position: absolute; top: 50%; border-radius: 50%; transform: translate(-50%, -50%); }
-.po-pin.is-work { left: calc((var(--work) + 0.5) / var(--n) * 100%); width: 28px; height: 28px; background: var(--c); }
-.po-pin.is-grade { left: calc((var(--grade) + 0.5) / var(--n) * 100%); width: 36px; height: 36px; border: 1.5px dashed var(--ink); }
-
-/* The area bars, with the school grade line. */
-.po-bars { --label: 190px; margin-top: 18px; }
-.po-axis, .po-bar { display: grid; grid-template-columns: var(--label) minmax(0, 1fr); gap: 16px; align-items: center; }
-.po-ticks { display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); font: 400 12px/1 var(--mono); color: var(--ink-3); text-align: center; }
-.po-ticks .is-grade { color: var(--ink); font-weight: 600; }
-.support-page .po-bars ul { list-style: none; margin: 8px 0 0; padding: 0; }
-.support-page .po-bar { margin: 0; padding: 10px 0; border-top: 1px solid var(--line-soft); }
-.po-area { display: grid; gap: 2px; min-width: 0; }
-.po-area b { font-weight: 500; font-size: 15px; line-height: 1.3; }
-.po-area span { font: 400 12px/1.3 var(--mono); color: var(--c); }
-.po-bar.is-at-grade .po-area span { color: #1d7f55; }
-.po-bar.is-building-up .po-area span { color: #b43d12; }
-.po-bar.is-ahead .po-area span { color: #2f5fc4; }
-.po-track { position: relative; height: 12px; border-radius: 999px; background: var(--card); }
-.po-fill { position: absolute; left: 0; top: 0; bottom: 0; width: calc((var(--level) + 0.5) / var(--n) * 100%); border-radius: 999px; background: var(--c); }
-.po-bar.is-early .po-fill { background: color-mix(in srgb, var(--c) 35%, #fff); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 55%, #fff); }
-.po-line { position: absolute; top: -6px; bottom: -6px; left: calc((var(--grade) + 0.5) / var(--n) * 100%); width: 2px; margin-left: -1px; background: var(--ink); border-radius: 1px; }
-
-/* The one thing to do */
-.po-action { display: grid; justify-items: start; gap: 0; border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); background: var(--accent-soft); }
-.po-action .btn { margin-top: 16px; }
-
-@media (max-width: 699px) {
-  .po { margin-top: 20px; }
-  .po-card { padding: 18px 16px; }
-  .po-axis, .po-bar { grid-template-columns: 1fr; gap: 8px; }
-  .po-axis > span:first-child { display: none; }
-}
+@media (prefers-reduced-motion: reduce) { .po-count { transition: none; } }

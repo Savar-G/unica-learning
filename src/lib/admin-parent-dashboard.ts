@@ -46,12 +46,12 @@ export const PARENT_PREVIEW_VIEWS = [
     scenario("joined", "Other curriculum: joined", "report_ready_waitlist"), scenario("waitlist_error", "Waitlist unavailable", "report_ready_waitlist"),
     scenario("unreliable", "Result needs a new test", "active"), scenario("ended", "Past report after plan ended", "ended"),
   ] },
-  { id: "overview", label: "Overview", scenarios: [
-    scenario("active", "Active child"), scenario("first_book_coming", "First workbook not sent", "first_book_coming"),
-    scenario("ended", "Plan ended", "ended"), scenario("early", "Early result"), scenario("unreliable", "Unreliable result"),
-    scenario("preparing", "New result being prepared"), scenario("late", "New result delayed"),
-    scenario("empty", "No result or scanned days", "first_book_coming"), scenario("payment_failed", "Payment failed"),
-    scenario("no_pin", "PIN needed"), scenario("learning_card_empty", "Learning card needed"),
+  { id: "overview", label: "Home", scenarios: [
+    scenario("active", "Mid-week"), scenario("today_done", "All of today's pages scanned"), scenario("day_not_started", "A day not started"),
+    scenario("first_scan", "Before the first scan"), scenario("first_book_coming", "First workbook not sent", "first_book_coming"),
+    scenario("book_2_mailed", "Next workbook in the mail"), scenario("book_over", "Book finished, next one not here yet"),
+    scenario("ended", "Plan ended", "ended"), scenario("preparing", "New result being prepared"), scenario("late", "New result delayed"),
+    scenario("no_skills", "Skills not shown yet"), scenario("empty", "No skills of one kind"),
   ] },
   { id: "workbooks", label: "Workbooks", scenarios: [
     scenario("delivered", "Current and past books"), scenario("mail", "In the mail"), scenario("hand", "Delivery by hand"),
@@ -73,9 +73,9 @@ export const PARENT_PREVIEW_VIEWS = [
     scenario("complete", "Whole delivered workbook"), scenario("mixed", "Multiple answers, examples and open work"),
     scenario("empty", "No stored answers"), scenario("ended", "Delivered book after plan ended", "ended"),
   ] },
-  { id: "progress", label: "Progress / skill panel", scenarios: [
-    scenario("map", "Skill map"), scenario("panel", "Selected skill"), scenario("empty", "No test report", "first_book_coming"),
-    scenario("unreliable", "Unreliable result"), scenario("ended", "Past skills", "ended"),
+  { id: "progress", label: "Progress", scenarios: [
+    scenario("week", "A week of data"), scenario("long", "Months of data"), scenario("empty", "No marked pages yet", "first_book_coming"), scenario("unavailable", "Progress can't load"),
+    scenario("ended", "Past skills", "ended"),
   ] },
   { id: "maya", label: "Maya notes", scenarios: [
     scenario("notes", "Call and chat notes"), scenario("empty", "No notes"), scenario("used", "Daily chat messages used"),

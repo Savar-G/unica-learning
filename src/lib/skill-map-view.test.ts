@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { BC_SKILL_MAP, REPORTED_STRAND, type SkillTestResult, type StandardSkillState } from "@/lib/assessment";
-import { shownSkillStates, skillMapView, skillWhy, type SkillMapViewInput } from "@/lib/skill-map-view";
+import { BC_SKILL_MAP, REPORTED_STRAND, type SkillState, type SkillTestResult, type StandardSkillState } from "@/lib/assessment";
+import { shownSkillStates, skillMapView, skillWhy, topicBars, type SkillAreaView, type SkillMapViewInput } from "@/lib/skill-map-view";
 
 // What a parent reads on the skill map: which standards show, under which area, and the plain line on each state.
 
@@ -167,5 +167,25 @@ describe("marked pages on the map (#880)", () => {
     const shown = shownSkillStates(input({ marks }));
     expect(shown.find((s) => s.standard === "3.1")?.state).toBe("mastered");
     expect(new Set(shown.map((s) => s.standard))).toEqual(new Set(tiles({ marks }).map((t) => t.code)));
+  });
+});
+
+describe("the math topics of the Progress tab (#1004)", () => {
+  const tile = (state: SkillState) => ({ code: "x", name: "x", grade: 3 as const, state, why: "", skills: [], workbookLine: null });
+  const area = (name: string, ...states: SkillState[]): SkillAreaView => ({ area: "number", name, tiles: states.map(tile) });
+  it("Strong when every skill is mastered; Needs help when none is and one needs review; else Getting there", () => {
+    expect(topicBars([
+      area("A", "mastered", "mastered"),
+      area("B", "needs_review", "working_on"),
+      area("C", "mastered", "needs_review"),
+      area("D", "not_started", "working_on"),
+    ]).map((t) => [t.word, t.share])).toEqual([["Strong", 1], ["Needs help", 0], ["Getting there", 0.5], ["Getting there", 0]]);
+  });
+  it("names the area as the report does and gives only the name, the word and the share", () => {
+    const [bar] = topicBars([area("Fractions and decimals", "mastered", "not_started", "not_started", "not_started")]);
+    expect(bar).toEqual({ name: "Fractions and decimals", word: "Getting there", share: 0.25 });
+  });
+  it("leaves out nothing it is given, and gives nothing for no area", () => {
+    expect(topicBars([])).toEqual([]);
   });
 });
